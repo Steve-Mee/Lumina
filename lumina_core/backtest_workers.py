@@ -144,3 +144,19 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                         feedback = list(getattr(app, "user_feedback_history", []) or [])
                         app.engine.emotional_twin.nightly_train(reflections, feedback)
                         app.engine.emotional_twin_last_train_date = today
+
+                # Ultimate validation na nightly cycle (3y swarm + paper vs real).
+                validator = getattr(app.engine, "validator", None)
+                if validator is not None and hasattr(validator, "run_3year_validation"):
+                    try:
+                        validation_report = validator.run_3year_validation()
+                        comparison = validator.live_paper_vs_real_comparison()
+                        app.log_thought(
+                            {
+                                "type": "ultimate_validation",
+                                "report": validation_report,
+                                "paper_vs_real": comparison,
+                            }
+                        )
+                    except Exception as exc:
+                        app.logger.error(f"Ultimate validation cycle failed: {exc}")

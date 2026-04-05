@@ -106,6 +106,9 @@ class LuminaEngine:
     emotional_twin_last_train_date: str | None = None
     # Multi-symbol swarm manager
     swarm: Any | None = None
+    # Monthly/ultimate performance validation
+    validator: Any | None = None
+    last_validation: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:
@@ -162,6 +165,12 @@ class LuminaEngine:
             from .swarm_manager import SwarmManager  # noqa: PLC0415
 
             self.swarm = SwarmManager(self)
+
+        if self.validator is None:
+            from .performance_validator import PerformanceValidator  # noqa: PLC0415
+
+            # Engine-native validator instance for nightly and periodic validation hooks.
+            self.validator = PerformanceValidator(engine=self)
 
         if self.config.trade_mode not in {"paper", "sim", "real"}:
             raise ValueError("TRADE_MODE must be one of: paper, sim, real")

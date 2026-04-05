@@ -392,6 +392,18 @@ def supervisor_loop(app: RuntimeContext) -> None:
 
         now = datetime.now()
 
+        # Optional monthly validator cycle (~every 30 days).
+        validator = getattr(app.engine, "validator", None)
+        last_validation = getattr(app.engine, "last_validation", None)
+        if validator is not None and hasattr(validator, "run_3year_validation"):
+            should_run_validation = last_validation is None or (now - last_validation).days >= 30
+            if should_run_validation:
+                try:
+                    validator.run_3year_validation()
+                    app.engine.last_validation = now
+                except Exception as exc:
+                    app.logger.error(f"Periodic validator run failed: {exc}")
+
         if time.time() - last_balance_fetch > 10:
             app.fetch_account_balance()
             last_balance_fetch = time.time()

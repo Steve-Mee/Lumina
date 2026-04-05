@@ -58,7 +58,7 @@ class MarketDataService:
         subscribed_symbols = [s for s in configured_swarm if s]
         try:
             async with websockets.connect(uri, additional_headers=headers, ping_interval=20, ping_timeout=20) as ws:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ WS verbonden – 1-min candle builder actief")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] WS connected - 1-min candle builder active")
                 await ws.send(json.dumps({"action": "subscribe", "instruments": subscribed_symbols}))
 
                 async for message in ws:
@@ -107,7 +107,7 @@ class MarketDataService:
                             if closed_candle is not None:
                                 minute_start = ts.replace(second=0, microsecond=0)
                                 print(
-                                    f"[{minute_start.strftime('%H:%M')}] 🕯️ 1-min candle gesloten -> "
+                                    f"[{minute_start.strftime('%H:%M')}] 1-min candle closed -> "
                                     f"O={closed_candle['open']:.2f} H={closed_candle['high']:.2f} "
                                     f"L={closed_candle['low']:.2f} C={closed_candle['close']:.2f} V={closed_candle['volume']}"
                                 )
@@ -118,12 +118,12 @@ class MarketDataService:
                                     f"imb={tape_signal.get('bid_ask_imbalance', 1.0):.2f} "
                                     f"sig={tape_signal.get('signal', 'HOLD')}"
                                 )
-                                print(f"[{ts.strftime('%H:%M:%S')}] 📥 LIVE tick -> last={price:.2f} | {tape_txt}")
+                                print(f"[{ts.strftime('%H:%M:%S')}] LIVE tick -> last={price:.2f} | {tape_txt}")
                                 last_tick_print = time.time()
                     except Exception as exc:
                         app.logger.error(f"WS parse error: {exc}")
         except Exception:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ WS mislukt -> REST fallback")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] WS failed -> REST fallback")
 
     def start_websocket(self) -> None:
         asyncio.run(self.websocket_listener())
@@ -155,14 +155,14 @@ class MarketDataService:
             return False
 
         self.engine.market_data.append_ohlc_rows(rows)
-        print(f"✅ {len(rows)} historische 1-min candles geladen -> ohlc_1min nu {len(self.engine.ohlc_1min)} rijen")
+        print(f"Loaded {len(rows)} historical 1-min candles -> ohlc_1min now {len(self.engine.ohlc_1min)} rows")
         return True
 
     def _fetch_historical_bars(self, instrument: str, days_back: int, limit: int) -> list[dict[str, Any]]:
         app = self._app()
         instrument = self._normalize_symbol(instrument)
         token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
-        print(f"📥 [v21.6] Loading {limit} real 1-min OHLC bars for {instrument} (last {days_back} days)...")
+        print(f"[v21.6] Loading {limit} real 1-min OHLC bars for {instrument} (last {days_back} days)...")
         try:
             payload = {
                 "instrument": instrument,
@@ -178,7 +178,7 @@ class MarketDataService:
                 timeout=40,
             )
             if response.status_code != 200:
-                print(f"❌ API error {response.status_code}: {response.text[:400]}")
+                print(f"API error {response.status_code}: {response.text[:400]}")
                 return []
 
             data = response.json()
@@ -192,7 +192,7 @@ class MarketDataService:
                 return []
             return bars
         except Exception as exc:
-            print(f"❌ Historical load crash: {exc}")
+            print(f"Historical load crash: {exc}")
             app.logger.error(f"Historical load error: {exc}")
             return []
 
@@ -291,7 +291,7 @@ class MarketDataService:
                     deltas = df["timestamp"].diff().dt.total_seconds()
                     max_gap = deltas.max() if len(deltas) > 1 else 0
                 if max_gap > 120:
-                    print(f"⚠️ GAP DETECTED ({max_gap/60:.1f} min) -> recovery")
+                    print(f"GAP DETECTED ({max_gap/60:.1f} min) -> recovery")
                     self.load_historical_ohlc(days_back=2, limit=2000)
             except Exception as exc:
                 self._app().logger.error(f"Gap recovery error: {exc}")

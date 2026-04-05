@@ -119,6 +119,7 @@ PERFORMANCE_VALIDATOR = PerformanceValidator(
     market_data_service=MARKET_DATA_SERVICE,
     ppo_trainer=PPO_TRAINER,
 )
+ENGINE.validator = PERFORMANCE_VALIDATOR
 TRADE_RECONCILER = TradeReconciler(engine=ENGINE)
 atexit.register(TRADE_RECONCILER.stop)
 SWARM_MANAGER = ENGINE.swarm if getattr(ENGINE, "swarm", None) is not None else SwarmManager(ENGINE)
