@@ -8,7 +8,8 @@ import json
 import secrets
 from pathlib import Path
 
-ADMIN_PASSWORD_HASH_PATH = Path("state/launcher_admin_password.json")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+ADMIN_PASSWORD_HASH_PATH = REPO_ROOT / "state" / "launcher_admin_password.json"
 
 
 def _derive_password_hash(password: str, salt_bytes: bytes, iterations: int) -> bytes:

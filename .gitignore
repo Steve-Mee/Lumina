@@ -26,6 +26,8 @@ htmlcov/
 .env.*
 !.env.*.example
 !.env.example
+state/launcher_admin_password.json
+scripts/state/launcher_admin_password.json
 
 # Docker
 docker-compose.override.yml
