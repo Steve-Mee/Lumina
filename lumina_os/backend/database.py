@@ -2,12 +2,15 @@ from datetime import datetime, timezone
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, create_engine, inspect, text
+from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("TRADER_LEAGUE_DATABASE_URL", "sqlite:///trader_league.db")
+DATABASE_URL = os.getenv(
+    "LUMINA_OS_DATABASE_URL",
+    os.getenv("TRADER_LEAGUE_DATABASE_URL", "sqlite:///lumina_os.db"),
+)
 
 engine_kwargs: dict = {"echo": False}
 if DATABASE_URL.startswith("sqlite"):
@@ -46,6 +49,28 @@ class TradeEntry(Base):
     maxdd = Column(Float)
     reflection = Column(JSON)
     chart_base64 = Column(String)            # voor replay
+
+
+class CommunityBible(Base):
+    __tablename__ = "community_bibles"
+    id = Column(Integer, primary_key=True)
+    trader_name = Column(String, unique=True)
+    bible_hash = Column(String)
+    upload_ts = Column(DateTime, default=datetime.utcnow)
+    performance_score = Column(Float, default=0.0)
+    reflection_count = Column(Integer, default=0)
+    evolvable_layer = Column(JSON)
+
+
+class CommunityReflection(Base):
+    __tablename__ = "community_reflections"
+    id = Column(Integer, primary_key=True)
+    bible_id = Column(Integer)
+    ts = Column(DateTime, default=datetime.utcnow)
+    reflection = Column(Text)
+    key_lesson = Column(String)
+    suggested_update = Column(JSON)
+    pnl_impact = Column(Float)
 
 
 Base.metadata.create_all(engine)

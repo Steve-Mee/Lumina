@@ -1,14 +1,14 @@
 from datetime import datetime, timezone
 import json
 import os
-from typing import Any
+from typing import Any, cast
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.database import Participant, SessionLocal, TradeEntry
-from backend.models import TradeSubmit
+from backend.database import CommunityBible, CommunityReflection, Participant, SessionLocal, TradeEntry
+from backend.models import BibleUpload, ReflectionUpload, TradeSubmit
 
 RECONCILIATION_STATUS_FILE = os.getenv(
     "TRADER_LEAGUE_RECONCILIATION_STATUS_FILE",
@@ -60,7 +60,7 @@ def submit_trade(trade: TradeSubmit) -> dict[str, int | str]:
         db.add(entry)
         db.commit()
         db.refresh(entry)
-        return {"status": "ok", "trade_id": entry.id}
+        return {"status": "ok", "trade_id": int(getattr(entry, "id", 0) or 0)}
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Trade ingest failed: {exc}") from exc
@@ -88,31 +88,34 @@ def get_trades(
         output: list[dict[str, Any]] = []
         participant_filter = participant.strip().lower() if participant else None
         for row in rows:
+            row_any = cast(Any, row)
             p = participant_map.get(row.participant_id)
             p_name = p.name if p else "unknown"
             if participant_filter and p_name.lower() != participant_filter:
                 continue
+            ts_value = getattr(row_any, "ts", None)
+            ts_iso = ts_value.isoformat() if isinstance(ts_value, datetime) else None
             output.append(
                 {
-                    "id": row.id,
+                    "id": int(getattr(row_any, "id", 0) or 0),
                     "participant": p_name,
                     "mode": p.mode if p else "unknown",
-                    "ts": row.ts.isoformat() if row.ts else None,
-                    "symbol": row.symbol,
-                    "signal": row.signal,
-                    "entry": row.entry,
-                    "exit": row.exit,
-                    "qty": row.qty,
-                    "pnl": row.pnl,
-                    "broker_fill_id": row.broker_fill_id,
-                    "commission": row.commission,
-                    "slippage_points": row.slippage_points,
-                    "fill_latency_ms": row.fill_latency_ms,
-                    "reconciliation_status": row.reconciliation_status,
-                    "sharpe": row.sharpe,
-                    "maxdd": row.maxdd,
-                    "reflection": row.reflection,
-                    "chart_base64": row.chart_base64,
+                    "ts": ts_iso,
+                    "symbol": getattr(row_any, "symbol", None),
+                    "signal": getattr(row_any, "signal", None),
+                    "entry": getattr(row_any, "entry", None),
+                    "exit": getattr(row_any, "exit", None),
+                    "qty": getattr(row_any, "qty", None),
+                    "pnl": getattr(row_any, "pnl", None),
+                    "broker_fill_id": getattr(row_any, "broker_fill_id", None),
+                    "commission": getattr(row_any, "commission", None),
+                    "slippage_points": getattr(row_any, "slippage_points", None),
+                    "fill_latency_ms": getattr(row_any, "fill_latency_ms", None),
+                    "reconciliation_status": getattr(row_any, "reconciliation_status", None),
+                    "sharpe": getattr(row_any, "sharpe", None),
+                    "maxdd": getattr(row_any, "maxdd", None),
+                    "reflection": getattr(row_any, "reflection", None),
+                    "chart_base64": getattr(row_any, "chart_base64", None),
                 }
             )
         return output
@@ -129,14 +132,17 @@ def get_leaderboard() -> dict[str, list[dict[str, int | float | str]] | str]:
 
         grouped: dict[int, dict[str, int | float | str]] = {}
         for trade in trades:
+            trade_any = cast(Any, trade)
+            participant_id = int(getattr(trade_any, "participant_id", 0) or 0)
             participant = participants.get(trade.participant_id)
             if participant is None:
                 continue
-            if trade.participant_id not in grouped:
-                grouped[trade.participant_id] = {
-                    "participant": participant.name,
-                    "mode": participant.mode,
-                    "is_lumina": participant.is_lumina,
+            participant_any = cast(Any, participant)
+            if participant_id not in grouped:
+                grouped[participant_id] = {
+                    "participant": str(getattr(participant_any, "name", "unknown")),
+                    "mode": str(getattr(participant_any, "mode", "unknown")),
+                    "is_lumina": int(getattr(participant_any, "is_lumina", 0) or 0),
                     "trades": 0,
                     "wins": 0,
                     "losses": 0,
@@ -145,12 +151,13 @@ def get_leaderboard() -> dict[str, list[dict[str, int | float | str]] | str]:
                     "win_rate": 0.0,
                 }
 
-            row = grouped[trade.participant_id]
+            row = grouped[participant_id]
             row["trades"] = int(row["trades"]) + 1
-            row["total_pnl"] = float(row["total_pnl"]) + float(trade.pnl or 0.0)
-            if float(trade.pnl or 0.0) > 0:
+            pnl_value = float(getattr(trade_any, "pnl", 0.0) or 0.0)
+            row["total_pnl"] = float(row["total_pnl"]) + pnl_value
+            if pnl_value > 0:
                 row["wins"] = int(row["wins"]) + 1
-            elif float(trade.pnl or 0.0) < 0:
+            elif pnl_value < 0:
                 row["losses"] = int(row["losses"]) + 1
 
         leaderboard: list[dict[str, int | float | str]] = []
@@ -228,6 +235,84 @@ def delete_demo_data() -> dict[str, int]:
         return {
             "deleted_participants": deleted_participants,
             "deleted_trades": deleted_trades,
+        }
+    finally:
+        db.close()
+
+
+@app.post("/upload/bible")
+def upload_bible(upload: BibleUpload) -> dict[str, str]:
+    db = SessionLocal()
+    try:
+        bible = db.query(CommunityBible).filter_by(trader_name=upload.trader_name).first()
+        if bible:
+            bible_any = cast(Any, bible)
+            bible_any.evolvable_layer = upload.evolvable_layer
+            bible_any.performance_score = float(upload.backtest_results.get("sharpe", 0.0) or 0.0)
+        else:
+            bible = CommunityBible(
+                trader_name=upload.trader_name,
+                bible_hash=str(hash(str(upload.evolvable_layer))),
+                performance_score=float(upload.backtest_results.get("sharpe", 0.0) or 0.0),
+                evolvable_layer=upload.evolvable_layer,
+            )
+            db.add(bible)
+        db.commit()
+        return {"status": "ok", "message": "Bible added to global wisdom"}
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Bible upload failed: {exc}") from exc
+    finally:
+        db.close()
+
+
+@app.post("/upload/reflection")
+def upload_reflection(upload: ReflectionUpload) -> dict[str, str]:
+    db = SessionLocal()
+    try:
+        bible = db.query(CommunityBible).filter_by(trader_name=upload.trader_name).first()
+        if not bible:
+            raise HTTPException(status_code=404, detail="Bible not found")
+
+        ref = CommunityReflection(
+            bible_id=bible.id,
+            reflection=upload.reflection,
+            key_lesson=upload.key_lesson,
+            suggested_update=upload.suggested_update,
+            pnl_impact=upload.pnl_impact,
+        )
+        db.add(ref)
+        bible_any = cast(Any, bible)
+        bible_any.reflection_count = int(getattr(bible_any, "reflection_count", 0) or 0) + 1
+        db.commit()
+        return {"status": "ok"}
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Reflection upload failed: {exc}") from exc
+    finally:
+        db.close()
+
+
+@app.get("/global_wisdom")
+def get_global_wisdom() -> dict[str, Any]:
+    db = SessionLocal()
+    try:
+        bibles = db.query(CommunityBible).order_by(CommunityBible.performance_score.desc()).limit(20).all()
+        total = len(bibles)
+        average_score = round(sum(float(getattr(cast(Any, item), "performance_score", 0.0) or 0.0) for item in bibles) / total, 2) if total else 0.0
+        return {
+            "top_bibles": [
+                {
+                    "trader": getattr(cast(Any, item), "trader_name", ""),
+                    "sharpe": float(getattr(cast(Any, item), "performance_score", 0.0) or 0.0),
+                    "reflections": int(getattr(cast(Any, item), "reflection_count", 0) or 0),
+                }
+                for item in bibles
+            ],
+            "global_wisdom_score": average_score,
         }
     finally:
         db.close()

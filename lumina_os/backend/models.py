@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,3 +54,17 @@ class LeaderboardRow(BaseModel):
     avg_pnl: float
     sharpe: float
     maxdd: float
+
+
+class BibleUpload(BaseModel):
+    trader_name: str
+    evolvable_layer: Dict[str, Any]
+    backtest_results: Dict[str, Any]
+
+
+class ReflectionUpload(BaseModel):
+    trader_name: str
+    reflection: str
+    key_lesson: str
+    suggested_update: Dict[str, Any]
+    pnl_impact: float | None = None
