@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lumina-bible"
+version = "0.1.0"
+description = "Open-source Bible engine and reflection workflows for Lumina-like trading systems"
+readme = "README.md"
+authors = [{ name = "Lumina Community" }]
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/lumina-bible"
+Issues = "https://github.com/your-org/lumina-bible/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lumina_bible*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --tb=short"
