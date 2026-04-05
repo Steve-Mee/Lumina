@@ -4,6 +4,11 @@ reconciliation_method: "websocket"
 reconciliation_timeout_seconds: 15
 use_real_fill_for_pnl: true
 
+xai:
+  api_key: "${XAI_API_KEY}"
+  model: "grok-4.1-fast"
+  update_interval_sec: 60
+
 inference:
   primary_provider: "ollama"       # "ollama" | "vllm" | "grok_remote"
   fallback_order: ["vllm", "ollama", "grok_remote"]
@@ -33,3 +38,8 @@ models:
 trading:
   instrument: "MES JUN26"
   risk_profile: "Balanced"
+  news_avoidance_minutes: 3
+  news_impact_multipliers:
+    high_bullish: 1.8
+    high_bearish: 0.4
+    medium_neutral: 1.0

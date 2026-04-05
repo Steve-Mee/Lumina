@@ -29,6 +29,14 @@ def _config_yaml_value(key: str, default):
     return trading_cfg.get(key, default)
 
 
+def _config_yaml_section_value(section: str, key: str, default):
+    config = _load_yaml_config()
+    section_cfg = config.get(section)
+    if isinstance(section_cfg, dict) and key in section_cfg:
+        return section_cfg.get(key, default)
+    return default
+
+
 def _env_or_yaml(env_name: str, yaml_key: str, default):
     raw = os.getenv(env_name)
     if raw is not None:
@@ -49,6 +57,10 @@ def _env_or_yaml_float(env_name: str, yaml_key: str, default: float) -> float:
         return float(raw)
     except (TypeError, ValueError):
         return float(default)
+
+
+def _safe_dict(value) -> dict:
+    return value if isinstance(value, dict) else {}
 
 
 def _parse_swarm_symbols() -> list[str]:
@@ -85,7 +97,9 @@ class EngineConfig(BaseModel):
     swarm_symbols: list[str] = Field(default_factory=_parse_swarm_symbols)
     swarm_enabled: bool = Field(default_factory=lambda: os.getenv("SWARM_ENABLED", "True").lower() == "true")
     supported_swarm_roots: list[str] = Field(default_factory=lambda: ["MES", "MNQ", "MYM", "ES"])
-    xai_key: str | None = Field(default_factory=lambda: os.getenv("XAI_API_KEY"))
+    xai_key: str | None = Field(default_factory=lambda: str(os.getenv("XAI_API_KEY") or _config_yaml_section_value("xai", "api_key", "")).strip() or None)
+    xai_model: str = Field(default_factory=lambda: str(_config_yaml_section_value("xai", "model", "grok-4.1-fast")).strip() or "grok-4.1-fast")
+    xai_update_interval_sec: int = Field(default_factory=lambda: int(_config_yaml_section_value("xai", "update_interval_sec", 60) or 60))
     finnhub_api_key: str | None = Field(default_factory=lambda: os.getenv("FINNHUB_API_KEY"))
     crosstrade_token: str | None = Field(default_factory=lambda: os.getenv("CROSSTRADE_TOKEN"))
     crosstrade_account: str = Field(default_factory=lambda: os.getenv("CROSSTRADE_ACCOUNT", "DEMO5042070"))
@@ -114,6 +128,7 @@ class EngineConfig(BaseModel):
     journal_pdf_dir: Path = Field(default_factory=lambda: Path(os.getenv("JOURNAL_PDF_DIR", "journal/pdf")))
     discord_webhook: str = Field(default_factory=lambda: os.getenv("DISCORD_WEBHOOK", ""))
     risk_profile: str = Field(default_factory=lambda: os.getenv("LUMINA_RISK_PROFILE", "Balanced").lower())
+    news_avoidance_minutes: int = Field(default_factory=lambda: int(_config_yaml_value("news_avoidance_minutes", 3) or 3))
     timeframes: dict[str, int] = Field(
         default_factory=lambda: {
             "5min": 300,
@@ -133,12 +148,12 @@ class EngineConfig(BaseModel):
     )
     news_impact_multipliers: dict[str, float] = Field(
         default_factory=lambda: {
-            "high_bullish": 1.3,
-            "high_bearish": 0.6,
-            "high_neutral": 0.9,
-            "medium_bullish": 1.1,
-            "medium_bearish": 0.9,
-            "medium_neutral": 1.0,
+            "high_bullish": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_bullish", 1.3)),
+            "high_bearish": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_bearish", 0.6)),
+            "high_neutral": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_neutral", 0.9)),
+            "medium_bullish": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_bullish", 1.1)),
+            "medium_bearish": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_bearish", 0.9)),
+            "medium_neutral": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_neutral", 1.0)),
         }
     )
     regime_risk_multipliers: dict[str, float] = Field(

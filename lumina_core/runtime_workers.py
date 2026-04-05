@@ -133,48 +133,78 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
 
             app.world_model = app.update_world_model(df, regime, pa_summary)
 
-            if time.time() - last_news_update_ts >= 60:
-                news_agent = getattr(app, "news_agent", None)
-                if news_agent is not None and hasattr(news_agent, "run_cycle"):
-                    try:
-                        news_cycle = news_agent.run_cycle()
-                        if isinstance(news_cycle, dict):
-                            dynamic = news_cycle.get("dynamic_multipliers")
-                            if isinstance(dynamic, dict) and dynamic:
-                                app.engine.config.news_impact_multipliers = {
-                                    str(k): float(v) for k, v in dynamic.items()
-                                }
-
-                            cycle_news_data = news_cycle.get("news_data")
-                            if isinstance(cycle_news_data, dict):
-                                cached_news_data = cycle_news_data
-
-                            avoid = bool(news_cycle.get("news_avoidance_window", False))
-                            hold_until_ts = float(news_cycle.get("news_avoidance_hold_until_ts", 0.0) or 0.0)
-                            if avoid and hold_until_ts > 0.0:
-                                current_hold = float(app.get_current_dream_snapshot().get("hold_until_ts", 0.0) or 0.0)
-                                app.set_current_dream_value("hold_until_ts", max(current_hold, hold_until_ts))
-                                app.set_current_dream_value("why_no_trade", str(news_cycle.get("news_avoidance_reason", "news_avoidance_window")))
-
-                            world_model_news = {
-                                "last_update": news_cycle.get("last_update"),
-                                "overall_sentiment": cached_news_data.get("overall_sentiment", "neutral"),
-                                "impact": cached_news_data.get("impact", "medium"),
-                                "events_count": len(cached_news_data.get("events", [])) if isinstance(cached_news_data.get("events", []), list) else 0,
-                                "news_avoidance_window": avoid,
+            news_agent = getattr(app, "news_agent", None)
+            if news_agent is not None and hasattr(news_agent, "run_news_cycle"):
+                try:
+                    news_cycle = news_agent.run_news_cycle()
+                    if isinstance(news_cycle, dict):
+                        dynamic = news_cycle.get("dynamic_multipliers")
+                        if isinstance(dynamic, dict) and dynamic:
+                            app.engine.config.news_impact_multipliers = {
+                                str(k): float(v) for k, v in dynamic.items()
                             }
-                            if isinstance(app.world_model, dict):
-                                app.world_model["news"] = world_model_news
-                    except Exception as exc:
-                        app.logger.error(f"NewsAgent cycle error: {exc}")
-                else:
-                    cached_news_data = app.get_high_impact_news()
 
-                last_news_update_ts = time.time()
+                        cycle_news_data = news_cycle.get("news_data")
+                        if isinstance(cycle_news_data, dict):
+                            cached_news_data = cycle_news_data
+
+                        avoid = bool(news_cycle.get("news_avoidance_window", False))
+                        hold_until_ts = float(news_cycle.get("news_avoidance_hold_until_ts", 0.0) or 0.0)
+                        if avoid and hold_until_ts > 0.0:
+                            current_hold = float(app.get_current_dream_snapshot().get("hold_until_ts", 0.0) or 0.0)
+                            app.set_current_dream_value("hold_until_ts", max(current_hold, hold_until_ts))
+                            app.set_current_dream_value("why_no_trade", str(news_cycle.get("news_avoidance_reason", "news_avoidance_window")))
+                            app.set_current_dream_value("signal", "HOLD")
+
+                        sentiment_signal = str(news_cycle.get("sentiment_signal", cached_news_data.get("overall_sentiment", "neutral")))
+                        sentiment_score = float(news_cycle.get("sentiment_score", 0.0) or 0.0)
+                        dynamic_multiplier = float(news_cycle.get("dynamic_multiplier", 1.0) or 1.0)
+                        world_model_news = {
+                            "last_update": news_cycle.get("last_update"),
+                            "overall_sentiment": sentiment_signal,
+                            "sentiment_score": sentiment_score,
+                            "impact": cached_news_data.get("impact", "medium"),
+                            "events_count": len(cached_news_data.get("events", [])) if isinstance(cached_news_data.get("events", []), list) else 0,
+                            "multiplier": dynamic_multiplier,
+                            "news_avoidance_window": avoid,
+                        }
+                        if isinstance(app.world_model, dict):
+                            app.world_model["news"] = world_model_news
+                            app.world_model.setdefault("macro", {})
+                            app.world_model["macro"]["news_sentiment"] = sentiment_signal
+                            app.world_model["macro"]["news_sentiment_score"] = sentiment_score
+                            app.world_model["macro"]["news_multiplier"] = dynamic_multiplier
+                except Exception as exc:
+                    app.logger.error(f"NewsAgent cycle error: {exc}")
+            elif news_agent is not None and hasattr(news_agent, "run_cycle"):
+                try:
+                    news_cycle = news_agent.run_cycle()
+                    if isinstance(news_cycle, dict):
+                        cycle_news_data = news_cycle.get("news_data")
+                        if isinstance(cycle_news_data, dict):
+                            cached_news_data = cycle_news_data
+                except Exception as exc:
+                    app.logger.error(f"NewsAgent cycle error: {exc}")
+            else:
+                if time.time() - last_news_update_ts >= 60:
+                    cached_news_data = app.get_high_impact_news()
+                    last_news_update_ts = time.time()
 
             news_data = cached_news_data
             news_impact = app.resolve_news_multiplier(news_data, app.engine.config.news_impact_multipliers, default=1.0)
             app.set_current_dream_value("news_impact", news_impact)
+
+            macro_news_sentiment = "neutral"
+            macro_news_score = 0.0
+            macro_news_multiplier = float(news_impact)
+            if isinstance(app.world_model, dict):
+                macro = app.world_model.get("macro", {})
+                if isinstance(macro, dict):
+                    macro_news_sentiment = str(macro.get("news_sentiment", macro_news_sentiment))
+                    macro_news_score = float(macro.get("news_sentiment_score", macro_news_score) or 0.0)
+                    macro_news_multiplier = float(macro.get("news_multiplier", macro_news_multiplier) or macro_news_multiplier)
+
+            avoid_active = bool(float(app.get_current_dream_snapshot().get("hold_until_ts", 0.0) or 0.0) > time.time())
 
             vision_content = [
                 {"type": "text", "text": f"""Multi-Agent Consensus: {consensus['signal']} (conf {consensus['confidence']:.2f})
@@ -185,7 +215,8 @@ Counter-factuals: {meta.get('counterfactuals', [])}
 World Model (Macro + Micro): 
 Macro -> VIX {app.world_model['macro']['vix']:.1f}, DXY {app.world_model['macro']['dxy']:.1f}, 10y {app.world_model['macro']['ten_year_yield']:.2f}
 Micro -> Regime {app.world_model['micro']['regime']}, Orderflow {app.world_model['micro']['orderflow_bias']}
-News Sentiment: {news_data['overall_sentiment']} (impact {news_data['impact']}) → multiplier {news_impact:.1f}
+News Sentiment: {macro_news_sentiment} (score {macro_news_score:.2f}, impact {news_data['impact']})
+News Multiplier: {macro_news_multiplier:.2f} | Avoidance Active: {str(avoid_active)}
 Use this full world model as the basis for your decision.
 Use RL Policy Bias as directional prior, not as absolute rule.
 Return JSON only with: signal, confidence, stop, target, reason, why_no_trade, confluence_score, chosen_strategy, fib_levels_drawn, narrative_reasoning"""},
@@ -209,6 +240,10 @@ Return JSON only with: signal, confidence, stop, target, reason, why_no_trade, c
                 continue
 
             if isinstance(dream_json, dict):
+                if avoid_active:
+                    dream_json["signal"] = "HOLD"
+                    dream_json["why_no_trade"] = "News avoidance window active"
+
                 # EmotionalTwin correctie op vision output vóór DreamState update.
                 twin = getattr(app.engine, "emotional_twin", None)
                 if twin is not None and hasattr(twin, "apply_correction"):

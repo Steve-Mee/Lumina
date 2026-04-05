@@ -1,0 +1,3 @@
+# Core extra dependencies for the hybrid NewsAgent feature
+xai-sdk
+python-dotenv

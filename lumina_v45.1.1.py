@@ -15,7 +15,8 @@ import requests
 
 from dotenv import load_dotenv
 
-from lumina_core.engine import DashboardService, EngineConfig, HumanAnalysisService, LocalInferenceEngine, MarketDataService, MemoryService, NewsAgent, OperationsService, PerformanceValidator, ReportingService, ReasoningService, SwarmManager, TradeReconciler, VisualizationService
+from lumina_core.engine import DashboardService, EngineConfig, HumanAnalysisService, LocalInferenceEngine, MarketDataService, MemoryService, OperationsService, PerformanceValidator, ReportingService, ReasoningService, SwarmManager, TradeReconciler, VisualizationService
+from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.EmotionalTwinAgent import EmotionalTwinAgent
 from lumina_core.engine.analysis_helpers import detect_candle_patterns as helper_detect_candle_patterns
 from lumina_core.engine.lumina_engine import LuminaEngine
