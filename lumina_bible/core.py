@@ -1,6 +1,6 @@
 """
-LUMINA Bible - Open Source Edition
-Sacred Core remains private, evolvable_layer is community-driven.
+LUMINA Bible core engine.
+Publicly visible for transparency; all rights reserved.
 """
 
 from datetime import datetime
@@ -12,7 +12,7 @@ from chromadb.utils import embedding_functions
 
 
 class BibleEngine:
-    """Open-source Bible + Reflection Engine."""
+    """Bible + reflection engine."""
 
     SACRED_CORE = """
 HUMAN PLAYBOOK - Dit is hoe een ervaren MES daytrader denkt:

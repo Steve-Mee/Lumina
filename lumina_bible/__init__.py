@@ -1,6 +1,6 @@
 """
-LUMINA Bible - Open Source Edition.
-Sacred Core remains private, evolvable_layer is community-driven.
+LUMINA Bible package.
+Publicly visible for transparency; all rights reserved.
 """
 
 from .core import BibleEngine
