@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import os
+import secrets
 import subprocess
 import sys
 from pathlib import Path
@@ -23,8 +28,61 @@ ENV_PATH = Path(".env")
 RUNTIME_ENTRY = Path("lumina_v45.1.1.py")
 LUMINA_LOG_PATH = Path("logs/lumina_full_log.csv")
 STATE_PATH = Path("state/lumina_sim_state.json")
+ADMIN_PASSWORD_HASH_PATH = Path("state/launcher_admin_password.json")
 BACKEND_BASE_URL = os.getenv("LUMINA_BACKEND_URL", "http://localhost:8000").rstrip("/")
-ADMIN_PASSWORD = os.getenv("LUMINA_ADMIN_PASSWORD", "lumina2026")
+
+
+def _load_admin_password_record() -> dict[str, Any] | None:
+    if not ADMIN_PASSWORD_HASH_PATH.exists():
+        return None
+    try:
+        payload = json.loads(ADMIN_PASSWORD_HASH_PATH.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return None
+        required = {"salt_b64", "hash_b64", "iterations"}
+        if not required.issubset(set(payload.keys())):
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def _derive_password_hash(password: str, salt_bytes: bytes, iterations: int) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt_bytes, iterations)
+
+
+def _verify_admin_password(candidate: str) -> bool:
+    record = _load_admin_password_record()
+    if not record:
+        return False
+
+    try:
+        salt_bytes = base64.b64decode(str(record.get("salt_b64", "")))
+        expected_hash = base64.b64decode(str(record.get("hash_b64", "")))
+        iterations = int(record.get("iterations", 0))
+    except Exception:
+        return False
+
+    if iterations < 100_000 or not salt_bytes or not expected_hash:
+        return False
+
+    candidate_hash = _derive_password_hash(candidate, salt_bytes, iterations)
+    return hmac.compare_digest(candidate_hash, expected_hash)
+
+
+def _set_admin_password(new_password: str) -> None:
+    salt_bytes = secrets.token_bytes(16)
+    iterations = 240_000
+    pwd_hash = _derive_password_hash(new_password, salt_bytes, iterations)
+
+    ADMIN_PASSWORD_HASH_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "algo": "pbkdf2_sha256",
+        "iterations": iterations,
+        "salt_b64": base64.b64encode(salt_bytes).decode("ascii"),
+        "hash_b64": base64.b64encode(pwd_hash).decode("ascii"),
+    }
+    ADMIN_PASSWORD_HASH_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _parse_env_file(path: Path) -> dict[str, str]:
@@ -112,8 +170,6 @@ def _load_runtime_state() -> dict[str, Any]:
     if not STATE_PATH.exists():
         return {}
     try:
-        import json
-
         payload = json.loads(STATE_PATH.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
@@ -277,20 +333,46 @@ with tab4:
 
 with tab5:
     st.subheader("Admin Backend")
-    password = st.text_input("Admin Password", type="password")
-    if password == ADMIN_PASSWORD:
-        st.success("Admin toegang verleend")
+    admin_record_exists = _load_admin_password_record() is not None
 
-        st.write("Runtime entry:")
-        st.code(str(RUNTIME_ENTRY))
-
-        st.write("Log tail (lumina_full_log.csv):")
-        log_tail = _tail_file(LUMINA_LOG_PATH, max_chars=6000)
-        if log_tail:
-            st.code(log_tail)
-        else:
-            st.info("Nog geen logdata gevonden")
+    if not admin_record_exists:
+        st.error("Admin wachtwoord is niet geconfigureerd.")
+        st.info(
+            "Maak eerst lokaal een hashrecord aan in state/launcher_admin_password.json. "
+            "Er wordt geen hardcoded of plain-text wachtwoord meer gebruikt."
+        )
     else:
-        st.warning("Alleen voor admin")
+        password = st.text_input("Admin Password", type="password")
+        if password and _verify_admin_password(password):
+            st.success("Admin toegang verleend")
+
+            st.write("Runtime entry:")
+            st.code(str(RUNTIME_ENTRY))
+
+            st.write("Log tail (lumina_full_log.csv):")
+            log_tail = _tail_file(LUMINA_LOG_PATH, max_chars=6000)
+            if log_tail:
+                st.code(log_tail)
+            else:
+                st.info("Nog geen logdata gevonden")
+
+            st.divider()
+            st.write("Wijzig admin wachtwoord")
+            current_password = st.text_input("Current Password", type="password", key="admin_pwd_current")
+            new_password = st.text_input("New Password", type="password", key="admin_pwd_new")
+            confirm_password = st.text_input("Confirm New Password", type="password", key="admin_pwd_confirm")
+
+            if st.button("Update Admin Password", use_container_width=True):
+                if not _verify_admin_password(current_password):
+                    st.error("Current password is incorrect")
+                elif len(new_password) < 12:
+                    st.error("New password must be at least 12 characters")
+                elif new_password != confirm_password:
+                    st.error("New password confirmation does not match")
+                else:
+                    _set_admin_password(new_password)
+                    st.success("Admin wachtwoord is bijgewerkt")
+        else:
+            st.warning("Alleen voor admin")
 
 st.caption("LUMINA OS v3.5 - gebouwd voor iedereen. Niets is onmogelijk.")
