@@ -66,5 +66,5 @@ class ReflectionUpload(BaseModel):
     trader_name: str
     reflection: str
     key_lesson: str
-    suggested_update: Dict[str, Any]
+    suggested_update: Dict[str, Any] = Field(default_factory=dict)
     pnl_impact: float | None = None

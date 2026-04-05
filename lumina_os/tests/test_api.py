@@ -112,3 +112,22 @@ def test_reconciliation_status_endpoint_reads_status_file() -> None:
     body = response.json()
     assert body["connection_state"] == "connected"
     assert body["pending_count"] == 2
+
+
+def test_upload_reflection_without_suggested_update_is_accepted() -> None:
+    bible_payload = {
+        "trader_name": "LUMINA_Steve",
+        "evolvable_layer": {"rule": "volume_first"},
+        "backtest_results": {"sharpe": 1.8},
+    }
+    bible_response = client.post("/upload/bible", json=bible_payload)
+    assert bible_response.status_code == 200
+
+    reflection_payload = {
+        "trader_name": "LUMINA_Steve",
+        "reflection": "Perfect tape reading",
+        "key_lesson": "Volume is king",
+    }
+    reflection_response = client.post("/upload/reflection", json=reflection_payload)
+    assert reflection_response.status_code == 200
+    assert reflection_response.json().get("status") == "ok"

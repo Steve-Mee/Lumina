@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import datetime
 from typing import Any
@@ -37,6 +38,26 @@ def _infer_json(app: Any, payload: dict[str, Any], timeout: int, context: str) -
     content = response.json()["choices"][0]["message"]["content"]
     parsed = _parse_json_loose(content)
     return parsed if isinstance(parsed, dict) else None
+
+
+def _post_reflection_to_lumina_os(app: Any, ref_json: dict[str, Any], pnl_dollars: float) -> None:
+    api_base_url = str(os.getenv("LUMINA_OS_API_URL", "http://localhost:8000")).rstrip("/")
+    trader_name = str(
+        os.getenv("LUMINA_TRADER_NAME")
+        or os.getenv("TRADERLEAGUE_PARTICIPANT_HANDLE")
+        or "LUMINA_v45_Steve"
+    )
+    payload = {
+        "trader_name": trader_name,
+        "reflection": str(ref_json.get("reflection", "")),
+        "key_lesson": str(ref_json.get("key_lesson", "")),
+        "suggested_update": ref_json.get("suggested_bible_update", {}),
+        "pnl_impact": float(pnl_dollars),
+    }
+    try:
+        requests.post(f"{api_base_url}/upload/reflection", json=payload, timeout=1.5)
+    except requests.RequestException as exc:
+        app.logger.debug(f"Reflection upload skipped: {exc}")
 
 
 def reflect_on_trade(app: Any, pnl_dollars: float, entry_price: float, exit_price: float, position_qty: int) -> None:
@@ -87,6 +108,8 @@ Geef ALLEEN JSON met: reflection (max 400 chars), key_lesson, suggested_bible_up
         bible_engine = getattr(app, "bible_engine", None)
         if hasattr(bible_engine, "add_community_reflection"):
             bible_engine.add_community_reflection(ref_json)
+
+        _post_reflection_to_lumina_os(app, ref_json, pnl_dollars)
 
         if ref_json.get("suggested_bible_update"):
             app.engine.evolve_bible(ref_json["suggested_bible_update"])
