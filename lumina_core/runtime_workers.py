@@ -372,18 +372,49 @@ def supervisor_loop(app: RuntimeContext) -> None:
             )
             if close_detected:
                 realized_delta = current_realized_pnl - previous_realized_pnl
-                _push_trader_league_trade(
-                    app,
-                    mode=app.engine.config.trade_mode,
-                    symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
-                    signal=str(app.engine.live_trade_signal or "HOLD"),
-                    entry_price=float(app.engine.last_entry_price or price),
-                    exit_price=float(price),
-                    qty=int(abs(tracked_live_qty)),
-                    pnl_dollars=float(realized_delta),
-                    reflection={},
-                    chart_base64=None,
-                )
+                reconciler = getattr(app, "trade_reconciler", None)
+                if reconciler is not None and hasattr(reconciler, "mark_closing"):
+                    try:
+                        reconciler.mark_closing(
+                            symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                            signal=str(app.engine.live_trade_signal or "HOLD"),
+                            entry_price=float(app.engine.last_entry_price or price),
+                            detected_exit_price=float(price),
+                            quantity=int(abs(tracked_live_qty)),
+                            expected_pnl=float(realized_delta),
+                            reflection={
+                                "source": "real_close_detect",
+                                "detected_realized_delta": float(realized_delta),
+                            },
+                            chart_base64=None,
+                        )
+                    except Exception as exc:
+                        app.logger.error(f"TradeReconciler mark_closing error: {exc}")
+                        _push_trader_league_trade(
+                            app,
+                            mode=app.engine.config.trade_mode,
+                            symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                            signal=str(app.engine.live_trade_signal or "HOLD"),
+                            entry_price=float(app.engine.last_entry_price or price),
+                            exit_price=float(price),
+                            qty=int(abs(tracked_live_qty)),
+                            pnl_dollars=float(realized_delta),
+                            reflection={"reconciliation": {"status": "fallback_direct_push"}},
+                            chart_base64=None,
+                        )
+                else:
+                    _push_trader_league_trade(
+                        app,
+                        mode=app.engine.config.trade_mode,
+                        symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                        signal=str(app.engine.live_trade_signal or "HOLD"),
+                        entry_price=float(app.engine.last_entry_price or price),
+                        exit_price=float(price),
+                        qty=int(abs(tracked_live_qty)),
+                        pnl_dollars=float(realized_delta),
+                        reflection={"reconciliation": {"status": "fallback_direct_push"}},
+                        chart_base64=None,
+                    )
                 app.engine.live_position_qty = 0
                 app.engine.last_entry_price = 0.0
                 app.engine.live_trade_signal = "HOLD"

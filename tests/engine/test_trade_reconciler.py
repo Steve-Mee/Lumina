@@ -22,7 +22,7 @@ def _build_engine(tmp_path: Path) -> tuple[LuminaEngine, SimpleNamespace]:
         reconciliation_timeout_seconds=15.0,
         use_real_fill_for_pnl=True,
     )
-    engine = LuminaEngine(config=cfg)
+    engine = LuminaEngine(cfg)
     pushes: list[dict] = []
     publishes: list[dict] = []
     thoughts: list[dict] = []
@@ -41,7 +41,7 @@ def _build_engine(tmp_path: Path) -> tuple[LuminaEngine, SimpleNamespace]:
 
 def test_trade_reconciler_reconciles_fill_with_real_price(tmp_path: Path) -> None:
     engine, app = _build_engine(tmp_path)
-    reconciler = TradeReconciler(engine=engine)
+    reconciler = TradeReconciler(engine)
 
     reconciler.mark_closing(
         symbol="MES JUN26",
@@ -77,14 +77,67 @@ def test_trade_reconciler_reconciles_fill_with_real_price(tmp_path: Path) -> Non
     assert pushed["reflection"]["reconciliation"]["broker_fill_id"] == "fill-123"
     assert pushed["reflection"]["reconciliation"]["status"] == "reconciled_fill"
     assert len(app.publishes) == 1
+    published = app.publishes[0]
+    assert published["broker_fill_id"] == "fill-123"
+    assert published["commission"] == 1.25
+    assert published["reconciliation_status"] == "reconciled_fill"
     assert len(app.thoughts) == 1
+
+
+def test_trade_reconciler_aggregates_partial_fills(tmp_path: Path) -> None:
+    engine, app = _build_engine(tmp_path)
+    reconciler = TradeReconciler(engine)
+
+    reconciler.mark_closing(
+        symbol="MES JUN26",
+        signal="BUY",
+        entry_price=5000.0,
+        detected_exit_price=5002.0,
+        quantity=3,
+        expected_pnl=30.0,
+        reflection={"reason": "target hit"},
+    )
+
+    reconciler.ingest_fill_event(
+        {
+            "type": "fill",
+            "instrument": "MES JUN26",
+            "side": "SELL",
+            "quantity": 1,
+            "fillPrice": 5001.0,
+            "commission": 0.5,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "fillId": "fill-part-1",
+        }
+    )
+    assert len(app.pushes) == 0
+
+    reconciler.ingest_fill_event(
+        {
+            "type": "fill",
+            "instrument": "MES JUN26",
+            "side": "SELL",
+            "quantity": 2,
+            "fillPrice": 5001.5,
+            "commission": 0.75,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "fillId": "fill-part-2",
+        }
+    )
+
+    assert engine.pending_trade_reconciliations == []
+    assert len(app.pushes) == 1
+    pushed = app.pushes[0]
+    assert pushed["qty"] == 3
+    assert round(float(pushed["exit_price"]), 4) == round((5001.0 * 1 + 5001.5 * 2) / 3, 4)
+    assert round(float(pushed["commission"]), 2) == 1.25
 
 
 def test_trade_reconciler_timeout_uses_snapshot_when_no_fill(tmp_path: Path) -> None:
     engine, app = _build_engine(tmp_path)
     engine.config.use_real_fill_for_pnl = False
     engine.config.reconciliation_timeout_seconds = 0.0
-    reconciler = TradeReconciler(engine=engine)
+    reconciler = TradeReconciler(engine)
 
     reconciler.mark_closing(
         symbol="MES JUN26",
@@ -102,3 +155,87 @@ def test_trade_reconciler_timeout_uses_snapshot_when_no_fill(tmp_path: Path) -> 
     pushed = app.pushes[0]
     assert pushed["exit_price"] == 4997.5
     assert pushed["reflection"]["reconciliation"]["status"] == "timeout_snapshot"
+
+
+def test_trade_reconciler_handles_out_of_order_partial_fills(tmp_path: Path) -> None:
+    engine, app = _build_engine(tmp_path)
+    reconciler = TradeReconciler(engine)
+
+    detected_ts = datetime.now(timezone.utc)
+    reconciler.mark_closing(
+        symbol="MES JUN26",
+        signal="BUY",
+        entry_price=5000.0,
+        detected_exit_price=5002.0,
+        quantity=3,
+        expected_pnl=30.0,
+        reflection={"reason": "target hit"},
+        detected_ts=detected_ts,
+    )
+
+    # First ingest later timestamp, then earlier timestamp to simulate out-of-order arrival.
+    reconciler.ingest_fill_event(
+        {
+            "type": "fill",
+            "instrument": "MES JUN26",
+            "side": "SELL",
+            "quantity": 2,
+            "fillPrice": 5001.5,
+            "commission": 0.75,
+            "timestamp": (detected_ts.replace(microsecond=0)).isoformat(),
+            "fillId": "fill-later",
+        }
+    )
+    assert len(app.pushes) == 0
+
+    reconciler.ingest_fill_event(
+        {
+            "type": "fill",
+            "instrument": "MES JUN26",
+            "side": "SELL",
+            "quantity": 1,
+            "fillPrice": 5001.0,
+            "commission": 0.5,
+            "timestamp": (detected_ts.replace(microsecond=0)).isoformat(),
+            "fillId": "fill-earlier",
+        }
+    )
+
+    assert engine.pending_trade_reconciliations == []
+    assert len(app.pushes) == 1
+    pushed = app.pushes[0]
+    assert pushed["qty"] == 3
+    assert round(float(pushed["exit_price"]), 4) == round((5001.0 * 1 + 5001.5 * 2) / 3, 4)
+
+
+def test_trade_reconciler_ignores_duplicate_fill_replay(tmp_path: Path) -> None:
+    engine, app = _build_engine(tmp_path)
+    reconciler = TradeReconciler(engine)
+
+    reconciler.mark_closing(
+        symbol="MES JUN26",
+        signal="BUY",
+        entry_price=5000.0,
+        detected_exit_price=5002.0,
+        quantity=2,
+        expected_pnl=20.0,
+        reflection={},
+    )
+
+    event = {
+        "type": "fill",
+        "instrument": "MES JUN26",
+        "side": "SELL",
+        "quantity": 2,
+        "fillPrice": 5001.5,
+        "commission": 1.25,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "fillId": "fill-dup-1",
+    }
+    accepted_first = reconciler.ingest_fill_event(event)
+    accepted_second = reconciler.ingest_fill_event(event)
+
+    assert accepted_first is True
+    assert accepted_second is False
+    assert len(app.pushes) == 1
+    assert app.pushes[0]["reflection"]["reconciliation"]["broker_fill_id"] == "fill-dup-1"

@@ -164,6 +164,11 @@ def publish_traderleague_trade_close(
     pnl: float,
     reflection: str = "",
     chart_snapshot_url: str | None = None,
+    broker_fill_id: str | None = None,
+    commission: float | None = None,
+    slippage_points: float | None = None,
+    fill_latency_ms: float | None = None,
+    reconciliation_status: str | None = None,
 ) -> bool:
     """Publish a closed trade to TraderLeague with HMAC signature.
 
@@ -190,12 +195,13 @@ def publish_traderleague_trade_close(
     try:
         exit_ts = np.datetime64("now")
         entry_ts = exit_ts - np.timedelta64(3, "m")
+        effective_fill_id = broker_fill_id or f"LUMINA-{str(exit_ts)}-{symbol}-{abs(int(pnl))}"
         payload = {
             "participant_handle": participant_handle,
             "broker_name": broker_name,
             "broker_account_ref": broker_account_ref,
             "account_mode": account_mode,
-            "broker_fill_id": f"LUMINA-{str(exit_ts)}-{symbol}-{abs(int(pnl))}",
+            "broker_fill_id": effective_fill_id,
             "symbol": symbol,
             "entry_time": str(entry_ts),
             "exit_time": str(exit_ts),
@@ -203,6 +209,10 @@ def publish_traderleague_trade_close(
             "exit_price": float(exit_price),
             "quantity": int(quantity),
             "pnl": float(pnl),
+            "commission": float(commission) if commission is not None else None,
+            "slippage_points": float(slippage_points) if slippage_points is not None else None,
+            "fill_latency_ms": float(fill_latency_ms) if fill_latency_ms is not None else None,
+            "reconciliation_status": reconciliation_status,
             "max_drawdown_trade": -abs(float(pnl)) * 0.35,
             "reflection": reflection,
             "chart_snapshot_url": chart_snapshot_url,

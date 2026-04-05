@@ -172,6 +172,83 @@ def test_supervisor_loop_applies_emotional_twin_correction(monkeypatch):
     assert twin.calls >= 1
 
 
+def test_supervisor_loop_real_close_marks_reconciler_pending(monkeypatch):
+    class ReconcilerSpy:
+        def __init__(self):
+            self.calls: list[dict] = []
+
+        def mark_closing(self, **kwargs):
+            self.calls.append(dict(kwargs))
+            return "reconcile-1"
+
+    reconciler = ReconcilerSpy()
+    direct_push_calls: list[dict] = []
+
+    monkeypatch.setattr(runtime_workers, "_push_trader_league_trade", lambda *_a, **kwargs: direct_push_calls.append(dict(kwargs)))
+    monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(StopIteration()))
+
+    app = SimpleNamespace(
+        live_data_lock=nullcontext(),
+        live_quotes=[{"last": 5005.0}],
+        ohlc_1min=pd.DataFrame({"close": [5005.0]}),
+        fetch_account_balance=lambda: None,
+        account_equity=50000.0,
+        account_balance=50000.0,
+        save_state=lambda: None,
+        get_current_dream_snapshot=lambda: {
+            "signal": "HOLD",
+            "confluence_score": 0.8,
+            "regime": "NEUTRAL",
+            "stop": 4990.0,
+            "target": 5010.0,
+        },
+        set_current_dream_fields=lambda *_a, **_k: None,
+        is_market_open=lambda: False,
+        sim_position_qty=0,
+        sim_entry_price=0.0,
+        open_pnl=0.0,
+        realized_pnl_today=125.0,
+        calculate_adaptive_risk_and_qty=lambda *_a, **_k: 1,
+        place_order=lambda *_a, **_k: False,
+        pnl_history=[],
+        equity_curve=[50000.0],
+        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None),
+        trade_reconciler=reconciler,
+        engine=SimpleNamespace(
+            config=SimpleNamespace(
+                trade_mode="real",
+                drawdown_kill_percent=8.0,
+                status_print_interval_sec=9999.0,
+                min_confluence=0.75,
+                instrument="MES JUN26",
+            ),
+            emotional_twin=None,
+            infinite_simulator=None,
+            rl_env=None,
+            ppo_trainer=None,
+            live_position_qty=2,
+            live_trade_signal="BUY",
+            last_entry_price=5000.0,
+            last_realized_pnl_snapshot=100.0,
+        ),
+        np=np,
+    )
+
+    with pytest.raises(StopIteration):
+        runtime_workers.supervisor_loop(app)
+
+    assert len(reconciler.calls) == 1
+    call = reconciler.calls[0]
+    assert call["symbol"] == "MES JUN26"
+    assert call["signal"] == "BUY"
+    assert call["quantity"] == 2
+    assert call["detected_exit_price"] == 5005.0
+    assert call["expected_pnl"] == 25.0
+    assert direct_push_calls == []
+    assert app.engine.live_position_qty == 0
+    assert app.engine.live_trade_signal == "HOLD"
+
+
 def test_supervisor_loop_runs_swarm_only_on_five_minute_boundary(monkeypatch):
     class SwarmSpy:
         def __init__(self):
