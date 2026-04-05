@@ -55,6 +55,12 @@ class LuminaEngine:
     sim_entry_price: float = 0.0
     sim_unrealized: float = 0.0
     sim_peak: float = 50000.0
+    live_position_qty: int = 0
+    last_entry_price: float = 0.0
+    last_realized_pnl_snapshot: float = 0.0
+    live_trade_signal: str = "HOLD"
+    pending_trade_reconciliations: list[dict[str, Any]] = field(default_factory=list)
+    trade_reconciler_status: dict[str, Any] = field(default_factory=dict)
 
     account_balance: float = 50000.0
     account_equity: float = 50000.0
@@ -181,6 +187,11 @@ class LuminaEngine:
             "sim_entry_price",
             "sim_unrealized",
             "sim_peak",
+            "live_position_qty",
+            "last_entry_price",
+            "last_realized_pnl_snapshot",
+            "live_trade_signal",
+            "pending_trade_reconciliations",
             "account_balance",
             "account_equity",
             "realized_pnl_today",
@@ -218,6 +229,11 @@ class LuminaEngine:
             "sim_entry_price": self.sim_entry_price,
             "sim_unrealized": self.sim_unrealized,
             "sim_peak": self.sim_peak,
+            "live_position_qty": self.live_position_qty,
+            "last_entry_price": self.last_entry_price,
+            "last_realized_pnl_snapshot": self.last_realized_pnl_snapshot,
+            "live_trade_signal": self.live_trade_signal,
+            "pending_trade_reconciliations": self.pending_trade_reconciliations[-20:],
             "pnl_history": self.pnl_history[-200:],
             "equity_curve": self.equity_curve[-200:],
             "current_dream": self.get_current_dream_snapshot(),
@@ -242,6 +258,11 @@ class LuminaEngine:
             self.sim_entry_price = float(state.get("sim_entry_price", 0.0))
             self.sim_unrealized = float(state.get("sim_unrealized", 0.0))
             self.sim_peak = float(state.get("sim_peak", 50000.0))
+            self.live_position_qty = int(state.get("live_position_qty", 0))
+            self.last_entry_price = float(state.get("last_entry_price", 0.0))
+            self.last_realized_pnl_snapshot = float(state.get("last_realized_pnl_snapshot", 0.0))
+            self.live_trade_signal = str(state.get("live_trade_signal", "HOLD"))
+            self.pending_trade_reconciliations = list(state.get("pending_trade_reconciliations", []))
             self.pnl_history = list(state.get("pnl_history", []))
             self.equity_curve = list(state.get("equity_curve", [50000.0]))
             loaded_dream = state.get("current_dream")

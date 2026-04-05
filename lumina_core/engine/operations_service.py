@@ -178,6 +178,23 @@ class OperationsService:
                 timeout=10,
             )
             if response.status_code in (200, 201):
+                current_price = 0.0
+                try:
+                    with self.engine.live_data_lock:
+                        current_price = float(
+                            self.engine.live_quotes[-1]["last"]
+                            if self.engine.live_quotes
+                            else (self.engine.ohlc_1min["close"].iloc[-1] if len(self.engine.ohlc_1min) else 0.0)
+                        )
+                except Exception:
+                    current_price = 0.0
+
+                signed_qty = qty if action.upper() == "BUY" else -qty
+                self.engine.live_position_qty = int(signed_qty)
+                self.engine.last_entry_price = float(current_price)
+                self.engine.live_trade_signal = action.upper()
+                self.engine.last_realized_pnl_snapshot = float(self.engine.realized_pnl_today)
+
                 print(f"✅ {trade_mode.upper()} ORDER -> {action} {qty}x @ MARKET")
                 app.logger.info(f"{trade_mode.upper()}_ORDER_SUCCESS,action={action},qty={qty}")
                 return True

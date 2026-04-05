@@ -15,6 +15,7 @@ def start_runtime_services(
     start_screen_share_window_fn: RuntimeWorker,
     thought_logger_thread_fn: RuntimeWorker,
     start_websocket_fn: RuntimeWorker,
+    start_trade_reconciler_fn: RuntimeWorker,
     auto_backtester_daemon_fn: RuntimeWorker,
     start_dashboard_fn: RuntimeWorker,
     voice_listener_thread_fn: RuntimeWorker,
@@ -38,6 +39,7 @@ def start_runtime_services(
 
     start_daemon_fn(thought_logger_thread_fn, name="thought-logger")
     start_daemon_fn(start_websocket_fn, name="websocket-listener")
+    start_daemon_fn(start_trade_reconciler_fn, name="trade-reconciler")
     start_daemon_fn(auto_backtester_daemon_fn, name="auto-backtester-daemon")
 
     if dashboard_enabled:

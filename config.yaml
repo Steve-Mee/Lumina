@@ -1,4 +1,9 @@
 hardware_profile: "light"          # Verander later naar "sweet" of "beast"
+reconcile_fills: true
+reconciliation_method: "websocket"
+reconciliation_timeout_seconds: 15
+use_real_fill_for_pnl: true
+
 inference:
   primary_provider: "ollama"       # "ollama" | "vllm" | "grok_remote"
   fallback_order: ["vllm", "ollama", "grok_remote"]

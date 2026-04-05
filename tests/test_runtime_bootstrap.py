@@ -39,6 +39,7 @@ def test_start_runtime_services_skips_swarm_when_disabled(monkeypatch):
         start_screen_share_window_fn=_fn("screen"),
         thought_logger_thread_fn=_fn("thought_logger_thread"),
         start_websocket_fn=_fn("start_websocket"),
+        start_trade_reconciler_fn=_fn("start_trade_reconciler"),
         auto_backtester_daemon_fn=_fn("auto_backtester_daemon"),
         start_dashboard_fn=_fn("start_dashboard"),
         voice_listener_thread_fn=_fn("voice_listener_thread"),
@@ -78,6 +79,7 @@ def test_start_runtime_services_orchestration():
         start_screen_share_window_fn=_screen,
         thought_logger_thread_fn=_fn("thought_logger_thread"),
         start_websocket_fn=_fn("start_websocket"),
+        start_trade_reconciler_fn=_fn("start_trade_reconciler"),
         auto_backtester_daemon_fn=_fn("auto_backtester_daemon"),
         start_dashboard_fn=_fn("start_dashboard"),
         voice_listener_thread_fn=_fn("voice_listener_thread"),
@@ -94,7 +96,7 @@ def test_start_runtime_services_orchestration():
     assert "dashboard" in names
     assert "voice-listener" not in names
     assert "supervisor-loop" in names
-    assert len(started) == 10
+    assert len(started) == 11
 
 
 def test_start_runtime_services_initializes_swarm_from_bound_supervisor(monkeypatch):
@@ -134,6 +136,7 @@ def test_start_runtime_services_initializes_swarm_from_bound_supervisor(monkeypa
         start_screen_share_window_fn=_fn("screen"),
         thought_logger_thread_fn=_fn("thought_logger_thread"),
         start_websocket_fn=_fn("start_websocket"),
+        start_trade_reconciler_fn=_fn("start_trade_reconciler"),
         auto_backtester_daemon_fn=_fn("auto_backtester_daemon"),
         start_dashboard_fn=_fn("start_dashboard"),
         voice_listener_thread_fn=_fn("voice_listener_thread"),

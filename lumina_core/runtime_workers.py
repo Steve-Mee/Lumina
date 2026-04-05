@@ -2,9 +2,68 @@ import asyncio
 import json
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+
+import requests
 
 from lumina_core.runtime_context import RuntimeContext
+
+TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
+
+
+def _push_trader_league_trade(
+    app: RuntimeContext,
+    *,
+    mode: str,
+    symbol: str,
+    signal: str | None,
+    entry_price: float,
+    exit_price: float,
+    qty: int,
+    pnl_dollars: float,
+    reflection: dict | None = None,
+    chart_base64: str | None = None,
+    broker_fill_id: str | None = None,
+    commission: float | None = None,
+    slippage_points: float | None = None,
+    fill_latency_ms: float | None = None,
+    reconciliation_status: str | None = None,
+) -> None:
+    reflection_payload = dict(reflection or {})
+    if any(value is not None for value in (broker_fill_id, commission, slippage_points, fill_latency_ms, reconciliation_status)):
+        reflection_payload.setdefault("reconciliation", {})
+        reflection_payload["reconciliation"].update(
+            {
+                "broker_fill_id": broker_fill_id,
+                "commission": commission,
+                "slippage_points": slippage_points,
+                "fill_latency_ms": fill_latency_ms,
+                "status": reconciliation_status,
+            }
+        )
+    payload = {
+        "participant": "LUMINA_v45_Steve",
+        "mode": mode,
+        "symbol": symbol,
+        "signal": signal,
+        "entry": entry_price,
+        "exit": exit_price,
+        "qty": qty,
+        "pnl": pnl_dollars,
+        "broker_fill_id": broker_fill_id,
+        "commission": commission,
+        "slippage_points": slippage_points,
+        "fill_latency_ms": fill_latency_ms,
+        "reconciliation_status": reconciliation_status,
+        "reflection": reflection_payload,
+        "chart_base64": chart_base64,
+    }
+    try:
+        response = requests.post(TRADER_LEAGUE_WEBHOOK_URL, json=payload, timeout=5)
+        response.raise_for_status()
+        print("📡 Trade gepusht naar Trader League")
+    except Exception as exc:
+        app.logger.warning(f"League webhook failed: {exc}")
 
 
 def pre_dream_daemon(app: RuntimeContext) -> None:
@@ -302,6 +361,34 @@ def supervisor_loop(app: RuntimeContext) -> None:
             app.fetch_account_balance()
             last_balance_fetch = time.time()
 
+        if app.engine.config.trade_mode == "real":
+            current_realized_pnl = float(app.realized_pnl_today or 0.0)
+            previous_realized_pnl = float(app.engine.last_realized_pnl_snapshot or 0.0)
+            tracked_live_qty = int(app.engine.live_position_qty or 0)
+            close_detected = (
+                tracked_live_qty != 0
+                and abs(float(app.open_pnl or 0.0)) < 0.01
+                and abs(current_realized_pnl - previous_realized_pnl) > 0.0
+            )
+            if close_detected:
+                realized_delta = current_realized_pnl - previous_realized_pnl
+                _push_trader_league_trade(
+                    app,
+                    mode=app.engine.config.trade_mode,
+                    symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                    signal=str(app.engine.live_trade_signal or "HOLD"),
+                    entry_price=float(app.engine.last_entry_price or price),
+                    exit_price=float(price),
+                    qty=int(abs(tracked_live_qty)),
+                    pnl_dollars=float(realized_delta),
+                    reflection={},
+                    chart_base64=None,
+                )
+                app.engine.live_position_qty = 0
+                app.engine.last_entry_price = 0.0
+                app.engine.live_trade_signal = "HOLD"
+            app.engine.last_realized_pnl_snapshot = current_realized_pnl
+
         if app.engine.config.trade_mode == "real" and app.account_equity < app.account_balance * (1 - app.engine.config.drawdown_kill_percent / 100):
             print(f"🚨 REAL DRAWDOWN KILL ({app.engine.config.drawdown_kill_percent}%) - STOPPING")
             app.save_state()
@@ -458,6 +545,20 @@ def supervisor_loop(app: RuntimeContext) -> None:
                         swarm_manager.register_trade_result(symbol, pnl_dollars)
                     except Exception as exc:
                         app.logger.error(f"Swarm trade register error: {exc}")
+
+                if app.engine.config.trade_mode == "paper":
+                    _push_trader_league_trade(
+                        app,
+                        mode=app.engine.config.trade_mode,
+                        symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                        signal=str(dream_snapshot.get("signal")),
+                        entry_price=float(app.sim_entry_price),
+                        exit_price=float(price),
+                        qty=int(abs(app.sim_position_qty)),
+                        pnl_dollars=float(pnl_dollars),
+                        reflection=ref_json if "ref_json" in locals() else {},
+                        chart_base64=chart_base64 if "chart_base64" in locals() else None,
+                    )
 
                 app.sim_position_qty = 0
                 app.sim_entry_price = 0.0

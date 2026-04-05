@@ -15,6 +15,7 @@ from .reporting_service import ReportingService
 from .reasoning_service import ReasoningService
 from .multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
 from .swarm_manager import SwarmManager
+from .trade_reconciler import TradeReconciler
 from .visualization_service import VisualizationService
 
 __all__ = [
@@ -36,5 +37,6 @@ __all__ = [
     "SymbolNode",
     "MultiSymbolSwarmManager",
     "SwarmManager",
+    "TradeReconciler",
     "VisualizationService",
 ]

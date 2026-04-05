@@ -15,7 +15,7 @@ import requests
 
 from dotenv import load_dotenv
 
-from lumina_core.engine import DashboardService, EngineConfig, HumanAnalysisService, LocalInferenceEngine, MarketDataService, MemoryService, NewsAgent, OperationsService, PerformanceValidator, ReportingService, ReasoningService, SwarmManager, VisualizationService
+from lumina_core.engine import DashboardService, EngineConfig, HumanAnalysisService, LocalInferenceEngine, MarketDataService, MemoryService, NewsAgent, OperationsService, PerformanceValidator, ReportingService, ReasoningService, SwarmManager, TradeReconciler, VisualizationService
 from lumina_core.engine.EmotionalTwinAgent import EmotionalTwinAgent
 from lumina_core.engine.analysis_helpers import detect_candle_patterns as helper_detect_candle_patterns
 from lumina_core.engine.lumina_engine import LuminaEngine
@@ -118,6 +118,8 @@ PERFORMANCE_VALIDATOR = PerformanceValidator(
     market_data_service=MARKET_DATA_SERVICE,
     ppo_trainer=PPO_TRAINER,
 )
+TRADE_RECONCILER = TradeReconciler(engine=ENGINE)
+atexit.register(TRADE_RECONCILER.stop)
 SWARM_MANAGER = ENGINE.swarm if getattr(ENGINE, "swarm", None) is not None else SwarmManager(ENGINE)
 ENGINE.swarm = SWARM_MANAGER
 DASHBOARD_SERVICE.visualization_service = VISUALIZATION_SERVICE
@@ -322,7 +324,12 @@ PUBLIC_API = {
     "inference_stop_vllm_server": LOCAL_INFERENCE_ENGINE.stop_vllm_server,
     "rate_limit_backoff": rate_limit_backoff,
     "publish_traderleague_trade_close": publish_traderleague_trade_close,
+    "push_traderleague_trade": runtime_workers._push_trader_league_trade,
     "run_traderleague_webhook_self_test": run_traderleague_webhook_self_test,
+    "trade_reconciler": TRADE_RECONCILER,
+    "start_trade_reconciler": TRADE_RECONCILER.start,
+    "stop_trade_reconciler": TRADE_RECONCILER.stop,
+    "run_trade_reconciler_self_test": TRADE_RECONCILER.run_self_test,
     "detect_market_regime": ENGINE.detect_market_regime,
     "detect_market_structure": ENGINE.detect_market_structure,
     "calculate_dynamic_confluence": ENGINE.calculate_dynamic_confluence,
@@ -387,6 +394,7 @@ def bootstrap_runtime() -> None:
         start_screen_share_window_fn=VISUALIZATION_SERVICE.start_screen_share_window,
         thought_logger_thread_fn=OPERATIONS_SERVICE.thought_logger_thread,
         start_websocket_fn=MARKET_DATA_SERVICE.start_websocket,
+        start_trade_reconciler_fn=TRADE_RECONCILER.start,
         auto_backtester_daemon_fn=lambda: backtest_workers.auto_backtester_daemon(RUNTIME_CONTEXT),
         start_dashboard_fn=DASHBOARD_SERVICE.start_dashboard,
         voice_listener_thread_fn=lambda: runtime_workers.voice_listener_thread(RUNTIME_CONTEXT),

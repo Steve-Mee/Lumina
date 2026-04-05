@@ -3,8 +3,52 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import json
+from functools import lru_cache
 
 from pydantic import BaseModel, ConfigDict, Field
+import yaml
+
+
+@lru_cache(maxsize=1)
+def _load_yaml_config() -> dict:
+    config_path = Path("config.yaml")
+    if not config_path.exists():
+        return {}
+    try:
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _config_yaml_value(key: str, default):
+    config = _load_yaml_config()
+    if key in config:
+        return config[key]
+    trading_cfg = config.get("trading", {}) if isinstance(config.get("trading"), dict) else {}
+    return trading_cfg.get(key, default)
+
+
+def _env_or_yaml(env_name: str, yaml_key: str, default):
+    raw = os.getenv(env_name)
+    if raw is not None:
+        return raw
+    return _config_yaml_value(yaml_key, default)
+
+
+def _env_or_yaml_bool(env_name: str, yaml_key: str, default: bool) -> bool:
+    raw = _env_or_yaml(env_name, yaml_key, default)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() == "true"
+
+
+def _env_or_yaml_float(env_name: str, yaml_key: str, default: float) -> float:
+    raw = _env_or_yaml(env_name, yaml_key, default)
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def _parse_swarm_symbols() -> list[str]:
@@ -34,6 +78,8 @@ class EngineConfig(BaseModel):
     thought_log: Path = Field(default_factory=lambda: Path("state/lumina_thought_log.jsonl"))
     bible_file: Path = Field(default_factory=lambda: Path("state/lumina_daytrading_bible.json"))
     live_jsonl: Path = Field(default_factory=lambda: Path("state/live_stream.jsonl"))
+    trade_reconciler_status_file: Path = Field(default_factory=lambda: Path(os.getenv("TRADE_RECONCILER_STATUS_FILE", "state/trade_reconciler_status.json")))
+    trade_reconciler_audit_log: Path = Field(default_factory=lambda: Path(os.getenv("TRADE_RECONCILER_AUDIT_LOG", "logs/trade_fill_audit.jsonl")))
 
     instrument: str = Field(default_factory=lambda: os.getenv("INSTRUMENT", "MES JUN26"))
     swarm_symbols: list[str] = Field(default_factory=_parse_swarm_symbols)
@@ -43,6 +89,12 @@ class EngineConfig(BaseModel):
     finnhub_api_key: str | None = Field(default_factory=lambda: os.getenv("FINNHUB_API_KEY"))
     crosstrade_token: str | None = Field(default_factory=lambda: os.getenv("CROSSTRADE_TOKEN"))
     crosstrade_account: str = Field(default_factory=lambda: os.getenv("CROSSTRADE_ACCOUNT", "DEMO5042070"))
+    reconcile_fills: bool = Field(default_factory=lambda: _env_or_yaml_bool("RECONCILE_FILLS", "reconcile_fills", True))
+    reconciliation_method: str = Field(default_factory=lambda: str(_env_or_yaml("RECONCILIATION_METHOD", "reconciliation_method", "websocket")).strip().lower())
+    reconciliation_timeout_seconds: float = Field(default_factory=lambda: _env_or_yaml_float("RECONCILIATION_TIMEOUT_SECONDS", "reconciliation_timeout_seconds", 15.0))
+    use_real_fill_for_pnl: bool = Field(default_factory=lambda: _env_or_yaml_bool("USE_REAL_FILL_FOR_PNL", "use_real_fill_for_pnl", True))
+    crosstrade_fill_ws_url: str = Field(default_factory=lambda: str(os.getenv("CROSSTRADE_FILL_WS_URL", "wss://app.crosstrade.io/ws/stream")).strip())
+    crosstrade_fill_poll_url: str = Field(default_factory=lambda: str(os.getenv("CROSSTRADE_FILL_POLL_URL", "")).strip())
 
     trade_mode: str = Field(default_factory=lambda: os.getenv("TRADE_MODE", "paper").lower())
     max_risk_percent: float = Field(default_factory=lambda: float(os.getenv("MAX_RISK_PERCENT", 1.0)))
