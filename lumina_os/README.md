@@ -1,4 +1,4 @@
-# trader_league
+# lumina_os
 
 Complete starter implementation voor Trader League met FastAPI backend en Streamlit dashboard.
 
@@ -19,7 +19,7 @@ Maak een `.env` bestand in deze map (bijvoorbeeld op basis van `.env.example`):
 
 ## Installeren
 
-Vanuit de map trader_league:
+Vanuit de map lumina_os:
 
 ```bash
 pip install -r requirements.txt
@@ -63,7 +63,7 @@ http://localhost:8000
 
 ## Demo Data Seeden en Verwijderen
 
-Run vanuit de map trader_league:
+Run vanuit de map lumina_os:
 
 ```bash
 python scripts/seed_demo_data.py
@@ -83,7 +83,7 @@ curl -X DELETE http://localhost:8000/demo-data
 
 ## Tests
 
-Run vanuit de map trader_league:
+Run vanuit de map lumina_os:
 
 ```bash
 pytest -q tests/test_api.py

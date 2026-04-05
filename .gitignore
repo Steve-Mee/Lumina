@@ -45,5 +45,5 @@ state/live_stream.jsonl
 state/trade_reconciler_status.json
 
 # Local Trader League test artifacts
-trader_league/tests/test_trader_league.db
-trader_league/tests/test_reconciliation_status.json
+lumina_os/tests/test_trader_league.db
+lumina_os/tests/test_reconciliation_status.json
