@@ -1,0 +1,422 @@
+from types import SimpleNamespace
+from contextlib import nullcontext
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from lumina_core import runtime_workers
+from lumina_core.engine import EngineConfig
+from lumina_core.engine.lumina_engine import LuminaEngine
+from lumina_core.runtime_context import RuntimeContext
+
+
+def test_runtime_workers_exports_expected_callables():
+    assert callable(runtime_workers.pre_dream_daemon)
+    assert callable(runtime_workers.voice_listener_thread)
+    assert callable(runtime_workers.supervisor_loop)
+
+
+def test_wrapper_style_contract_uses_app_namespace():
+    # Smoke-contract test: workers consume the OOP runtime context wrapper.
+    app = SimpleNamespace(value=1)
+    engine = LuminaEngine(config=EngineConfig())
+    ctx = RuntimeContext(engine=engine, app=app)
+    assert ctx.value == 1
+    ctx.value = 2
+    assert app.value == 2
+
+
+def test_pre_dream_daemon_applies_emotional_twin_correction(monkeypatch):
+    class TwinSpy:
+        def __init__(self):
+            self.calls = 0
+
+        def apply_correction(self, dream_json):
+            self.calls += 1
+            patched = dict(dream_json)
+            patched["signal"] = "HOLD"
+            return patched
+
+    twin = TwinSpy()
+
+    async def _consensus(*_args, **_kwargs):
+        return {"signal": "BUY", "confidence": 0.8, "reason": "ok"}
+
+    async def _meta(*_args, **_kwargs):
+        return {"meta_reasoning": "meta", "meta_score": 0.6, "counterfactuals": []}
+
+    app = SimpleNamespace(
+        live_data_lock=nullcontext(),
+        live_quotes=[{"last": 5000.0}],
+        ohlc_1min=pd.DataFrame(
+            {
+                "open": [5000.0] * 120,
+                "high": [5001.0] * 120,
+                "low": [4999.0] * 120,
+                "close": [5000.0] * 120,
+            }
+        ),
+        detect_market_regime=lambda _df: "TRENDING",
+        regime_history=[],
+        detect_market_structure=lambda _df: {},
+        engine=SimpleNamespace(
+            fast_path=SimpleNamespace(run=lambda _df, _p, _r: {"used_llm": True}),
+            config=SimpleNamespace(vision_model="dummy", news_impact_multipliers={}),
+            emotional_twin=twin,
+            rl_env=None,
+            ppo_trainer=None,
+        ),
+        pnl_history=[],
+        np=np,
+        calculate_dynamic_confluence=lambda _r, _w: 0.7,
+        get_mtf_snapshots=lambda: "mtf",
+        detect_swing_and_fibs=lambda: (None, None, {}),
+        generate_price_action_summary=lambda: "pa",
+        generate_multi_tf_chart=lambda: "abc",
+        update_live_chart=lambda *_a, **_k: None,
+        multi_agent_consensus=_consensus,
+        retrieve_relevant_experiences=lambda *_a, **_k: [],
+        meta_reasoning_and_counterfactuals=_meta,
+        update_world_model=lambda *_a, **_k: {
+            "macro": {"vix": 1.0, "dxy": 1.0, "ten_year_yield": 1.0},
+            "micro": {"regime": "TRENDING", "orderflow_bias": "NEUTRAL"},
+        },
+        get_high_impact_news=lambda: {"events": [], "overall_sentiment": "neutral", "impact": "medium"},
+        resolve_news_multiplier=lambda *_a, **_k: 1.0,
+        set_current_dream_value=lambda *_a, **_k: None,
+        infer_json=lambda *_a, **_k: {
+            "signal": "BUY",
+            "confluence_score": 0.8,
+            "reason": "vision",
+            "chosen_strategy": "v45",
+            "fib_levels_drawn": {},
+            "narrative_reasoning": "hello",
+        },
+        set_current_dream_fields=lambda *_a, **_k: None,
+        get_current_dream_snapshot=lambda: {"chosen_strategy": "v45", "signal": "BUY", "confluence_score": 0.8},
+        AI_DRAWN_FIBS={},
+        speak=lambda *_a, **_k: None,
+        store_experience_to_vector_db=lambda *_a, **_k: None,
+        logger=SimpleNamespace(debug=lambda *_a, **_k: None, error=lambda *_a, **_k: None),
+    )
+
+    monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(SystemExit()))
+
+    with pytest.raises(SystemExit):
+        runtime_workers.pre_dream_daemon(app)
+
+    assert twin.calls >= 1
+
+
+def test_supervisor_loop_applies_emotional_twin_correction(monkeypatch):
+    class TwinSpy:
+        def __init__(self):
+            self.calls = 0
+
+        def apply_correction(self, dream_snapshot):
+            self.calls += 1
+            patched = dict(dream_snapshot)
+            patched["signal"] = "HOLD"
+            return patched
+
+    twin = TwinSpy()
+
+    app = SimpleNamespace(
+        live_data_lock=nullcontext(),
+        live_quotes=[{"last": 5000.0}],
+        ohlc_1min=pd.DataFrame({"close": [5000.0]}),
+        fetch_account_balance=lambda: None,
+        account_equity=50000.0,
+        account_balance=50000.0,
+        save_state=lambda: None,
+        get_current_dream_snapshot=lambda: {
+            "signal": "HOLD",
+            "confluence_score": 0.8,
+            "regime": "NEUTRAL",
+            "stop": 4990.0,
+            "target": 5010.0,
+        },
+        set_current_dream_fields=lambda *_a, **_k: None,
+        is_market_open=lambda: False,
+        sim_position_qty=0,
+        sim_entry_price=0.0,
+        open_pnl=0.0,
+        realized_pnl_today=0.0,
+        calculate_adaptive_risk_and_qty=lambda *_a, **_k: 1,
+        place_order=lambda *_a, **_k: False,
+        pnl_history=[],
+        equity_curve=[50000.0],
+        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None),
+        engine=SimpleNamespace(
+            config=SimpleNamespace(
+                trade_mode="paper",
+                drawdown_kill_percent=8.0,
+                status_print_interval_sec=9999.0,
+                min_confluence=0.75,
+            ),
+            emotional_twin=twin,
+            infinite_simulator=None,
+            rl_env=None,
+            ppo_trainer=None,
+        ),
+        np=np,
+    )
+
+    monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(StopIteration()))
+
+    with pytest.raises(StopIteration):
+        runtime_workers.supervisor_loop(app)
+
+    assert twin.calls >= 1
+
+
+def test_supervisor_loop_runs_swarm_only_on_five_minute_boundary(monkeypatch):
+    class SwarmSpy:
+        def __init__(self):
+            self.run_calls = 0
+            self.apply_calls = 0
+
+        def run_swarm_cycle(self):
+            self.run_calls += 1
+            return {"global_regime": "TRENDING", "allocation": {"MES JUN26": 1.0}}
+
+        def apply_to_primary_dream(self):
+            self.apply_calls += 1
+
+        def generate_dashboard_plot(self):
+            return None
+
+    class FakeDateTime:
+        @classmethod
+        def now(cls):
+            return datetime(2026, 4, 4, 12, 10, 5)
+
+    swarm = SwarmSpy()
+    recorded_updates = []
+
+    app = SimpleNamespace(
+        live_data_lock=nullcontext(),
+        live_quotes=[{"last": 5000.0}],
+        ohlc_1min=pd.DataFrame({"close": [5000.0]}),
+        fetch_account_balance=lambda: None,
+        account_equity=50000.0,
+        account_balance=50000.0,
+        save_state=lambda: None,
+        get_current_dream_snapshot=lambda: {
+            "signal": "HOLD",
+            "confluence_score": 0.8,
+            "regime": "NEUTRAL",
+            "stop": 4990.0,
+            "target": 5010.0,
+        },
+        set_current_dream_fields=lambda updates: recorded_updates.append(dict(updates)),
+        set_current_dream_value=lambda *_a, **_k: None,
+        is_market_open=lambda: False,
+        sim_position_qty=0,
+        sim_entry_price=0.0,
+        open_pnl=0.0,
+        realized_pnl_today=0.0,
+        calculate_adaptive_risk_and_qty=lambda *_a, **_k: 1,
+        place_order=lambda *_a, **_k: False,
+        pnl_history=[],
+        equity_curve=[50000.0],
+        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None),
+        engine=SimpleNamespace(
+            config=SimpleNamespace(
+                trade_mode="paper",
+                drawdown_kill_percent=8.0,
+                status_print_interval_sec=9999.0,
+                min_confluence=0.75,
+                instrument="MES JUN26",
+            ),
+            emotional_twin=None,
+            infinite_simulator=None,
+            rl_env=None,
+            ppo_trainer=None,
+            swarm=swarm,
+        ),
+        swarm_manager=swarm,
+        np=np,
+    )
+
+    monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
+    monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(StopIteration()))
+
+    with pytest.raises(StopIteration):
+        runtime_workers.supervisor_loop(app)
+
+    assert swarm.run_calls == 1
+    assert swarm.apply_calls == 1
+    assert any(update.get("swarm_regime") == "TRENDING" for update in recorded_updates)
+
+
+def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):
+    class SwarmSpy:
+        def __init__(self):
+            self.run_calls = 0
+
+        def run_swarm_cycle(self):
+            self.run_calls += 1
+            return {"global_regime": "TRENDING", "allocation": {}}
+
+        def apply_to_primary_dream(self):
+            return None
+
+        def generate_dashboard_plot(self):
+            return None
+
+    class FakeDateTime:
+        @classmethod
+        def now(cls):
+            return datetime(2026, 4, 4, 12, 11, 5)
+
+    swarm = SwarmSpy()
+
+    app = SimpleNamespace(
+        live_data_lock=nullcontext(),
+        live_quotes=[{"last": 5000.0}],
+        ohlc_1min=pd.DataFrame({"close": [5000.0]}),
+        fetch_account_balance=lambda: None,
+        account_equity=50000.0,
+        account_balance=50000.0,
+        save_state=lambda: None,
+        get_current_dream_snapshot=lambda: {"signal": "HOLD", "confluence_score": 0.8, "regime": "NEUTRAL", "stop": 4990.0, "target": 5010.0},
+        set_current_dream_fields=lambda *_a, **_k: None,
+        set_current_dream_value=lambda *_a, **_k: None,
+        is_market_open=lambda: False,
+        sim_position_qty=0,
+        sim_entry_price=0.0,
+        open_pnl=0.0,
+        realized_pnl_today=0.0,
+        calculate_adaptive_risk_and_qty=lambda *_a, **_k: 1,
+        place_order=lambda *_a, **_k: False,
+        pnl_history=[],
+        equity_curve=[50000.0],
+        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None),
+        engine=SimpleNamespace(
+            config=SimpleNamespace(
+                trade_mode="paper",
+                drawdown_kill_percent=8.0,
+                status_print_interval_sec=9999.0,
+                min_confluence=0.75,
+                instrument="MES JUN26",
+            ),
+            emotional_twin=None,
+            infinite_simulator=None,
+            rl_env=None,
+            ppo_trainer=None,
+            swarm=swarm,
+        ),
+        swarm_manager=swarm,
+        np=np,
+    )
+
+    monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
+    monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(StopIteration()))
+
+    with pytest.raises(StopIteration):
+        runtime_workers.supervisor_loop(app)
+
+    assert swarm.run_calls == 0
+
+
+def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(monkeypatch):
+    class SwarmSpy:
+        def __init__(self):
+            self.run_calls = 0
+            self.apply_calls = 0
+
+        def run_swarm_cycle(self):
+            self.run_calls += 1
+            return {"global_regime": "TRENDING", "allocation": {"MES JUN26": 1.0}}
+
+        def apply_to_primary_dream(self):
+            self.apply_calls += 1
+
+        def generate_dashboard_plot(self):
+            return None
+
+    class FakeDateTime:
+        values = iter(
+            [
+                datetime(2026, 4, 4, 12, 10, 1),
+                datetime(2026, 4, 4, 12, 10, 30),
+                datetime(2026, 4, 4, 12, 11, 1),
+                datetime(2026, 4, 4, 12, 15, 1),
+            ]
+        )
+        last_value = datetime(2026, 4, 4, 12, 15, 1)
+
+        @classmethod
+        def now(cls):
+            try:
+                cls.last_value = next(cls.values)
+            except StopIteration:
+                pass
+            return cls.last_value
+
+    swarm = SwarmSpy()
+    recorded_updates = []
+    sleep_calls = {"count": 0}
+
+    def _sleep(*_args, **_kwargs):
+        sleep_calls["count"] += 1
+        if sleep_calls["count"] >= 4:
+            raise StopIteration()
+
+    app = SimpleNamespace(
+        live_data_lock=nullcontext(),
+        live_quotes=[{"last": 5000.0}],
+        ohlc_1min=pd.DataFrame({"close": [5000.0]}),
+        fetch_account_balance=lambda: None,
+        account_equity=50000.0,
+        account_balance=50000.0,
+        save_state=lambda: None,
+        get_current_dream_snapshot=lambda: {
+            "signal": "HOLD",
+            "confluence_score": 0.8,
+            "regime": "NEUTRAL",
+            "stop": 4990.0,
+            "target": 5010.0,
+        },
+        set_current_dream_fields=lambda updates: recorded_updates.append(dict(updates)),
+        set_current_dream_value=lambda *_a, **_k: None,
+        is_market_open=lambda: False,
+        sim_position_qty=0,
+        sim_entry_price=0.0,
+        open_pnl=0.0,
+        realized_pnl_today=0.0,
+        calculate_adaptive_risk_and_qty=lambda *_a, **_k: 1,
+        place_order=lambda *_a, **_k: False,
+        pnl_history=[],
+        equity_curve=[50000.0],
+        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None),
+        engine=SimpleNamespace(
+            config=SimpleNamespace(
+                trade_mode="paper",
+                drawdown_kill_percent=8.0,
+                status_print_interval_sec=999999.0,
+                min_confluence=0.75,
+                instrument="MES JUN26",
+            ),
+            emotional_twin=None,
+            infinite_simulator=None,
+            rl_env=None,
+            ppo_trainer=None,
+            swarm=swarm,
+        ),
+        swarm_manager=swarm,
+        np=np,
+    )
+
+    monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
+    monkeypatch.setattr(runtime_workers.time, "sleep", _sleep)
+
+    with pytest.raises(StopIteration):
+        runtime_workers.supervisor_loop(app)
+
+    assert swarm.run_calls == 2
+    assert swarm.apply_calls == 2
+    assert len([u for u in recorded_updates if u.get("swarm_regime") == "TRENDING"]) == 2

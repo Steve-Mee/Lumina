@@ -1,0 +1,46 @@
+{
+  "sim_position_qty": 0,
+  "sim_entry_price": 0.0,
+  "sim_unrealized": 0.0,
+  "sim_peak": 50000.0,
+  "pnl_history": [],
+  "equity_curve": [
+    50000.0
+  ],
+  "current_dream": {
+    "signal": "HOLD",
+    "confidence": 0.0,
+    "stop": 0.0,
+    "target": 0.0,
+    "reason": "Initial",
+    "why_no_trade": "",
+    "confluence_score": 0.0,
+    "fib_levels": {},
+    "swing_high": 0.0,
+    "swing_low": 0.0,
+    "a_been_direction": "NEUTRAL",
+    "chosen_strategy": "None"
+  },
+  "bible_evolvable": {
+    "mtf_matrix": {
+      "dominant_tf": "240min",
+      "confluence_scores": {}
+    },
+    "filters": [
+      "volume_delta > 2.0x avg",
+      "price_above_ema_50",
+      "adx > 22"
+    ],
+    "probability_model": {
+      "base_winrate": 0.71,
+      "confluence_bonus": 0.24,
+      "risk_penalty": 0.06
+    },
+    "last_reflection": "2026-03-27: v21.6 Echte Candle Aggregatie + Robuuste API Parsing",
+    "lessons_learned": []
+  },
+  "memory_buffer": [],
+  "narrative_memory": [],
+  "regime_history": [],
+  "trade_reflection_history": []
+}

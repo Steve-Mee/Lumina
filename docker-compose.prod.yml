@@ -1,0 +1,114 @@
+services:
+  vllm:
+    image: vllm/vllm-openai:latest
+    container_name: lumina-vllm
+    profiles: ["vllm"]
+    restart: unless-stopped
+    init: true
+    pull_policy: always
+    command:
+      - --model
+      - Qwen/Qwen2.5-0.5B-Instruct
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --max-model-len
+      - "32768"
+      - --gpu-memory-utilization
+      - "0.90"
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HUGGING_FACE_HUB_TOKEN:-}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    env_file:
+      - ./deploy/.env.production
+    ports:
+      - "8000:8000"
+    shm_size: "8gb"
+    pids_limit: 2048
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - vllm_cache:/root/.cache/huggingface
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  lumina:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lumina-engine
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: UTC
+      PYTHONUNBUFFERED: "1"
+      LUMINA_MAX_RESTARTS: "5"
+      LUMINA_ENTRYPOINT: "lumina_v45.1.1.py"
+      LUMINA_STATE_FILE: "/app/state/lumina_sim_state.json"
+      LUMINA_BIBLE_FILE: "/app/state/lumina_daytrading_bible.json"
+      LUMINA_THOUGHT_LOG: "/app/state/lumina_thought_log.jsonl"
+      LUMINA_LOG_FILE: "/app/logs/lumina_full_log.csv"
+      JOURNAL_DIR: "/app/journal"
+    env_file:
+      - ./deploy/.env.production
+    volumes:
+      - ./deploy/config.production.yaml:/app/config.yaml:ro
+      - lumina_state:/app/state
+      - lumina_journal:/app/journal
+      - lumina_vector_db:/app/lumina_vector_db
+      - lumina_logs:/app/logs
+    stop_signal: SIGTERM
+    stop_grace_period: 45s
+    pids_limit: 1024
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time,pathlib,sys; p=pathlib.Path('/tmp/lumina_heartbeat'); m=float(os.getenv('LUMINA_HEALTH_MAX_AGE','120')); sys.exit(0 if p.exists() and (time.time()-p.stat().st_mtime)<m else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  lumina_state:
+  lumina_journal:
+  lumina_vector_db:
+  lumina_logs:
+  vllm_cache:

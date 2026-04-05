@@ -1,0 +1,43 @@
+# Git and editor
+.git
+.gitignore
+.vscode/
+.idea/
+
+# Python cache and virtual env
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.coverage
+
+# Environment and secrets
+.env
+.env.*
+
+# Runtime state and logs
+lumina_full_log.csv
+lumina_sim_state.json
+lumina_daytrading_bible.json
+lumina_thought_log.jsonl
+live_stream.jsonl
+*.log
+logs/
+
+# Persistent runtime data (mounted via compose volumes)
+journal/
+lumina_vector_db/
+state/
+
+# Local/legacy artifacts
+old/
+.pytest_cache/
+__pycache__/
+
+# Notebook and misc
+*.ipynb
+.DS_Store
+Thumbs.db

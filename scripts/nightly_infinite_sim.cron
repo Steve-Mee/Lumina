@@ -1,0 +1,4 @@
+# LUMINA Infinite Simulator nightly job (Linux cron)
+# Install: crontab scripts/nightly_infinite_sim.cron
+# Runs every night at 01:30 local time.
+30 1 * * * cd /opt/NinjaTraderAI_Bot && ./.venv/bin/python nightly_infinite_sim.py >> journal/nightly_infinite_sim.log 2>&1

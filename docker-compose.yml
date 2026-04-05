@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  lumina:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lumina-engine
+    restart: unless-stopped
+    environment:
+      TZ: UTC
+      PYTHONUNBUFFERED: "1"
+      LUMINA_MAX_RESTARTS: "5"
+      LUMINA_ENTRYPOINT: "lumina_v45.1.1.py"
+      LUMINA_STATE_FILE: "/app/state/lumina_sim_state.json"
+      LUMINA_BIBLE_FILE: "/app/state/lumina_daytrading_bible.json"
+      LUMINA_THOUGHT_LOG: "/app/state/lumina_thought_log.jsonl"
+      LUMINA_LOG_FILE: "/app/logs/lumina_full_log.csv"
+      JOURNAL_DIR: "/app/journal"
+    env_file:
+      - .env
+    volumes:
+      - lumina_state:/app/state
+      - lumina_journal:/app/journal
+      - lumina_vector_db:/app/lumina_vector_db
+      - lumina_logs:/app/logs
+    stop_signal: SIGTERM
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time,pathlib,sys; p=pathlib.Path('/tmp/lumina_heartbeat'); m=float(os.getenv('LUMINA_HEALTH_MAX_AGE','120')); sys.exit(0 if p.exists() and (time.time()-p.stat().st_mtime)<m else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  lumina_state:
+  lumina_journal:
+  lumina_vector_db:
+  lumina_logs:

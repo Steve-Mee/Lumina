@@ -1,0 +1,114 @@
+{
+  "request_name": "lumina-grok-trader-1b-distillation",
+  "target_provider": "xAI",
+  "objective": "Create a low-latency distilled trading model specialized for MES/MNQ/MYM/ES futures execution, meta-reasoning, emotional-bias correction, and post-trade reflection.",
+  "base_model_preference": "grok-trader-1b",
+  "fallback_target": "grok-4.20-0309-reasoning",
+  "deployment_target": {
+    "primary_runtime": "vLLM",
+    "fallback_runtime": "Ollama",
+    "emergency_runtime": "xAI remote Grok-4"
+  },
+  "training_goal": {
+    "latency_priority": "sub-250ms local inference for reasoning path",
+    "behavioral_priority": [
+      "strict JSON outputs",
+      "trade decision consistency",
+      "MES-first execution discipline",
+      "emotional bias mitigation",
+      "risk-aware confluence scoring",
+      "post-trade reflection quality"
+    ]
+  },
+  "datasets": [
+    {
+      "name": "trade_history",
+      "source": "lumina_full_log.csv",
+      "description": "Historical live and simulated trade actions, fills, pnl, regime context, and execution outcomes."
+    },
+    {
+      "name": "reflections",
+      "source": "lumina_thought_log.jsonl",
+      "description": "Thought traces, self-critique, emotional twin corrections, and meta reasoning summaries."
+    },
+    {
+      "name": "state_snapshots",
+      "source": "lumina_sim_state.json",
+      "description": "Engine state, dream snapshots, equity curves, and regime memory."
+    },
+    {
+      "name": "infinite_sim_data",
+      "source": "nightly_infinite_sim / infinite simulator outputs",
+      "description": "Synthetic regime stress tests, walk-forward outcomes, and reinforcement-style signal quality labels."
+    },
+    {
+      "name": "swarm_context",
+      "source": "swarm snapshots and cross-symbol correlation/allocation logs",
+      "description": "Multi-symbol regime consensus, allocation decisions, arbitrage context, and cross-asset signals."
+    }
+  ],
+  "supervised_examples": {
+    "input_schema": {
+      "market_context": {
+        "instrument": "string",
+        "price": "float",
+        "regime": "string",
+        "mtf_summary": "string",
+        "price_action_summary": "string",
+        "fib_levels": "object",
+        "swarm_context": "object",
+        "emotional_context": "object",
+        "recent_pnl": "array<float>",
+        "risk_limits": "object"
+      },
+      "instruction": "Trading decision request or reflection task"
+    },
+    "output_schema": {
+      "signal": "BUY | SELL | HOLD",
+      "confidence": "float 0-1",
+      "reason": "short string",
+      "chosen_strategy": "string",
+      "stop": "float",
+      "target": "float",
+      "confluence_score": "float 0-1",
+      "counterfactuals": "optional array",
+      "reflection": "optional string"
+    }
+  },
+  "preprocessing_requirements": [
+    "Deduplicate repeated logs and reflections",
+    "Normalize all outputs to strict JSON assistant responses",
+    "Mask secrets, API keys, account identifiers, and webhook URLs",
+    "Map failed trades to reflection labels and emotional-bias labels",
+    "Attach regime, swarm, and RL metadata to each example where available",
+    "Create separate splits for decision-making, reflection, and meta-reasoning"
+  ],
+  "distillation_targets": [
+    "Match Grok-4 style reasoning quality on trade decisions",
+    "Preserve concise reasoning and structured JSON compliance",
+    "Prefer fast-path compatible outputs with stable confidence calibration",
+    "Learn from winning and losing trades, not just high-confidence examples"
+  ],
+  "evaluation_plan": {
+    "offline_metrics": [
+      "JSON validity rate",
+      "Signal agreement with accepted historical decisions",
+      "PnL-weighted precision/recall",
+      "Reflection usefulness score",
+      "Latency on local vLLM deployment"
+    ],
+    "online_shadow_mode": [
+      "Run beside current LocalInferenceEngine",
+      "Compare against Ollama and remote Grok fallback decisions",
+      "Track disagreement rate and pnl delta in paper mode",
+      "Promote only after stable shadow performance"
+    ]
+  },
+  "requested_deliverables": [
+    "Fine-tuned distilled checkpoint or hosted custom model",
+    "Inference prompt template optimized for strict JSON trading outputs",
+    "Recommended decoding params for low-latency futures trading",
+    "Best-practice deployment guidance for vLLM and fallback routing"
+  ],
+  "notes": "This request is for a private trading assistant model specialized on proprietary trade history, reflections, and simulation outputs. Data should be handled as confidential proprietary material."
+}

@@ -1,0 +1,54 @@
+{
+  "sim_position_qty": 0,
+  "sim_entry_price": 0.0,
+  "sim_unrealized": 0.0,
+  "sim_peak": 50000.0,
+  "pnl_history": [],
+  "equity_curve": [
+    50000.0
+  ],
+  "current_dream": {
+    "signal": "SELL",
+    "confidence": 0.73,
+    "stop": 6633.41,
+    "target": 6548.93,
+    "reason": "Consensus van ['scalper', 'swing', 'risk'] | Consistency 1.00 | Meta: Multi-TF bearish consistent maar breakout regime verhoogt whipsaw risico. Top tr",
+    "why_no_trade": "",
+    "confluence_score": 0.73,
+    "fib_levels": {
+      "0.0": 6642.5,
+      "0.236": 6633.41,
+      "0.382": 6627.79,
+      "0.5": 6623.25,
+      "0.618": 6618.71,
+      "0.786": 6612.24,
+      "1.0": 6604.0
+    },
+    "swing_high": 6642.5,
+    "swing_low": 6604.0,
+    "a_been_direction": "NEUTRAL",
+    "chosen_strategy": "v45_event_driven"
+  },
+  "bible_evolvable": {
+    "mtf_matrix": {
+      "dominant_tf": "240min",
+      "confluence_scores": {}
+    },
+    "filters": [
+      "volume_delta > 2.0x avg",
+      "price_above_ema_50",
+      "adx > 22"
+    ],
+    "probability_model": {
+      "base_winrate": 0.71,
+      "confluence_bonus": 0.24,
+      "risk_penalty": 0.06
+    },
+    "last_reflection": "2026-03-27: v21.6 Echte Candle Aggregatie + Robuuste API Parsing",
+    "lessons_learned": []
+  },
+  "memory_buffer": [],
+  "narrative_memory": [],
+  "regime_history": [],
+  "trade_reflection_history": []
+}

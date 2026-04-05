@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16
+    container_name: traderleague-db
+    environment:
+      POSTGRES_DB: traderleague
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - traderleague_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d traderleague"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    container_name: traderleague-backend
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/traderleague
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: traderleague-frontend
+    depends_on:
+      - backend
+    env_file:
+      - ./frontend/.env
+    ports:
+      - "5173:5173"
+
+volumes:
+  traderleague_pg_data:

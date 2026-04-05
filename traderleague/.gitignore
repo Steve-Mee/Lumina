@@ -1,0 +1,12 @@
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/.pytest_cache/
+
+# JS
+frontend/node_modules/
+frontend/dist/
+
+# Env
+backend/.env
+frontend/.env

@@ -1,0 +1,30 @@
+hardware_profile: "light"          # Verander later naar "sweet" of "beast"
+inference:
+  primary_provider: "ollama"       # "ollama" | "vllm" | "grok_remote"
+  fallback_order: ["vllm", "ollama", "grok_remote"]
+  max_tokens: 1200
+  temperature: 0.65
+  json_mode: true
+  fast_path_threshold: 0.75
+
+vllm:
+  host: "http://localhost:8000"
+  model_name: "grok-trader-1b"
+
+ollama:
+  base_url: "http://localhost:11434"
+  temperature: 0.65                # Menselijk gevoel + lichte creativiteit
+  context_length: 16384
+  num_gpu: -1                      # Volledige GPU
+  num_ctx: 16384
+
+models:
+  vision: "qwen2.5-vl:7b"
+  reasoning: "qwen2.5:7b"
+  reflector: "qwen2.5:3b"
+  meta: "qwen2.5:14b"              # Voor meta-reasoning & counterfactuals
+  grok_trader_1b: "grok-trader-1b"  # Toekomstig distilled model (via vLLM)
+
+trading:
+  instrument: "MES JUN26"
+  risk_profile: "Balanced"
