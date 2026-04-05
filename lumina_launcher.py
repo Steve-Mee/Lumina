@@ -255,6 +255,33 @@ with st.sidebar:
         else:
             st.error(msg)
 
+    st.divider()
+    st.subheader("Admin Access")
+    if "admin_authenticated" not in st.session_state:
+        st.session_state.admin_authenticated = False
+
+    admin_record_exists = _load_admin_password_record() is not None
+    if not admin_record_exists:
+        st.warning("Admin password is not configured")
+    else:
+        admin_password_input = st.text_input("Admin Password", type="password", key="admin_access_password")
+        col_admin_a, col_admin_b = st.columns(2)
+        if col_admin_a.button("Unlock", use_container_width=True):
+            if _verify_admin_password(admin_password_input):
+                st.session_state.admin_authenticated = True
+                st.success("Admin unlocked")
+            else:
+                st.error("Invalid admin password")
+        if col_admin_b.button("Lock", use_container_width=True):
+            st.session_state.admin_authenticated = False
+            st.info("Admin locked")
+
+    admin_mode = bool(st.session_state.get("admin_authenticated", False))
+    if admin_mode:
+        st.caption("Mode: Admin")
+    else:
+        st.caption("Mode: User")
+
 alive = _process_is_alive()
 if alive:
     bot_proc = st.session_state.get("bot_process")
@@ -266,16 +293,22 @@ else:
 state = _load_runtime_state()
 current_dream = state.get("current_dream", {}) if isinstance(state.get("current_dream"), dict) else {}
 
+admin_mode = bool(st.session_state.get("admin_authenticated", False))
+tab_labels = [
+    "Live Trader View",
+    "Trader League",
+    "Community Bibles",
+    "Performance Reports",
+]
+if admin_mode:
+    tab_labels.append("Admin / Backend")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
-    [
-        "Live Trader View",
-        "Trader League",
-        "Community Bibles",
-        "Performance Reports",
-        "Admin / Backend",
-    ]
-)
+tabs = st.tabs(tab_labels)
+tab1 = tabs[0]
+tab2 = tabs[1]
+tab3 = tabs[2]
+tab4 = tabs[3]
+tab5 = tabs[4] if admin_mode and len(tabs) > 4 else None
 
 with tab1:
     st.subheader("Live Dream + Runtime State")
@@ -331,48 +364,35 @@ with tab4:
             st.write("Recent reports:")
             st.write("\n".join(files[:10]))
 
-with tab5:
-    st.subheader("Admin Backend")
-    admin_record_exists = _load_admin_password_record() is not None
+if tab5 is not None:
+    with tab5:
+        st.subheader("Admin Backend")
 
-    if not admin_record_exists:
-        st.error("Admin wachtwoord is niet geconfigureerd.")
-        st.info(
-            "Maak eerst lokaal een hashrecord aan in state/launcher_admin_password.json. "
-            "Er wordt geen hardcoded of plain-text wachtwoord meer gebruikt."
-        )
-    else:
-        password = st.text_input("Admin Password", type="password")
-        if password and _verify_admin_password(password):
-            st.success("Admin toegang verleend")
+        st.write("Runtime entry:")
+        st.code(str(RUNTIME_ENTRY))
 
-            st.write("Runtime entry:")
-            st.code(str(RUNTIME_ENTRY))
-
-            st.write("Log tail (lumina_full_log.csv):")
-            log_tail = _tail_file(LUMINA_LOG_PATH, max_chars=6000)
-            if log_tail:
-                st.code(log_tail)
-            else:
-                st.info("Nog geen logdata gevonden")
-
-            st.divider()
-            st.write("Wijzig admin wachtwoord")
-            current_password = st.text_input("Current Password", type="password", key="admin_pwd_current")
-            new_password = st.text_input("New Password", type="password", key="admin_pwd_new")
-            confirm_password = st.text_input("Confirm New Password", type="password", key="admin_pwd_confirm")
-
-            if st.button("Update Admin Password", use_container_width=True):
-                if not _verify_admin_password(current_password):
-                    st.error("Current password is incorrect")
-                elif len(new_password) < 12:
-                    st.error("New password must be at least 12 characters")
-                elif new_password != confirm_password:
-                    st.error("New password confirmation does not match")
-                else:
-                    _set_admin_password(new_password)
-                    st.success("Admin wachtwoord is bijgewerkt")
+        st.write("Log tail (lumina_full_log.csv):")
+        log_tail = _tail_file(LUMINA_LOG_PATH, max_chars=6000)
+        if log_tail:
+            st.code(log_tail)
         else:
-            st.warning("Alleen voor admin")
+            st.info("Nog geen logdata gevonden")
+
+        st.divider()
+        st.write("Wijzig admin wachtwoord")
+        current_password = st.text_input("Current Password", type="password", key="admin_pwd_current")
+        new_password = st.text_input("New Password", type="password", key="admin_pwd_new")
+        confirm_password = st.text_input("Confirm New Password", type="password", key="admin_pwd_confirm")
+
+        if st.button("Update Admin Password", use_container_width=True):
+            if not _verify_admin_password(current_password):
+                st.error("Current password is incorrect")
+            elif len(new_password) < 12:
+                st.error("New password must be at least 12 characters")
+            elif new_password != confirm_password:
+                st.error("New password confirmation does not match")
+            else:
+                _set_admin_password(new_password)
+                st.success("Admin wachtwoord is bijgewerkt")
 
 st.caption("LUMINA OS v3.5 - gebouwd voor iedereen. Niets is onmogelijk.")
