@@ -366,13 +366,8 @@ PUBLIC_API = {
 }
 
 
-def _inject_engine_state() -> None:
-    for name, fn in PUBLIC_API.items():
-        globals()[name] = fn
-
-
 ENGINE.load_state()
-_inject_engine_state()
+globals().update(PUBLIC_API)
 
 
 def bootstrap_runtime() -> None:
@@ -395,7 +390,6 @@ def bootstrap_runtime() -> None:
     if dashboard_path:
         ENGINE.set_current_dream_value("swarm_dashboard_path", dashboard_path)
 
-    _inject_engine_state()
     run_traderleague_webhook_self_test()
 
     start_runtime_services(
@@ -423,12 +417,11 @@ def bootstrap_runtime() -> None:
     print("🛡️ v44 Stability & Watchdog active - bot is now 24/7 production-ready")
     print(f"🕸️ Swarm active on symbols: {', '.join(SWARM_SYMBOLS)}")
 
-globals().update(PUBLIC_API)
 human_like_main_loop = ANALYSIS_SERVICE.run_main_loop
 run_forever_loop = OPERATIONS_SERVICE.run_forever_loop
 
 
-if __name__ == "__main__":
+def main() -> None:
     print(f"🚀 LUMINA OOP runtime gestart (Mode: {CONFIG.trade_mode.upper()})")
     bootstrap_runtime()
     if CONFIG.use_human_main_loop:
@@ -436,3 +429,7 @@ if __name__ == "__main__":
     else:
         print("ℹ️ USE_HUMAN_MAIN_LOOP=False -> human-like loop niet gestart")
     run_forever_loop()
+
+
+if __name__ == "__main__":
+    main()
