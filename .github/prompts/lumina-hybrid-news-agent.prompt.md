@@ -1,6 +1,5 @@
 ---
-mode: ask
-model: GPT-5
+agent: ask
 description: "Implement or refine Lumina hybrid NewsAgent using xAI tools with safe fallbacks and zero breaking changes"
 ---
 
