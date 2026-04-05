@@ -41,7 +41,7 @@ Regels:
 
 @dataclass(slots=True)
 class BibleEngine:
-    file_path: Path | str = Path("lumina_daytrading_bible.json")
+    file_path: Path | str = Path("state/lumina_daytrading_bible.json")
     bible: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -62,6 +62,7 @@ class BibleEngine:
                 return json.load(handle)
 
         bible = copy.deepcopy(DEFAULT_BIBLE)
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
         self.file_path.write_text(json.dumps(bible, ensure_ascii=False, indent=2), encoding="utf-8")
         return bible
 
@@ -69,6 +70,7 @@ class BibleEngine:
         if bible is not None:
             self.bible = bible
         assert self.bible is not None
+        self.file_path.parent.mkdir(parents=True, exist_ok=True)
         self.file_path.write_text(json.dumps(self.bible, ensure_ascii=False, indent=2), encoding="utf-8")
 
     def evolve(self, updates: dict[str, Any]) -> None:

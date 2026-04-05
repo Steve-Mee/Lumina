@@ -23,17 +23,17 @@
   "datasets": [
     {
       "name": "trade_history",
-      "source": "lumina_full_log.csv",
+      "source": "logs/lumina_full_log.csv",
       "description": "Historical live and simulated trade actions, fills, pnl, regime context, and execution outcomes."
     },
     {
       "name": "reflections",
-      "source": "lumina_thought_log.jsonl",
+      "source": "state/lumina_thought_log.jsonl",
       "description": "Thought traces, self-critique, emotional twin corrections, and meta reasoning summaries."
     },
     {
       "name": "state_snapshots",
-      "source": "lumina_sim_state.json",
+      "source": "state/lumina_sim_state.json",
       "description": "Engine state, dream snapshots, equity curves, and regime memory."
     },
     {

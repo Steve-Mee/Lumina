@@ -9,4 +9,4 @@ from lumina_core.logging_utils import build_logger
 load_dotenv()
 
 LOG_LEVEL = os.getenv("LUMINA_LOG_LEVEL", "INFO").upper()
-logger = build_logger("lumina", log_level=LOG_LEVEL, file_path="lumina_full_log.csv")
+logger = build_logger("lumina", log_level=LOG_LEVEL, file_path="logs/lumina_full_log.csv")

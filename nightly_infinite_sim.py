@@ -28,7 +28,7 @@ def main() -> int:
     load_dotenv()
 
     config = EngineConfig()
-    logger = build_logger("nightly_sim", log_level=os.getenv("LUMINA_LOG_LEVEL", "INFO"), file_path="lumina_full_log.csv")
+    logger = build_logger("nightly_sim", log_level=os.getenv("LUMINA_LOG_LEVEL", "INFO"), file_path="logs/lumina_full_log.csv")
     app = ModuleType("nightly_infinite_sim_app")
     setattr(app, "logger", logger)
     setattr(app, "collection", _build_collection())

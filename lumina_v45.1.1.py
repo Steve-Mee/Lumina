@@ -57,7 +57,7 @@ INSTRUMENT = str(CONFIG.instrument).strip().upper()
 if INSTRUMENT not in SWARM_SYMBOLS:
     SWARM_SYMBOLS.insert(0, INSTRUMENT)
 LOG_LEVEL = __import__("os").getenv("LUMINA_LOG_LEVEL", "INFO").upper()
-logger = build_logger("lumina", log_level=LOG_LEVEL, file_path="lumina_full_log.csv")
+logger = build_logger("lumina", log_level=LOG_LEVEL, file_path="logs/lumina_full_log.csv")
 VOICE_ENABLED = __import__("os").getenv("VOICE_ENABLED", "True").lower() == "true"
 VOICE_INPUT_ENABLED = CONFIG.voice_input_enabled
 voice_recognizer = sr.Recognizer() if VOICE_INPUT_ENABLED else None

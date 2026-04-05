@@ -30,10 +30,10 @@ class EngineConfig(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    state_file: Path = Field(default_factory=lambda: Path("lumina_sim_state.json"))
-    thought_log: Path = Field(default_factory=lambda: Path("lumina_thought_log.jsonl"))
-    bible_file: Path = Field(default_factory=lambda: Path("lumina_daytrading_bible.json"))
-    live_jsonl: Path = Field(default_factory=lambda: Path("live_stream.jsonl"))
+    state_file: Path = Field(default_factory=lambda: Path("state/lumina_sim_state.json"))
+    thought_log: Path = Field(default_factory=lambda: Path("state/lumina_thought_log.jsonl"))
+    bible_file: Path = Field(default_factory=lambda: Path("state/lumina_daytrading_bible.json"))
+    live_jsonl: Path = Field(default_factory=lambda: Path("state/live_stream.jsonl"))
 
     instrument: str = Field(default_factory=lambda: os.getenv("INSTRUMENT", "MES JUN26"))
     swarm_symbols: list[str] = Field(default_factory=_parse_swarm_symbols)

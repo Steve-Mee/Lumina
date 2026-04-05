@@ -35,3 +35,8 @@ Thumbs.db
 
 # Archive / legacy
 old/
+
+# Runtime generated data
+logs/*.csv
+state/lumina_thought_log.jsonl
+state/live_stream.jsonl

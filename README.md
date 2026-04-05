@@ -52,11 +52,16 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
 - docker-compose.yml: lokale compose stack
 - docker-compose.prod.yml: productie compose stack
 - Dockerfile: container build
-- lumina_daytrading_bible.json: basis bible state
-- lumina_sim_state.json: lokale sim state snapshot
-- lumina_full_log.csv: lokale runtime log
 - pytest.ini: pytest instellingen
 - .env: lokale secrets/config (niet publiceren)
+
+## Runtime data (gestructureerd)
+
+- state/lumina_daytrading_bible.json: basis bible state
+- state/lumina_sim_state.json: lokale sim state snapshot
+- state/lumina_thought_log.jsonl: thought log (runtime generated)
+- state/live_stream.jsonl: live stream data (runtime generated)
+- logs/lumina_full_log.csv: runtime log output
 
 ## Werkafspraken
 
