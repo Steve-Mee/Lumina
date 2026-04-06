@@ -7,6 +7,7 @@ from typing import Any
 
 from .LocalInferenceEngine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine
+from .regime_detector import RegimeDetector, RegimeSnapshot
 
 
 @dataclass(slots=True)
@@ -15,6 +16,7 @@ class ReasoningService:
 
     engine: LuminaEngine
     inference_engine: LocalInferenceEngine | None = None
+    regime_detector: RegimeDetector | None = None
     latency_sla_ms: float = 300.0
     _sla_breach_streak: int = 0
     _sla_recovery_streak: int = 0
@@ -24,6 +26,8 @@ class ReasoningService:
             raise ValueError("ReasoningService requires a LuminaEngine")
         if self.inference_engine is None:
             self.inference_engine = LocalInferenceEngine(engine=self.engine)
+        if self.regime_detector is None:
+            self.regime_detector = getattr(self.engine, "regime_detector", None)
 
     def _app(self):
         if self.engine.app is None:
@@ -61,6 +65,77 @@ class ReasoningService:
         app = self._app()
         return bool(getattr(app, "FAST_PATH_ONLY", False))
 
+    def _observability_service(self):
+        return getattr(self.engine, "observability_service", None)
+
+    def refresh_regime_snapshot(
+        self,
+        *,
+        structure: dict[str, Any] | None = None,
+        confluence_score: float | None = None,
+    ) -> RegimeSnapshot:
+        if self.regime_detector is None:
+            label = str(getattr(self.engine, "market_regime", "NEUTRAL") or "NEUTRAL")
+            fallback = RegimeSnapshot(label=label, confidence=0.5, risk_state="NORMAL")
+            self.engine.current_regime_snapshot = fallback.to_dict()
+            return fallback
+
+        df = getattr(self.engine, "ohlc_1min", None)
+        if df is None or len(df) < 20:
+            fallback = RegimeSnapshot(label="NEUTRAL", confidence=0.35, risk_state="NORMAL")
+            self.engine.current_regime_snapshot = fallback.to_dict()
+            return fallback
+
+        snapshot = self.regime_detector.detect(
+            df,
+            instrument=str(getattr(self.engine.config, "instrument", "MES JUN26")),
+            confluence_score=float(
+                confluence_score
+                if confluence_score is not None
+                else self.engine.get_current_dream_snapshot().get("confluence_score", 0.0)
+            ),
+            structure=structure,
+        )
+        self.engine.current_regime_snapshot = snapshot.to_dict()
+
+        app = self._app()
+        setattr(app, "CURRENT_REGIME", snapshot.label)
+        setattr(app, "CURRENT_REGIME_RISK_STATE", snapshot.risk_state)
+        setattr(app, "REASONING_FAST_PATH_WEIGHT", snapshot.adaptive_policy.fast_path_weight)
+        setattr(app, "REASONING_AGENT_ROUTE", list(snapshot.adaptive_policy.agent_route))
+
+        if self.engine.risk_controller is not None:
+            self.engine.risk_controller.apply_regime_override(
+                regime=snapshot.label,
+                risk_state=snapshot.risk_state,
+                risk_multiplier=snapshot.adaptive_policy.risk_multiplier,
+                cooldown_after_streak=snapshot.adaptive_policy.cooldown_minutes,
+            )
+        obs = self._observability_service()
+        if obs is not None and hasattr(obs, "record_regime_state"):
+            try:
+                obs.record_regime_state(
+                    regime=snapshot.label,
+                    confidence=snapshot.confidence,
+                    risk_state=snapshot.risk_state,
+                    fast_path_weight=snapshot.adaptive_policy.fast_path_weight,
+                    high_risk_override=bool(snapshot.adaptive_policy.high_risk),
+                )
+            except Exception:
+                pass
+        return snapshot
+
+    @staticmethod
+    def _route_agent_styles(agent_styles: dict[str, str], snapshot: RegimeSnapshot) -> dict[str, str]:
+        ordered_names = [name for name in snapshot.adaptive_policy.agent_route if name in agent_styles]
+        if not ordered_names:
+            ordered_names = list(agent_styles.keys())
+        if snapshot.adaptive_policy.high_risk and "risk" in agent_styles and "risk" not in ordered_names:
+            ordered_names.insert(0, "risk")
+        if snapshot.adaptive_policy.high_risk:
+            ordered_names = ordered_names[: max(1, min(2, len(ordered_names)))]
+        return {name: agent_styles[name] for name in ordered_names}
+
     def infer_json(
         self,
         payload: dict[str, Any],
@@ -89,6 +164,7 @@ class ReasoningService:
         fib_levels: dict[str, Any],
     ) -> dict[str, Any]:
         app = self._app()
+        regime_snapshot = self.refresh_regime_snapshot(structure=structure)
         if self._fast_path_only_enabled():
             app.logger.info("MULTI_AGENT_CONSENSUS_SKIPPED,mode=fast_path_only")
             return {
@@ -96,12 +172,32 @@ class ReasoningService:
                 "confidence": 0.4,
                 "reason": "Fast-path mode active due to latency SLA breach",
                 "agent_votes": {},
+                "regime": regime_snapshot.to_dict(),
             }
-        agent_styles = self.engine.config.agent_styles
-        agent_votes: dict[str, Any] = {}
-        consistency_scores: list[float] = []
 
-        for agent_name, style in agent_styles.items():
+        current_confluence = float(self.engine.get_current_dream_snapshot().get("confluence_score", 0.0) or 0.0)
+        if regime_snapshot.adaptive_policy.high_risk and current_confluence < 0.88:
+            app.logger.warning(
+                "REGIME_CONSERVATIVE_HOLD,regime=%s,confluence=%.2f",
+                regime_snapshot.label,
+                current_confluence,
+            )
+            return {
+                "signal": "HOLD",
+                "confidence": round(max(0.35, regime_snapshot.confidence * 0.7), 2),
+                "reason": f"High-risk regime {regime_snapshot.label} forced conservative hold",
+                "agent_votes": {},
+                "regime": regime_snapshot.to_dict(),
+            }
+
+        agent_styles = self._route_agent_styles(self.engine.config.agent_styles, regime_snapshot)
+        agent_votes: dict[str, Any] = {}
+        weighted_signals: dict[str, float] = {}
+        weighted_confidence = 0.0
+        total_weight = 0.0
+
+        for idx, (agent_name, style) in enumerate(agent_styles.items()):
+            weight = max(0.55, 1.0 - (idx * 0.12))
             payload = {
                 "model": "grok-4.20-0309-reasoning",
                 "messages": [
@@ -127,25 +223,38 @@ Wat is jouw trade-besluit?""",
                 vote = self.infer_json(payload, timeout=12, context=f"multi_agent_{agent_name}")
                 if vote is not None:
                     agent_votes[agent_name] = vote
-                    consistency_scores.append(float(vote.get("confidence", 0.5)))
+                    signal = str(vote.get("signal", "HOLD") or "HOLD").upper()
+                    confidence = float(vote.get("confidence", 0.5) or 0.5)
+                    weighted_signals[signal] = weighted_signals.get(signal, 0.0) + weight
+                    weighted_confidence += confidence * weight
+                    total_weight += weight
             except (json.JSONDecodeError, KeyError, TypeError, TimeoutError, RuntimeError, ValueError) as exc:
                 app.logger.error(f"Multi-agent parse error ({agent_name}): {exc}")
                 agent_votes[agent_name] = {"signal": "HOLD", "confidence": 0.3, "reason": "API error"}
 
             if agent_name not in agent_votes:
                 agent_votes[agent_name] = {"signal": "HOLD", "confidence": 0.3, "reason": "Inference unavailable"}
+                weighted_signals["HOLD"] = weighted_signals.get("HOLD", 0.0) + weight * 0.7
+                weighted_confidence += 0.3 * weight
+                total_weight += weight
 
-        signals = [v.get("signal", "HOLD") for v in agent_votes.values()]
-        most_common_signal = max(set(signals), key=signals.count) if signals else "HOLD"
-        consistency = signals.count(most_common_signal) / max(1, len(signals))
-        avg_confidence = sum(consistency_scores) / max(1, len(consistency_scores))
+        most_common_signal = max(weighted_signals, key=weighted_signals.get) if weighted_signals else "HOLD"
+        top_weight = weighted_signals.get(most_common_signal, 0.0)
+        consistency = top_weight / max(total_weight, 1e-9)
+        avg_confidence = weighted_confidence / max(total_weight, 1e-9)
         consensus = {
             "signal": most_common_signal if consistency >= 0.67 else "HOLD",
             "confidence": round(avg_confidence * consistency, 2),
             "reason": f"Consensus van {list(agent_votes.keys())} | Consistency {consistency:.2f}",
             "agent_votes": agent_votes,
+            "regime": regime_snapshot.to_dict(),
         }
-        app.logger.info(f"MULTI_AGENT_CONSENSUS,signal={consensus['signal']},consistency={consistency:.2f}")
+        app.logger.info(
+            "MULTI_AGENT_CONSENSUS,signal=%s,consistency=%.2f,regime=%s",
+            consensus["signal"],
+            consistency,
+            regime_snapshot.label,
+        )
         return consensus
 
     async def meta_reasoning_and_counterfactuals(

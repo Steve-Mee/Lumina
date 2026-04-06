@@ -153,6 +153,12 @@ class EmotionalTwinAgent:
         bias["boredom_score"] *= self.calibration["boredom_sensitivity"]
         bias["revenge_risk"] *= self.calibration["revenge_sensitivity"]
 
+        regime_snapshot = getattr(self.context, "current_regime_snapshot", {}) or {}
+        adaptive_policy = regime_snapshot.get("adaptive_policy", {}) if isinstance(regime_snapshot, dict) else {}
+        regime_sensitivity = float(adaptive_policy.get("emotional_twin_sensitivity", 1.0) or 1.0)
+        for key in bias:
+            bias[key] *= regime_sensitivity
+
         # Baseline-aanpassingen behouden emotionele state-continuiteit.
         bias["fomo_score"] += self.fomo_base
         bias["tilt_score"] += self.tilt_base

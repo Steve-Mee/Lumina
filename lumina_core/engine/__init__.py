@@ -11,6 +11,7 @@ from .memory_service import MemoryService
 from .operations_service import OperationsService
 from .performance_validator import PerformanceValidator
 from .reporting_service import ReportingService
+from .regime_detector import RegimeDetector, RegimeSnapshot
 from .reasoning_service import ReasoningService
 from .self_evolution_meta_agent import SelfEvolutionMetaAgent
 from .multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
@@ -32,6 +33,8 @@ __all__ = [
     "LuminaEngine",
     "LocalInferenceEngine",
     "ReportingService",
+    "RegimeDetector",
+    "RegimeSnapshot",
     "ReasoningService",
     "SelfEvolutionMetaAgent",
     "SymbolNode",

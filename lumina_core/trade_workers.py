@@ -9,6 +9,30 @@ from lumina_bible.workflows import process_user_feedback as _process_user_feedba
 from lumina_bible.workflows import reflect_on_trade as _reflect_on_trade
 
 
+def _refresh_regime_snapshot(app: RuntimeContext, regime: str | None = None) -> dict:
+    reasoning_service = getattr(app.engine, "reasoning_service", None)
+    if reasoning_service is not None and hasattr(reasoning_service, "refresh_regime_snapshot"):
+        snapshot = reasoning_service.refresh_regime_snapshot()
+        return snapshot.to_dict() if hasattr(snapshot, "to_dict") else dict(snapshot)
+
+    existing = getattr(app.engine, "current_regime_snapshot", {})
+    if isinstance(existing, dict) and existing:
+        return existing
+
+    label = str(regime or getattr(app, "market_regime", "NEUTRAL") or "NEUTRAL")
+    fallback = {
+        "label": label,
+        "risk_state": "NORMAL",
+        "adaptive_policy": {
+            "risk_multiplier": 1.0,
+            "cooldown_minutes": 30,
+            "high_risk": False,
+        },
+    }
+    app.engine.current_regime_snapshot = fallback
+    return fallback
+
+
 def health_check_market_open(app: RuntimeContext, symbol: str, regime: str) -> tuple[bool, str]:
     """
     FIRST CHECK: immediately after market open.
@@ -26,8 +50,17 @@ def health_check_market_open(app: RuntimeContext, symbol: str, regime: str) -> t
     """
     if not app.engine.risk_controller:
         return False, "Risk controller not available"
-    
-    return app.engine.risk_controller.health_check_market_open(symbol, regime)
+
+    snapshot = _refresh_regime_snapshot(app, regime)
+    adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
+    app.engine.risk_controller.apply_regime_override(
+        regime=str(snapshot.get("label", regime or "NEUTRAL")),
+        risk_state=str(snapshot.get("risk_state", "NORMAL")),
+        risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
+        cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
+    )
+
+    return app.engine.risk_controller.health_check_market_open(symbol, str(snapshot.get("label", regime)))
 
 
 def check_pre_trade_risk(
@@ -58,8 +91,16 @@ def check_pre_trade_risk(
     if not app.engine.risk_controller:
         # Risk controller not initialized; fail closed
         return False, "Risk controller not available"
-    
-    return app.engine.risk_controller.check_can_trade(symbol, regime, proposed_risk)
+
+    snapshot = _refresh_regime_snapshot(app, regime)
+    adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
+    app.engine.risk_controller.apply_regime_override(
+        regime=str(snapshot.get("label", regime or "NEUTRAL")),
+        risk_state=str(snapshot.get("risk_state", "NORMAL")),
+        risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
+        cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
+    )
+    return app.engine.risk_controller.check_can_trade(symbol, str(snapshot.get("label", regime)), proposed_risk)
 
 
 def submit_order_with_risk_check(
@@ -98,9 +139,10 @@ def reflect_on_trade(app: RuntimeContext, pnl_dollars: float, entry_price: float
     _reflect_on_trade(app, pnl_dollars, entry_price, exit_price, position_qty)
     
     # Record trade in risk controller
-    if app.engine.risk_controller and app.engine.swarm:
+    if app.engine.risk_controller:
         symbol = getattr(app.engine.swarm, 'current_symbol', 'UNKNOWN')
-        regime = app.market_regime
+        snapshot = _refresh_regime_snapshot(app, getattr(app, "market_regime", "NEUTRAL"))
+        regime = str(snapshot.get("label", getattr(app, "market_regime", "NEUTRAL")))
         risk_taken = abs(position_qty * (exit_price - entry_price))
         app.engine.risk_controller.record_trade_result(symbol, regime, pnl_dollars, risk_taken)
 

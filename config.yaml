@@ -117,6 +117,56 @@ evolution:
   enabled: true
   approval_required: true
 
+regime:
+  enabled: true
+  lookback_bars: 120
+  trend_adx_threshold: 23
+  range_adx_threshold: 18
+  high_vol_atr_ratio: 1.6
+  news_volume_ratio: 2.2
+  low_liquidity_volume_ratio: 0.55
+  high_risk_regimes: ["HIGH_VOLATILITY", "NEWS_DRIVEN", "ROLLOVER", "LOW_LIQUIDITY"]
+  fast_path_weight_by_regime:
+    TRENDING: 0.35
+    RANGING: 0.45
+    HIGH_VOLATILITY: 0.72
+    NEWS_DRIVEN: 0.82
+    ROLLOVER: 0.80
+    LOW_LIQUIDITY: 0.88
+    NEUTRAL: 0.50
+  risk_multiplier_by_regime:
+    TRENDING: 1.15
+    RANGING: 0.85
+    HIGH_VOLATILITY: 0.55
+    NEWS_DRIVEN: 0.45
+    ROLLOVER: 0.50
+    LOW_LIQUIDITY: 0.40
+    NEUTRAL: 1.00
+  emotional_sensitivity_by_regime:
+    TRENDING: 0.90
+    RANGING: 1.05
+    HIGH_VOLATILITY: 1.20
+    NEWS_DRIVEN: 1.35
+    ROLLOVER: 1.15
+    LOW_LIQUIDITY: 1.25
+    NEUTRAL: 1.00
+  cooldown_minutes_by_regime:
+    TRENDING: 20
+    RANGING: 25
+    HIGH_VOLATILITY: 45
+    NEWS_DRIVEN: 60
+    ROLLOVER: 50
+    LOW_LIQUIDITY: 55
+    NEUTRAL: 30
+  agent_route_by_regime:
+    TRENDING: ["swing", "scalper", "risk"]
+    RANGING: ["risk", "scalper", "swing"]
+    HIGH_VOLATILITY: ["risk", "scalper"]
+    NEWS_DRIVEN: ["risk", "scalper"]
+    ROLLOVER: ["risk"]
+    LOW_LIQUIDITY: ["risk"]
+    NEUTRAL: ["risk", "scalper", "swing"]
+
 monitoring:
   enabled: true
   db_path: "state/metrics.db"          # SQLite sink for dashboard history queries

@@ -60,6 +60,9 @@ M_WS_RECONNECTS = "lumina_websocket_reconnects_total"
 M_WS_HEARTBEAT_AGE = "lumina_websocket_last_heartbeat_age_s"
 M_MODEL_CONFIDENCE = "lumina_model_confidence"
 M_MODEL_DRIFT = "lumina_model_confidence_drift"
+M_REGIME_CURRENT = "lumina_regime_current"
+M_REGIME_CONFIDENCE = "lumina_regime_confidence"
+M_REGIME_HIGH_RISK_OVERRIDES = "lumina_regime_high_risk_overrides_total"
 M_ALERTS_SENT = "lumina_alerts_sent_total"
 M_UPTIME = "lumina_uptime_seconds"
 M_RESTARTS = "lumina_process_restarts_total"
@@ -102,6 +105,7 @@ class ObservabilityService:
     _stop_event: threading.Event = field(default_factory=threading.Event)
     _alert_cooldown: dict[str, float] = field(default_factory=dict)
     _alert_cooldown_s: float = 120.0  # minimum gap between identical alerts
+    _last_regime_labels: dict[str, str] | None = field(default=None)
 
     # ── Factory ───────────────────────────────────────────────────────────────
 
@@ -407,6 +411,55 @@ class ObservabilityService:
                     severity="warning",
                     data={"agent": agent, "confidence": confidence, "drift": drift},
                 )
+
+    def record_regime_state(
+        self,
+        *,
+        regime: str,
+        confidence: float,
+        risk_state: str = "NORMAL",
+        fast_path_weight: float | None = None,
+        high_risk_override: bool = False,
+    ) -> None:
+        """Track the currently active regime and any high-risk override activations."""
+        normalized_regime = str(regime or "NEUTRAL").upper()
+        normalized_risk_state = str(risk_state or "NORMAL").upper()
+        labels = {"regime": normalized_regime, "risk_state": normalized_risk_state}
+
+        if self._last_regime_labels and self._last_regime_labels != labels:
+            self.collector.set(
+                M_REGIME_CURRENT,
+                0.0,
+                labels=self._last_regime_labels,
+                help_="Current active regime state (1=active, 0=inactive)",
+            )
+
+        self.collector.set(
+            M_REGIME_CURRENT,
+            1.0,
+            labels=labels,
+            help_="Current active regime state (1=active, 0=inactive)",
+        )
+        self.collector.set(
+            M_REGIME_CONFIDENCE,
+            confidence,
+            labels={"regime": normalized_regime},
+            help_="Confidence score for the currently detected regime",
+        )
+        if fast_path_weight is not None:
+            self.collector.set(
+                "lumina_regime_fast_path_weight",
+                float(fast_path_weight),
+                labels={"regime": normalized_regime},
+                help_="Adaptive fast-path weight for the detected regime",
+            )
+        if high_risk_override:
+            self.collector.inc(
+                M_REGIME_HIGH_RISK_OVERRIDES,
+                labels={"regime": normalized_regime},
+                help_="Total high-risk regime overrides applied to the risk controller",
+            )
+        self._last_regime_labels = labels
 
     def record_process_restart(self) -> None:
         """Increment the process-restart counter (used by watchdog)."""

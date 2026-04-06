@@ -112,6 +112,7 @@ class BacktesterEngine:
         commission_paid = 0.0
         gap_events = 0
         regime_attribution: dict[str, dict[str, float]] = {}
+        regime_counts: dict[str, int] = {}
 
         position = 0
         entry_price = 0.0
@@ -139,6 +140,7 @@ class BacktesterEngine:
             avg_volume = self._avg_volume(recent)
             regime = self._regime_from_snapshot(snapshot[: i + 1])
             regime_label = self._normalize_regime(regime)
+            regime_counts[regime_label] = regime_counts.get(regime_label, 0) + 1
 
             if position == 0 and pending_side == 0 and signal in {"BUY", "SELL"} and confluence > min_confluence:
                 pending_side = 1 if signal == "BUY" else -1
@@ -210,6 +212,7 @@ class BacktesterEngine:
             "avg_slippage_ticks": float(avg_slip),
             "equity_curve": [float(x) for x in equity],
             "regime_attribution": regime_attribution,
+            "regime_summary": regime_counts,
             "gap_events": int(gap_events),
         }
 
@@ -385,8 +388,14 @@ class BacktesterEngine:
             return "TRENDING"
         if any(x in text for x in ("RANGE", "SIDEWAYS", "MEAN")):
             return "RANGING"
-        if any(x in text for x in ("VOLATILE", "CHAOS", "HIGH_VOL")):
-            return "VOLATILE"
+        if any(x in text for x in ("VOLATILE", "CHAOS", "HIGH_VOL", "HIGH_VOLATILITY")):
+            return "HIGH_VOLATILITY"
+        if "NEWS" in text:
+            return "NEWS_DRIVEN"
+        if "ROLLOVER" in text:
+            return "ROLLOVER"
+        if "LOW_LIQ" in text:
+            return "LOW_LIQUIDITY"
         if any(x in text for x in ("LOW_VOL", "CALM")):
             return "LOW_VOL"
         return "NEUTRAL"

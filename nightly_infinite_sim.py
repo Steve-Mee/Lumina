@@ -51,6 +51,7 @@ def main() -> int:
     obs.start()
 
     engine = LuminaEngine(config=config)
+    engine.observability_service = obs
     runtime = RuntimeContext(engine=engine, app=app)
 
     market_data_service = MarketDataService(engine=engine)
@@ -120,6 +121,7 @@ def main() -> int:
         container=evolution_container,
         enabled=bool(evo_cfg.get("enabled", True)),
         approval_required=bool(evo_cfg.get("approval_required", True)),
+        obs_service=obs,
     )
     evolution_result = evolution_agent.run_nightly_evolution(
         nightly_report=report,

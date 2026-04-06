@@ -2,7 +2,7 @@
 # Unit tests for Hard Risk Controller
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
 import json
@@ -12,6 +12,10 @@ from lumina_core.engine.risk_controller import (
     RiskLimits,
     RiskState,
 )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class TestRiskLimits:
@@ -122,7 +126,7 @@ class TestHardRiskController:
     def test_trade_blocked_at_max_consecutive(self, controller):
         """Trade should be blocked when at max consecutive losses."""
         controller.state.consecutive_losses = 3
-        controller.state.last_loss_time = datetime.utcnow()
+        controller.state.last_loss_time = _utcnow()
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is False
         # After timestamp expiration, should still fail but different reason
@@ -130,7 +134,7 @@ class TestHardRiskController:
     def test_cooldown_blocks_trading(self, controller):
         """Cooldown period should block all trades."""
         controller.state.consecutive_losses = 3
-        controller.state.last_loss_time = datetime.utcnow() - timedelta(minutes=10)  # 10 min ago
+        controller.state.last_loss_time = _utcnow() - timedelta(minutes=10)  # 10 min ago
         
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is False
@@ -141,7 +145,7 @@ class TestHardRiskController:
         """After cooldown period, trading should resume."""
         controller.state.consecutive_losses = 3
         # Loss occurred 45 minutes ago (cooldown is 30 min)
-        controller.state.last_loss_time = datetime.utcnow() - timedelta(minutes=45)
+        controller.state.last_loss_time = _utcnow() - timedelta(minutes=45)
         
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is True  # Cooldown expired, counter reset
@@ -282,7 +286,7 @@ class TestHardRiskController:
     def test_get_status_with_active_cooldown(self, controller):
         """Status should show remaining cooldown time."""
         controller.state.consecutive_losses = 3
-        controller.state.last_loss_time = datetime.utcnow() - timedelta(minutes=10)
+        controller.state.last_loss_time = _utcnow() - timedelta(minutes=10)
         
         status = controller.get_status()
         cooldown_remaining = status['cooldown_remaining_minutes']

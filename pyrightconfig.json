@@ -1,0 +1,17 @@
+{
+  "include": [
+    "lumina_core",
+    "lumina_os",
+    "lumina_bible",
+    "lumina_agents",
+    "scripts",
+    "tests"
+  ],
+  "extraPaths": [
+    "lumina_os"
+  ],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false
+}

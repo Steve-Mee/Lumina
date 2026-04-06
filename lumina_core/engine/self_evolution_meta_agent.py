@@ -74,7 +74,7 @@ class SelfEvolutionMetaAgent:
 
         meta_review = self._meta_review(nightly_report)
         champion = self._current_champion()
-        challengers = self._build_challengers(champion)
+        challengers = self._build_challengers(champion, meta_review)
         scored = [self._score_challenger(champion, c, nightly_report, meta_review) for c in challengers]
         best = max(scored, key=lambda item: float(item.get("score", 0.0))) if scored else None
 
@@ -140,6 +140,7 @@ class SelfEvolutionMetaAgent:
             "net_pnl": round(net_pnl, 4),
             "sharpe": round(sharpe, 4),
             "regime_drift": regime_drift,
+            "regime_breakdown": self._regime_breakdown(report),
             "rl_drift": rl_drift,
             "emotional_twin_accuracy": emotional_twin_accuracy,
         }
@@ -157,16 +158,18 @@ class SelfEvolutionMetaAgent:
             },
         }
 
-    def _build_challengers(self, champion: dict[str, Any]) -> list[dict[str, Any]]:
+    def _build_challengers(self, champion: dict[str, Any], meta_review: dict[str, Any]) -> list[dict[str, Any]]:
         h = dict(champion.get("hyperparams", {}))
         base_threshold = float(h.get("fast_path_threshold", 0.78))
         base_risk = float(h.get("max_risk_percent", 1.0))
         base_dd = float(h.get("drawdown_kill_percent", 8.0))
+        weakest_regime = self._weakest_regime(meta_review)
 
         return [
             {
                 "name": "challenger_a",
-                "prompt_tweak": "More conservative under regime drift; prioritize HOLD when confidence split detected.",
+                "prompt_tweak": f"More conservative under regime drift; prioritize HOLD when confidence split detected in {weakest_regime}.",
+                "regime_focus": weakest_regime,
                 "hyperparam_suggestion": {
                     "fast_path_threshold": round(min(0.9, base_threshold + 0.04), 3),
                     "max_risk_percent": round(max(0.3, base_risk * 0.9), 3),
@@ -175,7 +178,8 @@ class SelfEvolutionMetaAgent:
             },
             {
                 "name": "challenger_b",
-                "prompt_tweak": "Increase trend-following bias when sharpe positive and RL drift low.",
+                "prompt_tweak": f"Increase trend-following bias when sharpe positive and RL drift low, but only outside weak regime {weakest_regime}.",
+                "regime_focus": weakest_regime,
                 "hyperparam_suggestion": {
                     "fast_path_threshold": round(max(0.6, base_threshold - 0.03), 3),
                     "max_risk_percent": round(min(2.0, base_risk * 1.05), 3),
@@ -184,7 +188,8 @@ class SelfEvolutionMetaAgent:
             },
             {
                 "name": "challenger_c",
-                "prompt_tweak": "Hybrid mode: strict risk gate + adaptive execution latency guard.",
+                "prompt_tweak": f"Hybrid mode: strict risk gate + adaptive execution latency guard optimized for {weakest_regime}.",
+                "regime_focus": weakest_regime,
                 "hyperparam_suggestion": {
                     "fast_path_threshold": round(base_threshold, 3),
                     "max_risk_percent": round(base_risk, 3),
@@ -266,9 +271,40 @@ class SelfEvolutionMetaAgent:
     def _compute_regime_drift(regime_history: list[Any]) -> float:
         if not regime_history:
             return 0.5
-        normalized = [str(item).upper() for item in regime_history]
+        normalized = []
+        for item in regime_history:
+            if isinstance(item, dict):
+                normalized.append(str(item.get("label") or item.get("regime") or item).upper())
+            else:
+                normalized.append(str(item).upper())
         unique = len(set(normalized))
         return min(1.0, unique / max(1.0, len(normalized) * 0.5))
+
+    @staticmethod
+    def _regime_breakdown(report: dict[str, Any]) -> dict[str, Any]:
+        attribution = report.get("regime_attribution", {})
+        if not isinstance(attribution, dict):
+            return {}
+        return {
+            str(regime): {
+                "trades": float(stats.get("trades", 0.0) or 0.0),
+                "net_pnl": float(stats.get("net_pnl", 0.0) or 0.0),
+                "winrate": float(stats.get("winrate", 0.0) or 0.0),
+            }
+            for regime, stats in attribution.items()
+            if isinstance(stats, dict)
+        }
+
+    @staticmethod
+    def _weakest_regime(meta_review: dict[str, Any]) -> str:
+        breakdown = meta_review.get("regime_breakdown", {})
+        if not isinstance(breakdown, dict) or not breakdown:
+            return "neutral"
+        weakest = min(
+            breakdown.items(),
+            key=lambda item: (float(item[1].get("net_pnl", 0.0)), float(item[1].get("winrate", 0.0))),
+        )
+        return str(weakest[0]).lower()
 
     @staticmethod
     def _compute_rl_drift(report: dict[str, Any]) -> float:

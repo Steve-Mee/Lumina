@@ -88,6 +88,8 @@ class LuminaEngine:
     rl_policy_model: Any | None = None
     rl_policy_enabled: bool = False
     rl_confidence_threshold: float = 0.78
+    current_regime_snapshot: dict[str, Any] = field(default_factory=dict)
+    regime_detector: Any | None = None
     # Lokale Ollama inference engine – wordt na constructie gekoppeld in lumina_v45.1.1.py
     local_engine: Any | None = None
     # Rule-based fast-path engine (< 200 ms, geen LLM)
@@ -365,7 +367,37 @@ class LuminaEngine:
         return generate_price_action_summary(self.market_data.copy_ohlc(), self.config.timeframes)
 
     def detect_market_regime(self, df) -> str:
-        return detect_market_regime(df)
+        if self.regime_detector is not None:
+            try:
+                structure = None
+                if hasattr(df, "__len__") and len(df) >= 20:
+                    structure = detect_market_structure(df)
+                snapshot = self.regime_detector.detect(
+                    df,
+                    instrument=str(getattr(self.config, "instrument", "MES JUN26")),
+                    confluence_score=float(self.get_current_dream_snapshot().get("confluence_score", 0.0) or 0.0),
+                    structure=structure,
+                )
+                self.current_regime_snapshot = snapshot.to_dict()
+                return snapshot.label
+            except Exception:
+                pass
+        regime = detect_market_regime(df)
+        self.current_regime_snapshot = {
+            "label": str(regime),
+            "confidence": 0.5,
+            "risk_state": "NORMAL",
+            "adaptive_policy": {
+                "fast_path_weight": 0.5,
+                "agent_route": ["risk", "scalper", "swing"],
+                "risk_multiplier": 1.0,
+                "emotional_twin_sensitivity": 1.0,
+                "cooldown_minutes": 30,
+                "high_risk": False,
+                "nightly_evolution_focus": str(regime).lower(),
+            },
+        }
+        return regime
 
     def detect_market_structure(self, df) -> dict[str, Any]:
         return detect_market_structure(df)

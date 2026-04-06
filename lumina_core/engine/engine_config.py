@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import json
 from functools import lru_cache
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 import yaml
@@ -35,6 +36,12 @@ def _config_yaml_section_value(section: str, key: str, default):
     if isinstance(section_cfg, dict) and key in section_cfg:
         return section_cfg.get(key, default)
     return default
+
+
+def _config_yaml_section(section: str) -> dict:
+    config = _load_yaml_config()
+    section_cfg = config.get(section)
+    return section_cfg if isinstance(section_cfg, dict) else {}
 
 
 def _env_or_yaml(env_name: str, yaml_key: str, default):
@@ -165,6 +172,8 @@ class EngineConfig(BaseModel):
             "NEUTRAL": 0.9,
         }
     )
+    risk_controller: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("risk_controller"))
+    regime: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("regime"))
 
     @property
     def min_confluence(self) -> float:

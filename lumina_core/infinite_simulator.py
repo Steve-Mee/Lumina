@@ -9,7 +9,7 @@ import random
 import statistics
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -259,7 +259,7 @@ class InfiniteSimulator:
 
             ticks.append(
                 {
-                    "timestamp": (datetime.utcnow()).isoformat(),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                     "last": float(price),
                     "bid": float(price - spread / 2.0),
                     "ask": float(price + spread / 2.0),

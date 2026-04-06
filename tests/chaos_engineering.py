@@ -13,8 +13,10 @@ from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
+import pandas as pd
 
 from lumina_core.engine.LocalInferenceEngine import LocalInferenceEngine
+from lumina_core.engine.regime_detector import RegimeDetector
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.market_data_service import MarketDataService
 from lumina_core.engine.reasoning_service import ReasoningService
@@ -339,3 +341,61 @@ def test_chaos_smoke_suite_fixture(lightweight_engine: SimpleNamespace) -> None:
 @pytest.mark.chaos_ci_nightly
 def test_chaos_nightly_marker_path(lightweight_engine: SimpleNamespace) -> None:
     assert lightweight_engine.config.trade_mode == "real"
+
+
+@pytest.mark.chaos_degradation
+@pytest.mark.chaos_regime
+@pytest.mark.chaos_regime_flip
+def test_regime_flip_tightens_risk_limits(lightweight_engine: SimpleNamespace) -> None:
+    timestamps = pd.date_range("2026-04-06T14:30:00+00:00", periods=140, freq="1min")
+    trending_rows = []
+    trending_close = 5000.0
+    for idx, ts in enumerate(timestamps):
+        trending_close += 0.45
+        trending_rows.append(
+            {
+                "timestamp": ts.isoformat(),
+                "open": trending_close - 0.2,
+                "high": trending_close + 0.4,
+                "low": trending_close - 0.4,
+                "close": trending_close,
+                "volume": 1400.0,
+                "spread": 0.25,
+            }
+        )
+
+    news_rows = list(trending_rows)
+    last_close = float(news_rows[-1]["close"])
+    for offset in range(8):
+        last_close += 6.0
+        row = dict(news_rows[-8 + offset])
+        row["open"] = last_close - 1.5
+        row["high"] = last_close + 2.0
+        row["low"] = last_close - 2.0
+        row["close"] = last_close
+        row["volume"] = 4200.0
+        row["spread"] = 0.35
+        news_rows[-8 + offset] = row
+
+    lightweight_engine.ohlc_1min = pd.DataFrame(trending_rows)
+    lightweight_engine.current_regime_snapshot = {}
+    lightweight_engine.get_current_dream_snapshot = lambda: {"confluence_score": 0.92}
+    lightweight_engine.regime_detector = RegimeDetector()
+
+    reasoning = ReasoningService(
+        engine=cast(LuminaEngine, lightweight_engine),
+        inference_engine=cast(LocalInferenceEngine, SimpleNamespace(infer_json=lambda *args, **kwargs: {"signal": "BUY", "confidence": 0.8, "reason": "ok"})),
+        regime_detector=lightweight_engine.regime_detector,
+    )
+
+    first = reasoning.refresh_regime_snapshot(structure={"bos": True})
+    assert first.label == "TRENDING"
+    base_limit = lightweight_engine.risk_controller.get_status()["active_limits"]["max_open_risk_per_instrument"]
+
+    lightweight_engine.ohlc_1min = pd.DataFrame(news_rows)
+    second = reasoning.refresh_regime_snapshot(structure={"bos": True, "fvg": [1]})
+    tightened_limit = lightweight_engine.risk_controller.get_status()["active_limits"]["max_open_risk_per_instrument"]
+
+    assert second.label in {"NEWS_DRIVEN", "HIGH_VOLATILITY"}
+    assert second.risk_state == "HIGH_RISK"
+    assert tightened_limit < base_limit

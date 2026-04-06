@@ -412,6 +412,58 @@ def test_model_confidence_no_drift_no_alert(obs_enabled: ObservabilityService) -
     assert alerts == 0.0
 
 
+@pytest.mark.chaos_metrics
+def test_regime_state_tracks_current_label_and_confidence(obs_enabled: ObservabilityService) -> None:
+    obs_enabled.record_regime_state(
+        regime="NEWS_DRIVEN",
+        confidence=0.76,
+        risk_state="HIGH_RISK",
+        fast_path_weight=0.82,
+        high_risk_override=True,
+    )
+    assert (
+        obs_enabled.collector.get(
+            "lumina_regime_current",
+            labels={"regime": "NEWS_DRIVEN", "risk_state": "HIGH_RISK"},
+        )
+        == 1.0
+    )
+    assert (
+        obs_enabled.collector.get(
+            "lumina_regime_confidence",
+            labels={"regime": "NEWS_DRIVEN"},
+        )
+        == 0.76
+    )
+    assert (
+        obs_enabled.collector.get(
+            "lumina_regime_high_risk_overrides_total",
+            labels={"regime": "NEWS_DRIVEN"},
+        )
+        == 1.0
+    )
+
+
+@pytest.mark.chaos_metrics
+def test_regime_state_deactivates_previous_label(obs_enabled: ObservabilityService) -> None:
+    obs_enabled.record_regime_state(regime="TRENDING", confidence=0.7, risk_state="NORMAL")
+    obs_enabled.record_regime_state(regime="RANGING", confidence=0.6, risk_state="NORMAL")
+    assert (
+        obs_enabled.collector.get(
+            "lumina_regime_current",
+            labels={"regime": "TRENDING", "risk_state": "NORMAL"},
+        )
+        == 0.0
+    )
+    assert (
+        obs_enabled.collector.get(
+            "lumina_regime_current",
+            labels={"regime": "RANGING", "risk_state": "NORMAL"},
+        )
+        == 1.0
+    )
+
+
 # ── SQLite persistence ────────────────────────────────────────────────────────
 
 
@@ -473,9 +525,11 @@ def test_chaos_ci_nightly_monitoring_smoke(obs_enabled: ObservabilityService) ->
     obs_enabled.record_chaos_event("api_timeout")
     obs_enabled.record_websocket_status(connected=True)
     obs_enabled.record_model_confidence("ollama", 0.78)
+    obs_enabled.record_regime_state(regime="TRENDING", confidence=0.81, risk_state="NORMAL")
     obs_enabled.record_process_restart()
 
     snap = obs_enabled.snapshot()
     assert snap.get("lumina_pnl_daily", {}).get("value") == 320.0
     assert snap.get("lumina_risk_kill_switch_active", {}).get("value") == 0.0
     assert snap.get("lumina_model_confidence{agent=\"ollama\"}", {}).get("value", 0) > 0
+    assert snap.get("lumina_regime_confidence{regime=\"TRENDING\"}", {}).get("value", 0) == 0.81

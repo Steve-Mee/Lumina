@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections import deque
 import json
 import logging
@@ -13,6 +13,10 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -55,6 +59,8 @@ class RiskState:
     kill_switch_reason: str = ""  # why kill switch was engaged
     kill_switch_time: Optional[datetime] = None  # when kill switch was engaged
     trade_history: deque = field(default_factory=lambda: deque(maxlen=100))  # last 100 trades for analysis
+    active_regime: str = "NEUTRAL"
+    active_risk_state: str = "NORMAL"
 
 
 class HardRiskController:
@@ -74,7 +80,13 @@ class HardRiskController:
     - Fail-closed: any check failure = NO TRADING
     """
     
-    def __init__(self, limits: RiskLimits, state_file: Optional[Path] = None, enforce_rules: bool = True):
+    def __init__(
+        self,
+        limits: RiskLimits,
+        state_file: Optional[Path] = None,
+        enforce_rules: bool = True,
+        regime_limit_overrides: Optional[dict[str, dict[str, float | int]]] = None,
+    ):
         """
         Initialize risk controller with limits and optional state persistence.
         
@@ -90,6 +102,9 @@ class HardRiskController:
         self.state = RiskState()
         self.state_file = state_file
         self.enforce_rules = enforce_rules
+        self._base_limits = limits
+        self._active_limits = limits
+        self._regime_limit_overrides = regime_limit_overrides if isinstance(regime_limit_overrides, dict) else {}
         
         mode_str = "ENFORCED" if enforce_rules else "LEARNING/TESTING MODE (rules bypassed)"
         logger.info(f"HardRiskController initialized with limits: {limits}")
@@ -98,6 +113,51 @@ class HardRiskController:
         # Load persistent state if available (e.g., kill-switch from previous crash)
         if self.state_file and self.state_file.exists():
             self._load_state()
+
+    def apply_regime_override(
+        self,
+        *,
+        regime: str,
+        risk_state: str = "NORMAL",
+        risk_multiplier: float | None = None,
+        cooldown_after_streak: int | None = None,
+    ) -> None:
+        normalized_regime = str(regime or "NEUTRAL").upper()
+        normalized_risk_state = str(risk_state or "NORMAL").upper()
+        multiplier = float(risk_multiplier if risk_multiplier is not None else 1.0)
+        if normalized_risk_state == "HIGH_RISK":
+            multiplier = min(multiplier, 0.6)
+
+        override_cfg = self._regime_limit_overrides.get(normalized_regime, {})
+        daily_loss_cap = float(override_cfg.get("daily_loss_cap", self._base_limits.daily_loss_cap * multiplier))
+        max_consecutive_losses = int(
+            override_cfg.get(
+                "max_consecutive_losses",
+                max(1, int(round(self._base_limits.max_consecutive_losses * max(0.5, multiplier)))),
+            )
+        )
+        max_open_risk = float(
+            override_cfg.get("max_open_risk_per_instrument", self._base_limits.max_open_risk_per_instrument * multiplier)
+        )
+        max_regime_risk = float(
+            override_cfg.get("max_exposure_per_regime", self._base_limits.max_exposure_per_regime * multiplier)
+        )
+        base_cooldown = self._base_limits.cooldown_after_streak
+        cooldown = int(
+            override_cfg.get(
+                "cooldown_after_streak",
+                cooldown_after_streak if cooldown_after_streak is not None else max(base_cooldown, int(base_cooldown / max(multiplier, 0.25))),
+            )
+        )
+        self._active_limits = RiskLimits(
+            daily_loss_cap=daily_loss_cap,
+            max_consecutive_losses=max_consecutive_losses,
+            max_open_risk_per_instrument=max_open_risk,
+            max_exposure_per_regime=max_regime_risk,
+            cooldown_after_streak=cooldown,
+        )
+        self.state.active_regime = normalized_regime
+        self.state.active_risk_state = normalized_risk_state
     
     def _load_state(self) -> None:
         """Load persistent state from disk (kill-switch, daily_pnl recovery)."""
@@ -127,7 +187,7 @@ class HardRiskController:
                     'consecutive_losses': self.state.consecutive_losses,
                     'kill_switch_engaged': self.state.kill_switch_engaged,
                     'kill_switch_reason': self.state.kill_switch_reason,
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': _utcnow().isoformat(),
                 }, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save risk state: {e}")
@@ -156,7 +216,7 @@ class HardRiskController:
         """
         self.state.daily_pnl += pnl
         self.state.trade_history.append({
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': _utcnow().isoformat(),
             'symbol': symbol,
             'regime': regime,
             'pnl': pnl,
@@ -166,7 +226,7 @@ class HardRiskController:
         # Update consecutive loss counter
         if pnl < 0:
             self.state.consecutive_losses += 1
-            self.state.last_loss_time = datetime.utcnow()
+            self.state.last_loss_time = _utcnow()
             logger.warning(f"Loss recorded: {pnl:.2f} USD. Consecutive losses: {self.state.consecutive_losses}")
         else:
             self.state.consecutive_losses = 0
@@ -225,16 +285,17 @@ class HardRiskController:
             return False, f"KILL SWITCH ENGAGED: {self.state.kill_switch_reason} (since {self.state.kill_switch_time})"
         
         # 2. Daily loss cap check
-        if self.state.daily_pnl <= self.limits.daily_loss_cap:
-            reason = f"DAILY LOSS CAP breached: {self.state.daily_pnl:.2f} USD <= {self.limits.daily_loss_cap:.2f}"
+        limits = self._active_limits
+        if self.state.daily_pnl <= limits.daily_loss_cap:
+            reason = f"DAILY LOSS CAP breached: {self.state.daily_pnl:.2f} USD <= {limits.daily_loss_cap:.2f}"
             self._engage_kill_switch("daily_loss_cap", reason)
             return False, reason
         
         # 3. Consecutive loss streak + cooldown
-        if self.state.consecutive_losses >= self.limits.max_consecutive_losses:
+        if self.state.consecutive_losses >= limits.max_consecutive_losses:
             if self.state.last_loss_time:
-                elapsed = datetime.utcnow() - self.state.last_loss_time
-                cooldown_period = timedelta(minutes=self.limits.cooldown_after_streak)
+                elapsed = _utcnow() - self.state.last_loss_time
+                cooldown_period = timedelta(minutes=limits.cooldown_after_streak)
                 if elapsed < cooldown_period:
                     remaining = cooldown_period - elapsed
                     reason = f"LOSS STREAK COOLDOWN: {self.state.consecutive_losses} consecutive losses, " \
@@ -245,22 +306,22 @@ class HardRiskController:
                     logger.info(f"Loss streak cooldown expired; resetting consecutive loss counter")
                     self.state.consecutive_losses = 0
             else:
-                reason = f"MAX CONSECUTIVE LOSSES breached: {self.state.consecutive_losses} >= {self.limits.max_consecutive_losses}"
+                reason = f"MAX CONSECUTIVE LOSSES breached: {self.state.consecutive_losses} >= {limits.max_consecutive_losses}"
                 self._engage_kill_switch("max_consecutive_losses", reason)
                 return False, reason
         
         # 4. Per-instrument open risk check
         current_symbol_risk = self.state.open_risk_by_symbol.get(symbol, 0.0)
         total_symbol_risk = current_symbol_risk + proposed_risk
-        if total_symbol_risk > self.limits.max_open_risk_per_instrument:
-            reason = f"MAX INSTRUMENT RISK exceeded for {symbol}: {total_symbol_risk:.2f} > {self.limits.max_open_risk_per_instrument:.2f}"
+        if total_symbol_risk > limits.max_open_risk_per_instrument:
+            reason = f"MAX INSTRUMENT RISK exceeded for {symbol}: {total_symbol_risk:.2f} > {limits.max_open_risk_per_instrument:.2f}"
             return False, reason
         
         # 5. Per-regime exposure check
         current_regime_risk = self.state.open_risk_all_regimes.get(regime, 0.0)
         total_regime_risk = current_regime_risk + proposed_risk
-        if total_regime_risk > self.limits.max_exposure_per_regime:
-            reason = f"MAX REGIME EXPOSURE exceeded for {regime}: {total_regime_risk:.2f} > {self.limits.max_exposure_per_regime:.2f}"
+        if total_regime_risk > limits.max_exposure_per_regime:
+            reason = f"MAX REGIME EXPOSURE exceeded for {regime}: {total_regime_risk:.2f} > {limits.max_exposure_per_regime:.2f}"
             return False, reason
         
         # All checks passed
@@ -277,7 +338,7 @@ class HardRiskController:
         
         self.state.kill_switch_engaged = True
         self.state.kill_switch_reason = f"{rule}: {reason}"
-        self.state.kill_switch_time = datetime.utcnow()
+        self.state.kill_switch_time = _utcnow()
         
         logger.critical(f"!!! KILL SWITCH ENGAGED !!!\nReason: {self.state.kill_switch_reason}\n"
                        f"Time: {self.state.kill_switch_time}\nNO NEW ORDERS ALLOWED")
@@ -338,10 +399,11 @@ class HardRiskController:
             return False, f"KILL SWITCH ENGAGED at market open: {self.state.kill_switch_reason}"
         
         # Check if we're in cooldown
-        if self.state.consecutive_losses >= self.limits.max_consecutive_losses:
+        limits = self._active_limits
+        if self.state.consecutive_losses >= limits.max_consecutive_losses:
             if self.state.last_loss_time:
-                elapsed = datetime.utcnow() - self.state.last_loss_time
-                cooldown_period = timedelta(minutes=self.limits.cooldown_after_streak)
+                elapsed = _utcnow() - self.state.last_loss_time
+                cooldown_period = timedelta(minutes=limits.cooldown_after_streak)
                 if elapsed < cooldown_period:
                     remaining = cooldown_period - elapsed
                     return False, f"LOSS STREAK COOLDOWN active: {remaining.total_seconds():.0f}s remaining"
@@ -355,10 +417,10 @@ class HardRiskController:
         """Return current risk state for monitoring/dashboards."""
         return {
             'daily_pnl': self.state.daily_pnl,
-            'daily_pnl_cap': self.limits.daily_loss_cap,
-            'daily_pnl_remaining': self.limits.daily_loss_cap - self.state.daily_pnl,
+            'daily_pnl_cap': self._active_limits.daily_loss_cap,
+            'daily_pnl_remaining': self._active_limits.daily_loss_cap - self.state.daily_pnl,
             'consecutive_losses': self.state.consecutive_losses,
-            'max_consecutive_losses': self.limits.max_consecutive_losses,
+            'max_consecutive_losses': self._active_limits.max_consecutive_losses,
             'last_loss_time': self.state.last_loss_time.isoformat() if self.state.last_loss_time else None,
             'cooldown_remaining_minutes': self._cooldown_remaining_minutes(),
             'open_risk_by_symbol': dict(self.state.open_risk_by_symbol),
@@ -366,16 +428,25 @@ class HardRiskController:
             'kill_switch_engaged': self.state.kill_switch_engaged,
             'kill_switch_reason': self.state.kill_switch_reason,
             'kill_switch_time': self.state.kill_switch_time.isoformat() if self.state.kill_switch_time else None,
+            'active_regime': self.state.active_regime,
+            'active_risk_state': self.state.active_risk_state,
+            'active_limits': {
+                'daily_loss_cap': self._active_limits.daily_loss_cap,
+                'max_consecutive_losses': self._active_limits.max_consecutive_losses,
+                'max_open_risk_per_instrument': self._active_limits.max_open_risk_per_instrument,
+                'max_exposure_per_regime': self._active_limits.max_exposure_per_regime,
+                'cooldown_after_streak': self._active_limits.cooldown_after_streak,
+            },
             'recent_trades': list(self.state.trade_history)[-10:],
         }
     
     def _cooldown_remaining_minutes(self) -> float:
         """Calculate remaining cooldown time in minutes."""
-        if not self.state.last_loss_time or self.state.consecutive_losses < self.limits.max_consecutive_losses:
+        if not self.state.last_loss_time or self.state.consecutive_losses < self._active_limits.max_consecutive_losses:
             return 0.0
         
-        elapsed = datetime.utcnow() - self.state.last_loss_time
-        cooldown_period = timedelta(minutes=self.limits.cooldown_after_streak)
+        elapsed = _utcnow() - self.state.last_loss_time
+        cooldown_period = timedelta(minutes=self._active_limits.cooldown_after_streak)
         remaining = cooldown_period - elapsed
         
         return max(0.0, remaining.total_seconds() / 60.0)

@@ -51,6 +51,20 @@ def _render_observability_tab(base_url: str) -> None:
         "✅ Connected" if health.get("websocket_connected", True) else "🔌 Down",
     )
 
+    st.markdown("#### Adaptive Regime")
+    regime_name = str(health.get("current_regime", "UNKNOWN") or "UNKNOWN")
+    regime_risk_state = str(health.get("regime_risk_state", "UNKNOWN") or "UNKNOWN")
+    regime_confidence = float(health.get("regime_confidence", 0.0) or 0.0)
+    fast_path_weight = float(health.get("fast_path_weight", 0.0) or 0.0)
+    override_count = int(health.get("high_risk_override_count", 0) or 0)
+    regime_badge = "🔴" if regime_risk_state == "HIGH_RISK" else "🟢"
+    g1, g2, g3, g4 = st.columns(4)
+    g1.metric("Current Regime", f"{regime_badge} {regime_name}")
+    g2.metric("Risk State", regime_risk_state)
+    g3.metric("Confidence", f"{regime_confidence:.2f}")
+    g4.metric("Fast-Path Weight", f"{fast_path_weight:.2f}")
+    st.caption(f"High-risk overrides applied for active regime: {override_count}")
+
     st.divider()
 
     # JSON metrics snapshot (requires API key)
@@ -97,6 +111,45 @@ def _render_observability_tab(base_url: str) -> None:
         f"{_val('lumina_evolution_acceptance_rate') * 100:.1f}%",
     )
     st.metric("Last Confidence", f"{_val('lumina_evolution_last_confidence'):.1f}")
+
+    st.markdown("#### Regime Metrics")
+    current_regime_key = f'lumina_regime_confidence{{regime="{regime_name}"}}'
+    current_fast_path_key = f'lumina_regime_fast_path_weight{{regime="{regime_name}"}}'
+    current_override_key = f'lumina_regime_high_risk_overrides_total{{regime="{regime_name}"}}'
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Regime Confidence", f"{_val(current_regime_key, regime_confidence):.2f}")
+    m2.metric("Fast-Path Weight", f"{_val(current_fast_path_key, fast_path_weight):.2f}")
+    m3.metric("High-Risk Overrides", f"{int(_val(current_override_key, float(override_count)))}")
+
+    # Regime flip history timeline
+    try:
+        hist_resp = requests.get(
+            f"{base_url}/api/monitoring/regime/history",
+            headers=headers,
+            timeout=5,
+        )
+        if hist_resp.ok:
+            hist_rows = hist_resp.json()
+            # Keep only active-transition rows (value == 1.0)
+            active_rows = [r for r in hist_rows if r.get("value") == 1.0]
+            if active_rows:
+                import pandas as pd  # noqa: PLC0415
+
+                flip_df = pd.DataFrame(
+                    [
+                        {
+                            "Time (UTC)": pd.to_datetime(r["ts"], unit="s", utc=True),
+                            "Regime": (r.get("labels") or {}).get("regime", "?"),
+                            "Risk State": (r.get("labels") or {}).get("risk_state", "?"),
+                        }
+                        for r in active_rows
+                    ]
+                ).sort_values("Time (UTC)", ascending=False)
+
+                with st.expander(f"Regime Flip History ({len(flip_df)} events)", expanded=False):
+                    st.dataframe(flip_df, use_container_width=True)
+    except Exception:
+        pass  # history is best-effort; never crash the dashboard
 
     st.markdown("#### Alerts & Chaos Events")
     a1, a2 = st.columns(2)

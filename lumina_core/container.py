@@ -22,6 +22,7 @@ from lumina_core.engine import (
     OperationsService, 
     PerformanceValidator,
     ReportingService, 
+    RegimeDetector,
     ReasoningService, 
     SwarmManager, 
     TradeReconciler,
@@ -107,6 +108,7 @@ class ApplicationContainer:
     market_data_service: MarketDataService = field(init=False)
     memory_service: MemoryService = field(init=False)
     reasoning_service: ReasoningService = field(init=False)
+    regime_detector: RegimeDetector = field(init=False)
     operations_service: OperationsService = field(init=False)
     analysis_service: HumanAnalysisService = field(init=False)
     dashboard_service: DashboardService = field(init=False)
@@ -157,7 +159,10 @@ class ApplicationContainer:
         
         # Initialize core engine
         self.engine = LuminaEngine(self.config)
+        self.engine.observability_service = self.observability_service
         self.runtime_context = RuntimeContext(engine=self.engine, app=None)
+        self.regime_detector = RegimeDetector(config=getattr(self.config, "regime", {}), valuation_engine=self.engine.valuation_engine)
+        self.engine.regime_detector = self.regime_detector
         
         # Initialize inference engine and inject into LuminaEngine
         self.local_inference_engine = LocalInferenceEngine(context=self.runtime_context)
@@ -230,8 +235,10 @@ class ApplicationContainer:
         # Level 2: Services that depend on level 1 services
         self.reasoning_service = ReasoningService(
             engine=self.engine, 
-            inference_engine=self.local_inference_engine
+            inference_engine=self.local_inference_engine,
+            regime_detector=self.regime_detector,
         )
+        self.engine.reasoning_service = self.reasoning_service
         self.dashboard_service = DashboardService(engine=self.engine)
         self.visualization_service = VisualizationService(engine=self.engine)
         self.reporting_service = ReportingService(

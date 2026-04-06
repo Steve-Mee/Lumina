@@ -30,6 +30,72 @@ router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 _obs_service: Any = None
 
 
+def _metric_value(snapshot: dict[str, Any], key: str, default: float = 0.0) -> float:
+    entry = snapshot.get(key) or {}
+    try:
+        return float(entry.get("value", default))
+    except (TypeError, ValueError, AttributeError):
+        return float(default)
+
+
+def _find_metric_entry(snapshot: dict[str, Any], prefix: str, **labels: str) -> dict[str, Any]:
+    for key, entry in snapshot.items():
+        if key == "_meta" or not key.startswith(prefix):
+            continue
+        entry_labels = entry.get("labels") if isinstance(entry, dict) else None
+        if not isinstance(entry_labels, dict):
+            continue
+        if all(str(entry_labels.get(name)) == value for name, value in labels.items()):
+            return entry
+    return {}
+
+
+def _extract_regime_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    current_label = "UNKNOWN"
+    current_risk_state = "UNKNOWN"
+    current_active = _find_metric_entry(snapshot, "lumina_regime_current")
+    if current_active:
+        labels = current_active.get("labels") or {}
+        current_label = str(labels.get("regime", "UNKNOWN"))
+        current_risk_state = str(labels.get("risk_state", "UNKNOWN"))
+
+    regime_confidence = 0.0
+    if current_label != "UNKNOWN":
+        regime_confidence = _metric_value(
+            snapshot,
+            f'lumina_regime_confidence{{regime="{current_label}"}}',
+            0.0,
+        )
+
+    fast_path_weight = 0.0
+    if current_label != "UNKNOWN":
+        fast_path_weight = _metric_value(
+            snapshot,
+            f'lumina_regime_fast_path_weight{{regime="{current_label}"}}',
+            0.0,
+        )
+
+    high_risk_override_count = 0
+    if current_label != "UNKNOWN":
+        override_entry = _find_metric_entry(
+            snapshot,
+            "lumina_regime_high_risk_overrides_total",
+            regime=current_label,
+        )
+        try:
+            high_risk_override_count = int(float((override_entry or {}).get("value", 0.0)))
+        except (TypeError, ValueError):
+            high_risk_override_count = 0
+
+    return {
+        "current_regime": current_label,
+        "regime_risk_state": current_risk_state,
+        "regime_confidence": regime_confidence,
+        "fast_path_weight": fast_path_weight,
+        "high_risk_override_count": high_risk_override_count,
+    }
+
+
 def set_observability_service(service: Any) -> None:
     """Inject the ObservabilityService so all routes share the same instance."""
     global _obs_service
@@ -89,19 +155,18 @@ async def get_health() -> dict[str, Any]:
     obs = _require_service()
     snap = obs.snapshot()
 
-    kill_switch = bool(
-        (snap.get("lumina_risk_kill_switch_active") or {}).get("value", 0)
-    )
-    ws_connected = bool(
-        (snap.get("lumina_websocket_connected") or {}).get("value", 1)
-    )
+    kill_switch = bool(_metric_value(snap, "lumina_risk_kill_switch_active", 0.0))
+    ws_connected = bool(_metric_value(snap, "lumina_websocket_connected", 1.0))
     uptime_s: float = float((snap.get("_meta") or {}).get("uptime_s", 0.0))
+    regime = _extract_regime_summary(snap)
 
     issues: list[str] = []
     if kill_switch:
         issues.append("kill_switch_active")
     if not ws_connected:
         issues.append("websocket_disconnected")
+    if regime["regime_risk_state"] == "HIGH_RISK":
+        issues.append("high_risk_regime")
 
     status = "healthy"
     if "kill_switch_active" in issues:
@@ -114,6 +179,11 @@ async def get_health() -> dict[str, Any]:
         "uptime_s": uptime_s,
         "kill_switch_active": kill_switch,
         "websocket_connected": ws_connected,
+        "current_regime": regime["current_regime"],
+        "regime_risk_state": regime["regime_risk_state"],
+        "regime_confidence": regime["regime_confidence"],
+        "fast_path_weight": regime["fast_path_weight"],
+        "high_risk_override_count": regime["high_risk_override_count"],
         "issues": issues,
         "ts": time.time(),
     }
@@ -138,6 +208,30 @@ async def get_metric_history(
     if collector is None:
         return []
     return collector.query_history(metric, since_ts=since, limit=limit)  # type: ignore[union-attr]
+
+
+@router.get(
+    "/regime/history",
+    summary="Regime flip history",
+    description=(
+        "Retrieve recent regime-change events from the SQLite store. "
+        "Returns rows where lumina_regime_current was recorded; "
+        "filter to value==1.0 for active-regime transitions only."
+    ),
+)
+async def get_regime_history(
+    since: Optional[float] = Query(
+        None, description="Unix timestamp lower bound (inclusive)"
+    ),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum rows to return"),
+    x_api_key: Optional[str] = Header(None),
+) -> list[dict[str, Any]]:
+    _check_api_key(x_api_key)
+    obs = _require_service()
+    collector = getattr(obs, "collector", None)
+    if collector is None:
+        return []
+    return collector.query_history("lumina_regime_current", since_ts=since, limit=limit)  # type: ignore[union-attr]
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
