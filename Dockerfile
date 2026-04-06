@@ -20,6 +20,8 @@ RUN python -m pip wheel --wheel-dir /wheels \
     requests \
     websockets \
     python-dotenv \
+    pyyaml \
+    psutil \
     plotly \
     dash \
     dash-bootstrap-components \
@@ -27,7 +29,10 @@ RUN python -m pip wheel --wheel-dir /wheels \
     pyttsx3 \
     Pillow \
     fpdf2 \
-    chromadb
+    chromadb \
+    streamlit \
+    ollama \
+    xai-sdk
 
 
 FROM python:3.13-slim AS runtime
@@ -57,6 +62,8 @@ RUN python -m pip install --no-index --find-links=/wheels \
     requests \
     websockets \
     python-dotenv \
+    pyyaml \
+    psutil \
     plotly \
     dash \
     dash-bootstrap-components \
@@ -65,6 +72,9 @@ RUN python -m pip install --no-index --find-links=/wheels \
     Pillow \
     fpdf2 \
     chromadb \
+    streamlit \
+    ollama \
+    xai-sdk \
     && rm -rf /wheels
 
 COPY . /app

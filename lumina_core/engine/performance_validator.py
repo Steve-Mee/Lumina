@@ -24,13 +24,13 @@ from .market_data_service import MarketDataService
 
 class PerformanceValidatorPDF(FPDF):
     def header(self):
-        self.set_font("Arial", "B", 14)
+        self.set_font("Helvetica", "B", 14)
         self.cell(0, 10, "LUMINA Performance Validator Report", new_x="LMARGIN", new_y="NEXT", align="C")
         self.ln(2)
 
     def footer(self):
         self.set_y(-15)
-        self.set_font("Arial", "I", 8)
+        self.set_font("Helvetica", "I", 8)
         self.cell(0, 10, f"Page {self.page_no()}", align="C")
 
 
@@ -500,9 +500,9 @@ class PerformanceValidator:
 
             pdf = PerformanceValidatorPDF()
             pdf.add_page()
-            pdf.set_font("Arial", "B", 13)
+            pdf.set_font("Helvetica", "B", 13)
             pdf.cell(0, 8, f"Monthly Validation Report - {datetime.now().strftime('%Y-%m')}", new_x="LMARGIN", new_y="NEXT")
-            pdf.set_font("Arial", "", 11)
+            pdf.set_font("Helvetica", "", 11)
             pdf.cell(0, 7, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", new_x="LMARGIN", new_y="NEXT")
             pdf.cell(0, 7, f"Goal met: {bool(validator_summary.get('goal_met', False))}", new_x="LMARGIN", new_y="NEXT")
             pdf.cell(
@@ -530,9 +530,9 @@ class PerformanceValidator:
             )
             pdf.ln(4)
 
-            pdf.set_font("Arial", "B", 11)
+            pdf.set_font("Helvetica", "B", 11)
             pdf.cell(0, 7, "Live Paper vs Real Snapshot", new_x="LMARGIN", new_y="NEXT")
-            pdf.set_font("Arial", "", 10)
+            pdf.set_font("Helvetica", "", 10)
             pdf.multi_cell(
                 0,
                 6,
@@ -547,7 +547,7 @@ class PerformanceValidator:
             pdf.ln(2)
 
             if chart_path and Path(chart_path).exists():
-                pdf.set_font("Arial", "B", 11)
+                pdf.set_font("Helvetica", "B", 11)
                 pdf.cell(0, 7, "Validation Charts", new_x="LMARGIN", new_y="NEXT")
                 img_y = pdf.get_y()
                 page_width = 210 - 20  # A4 width minus margins
@@ -555,10 +555,10 @@ class PerformanceValidator:
                 pdf.ln(90)
                 pdf.set_x(pdf.l_margin)
 
-            pdf.set_font("Arial", "B", 11)
+            pdf.set_font("Helvetica", "B", 11)
             pdf.set_x(pdf.l_margin)
             pdf.cell(0, 7, "Per-Symbol Results (3Y swarm)", new_x="LMARGIN", new_y="NEXT")
-            pdf.set_font("Arial", "", 10)
+            pdf.set_font("Helvetica", "", 10)
             for row in validator_summary.get("symbols", []):
                 if not isinstance(row, dict):
                     continue

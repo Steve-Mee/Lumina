@@ -91,3 +91,11 @@ See [release-workflow.md](c:/NinjaTraderAI_Bot/docs/release-workflow.md) for the
 ## Current Windows test machine
 
 The current Windows test machine is not a reliable target for native vLLM serving because the runtime lacks the compiled `vllm._C` extension path expected by vLLM. That is why the production recommendation is Linux + Docker.
+
+## Launcher and model management
+
+- The Streamlit launcher now includes a first-run setup wizard for fresh machines.
+- Hardware is classified into `light`, `sweet`, and `beast`, and the UI explains what is required to move up a tier.
+- The setup wizard recommends a Qwen3.5 model using the local hardware snapshot.
+- Model upgrades are driven by `lumina_model_catalog.json`, which means future Lumina-tested Qwen variants can be exposed through normal app updates.
+- Unsloth fine-tuning is scaffolded in the app, but the real training/export step still requires Linux or WSL2 with CUDA.

@@ -1,3 +1,9 @@
 # Core extra dependencies for the hybrid NewsAgent feature
 xai-sdk
 python-dotenv
+streamlit
+pandas
+requests
+PyYAML
+psutil
+ollama

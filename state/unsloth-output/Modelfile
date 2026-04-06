@@ -1,0 +1,6 @@
+FROM "state/unsloth-output/lumina-qwen-custom.q4_k_m.gguf"
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.1
+SYSTEM "You are Lumina trading reasoning. Respond in strict JSON whenever a trade decision is requested."
+TEMPLATE "{{ if .System }}<|system|>{{ .System }}{{ end }}{{ if .Prompt }}<|user|>{{ .Prompt }}{{ end }}<|assistant|>"
+# model_name=lumina-qwen-custom

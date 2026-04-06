@@ -19,7 +19,7 @@ inference:
 
 vllm:
   host: "http://localhost:8000"
-  model_name: "grok-trader-1b"
+  model_name: "qwen3.5-35b"
 
 ollama:
   base_url: "http://localhost:11434"
@@ -30,10 +30,10 @@ ollama:
 
 models:
   vision: "qwen2.5-vl:7b"
-  reasoning: "qwen2.5:7b"
+  reasoning: "qwen3.5:4b"
   reflector: "qwen2.5:3b"
-  meta: "qwen2.5:14b"              # Voor meta-reasoning & counterfactuals
-  grok_trader_1b: "grok-trader-1b"  # Toekomstig distilled model (via vLLM)
+  meta: "qwen3.5:9b"               # Zwaardere lokale reasoning voor sweet-profiel
+  grok_trader_1b: "qwen3.5-35b"    # High-end provider mapping via vLLM
 
 trading:
   instrument: "MES JUN26"

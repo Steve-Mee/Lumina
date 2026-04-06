@@ -10,7 +10,7 @@ inference:
 
 vllm:
   host: "http://vllm:8000"
-  model_name: "grok-trader-1b"
+  model_name: "qwen3.5-35b"
 
 ollama:
   base_url: "http://host.docker.internal:11434"
@@ -21,10 +21,10 @@ ollama:
 
 models:
   vision: "qwen2.5-vl:7b"
-  reasoning: "grok-trader-1b"
+  reasoning: "qwen3.5:35b"
   reflector: "qwen2.5:3b"
-  meta: "qwen2.5:14b"
-  grok_trader_1b: "grok-trader-1b"
+  meta: "qwen3.5:35b"
+  grok_trader_1b: "qwen3.5-35b"
 
 trading:
   instrument: "MES JUN26"

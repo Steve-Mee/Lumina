@@ -52,6 +52,7 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
 - docker-compose.yml: lokale compose stack
 - docker-compose.prod.yml: productie compose stack
 - Dockerfile: container build
+- lumina_launcher.py: startscherm met guided setup, hardwarescan en modelbeheer
 - pytest.ini: pytest instellingen
 - .env: lokale secrets/config (niet publiceren)
 
@@ -69,3 +70,13 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
 - Nieuwe validatie scripts: scripts/validation/
 - Nieuwe tests: tests/
 - Vermijd nieuwe losse root-bestanden tenzij het expliciet een entrypoint of top-level config is.
+
+## Nieuwe machine opstarten
+
+- Eerste bootstrap: `python scripts/bootstrap_lumina.py`
+- Dit script maakt een lokale `.venv`, installeert launcher/runtime dependencies en start daarna Streamlit.
+- De launcher toont bij eerste run een setup-wizard met hardwarescan, aanbevolen Qwen3.5-model en guided installatie.
+- De wizard bewaart setup-status in `state/lumina_setup_complete.json` en `state/lumina_setup_status.json`.
+- Model-upgrades en hardware-aanbevelingen worden gestuurd door `lumina_model_catalog.json`.
+- Unsloth fine-tuning is voorbereid in de app, maar vereist nog steeds Linux of WSL2 met CUDA voordat de echte training kan draaien.
+- Voor GGUF export en modelregistratie kan daarna `python scripts/setup_llama_cpp.py` de `llama.cpp` toolchain voorbereiden op Linux of WSL2.

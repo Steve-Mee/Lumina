@@ -1,0 +1,77 @@
+{
+  "catalog_version": "2026.04.06",
+  "release_notes": "Lumina-tested Qwen3.5 ladder for setup, upgrades, and future fine-tuned variants.",
+  "models": {
+    "qwen3.5-4b": {
+      "display_name": "Qwen3.5 4B Instruct",
+      "family": "qwen3.5",
+      "ollama_tag": "qwen3.5:4b",
+      "parameter_size_b": 4.0,
+      "vram_min_gb": 0,
+      "ram_min_gb": 16,
+      "recommended_tier": "light",
+      "recommended_provider": "ollama",
+      "tested_by_lumina": true,
+      "upgrade_notes": "Instapmodel voor CPU of kleine GPU. Goede eerste installatie op nieuwe machines.",
+      "supports_unsloth": true,
+      "context_length": 8192
+    },
+    "qwen3.5-9b": {
+      "display_name": "Qwen3.5 9B Instruct",
+      "family": "qwen3.5",
+      "ollama_tag": "qwen3.5:9b",
+      "parameter_size_b": 9.0,
+      "vram_min_gb": 8,
+      "ram_min_gb": 32,
+      "recommended_tier": "sweet",
+      "recommended_provider": "ollama",
+      "tested_by_lumina": true,
+      "upgrade_notes": "Beste balans voor de meeste lokale traders. Goede kandidaat voor toekomstige Unsloth QLoRA.",
+      "supports_unsloth": true,
+      "context_length": 16384
+    },
+    "qwen3.5-35b": {
+      "display_name": "Qwen3.5 35B Instruct",
+      "family": "qwen3.5",
+      "ollama_tag": "qwen3.5:35b",
+      "parameter_size_b": 35.0,
+      "vram_min_gb": 20,
+      "ram_min_gb": 64,
+      "recommended_tier": "beast",
+      "recommended_provider": "vllm",
+      "tested_by_lumina": true,
+      "upgrade_notes": "High-end model voor Linux/vLLM. Alleen aanbevelen op sterke GPU-systemen met ruime VRAM.",
+      "supports_unsloth": true,
+      "context_length": 32768
+    },
+    "lumina-qwen3.5-9b-ft": {
+      "display_name": "Lumina Qwen3.5 9B Fine-Tuned",
+      "family": "qwen3.5",
+      "ollama_tag": "lumina-qwen3.5-9b-ft",
+      "parameter_size_b": 9.0,
+      "vram_min_gb": 8,
+      "ram_min_gb": 32,
+      "recommended_tier": "sweet",
+      "recommended_provider": "ollama",
+      "tested_by_lumina": false,
+      "upgrade_notes": "Placeholder voor een toekomstige door Lumina geteste en getrainde releasevariant.",
+      "supports_unsloth": true,
+      "context_length": 16384
+    }
+  },
+  "upgrade_path": {
+    "qwen3.5-4b": [
+      "qwen3.5-9b",
+      "qwen3.5-35b",
+      "lumina-qwen3.5-9b-ft"
+    ],
+    "qwen3.5-9b": [
+      "qwen3.5-35b",
+      "lumina-qwen3.5-9b-ft"
+    ],
+    "qwen3.5-35b": [],
+    "lumina-qwen3.5-9b-ft": [
+      "qwen3.5-35b"
+    ]
+  }
+}
