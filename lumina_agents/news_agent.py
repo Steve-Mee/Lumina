@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import json
 import os
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from xai_sdk import Client
 
+from lumina_core.engine.agent_contracts import NewsInputSchema, NewsOutputSchema, enforce_contract
 from lumina_core.engine.lumina_engine import LuminaEngine
 
 
@@ -37,6 +39,7 @@ class NewsAgent:
     engine: LuminaEngine
     _last_update_dt: datetime | None = None
     _cached_result: dict[str, Any] = field(default_factory=dict)
+    prompt_version: str = "news-agent-v1"
 
     def __post_init__(self) -> None:
         if self.engine is None:
@@ -212,6 +215,28 @@ class NewsAgent:
             f"Known economic schedule events: {json.dumps(schedule_events[:12], ensure_ascii=False)}"
         )
 
+    def _model_hash(self) -> str:
+        raw = str(getattr(self.engine.config, "xai_model", "grok-4.1-fast") or "grok-4.1-fast")
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _contract_input_payload(self) -> dict[str, Any]:
+        app = self._app()
+        news_data = self._safe_dict(app.get_high_impact_news())
+        events = [e for e in self._safe_list(news_data.get("events")) if isinstance(e, dict)]
+        return {
+            "schedule_events_count": len(events),
+            "xai_model": str(getattr(self.engine.config, "xai_model", "grok-4.1-fast") or "grok-4.1-fast"),
+            "update_interval_seconds": self._update_interval_seconds(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @enforce_contract(
+        NewsInputSchema,
+        NewsOutputSchema,
+        prompt_version="news-agent-v1",
+        model_hash_getter=lambda self: self._model_hash(),
+        input_builder=lambda self, _args, _kwargs: self._contract_input_payload(),
+    )
     def run_news_cycle(self) -> dict[str, Any]:
         app = self._app()
         now_utc = datetime.now(timezone.utc)
@@ -256,6 +281,7 @@ class NewsAgent:
                     break
 
         multiplier = self._multiplier_from_sentiment(sentiment_signal, sentiment_score, high_impact)
+        confidence = min(1.0, max(0.0, abs(float(sentiment_score)) + (0.1 if high_impact else 0.0)))
 
         result = {
             "news_data": news_data,
@@ -270,6 +296,7 @@ class NewsAgent:
             "news_avoidance_hold_until_ts": float(hold_until_ts),
             "news_avoidance_reason": avoid_reason,
             "last_update": now_utc.isoformat(),
+            "confidence": round(float(confidence), 4),
         }
 
         macro = self._safe_dict(getattr(app, "world_model", {}).get("macro", {})) if isinstance(getattr(app, "world_model", {}), dict) else {}

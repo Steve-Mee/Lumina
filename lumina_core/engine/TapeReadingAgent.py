@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
+
+from .agent_contracts import (
+    TapeReadingInputSchema,
+    TapeReadingOutputSchema,
+    enforce_contract,
+)
 
 
 @dataclass(slots=True)
@@ -11,6 +19,26 @@ class TapeReadingAgent:
     volume_multiplier_threshold: float = 2.0
     imbalance_threshold: float = 1.5
 
+    def _model_hash(self) -> str:
+        raw = f"{self.volume_multiplier_threshold}:{self.imbalance_threshold}"
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def _contract_input_payload(self, tape: dict[str, float]) -> dict[str, Any]:
+        return {
+            "volume_delta": float(tape.get("volume_delta", 0.0)),
+            "avg_volume_delta_10": float(tape.get("avg_volume_delta_10", 0.0)),
+            "bid_ask_imbalance": float(tape.get("bid_ask_imbalance", 1.0)),
+            "cumulative_delta_10": float(tape.get("cumulative_delta_10", 0.0)),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+
+    @enforce_contract(
+        TapeReadingInputSchema,
+        TapeReadingOutputSchema,
+        prompt_version="tape-reading-v1",
+        model_hash_getter=lambda self: self._model_hash(),
+        input_builder=lambda self, args, _kwargs: self._contract_input_payload(args[0] if args else {}),
+    )
     def score_momentum(self, tape: dict[str, float]) -> dict[str, Any]:
         volume_delta = float(tape.get("volume_delta", 0.0))
         avg_volume_delta = max(1e-6, float(tape.get("avg_volume_delta_10", 0.0)))

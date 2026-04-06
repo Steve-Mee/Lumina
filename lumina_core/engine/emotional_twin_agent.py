@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from lumina_core.runtime_context import RuntimeContext
+from lumina_core.engine.agent_contracts import (
+    EmotionalTwinInputSchema,
+    EmotionalTwinOutputSchema,
+    enforce_contract,
+)
 
 
 class EmotionalTwinAgent:
@@ -48,6 +53,21 @@ class EmotionalTwinAgent:
                             self.calibration[key] = float(loaded[key])
             except Exception:
                 pass
+
+    def _model_hash(self) -> str:
+        payload = json.dumps(self.calibration, sort_keys=True)
+        return __import__("hashlib").sha256(payload.encode("utf-8")).hexdigest()
+
+    def _contract_input_payload(self) -> Dict[str, Any]:
+        dream = self.context.get_current_dream_snapshot()
+        obs = self._get_observation()
+        return {
+            "signal": str(dream.get("signal", "HOLD")),
+            "confidence": float(dream.get("confidence", 0.5) or 0.5),
+            "confluence_score": float(dream.get("confluence_score", 0.0) or 0.0),
+            "regime": str(obs.get("regime", "NEUTRAL")),
+            "timestamp": datetime.now().isoformat(),
+        }
 
     def _get_observation(self) -> Dict[str, Any]:
         """Zelfde observatie als main DreamState."""
@@ -219,6 +239,13 @@ class EmotionalTwinAgent:
         return corrected
 
     # Compatibele hook voor bestaande runtime-workers.
+    @enforce_contract(
+        EmotionalTwinInputSchema,
+        EmotionalTwinOutputSchema,
+        prompt_version="emotional-twin-v1",
+        model_hash_getter=lambda self: self._model_hash(),
+        input_builder=lambda self, _args, _kwargs: self._contract_input_payload(),
+    )
     def run_cycle(self) -> Dict[str, Any]:
         main_dream = self.context.get_current_dream_snapshot()
         corrected = self.apply_correction(main_dream)
@@ -226,6 +253,7 @@ class EmotionalTwinAgent:
             self.context.set_current_dream_fields(corrected)
         result = dict(corrected)
         result["emotional_bias"] = getattr(self, "_last_bias", {})
+        result["confidence"] = float(max(0.0, min(1.0, result.get("confluence_score", 0.0) or 0.0)))
         return result
 
     def nightly_train(

@@ -6,10 +6,11 @@ import random
 import statistics
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from lumina_core.runtime_context import RuntimeContext
+from lumina_core.engine.valuation_engine import ValuationEngine
 
 
 @dataclass(slots=True)
@@ -19,6 +20,12 @@ class BacktesterEngine:
     app: RuntimeContext
     point_value: float = 5.0
     commission_per_side_points: float = 0.25
+    valuation_engine: ValuationEngine = field(default_factory=ValuationEngine)
+
+    def __post_init__(self) -> None:
+        self.valuation_engine = ValuationEngine()
+        instrument = str(getattr(self.app.engine.config, "instrument", "MES"))
+        self.point_value = self.valuation_engine.point_value(instrument)
 
     def run_snapshot_backtest(self, snapshot: list[dict[str, Any]]) -> dict[str, Any]:
         if len(snapshot) < 120:
@@ -139,7 +146,7 @@ class BacktesterEngine:
 
             if pending_side != 0:
                 pending_age += 1
-                if self._queue_filled(rng, volume, avg_volume, pending_age):
+                if self._queue_filled(rng, volume, avg_volume, pending_age, regime):
                     slip_ticks = self._slippage_ticks(volume, avg_volume, regime, slippage_scale=slippage_scale)
                     slippage_ticks.append(slip_ticks)
                     fill_price = self._apply_entry_fill(price, pending_side, slip_ticks)
@@ -354,25 +361,22 @@ class BacktesterEngine:
         vols = [float(r.get("volume", 0.0)) for r in rows if float(r.get("volume", 0.0)) > 0.0]
         return statistics.mean(vols) if vols else 1.0
 
-    def _queue_filled(self, rng: random.Random, volume: float, avg_volume: float, age: int) -> bool:
-        ratio = volume / max(avg_volume, 1e-6)
-        base_prob = 0.35 + min(0.45, ratio * 0.2)
-        age_boost = min(0.2, age * 0.07)
-        return rng.random() < min(0.95, base_prob + age_boost)
+    def _queue_filled(self, rng: random.Random, volume: float, avg_volume: float, age: int, regime: str) -> bool:
+        return self.valuation_engine.should_fill_order(
+            rng=rng,
+            volume=volume,
+            avg_volume=avg_volume,
+            pending_age=age,
+            regime=regime,
+        )
 
     def _slippage_ticks(self, volume: float, avg_volume: float, regime: str, slippage_scale: float) -> float:
-        ratio = volume / max(avg_volume, 1e-6)
-        base = 0.5 - min(0.25, max(0.0, ratio - 1.0) * 0.12)
-        base = max(0.25, min(0.5, base))
-
-        regime_u = regime.upper()
-        multiplier = 1.0
-        if any(x in regime_u for x in ("HIGH_VOL", "VOLATILE", "CHAOS")):
-            multiplier = 1.25
-        elif any(x in regime_u for x in ("LOW_VOL", "RANGE", "CALM")):
-            multiplier = 0.85
-
-        return float(base * multiplier * max(0.5, slippage_scale))
+        return self.valuation_engine.slippage_ticks(
+            volume=volume,
+            avg_volume=avg_volume,
+            regime=regime,
+            slippage_scale=slippage_scale,
+        )
 
     @staticmethod
     def _normalize_regime(raw: str) -> str:
@@ -471,18 +475,27 @@ class BacktesterEngine:
                 encoding="utf-8",
             )
 
-    @staticmethod
     def _apply_entry_fill(price: float, side: int, slip_ticks: float) -> float:
-        tick_size = 0.25
-        return price + (slip_ticks * tick_size * side)
+        instrument = str(getattr(self.app.engine.config, "instrument", "MES"))
+        return self.valuation_engine.apply_entry_fill(
+            symbol=instrument,
+            price=price,
+            side=side,
+            slippage_ticks=slip_ticks,
+        )
 
-    @staticmethod
     def _apply_exit_fill(price: float, side: int, slip_ticks: float) -> float:
-        tick_size = 0.25
-        return price - (slip_ticks * tick_size * side)
+        instrument = str(getattr(self.app.engine.config, "instrument", "MES"))
+        return self.valuation_engine.apply_exit_fill(
+            symbol=instrument,
+            price=price,
+            side=side,
+            slippage_ticks=slip_ticks,
+        )
 
     def _commission_dollars_one_side(self) -> float:
-        return self.commission_per_side_points * self.point_value
+        instrument = str(getattr(self.app.engine.config, "instrument", "MES"))
+        return self.valuation_engine.commission_dollars(symbol=instrument, quantity=1, sides=1)
 
     @staticmethod
     def _sharpe(pnl_values: list[float]) -> float:

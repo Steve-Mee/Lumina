@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from lumina_core.runtime_context import RuntimeContext
+from lumina_core.engine.valuation_engine import ValuationEngine
 
 
 class RealisticBacktesterEngine:
@@ -21,28 +22,31 @@ class RealisticBacktesterEngine:
         self.logger = context.logger
         self.fast_path = context.fast_path          # uit stap 1.2
         self.local_engine = context.local_engine    # uit LocalInferenceEngine
-        self.commission_per_side_pt = 0.25          # MES real commission
-        self.slippage_base_ticks = 0.25             # basis
+        self.valuation_engine = ValuationEngine()
+        self.instrument = str(getattr(self.context.engine.config, "instrument", "MES"))
         self.partial_fill_prob = 0.35               # 35% kans op partial
 
     def _calculate_slippage(self, price: float, volume: float, regime: str, side: str) -> float:
-        """0.25-0.5 tick slippage, hoger bij lage volume / volatile regime"""
-        regime_mult = {
-            "TRENDING": 1.0, "BREAKOUT": 1.3, "VOLATILE": 1.8,
-            "RANGING": 0.7, "NEUTRAL": 1.0
-        }.get(regime.upper(), 1.0)
-
-        vol_factor = max(0.5, min(2.0, 10000 / (volume + 1)))  # lage volume = meer slippage
-        slippage_ticks = self.slippage_base_ticks * regime_mult * vol_factor
-
-        # Random noise voor realisme
+        avg_volume = float(getattr(self.context, "avg_volume_delta_10", volume) or volume)
+        slippage_ticks = self.valuation_engine.slippage_ticks(
+            volume=volume,
+            avg_volume=avg_volume,
+            regime=regime,
+            slippage_scale=1.0,
+        )
         noise = np.random.normal(0, 0.1) * slippage_ticks
-        slippage_price = slippage_ticks * 0.25 * (1 if side == "BUY" else -1) + noise * 0.25
-        return round(slippage_price, 2)
+        side_sign = 1 if side == "BUY" else -1
+        base_slip = self.valuation_engine.slippage_price(
+            symbol=self.instrument,
+            slippage_ticks=slippage_ticks,
+            side=side_sign,
+        )
+        noisy_slip = base_slip + (noise * self.valuation_engine.tick_size(self.instrument))
+        return round(float(noisy_slip), 2)
 
     def _apply_commission(self, qty: int, side: str) -> float:
-        """0.25 point per side per contract"""
-        return qty * self.commission_per_side_pt * 5.0  # MES 1 point = $5
+        _ = side
+        return self.valuation_engine.commission_dollars(symbol=self.instrument, quantity=qty, sides=1)
 
     def _simulate_partial_fill(self, qty: int, price: float, volume: float) -> Tuple[int, float]:
         """Partial fill simulatie + queue position"""
@@ -113,7 +117,13 @@ class RealisticBacktesterEngine:
                     # Exit slippage + commission
                     exit_slip = self._calculate_slippage(exit_price, volume, regime, "SELL" if position > 0 else "BUY")
                     exit_price_real = exit_price + exit_slip
-                    pnl = (exit_price_real - entry_price) * position * 5.0
+                    pnl = self.valuation_engine.pnl_dollars(
+                        symbol=self.instrument,
+                        entry_price=entry_price,
+                        exit_price=exit_price_real,
+                        side=1 if position > 0 else -1,
+                        quantity=abs(position),
+                    )
                     commission = self._apply_commission(abs(position), "exit")
                     equity += pnl - commission
 

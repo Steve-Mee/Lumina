@@ -13,6 +13,7 @@ import pandas as pd
 import requests
 
 from .lumina_engine import LuminaEngine
+from .valuation_engine import ValuationEngine
 
 
 @dataclass(slots=True)
@@ -21,6 +22,7 @@ class OperationsService:
 
     engine: LuminaEngine
     thought_queue: queue.Queue = field(default_factory=queue.Queue)
+    valuation_engine: ValuationEngine = field(default_factory=ValuationEngine)
 
     def __post_init__(self) -> None:
         if self.engine is None:
@@ -190,13 +192,35 @@ class OperationsService:
                     current_price = 0.0
 
                 signed_qty = qty if action.upper() == "BUY" else -qty
+                side = 1 if action.upper() == "BUY" else -1
+                est_slip_ticks = self.valuation_engine.slippage_ticks(
+                    volume=1.0,
+                    avg_volume=1.0,
+                    regime=str(self.engine.get_current_dream_snapshot().get("regime", "NEUTRAL")),
+                    slippage_scale=1.0,
+                )
+                expected_fill = self.valuation_engine.apply_entry_fill(
+                    symbol=self.engine.config.instrument,
+                    price=float(current_price),
+                    side=side,
+                    slippage_ticks=est_slip_ticks,
+                )
+                est_latency_ms = self.valuation_engine.estimate_fill_latency_ms(
+                    volume=1.0,
+                    avg_volume=1.0,
+                    pending_age=1,
+                    regime=str(self.engine.get_current_dream_snapshot().get("regime", "NEUTRAL")),
+                )
                 self.engine.live_position_qty = int(signed_qty)
-                self.engine.last_entry_price = float(current_price)
+                self.engine.last_entry_price = float(expected_fill)
                 self.engine.live_trade_signal = action.upper()
                 self.engine.last_realized_pnl_snapshot = float(self.engine.realized_pnl_today)
 
                 print(f"✅ {trade_mode.upper()} ORDER -> {action} {qty}x @ MARKET")
-                app.logger.info(f"{trade_mode.upper()}_ORDER_SUCCESS,action={action},qty={qty}")
+                app.logger.info(
+                    f"{trade_mode.upper()}_ORDER_SUCCESS,action={action},qty={qty},"
+                    f"expected_fill={expected_fill:.4f},est_latency_ms={est_latency_ms:.1f}"
+                )
                 return True
             app.logger.error(f"Order failed {response.status_code}")
             return False

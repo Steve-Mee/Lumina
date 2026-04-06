@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+from lumina_core.engine.valuation_engine import ValuationEngine
 
 try:
     import gymnasium as gym
@@ -31,6 +32,8 @@ class RLTradingEnvironment(gym.Env):
         self.engine = engine
         self.data = simulator_data
         self.config = config or RLConfig()
+        self.valuation_engine = ValuationEngine()
+        self.instrument = str(getattr(self.engine.config, "instrument", "MES"))
 
         # Action layout: [side, qty_norm, stop_pct, target_pct]
         # side in [0, 2] -> HOLD, BUY, SELL
@@ -90,9 +93,15 @@ class RLTradingEnvironment(gym.Env):
         if self._position == 0 and side != 0:
             self._position = side
             self._qty = qty
-            fill = price + (self.config.slippage_points * side)
+            entry_ticks = max(0.0, float(self.config.slippage_points) / max(self.valuation_engine.tick_size(self.instrument), 1e-9))
+            fill = self.valuation_engine.apply_entry_fill(
+                symbol=self.instrument,
+                price=price,
+                side=side,
+                slippage_ticks=entry_ticks,
+            )
             self._entry_price = fill
-            slippage_cost += abs(fill - price) * qty * 5.0
+            slippage_cost += abs(fill - price) * qty * self.valuation_engine.point_value(self.instrument)
 
         if self._position != 0:
             stop = self._entry_price * (1.0 - stop_pct if self._position > 0 else 1.0 + stop_pct)
@@ -103,9 +112,21 @@ class RLTradingEnvironment(gym.Env):
             flatten = side == 0 and np.random.random() < 0.05
 
             if hit_stop or hit_target or flatten:
-                exit_fill = price - (self.config.slippage_points * self._position)
-                slippage_cost += abs(exit_fill - price) * self._qty * 5.0
-                realized_pnl = (exit_fill - self._entry_price) * self._position * self._qty * 5.0
+                exit_ticks = max(0.0, float(self.config.slippage_points) / max(self.valuation_engine.tick_size(self.instrument), 1e-9))
+                exit_fill = self.valuation_engine.apply_exit_fill(
+                    symbol=self.instrument,
+                    price=price,
+                    side=self._position,
+                    slippage_ticks=exit_ticks,
+                )
+                slippage_cost += abs(exit_fill - price) * self._qty * self.valuation_engine.point_value(self.instrument)
+                realized_pnl = self.valuation_engine.pnl_dollars(
+                    symbol=self.instrument,
+                    entry_price=self._entry_price,
+                    exit_price=exit_fill,
+                    side=self._position,
+                    quantity=self._qty,
+                )
                 self._position = 0
                 self._qty = 0
                 self._entry_price = 0.0

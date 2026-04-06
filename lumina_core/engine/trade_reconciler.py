@@ -14,6 +14,7 @@ import requests
 import websockets
 
 from .lumina_engine import LuminaEngine
+from .valuation_engine import ValuationEngine
 
 
 @dataclass(slots=True)
@@ -73,6 +74,7 @@ class TradeReconciler:
     _backoff_seconds: float = 1.0
     _max_backoff_seconds: float = 30.0
     _heartbeat_seconds: float = 20.0
+    valuation_engine: ValuationEngine = field(default_factory=ValuationEngine)
 
     def __post_init__(self) -> None:
         if self.engine is None:
@@ -427,13 +429,29 @@ class TradeReconciler:
         final_exit = float(fill.price) if fill is not None and use_real_fill else float(pending.detected_exit_price)
         quantity = int(fill.quantity) if fill is not None and fill.quantity else int(pending.quantity)
         commission = float(fill.commission) if fill is not None else 0.0
+        symbol = str(pending.symbol or self.engine.config.instrument)
         if use_real_fill:
-            signed_qty = quantity if pending.signal == "BUY" else -quantity
-            final_pnl = (final_exit - float(pending.entry_price)) * signed_qty * 5.0 - commission
+            signed_side = 1 if pending.signal == "BUY" else -1
+            gross = self.valuation_engine.pnl_dollars(
+                symbol=symbol,
+                entry_price=float(pending.entry_price),
+                exit_price=float(final_exit),
+                side=signed_side,
+                quantity=quantity,
+            )
+            final_pnl = gross - commission
         else:
             final_pnl = float(pending.expected_pnl)
-        slippage_points = float(final_exit - pending.detected_exit_price)
-        fill_latency_ms = max(0.0, (datetime.now(timezone.utc) - pending.detected_ts).total_seconds() * 1000.0)
+        tick_size = self.valuation_engine.tick_size(symbol)
+        slippage_points = float((final_exit - pending.detected_exit_price) / max(tick_size, 1e-9))
+        observed_latency_ms = max(0.0, (datetime.now(timezone.utc) - pending.detected_ts).total_seconds() * 1000.0)
+        est_latency_ms = self.valuation_engine.estimate_fill_latency_ms(
+            volume=max(1.0, float(quantity)),
+            avg_volume=max(1.0, float(quantity)),
+            pending_age=1,
+            regime=str(pending.reflection.get("regime", "NEUTRAL")) if isinstance(pending.reflection, dict) else "NEUTRAL",
+        )
+        fill_latency_ms = max(observed_latency_ms, est_latency_ms)
 
         reconciliation_meta = {
             "status": status,

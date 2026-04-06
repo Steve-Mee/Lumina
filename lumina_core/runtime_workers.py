@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 import requests
 
 from lumina_core.runtime_context import RuntimeContext
+from lumina_core.engine.agent_contracts import validate_execution_decision
+from lumina_core.engine.valuation_engine import ValuationEngine
 
 TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
 
@@ -371,6 +373,7 @@ def supervisor_loop(app: RuntimeContext) -> None:
     swarm_last_cycle = 0.0
     swarm_last_cycle_minute: tuple[int, int, int, int, int] | None = None
     swarm_last_dashboard = 0.0
+    valuation_engine = ValuationEngine()
 
     def _emotional_twin_worker() -> None:
         while True:
@@ -538,6 +541,14 @@ def supervisor_loop(app: RuntimeContext) -> None:
         if hold_until_ts > time.time():
             signal = "HOLD"
 
+        gate_result = validate_execution_decision(
+            signal=str(signal),
+            confluence_score=float(dream_snapshot.get("confluence_score", 0.0) or 0.0),
+            min_confluence=float(min_confluence),
+            hold_until_ts=float(hold_until_ts),
+        )
+        signal = str(gate_result.get("signal", signal))
+
         if signal in ["BUY", "SELL"] and dream_snapshot.get("confluence_score", 0) > min_confluence:
             regime = dream_snapshot.get("regime", "NEUTRAL")
             stop_price = float(dream_snapshot.get("stop", price * 0.99 if signal == "BUY" else price * 1.01))
@@ -545,18 +556,39 @@ def supervisor_loop(app: RuntimeContext) -> None:
             stop_price = price - widened_dist if signal == "BUY" else price + widened_dist
             qty = app.calculate_adaptive_risk_and_qty(price, regime, stop_price)
             qty = max(1, int(qty * max(0.1, qty_multiplier)))
+            side = 1 if signal == "BUY" else -1
 
             if app.engine.config.trade_mode == "paper":
                 if app.sim_position_qty == 0:
                     app.sim_position_qty = qty if signal == "BUY" else -qty
-                    app.sim_entry_price = price
-                    print(f"[{now.strftime('%H:%M:%S')}] 📍 PAPER {signal} {qty}x @ {price:.2f} (adaptive risk)")
+                    est_slip_ticks = valuation_engine.slippage_ticks(
+                        volume=1.0,
+                        avg_volume=1.0,
+                        regime=str(regime),
+                        slippage_scale=1.0,
+                    )
+                    app.sim_entry_price = valuation_engine.apply_entry_fill(
+                        symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                        price=float(price),
+                        side=side,
+                        slippage_ticks=est_slip_ticks,
+                    )
+                    print(f"[{now.strftime('%H:%M:%S')}] 📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (adaptive risk)")
             else:
                 if app.place_order(signal, qty):
                     print(f"[{now.strftime('%H:%M:%S')}] ✅ {app.engine.config.trade_mode.upper()} {signal} {qty}x @ {price:.2f} (regime-adapted)")
 
         if app.engine.config.trade_mode == "paper":
-            app.open_pnl = (price - app.sim_entry_price) * app.sim_position_qty * 5 if app.sim_position_qty != 0 else 0.0
+            if app.sim_position_qty != 0:
+                app.open_pnl = valuation_engine.pnl_dollars(
+                    symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                    entry_price=float(app.sim_entry_price),
+                    exit_price=float(price),
+                    side=1 if app.sim_position_qty > 0 else -1,
+                    quantity=abs(int(app.sim_position_qty)),
+                )
+            else:
+                app.open_pnl = 0.0
         else:
             app.open_pnl = app.account_equity - app.account_balance
 
@@ -567,7 +599,13 @@ def supervisor_loop(app: RuntimeContext) -> None:
             hit_target = (app.sim_position_qty > 0 and price >= target) or (app.sim_position_qty < 0 and price <= target)
 
             if hit_stop or hit_target:
-                pnl_dollars = (price - app.sim_entry_price) * app.sim_position_qty * 5
+                pnl_dollars = valuation_engine.pnl_dollars(
+                    symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                    entry_price=float(app.sim_entry_price),
+                    exit_price=float(price),
+                    side=1 if app.sim_position_qty > 0 else -1,
+                    quantity=abs(int(app.sim_position_qty)),
+                )
                 app.pnl_history.append(pnl_dollars)
                 app.equity_curve.append(app.equity_curve[-1] + pnl_dollars)
                 if app.equity_curve[-1] > app.sim_peak:

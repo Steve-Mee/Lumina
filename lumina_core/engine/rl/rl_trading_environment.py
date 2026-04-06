@@ -7,6 +7,7 @@ import gymnasium as gym
 import numpy as np
 import pandas as pd
 
+from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.runtime_context import RuntimeContext
 
 
@@ -23,6 +24,8 @@ class RLTradingEnvironment(gym.Env):
         self.context = context
         self.fast_path = context.fast_path
         self.backtester = context.backtester
+        self.valuation_engine = ValuationEngine()
+        self.instrument = str(getattr(self.context.engine.config, "instrument", "MES"))
 
         # Observation space (20 features)
         self.observation_space = gym.spaces.Box(
@@ -104,8 +107,7 @@ class RLTradingEnvironment(gym.Env):
             qty = int(
                 self.context.calculate_adaptive_risk_and_qty(price, regime, 0) * qty_pct
             )
-            # Simuleer trade met realistic backtester logic
-            pnl = self.backtester._simulate_single_trade(
+            pnl = self._simulate_single_trade(
                 price, signal, qty, stop_mult, target_mult
             )
 
@@ -130,17 +132,48 @@ class RLTradingEnvironment(gym.Env):
         return self._get_observation(), {}
 
     def _simulate_single_trade(self, price, signal, qty, stop_mult, target_mult):
-        # Placeholder - gebruikt realistic backtester logic
         _ = pd.DataFrame  # keep pandas import explicit for future feature work
         atr = self.context.ohlc_1min["high"].sub(self.context.ohlc_1min["low"]).mean() * 1.5
+
+        side = 0
         if signal == "BUY":
-            _stop = price - atr * stop_mult
-            _target = price + atr * target_mult
-            pnl = (_target - price) * qty * 5 * 0.6  # verwachte win
+            side = 1
+            target_price = price + atr * target_mult
         elif signal == "SELL":
-            _stop = price + atr * stop_mult
-            _target = price - atr * target_mult
-            pnl = (price - _target) * qty * 5 * 0.6
+            side = -1
+            target_price = price - atr * target_mult
         else:
-            pnl = 0
-        return pnl
+            return 0.0
+
+        slip_ticks = self.valuation_engine.slippage_ticks(
+            volume=1.0,
+            avg_volume=1.0,
+            regime=str(self.context.detect_market_regime(self.context.ohlc_1min.tail(60))),
+            slippage_scale=1.0,
+        )
+        entry_fill = self.valuation_engine.apply_entry_fill(
+            symbol=self.instrument,
+            price=float(price),
+            side=side,
+            slippage_ticks=slip_ticks,
+        )
+        exit_fill = self.valuation_engine.apply_exit_fill(
+            symbol=self.instrument,
+            price=float(target_price),
+            side=side,
+            slippage_ticks=slip_ticks,
+        )
+
+        gross = self.valuation_engine.pnl_dollars(
+            symbol=self.instrument,
+            entry_price=entry_fill,
+            exit_price=exit_fill,
+            side=side,
+            quantity=int(qty),
+        )
+        fees = self.valuation_engine.commission_dollars(
+            symbol=self.instrument,
+            quantity=int(qty),
+            sides=2,
+        )
+        return (gross - fees) * 0.6

@@ -13,6 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from lumina_core.engine.valuation_engine import ValuationEngine
+
 
 def _simulate_worker(payload: dict[str, Any]) -> dict[str, Any]:
     ticks: list[dict[str, Any]] = payload["ticks"]
@@ -20,6 +22,8 @@ def _simulate_worker(payload: dict[str, Any]) -> dict[str, Any]:
     seed = int(payload["seed"])
     point_value = float(payload.get("point_value", 5.0))
     max_hold_ticks = int(payload.get("max_hold_ticks", 24))
+    symbol = str(payload.get("symbol", "MES"))
+    valuation = ValuationEngine()
 
     rng = random.Random(seed)
     idx = 0
@@ -73,15 +77,30 @@ def _simulate_worker(payload: dict[str, Any]) -> dict[str, Any]:
         timed_exit = hold_ticks >= max_hold_ticks
 
         if stop_hit or target_hit or timed_exit:
-            slippage_ticks = 0.25 + min(0.25, max(0.0, (2.0 - min(2.0, volume / 2500.0)) * 0.125))
-            commission_points = 0.5  # 0.25 per side
-            if position > 0:
-                fill = price - slippage_ticks * 0.25
-            else:
-                fill = price + slippage_ticks * 0.25
+            slippage_ticks = valuation.slippage_ticks(
+                volume=volume,
+                avg_volume=max(1.0, volume),
+                regime=regime,
+                slippage_scale=1.0,
+            )
+            fill = valuation.apply_exit_fill(
+                symbol=symbol,
+                price=price,
+                side=position,
+                slippage_ticks=slippage_ticks,
+            )
 
-            gross = (fill - entry) * position * qty * point_value
-            net = gross - (commission_points * qty * point_value)
+            gross = valuation.pnl_dollars(
+                symbol=symbol,
+                entry_price=entry,
+                exit_price=fill,
+                side=position,
+                quantity=qty,
+            )
+            # Keep compatibility with existing point value calibration if payload overrides symbol spec.
+            if abs(point_value - valuation.point_value(symbol)) > 1e-9:
+                gross = (fill - entry) * position * qty * point_value
+            net = gross - valuation.commission_dollars(symbol=symbol, quantity=qty, sides=2)
 
             pnl_values.append(net)
             trades += 1
@@ -257,6 +276,7 @@ class InfiniteSimulator:
                 "target_trades": per_worker,
                 "seed": int(time.time()) + i * 13,
                 "point_value": self.point_value,
+                "symbol": str(getattr(self.runtime, "INSTRUMENT", getattr(self.runtime.engine.config, "instrument", "MES"))),
             }
             for i in range(worker_count)
         ]
