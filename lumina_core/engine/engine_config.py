@@ -44,6 +44,15 @@ def _config_yaml_section(section: str) -> dict:
     return section_cfg if isinstance(section_cfg, dict) else {}
 
 
+def _config_yaml_nested(default, *keys: str):
+    current: Any = _load_yaml_config()
+    for key in keys:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+    return default if current is None else current
+
+
 def _env_or_yaml(env_name: str, yaml_key: str, default):
     raw = os.getenv(env_name)
     if raw is not None:
@@ -108,16 +117,72 @@ class EngineConfig(BaseModel):
     xai_model: str = Field(default_factory=lambda: str(_config_yaml_section_value("xai", "model", "grok-4.1-fast")).strip() or "grok-4.1-fast")
     xai_update_interval_sec: int = Field(default_factory=lambda: int(_config_yaml_section_value("xai", "update_interval_sec", 60) or 60))
     finnhub_api_key: str | None = Field(default_factory=lambda: os.getenv("FINNHUB_API_KEY"))
-    crosstrade_token: str | None = Field(default_factory=lambda: os.getenv("CROSSTRADE_TOKEN"))
+    broker_backend: str = Field(
+        default_factory=lambda: str(
+            os.getenv("BROKER_BACKEND")
+            or _config_yaml_nested("paper", "broker", "backend")
+            or "paper"
+        ).strip().lower()
+    )
+    broker_crosstrade_api_key: str | None = Field(
+        default_factory=lambda: str(
+            os.getenv("BROKER_CROSSTRADE_API_KEY")
+            or os.getenv("CROSSTRADE_TOKEN")
+            or _config_yaml_nested("", "broker", "crosstrade", "api_key")
+            or ""
+        ).strip()
+        or None
+    )
+    broker_crosstrade_websocket_url: str = Field(
+        default_factory=lambda: str(
+            os.getenv("BROKER_CROSSTRADE_WEBSOCKET_URL")
+            or os.getenv("CROSSTRADE_FILL_WS_URL")
+            or _config_yaml_nested("wss://app.crosstrade.io/ws/stream", "broker", "crosstrade", "websocket_url")
+            or "wss://app.crosstrade.io/ws/stream"
+        ).strip()
+    )
+    broker_crosstrade_base_url: str = Field(
+        default_factory=lambda: str(
+            os.getenv("BROKER_CROSSTRADE_BASE_URL")
+            or _config_yaml_nested("https://app.crosstrade.io", "broker", "crosstrade", "base_url")
+            or "https://app.crosstrade.io"
+        ).strip()
+    )
+    crosstrade_token: str | None = Field(
+        default_factory=lambda: str(
+            os.getenv("CROSSTRADE_TOKEN") or os.getenv("BROKER_CROSSTRADE_API_KEY") or ""
+        ).strip()
+        or None
+    )
     crosstrade_account: str = Field(default_factory=lambda: os.getenv("CROSSTRADE_ACCOUNT", "DEMO5042070"))
     reconcile_fills: bool = Field(default_factory=lambda: _env_or_yaml_bool("RECONCILE_FILLS", "reconcile_fills", True))
     reconciliation_method: str = Field(default_factory=lambda: str(_env_or_yaml("RECONCILIATION_METHOD", "reconciliation_method", "websocket")).strip().lower())
     reconciliation_timeout_seconds: float = Field(default_factory=lambda: _env_or_yaml_float("RECONCILIATION_TIMEOUT_SECONDS", "reconciliation_timeout_seconds", 15.0))
     use_real_fill_for_pnl: bool = Field(default_factory=lambda: _env_or_yaml_bool("USE_REAL_FILL_FOR_PNL", "use_real_fill_for_pnl", True))
-    crosstrade_fill_ws_url: str = Field(default_factory=lambda: str(os.getenv("CROSSTRADE_FILL_WS_URL", "wss://app.crosstrade.io/ws/stream")).strip())
+    crosstrade_fill_ws_url: str = Field(
+        default_factory=lambda: str(
+            os.getenv("CROSSTRADE_FILL_WS_URL")
+            or os.getenv("BROKER_CROSSTRADE_WEBSOCKET_URL")
+            or "wss://app.crosstrade.io/ws/stream"
+        ).strip()
+    )
     crosstrade_fill_poll_url: str = Field(default_factory=lambda: str(os.getenv("CROSSTRADE_FILL_POLL_URL", "")).strip())
 
-    trade_mode: str = Field(default_factory=lambda: os.getenv("TRADE_MODE", "paper").lower())
+    trade_mode: str = Field(
+        default_factory=lambda: str(
+            os.getenv("TRADE_MODE")
+            or (
+                "real"
+                if str(
+                    os.getenv("BROKER_BACKEND")
+                    or _config_yaml_nested("paper", "broker", "backend")
+                    or "paper"
+                ).strip().lower()
+                == "live"
+                else "paper"
+            )
+        ).strip().lower()
+    )
     max_risk_percent: float = Field(default_factory=lambda: float(os.getenv("MAX_RISK_PERCENT", 1.0)))
     drawdown_kill_percent: float = Field(default_factory=lambda: float(os.getenv("DRAWDOWN_KILL_PERCENT", 8.0)))
 

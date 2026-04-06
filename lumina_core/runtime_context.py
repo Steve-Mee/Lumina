@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from types import ModuleType
+from typing import Any
 
 from lumina_core.engine.lumina_engine import LuminaEngine
 
@@ -10,6 +11,7 @@ class RuntimeContext:
 
     engine: LuminaEngine
     app: ModuleType | None = None
+    container: Any | None = None
 
     def __post_init__(self) -> None:
         if self.engine is None:
@@ -21,7 +23,7 @@ class RuntimeContext:
         return getattr(self.engine, name)
 
     def __setattr__(self, name: str, value):
-        if name in {"engine", "app"}:
+        if name in {"engine", "app", "container"}:
             object.__setattr__(self, name, value)
             return
         setattr(self.engine, name, value)

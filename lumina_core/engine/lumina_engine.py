@@ -117,6 +117,8 @@ class LuminaEngine:
     # Monthly/ultimate performance validation
     validator: Any | None = None
     last_validation: datetime | None = None
+    # Optional runtime observability sink
+    observability_service: Any | None = None
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:

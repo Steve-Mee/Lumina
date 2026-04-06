@@ -4,6 +4,12 @@ reconciliation_method: "websocket"
 reconciliation_timeout_seconds: 15
 use_real_fill_for_pnl: true
 
+broker:
+  backend: paper
+  crosstrade:
+    api_key: "${CROSSTRADE_TOKEN}"
+    websocket_url: "wss://app.crosstrade.io/ws/stream"
+
 xai:
   api_key: "${XAI_API_KEY}"
   model: "grok-4.1-fast"

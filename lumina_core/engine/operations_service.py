@@ -14,6 +14,7 @@ from typing import Any
 import pandas as pd
 import requests
 
+from .broker_bridge import AccountInfo, Order
 from .lumina_engine import LuminaEngine
 from .valuation_engine import ValuationEngine
 
@@ -25,6 +26,7 @@ class OperationsService:
     """Owns remaining runtime helper operations that should not route through legacy wrappers."""
 
     engine: LuminaEngine
+    container: Any | None = None
     thought_queue: queue.Queue = field(default_factory=queue.Queue)
     valuation_engine: ValuationEngine = field(default_factory=ValuationEngine)
 
@@ -36,6 +38,12 @@ class OperationsService:
         if self.engine.app is None:
             raise RuntimeError("LuminaEngine is not bound to runtime app")
         return self.engine.app
+
+    def _broker(self):
+        broker = getattr(self.container, "broker", None)
+        if broker is None:
+            raise RuntimeError("BrokerBridge is not configured on the container")
+        return broker
 
     def thought_logger_thread(self) -> None:
         app = self._app()
@@ -142,21 +150,15 @@ class OperationsService:
     def fetch_account_balance(self) -> bool:
         app = self._app()
         try:
-            response = requests.get(
-                f"https://app.crosstrade.io/v1/api/accounts/{self.engine.config.crosstrade_account}",
-                headers={"Authorization": f"Bearer {self.engine.config.crosstrade_token or ''}"},
-                timeout=8,
+            account: AccountInfo = self._broker().get_account_info()
+            self.engine.account_balance = float(account.balance)
+            self.engine.account_equity = float(account.equity)
+            self.engine.realized_pnl_today = float(account.realized_pnl_today)
+            print(
+                f"💰 ACCOUNT [{self.engine.config.trade_mode.upper()}] -> "
+                f"Equity ${self.engine.account_equity:,.0f} | Realized PnL ${self.engine.realized_pnl_today:,.0f}"
             )
-            if response.status_code == 200:
-                data = response.json()
-                self.engine.account_balance = float(data.get("balance", 50000))
-                self.engine.account_equity = float(data.get("equity", self.engine.account_balance))
-                self.engine.realized_pnl_today = float(data.get("realizedPnlToday", 0))
-                print(
-                    f"💰 ACCOUNT [{self.engine.config.trade_mode.upper()}] -> "
-                    f"Equity ${self.engine.account_equity:,.0f} | Realized PnL ${self.engine.realized_pnl_today:,.0f}"
-                )
-                return True
+            return True
         except Exception as exc:
             app.logger.error(f"Balance fetch error: {exc}")
         return False
@@ -190,21 +192,17 @@ class OperationsService:
 
         try:
             dream_snapshot = self.engine.get_current_dream_snapshot()
-            payload = {
-                "instrument": self.engine.config.instrument,
-                "action": action.upper(),
-                "orderType": "MARKET",
-                "quantity": qty,
-                "stopLoss": dream_snapshot.get("stop", 0),
-                "takeProfit": dream_snapshot.get("target", 0),
-            }
-            response = requests.post(
-                f"https://app.crosstrade.io/v1/api/accounts/{self.engine.config.crosstrade_account}/orders/place",
-                headers={"Authorization": f"Bearer {self.engine.config.crosstrade_token or ''}"},
-                json=payload,
-                timeout=10,
+            result = self.container.broker.submit_order(
+                Order(
+                    symbol=str(self.engine.config.instrument),
+                    side=str(action).upper(),
+                    quantity=int(qty),
+                    order_type="MARKET",
+                    stop_loss=float(dream_snapshot.get("stop", 0) or 0),
+                    take_profit=float(dream_snapshot.get("target", 0) or 0),
+                )
             )
-            if response.status_code in (200, 201):
+            if result.accepted:
                 current_price = 0.0
                 try:
                     with self.engine.live_data_lock:
@@ -247,7 +245,7 @@ class OperationsService:
                     f"expected_fill={expected_fill:.4f},est_latency_ms={est_latency_ms:.1f}"
                 )
                 return True
-            app.logger.error(f"Order failed {response.status_code}")
+            app.logger.error(f"Order failed {result.status} ({result.message})")
             return False
         except Exception as exc:
             app.logger.error(f"Place order error: {exc}")

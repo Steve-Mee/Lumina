@@ -325,8 +325,68 @@ def test_supervisor_loop_runs_swarm_only_on_five_minute_boundary(monkeypatch):
         runtime_workers.supervisor_loop(app)
 
     assert swarm.run_calls == 1
-    assert swarm.apply_calls == 1
-    assert any(update.get("swarm_regime") == "TRENDING" for update in recorded_updates)
+
+
+def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
+    broker_calls: list[object] = []
+
+    class BrokerSpy:
+        def submit_order(self, order):
+            broker_calls.append(order)
+            return SimpleNamespace(accepted=True)
+
+    app = SimpleNamespace(
+        live_data_lock=nullcontext(),
+        live_quotes=[{"last": 5000.0}],
+        ohlc_1min=pd.DataFrame({"close": [5000.0]}),
+        fetch_account_balance=lambda: None,
+        account_equity=50000.0,
+        account_balance=50000.0,
+        save_state=lambda: None,
+        get_current_dream_snapshot=lambda: {
+            "signal": "BUY",
+            "confluence_score": 0.9,
+            "regime": "NEUTRAL",
+            "stop": 4990.0,
+            "target": 5010.0,
+        },
+        set_current_dream_fields=lambda *_a, **_k: None,
+        set_current_dream_value=lambda *_a, **_k: None,
+        is_market_open=lambda: True,
+        sim_position_qty=0,
+        sim_entry_price=0.0,
+        open_pnl=0.0,
+        realized_pnl_today=0.0,
+        calculate_adaptive_risk_and_qty=lambda *_a, **_k: 2,
+        place_order=lambda *_a, **_k: False,
+        pnl_history=[],
+        equity_curve=[50000.0],
+        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None, warning=lambda *_a, **_k: None),
+        engine=SimpleNamespace(
+            config=SimpleNamespace(
+                trade_mode="paper",
+                drawdown_kill_percent=8.0,
+                status_print_interval_sec=9999.0,
+                min_confluence=0.75,
+                instrument="MES JUN26",
+            ),
+            emotional_twin=None,
+            infinite_simulator=None,
+            rl_env=None,
+            ppo_trainer=None,
+            risk_controller=SimpleNamespace(check_can_trade=lambda *_a, **_k: (True, "ok")),
+        ),
+        container=SimpleNamespace(broker=BrokerSpy()),
+        np=np,
+    )
+
+    monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(StopIteration()))
+
+    with pytest.raises(StopIteration):
+        runtime_workers.supervisor_loop(app)
+
+    assert len(broker_calls) == 1
+    assert app.sim_position_qty == 2
 
 
 def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):

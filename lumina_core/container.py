@@ -28,6 +28,7 @@ from lumina_core.engine import (
     TradeReconciler,
     VisualizationService,
 )
+from lumina_core.engine.broker_bridge import BrokerBridge, broker_factory
 from lumina_core.engine.risk_controller import HardRiskController
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
@@ -100,6 +101,7 @@ class ApplicationContainer:
     config: EngineConfig = field(init=False)
     logger: logging.Logger = field(init=False)
     voice_config: VoiceConfig = field(init=False)
+    broker: BrokerBridge = field(default_factory=broker_factory)
     
     # Services (lazily initialized in __post_init__)
     engine: LuminaEngine = field(init=False)
@@ -160,7 +162,7 @@ class ApplicationContainer:
         # Initialize core engine
         self.engine = LuminaEngine(self.config)
         self.engine.observability_service = self.observability_service
-        self.runtime_context = RuntimeContext(engine=self.engine, app=None)
+        self.runtime_context = RuntimeContext(engine=self.engine, app=None, container=self)
         self.regime_detector = RegimeDetector(config=getattr(self.config, "regime", {}), valuation_engine=self.engine.valuation_engine)
         self.engine.regime_detector = self.regime_detector
         
@@ -170,13 +172,19 @@ class ApplicationContainer:
         
         # Initialize services (order matters due to dependencies)
         self._init_services()
+
+        # Broker is selected from config.broker.backend (paper/live).
+        self.broker = broker_factory(config=self.config, engine=self.engine, logger=self.logger)
+        self.broker.connect()
         
         # Register cleanup handlers
         self._register_cleanup()
     
     def _validate_config(self) -> None:
         """Validate required configuration."""
-        if not self.config.crosstrade_token:
+        if str(getattr(self.config, "broker_backend", "paper")).strip().lower() == "live" and not (
+            self.config.broker_crosstrade_api_key or self.config.crosstrade_token
+        ):
             self.logger.error("Config validation failed: CROSSTRADE_TOKEN missing")
             raise ValueError("CROSSTRADE_TOKEN not found in .env or config.yaml")
         
@@ -227,7 +235,7 @@ class ApplicationContainer:
         # Level 1: Services with no service dependencies (only engine)
         self.market_data_service = MarketDataService(engine=self.engine)
         self.memory_service = MemoryService(engine=self.engine)
-        self.operations_service = OperationsService(engine=self.engine)
+        self.operations_service = OperationsService(engine=self.engine, container=self)
         self.analysis_service = HumanAnalysisService(engine=self.engine)
         self.news_agent = NewsAgent(engine=self.engine)
         self.ppo_trainer = PPOTrainer(engine=self.engine)
@@ -237,6 +245,7 @@ class ApplicationContainer:
             engine=self.engine, 
             inference_engine=self.local_inference_engine,
             regime_detector=self.regime_detector,
+            container=self,
         )
         self.engine.reasoning_service = self.reasoning_service
         self.dashboard_service = DashboardService(engine=self.engine)
@@ -317,10 +326,17 @@ class ApplicationContainer:
                     self.tts_engine.stop()
             except Exception as e:
                 self.logger.error(f"Error stopping TTS engine: {e}")
+
+        def cleanup_broker() -> None:
+            try:
+                self.broker.disconnect()
+            except Exception as e:
+                self.logger.error(f"Error disconnecting broker: {e}")
         
         atexit.register(cleanup_traded_reconciler)
         atexit.register(cleanup_observability)
         atexit.register(cleanup_tts)
+        atexit.register(cleanup_broker)
         
         self.logger.info("Cleanup handlers registered")
     

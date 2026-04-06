@@ -8,6 +8,7 @@ import requests
 
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.agent_contracts import validate_execution_decision
+from lumina_core.engine.broker_bridge import Order
 from lumina_core.engine.valuation_engine import ValuationEngine
 
 TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
@@ -579,20 +580,40 @@ def supervisor_loop(app: RuntimeContext) -> None:
 
             if app.engine.config.trade_mode == "paper":
                 if app.sim_position_qty == 0:
-                    app.sim_position_qty = qty if signal == "BUY" else -qty
-                    est_slip_ticks = valuation_engine.slippage_ticks(
-                        volume=1.0,
-                        avg_volume=1.0,
-                        regime=str(regime),
-                        slippage_scale=1.0,
-                    )
-                    app.sim_entry_price = valuation_engine.apply_entry_fill(
-                        symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
-                        price=float(price),
-                        side=side,
-                        slippage_ticks=est_slip_ticks,
-                    )
-                    print(f"[{now.strftime('%H:%M:%S')}] 📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (adaptive risk)")
+                    container = getattr(app, "container", None)
+                    broker = getattr(container, "broker", None) if container is not None else None
+                    submit_ok = True
+                    if broker is not None:
+                        submit_result = broker.submit_order(
+                            Order(
+                                symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                                side=str(signal).upper(),
+                                quantity=int(qty),
+                                order_type="MARKET",
+                                stop_loss=float(dream_snapshot.get("stop", 0.0) or 0.0),
+                                take_profit=float(dream_snapshot.get("target", 0.0) or 0.0),
+                                metadata={"regime": str(regime)},
+                            )
+                        )
+                        submit_ok = bool(getattr(submit_result, "accepted", False))
+
+                    if submit_ok:
+                        app.sim_position_qty = qty if signal == "BUY" else -qty
+                        est_slip_ticks = valuation_engine.slippage_ticks(
+                            volume=1.0,
+                            avg_volume=1.0,
+                            regime=str(regime),
+                            slippage_scale=1.0,
+                        )
+                        app.sim_entry_price = valuation_engine.apply_entry_fill(
+                            symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                            price=float(price),
+                            side=side,
+                            slippage_ticks=est_slip_ticks,
+                        )
+                        print(f"[{now.strftime('%H:%M:%S')}] 📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (adaptive risk)")
+                    else:
+                        app.logger.warning("Paper broker rejected simulated order")
             else:
                 if app.place_order(signal, qty):
                     print(f"[{now.strftime('%H:%M:%S')}] ✅ {app.engine.config.trade_mode.upper()} {signal} {qty}x @ {price:.2f} (regime-adapted)")

@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from .broker_bridge import Order, OrderResult
 from .LocalInferenceEngine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine
 from .regime_detector import RegimeDetector, RegimeSnapshot
@@ -15,6 +16,7 @@ class ReasoningService:
     """Owns XAI interaction and higher-order reasoning workflows."""
 
     engine: LuminaEngine
+    container: Any | None = None
     inference_engine: LocalInferenceEngine | None = None
     regime_detector: RegimeDetector | None = None
     latency_sla_ms: float = 300.0
@@ -67,6 +69,11 @@ class ReasoningService:
 
     def _observability_service(self):
         return getattr(self.engine, "observability_service", None)
+
+    def submit_order(self, order: Order) -> OrderResult:
+        if self.container is None or getattr(self.container, "broker", None) is None:
+            raise RuntimeError("BrokerBridge is not configured on ReasoningService")
+        return self.container.broker.submit_order(order)
 
     def refresh_regime_snapshot(
         self,

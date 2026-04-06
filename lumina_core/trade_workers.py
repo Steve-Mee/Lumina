@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from lumina_core.runtime_context import RuntimeContext
+from lumina_core.engine.broker_bridge import Order, OrderResult
 
 from lumina_bible.workflows import dna_rewrite_daemon as _dna_rewrite_daemon
 from lumina_bible.workflows import process_user_feedback as _process_user_feedback
@@ -108,8 +109,8 @@ def submit_order_with_risk_check(
     symbol: str,
     regime: str,
     proposed_risk: float,
-    order_callback,
-) -> bool | None:
+    order: Order,
+) -> OrderResult | None:
     """
     Submit order ONLY after passing Hard Risk Controller.
     
@@ -120,19 +121,23 @@ def submit_order_with_risk_check(
         symbol: Instrument
         regime: Market regime
         proposed_risk: Risk amount (USD)
-        order_callback: Function to call if risk check passes
+        order: BrokerBridge order payload
     
     Returns:
-        Result of order_callback if check passes, None if blocked
+        OrderResult if check passes, None if blocked
     """
     allowed, reason = check_pre_trade_risk(app, symbol, regime, proposed_risk)
     
     if not allowed:
         app.logger.warning(f"Order blocked by risk controller: {reason}")
         return None
-    
-    # Risk check passed; proceed with order
-    return order_callback()
+
+    container = getattr(app, "container", None)
+    if container is None or getattr(container, "broker", None) is None:
+        raise RuntimeError("RuntimeContext.container.broker is not configured")
+
+    # Risk check passed; proceed with broker bridge.
+    return container.broker.submit_order(order)
 
 
 def reflect_on_trade(app: RuntimeContext, pnl_dollars: float, entry_price: float, exit_price: float, position_qty: int) -> None:
