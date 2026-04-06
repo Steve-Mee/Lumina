@@ -17,6 +17,7 @@ from lumina_bible import BibleEngine
 from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .market_data_manager import MarketDataManager
+from .risk_controller import HardRiskController, RiskLimits
 from .analysis_helpers import (
     build_pa_signature,
     calculate_dynamic_confluence,
@@ -98,6 +99,8 @@ class LuminaEngine:
     # RL omgeving + PPO trainer (nightly learning / live bias)
     rl_env: Any | None = None
     ppo_trainer: Any | None = None
+    # Hard Risk Controller – unbreakable safety layer (fail-closed)
+    risk_controller: HardRiskController | None = None
     # Infinite simulator (nachtelijke miljoenen-trade simulatie)
     infinite_simulator: Any | None = None
     infinite_sim_last_run_date: str | None = None
@@ -173,6 +176,31 @@ class LuminaEngine:
 
             # Engine-native validator instance for nightly and periodic validation hooks.
             self.validator = PerformanceValidator(engine=self)
+
+        # Hard Risk Controller initialization
+        if self.risk_controller is None:
+            risk_config = getattr(self.config, 'risk_controller', {})
+            if isinstance(risk_config, dict):
+                limits = RiskLimits(
+                    daily_loss_cap=risk_config.get('daily_loss_cap', -1000.0),
+                    max_consecutive_losses=risk_config.get('max_consecutive_losses', 3),
+                    max_open_risk_per_instrument=risk_config.get('max_open_risk_per_instrument', 500.0),
+                    max_exposure_per_regime=risk_config.get('max_exposure_per_regime', 2000.0),
+                    cooldown_after_streak=risk_config.get('cooldown_after_streak', 30),
+                )
+            else:
+                limits = RiskLimits()  # Use defaults
+            
+            state_file = getattr(self.config, 'state_dir', None)
+            if state_file:
+                from pathlib import Path  # noqa: PLC0415
+                state_file = Path(state_file) / 'risk_controller_state.json'
+            
+            # Enforce rules only in real/paper trading modes
+            # In sim/backtest/learning modes, rules are bypassed for research
+            enforce_rules = self.config.trade_mode in ("real", "paper")
+            
+            self.risk_controller = HardRiskController(limits, state_file=state_file, enforce_rules=enforce_rules)
 
         if self.config.trade_mode not in {"paper", "sim", "real"}:
             raise ValueError("TRADE_MODE must be one of: paper, sim, real")

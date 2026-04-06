@@ -43,3 +43,31 @@ trading:
     high_bullish: 1.8
     high_bearish: 0.4
     medium_neutral: 1.0
+
+risk_controller:
+  # Hard Risk Controller - Unbreakable Safety Layer (fail-closed)
+  # Sensible defaults; adjust based on instrument volatility & account size
+  
+  # Maximum daily loss before hard kill-switch engages (USD)
+  # Negative value: -1000 means stop trading if daily loss reaches -$1000
+  daily_loss_cap: -1000.0
+  
+  # Maximum consecutive losing trades before cooldown period
+  # After N consecutive losses, trading pauses for cooldown_after_streak minutes
+  max_consecutive_losses: 3
+  
+  # Maximum risk per individual instrument (USD)
+  # Prevents overexposure to single symbol (e.g., MES, NQ, YM)
+  max_open_risk_per_instrument: 500.0
+  
+  # Maximum total exposure per market regime (USD)
+  # Protects against correlated losses across all instruments in same regime
+  # E.g., if trending_up regime has MES + NQ, cap combined risk
+  max_exposure_per_regime: 2000.0
+  
+  # Cooldown period after loss streak (minutes)
+  # After max_consecutive_losses is reached, wait this long before resuming
+  cooldown_after_streak: 30
+  
+  # Enable risk controller (set to false only for testing)
+  enabled: true
