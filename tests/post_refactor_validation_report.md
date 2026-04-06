@@ -2,7 +2,7 @@
 **Date:** 2026-04-06  
 **Validator:** GitHub Copilot automated audit  
 **Branch:** main  
-**Commit baseline:** ae49d0d (feat(safety+valuation): add valuation engine SSOT and enforce agent contracts)
+**Commit baseline:** 717d82a (safety gates + valuation/report bootstrap fixes)
 
 ---
 
@@ -10,7 +10,7 @@
 
 | Run | Result | Details |
 |-----|--------|---------|
-| `pytest -v --tb=short tests/` | ✅ **PASS** | 153 passed, 2 skipped, 0 failed (confirmed ×2 after all fixes) |
+| `pytest -v --tb=short tests/` | ✅ **PASS** | 153 passed, 2 skipped, 0 failed (final run: 24.17s; repeated green after all fixes) |
 
 **Skipped tests** (expected — require live market data):
 - `test_regime_detection_with_real_mes_data`
@@ -20,16 +20,16 @@
 
 ## 2. Smoke Test
 
-Executed via `_smoke_test.py` (removed after run):
+Requested command `python -m lumina_launcher --mode=paper --duration=5m` is a Streamlit UI entrypoint and not headless-safe from CLI (`missing ScriptRunContext`, then interrupted). Per requirement allowance, smoke was executed via equivalent nightly short run path:
 
-| Check | Result |
-|-------|--------|
-| `ValuationEngine.pnl_dollars(MES, entry=5000, exit=5010, side=1, qty=1)` | ✅ 50.00 USD |
-| `validate_execution_decision` allows BUY (conf=0.80 > 0.75) | ✅ signal=BUY |
-| `validate_execution_decision` blocks BUY (conf=0.50 < 0.75) | ✅ signal=HOLD |
-| `thought_log.jsonl` exists with entries | ✅ 102 entries |
-| `HardRiskController` allows trade (fresh state) | ✅ allowed |
-| `HardRiskController` blocks after 3 consecutive losses | ✅ blocked |
+- Command: `python nightly_infinite_sim.py`
+- Artifact: `journal/simulator/nightly_sim_20260406_145258.json`
+- Result: `status=ok`, `executor=ray`, `synthetic_ticks=250000`, `trades=1000006`, `elapsed_sec=239.22`
+
+| Smoke Path | Before | After |
+|------------|--------|-------|
+| `nightly_infinite_sim.py` synthetic generation | ❌ `OverflowError: cannot convert float infinity to integer` in `_generate_synthetic_ticks()` | ✅ completed end-to-end (`status=ok`) after finite-volume guard fix |
+| Launcher CLI invocation | ❌ Not valid headless runtime path in bare mode | ✅ Equivalent nightly smoke used (as permitted) |
 
 ---
 
@@ -51,7 +51,7 @@ Executed via `_smoke_test.py` (removed after run):
 
 | Path | Status | Notes |
 |------|--------|-------|
-| `runtime_workers.supervisor_loop()` | ✅ FIXED | `HardRiskController.check_can_trade()` is now the **VERY FIRST** gate, before `validate_execution_decision()`; fail-closed if controller unavailable |
+| `runtime_workers.supervisor_loop()` | ✅ FIXED | `HardRiskController.check_can_trade()` is now the **VERY FIRST** gate, before `validate_execution_decision()`; dedented to run on every cycle (not only hold-window branch); fail-closed if controller unavailable |
 | `engine/operations_service.place_order()` | ✅ FIXED | HRC check added as VERY FIRST gate before real/sim order is submitted (defense-in-depth) |
 | `analysis_service.run_main_loop()` fast-path | ✅ FIXED | HRC check added before fast-path signal is written to dream state |
 | `trade_workers.check_pre_trade_risk()` | ✅ PASS | Wrapper delegates to `risk_controller.check_can_trade()`; used by `submit_order_with_risk_check()` |
@@ -86,6 +86,7 @@ Executed via `_smoke_test.py` (removed after run):
 | `engine/operations_service.py` | ✅ PASS | `slippage_ticks`, `apply_entry_fill`, `estimate_fill_latency_ms` via `valuation_engine` |
 | `engine/trade_reconciler.py` | ✅ PASS | PnL, tick normalization, fill latency via `valuation_engine` |
 | `runtime_workers.py` | ✅ PASS | Paper fill, open PnL, close PnL via `valuation_engine` |
+| `engine/lumina_engine.py` | ✅ FIXED | `calculate_adaptive_risk_and_qty()` had hardcoded `* 5` point value; now uses `valuation_engine.point_value_for(instrument)` |
 | `engine/reporting_service.py` | ✅ FIXED | `run_auto_backtest()` PnL was `(price - entry) * position * 5` (hardcoded MES multiplier) → replaced with `valuation_engine.pnl_dollars()` |
 
 **Remaining legacy field:** `backtester_engine.commission_per_side_points: float = 0.25` is a declared dataclass field that is no longer used in computation (all commission goes through `valuation_engine`). Non-functional dead field; does not affect execution.
@@ -122,13 +123,12 @@ Executed via `_smoke_test.py` (removed after run):
 
 ## 5. Latency Numbers
 
-| Path | Measured | Budget |
-|------|----------|--------|
-| `FastPathEngine.evaluate()` | Logged per-call `latency_ms` in engine logs | < 200 ms budget |
-| `ValuationEngine.pnl_dollars()` | < 0.01 ms (pure arithmetic) | N/A |
-| `validate_execution_decision()` | < 1 ms (dict lookup + log write) | N/A |
-| `HardRiskController.check_can_trade()` | < 1 ms (dict comparison) | N/A |
-| Full `supervisor_loop()` cycle overhead added | ~1-2 ms (two dict lookups + log append) | Acceptable |
+| Path | Before | After |
+|------|--------|-------|
+| Full test suite (`pytest -v --tb=short`) | 26.57s (first validation run) | 24.17s (final post-fix run) |
+| Equivalent smoke (`nightly_infinite_sim.py`) | Failed before completion (`OverflowError` in synthetic tick generator) | 239.22s completed (`status=ok`, 1,000,006 trades) |
+| `FastPathEngine.evaluate()` | N/A (not isolated in this run) | Logged per-call `latency_ms`; budget target remains < 200 ms |
+| `ValuationEngine` primitives | N/A | Arithmetic-only calls; no measurable overhead observed during validation |
 
 ---
 
@@ -141,6 +141,9 @@ Executed via `_smoke_test.py` (removed after run):
 | 3 | `lumina_core/runtime_workers.py` | Moved HRC to be **VERY FIRST** gate (before `validate_execution_decision()`); previously it was placed after the agent contract gate |
 | 4 | `lumina_core/engine/operations_service.py` | Added HRC as VERY FIRST check in `place_order()` for defense-in-depth on real/sim order submission |
 | 5 | `lumina_core/engine/analysis_service.py` | Added HRC check before fast-path signal is applied to dream state in `run_main_loop()` |
+| 6 | `lumina_core/runtime_workers.py` | Corrected indentation regression so HRC and contract gates execute every cycle (not only while hold window is active) |
+| 7 | `lumina_core/engine/lumina_engine.py` | Replaced hardcoded point-value multiplier in adaptive sizing with `valuation_engine.point_value_for(instrument)` |
+| 8 | `lumina_core/infinite_simulator.py` | Added finite bounds/overflow guard for synthetic volume generation to prevent smoke-run `OverflowError` |
 
 ---
 
@@ -149,10 +152,10 @@ Executed via `_smoke_test.py` (removed after run):
 | Requirement | Result |
 |-------------|--------|
 | Test suite 100% green | ✅ 153/153 (2 skipped, expected) |
-| Smoke test | ✅ All 5 checks passed |
-| ApplicationContainer only bootstrap path | ✅ PASS (after fix #2) |
-| Hard Risk Controller first in every decision path | ✅ PASS (after fixes #3–5; VERY FIRST gate before agent contract in supervisor_loop; defense-in-depth in place_order and analysis_service) |
-| Unified ValuationEngine across all simulators/backtesters/live/reconciler | ✅ PASS (after fix #3) |
+| Smoke test | ✅ PASS (equivalent nightly smoke completed: `status=ok`, `elapsed_sec=239.22`) |
+| ApplicationContainer only bootstrap path | ✅ PASS |
+| Hard Risk Controller first in every decision path | ✅ PASS (after fixes #3–6; VERY FIRST gate before agent contract in supervisor_loop; defense-in-depth in place_order and analysis_service) |
+| Unified ValuationEngine across all simulators/backtesters/live/reconciler | ✅ PASS (after fixes #2 and #7) |
 | Agent contracts with @enforce_contract, confidence, immutable log | ✅ PASS |
 | No agent decision reaches execution without contract validation | ✅ PASS |
 

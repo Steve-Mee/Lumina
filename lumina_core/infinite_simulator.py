@@ -246,8 +246,14 @@ class InfiniteSimulator:
             if rng.random() < 0.004:
                 fat_tail += rng.choice([-1.0, 1.0]) * sigma * (4.0 + rng.random() * 5.0)
 
-            price = max(10.0, price * (1.0 + drift + fat_tail))
-            volume = max(100.0, volume * (0.95 + rng.random() * 0.1) * (1.3 if regime == "VOLATILE" else 1.0))
+            next_price = price * (1.0 + drift + fat_tail)
+            price = max(10.0, next_price) if math.isfinite(next_price) else 10.0
+
+            # Bound synthetic volume growth to avoid float overflow in long runs.
+            next_volume = volume * (0.95 + rng.random() * 0.1) * (1.3 if regime == "VOLATILE" else 1.0)
+            if not math.isfinite(next_volume):
+                next_volume = 100.0
+            volume = min(10_000_000.0, max(100.0, next_volume))
             spread = 0.25 if regime != "VOLATILE" else 0.5
             imbalance = 1.0 + (rng.random() - 0.5) * (0.6 if regime == "RANGING" else 1.2)
 

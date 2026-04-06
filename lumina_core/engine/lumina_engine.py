@@ -18,6 +18,7 @@ from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .market_data_manager import MarketDataManager
 from .risk_controller import HardRiskController, RiskLimits
+from .valuation_engine import ValuationEngine
 from .analysis_helpers import (
     build_pa_signature,
     calculate_dynamic_confluence,
@@ -41,6 +42,7 @@ class LuminaEngine:
     dream_state: DreamState = field(default_factory=DreamState)
     bible_engine: BibleEngine | None = None
     market_data: MarketDataManager = field(default_factory=MarketDataManager)
+    valuation_engine: ValuationEngine = field(default_factory=ValuationEngine)
 
     # Runtime mutable state moved from module globals.
     regime_history: deque = field(default_factory=lambda: deque(maxlen=10))
@@ -331,7 +333,10 @@ class LuminaEngine:
         if stop_distance <= 0:
             stop_distance = price * 0.005
 
-        qty = max(1, int(risk_dollars / (stop_distance * 5)))
+        instrument = str(getattr(self.config, "instrument", "MES"))
+        point_value = self.valuation_engine.point_value_for(instrument)
+        risk_per_contract = max(1e-9, stop_distance * point_value)
+        qty = max(1, int(risk_dollars / risk_per_contract))
         if self.app is not None and hasattr(self.app, "logger"):
             self.app.logger.info(
                 f"ADAPTIVE_RISK,regime={regime},risk_percent={adaptive_risk_percent:.2f},qty={qty}"
