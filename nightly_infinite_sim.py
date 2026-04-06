@@ -4,12 +4,16 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from datetime import datetime
 from types import ModuleType
+from types import SimpleNamespace
 
 from dotenv import load_dotenv
 
-from lumina_core.engine import EngineConfig, MarketDataService, MemoryService
+from lumina_core.engine import EngineConfig, MarketDataService, MemoryService, SelfEvolutionMetaAgent
 from lumina_core.engine.lumina_engine import LuminaEngine
+from lumina_core.engine.valuation_engine import ValuationEngine
+from lumina_core.engine.self_evolution_meta_agent import load_evolution_config
 from lumina_core.infinite_simulator import InfiniteSimulator
 from lumina_core.logging_utils import build_logger
 from lumina_core.ppo_trainer import PPOTrainer
@@ -75,7 +79,43 @@ def main() -> int:
             logger.error(f"Chaos suite failed with exit code {result.returncode}")
             return result.returncode
 
-    report = simulator.run_nightly()
+    dry_run_sim = os.getenv("LUMINA_DRY_RUN_SIM", "false").strip().lower() == "true"
+    if dry_run_sim:
+        report = {
+            "timestamp": datetime.now().isoformat(),
+            "status": "dry_run",
+            "trades": 240,
+            "wins": 131,
+            "net_pnl": 842.5,
+            "mean_pnl": 3.51,
+            "sharpe": 0.84,
+            "samples": [
+                {"reward": 0.32, "regime": "TRENDING"},
+                {"reward": -0.14, "regime": "RANGING"},
+                {"reward": 0.41, "regime": "VOLATILE"},
+            ],
+            "report_path": "dry_run",
+        }
+    else:
+        report = simulator.run_nightly()
+
+    evo_cfg = load_evolution_config()
+    evolution_container = SimpleNamespace(
+        engine=engine,
+        valuation_engine=getattr(engine, "valuation_engine", ValuationEngine()),
+        risk_controller=getattr(engine, "risk_controller", None),
+    )
+    evolution_agent = SelfEvolutionMetaAgent.from_container(
+        container=evolution_container,
+        enabled=bool(evo_cfg.get("enabled", True)),
+        approval_required=bool(evo_cfg.get("approval_required", True)),
+    )
+    evolution_result = evolution_agent.run_nightly_evolution(
+        nightly_report=report,
+        dry_run=dry_run_sim,
+    )
+    report["evolution"] = evolution_result
+
     print(json.dumps(report, indent=2))
     return 0
 

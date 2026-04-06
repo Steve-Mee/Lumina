@@ -113,3 +113,7 @@ security:
     "cors_allowed_origins": ["*"]            # CORS wildcard is forbidden
     "security.debug_mode": [true]            # Debug mode must be explicit false
 
+evolution:
+  enabled: true
+  approval_required: true
+

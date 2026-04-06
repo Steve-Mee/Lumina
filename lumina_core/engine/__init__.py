@@ -12,6 +12,7 @@ from .operations_service import OperationsService
 from .performance_validator import PerformanceValidator
 from .reporting_service import ReportingService
 from .reasoning_service import ReasoningService
+from .self_evolution_meta_agent import SelfEvolutionMetaAgent
 from .multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
 from .swarm_manager import SwarmManager
 from .trade_reconciler import TradeReconciler
@@ -32,6 +33,7 @@ __all__ = [
     "LocalInferenceEngine",
     "ReportingService",
     "ReasoningService",
+    "SelfEvolutionMetaAgent",
     "SymbolNode",
     "MultiSymbolSwarmManager",
     "SwarmManager",
