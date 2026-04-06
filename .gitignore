@@ -50,6 +50,7 @@ old/
 # Runtime generated data
 logs/*.csv
 logs/trade_fill_audit.jsonl
+journal/simulator/*.json
 state/lumina_thought_log.jsonl
 state/live_stream.jsonl
 state/trade_reconciler_status.json
