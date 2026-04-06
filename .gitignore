@@ -58,3 +58,8 @@ state/trade_reconciler_status.json
 # Local Trader League test artifacts
 lumina_os/tests/test_trader_league.db
 lumina_os/tests/test_reconciliation_status.json
+
+# Runtime-generated databases and audit logs
+lumina_vector_db/chroma.sqlite3
+state/metrics.db
+state/evolution_log.jsonl
