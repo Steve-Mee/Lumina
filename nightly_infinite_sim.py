@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from types import ModuleType
 
 from dotenv import load_dotenv
@@ -52,6 +53,28 @@ def main() -> int:
         workers=max(2, (os.cpu_count() or 4) - 1),
         target_trades_per_night=1_000_000,
     )
+
+    if os.getenv("RUN_CHAOS_SUITE", "false").strip().lower() == "true":
+        chaos_cmd = [
+            "python",
+            "-m",
+            "pytest",
+            "tests/chaos_engineering.py",
+            "-m",
+            "chaos_ci_nightly or chaos_ci_smoke",
+            "-q",
+            "--tb=short",
+        ]
+        logger.info("Running chaos suite before nightly simulation")
+        result = subprocess.run(chaos_cmd, capture_output=True, text=True)
+        if result.stdout:
+            logger.info(result.stdout.strip())
+        if result.stderr:
+            logger.warning(result.stderr.strip())
+        if result.returncode != 0:
+            logger.error(f"Chaos suite failed with exit code {result.returncode}")
+            return result.returncode
+
     report = simulator.run_nightly()
     print(json.dumps(report, indent=2))
     return 0

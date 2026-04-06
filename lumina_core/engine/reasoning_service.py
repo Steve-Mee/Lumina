@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -14,6 +15,9 @@ class ReasoningService:
 
     engine: LuminaEngine
     inference_engine: LocalInferenceEngine | None = None
+    latency_sla_ms: float = 300.0
+    _sla_breach_streak: int = 0
+    _sla_recovery_streak: int = 0
 
     def __post_init__(self) -> None:
         if self.engine is None:
@@ -26,6 +30,37 @@ class ReasoningService:
             raise RuntimeError("LuminaEngine is not bound to runtime app")
         return self.engine.app
 
+    def _set_fast_path_only(self, enabled: bool, reason: str) -> None:
+        app = self._app()
+        current = bool(getattr(app, "FAST_PATH_ONLY", False))
+        if current == enabled:
+            return
+        setattr(app, "FAST_PATH_ONLY", enabled)
+        state = "enabled" if enabled else "disabled"
+        app.logger.warning(f"FAST_PATH_ONLY {state} (reasoning): {reason}")
+
+    def _record_latency(self, elapsed_ms: float, source: str) -> None:
+        app = self._app()
+        if elapsed_ms > self.latency_sla_ms:
+            self._sla_breach_streak += 1
+            self._sla_recovery_streak = 0
+            if self._sla_breach_streak >= 2:
+                self._set_fast_path_only(
+                    True,
+                    f"{source} latency {elapsed_ms:.1f}ms above SLA {self.latency_sla_ms:.1f}ms",
+                )
+        else:
+            self._sla_recovery_streak += 1
+            self._sla_breach_streak = 0
+            if self._sla_recovery_streak >= 4:
+                self._set_fast_path_only(False, f"{source} latency recovered ({elapsed_ms:.1f}ms)")
+
+        setattr(app, "REASONING_LATENCY_MS", round(float(elapsed_ms), 2))
+
+    def _fast_path_only_enabled(self) -> bool:
+        app = self._app()
+        return bool(getattr(app, "FAST_PATH_ONLY", False))
+
     def infer_json(
         self,
         payload: dict[str, Any],
@@ -34,12 +69,16 @@ class ReasoningService:
         max_retries: int = 1,
     ) -> dict[str, Any] | None:
         assert self.inference_engine is not None
-        return self.inference_engine.infer_json(
+        started = time.perf_counter()
+        result = self.inference_engine.infer_json(
             payload,
             timeout=timeout,
             context=context,
             max_retries=max_retries,
         )
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        self._record_latency(elapsed_ms, source=context)
+        return result
 
     async def multi_agent_consensus(
         self,
@@ -50,6 +89,14 @@ class ReasoningService:
         fib_levels: dict[str, Any],
     ) -> dict[str, Any]:
         app = self._app()
+        if self._fast_path_only_enabled():
+            app.logger.info("MULTI_AGENT_CONSENSUS_SKIPPED,mode=fast_path_only")
+            return {
+                "signal": "HOLD",
+                "confidence": 0.4,
+                "reason": "Fast-path mode active due to latency SLA breach",
+                "agent_votes": {},
+            }
         agent_styles = self.engine.config.agent_styles
         agent_votes: dict[str, Any] = {}
         consistency_scores: list[float] = []
@@ -81,7 +128,7 @@ Wat is jouw trade-besluit?""",
                 if vote is not None:
                     agent_votes[agent_name] = vote
                     consistency_scores.append(float(vote.get("confidence", 0.5)))
-            except (json.JSONDecodeError, KeyError, TypeError) as exc:
+            except (json.JSONDecodeError, KeyError, TypeError, TimeoutError, RuntimeError, ValueError) as exc:
                 app.logger.error(f"Multi-agent parse error ({agent_name}): {exc}")
                 agent_votes[agent_name] = {"signal": "HOLD", "confidence": 0.3, "reason": "API error"}
 
@@ -109,6 +156,12 @@ Wat is jouw trade-besluit?""",
         past_experiences: str,
     ) -> dict[str, Any]:
         app = self._app()
+        if self._fast_path_only_enabled():
+            return {
+                "meta_score": 0.5,
+                "meta_reasoning": "Skipped: fast-path mode active",
+                "counterfactuals": [],
+            }
         payload = {
             "model": "grok-4.20-0309-reasoning",
             "messages": [

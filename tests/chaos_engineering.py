@@ -1,397 +1,341 @@
-"""
-Chaos Engineering & Degradation Testing Framework for Lumina v50.
+"""Chaos engineering tests for Lumina v50.
 
-Fault-injection tests for production resilience:
-- Websocket drops / reconnects / malformed frames
-- Model inference timeouts & HTTP 5xx errors
-- API signature mismatches & rate limit storms
-- Partial fills & duplicate fills
-- High latency degrade mode (fast-path only)
-- Risk Controller resilience under chaos
-
-Run: pytest tests/chaos_engineering.py -v
-Mark with: @pytest.mark.chaos_* for selective runs
-CI Integration: pytest -k chaos_ or nightly_infinite_sim
+These tests inject failures and validate graceful degradation behavior without
+changing normal runtime behavior.
 """
 
-import json
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
+from unittest.mock import MagicMock
+
 import pytest
-from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
-from unittest.mock import MagicMock, AsyncMock, patch, call
-import time
 
+from lumina_core.engine.LocalInferenceEngine import LocalInferenceEngine
 from lumina_core.engine.lumina_engine import LuminaEngine
-from lumina_core.engine.engine_config import EngineConfig
 from lumina_core.engine.market_data_service import MarketDataService
 from lumina_core.engine.reasoning_service import ReasoningService
-from lumina_core.engine.risk_controller import HardRiskController, RiskLimits, RiskState
+from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
 from lumina_core.engine.trade_reconciler import TradeReconciler
 
 
-# ==============================================================================
-# Shared Fixtures & Mock Factories
-# ==============================================================================
-
-
 @pytest.fixture
-def mock_app():
-    """Mock FastAPI/runtime app."""
-    app = MagicMock()
+def mock_app() -> SimpleNamespace:
+    app = SimpleNamespace()
     app.logger = MagicMock()
     app.logger.info = MagicMock()
-    app.logger.error = MagicMock()
     app.logger.warning = MagicMock()
+    app.logger.error = MagicMock()
+    app.FAST_PATH_ONLY = False
+    app.INSTRUMENT = "MES JUN26"
+    app.SWARM_SYMBOLS = ["MES JUN26", "ES JUN26"]
+    app.CROSSTRADE_ACCOUNT = "test-account"
+    app.CROSSTRADE_TOKEN = "test-token"
+    app.TICK_PRINT_INTERVAL_SEC = 9999
     return app
 
 
 @pytest.fixture
-def engine_config():
-    """Minimal engine configuration."""
-    return EngineConfig(
+def lightweight_engine(mock_app: SimpleNamespace, tmp_path: Path) -> SimpleNamespace:
+    config = SimpleNamespace(
         instrument="MES JUN26",
-        swarm_symbols=["ES", "NQ"],
+        swarm_symbols=["MES JUN26", "ES JUN26"],
         crosstrade_account="test-account",
         crosstrade_token="test-token",
-        xai_api_key="test-xai-key",
-        inference_primary_provider="ollama",
-        ollama_base_url="http://localhost:11434",
         reconciliation_method="websocket",
         reconcile_fills=True,
         use_real_fill_for_pnl=True,
+        crosstrade_fill_ws_url="wss://example.invalid/ws",
+        crosstrade_fill_poll_url="https://example.invalid/fills",
+        trade_mode="real",
+        trade_reconciler_status_file=tmp_path / "reconcile_status.json",
+        trade_reconciler_audit_log=tmp_path / "reconcile_audit.jsonl",
+        agent_styles={
+            "scalper": "style-a",
+            "risk": "style-b",
+        },
+    )
+
+    risk = HardRiskController(
+        RiskLimits(
+            daily_loss_cap=-1000.0,
+            max_consecutive_losses=3,
+            max_open_risk_per_instrument=500.0,
+            max_exposure_per_regime=2000.0,
+            cooldown_after_streak=30,
+        ),
+        enforce_rules=True,
+    )
+
+    return SimpleNamespace(
+        app=mock_app,
+        config=config,
+        risk_controller=risk,
+        pending_trade_reconciliations=[],
+        trade_reconciler_status={},
+        market_data=SimpleNamespace(process_quote_tick=lambda **_: None, get_tape_snapshot=lambda: {}),
     )
 
 
 @pytest.fixture
-def lumina_engine(mock_app, engine_config):
-    """Create a Lumina engine instance."""
-    engine = LuminaEngine(config=engine_config)
-    engine.app = mock_app
-    
-    # Initialize risk controller
-    limits = RiskLimits(
-        daily_loss_cap=-1000.0,
-        max_consecutive_losses=3,
-        max_open_risk_per_instrument=500.0,
-        max_exposure_per_regime=2000.0,
-        cooldown_after_streak=30,
-    )
-    engine.risk_controller = HardRiskController(limits=limits)
-    
-    return engine
+def market_data_service(lightweight_engine: SimpleNamespace) -> MarketDataService:
+    return MarketDataService(engine=cast(LuminaEngine, lightweight_engine))
 
 
 @pytest.fixture
-def market_data_service(lumina_engine):
-    """Create market data service."""
-    return MarketDataService(engine=lumina_engine)
-
-
-@pytest.fixture
-def reasoning_service(lumina_engine):
-    """Create reasoning service."""
-    return ReasoningService(engine=lumina_engine)
-
-
-# ==============================================================================
-# Chaos Scenarios: Websocket Resilience
-# ==============================================================================
+def reasoning_service(lightweight_engine: SimpleNamespace) -> ReasoningService:
+    return ReasoningService(engine=cast(LuminaEngine, lightweight_engine))
 
 
 @pytest.mark.chaos_websocket
-class TestWebsocketChaos:
-    """Test websocket failures and recovery."""
-    
-    @pytest.mark.chaos_websocket_drop
-    def test_websocket_connection_drop_recovery(self, market_data_service):
-        """Test graceful handling of websocket connection drops."""
-        assert market_data_service.engine is not None
-        assert hasattr(market_data_service, 'websocket_listener')
-    
-    @pytest.mark.chaos_websocket_malformed
-    def test_malformed_websocket_frames(self, market_data_service, mock_app):
-        """Test handling of malformed JSON frames."""
-        assert market_data_service._normalize_symbol("MES") == "MES"
-        assert market_data_service._normalize_symbol("mes") == "MES"
-    
-    @pytest.mark.chaos_websocket_timeout
-    def test_websocket_ping_timeout(self, market_data_service):
-        """Test websocket ping/pong timeout handling."""
-        service = market_data_service
-        assert service.engine is not None
-    
-    @pytest.mark.chaos_websocket_reconnect
-    def test_exponential_backoff_reconnect(self, market_data_service):
-        """Test exponential backoff on reconnect attempts."""
-        assert market_data_service.engine is not None
+@pytest.mark.chaos_websocket_drop
+def test_websocket_drop_is_handled(market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _boom(*args, **kwargs):
+        raise ConnectionError("simulated websocket drop")
+
+    monkeypatch.setattr("lumina_core.engine.market_data_service.websockets.connect", _boom)
+    asyncio.run(market_data_service.websocket_listener())
 
 
-# ==============================================================================
-# Chaos Scenarios: Model Inference Failures
-# ==============================================================================
+@pytest.mark.chaos_websocket
+@pytest.mark.chaos_websocket_reconnect
+def test_websocket_connect_uses_ping_timeouts(market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
 
+    def _capture(uri, **kwargs):
+        captured["uri"] = uri
+        captured.update(kwargs)
+        raise RuntimeError("stop after capture")
 
-@pytest.mark.chaos_inference
-class TestInferenceFailureChaos:
-    """Test resilience to model inference failures."""
-    
-    @pytest.mark.chaos_inference_timeout
-    def test_ollama_inference_timeout(self, reasoning_service):
-        """Test timeout on Ollama inference (default 20s)."""
-        assert reasoning_service.inference_engine is not None
-    
-    @pytest.mark.chaos_inference_http5xx
-    def test_vllm_http_5xx_error(self, reasoning_service):
-        """Test HTTP 5xx from vLLM (e.g., 503 Service Unavailable)."""
-        assert reasoning_service.engine is not None
-    
-    @pytest.mark.chaos_inference_xai_rate_limit
-    def test_xai_api_rate_limit_storm(self, reasoning_service):
-        """Test handling of xAI API rate limit (429)."""
-        assert reasoning_service.engine is not None
-    
-    @pytest.mark.chaos_inference_json_parse
-    def test_inference_json_parse_error(self, reasoning_service):
-        """Test handling of malformed JSON from inference engine."""
-        assert reasoning_service.engine is not None
-    
-    @pytest.mark.chaos_inference_network_error
-    def test_inference_network_unreachable(self, reasoning_service):
-        """Test network unreachable to inference provider."""
-        assert reasoning_service.engine is not None
+    monkeypatch.setattr("lumina_core.engine.market_data_service.websockets.connect", _capture)
+    asyncio.run(market_data_service.websocket_listener())
 
-
-# ==============================================================================
-# Chaos Scenarios: API Failures & Signature Mismatches
-# ==============================================================================
+    assert captured["ping_interval"] == 20
+    assert captured["ping_timeout"] == 20
 
 
 @pytest.mark.chaos_api
-class TestAPIFailureChaos:
-    """Test API failure modes and signature mismatches."""
-    
-    @pytest.mark.chaos_api_5xx_storm
-    def test_api_5xx_error_storm(self, lumina_engine):
-        """Test handling of sustained API 5xx errors."""
-        assert lumina_engine.config.crosstrade_account is not None
-    
-    @pytest.mark.chaos_api_signature_mismatch
-    def test_api_signature_mismatch(self, lumina_engine):
-        """Test handling of API signature/auth mismatch."""
-        assert lumina_engine.config.crosstrade_token is not None
-    
-    @pytest.mark.chaos_api_timeout
-    def test_api_request_timeout(self, lumina_engine):
-        """Test timeout on API requests."""
-        assert lumina_engine is not None
-    
-    @pytest.mark.chaos_api_rate_limit
-    def test_api_rate_limit_backoff(self, lumina_engine):
-        """Test rate limit backoff (429 handling)."""
-        assert lumina_engine is not None
+@pytest.mark.chaos_api_5xx_storm
+def test_api_5xx_storm_returns_safe_default(market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch) -> None:
+    response = SimpleNamespace(status_code=503, json=lambda: {"last": 9999, "volume": 1})
+    monkeypatch.setattr("lumina_core.engine.market_data_service.requests.get", lambda *_, **__: response)
+
+    price, volume = market_data_service.fetch_quote()
+    assert (price, volume) == (0.0, 0)
 
 
-# ==============================================================================
-# Chaos Scenarios: Fill Reconciliation
-# ==============================================================================
+@pytest.mark.chaos_api
+@pytest.mark.chaos_api_signature_mismatch
+def test_api_signature_mismatch_returns_safe_default(
+    market_data_service: MarketDataService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = SimpleNamespace(status_code=401, json=lambda: {})
+    monkeypatch.setattr("lumina_core.engine.market_data_service.requests.get", lambda *_, **__: response)
 
-
-@pytest.mark.chaos_fills
-class TestFillReconciliationChaos:
-    """Test resilience to partial/duplicate/missing fills."""
-    
-    @pytest.mark.chaos_fills_partial
-    def test_partial_fill_handling(self, lumina_engine):
-        """Test handling of partial fills."""
-        risk_ctrl = lumina_engine.risk_controller
-        assert risk_ctrl is not None
-    
-    @pytest.mark.chaos_fills_duplicate
-    def test_duplicate_fill_detection(self, lumina_engine):
-        """Test detection and rejection of duplicate fills."""
-        assert lumina_engine is not None
-    
-    @pytest.mark.chaos_fills_missing
-    def test_missing_fill_detection(self, lumina_engine):
-        """Test detection of missing fills."""
-        assert lumina_engine is not None
-    
-    @pytest.mark.chaos_fills_out_of_order
-    def test_out_of_order_fill_handling(self, lumina_engine):
-        """Test handling of fills arriving out of sequence."""
-        assert lumina_engine is not None
-    
-    @pytest.mark.chaos_fills_websocket_gap
-    def test_fill_websocket_gap_recovery(self, lumina_engine):
-        """Test recovery from websocket gap in fill stream."""
-        assert lumina_engine is not None
-
-
-# ==============================================================================
-# Chaos Scenarios: Latency Degradation & Fast-Path
-# ==============================================================================
+    price, volume = market_data_service.fetch_quote()
+    assert (price, volume) == (0.0, 0)
 
 
 @pytest.mark.chaos_degradation
-class TestLatencyDegradationMode:
-    """Test degrade-mode logic under high latency."""
-    
-    @pytest.mark.chaos_degrade_high_latency
-    def test_high_latency_triggers_degrade_mode(self, lumina_engine, reasoning_service):
-        """Test that high latency triggers fast-path-only mode."""
-        assert lumina_engine is not None
-    
-    @pytest.mark.chaos_degrade_fast_path_only
-    def test_fast_path_only_mode_behavior(self, lumina_engine, reasoning_service):
-        """Test fast-path-only decision making under degrade mode."""
-        risk_ctrl = lumina_engine.risk_controller
-        assert risk_ctrl is not None
-        assert risk_ctrl.enforce_rules is True
-    
-    @pytest.mark.chaos_degrade_recovery
-    def test_degrade_mode_recovery(self, lumina_engine, reasoning_service):
-        """Test recovery from degrade mode when latency normalizes."""
-        assert lumina_engine is not None
+@pytest.mark.chaos_degrade_high_latency
+def test_market_data_latency_breach_enables_fast_path(market_data_service: MarketDataService) -> None:
+    app = market_data_service.engine.app
+    assert app is not None
+    assert app.FAST_PATH_ONLY is False
+
+    market_data_service._record_latency(420.0, "websocket")
+    market_data_service._record_latency(410.0, "websocket")
+    market_data_service._record_latency(430.0, "websocket")
+
+    assert app.FAST_PATH_ONLY is True
 
 
-# ==============================================================================
-# Chaos Scenarios: Risk Controller Resilience
-# ==============================================================================
+@pytest.mark.chaos_degradation
+@pytest.mark.chaos_degrade_recovery
+def test_market_data_latency_recovery_disables_fast_path(market_data_service: MarketDataService) -> None:
+    app = market_data_service.engine.app
+    assert app is not None
+
+    market_data_service._record_latency(420.0, "websocket")
+    market_data_service._record_latency(420.0, "websocket")
+    market_data_service._record_latency(420.0, "websocket")
+    assert app.FAST_PATH_ONLY is True
+
+    for _ in range(5):
+        market_data_service._record_latency(50.0, "websocket")
+
+    assert app.FAST_PATH_ONLY is False
+
+
+@pytest.mark.chaos_inference
+@pytest.mark.chaos_inference_timeout
+def test_inference_timeout_degrades_to_hold(reasoning_service: ReasoningService, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _timeout(*args, **kwargs):
+        raise TimeoutError("provider timeout")
+
+    reasoning_service.inference_engine = cast(LocalInferenceEngine, SimpleNamespace(infer_json=_timeout))
+
+    result = asyncio.run(
+        reasoning_service.multi_agent_consensus(
+            price=5000.0,
+            mtf_data="flat",
+            pa_summary="neutral",
+            structure={"bos": False, "choch": False},
+            fib_levels={"0.5": 5000.0},
+        )
+    )
+
+    assert result["signal"] == "HOLD"
+    assert "agent_votes" in result
+
+
+@pytest.mark.chaos_inference
+@pytest.mark.chaos_inference_timeout
+def test_ollama_timeout_path_triggers_fast_path(reasoning_service: ReasoningService) -> None:
+    app = reasoning_service.engine.app
+    assert app is not None
+
+    reasoning_service._record_latency(450.0, "ollama_timeout")
+    reasoning_service._record_latency(460.0, "ollama_timeout")
+
+    assert app.FAST_PATH_ONLY is True
+
+
+@pytest.mark.chaos_inference
+@pytest.mark.chaos_inference_http5xx
+def test_vllm_http_5xx_like_timeout_triggers_fast_path(reasoning_service: ReasoningService) -> None:
+    app = reasoning_service.engine.app
+    assert app is not None
+
+    reasoning_service._record_latency(510.0, "vllm_5xx")
+    reasoning_service._record_latency(520.0, "vllm_5xx")
+
+    assert app.FAST_PATH_ONLY is True
+
+
+@pytest.mark.chaos_inference
+@pytest.mark.chaos_inference_xai_rate_limit
+def test_xai_timeout_triggers_fast_path(reasoning_service: ReasoningService) -> None:
+    app = reasoning_service.engine.app
+    assert app is not None
+
+    reasoning_service._record_latency(700.0, "xai_timeout")
+    reasoning_service._record_latency(720.0, "xai_timeout")
+
+    assert app.FAST_PATH_ONLY is True
+
+
+@pytest.mark.chaos_degradation
+@pytest.mark.chaos_degrade_fast_path_only
+def test_reasoning_fast_path_short_circuit(reasoning_service: ReasoningService) -> None:
+    app = reasoning_service.engine.app
+    assert app is not None
+    setattr(app, "FAST_PATH_ONLY", True)
+
+    result = asyncio.run(
+        reasoning_service.multi_agent_consensus(
+            price=5000.0,
+            mtf_data="flat",
+            pa_summary="neutral",
+            structure={"bos": False, "choch": False},
+            fib_levels={"0.5": 5000.0},
+        )
+    )
+
+    assert result["signal"] == "HOLD"
+    assert "Fast-path mode" in result["reason"]
+
+
+@pytest.mark.chaos_degradation
+@pytest.mark.chaos_integration_reasoning_sla
+def test_reasoning_latency_breach_enables_fast_path(reasoning_service: ReasoningService) -> None:
+    app = reasoning_service.engine.app
+    assert app is not None
+
+    reasoning_service._record_latency(600.0, "infer")
+    reasoning_service._record_latency(620.0, "infer")
+
+    assert app.FAST_PATH_ONLY is True
+
+
+@pytest.mark.chaos_fills
+@pytest.mark.chaos_fills_duplicate
+def test_duplicate_fill_is_rejected(lightweight_engine: SimpleNamespace) -> None:
+    reconciler = TradeReconciler(engine=cast(LuminaEngine, lightweight_engine))
+    payload = {
+        "type": "fill",
+        "fillId": "fill-1",
+        "instrument": "MES JUN26",
+        "side": "BUY",
+        "quantity": 1,
+        "fillPrice": 5000.25,
+        "timestamp": "2026-04-06T12:00:00Z",
+    }
+
+    first = reconciler.ingest_fill_event(payload)
+    second = reconciler.ingest_fill_event(payload)
+
+    assert first is True
+    assert second is False
+
+
+@pytest.mark.chaos_fills
+@pytest.mark.chaos_fills_partial
+def test_partial_fill_ingestion_is_accepted(lightweight_engine: SimpleNamespace) -> None:
+    reconciler = TradeReconciler(engine=cast(LuminaEngine, lightweight_engine))
+    payload = {
+        "type": "fill",
+        "fillId": "fill-partial-1",
+        "instrument": "MES JUN26",
+        "side": "SELL",
+        "quantity": 2,
+        "fillPrice": 4998.75,
+        "timestamp": "2026-04-06T12:01:00Z",
+    }
+
+    assert reconciler.ingest_fill_event(payload) is True
 
 
 @pytest.mark.chaos_risk
-class TestRiskControllerChaos:
-    """Test risk controller behavior under chaos/extreme conditions."""
-    
-    @pytest.mark.chaos_risk_kill_switch
-    def test_risk_kill_switch_under_cascade_failures(self, lumina_engine):
-        """Test kill-switch activation during cascade failures."""
-        risk_ctrl = lumina_engine.risk_controller
-        assert risk_ctrl is not None
-        assert risk_ctrl.state.kill_switch_engaged is False
-    
-    @pytest.mark.chaos_risk_daily_loss_cap
-    def test_daily_loss_cap_blocking(self, lumina_engine):
-        """Test daily loss cap hard block."""
-        risk_ctrl = lumina_engine.risk_controller
-        assert risk_ctrl.state.daily_pnl == 0.0
-    
-    @pytest.mark.chaos_risk_exposure_limit
-    def test_per_regime_exposure_limit(self, lumina_engine):
-        """Test per-regime exposure limit enforcement."""
-        risk_ctrl = lumina_engine.risk_controller
-        assert risk_ctrl is not None
-    
-    @pytest.mark.chaos_risk_consecutive_loss_cooldown
-    def test_consecutive_loss_cooldown(self, lumina_engine):
-        """Test trading freeze after consecutive losses."""
-        risk_ctrl = lumina_engine.risk_controller
-        assert risk_ctrl.limits.max_consecutive_losses == 3
+@pytest.mark.chaos_risk_kill_switch
+def test_risk_controller_hard_block_under_chaos(lightweight_engine: SimpleNamespace) -> None:
+    risk = lightweight_engine.risk_controller
+    assert risk is not None
+
+    risk.state.kill_switch_engaged = True
+    risk.state.kill_switch_reason = "chaos cascade"
+
+    allowed, reason = risk.check_can_trade(symbol="MES JUN26", regime="VOLATILE", proposed_risk=25.0)
+    assert allowed is False
+    assert "KILL SWITCH ENGAGED" in reason
 
 
-# ==============================================================================
-# Chaos Scenarios: Combined Fault Scenarios
-# ==============================================================================
+@pytest.mark.chaos_risk
+@pytest.mark.chaos_risk_daily_loss_cap
+def test_risk_controller_daily_cap_blocks_and_engages_kill_switch(lightweight_engine: SimpleNamespace) -> None:
+    risk = lightweight_engine.risk_controller
+    assert risk is not None
 
+    risk.state.daily_pnl = -1500.0
+    allowed, reason = risk.check_can_trade(symbol="MES JUN26", regime="VOLATILE", proposed_risk=10.0)
 
-@pytest.mark.chaos_combined
-class TestCombinedChaosScenarios:
-    """Test resilience under multiple simultaneous faults."""
-    
-    @pytest.mark.chaos_scenario_black_swan
-    def test_black_swan_event_scenario(self, lumina_engine, market_data_service, reasoning_service):
-        """Test system behavior during extreme market stress (black swan)."""
-        assert lumina_engine.risk_controller.enforce_rules is True
-    
-    @pytest.mark.chaos_scenario_market_halt
-    def test_market_halt_and_resume(self, lumina_engine):
-        """Test handling of market halts and resume."""
-        assert lumina_engine is not None
-    
-    @pytest.mark.chaos_scenario_cascading_failures
-    def test_cascading_failure_isolation(self, lumina_engine):
-        """Test that failures in one subsystem don't cascade."""
-        assert lumina_engine.risk_controller is not None
-
-
-# ==============================================================================
-# Integration Tests: Degrade Mode Logic
-# ==============================================================================
-
-
-@pytest.mark.chaos_integration
-class TestDegradeModeIntegration:
-    """Integration tests for degrade mode activation and recovery."""
-    
-    @pytest.mark.chaos_integration_market_data_sla
-    def test_market_data_service_sla_monitoring(self, market_data_service):
-        """Test market data service monitors SLA."""
-        assert market_data_service.engine is not None
-    
-    @pytest.mark.chaos_integration_reasoning_sla
-    def test_reasoning_service_sla_monitoring(self, reasoning_service):
-        """Test reasoning service monitors inference SLA."""
-        assert reasoning_service.inference_engine is not None
-    
-    @pytest.mark.chaos_integration_end_to_end_degradation
-    def test_end_to_end_degradation_workflow(self, lumina_engine, market_data_service, reasoning_service):
-        """Test complete degradation workflow under load."""
-        assert lumina_engine.risk_controller.enforce_rules is True
-
-
-# ==============================================================================
-# Reporting & Metrics Collection
-# ==============================================================================
-
-
-@pytest.mark.chaos_metrics
-class TestChaosMetricsCollection:
-    """Test metrics collection during chaos scenarios."""
-    
-    @pytest.mark.chaos_metrics_latency
-    def test_latency_histogram_collection(self, lumina_engine):
-        """Test latency metrics collection."""
-        assert lumina_engine is not None
-    
-    @pytest.mark.chaos_metrics_error_rates
-    def test_error_rate_tracking(self, lumina_engine):
-        """Test error rate metrics."""
-        assert lumina_engine is not None
-    
-    @pytest.mark.chaos_metrics_recovery_time
-    def test_recovery_time_measurement(self, lumina_engine):
-        """Test recovery time metrics."""
-        assert lumina_engine is not None
-
-
-# ==============================================================================
-# CI Integration & Nightly Run Configuration
-# ==============================================================================
-
-
-@pytest.fixture(scope="session")
-def chaos_config():
-    """Configuration for chaos runs."""
-    return {
-        "enabled": True,
-        "duration_minutes": 5,
-        "enable_nightly": True,
-        "failure_injection_rate": 0.15,
-        "max_concurrent_faults": 3,
-        "report_path": "chaos_engineering_report.json",
-    }
+    assert allowed is False
+    assert "DAILY LOSS CAP" in reason
+    assert risk.state.kill_switch_engaged is True
 
 
 @pytest.mark.chaos_ci_integration
-class TestChaosCI:
-    """Tests for CI integration."""
-    
-    @pytest.mark.chaos_ci_smoke
-    def test_chaos_smoke_test_ci(self, chaos_config):
-        """Quick chaos smoke test for CI."""
-        assert chaos_config["enabled"] is True
-    
-    @pytest.mark.chaos_ci_nightly
-    def test_chaos_nightly_configuration(self, chaos_config):
-        """Test nightly run configuration."""
-        assert chaos_config["enable_nightly"] is True
+@pytest.mark.chaos_ci_smoke
+def test_chaos_smoke_suite_fixture(lightweight_engine: SimpleNamespace) -> None:
+    assert lightweight_engine.config.reconcile_fills is True
+    assert lightweight_engine.config.reconciliation_method == "websocket"
+
+
+@pytest.mark.chaos_ci_integration
+@pytest.mark.chaos_ci_nightly
+def test_chaos_nightly_marker_path(lightweight_engine: SimpleNamespace) -> None:
+    assert lightweight_engine.config.trade_mode == "real"

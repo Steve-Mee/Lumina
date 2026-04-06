@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -21,6 +22,10 @@ class MarketDataService:
 
     engine: LuminaEngine
     tape_agent: TapeReadingAgent = field(default_factory=TapeReadingAgent)
+    latency_sla_ms: float = 250.0
+    latency_window: deque[float] = field(default_factory=lambda: deque(maxlen=50))
+    _sla_breach_streak: int = 0
+    _sla_recovery_streak: int = 0
 
     def __post_init__(self) -> None:
         if self.engine is None:
@@ -46,6 +51,36 @@ class MarketDataService:
     def _normalize_symbol(symbol: str) -> str:
         return str(symbol).strip().upper()
 
+    def _set_fast_path_only(self, enabled: bool, reason: str) -> None:
+        app = self._app()
+        current = bool(getattr(app, "FAST_PATH_ONLY", False))
+        if current == enabled:
+            return
+        setattr(app, "FAST_PATH_ONLY", enabled)
+        state = "enabled" if enabled else "disabled"
+        app.logger.warning(f"FAST_PATH_ONLY {state} (market data): {reason}")
+
+    def _record_latency(self, elapsed_ms: float, source: str) -> None:
+        app = self._app()
+        self.latency_window.append(float(elapsed_ms))
+
+        if elapsed_ms > self.latency_sla_ms:
+            self._sla_breach_streak += 1
+            self._sla_recovery_streak = 0
+            if self._sla_breach_streak >= 3:
+                self._set_fast_path_only(
+                    True,
+                    f"{source} latency {elapsed_ms:.1f}ms above SLA {self.latency_sla_ms:.1f}ms",
+                )
+        else:
+            self._sla_recovery_streak += 1
+            self._sla_breach_streak = 0
+            if self._sla_recovery_streak >= 5:
+                self._set_fast_path_only(False, f"{source} latency recovered ({elapsed_ms:.1f}ms)")
+
+        avg_latency = sum(self.latency_window) / max(1, len(self.latency_window))
+        setattr(app, "MARKET_DATA_LATENCY_MS", round(avg_latency, 2))
+
     async def websocket_listener(self) -> None:
         app = self._app()
         last_tick_print = 0.0
@@ -62,6 +97,7 @@ class MarketDataService:
                 await ws.send(json.dumps({"action": "subscribe", "instruments": subscribed_symbols}))
 
                 async for message in ws:
+                    tick_start = time.perf_counter()
                     try:
                         data = json.loads(message)
                         if data.get("type") != "marketData":
@@ -120,6 +156,8 @@ class MarketDataService:
                                 )
                                 print(f"[{ts.strftime('%H:%M:%S')}] LIVE tick -> last={price:.2f} | {tape_txt}")
                                 last_tick_print = time.time()
+                        elapsed_ms = (time.perf_counter() - tick_start) * 1000.0
+                        self._record_latency(elapsed_ms, source="websocket")
                     except Exception as exc:
                         app.logger.error(f"WS parse error: {exc}")
         except Exception:
@@ -133,6 +171,7 @@ class MarketDataService:
         account = getattr(app, "CROSSTRADE_ACCOUNT", self.engine.config.crosstrade_account)
         instrument = getattr(app, "INSTRUMENT", self.engine.config.instrument)
         token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
+        request_start = time.perf_counter()
         try:
             response = requests.get(
                 f"https://app.crosstrade.io/v1/api/accounts/{account}/quote?instrument={instrument}",
@@ -141,11 +180,15 @@ class MarketDataService:
             )
             if response.status_code == 200:
                 data = response.json()
+                elapsed_ms = (time.perf_counter() - request_start) * 1000.0
+                self._record_latency(elapsed_ms, source="fetch_quote")
                 return float(data.get("last", 0)), int(data.get("volume", 0))
         except requests.RequestException as exc:
             app.logger.error(f"Fetch quote request error: {exc}")
         except (ValueError, TypeError) as exc:
             app.logger.error(f"Fetch quote parse error: {exc}")
+        elapsed_ms = (time.perf_counter() - request_start) * 1000.0
+        self._record_latency(elapsed_ms, source="fetch_quote")
         return 0.0, 0
 
     def load_historical_ohlc(self, days_back: int = 3, limit: int = 5000) -> bool:
