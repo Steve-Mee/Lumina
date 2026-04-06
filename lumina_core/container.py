@@ -33,6 +33,7 @@ from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.infinite_simulator import InfiniteSimulator
 from lumina_core.logging_utils import build_logger
+from lumina_core.monitoring import ObservabilityService
 from lumina_core.ppo_trainer import PPOTrainer
 from lumina_core.rl_environment import RLTradingEnvironment
 from lumina_core.runtime_context import RuntimeContext
@@ -120,6 +121,7 @@ class ApplicationContainer:
     swarm_manager: SwarmManager = field(init=False)
     performance_validator: PerformanceValidator = field(init=False)
     rl_environment: RLTradingEnvironment | None = field(default=None, init=False)
+    observability_service: ObservabilityService = field(init=False)
     
     # Voice/audio components
     voice_recognizer: Optional[sr.Recognizer] = field(default=None, init=False)
@@ -137,6 +139,9 @@ class ApplicationContainer:
         # Initialize logger first (needed by all other services)
         log_level = os.getenv("LUMINA_LOG_LEVEL", "INFO").upper()
         self.logger = build_logger("lumina", log_level=log_level, file_path="logs/lumina_full_log.csv")
+
+        # Start observability before any services (zero-overhead when disabled)
+        self.observability_service = self._init_observability()
 
         # Build voice config from loaded settings/env.
         self.voice_config = VoiceConfig(input_enabled=self.config.voice_input_enabled)
@@ -269,7 +274,21 @@ class ApplicationContainer:
         # self.rl_environment = RLTradingEnvironment(self.runtime_context)
         
         self.logger.info("All services initialized successfully")
-    
+
+    def _init_observability(self) -> ObservabilityService:
+        """Load config.yaml and start ObservabilityService (no-op if monitoring disabled)."""
+        try:
+            import yaml
+            config_path = os.getenv("LUMINA_CONFIG", "config.yaml")
+            with open(config_path, "r", encoding="utf-8") as fh:
+                full_cfg: dict[str, Any] = yaml.safe_load(fh) or {}
+            obs = ObservabilityService.from_config(full_cfg)
+            obs.start()
+            return obs
+        except Exception as exc:
+            self.logger.warning("ObservabilityService init failed (continuing): %s", exc)
+            return ObservabilityService.from_config({})
+
     def _register_cleanup(self) -> None:
         """Register cleanup handlers for graceful shutdown."""
         def cleanup_traded_reconciler() -> None:
@@ -278,7 +297,13 @@ class ApplicationContainer:
                     self.trade_reconciler.stop()
             except Exception as e:
                 self.logger.error(f"Error stopping trade reconciler: {e}")
-        
+
+        def cleanup_observability() -> None:
+            try:
+                self.observability_service.stop()
+            except Exception as e:
+                self.logger.error(f"Error stopping observability service: {e}")
+
         def cleanup_tts() -> None:
             try:
                 if self.tts_engine:
@@ -287,6 +312,7 @@ class ApplicationContainer:
                 self.logger.error(f"Error stopping TTS engine: {e}")
         
         atexit.register(cleanup_traded_reconciler)
+        atexit.register(cleanup_observability)
         atexit.register(cleanup_tts)
         
         self.logger.info("Cleanup handlers registered")
