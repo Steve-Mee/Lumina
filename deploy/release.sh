@@ -27,8 +27,8 @@ git checkout main
 git pull --ff-only origin main
 
 echo "[release] running regression gate"
-./.venv312/Scripts/python.exe -m pytest tests/test_local_inference_engine.py tests/engine/test_lumina_engine_suite.py -q
-./.venv312/Scripts/python.exe -m pytest tests/test_runtime_workers.py -q
+./.venv/Scripts/python.exe -m pytest tests/test_local_inference_engine.py tests/engine/test_lumina_engine_suite.py -q
+./.venv/Scripts/python.exe -m pytest tests/test_runtime_workers.py -q
 
 if git rev-parse "$VERSION" >/dev/null 2>&1; then
   echo "Tag '$VERSION' already exists locally."

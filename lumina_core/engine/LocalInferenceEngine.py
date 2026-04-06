@@ -119,8 +119,6 @@ class LocalInferenceEngine:
         }
 
     def _get_vllm_runtime_reason(self) -> str:
-        if importlib.util.find_spec("vllm") is None:
-            return "vLLM package not installed in the active Python environment"
         if importlib.util.find_spec("vllm._C") is None:
             if platform.system() == "Windows":
                 return "vLLM native extension vllm._C is unavailable on this Windows runtime; use WSL2 or Docker Linux for real vLLM serving"

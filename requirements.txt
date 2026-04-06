@@ -1,5 +1,6 @@
 # Core extra dependencies for the hybrid NewsAgent feature
 xai-sdk
+ray
 python-dotenv
 streamlit
 pandas

@@ -11,7 +11,6 @@ $root = Split-Path -Parent $PSScriptRoot
 
 function Get-PythonCommand {
     $candidates = @(
-        (Join-Path $root ".venv312\Scripts\python.exe"),
         (Join-Path $root ".venv\Scripts\python.exe")
     )
 

@@ -13,7 +13,6 @@ from lumina_core.engine.RealisticBacktesterEngine import RealisticBacktesterEngi
 from lumina_core.engine.AdvancedBacktesterEngine import AdvancedBacktesterEngine
 
 
-@ray.remote
 def simulate_chunk(
     chunk_id: int,
     base_df: pd.DataFrame,
@@ -69,6 +68,7 @@ def simulate_chunk(
     return results
 
 
+simulate_chunk = ray.remote(simulate_chunk)  # type: ignore[assignment]
 SIMULATE_CHUNK_REMOTE = cast(Any, simulate_chunk)
 
 
@@ -106,11 +106,7 @@ class InfiniteSimulator:
 
         # Splits in parallel chunks
         chunk_size = num_trades_total // 32
-        futures = []
-        for i in range(32):
-            future = SIMULATE_CHUNK_REMOTE.remote(i, base_df, chunk_size, self.context)
-            futures.append(future)
-
+        futures = [SIMULATE_CHUNK_REMOTE.remote(i, base_df, chunk_size, self.context) for i in range(32)]
         all_results = ray.get(futures)
         flat_results = [item for sublist in all_results for item in sublist]
 

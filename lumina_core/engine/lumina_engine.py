@@ -113,7 +113,8 @@ class LuminaEngine:
     def __post_init__(self) -> None:
         if self.bible_engine is None:
             self.bible_engine = BibleEngine(str(self.config.bible_file))
-            self.bible_engine.bible = self.bible_engine.load()
+            if callable(getattr(self.bible_engine, "load", None)):
+                self.bible_engine.bible = self.bible_engine.load()
 
         # FastPathEngine wordt hier lazy geladen om circulaire imports te vermijden
         if self.fast_path is None:

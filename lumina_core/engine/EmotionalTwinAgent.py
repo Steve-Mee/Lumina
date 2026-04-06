@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import numpy as np
 from collections import deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -64,9 +64,18 @@ class EmotionalTwinAgent:
             except Exception:
                 last_trade_hours = 24.0
 
-        sim_peak = float(getattr(self.context, "sim_peak", 0.0) or 0.0)
-        equity = float(getattr(self.context, "account_equity", 0.0) or 0.0)
-        drawdown = ((sim_peak - equity) / sim_peak) if sim_peak > 0 else 0.0
+        equity_curve = list(getattr(self.context, "equity_curve", []))
+        if len(equity_curve) >= 2:
+            _peak = float(max(equity_curve))
+            _cur = float(equity_curve[-1])
+            drawdown = (_peak - _cur) / _peak if _peak > 0 else 0.0
+        else:
+            sim_peak = float(getattr(self.context, "sim_peak", 0.0) or 0.0)
+            equity = float(getattr(self.context, "account_equity", 0.0) or 0.0)
+            drawdown = ((sim_peak - equity) / sim_peak) if sim_peak > 0 else 0.0
+        tape_delta = float(
+            getattr(getattr(self.context, "market_data", None), "cumulative_delta_10", 0.0) or 0.0
+        )
 
         return {
             "price": float(price),
@@ -78,6 +87,7 @@ class EmotionalTwinAgent:
             "equity_drawdown": float(drawdown),
             "time_since_last_trade": float(last_trade_hours),
             "last_pnl": float(self.context.pnl_history[-1]) if self.context.pnl_history else 0.0,
+            "tape_delta": tape_delta,
         }
 
     def _calculate_bias(self, obs: Dict[str, Any]) -> Dict[str, float]:
@@ -89,14 +99,17 @@ class EmotionalTwinAgent:
             "revenge_risk": 0.0,
         }
 
-        # FOMO: hoge confidence + recente win + trending regime
+        # FOMO: hoge confidence + recente win + trending regime of hoge tape delta
         if (
-            obs["confidence"] > 0.85
+            obs["confidence"] > 0.80
             and obs["recent_pnl_mean"] > 0
-            and obs["regime"] in ["TRENDING", "BREAKOUT"]
+            and (obs["regime"] in ["TRENDING", "BREAKOUT"] or obs.get("tape_delta", 0.0) > 500)
         ):
             bias["fomo_score"] = min(
-                1.0, (obs["confidence"] - 0.75) * 3.0 + abs(obs["recent_pnl_mean"]) / 200
+                1.0,
+                (obs["confidence"] - 0.75) * 3.0
+                + abs(obs["recent_pnl_mean"]) / 200
+                + obs.get("tape_delta", 0.0) / 20000.0,
             )
 
         # Tilt: grote drawdown of recente verlies streak
@@ -148,6 +161,7 @@ class EmotionalTwinAgent:
         obs = self._get_observation()
         bias = self._calculate_bias(obs)
         human_decision = self._counterfactual_human_decision(bias)
+        self._last_bias = bias
 
         corrected = main_dream.copy()
         corrected.setdefault("reason", "")
@@ -155,17 +169,25 @@ class EmotionalTwinAgent:
         # Bewuste correcties (dit is wat een goede trader doet)
         if bias["fomo_score"] > 0.7:
             corrected["confluence_score"] = max(corrected.get("confluence_score", 0.0), 0.88)
+            min_conf = float(
+                getattr(getattr(self.context, "config", None), "min_confluence", 0.7)
+            )
+            corrected["min_confluence_override"] = max(
+                float(corrected.get("min_confluence_override", 0.0)), min_conf + 0.08
+            )
             corrected["reason"] += " | EMO_CORRECT: FOMO -> higher confluence"
             if corrected.get("signal") == "BUY" and "target" in corrected:
                 corrected["target"] = float(corrected["target"]) * 0.85  # smaller target
 
         if bias["tilt_score"] > 0.6:
-            corrected["signal"] = "HOLD"
-            corrected["reason"] += " | EMO_CORRECT: Tilt -> forced HOLD"
-            corrected["qty"] = float(corrected.get("qty", 1)) * 0.4  # 60% kleiner
+            corrected["position_size_multiplier"] = 0.5
+            corrected["stop_widen_multiplier"] = 1.3
+            corrected["reason"] += " | EMO_CORRECT: Tilt -> halved size, wider stop"
+            corrected["qty"] = float(corrected.get("qty", 1)) * 0.4  # backward compat
 
         if bias["boredom_score"] > 0.8:
             corrected["signal"] = "HOLD"
+            corrected["hold_until_ts"] = (datetime.now() + timedelta(minutes=15)).timestamp()
             corrected["reason"] += " | EMO_CORRECT: Boredom -> no trade"
 
         if bias["revenge_risk"] > 0.7:
@@ -201,7 +223,9 @@ class EmotionalTwinAgent:
         corrected = self.apply_correction(main_dream)
         if hasattr(self.context, "set_current_dream_fields"):
             self.context.set_current_dream_fields(corrected)
-        return corrected
+        result = dict(corrected)
+        result["emotional_bias"] = getattr(self, "_last_bias", {})
+        return result
 
     def nightly_train(
         self,
@@ -279,3 +303,55 @@ class EmotionalTwinAgent:
     # Compatibele alias voor bestaande codepaden.
     def train_nightly(self, trade_reflection_history: List[Dict[str, Any]], user_feedback: List[Any]) -> Dict[str, float]:
         return self.nightly_train(trade_reflection_history, user_feedback)
+
+    # Public API aliases voor testbaarheid en externe integraties.
+    def build_observation(self) -> Dict[str, Any]:
+        """Publieke wrapper voor _get_observation."""
+        return self._get_observation()
+
+    def infer_emotional_bias(self, obs: Dict[str, Any]) -> Dict[str, float]:
+        """Publieke wrapper voor _calculate_bias."""
+        return self._calculate_bias(obs)
+
+    def generate_counterfactual_human_decision(
+        self, obs: Dict[str, Any], bias: Dict[str, float]
+    ) -> Dict[str, str]:
+        """Publieke wrapper voor _counterfactual_human_decision."""
+        return self._counterfactual_human_decision(bias)
+
+    def apply_to_dream(self, bias: Dict[str, float], decision: Dict[str, str]) -> Dict[str, Any]:
+        """Pas emotionele bias-correcties toe op de huidige dreamstate en schrijf terug."""
+        main_dream = self.context.get_current_dream_snapshot()
+        corrected = main_dream.copy()
+        corrected.setdefault("reason", "")
+
+        if bias.get("fomo_score", 0.0) > 0.7:
+            corrected["confluence_score"] = max(corrected.get("confluence_score", 0.0), 0.88)
+            min_conf = float(
+                getattr(getattr(self.context, "config", None), "min_confluence", 0.7)
+            )
+            corrected["min_confluence_override"] = max(
+                float(corrected.get("min_confluence_override", 0.0)), min_conf + 0.08
+            )
+            corrected["reason"] += " | EMO_CORRECT: FOMO -> higher confluence"
+            if corrected.get("signal") == "BUY" and "target" in corrected:
+                corrected["target"] = float(corrected["target"]) * 0.85
+
+        if bias.get("tilt_score", 0.0) > 0.6:
+            corrected["position_size_multiplier"] = 0.5
+            corrected["stop_widen_multiplier"] = 1.3
+            corrected["reason"] += " | EMO_CORRECT: Tilt -> halved size, wider stop"
+            corrected["qty"] = float(corrected.get("qty", 1)) * 0.4
+
+        if bias.get("boredom_score", 0.0) > 0.8:
+            corrected["signal"] = "HOLD"
+            corrected["hold_until_ts"] = (datetime.now() + timedelta(minutes=15)).timestamp()
+            corrected["reason"] += " | EMO_CORRECT: Boredom -> no trade"
+
+        if bias.get("revenge_risk", 0.0) > 0.7:
+            corrected["confluence_score"] = max(corrected.get("confluence_score", 0.0), 0.92)
+            corrected["reason"] += " | EMO_CORRECT: Revenge -> strict rules"
+
+        if hasattr(self.context, "set_current_dream_fields"):
+            self.context.set_current_dream_fields(corrected)
+        return corrected
