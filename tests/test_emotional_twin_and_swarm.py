@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 from datetime import datetime
 
 from lumina_core.engine.swarm_manager import SwarmManager
-from lumina_core.engine.EmotionalTwinAgent import EmotionalTwinAgent
+from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.runtime_context import RuntimeContext
 
 

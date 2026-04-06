@@ -1,12 +1,8 @@
+# CANONICAL IMPLEMENTATION – v50 Living Organism
 import sys
 from pathlib import Path
 
 from lumina_core.runtime_context import RuntimeContext
-
-_repo_root = Path(__file__).resolve().parents[1]
-_pkg_root = _repo_root / "lumina-bible"
-if _pkg_root.exists() and str(_pkg_root) not in sys.path:
-    sys.path.insert(0, str(_pkg_root))
 
 from lumina_bible.workflows import dna_rewrite_daemon as _dna_rewrite_daemon
 from lumina_bible.workflows import process_user_feedback as _process_user_feedback

@@ -1,4 +1,5 @@
-﻿from __future__ import annotations
+﻿# CANONICAL IMPLEMENTATION – v50 Living Organism
+from __future__ import annotations
 
 import hashlib
 import hmac
@@ -17,7 +18,7 @@ from dotenv import load_dotenv
 
 from lumina_core.engine import DashboardService, EngineConfig, HumanAnalysisService, LocalInferenceEngine, MarketDataService, MemoryService, OperationsService, PerformanceValidator, ReportingService, ReasoningService, SwarmManager, TradeReconciler, VisualizationService
 from lumina_agents.news_agent import NewsAgent
-from lumina_core.engine.EmotionalTwinAgent import EmotionalTwinAgent
+from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.engine.analysis_helpers import detect_candle_patterns as helper_detect_candle_patterns
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core import backtest_workers, runtime_workers, trade_workers

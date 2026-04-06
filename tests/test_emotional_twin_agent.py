@@ -5,7 +5,7 @@ from types import ModuleType
 
 import pandas as pd
 
-from lumina_core.engine.EmotionalTwinAgent import EmotionalTwinAgent
+from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.engine import EngineConfig, LuminaEngine
 
 

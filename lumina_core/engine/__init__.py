@@ -8,7 +8,6 @@ from .LocalInferenceEngine import LocalInferenceEngine
 from .market_data_manager import MarketDataManager
 from .market_data_service import MarketDataService
 from .memory_service import MemoryService
-from .NewsAgent import NewsAgent
 from .operations_service import OperationsService
 from .performance_validator import PerformanceValidator
 from .reporting_service import ReportingService
@@ -27,7 +26,6 @@ __all__ = [
     "MarketDataManager",
     "MarketDataService",
     "MemoryService",
-    "NewsAgent",
     "OperationsService",
     "PerformanceValidator",
     "LuminaEngine",

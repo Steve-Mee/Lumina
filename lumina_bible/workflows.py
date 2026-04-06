@@ -1,3 +1,4 @@
+# CANONICAL IMPLEMENTATION – v50 Living Organism
 from __future__ import annotations
 
 import json
@@ -30,7 +31,17 @@ def _infer_json(app: Any, payload: dict[str, Any], timeout: int, context: str) -
         data = infer_json_fn(payload, timeout=timeout, context=context)
         if isinstance(data, dict):
             return data
-    return None
+
+    post_xai_fn = getattr(app, "post_xai_chat", None)
+    if not callable(post_xai_fn):
+        return None
+    response = post_xai_fn(payload, timeout=timeout, context=context)
+    if not response or response.status_code != 200:
+        return None
+
+    content = response.json()["choices"][0]["message"]["content"]
+    parsed = _parse_json_loose(content)
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _post_reflection_to_lumina_os(app: Any, ref_json: dict[str, Any], pnl_dollars: float) -> None:

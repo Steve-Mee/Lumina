@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from datetime import datetime
 
-from lumina_core.engine.SwarmManager import MultiSymbolSwarmManager, SymbolNode
+from lumina_core.engine.multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
 from lumina_core.engine.dream_state import DreamState
 from lumina_core.engine.market_data_manager import MarketDataManager
 
