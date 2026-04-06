@@ -17,6 +17,7 @@ RUN python -m pip install --upgrade pip wheel setuptools
 RUN python -m pip wheel --wheel-dir /wheels \
     numpy \
     pandas \
+    pandas_market_calendars \
     requests \
     websockets \
     python-dotenv \
@@ -59,6 +60,7 @@ COPY --from=builder /wheels /wheels
 RUN python -m pip install --no-index --find-links=/wheels \
     numpy \
     pandas \
+    pandas_market_calendars \
     requests \
     websockets \
     python-dotenv \

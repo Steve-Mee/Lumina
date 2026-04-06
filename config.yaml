@@ -123,6 +123,10 @@ evolution:
   enabled: true
   approval_required: true
 
+session:
+  cooldown_minutes_after_streak: 15
+  enforce_calendar: true
+
 regime:
   enabled: true
   lookback_bars: 120

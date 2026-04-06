@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock
@@ -21,6 +22,7 @@ from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.market_data_service import MarketDataService
 from lumina_core.engine.reasoning_service import ReasoningService
 from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
+from lumina_core.engine.session_guard import SessionGuard
 from lumina_core.engine.trade_reconciler import TradeReconciler
 
 
@@ -68,6 +70,7 @@ def lightweight_engine(mock_app: SimpleNamespace, tmp_path: Path) -> SimpleNames
             max_open_risk_per_instrument=500.0,
             max_exposure_per_regime=2000.0,
             cooldown_after_streak=30,
+            enforce_session_guard=False,
         ),
         enforce_rules=True,
     )
@@ -328,6 +331,29 @@ def test_risk_controller_daily_cap_blocks_and_engages_kill_switch(lightweight_en
     assert allowed is False
     assert "DAILY LOSS CAP" in reason
     assert risk.state.kill_switch_engaged is True
+
+
+@pytest.mark.chaos_risk
+@pytest.mark.chaos_ci_smoke
+def test_session_guard_holiday_closed() -> None:
+    """Holiday chaos case: CME should be closed on Christmas day."""
+    guard = SessionGuard(calendar_name="CME")
+    holiday_ts = datetime(2026, 12, 25, 15, 0, tzinfo=timezone.utc)
+
+    assert guard.is_market_open(holiday_ts) is False
+    assert guard.is_trading_session(holiday_ts) is False
+
+
+@pytest.mark.chaos_risk
+@pytest.mark.chaos_ci_smoke
+def test_session_guard_rollover_window_blocks_session() -> None:
+    """Rollover chaos case: daily maintenance window should be blocked."""
+    guard = SessionGuard(calendar_name="CME")
+    # 22:00 UTC is inside the 16:55-18:05 America/Chicago rollover range during CDT.
+    rollover_ts = datetime(2026, 4, 6, 22, 0, tzinfo=timezone.utc)
+
+    assert guard.is_rollover_window(rollover_ts) is True
+    assert guard.is_trading_session(rollover_ts) is False
 
 
 @pytest.mark.chaos_ci_integration

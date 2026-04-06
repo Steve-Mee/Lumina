@@ -67,6 +67,23 @@ class ReasoningService:
         app = self._app()
         return bool(getattr(app, "FAST_PATH_ONLY", False))
 
+    def _session_trading_allowed(self) -> tuple[bool, str]:
+        session_guard = getattr(self.engine, "session_guard", None)
+        if session_guard is None:
+            return True, "Session guard unavailable"
+
+        risk_controller = getattr(self.engine, "risk_controller", None)
+        active_limits = getattr(risk_controller, "_active_limits", None)
+        enforce_guard = bool(getattr(active_limits, "enforce_session_guard", True))
+        if not enforce_guard:
+            return True, "Session guard disabled"
+
+        if session_guard.is_rollover_window():
+            return False, "rollover window"
+        if not session_guard.is_trading_session():
+            return False, "outside trading session"
+        return True, "ok"
+
     def _observability_service(self):
         return getattr(self.engine, "observability_service", None)
 
@@ -171,6 +188,17 @@ class ReasoningService:
         fib_levels: dict[str, Any],
     ) -> dict[str, Any]:
         app = self._app()
+        session_allowed, session_reason = self._session_trading_allowed()
+        if not session_allowed:
+            self._set_fast_path_only(True, f"session_guard: {session_reason}")
+            return {
+                "signal": "HOLD",
+                "confidence": 0.35,
+                "reason": f"Fast-path mode active: {session_reason}",
+                "agent_votes": {},
+                "regime": {"label": "SESSION_BLOCKED", "risk_state": "HIGH_RISK"},
+            }
+
         regime_snapshot = self.refresh_regime_snapshot(structure=structure)
         if self._fast_path_only_enabled():
             app.logger.info("MULTI_AGENT_CONSENSUS_SKIPPED,mode=fast_path_only")
@@ -182,7 +210,11 @@ class ReasoningService:
                 "regime": regime_snapshot.to_dict(),
             }
 
-        current_confluence = float(self.engine.get_current_dream_snapshot().get("confluence_score", 0.0) or 0.0)
+        get_dream = getattr(self.engine, "get_current_dream_snapshot", None)
+        if callable(get_dream):
+            current_confluence = float(get_dream().get("confluence_score", 0.0) or 0.0)
+        else:
+            current_confluence = 0.0
         if regime_snapshot.adaptive_policy.high_risk and current_confluence < 0.88:
             app.logger.warning(
                 "REGIME_CONSERVATIVE_HOLD,regime=%s,confluence=%.2f",

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from datetime import datetime
+from datetime import datetime, timezone
 from types import ModuleType
 from types import SimpleNamespace
 
@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from lumina_core.engine import EngineConfig, MarketDataService, MemoryService, SelfEvolutionMetaAgent
 from lumina_core.engine.lumina_engine import LuminaEngine
+from lumina_core.engine.session_guard import SessionGuard
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.engine.self_evolution_meta_agent import load_evolution_config
 from lumina_core.infinite_simulator import InfiniteSimulator
@@ -91,21 +92,50 @@ def main() -> int:
             logger.error(f"Chaos suite failed with exit code {result.returncode}")
             return result.returncode
 
+    session_cfg = getattr(config, "session", {}) if isinstance(getattr(config, "session", {}), dict) else {}
+    enforce_calendar = bool(session_cfg.get("enforce_calendar", True))
+    session_guard = SessionGuard(calendar_name="CME")
+
+    market_open = session_guard.is_market_open()
+    trading_session = session_guard.is_trading_session()
+    rollover = session_guard.is_rollover_window()
+    nxt_open = session_guard.next_open()
+    nxt_close = session_guard.next_close()
+
+    logger.info(
+        "SessionGuard: open=%s trading=%s rollover=%s next_open=%s next_close=%s",
+        market_open,
+        trading_session,
+        rollover,
+        nxt_open.isoformat() if nxt_open else "n/a",
+        nxt_close.isoformat() if nxt_close else "n/a",
+    )
+
     dry_run_sim = os.getenv("LUMINA_DRY_RUN_SIM", "false").strip().lower() == "true"
-    if dry_run_sim:
+    calendar_blocked = enforce_calendar and (not trading_session)
+
+    if dry_run_sim or calendar_blocked:
         report = {
             "timestamp": datetime.now().isoformat(),
-            "status": "dry_run",
-            "trades": 240,
-            "wins": 131,
-            "net_pnl": 842.5,
-            "mean_pnl": 3.51,
-            "sharpe": 0.84,
+            "status": "calendar_blocked" if calendar_blocked else "dry_run",
+            "trades": 0 if calendar_blocked else 240,
+            "wins": 0 if calendar_blocked else 131,
+            "net_pnl": 0.0 if calendar_blocked else 842.5,
+            "mean_pnl": 0.0 if calendar_blocked else 3.51,
+            "sharpe": 0.0 if calendar_blocked else 0.84,
             "samples": [
                 {"reward": 0.32, "regime": "TRENDING"},
                 {"reward": -0.14, "regime": "RANGING"},
                 {"reward": 0.41, "regime": "VOLATILE"},
             ],
+            "session_guard": {
+                "now_utc": datetime.now(timezone.utc).isoformat(),
+                "market_open": market_open,
+                "trading_session": trading_session,
+                "rollover_window": rollover,
+                "next_open": nxt_open.isoformat() if nxt_open else None,
+                "next_close": nxt_close.isoformat() if nxt_close else None,
+            },
             "report_path": "dry_run",
         }
     else:

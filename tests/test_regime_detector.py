@@ -135,6 +135,7 @@ def _build_reasoning_engine(frame: pd.DataFrame) -> tuple[SimpleNamespace, HardR
             max_open_risk_per_instrument=500.0,
             max_exposure_per_regime=2000.0,
             cooldown_after_streak=30,
+            enforce_session_guard=False,
         ),
         enforce_rules=True,
     )
@@ -201,7 +202,10 @@ def test_reasoning_service_routes_agents_by_regime() -> None:
 
 
 def test_trade_workers_apply_tighter_limits_in_high_risk_regime() -> None:
-    risk = HardRiskController(RiskLimits(max_open_risk_per_instrument=500.0), enforce_rules=True)
+    risk = HardRiskController(
+        RiskLimits(max_open_risk_per_instrument=500.0, enforce_session_guard=False),
+        enforce_rules=True,
+    )
     snapshot = {
         "label": "LOW_LIQUIDITY",
         "risk_state": "HIGH_RISK",
@@ -241,7 +245,7 @@ def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path) -> None
     agent = SelfEvolutionMetaAgent(
         engine=engine,
         valuation_engine=SimpleNamespace(),
-        risk_controller=HardRiskController(RiskLimits(), enforce_rules=True),
+        risk_controller=HardRiskController(RiskLimits(enforce_session_guard=False), enforce_rules=True),
         approval_required=True,
         log_path=tmp_path / "evolution_log.jsonl",
     )

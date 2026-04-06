@@ -71,6 +71,7 @@ class TestHardRiskController:
             max_open_risk_per_instrument=500.0,
             max_exposure_per_regime=2000.0,
             cooldown_after_streak=30,
+            enforce_session_guard=False,
         )
         return HardRiskController(limits)
     
@@ -221,7 +222,7 @@ class TestHardRiskController:
             state_file = Path(tmpdir) / "risk_state.json"
             
             # Create controller, record some state
-            limits = RiskLimits()
+            limits = RiskLimits(enforce_session_guard=False)
             controller1 = HardRiskController(limits, state_file=state_file)
             controller1.state.daily_pnl = -750.0
             controller1.state.consecutive_losses = 2
@@ -236,7 +237,7 @@ class TestHardRiskController:
         """Kill-switch should persist across controller restarts."""
         with tempfile.TemporaryDirectory() as tmpdir:
             state_file = Path(tmpdir) / "risk_state.json"
-            limits = RiskLimits()
+            limits = RiskLimits(enforce_session_guard=False)
             
             # First controller engages kill-switch
             controller1 = HardRiskController(limits, state_file=state_file)
@@ -317,7 +318,7 @@ class TestLearningMode:
     
     def test_learning_mode_bypasses_all_rules(self):
         """In learning mode (enforce_rules=False), all rules should be bypassed."""
-        limits = RiskLimits()
+        limits = RiskLimits(enforce_session_guard=False)
         controller = HardRiskController(limits, enforce_rules=False)
         
         # Even with breached limits, should return OK
@@ -328,7 +329,7 @@ class TestLearningMode:
     
     def test_learning_mode_with_kill_switch_engaged(self):
         """Kill-switch should be bypassed in learning mode."""
-        limits = RiskLimits()
+        limits = RiskLimits(enforce_session_guard=False)
         controller = HardRiskController(limits, enforce_rules=False)
         
         # Engage kill-switch
@@ -342,7 +343,7 @@ class TestLearningMode:
     
     def test_set_enforce_rules_switches_mode(self):
         """set_enforce_rules() should toggle enforcement."""
-        limits = RiskLimits()
+        limits = RiskLimits(enforce_session_guard=False)
         controller = HardRiskController(limits, enforce_rules=True)
         
         # Start in enforce mode
@@ -358,7 +359,7 @@ class TestLearningMode:
     
     def test_health_check_respects_learning_mode(self):
         """health_check_market_open should pass in learning mode."""
-        limits = RiskLimits()
+        limits = RiskLimits(enforce_session_guard=False)
         controller = HardRiskController(limits, enforce_rules=False)
         
         # Engage kill-switch
@@ -376,7 +377,7 @@ class TestKillSwitchManagement:
     
     def test_reset_kill_switch_when_not_engaged(self):
         """Reset on non-engaged kill-switch should succeed without warning."""
-        limits = RiskLimits()
+        limits = RiskLimits(enforce_session_guard=False)
         controller = HardRiskController(limits)
         
         result = controller.reset_kill_switch()
@@ -384,7 +385,7 @@ class TestKillSwitchManagement:
     
     def test_reset_kill_switch_when_engaged(self):
         """Reset should clear engaged kill-switch."""
-        limits = RiskLimits()
+        limits = RiskLimits(enforce_session_guard=False)
         controller = HardRiskController(limits)
         
         # Engage kill-switch
@@ -398,7 +399,7 @@ class TestKillSwitchManagement:
     
     def test_trading_resumes_after_reset(self):
         """After reset, trading should resume if other checks pass."""
-        limits = RiskLimits()
+        limits = RiskLimits(enforce_session_guard=False)
         controller = HardRiskController(limits)
         
         # Engage kill-switch

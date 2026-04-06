@@ -18,6 +18,7 @@ from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .market_data_manager import MarketDataManager
 from .risk_controller import HardRiskController, RiskLimits
+from .session_guard import SessionGuard
 from .valuation_engine import ValuationEngine
 from .analysis_helpers import (
     build_pa_signature,
@@ -119,6 +120,8 @@ class LuminaEngine:
     last_validation: datetime | None = None
     # Optional runtime observability sink
     observability_service: Any | None = None
+    # Calendar-aware trading session guard
+    session_guard: SessionGuard | None = None
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:
@@ -183,16 +186,40 @@ class LuminaEngine:
             # Engine-native validator instance for nightly and periodic validation hooks.
             self.validator = PerformanceValidator(engine=self)
 
+        if self.session_guard is None:
+            try:
+                self.session_guard = SessionGuard(calendar_name="CME")
+            except Exception as exc:
+                logging.getLogger(__name__).error("SessionGuard init failed: %s", exc)
+                self.session_guard = None
+
         # Hard Risk Controller initialization
         if self.risk_controller is None:
             risk_config = getattr(self.config, 'risk_controller', {})
+            session_config = getattr(self.config, 'session', {})
+            if not isinstance(session_config, dict):
+                session_config = {}
             if isinstance(risk_config, dict):
+                session_cooldown_minutes = int(
+                    session_config.get(
+                        'cooldown_minutes_after_streak',
+                        risk_config.get('session_cooldown_minutes', 15),
+                    )
+                )
+                enforce_calendar = bool(
+                    session_config.get(
+                        'enforce_calendar',
+                        risk_config.get('enforce_session_guard', True),
+                    )
+                )
                 limits = RiskLimits(
                     daily_loss_cap=risk_config.get('daily_loss_cap', -1000.0),
                     max_consecutive_losses=risk_config.get('max_consecutive_losses', 3),
                     max_open_risk_per_instrument=risk_config.get('max_open_risk_per_instrument', 500.0),
                     max_exposure_per_regime=risk_config.get('max_exposure_per_regime', 2000.0),
                     cooldown_after_streak=risk_config.get('cooldown_after_streak', 30),
+                    session_cooldown_minutes=session_cooldown_minutes,
+                    enforce_session_guard=enforce_calendar,
                 )
             else:
                 limits = RiskLimits()  # Use defaults
@@ -205,8 +232,13 @@ class LuminaEngine:
             # Enforce rules only in real/paper trading modes
             # In sim/backtest/learning modes, rules are bypassed for research
             enforce_rules = self.config.trade_mode in ("real", "paper")
-            
-            self.risk_controller = HardRiskController(limits, state_file=state_file, enforce_rules=enforce_rules)
+
+            self.risk_controller = HardRiskController(
+                limits,
+                state_file=state_file,
+                enforce_rules=enforce_rules,
+                session_guard=self.session_guard,
+            )
 
         if self.config.trade_mode not in {"paper", "sim", "real"}:
             raise ValueError("TRADE_MODE must be one of: paper, sim, real")

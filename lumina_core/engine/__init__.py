@@ -14,6 +14,7 @@ from .performance_validator import PerformanceValidator
 from .reporting_service import ReportingService
 from .regime_detector import RegimeDetector, RegimeSnapshot
 from .reasoning_service import ReasoningService
+from .session_guard import SessionGuard
 from .self_evolution_meta_agent import SelfEvolutionMetaAgent
 from .multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
 from .swarm_manager import SwarmManager
@@ -46,6 +47,7 @@ __all__ = [
     "RegimeDetector",
     "RegimeSnapshot",
     "ReasoningService",
+    "SessionGuard",
     "SelfEvolutionMetaAgent",
     "SymbolNode",
     "MultiSymbolSwarmManager",

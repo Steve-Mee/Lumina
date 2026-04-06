@@ -4,6 +4,7 @@ ray
 python-dotenv
 streamlit
 pandas
+pandas_market_calendars
 requests
 PyYAML
 psutil

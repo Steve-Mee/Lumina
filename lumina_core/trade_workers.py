@@ -93,6 +93,20 @@ def check_pre_trade_risk(
         # Risk controller not initialized; fail closed
         return False, "Risk controller not available"
 
+    # SessionGuard pre-check at submit boundary (fail-closed when enforced).
+    limits = getattr(app.engine.risk_controller, "_active_limits", None)
+    enforce_session_guard = bool(getattr(limits, "enforce_session_guard", True))
+    session_guard = getattr(app.engine, "session_guard", None)
+    if enforce_session_guard:
+        if session_guard is None:
+            return False, "Session guard unavailable (fail-closed)"
+        if session_guard.is_rollover_window():
+            return False, "Session guard blocked order: rollover window active"
+        if not session_guard.is_trading_session():
+            next_open = session_guard.next_open()
+            suffix = f" | next_open={next_open.isoformat()}" if next_open is not None else ""
+            return False, f"Session guard blocked order: outside trading session{suffix}"
+
     snapshot = _refresh_regime_snapshot(app, regime)
     adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
     app.engine.risk_controller.apply_regime_override(
