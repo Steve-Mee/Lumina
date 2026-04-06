@@ -71,3 +71,45 @@ risk_controller:
   
   # Enable risk controller (set to false only for testing)
   enabled: true
+
+security:
+  # CORS Configuration: Strict allowlist (NO wildcard "*")
+  # Specify only trusted domains that need to access the API
+  cors_allowed_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+    - "http://localhost:8000"
+  
+  # JWT Configuration
+  jwt_secret_key: "${LUMINA_JWT_SECRET_KEY}"  # Required: provide via environment variable
+  jwt_algorithm: "HS256"
+  jwt_expiration_minutes: 1440                # 24 hours
+  
+  # API Key Configuration
+  api_key_header: "X-API-Key"
+  api_keys:
+    # Example admin key (replace with your own generated key)
+    # Generate: python -c "import secrets; print(f'sk_{secrets.token_hex(32)}')"
+    "sk_example_admin_key_replace_me": 
+      name: "Admin Console"
+      role: "admin"
+      enabled: true
+  
+  # Rate Limiting (token bucket algorithm)
+  rate_limit_enabled: true
+  rate_limit_requests_per_minute: 60        # 60 req/min = 1 req/sec average
+  rate_limit_burst_size: 10                  # Allow up to 10 concurrent requests
+  
+  # Admin Role Requirements
+  admin_role_required: true                  # Require admin role for destructive endpoints
+  
+  # Security Audit Logging
+  audit_log_enabled: true
+  audit_log_path: "logs/security_audit.jsonl"  # Append-only audit trail
+  
+  # Dangerous Config Validation
+  # At startup, fail if these config values are detected (fail-closed mode)
+  dangerous_configs:
+    "cors_allowed_origins": ["*"]            # CORS wildcard is forbidden
+    "security.debug_mode": [true]            # Debug mode must be explicit false
+

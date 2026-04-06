@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import queue
+import signal
 import sys
 import time
 from dataclasses import dataclass, field
@@ -14,6 +16,8 @@ import requests
 
 from .lumina_engine import LuminaEngine
 from .valuation_engine import ValuationEngine
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -250,6 +254,7 @@ class OperationsService:
             return False
 
     def emergency_stop(self) -> None:
+        """Gracefully stop the bot with proper cleanup."""
         app = self._app()
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 🛑 EMERGENCY STOP – bot wordt afgesloten")
         try:
@@ -263,7 +268,10 @@ class OperationsService:
             app.logger.warning(f"Emergency stop window close warning: {exc}")
 
         self.engine.save_state()
-        os._exit(0)
+        
+        # Clean shutdown via SIGTERM signal (replaces os._exit(0))
+        logger.info("Sending SIGTERM for graceful shutdown")
+        os.kill(os.getpid(), signal.SIGTERM)
 
     def is_market_open(self) -> bool:
         now = datetime.now()

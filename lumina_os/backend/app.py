@@ -1,33 +1,105 @@
 from datetime import datetime, timezone
 import json
+import logging
 import os
-from typing import Any, cast
+from typing import Any, Optional, cast
 
+import yaml
 import uvicorn
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import CommunityBible, CommunityReflection, Participant, SessionLocal, TradeEntry
 from backend.models import BibleUpload, ReflectionUpload, TradeSubmit
+
+# Import security module
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
+from lumina_core.security import get_security_module, TokenPayload
+
+logger = logging.getLogger(__name__)
 
 RECONCILIATION_STATUS_FILE = os.getenv(
     "TRADER_LEAGUE_RECONCILIATION_STATUS_FILE",
     os.getenv("TRADE_RECONCILER_STATUS_FILE", "state/trade_reconciler_status.json"),
 )
 
+# Load config
+CONFIG_PATH = os.getenv("LUMINA_CONFIG", "config.yaml")
+with open(CONFIG_PATH, "r") as f:
+    FULL_CONFIG = yaml.safe_load(f)
+SECURITY_CONFIG = FULL_CONFIG.get("security", {})
+
+# Initialize security module
+SECURITY = get_security_module(SECURITY_CONFIG)
+
+# Validate dangerous configs at startup
+validator = SECURITY["config_validator"]
+violations = validator.validate(FULL_CONFIG)
+if violations:
+    logger.error(f"Dangerous config values detected: {violations}")
+    raise ValueError(f"Startup validation failed: {violations}")
+
 app = FastAPI(title="Trader League Live - Powered by LUMINA")
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Apply strict CORS middleware (no wildcard)
+if SECURITY["config"].cors_allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=SECURITY["config"].cors_allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"],
+        allow_headers=["*"],
+    )
+    logger.info(f"CORS configured for {len(SECURITY['config'].cors_allowed_origins)} origins")
+else:
+    logger.warning("CORS is disabled (allow_origins is empty)")
+
+
+async def verify_api_key(x_api_key: Optional[str] = Header(None)) -> dict[str, Any]:
+    """Dependency to verify API key authentication."""
+    if not x_api_key:
+        SECURITY["audit_log"].log_auth_attempt("unknown", False, "api_key")
+        raise HTTPException(status_code=401, detail="API key required")
+    
+    key_meta = SECURITY["api_key"].verify_api_key(x_api_key)
+    if not key_meta:
+        SECURITY["audit_log"].log_auth_attempt("unknown", False, "api_key")
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    SECURITY["audit_log"].log_auth_attempt(key_meta.get("name", "api_key"), True, "api_key")
+    return {"api_key": x_api_key, "metadata": key_meta}
+
+
+async def verify_admin_role(auth: dict[str, Any] = Depends(verify_api_key)) -> dict[str, Any]:
+    """Dependency to verify admin role for destructive operations."""
+    if not SECURITY["config"].admin_role_required:
+        return auth
+    
+    role = auth["metadata"].get("role", "user")
+    if role != "admin":
+        SECURITY["audit_log"].log_unauthorized_access(
+            auth["metadata"].get("name", "unknown"),
+            "admin_operation",
+            f"insufficient_role_{role}",
+        )
+        raise HTTPException(status_code=403, detail="Admin role required")
+    
+    return auth
+
+
+async def check_rate_limit(x_api_key: Optional[str] = Header(None)) -> None:
+    """Dependency to check rate limiting."""
+    client_id = x_api_key or "anonymous"
+    if not SECURITY["rate_limiter"].is_allowed(client_id):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
 
 @app.post("/webhook/trade")
-def submit_trade(trade: TradeSubmit) -> dict[str, int | str]:
+def submit_trade(
+    trade: TradeSubmit,
+    _rate_limit: None = Depends(check_rate_limit),
+) -> dict[str, int | str]:
     db = SessionLocal()
     try:
         participant = db.query(Participant).filter_by(name=trade.participant).first()
@@ -202,18 +274,34 @@ def get_reconciliation_status() -> dict[str, Any]:
 
 
 @app.delete("/trades")
-def delete_all_trades() -> dict[str, int]:
+def delete_all_trades(
+    admin_auth: dict[str, Any] = Depends(verify_admin_role),
+) -> dict[str, int]:
+    """Delete all trades. Requires admin authentication."""
     db = SessionLocal()
     try:
         deleted = db.query(TradeEntry).delete()
         db.commit()
+        
+        # Audit log
+        SECURITY["audit_log"].log_admin_action(
+            username=admin_auth["metadata"].get("name", "unknown"),
+            action="delete_all_trades",
+            resource="/trades",
+            details={"deleted_count": deleted},
+        )
+        logger.info(f"Admin action: deleted {deleted} trades")
+        
         return {"deleted": deleted}
     finally:
         db.close()
 
 
 @app.delete("/demo-data")
-def delete_demo_data() -> dict[str, int]:
+def delete_demo_data(
+    admin_auth: dict[str, Any] = Depends(verify_admin_role),
+) -> dict[str, int]:
+    """Delete demo data. Requires admin authentication."""
     db = SessionLocal()
     try:
         demo_participants = db.query(Participant).filter(Participant.name.like("DEMO_%")).all()
@@ -232,6 +320,19 @@ def delete_demo_data() -> dict[str, int]:
             .delete(synchronize_session=False)
         )
         db.commit()
+        
+        # Audit log
+        SECURITY["audit_log"].log_admin_action(
+            username=admin_auth["metadata"].get("name", "unknown"),
+            action="delete_demo_data",
+            resource="/demo-data",
+            details={
+                "deleted_participants": deleted_participants,
+                "deleted_trades": deleted_trades,
+            },
+        )
+        logger.info(f"Admin action: deleted {deleted_participants} demo participants and {deleted_trades} trades")
+        
         return {
             "deleted_participants": deleted_participants,
             "deleted_trades": deleted_trades,
