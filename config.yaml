@@ -117,3 +117,22 @@ evolution:
   enabled: true
   approval_required: true
 
+monitoring:
+  enabled: true
+  db_path: "state/metrics.db"          # SQLite sink for dashboard history queries
+  flush_interval_s: 30                  # How often background thread flushes to SQLite
+
+  alert_thresholds:
+    latency_ms: 500                     # Alert if any agent layer latency > 500 ms
+    daily_loss_usd: -800                # Alert if daily PnL drops below -$800
+    websocket_heartbeat_stale_s: 60     # Alert if no WS heartbeat for > 60 s
+    model_confidence_drift: 0.25        # Alert if model confidence drifts > 25%
+    consecutive_losses: 3               # Alert at or above N consecutive losses
+
+  webhook:
+    enabled: false                      # Set true + configure url to receive alerts
+    platform: "discord"                 # "discord" | "slack" | "telegram"
+    url: "${LUMINA_ALERT_WEBHOOK_URL}"  # Provide via environment variable
+    telegram_chat_id: ""               # Required only when platform = "telegram"
+    timeout_s: 5
+

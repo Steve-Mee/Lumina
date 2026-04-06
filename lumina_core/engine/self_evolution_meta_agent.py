@@ -29,6 +29,7 @@ class SelfEvolutionMetaAgent:
     enabled: bool = True
     approval_required: bool = True
     log_path: Path = field(default_factory=lambda: Path("state/evolution_log.jsonl"))
+    obs_service: Any | None = None  # Optional ObservabilityService; injected at runtime
 
     @classmethod
     def from_container(
@@ -37,6 +38,7 @@ class SelfEvolutionMetaAgent:
         container: Any,
         enabled: bool = True,
         approval_required: bool = True,
+        obs_service: Any | None = None,
     ) -> "SelfEvolutionMetaAgent":
         engine = getattr(container, "engine", None)
         if engine is None:
@@ -56,6 +58,7 @@ class SelfEvolutionMetaAgent:
             risk_controller=risk_controller,
             enabled=enabled,
             approval_required=approval_required,
+            obs_service=obs_service,
         )
 
     def run_nightly_evolution(self, *, nightly_report: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
@@ -102,6 +105,18 @@ class SelfEvolutionMetaAgent:
 
         if should_auto_apply and not self.approval_required and not dry_run and best is not None:
             self._apply_candidate(best)
+
+        # Record proposal to observability metrics (no-op when obs_service is None)
+        if self.obs_service is not None:
+            try:
+                best_name = str(best.get("name")) if best else None
+                self.obs_service.record_evolution_proposal(
+                    status=str(outcome.get("status", "unknown")),
+                    confidence=confidence,
+                    best_candidate=best_name,
+                )
+            except Exception:
+                pass
 
         self._append_immutable_log(outcome)
         return outcome

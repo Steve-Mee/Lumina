@@ -11,11 +11,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.database import CommunityBible, CommunityReflection, Participant, SessionLocal, TradeEntry
 from backend.models import BibleUpload, ReflectionUpload, TradeSubmit
+from backend.monitoring_endpoints import router as monitoring_router, set_observability_service
 
 # Import security module
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../"))
 from lumina_core.security import get_security_module, TokenPayload
+from lumina_core.monitoring import ObservabilityService
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,12 @@ if violations:
     raise ValueError(f"Startup validation failed: {violations}")
 
 app = FastAPI(title="Trader League Live - Powered by LUMINA")
+
+# ── Observability layer ────────────────────────────────────────────────────────
+_obs = ObservabilityService.from_config(FULL_CONFIG)
+_obs.start()
+set_observability_service(_obs)
+app.include_router(monitoring_router)
 
 # Apply strict CORS middleware (no wildcard)
 if SECURITY["config"].cors_allowed_origins:

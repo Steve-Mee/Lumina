@@ -12,6 +12,28 @@ from typing import Optional
 HEARTBEAT_FILE = Path("/tmp/lumina_heartbeat")
 PID_FILE = Path("/tmp/lumina_child.pid")
 
+# ── Observability bootstrap (zero-overhead when monitoring.enabled = false) ────
+
+def _start_watchdog_observability():
+    """Load config and start the ObservabilityService if monitoring is enabled.
+
+    Wrapped in a broad try/except so any import or config error can never crash
+    the watchdog itself.
+    """
+    try:
+        import yaml
+        from lumina_core.monitoring import ObservabilityService
+
+        config_path = os.getenv("LUMINA_CONFIG", "config.yaml")
+        with open(config_path, "r", encoding="utf-8") as fh:
+            cfg = yaml.safe_load(fh) or {}
+
+        obs = ObservabilityService.from_config(cfg)
+        obs.start()
+        return obs
+    except Exception:
+        return None
+
 
 def _touch_heartbeat() -> None:
     HEARTBEAT_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -76,6 +98,9 @@ def main() -> int:
 
     _prepare_persistent_links()
 
+    # Start observability (no-op when monitoring.enabled = false)
+    obs = _start_watchdog_observability()
+
     child: Optional[subprocess.Popen] = None
     shutting_down = {"value": False}
 
@@ -89,6 +114,8 @@ def main() -> int:
     restart_count = 0
     while True:
         if shutting_down["value"]:
+            if obs is not None:
+                obs.stop()
             return 0
 
         _touch_heartbeat()
@@ -102,15 +129,27 @@ def main() -> int:
 
         if shutting_down["value"]:
             _forward_shutdown(child, signal.SIGTERM)
+            if obs is not None:
+                obs.stop()
             return 0
 
         exit_code = child.returncode
         if exit_code == 0:
+            if obs is not None:
+                obs.stop()
             return 0
 
         restart_count += 1
+        if obs is not None:
+            try:
+                obs.record_process_restart()
+            except Exception:
+                pass
+
         if restart_count > max_restarts:
             print(f"[watchdog] max restarts exceeded ({max_restarts}); last exit={exit_code}", flush=True)
+            if obs is not None:
+                obs.stop()
             return exit_code or 1
 
         backoff = min(5 * restart_count, 30)

@@ -16,6 +16,7 @@ from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.engine.self_evolution_meta_agent import load_evolution_config
 from lumina_core.infinite_simulator import InfiniteSimulator
 from lumina_core.logging_utils import build_logger
+from lumina_core.monitoring import ObservabilityService
 from lumina_core.ppo_trainer import PPOTrainer
 from lumina_core.runtime_context import RuntimeContext
 
@@ -38,6 +39,16 @@ def main() -> int:
     app = ModuleType("nightly_infinite_sim_app")
     setattr(app, "logger", logger)
     setattr(app, "collection", _build_collection())
+
+    # ── Start observability (no-op when monitoring.enabled = false) ────────────
+    try:
+        import yaml as _yaml
+        with open(os.getenv("LUMINA_CONFIG", "config.yaml"), "r", encoding="utf-8") as _fh:
+            _full_cfg = _yaml.safe_load(_fh) or {}
+    except Exception:
+        _full_cfg = {}
+    obs = ObservabilityService.from_config(_full_cfg)
+    obs.start()
 
     engine = LuminaEngine(config=config)
     runtime = RuntimeContext(engine=engine, app=app)
@@ -116,6 +127,21 @@ def main() -> int:
     )
     report["evolution"] = evolution_result
 
+    # ── Record evolution proposal to observability metrics ─────────────────────
+    try:
+        proposal = evolution_result.get("proposal", {})
+        best = evolution_result.get("best_candidate") or {}
+        obs.record_evolution_proposal(
+            status=str(evolution_result.get("status", "unknown")),
+            confidence=float(proposal.get("confidence", 0.0)),
+            best_candidate=str(best.get("name", None)) if best else None,
+        )
+        net_pnl = float(report.get("net_pnl", 0.0) or 0.0)
+        obs.record_pnl(daily=net_pnl)
+    except Exception:
+        pass
+
+    obs.stop()
     print(json.dumps(report, indent=2))
     return 0
 
