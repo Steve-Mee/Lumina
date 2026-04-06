@@ -138,6 +138,7 @@ def _load_render_fn(st_mock: MagicMock) -> Any:
         "streamlit": st_mock,
         "global_wisdom_view": MagicMock(),
         "leaderboard_view": MagicMock(),
+        "evolution_approval": MagicMock(),
     }
 
     spec = importlib.util.spec_from_file_location(_MOD_KEY, _FRONTEND_PATH / "dashboard.py")

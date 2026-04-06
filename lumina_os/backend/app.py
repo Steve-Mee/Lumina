@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.database import CommunityBible, CommunityReflection, Participant, SessionLocal, TradeEntry
 from backend.models import BibleUpload, ReflectionUpload, TradeSubmit
 from backend.monitoring_endpoints import router as monitoring_router, set_observability_service
+from backend.evolution_endpoints import router as evolution_router
+from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
 
 # Import security module
 import sys
@@ -48,7 +50,9 @@ app = FastAPI(title="Trader League Live - Powered by LUMINA")
 _obs = ObservabilityService.from_config(FULL_CONFIG)
 _obs.start()
 set_observability_service(_obs)
+set_evolution_obs_service(_obs)
 app.include_router(monitoring_router)
+app.include_router(evolution_router)
 
 # Apply strict CORS middleware (no wildcard)
 if SECURITY["config"].cors_allowed_origins:

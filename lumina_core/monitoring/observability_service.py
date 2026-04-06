@@ -482,6 +482,31 @@ class ObservabilityService:
         """Return Prometheus text exposition format string."""
         return self.collector.prometheus_text()
 
+    # ── Public alert API ──────────────────────────────────────────────────────
+
+    def send_alert(
+        self,
+        *,
+        title: str,
+        message: str,
+        severity: str = "info",
+        data: dict[str, Any] | None = None,
+    ) -> None:
+        """Send a one-shot custom alert via webhook, bypassing per-type cooldown.
+
+        Use this for human-triggered events (e.g. dashboard approve/reject)
+        where every occurrence should always produce an alert.
+        """
+        # Unique key per call so the cooldown never suppresses these events
+        alert_type = f"custom_{int(time.time() * 1000)}"
+        self._fire_alert(
+            alert_type=alert_type,
+            title=title,
+            message=message,
+            severity=severity,
+            data=data or {},
+        )
+
     # ── Alerting internals ─────────────────────────────────────────────────────
 
     def _fire_alert(

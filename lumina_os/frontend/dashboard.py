@@ -5,6 +5,7 @@ import streamlit as st
 
 from global_wisdom_view import render_global_wisdom_tab
 from leaderboard_view import render_leaderboard_tab
+from evolution_approval import render_evolution_approval_tab
 
 
 # ── Observability tab ─────────────────────────────────────────────────────────
@@ -184,8 +185,13 @@ st.title("LUMINA OS – Trader League + Community Wisdom")
 
 api_base_url = "http://localhost:8000"
 
-tab1, tab2, tab3 = st.tabs(
-    ["🏆 Live Leaderboard", "📚 Global Community Bibles", "📊 Observability"]
+tab1, tab2, tab3, tab4 = st.tabs(
+    [
+        "🏆 Live Leaderboard",
+        "📚 Global Community Bibles",
+        "📊 Observability",
+        "🔄 Evolution Approvals",
+    ]
 )
 
 with tab1:
@@ -196,6 +202,9 @@ with tab2:
 
 with tab3:
     _render_observability_tab(api_base_url)
+
+with tab4:
+    render_evolution_approval_tab(api_base_url)
 
 st.info("Upload your trades, Bibles or reflections via the bot webhook -> everything appears here instantly.")
 
