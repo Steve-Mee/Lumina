@@ -56,7 +56,7 @@ class CommunityBible(Base):
     id = Column(Integer, primary_key=True)
     trader_name = Column(String, unique=True)
     bible_hash = Column(String)
-    upload_ts = Column(DateTime, default=datetime.utcnow)
+    upload_ts = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     performance_score = Column(Float, default=0.0)
     reflection_count = Column(Integer, default=0)
     evolvable_layer = Column(JSON)
@@ -66,7 +66,7 @@ class CommunityReflection(Base):
     __tablename__ = "community_reflections"
     id = Column(Integer, primary_key=True)
     bible_id = Column(Integer)
-    ts = Column(DateTime, default=datetime.utcnow)
+    ts = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     reflection = Column(Text)
     key_lesson = Column(String)
     suggested_update = Column(JSON)

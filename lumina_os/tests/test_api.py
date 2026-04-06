@@ -10,10 +10,17 @@ if str(ROOT_DIR) not in sys.path:
 
 os.environ["TRADER_LEAGUE_DATABASE_URL"] = f"sqlite:///{Path(__file__).parent / 'test_trader_league.db'}"
 os.environ["TRADER_LEAGUE_RECONCILIATION_STATUS_FILE"] = str(Path(__file__).parent / "test_reconciliation_status.json")
+_prev_jwt_secret = os.environ.get("LUMINA_JWT_SECRET_KEY")
+os.environ["LUMINA_JWT_SECRET_KEY"] = "lumina_test_jwt_secret_key_min_len_32"
 
 from fastapi.testclient import TestClient  # noqa: E402
 
 from backend.app import app  # noqa: E402
+
+if _prev_jwt_secret is None:
+    os.environ.pop("LUMINA_JWT_SECRET_KEY", None)
+else:
+    os.environ["LUMINA_JWT_SECRET_KEY"] = _prev_jwt_secret
 
 client = TestClient(app)
 
@@ -94,7 +101,10 @@ def test_demo_data_cleanup_endpoint() -> None:
     response = client.post("/trades", json=payload)
     assert response.status_code == 200
 
-    cleanup_response = client.delete("/demo-data")
+    cleanup_response = client.delete(
+        "/demo-data",
+        headers={"X-API-Key": "sk_example_admin_key_replace_me"},
+    )
     assert cleanup_response.status_code == 200
     cleanup = cleanup_response.json()
     assert cleanup["deleted_participants"] >= 1
