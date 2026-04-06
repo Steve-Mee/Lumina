@@ -296,22 +296,36 @@ class HumanAnalysisService:
 
                     fast_result = self.engine.fast_path.run(self.engine.ohlc_1min, current_price, regime)
                     if not fast_result["used_llm"]:
-                        self.engine.set_current_dream_fields(
-                            {
-                                "signal": fast_result["signal"],
-                                "confidence": fast_result["confidence"],
-                                "stop": fast_result["stop"],
-                                "target": fast_result["target"],
-                                "reason": fast_result["reason"],
-                                "confluence_score": fast_result["confidence"],
-                                "chosen_strategy": fast_result["chosen_strategy"],
-                            }
-                        )
-                        print(
-                            f"[{datetime.now().strftime('%H:%M:%S')}] ⚡ FAST PATH → "
-                            f"{fast_result['signal']} ({fast_result['confidence']:.2f}) in {fast_result['latency_ms']}ms"
-                        )
-                        continue
+                            # Hard Risk Controller — VERY FIRST check before applying fast-path signal
+                            _fp_signal = fast_result.get("signal", "HOLD")
+                            if _fp_signal in {"BUY", "SELL"}:
+                                _risk_ctrl = getattr(self.engine, "risk_controller", None)
+                                if _risk_ctrl is not None:
+                                    _fp_stop = float(fast_result.get("stop", current_price * 0.99 if _fp_signal == "BUY" else current_price * 1.01))
+                                    _fp_risk = abs(current_price - _fp_stop)
+                                    _rc_ok, _rc_reason = _risk_ctrl.check_can_trade(
+                                        str(self.engine.config.instrument), str(regime), float(_fp_risk)
+                                    )
+                                    if not _rc_ok:
+                                        app.logger.warning(f"HardRiskController blocked fast-path signal: {_rc_reason}")
+                                        fast_result = dict(fast_result)
+                                        fast_result["signal"] = "HOLD"
+                            self.engine.set_current_dream_fields(
+                                {
+                                    "signal": fast_result["signal"],
+                                    "confidence": fast_result["confidence"],
+                                    "stop": fast_result["stop"],
+                                    "target": fast_result["target"],
+                                    "reason": fast_result["reason"],
+                                    "confluence_score": fast_result["confidence"],
+                                    "chosen_strategy": fast_result["chosen_strategy"],
+                                }
+                            )
+                            print(
+                                f"[{datetime.now().strftime('%H:%M:%S')}] ⚡ FAST PATH → "
+                                f"{fast_result['signal']} ({fast_result['confidence']:.2f}) in {fast_result['latency_ms']}ms"
+                            )
+                            continue
                     else:
                         print(f"[{datetime.now().strftime('%H:%M:%S')}] 🤖 LOW CONF → Local LLM takeover")
                     mtf_data = app.get_mtf_snapshots()

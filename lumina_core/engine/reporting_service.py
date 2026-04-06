@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -13,6 +13,7 @@ import plotly.graph_objects as go
 
 from .dashboard_service import DashboardService
 from .lumina_engine import LuminaEngine
+from .valuation_engine import ValuationEngine
 
 
 class LuminaPDF(FPDF):
@@ -33,6 +34,7 @@ class ReportingService:
 
     engine: LuminaEngine
     dashboard_service: DashboardService
+    valuation_engine: ValuationEngine = field(default_factory=ValuationEngine)
 
     def __post_init__(self) -> None:
         if self.engine is None:
@@ -211,7 +213,13 @@ class ReportingService:
                         or (bt_position > 0 and price >= target)
                         or (bt_position < 0 and price <= target)
                     ):
-                        pnl = (price - bt_entry) * bt_position * 5
+                        pnl = self.valuation_engine.pnl_dollars(
+                            symbol=str(self.engine.config.instrument),
+                            entry_price=bt_entry,
+                            exit_price=price,
+                            side=bt_position,
+                            quantity=1,
+                        )
                         bt_pnl.append(pnl)
                         bt_position = 0
 

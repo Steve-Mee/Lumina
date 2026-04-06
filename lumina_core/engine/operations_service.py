@@ -163,6 +163,27 @@ class OperationsService:
         if trade_mode == "paper":
             return False
 
+            # Hard Risk Controller — VERY FIRST gate (fail-closed) before any real/sim order
+            _risk_ctrl = getattr(self.engine, "risk_controller", None)
+            if _risk_ctrl is not None:
+                _dream = self.engine.get_current_dream_snapshot()
+                with self.engine.live_data_lock:
+                    _price = float(
+                        self.engine.live_quotes[-1]["last"]
+                        if self.engine.live_quotes
+                        else (self.engine.ohlc_1min["close"].iloc[-1] if len(self.engine.ohlc_1min) else 0.0)
+                    )
+                _stop = float(_dream.get("stop", _price * 0.99 if action.upper() == "BUY" else _price * 1.01))
+                _proposed_risk = abs(_price - _stop)
+                _risk_ok, _risk_reason = _risk_ctrl.check_can_trade(
+                    self.engine.config.instrument,
+                    str(_dream.get("regime", "NEUTRAL")),
+                    float(_proposed_risk),
+                )
+                if not _risk_ok:
+                    app.logger.warning(f"place_order blocked by HardRiskController: {_risk_reason}")
+                    return False
+
         try:
             dream_snapshot = self.engine.get_current_dream_snapshot()
             payload = {

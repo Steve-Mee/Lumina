@@ -19,6 +19,7 @@ import requests
 import streamlit as st
 import yaml
 
+from lumina_core.container import create_application_container
 from lumina_core.engine.engine_config import EngineConfig
 from lumina_core.engine.hardware_inspector import HardwareInspector, HardwareSnapshot
 from lumina_core.engine.lumina_engine import LuminaEngine
@@ -191,18 +192,9 @@ def _backend_get(path: str, timeout: float = 3.0) -> dict[str, Any]:
 
 
 def _build_validation_context() -> RuntimeContext:
-    cfg = EngineConfig()
-    engine = LuminaEngine(cfg)
-    app = SimpleNamespace(
-        logger=engine.logger,
-        SWARM_SYMBOLS=[str(x).strip().upper() for x in cfg.swarm_symbols],
-        INSTRUMENT=str(cfg.instrument).strip().upper(),
-        CROSSTRADE_TOKEN=cfg.crosstrade_token or "",
-        log_thought=lambda *_args, **_kwargs: None,
-    )
-    bound_app = cast(ModuleType, app)
-    engine.bind_app(bound_app)
-    return RuntimeContext(engine=engine, app=bound_app)
+    """Bootstrap a validation-only container via ApplicationContainer (single bootstrap path)."""
+    container = create_application_container()
+    return container.runtime_context
 
 
 def _load_catalog_state() -> dict[str, Any]:
@@ -796,7 +788,7 @@ with tab6:
     if st.button("Run 3-Year Validation Now"):
         try:
             runtime_context = _build_validation_context()
-            validator = PerformanceValidator(engine=runtime_context.engine)
+            validator = PerformanceValidator(engine=runtime_context.engine)  # engine via ApplicationContainer
             report = validator.run_3year_validation()
             st.json(report)
         except Exception as exc:

@@ -541,13 +541,32 @@ def supervisor_loop(app: RuntimeContext) -> None:
         if hold_until_ts > time.time():
             signal = "HOLD"
 
-        gate_result = validate_execution_decision(
-            signal=str(signal),
-            confluence_score=float(dream_snapshot.get("confluence_score", 0.0) or 0.0),
-            min_confluence=float(min_confluence),
-            hold_until_ts=float(hold_until_ts),
-        )
-        signal = str(gate_result.get("signal", signal))
+            # ── Hard Risk Controller ─ VERY FIRST execution gate (fail-closed) ────
+            if signal in ["BUY", "SELL"]:
+                _risk_ctrl = getattr(app.engine, "risk_controller", None)
+                if _risk_ctrl is None:
+                    app.logger.warning("HardRiskController unavailable – trade blocked (fail-closed)")
+                    signal = "HOLD"
+                else:
+                    _raw_stop = float(dream_snapshot.get("stop", price * 0.99 if signal == "BUY" else price * 1.01))
+                    _proposed_risk = abs(float(price) - _raw_stop)
+                    _risk_ok, _risk_reason = _risk_ctrl.check_can_trade(
+                        str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                        str(dream_snapshot.get("regime", "NEUTRAL")),
+                        float(_proposed_risk),
+                    )
+                    if not _risk_ok:
+                        app.logger.warning(f"HardRiskController blocked trade: {_risk_reason}")
+                        signal = "HOLD"
+
+            # ── Agent contract gate ─ validate signal, confluence, hold window ────
+            gate_result = validate_execution_decision(
+                signal=str(signal),
+                confluence_score=float(dream_snapshot.get("confluence_score", 0.0) or 0.0),
+                min_confluence=float(min_confluence),
+                hold_until_ts=float(hold_until_ts),
+            )
+            signal = str(gate_result.get("signal", signal))
 
         if signal in ["BUY", "SELL"] and dream_snapshot.get("confluence_score", 0) > min_confluence:
             regime = dream_snapshot.get("regime", "NEUTRAL")
