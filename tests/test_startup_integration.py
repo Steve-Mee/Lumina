@@ -1,6 +1,7 @@
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 
 def _load_oop_entrypoint_module():
@@ -14,36 +15,35 @@ def _load_oop_entrypoint_module():
     return module
 
 
-def test_bootstrap_runtime_calls_expected_startup_steps(monkeypatch):
+def test_main_calls_bootstrap_then_forever_loop(monkeypatch):
     module = _load_oop_entrypoint_module()
-    calls = []
+    calls: list[str] = []
 
-    monkeypatch.setattr(module, "validate_runtime_config", lambda: True)
+    dummy_container = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="paper", use_human_main_loop=False),
+        swarm_symbols=["MNQ"],
+        analysis_service=SimpleNamespace(run_main_loop=lambda: None),
+        operations_service=SimpleNamespace(run_forever_loop=lambda: calls.append("run_forever_loop")),
+    )
 
-    def _load_historical_ohlc(self, days_back=3, limit=5000):
-        calls.append(("load_historical_ohlc", days_back, limit))
+    monkeypatch.setattr(module, "get_container", lambda: dummy_container)
+    monkeypatch.setattr(module, "bootstrap_runtime", lambda container: calls.append("bootstrap_runtime"))
 
-    monkeypatch.setattr(type(module.MARKET_DATA_SERVICE), "load_historical_ohlc", _load_historical_ohlc)
+    module.main()
 
-    def _start_runtime_services(**kwargs):
-        calls.append(("start_runtime_services", sorted(kwargs.keys())))
-
-    monkeypatch.setattr(module, "start_runtime_services", _start_runtime_services)
-
-    module.bootstrap_runtime()
-
-    assert calls[0] == ("load_historical_ohlc", 3, 5000)
-    assert calls[1][0] == "start_runtime_services"
-    assert "start_daemon_fn" in calls[1][1]
-    assert "supervisor_loop_fn" in calls[1][1]
+    assert calls == ["bootstrap_runtime", "run_forever_loop"]
 
 
-def test_bootstrap_runtime_exits_when_config_invalid(monkeypatch):
+def test_legacy_symbol_bridge_maps_to_container_attributes(monkeypatch):
     module = _load_oop_entrypoint_module()
-    monkeypatch.setattr(module, "validate_runtime_config", lambda: False)
 
-    try:
-        module.bootstrap_runtime()
-        raise AssertionError("bootstrap_runtime should raise SystemExit when config is invalid")
-    except SystemExit as exc:
-        assert exc.code == 1
+    dummy_container = SimpleNamespace(
+        config=object(),
+        engine=object(),
+        analysis_service=object(),
+    )
+    monkeypatch.setattr(module, "get_container", lambda: dummy_container)
+
+    assert module.CONFIG is dummy_container.config
+    assert module.ENGINE is dummy_container.engine
+    assert module.ANALYSIS_SERVICE is dummy_container.analysis_service

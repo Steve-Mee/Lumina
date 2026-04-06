@@ -86,7 +86,8 @@ class InfiniteSimulator:
         self.realistic = RealisticBacktesterEngine(context)
         # Future-proof Ray behavior for zero-GPU init and silence known warning noise.
         os.environ.setdefault("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "0")
-        ray.init(ignore_reinit_error=True, num_cpus=8)
+        if not ray.is_initialized():
+            ray.init(ignore_reinit_error=True, num_cpus=8)
 
     def generate_synthetic_data(self, base_df: pd.DataFrame, years: int = 1000) -> pd.DataFrame:
         """Base real data + 1000 jaar synthetic uitbreiding."""

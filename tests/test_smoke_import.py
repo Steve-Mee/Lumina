@@ -19,4 +19,6 @@ def test_smoke_import_oop_entrypoint_module():
     # Ensure import does not hard-exit when token is missing.
     os.environ.pop("CROSSTRADE_TOKEN", None)
     module = _load_oop_entrypoint_module()
-    assert hasattr(module, "validate_runtime_config")
+    assert hasattr(module, "get_container")
+    assert hasattr(module, "get_public_api")
+    assert hasattr(module, "main")
