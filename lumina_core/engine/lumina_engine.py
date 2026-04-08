@@ -126,6 +126,24 @@ class LuminaEngine:
     portfolio_var_allocator: Any | None = None
     # Immutable agent decision log sink
     decision_log: Any | None = None
+    # ReasoningService (AI layer – injected by container)
+    reasoning_service: Any | None = None
+    # Market data service for bar/candle loading
+    market_data_service: Any | None = None
+    # Memory service for persistent state
+    memory_service: Any | None = None
+    # Operations service for trade/risk workflows
+    operations_service: Any | None = None
+    # Human/AI analysis service
+    analysis_service: Any | None = None
+    # Dashboard service (Streamlit)
+    dashboard_service: Any | None = None
+    # Visualization service
+    visualization_service: Any | None = None
+    # Reporting service (PDF/CSV export)
+    reporting_service: Any | None = None
+    # Trade reconciler (post-trade settlement)
+    trade_reconciler: Any | None = None
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:

@@ -8,24 +8,22 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-import pyttsx3
-import speech_recognition as sr
 from dotenv import load_dotenv
 
 from lumina_core.engine import (
     AgentDecisionLog,
-    DashboardService, 
-    EngineConfig, 
-    HumanAnalysisService, 
+    DashboardService,
+    EngineConfig,
+    HumanAnalysisService,
     LocalInferenceEngine,
-    MarketDataService, 
-    MemoryService, 
-    OperationsService, 
+    MarketDataService,
+    MemoryService,
+    OperationsService,
     PerformanceValidator,
-    ReportingService, 
+    ReportingService,
     RegimeDetector,
-    ReasoningService, 
-    SwarmManager, 
+    ReasoningService,
+    SwarmManager,
     TradeReconciler,
     VisualizationService,
 )
@@ -206,24 +204,32 @@ class ApplicationContainer:
             raise ValueError(msg)
     
     def _init_voice(self) -> None:
-        """Initialize voice input/output components."""
-        # Initialize voice recognizer if enabled
+        """Initialize voice input/output components with lazy imports."""
+        # Lazy import speech_recognition only if voice input is enabled
         if self.voice_config.input_enabled:
             try:
+                import speech_recognition as sr  # noqa: PLC0415
                 self.voice_recognizer = sr.Recognizer()
                 self.logger.info("Voice recognizer initialized")
+            except ImportError:
+                self.logger.warning("speech_recognition library not available; voice input disabled")
+                self.voice_config.input_enabled = False
             except Exception as e:
                 self.logger.warning(f"Failed to initialize voice recognizer: {e}")
         
-        # Initialize TTS engine if enabled
+        # Lazy import pyttsx3 only if voice output is enabled
         if self.voice_config.output_enabled:
             try:
+                import pyttsx3  # noqa: PLC0415
                 self.tts_engine = pyttsx3.init()
                 self.tts_engine.setProperty("rate", self.voice_config.tts_config.rate)
                 self.tts_engine.setProperty("volume", self.voice_config.tts_config.volume)
                 self.logger.info("TTS engine initialized")
+            except ImportError:
+                self.logger.warning("pyttsx3 library not available; voice output disabled (headless mode OK)")
+                self.voice_config.output_enabled = False
             except Exception as e:
-                self.logger.warning(f"Failed to initialize TTS engine: {e}")
+                self.logger.warning(f"Failed to initialize TTS engine: {e} (headless mode OK)")
     
     def _init_instruments(self) -> None:
         """Initialize instrument symbols from config."""
@@ -307,7 +313,56 @@ class ApplicationContainer:
         # RL environment (optional, lazily created if needed)
         # self.rl_environment = RLTradingEnvironment(self.runtime_context)
         
+        # Validate that all required engine attributes are set
+        self._validate_engine_attributes()
+        
         self.logger.info("All services initialized successfully")
+
+    def _validate_engine_attributes(self) -> None:
+        """Validate that all required engine attributes exist before assignment."""
+        required_attributes = [
+            'config',
+            'dream_state',
+            'bible_engine',
+            'market_data',
+            'valuation_engine',
+            'regime_history',
+            'narrative_memory',
+            'memory_buffer',
+            'trade_reflection_history',
+            'pnl_history',
+            'equity_curve',
+            'trade_log',
+            'performance_log',
+            'world_model',
+            'AI_DRAWN_FIBS',
+            'cost_tracker',
+            'current_regime_snapshot',
+            'logger',
+            'risk_controller',
+            'decision_log',
+            'observability_service',
+            'regime_detector',
+            'local_engine',
+            'reasoning_service',
+            'emotional_twin_agent',
+            'infinite_simulator',
+            'validator',
+            'swarm',
+            'portfolio_var_allocator',
+        ]
+        
+        missing = []
+        for attr in required_attributes:
+            if not hasattr(self.engine, attr):
+                missing.append(attr)
+        
+        if missing:
+            msg = f"LuminaEngine is missing required attributes: {missing}"
+            self.logger.error(msg)
+            raise AttributeError(msg)
+        
+        self.logger.debug(f"Engine validation passed: all {len(required_attributes)} required attributes present")
 
     def _init_observability(self) -> ObservabilityService:
         """Load config.yaml and start ObservabilityService (no-op if monitoring disabled)."""
