@@ -54,6 +54,7 @@ logs/security_audit.jsonl
 journal/simulator/*.json
 state/lumina_thought_log.jsonl
 state/thought_log.jsonl
+state/agent_decision_log.jsonl
 state/live_stream.jsonl
 state/trade_reconciler_status.json
 
