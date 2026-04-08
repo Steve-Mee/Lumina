@@ -57,6 +57,13 @@ state/thought_log.jsonl
 state/agent_decision_log.jsonl
 state/live_stream.jsonl
 state/trade_reconciler_status.json
+state/headless_paper_15m.out
+state/last_run_summary.json
+state/last_run_summary_live_30m_paper.json
+state/last_run_summary_live_5m.json
+
+# Local scratch analysis file (official versions are lumina_analyse_v*.md)
+lumina_analyse.md
 
 # Local Trader League test artifacts
 lumina_os/tests/test_trader_league.db
