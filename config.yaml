@@ -44,11 +44,37 @@ models:
 trading:
   instrument: "MES JUN26"
   risk_profile: "Balanced"
+  
+  # NEWS AVOIDANCE - v51 Capital Preservation
+  # Pre-event buffer (default minutes before economic event)
+  news_avoidance_pre_minutes: 10
+  # Post-event buffer (default minutes after economic event)
+  news_avoidance_post_minutes: 5
+  # High-impact events (Federal Reserve, etc.) extend these windows
+  news_avoidance_high_impact_pre_minutes: 15
+  news_avoidance_high_impact_post_minutes: 10
+  
+  # Default (legacy support)
   news_avoidance_minutes: 3
+  
   news_impact_multipliers:
     high_bullish: 1.8
     high_bearish: 0.4
     medium_neutral: 1.0
+  
+  # EOD MANAGEMENT - v51 Capital Preservation
+  # Force-close all positions N minutes before session end
+  eod_force_close_minutes_before_session_end: 30
+  # Stop opening new trades N minutes before session end
+  eod_no_new_trades_minutes_before_session_end: 60
+  # Protect against overnight gap risk
+  overnight_gap_protection_enabled: true
+  
+  # KELLY POSITION SIZING - v51 Capital Preservation
+  # Maximum Kelly fraction (25% = fractional Kelly for safety)
+  kelly_fraction_max: 0.25
+  # Only apply Kelly when confidence >= this threshold
+  kelly_min_confidence: 0.65
 
 risk_controller:
   # Hard Risk Controller - Unbreakable Safety Layer (fail-closed)

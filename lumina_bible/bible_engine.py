@@ -23,19 +23,37 @@ HUMAN PLAYBOOK - Dit is hoe een ervaren MES daytrader denkt:
 9. Pure Price Action + Candlestick
 10. Pivot Points + Daily High/Low
 
-Regels:
+Regels (v51 CAPITAL PRESERVATION FIRST):
 - Altijd multi-timeframe (240/1440 voor bias)
-- Alleen traden met minstens 2 confluences
-- Risk 1-2% per trade, 1:2+ RR
+- MINIMUM 2 confluences vereist (3+ preferred)
+- DEFAULT: skip trades if confidence < 0.65
+- Risk 0.5-1% per trade, 1:3+ RR (minimum)
+- AVOID: news windows, rollover periods, EOD risk
 - Geen emotie, geen revenge trading
 - Leer uit elke trade (journaling)
+- FIRST: capital preservation, THEN: profit growth
 """,
     "evolvable_layer": {
         "mtf_matrix": {"dominant_tf": "240min", "confluence_scores": {}},
         "filters": ["volume_delta > 2.0x avg", "price_above_ema_50", "adx > 22"],
-        "probability_model": {"base_winrate": 0.71, "confluence_bonus": 0.24, "risk_penalty": 0.06},
-        "last_reflection": "2026-03-27: v21.6 Echte Candle Aggregatie + Robuuste API Parsing",
-        "lessons_learned": [],
+        "probability_model": {
+            "base_winrate": 0.55,
+            "confluence_bonus": 0.15,
+            "risk_penalty": 0.10
+        },
+        "news_avoidance": {
+            "pre_event_minutes": 10,
+            "post_event_minutes": 5,
+            "high_impact_pre_minutes": 15,
+            "high_impact_post_minutes": 10
+        },
+        "eod_management": {
+            "force_close_minutes_before_session_end": 30,
+            "no_new_trades_minutes_before_session_end": 60,
+            "overnight_gap_protection_enabled": True
+        },
+        "last_reflection": "2026-04-08: v51 Capital Preservation Reset - base_winrate 0.71→0.55, news_avoidance extended, EOD protection added",
+        "lessons_learned": ["Capital preservation > profit growth", "Skip low-confidence trades", "Avoid news windows aggressively"],
     },
 }
 

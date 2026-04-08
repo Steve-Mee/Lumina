@@ -20,6 +20,51 @@ def _utcnow() -> datetime:
 
 
 @dataclass
+class MarginTracker:
+    """Track CME futures margin requirements per instrument (capital preservation)."""
+    
+    # CME maintenance margin requirements (approximate as of 2026)
+    CME_MARGINS = {
+        "MES": 8400.0,        # E-mini S&P 500
+        "MNQ": 10500.0,       # E-mini Nasdaq-100
+        "MYM": 7000.0,        # E-mini Dow
+        "RTY": 5500.0,        # E-mini Russell 2000
+        "ZB": 3300.0,         # Treasury Bond
+        "ZN": 2600.0,         # Treasury Note
+        "YM": 21000.0,        # Micro Dow
+        "ES": 20000.0,        # Standard S&P 500
+        "NQ": 32000.0,        # Standard Nasdaq
+    }
+    
+    account_equity: float = 50000.0  # Current account equity
+    
+    def get_margin_requirement(self, symbol: str) -> float:
+        """Get maintenance margin for a symbol. Defaults to 3% of equity if unknown."""
+        symbol_upper = str(symbol).strip().upper()
+        return self.CME_MARGINS.get(symbol_upper, self.account_equity * 0.03)
+    
+    def available_margin(self, positions_margin_used: float) -> float:
+        """Calculate available margin after positions."""
+        return max(0.0, self.account_equity - positions_margin_used)
+    
+    def can_open_position(self, symbol: str, positions_margin_used: float, safety_buffer_pct: float = 0.2) -> bool:
+        """
+        Check if we can open a position without violating CME margin requirements.
+        safety_buffer_pct: keep this % of available margin as buffer (default 20%).
+        """
+        required_margin = self.get_margin_requirement(symbol)
+        available = self.available_margin(positions_margin_used)
+        margin_with_buffer = required_margin * (1.0 + safety_buffer_pct)
+        return available >= margin_with_buffer
+    
+    def margin_utilization_pct(self, positions_margin_used: float) -> float:
+        """Get margin utilization as percentage of account equity."""
+        if self.account_equity <= 0:
+            return 100.0
+        return (positions_margin_used / self.account_equity) * 100.0
+
+
+@dataclass
 class RiskLimits:
     """Risk configuration limits (from config.yaml)."""
     daily_loss_cap: float = -1000.0  # USD: max daily loss before hard stop
@@ -74,6 +119,7 @@ class RiskState:
     portfolio_var_limit_usd: float = 1200.0
     portfolio_var_breached: bool = False
     portfolio_var_reason: str = ""
+    margin_tracker: Optional[MarginTracker] = field(default_factory=MarginTracker)  # Capital preservation
 
 
 class HardRiskController:
@@ -379,14 +425,26 @@ class HardRiskController:
             self.state.portfolio_var_breached = False
             self.state.portfolio_var_reason = "Portfolio VaR allocator unavailable"
         
-        # 6. Per-instrument open risk check
+        # 6. CME Margin requirement check (capital preservation)
+        if self.state.margin_tracker is not None:
+            total_margin_used = sum(
+                self.state.margin_tracker.get_margin_requirement(sym)
+                for sym in self.state.open_risk_by_symbol.keys()
+            )
+            if not self.state.margin_tracker.can_open_position(symbol, total_margin_used, safety_buffer_pct=0.2):
+                margin_avail = self.state.margin_tracker.available_margin(total_margin_used)
+                margin_req = self.state.margin_tracker.get_margin_requirement(symbol)
+                reason = f"CME MARGIN insufficient for {symbol}: {margin_req:.0f} required, {margin_avail:.0f} available (20% buffer applied)"
+                return False, reason
+        
+        # 7. Per-instrument open risk check
         current_symbol_risk = self.state.open_risk_by_symbol.get(symbol, 0.0)
         total_symbol_risk = current_symbol_risk + proposed_risk
         if total_symbol_risk > limits.max_open_risk_per_instrument:
             reason = f"MAX INSTRUMENT RISK exceeded for {symbol}: {total_symbol_risk:.2f} > {limits.max_open_risk_per_instrument:.2f}"
             return False, reason
         
-        # 7. Per-regime exposure check
+        # 8. Per-regime exposure check
         current_regime_risk = self.state.open_risk_all_regimes.get(regime, 0.0)
         total_regime_risk = current_regime_risk + proposed_risk
         if total_regime_risk > limits.max_exposure_per_regime:

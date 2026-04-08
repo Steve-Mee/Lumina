@@ -67,12 +67,45 @@ class NewsAgent:
         return max(10, interval)
 
     def _news_avoidance_minutes(self) -> int:
+        # Try new v51 configurable windows first
+        pre = getattr(self.engine.config, "news_avoidance_pre_minutes", None)
+        if pre is not None:
+            try:
+                return max(1, int(pre))
+            except (TypeError, ValueError):
+                pass
+        
+        # Fallback to legacy config
         raw = getattr(self.engine.config, "news_avoidance_minutes", 3)
         try:
             minutes = int(raw)
         except (TypeError, ValueError):
             minutes = 3
         return max(1, minutes)
+    
+    def _news_avoidance_post_minutes(self) -> int:
+        """Post-event avoidance window (default 5 minutes)."""
+        post = getattr(self.engine.config, "news_avoidance_post_minutes", 5)
+        try:
+            return max(1, int(post))
+        except (TypeError, ValueError):
+            return 5
+    
+    def _news_avoidance_high_impact_pre_minutes(self) -> int:
+        """Pre-event window for high-impact events (default 15 minutes)."""
+        pre = getattr(self.engine.config, "news_avoidance_high_impact_pre_minutes", 15)
+        try:
+            return max(1, int(pre))
+        except (TypeError, ValueError):
+            return 15
+    
+    def _news_avoidance_high_impact_post_minutes(self) -> int:
+        """Post-event window for high-impact events (default 10 minutes)."""
+        post = getattr(self.engine.config, "news_avoidance_high_impact_post_minutes", 10)
+        try:
+            return max(1, int(post))
+        except (TypeError, ValueError):
+            return 10
 
     def _xai_client(self) -> Client | None:
         api_key = str(getattr(self.engine.config, "xai_key", "") or "").strip() or str(os.getenv("XAI_API_KEY", "")).strip()
@@ -108,7 +141,6 @@ class NewsAgent:
         return None
 
     def _compute_avoidance_window(self, events: list[dict[str, Any]], now_utc: datetime) -> tuple[bool, float, str]:
-        avoid_minutes = self._news_avoidance_minutes()
         keywords = {"fomc", "cpi", "nfp", "non-farm payroll", "powell", "fed", "pce", "ecb", "rate decision"}
 
         for event in events:
@@ -118,6 +150,7 @@ class NewsAgent:
             impact = str(event.get("impact", "")).strip().lower()
             event_name_l = event_name.lower()
             is_high = impact in {"3", "high", "three", "3-star", "3_star"} or any(key in event_name_l for key in keywords)
+            
             if not is_high:
                 continue
 
@@ -125,10 +158,18 @@ class NewsAgent:
             if event_dt is None:
                 continue
 
-            window_start = event_dt - timedelta(minutes=avoid_minutes)
-            window_end = event_dt + timedelta(minutes=avoid_minutes)
+            # Use different avoidance windows for high-impact vs normal events
+            if is_high:
+                avoid_pre_minutes = self._news_avoidance_high_impact_pre_minutes()
+                avoid_post_minutes = self._news_avoidance_high_impact_post_minutes()
+            else:
+                avoid_pre_minutes = self._news_avoidance_minutes()
+                avoid_post_minutes = self._news_avoidance_post_minutes()
+
+            window_start = event_dt - timedelta(minutes=avoid_pre_minutes)
+            window_end = event_dt + timedelta(minutes=avoid_post_minutes)
             if window_start <= now_utc <= window_end:
-                return True, window_end.timestamp(), f"News avoidance window active: {event_name}"
+                return True, window_end.timestamp(), f"News avoidance window active: {event_name} (impact: {'high' if is_high else 'normal'})"
 
         return False, 0.0, ""
 

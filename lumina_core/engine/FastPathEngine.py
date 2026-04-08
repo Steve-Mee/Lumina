@@ -11,16 +11,99 @@ from .lumina_engine import LuminaEngine
 
 
 @dataclass(slots=True)
+class PositionSizer:
+    """Fractional Kelly-based position sizing for capital preservation (v51)."""
+    
+    @staticmethod
+    def calculate_kelly_fraction(
+        win_rate: float,
+        avg_win: float = 1.0,
+        avg_loss: float = 1.0,
+        kelly_fraction_max: float = 0.25,
+    ) -> float:
+        """
+        Calculate optimal Kelly fraction with cap for safety.
+        
+        Kelly formula: f* = (bp - q) / b
+        where:
+          - f* = optimal Kelly fraction
+          - b = average_win / average_loss (reward/risk ratio)
+          - p = probability of win
+          - q = probability of loss (1 - p)
+        
+        Args:
+            win_rate: Probability of winning (0-1)
+            avg_win: Average size of winning trade (default 1.0)
+            avg_loss: Average size of losing trade (default 1.0)
+            kelly_fraction_max: Maximum Kelly fraction to use (default 0.25 for safety)
+        
+        Returns:
+            Actual Kelly fraction to use (capped at kelly_fraction_max)
+        """
+        if win_rate <= 0 or win_rate >= 1:
+            return 0.0
+        
+        loss_rate = 1.0 - win_rate
+        if avg_loss <= 0:
+            return 0.0
+        
+        b = avg_win / avg_loss  # Reward/risk ratio
+        q = loss_rate
+        
+        # Kelly formula
+        kelly_optimal = (b * win_rate - q) / b
+        
+        # Cap at kelly_fraction_max for safety
+        kelly_safe = max(0.0, min(kelly_optimal, kelly_fraction_max))
+        
+        return float(kelly_safe)
+    
+    @staticmethod
+    def calculate_position_size(
+        account_equity: float,
+        kelly_fraction: float,
+        confidence: float = 1.0,
+        min_confidence: float = 0.65,
+    ) -> float:
+        """
+        Calculate trade size based on Kelly fraction and confidence.
+        
+        Trade size = account_equity * kelly_fraction * confidence
+        Only apply Kelly if confidence >= min_confidence.
+        
+        Args:
+            account_equity: Current account equity (USD)
+            kelly_fraction: Kelly fraction to apply (0-1)
+            confidence: Current signal confidence (0-1)
+            min_confidence: Minimum confidence to apply Kelly (default 0.65)
+        
+        Returns:
+            Position size in USD (0 if below min_confidence)
+        """
+        if confidence < min_confidence:
+            return 0.0
+        
+        return float(account_equity * kelly_fraction * min(confidence, 1.0))
+
+
+@dataclass(slots=True)
 class FastPathEngine:
     """Low-latency rule engine for first-pass trade decisions.
 
     Supports both direct engine= construction (internal services) and
     RuntimeContext injection via context= (compatibility with LocalInferenceEngine).
     Beslissingstijd < 200 ms. LLM-takeover als confidence < fast_path_threshold.
+    
+    v51 Capital Preservation:
+    - Fractional Kelly position sizing (25% max)
+    - News avoidance windows (configurable pre/post)
+    - EOD force-close protection
+    - MarginTracker integration
     """
 
     engine: LuminaEngine
     llm_confidence_threshold: float = 0.75
+    position_sizer: PositionSizer = field(default_factory=PositionSizer)
 
     def __post_init__(self) -> None:
         # Sync threshold from config.yaml when available via local_engine
