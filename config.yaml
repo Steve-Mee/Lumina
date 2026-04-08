@@ -212,3 +212,25 @@ monitoring:
     telegram_chat_id: ""               # Required only when platform = "telegram"
     timeout_s: 5
 
+# ── Headless runtime configuration ────────────────────────────────────────────
+# Used by: python -m lumina_launcher --headless --mode=paper --duration=15m --broker=paper
+headless:
+  # Default simulated session duration (minutes) when --duration flag is omitted.
+  default_duration_minutes: 15
+
+  # Default trading mode for headless runs.
+  default_mode: "paper"          # "paper" | "sim" | "real"
+
+  # Default broker backend for headless runs.
+  default_broker: "paper"        # "paper" | "live"
+
+  # Where the JSON summary is persisted after each run.
+  summary_output_path: "state/last_run_summary.json"
+
+  # Synthetic ticks generated per minute of simulated session
+  # (higher = more trades, slower init; lower = fewer trades, faster).
+  ticks_per_minute: 200
+
+  # Seed for deterministic tick generation.
+  simulation_seed: 51
+
