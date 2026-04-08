@@ -13,6 +13,7 @@ import speech_recognition as sr
 from dotenv import load_dotenv
 
 from lumina_core.engine import (
+    AgentDecisionLog,
     DashboardService, 
     EngineConfig, 
     HumanAnalysisService, 
@@ -128,6 +129,7 @@ class ApplicationContainer:
     performance_validator: PerformanceValidator = field(init=False)
     rl_environment: RLTradingEnvironment | None = field(default=None, init=False)
     observability_service: ObservabilityService = field(init=False)
+    decision_log: AgentDecisionLog = field(init=False)
     
     # Voice/audio components
     voice_recognizer: Optional[sr.Recognizer] = field(default=None, init=False)
@@ -164,6 +166,8 @@ class ApplicationContainer:
         # Initialize core engine
         self.engine = LuminaEngine(self.config)
         self.engine.observability_service = self.observability_service
+        self.decision_log = AgentDecisionLog()
+        self.engine.decision_log = self.decision_log
         self.runtime_context = RuntimeContext(engine=self.engine, app=None, container=self)
         self.regime_detector = RegimeDetector(config=getattr(self.config, "regime", {}), valuation_engine=self.engine.valuation_engine)
         self.engine.regime_detector = self.regime_detector
@@ -275,6 +279,10 @@ class ApplicationContainer:
         
         self.trade_reconciler = TradeReconciler(engine=self.engine)
 
+        # Level 5: Swarm manager
+        self.swarm_manager = SwarmManager(self.engine)
+        self.engine.swarm = self.swarm_manager
+
         # Promote engine-owned hard risk controller to container surface.
         if self.engine.risk_controller is None:
             raise RuntimeError("Engine risk_controller was not initialized")
@@ -291,10 +299,6 @@ class ApplicationContainer:
         self.engine.portfolio_var_allocator = self.portfolio_var_allocator
         self.engine.risk_controller.portfolio_var_allocator = self.portfolio_var_allocator
         self.risk_controller = self.engine.risk_controller
-        
-        # Level 5: Swarm manager
-        self.swarm_manager = SwarmManager(self.engine)
-        self.engine.swarm = self.swarm_manager
         
         # Level 6: Cross-references
         self.dashboard_service.visualization_service = self.visualization_service

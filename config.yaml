@@ -126,6 +126,11 @@ evolution:
   enabled: true
   approval_required: true
 
+fine_tuning:
+  auto_trigger: true
+  min_acceptance: 0.4
+  drift_threshold: 0.25
+
 session:
   cooldown_minutes_after_streak: 15
   enforce_calendar: true

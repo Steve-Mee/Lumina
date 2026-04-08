@@ -146,12 +146,15 @@ def main() -> int:
         engine=engine,
         valuation_engine=getattr(engine, "valuation_engine", ValuationEngine()),
         risk_controller=getattr(engine, "risk_controller", None),
+        ppo_trainer=ppo_trainer,
+        rl_environment=getattr(engine, "rl_env", None),
     )
     evolution_agent = SelfEvolutionMetaAgent.from_container(
         container=evolution_container,
         enabled=bool(evo_cfg.get("enabled", True)),
         approval_required=bool(evo_cfg.get("approval_required", True)),
         obs_service=obs,
+        fine_tuning_cfg=evo_cfg.get("fine_tuning", {}),
     )
     evolution_result = evolution_agent.run_nightly_evolution(
         nightly_report=report,

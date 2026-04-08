@@ -1,4 +1,5 @@
 from .analysis_service import HumanAnalysisService
+from .agent_decision_log import AgentDecisionLog
 from .bible_engine import BibleEngine
 from .broker_bridge import AccountInfo, BrokerBridge, CrossTradeBroker, Fill, Order, OrderResult, PaperBroker, Position, broker_factory
 from .dashboard_service import DashboardService
@@ -24,6 +25,7 @@ from .visualization_service import VisualizationService
 
 __all__ = [
     "HumanAnalysisService",
+    "AgentDecisionLog",
     "DashboardService",
     "BrokerBridge",
     "PaperBroker",

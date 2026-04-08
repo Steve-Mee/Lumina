@@ -219,6 +219,26 @@ class NewsAgent:
         raw = str(getattr(self.engine.config, "xai_model", "grok-4.1-fast") or "grok-4.1-fast")
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
+    def _log_decision(self, raw_input: dict[str, Any], raw_output: dict[str, Any], policy_outcome: str) -> None:
+        decision_log = getattr(self.engine, "decision_log", None)
+        if decision_log is None or not hasattr(decision_log, "log_decision"):
+            return
+        try:
+            decision_log.log_decision(
+                agent_id="NewsAgent",
+                raw_input=raw_input,
+                raw_output=raw_output,
+                confidence=float(raw_output.get("confidence", 0.0) or 0.0),
+                policy_outcome=policy_outcome,
+                decision_context_id="news_cycle",
+                model_version=str(getattr(self.engine.config, "xai_model", "grok-4.1-fast") or "grok-4.1-fast"),
+                prompt_hash=hashlib.sha256(
+                    json.dumps(raw_input, sort_keys=True, ensure_ascii=True).encode("utf-8")
+                ).hexdigest(),
+            )
+        except Exception:
+            return
+
     def _contract_input_payload(self) -> dict[str, Any]:
         app = self._app()
         news_data = self._safe_dict(app.get_high_impact_news())
@@ -319,6 +339,11 @@ class NewsAgent:
 
         self._last_update_dt = now_utc
         self._cached_result = dict(result)
+        self._log_decision(
+            raw_input={"prompt": prompt, "events": events, "news_data": news_data},
+            raw_output=result,
+            policy_outcome="news_cycle_success",
+        )
         return dict(result)
 
     def run_cycle(self) -> dict[str, Any]:

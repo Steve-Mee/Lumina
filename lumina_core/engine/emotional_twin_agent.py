@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import numpy as np
 from collections import deque
 from datetime import datetime, timedelta
@@ -57,6 +58,28 @@ class EmotionalTwinAgent:
     def _model_hash(self) -> str:
         payload = json.dumps(self.calibration, sort_keys=True)
         return __import__("hashlib").sha256(payload.encode("utf-8")).hexdigest()
+
+    def _log_decision(self, raw_input: Dict[str, Any], raw_output: Dict[str, Any], policy_outcome: str) -> None:
+        decision_log = getattr(self.context, "decision_log", None)
+        if decision_log is None:
+            decision_log = getattr(getattr(self.context, "engine", None), "decision_log", None)
+        if decision_log is None or not hasattr(decision_log, "log_decision"):
+            return
+        try:
+            decision_log.log_decision(
+                agent_id="EmotionalTwinAgent",
+                raw_input=raw_input,
+                raw_output=raw_output,
+                confidence=float(raw_output.get("confidence", raw_output.get("confluence_score", 0.0)) or 0.0),
+                policy_outcome=policy_outcome,
+                decision_context_id="emotional_twin_cycle",
+                model_version=self._model_hash()[:16],
+                prompt_hash=hashlib.sha256(
+                    json.dumps(raw_input, sort_keys=True, ensure_ascii=True).encode("utf-8")
+                ).hexdigest(),
+            )
+        except Exception:
+            return
 
     def _contract_input_payload(self) -> Dict[str, Any]:
         dream = self.context.get_current_dream_snapshot()
@@ -260,6 +283,11 @@ class EmotionalTwinAgent:
         result = dict(corrected)
         result["emotional_bias"] = getattr(self, "_last_bias", {})
         result["confidence"] = float(max(0.0, min(1.0, result.get("confluence_score", 0.0) or 0.0)))
+        self._log_decision(
+            raw_input={"dream": main_dream, "observation": self._contract_input_payload()},
+            raw_output=result,
+            policy_outcome="correction_applied" if result.get("signal") != main_dream.get("signal") else "pass_through",
+        )
         return result
 
     def nightly_train(

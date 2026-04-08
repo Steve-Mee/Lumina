@@ -9,12 +9,15 @@ from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
+from .agent_decision_log import AgentDecisionLog
+
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 _DECISION_LOG_PATH = Path("state/thought_log.jsonl")
 _DECISION_LOG_LOCK = threading.Lock()
 _LAST_ENTRY_HASH = ""
+_AGENT_DECISION_LOG = AgentDecisionLog(path=Path("state/agent_decision_log.jsonl"))
 
 
 class AgentContractError(RuntimeError):
@@ -113,6 +116,25 @@ def _append_immutable_decision_log(payload: dict[str, Any]) -> None:
         with _DECISION_LOG_PATH.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
         _LAST_ENTRY_HASH = entry_hash
+
+    # Mirror every contract decision into the immutable agent decision log.
+    try:
+        full_context = payload.get("full_context", {}) if isinstance(payload.get("full_context"), dict) else {}
+        raw_input = full_context.get("input", {}) if isinstance(full_context.get("input"), dict) else {}
+        raw_output = full_context.get("output", {}) if isinstance(full_context.get("output"), dict) else {}
+        prompt_seed = json.dumps(raw_input, sort_keys=True, ensure_ascii=True)
+        _AGENT_DECISION_LOG.log_decision(
+            agent_id=str(payload.get("agent", "UnknownAgent")),
+            raw_input=raw_input,
+            raw_output=raw_output,
+            confidence=float(payload.get("confidence", 0.0) or 0.0),
+            policy_outcome=str(payload.get("status", "unknown")),
+            decision_context_id=str(payload.get("method", "unknown_method")),
+            model_version=str(payload.get("model_hash", "unknown_model")),
+            prompt_hash=hashlib.sha256(prompt_seed.encode("utf-8")).hexdigest(),
+        )
+    except Exception:
+        pass
 
 
 def enforce_contract(

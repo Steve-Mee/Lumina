@@ -241,6 +241,7 @@ class EngineConfig(BaseModel):
     regime: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("regime"))
     session: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("session"))
     portfolio_var: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("portfolio_var"))
+    fine_tuning: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("fine_tuning"))
 
     @property
     def min_confluence(self) -> float:

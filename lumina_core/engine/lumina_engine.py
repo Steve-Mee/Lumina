@@ -124,6 +124,8 @@ class LuminaEngine:
     session_guard: SessionGuard | None = None
     # Portfolio-level VaR allocator
     portfolio_var_allocator: Any | None = None
+    # Immutable agent decision log sink
+    decision_log: Any | None = None
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -86,6 +87,39 @@ class ReasoningService:
 
     def _observability_service(self):
         return getattr(self.engine, "observability_service", None)
+
+    def _decision_log(self):
+        return getattr(self.engine, "decision_log", None)
+
+    def _log_decision(
+        self,
+        *,
+        agent_id: str,
+        raw_input: dict[str, Any],
+        raw_output: dict[str, Any],
+        confidence: float,
+        policy_outcome: str,
+        decision_context_id: str,
+        model_version: str,
+    ) -> None:
+        decision_log = self._decision_log()
+        if decision_log is None or not hasattr(decision_log, "log_decision"):
+            return
+        try:
+            decision_log.log_decision(
+                agent_id=agent_id,
+                raw_input=raw_input,
+                raw_output=raw_output,
+                confidence=float(confidence),
+                policy_outcome=policy_outcome,
+                decision_context_id=decision_context_id,
+                model_version=model_version,
+                prompt_hash=hashlib.sha256(
+                    json.dumps(raw_input, sort_keys=True, ensure_ascii=True).encode("utf-8")
+                ).hexdigest(),
+            )
+        except Exception:
+            return
 
     def submit_order(self, order: Order) -> OrderResult:
         if self.container is None or getattr(self.container, "broker", None) is None:
@@ -177,6 +211,15 @@ class ReasoningService:
         )
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         self._record_latency(elapsed_ms, source=context)
+        self._log_decision(
+            agent_id="ReasoningService",
+            raw_input=payload,
+            raw_output=result if isinstance(result, dict) else {"result": result},
+            confidence=float((result or {}).get("confidence", 0.0) if isinstance(result, dict) else 0.0),
+            policy_outcome="inference_success" if isinstance(result, dict) else "inference_empty",
+            decision_context_id=context,
+            model_version=str(payload.get("model", "unknown")),
+        )
         return result
 
     async def multi_agent_consensus(
@@ -191,24 +234,44 @@ class ReasoningService:
         session_allowed, session_reason = self._session_trading_allowed()
         if not session_allowed:
             self._set_fast_path_only(True, f"session_guard: {session_reason}")
-            return {
+            blocked = {
                 "signal": "HOLD",
                 "confidence": 0.35,
                 "reason": f"Fast-path mode active: {session_reason}",
                 "agent_votes": {},
                 "regime": {"label": "SESSION_BLOCKED", "risk_state": "HIGH_RISK"},
             }
+            self._log_decision(
+                agent_id="ReasoningService",
+                raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
+                raw_output=blocked,
+                confidence=float(blocked.get("confidence", 0.0)),
+                policy_outcome="session_blocked",
+                decision_context_id="multi_agent_consensus",
+                model_version="reasoning-consensus-v1",
+            )
+            return blocked
 
         regime_snapshot = self.refresh_regime_snapshot(structure=structure)
         if self._fast_path_only_enabled():
             app.logger.info("MULTI_AGENT_CONSENSUS_SKIPPED,mode=fast_path_only")
-            return {
+            fast_path = {
                 "signal": "HOLD",
                 "confidence": 0.4,
                 "reason": "Fast-path mode active due to latency SLA breach",
                 "agent_votes": {},
                 "regime": regime_snapshot.to_dict(),
             }
+            self._log_decision(
+                agent_id="ReasoningService",
+                raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
+                raw_output=fast_path,
+                confidence=float(fast_path.get("confidence", 0.0)),
+                policy_outcome="fast_path_only",
+                decision_context_id="multi_agent_consensus",
+                model_version="reasoning-consensus-v1",
+            )
+            return fast_path
 
         get_dream = getattr(self.engine, "get_current_dream_snapshot", None)
         if callable(get_dream):
@@ -221,13 +284,23 @@ class ReasoningService:
                 regime_snapshot.label,
                 current_confluence,
             )
-            return {
+            conservative = {
                 "signal": "HOLD",
                 "confidence": round(max(0.35, regime_snapshot.confidence * 0.7), 2),
                 "reason": f"High-risk regime {regime_snapshot.label} forced conservative hold",
                 "agent_votes": {},
                 "regime": regime_snapshot.to_dict(),
             }
+            self._log_decision(
+                agent_id="ReasoningService",
+                raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
+                raw_output=conservative,
+                confidence=float(conservative.get("confidence", 0.0)),
+                policy_outcome="high_risk_hold",
+                decision_context_id="multi_agent_consensus",
+                model_version="reasoning-consensus-v1",
+            )
+            return conservative
 
         agent_styles = self._route_agent_styles(self.engine.config.agent_styles, regime_snapshot)
         agent_votes: dict[str, Any] = {}
@@ -294,6 +367,15 @@ Wat is jouw trade-besluit?""",
             consistency,
             regime_snapshot.label,
         )
+        self._log_decision(
+            agent_id="ReasoningService",
+            raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
+            raw_output=consensus,
+            confidence=float(consensus.get("confidence", 0.0)),
+            policy_outcome="consensus_generated",
+            decision_context_id="multi_agent_consensus",
+            model_version="reasoning-consensus-v1",
+        )
         return consensus
 
     async def meta_reasoning_and_counterfactuals(
@@ -338,8 +420,27 @@ Voer meta-reasoning + counter-factuals uit.""",
             meta = self.infer_json(payload, timeout=15, context="meta_reasoning")
             if meta is not None:
                 app.logger.info(f"META_REASONING_COMPLETE,meta_score={meta.get('meta_score', 0.5):.2f}")
+                self._log_decision(
+                    agent_id="ReasoningService",
+                    raw_input={"consensus": consensus, "price": price, "pa_summary": pa_summary, "past_experiences": past_experiences},
+                    raw_output=meta,
+                    confidence=float(meta.get("meta_score", 0.0)),
+                    policy_outcome="meta_reasoning_success",
+                    decision_context_id="meta_reasoning",
+                    model_version="grok-4.20-0309-reasoning",
+                )
                 return meta
         except Exception as exc:
             app.logger.error(f"Meta-reasoning error: {exc}")
 
-        return {"meta_score": 0.6, "meta_reasoning": "Meta-reasoning niet gelukt", "counterfactuals": []}
+        fallback = {"meta_score": 0.6, "meta_reasoning": "Meta-reasoning niet gelukt", "counterfactuals": []}
+        self._log_decision(
+            agent_id="ReasoningService",
+            raw_input={"consensus": consensus, "price": price, "pa_summary": pa_summary, "past_experiences": past_experiences},
+            raw_output=fallback,
+            confidence=float(fallback.get("meta_score", 0.0)),
+            policy_outcome="meta_reasoning_fallback",
+            decision_context_id="meta_reasoning",
+            model_version="grok-4.20-0309-reasoning",
+        )
+        return fallback

@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +30,11 @@ class SelfEvolutionMetaAgent:
     approval_required: bool = True
     log_path: Path = field(default_factory=lambda: Path("state/evolution_log.jsonl"))
     obs_service: Any | None = None  # Optional ObservabilityService; injected at runtime
+    auto_fine_tuning_enabled: bool = True
+    min_acceptance_rate: float = 0.4
+    drift_threshold: float = 0.25
+    ppo_trainer: Any | None = None
+    rl_environment: Any | None = None
 
     @classmethod
     def from_container(
@@ -39,6 +44,7 @@ class SelfEvolutionMetaAgent:
         enabled: bool = True,
         approval_required: bool = True,
         obs_service: Any | None = None,
+        fine_tuning_cfg: dict[str, Any] | None = None,
     ) -> "SelfEvolutionMetaAgent":
         engine = getattr(container, "engine", None)
         if engine is None:
@@ -52,6 +58,8 @@ class SelfEvolutionMetaAgent:
         if risk_controller is None:
             risk_controller = getattr(engine, "risk_controller", None)
 
+        ft_cfg = fine_tuning_cfg if isinstance(fine_tuning_cfg, dict) else {}
+
         return cls(
             engine=engine,
             valuation_engine=valuation_engine,
@@ -59,6 +67,11 @@ class SelfEvolutionMetaAgent:
             enabled=enabled,
             approval_required=approval_required,
             obs_service=obs_service,
+            auto_fine_tuning_enabled=bool(ft_cfg.get("auto_trigger", True)),
+            min_acceptance_rate=float(ft_cfg.get("min_acceptance", 0.4) or 0.4),
+            drift_threshold=float(ft_cfg.get("drift_threshold", 0.25) or 0.25),
+            ppo_trainer=getattr(container, "ppo_trainer", None),
+            rl_environment=getattr(container, "rl_environment", None),
         )
 
     def run_nightly_evolution(self, *, nightly_report: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
@@ -73,7 +86,15 @@ class SelfEvolutionMetaAgent:
             return result
 
         meta_review = self._meta_review(nightly_report)
+        fine_tune_trigger = self._auto_fine_tuning_trigger(meta_review=meta_review)
+        fine_tune_result = self._execute_auto_fine_tune(nightly_report, dry_run=dry_run) if fine_tune_trigger["triggered"] else {
+            "triggered": False,
+            "executed": False,
+            "reason": fine_tune_trigger["reason"],
+        }
         champion = self._current_champion()
+        if fine_tune_result.get("executed") and fine_tune_result.get("champion_candidate"):
+            champion = dict(fine_tune_result["champion_candidate"])
         challengers = self._build_challengers(champion, meta_review)
         scored = [self._score_challenger(champion, c, nightly_report, meta_review) for c in challengers]
         best = max(scored, key=lambda item: float(item.get("score", 0.0))) if scored else None
@@ -90,6 +111,7 @@ class SelfEvolutionMetaAgent:
             "timestamp": now.isoformat(),
             "dry_run": dry_run,
             "meta_review": meta_review,
+            "auto_fine_tune": fine_tune_result,
             "champion": champion,
             "challengers": scored,
             "best_candidate": best,
@@ -119,7 +141,193 @@ class SelfEvolutionMetaAgent:
                 pass
 
         self._append_immutable_log(outcome)
+        self._log_agent_decision(
+            raw_input={"nightly_report": nightly_report, "dry_run": dry_run},
+            raw_output=outcome,
+            confidence=float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0),
+            policy_outcome=str(outcome.get("status", "unknown")),
+            decision_context_id="nightly_evolution",
+            evolution_log_hash=str(outcome.get("hash", "")) if isinstance(outcome, dict) else None,
+        )
         return outcome
+
+    def _log_agent_decision(
+        self,
+        *,
+        raw_input: dict[str, Any],
+        raw_output: dict[str, Any],
+        confidence: float,
+        policy_outcome: str,
+        decision_context_id: str,
+        evolution_log_hash: str | None = None,
+    ) -> None:
+        decision_log = getattr(self.engine, "decision_log", None)
+        if decision_log is None or not hasattr(decision_log, "log_decision"):
+            return
+        try:
+            decision_log.log_decision(
+                agent_id="SelfEvolutionMetaAgent",
+                raw_input=raw_input,
+                raw_output=raw_output,
+                confidence=float(confidence),
+                policy_outcome=policy_outcome,
+                decision_context_id=decision_context_id,
+                model_version="self-evolution-v51",
+                prompt_hash=hashlib.sha256(
+                    json.dumps(raw_input, sort_keys=True, ensure_ascii=True).encode("utf-8")
+                ).hexdigest(),
+                evolution_log_hash=evolution_log_hash,
+            )
+        except Exception:
+            return
+
+    def _auto_fine_tuning_trigger(self, *, meta_review: dict[str, Any]) -> dict[str, Any]:
+        if not self.auto_fine_tuning_enabled:
+            return {
+                "triggered": False,
+                "reason": "auto fine-tuning disabled",
+                "acceptance_rate_3d": 1.0,
+                "drift_3d": 0.0,
+            }
+
+        acceptance_rate = self._acceptance_rate_3d()
+        drift_3d = max(
+            float(meta_review.get("rl_drift", 0.0) or 0.0),
+            float(meta_review.get("regime_drift", 0.0) or 0.0),
+            self._max_drift_3d_from_log(),
+        )
+        low_acceptance = acceptance_rate < self.min_acceptance_rate
+        high_drift = drift_3d > self.drift_threshold
+        return {
+            "triggered": bool(low_acceptance or high_drift),
+            "reason": (
+                f"acceptance_rate_3d={acceptance_rate:.3f} < {self.min_acceptance_rate:.3f}"
+                if low_acceptance
+                else f"drift_3d={drift_3d:.3f} > {self.drift_threshold:.3f}"
+                if high_drift
+                else "thresholds healthy"
+            ),
+            "acceptance_rate_3d": round(acceptance_rate, 4),
+            "drift_3d": round(drift_3d, 4),
+        }
+
+    def _execute_auto_fine_tune(self, nightly_report: dict[str, Any], *, dry_run: bool) -> dict[str, Any]:
+        trigger = self._auto_fine_tuning_trigger(meta_review=self._meta_review(nightly_report))
+        if not trigger.get("triggered"):
+            return {"triggered": False, "executed": False, "reason": trigger.get("reason", "no-trigger")}
+
+        data = nightly_report.get("simulator_data")
+        if not isinstance(data, list) or not data:
+            data = nightly_report.get("samples") if isinstance(nightly_report.get("samples"), list) else []
+
+        if not isinstance(data, list) or not data:
+            return {
+                "triggered": True,
+                "executed": False,
+                "reason": "no training data available",
+                "trigger_details": trigger,
+            }
+
+        if dry_run:
+            return {
+                "triggered": True,
+                "executed": False,
+                "reason": "dry_run",
+                "trigger_details": trigger,
+                "champion_candidate": {
+                    "name": "champion_finetuned_dry_run",
+                    "source": "ppo_fine_tune",
+                },
+            }
+
+        trainer = self.ppo_trainer or getattr(self.engine, "ppo_trainer", None)
+        if trainer is None or not hasattr(trainer, "train"):
+            return {
+                "triggered": True,
+                "executed": False,
+                "reason": "ppo_trainer unavailable",
+                "trigger_details": trigger,
+            }
+
+        try:
+            if self.rl_environment is not None:
+                try:
+                    setattr(self.engine, "rl_env", self.rl_environment)
+                except Exception:
+                    pass
+            policy_path = trainer.train(data, total_timesteps=50_000)
+            champion_candidate = {
+                "name": f"champion_finetuned_{datetime.now(timezone.utc).strftime('%Y%m%d')}",
+                "source": "ppo_fine_tune",
+                "policy_path": str(policy_path),
+                "trigger": trigger,
+            }
+            return {
+                "triggered": True,
+                "executed": True,
+                "reason": trigger.get("reason", "triggered"),
+                "policy_path": str(policy_path),
+                "champion_candidate": champion_candidate,
+                "trigger_details": trigger,
+            }
+        except Exception as exc:
+            return {
+                "triggered": True,
+                "executed": False,
+                "reason": f"fine-tune failed: {exc}",
+                "trigger_details": trigger,
+            }
+
+    def _entries_last_3_days(self) -> list[dict[str, Any]]:
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=3)
+        if not self.log_path.exists():
+            return []
+        out: list[dict[str, Any]] = []
+        try:
+            with self.log_path.open("r", encoding="utf-8") as handle:
+                for raw in handle:
+                    raw = raw.strip()
+                    if not raw:
+                        continue
+                    parsed = json.loads(raw)
+                    ts = str(parsed.get("timestamp", ""))
+                    if not ts:
+                        continue
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if dt >= cutoff:
+                        out.append(parsed)
+        except Exception:
+            return []
+        return out
+
+    def _acceptance_rate_3d(self) -> float:
+        entries = self._entries_last_3_days()
+        if not entries:
+            return 1.0
+        accepted = 0
+        total = 0
+        for item in entries:
+            status = str(item.get("status", "")).lower()
+            if status in {"proposed", "awaiting_human_approval", "applied", "approved", "auto_applied"}:
+                total += 1
+                if status in {"applied", "approved", "auto_applied"}:
+                    accepted += 1
+        return float(accepted / total) if total > 0 else 1.0
+
+    def _max_drift_3d_from_log(self) -> float:
+        entries = self._entries_last_3_days()
+        max_drift = 0.0
+        for item in entries:
+            meta_review = item.get("meta_review", {}) if isinstance(item.get("meta_review"), dict) else {}
+            max_drift = max(
+                max_drift,
+                float(meta_review.get("rl_drift", 0.0) or 0.0),
+                float(meta_review.get("regime_drift", 0.0) or 0.0),
+            )
+        return max_drift
 
     def _meta_review(self, report: dict[str, Any]) -> dict[str, Any]:
         trades = int(report.get("trades", 0) or 0)
@@ -365,11 +573,27 @@ def load_evolution_config(config_path: str = "config.yaml") -> dict[str, Any]:
         with open(config_path, "r", encoding="utf-8") as handle:
             data = yaml.safe_load(handle) or {}
         evo = data.get("evolution", {}) if isinstance(data, dict) else {}
+        fine_tuning = data.get("fine_tuning", {}) if isinstance(data, dict) else {}
         if not isinstance(evo, dict):
             evo = {}
+        if not isinstance(fine_tuning, dict):
+            fine_tuning = {}
         return {
             "enabled": bool(evo.get("enabled", True)),
             "approval_required": bool(evo.get("approval_required", True)),
+            "fine_tuning": {
+                "auto_trigger": bool(fine_tuning.get("auto_trigger", True)),
+                "min_acceptance": float(fine_tuning.get("min_acceptance", 0.4) or 0.4),
+                "drift_threshold": float(fine_tuning.get("drift_threshold", 0.25) or 0.25),
+            },
         }
     except Exception:
-        return {"enabled": True, "approval_required": True}
+        return {
+            "enabled": True,
+            "approval_required": True,
+            "fine_tuning": {
+                "auto_trigger": True,
+                "min_acceptance": 0.4,
+                "drift_threshold": 0.25,
+            },
+        }
