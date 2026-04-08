@@ -25,6 +25,7 @@ class RiskLimits:
     daily_loss_cap: float = -1000.0  # USD: max daily loss before hard stop
     max_consecutive_losses: int = 3  # trades in a row
     max_open_risk_per_instrument: float = 500.0  # USD per symbol
+    max_total_open_risk: float = 3000.0  # USD across all symbols
     max_exposure_per_regime: float = 2000.0  # USD across all symbols in regime
     cooldown_after_streak: int = 30  # minutes to halt trading after loss streak
     session_cooldown_minutes: int = 15  # minimum intraday cooldown after streak
@@ -39,6 +40,9 @@ class RiskLimits:
             return False
         if self.max_open_risk_per_instrument <= 0:
             logger.error("max_open_risk_per_instrument must be > 0")
+            return False
+        if self.max_total_open_risk <= 0:
+            logger.error("max_total_open_risk must be > 0")
             return False
         if self.max_exposure_per_regime <= 0:
             logger.error("max_exposure_per_regime must be > 0")
@@ -66,6 +70,10 @@ class RiskState:
     trade_history: deque = field(default_factory=lambda: deque(maxlen=100))  # last 100 trades for analysis
     active_regime: str = "NEUTRAL"
     active_risk_state: str = "NORMAL"
+    portfolio_var_usd: float = 0.0
+    portfolio_var_limit_usd: float = 1200.0
+    portfolio_var_breached: bool = False
+    portfolio_var_reason: str = ""
 
 
 class HardRiskController:
@@ -92,6 +100,7 @@ class HardRiskController:
         enforce_rules: bool = True,
         regime_limit_overrides: Optional[dict[str, dict[str, float | int]]] = None,
         session_guard=None,
+        portfolio_var_allocator=None,
     ):
         """
         Initialize risk controller with limits and optional state persistence.
@@ -112,6 +121,7 @@ class HardRiskController:
         self._active_limits = limits
         self._regime_limit_overrides = regime_limit_overrides if isinstance(regime_limit_overrides, dict) else {}
         self.session_guard = session_guard
+        self.portfolio_var_allocator = portfolio_var_allocator
         if self.session_guard is None and self._base_limits.enforce_session_guard:
             try:
                 from .session_guard import SessionGuard  # noqa: PLC0415
@@ -168,6 +178,7 @@ class HardRiskController:
             daily_loss_cap=daily_loss_cap,
             max_consecutive_losses=max_consecutive_losses,
             max_open_risk_per_instrument=max_open_risk,
+            max_total_open_risk=self._base_limits.max_total_open_risk,
             max_exposure_per_regime=max_regime_risk,
             cooldown_after_streak=cooldown,
             session_cooldown_minutes=self._base_limits.session_cooldown_minutes,
@@ -340,15 +351,42 @@ class HardRiskController:
                 reason = f"MAX CONSECUTIVE LOSSES breached: {self.state.consecutive_losses} >= {limits.max_consecutive_losses}"
                 self._engage_kill_switch("max_consecutive_losses", reason)
                 return False, reason
+
+        # 5. Portfolio-level VaR + total open risk check
+        total_open_risk = sum(float(v) for v in self.state.open_risk_by_symbol.values()) + float(proposed_risk)
+        if total_open_risk > limits.max_total_open_risk:
+            reason = (
+                f"MAX TOTAL OPEN RISK exceeded: {total_open_risk:.2f} > "
+                f"{limits.max_total_open_risk:.2f}"
+            )
+            self.state.portfolio_var_breached = True
+            self.state.portfolio_var_reason = reason
+            return False, reason
+
+        if self.portfolio_var_allocator is not None:
+            ok, var_reason, snapshot = self.portfolio_var_allocator.evaluate_proposed_trade(
+                symbol=symbol,
+                proposed_risk=proposed_risk,
+                open_risk_by_symbol=self.state.open_risk_by_symbol,
+            )
+            self.state.portfolio_var_usd = float(snapshot.var_usd)
+            self.state.portfolio_var_limit_usd = float(snapshot.max_var_usd)
+            self.state.portfolio_var_breached = bool(snapshot.breached)
+            self.state.portfolio_var_reason = str(snapshot.reason)
+            if not ok:
+                return False, var_reason
+        else:
+            self.state.portfolio_var_breached = False
+            self.state.portfolio_var_reason = "Portfolio VaR allocator unavailable"
         
-        # 5. Per-instrument open risk check
+        # 6. Per-instrument open risk check
         current_symbol_risk = self.state.open_risk_by_symbol.get(symbol, 0.0)
         total_symbol_risk = current_symbol_risk + proposed_risk
         if total_symbol_risk > limits.max_open_risk_per_instrument:
             reason = f"MAX INSTRUMENT RISK exceeded for {symbol}: {total_symbol_risk:.2f} > {limits.max_open_risk_per_instrument:.2f}"
             return False, reason
         
-        # 6. Per-regime exposure check
+        # 7. Per-regime exposure check
         current_regime_risk = self.state.open_risk_all_regimes.get(regime, 0.0)
         total_regime_risk = current_regime_risk + proposed_risk
         if total_regime_risk > limits.max_exposure_per_regime:
@@ -466,10 +504,17 @@ class HardRiskController:
                 'daily_loss_cap': self._active_limits.daily_loss_cap,
                 'max_consecutive_losses': self._active_limits.max_consecutive_losses,
                 'max_open_risk_per_instrument': self._active_limits.max_open_risk_per_instrument,
+                'max_total_open_risk': self._active_limits.max_total_open_risk,
                 'max_exposure_per_regime': self._active_limits.max_exposure_per_regime,
                 'cooldown_after_streak': self._active_limits.cooldown_after_streak,
                 'session_cooldown_minutes': self._active_limits.session_cooldown_minutes,
                 'enforce_session_guard': self._active_limits.enforce_session_guard,
+            },
+            'portfolio_var': {
+                'value_usd': self.state.portfolio_var_usd,
+                'limit_usd': self.state.portfolio_var_limit_usd,
+                'breached': self.state.portfolio_var_breached,
+                'reason': self.state.portfolio_var_reason,
             },
             'recent_trades': list(self.state.trade_history)[-10:],
         }

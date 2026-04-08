@@ -65,6 +65,9 @@ risk_controller:
   # Maximum risk per individual instrument (USD)
   # Prevents overexposure to single symbol (e.g., MES, NQ, YM)
   max_open_risk_per_instrument: 500.0
+
+  # Maximum aggregate open risk across all instruments (USD)
+  max_total_open_risk: 3000.0
   
   # Maximum total exposure per market regime (USD)
   # Protects against correlated losses across all instruments in same regime
@@ -126,6 +129,14 @@ evolution:
 session:
   cooldown_minutes_after_streak: 15
   enforce_calendar: true
+
+portfolio_var:
+  confidence: 0.95
+  window_days: 30
+  max_portfolio_var_usd: 1200
+  max_var_usd: 1200
+  max_total_open_risk: 3000
+  method: historical
 
 regime:
   enabled: true

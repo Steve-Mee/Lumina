@@ -307,6 +307,34 @@ def test_risk_consecutive_losses_fires_alert(obs_enabled: ObservabilityService) 
     assert alerts == 1.0
 
 
+@pytest.mark.chaos_metrics
+def test_portfolio_var_records_gauge_and_breach_alert(obs_enabled: ObservabilityService) -> None:
+    obs_enabled.record_portfolio_var(
+        var_usd=1500.0,
+        max_var_usd=1200.0,
+        total_open_risk=2600.0,
+        breached=True,
+        method="historical",
+        confidence=0.95,
+        symbols=["MES JUN26", "NQ JUN26"],
+    )
+    assert (
+        obs_enabled.collector.get(
+            "lumina_portfolio_var_usd",
+            labels={
+                "method": "historical",
+                "confidence": "0.95",
+                "symbols": "MES JUN26,NQ JUN26",
+            },
+        )
+        == 1500.0
+    )
+    alerts = obs_enabled.collector.get(
+        "lumina_alerts_sent_total", labels={"type": "portfolio_var_breach"}
+    )
+    assert alerts == 1.0
+
+
 # ── ObservabilityService: evolution proposals ─────────────────────────────────
 
 

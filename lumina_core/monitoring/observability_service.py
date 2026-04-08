@@ -47,6 +47,9 @@ M_LATENCY = "lumina_latency_ms"
 M_RISK_KILL_SWITCH = "lumina_risk_kill_switch_active"
 M_RISK_DAILY_PNL = "lumina_risk_daily_pnl"
 M_RISK_CONSEC_LOSS = "lumina_risk_consecutive_losses"
+M_PORTFOLIO_VAR_USD = "lumina_portfolio_var_usd"
+M_PORTFOLIO_VAR_LIMIT_USD = "lumina_portfolio_var_limit_usd"
+M_PORTFOLIO_TOTAL_OPEN_RISK_USD = "lumina_portfolio_total_open_risk_usd"
 M_EVOLUTION_PROPOSALS = "lumina_evolution_proposals_total"
 M_EVOLUTION_ACCEPTANCES = "lumina_evolution_acceptances_total"
 M_EVOLUTION_ACCEPTANCE_RATE = "lumina_evolution_acceptance_rate"
@@ -316,6 +319,60 @@ class ObservabilityService:
             best_candidate or "none",
             acceptance_rate,
         )
+
+    def record_portfolio_var(
+        self,
+        *,
+        var_usd: float,
+        max_var_usd: float,
+        total_open_risk: float,
+        breached: bool,
+        method: str,
+        confidence: float,
+        symbols: list[str],
+    ) -> None:
+        labels = {
+            "method": str(method).lower(),
+            "confidence": f"{float(confidence):.2f}",
+        }
+        if symbols:
+            labels["symbols"] = ",".join(sorted(str(s).upper() for s in symbols))
+
+        self.collector.set(
+            M_PORTFOLIO_VAR_USD,
+            float(var_usd),
+            labels=labels,
+            help_="Portfolio one-day VaR estimate in USD",
+        )
+        self.collector.set(
+            M_PORTFOLIO_VAR_LIMIT_USD,
+            float(max_var_usd),
+            labels=labels,
+            help_="Configured maximum allowed portfolio VaR in USD",
+        )
+        self.collector.set(
+            M_PORTFOLIO_TOTAL_OPEN_RISK_USD,
+            float(total_open_risk),
+            labels=labels,
+            help_="Current total open risk across instruments in USD",
+        )
+
+        if bool(breached):
+            self._fire_alert(
+                alert_type="portfolio_var_breach",
+                title="Portfolio VaR Breach",
+                message=(
+                    f"Portfolio VaR ${float(var_usd):.2f} exceeds limit ${float(max_var_usd):.2f}"
+                ),
+                severity="critical",
+                data={
+                    "var_usd": round(float(var_usd), 2),
+                    "max_var_usd": round(float(max_var_usd), 2),
+                    "total_open_risk": round(float(total_open_risk), 2),
+                    "method": str(method).lower(),
+                    "confidence": round(float(confidence), 2),
+                },
+            )
 
     def record_pnl(
         self,

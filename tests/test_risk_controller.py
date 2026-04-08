@@ -14,6 +14,24 @@ from lumina_core.engine.risk_controller import (
 )
 
 
+class _StubPortfolioAllocator:
+    def __init__(self, allow: bool) -> None:
+        self.allow = allow
+
+    def evaluate_proposed_trade(self, *, symbol, proposed_risk, open_risk_by_symbol):
+        snapshot = type(
+            "Snapshot",
+            (),
+            {
+                "var_usd": 1500.0,
+                "max_var_usd": 1200.0,
+                "breached": not self.allow,
+                "reason": "PORTFOLIO VAR breached: 1500.00 > 1200.00",
+            },
+        )
+        return self.allow, ("OK" if self.allow else snapshot.reason), snapshot
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -311,6 +329,13 @@ class TestHardRiskController:
         assert allowed is False
         # First check (daily cap) should be reported
         assert "DAILY LOSS CAP" in reason or "KILL SWITCH" in reason
+
+    def test_portfolio_var_allocator_blocks_trade(self, controller):
+        """Portfolio VaR breach should block trade before final allow."""
+        controller.portfolio_var_allocator = _StubPortfolioAllocator(allow=False)
+        allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
+        assert allowed is False
+        assert "PORTFOLIO VAR breached" in reason
 
 
 class TestLearningMode:

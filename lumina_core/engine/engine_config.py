@@ -240,6 +240,7 @@ class EngineConfig(BaseModel):
     risk_controller: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("risk_controller"))
     regime: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("regime"))
     session: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("session"))
+    portfolio_var: dict[str, Any] = Field(default_factory=lambda: _config_yaml_section("portfolio_var"))
 
     @property
     def min_confluence(self) -> float:

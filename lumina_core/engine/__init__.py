@@ -11,6 +11,7 @@ from .market_data_service import MarketDataService
 from .memory_service import MemoryService
 from .operations_service import OperationsService
 from .performance_validator import PerformanceValidator
+from .portfolio_var_allocator import PortfolioVaRAllocator
 from .reporting_service import ReportingService
 from .regime_detector import RegimeDetector, RegimeSnapshot
 from .reasoning_service import ReasoningService
@@ -41,6 +42,7 @@ __all__ = [
     "MemoryService",
     "OperationsService",
     "PerformanceValidator",
+    "PortfolioVaRAllocator",
     "LuminaEngine",
     "LocalInferenceEngine",
     "ReportingService",

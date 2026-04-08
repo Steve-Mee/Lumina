@@ -29,6 +29,7 @@ from lumina_core.engine import (
     VisualizationService,
 )
 from lumina_core.engine.broker_bridge import BrokerBridge, broker_factory
+from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
 from lumina_core.engine.risk_controller import HardRiskController
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
@@ -117,6 +118,7 @@ class ApplicationContainer:
     visualization_service: VisualizationService = field(init=False)
     reporting_service: ReportingService = field(init=False)
     risk_controller: HardRiskController = field(init=False)
+    portfolio_var_allocator: PortfolioVaRAllocator = field(init=False)
     news_agent: NewsAgent = field(init=False)
     ppo_trainer: PPOTrainer = field(init=False)
     emotional_twin_agent: EmotionalTwinAgent = field(init=False)
@@ -276,6 +278,18 @@ class ApplicationContainer:
         # Promote engine-owned hard risk controller to container surface.
         if self.engine.risk_controller is None:
             raise RuntimeError("Engine risk_controller was not initialized")
+
+        portfolio_var_cfg = getattr(self.config, "portfolio_var", {})
+        if not isinstance(portfolio_var_cfg, dict):
+            portfolio_var_cfg = {}
+        self.portfolio_var_allocator = PortfolioVaRAllocator(
+            valuation_engine=self.engine.valuation_engine,
+            swarm_manager=self.swarm_manager,
+            observability_service=self.observability_service,
+            config=portfolio_var_cfg,
+        )
+        self.engine.portfolio_var_allocator = self.portfolio_var_allocator
+        self.engine.risk_controller.portfolio_var_allocator = self.portfolio_var_allocator
         self.risk_controller = self.engine.risk_controller
         
         # Level 5: Swarm manager

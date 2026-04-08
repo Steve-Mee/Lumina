@@ -122,6 +122,8 @@ class LuminaEngine:
     observability_service: Any | None = None
     # Calendar-aware trading session guard
     session_guard: SessionGuard | None = None
+    # Portfolio-level VaR allocator
+    portfolio_var_allocator: Any | None = None
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:
@@ -197,8 +199,11 @@ class LuminaEngine:
         if self.risk_controller is None:
             risk_config = getattr(self.config, 'risk_controller', {})
             session_config = getattr(self.config, 'session', {})
+            portfolio_var_config = getattr(self.config, 'portfolio_var', {})
             if not isinstance(session_config, dict):
                 session_config = {}
+            if not isinstance(portfolio_var_config, dict):
+                portfolio_var_config = {}
             if isinstance(risk_config, dict):
                 session_cooldown_minutes = int(
                     session_config.get(
@@ -212,10 +217,17 @@ class LuminaEngine:
                         risk_config.get('enforce_session_guard', True),
                     )
                 )
+                max_total_open_risk = float(
+                    risk_config.get(
+                        'max_total_open_risk',
+                        portfolio_var_config.get('max_total_open_risk', 3000.0),
+                    )
+                )
                 limits = RiskLimits(
                     daily_loss_cap=risk_config.get('daily_loss_cap', -1000.0),
                     max_consecutive_losses=risk_config.get('max_consecutive_losses', 3),
                     max_open_risk_per_instrument=risk_config.get('max_open_risk_per_instrument', 500.0),
+                    max_total_open_risk=max_total_open_risk,
                     max_exposure_per_regime=risk_config.get('max_exposure_per_regime', 2000.0),
                     cooldown_after_streak=risk_config.get('cooldown_after_streak', 30),
                     session_cooldown_minutes=session_cooldown_minutes,

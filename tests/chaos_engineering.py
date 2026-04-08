@@ -7,6 +7,7 @@ changing normal runtime behavior.
 from __future__ import annotations
 
 import asyncio
+from collections import deque
 from pathlib import Path
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -20,10 +21,12 @@ from lumina_core.engine.LocalInferenceEngine import LocalInferenceEngine
 from lumina_core.engine.regime_detector import RegimeDetector
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.market_data_service import MarketDataService
+from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
 from lumina_core.engine.reasoning_service import ReasoningService
 from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
 from lumina_core.engine.session_guard import SessionGuard
 from lumina_core.engine.trade_reconciler import TradeReconciler
+from lumina_core.engine.valuation_engine import ValuationEngine
 
 
 @pytest.fixture
@@ -331,6 +334,75 @@ def test_risk_controller_daily_cap_blocks_and_engages_kill_switch(lightweight_en
     assert allowed is False
     assert "DAILY LOSS CAP" in reason
     assert risk.state.kill_switch_engaged is True
+
+
+@pytest.mark.chaos_risk
+@pytest.mark.chaos_ci_smoke
+def test_correlated_mes_nq_spike_triggers_portfolio_var_block(lightweight_engine: SimpleNamespace) -> None:
+    mes = [5000.0 + i * 0.4 for i in range(70)]
+    nq = [17000.0 + i * 1.0 for i in range(70)]
+    for idx in range(62, 70):
+        mes[idx] = mes[idx - 1] - 55.0
+        nq[idx] = nq[idx - 1] - 120.0
+
+    mes_df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-04-06T14:30:00+00:00", periods=len(mes), freq="1min"),
+            "open": mes,
+            "high": mes,
+            "low": mes,
+            "close": mes,
+            "volume": [1500.0] * len(mes),
+        }
+    )
+    nq_df = pd.DataFrame(
+        {
+            "timestamp": pd.date_range("2026-04-06T14:30:00+00:00", periods=len(nq), freq="1min"),
+            "open": nq,
+            "high": nq,
+            "low": nq,
+            "close": nq,
+            "volume": [1500.0] * len(nq),
+        }
+    )
+
+    lightweight_engine.swarm = SimpleNamespace(
+        nodes={
+            "MES JUN26": SimpleNamespace(
+                market_data=SimpleNamespace(copy_ohlc=lambda: mes_df.copy()),
+                prices_rolling=deque(mes, maxlen=120),
+            ),
+            "NQ JUN26": SimpleNamespace(
+                market_data=SimpleNamespace(copy_ohlc=lambda: nq_df.copy()),
+                prices_rolling=deque(nq, maxlen=120),
+            ),
+        }
+    )
+    lightweight_engine.risk_controller.portfolio_var_allocator = PortfolioVaRAllocator(
+        valuation_engine=ValuationEngine(),
+        swarm_manager=lightweight_engine.swarm,
+        config={
+            "confidence": 0.95,
+            "window_days": 30,
+            "max_var_usd": 50.0,
+            "max_total_open_risk": 5000.0,
+            "method": "historical",
+            "min_points": 20,
+        },
+    )
+    lightweight_engine.risk_controller.state.open_risk_by_symbol = {
+        "MES JUN26": 900.0,
+        "NQ JUN26": 900.0,
+    }
+
+    allowed, reason = lightweight_engine.risk_controller.check_can_trade(
+        symbol="MES JUN26",
+        regime="VOLATILE",
+        proposed_risk=500.0,
+    )
+
+    assert allowed is False
+    assert "PORTFOLIO VAR breached" in reason
 
 
 @pytest.mark.chaos_risk
