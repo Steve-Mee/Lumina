@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 _STATE_DIR = Path("state")
 _TEST_RUNS_DIR = _STATE_DIR / "test_runs"
+_HISTORY_PATH = _STATE_DIR / "sim_stability_history.jsonl"
+_GREEN = "\x1b[32m"
+_RED = "\x1b[31m"
+_RESET = "\x1b[0m"
+
+
+@dataclass(frozen=True)
+class SimSummaryItem:
+    path: str
+    timestamp: datetime
+    summary: dict[str, Any]
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -42,8 +54,9 @@ def _parse_ts(raw: Any) -> datetime | None:
 
 def _iter_summary_paths() -> list[Path]:
     paths: list[Path] = []
-    paths.extend(sorted(_STATE_DIR.glob("last_run_summary*.json")))
-    paths.extend(sorted(_TEST_RUNS_DIR.glob("summary_sim_*.json")))
+    paths.extend(sorted(_STATE_DIR.glob("*.json")))
+    if _TEST_RUNS_DIR.exists():
+        paths.extend(sorted(_TEST_RUNS_DIR.glob("*.json")))
     # Remove duplicates while preserving order.
     seen: set[Path] = set()
     unique: list[Path] = []
@@ -69,7 +82,8 @@ def _is_sim_summary(path: Path, summary: dict[str, Any]) -> bool:
     mode = str(summary.get("mode", "")).strip().lower()
     if mode == "sim":
         return True
-    return "_sim_" in path.name.lower()
+    name = path.name.lower()
+    return "_sim_" in name or name.startswith("summary_sim_")
 
 
 def _load_evolution_rows() -> list[dict[str, Any]]:
@@ -91,8 +105,8 @@ def _load_evolution_rows() -> list[dict[str, Any]]:
     return rows
 
 
-def _collect_sim_summaries(limit: int) -> list[dict[str, Any]]:
-    items: list[dict[str, Any]] = []
+def _collect_sim_summaries(limit: int = 0) -> list[SimSummaryItem]:
+    items: list[SimSummaryItem] = []
     for path in _iter_summary_paths():
         summary = _load_summary(path)
         if summary is None:
@@ -102,22 +116,100 @@ def _collect_sim_summaries(limit: int) -> list[dict[str, Any]]:
         ts = _parse_ts(summary.get("finished_at") or summary.get("started_at"))
         if ts is None:
             ts = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        items.append({"path": str(path), "timestamp": ts, "summary": summary})
-    items.sort(key=lambda x: x["timestamp"])
+        items.append(SimSummaryItem(path=str(path), timestamp=ts, summary=summary))
+    items.sort(key=lambda x: x.timestamp)
     if limit > 0:
         items = items[-limit:]
     return items
 
 
-def _aggregate_daily_expectancy(sim_summaries: list[dict[str, Any]], evolution_rows: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+def _load_history_rows() -> list[dict[str, Any]]:
+    if not _HISTORY_PATH.exists():
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for line in _HISTORY_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            rows.append(payload)
+
+    rows.sort(key=lambda r: _parse_ts(r.get("recorded_at")) or datetime.min.replace(tzinfo=timezone.utc))
+    return rows
+
+
+def _history_row_for_summary(summary: dict[str, Any], *, source_path: str | None = None) -> dict[str, Any]:
+    ts = _parse_ts(summary.get("finished_at") or summary.get("started_at")) or datetime.now(timezone.utc)
+    trades = _safe_int(summary.get("total_trades"))
+    pnl = _safe_float(summary.get("pnl_realized"))
+    expectancy = (pnl / float(trades)) if trades > 0 else 0.0
+    return {
+        "day": ts.date().isoformat(),
+        "recorded_at": ts.isoformat(),
+        "source_summary_path": source_path,
+        "mode": str(summary.get("mode", "")).strip().lower(),
+        "broker_mode": str(summary.get("broker_mode", "")).strip().lower(),
+        "duration_minutes": _safe_float(summary.get("duration_minutes")),
+        "aggressive_sim": bool(summary.get("aggressive_sim")),
+        "sim_overnight_mode": bool(summary.get("sim_overnight_mode")),
+        "pnl_realized": pnl,
+        "total_trades": trades,
+        "expectancy": expectancy,
+        "sharpe_annualized": _safe_float(summary.get("sharpe_annualized")),
+        "risk_events": _safe_int(summary.get("risk_events")),
+        "var_breach_count": _safe_int(summary.get("var_breach_count")),
+        "evolution_proposals": _safe_int(summary.get("evolution_proposals")),
+    }
+
+
+def append_history_entry_for_summary(summary: dict[str, Any], *, source_path: str | None = None) -> dict[str, Any]:
+    mode = str(summary.get("mode", "")).strip().lower()
+    if mode != "sim":
+        return {"appended": False, "reason": "non_sim_summary"}
+
+    row = _history_row_for_summary(summary, source_path=source_path)
+    day = str(row.get("day", ""))
+    existing_days = {str(r.get("day", "")).strip() for r in _load_history_rows()}
+    if day in existing_days:
+        return {"appended": False, "reason": "day_already_recorded", "day": day}
+
+    _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with _HISTORY_PATH.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, ensure_ascii=True) + "\n")
+    return {"appended": True, "day": day, "path": str(_HISTORY_PATH)}
+
+
+def append_history_entry_for_latest_summary() -> dict[str, Any]:
+    summaries = _collect_sim_summaries(limit=0)
+    if not summaries:
+        return {"appended": False, "reason": "no_sim_summaries"}
+    latest = summaries[-1]
+    return append_history_entry_for_summary(latest.summary, source_path=latest.path)
+
+
+def _daily_expectancy_from_history(history_rows: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
+    by_day: dict[str, dict[str, float]] = {}
+    for row in history_rows:
+        day = str(row.get("day", "")).strip()
+        if not day:
+            continue
+        slot = by_day.setdefault(day, {"pnl": 0.0, "trades": 0.0})
+        slot["pnl"] += _safe_float(row.get("pnl_realized"))
+        slot["trades"] += float(_safe_int(row.get("total_trades")))
+    return by_day
+
+
+def _aggregate_daily_expectancy(sim_summaries: list[SimSummaryItem], evolution_rows: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
     buckets: dict[str, dict[str, float]] = {}
 
     for item in sim_summaries:
-        summary = item["summary"]
-        ts_raw = item.get("timestamp")
-        ts = ts_raw if isinstance(ts_raw, datetime) else None
-        if ts is None:
-            continue
+        summary = item.summary
+        ts = item.timestamp
         key = ts.date().isoformat()
         slot = buckets.setdefault(key, {"pnl": 0.0, "trades": 0.0})
         slot["pnl"] += _safe_float(summary.get("pnl_realized"))
@@ -169,10 +261,22 @@ def _compute_positive_expectancy_streak(days: dict[str, dict[str, float]]) -> tu
     return streak, details
 
 
-def _extended_sharpe_status(sim_summaries: list[dict[str, Any]]) -> dict[str, Any]:
-    extended: list[dict[str, Any]] = []
+def _rolling_missing_days(days: dict[str, dict[str, float]], *, window_days: int = 7) -> list[str]:
+    if not days:
+        return []
+
+    latest_day = max(days.keys())
+    latest_dt = datetime.fromisoformat(latest_day).replace(tzinfo=timezone.utc)
+    wanted = {(latest_dt - timedelta(days=offset)).date().isoformat() for offset in range(window_days)}
+    present = set(days.keys())
+    missing = sorted(wanted - present)
+    return missing
+
+
+def _extended_sharpe_status(sim_summaries: list[SimSummaryItem]) -> dict[str, Any]:
+    extended: list[SimSummaryItem] = []
     for item in sim_summaries:
-        summary = item["summary"]
+        summary = item.summary
         duration = _safe_float(summary.get("duration_minutes"))
         overnight = bool(summary.get("sim_overnight_mode"))
         aggressive = bool(summary.get("aggressive_sim"))
@@ -189,20 +293,44 @@ def _extended_sharpe_status(sim_summaries: list[dict[str, Any]]) -> dict[str, An
         }
 
     latest = extended[-1]
-    latest_summary = latest["summary"]
+    latest_summary = latest.summary
     latest_sharpe = _safe_float(latest_summary.get("sharpe_annualized"))
     return {
         "ok": latest_sharpe > 1.8,
         "latest_sharpe": latest_sharpe,
         "threshold": 1.8,
         "extended_run_count": len(extended),
-        "latest_path": latest["path"],
+        "latest_path": latest.path,
     }
 
 
-def _zero_risk_status(sim_summaries: list[dict[str, Any]]) -> dict[str, Any]:
-    total_risk_events = sum(_safe_int(item["summary"].get("risk_events")) for item in sim_summaries)
-    total_var_breaches = sum(_safe_int(item["summary"].get("var_breach_count")) for item in sim_summaries)
+def _consistent_sharpe_status(sim_summaries: list[SimSummaryItem]) -> dict[str, Any]:
+    extended: list[SimSummaryItem] = []
+    for item in sim_summaries:
+        summary = item.summary
+        duration = _safe_float(summary.get("duration_minutes"))
+        overnight = bool(summary.get("sim_overnight_mode"))
+        aggressive = bool(summary.get("aggressive_sim"))
+        if duration >= 120.0 or overnight or aggressive:
+            extended.append(item)
+
+    tail = extended[-5:]
+    sharpe_values = [_safe_float(item.summary.get("sharpe_annualized")) for item in tail]
+    avg = (sum(sharpe_values) / float(len(sharpe_values))) if sharpe_values else 0.0
+    return {
+        "ok": len(sharpe_values) >= 5 and avg > 1.8,
+        "required_runs": 5,
+        "available_runs": len(sharpe_values),
+        "average_sharpe": avg,
+        "threshold": 1.8,
+        "sharpe_values": sharpe_values,
+        "run_paths": [item.path for item in tail],
+    }
+
+
+def _zero_risk_status(sim_summaries: list[SimSummaryItem]) -> dict[str, Any]:
+    total_risk_events = sum(_safe_int(item.summary.get("risk_events")) for item in sim_summaries)
+    total_var_breaches = sum(_safe_int(item.summary.get("var_breach_count")) for item in sim_summaries)
     return {
         "ok": total_risk_events == 0 and total_var_breaches == 0,
         "total_risk_events": total_risk_events,
@@ -210,24 +338,31 @@ def _zero_risk_status(sim_summaries: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _proposal_trend_status(sim_summaries: list[dict[str, Any]], evolution_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    now = datetime.now(timezone.utc)
-    since = now - timedelta(days=7)
+def _linear_slope(values: list[float]) -> float:
+    if len(values) < 2:
+        return 0.0
+    n = float(len(values))
+    xs = list(range(len(values)))
+    sum_x = float(sum(xs))
+    sum_y = float(sum(values))
+    sum_xx = float(sum(x * x for x in xs))
+    sum_xy = float(sum(x * y for x, y in zip(xs, values)))
+    denom = (n * sum_xx) - (sum_x * sum_x)
+    if abs(denom) <= 1e-9:
+        return 0.0
+    return ((n * sum_xy) - (sum_x * sum_y)) / denom
+
+
+def _proposal_trend_status(sim_summaries: list[SimSummaryItem], evolution_rows: list[dict[str, Any]]) -> dict[str, Any]:
     by_day: dict[str, float] = {}
 
     for item in sim_summaries:
-        ts_raw = item.get("timestamp")
-        ts = ts_raw if isinstance(ts_raw, datetime) else None
-        if ts is None:
-            continue
-        if ts < since:
-            continue
-        key = ts.date().isoformat()
-        by_day[key] = by_day.get(key, 0.0) + float(_safe_int(item["summary"].get("evolution_proposals")))
+        key = item.timestamp.date().isoformat()
+        by_day[key] = by_day.get(key, 0.0) + float(_safe_int(item.summary.get("evolution_proposals")))
 
     for row in evolution_rows:
         ts = _parse_ts(row.get("timestamp"))
-        if ts is None or ts < since:
+        if ts is None:
             continue
         status = str(row.get("status", "")).strip().lower()
         if status not in {"proposed", "pending"}:
@@ -235,52 +370,83 @@ def _proposal_trend_status(sim_summaries: list[dict[str, Any]], evolution_rows: 
         key = ts.date().isoformat()
         by_day[key] = by_day.get(key, 0.0) + 1.0
 
-    days = sorted(by_day.keys())
-    values = [by_day[d] for d in days]
+    if not by_day:
+        return {
+            "ok": False,
+            "daily_counts": [],
+            "slope_7d": 0.0,
+            "slope_30d": 0.0,
+        }
 
-    slope = 0.0
-    if len(values) >= 2:
-        n = float(len(values))
-        xs = list(range(len(values)))
-        sum_x = float(sum(xs))
-        sum_y = float(sum(values))
-        sum_xx = float(sum(x * x for x in xs))
-        sum_xy = float(sum(x * y for x, y in zip(xs, values)))
-        denom = (n * sum_xx) - (sum_x * sum_x)
-        if abs(denom) > 1e-9:
-            slope = ((n * sum_xy) - (sum_x * sum_y)) / denom
+    latest = datetime.fromisoformat(max(by_day.keys())).replace(tzinfo=timezone.utc)
 
-    ok = len(values) >= 2 and slope > 0.0 and values[-1] >= values[0]
+    def _window_values(window_days: int) -> tuple[list[str], list[float]]:
+        days: list[str] = []
+        values: list[float] = []
+        for offset in range(window_days - 1, -1, -1):
+            day = (latest - timedelta(days=offset)).date().isoformat()
+            days.append(day)
+            values.append(by_day.get(day, 0.0))
+        return days, values
+
+    days_7d, values_7d = _window_values(7)
+    days_30d, values_30d = _window_values(30)
+    slope_7d = _linear_slope(values_7d)
+    slope_30d = _linear_slope(values_30d)
+    ok = slope_7d > 0.0 and slope_30d > 0.0
+
     return {
         "ok": ok,
-        "window_days": 7,
-        "daily_counts": [{"day": d, "count": by_day[d]} for d in days],
-        "slope": slope,
-        "start_count": values[0] if values else 0.0,
-        "end_count": values[-1] if values else 0.0,
+        "daily_counts": [{"day": day, "count": by_day.get(day, 0.0)} for day in sorted(by_day.keys())],
+        "slope_7d": slope_7d,
+        "slope_30d": slope_30d,
+        "start_7d": values_7d[0] if values_7d else 0.0,
+        "end_7d": values_7d[-1] if values_7d else 0.0,
+        "start_30d": values_30d[0] if values_30d else 0.0,
+        "end_30d": values_30d[-1] if values_30d else 0.0,
+        "window_days_7d": days_7d,
+        "window_days_30d": days_30d,
     }
 
 
-def generate_stability_report(limit: int = 30) -> dict[str, Any]:
+def generate_stability_report(limit: int = 0) -> dict[str, Any]:
     sim_summaries = _collect_sim_summaries(limit=limit)
     evolution_rows = _load_evolution_rows()
+    history_rows = _load_history_rows()
 
-    daily = _aggregate_daily_expectancy(sim_summaries=sim_summaries, evolution_rows=evolution_rows)
-    streak, streak_details = _compute_positive_expectancy_streak(daily)
+    expectancy_days = _daily_expectancy_from_history(history_rows)
+    if not expectancy_days:
+        expectancy_days = _aggregate_daily_expectancy(sim_summaries=sim_summaries, evolution_rows=evolution_rows)
+
+    streak, streak_details = _compute_positive_expectancy_streak(expectancy_days)
+    missing_days = _rolling_missing_days(expectancy_days, window_days=7)
+
+    required = 5
+    expectancy_ok = streak >= required
+    consecutive_green_days = streak if expectancy_ok else min(streak, required)
+    days_to_green = max(0, required - consecutive_green_days)
+
     expectancy_status = {
-        "ok": streak >= 5,
-        "required_days": 5,
+        "ok": expectancy_ok,
+        "required_days": required,
         "streak_days": streak,
+        "rolling_window_days": 7,
+        "missing_days": missing_days,
         "streak_expectancy": streak_details,
+        "history_days": len(expectancy_days),
+        "consecutive_green_days": consecutive_green_days,
+        "days_to_green": days_to_green,
     }
 
     sharpe_status = _extended_sharpe_status(sim_summaries)
+    consistent_sharpe_status = _consistent_sharpe_status(sim_summaries)
     risk_status = _zero_risk_status(sim_summaries)
     trend_status = _proposal_trend_status(sim_summaries, evolution_rows)
 
     criteria = {
         "positive_expectancy_5d": expectancy_status,
         "extended_run_sharpe": sharpe_status,
+        "consistent_sharpe": consistent_sharpe_status,
         "zero_risk_and_var": risk_status,
         "evolution_proposals_trend": trend_status,
     }
@@ -288,8 +454,8 @@ def generate_stability_report(limit: int = 30) -> dict[str, Any]:
     ready = all(section.get("ok", False) for section in criteria.values())
     failures = [name for name, section in criteria.items() if not section.get("ok", False)]
 
-    latest_path = sim_summaries[-1]["path"] if sim_summaries else None
-    latest_ts = sim_summaries[-1]["timestamp"].isoformat() if sim_summaries else None
+    latest_path = sim_summaries[-1].path if sim_summaries else None
+    latest_ts = sim_summaries[-1].timestamp.isoformat() if sim_summaries else None
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -300,52 +466,86 @@ def generate_stability_report(limit: int = 30) -> dict[str, Any]:
         "failures": failures,
         "scanned_sim_summary_count": len(sim_summaries),
         "scanned_evolution_rows": len(evolution_rows),
+        "history_path": str(_HISTORY_PATH),
+        "history_row_count": len(history_rows),
+        "missing_days_7d": missing_days,
+        "consecutive_green_days": consecutive_green_days,
+        "days_to_green": days_to_green,
         "latest_summary_path": latest_path,
         "latest_summary_ts": latest_ts,
-        "summary_paths": [item["path"] for item in sim_summaries],
+        "summary_paths": [item.path for item in sim_summaries],
     }
 
 
-def format_stability_report(report: dict[str, Any]) -> str:
+def _status_token(ok: bool, *, color: bool = False) -> str:
+    token = "GREEN" if ok else "RED"
+    if not color:
+        return token
+    return f"{_GREEN}{token}{_RESET}" if ok else f"{_RED}{token}{_RESET}"
+
+
+def format_stability_report(report: dict[str, Any], *, color: bool = False) -> str:
     lines: list[str] = []
     lines.append("SIM Stability Aggregator Report")
     lines.append("=" * 32)
-    lines.append(f"Status: {report.get('status', 'RED')}")
-    lines.append(f"READY_FOR_REAL: {bool(report.get('READY_FOR_REAL', False))}")
+    status_text = str(report.get("status", "RED")).strip().upper()
+    status_colored = _status_token(status_text == "GREEN", color=color)
+    lines.append(f"Status: {status_colored}")
+    lines.append(f"READY_FOR_REAL: {_status_token(bool(report.get('READY_FOR_REAL', False)), color=color)}")
+    lines.append(
+        "Consecutive GREEN days: "
+        f"{int(report.get('consecutive_green_days', 0))}/5 "
+        f"(days_to_green={int(report.get('days_to_green', 5))})"
+    )
     lines.append(f"Generated At: {report.get('generated_at', 'n/a')}")
     lines.append(f"Scanned SIM summaries: {report.get('scanned_sim_summary_count', 0)}")
     lines.append(f"Scanned evolution rows: {report.get('scanned_evolution_rows', 0)}")
+    lines.append(f"History rows: {report.get('history_row_count', 0)} @ {report.get('history_path', 'n/a')}")
     lines.append(f"Latest summary: {report.get('latest_summary_path', 'n/a')}")
+
+    missing_days = report.get("missing_days_7d", []) if isinstance(report.get("missing_days_7d"), list) else []
+    if missing_days:
+        lines.append("Missing days (rolling 7d): " + ", ".join(str(day) for day in missing_days))
+    else:
+        lines.append("Missing days (rolling 7d): none")
 
     criteria = report.get("criteria", {}) if isinstance(report.get("criteria"), dict) else {}
 
     exp = criteria.get("positive_expectancy_5d", {}) if isinstance(criteria.get("positive_expectancy_5d"), dict) else {}
     lines.append(
         "- 5d positive expectancy: "
-        f"{'PASS' if exp.get('ok') else 'FAIL'} "
+        f"{_status_token(bool(exp.get('ok', False)), color=color)} "
         f"(streak={exp.get('streak_days', 0)}/{exp.get('required_days', 5)})"
     )
 
     sharpe = criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
     lines.append(
         "- Extended run Sharpe > 1.8: "
-        f"{'PASS' if sharpe.get('ok') else 'FAIL'} "
+        f"{_status_token(bool(sharpe.get('ok', False)), color=color)} "
         f"(latest={_safe_float(sharpe.get('latest_sharpe')):.4f})"
+    )
+
+    consistent = criteria.get("consistent_sharpe", {}) if isinstance(criteria.get("consistent_sharpe"), dict) else {}
+    lines.append(
+        "- Consistent Sharpe (avg last 5 extended > 1.8): "
+        f"{_status_token(bool(consistent.get('ok', False)), color=color)} "
+        f"(avg={_safe_float(consistent.get('average_sharpe')):.4f}, "
+        f"runs={int(consistent.get('available_runs', 0))}/{int(consistent.get('required_runs', 5))})"
     )
 
     risk = criteria.get("zero_risk_and_var", {}) if isinstance(criteria.get("zero_risk_and_var"), dict) else {}
     lines.append(
         "- Zero risk events / VaR breaches: "
-        f"{'PASS' if risk.get('ok') else 'FAIL'} "
+        f"{_status_token(bool(risk.get('ok', False)), color=color)} "
         f"(risk_events={risk.get('total_risk_events', 0)}, var_breaches={risk.get('total_var_breaches', 0)})"
     )
 
     trend = criteria.get("evolution_proposals_trend", {}) if isinstance(criteria.get("evolution_proposals_trend"), dict) else {}
     lines.append(
-        "- Evolution proposals trend upward: "
-        f"{'PASS' if trend.get('ok') else 'FAIL'} "
-        f"(slope={_safe_float(trend.get('slope')):.4f}, "
-        f"start={_safe_float(trend.get('start_count')):.1f}, end={_safe_float(trend.get('end_count')):.1f})"
+        "- Evolution proposals trend (7d + 30d slope): "
+        f"{_status_token(bool(trend.get('ok', False)), color=color)} "
+        f"(slope_7d={_safe_float(trend.get('slope_7d')):.4f}, "
+        f"slope_30d={_safe_float(trend.get('slope_30d')):.4f})"
     )
 
     failures = report.get("failures", []) if isinstance(report.get("failures"), list) else []
@@ -353,3 +553,10 @@ def format_stability_report(report: dict[str, Any]) -> str:
         lines.append("Failures: " + ", ".join(str(item) for item in failures))
 
     return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    append_info = append_history_entry_for_latest_summary()
+    report = generate_stability_report(limit=0)
+    report["history_append"] = append_info
+    print(format_stability_report(report, color=True), flush=True)

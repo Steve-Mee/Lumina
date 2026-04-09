@@ -17,7 +17,7 @@ from typing import Any, cast
 import pandas as pd
 import requests
 # ── Headless detection: must precede any Streamlit initialisation ──────────────
-_IS_HEADLESS = "--headless" in sys.argv
+_IS_HEADLESS = "--headless" in sys.argv or "--stability-check" in sys.argv
 
 if not _IS_HEADLESS:
     import streamlit as st  # type: ignore[import]
@@ -33,7 +33,11 @@ from lumina_core.engine.model_catalog import ModelCatalog, ModelDescriptor
 from lumina_core.engine.model_trainer import ModelTrainer
 from lumina_core.engine.performance_validator import PerformanceValidator
 from lumina_core.engine.setup_service import SetupService, SetupStepResult
-from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
+from lumina_core.engine.sim_stability_checker import (
+    append_history_entry_for_latest_summary,
+    format_stability_report,
+    generate_stability_report,
+)
 from lumina_core.runtime_context import RuntimeContext
 
 if not _IS_HEADLESS:
@@ -1007,10 +1011,18 @@ def _headless_main() -> None:
         "--stability-check",
         action="store_true",
         default=False,
-        help="Run SIM Stability Aggregator after the headless run and print GREEN/RED readiness report.",
+        help="Run SIM Stability Checker standalone, or after headless SIM run when combined with --headless.",
     )
 
     args, _ = parser.parse_known_args()
+
+    if bool(args.stability_check) and not bool(args.headless):
+        append_info = append_history_entry_for_latest_summary()
+        report = generate_stability_report(limit=0)
+        report["history_append"] = append_info
+        rendered = format_stability_report(report, color=True)
+        print(rendered, flush=True)
+        return
 
     # CLI mode override: writes runtime mode into process env for downstream
     # services that resolve mode from config/env.

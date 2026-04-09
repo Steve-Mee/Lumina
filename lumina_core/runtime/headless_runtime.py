@@ -17,7 +17,11 @@ from typing import Any
 
 import yaml
 
-from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
+from lumina_core.engine.sim_stability_checker import (
+    append_history_entry_for_summary,
+    format_stability_report,
+    generate_stability_report,
+)
 
 logger = logging.getLogger("lumina.headless")
 
@@ -523,13 +527,15 @@ class HeadlessRuntime:
             "observability_alerts": observability_alerts,
         }
 
-        should_run_stability = mode_normalized == "sim" and (overnight_enabled or stability_check)
+        should_run_stability = mode_normalized == "sim"
         if should_run_stability:
-            stability_report = generate_stability_report(limit=50)
+            history_append = append_history_entry_for_summary(summary, source_path="state/last_run_summary.json")
+            stability_report = generate_stability_report(limit=0)
+            stability_report["history_append"] = history_append
             summary["stability_report"] = stability_report
             summary["READY_FOR_REAL"] = bool(stability_report.get("READY_FOR_REAL", False))
             summary["stability_status"] = str(stability_report.get("status", "RED"))
-            rendered = format_stability_report(stability_report)
+            rendered = format_stability_report(stability_report, color=True)
             self._logger.info("\n%s", rendered)
             print(rendered, flush=True)
 
