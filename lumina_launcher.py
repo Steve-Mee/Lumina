@@ -8,7 +8,7 @@ import os
 import secrets
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
@@ -47,6 +47,8 @@ ADMIN_PASSWORD_HASH_PATH = Path("state/launcher_admin_password.json")
 MODEL_CATALOG_STATE_PATH = Path("state/model_catalog_state.json")
 SUPPORT_EVENTS_PATH = Path("state/launcher_support_events.jsonl")
 BACKEND_BASE_URL = os.getenv("LUMINA_BACKEND_URL", "http://localhost:8000").rstrip("/")
+LAST_RUN_SUMMARY_PATH = Path("state/last_run_summary.json")
+EVOLUTION_LOG_PATH = Path("state/evolution_log.jsonl")
 
 
 def _load_admin_password_record() -> dict[str, Any] | None:
@@ -188,6 +190,218 @@ def _load_runtime_state() -> dict[str, Any]:
         return payload if isinstance(payload, dict) else {}
     except Exception:
         return {}
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_iso_ts(raw_value: Any) -> datetime | None:
+    if not raw_value:
+        return None
+    text = str(raw_value).strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _load_last_run_summary() -> dict[str, Any]:
+    if not LAST_RUN_SUMMARY_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(LAST_RUN_SUMMARY_PATH.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def _load_evolution_rows() -> list[dict[str, Any]]:
+    if not EVOLUTION_LOG_PATH.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in EVOLUTION_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        try:
+            row = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+    rows.sort(key=lambda row: _parse_iso_ts(row.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc))
+    return rows
+
+
+def _window_metrics(summary: dict[str, Any], rows: list[dict[str, Any]], window_days: int) -> dict[str, float]:
+    now_utc = datetime.now(timezone.utc)
+    cutoff = now_utc - timedelta(days=window_days)
+    filtered = [r for r in rows if (_parse_iso_ts(r.get("timestamp")) or now_utc) >= cutoff]
+
+    pnl = _safe_float(summary.get("pnl_realized"))
+    trades = _safe_int(summary.get("total_trades"))
+    wins = _safe_int(summary.get("wins"))
+    sharpe_values: list[float] = []
+    summary_sharpe = _safe_float(summary.get("sharpe_annualized"), default=0.0)
+    if summary_sharpe != 0.0:
+        sharpe_values.append(summary_sharpe)
+    risk_events = _safe_int(summary.get("risk_events"))
+
+    for row in filtered:
+        meta = row.get("meta_review") if isinstance(row.get("meta_review"), dict) else {}
+        pnl += _safe_float(meta.get("net_pnl"))
+        trades += _safe_int(meta.get("trades"))
+        wins += _safe_int(meta.get("wins"))
+        row_sharpe = _safe_float(meta.get("sharpe"), default=0.0)
+        if row_sharpe != 0.0:
+            sharpe_values.append(row_sharpe)
+        risk_events += _safe_int(row.get("risk_events"))
+
+    win_rate = (wins / trades) if trades > 0 else 0.0
+    sharpe = (sum(sharpe_values) / len(sharpe_values)) if sharpe_values else 0.0
+    expectancy = (pnl / trades) if trades > 0 else 0.0
+    return {
+        "pnl": pnl,
+        "win_rate": win_rate,
+        "sharpe": sharpe,
+        "expectancy": expectancy,
+        "risk_events": float(risk_events),
+    }
+
+
+def _proposal_snapshot(rows: list[dict[str, Any]]) -> tuple[int, list[dict[str, Any]]]:
+    proposals = [row for row in rows if str(row.get("status", "")).lower() == "proposed" or isinstance(row.get("proposal"), dict)]
+    latest = list(reversed(proposals))[:5]
+    rendered: list[dict[str, Any]] = []
+    for row in latest:
+        best = row.get("best_candidate") if isinstance(row.get("best_candidate"), dict) else {}
+        rendered.append(
+            {
+                "timestamp": row.get("timestamp", "n/a"),
+                "candidate": best.get("name", "n/a"),
+                "score": round(_safe_float(best.get("score")), 4),
+                "confidence": round(_safe_float((row.get("proposal") or {}).get("confidence")), 2),
+            }
+        )
+    return len(proposals), rendered
+
+
+def _last_5d_expectancy(rows: list[dict[str, Any]], summary: dict[str, Any]) -> list[float]:
+    buckets: dict[str, dict[str, float]] = {}
+    for row in rows:
+        ts = _parse_iso_ts(row.get("timestamp"))
+        if ts is None:
+            continue
+        day_key = ts.date().isoformat()
+        slot = buckets.setdefault(day_key, {"pnl": 0.0, "trades": 0.0})
+        meta = row.get("meta_review") if isinstance(row.get("meta_review"), dict) else {}
+        slot["pnl"] += _safe_float(meta.get("net_pnl"))
+        slot["trades"] += float(_safe_int(meta.get("trades")))
+
+    summary_ts = _parse_iso_ts(summary.get("finished_at") or summary.get("started_at"))
+    if summary_ts is None:
+        summary_ts = datetime.now(timezone.utc)
+    key = summary_ts.date().isoformat()
+    slot = buckets.setdefault(key, {"pnl": 0.0, "trades": 0.0})
+    slot["pnl"] += _safe_float(summary.get("pnl_realized"))
+    slot["trades"] += float(_safe_int(summary.get("total_trades")))
+
+    values: list[float] = []
+    for day in sorted(buckets.keys(), reverse=True)[:5]:
+        trades = buckets[day]["trades"]
+        values.append((buckets[day]["pnl"] / trades) if trades > 0 else 0.0)
+    return values
+
+
+def _current_launcher_mode() -> str:
+    env_mode = str(os.getenv("LUMINA_MODE", "")).strip().lower()
+    if env_mode in {"sim", "paper", "real"}:
+        return env_mode
+    config_mode = str(_load_yaml_config().get("mode", "sim")).strip().lower()
+    return config_mode if config_mode in {"sim", "paper", "real"} else "sim"
+
+
+def _render_sim_learning_tab() -> None:
+    st.subheader("SIM Learning Dashboard")
+    summary = _load_last_run_summary()
+    rows = _load_evolution_rows()
+    proposals_total, latest = _proposal_snapshot(rows)
+
+    m24 = _window_metrics(summary, rows, 1)
+    m7 = _window_metrics(summary, rows, 7)
+    m30 = _window_metrics(summary, rows, 30)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Evolution Proposals", proposals_total)
+    c2.metric("24h PnL", f"${m24['pnl']:.2f}")
+    c3.metric("7d PnL", f"${m7['pnl']:.2f}")
+    c4.metric("30d PnL", f"${m30['pnl']:.2f}")
+
+    p1, p2, p3 = st.columns(3)
+    p1.metric("24h Winrate", f"{m24['win_rate'] * 100:.2f}%")
+    p2.metric("7d Winrate", f"{m7['win_rate'] * 100:.2f}%")
+    p3.metric("30d Winrate", f"{m30['win_rate'] * 100:.2f}%")
+
+    s1, s2, s3 = st.columns(3)
+    s1.metric("24h Sharpe", f"{m24['sharpe']:.2f}")
+    s2.metric("7d Sharpe", f"{m7['sharpe']:.2f}")
+    s3.metric("30d Sharpe", f"{m30['sharpe']:.2f}")
+
+    trend = m24["sharpe"] - m30["sharpe"]
+    sharpe_component = max(0.0, min(1.0, m24["sharpe"] / 3.0))
+    trend_component = max(0.0, min(1.0, (trend + 1.0) / 2.0))
+    expectancy_component = max(0.0, min(1.0, (m30["expectancy"] + 2.0) / 4.0))
+    stability = int(round(100.0 * ((0.5 * sharpe_component) + (0.25 * trend_component) + (0.25 * expectancy_component))))
+    st.markdown("#### Edge Stability Meter")
+    st.progress(stability)
+    st.caption(
+        f"Stability {stability}/100 | Sharpe trend (24h-30d): {trend:.2f} | "
+        f"30d expectancy: {m30['expectancy']:.2f}"
+    )
+
+    st.markdown("#### Last 5 Proposals")
+    if latest:
+        st.dataframe(pd.DataFrame(latest), use_container_width=True)
+    else:
+        st.info("No proposal rows found in state/evolution_log.jsonl yet.")
+
+    expectancies_5d = _last_5d_expectancy(rows, summary)
+    gate_expectancy = len(expectancies_5d) >= 5 and all(v > 0.0 for v in expectancies_5d)
+    gate_sharpe = m30["sharpe"] > 1.8
+    gate_risk = int(m30["risk_events"]) == 0
+    protocol_green = gate_expectancy and gate_sharpe and gate_risk
+
+    st.markdown("#### Transition Protocol")
+    g1, g2, g3 = st.columns(3)
+    g1.metric("5d Positive Expectancy", "PASS" if gate_expectancy else "FAIL")
+    g2.metric("Sharpe > 1.8", "PASS" if gate_sharpe else "FAIL")
+    g3.metric("Zero Risk Events", "PASS" if gate_risk else "FAIL")
+
+    if st.button("Switch to REAL mode", type="primary", disabled=not protocol_green):
+        _write_env_file(ENV_PATH, {"LUMINA_MODE": "real"})
+        os.environ["LUMINA_MODE"] = "real"
+        st.success("Transition protocol GREEN. Launcher switched to REAL mode via .env override.")
+
+    if not protocol_green:
+        st.warning("Transition protocol is not green yet. Continue SIM learning.")
 
 
 def _backend_get(path: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -866,6 +1080,7 @@ st.info(
 
 state = _load_runtime_state()
 current_dream = state.get("current_dream", {}) if isinstance(state.get("current_dream"), dict) else {}
+active_mode = _current_launcher_mode()
 tab_labels = [
     "Live Trader View",
     "Hardware & Install",
@@ -874,6 +1089,8 @@ tab_labels = [
     "Community Bibles",
     "Performance Reports",
 ]
+if active_mode == "sim":
+    tab_labels.append("🚀 SIM Learning Dashboard")
 if admin_mode:
     tab_labels.append("Admin / Backend")
 tabs = st.tabs(tab_labels)
@@ -883,7 +1100,8 @@ tab3 = tabs[2]
 tab4 = tabs[3]
 tab5 = tabs[4]
 tab6 = tabs[5]
-tab7 = tabs[6] if admin_mode and len(tabs) > 6 else None
+tab7 = tabs[6] if active_mode == "sim" and len(tabs) > 6 else None
+tab8 = tabs[7] if admin_mode and len(tabs) > 7 else (tabs[6] if admin_mode and active_mode != "sim" and len(tabs) > 6 else None)
 
 with tab1:
     st.subheader("Live Dream + Runtime State")
@@ -945,6 +1163,10 @@ with tab6:
 
 if tab7 is not None:
     with tab7:
+        _render_sim_learning_tab()
+
+if tab8 is not None:
+    with tab8:
         st.subheader("Admin Backend")
         st.write("Runtime entry:")
         st.code(str(RUNTIME_ENTRY))
