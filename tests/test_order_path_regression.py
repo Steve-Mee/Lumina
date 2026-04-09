@@ -12,13 +12,14 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
 
 from lumina_core.engine.operations_service import OperationsService
+from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import check_pre_trade_risk
 
 
@@ -26,13 +27,13 @@ from lumina_core.trade_workers import check_pre_trade_risk
 
 def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: bool = True):
     """Minimal LuminaEngine stand-in."""
-    risk_ctrl = MagicMock()
+    risk_ctrl: Any = MagicMock()
     risk_ctrl.check_can_trade.return_value = (risk_ok, "ok" if risk_ok else "blocked")
     risk_ctrl.apply_regime_override.return_value = None
     limits = SimpleNamespace(enforce_session_guard=enforce_session_guard)
     risk_ctrl._active_limits = limits
 
-    session_guard = MagicMock()
+    session_guard: Any = MagicMock()
     session_guard.is_rollover_window.return_value = False
     session_guard.is_trading_session.return_value = True
 
@@ -97,7 +98,7 @@ def test_paper_mode_skips_risk_controller():
     result = svc.place_order("BUY", 1)
     assert result is False
     # engine.risk_controller.check_can_trade nooit aangeroepen in paper
-    svc.engine.risk_controller.check_can_trade.assert_not_called()
+    cast(Any, svc.engine.risk_controller).check_can_trade.assert_not_called()
 
 
 # ─── SIM tests ───────────────────────────────────────────────────────────────
@@ -113,7 +114,7 @@ def test_sim_mode_submits_to_broker():
 def test_sim_mode_respects_session_guard():
     """SIM gebruikt live orders — SessionGuard blokkert buiten trading hours."""
     svc, container = _make_service("sim", enforce_session_guard=True)
-    svc.engine.session_guard.is_trading_session.return_value = False
+    cast(Any, svc.engine.session_guard).is_trading_session.return_value = False
     result = svc.place_order("BUY", 1)
     # SIM moet ook geblokkeerd worden buiten trading hours
     assert result is False
@@ -123,7 +124,7 @@ def test_sim_mode_respects_session_guard():
 def test_sim_mode_respects_rollover_window():
     """SIM gebruikt live orders — SessionGuard blokkert tijdens rollover."""
     svc, container = _make_service("sim", enforce_session_guard=True)
-    svc.engine.session_guard.is_rollover_window.return_value = True
+    cast(Any, svc.engine.session_guard).is_rollover_window.return_value = True
     result = svc.place_order("BUY", 1)
     assert result is False
     container.broker.submit_order.assert_not_called()
@@ -160,7 +161,7 @@ def test_real_mode_blocked_by_risk_controller():
 def test_real_mode_blocked_by_session_guard_outside_hours():
     """REAL mode: SessionGuard blokkert buiten trading hours."""
     svc, container = _make_service("real")
-    svc.engine.session_guard.is_trading_session.return_value = False
+    cast(Any, svc.engine.session_guard).is_trading_session.return_value = False
     result = svc.place_order("SELL", 1)
     assert result is False
     container.broker.submit_order.assert_not_called()
@@ -169,7 +170,7 @@ def test_real_mode_blocked_by_session_guard_outside_hours():
 def test_real_mode_blocked_by_rollover_window():
     """REAL mode: SessionGuard blokkert tijdens rollover."""
     svc, container = _make_service("real")
-    svc.engine.session_guard.is_rollover_window.return_value = True
+    cast(Any, svc.engine.session_guard).is_rollover_window.return_value = True
     result = svc.place_order("BUY", 1)
     assert result is False
     container.broker.submit_order.assert_not_called()
@@ -199,14 +200,15 @@ def test_real_mode_no_risk_controller_fails_closed():
 
 # ─── check_pre_trade_risk SIM-exempt SessionGuard ────────────────────────────
 
-def _make_runtime_ctx(trade_mode: str):
-    risk_ctrl = MagicMock()
+def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
+    """Create a RuntimeContext mock for check_pre_trade_risk tests."""
+    risk_ctrl: Any = MagicMock()
     risk_ctrl.check_can_trade.return_value = (True, "ok")
     risk_ctrl.apply_regime_override.return_value = None
     limits = SimpleNamespace(enforce_session_guard=True)
     risk_ctrl._active_limits = limits
 
-    session_guard = MagicMock()
+    session_guard: Any = MagicMock()
     session_guard.is_rollover_window.return_value = True   # actief rollover window
     session_guard.is_trading_session.return_value = False
 
@@ -217,7 +219,8 @@ def _make_runtime_ctx(trade_mode: str):
         current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
         reasoning_service=None,
     )
-    return SimpleNamespace(engine=engine, logger=MagicMock(), market_regime="NEUTRAL")
+    # Return as RuntimeContext-compatible object (duck typing)
+    return cast(RuntimeContext, SimpleNamespace(engine=engine, logger=MagicMock(), market_regime="NEUTRAL"))
 
 
 def test_check_pre_trade_risk_sim_respects_session_guard():
@@ -226,7 +229,7 @@ def test_check_pre_trade_risk_sim_respects_session_guard():
     ok, reason = check_pre_trade_risk(app, "MES", "NEUTRAL", 10.0)
     assert ok is False
     assert "rollover" in reason.lower()
-    app.engine.session_guard.is_rollover_window.assert_called()
+    cast(Any, app.engine.session_guard).is_rollover_window.assert_called()
 
 
 def test_check_pre_trade_risk_real_respects_session_guard():
