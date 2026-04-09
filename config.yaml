@@ -285,6 +285,10 @@ headless:
   # Where the JSON summary is persisted after each run.
   summary_output_path: "state/last_run_summary.json"
 
+  # Archive each run to a unique file for progression tracking.
+  summary_archive_enabled: true
+  summary_archive_dir: "state/test_runs"
+
   # Synthetic ticks generated per minute of simulated session
   # (higher = more trades, slower init; lower = fewer trades, faster).
   ticks_per_minute: 200

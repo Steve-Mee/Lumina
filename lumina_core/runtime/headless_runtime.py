@@ -25,6 +25,18 @@ _SUMMARY_SCHEMA_VERSION = "1.0"
 _DEFAULT_SIMULATION_SEED = 51
 
 
+def _resolve_summary_archive_enabled(cfg: dict[str, Any]) -> bool:
+    raw = cfg.get("summary_archive_enabled", True)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_summary_archive_dir(cfg: dict[str, Any]) -> Path:
+    raw = str(cfg.get("summary_archive_dir", "state/test_runs")).strip()
+    return Path(raw) if raw else Path("state/test_runs")
+
+
 def _load_headless_config() -> dict[str, Any]:
     config_path = Path("config.yaml")
     if not config_path.exists():
@@ -486,16 +498,45 @@ class HeadlessRuntime:
         }
 
         summary_path = _resolve_summary_path(cfg)
-        self._persist(summary, summary_path=summary_path)
+        archive_enabled = _resolve_summary_archive_enabled(cfg)
+        archive_dir = _resolve_summary_archive_dir(cfg)
+        self._persist(
+            summary,
+            summary_path=summary_path,
+            archive_enabled=archive_enabled,
+            archive_dir=archive_dir,
+        )
         return summary
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _persist(self, summary: dict[str, Any], *, summary_path: Path) -> None:
-        """Write summary JSON to stdout and to state/last_run_summary.json."""
+    def _persist(
+        self,
+        summary: dict[str, Any],
+        *,
+        summary_path: Path,
+        archive_enabled: bool,
+        archive_dir: Path,
+    ) -> None:
+        """Write summary JSON to default path and optionally archive each run uniquely."""
         summary_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = json.dumps(summary, indent=2)
+        summary_path.write_text(payload, encoding="utf-8")
+
+        if archive_enabled:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            mode = str(summary.get("mode", "unknown")).strip().lower() or "unknown"
+            broker_mode = str(summary.get("broker_mode", "unknown")).strip().lower() or "unknown"
+            aggressive = "aggr" if bool(summary.get("aggressive_sim", False)) else "std"
+            duration = int(float(summary.get("duration_minutes", 0.0) or 0.0))
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+            archive_file = archive_dir / f"summary_{mode}_{broker_mode}_{duration}m_{aggressive}_{stamp}.json"
+            archive_file.write_text(payload, encoding="utf-8")
+            summary["summary_archive_path"] = str(archive_file)
+
+        summary["summary_path"] = str(summary_path)
         payload = json.dumps(summary, indent=2)
         summary_path.write_text(payload, encoding="utf-8")
         # Always print to stdout so callers can capture it
