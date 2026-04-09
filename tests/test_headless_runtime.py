@@ -157,6 +157,27 @@ class TestParseDurationMinutes:
 class TestHeadlessRuntime:
     """Integration tests: run the full runtime end-to-end and validate output."""
 
+    @pytest.mark.safety_gate
+    def test_sim_mode_emits_learning_contract(self, tmp_path, monkeypatch, capsys):
+        """SIM mode should expose the learning contract in summary and console output."""
+        import lumina_core.runtime.headless_runtime as hr_mod
+
+        monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
+
+        runtime = HeadlessRuntime(container=None)
+        summary = runtime.run(duration_minutes=1, mode="sim", broker_mode="paper")
+
+        _assert_summary_structure(summary)
+        assert summary["mode"] == "sim"
+        assert summary["broker_mode"] == "paper"
+        assert summary["broker_status"] == "paper_ok"
+        assert summary["risk_events"] == 0
+        assert summary["var_breach_count"] == 0
+        assert summary["evolution_proposals"] >= 32
+
+        captured = capsys.readouterr()
+        assert "SIM LEARNING MODE ACTIVE" in captured.out
+
     def test_paper_mode_returns_valid_summary(self, tmp_path, monkeypatch):
         """1-minute paper dry-run produces a complete, well-typed JSON summary."""
         # Redirect summary file to tmp_path

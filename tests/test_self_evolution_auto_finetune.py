@@ -85,6 +85,7 @@ def test_auto_fine_tune_triggered_by_low_acceptance(tmp_path: Path) -> None:
     assert "champion_finetuned_" in result["auto_fine_tune"]["champion_candidate"]["name"]
 
 
+@pytest.mark.safety_gate
 def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) -> None:
     """SIM mode must evaluate and apply nightly evolution unconditionally (unless dry_run)."""
     log_path = tmp_path / "evolution_log.jsonl"
