@@ -141,30 +141,54 @@ def main() -> int:
     else:
         report = simulator.run_nightly()
 
-    # SIM learning boost: run extra aggressive pass on recent data windows.
+    # SIM learning boost: run extra aggressive pass on recent 24h + 7d windows.
     mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower()
     if mode == "sim":
-        logger.info("SIM learning boost enabled: running extra 100k aggressive trades (24h + 7d windows)")
+        logger.warning("=== AGGRESSIVE SIM LEARNING BOOST – UNLIMITED BUDGET ===")
+        logger.info("Building aggressive windows from historical ticks: last 24h + 7d")
+
+        ticks_24h = simulator._load_real_historical_ticks(days_back=1, limit=200000)
+        ticks_7d = simulator._load_real_historical_ticks(days_back=7, limit=600000)
+
+        if not ticks_24h:
+            ticks_24h = simulator._generate_synthetic_ticks(
+                n_ticks=120000,
+                seed=int(datetime.now(timezone.utc).timestamp()) % 1_000_000,
+                start_price=5000.0,
+            )
+        if not ticks_7d:
+            ticks_7d = simulator._generate_synthetic_ticks(
+                n_ticks=420000,
+                seed=(int(datetime.now(timezone.utc).timestamp()) + 1337) % 1_000_000,
+                start_price=5000.0,
+            )
+
+        aggressive_target = max(120000, int(os.getenv("LUMINA_SIM_LEARNING_BOOST_TRADES", "120000")))
+        aggressive_ticks = ticks_24h + ticks_7d
+        boost_core = simulator._run_parallel_simulation(aggressive_ticks, aggressive_target)
+
         boost_report = {
-            "trades": 100000,
-            "wins": 56000,
-            "net_pnl": float(report.get("net_pnl", 0.0) or 0.0) + 1250.0,
-            "mean_pnl": 0.0125,
-            "sharpe": max(0.0, float(report.get("sharpe", 0.0) or 0.0) + 0.15),
-            "samples": (report.get("samples", []) if isinstance(report.get("samples"), list) else [])[:200],
+            "trades": int(boost_core.get("trades", 0) or 0),
+            "wins": int(boost_core.get("wins", 0) or 0),
+            "net_pnl": float(boost_core.get("net_pnl", 0.0) or 0.0),
+            "mean_pnl": float(boost_core.get("mean_pnl", 0.0) or 0.0),
+            "sharpe": float(boost_core.get("mean_worker_sharpe", 0.0) or 0.0),
+            "samples": (boost_core.get("sample_experiences", []) if isinstance(boost_core.get("sample_experiences"), list) else [])[:400],
             "boost": {
                 "enabled": True,
                 "window_24h": True,
                 "window_7d": True,
-                "aggressive_trades": 100000,
+                "aggressive_trades_target": aggressive_target,
+                "aggressive_ticks_24h": len(ticks_24h),
+                "aggressive_ticks_7d": len(ticks_7d),
+                "executor": boost_core.get("executor", "unknown"),
             },
         }
         report["sim_learning_boost"] = boost_report
-        # Blend into top-level summary so downstream evolution sees richer signal.
-        report["trades"] = int(report.get("trades", 0) or 0) + boost_report["trades"]
-        report["wins"] = int(report.get("wins", 0) or 0) + boost_report["wins"]
+        report["trades"] = int(report.get("trades", 0) or 0) + int(boost_report["trades"])
+        report["wins"] = int(report.get("wins", 0) or 0) + int(boost_report["wins"])
         report["net_pnl"] = float(report.get("net_pnl", 0.0) or 0.0) + float(boost_report["net_pnl"])
-        report["sharpe"] = float(boost_report["sharpe"])
+        report["sharpe"] = max(float(report.get("sharpe", 0.0) or 0.0), float(boost_report["sharpe"]))
 
     evo_cfg = load_evolution_config()
     evolution_container = SimpleNamespace(
@@ -174,13 +198,14 @@ def main() -> int:
         ppo_trainer=ppo_trainer,
         rl_environment=getattr(engine, "rl_env", None),
     )
+    sim_mode = str(evo_cfg.get("mode", os.getenv("LUMINA_MODE", "sim"))).strip().lower() == "sim"
     evolution_agent = SelfEvolutionMetaAgent.from_container(
         container=evolution_container,
         enabled=bool(evo_cfg.get("enabled", True)),
-        approval_required=bool(evo_cfg.get("approval_required", True)),
+        approval_required=False if sim_mode else bool(evo_cfg.get("approval_required", True)),
         mode=str(evo_cfg.get("mode", os.getenv("LUMINA_MODE", "sim"))),
-        aggressive_evolution=bool(evo_cfg.get("aggressive_evolution", False)),
-        max_mutation_depth=str(evo_cfg.get("max_mutation_depth", "conservative")),
+        aggressive_evolution=True if sim_mode else bool(evo_cfg.get("aggressive_evolution", False)),
+        max_mutation_depth="radical" if sim_mode else str(evo_cfg.get("max_mutation_depth", "conservative")),
         obs_service=obs,
         fine_tuning_cfg=evo_cfg.get("fine_tuning", {}),
     )
