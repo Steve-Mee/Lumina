@@ -9,6 +9,8 @@ import requests
 import streamlit as st
 import yaml
 
+from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
+
 from global_wisdom_view import render_global_wisdom_tab
 from leaderboard_view import render_leaderboard_tab
 from evolution_approval import render_evolution_approval_tab
@@ -262,6 +264,20 @@ def _render_sim_learning_dashboard_tab() -> None:
 
     if not transition_green:
         st.warning("Transition protocol is not green yet. Continue SIM learning.")
+
+    st.markdown("#### Stability Report + Go-Live Button")
+    stability_report = generate_stability_report(limit=50)
+    stability_green = bool(stability_report.get("READY_FOR_REAL", False))
+    status = str(stability_report.get("status", "RED"))
+    st.metric("Stability Status", status)
+    st.code(format_stability_report(stability_report), language="text")
+
+    if st.button("Go-Live: Switch to REAL mode", type="primary", disabled=not stability_green):
+        _append_or_replace_env(ENV_PATH, "LUMINA_MODE", "real")
+        st.success("Stability GREEN. LUMINA_MODE=real written to .env")
+
+    if not stability_green:
+        st.info("Go-live remains locked until READY_FOR_REAL is true.")
 
 
 def _render_real_operations_dashboard_tab() -> None:

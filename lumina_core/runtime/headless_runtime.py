@@ -17,6 +17,8 @@ from typing import Any
 
 import yaml
 
+from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
+
 logger = logging.getLogger("lumina.headless")
 
 _DEFAULT_SUMMARY_PATH = Path("state/last_run_summary.json")
@@ -409,6 +411,7 @@ class HeadlessRuntime:
         broker_mode: str = "paper",
         aggressive_sim: bool = False,
         overnight_sim: bool = False,
+        stability_check: bool = False,
     ) -> dict[str, Any]:
         """
         Execute the headless trade loop for ``duration_minutes`` of simulated time.
@@ -424,6 +427,7 @@ class HeadlessRuntime:
             broker_mode: Broker backend – "paper" | "live".
             aggressive_sim: When True in SIM mode, enforce long learning run profile.
             overnight_sim: When True in SIM mode, force 4-hour equivalent simulation.
+            stability_check: When True, force SIM stability aggregation at end.
 
         Returns:
             Structured summary dict (also written to stdout and to disk).
@@ -518,6 +522,16 @@ class HeadlessRuntime:
             "session_guard_blocks": session_guard_blocks,
             "observability_alerts": observability_alerts,
         }
+
+        should_run_stability = mode_normalized == "sim" and (overnight_enabled or stability_check)
+        if should_run_stability:
+            stability_report = generate_stability_report(limit=50)
+            summary["stability_report"] = stability_report
+            summary["READY_FOR_REAL"] = bool(stability_report.get("READY_FOR_REAL", False))
+            summary["stability_status"] = str(stability_report.get("status", "RED"))
+            rendered = format_stability_report(stability_report)
+            self._logger.info("\n%s", rendered)
+            print(rendered, flush=True)
 
         summary_path = _resolve_summary_path(cfg)
         archive_enabled = _resolve_summary_archive_enabled(cfg)

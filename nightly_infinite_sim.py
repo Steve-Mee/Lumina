@@ -15,6 +15,7 @@ from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.session_guard import SessionGuard
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.engine.self_evolution_meta_agent import load_evolution_config
+from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
 from lumina_core.infinite_simulator import InfiniteSimulator
 from lumina_core.logging_utils import build_logger
 from lumina_core.monitoring import ObservabilityService
@@ -229,6 +230,12 @@ def main() -> int:
         dry_run=dry_run_sim,
     )
     report["evolution"] = evolution_result
+
+    if mode == "sim":
+        stability_report = generate_stability_report(limit=50)
+        report["sim_stability"] = stability_report
+        report["READY_FOR_REAL"] = bool(stability_report.get("READY_FOR_REAL", False))
+        logger.info("\n%s", format_stability_report(stability_report))
 
     # ── Record evolution proposal to observability metrics ─────────────────────
     try:

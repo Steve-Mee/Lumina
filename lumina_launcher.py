@@ -33,6 +33,7 @@ from lumina_core.engine.model_catalog import ModelCatalog, ModelDescriptor
 from lumina_core.engine.model_trainer import ModelTrainer
 from lumina_core.engine.performance_validator import PerformanceValidator
 from lumina_core.engine.setup_service import SetupService, SetupStepResult
+from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
 from lumina_core.runtime_context import RuntimeContext
 
 if not _IS_HEADLESS:
@@ -402,6 +403,21 @@ def _render_sim_learning_tab() -> None:
 
     if not protocol_green:
         st.warning("Transition protocol is not green yet. Continue SIM learning.")
+
+    st.markdown("#### Stability Report + Go-Live Button")
+    stability_report = generate_stability_report(limit=50)
+    stability_green = bool(stability_report.get("READY_FOR_REAL", False))
+    status = str(stability_report.get("status", "RED"))
+    st.metric("Stability Status", status)
+    st.code(format_stability_report(stability_report), language="text")
+
+    if st.button("Go-Live: Switch to REAL mode", type="primary", disabled=not stability_green):
+        _write_env_file(ENV_PATH, {"LUMINA_MODE": "real"})
+        os.environ["LUMINA_MODE"] = "real"
+        st.success("Stability GREEN. Launcher switched to REAL mode via .env override.")
+
+    if not stability_green:
+        st.info("Go-live remains locked until READY_FOR_REAL is true.")
 
 
 def _render_real_operations_tab(state: dict[str, Any]) -> None:
@@ -987,6 +1003,12 @@ def _headless_main() -> None:
         default=False,
         help="Enable overnight SIM mode (runs 4-hour equivalent simulation in one go).",
     )
+    parser.add_argument(
+        "--stability-check",
+        action="store_true",
+        default=False,
+        help="Run SIM Stability Aggregator after the headless run and print GREEN/RED readiness report.",
+    )
 
     args, _ = parser.parse_known_args()
 
@@ -995,6 +1017,7 @@ def _headless_main() -> None:
     os.environ["LUMINA_MODE"] = str(args.mode).strip().lower()
     os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
     os.environ["LUMINA_SIM_OVERNIGHT"] = "true" if bool(args.overnight_sim) else "false"
+    os.environ["LUMINA_STABILITY_CHECK"] = "true" if bool(args.stability_check) else "false"
 
     duration_minutes = _parse_duration_minutes(args.duration)
 
@@ -1028,6 +1051,7 @@ def _headless_main() -> None:
         broker_mode=args.broker,
         aggressive_sim=bool(args.aggressive_sim),
         overnight_sim=bool(args.overnight_sim),
+        stability_check=bool(args.stability_check),
     )
 
 
