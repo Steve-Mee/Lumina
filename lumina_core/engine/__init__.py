@@ -6,7 +6,7 @@ from .dashboard_service import DashboardService
 from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .lumina_engine import LuminaEngine
-from .LocalInferenceEngine import LocalInferenceEngine
+from .local_inference_engine import LocalInferenceEngine
 from .market_data_manager import MarketDataManager
 from .market_data_service import MarketDataService
 from .memory_service import MemoryService

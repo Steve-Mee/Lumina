@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .broker_bridge import Order, OrderResult
-from .LocalInferenceEngine import LocalInferenceEngine
+from .local_inference_engine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine
 from .regime_detector import RegimeDetector, RegimeSnapshot
 

@@ -12,7 +12,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .FastPathEngine import FastPathEngine
+    from .fast_path_engine import FastPathEngine
 
 from lumina_bible import BibleEngine
 from .dream_state import DreamState
@@ -155,60 +155,27 @@ class LuminaEngine:
 
         # FastPathEngine wordt hier lazy geladen om circulaire imports te vermijden
         if self.fast_path is None:
-            from .FastPathEngine import FastPathEngine  # noqa: PLC0415
+            from .fast_path_engine import FastPathEngine  # noqa: PLC0415
             self.fast_path = FastPathEngine(engine=self)
 
         # RealisticBacktesterEngine lazy init
         if self.backtester is None:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
-            from .RealisticBacktesterEngine import RealisticBacktesterEngine  # noqa: PLC0415
+            from .realistic_backtester_engine import RealisticBacktesterEngine  # noqa: PLC0415
             self.backtester = RealisticBacktesterEngine(RuntimeContext(engine=self))
 
         # AdvancedBacktesterEngine lazy init
         if self.advanced_backtester is None:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
-            from .AdvancedBacktesterEngine import AdvancedBacktesterEngine  # noqa: PLC0415
+            from .advanced_backtester_engine import AdvancedBacktesterEngine  # noqa: PLC0415
             self.advanced_backtester = AdvancedBacktesterEngine(RuntimeContext(engine=self))
 
-        # RLTradingEnvironment + PPOTrainer lazy init
-        if self.rl_env is None or self.ppo_trainer is None:
-            from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
-            from .rl.ppo_trainer import PPOTrainer  # noqa: PLC0415
-            from .rl.rl_trading_environment import RLTradingEnvironment  # noqa: PLC0415
-
-            runtime_context = RuntimeContext(engine=self)
-            if self.rl_env is None:
-                self.rl_env = RLTradingEnvironment(runtime_context)
-            if self.ppo_trainer is None:
-                self.ppo_trainer = PPOTrainer(runtime_context)
-
-        # InfiniteSimulator lazy init
-        if self.infinite_simulator is None:
-            from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
-            from .infinite_simulator import InfiniteSimulator  # noqa: PLC0415
-
-            runtime_context = RuntimeContext(engine=self)
-            self.infinite_simulator = InfiniteSimulator(runtime_context)
-
-        # EmotionalTwinAgent lazy init
-        if self.emotional_twin is None:
-            from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
-            from .emotional_twin_agent import EmotionalTwinAgent  # noqa: PLC0415
-
-            runtime_context = RuntimeContext(engine=self)
-            self.emotional_twin = EmotionalTwinAgent(runtime_context)
-            self.emotional_twin_agent = self.emotional_twin
-
-        if self.swarm is None and bool(getattr(self.config, "swarm_enabled", True)):
-            from .swarm_manager import SwarmManager  # noqa: PLC0415
-
-            self.swarm = SwarmManager(self)
-
-        if self.validator is None:
-            from .performance_validator import PerformanceValidator  # noqa: PLC0415
-
-            # Engine-native validator instance for nightly and periodic validation hooks.
-            self.validator = PerformanceValidator(engine=self)
+        # RLTradingEnvironment, PPOTrainer, InfiniteSimulator, EmotionalTwinAgent,
+        # SwarmManager and PerformanceValidator are built exclusively by
+        # ApplicationContainer._init_services() which then assigns them back via
+        # engine.ppo_trainer, engine.emotional_twin_agent, engine.infinite_simulator,
+        # engine.swarm, engine.validator.  Constructing them here was dead-weight
+        # double construction (Fase 3.1 clean-up).
 
         if self.session_guard is None:
             try:
@@ -267,11 +234,8 @@ class LuminaEngine:
             "kelly_baseline": 0.25,
         }
         try:
-            import yaml as _yaml
-
-            cfg_path = os.getenv("LUMINA_CONFIG", "config.yaml")
-            with open(cfg_path, "r", encoding="utf-8") as _fh:
-                data = _yaml.safe_load(_fh) or {}
+            from lumina_core.config_loader import ConfigLoader  # noqa: PLC0415
+            data = ConfigLoader.get()
 
             sim_cfg = data.get("sim", {}) if isinstance(data.get("sim"), dict) else {}
             real_cfg = data.get("real", {}) if isinstance(data.get("real"), dict) else {}
@@ -657,10 +621,18 @@ class LuminaEngine:
         return True
 
     def __getattr__(self, name: str) -> Any:
+        # Fase 3.3: guard against accidentally accessing early-init slots.
         if name in {"dream_state", "bible_engine", "market_data", "config", "app"}:
             raise AttributeError(name)
 
         if self.app is not None and hasattr(self.app, name):
+            import warnings  # noqa: PLC0415
+            warnings.warn(
+                f"LuminaEngine: accessing '{name}' via app-delegation shim is deprecated. "
+                f"Add an explicit attribute to LuminaEngine or access self.app.{name} directly.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             return getattr(self.app, name)
         raise AttributeError(name)
 
@@ -682,6 +654,13 @@ class LuminaEngine:
             return
 
         if getattr(self, "app", None) is not None and hasattr(self.app, name):
+            import warnings  # noqa: PLC0415
+            warnings.warn(
+                f"LuminaEngine: setting '{name}' via app-delegation shim is deprecated. "
+                f"Add an explicit attribute to LuminaEngine or set self.app.{name} directly.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             setattr(self.app, name, value)
             return
         object.__setattr__(self, name, value)

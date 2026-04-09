@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import yaml  # type: ignore[import-not-found]
 
-from lumina_core.engine.LocalInferenceEngine import LocalInferenceEngine
+from lumina_core.engine.local_inference_engine import LocalInferenceEngine
 
 
 class _Logger:

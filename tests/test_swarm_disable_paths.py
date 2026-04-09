@@ -9,7 +9,7 @@ def test_lumina_engine_does_not_initialize_swarm_when_disabled(monkeypatch):
         lambda *args, **kwargs: SimpleNamespace(),
     )
     monkeypatch.setattr(
-        "lumina_core.engine.lumina_engine.FastPathEngine",
+        "lumina_core.engine.fast_path_engine.FastPathEngine",
         lambda *args, **kwargs: SimpleNamespace(),
         raising=False,
     )
@@ -35,11 +35,11 @@ def test_lumina_engine_does_not_initialize_swarm_when_disabled(monkeypatch):
             pass
 
     monkeypatch.setattr(
-        "lumina_core.engine.RealisticBacktesterEngine.RealisticBacktesterEngine",
+        "lumina_core.engine.realistic_backtester_engine.RealisticBacktesterEngine",
         _StubBacktester,
     )
     monkeypatch.setattr(
-        "lumina_core.engine.AdvancedBacktesterEngine.AdvancedBacktesterEngine",
+        "lumina_core.engine.advanced_backtester_engine.AdvancedBacktesterEngine",
         _StubBacktester,
     )
     monkeypatch.setattr(

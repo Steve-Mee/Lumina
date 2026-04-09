@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lumina_core.engine.TapeReadingAgent import TapeReadingAgent
+from lumina_core.engine.tape_reading_agent import TapeReadingAgent
 
 
 def test_contract_agent_writes_agent_decision_log(tmp_path: Path, monkeypatch) -> None:

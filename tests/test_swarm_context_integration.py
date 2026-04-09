@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from lumina_core.engine.FastPathEngine import FastPathEngine
+from lumina_core.engine.fast_path_engine import FastPathEngine
 from lumina_core.engine.analysis_service import HumanAnalysisService
 
 

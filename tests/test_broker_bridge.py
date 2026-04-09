@@ -100,10 +100,22 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge() -> None:
     container = SimpleNamespace(broker=broker_spy)
 
     engine = SimpleNamespace(
-        app=SimpleNamespace(logger=SimpleNamespace(error=lambda *a, **k: None, info=lambda *a, **k: None)),
+        app=SimpleNamespace(logger=SimpleNamespace(
+            error=lambda *a, **k: None,
+            info=lambda *a, **k: None,
+            warning=lambda *a, **k: None,
+        )),
         config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
         get_current_dream_snapshot=lambda: {"stop": 4990.0, "target": 5010.0, "regime": "NEUTRAL"},
-        risk_controller=SimpleNamespace(check_can_trade=lambda *_a, **_k: (True, "ok")),
+        risk_controller=SimpleNamespace(
+            _active_limits=SimpleNamespace(enforce_session_guard=True),
+            apply_regime_override=lambda *_a, **_k: None,
+            check_can_trade=lambda *_a, **_k: (True, "ok"),
+        ),
+        session_guard=SimpleNamespace(
+            is_rollover_window=lambda: False,
+            is_trading_session=lambda: True,
+        ),
         live_data_lock=nullcontext(),
         live_quotes=[{"last": 5000.0}],
         ohlc_1min=[1],

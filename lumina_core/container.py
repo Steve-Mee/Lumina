@@ -87,11 +87,14 @@ class ApplicationContainer:
     """
     Dependency Injection Container: manages all services and eliminates global state.
     
-    All dependencies are created in __post_init__ with explicit ordering.
+    All dependencies are built in __post_init__ (pure object-graph, no network I/O).
+    Call start() to connect the broker and register cleanup handlers.
     Services are typed and accessed via properties, not global variables.
-    
-    Usage:
+
+    Usage::
+
         container = ApplicationContainer()
+        container.start()         # connects broker, registers atexit handlers
         engine: LuminaEngine = container.engine
         market_data: MarketDataService = container.market_data_service
     """
@@ -101,7 +104,7 @@ class ApplicationContainer:
     config: EngineConfig = field(init=False)
     logger: logging.Logger = field(init=False)
     voice_config: VoiceConfig = field(init=False)
-    broker: BrokerBridge = field(default_factory=broker_factory)
+    broker: BrokerBridge = field(init=False)  # built in __post_init__, connected in start()
     
     # Services (lazily initialized in __post_init__)
     engine: LuminaEngine = field(init=False)
@@ -177,15 +180,30 @@ class ApplicationContainer:
         # Initialize services (order matters due to dependencies)
         self._init_services()
 
-        # Broker is selected from config.broker.backend (paper/live).
+        # Build broker (no network I/O yet — call start() to connect).
         self.broker = broker_factory(config=self.config, engine=self.engine, logger=self.logger)
+
+    def start(self) -> "ApplicationContainer":
+        """Connect the broker and register process-exit cleanup handlers.
+
+        Must be called once after __post_init__ completes.  Separating build
+        (pure object graph) from start (network I/O) makes unit-testing the
+        container possible without live connections.
+
+        Returns self for optional one-liner chaining::
+
+            container = ApplicationContainer().start()
+        """
         self.broker.connect()
-        
-        # Register cleanup handlers
         self._register_cleanup()
+        return self
     
     def _validate_config(self) -> None:
         """Validate required configuration."""
+        # Fase 2.2: centralised env/placeholder/secret check first
+        from lumina_core.config_loader import ConfigLoader  # noqa: PLC0415
+        ConfigLoader.validate_startup(raise_on_error=True)
+
         if str(getattr(self.config, "broker_backend", "paper")).strip().lower() == "live" and not (
             self.config.broker_crosstrade_api_key or self.config.crosstrade_token
         ):
@@ -251,7 +269,8 @@ class ApplicationContainer:
         self.analysis_service = HumanAnalysisService(engine=self.engine)
         self.news_agent = NewsAgent(engine=self.engine)
         self.ppo_trainer = PPOTrainer(engine=self.engine)
-        
+        self.engine.ppo_trainer = self.ppo_trainer  # Fase 3.1: engine back-reference
+
         # Level 2: Services that depend on level 1 services
         self.reasoning_service = ReasoningService(
             engine=self.engine, 
@@ -269,12 +288,15 @@ class ApplicationContainer:
         
         # Level 3: Agents and simulators
         self.emotional_twin_agent = EmotionalTwinAgent(engine=self.engine)
+        self.engine.emotional_twin_agent = self.emotional_twin_agent  # Fase 3.1
+        self.engine.emotional_twin = self.emotional_twin_agent  # backward-compat alias
         self.infinite_simulator = InfiniteSimulator(
             runtime=self.runtime_context,
             market_data_service=self.market_data_service,
             ppo_trainer=self.ppo_trainer,
         )
-        
+        self.engine.infinite_simulator = self.infinite_simulator  # Fase 3.1
+
         # Level 4: Validators and reconcilers
         self.performance_validator = PerformanceValidator(
             engine=self.engine,
@@ -365,12 +387,10 @@ class ApplicationContainer:
         self.logger.debug(f"Engine validation passed: all {len(required_attributes)} required attributes present")
 
     def _init_observability(self) -> ObservabilityService:
-        """Load config.yaml and start ObservabilityService (no-op if monitoring disabled)."""
+        """Load config and start ObservabilityService (no-op if monitoring disabled)."""
         try:
-            import yaml
-            config_path = os.getenv("LUMINA_CONFIG", "config.yaml")
-            with open(config_path, "r", encoding="utf-8") as fh:
-                full_cfg: dict[str, Any] = yaml.safe_load(fh) or {}
+            from lumina_core.config_loader import ConfigLoader
+            full_cfg: dict[str, Any] = ConfigLoader.get()
             obs = ObservabilityService.from_config(full_cfg)
             obs.start()
             return obs
@@ -457,6 +477,7 @@ def create_application_container() -> ApplicationContainer:
     """
     try:
         container = ApplicationContainer()
+        container.start()
         container.logger.info("✅ Application container initialized successfully")
         return container
     except Exception as e:

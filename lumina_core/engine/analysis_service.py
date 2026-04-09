@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import pandas as pd
 
-from .FastPathEngine import FastPathEngine
+from .fast_path_engine import FastPathEngine
 from .lumina_engine import LuminaEngine
 
 

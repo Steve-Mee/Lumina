@@ -12,7 +12,7 @@ import pandas as pd
 import requests
 import websockets
 
-from .TapeReadingAgent import TapeReadingAgent
+from .tape_reading_agent import TapeReadingAgent
 from .lumina_engine import LuminaEngine
 
 

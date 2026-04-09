@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 import pytest
 import pandas as pd
 
-from lumina_core.engine.LocalInferenceEngine import LocalInferenceEngine
+from lumina_core.engine.local_inference_engine import LocalInferenceEngine
 from lumina_core.engine.regime_detector import RegimeDetector
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.market_data_service import MarketDataService

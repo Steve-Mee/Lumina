@@ -94,6 +94,9 @@ def check_pre_trade_risk(
         return False, "Risk controller not available"
 
     # SessionGuard pre-check at submit boundary (fail-closed when enforced).
+    # Applies to both SIM and REAL: SIM executes live orders on live market data,
+    # so rollover and session windows must be respected. Only financial budget
+    # limits are waived for SIM (handled by enforce_rules=False on RiskController).
     limits = getattr(app.engine.risk_controller, "_active_limits", None)
     enforce_session_guard = bool(getattr(limits, "enforce_session_guard", True))
     session_guard = getattr(app.engine, "session_guard", None)
