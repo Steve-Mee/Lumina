@@ -1,0 +1,22 @@
+# Minimal dependency set for the GitHub Actions safety gate.
+# Keeps CI focused on SIM/REAL contract tests without resolving the full ML stack.
+PyYAML==6.0.3
+pytest==9.0.2
+numpy==2.3.5
+pandas==3.0.2
+requests==2.33.1
+python-dotenv==1.2.2
+pydantic==2.12.5
+streamlit==1.56.0
+dash==4.1.0
+dash-bootstrap-components==2.0.4
+plotly==6.6.0
+pandas_market_calendars==5.3.2
+matplotlib==3.10.8
+fpdf2==2.8.7
+pillow==12.2.0
+ray==2.54.1
+ollama==0.6.1
+gymnasium==1.2.3
+websockets==16.0
+xai-sdk==1.11.0
