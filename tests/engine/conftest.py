@@ -13,6 +13,19 @@ from lumina_core.engine import EngineConfig, MarketDataService
 from lumina_core.engine.lumina_engine import LuminaEngine
 
 
+class _NoOpPPOTrainer:
+    """Test double to avoid hard dependency on stable-baselines3 during unit tests."""
+
+    def __init__(self, *_args, **_kwargs) -> None:
+        pass
+
+    def train(self, *_args, **_kwargs) -> None:
+        return None
+
+    def predict_action(self, *_args, **_kwargs) -> dict[str, float]:
+        return {"signal": 0, "qty_pct": 0.0, "stop_mult": 0.0, "target_mult": 0.0}
+
+
 @pytest.fixture
 def runtime_app() -> SimpleNamespace:
     """Minimal app surface required by engine/service methods under test."""
@@ -24,7 +37,8 @@ def runtime_app() -> SimpleNamespace:
 
 
 @pytest.fixture
-def engine(tmp_path: Path, runtime_app: SimpleNamespace) -> LuminaEngine:
+def engine(tmp_path: Path, runtime_app: SimpleNamespace, monkeypatch: pytest.MonkeyPatch) -> LuminaEngine:
+    monkeypatch.setattr("lumina_core.engine.rl.ppo_trainer.PPOTrainer", _NoOpPPOTrainer)
     cfg = EngineConfig(
         state_file=tmp_path / "state.json",
         thought_log=tmp_path / "thought_log.jsonl",
@@ -51,6 +65,9 @@ def real_mes_ohlc(tmp_path_factory: pytest.TempPathFactory) -> pd.DataFrame:
         bible_file=temp_dir / "bible.json",
         live_jsonl=temp_dir / "live_stream.jsonl",
     )
+    import lumina_core.engine.rl.ppo_trainer as ppo_trainer_mod
+
+    ppo_trainer_mod.PPOTrainer = _NoOpPPOTrainer
     eng = LuminaEngine(config=cfg)
     app = SimpleNamespace(
         logger=logging.getLogger("lumina-test-real"),
