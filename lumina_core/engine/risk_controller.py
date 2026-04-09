@@ -1,6 +1,8 @@
 # CANONICAL IMPLEMENTATION – v50 Living Organism
 # Hard Risk Controller: Unbreakable Safety Layer
 # Fail-closed architecture: blocks ALL trading when limits breached
+# SIM mode: all caps bypassed – maximal learning
+# REAL mode: all caps enforced – capital preservation only
 
 from __future__ import annotations
 
@@ -9,8 +11,9 @@ from datetime import datetime, timedelta, timezone
 from collections import deque
 import json
 import logging
+import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +78,9 @@ class RiskLimits:
     cooldown_after_streak: int = 30  # minutes to halt trading after loss streak
     session_cooldown_minutes: int = 15  # minimum intraday cooldown after streak
     enforce_session_guard: bool = True  # fail-closed when calendar data unavailable
+    eod_force_close_minutes_before_session_end: int = 30  # force-close window in REAL mode
+    eod_no_new_trades_minutes_before_session_end: int = 60  # block new entries near EOD in REAL mode
+    sim_mode: bool = False  # SIM=True bypasses all caps; REAL=False enforces them
     
     def validate(self) -> bool:
         """Validate that limits are sensible."""
@@ -97,6 +103,12 @@ class RiskLimits:
             return False
         if self.session_cooldown_minutes < 1:
             logger.error("session_cooldown_minutes must be >= 1 minute")
+            return False
+        if self.eod_force_close_minutes_before_session_end < 0:
+            logger.error("eod_force_close_minutes_before_session_end must be >= 0")
+            return False
+        if self.eod_no_new_trades_minutes_before_session_end < 0:
+            logger.error("eod_no_new_trades_minutes_before_session_end must be >= 0")
             return False
         return True
 
@@ -229,6 +241,8 @@ class HardRiskController:
             cooldown_after_streak=cooldown,
             session_cooldown_minutes=self._base_limits.session_cooldown_minutes,
             enforce_session_guard=self._base_limits.enforce_session_guard,
+            eod_force_close_minutes_before_session_end=self._base_limits.eod_force_close_minutes_before_session_end,
+            eod_no_new_trades_minutes_before_session_end=self._base_limits.eod_no_new_trades_minutes_before_session_end,
         )
         self.state.active_regime = normalized_regime
         self.state.active_risk_state = normalized_risk_state
@@ -350,10 +364,10 @@ class HardRiskController:
         Returns:
             (allowed: bool, reason: str)
         """
-        # If not enforcing rules (learning/testing mode), always allow
-        if not self.enforce_rules:
-            return True, "OK (learning/testing mode - rules bypassed)"
-        
+        # SIM mode: bypass all hard caps – organism learns freely
+        if self.limits.sim_mode or not self.enforce_rules:
+            return True, "OK (SIM learning mode – all caps bypassed)"
+
         # 1. Kill-switch check (highest priority, persistent)
         if self.state.kill_switch_engaged:
             return False, f"KILL SWITCH ENGAGED: {self.state.kill_switch_reason} (since {self.state.kill_switch_time})"
@@ -371,6 +385,14 @@ class HardRiskController:
                 nxt = self.session_guard.next_open()
                 suffix = f" | next_open={nxt.isoformat()}" if nxt is not None else ""
                 return False, f"SESSION GUARD blocked order: market closed{suffix}"
+            if limits.eod_no_new_trades_minutes_before_session_end > 0 and self.session_guard.should_block_new_eod_trades(
+                no_new_trades_minutes=limits.eod_no_new_trades_minutes_before_session_end
+            ):
+                minutes_to_close = self.session_guard.minutes_to_session_end()
+                return False, (
+                    "SESSION GUARD blocked order: within EOD no-new-trades window "
+                    f"({minutes_to_close:.1f}m to close)"
+                )
 
         # 3. Daily loss cap check
         if self.state.daily_pnl <= limits.daily_loss_cap:
@@ -567,6 +589,8 @@ class HardRiskController:
                 'cooldown_after_streak': self._active_limits.cooldown_after_streak,
                 'session_cooldown_minutes': self._active_limits.session_cooldown_minutes,
                 'enforce_session_guard': self._active_limits.enforce_session_guard,
+                'eod_force_close_minutes_before_session_end': self._active_limits.eod_force_close_minutes_before_session_end,
+                'eod_no_new_trades_minutes_before_session_end': self._active_limits.eod_no_new_trades_minutes_before_session_end,
             },
             'portfolio_var': {
                 'value_usd': self.state.portfolio_var_usd,
@@ -591,3 +615,120 @@ class HardRiskController:
         remaining = cooldown_period - elapsed
         
         return max(0.0, remaining.total_seconds() / 60.0)
+
+    def should_force_close_eod(self) -> tuple[bool, str]:
+        """Return whether REAL mode should force-close open positions near session end."""
+        if self.limits.sim_mode or not self.enforce_rules:
+            return False, "SIM/learning mode"
+        limits = self._active_limits
+        if not limits.enforce_session_guard:
+            return False, "session guard disabled"
+        if self.session_guard is None:
+            return False, "session guard unavailable"
+        window = int(limits.eod_force_close_minutes_before_session_end)
+        if window <= 0:
+            return False, "force-close window disabled"
+        if self.session_guard.should_force_close_eod(force_close_minutes=window):
+            mins = self.session_guard.minutes_to_session_end()
+            return True, f"within EOD force-close window ({mins:.1f}m to close)"
+        return False, "outside force-close window"
+
+
+# ---------------------------------------------------------------------------
+# Public factory: mode-aware RiskLimits constructor
+# ---------------------------------------------------------------------------
+
+def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
+    """
+    Build a RiskLimits from config.yaml honoring the top-level ``mode`` key.
+
+    SIM mode (mode=="sim"):
+      - sim_mode=True  → all hard caps bypassed in check_can_trade
+      - daily_loss_cap overridden to a very large negative (effectively unlimited)
+      - enforce_session_guard=False  (let organism trade freely in SIM)
+
+    REAL mode (mode=="real" or any other value):
+      - sim_mode=False  → all caps from risk_controller section are enforced
+      - real profile overrides applied on top of risk_controller defaults
+    """
+    if config is None:
+        try:
+            import yaml as _yaml
+
+            cfg_path = os.getenv("LUMINA_CONFIG", "config.yaml")
+            with open(cfg_path, "r", encoding="utf-8") as _fh:
+                config = _yaml.safe_load(_fh) or {}
+        except Exception:
+            config = {}
+
+    global_mode = str(
+        os.getenv("LUMINA_MODE")
+        or os.getenv("TRADE_MODE")
+        or config.get("mode", "sim")
+    ).strip().lower()
+    is_sim = global_mode == "sim"
+
+    risk_cfg = config.get("risk_controller", {}) if isinstance(config.get("risk_controller"), dict) else {}
+    trading_cfg = config.get("trading", {}) if isinstance(config.get("trading"), dict) else {}
+
+    # Start with risk_controller section defaults
+    daily_loss_cap = float(risk_cfg.get("daily_loss_cap", -1000.0) or -1000.0)
+    max_consecutive_losses = int(risk_cfg.get("max_consecutive_losses", 3))
+    max_open_risk_per_instrument = float(risk_cfg.get("max_open_risk_per_instrument", 500.0))
+    max_total_open_risk = float(risk_cfg.get("max_total_open_risk", 3000.0))
+    max_exposure_per_regime = float(risk_cfg.get("max_exposure_per_regime", 2000.0))
+    cooldown_after_streak = int(risk_cfg.get("cooldown_after_streak", 30))
+    session_cooldown_minutes = int(risk_cfg.get("session_cooldown_minutes", 15))
+    enforce_session_guard = bool(risk_cfg.get("enforce_session_guard", True))
+    eod_force_close_minutes_before_session_end = int(
+        trading_cfg.get("eod_force_close_minutes_before_session_end", 30)
+    )
+    eod_no_new_trades_minutes_before_session_end = int(
+        trading_cfg.get("eod_no_new_trades_minutes_before_session_end", 60)
+    )
+
+    if is_sim:
+        # SIM: override to unlimited
+        sim_profile = config.get("sim", {}) if isinstance(config.get("sim"), dict) else {}
+        sim_daily_cap = sim_profile.get("daily_loss_cap", None)
+        daily_loss_cap = float(sim_daily_cap) if sim_daily_cap is not None else -1_000_000.0
+        enforce_session_guard = False  # SIM trades around the clock
+        logger.info("[MODE=SIM] RiskLimits: all hard caps bypassed – MAXIMAL LEARNING MODE")
+    else:
+        # REAL: apply real profile overrides
+        real_profile = config.get("real", {}) if isinstance(config.get("real"), dict) else {}
+        if real_profile.get("daily_loss_cap") is not None:
+            daily_loss_cap = float(real_profile["daily_loss_cap"])
+        if real_profile.get("max_consecutive_losses") is not None:
+            max_consecutive_losses = int(real_profile["max_consecutive_losses"])
+        if real_profile.get("max_open_risk_per_instrument") is not None:
+            max_open_risk_per_instrument = float(real_profile["max_open_risk_per_instrument"])
+        if real_profile.get("max_total_open_risk") is not None:
+            max_total_open_risk = float(real_profile["max_total_open_risk"])
+        if real_profile.get("max_exposure_per_regime") is not None:
+            max_exposure_per_regime = float(real_profile["max_exposure_per_regime"])
+        if real_profile.get("cooldown_after_streak") is not None:
+            cooldown_after_streak = int(real_profile["cooldown_after_streak"])
+        if real_profile.get("session_cooldown_minutes") is not None:
+            session_cooldown_minutes = int(real_profile["session_cooldown_minutes"])
+        if real_profile.get("enforce_session_guard") is not None:
+            enforce_session_guard = bool(real_profile["enforce_session_guard"])
+        if real_profile.get("eod_force_close_minutes_before_session_end") is not None:
+            eod_force_close_minutes_before_session_end = int(real_profile["eod_force_close_minutes_before_session_end"])
+        if real_profile.get("eod_no_new_trades_minutes_before_session_end") is not None:
+            eod_no_new_trades_minutes_before_session_end = int(real_profile["eod_no_new_trades_minutes_before_session_end"])
+        logger.info("[MODE=REAL] RiskLimits: capital preservation caps ENFORCED")
+
+    return RiskLimits(
+        daily_loss_cap=daily_loss_cap,
+        max_consecutive_losses=max_consecutive_losses,
+        max_open_risk_per_instrument=max_open_risk_per_instrument,
+        max_total_open_risk=max_total_open_risk,
+        max_exposure_per_regime=max_exposure_per_regime,
+        cooldown_after_streak=cooldown_after_streak,
+        session_cooldown_minutes=session_cooldown_minutes,
+        enforce_session_guard=enforce_session_guard,
+        eod_force_close_minutes_before_session_end=eod_force_close_minutes_before_session_end,
+        eod_no_new_trades_minutes_before_session_end=eod_no_new_trades_minutes_before_session_end,
+        sim_mode=is_sim,
+    )

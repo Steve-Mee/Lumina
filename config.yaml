@@ -1,3 +1,32 @@
+# ── SIM vs REAL MODE TOGGLE ──────────────────────────────────────────────────
+# "sim"  = aggressive learning, full Kelly, no loss caps, auto-apply mutations
+# "real" = capital preservation ONLY – every conservative cap enforced
+mode: "sim"
+
+sim:
+  aggressive_evolution: true         # SelfEvolutionMetaAgent auto-applies without human approval
+  approval_required: false           # Mutations applied immediately
+  daily_loss_cap: null               # Unlimited P/L (learning, not capital)
+  kelly_fraction: 1.0                # Full Kelly – maximise exploration velocity
+  bible_base_winrate: 0.55           # Realistic baseline; evolution can push higher
+  max_mutation_depth: "radical"      # Allow add/remove indicators, confluence rewrites, prompt rewrites
+
+real:
+  aggressive_evolution: false        # Conservative mutations only
+  approval_required: true            # Human must approve every change
+  daily_loss_cap: -150.0             # Ultra-conservative cap (USD)
+  max_consecutive_losses: 1
+  max_open_risk_per_instrument: 75.0
+  max_total_open_risk: 150.0
+  max_exposure_per_regime: 100.0
+  cooldown_after_streak: 60
+  session_cooldown_minutes: 60
+  enforce_session_guard: true
+  kelly_fraction: 0.25               # Fractional Kelly – safety cap
+  bible_base_winrate: 0.55           # Conservative baseline
+  max_mutation_depth: "conservative" # Minor parameter tweaks only
+
+# ─────────────────────────────────────────────────────────────────────────────
 hardware_profile: "light"          # Verander later naar "sweet" of "beast"
 reconcile_fills: true
 reconciliation_method: "websocket"

@@ -28,6 +28,9 @@ class SelfEvolutionMetaAgent:
     risk_controller: HardRiskController | None
     enabled: bool = True
     approval_required: bool = True
+    sim_mode: bool = False
+    aggressive_evolution: bool = False
+    max_mutation_depth: str = "conservative"
     log_path: Path = field(default_factory=lambda: Path("state/evolution_log.jsonl"))
     obs_service: Any | None = None  # Optional ObservabilityService; injected at runtime
     auto_fine_tuning_enabled: bool = True
@@ -43,6 +46,9 @@ class SelfEvolutionMetaAgent:
         container: Any,
         enabled: bool = True,
         approval_required: bool = True,
+        mode: str = "real",
+        aggressive_evolution: bool = False,
+        max_mutation_depth: str = "conservative",
         obs_service: Any | None = None,
         fine_tuning_cfg: dict[str, Any] | None = None,
     ) -> "SelfEvolutionMetaAgent":
@@ -65,7 +71,10 @@ class SelfEvolutionMetaAgent:
             valuation_engine=valuation_engine,
             risk_controller=risk_controller,
             enabled=enabled,
-            approval_required=approval_required,
+            approval_required=bool(False if str(mode).strip().lower() == "sim" else approval_required),
+            sim_mode=bool(str(mode).strip().lower() == "sim"),
+            aggressive_evolution=bool(aggressive_evolution or str(mode).strip().lower() == "sim"),
+            max_mutation_depth=str(max_mutation_depth or "conservative").strip().lower(),
             obs_service=obs_service,
             auto_fine_tuning_enabled=bool(ft_cfg.get("auto_trigger", True)),
             min_acceptance_rate=float(ft_cfg.get("min_acceptance", 0.4) or 0.4),
@@ -103,7 +112,8 @@ class SelfEvolutionMetaAgent:
         backtest_green = self._backtest_green(nightly_report)
         safety_ok = self._safety_contract_ok()
 
-        should_auto_apply = bool(confidence > 85.0 and backtest_green and safety_ok)
+        forced_sim_apply = bool(self.sim_mode and best is not None)
+        should_auto_apply = bool(forced_sim_apply or (confidence > 85.0 and backtest_green and safety_ok))
         approval_blocked = bool(self.approval_required and should_auto_apply)
 
         outcome = {
@@ -120,6 +130,7 @@ class SelfEvolutionMetaAgent:
                 "backtest_green": backtest_green,
                 "safety_ok": safety_ok,
                 "approval_required": self.approval_required,
+                "forced_by_sim_mode": forced_sim_apply,
                 "would_auto_apply": should_auto_apply,
                 "auto_apply_executed": bool(should_auto_apply and not self.approval_required and not dry_run),
             },
@@ -373,7 +384,7 @@ class SelfEvolutionMetaAgent:
         base_dd = float(h.get("drawdown_kill_percent", 8.0))
         weakest_regime = self._weakest_regime(meta_review)
 
-        return [
+        challengers: list[dict[str, Any]] = [
             {
                 "name": "challenger_a",
                 "prompt_tweak": f"More conservative under regime drift; prioritize HOLD when confidence split detected in {weakest_regime}.",
@@ -405,6 +416,41 @@ class SelfEvolutionMetaAgent:
                 },
             },
         ]
+
+        # SIM mode or aggressive evolution: allow radical mutation family.
+        if self.sim_mode or self.aggressive_evolution or self.max_mutation_depth == "radical":
+            challengers.extend(
+                [
+                    {
+                        "name": "challenger_radical_indicators",
+                        "prompt_tweak": (
+                            f"RADICAL MUTATION: add/remove indicators dynamically for {weakest_regime}; "
+                            "permit structural feature set changes and aggressively reweight signal stack."
+                        ),
+                        "regime_focus": weakest_regime,
+                        "hyperparam_suggestion": {
+                            "fast_path_threshold": round(max(0.5, base_threshold - 0.08), 3),
+                            "max_risk_percent": round(min(3.0, base_risk * 1.25), 3),
+                            "drawdown_kill_percent": round(min(25.0, base_dd * 1.25), 3),
+                        },
+                    },
+                    {
+                        "name": "challenger_radical_prompts",
+                        "prompt_tweak": (
+                            "RADICAL MUTATION: rewrite confluence rules and prompt scaffolding end-to-end; "
+                            "allow hard prompt rewrites and non-linear decision-policy restructuring."
+                        ),
+                        "regime_focus": weakest_regime,
+                        "hyperparam_suggestion": {
+                            "fast_path_threshold": round(max(0.45, base_threshold - 0.1), 3),
+                            "max_risk_percent": round(min(3.5, base_risk * 1.35), 3),
+                            "drawdown_kill_percent": round(min(30.0, base_dd * 1.4), 3),
+                        },
+                    },
+                ]
+            )
+
+        return challengers
 
     def _score_challenger(
         self,
@@ -456,6 +502,9 @@ class SelfEvolutionMetaAgent:
         return bool(trades >= 50 and win_rate >= 0.45 and net_pnl > 0 and sharpe >= 0.2)
 
     def _safety_contract_ok(self) -> bool:
+        # SIM mode intentionally allows unconstrained evolution experimentation.
+        if self.sim_mode:
+            return True
         if self.risk_controller is None:
             return False
         if not bool(getattr(self.risk_controller, "enforce_rules", False)):
@@ -569,7 +618,13 @@ def load_evolution_config(config_path: str = "config.yaml") -> dict[str, Any]:
         import yaml
 
         if not os.path.exists(config_path):
-            return {"enabled": True, "approval_required": True}
+            return {
+                "enabled": True,
+                "approval_required": True,
+                "mode": "real",
+                "aggressive_evolution": False,
+                "max_mutation_depth": "conservative",
+            }
         with open(config_path, "r", encoding="utf-8") as handle:
             data = yaml.safe_load(handle) or {}
         evo = data.get("evolution", {}) if isinstance(data, dict) else {}
@@ -578,9 +633,28 @@ def load_evolution_config(config_path: str = "config.yaml") -> dict[str, Any]:
             evo = {}
         if not isinstance(fine_tuning, dict):
             fine_tuning = {}
+
+        mode = str(
+            os.getenv("LUMINA_MODE") or (data.get("mode", "sim") if isinstance(data, dict) else "sim")
+        ).strip().lower()
+        sim_cfg = data.get("sim", {}) if isinstance(data, dict) and isinstance(data.get("sim"), dict) else {}
+        real_cfg = data.get("real", {}) if isinstance(data, dict) and isinstance(data.get("real"), dict) else {}
+
+        if mode == "sim":
+            approval_required = bool(sim_cfg.get("approval_required", False))
+            aggressive_evolution = bool(sim_cfg.get("aggressive_evolution", True))
+            max_mutation_depth = str(sim_cfg.get("max_mutation_depth", "radical"))
+        else:
+            approval_required = bool(real_cfg.get("approval_required", evo.get("approval_required", True)))
+            aggressive_evolution = bool(real_cfg.get("aggressive_evolution", False))
+            max_mutation_depth = str(real_cfg.get("max_mutation_depth", "conservative"))
+
         return {
             "enabled": bool(evo.get("enabled", True)),
-            "approval_required": bool(evo.get("approval_required", True)),
+            "approval_required": approval_required,
+            "mode": mode,
+            "aggressive_evolution": aggressive_evolution,
+            "max_mutation_depth": max_mutation_depth,
             "fine_tuning": {
                 "auto_trigger": bool(fine_tuning.get("auto_trigger", True)),
                 "min_acceptance": float(fine_tuning.get("min_acceptance", 0.4) or 0.4),
@@ -591,6 +665,9 @@ def load_evolution_config(config_path: str = "config.yaml") -> dict[str, Any]:
         return {
             "enabled": True,
             "approval_required": True,
+            "mode": "real",
+            "aggressive_evolution": False,
+            "max_mutation_depth": "conservative",
             "fine_tuning": {
                 "auto_trigger": True,
                 "min_acceptance": 0.4,

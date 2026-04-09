@@ -85,6 +85,54 @@ def test_auto_fine_tune_triggered_by_low_acceptance(tmp_path: Path) -> None:
     assert "champion_finetuned_" in result["auto_fine_tune"]["champion_candidate"]["name"]
 
 
+def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) -> None:
+    """SIM mode must evaluate and apply nightly evolution unconditionally (unless dry_run)."""
+    log_path = tmp_path / "evolution_log.jsonl"
+    trainer = _StubPPOTrainer(tmp_path / "ppo" / "sim_forced_apply.zip")
+
+    engine = SimpleNamespace(
+        config=SimpleNamespace(
+            risk_profile="balanced",
+            max_risk_percent=1.0,
+            drawdown_kill_percent=8.0,
+            agent_styles={"risk": "r"},
+        ),
+        regime_history=[{"label": "RANGING"}],
+        emotional_twin=None,
+        decision_log=None,
+        ppo_trainer=trainer,
+        rl_env=SimpleNamespace(name="rl-env"),
+    )
+    agent = SelfEvolutionMetaAgent(
+        engine=cast(Any, engine),
+        valuation_engine=ValuationEngine(),
+        risk_controller=HardRiskController(RiskLimits(enforce_session_guard=False), enforce_rules=False),
+        approval_required=False,
+        sim_mode=True,
+        aggressive_evolution=True,
+        max_mutation_depth="radical",
+        log_path=log_path,
+        auto_fine_tuning_enabled=False,
+    )
+
+    # Deliberately weak report so confidence/backtest thresholds are not required.
+    result = agent.run_nightly_evolution(
+        nightly_report={
+            "trades": 8,
+            "wins": 2,
+            "net_pnl": -50.0,
+            "sharpe": -0.4,
+            "samples": [{"close": 5000 + i, "reward": -0.2} for i in range(8)],
+        },
+        dry_run=False,
+    )
+
+    assert result["status"] == "applied"
+    assert result["proposal"]["forced_by_sim_mode"] is True
+    assert result["proposal"]["would_auto_apply"] is True
+    assert result["proposal"]["auto_apply_executed"] is True
+
+
 @pytest.mark.chaos_risk
 @pytest.mark.chaos_ci_smoke
 def test_auto_fine_tune_triggered_by_high_drift_chaos(tmp_path: Path) -> None:

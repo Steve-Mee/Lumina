@@ -459,6 +459,83 @@ def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):
     assert swarm.run_calls == 0
 
 
+@pytest.mark.safety_gate
+def test_supervisor_loop_real_eod_force_close_flattens_and_holds(monkeypatch):
+    flatten_orders: list[object] = []
+    place_order_calls = {"count": 0}
+
+    class BrokerSpy:
+        def get_positions(self):
+            return [SimpleNamespace(symbol="MES JUN26", quantity=2)]
+
+        def submit_order(self, order):
+            flatten_orders.append(order)
+            return SimpleNamespace(accepted=True, message="ok")
+
+    app = SimpleNamespace(
+        live_data_lock=nullcontext(),
+        live_quotes=[{"last": 5000.0}],
+        ohlc_1min=pd.DataFrame({"close": [5000.0]}),
+        fetch_account_balance=lambda: None,
+        account_equity=50000.0,
+        account_balance=50000.0,
+        save_state=lambda: None,
+        get_current_dream_snapshot=lambda: {
+            "signal": "BUY",
+            "confluence_score": 0.9,
+            "regime": "NEUTRAL",
+            "stop": 4990.0,
+            "target": 5010.0,
+        },
+        set_current_dream_fields=lambda *_a, **_k: None,
+        set_current_dream_value=lambda *_a, **_k: None,
+        is_market_open=lambda: True,
+        sim_position_qty=0,
+        sim_entry_price=0.0,
+        open_pnl=0.0,
+        realized_pnl_today=0.0,
+        calculate_adaptive_risk_and_qty=lambda *_a, **_k: 2,
+        place_order=lambda *_a, **_k: place_order_calls.__setitem__("count", place_order_calls["count"] + 1),
+        pnl_history=[],
+        equity_curve=[50000.0],
+        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None, warning=lambda *_a, **_k: None),
+        container=SimpleNamespace(broker=BrokerSpy()),
+        engine=SimpleNamespace(
+            config=SimpleNamespace(
+                trade_mode="real",
+                drawdown_kill_percent=8.0,
+                status_print_interval_sec=9999.0,
+                min_confluence=0.75,
+                instrument="MES JUN26",
+            ),
+            emotional_twin=None,
+            infinite_simulator=None,
+            rl_env=None,
+            ppo_trainer=None,
+            risk_controller=SimpleNamespace(
+                should_force_close_eod=lambda: (True, "within EOD force-close window"),
+                check_can_trade=lambda *_a, **_k: (True, "ok"),
+            ),
+            live_position_qty=0,
+            last_entry_price=0.0,
+            live_trade_signal="BUY",
+            last_realized_pnl_snapshot=0.0,
+        ),
+        np=np,
+    )
+
+    monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(StopIteration()))
+
+    with pytest.raises(StopIteration):
+        runtime_workers.supervisor_loop(app)
+
+    assert len(flatten_orders) == 1
+    flatten = flatten_orders[0]
+    assert flatten.side == "SELL"
+    assert flatten.quantity == 2
+    assert place_order_calls["count"] == 0
+
+
 def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(monkeypatch):
     class SwarmSpy:
         def __init__(self):

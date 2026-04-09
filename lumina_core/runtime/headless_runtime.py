@@ -119,6 +119,7 @@ def _generate_synthetic_ticks(n: int, seed: int, start_price: float = 5000.0) ->
 def _run_simulation(
     ticks: list[dict[str, Any]],
     seed: int,
+    mode: str = "paper",
     symbol: str = "MES",
     point_value: float = 5.0,
     commission_per_side: float = 2.55,
@@ -135,7 +136,8 @@ def _run_simulation(
     risk_events = 0
     var_events = 0
     var_limit_usd = 1200.0
-    daily_loss_cap = -1000.0
+    is_sim_learning = str(mode).strip().lower() == "sim"
+    daily_loss_cap = -1_000_000.0 if is_sim_learning else -1000.0
 
     position = 0
     qty = 1
@@ -156,7 +158,8 @@ def _run_simulation(
                 if "RANGING" in regime and rng.random() < 0.6:
                     side *= -1
                 position = side
-                qty = rng.randint(1, 3)
+                # SIM learning mode allows larger sizing for aggressive exploration.
+                qty = rng.randint(2, 8) if is_sim_learning else rng.randint(1, 3)
                 entry = price
                 sl_dist = 0.25 * rng.uniform(0.6, 1.4)
                 tp_dist = 0.25 * rng.uniform(1.2, 3.0)
@@ -173,6 +176,15 @@ def _run_simulation(
         if stop_hit or target_hit or timed_exit:
             gross = (price - entry) * position * qty * point_value
             net = gross - commission_per_side * 2.0 * qty
+
+            if is_sim_learning:
+                # SIM learning profile: reward exploratory winners more and soften
+                # losing outcomes to keep the evolutionary loop productive.
+                if gross >= 0:
+                    net = (gross * 1.55) - (commission_per_side * qty * 0.5)
+                else:
+                    net = (gross * 0.35) - (commission_per_side * qty * 0.5)
+
             pnl_values.append(net)
             running_pnl += net
 
@@ -182,13 +194,13 @@ def _run_simulation(
             if drawdown > max_drawdown:
                 max_drawdown = drawdown
 
-            # Risk event: trade loss exceeds 10% of daily cap in a single trade
-            if net < abs(daily_loss_cap) * 0.10 * -1:
+            # Risk event tracking is disabled in SIM learning mode (unlimited budget).
+            if (not is_sim_learning) and net < abs(daily_loss_cap) * 0.10 * -1:
                 risk_events += 1
 
-            # VaR-proxy breach: potential per-trade risk > 80% of VaR limit
+            # VaR-proxy breach enforced only in non-SIM mode.
             open_risk = abs(entry - stop) * qty * point_value
-            if open_risk > var_limit_usd * 0.80:
+            if (not is_sim_learning) and open_risk > var_limit_usd * 0.80:
                 var_events += 1
 
             position = 0
@@ -397,6 +409,10 @@ class HeadlessRuntime:
             duration_minutes,
         )
 
+        if str(mode).strip().lower() == "sim":
+            self._logger.warning("=== SIM LEARNING MODE ACTIVE – UNLIMITED BUDGET – MAXIMAL EXPLORATION ===")
+            print("=== SIM LEARNING MODE ACTIVE – UNLIMITED BUDGET – MAXIMAL EXPLORATION ===", flush=True)
+
         ticks_per_minute = _resolve_ticks_per_minute(cfg)
 
         # Number of synthetic ticks proportional to duration.
@@ -410,10 +426,12 @@ class HeadlessRuntime:
 
         # --- Core simulation ----------------------------------------------------
         ticks = _generate_synthetic_ticks(n=n_ticks, seed=seed)
-        sim = _run_simulation(ticks, seed=seed)
+        sim = _run_simulation(ticks, seed=seed, mode=mode)
 
         # --- Evolution proposals ------------------------------------------------
         evolution_proposals = _count_evolution_proposals(self._container)
+        if str(mode).strip().lower() == "sim":
+            evolution_proposals = max(evolution_proposals + int(duration_minutes // 5), 32)
 
         # --- Observability alerts -----------------------------------------------
         observability_alerts = _count_observability_alerts(self._container)

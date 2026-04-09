@@ -712,6 +712,10 @@ def _headless_main() -> None:
 
     args, _ = parser.parse_known_args()
 
+    # CLI mode override: writes runtime mode into process env for downstream
+    # services that resolve mode from config/env.
+    os.environ["LUMINA_MODE"] = str(args.mode).strip().lower()
+
     duration_minutes = _parse_duration_minutes(args.duration)
 
     # Suppress TTS and voice in headless mode.

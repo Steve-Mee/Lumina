@@ -32,6 +32,44 @@ class _StubPortfolioAllocator:
         return self.allow, ("OK" if self.allow else snapshot.reason), snapshot
 
 
+class _StubSessionGuard:
+    def __init__(
+        self,
+        *,
+        market_open: bool = True,
+        rollover: bool = False,
+        block_new_eod: bool = False,
+        force_close_eod: bool = False,
+        minutes_to_close: float = 30.0,
+    ) -> None:
+        self._market_open = market_open
+        self._rollover = rollover
+        self._block_new_eod = block_new_eod
+        self._force_close_eod = force_close_eod
+        self._minutes_to_close = minutes_to_close
+
+    def is_rollover_window(self) -> bool:
+        return self._rollover
+
+    def is_market_open(self) -> bool:
+        return self._market_open
+
+    def next_open(self):
+        return None
+
+    def should_block_new_eod_trades(self, ts=None, no_new_trades_minutes: int = 60) -> bool:
+        del ts, no_new_trades_minutes
+        return self._block_new_eod
+
+    def should_force_close_eod(self, ts=None, force_close_minutes: int = 30) -> bool:
+        del ts, force_close_minutes
+        return self._force_close_eod
+
+    def minutes_to_session_end(self, ts=None) -> float:
+        del ts
+        return self._minutes_to_close
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -336,6 +374,44 @@ class TestHardRiskController:
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is False
         assert "PORTFOLIO VAR breached" in reason
+
+    @pytest.mark.safety_gate
+    def test_real_mode_blocks_new_trades_in_eod_window(self):
+        """REAL mode should block fresh entries in EOD no-new-trades window."""
+        limits = RiskLimits(
+            enforce_session_guard=True,
+            sim_mode=False,
+            eod_no_new_trades_minutes_before_session_end=60,
+        )
+        guard = _StubSessionGuard(block_new_eod=True, minutes_to_close=18.5)
+        controller = HardRiskController(
+            limits,
+            enforce_rules=True,
+            session_guard=guard,
+        )
+
+        allowed, reason = controller.check_can_trade("MES", "TRENDING", 75.0)
+        assert allowed is False
+        assert "no-new-trades window" in reason
+
+    @pytest.mark.safety_gate
+    def test_real_mode_force_close_signal_from_session_guard(self):
+        """REAL mode should surface EOD force-close trigger from SessionGuard."""
+        limits = RiskLimits(
+            enforce_session_guard=True,
+            sim_mode=False,
+            eod_force_close_minutes_before_session_end=30,
+        )
+        guard = _StubSessionGuard(force_close_eod=True, minutes_to_close=12.0)
+        controller = HardRiskController(
+            limits,
+            enforce_rules=True,
+            session_guard=guard,
+        )
+
+        should_close, reason = controller.should_force_close_eod()
+        assert should_close is True
+        assert "force-close window" in reason
 
 
 class TestLearningMode:

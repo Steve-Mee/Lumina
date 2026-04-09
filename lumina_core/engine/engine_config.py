@@ -170,7 +170,9 @@ class EngineConfig(BaseModel):
 
     trade_mode: str = Field(
         default_factory=lambda: str(
-            os.getenv("TRADE_MODE")
+            os.getenv("LUMINA_MODE")
+            or os.getenv("TRADE_MODE")
+            or _config_yaml_value("mode", "")
             or (
                 "real"
                 if str(

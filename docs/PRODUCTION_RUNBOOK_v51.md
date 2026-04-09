@@ -6,6 +6,9 @@ Mode: Fail-closed operations only
 
 This is the official switch-flip runbook for moving Lumina v51 from paper validation toward controlled real-capital trading.
 
+Delta reference:
+- SIM vs REAL safety split addendum: `docs/RUNBOOK_DELTA_SIM_REAL_v52.md`
+
 ---
 
 ## 0) Safety Contract (Read First)

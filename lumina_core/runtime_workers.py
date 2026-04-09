@@ -69,6 +69,74 @@ def _push_trader_league_trade(
         app.logger.warning(f"League webhook failed: {exc}")
 
 
+def _enforce_real_eod_force_close(app: RuntimeContext, price: float) -> bool:
+    """Force-close broker positions during REAL-mode EOD window and hold new entries."""
+    if str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower() != "real":
+        return False
+
+    risk_ctrl = getattr(app.engine, "risk_controller", None)
+    if risk_ctrl is None or not hasattr(risk_ctrl, "should_force_close_eod"):
+        return False
+
+    should_close, reason = risk_ctrl.should_force_close_eod()
+    if not should_close:
+        return False
+
+    app.logger.warning("REAL EOD FORCE-CLOSE active: %s", reason)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ REAL EOD FORCE-CLOSE active: {reason}")
+
+    container = getattr(app, "container", None)
+    broker = getattr(container, "broker", None) if container is not None else None
+    if broker is None:
+        app.logger.error("REAL EOD FORCE-CLOSE: broker unavailable")
+        return True
+
+    try:
+        positions = broker.get_positions() if hasattr(broker, "get_positions") else []
+    except Exception as exc:
+        app.logger.error(f"REAL EOD FORCE-CLOSE: get_positions failed: {exc}")
+        return True
+
+    flattened_any = False
+    for pos in positions:
+        qty = int(getattr(pos, "quantity", 0) or 0)
+        if qty == 0:
+            continue
+        symbol = str(getattr(pos, "symbol", getattr(app, "INSTRUMENT", app.engine.config.instrument)))
+        close_side = "SELL" if qty > 0 else "BUY"
+        try:
+            result = broker.submit_order(
+                Order(
+                    symbol=symbol,
+                    side=close_side,
+                    quantity=abs(qty),
+                    order_type="MARKET",
+                    stop_loss=0.0,
+                    take_profit=0.0,
+                    metadata={"reason": "eod_force_close", "mode": "real"},
+                )
+            )
+            if bool(getattr(result, "accepted", False)):
+                flattened_any = True
+                app.logger.warning("REAL EOD FORCE-CLOSE executed: %s %s", close_side, symbol)
+            else:
+                app.logger.error(
+                    "REAL EOD FORCE-CLOSE rejected: %s %s (%s)",
+                    close_side,
+                    symbol,
+                    getattr(result, "message", "unknown"),
+                )
+        except Exception as exc:
+            app.logger.error(f"REAL EOD FORCE-CLOSE order error for {symbol}: {exc}")
+
+    if flattened_any:
+        app.engine.live_position_qty = 0
+        app.engine.last_entry_price = float(price)
+        app.engine.live_trade_signal = "HOLD"
+
+    return True
+
+
 def pre_dream_daemon(app: RuntimeContext) -> None:
     last_news_update_ts = 0.0
     cached_news_data = {"events": [], "overall_sentiment": "neutral", "impact": "medium"}
@@ -476,6 +544,8 @@ def supervisor_loop(app: RuntimeContext) -> None:
             app.save_state()
             raise SystemExit("Drawdown kill - real money")
 
+        eod_force_hold = _enforce_real_eod_force_close(app, float(price))
+
         dream_snapshot = app.get_current_dream_snapshot()
         # Directe emotionele correctie op actieve dream vóór execution.
         twin = getattr(app.engine, "emotional_twin", None)
@@ -511,6 +581,10 @@ def supervisor_loop(app: RuntimeContext) -> None:
         qty_multiplier = float(dream_snapshot.get("position_size_multiplier", 1.0) or 1.0)
         stop_widen_multiplier = float(dream_snapshot.get("stop_widen_multiplier", 1.0) or 1.0)
         signal = dream_snapshot.get("signal", "HOLD")
+        if eod_force_hold:
+            signal = "HOLD"
+            dream_snapshot["signal"] = "HOLD"
+            dream_snapshot["why_no_trade"] = "REAL EOD force-close/no-new-trades window active"
 
         # RL bias: policy stuurt voorkeur, bestaande flow beslist uiteindelijk.
         rl_action = None
@@ -574,7 +648,12 @@ def supervisor_loop(app: RuntimeContext) -> None:
             stop_price = float(dream_snapshot.get("stop", price * 0.99 if signal == "BUY" else price * 1.01))
             widened_dist = abs(price - stop_price) * max(1.0, stop_widen_multiplier)
             stop_price = price - widened_dist if signal == "BUY" else price + widened_dist
-            qty = app.calculate_adaptive_risk_and_qty(price, regime, stop_price)
+            qty = app.calculate_adaptive_risk_and_qty(
+                price,
+                regime,
+                stop_price,
+                confidence=float(dream_snapshot.get("confluence_score", 0.0) or 0.0),
+            )
             qty = max(1, int(qty * max(0.1, qty_multiplier)))
             side = 1 if signal == "BUY" else -1
 

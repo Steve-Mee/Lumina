@@ -182,3 +182,43 @@ def test_dynamic_confluence_is_bounded(regime: str, winrate: float) -> None:
     engine = LuminaEngine(config=EngineConfig())
     score = engine.calculate_dynamic_confluence(regime, winrate)
     assert 0.55 <= score <= 0.95
+
+
+@pytest.mark.safety_gate
+def test_sim_mode_sizes_larger_than_real_for_same_inputs(
+    engine: LuminaEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SIM should produce larger position sizing than REAL with identical market inputs."""
+    engine.account_equity = 50_000.0
+    engine.config.max_risk_percent = 1.0
+    monkeypatch.setattr(
+        type(engine.valuation_engine),
+        "point_value_for",
+        lambda self, _symbol: 5.0,
+        raising=False,
+    )
+    engine.mode_risk_profile = {
+        "sim_kelly_fraction": 1.0,
+        "real_kelly_fraction": 0.25,
+        "kelly_min_confidence": 0.65,
+        "kelly_baseline": 0.25,
+    }
+
+    engine.config.trade_mode = "real"
+    qty_real = engine.calculate_adaptive_risk_and_qty(
+        price=5000.0,
+        regime="NEUTRAL",
+        stop_price=4998.0,
+        confidence=0.9,
+    )
+
+    engine.config.trade_mode = "sim"
+    qty_sim = engine.calculate_adaptive_risk_and_qty(
+        price=5000.0,
+        regime="NEUTRAL",
+        stop_price=4998.0,
+        confidence=0.9,
+    )
+
+    assert qty_sim > qty_real

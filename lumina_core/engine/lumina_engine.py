@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections import deque
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -17,7 +18,7 @@ from lumina_bible import BibleEngine
 from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .market_data_manager import MarketDataManager
-from .risk_controller import HardRiskController, RiskLimits
+from .risk_controller import HardRiskController, risk_limits_from_config
 from .session_guard import SessionGuard
 from .valuation_engine import ValuationEngine
 from .analysis_helpers import (
@@ -144,6 +145,7 @@ class LuminaEngine:
     reporting_service: Any | None = None
     # Trade reconciler (post-trade settlement)
     trade_reconciler: Any | None = None
+    mode_risk_profile: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:
@@ -217,53 +219,26 @@ class LuminaEngine:
 
         # Hard Risk Controller initialization
         if self.risk_controller is None:
-            risk_config = getattr(self.config, 'risk_controller', {})
             session_config = getattr(self.config, 'session', {})
-            portfolio_var_config = getattr(self.config, 'portfolio_var', {})
             if not isinstance(session_config, dict):
                 session_config = {}
-            if not isinstance(portfolio_var_config, dict):
-                portfolio_var_config = {}
-            if isinstance(risk_config, dict):
-                session_cooldown_minutes = int(
-                    session_config.get(
-                        'cooldown_minutes_after_streak',
-                        risk_config.get('session_cooldown_minutes', 15),
-                    )
+            limits = risk_limits_from_config()
+
+            # Keep session calendar as source-of-truth for REAL mode behavior.
+            limits.enforce_session_guard = bool(
+                session_config.get(
+                    'enforce_calendar',
+                    limits.enforce_session_guard,
                 )
-                enforce_calendar = bool(
-                    session_config.get(
-                        'enforce_calendar',
-                        risk_config.get('enforce_session_guard', True),
-                    )
-                )
-                max_total_open_risk = float(
-                    risk_config.get(
-                        'max_total_open_risk',
-                        portfolio_var_config.get('max_total_open_risk', 3000.0),
-                    )
-                )
-                limits = RiskLimits(
-                    daily_loss_cap=risk_config.get('daily_loss_cap', -1000.0),
-                    max_consecutive_losses=risk_config.get('max_consecutive_losses', 3),
-                    max_open_risk_per_instrument=risk_config.get('max_open_risk_per_instrument', 500.0),
-                    max_total_open_risk=max_total_open_risk,
-                    max_exposure_per_regime=risk_config.get('max_exposure_per_regime', 2000.0),
-                    cooldown_after_streak=risk_config.get('cooldown_after_streak', 30),
-                    session_cooldown_minutes=session_cooldown_minutes,
-                    enforce_session_guard=enforce_calendar,
-                )
-            else:
-                limits = RiskLimits()  # Use defaults
+            )
             
             state_file = getattr(self.config, 'state_dir', None)
             if state_file:
                 from pathlib import Path  # noqa: PLC0415
                 state_file = Path(state_file) / 'risk_controller_state.json'
             
-            # Enforce rules only in real/paper trading modes
-            # In sim/backtest/learning modes, rules are bypassed for research
-            enforce_rules = self.config.trade_mode in ("real", "paper")
+            # Rules are enforced in REAL mode only. SIM is unconstrained learning.
+            enforce_rules = self.config.trade_mode == "real"
 
             self.risk_controller = HardRiskController(
                 limits,
@@ -279,6 +254,47 @@ class LuminaEngine:
             raise ValueError("MAX_RISK_PERCENT must be > 0")
         if self.config.drawdown_kill_percent <= 0:
             raise ValueError("DRAWDOWN_KILL_PERCENT must be > 0")
+
+        # Mode-aware sizing profile (SIM vs REAL) loaded once at startup.
+        self.mode_risk_profile = self._load_mode_risk_profile()
+
+    def _load_mode_risk_profile(self) -> dict[str, float]:
+        """Load Kelly sizing profile from config.yaml with safe defaults."""
+        profile = {
+            "sim_kelly_fraction": 1.0,
+            "real_kelly_fraction": 0.25,
+            "kelly_min_confidence": 0.65,
+            "kelly_baseline": 0.25,
+        }
+        try:
+            import yaml as _yaml
+
+            cfg_path = os.getenv("LUMINA_CONFIG", "config.yaml")
+            with open(cfg_path, "r", encoding="utf-8") as _fh:
+                data = _yaml.safe_load(_fh) or {}
+
+            sim_cfg = data.get("sim", {}) if isinstance(data.get("sim"), dict) else {}
+            real_cfg = data.get("real", {}) if isinstance(data.get("real"), dict) else {}
+            trading_cfg = data.get("trading", {}) if isinstance(data.get("trading"), dict) else {}
+
+            sim_kelly = float(sim_cfg.get("kelly_fraction", 1.0) or 1.0)
+            real_kelly = float(
+                real_cfg.get(
+                    "kelly_fraction",
+                    trading_cfg.get("kelly_fraction_max", 0.25),
+                )
+                or 0.25
+            )
+            min_conf = float(trading_cfg.get("kelly_min_confidence", 0.65) or 0.65)
+
+            profile["sim_kelly_fraction"] = max(0.05, sim_kelly)
+            profile["real_kelly_fraction"] = max(0.01, min(1.0, real_kelly))
+            profile["kelly_min_confidence"] = max(0.0, min(1.0, min_conf))
+        except Exception:
+            # Keep defaults when config parsing fails.
+            pass
+
+        return profile
 
     def hydrate_from_legacy(self, app: ModuleType) -> None:
         """Import legacy runtime state into engine-managed fields."""
@@ -392,9 +408,41 @@ class LuminaEngine:
         assert self.bible_engine is not None
         self.bible_engine.evolve(updates)
 
-    def calculate_adaptive_risk_and_qty(self, price: float, regime: str, stop_price: float) -> int:
+    def calculate_adaptive_risk_and_qty(
+        self,
+        price: float,
+        regime: str,
+        stop_price: float,
+        confidence: float | None = None,
+    ) -> int:
         multiplier = float(self.config.regime_risk_multipliers.get(regime, 1.0))
-        adaptive_risk_percent = self.config.max_risk_percent * multiplier
+        profile = self.mode_risk_profile if isinstance(self.mode_risk_profile, dict) else {}
+        baseline_kelly = max(1e-6, float(profile.get("kelly_baseline", 0.25) or 0.25))
+        mode = str(getattr(self.config, "trade_mode", "paper") or "paper").strip().lower()
+
+        if mode == "sim":
+            kelly_fraction = float(profile.get("sim_kelly_fraction", 1.0) or 1.0)
+            kelly_multiplier = max(1.0, kelly_fraction / baseline_kelly)
+        elif mode == "real":
+            kelly_fraction = float(profile.get("real_kelly_fraction", 0.25) or 0.25)
+            kelly_multiplier = max(0.05, min(1.0, kelly_fraction / baseline_kelly))
+        else:
+            # Paper defaults to conservative sizing unless explicitly in SIM mode.
+            kelly_fraction = float(profile.get("real_kelly_fraction", 0.25) or 0.25)
+            kelly_multiplier = max(0.05, min(1.0, kelly_fraction / baseline_kelly))
+
+        kelly_min_conf = max(0.0, min(1.0, float(profile.get("kelly_min_confidence", 0.65) or 0.65)))
+        conf_val = 1.0 if confidence is None else max(0.0, min(1.0, float(confidence)))
+        if conf_val >= kelly_min_conf or kelly_min_conf <= 0.0:
+            confidence_scale = 1.0
+        else:
+            confidence_scale = max(0.1, conf_val / max(kelly_min_conf, 1e-6))
+
+        adaptive_risk_percent = self.config.max_risk_percent * multiplier * kelly_multiplier * confidence_scale
+        if mode == "real":
+            # REAL mode remains conservative: never exceed configured max_risk_percent.
+            adaptive_risk_percent = min(adaptive_risk_percent, float(self.config.max_risk_percent))
+
         risk_dollars = self.account_equity * (adaptive_risk_percent / 100)
 
         stop_distance = abs(price - stop_price)
@@ -407,7 +455,8 @@ class LuminaEngine:
         qty = max(1, int(risk_dollars / risk_per_contract))
         if self.app is not None and hasattr(self.app, "logger"):
             self.app.logger.info(
-                f"ADAPTIVE_RISK,regime={regime},risk_percent={adaptive_risk_percent:.2f},qty={qty}"
+                f"ADAPTIVE_RISK,mode={mode},regime={regime},kelly={kelly_fraction:.2f},"
+                f"risk_percent={adaptive_risk_percent:.2f},qty={qty}"
             )
         return qty
 
