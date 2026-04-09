@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import time
 import json
 import os
@@ -5,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import requests
 import streamlit as st
 import yaml
@@ -20,6 +23,7 @@ STATE_DIR = Path("state")
 LAST_RUN_SUMMARY_PATH = STATE_DIR / "last_run_summary.json"
 EVOLUTION_LOG_PATH = STATE_DIR / "evolution_log.jsonl"
 RUNTIME_STATE_PATH = STATE_DIR / "lumina_sim_state.json"
+HISTORY_PATH = STATE_DIR / "sim_stability_history.jsonl"
 ENV_PATH = Path(".env")
 
 
@@ -201,83 +205,192 @@ def _proposal_table(rows: list[dict[str, Any]]) -> tuple[int, list[dict[str, Any
     return len(proposals), data
 
 
-def _render_sim_learning_dashboard_tab() -> None:
-    st.subheader("SIM Learning Dashboard")
-    summary = _load_json_dict(LAST_RUN_SUMMARY_PATH)
-    rows = _load_evolution_rows(EVOLUTION_LOG_PATH)
-    proposals_total, latest_rows = _proposal_table(rows)
+def _load_stability_history() -> list[dict[str, Any]]:
+    """Load state/sim_stability_history.jsonl; rows sorted ascending by day."""
+    if not HISTORY_PATH.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    for raw in HISTORY_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            rows.append(obj)
+    rows.sort(key=lambda r: str(r.get("day", "")))
+    return rows
 
-    m24 = _window_metrics(summary, rows, 1)
-    m7 = _window_metrics(summary, rows, 7)
-    m30 = _window_metrics(summary, rows, 30)
 
+def _render_sim_evolution_dashboard_tab() -> None:
+    st.subheader("🚀 SIM Evolution Dashboard")
+
+    # ── Load data ──────────────────────────────────────────────────────────────
+    history_rows = _load_stability_history()
+    report = generate_stability_report()
+    consecutive = int(report.get("consecutive_green_days", 0))
+    days_to_green = int(report.get("days_to_green", 5))
+    history_count = int(report.get("history_row_count", len(history_rows)))
+    criteria = report.get("criteria") if isinstance(report.get("criteria"), dict) else {}
+    failures = report.get("failures", []) if isinstance(report.get("failures"), list) else []
+    is_green = bool(report.get("READY_FOR_REAL", False))
+    sharpe_crit = criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
+    latest_sharpe = _safe_float(sharpe_crit.get("latest_sharpe", 0.0))
+
+    # ── Streak banner ──────────────────────────────────────────────────────────
+    if is_green:
+        st.success(f"✅ READY FOR REAL — {consecutive}/5 consecutive positive-expectancy days achieved!")
+    elif consecutive >= 3:
+        st.warning(f"🟡 {consecutive} / 5 consecutive positive-expectancy days — {days_to_green} more needed")
+    else:
+        st.error(f"🔴 {consecutive} / 5 consecutive positive-expectancy days — {days_to_green} more needed")
+
+    # ── Summary metrics ────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Evolution Proposals", proposals_total)
-    c2.metric("24h PnL", f"${m24['pnl']:.2f}")
-    c3.metric("7d PnL", f"${m7['pnl']:.2f}")
-    c4.metric("30d PnL", f"${m30['pnl']:.2f}")
+    c1.metric(
+        "🟢 Streak Days",
+        f"{consecutive} / 5",
+        delta="✅ READY" if is_green else f"-{days_to_green} to REAL",
+    )
+    c2.metric("Days to REAL", days_to_green)
+    c3.metric(
+        "Latest Sharpe",
+        f"{latest_sharpe:.4f}",
+        delta="✅ > 1.8" if latest_sharpe > 1.8 else "❌ < 1.8",
+    )
+    c4.metric("History Rows", history_count)
 
-    p1, p2, p3 = st.columns(3)
-    p1.metric("24h Winrate", f"{m24['win_rate'] * 100:.2f}%")
-    p2.metric("7d Winrate", f"{m7['win_rate'] * 100:.2f}%")
-    p3.metric("30d Winrate", f"{m30['win_rate'] * 100:.2f}%")
+    # ── Charts: rolling Sharpe + evolution proposals ───────────────────────────
+    if history_rows:
+        tail = history_rows[-7:]
+        day_labels = [str(r.get("day", "")) for r in tail]
+        sharpes = [_safe_float(r.get("sharpe_annualized")) for r in tail]
+        proposals = [float(_safe_int(r.get("evolution_proposals"))) for r in tail]
+        expectancies = [_safe_float(r.get("expectancy")) for r in tail]
 
-    s1, s2, s3 = st.columns(3)
-    s1.metric("24h Sharpe", f"{m24['sharpe']:.2f}")
-    s2.metric("7d Sharpe", f"{m7['sharpe']:.2f}")
-    s3.metric("30d Sharpe", f"{m30['sharpe']:.2f}")
+        chart_col1, chart_col2 = st.columns(2)
+        with chart_col1:
+            st.markdown("##### 📈 Rolling Sharpe (last 7 days)")
+            df_sharpe = pd.DataFrame(
+                {"Sharpe": sharpes, "Threshold 1.8": [1.8] * len(sharpes)},
+                index=day_labels,
+            )
+            st.line_chart(df_sharpe, height=200)
 
-    trend = m24["sharpe"] - m30["sharpe"]
-    sharpe_component = max(0.0, min(1.0, m24["sharpe"] / 3.0))
-    trend_component = max(0.0, min(1.0, (trend + 1.0) / 2.0))
-    expectancy_component = max(0.0, min(1.0, (m30["expectancy"] + 2.0) / 4.0))
-    stability_score = int(round(100.0 * ((0.5 * sharpe_component) + (0.25 * trend_component) + (0.25 * expectancy_component))))
-    st.markdown("#### Edge Stability Meter")
-    st.progress(stability_score)
-    st.caption(
-        f"Stability {stability_score}/100 | Sharpe trend (24h-30d): {trend:.2f} | "
-        f"30d expectancy: {m30['expectancy']:.2f}"
+        with chart_col2:
+            st.markdown("##### 🧬 Evolution Proposals + Expectancy ×10 (last 7 days)")
+            df_props = pd.DataFrame(
+                {"Proposals": proposals, "Expectancy × 10": [e * 10 for e in expectancies]},
+                index=day_labels,
+            )
+            st.line_chart(df_props, height=200)
+    else:
+        st.info("No history data yet — run a SIM to start accumulating daily records.")
+
+    # ── Criteria scorecard ─────────────────────────────────────────────────────
+    st.markdown("#### 🎯 REAL Readiness Criteria")
+    exp = criteria.get("positive_expectancy_5d", {}) if isinstance(criteria.get("positive_expectancy_5d"), dict) else {}
+    consistent = criteria.get("consistent_sharpe", {}) if isinstance(criteria.get("consistent_sharpe"), dict) else {}
+    risk = criteria.get("zero_risk_and_var", {}) if isinstance(criteria.get("zero_risk_and_var"), dict) else {}
+    trend = criteria.get("evolution_proposals_trend", {}) if isinstance(criteria.get("evolution_proposals_trend"), dict) else {}
+
+    sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+    sc1.metric(
+        "5d Expectancy",
+        "✅ PASS" if exp.get("ok") else "❌ FAIL",
+        delta=f"streak {exp.get('streak_days', 0)}/{exp.get('required_days', 5)}",
+    )
+    sc2.metric(
+        "Extended Sharpe",
+        "✅ PASS" if sharpe_crit.get("ok") else "❌ FAIL",
+        delta=f"{_safe_float(sharpe_crit.get('latest_sharpe')):.3f}",
+    )
+    sc3.metric(
+        "Consistent Sharpe",
+        "✅ PASS" if consistent.get("ok") else "❌ FAIL",
+        delta=f"avg {_safe_float(consistent.get('average_sharpe')):.3f} ({int(consistent.get('available_runs', 0))}/5 runs)",
+    )
+    sc4.metric(
+        "Zero Risk / VaR",
+        "✅ PASS" if risk.get("ok") else "❌ FAIL",
+        delta=f"events={risk.get('total_risk_events', 0)}",
+    )
+    sc5.metric(
+        "Proposal Trend",
+        "✅ PASS" if trend.get("ok") else "❌ FAIL",
+        delta=f"7d={_safe_float(trend.get('slope_7d')):.2f}",
     )
 
-    st.markdown("#### Last 5 Proposals")
-    if latest_rows:
-        st.dataframe(latest_rows, use_container_width=True)
-    else:
-        st.info("No proposal rows found in state/evolution_log.jsonl yet.")
+    if failures:
+        st.warning("⚠️ Failing criteria: " + ", ".join(failures))
+    missing = report.get("missing_days_7d", []) if isinstance(report.get("missing_days_7d"), list) else []
+    if missing:
+        st.caption("📅 Missing days in rolling 7d window: " + ", ".join(str(d) for d in missing))
 
-    last_5d_expectancies = _compute_daily_expectancy(rows, summary)
-    positive_expectancy_days_ok = len(last_5d_expectancies) >= 5 and all(x > 0.0 for x in last_5d_expectancies)
-    sharpe_gate_ok = m30["sharpe"] > 1.8
-    risk_gate_ok = int(m30["risk_events"]) == 0
-    transition_green = positive_expectancy_days_ok and sharpe_gate_ok and risk_gate_ok
+    with st.expander("📋 Full Stability Report", expanded=False):
+        st.code(format_stability_report(report), language="text")
 
-    st.markdown("#### Transition Protocol")
-    g1, g2, g3 = st.columns(3)
-    g1.metric("5d Positive Expectancy", "PASS" if positive_expectancy_days_ok else "FAIL")
-    g2.metric("Sharpe > 1.8", "PASS" if sharpe_gate_ok else "FAIL")
-    g3.metric("Zero Risk Events", "PASS" if risk_gate_ok else "FAIL")
-    st.caption("REAL switch activates only when all transition checks are PASS.")
+    # ── Action buttons ─────────────────────────────────────────────────────────
+    st.markdown("#### ⚙️ Actions")
+    btn_col1, btn_col2, btn_col3 = st.columns(3)
 
-    if st.button("Switch to REAL mode", type="primary", disabled=not transition_green):
-        _append_or_replace_env(ENV_PATH, "LUMINA_MODE", "real")
-        st.success("Transition protocol GREEN. LUMINA_MODE=real written to .env")
+    with btn_col1:
+        if st.button(
+            "🚀 Run Aggressive Overnight SIM",
+            type="primary",
+            use_container_width=True,
+            help="Launches: --headless --mode=sim --duration=240m --overnight-sim --stability-check",
+        ):
+            cmd = [
+                sys.executable, "-m", "lumina_launcher",
+                "--headless", "--mode=sim", "--duration=240m",
+                "--overnight-sim", "--stability-check",
+            ]
+            proc = subprocess.Popen(cmd, cwd=str(Path(".").resolve()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            st.success(f"✅ Overnight SIM launched (PID {proc.pid}). Results appear in state/test_runs/ on completion.")
 
-    if not transition_green:
-        st.warning("Transition protocol is not green yet. Continue SIM learning.")
+    with btn_col2:
+        if st.button(
+            "🔍 Check Stability Now",
+            use_container_width=True,
+            help="Re-generates the stability report from all available SIM summaries",
+        ):
+            st.rerun()
 
-    st.markdown("#### Stability Report + Go-Live Button")
-    stability_report = generate_stability_report(limit=50)
-    stability_green = bool(stability_report.get("READY_FOR_REAL", False))
-    status = str(stability_report.get("status", "RED"))
-    st.metric("Stability Status", status)
-    st.code(format_stability_report(stability_report), language="text")
+    with btn_col3:
+        confirm = st.checkbox("✅ I confirm switch to REAL mode", key="confirm_real_switch_evo")
+        go_live_enabled = is_green and confirm
+        if st.button(
+            "🔴 Switch to REAL Mode",
+            type="primary",
+            use_container_width=True,
+            disabled=not go_live_enabled,
+            help="Only active when READY_FOR_REAL=True and operator confirmation is ticked above",
+        ):
+            _append_or_replace_env(ENV_PATH, "LUMINA_MODE", "real")
+            st.success("✅ Stability GREEN + confirmed. LUMINA_MODE=real written to .env. Restart Streamlit to activate.")
 
-    if st.button("Go-Live: Switch to REAL mode", type="primary", disabled=not stability_green):
-        _append_or_replace_env(ENV_PATH, "LUMINA_MODE", "real")
-        st.success("Stability GREEN. LUMINA_MODE=real written to .env")
+    if not is_green:
+        st.info(f"🔒 REAL mode locked until 5 consecutive positive-expectancy days. Progress: {consecutive}/5.")
 
-    if not stability_green:
-        st.info("Go-live remains locked until READY_FOR_REAL is true.")
+    # ── Latest run summary ─────────────────────────────────────────────────────
+    with st.expander("📄 Latest SIM Run Summary", expanded=False):
+        summary = _load_json_dict(LAST_RUN_SUMMARY_PATH)
+        if summary:
+            s1, s2, s3, s4 = st.columns(4)
+            s1.metric("Trades", _safe_int(summary.get("total_trades")))
+            s2.metric("PnL", f"${_safe_float(summary.get('pnl_realized')):.2f}")
+            s3.metric("Sharpe", f"{_safe_float(summary.get('sharpe_annualized')):.4f}")
+            s4.metric("Win Rate", f"{_safe_float(summary.get('win_rate')) * 100:.1f}%")
+            d1, d2, d3, d4 = st.columns(4)
+            d1.metric("Duration", f"{_safe_float(summary.get('duration_minutes')):.0f}m")
+            d2.metric("Max Drawdown", f"${_safe_float(summary.get('max_drawdown')):.2f}")
+            d3.metric("Risk Events", _safe_int(summary.get("risk_events")))
+            d4.metric("Evolution Proposals", _safe_int(summary.get("evolution_proposals")))
+        else:
+            st.info("No run summary found yet.")
 
 
 def _render_real_operations_dashboard_tab() -> None:
@@ -519,7 +632,7 @@ tab_labels = [
     "🔄 Evolution Approvals",
 ]
 if runtime_mode == "sim":
-    tab_labels.append("🚀 SIM Learning Dashboard")
+    tab_labels.append("🚀 SIM Evolution Dashboard")
 if runtime_mode == "real":
     tab_labels.append("🛡️ REAL Operations Dashboard")
 
@@ -545,7 +658,7 @@ with tab4:
 if tab5 is not None:
     with tab5:
         if runtime_mode == "sim":
-            _render_sim_learning_dashboard_tab()
+            _render_sim_evolution_dashboard_tab()
         elif runtime_mode == "real":
             _render_real_operations_dashboard_tab()
 
