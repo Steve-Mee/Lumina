@@ -2,8 +2,8 @@
 REM ============================================================================
 REM start_controlled_live.bat - SIM-First Validation and Real-Money Cutover Script
 REM ============================================================================
-REM Purpose: Run SIM-first validation by default, with explicit real-money cutover only via --real
-REM Method:  30-minute paper validation first, then opt into real-money controls when approved
+REM Purpose: Final one-click REAL cutover with SIM stability hard-gate
+REM Method:  Mandatory SIM stability checker -> capital-preservation inject -> REAL validation
 REM
 REM FAIL-CLOSED: All checks must pass or script aborts with error code
 REM
@@ -12,8 +12,9 @@ REM   scripts\start_controlled_live.bat --real
 REM
 REM Contract:
 REM   - --real flag is mandatory
-REM   - Final 30m SIM validation runs first (fail-closed)
-REM   - REAL cutover validation runs only after SIM validation is GREEN
+REM   - SIM Stability Checker must be GREEN (READY_FOR_REAL=true)
+REM   - Capital-preservation settings are injected fail-closed
+REM   - Final 30m REAL validation must pass (broker=live, paper account)
 REM
 REM Prerequisites:
 REM   - .venv activated
@@ -63,6 +64,13 @@ if "!CROSSTRADE_ACCOUNT!"=="" (
     exit /b 1
 )
 
+set _acct_upper=!CROSSTRADE_ACCOUNT!
+if /I not "!_acct_upper:DEMO=!"=="!_acct_upper!" goto :account_ok
+if /I not "!_acct_upper:PAPER=!"=="!_acct_upper!" goto :account_ok
+echo ERROR: CROSSTRADE_ACCOUNT must be PAPER/DEMO account for controlled cutover
+exit /b 1
+:account_ok
+
 echo [INFO] CROSSTRADE credentials present (token=%CROSSTRADE_TOKEN:~0,10%..., account=!CROSSTRADE_ACCOUNT!)
 echo.
 
@@ -81,13 +89,34 @@ if exist config.yaml (
 )
 echo.
 
-REM STEP 2: Inject ultra-conservative caps
-echo [STEP 2] Injecting ultra-conservative trading caps...
+REM STEP 2: Mandatory SIM stability gate
+echo [STEP 2] Running mandatory SIM Stability Check gate...
+echo [INFO] Command: .venv\Scripts\python.exe -m lumina_launcher --mode=sim --headless --stability-check
+
+.venv\Scripts\python.exe -m lumina_launcher --mode=sim --headless --stability-check > lumina_validation_output.log 2>&1
+
+if errorlevel 1 (
+    echo [ERROR] Stability-check command failed - see lumina_validation_output.log
+    exit /b 7
+)
+
+.venv\Scripts\python.exe scripts\controlled_live_helper.py stability-check
+if errorlevel 1 (
+    echo [ERROR] SIM stability gate is not GREEN - REAL cutover blocked
+    exit /b 8
+)
+
+echo [OK] SIM Stability Check PASSED (READY_FOR_REAL=true)
+echo.
+
+REM STEP 3: Inject ultra-conservative caps
+echo [STEP 3] Injecting capital-preservation controls...
 echo [INFO] Daily loss cap: -150 USD
-echo [INFO] Max consecutive losses: 1
-echo [INFO] Max per-instrument risk: 75 USD
-echo [INFO] Max total open risk: 150 USD
-echo [INFO] Session cooldown: 60 minutes
+echo [INFO] Kelly cap: 25%%
+echo [INFO] MarginTracker: enabled (CME margin checks)
+echo [INFO] EOD force-close: 30m before session end
+echo [INFO] EOD no-new-trades: 60m before session end
+echo [INFO] Max per-instrument risk: 75 USD, max total open risk: 150 USD
 
 REM Inject caps and phase profile via helper script
 .venv\Scripts\python.exe scripts\controlled_live_helper.py inject --config config.yaml --mode !RUNTIME_MODE! --broker !BROKER_MODE!
@@ -97,34 +126,6 @@ if errorlevel 1 (
     copy /y config.yaml.pre_controlled_live.bak config.yaml > nul
     exit /b 3
 )
-echo.
-
-REM STEP 3: Mandatory final 30m SIM validation
-echo [STEP 3] Running mandatory final 30-minute SIM validation...
-echo [INFO] Command: .venv\Scripts\python.exe -m lumina_launcher --mode=sim --duration=30m --broker=paper --headless
-
-.venv\Scripts\python.exe -m lumina_launcher --mode=sim --duration=30m --broker=paper --headless > lumina_validation_output.log 2>&1
-
-if errorlevel 1 (
-    echo [ERROR] Final SIM validation failed - see lumina_validation_output.log
-    echo [RESTORE] Restoring original config
-    copy /y config.yaml.pre_controlled_live.bak config.yaml > nul
-    exit /b 4
-)
-
-echo [OK] Final SIM validation completed successfully
-
-echo [INFO] Verifying final SIM validation contract...
-.venv\Scripts\python.exe scripts\controlled_live_helper.py contract-check --expected-broker-status paper_ok
-
-if errorlevel 1 (
-    echo [ERROR] SIM contract validation failed
-    echo [RESTORE] Restoring original config
-    copy /y config.yaml.pre_controlled_live.bak config.yaml > nul
-    exit /b 5
-)
-
-echo [OK] SIM contract validation passed
 echo.
 
 REM STEP 4: Run 30m REAL-mode validation
@@ -137,7 +138,7 @@ if errorlevel 1 (
     echo [ERROR] REAL-mode validation failed - see lumina_validation_output.log
     echo [RESTORE] Restoring original config
     copy /y config.yaml.pre_controlled_live.bak config.yaml > nul
-    exit /b 4
+    exit /b 9
 )
 
 echo [OK] REAL-mode validation completed successfully
@@ -160,12 +161,13 @@ REM STEP 6: Summary and next steps
 echo [STEP 6] Validation complete - summary:
 echo.
 echo [SUCCESS] Controlled live-money cutover validation PASSED
+echo === REAL MONEY MODE ACTIVATED - CAPITAL PRESERVATION ENGAGED ===
 echo.
 echo Next steps:
 echo  1. Review config changes (diffs against .bak file)
 echo  2. Verify kill-switch path documented
 echo  3. Confirm Ops approval captured
-echo  4. When ready: Start production launcher with these caps
+echo  4. Start first tiny-size real-money session (paper account) with full safety layers
 echo.
 echo Backup config: config.yaml.pre_controlled_live.bak
 echo Validation log: lumina_validation_output.log

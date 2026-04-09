@@ -34,6 +34,13 @@ Cutover to REAL is allowed only when all are true:
 2. Extended SIM Sharpe > 1.8.
 3. Zero `risk_events` in extended SIM runs.
 4. Final 30m SIM validation passes immediately before cutover.
+5. SIM Stability Check PASSED (`status=GREEN`, `READY_FOR_REAL=true`).
+
+Mandatory command before cutover:
+
+```powershell
+python -m lumina_launcher --mode=sim --headless --stability-check
+```
 
 ## 1) All Components Status (Green/Red)
 
@@ -134,6 +141,19 @@ Snapshot summary:
 	- `pnl_realized=-1219.6`
 	- `broker_status=live_connected`
 	- `risk_events=0`, `var_breach_count=0`
+
+### Live Readiness Confirmation (latest stability report)
+
+Capture these fields from `state/last_run_summary.json` after `--stability-check`:
+
+- `stability_report.status`
+- `READY_FOR_REAL`
+- `stability_report.failures`
+- `stability_report.scanned_sim_summary_count`
+- `stability_report.latest_summary_path`
+
+Cutover rule:
+- Proceed with `scripts\start_controlled_live.bat --real` only if `status=GREEN` and `READY_FOR_REAL=true`.
 
 ## 8) Validation Command Outputs
 

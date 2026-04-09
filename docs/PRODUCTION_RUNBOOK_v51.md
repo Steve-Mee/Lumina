@@ -266,6 +266,17 @@ SIM aggressive overnight learning command:
 python -m lumina_launcher --mode=sim --headless --duration=60
 ```
 
+SIM stability gate command (mandatory final gate before REAL):
+
+```powershell
+python -m lumina_launcher --mode=sim --headless --stability-check
+```
+
+Gate contract:
+- `stability_report.status` must be `GREEN`
+- `READY_FOR_REAL` must be `true`
+- Any `RED` status blocks REAL cutover
+
 Suggested nightly command set:
 
 ```powershell
@@ -280,6 +291,7 @@ Suggested nightly command set:
 GO only if all true:
 - Pre-launch checklist all GREEN
 - Live-broker 30m headless paper validation GREEN
+- SIM Stability Check PASSED (status=GREEN, READY_FOR_REAL=true)
 - Monitoring endpoints healthy
 - Kill-switch test completed and documented
 - Ops approval captured
@@ -309,10 +321,35 @@ NO-GO if any true:
 
 - `state/last_run_summary_live_30m_paper.json`
 - `state/last_run_summary.json`
+- Latest SIM stability report payload (`stability_report` + `READY_FOR_REAL`)
 - terminal output log of validation command
 - incident note (if aborted)
 
 All artifacts must be retained for audit.
+
+---
+
+## 5.2) Live Readiness Confirmation (Stability Final Gate)
+
+This section must be completed immediately before executing `scripts\start_controlled_live.bat --real`.
+
+Required command:
+
+```powershell
+python -m lumina_launcher --mode=sim --headless --stability-check
+```
+
+Record latest result fields from `state/last_run_summary.json`:
+
+- `stability_report.status`: `<GREEN|RED>`
+- `READY_FOR_REAL`: `<true|false>`
+- `stability_report.failures`: `<list>`
+- `stability_report.scanned_sim_summary_count`: `<n>`
+- `stability_report.latest_summary_path`: `<path>`
+
+Cutover authorization rule:
+- Proceed to REAL only when `status=GREEN` and `READY_FOR_REAL=true`.
+- Otherwise remain in SIM and continue overnight learning.
 
 ---
 

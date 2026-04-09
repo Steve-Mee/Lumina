@@ -44,6 +44,10 @@ def inject_config(config_path: Path, mode: str, broker_mode: str) -> int:
     risk["session_cooldown_minutes"] = 60
     risk["enabled"] = True
     risk["enforce_session_guard"] = True
+    risk["eod_force_close_minutes_before_session_end"] = 30
+    risk["eod_no_new_trades_minutes_before_session_end"] = 60
+    risk["margin_tracker_enabled"] = True
+    risk["kelly_fraction"] = 0.25
 
     broker = cfg.get("broker")
     if not isinstance(broker, dict):
@@ -120,6 +124,36 @@ def contract_check(expected_broker_status: str) -> int:
     return 0
 
 
+def stability_check() -> int:
+    summary_path = Path("state/last_run_summary.json")
+    if not summary_path.exists():
+        print("[ERROR] state/last_run_summary.json not found; run stability-check first")
+        return 1
+
+    try:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"[ERROR] Failed to parse {summary_path}: {exc}")
+        return 2
+
+    stability = payload.get("stability_report") if isinstance(payload.get("stability_report"), dict) else {}
+    ready_for_real = bool(payload.get("READY_FOR_REAL", stability.get("READY_FOR_REAL", False)))
+    status = str(payload.get("stability_status", stability.get("status", "RED"))).upper()
+
+    print(f"[INFO] Stability status: {status}")
+    print(f"[INFO] READY_FOR_REAL: {ready_for_real}")
+    failures = stability.get("failures", []) if isinstance(stability.get("failures"), list) else []
+    if failures:
+        print("[INFO] Stability failures: " + ", ".join(str(x) for x in failures))
+
+    if not ready_for_real:
+        print("[ERROR] SIM stability gate is RED; REAL cutover blocked")
+        return 3
+
+    print("[OK] SIM stability gate is GREEN")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Controlled live helper")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -132,12 +166,16 @@ def main() -> int:
     p_check = sub.add_parser("contract-check", help="Validate summary contract")
     p_check.add_argument("--expected-broker-status", required=True)
 
+    sub.add_parser("stability-check", help="Validate READY_FOR_REAL from latest summary")
+
     args = parser.parse_args()
 
     if args.cmd == "inject":
         return inject_config(Path(args.config), mode=args.mode, broker_mode=args.broker)
     if args.cmd == "contract-check":
         return contract_check(expected_broker_status=args.expected_broker_status)
+    if args.cmd == "stability-check":
+        return stability_check()
 
     return 99
 
