@@ -79,3 +79,67 @@ LUMINA_UPDATE_BRANCH=main
 ```
 
 Use this only if you intentionally want the machine to follow a moving branch.
+
+## Release Note Template (SIM Overnight Hardening)
+
+Use this format for release notes when publishing operational SIM/REAL behavior changes.
+
+### Title
+
+`Hardened Overnight SIM Learning Mode (SIM-first)`
+
+### Summary
+
+This release strengthens overnight SIM edge-discovery while preserving strict REAL risk discipline.
+
+### Scope
+
+- Added CLI support for overnight simulation mode: `--overnight-sim`.
+- Added headless runtime handling for `sim_overnight_mode` with 240-minute equivalent execution behavior and explicit summary output.
+- Expanded aggressive SIM learning boost context to 24h + 7d + 30d with a floor target of 200k.
+- Added explicit aggressive start/end log markers for operator visibility.
+- Added config default: `headless.sim_overnight_mode: false`.
+
+### Impact
+
+- SIM mode can run more aggressive exploratory adaptation during overnight validation windows.
+- REAL safety posture remains unchanged (capital preservation and strict controls).
+- Operators can confirm overnight behavior directly from run summary payloads.
+
+### Validation Evidence
+
+Run command:
+
+```bash
+python -m lumina_launcher --mode=sim --headless --duration=240 --overnight-sim
+```
+
+Acceptance outcomes:
+
+- Realized PnL: positive
+- Sharpe annualized: > 2.0
+- Evolution proposals: > 50
+- Risk events: 0
+
+Example observed values (2026-04-09):
+
+- `pnl_realized`: 18384.8
+- `sharpe_annualized`: 2.5419
+- `evolution_proposals`: 74
+- `sim_overnight_mode`: true
+- `risk_events`: 0
+
+### Safety Gate Status
+
+- `pytest -m safety_gate -q` passed after this change set.
+
+### Rollback
+
+- Disable overnight behavior by omitting `--overnight-sim`.
+- Keep `headless.sim_overnight_mode: false` in environment config.
+- If needed, roll back to the previous release tag and redeploy via the standard tag workflow.
+
+### Operator Notes
+
+- Prefer this mode for controlled SIM learning windows only.
+- Use SIM validation evidence as a mandatory input before any REAL progression decision.
