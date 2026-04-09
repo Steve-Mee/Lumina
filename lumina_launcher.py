@@ -715,6 +715,12 @@ def _headless_main() -> None:
         default=False,
         help="Enable aggressive SIM learning profile (extended duration + elevated proposal cadence).",
     )
+    parser.add_argument(
+        "--overnight-sim",
+        action="store_true",
+        default=False,
+        help="Enable overnight SIM mode (runs 4-hour equivalent simulation in one go).",
+    )
 
     args, _ = parser.parse_known_args()
 
@@ -722,6 +728,7 @@ def _headless_main() -> None:
     # services that resolve mode from config/env.
     os.environ["LUMINA_MODE"] = str(args.mode).strip().lower()
     os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
+    os.environ["LUMINA_SIM_OVERNIGHT"] = "true" if bool(args.overnight_sim) else "false"
 
     duration_minutes = _parse_duration_minutes(args.duration)
 
@@ -754,6 +761,7 @@ def _headless_main() -> None:
         mode=args.mode,
         broker_mode=args.broker,
         aggressive_sim=bool(args.aggressive_sim),
+        overnight_sim=bool(args.overnight_sim),
     )
 
 

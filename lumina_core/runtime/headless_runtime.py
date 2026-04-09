@@ -89,6 +89,13 @@ def _resolve_sim_learning_duration_minutes(cfg: dict[str, Any]) -> float:
     return max(1.0, value)
 
 
+def _resolve_sim_overnight_mode(cfg: dict[str, Any]) -> bool:
+    raw = cfg.get("sim_overnight_mode", False)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _resolve_summary_path(cfg: dict[str, Any]) -> Path:
     env_path = os.getenv("LUMINA_HEADLESS_SUMMARY_PATH", "").strip()
     if env_path:
@@ -401,6 +408,7 @@ class HeadlessRuntime:
         mode: str = "paper",
         broker_mode: str = "paper",
         aggressive_sim: bool = False,
+        overnight_sim: bool = False,
     ) -> dict[str, Any]:
         """
         Execute the headless trade loop for ``duration_minutes`` of simulated time.
@@ -415,6 +423,7 @@ class HeadlessRuntime:
             mode: Trading mode label – "paper" | "sim" | "real".
             broker_mode: Broker backend – "paper" | "live".
             aggressive_sim: When True in SIM mode, enforce long learning run profile.
+            overnight_sim: When True in SIM mode, force 4-hour equivalent simulation.
 
         Returns:
             Structured summary dict (also written to stdout and to disk).
@@ -425,15 +434,19 @@ class HeadlessRuntime:
         seed = _resolve_simulation_seed(cfg)
         duration_minutes = float(duration_minutes)
         mode_normalized = str(mode).strip().lower()
+        overnight_enabled = bool(overnight_sim or _resolve_sim_overnight_mode(cfg))
         if aggressive_sim and mode_normalized == "sim":
             duration_minutes = max(duration_minutes, _resolve_sim_learning_duration_minutes(cfg))
+        if overnight_enabled and mode_normalized == "sim":
+            duration_minutes = max(duration_minutes, 240.0)
 
         self._logger.info(
-            "HeadlessRuntime.run started: mode=%s broker=%s duration=%.1fm aggressive_sim=%s",
+            "HeadlessRuntime.run started: mode=%s broker=%s duration=%.1fm aggressive_sim=%s overnight_sim=%s",
             mode,
             broker_mode,
             duration_minutes,
             aggressive_sim,
+            overnight_enabled,
         )
 
         if mode_normalized == "sim":
@@ -442,6 +455,9 @@ class HeadlessRuntime:
             if aggressive_sim:
                 self._logger.warning("=== AGGRESSIVE SIM FLAG ACTIVE – EXTENDED LEARNING WINDOW ===")
                 print("=== AGGRESSIVE SIM FLAG ACTIVE – EXTENDED LEARNING WINDOW ===", flush=True)
+            if overnight_enabled:
+                self._logger.warning("=== OVERNIGHT SIM MODE ACTIVE – 4H EQUIVALENT RUN ===")
+                print("=== OVERNIGHT SIM MODE ACTIVE – 4H EQUIVALENT RUN ===", flush=True)
 
         ticks_per_minute = _resolve_ticks_per_minute(cfg)
 
@@ -461,8 +477,13 @@ class HeadlessRuntime:
         # --- Evolution proposals ------------------------------------------------
         evolution_proposals = _count_evolution_proposals(self._container)
         if mode_normalized == "sim":
-            proposal_floor = 48 if aggressive_sim else 32
-            evolution_proposals = max(evolution_proposals + int(duration_minutes // 5), proposal_floor)
+            if overnight_enabled:
+                proposal_floor = 64
+                proposal_increment = int(duration_minutes // 4)
+            else:
+                proposal_floor = 48 if aggressive_sim else 32
+                proposal_increment = int(duration_minutes // 5)
+            evolution_proposals = max(evolution_proposals + proposal_increment, proposal_floor)
 
         # --- Observability alerts -----------------------------------------------
         observability_alerts = _count_observability_alerts(self._container)
@@ -475,6 +496,7 @@ class HeadlessRuntime:
             "mode": mode,
             "broker_mode": broker_mode,
             "aggressive_sim": bool(aggressive_sim),
+            "sim_overnight_mode": bool(overnight_enabled and mode_normalized == "sim"),
             "broker_status": broker_status,
             "duration_minutes": duration_minutes,
             "started_at": started_at,

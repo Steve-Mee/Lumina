@@ -141,14 +141,15 @@ def main() -> int:
     else:
         report = simulator.run_nightly()
 
-    # SIM learning boost: run extra aggressive pass on recent 24h + 7d windows.
+    # SIM learning boost: run extra aggressive pass on recent 24h + 7d + 30d windows.
     mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower()
     if mode == "sim":
-        logger.warning("=== AGGRESSIVE SIM LEARNING BOOST – UNLIMITED BUDGET ===")
-        logger.info("Building aggressive windows from historical ticks: last 24h + 7d")
+        logger.warning("=== AGGRESSIVE SIM LEARNING BOOST – UNLIMITED BUDGET – MAXIMAL EDGE DISCOVERY ===")
+        logger.info("Building aggressive windows from historical ticks: last 24h + 7d + 30d")
 
         ticks_24h = simulator._load_real_historical_ticks(days_back=1, limit=200000)
         ticks_7d = simulator._load_real_historical_ticks(days_back=7, limit=600000)
+        ticks_30d = simulator._load_real_historical_ticks(days_back=30, limit=1200000)
 
         if not ticks_24h:
             ticks_24h = simulator._generate_synthetic_ticks(
@@ -162,9 +163,15 @@ def main() -> int:
                 seed=(int(datetime.now(timezone.utc).timestamp()) + 1337) % 1_000_000,
                 start_price=5000.0,
             )
+        if not ticks_30d:
+            ticks_30d = simulator._generate_synthetic_ticks(
+                n_ticks=750000,
+                seed=(int(datetime.now(timezone.utc).timestamp()) + 7331) % 1_000_000,
+                start_price=5000.0,
+            )
 
-        aggressive_target = max(120000, int(os.getenv("LUMINA_SIM_LEARNING_BOOST_TRADES", "120000")))
-        aggressive_ticks = ticks_24h + ticks_7d
+        aggressive_target = max(200000, int(os.getenv("LUMINA_SIM_LEARNING_BOOST_TRADES", "200000")))
+        aggressive_ticks = ticks_24h + ticks_7d + ticks_30d
         boost_core = simulator._run_parallel_simulation(aggressive_ticks, aggressive_target)
 
         boost_report = {
@@ -178,9 +185,16 @@ def main() -> int:
                 "enabled": True,
                 "window_24h": True,
                 "window_7d": True,
+                "window_30d": True,
                 "aggressive_trades_target": aggressive_target,
                 "aggressive_ticks_24h": len(ticks_24h),
                 "aggressive_ticks_7d": len(ticks_7d),
+                "aggressive_ticks_30d": len(ticks_30d),
+                "mutation_policy": [
+                    "add/remove indicators",
+                    "full prompt rewrites",
+                    "new confluence rules",
+                ],
                 "executor": boost_core.get("executor", "unknown"),
             },
         }
@@ -189,6 +203,7 @@ def main() -> int:
         report["wins"] = int(report.get("wins", 0) or 0) + int(boost_report["wins"])
         report["net_pnl"] = float(report.get("net_pnl", 0.0) or 0.0) + float(boost_report["net_pnl"])
         report["sharpe"] = max(float(report.get("sharpe", 0.0) or 0.0), float(boost_report["sharpe"]))
+        logger.warning("=== AGGRESSIVE SIM LEARNING BOOST – UNLIMITED BUDGET – MAXIMAL EDGE DISCOVERY ===")
 
     evo_cfg = load_evolution_config()
     evolution_container = SimpleNamespace(

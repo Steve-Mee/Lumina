@@ -276,6 +276,9 @@ headless:
   # Default aggressive SIM learning session duration (minutes), used with --aggressive-sim.
   sim_learning_duration_minutes: 60
 
+  # Default overnight SIM mode (4-hour equivalent run) when enabled in runtime/CLI.
+  sim_overnight_mode: false
+
   # Default trading mode for headless runs.
   default_mode: "paper"          # "paper" | "sim" | "real"
 
