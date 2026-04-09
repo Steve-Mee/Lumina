@@ -8,8 +8,12 @@ REM
 REM FAIL-CLOSED: All checks must pass or script aborts with error code
 REM
 REM Usage:
-REM   scripts\start_controlled_live.bat          (default: SIM learning phase)
-REM   scripts\start_controlled_live.bat --real   (explicit real-money phase)
+REM   scripts\start_controlled_live.bat --real
+REM
+REM Contract:
+REM   - --real flag is mandatory
+REM   - Final 30m SIM validation runs first (fail-closed)
+REM   - REAL cutover validation runs only after SIM validation is GREEN
 REM
 REM Prerequisites:
 REM   - .venv activated
@@ -28,12 +32,14 @@ setlocal enabledelayedexpansion
 
 cd /d "%~dp0\.."
 
-set RUNTIME_MODE=sim
-set BROKER_MODE=paper
-if /I "%~1"=="--real" (
-    set RUNTIME_MODE=real
-    set BROKER_MODE=live
+if not /I "%~1"=="--real" (
+    echo ERROR: --real flag is required for controlled live cutover
+    echo Usage: scripts\start_controlled_live.bat --real
+    exit /b 1
 )
+
+set RUNTIME_MODE=real
+set BROKER_MODE=live
 
 echo [%date% %time%] === CONTROLLED LIVE-MONEY CUTOVER START ===
 echo [INFO] Phase mode: !RUNTIME_MODE! (broker=!BROKER_MODE!)
@@ -47,22 +53,17 @@ if not exist .venv\Scripts\python.exe (
 
 echo [INFO] Python venv OK
 
-REM Check credentials only for explicit real-money phase
-if /I "!RUNTIME_MODE!"=="real" (
-    if "!CROSSTRADE_TOKEN!"=="" (
-        echo ERROR: CROSSTRADE_TOKEN not set in environment
-        exit /b 1
-    )
-
-    if "!CROSSTRADE_ACCOUNT!"=="" (
-        echo ERROR: CROSSTRADE_ACCOUNT not set in environment
-        exit /b 1
-    )
-
-    echo [INFO] CROSSTRADE credentials present (token=%CROSSTRADE_TOKEN:~0,10%..., account=!CROSSTRADE_ACCOUNT!)
-) else (
-    echo [INFO] SIM mode selected - live credentials not required
+if "!CROSSTRADE_TOKEN!"=="" (
+    echo ERROR: CROSSTRADE_TOKEN not set in environment
+    exit /b 1
 )
+
+if "!CROSSTRADE_ACCOUNT!"=="" (
+    echo ERROR: CROSSTRADE_ACCOUNT not set in environment
+    exit /b 1
+)
+
+echo [INFO] CROSSTRADE credentials present (token=%CROSSTRADE_TOKEN:~0,10%..., account=!CROSSTRADE_ACCOUNT!)
 echo.
 
 REM Backup current config
@@ -98,42 +99,65 @@ if errorlevel 1 (
 )
 echo.
 
-REM STEP 3: Run 30m live-broker validation with paper mode
-echo [STEP 3] Running 30-minute validation in !RUNTIME_MODE! mode...
-echo [INFO] Command: .venv\Scripts\python.exe -m lumina_launcher --mode=!RUNTIME_MODE! --duration=30m --broker=!BROKER_MODE! --headless
+REM STEP 3: Mandatory final 30m SIM validation
+echo [STEP 3] Running mandatory final 30-minute SIM validation...
+echo [INFO] Command: .venv\Scripts\python.exe -m lumina_launcher --mode=sim --duration=30m --broker=paper --headless
 
-.venv\Scripts\python.exe -m lumina_launcher --mode=!RUNTIME_MODE! --duration=30m --broker=!BROKER_MODE! --headless > lumina_validation_output.log 2>&1
+.venv\Scripts\python.exe -m lumina_launcher --mode=sim --duration=30m --broker=paper --headless > lumina_validation_output.log 2>&1
 
 if errorlevel 1 (
-    echo [ERROR] Validation failed - see lumina_validation_output.log
+    echo [ERROR] Final SIM validation failed - see lumina_validation_output.log
     echo [RESTORE] Restoring original config
     copy /y config.yaml.pre_controlled_live.bak config.yaml > nul
     exit /b 4
 )
 
-echo [OK] Validation completed successfully
-echo.
+echo [OK] Final SIM validation completed successfully
 
-REM STEP 4: Verify JSON contract
-echo [STEP 4] Verifying validation JSON contract...
-
-set EXPECTED_BROKER_STATUS=paper_ok
-if /I "!BROKER_MODE!"=="live" (
-    set EXPECTED_BROKER_STATUS=live_connected
-)
-
-.venv\Scripts\python.exe scripts\controlled_live_helper.py contract-check --expected-broker-status !EXPECTED_BROKER_STATUS!
+echo [INFO] Verifying final SIM validation contract...
+.venv\Scripts\python.exe scripts\controlled_live_helper.py contract-check --expected-broker-status paper_ok
 
 if errorlevel 1 (
-    echo [ERROR] Contract validation failed
+    echo [ERROR] SIM contract validation failed
     echo [RESTORE] Restoring original config
     copy /y config.yaml.pre_controlled_live.bak config.yaml > nul
     exit /b 5
 )
+
+echo [OK] SIM contract validation passed
 echo.
 
-REM STEP 5: Summary and next steps
-echo [STEP 5] Validation complete - summary:
+REM STEP 4: Run 30m REAL-mode validation
+echo [STEP 4] Running 30-minute REAL-mode validation...
+echo [INFO] Command: .venv\Scripts\python.exe -m lumina_launcher --mode=!RUNTIME_MODE! --duration=30m --broker=!BROKER_MODE! --headless
+
+.venv\Scripts\python.exe -m lumina_launcher --mode=!RUNTIME_MODE! --duration=30m --broker=!BROKER_MODE! --headless >> lumina_validation_output.log 2>&1
+
+if errorlevel 1 (
+    echo [ERROR] REAL-mode validation failed - see lumina_validation_output.log
+    echo [RESTORE] Restoring original config
+    copy /y config.yaml.pre_controlled_live.bak config.yaml > nul
+    exit /b 4
+)
+
+echo [OK] REAL-mode validation completed successfully
+echo.
+
+REM STEP 5: Verify JSON contracts
+echo [STEP 5] Verifying validation JSON contracts...
+
+.venv\Scripts\python.exe scripts\controlled_live_helper.py contract-check --expected-broker-status live_connected
+
+if errorlevel 1 (
+    echo [ERROR] REAL contract validation failed
+    echo [RESTORE] Restoring original config
+    copy /y config.yaml.pre_controlled_live.bak config.yaml > nul
+    exit /b 6
+)
+echo.
+
+REM STEP 6: Summary and next steps
+echo [STEP 6] Validation complete - summary:
 echo.
 echo [SUCCESS] Controlled live-money cutover validation PASSED
 echo.
