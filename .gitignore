@@ -75,6 +75,7 @@ state/metrics.db
 state/evolution_log.jsonl
 state/last_run_summary_paper_15m.json
 *_validation.log
+state/test_runs/*.json
 config.yaml.pre_controlled_live.bak
 lumina_validation_output.log
 test_output.txt
