@@ -11,16 +11,30 @@ Delta reference:
 
 ## Phase Model (Mission-Critical)
 
-### SIM Learning Phase
+### SIM Aggressive Learning Phase
 - Default operating phase.
 - Objective: maximal learning and edge discovery.
 - Loss policy: unlimited losses are allowed in SIM by design.
 - Evolution policy: aggressive mutations and rapid adaptation are expected.
 
+Latest validated SIM success metrics:
+- 30m baseline run: `pnl_realized=+1956.3`, `win_rate=40.7%`
+- 60m extended run: `sharpe_annualized=2.22`, `evolution_proposals=32`
+
+Acceptance target for SIM-to-REAL readiness:
+- Positive expectancy sustained over rolling multi-session SIM runs.
+- Sharpe remains above 1.8 on extended runs.
+- Risk events remain zero under extended duration.
+
 ### Real-Money Phase
 - Explicit opt-in phase only after green SIM evidence and operator approval.
 - Objective: capital preservation as absolute priority.
 - Risk policy: conservative caps, SessionGuard EOD enforcement, and fail-closed controls must stay active.
+- Auto-enabled real-money preservation stack:
+  - `daily_loss_cap: -150`
+  - Kelly cap `25%`
+  - `MarginTracker` CME margin checks
+  - EOD force-close + no-new-trades enforcement
 
 ---
 
@@ -106,8 +120,8 @@ If any expectation fails => STOP (do not continue to Step 3).
 ### Step 3. Switch to real-money (small size) with ultra-conservative caps
 
 Important:
-- `scripts\start_controlled_live.bat` now defaults to SIM mode.
-- Use `scripts\start_controlled_live.bat --real` to enter real-money phase behavior.
+- `scripts\start_controlled_live.bat` now requires `--real`.
+- The script always runs a final 30m SIM validation first, then proceeds to real-money cutover checks.
 
 Prerequisites:
 - Step 2 green in current trading day
@@ -138,15 +152,24 @@ Capital Preservation Configuration (now included in start_controlled_live.bat):
 One-command controlled live cutover:
 
 ```bat
-scripts\start_controlled_live.bat
+scripts\start_controlled_live.bat --real
 ```
 
 This script:
 1. Backs up `config.yaml` → `config.yaml.pre_controlled_live.bak`
 2. Injects ultra-conservative caps + capital-preservation settings
-3. Runs 30m headless live-broker paper validation
-4. Verifies JSON contract (broker_status="live_connected", risk_events=0)
-5. Restores backup if validation fails (fail-closed)
+3. Runs mandatory final 30m SIM validation (`mode=sim`, `broker=paper`)
+4. Runs 30m headless real-mode validation (`mode=real`, `broker=live`)
+5. Verifies JSON contracts (SIM then REAL, both fail-closed)
+6. Restores backup if validation fails (fail-closed)
+
+### SIM -> REAL transition protocol (hard gate)
+
+REAL mode is permitted only when all are true:
+1. At least 5 consecutive SIM days with positive expectancy.
+2. Extended SIM Sharpe strictly above 1.8.
+3. Zero `risk_events` during extended SIM validations.
+4. Final same-day 30m SIM validation is GREEN.
 
 On success: all caps are live in config, operator confirms before next trading session begins.
 

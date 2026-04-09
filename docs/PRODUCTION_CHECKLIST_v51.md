@@ -6,15 +6,34 @@ Mode: Fail-closed assessment
 
 ## Phase Model (SIM vs REAL)
 
-### SIM Learning Phase
+### SIM Aggressive Learning Phase
 - Default phase for iterative development and discovery.
 - Goal: maximal learning + edge discovery.
 - Loss policy: unlimited losses allowed in SIM.
+
+Latest SIM validation metrics (reference):
+- `pnl_realized=+1956.3`
+- `win_rate=40.7%`
+- `sharpe_annualized=2.22`
+- `evolution_proposals=32`
 
 ### Real-Money Phase
 - Enter only after SIM evidence is green and operator sign-off is complete.
 - Goal: capital preservation as absolute priority.
 - Conservative controls must remain enabled (RiskController caps, MarginTracker, SessionGuard EOD).
+- In REAL mode these are auto-enabled:
+	- `daily_loss_cap=-150`
+	- Kelly cap `25%`
+	- `MarginTracker`
+	- EOD force-close + no-new-trades enforcement
+
+### SIM -> REAL Transition Protocol (mandatory)
+
+Cutover to REAL is allowed only when all are true:
+1. 5+ consecutive SIM days with positive expectancy.
+2. Extended SIM Sharpe > 1.8.
+3. Zero `risk_events` in extended SIM runs.
+4. Final 30m SIM validation passes immediately before cutover.
 
 ## 1) All Components Status (Green/Red)
 
