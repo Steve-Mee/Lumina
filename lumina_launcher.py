@@ -404,6 +404,58 @@ def _render_sim_learning_tab() -> None:
         st.warning("Transition protocol is not green yet. Continue SIM learning.")
 
 
+def _render_real_operations_tab(state: dict[str, Any]) -> None:
+    st.subheader("REAL Operations Dashboard")
+    summary = _load_last_run_summary()
+    rows = _load_evolution_rows()
+
+    m24 = _window_metrics(summary, rows, 1)
+    m7 = _window_metrics(summary, rows, 7)
+    m30 = _window_metrics(summary, rows, 30)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Realized PnL", f"${_safe_float(summary.get('pnl_realized')):.2f}")
+    c2.metric("Max Drawdown", f"${_safe_float(summary.get('max_drawdown')):.2f}")
+    c3.metric("Risk Events", _safe_int(summary.get("risk_events")))
+    c4.metric("VaR Breaches", _safe_int(summary.get("var_breach_count")))
+
+    p1, p2, p3 = st.columns(3)
+    p1.metric("24h PnL", f"${m24['pnl']:.2f}")
+    p2.metric("7d PnL", f"${m7['pnl']:.2f}")
+    p3.metric("30d PnL", f"${m30['pnl']:.2f}")
+
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Winrate", f"{_safe_float(summary.get('win_rate')) * 100:.2f}%")
+    s2.metric("Sharpe", f"{_safe_float(summary.get('sharpe_annualized')):.2f}")
+    s3.metric("Session Guard Blocks", _safe_int(summary.get("session_guard_blocks")))
+
+    st.markdown("#### Exposure")
+    e1, e2, e3 = st.columns(3)
+    e1.metric("Live Position Qty", _safe_int(state.get("live_position_qty")))
+    e2.metric("Pending Reconciliations", len(state.get("pending_trade_reconciliations", []) or []))
+    e3.metric("Total Trades", _safe_int(summary.get("total_trades")))
+
+    st.markdown("#### Capital Preservation Protocol")
+    risk_events_ok = _safe_int(summary.get("risk_events")) == 0
+    var_ok = _safe_int(summary.get("var_breach_count")) == 0
+    drawdown_ok = _safe_float(summary.get("max_drawdown")) <= 500.0
+    sharpe_ok = _safe_float(summary.get("sharpe_annualized")) >= 1.0
+    pnl_24h_ok = m24["pnl"] >= 0.0
+    protocol_green = risk_events_ok and var_ok and drawdown_ok and sharpe_ok and pnl_24h_ok
+
+    g1, g2, g3, g4, g5 = st.columns(5)
+    g1.metric("Risk Events = 0", "PASS" if risk_events_ok else "FAIL")
+    g2.metric("VaR Breaches = 0", "PASS" if var_ok else "FAIL")
+    g3.metric("Drawdown <= $500", "PASS" if drawdown_ok else "FAIL")
+    g4.metric("Sharpe >= 1.0", "PASS" if sharpe_ok else "FAIL")
+    g5.metric("24h PnL >= 0", "PASS" if pnl_24h_ok else "FAIL")
+
+    if protocol_green:
+        st.success("REAL protocol GREEN: system is within capital-preservation bounds.")
+    else:
+        st.error("REAL protocol RED: immediate operator review required.")
+
+
 def _backend_get(path: str, timeout: float = 3.0) -> dict[str, Any]:
     url = f"{BACKEND_BASE_URL}{path}"
     response = requests.get(url, timeout=timeout)
@@ -1091,6 +1143,8 @@ tab_labels = [
 ]
 if active_mode == "sim":
     tab_labels.append("🚀 SIM Learning Dashboard")
+if active_mode == "real":
+    tab_labels.append("🛡️ REAL Operations Dashboard")
 if admin_mode:
     tab_labels.append("Admin / Backend")
 tabs = st.tabs(tab_labels)
@@ -1100,8 +1154,14 @@ tab3 = tabs[2]
 tab4 = tabs[3]
 tab5 = tabs[4]
 tab6 = tabs[5]
-tab7 = tabs[6] if active_mode == "sim" and len(tabs) > 6 else None
-tab8 = tabs[7] if admin_mode and len(tabs) > 7 else (tabs[6] if admin_mode and active_mode != "sim" and len(tabs) > 6 else None)
+tab7 = None
+tab8 = None
+next_optional_idx = 6
+if active_mode in {"sim", "real"} and len(tabs) > next_optional_idx:
+    tab7 = tabs[next_optional_idx]
+    next_optional_idx += 1
+if admin_mode and len(tabs) > next_optional_idx:
+    tab8 = tabs[next_optional_idx]
 
 with tab1:
     st.subheader("Live Dream + Runtime State")
@@ -1163,7 +1223,10 @@ with tab6:
 
 if tab7 is not None:
     with tab7:
-        _render_sim_learning_tab()
+        if active_mode == "sim":
+            _render_sim_learning_tab()
+        elif active_mode == "real":
+            _render_real_operations_tab(state)
 
 if tab8 is not None:
     with tab8:

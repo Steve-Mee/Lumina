@@ -17,6 +17,7 @@ from evolution_approval import render_evolution_approval_tab
 STATE_DIR = Path("state")
 LAST_RUN_SUMMARY_PATH = STATE_DIR / "last_run_summary.json"
 EVOLUTION_LOG_PATH = STATE_DIR / "evolution_log.jsonl"
+RUNTIME_STATE_PATH = STATE_DIR / "lumina_sim_state.json"
 ENV_PATH = Path(".env")
 
 
@@ -263,6 +264,59 @@ def _render_sim_learning_dashboard_tab() -> None:
         st.warning("Transition protocol is not green yet. Continue SIM learning.")
 
 
+def _render_real_operations_dashboard_tab() -> None:
+    st.subheader("REAL Operations Dashboard")
+    summary = _load_json_dict(LAST_RUN_SUMMARY_PATH)
+    rows = _load_evolution_rows(EVOLUTION_LOG_PATH)
+    runtime_state = _load_json_dict(RUNTIME_STATE_PATH)
+
+    m24 = _window_metrics(summary, rows, 1)
+    m7 = _window_metrics(summary, rows, 7)
+    m30 = _window_metrics(summary, rows, 30)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Realized PnL", f"${_safe_float(summary.get('pnl_realized')):.2f}")
+    c2.metric("Max Drawdown", f"${_safe_float(summary.get('max_drawdown')):.2f}")
+    c3.metric("Risk Events", _safe_int(summary.get("risk_events")))
+    c4.metric("VaR Breaches", _safe_int(summary.get("var_breach_count")))
+
+    p1, p2, p3 = st.columns(3)
+    p1.metric("24h PnL", f"${m24['pnl']:.2f}")
+    p2.metric("7d PnL", f"${m7['pnl']:.2f}")
+    p3.metric("30d PnL", f"${m30['pnl']:.2f}")
+
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Winrate", f"{_safe_float(summary.get('win_rate')) * 100:.2f}%")
+    s2.metric("Sharpe", f"{_safe_float(summary.get('sharpe_annualized')):.2f}")
+    s3.metric("Session Guard Blocks", _safe_int(summary.get("session_guard_blocks")))
+
+    st.markdown("#### Exposure")
+    e1, e2, e3 = st.columns(3)
+    e1.metric("Live Position Qty", _safe_int(runtime_state.get("live_position_qty")))
+    e2.metric("Pending Reconciliations", len(runtime_state.get("pending_trade_reconciliations", []) or []))
+    e3.metric("Total Trades", _safe_int(summary.get("total_trades")))
+
+    st.markdown("#### Capital Preservation Protocol")
+    risk_events_ok = _safe_int(summary.get("risk_events")) == 0
+    var_ok = _safe_int(summary.get("var_breach_count")) == 0
+    drawdown_ok = _safe_float(summary.get("max_drawdown")) <= 500.0
+    sharpe_ok = _safe_float(summary.get("sharpe_annualized")) >= 1.0
+    pnl_24h_ok = m24["pnl"] >= 0.0
+    protocol_green = risk_events_ok and var_ok and drawdown_ok and sharpe_ok and pnl_24h_ok
+
+    g1, g2, g3, g4, g5 = st.columns(5)
+    g1.metric("Risk Events = 0", "PASS" if risk_events_ok else "FAIL")
+    g2.metric("VaR Breaches = 0", "PASS" if var_ok else "FAIL")
+    g3.metric("Drawdown <= $500", "PASS" if drawdown_ok else "FAIL")
+    g4.metric("Sharpe >= 1.0", "PASS" if sharpe_ok else "FAIL")
+    g5.metric("24h PnL >= 0", "PASS" if pnl_24h_ok else "FAIL")
+
+    if protocol_green:
+        st.success("REAL protocol GREEN: system is within capital-preservation bounds.")
+    else:
+        st.error("REAL protocol RED: immediate operator review required.")
+
+
 # ── Observability tab ─────────────────────────────────────────────────────────
 
 
@@ -450,13 +504,15 @@ tab_labels = [
 ]
 if runtime_mode == "sim":
     tab_labels.append("🚀 SIM Learning Dashboard")
+if runtime_mode == "real":
+    tab_labels.append("🛡️ REAL Operations Dashboard")
 
 tabs = st.tabs(tab_labels)
 tab1 = tabs[0]
 tab2 = tabs[1]
 tab3 = tabs[2]
 tab4 = tabs[3]
-tab5 = tabs[4] if runtime_mode == "sim" and len(tabs) > 4 else None
+tab5 = tabs[4] if len(tabs) > 4 else None
 
 with tab1:
     render_leaderboard_tab(api_base_url)
@@ -472,7 +528,10 @@ with tab4:
 
 if tab5 is not None:
     with tab5:
-        _render_sim_learning_dashboard_tab()
+        if runtime_mode == "sim":
+            _render_sim_learning_dashboard_tab()
+        elif runtime_mode == "real":
+            _render_real_operations_dashboard_tab()
 
 st.info("Upload your trades, Bibles or reflections via the bot webhook -> everything appears here instantly.")
 
