@@ -9,6 +9,19 @@ This is the official switch-flip runbook for moving Lumina v51 from paper valida
 Delta reference:
 - SIM vs REAL safety split addendum: `docs/RUNBOOK_DELTA_SIM_REAL_v52.md`
 
+## Phase Model (Mission-Critical)
+
+### SIM Learning Phase
+- Default operating phase.
+- Objective: maximal learning and edge discovery.
+- Loss policy: unlimited losses are allowed in SIM by design.
+- Evolution policy: aggressive mutations and rapid adaptation are expected.
+
+### Real-Money Phase
+- Explicit opt-in phase only after green SIM evidence and operator approval.
+- Objective: capital preservation as absolute priority.
+- Risk policy: conservative caps, SessionGuard EOD enforcement, and fail-closed controls must stay active.
+
 ---
 
 ## 0) Safety Contract (Read First)
@@ -91,6 +104,10 @@ Expected outputs:
 If any expectation fails => STOP (do not continue to Step 3).
 
 ### Step 3. Switch to real-money (small size) with ultra-conservative caps
+
+Important:
+- `scripts\start_controlled_live.bat` now defaults to SIM mode.
+- Use `scripts\start_controlled_live.bat --real` to enter real-money phase behavior.
 
 Prerequisites:
 - Step 2 green in current trading day
@@ -219,6 +236,12 @@ Post-kill mandatory actions:
 2. Review evolution proposals and decision logs
 3. Archive run summaries (`state/last_run_summary*.json`)
 4. Record next-session action list
+
+SIM aggressive overnight learning command:
+
+```powershell
+python -m lumina_launcher --mode=sim --headless --duration=60
+```
 
 Suggested nightly command set:
 

@@ -4,6 +4,18 @@ Date: 2026-04-08 (updated)
 Validator: GitHub Copilot (GPT-5.3-Codex)
 Mode: Fail-closed assessment
 
+## Phase Model (SIM vs REAL)
+
+### SIM Learning Phase
+- Default phase for iterative development and discovery.
+- Goal: maximal learning + edge discovery.
+- Loss policy: unlimited losses allowed in SIM.
+
+### Real-Money Phase
+- Enter only after SIM evidence is green and operator sign-off is complete.
+- Goal: capital preservation as absolute priority.
+- Conservative controls must remain enabled (RiskController caps, MarginTracker, SessionGuard EOD).
+
 ## 1) All Components Status (Green/Red)
 
 | Component | Status | Evidence |
@@ -163,6 +175,12 @@ Executed in exact requested order:
 	"session_guard_blocks": 0,
 	"observability_alerts": 0
 }
+```
+
+Nightly aggressive SIM learning command:
+
+```powershell
+python -m lumina_launcher --mode=sim --headless --duration=60
 ```
 
 ## 9) Final Blocker Fix Validation (April 8, 2026 22:54–22:55 UTC)
