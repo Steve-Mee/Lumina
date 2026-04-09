@@ -1,9 +1,9 @@
 @echo off
 REM ============================================================================
-REM start_controlled_live.bat - Ultra-Conservative Real-Money Cutover Script
+REM start_controlled_live.bat - SIM-First Validation and Real-Money Cutover Script
 REM ============================================================================
-REM Purpose: Bridge from paper validation to controlled real-money trading
-REM Method:  30-minute live-broker paper validation first, then switch caps down
+REM Purpose: Run SIM-first validation by default, with explicit real-money cutover only via --real
+REM Method:  30-minute paper validation first, then opt into real-money controls when approved
 REM
 REM FAIL-CLOSED: All checks must pass or script aborts with error code
 REM
