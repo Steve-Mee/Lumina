@@ -273,6 +273,9 @@ headless:
   # Default simulated session duration (minutes) when --duration flag is omitted.
   default_duration_minutes: 15
 
+  # Default aggressive SIM learning session duration (minutes), used with --aggressive-sim.
+  sim_learning_duration_minutes: 60
+
   # Default trading mode for headless runs.
   default_mode: "paper"          # "paper" | "sim" | "real"
 

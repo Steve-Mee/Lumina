@@ -709,12 +709,19 @@ def _headless_main() -> None:
         default=default_broker,
         help=f"Broker backend to validate: paper or live (default: {default_broker}).",
     )
+    parser.add_argument(
+        "--aggressive-sim",
+        action="store_true",
+        default=False,
+        help="Enable aggressive SIM learning profile (extended duration + elevated proposal cadence).",
+    )
 
     args, _ = parser.parse_known_args()
 
     # CLI mode override: writes runtime mode into process env for downstream
     # services that resolve mode from config/env.
     os.environ["LUMINA_MODE"] = str(args.mode).strip().lower()
+    os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
 
     duration_minutes = _parse_duration_minutes(args.duration)
 
@@ -746,6 +753,7 @@ def _headless_main() -> None:
         duration_minutes=duration_minutes,
         mode=args.mode,
         broker_mode=args.broker,
+        aggressive_sim=bool(args.aggressive_sim),
     )
 
 

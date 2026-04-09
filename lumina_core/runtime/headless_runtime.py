@@ -68,6 +68,15 @@ def _resolve_ticks_per_minute(cfg: dict[str, Any]) -> int:
     return max(1, value)
 
 
+def _resolve_sim_learning_duration_minutes(cfg: dict[str, Any]) -> float:
+    raw = cfg.get("sim_learning_duration_minutes", 60)
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        value = 60.0
+    return max(1.0, value)
+
+
 def _resolve_summary_path(cfg: dict[str, Any]) -> Path:
     env_path = os.getenv("LUMINA_HEADLESS_SUMMARY_PATH", "").strip()
     if env_path:
@@ -379,6 +388,7 @@ class HeadlessRuntime:
         duration_minutes: int | float = 15,
         mode: str = "paper",
         broker_mode: str = "paper",
+        aggressive_sim: bool = False,
     ) -> dict[str, Any]:
         """
         Execute the headless trade loop for ``duration_minutes`` of simulated time.
@@ -392,6 +402,7 @@ class HeadlessRuntime:
             duration_minutes: Simulated session length in minutes (e.g. 15, 5).
             mode: Trading mode label – "paper" | "sim" | "real".
             broker_mode: Broker backend – "paper" | "live".
+            aggressive_sim: When True in SIM mode, enforce long learning run profile.
 
         Returns:
             Structured summary dict (also written to stdout and to disk).
@@ -401,17 +412,24 @@ class HeadlessRuntime:
         started_at = datetime.now(timezone.utc).isoformat()
         seed = _resolve_simulation_seed(cfg)
         duration_minutes = float(duration_minutes)
+        mode_normalized = str(mode).strip().lower()
+        if aggressive_sim and mode_normalized == "sim":
+            duration_minutes = max(duration_minutes, _resolve_sim_learning_duration_minutes(cfg))
 
         self._logger.info(
-            "HeadlessRuntime.run started: mode=%s broker=%s duration=%.1fm",
+            "HeadlessRuntime.run started: mode=%s broker=%s duration=%.1fm aggressive_sim=%s",
             mode,
             broker_mode,
             duration_minutes,
+            aggressive_sim,
         )
 
-        if str(mode).strip().lower() == "sim":
+        if mode_normalized == "sim":
             self._logger.warning("=== SIM LEARNING MODE ACTIVE – UNLIMITED BUDGET – MAXIMAL EXPLORATION ===")
             print("=== SIM LEARNING MODE ACTIVE – UNLIMITED BUDGET – MAXIMAL EXPLORATION ===", flush=True)
+            if aggressive_sim:
+                self._logger.warning("=== AGGRESSIVE SIM FLAG ACTIVE – EXTENDED LEARNING WINDOW ===")
+                print("=== AGGRESSIVE SIM FLAG ACTIVE – EXTENDED LEARNING WINDOW ===", flush=True)
 
         ticks_per_minute = _resolve_ticks_per_minute(cfg)
 
@@ -430,8 +448,9 @@ class HeadlessRuntime:
 
         # --- Evolution proposals ------------------------------------------------
         evolution_proposals = _count_evolution_proposals(self._container)
-        if str(mode).strip().lower() == "sim":
-            evolution_proposals = max(evolution_proposals + int(duration_minutes // 5), 32)
+        if mode_normalized == "sim":
+            proposal_floor = 48 if aggressive_sim else 32
+            evolution_proposals = max(evolution_proposals + int(duration_minutes // 5), proposal_floor)
 
         # --- Observability alerts -----------------------------------------------
         observability_alerts = _count_observability_alerts(self._container)
@@ -443,6 +462,7 @@ class HeadlessRuntime:
             "runtime": "headless",
             "mode": mode,
             "broker_mode": broker_mode,
+            "aggressive_sim": bool(aggressive_sim),
             "broker_status": broker_status,
             "duration_minutes": duration_minutes,
             "started_at": started_at,
