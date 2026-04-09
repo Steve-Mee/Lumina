@@ -35,7 +35,7 @@ python -m pytest -m safety_gate -q
 ```
 
 Current status:
-- 4 passed, 287 deselected.
+- 9 passed, 287 deselected.
 
 ---
 
@@ -126,3 +126,63 @@ python -m lumina_launcher --headless --mode=paper --duration=15m --broker=paper
   - REAL EOD force-close integration behavior test.
 - `pytest.ini`
   - `safety_gate` marker registration.
+
+---
+
+## 6) CI Safety Gate Troubleshooting
+
+Use this section when GitHub Actions fails on `python -m pytest -m safety_gate -q`.
+
+### A. Dependency resolver conflict (Torch/vLLM)
+
+Typical error pattern:
+- `ResolutionImpossible` around `torch`, `vllm`, `stable-baselines3`, `compressed-tensors`.
+
+Root cause:
+- Safety-gate CI tried to install full runtime dependencies from `requirements.txt`.
+
+Fix:
+1. Safety-gate workflow must install dedicated set from `requirements-safety-gate.txt`.
+2. Keep heavy runtime/serving stack out of safety-gate dependency resolution.
+
+Verification:
+```powershell
+python -m pip install --dry-run -r requirements-safety-gate.txt
+python -m pytest -m safety_gate -q
+```
+
+### B. Missing module during collection (`fastapi`, `jwt`)
+
+Typical error pattern:
+- `ModuleNotFoundError: No module named 'fastapi'`
+- `ModuleNotFoundError: No module named 'jwt'`
+
+Root cause:
+- Safety-gate dependencies did not yet include imports used by collected test modules.
+
+Fix:
+1. Ensure `requirements-safety-gate.txt` includes:
+  - `fastapi==0.135.3`
+  - `PyJWT==2.12.1`
+
+### C. Missing optional RL package (`stable_baselines3`)
+
+Typical error pattern:
+- `RuntimeError: stable-baselines3 is required for PPOTrainer`
+
+Root cause:
+- `LuminaEngine` fixture path initialized PPO trainer during test setup.
+
+Fix:
+1. In engine test fixtures, stub PPO trainer for safety-gate paths.
+2. Do not require optional RL training dependencies for deploy-critical safety checks.
+
+### D. Final validation checklist
+
+Before closing CI incident:
+1. Confirm workflow installs `requirements-safety-gate.txt`.
+2. Confirm local run:
+```powershell
+python -m pytest -m safety_gate -q
+```
+3. Confirm CI run on latest commit is GREEN.
