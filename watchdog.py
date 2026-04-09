@@ -5,12 +5,15 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
 
-HEARTBEAT_FILE = Path("/tmp/lumina_heartbeat")
-PID_FILE = Path("/tmp/lumina_child.pid")
+# Cross-platform temp directory (Unix: /tmp, Windows: %TEMP%)
+TEMP_DIR = Path(tempfile.gettempdir())
+HEARTBEAT_FILE = TEMP_DIR / "lumina_heartbeat"
+PID_FILE = TEMP_DIR / "lumina_child.pid"
 
 # ── Observability bootstrap (zero-overhead when monitoring.enabled = false) ────
 
