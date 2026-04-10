@@ -147,6 +147,17 @@ Totaalscore Expert Programmeur: **7.6/10**
 | Documentatie-drift (README noemt mappen die niet bestaan) | Foute operationele verwachtingen bij onboarding en incident response | Maak docs CI-check (bestaan paden + versiestatus) en verwijder verouderde claims | Medium |
 | UTF-16/artefact-achtige test_results.txt in root | Ruis voor tooling/reviews | Converteer naar UTF-8 of verwijder artefact uit root; genereer op vraag in artifact map | Low |
 
+### Opvolgingsstatus Expert 2 (2026-04-10)
+
+**Status: alle punten van Expert 2 zijn behandeld en verbeterd.**
+
+- ✅ `operations_service.place_order` control-flow gecorrigeerd en regressietests bevestigd.
+- ✅ Niet-openbare backend trade/upload/status routes afgedwongen met `Depends(verify_api_key)`.
+- ✅ Dangerous config-validatie genormaliseerd voor nested `security.*` namespace.
+- ✅ `sys.path` workaround verwijderd uit backend app.
+- ✅ README opgeschoond voor pad-consistentie en docs drift check toegevoegd.
+- ✅ Root-artefact `test_results.txt` verwijderd en preventief genegeerd via `.gitignore`.
+
 ### Wat moet verwijderd worden
 - ✅ Uitgevoerd (2026-04-10): `sys.path` workaround verwijderd uit `lumina_os/backend/app.py`.
 - ✅ Uitgevoerd (2026-04-10): verouderde README-claim over niet-bestaande paden verwijderd (o.a. `traderleague/`).
