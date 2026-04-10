@@ -256,3 +256,56 @@ Conclusie:
 - Alle 6 Expert-2 punten zijn technisch afgehandeld.
 - Trade-mode semantiek (`paper/sim/real`) bleef ongewijzigd conform referentie.
 - App-functies en kerndoel zijn behouden.
+
+---
+
+## 10. Zeer Grondige Analyse - Verwijderpunten (Status: Reeds Uitgevoerd)
+
+Gevraagde punten:
+
+1. `sys.path` workaround in `lumina_os/backend/app.py` verwijderen
+2. Verouderde README-claims over niet-bestaande paden (o.a. `traderleague/`) verwijderen
+3. Niet-canonieke testartefacten in root (`test_results.txt` / `test_output.txt`) naar artifact/CI-beleid brengen
+
+### 10.1 Forensische statuscontrole per punt
+
+| Punt | Technische bevinding | Status | Evidentie |
+|---|---|---|---|
+| `sys.path` workaround | Geen `sys.path.insert(...)` meer aanwezig; alleen comment dat standaard package-discovery wordt gebruikt | DONE | `lumina_os/backend/app.py` bevat enkel "no sys.path needed" comment, geen runtime path-mutatie |
+| README drift (`traderleague/`) | Niet-bestaande mapclaim verwijderd uit README-structuur | DONE | README bevat geen `traderleague/` map-item meer |
+| Root testartefacten | `test_results.txt` verwijderd; `test_output.txt` en `test_results.txt` staan in `.gitignore` voor anti-ruis beleid | DONE | `.gitignore` entries aanwezig; `git ls-files` toont geen tracking van beide artefacten |
+
+### 10.2 Risicoanalyse (waarom dit relevant blijft)
+
+1. `sys.path` regressie-risico:
+- Handmatige path-injectie kan lokaal "werken", maar breekt in container/CI of maskeert importfouten.
+- Impact: onvoorspelbare deployment-failures.
+
+2. README drift-risico:
+- Onjuiste paden sturen operators naar niet-bestaande componenten en vertragen incident response.
+- Impact: operationele foutkans bij onboarding en productie-interventies.
+
+3. Artefact-risico:
+- Runtime/test-output in root veroorzaakt ruis in reviews en vergroot kans op ongewenste commits.
+- Impact: lagere auditkwaliteit en slechtere change-traceability.
+
+### 10.3 Actieplan (alleen toepassen bij regressie, want nu al uitgevoerd)
+
+Indien een van deze punten opnieuw opduikt:
+
+1. **Code guardrail**
+- Fail de CI als `sys.path.insert` voorkomt in backend app.
+
+2. **Docs guardrail**
+- Draai standaard `scripts/validation/check_docs_paths.py` in CI bij PR-validatie.
+
+3. **Repo-hygiene guardrail**
+- Houd root artefacten in `.gitignore`.
+- Laat CI falen op tracking van tijdelijke test-output bestanden in root.
+
+4. **Review checklist**
+- Voeg pre-merge checklist-item toe: "Geen path hacks, geen dode README-paden, geen root test artefacten".
+
+### 10.4 Eindconclusie voor deze vraag
+
+De drie gevraagde verwijderpunten zijn **reeds correct uitgevoerd** en gevalideerd. Er is momenteel **geen extra codewijziging nodig** op deze drie items; enkel preventieve regressie-guardrails (CI/checklist) worden aanbevolen.
