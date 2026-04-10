@@ -20,6 +20,7 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
 - docs/
   - release-workflow.md
   - production-machine-setup.md
+  - history/ (gearchiveerde analyseversies)
   - notes/ (historische stap-notities)
   - requests/ (AI/ops request payloads)
 - journal/
@@ -32,8 +33,6 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
   - standalone package voor distributie naar PyPI
 - lumina_agents/
   - agent-specifieke code
-- lumina_mutations/
-  - mutation workflows/assets
 - lumina_vector_db/
   - lokale vector database files
 - scripts/

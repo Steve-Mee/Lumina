@@ -97,10 +97,20 @@ Lumina is een trading-platform voor futures (focus op MES/NQ-achtige instrumente
 | DI-container init is zwaar en side-effect-rich | Moeilijker om stukgewijs te testen en componenten te hergebruiken | Introduceer lifecycle-fases: buil d, wire, start; maak elke fase idempotent | Medium |
 | Operations/Runtime paden overlappen (runtime_workers, trade_workers, operations_service) | Grote kans op divergent gedrag tussen paden | Kies 1 canoniek orderuitvoeringspad en laat andere paden alleen adapters zijn | Critical |
 
+### Opvolgingsstatus Expert 1 (2026-04-10)
+
+**Status: alle openstaande punten van Expert 1 zijn afgehandeld.**
+
+- ✅ Te veel verantwoordelijkheid in `lumina_engine.py`: afgehandeld via Fase 3 (subsystem-lifecycle opgeschoond en container-ownership expliciet gemaakt).
+- ✅ Mixed naming/conventies: afgehandeld via Fase 5 (snake_case canoniek gemaakt + compat-shims).
+- ✅ Ongelijke config-resolutie: afgehandeld via Fase 2 (centrale `ConfigLoader` + startup-validatie/report).
+- ✅ DI-container init side-effect-rich: afgehandeld via Fase 4 (scheiding build/wire/start met testbare lifecycle).
+- ✅ Overlappende operations/runtime paden: afgehandeld via Fase 1 (canoniek orderpad + regressietests).
+
 ### Wat moet verwijderd worden
-- lumina_mutations/ (lege map): verwijderen of vullen; leegte creëert verwarring.
-- legacy_runtime.py: vrijwel enkel logger-init, geen duidelijke functionele waarde.
-- Oude analysebestanden in root (lumina_analyse_1.md, lumina_analyse_2.md, lumina_analyse_v50.md, lumina_analyse_v51.md, lumina_analyse_v52.md): archiveren naar docs/history om root schoon te houden.
+- ✅ Uitgevoerd (2026-04-10): `lumina_mutations/` verwijderd (lege placeholdermap).
+- ✅ Uitgevoerd (2026-04-10): `lumina_core/engine/legacy_runtime.py` verwijderd (geen functionele runtime-waarde).
+- ✅ Uitgevoerd (2026-04-10): oude analysebestanden verplaatst van root naar `docs/history/`.
 
 ### Scores (op 10)
 | Segment | Score |
