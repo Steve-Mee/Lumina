@@ -316,6 +316,10 @@ class NewsAgent:
         high_impact = False
         high_impact_events: list[str] = []
         summary = "xAI unavailable; fallback neutral sentiment"
+        fallback_level = 0
+        fallback_reason_code = "xai_live"
+
+        cache_ttl_seconds = max(interval * 5, 300)
 
         prompt = self._compose_prompt(events)
         raw_text = self._call_xai(prompt)
@@ -330,7 +334,37 @@ class NewsAgent:
                 high_impact_events = [str(item) for item in self._safe_list(parsed.get("high_impact_events")) if str(item).strip()]
                 summary = str(parsed.get("summary", "")).strip() or "xAI sentiment cycle"
             except Exception:
+                fallback_level = 1
+                fallback_reason_code = "xai_parse_failed"
                 summary = "xAI response parse failed; fallback neutral sentiment"
+        else:
+            fallback_level = 1
+            fallback_reason_code = "xai_unavailable"
+
+        if fallback_level > 0 and self._last_update_dt is not None and self._cached_result:
+            age_seconds = (now_utc - self._last_update_dt).total_seconds()
+            if age_seconds <= cache_ttl_seconds:
+                cached = dict(self._cached_result)
+                cached["last_update"] = now_utc.isoformat()
+                cached["fallback_level"] = 2
+                cached["fallback_reason_code"] = "cache_reuse_within_ttl"
+                cached["cache_age_seconds"] = round(float(age_seconds), 3)
+                self._cached_result = dict(cached)
+                self._last_update_dt = now_utc
+                return cached
+
+        if fallback_level > 0 and events:
+            high_tokens = {"fomc", "cpi", "nfp", "powell", "fed", "pce", "rate"}
+            for event in events:
+                name = str(event.get("event", "")).lower()
+                impact = str(event.get("impact", "")).lower()
+                if impact in {"3", "high"} or any(token in name for token in high_tokens):
+                    high_impact = True
+                    high_impact_events.append(str(event.get("event", "High impact event")))
+            if high_impact:
+                summary = "Fallback to schedule-derived macro risk context"
+                fallback_level = 3
+                fallback_reason_code = "schedule_heuristic"
 
         avoid, hold_until_ts, avoid_reason = self._compute_avoidance_window(events, now_utc)
         if high_impact and not avoid and high_impact_events:
@@ -358,6 +392,9 @@ class NewsAgent:
             "news_avoidance_reason": avoid_reason,
             "last_update": now_utc.isoformat(),
             "confidence": round(float(confidence), 4),
+            "fallback_level": int(fallback_level),
+            "fallback_reason_code": str(fallback_reason_code),
+            "cache_ttl_seconds": int(cache_ttl_seconds),
         }
 
         macro = self._safe_dict(getattr(app, "world_model", {}).get("macro", {})) if isinstance(getattr(app, "world_model", {}), dict) else {}

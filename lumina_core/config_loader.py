@@ -45,6 +45,20 @@ _REQUIRED_ENV_SECRETS: tuple[str, ...] = (
 _LIVE_REQUIRED_ENV: tuple[str, ...] = ("CROSSTRADE_TOKEN",)
 
 
+def _normalize_mode(value: Any, default: str) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"paper", "sim", "real"}:
+        return text
+    return default
+
+
+def _normalize_broker_backend(value: Any, default: str) -> str:
+    text = str(value or "").strip().lower()
+    if text in {"paper", "live"}:
+        return text
+    return default
+
+
 def _resolve_config_path() -> Path:
     return Path(os.getenv("LUMINA_CONFIG", "config.yaml"))
 
@@ -126,6 +140,24 @@ class ConfigLoader:
     # ------------------------------------------------------------------
 
     @classmethod
+    def _resolve_runtime_modes(cls, cfg: dict[str, Any]) -> tuple[str, str]:
+        trade_mode = _normalize_mode(
+            cfg.get("trade_mode")
+            or cfg.get("mode")
+            or os.getenv("TRADE_MODE")
+            or cls.section("launcher", "default_mode", default="paper"),
+            "paper",
+        )
+        broker_mode = _normalize_broker_backend(
+            cfg.get("broker_backend")
+            or cls.section("broker", "backend", default=None)
+            or os.getenv("BROKER_BACKEND")
+            or cls.section("launcher", "default_broker", default="paper"),
+            "paper",
+        )
+        return trade_mode, broker_mode
+
+    @classmethod
     def validate_startup(cls, *, raise_on_error: bool = True) -> bool:
         """Validate config.yaml + env vars at process startup.
 
@@ -150,7 +182,21 @@ class ConfigLoader:
                 errors.append(f"Placeholder value detected in env var {var!r}")
 
         # 2. Live-broker secrets (only when broker is live)
-        broker_mode = str(cfg.get("broker_backend", os.getenv("BROKER_BACKEND", "paper"))).lower()
+        trade_mode, broker_mode = cls._resolve_runtime_modes(cfg)
+
+        # 2a. Canonical mode/broker matrix validation.
+        # paper => broker backend must remain paper (never real routing).
+        # sim/real => backend must be live to preserve canonical execution semantics.
+        if trade_mode == "paper" and broker_mode != "paper":
+            errors.append(
+                "Invalid mode matrix: trade_mode=paper requires broker_backend=paper"
+            )
+        if trade_mode in {"sim", "real"} and broker_mode != "live":
+            errors.append(
+                f"Invalid mode matrix: trade_mode={trade_mode} requires broker_backend=live"
+            )
+
+        # 2b. Live-broker secrets when a live backend is active.
         if broker_mode == "live":
             for var in _LIVE_REQUIRED_ENV:
                 val = os.getenv(var, "")
@@ -160,7 +206,6 @@ class ConfigLoader:
                     errors.append(f"Placeholder value in live-broker env var {var!r}")
 
         # 3. Collect non-secret summary fields for the startup report
-        trade_mode = str(cfg.get("trade_mode", os.getenv("TRADE_MODE", "paper"))).lower()
         symbols = cfg.get("swarm_symbols", [])
         model_name = cls.section("inference", "primary_model", default="<unset>")
         log_level = cls.section("logging", "level", default="INFO")

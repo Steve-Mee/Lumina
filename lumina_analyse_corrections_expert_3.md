@@ -1,4 +1,4 @@
-# Lumina - Correctieplan Expert 3 (Innovatief, Functioneel Behoud)
+ja commit and# Lumina - Correctieplan Expert 3 (Innovatief, Functioneel Behoud)
 
 Datum: 2026-04-10  
 Doel: de Expert-3 zwakke punten oplossen met een vernieuwende, schaalbare aanpak zonder de kerndoelen of app-functies te wijzigen.  
@@ -207,20 +207,49 @@ Deliverable:
 
 | # | Taak | Prioriteit | Status |
 |---|---|---|---|
-| 1 | Inventaris van alle mode-afleidingen (`trade_mode`, `broker_backend`, env) | Critical | Niet gestart |
-| 2 | Ontwerp + tests voor canonical mode matrix contract | Critical | Niet gestart |
-| 3 | Startup hard-validation voor ongeldige mode/backend combinaties | Critical | Niet gestart |
-| 4 | Ontwerp + tests voor Order Gatekeeper contract | Critical | Niet gestart |
-| 5 | Routering van alle orderpaden via 1 gatekeeper | Critical | Niet gestart |
-| 6 | Ontwerp dual metrics contract (learning vs realism) | High | Niet gestart |
-| 7 | Headless summary uitbreiden met dual metrics labeling | High | Niet gestart |
-| 8 | Dashboard/runbook labels aanpassen voor metric-separatie | High | Niet gestart |
-| 9 | News fallback ladder + reason codes + TTL expiry | Medium | Niet gestart |
-| 10 | Swarm net-edge filter met kosten/slippage regime | Medium | Niet gestart |
-| 11 | Opschonen ambigue mode-claims in docs | Medium | Niet gestart |
-| 12 | Opschonen gemengde sim/realism rapportering | Medium | Niet gestart |
-| 13 | Volledige regressie + parity checks paper/sim/real | Critical | Niet gestart |
-| 14 | Eindrapport met bewijs van non-regression | Critical | Niet gestart |
+| 1 | Inventaris van alle mode-afleidingen (`trade_mode`, `broker_backend`, env) | Critical | Klaar |
+| 2 | Ontwerp + tests voor canonical mode matrix contract | Critical | Klaar |
+| 3 | Startup hard-validation voor ongeldige mode/backend combinaties | Critical | Klaar |
+| 4 | Ontwerp + tests voor Order Gatekeeper contract | Critical | Klaar |
+| 5 | Routering van alle orderpaden via 1 gatekeeper | Critical | Klaar |
+| 6 | Ontwerp dual metrics contract (learning vs realism) | High | Klaar |
+| 7 | Headless summary uitbreiden met dual metrics labeling | High | Klaar |
+| 8 | Dashboard/runbook labels aanpassen voor metric-separatie | High | Klaar |
+| 9 | News fallback ladder + reason codes + TTL expiry | Medium | Klaar |
+| 10 | Swarm net-edge filter met kosten/slippage regime | Medium | Klaar |
+| 11 | Opschonen ambigue mode-claims in docs | Medium | Klaar |
+| 12 | Opschonen gemengde sim/realism rapportering | Medium | Klaar |
+| 13 | Volledige regressie + parity checks paper/sim/real | Critical | Klaar |
+| 14 | Eindrapport met bewijs van non-regression | Critical | Klaar |
+
+---
+
+## 9. Uitvoeringsextract (2026-04-10)
+
+Gerealiseerde wijzigingen:
+
+1. Mode matrix enforcement
+- `ConfigLoader.validate_startup` valideert nu hard op combinatie:
+  - `paper` alleen met `paper` backend
+  - `sim|real` alleen met `live` backend
+
+2. Centrale order gatekeeper
+- Nieuw: `lumina_core/order_gatekeeper.py`
+- `trade_workers.check_pre_trade_risk` en `OperationsService.place_order` lopen via dezelfde gate.
+
+3. Dual simulation metrics
+- `HeadlessRuntime` rapporteert zowel `metrics_learning` als `metrics_realism`.
+- Top-level output blijft backward compatible met bestaande SIM-learning workflow.
+
+4. News fallback ladder
+- Toegevoegd: fallback niveaus, reason-codes, cache TTL recency gedrag.
+
+5. Swarm net-edge filter
+- Arbitrage-signalen vereisen nu positieve netto-edge na kostenmodel.
+
+Testbewijs:
+- Gerichte regressie: `77 passed`
+- Volledige regressie: `311 passed, 2 skipped`
 
 ---
 

@@ -224,6 +224,9 @@ class MultiSymbolSwarmManager:
 
     def detect_inter_symbol_arbitrage(self) -> list[dict[str, Any]]:
         signals: list[dict[str, Any]] = []
+        min_zscore = float(getattr(self.engine.config, "swarm_arb_min_zscore", 2.0) or 2.0)
+        cost_per_leg = float(getattr(self.engine.config, "swarm_arb_cost_per_leg", 0.15) or 0.15)
+        min_net_edge = float(getattr(self.engine.config, "swarm_arb_min_net_edge", 0.05) or 0.05)
         for a, b in itertools.combinations(self.symbols, 2):
             a_prices = list(self.nodes[a].prices_rolling)
             b_prices = list(self.nodes[b].prices_rolling)
@@ -233,7 +236,14 @@ class MultiSymbolSwarmManager:
 
             spreads = [a_prices[-usable + i] - b_prices[-usable + i] for i in range(usable)]
             z = self._zscore(spreads)
-            if abs(z) < 2.0:
+            if abs(z) < min_zscore:
+                continue
+
+            spread_std = float(np.std(np.array(spreads, dtype=float))) if spreads else 0.0
+            gross_edge = abs(float(z)) * spread_std
+            total_cost = cost_per_leg * 2.0
+            net_edge = gross_edge - total_cost
+            if net_edge < min_net_edge:
                 continue
 
             if z > 0:
@@ -241,6 +251,9 @@ class MultiSymbolSwarmManager:
                     {
                         "pair": f"{a}-{b}",
                         "zscore": round(float(z), 3),
+                        "gross_edge": round(gross_edge, 4),
+                        "net_edge": round(net_edge, 4),
+                        "estimated_cost": round(total_cost, 4),
                         "trade_a": "SELL",
                         "trade_b": "BUY",
                         "reason": "Spread above mean; expect reversion",
@@ -251,6 +264,9 @@ class MultiSymbolSwarmManager:
                     {
                         "pair": f"{a}-{b}",
                         "zscore": round(float(z), 3),
+                        "gross_edge": round(gross_edge, 4),
+                        "net_edge": round(net_edge, 4),
+                        "estimated_cost": round(total_cost, 4),
                         "trade_a": "BUY",
                         "trade_b": "SELL",
                         "reason": "Spread below mean; expect reversion",

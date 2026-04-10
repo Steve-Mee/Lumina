@@ -44,6 +44,9 @@ REQUIRED_FIELDS: dict[str, type] = {
     "evolution_proposals": int,
     "session_guard_blocks": int,
     "observability_alerts": int,
+    "metrics_learning": dict,
+    "metrics_realism": dict,
+    "metrics_primary": str,
 }
 
 
@@ -174,6 +177,9 @@ class TestHeadlessRuntime:
         assert summary["risk_events"] == 0
         assert summary["var_breach_count"] == 0
         assert summary["evolution_proposals"] >= 32
+        assert summary["metrics_primary"] == "learning"
+        assert isinstance(summary["metrics_learning"], dict)
+        assert isinstance(summary["metrics_realism"], dict)
 
         captured = capsys.readouterr()
         assert "SIM LEARNING MODE ACTIVE" in captured.out
@@ -194,6 +200,7 @@ class TestHeadlessRuntime:
         assert summary["runtime"] == "headless"
         assert summary["schema_version"] == "1.0"
         assert summary["duration_minutes"] == pytest.approx(1.0)
+        assert summary["metrics_primary"] == "realism"
 
     def test_summary_written_to_disk(self, tmp_path, monkeypatch):
         """Summary JSON is persisted to the configured path."""

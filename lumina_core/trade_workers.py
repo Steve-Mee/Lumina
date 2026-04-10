@@ -4,6 +4,7 @@ from pathlib import Path
 
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.broker_bridge import Order, OrderResult
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate, resolve_regime_snapshot
 
 from lumina_bible.workflows import dna_rewrite_daemon as _dna_rewrite_daemon
 from lumina_bible.workflows import process_user_feedback as _process_user_feedback
@@ -11,27 +12,7 @@ from lumina_bible.workflows import reflect_on_trade as _reflect_on_trade
 
 
 def _refresh_regime_snapshot(app: RuntimeContext, regime: str | None = None) -> dict:
-    reasoning_service = getattr(app.engine, "reasoning_service", None)
-    if reasoning_service is not None and hasattr(reasoning_service, "refresh_regime_snapshot"):
-        snapshot = reasoning_service.refresh_regime_snapshot()
-        return snapshot.to_dict() if hasattr(snapshot, "to_dict") else dict(snapshot)
-
-    existing = getattr(app.engine, "current_regime_snapshot", {})
-    if isinstance(existing, dict) and existing:
-        return existing
-
-    label = str(regime or getattr(app, "market_regime", "NEUTRAL") or "NEUTRAL")
-    fallback = {
-        "label": label,
-        "risk_state": "NORMAL",
-        "adaptive_policy": {
-            "risk_multiplier": 1.0,
-            "cooldown_minutes": 30,
-            "high_risk": False,
-        },
-    }
-    app.engine.current_regime_snapshot = fallback
-    return fallback
+    return resolve_regime_snapshot(app.engine, regime)
 
 
 def health_check_market_open(app: RuntimeContext, symbol: str, regime: str) -> tuple[bool, str]:
@@ -89,36 +70,12 @@ def check_pre_trade_risk(
     Returns:
         (allowed: bool, reason: str)
     """
-    if not app.engine.risk_controller:
-        # Risk controller not initialized; fail closed
-        return False, "Risk controller not available"
-
-    # SessionGuard pre-check at submit boundary (fail-closed when enforced).
-    # Applies to both SIM and REAL: SIM executes live orders on live market data,
-    # so rollover and session windows must be respected. Only financial budget
-    # limits are waived for SIM (handled by enforce_rules=False on RiskController).
-    limits = getattr(app.engine.risk_controller, "_active_limits", None)
-    enforce_session_guard = bool(getattr(limits, "enforce_session_guard", True))
-    session_guard = getattr(app.engine, "session_guard", None)
-    if enforce_session_guard:
-        if session_guard is None:
-            return False, "Session guard unavailable (fail-closed)"
-        if session_guard.is_rollover_window():
-            return False, "Session guard blocked order: rollover window active"
-        if not session_guard.is_trading_session():
-            next_open = session_guard.next_open()
-            suffix = f" | next_open={next_open.isoformat()}" if next_open is not None else ""
-            return False, f"Session guard blocked order: outside trading session{suffix}"
-
-    snapshot = _refresh_regime_snapshot(app, regime)
-    adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
-    app.engine.risk_controller.apply_regime_override(
-        regime=str(snapshot.get("label", regime or "NEUTRAL")),
-        risk_state=str(snapshot.get("risk_state", "NORMAL")),
-        risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
-        cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
+    return enforce_pre_trade_gate(
+        app.engine,
+        symbol=symbol,
+        regime=regime,
+        proposed_risk=proposed_risk,
     )
-    return app.engine.risk_controller.check_can_trade(symbol, str(snapshot.get("label", regime)), proposed_risk)
 
 
 def submit_order_with_risk_check(

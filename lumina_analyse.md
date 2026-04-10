@@ -198,9 +198,23 @@ Totaalscore Expert Code Analyse: **7.1/10**
 | News-agent afhankelijkheid van externe provider | Bij API-storing/latency degradeert beslislaag, mogelijk te veel HOLD of stale sentiment | Voeg duidelijk fallback-regime toe met lokale heuristiek en recency-expiry | Medium |
 | Swarm-arbitrage op eenvoudige z-score zonder transactiekostmodel | Kan in live context leiden tot overtrading op schijn-signalen | Voeg execution-cost, slippage regime en minimum edge filters toe | Medium |
 
+### Opvolgingsstatus Expert 3 (2026-04-10)
+
+**Status: alles van Expert 3 is afgehandeld, technisch gevalideerd en afgerond.**
+
+- ✅ Mode-matrix afdwinging toegevoegd in startup-validatie: `paper->paper`, `sim/real->live` hard fail bij mismatch.
+- ✅ Order-gatekeeper gecentraliseerd: `trade_workers` en `operations_service` lopen nu door dezelfde pre-trade SessionGuard + HardRiskController gating.
+- ✅ Headless dual metrics geïmplementeerd: expliciete `metrics_learning` en `metrics_realism` in run-summary.
+- ✅ News fallback-ladder uitgebreid met TTL-cache hergebruik en reason-codes (`fallback_level`, `fallback_reason_code`).
+- ✅ Swarm arbitrage uitgebreid met net-edge kostenfilter (`gross_edge`, `estimated_cost`, `net_edge`).
+
+Validatie:
+- ✅ Gerichte regressie: 77 tests groen.
+- ✅ Volledige regressie: 311 passed, 2 skipped.
+
 ### Wat moet verwijderd worden
-- Impliciete/ambigue mode-claims in docs die niet 1-op-1 met runtime afdwinging overeenkomen.
-- Niet-gedifferentieerde rapportering waarin sim learning shaping en realistische PnL door elkaar staan.
+- ✅ Uitgevoerd: mode-claims nu gekoppeld aan startup mode-matrix afdwinging.
+- ✅ Uitgevoerd: reporting onderscheidt expliciet learning-shaping vs realism metrics.
 
 ### Scores (op 10)
 | Segment | Score |

@@ -17,6 +17,7 @@ import requests
 from .broker_bridge import AccountInfo, Order
 from .lumina_engine import LuminaEngine
 from .valuation_engine import ValuationEngine
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 
 logger = logging.getLogger(__name__)
 
@@ -179,54 +180,24 @@ class OperationsService:
         if trade_mode == "paper":
             return False
 
-        # ── SessionGuard (fail-closed for SIM and REAL) ──────────────────────────
-        # SIM executes live orders on live market data, so session/rollover guards
-        # apply. Only financial budget limits are waived for SIM (via enforce_rules
-        # on the RiskController, which is False for SIM and True for REAL).
-        _risk_ctrl = getattr(self.engine, "risk_controller", None)
-        _limits = getattr(_risk_ctrl, "_active_limits", None)
-        _enforce_sg = bool(getattr(_limits, "enforce_session_guard", True))
-        _session_guard = getattr(self.engine, "session_guard", None)
-        if _enforce_sg:
-            if _session_guard is None:
-                app.logger.warning("place_order blocked: SessionGuard unavailable (fail-closed)")
-                return False
-            if _session_guard.is_rollover_window():
-                app.logger.warning("place_order blocked: rollover window active")
-                return False
-            if not _session_guard.is_trading_session():
-                app.logger.warning("place_order blocked: outside trading session")
-                return False
-
-        # ── HardRiskController — apply regime override then gate ────────────────
-        # enforce_rules=False for SIM (budget limits waived), True for REAL.
-        _risk_ctrl = getattr(self.engine, "risk_controller", None)
-        if _risk_ctrl is not None:
-            _snapshot = getattr(self.engine, "current_regime_snapshot", {}) or {}
-            _adaptive = _snapshot.get("adaptive_policy", {}) if isinstance(_snapshot, dict) else {}
-            _risk_ctrl.apply_regime_override(
-                regime=str(_snapshot.get("label", "NEUTRAL")),
-                risk_state=str(_snapshot.get("risk_state", "NORMAL")),
-                risk_multiplier=float(_adaptive.get("risk_multiplier", 1.0) or 1.0),
-                cooldown_after_streak=int(_adaptive.get("cooldown_minutes", 30) or 30),
+        _dream = self.engine.get_current_dream_snapshot()
+        with self.engine.live_data_lock:
+            _price = float(
+                self.engine.live_quotes[-1]["last"]
+                if self.engine.live_quotes
+                else (self.engine.ohlc_1min["close"].iloc[-1] if len(self.engine.ohlc_1min) else 0.0)
             )
-            _dream = self.engine.get_current_dream_snapshot()
-            with self.engine.live_data_lock:
-                _price = float(
-                    self.engine.live_quotes[-1]["last"]
-                    if self.engine.live_quotes
-                    else (self.engine.ohlc_1min["close"].iloc[-1] if len(self.engine.ohlc_1min) else 0.0)
-                )
-            _stop = float(_dream.get("stop", _price * 0.99 if action.upper() == "BUY" else _price * 1.01))
-            _proposed_risk = abs(_price - _stop)
-            _risk_ok, _risk_reason = _risk_ctrl.check_can_trade(
-                self.engine.config.instrument,
-                str(_dream.get("regime", "NEUTRAL")),
-                float(_proposed_risk),
-            )
-            if not _risk_ok:
-                app.logger.warning(f"place_order blocked by HardRiskController: {_risk_reason}")
-                return False
+        _stop = float(_dream.get("stop", _price * 0.99 if action.upper() == "BUY" else _price * 1.01))
+        _proposed_risk = abs(_price - _stop)
+        _risk_ok, _risk_reason = enforce_pre_trade_gate(
+            self.engine,
+            symbol=str(self.engine.config.instrument),
+            regime=str(_dream.get("regime", "NEUTRAL")),
+            proposed_risk=float(_proposed_risk),
+        )
+        if not _risk_ok:
+            app.logger.warning(f"place_order blocked by gatekeeper: {_risk_reason}")
+            return False
 
         try:
             dream_snapshot = self.engine.get_current_dream_snapshot()

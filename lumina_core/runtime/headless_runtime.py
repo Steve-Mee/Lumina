@@ -154,6 +154,7 @@ def _run_simulation(
     ticks: list[dict[str, Any]],
     seed: int,
     mode: str = "paper",
+    apply_learning_shaping: bool | None = None,
     symbol: str = "MES",
     point_value: float = 5.0,
     commission_per_side: float = 2.55,
@@ -170,7 +171,10 @@ def _run_simulation(
     risk_events = 0
     var_events = 0
     var_limit_usd = 1200.0
-    is_sim_learning = str(mode).strip().lower() == "sim"
+    if apply_learning_shaping is None:
+        is_sim_learning = str(mode).strip().lower() == "sim"
+    else:
+        is_sim_learning = bool(apply_learning_shaping)
     daily_loss_cap = -1_000_000.0 if is_sim_learning else -1000.0
 
     position = 0
@@ -480,7 +484,21 @@ class HeadlessRuntime:
 
         # --- Core simulation ----------------------------------------------------
         ticks = _generate_synthetic_ticks(n=n_ticks, seed=seed)
-        sim = _run_simulation(ticks, seed=seed, mode=mode)
+        sim_learning = _run_simulation(
+            ticks,
+            seed=seed,
+            mode=mode,
+            apply_learning_shaping=(mode_normalized == "sim"),
+        )
+        sim_realism = _run_simulation(
+            ticks,
+            seed=seed,
+            mode=mode,
+            apply_learning_shaping=False,
+        )
+
+        # Preserve legacy top-level behavior: SIM remains learning-profile-first.
+        sim = sim_learning if mode_normalized == "sim" else sim_realism
 
         # --- Evolution proposals ------------------------------------------------
         evolution_proposals = _count_evolution_proposals(self._container)
@@ -525,6 +543,10 @@ class HeadlessRuntime:
             "evolution_proposals": evolution_proposals,
             "session_guard_blocks": session_guard_blocks,
             "observability_alerts": observability_alerts,
+            # Expert 3: explicit split between learning-shaping and realism metrics.
+            "metrics_learning": sim_learning,
+            "metrics_realism": sim_realism,
+            "metrics_primary": "learning" if mode_normalized == "sim" else "realism",
         }
 
         should_run_stability = mode_normalized == "sim"
