@@ -79,3 +79,4 @@ state/test_runs/*.json
 config.yaml.pre_controlled_live.bak
 lumina_validation_output.log
 test_output.txt
+test_results.txt

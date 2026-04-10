@@ -40,8 +40,6 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
   - validation/ (losse validatie scripts)
 - tests/
   - actieve tests voor runtime/core
-- traderleague/
-  - traderleague integratiecomponenten
 - old/
   - lokale archiefmap, niet meer op GitHub (genegeerd via .gitignore)
 

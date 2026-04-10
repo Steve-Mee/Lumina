@@ -292,24 +292,48 @@ class DangerousConfigValidator:
     def validate(self, actual_config: dict[str, Any]) -> list[str]:
         """Check actual config against dangerous patterns. Returns list of violations."""
         violations: list[str] = []
+        security_cfg = self._extract_security_section(actual_config)
         
         # Check CORS
-        if actual_config.get("cors_allowed_origins", []) == ["*"]:
+        if security_cfg.get("cors_allowed_origins", []) == ["*"]:
             violations.append("CORS wildcard '*' found in config")
         
         # Check JWT secret
-        jwt_secret = actual_config.get("jwt_secret_key", "")
+        jwt_secret = security_cfg.get("jwt_secret_key", "")
         if jwt_secret in ("default", "secret", "12345678"):
             violations.append("Default or weak JWT secret key found in config")
         
         # Check dangerous flags
         dangerous_patterns = self.config.dangerous_configs
         for config_path, forbidden_values in dangerous_patterns.items():
-            value = self._get_nested_value(actual_config, config_path)
+            value = self._resolve_config_path(actual_config, config_path)
             if value in forbidden_values or value is True:
                 violations.append(f"Dangerous config value found: {config_path}={value}")
         
         return violations
+
+    @staticmethod
+    def _extract_security_section(config: dict[str, Any]) -> dict[str, Any]:
+        """Return security section when full config is provided; otherwise return config itself."""
+        security_section = config.get("security")
+        if isinstance(security_section, dict):
+            return security_section
+        return config
+
+    @staticmethod
+    def _resolve_config_path(config: dict[str, Any], path: str) -> Any:
+        """Resolve paths against full-config and security section to avoid namespace mismatches."""
+        candidates = [path]
+        if path.startswith("security."):
+            candidates.append(path[len("security.") :])
+        else:
+            candidates.append(f"security.{path}")
+
+        for candidate in candidates:
+            value = DangerousConfigValidator._get_nested_value(config, candidate)
+            if value is not None:
+                return value
+        return None
 
     @staticmethod
     def _get_nested_value(config: dict[str, Any], path: str) -> Any:

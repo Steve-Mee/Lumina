@@ -108,8 +108,14 @@ async def check_rate_limit(x_api_key: Optional[str] = Header(None)) -> None:
 @app.post("/webhook/trade")
 def submit_trade(
     trade: TradeSubmit,
+    _auth: dict[str, Any] = Depends(verify_api_key),
     _rate_limit: None = Depends(check_rate_limit),
 ) -> dict[str, int | str]:
+    return _ingest_trade(trade)
+
+
+def _ingest_trade(trade: TradeSubmit) -> dict[str, int | str]:
+    """Persist a trade payload. Separated to keep alias behavior identical under auth deps."""
     db = SessionLocal()
     try:
         participant = db.query(Participant).filter_by(name=trade.participant).first()
@@ -151,15 +157,21 @@ def submit_trade(
 
 
 @app.post("/trades")
-def submit_trade_alias(trade: TradeSubmit) -> dict[str, int | str]:
+def submit_trade_alias(
+    trade: TradeSubmit,
+    _auth: dict[str, Any] = Depends(verify_api_key),
+    _rate_limit: None = Depends(check_rate_limit),
+) -> dict[str, int | str]:
     # Compatibility endpoint used by dashboard/tests; same behavior as webhook.
-    return submit_trade(trade)
+    return _ingest_trade(trade)
 
 
 @app.get("/trades")
 def get_trades(
     limit: int = Query(default=100, ge=1, le=1000),
     participant: str | None = None,
+    _auth: dict[str, Any] = Depends(verify_api_key),
+    _rate_limit: None = Depends(check_rate_limit),
 ) -> list[dict[str, Any]]:
     db = SessionLocal()
     try:
@@ -262,7 +274,9 @@ def get_leaderboard() -> dict[str, list[dict[str, int | float | str]] | str]:
 
 
 @app.get("/reconciliation-status")
-def get_reconciliation_status() -> dict[str, Any]:
+def get_reconciliation_status(
+    _auth: dict[str, Any] = Depends(verify_api_key),
+) -> dict[str, Any]:
     try:
         if not os.path.exists(RECONCILIATION_STATUS_FILE):
             return {
@@ -352,7 +366,11 @@ def delete_demo_data(
 
 
 @app.post("/upload/bible")
-def upload_bible(upload: BibleUpload) -> dict[str, str]:
+def upload_bible(
+    upload: BibleUpload,
+    _auth: dict[str, Any] = Depends(verify_api_key),
+    _rate_limit: None = Depends(check_rate_limit),
+) -> dict[str, str]:
     db = SessionLocal()
     try:
         bible = db.query(CommunityBible).filter_by(trader_name=upload.trader_name).first()
@@ -378,7 +396,11 @@ def upload_bible(upload: BibleUpload) -> dict[str, str]:
 
 
 @app.post("/upload/reflection")
-def upload_reflection(upload: ReflectionUpload) -> dict[str, str]:
+def upload_reflection(
+    upload: ReflectionUpload,
+    _auth: dict[str, Any] = Depends(verify_api_key),
+    _rate_limit: None = Depends(check_rate_limit),
+) -> dict[str, str]:
     db = SessionLocal()
     try:
         bible = db.query(CommunityBible).filter_by(trader_name=upload.trader_name).first()

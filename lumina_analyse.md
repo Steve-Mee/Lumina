@@ -148,9 +148,9 @@ Totaalscore Expert Programmeur: **7.6/10**
 | UTF-16/artefact-achtige test_results.txt in root | Ruis voor tooling/reviews | Converteer naar UTF-8 of verwijder artefact uit root; genereer op vraag in artifact map | Low |
 
 ### Wat moet verwijderd worden
-- sys.path workaround in lumina_os/backend/app.py.
-- Verouderde claims in README over niet-bestaande paden (bijv. traderleague map).
-- Niet-canonieke testartefacten in root (test_results.txt/test_output.txt naar artifacts/ of CI-output).
+- ✅ Uitgevoerd (2026-04-10): `sys.path` workaround verwijderd uit `lumina_os/backend/app.py`.
+- ✅ Uitgevoerd (2026-04-10): verouderde README-claim over niet-bestaande paden verwijderd (o.a. `traderleague/`).
+- ✅ Uitgevoerd (2026-04-10): niet-canoniek root-artefact `test_results.txt` verwijderd en genegeerd via `.gitignore`.
 
 ### Scores (op 10)
 | Segment | Score |
@@ -463,11 +463,9 @@ Bij uitvoering van de topprioriteiten is een stap richting **8+ production readi
 
 Per `lumina_analyse.md` Expert 1-5 reviews, the following remain as documented future work (non-blocking):
 
-1. **Backend API authentication** — Read/write endpoints need explicit `Depends(verify_api_key)` decorators
-2. **Nested config validation** — Security config nested paths need explicit traversal validation
-3. **RL live safety envelope** — Guardrails needed for RL policy drift detection
-4. **Agent governance centralization** — Single policy enforcement layer before order submission
-5. **Stress test automation** — Automated tail-risk stress suite reporting
+1. **RL live safety envelope** — Guardrails needed for RL policy drift detection
+2. **Agent governance centralization** — Single policy enforcement layer before order submission
+3. **Stress test automation** — Automated tail-risk stress suite reporting
 
 These are listed in `lumina_analyse.md` Section 7 (Top Priorities) for future work.
 
