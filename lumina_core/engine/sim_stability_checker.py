@@ -184,6 +184,42 @@ def append_history_entry_for_summary(summary: dict[str, Any], *, source_path: st
     return {"appended": True, "day": day, "path": str(_HISTORY_PATH)}
 
 
+def sync_history_from_summaries() -> dict[str, Any]:
+    """Backfill append-only daily history rows from all available SIM summaries."""
+    summaries = _collect_sim_summaries(limit=0)
+    if not summaries:
+        return {"appended": 0, "skipped_existing": 0, "source_summary_count": 0, "days_considered": 0}
+
+    existing_days = {str(r.get("day", "")).strip() for r in _load_history_rows()}
+    # Keep the latest summary per day as that day's canonical snapshot.
+    latest_by_day: dict[str, SimSummaryItem] = {}
+    for item in summaries:
+        day = item.timestamp.date().isoformat()
+        prev = latest_by_day.get(day)
+        if prev is None or item.timestamp > prev.timestamp:
+            latest_by_day[day] = item
+
+    appended = 0
+    skipped_existing = 0
+    for day in sorted(latest_by_day.keys()):
+        if day in existing_days:
+            skipped_existing += 1
+            continue
+        item = latest_by_day[day]
+        result = append_history_entry_for_summary(item.summary, source_path=item.path)
+        if bool(result.get("appended", False)):
+            appended += 1
+            existing_days.add(day)
+
+    return {
+        "appended": appended,
+        "skipped_existing": skipped_existing,
+        "source_summary_count": len(summaries),
+        "days_considered": len(latest_by_day),
+        "history_path": str(_HISTORY_PATH),
+    }
+
+
 def append_history_entry_for_latest_summary() -> dict[str, Any]:
     summaries = _collect_sim_summaries(limit=0)
     if not summaries:
@@ -204,73 +240,38 @@ def _daily_expectancy_from_history(history_rows: list[dict[str, Any]]) -> dict[s
     return by_day
 
 
-def _aggregate_daily_expectancy(sim_summaries: list[SimSummaryItem], evolution_rows: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
-    buckets: dict[str, dict[str, float]] = {}
-
-    for item in sim_summaries:
-        summary = item.summary
-        ts = item.timestamp
-        key = ts.date().isoformat()
-        slot = buckets.setdefault(key, {"pnl": 0.0, "trades": 0.0})
-        slot["pnl"] += _safe_float(summary.get("pnl_realized"))
-        slot["trades"] += float(_safe_int(summary.get("total_trades")))
-
-    for row in evolution_rows:
-        ts = _parse_ts(row.get("timestamp"))
-        if ts is None:
-            continue
-        key = ts.date().isoformat()
-        meta_raw = row.get("meta_review")
-        meta = meta_raw if isinstance(meta_raw, dict) else {}
-        slot = buckets.setdefault(key, {"pnl": 0.0, "trades": 0.0})
-        slot["pnl"] += _safe_float(meta.get("net_pnl"))
-        slot["trades"] += float(_safe_int(meta.get("trades")))
-
-    return buckets
-
-
-def _compute_positive_expectancy_streak(days: dict[str, dict[str, float]]) -> tuple[int, dict[str, float]]:
+def _compute_rolling_positive_expectancy(days: dict[str, dict[str, float]], *, window_days: int = 7) -> tuple[int, dict[str, float], list[str], str | None]:
+    """
+    Compute consecutive positive expectancy streak anchored on the latest day
+    within a rolling calendar window.
+    """
     if not days:
-        return 0, {}
-
-    ordered = sorted(days.keys(), reverse=True)
-    streak = 0
-    current_date: datetime | None = None
-    details: dict[str, float] = {}
-
-    for day in ordered:
-        day_dt = datetime.fromisoformat(day).replace(tzinfo=timezone.utc)
-        trades = days[day]["trades"]
-        expectancy = (days[day]["pnl"] / trades) if trades > 0 else 0.0
-
-        if current_date is None:
-            if expectancy <= 0:
-                break
-            streak = 1
-            details[day] = expectancy
-            current_date = day_dt
-            continue
-
-        if (current_date - day_dt).days != 1 or expectancy <= 0:
-            break
-
-        streak += 1
-        details[day] = expectancy
-        current_date = day_dt
-
-    return streak, details
-
-
-def _rolling_missing_days(days: dict[str, dict[str, float]], *, window_days: int = 7) -> list[str]:
-    if not days:
-        return []
+        return 0, {}, [], None
 
     latest_day = max(days.keys())
     latest_dt = datetime.fromisoformat(latest_day).replace(tzinfo=timezone.utc)
-    wanted = {(latest_dt - timedelta(days=offset)).date().isoformat() for offset in range(window_days)}
+    window: list[str] = [
+        (latest_dt - timedelta(days=offset)).date().isoformat()
+        for offset in range(window_days - 1, -1, -1)
+    ]
+
     present = set(days.keys())
-    missing = sorted(wanted - present)
-    return missing
+    missing = sorted([day for day in window if day not in present])
+
+    streak = 0
+    details: dict[str, float] = {}
+    for day in reversed(window):
+        slot = days.get(day)
+        if slot is None:
+            break
+        trades = slot["trades"]
+        expectancy = (slot["pnl"] / trades) if trades > 0 else 0.0
+        if expectancy <= 0.0:
+            break
+        streak += 1
+        details[day] = expectancy
+
+    return streak, details, missing, latest_day
 
 
 def _extended_sharpe_status(sim_summaries: list[SimSummaryItem]) -> dict[str, Any]:
@@ -410,16 +411,17 @@ def _proposal_trend_status(sim_summaries: list[SimSummaryItem], evolution_rows: 
 
 
 def generate_stability_report(limit: int = 0) -> dict[str, Any]:
+    history_sync = sync_history_from_summaries()
     sim_summaries = _collect_sim_summaries(limit=limit)
     evolution_rows = _load_evolution_rows()
     history_rows = _load_history_rows()
 
     expectancy_days = _daily_expectancy_from_history(history_rows)
-    if not expectancy_days:
-        expectancy_days = _aggregate_daily_expectancy(sim_summaries=sim_summaries, evolution_rows=evolution_rows)
 
-    streak, streak_details = _compute_positive_expectancy_streak(expectancy_days)
-    missing_days = _rolling_missing_days(expectancy_days, window_days=7)
+    streak, streak_details, missing_days, latest_history_day = _compute_rolling_positive_expectancy(
+        expectancy_days,
+        window_days=7,
+    )
 
     required = 5
     expectancy_ok = streak >= required
@@ -432,6 +434,7 @@ def generate_stability_report(limit: int = 0) -> dict[str, Any]:
         "streak_days": streak,
         "rolling_window_days": 7,
         "missing_days": missing_days,
+        "latest_history_day": latest_history_day,
         "streak_expectancy": streak_details,
         "history_days": len(expectancy_days),
         "consecutive_green_days": consecutive_green_days,
@@ -468,6 +471,7 @@ def generate_stability_report(limit: int = 0) -> dict[str, Any]:
         "scanned_evolution_rows": len(evolution_rows),
         "history_path": str(_HISTORY_PATH),
         "history_row_count": len(history_rows),
+        "history_sync": history_sync,
         "missing_days_7d": missing_days,
         "consecutive_green_days": consecutive_green_days,
         "days_to_green": days_to_green,
@@ -501,6 +505,13 @@ def format_stability_report(report: dict[str, Any], *, color: bool = False) -> s
     lines.append(f"Scanned SIM summaries: {report.get('scanned_sim_summary_count', 0)}")
     lines.append(f"Scanned evolution rows: {report.get('scanned_evolution_rows', 0)}")
     lines.append(f"History rows: {report.get('history_row_count', 0)} @ {report.get('history_path', 'n/a')}")
+    history_sync = report.get("history_sync", {}) if isinstance(report.get("history_sync"), dict) else {}
+    lines.append(
+        "History sync: "
+        f"appended={int(history_sync.get('appended', 0))}, "
+        f"skipped_existing={int(history_sync.get('skipped_existing', 0))}, "
+        f"days_considered={int(history_sync.get('days_considered', 0))}"
+    )
     lines.append(f"Latest summary: {report.get('latest_summary_path', 'n/a')}")
 
     missing_days = report.get("missing_days_7d", []) if isinstance(report.get("missing_days_7d"), list) else []
@@ -515,7 +526,8 @@ def format_stability_report(report: dict[str, Any], *, color: bool = False) -> s
     lines.append(
         "- 5d positive expectancy: "
         f"{_status_token(bool(exp.get('ok', False)), color=color)} "
-        f"(streak={exp.get('streak_days', 0)}/{exp.get('required_days', 5)})"
+        f"(streak={exp.get('streak_days', 0)}/{exp.get('required_days', 5)}, "
+        f"latest_day={exp.get('latest_history_day', 'n/a')})"
     )
 
     sharpe = criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
