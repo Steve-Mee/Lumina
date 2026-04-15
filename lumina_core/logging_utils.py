@@ -3,6 +3,27 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 
+EVENT_CODES: dict[str, str] = {
+    "analysis.new_candle": "ANL-1001",
+    "analysis.fast_path": "ANL-1002",
+    "analysis.cache_hit": "ANL-1003",
+    "analysis.llm_takeover": "ANL-1004",
+    "ops.speak": "OPS-2001",
+    "ops.account_balance": "OPS-2002",
+    "ops.order_success": "OPS-2003",
+    "ops.emergency_stop": "OPS-2004",
+}
+
+
+def log_event(logger: logging.Logger, event_name: str, level: int = logging.INFO, **fields: object) -> None:
+    """Emit stable structured event logs with a canonical event code."""
+    code = EVENT_CODES.get(event_name, "GEN-0000")
+    payload_parts = [f"event={event_name}", f"code={code}"]
+    for key, value in sorted(fields.items()):
+        payload_parts.append(f"{key}={value}")
+    logger.log(level, ",".join(payload_parts))
+
+
 def build_logger(name: str, log_level: str = "INFO", file_path: str = "logs/lumina_full_log.csv") -> logging.Logger:
     """Create a non-propagating rotating logger used by runtime daemons."""
     logger = logging.getLogger(name)

@@ -1,0 +1,35 @@
+{
+  "schema": "regime_oos_results_v1",
+  "source": "validator_reports",
+  "generated_at": "2026-04-15T18:00:33.689935+00:00",
+  "regimes": {
+    "TRENDING": {
+      "trades": 61,
+      "sharpe": 1.4595,
+      "winrate": 0.6077,
+      "maxdd": 6.37,
+      "avg_pnl": 1627.0833
+    },
+    "RANGING": {
+      "trades": 58,
+      "sharpe": 1.2788,
+      "winrate": 0.5723,
+      "maxdd": 7.04,
+      "avg_pnl": 1331.25
+    },
+    "HIGH_VOLATILITY": {
+      "trades": 44,
+      "sharpe": 1.0425,
+      "winrate": 0.531,
+      "maxdd": 9.05,
+      "avg_pnl": 1183.3333
+    },
+    "ROLLOVER": {
+      "trades": 29,
+      "sharpe": 0.9035,
+      "winrate": 0.5015,
+      "maxdd": 10.05,
+      "avg_pnl": 1035.4167
+    }
+  }
+}

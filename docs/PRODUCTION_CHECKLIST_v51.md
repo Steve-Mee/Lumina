@@ -81,7 +81,13 @@ Implemented and green:
 - Portfolio VaR allocator implemented (historical + parametric) with correlation-aware portfolio guard.
 - `max_open_risk_per_instrument` and `max_total_open_risk` enforced.
 - VaR telemetry + breach alert integrated in observability.
+- Scenario-based VaR method (`method=scenario`) available for stress-gate validation.
 - Holiday/rollover + correlated MES/NQ spike chaos tests passing.
+- Regime validation pack writes gate diagnostics to `state/validation/regime_scorecard.json` including:
+	- `gate_checks`
+	- `gate_thresholds`
+	- `gate_fail_reasons`
+	- `promotion_advice`
 
 Enforcement contract:
 - Risk enforcement is applied in `check_can_trade(...)` (this is the active pre-submit gate when live rules are enabled).
@@ -96,6 +102,17 @@ Evidence:
 
 Recommended pre-prod hardening:
 - Run one end-to-end webhook test in staging (Slack/Discord/Telegram target) with alert dedupe verification.
+- Regenerate fill calibration from latest reconciliation telemetry and verify low-sample warnings are resolved:
+
+```powershell
+python scripts/validation/build_fill_calibration.py
+```
+
+- Validate shadow rollout evidence before any autonomous promotion:
+
+```powershell
+python scripts/validation/build_shadow_rollout_report.py
+```
 
 ## 5) Evolution UI Tested
 

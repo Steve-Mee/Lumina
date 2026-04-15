@@ -15,10 +15,12 @@ import pandas as pd
 import requests
 
 from .broker_bridge import AccountInfo, Order
+from .errors import BrokerBridgeError, format_error_code
 from .lumina_engine import LuminaEngine
 from .valuation_engine import ValuationEngine
 from .agent_contracts import apply_agent_policy_gateway
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+from lumina_core.logging_utils import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,7 @@ class OperationsService:
     def __post_init__(self) -> None:
         if self.engine is None:
             raise ValueError("OperationsService requires a LuminaEngine")
+        self.valuation_engine.load_calibration_file("state/validation/fill_calibration.json")
 
     def _app(self):
         if self.engine.app is None:
@@ -44,7 +47,7 @@ class OperationsService:
     def _broker(self):
         broker = getattr(self.container, "broker", None)
         if broker is None:
-            raise RuntimeError("BrokerBridge is not configured on the container")
+            raise BrokerBridgeError("BrokerBridge is not configured on the container")
         return broker
 
     def thought_logger_thread(self) -> None:
@@ -143,7 +146,7 @@ class OperationsService:
             return
         try:
             clean_text = text.replace("...", ". ").replace(" – ", ", ")
-            print(f"🔊 SPEAKING: {clean_text[:140]}...")
+            log_event(app.logger, "ops.speak", preview=clean_text[:140])
             app.tts_engine.say(clean_text)
             app.tts_engine.runAndWait()
         except Exception as exc:
@@ -156,13 +159,17 @@ class OperationsService:
             self.engine.account_balance = float(account.balance)
             self.engine.account_equity = float(account.equity)
             self.engine.realized_pnl_today = float(account.realized_pnl_today)
-            print(
-                f"💰 ACCOUNT [{self.engine.config.trade_mode.upper()}] -> "
-                f"Equity ${self.engine.account_equity:,.0f} | Realized PnL ${self.engine.realized_pnl_today:,.0f}"
+            log_event(
+                app.logger,
+                "ops.account_balance",
+                mode=self.engine.config.trade_mode.upper(),
+                equity=round(self.engine.account_equity, 2),
+                realized_pnl=round(self.engine.realized_pnl_today, 2),
             )
             return True
         except Exception as exc:
-            app.logger.error(f"Balance fetch error: {exc}")
+            code = format_error_code("OPS_BALANCE", exc, fallback="FETCH_FAILED")
+            app.logger.error(f"Balance fetch error [{code}]: {exc}")
         return False
 
     def place_order(self, action: str, qty: int) -> bool:
@@ -277,22 +284,27 @@ class OperationsService:
                 self.engine.live_trade_signal = action.upper()
                 self.engine.last_realized_pnl_snapshot = float(self.engine.realized_pnl_today)
 
-                print(f"✅ {trade_mode.upper()} ORDER -> {action} {qty}x @ MARKET")
-                app.logger.info(
-                    f"{trade_mode.upper()}_ORDER_SUCCESS,action={action},qty={qty},"
-                    f"expected_fill={expected_fill:.4f},est_latency_ms={est_latency_ms:.1f}"
+                log_event(
+                    app.logger,
+                    "ops.order_success",
+                    mode=trade_mode.upper(),
+                    action=str(action).upper(),
+                    qty=int(qty),
+                    expected_fill=round(expected_fill, 4),
+                    est_latency_ms=round(est_latency_ms, 1),
                 )
                 return True
             app.logger.error(f"Order failed {result.status} ({result.message})")
             return False
         except Exception as exc:
-            app.logger.error(f"Place order error: {exc}")
+            code = format_error_code("OPS_PLACE_ORDER", exc, fallback="SUBMIT_FAILED")
+            app.logger.error(f"Place order error [{code}]: {exc}")
             return False
 
     def emergency_stop(self) -> None:
         """Gracefully stop the bot with proper cleanup."""
         app = self._app()
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🛑 EMERGENCY STOP – bot wordt afgesloten")
+        log_event(app.logger, "ops.emergency_stop", ts=datetime.now().strftime("%H:%M:%S"))
         try:
             live_chart_window = getattr(app, "live_chart_window", None)
             if live_chart_window is not None:
@@ -310,8 +322,20 @@ class OperationsService:
         os.kill(os.getpid(), signal.SIGTERM)
 
     def is_market_open(self) -> bool:
-        now = datetime.now()
-        return 13 <= now.hour <= 21
+        session_guard = getattr(self.engine, "session_guard", None)
+        if session_guard is None:
+            self._app().logger.warning(
+                "OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_UNAVAILABLE"
+            )
+            return False
+        try:
+            return bool(session_guard.is_trading_session())
+        except Exception as exc:
+            self._app().logger.warning(
+                "OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_ERROR,detail=%s",
+                exc,
+            )
+            return False
 
     def run_forever_loop(self) -> None:
         try:

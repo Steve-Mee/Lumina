@@ -9,7 +9,9 @@ from typing import Any, cast
 import pandas as pd
 
 from .fast_path_engine import FastPathEngine
+from .errors import format_error_code
 from .lumina_engine import LuminaEngine
+from lumina_core.logging_utils import log_event
 
 
 @dataclass(slots=True)
@@ -194,7 +196,8 @@ class HumanAnalysisService:
                     }
                 )
             except Exception as exc:
-                app.logger.error(f"Vision deep_analysis error: {exc}")
+                code = format_error_code("ANALYSIS_VISION", exc, fallback="DEEP_ANALYSIS_FAILED")
+                app.logger.error(f"Vision deep_analysis error [{code}]: {exc}")
 
         app.logger.info(
             f"DEEP_ANALYSIS_V45,signal={consensus.get('signal','HOLD')},conf={float(consensus.get('confidence', 0.0)):.2f},regime={regime},vix={world_model['macro']['vix']:.1f}"
@@ -271,7 +274,7 @@ class HumanAnalysisService:
 
                 if self.last_5min_candle is None or current_5min_ts != self.last_5min_candle:
                     self.last_5min_candle = current_5min_ts
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] 🕯️ NIEUWE 5-MIN CANDLE → lichte scan")
+                    log_event(app.logger, "analysis.new_candle", ts=datetime.now().strftime("%H:%M:%S"))
 
                     if bool(getattr(self.engine, "rl_policy_enabled", False)) and getattr(self.engine, "rl_policy_model", None) is not None:
                         try:
@@ -286,13 +289,17 @@ class HumanAnalysisService:
                                 rl_action = trainer.infer_live_action(obs)
                                 applied = self.engine.apply_rl_live_decision(rl_action, current_price=current_price, regime=regime)
                                 if applied:
-                                    print(
-                                        f"[{datetime.now().strftime('%H:%M:%S')}] 🧠 RL policy -> {rl_action.get('signal','HOLD')} "
-                                        f"(conf={float(rl_action.get('confidence', 0.0)):.2f})"
+                                    log_event(
+                                        app.logger,
+                                        "analysis.fast_path",
+                                        source="rl_policy",
+                                        signal=str(rl_action.get("signal", "HOLD")),
+                                        confidence=round(float(rl_action.get("confidence", 0.0)), 2),
                                     )
                                     continue
                         except Exception as exc:
-                            app.logger.error(f"RL live decision error: {exc}")
+                            code = format_error_code("ANALYSIS_RL", exc, fallback="LIVE_DECISION_FAILED")
+                            app.logger.error(f"RL live decision error [{code}]: {exc}")
 
                     fast_result = self.engine.fast_path.run(self.engine.ohlc_1min, current_price, regime)
                     if not fast_result["used_llm"]:
@@ -321,18 +328,22 @@ class HumanAnalysisService:
                                     "chosen_strategy": fast_result["chosen_strategy"],
                                 }
                             )
-                            print(
-                                f"[{datetime.now().strftime('%H:%M:%S')}] ⚡ FAST PATH → "
-                                f"{fast_result['signal']} ({fast_result['confidence']:.2f}) in {fast_result['latency_ms']}ms"
+                            log_event(
+                                app.logger,
+                                "analysis.fast_path",
+                                source="fast_path_engine",
+                                signal=str(fast_result["signal"]),
+                                confidence=round(float(fast_result["confidence"]), 2),
+                                latency_ms=float(fast_result["latency_ms"]),
                             )
                             continue
                     else:
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🤖 LOW CONF → Local LLM takeover")
+                        log_event(app.logger, "analysis.llm_takeover", reason="fast_path_low_confidence")
                     mtf_data = app.get_mtf_snapshots()
                     pa_summary = app.generate_price_action_summary()
 
                     if self.is_cache_valid(current_price, regime, pa_summary):
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔄 CACHE HIT – hergebruik vorige analyse (0 calls)")
+                        log_event(app.logger, "analysis.cache_hit", regime=str(regime))
                         tracker = self._cost_tracker()
                         tracker["cached_analyses"] = int(tracker.get("cached_analyses", 0)) + 1
                         with self.cache_lock:
@@ -378,5 +389,6 @@ class HumanAnalysisService:
                     )
                 time.sleep(5)
             except Exception as exc:
-                app.logger.error(f"Main loop error: {exc}")
+                code = format_error_code("ANALYSIS_LOOP", exc, fallback="MAIN_LOOP_FAILED")
+                app.logger.error(f"Main loop error [{code}]: {exc}")
                 time.sleep(10)

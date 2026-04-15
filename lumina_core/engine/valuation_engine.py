@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
+import json
+from pathlib import Path
+from typing import Any
 from typing import Mapping
 
 
@@ -38,6 +41,9 @@ class ValuationEngine:
             "NEUTRAL": 1.0,
         }
     )
+    symbol_commission_multiplier: Mapping[str, float] = field(default_factory=dict)
+    symbol_spread_multiplier: Mapping[str, float] = field(default_factory=dict)
+    fill_latency_multiplier: Mapping[str, float] = field(default_factory=dict)
 
     def _root_from_symbol(self, symbol: str) -> str:
         text = str(symbol or "").strip().upper()
@@ -57,7 +63,9 @@ class ValuationEngine:
         qty = max(0, int(quantity))
         side_count = max(1, int(sides))
         point_value = self.point_value(symbol)
-        return float(qty * side_count * self.commission_per_side_points * point_value)
+        root = self._root_from_symbol(symbol)
+        commission_mult = float(self.symbol_commission_multiplier.get(root, 1.0))
+        return float(qty * side_count * self.commission_per_side_points * point_value * max(0.1, commission_mult))
 
     def slippage_ticks(
         self,
@@ -71,7 +79,8 @@ class ValuationEngine:
         base = self.slippage_base_ticks + min(0.25, max(0.0, (2.0 - min(2.0, ratio)) * 0.125))
         regime_key = self.normalize_regime(regime)
         regime_mult = float(self.regime_slippage_multiplier.get(regime_key, 1.0))
-        return float(base * regime_mult * max(0.5, float(slippage_scale)))
+        spread_mult = float(self.symbol_spread_multiplier.get("default", 1.0))
+        return float(base * regime_mult * max(0.5, float(slippage_scale)) * max(0.5, spread_mult))
 
     def slippage_price(self, *, symbol: str, slippage_ticks: float, side: int) -> float:
         return float(slippage_ticks * self.tick_size(symbol) * int(side))
@@ -112,7 +121,8 @@ class ValuationEngine:
         regime_key = self.normalize_regime(regime)
         regime_ms = 120.0 if regime_key == "VOLATILE" else -40.0 if regime_key in {"TRENDING", "BREAKOUT"} else 0.0
         age_ms = max(0, int(pending_age)) * 80.0
-        return float(max(20.0, base_ms + regime_ms + age_ms))
+        latency_mult = float(self.fill_latency_multiplier.get(regime_key.lower(), self.fill_latency_multiplier.get("default", 1.0)))
+        return float(max(20.0, (base_ms + regime_ms + age_ms) * max(0.5, latency_mult)))
 
     def pnl_dollars(self, *, symbol: str, entry_price: float, exit_price: float, side: int, quantity: int) -> float:
         qty = max(0, int(quantity))
@@ -131,3 +141,33 @@ class ValuationEngine:
         if any(x in text for x in ("LOW_VOL", "CALM")):
             return "LOW_VOL"
         return "NEUTRAL"
+
+    def apply_calibration(self, payload: dict[str, Any]) -> None:
+        commission_map = payload.get("symbol_commission_multiplier")
+        spread_map = payload.get("symbol_spread_multiplier")
+        latency_map = payload.get("fill_latency_multiplier")
+        if isinstance(commission_map, dict):
+            self.symbol_commission_multiplier = {
+                str(k).strip().upper(): max(0.1, float(v)) for k, v in commission_map.items()
+            }
+        if isinstance(spread_map, dict):
+            self.symbol_spread_multiplier = {
+                str(k).strip().lower(): max(0.1, float(v)) for k, v in spread_map.items()
+            }
+        if isinstance(latency_map, dict):
+            self.fill_latency_multiplier = {
+                str(k).strip().lower(): max(0.5, float(v)) for k, v in latency_map.items()
+            }
+
+    def load_calibration_file(self, path: str | Path) -> bool:
+        calibration_path = Path(path)
+        if not calibration_path.exists():
+            return False
+        try:
+            payload = json.loads(calibration_path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                self.apply_calibration(payload)
+                return True
+        except Exception:
+            return False
+        return False

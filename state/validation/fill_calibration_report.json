@@ -1,0 +1,24 @@
+{
+  "status": "ok",
+  "sample_count": 881,
+  "calibration": {
+    "generated_from": "logs\\trade_fill_audit.jsonl",
+    "sample_count": 881,
+    "symbol_commission_multiplier": {
+      "MES": 1.0,
+      "MNQ": 1.0
+    },
+    "symbol_spread_multiplier": {
+      "default": 0.7
+    },
+    "fill_latency_multiplier": {
+      "default": 1.4333,
+      "volatile": 1.72
+    },
+    "medians": {
+      "slippage_points": -2.0,
+      "commission": 1.25,
+      "fill_latency_ms": 430.0
+    }
+  }
+}

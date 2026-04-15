@@ -44,6 +44,8 @@ class PortfolioVaRConfig:
     amber_total_open_risk_multiplier: float = 0.9
     red_var_limit_multiplier: float = 0.7
     red_total_open_risk_multiplier: float = 0.8
+    scenario_shocks: dict[str, float] | None = None
+    scenario_tail_percentile: float = 0.02
 
 
 class PortfolioVaRAllocator:
@@ -80,6 +82,11 @@ class PortfolioVaRAllocator:
             amber_total_open_risk_multiplier=float(raw.get("amber_total_open_risk_multiplier", 0.9) or 0.9),
             red_var_limit_multiplier=float(raw.get("red_var_limit_multiplier", 0.7) or 0.7),
             red_total_open_risk_multiplier=float(raw.get("red_total_open_risk_multiplier", 0.8) or 0.8),
+            scenario_shocks={
+                str(k).strip().lower(): float(v)
+                for k, v in dict(raw.get("scenario_shocks", {"base": 0.03, "volatile": 0.06})).items()
+            },
+            scenario_tail_percentile=float(raw.get("scenario_tail_percentile", 0.02) or 0.02),
         )
 
     def evaluate_proposed_trade(
@@ -173,7 +180,7 @@ class PortfolioVaRAllocator:
             for row, row_vals in corr.round(4).to_dict().items()
         }
         pnl_series = self._portfolio_pnl_series(exposures=exposures, returns_df=returns_df)
-        var_usd = self._calculate_var_usd(pnl_series)
+        var_usd = self._calculate_var_usd(pnl_series, exposures=exposures, returns_df=returns_df)
         breached = var_usd > effective_max_var_usd
         reason = (
             f"PORTFOLIO VAR breached ({quality_band}): {var_usd:.2f} > {effective_max_var_usd:.2f}"
@@ -269,7 +276,13 @@ class PortfolioVaRAllocator:
             return pd.Series(dtype=float)
         return pnl_df.sum(axis=1)
 
-    def _calculate_var_usd(self, pnl_series: pd.Series) -> float:
+    def _calculate_var_usd(
+        self,
+        pnl_series: pd.Series,
+        *,
+        exposures: dict[str, float],
+        returns_df: pd.DataFrame,
+    ) -> float:
         if pnl_series.empty:
             return 0.0
 
@@ -288,8 +301,31 @@ class PortfolioVaRAllocator:
             z = NormalDist().inv_cdf(confidence)
             return max(0.0, mean + (z * std))
 
+        if method == "scenario":
+            historical_var = max(0.0, float(losses.quantile(confidence)))
+            scenario_var = self._scenario_var_usd(exposures=exposures, returns_df=returns_df)
+            return max(historical_var, scenario_var)
+
         # Default method: historical VaR
         return max(0.0, float(losses.quantile(confidence)))
+
+    def _scenario_var_usd(self, *, exposures: dict[str, float], returns_df: pd.DataFrame) -> float:
+        shocks = self.config.scenario_shocks or {"base": 0.03, "volatile": 0.06}
+        base_shock = max(0.0, float(shocks.get("base", 0.03)))
+        volatile_shock = max(base_shock, float(shocks.get("volatile", 0.06)))
+        tail_p = min(0.2, max(0.001, float(self.config.scenario_tail_percentile)))
+
+        total = 0.0
+        for symbol, exposure in exposures.items():
+            series = returns_df.get(symbol)
+            if series is None or series.empty:
+                total += float(exposure) * base_shock
+                continue
+            tail_return = float(series.quantile(tail_p))
+            empirical_shock = abs(min(0.0, tail_return))
+            shock = max(base_shock, min(volatile_shock, empirical_shock * 1.5))
+            total += float(exposure) * shock
+        return max(0.0, total)
 
     def _snapshot(
         self,

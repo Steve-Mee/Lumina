@@ -13,6 +13,7 @@ from typing import Any
 import requests
 import websockets
 
+from .errors import format_error_code
 from .lumina_engine import LuminaEngine
 from .valuation_engine import ValuationEngine
 
@@ -224,7 +225,8 @@ class TradeReconciler:
             except Exception as exc:
                 if self.stop_requested:
                     break
-                app.logger.error(f"TradeReconciler websocket error: {exc}")
+                code = format_error_code("RECONCILE_WEBSOCKET", exc, fallback="LOOP_FAILED")
+                app.logger.error(f"TradeReconciler websocket error [{code}]: {exc}")
                 self._update_status(connection_state="error", status="reconnecting", last_error=str(exc))
                 sleep_for = min(self._backoff_seconds + random.uniform(0.0, 0.5), self._max_backoff_seconds)
                 app.logger.warning(f"TradeReconciler reconnect in {sleep_for:.1f}s")
@@ -302,7 +304,8 @@ class TradeReconciler:
                             if isinstance(row, dict):
                                 self.ingest_fill_event(row)
                 except Exception as exc:
-                    app.logger.error(f"TradeReconciler polling error: {exc}")
+                    code = format_error_code("RECONCILE_POLLING", exc, fallback="LOOP_FAILED")
+                    app.logger.error(f"TradeReconciler polling error [{code}]: {exc}")
                     self._update_status(connection_state="error", status="polling_error", last_error=str(exc))
             self._flush_timeouts()
             time.sleep(2.0)
@@ -507,7 +510,8 @@ class TradeReconciler:
                     reconciliation_status=status,
                 )
             except Exception as exc:
-                app.logger.error(f"TradeReconciler final publish error: {exc}")
+                code = format_error_code("RECONCILE_PUBLISH", exc, fallback="PUBLISH_FAILED")
+                app.logger.error(f"TradeReconciler final publish error [{code}]: {exc}")
 
         app.logger.info(
             "FILL_RECONCILED,"
@@ -516,6 +520,13 @@ class TradeReconciler:
             f"slippage={slippage_points:.4f},commission={commission:.2f},latency_ms={fill_latency_ms:.0f},"
             f"pnl={final_pnl:.2f}"
         )
+        obs = getattr(self.engine, "observability_service", None)
+        if obs is not None and hasattr(obs, "record_regime_performance"):
+            try:
+                regime = str((pending.reflection or {}).get("regime", "NEUTRAL"))
+                obs.record_regime_performance(regime=regime, pnl=float(final_pnl), won=float(final_pnl) > 0.0)
+            except Exception:
+                pass
         log_thought = getattr(app, "log_thought", None)
         if callable(log_thought):
             log_thought(

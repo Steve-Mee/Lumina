@@ -36,6 +36,37 @@ from .analysis_helpers import (
 
 
 @dataclass(slots=True)
+class MarketStateContext:
+    quote_count: int
+    has_current_candle: bool
+    last_candle_start_ts: float
+
+
+@dataclass(slots=True)
+class PositionStateContext:
+    sim_position_qty: int
+    live_position_qty: int
+    last_entry_price: float
+    live_trade_signal: str
+
+
+@dataclass(slots=True)
+class RiskStateContext:
+    account_equity: float
+    realized_pnl_today: float
+    open_pnl: float
+    pending_reconciliations: int
+
+
+@dataclass(slots=True)
+class AgentStateContext:
+    regime: str
+    confidence: float
+    chosen_strategy: str
+    memory_size: int
+
+
+@dataclass(slots=True)
 class LuminaEngine:
     """Main orchestrator that holds all mutable runtime subsystems."""
 
@@ -331,6 +362,7 @@ class LuminaEngine:
             "narrative_memory": list(self.narrative_memory),
             "regime_history": list(self.regime_history),
             "trade_reflection_history": list(self.trade_reflection_history),
+            "state_snapshot": self.serialize_state_snapshot(),
         }
         try:
             self.config.state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -367,6 +399,68 @@ class LuminaEngine:
         except Exception as exc:
             if self.app is not None and hasattr(self.app, "logger"):
                 self.app.logger.error(f"Load state error: {exc}")
+
+    def build_state_contexts(self) -> dict[str, Any]:
+        dream = self.get_current_dream_snapshot()
+        market = MarketStateContext(
+            quote_count=int(len(self.live_quotes) if self.live_quotes is not None else 0),
+            has_current_candle=bool(self.current_candle),
+            last_candle_start_ts=float(self.candle_start_ts or 0.0),
+        )
+        position = PositionStateContext(
+            sim_position_qty=int(self.sim_position_qty),
+            live_position_qty=int(self.live_position_qty),
+            last_entry_price=float(self.last_entry_price),
+            live_trade_signal=str(self.live_trade_signal),
+        )
+        risk = RiskStateContext(
+            account_equity=float(self.account_equity),
+            realized_pnl_today=float(self.realized_pnl_today),
+            open_pnl=float(self.open_pnl),
+            pending_reconciliations=int(len(self.pending_trade_reconciliations)),
+        )
+        agent = AgentStateContext(
+            regime=str(dream.get("regime", "NEUTRAL")),
+            confidence=float(dream.get("confidence", 0.0) or 0.0),
+            chosen_strategy=str(dream.get("chosen_strategy", "unknown")),
+            memory_size=int(len(self.memory_buffer)),
+        )
+        return {
+            "market": market,
+            "position": position,
+            "risk": risk,
+            "agent": agent,
+        }
+
+    def serialize_state_snapshot(self) -> dict[str, Any]:
+        contexts = self.build_state_contexts()
+        serialized = {
+            "market": {
+                "quote_count": contexts["market"].quote_count,
+                "has_current_candle": contexts["market"].has_current_candle,
+                "last_candle_start_ts": round(contexts["market"].last_candle_start_ts, 3),
+            },
+            "position": {
+                "sim_position_qty": contexts["position"].sim_position_qty,
+                "live_position_qty": contexts["position"].live_position_qty,
+                "last_entry_price": round(contexts["position"].last_entry_price, 4),
+                "live_trade_signal": contexts["position"].live_trade_signal,
+            },
+            "risk": {
+                "account_equity": round(contexts["risk"].account_equity, 2),
+                "realized_pnl_today": round(contexts["risk"].realized_pnl_today, 2),
+                "open_pnl": round(contexts["risk"].open_pnl, 2),
+                "pending_reconciliations": contexts["risk"].pending_reconciliations,
+            },
+            "agent": {
+                "regime": contexts["agent"].regime,
+                "confidence": round(contexts["agent"].confidence, 4),
+                "chosen_strategy": contexts["agent"].chosen_strategy,
+                "memory_size": contexts["agent"].memory_size,
+            },
+        }
+        # Normalize key order to keep snapshots deterministic across runs.
+        return json.loads(json.dumps(serialized, sort_keys=True, ensure_ascii=True))
 
     def evolve_bible(self, updates: dict[str, Any]) -> None:
         assert self.bible_engine is not None

@@ -78,3 +78,75 @@ jobs:
       - name: Run safety gate
         run: |
           python -m pytest -m safety_gate -q
+
+      - name: Lint pytest marker duplicates
+        run: |
+          python scripts/validation/check_pytest_marker_duplicates.py
+
+      - name: Run trade mode contract regressions (release blocker)
+        run: |
+          python -m pytest -q \
+            tests/test_order_path_regression.py \
+            tests/test_trade_workers.py \
+            tests/test_trade_workers_gateway.py
+
+      - name: Run golden path scenario baseline
+        run: |
+          python scripts/validation/run_golden_paths.py
+
+      - name: Build metrics snapshot (N vs N-1)
+        env:
+          LUMINA_METRICS_FAIL_ON_BREACH: "true"
+          LUMINA_METRICS_THRESHOLDS: deploy/slo_thresholds.json
+        run: |
+          python scripts/validation/build_metrics_snapshot.py
+
+      - name: Build SLO report gate
+        env:
+          LUMINA_SLO_FAIL_ON_BREACH: "true"
+        run: |
+          python scripts/validation/build_slo_report.py
+
+      - name: Audit legacy compat imports
+        env:
+          LUMINA_FAIL_ON_LEGACY_IMPORTS: "true"
+        run: |
+          python scripts/validation/audit_legacy_compat_imports.py
+
+      - name: Validate release gate checklist exists
+        run: |
+          test -f docs/release-gate-checklist.md
+
+      - name: Upload golden path baseline artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-path-baseline
+          path: state/golden_path_baseline.json
+          if-no-files-found: warn
+
+      - name: Upload metrics snapshot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-metrics-snapshot
+          path: |
+            state/build_metrics_snapshot.json
+            state/build_metrics_snapshot_latest.json
+          if-no-files-found: warn
+
+      - name: Upload SLO report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slo-report
+          path: state/slo_report.json
+          if-no-files-found: warn
+
+      - name: Upload legacy import audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legacy-import-audit
+          path: state/legacy_import_audit.json
+          if-no-files-found: warn

@@ -390,6 +390,18 @@ class TestHardRiskController:
         assert allowed is False
         assert "snapshot stale" in reason
 
+    def test_low_margin_confidence_blocks_trade_in_enforced_mode(self, controller):
+        """Low-confidence margin snapshot should fail-closed when rules are enforced."""
+        low_conf_snapshot = replace(
+            controller.state.margin_tracker.snapshot,
+            confidence=0.2,
+        )
+        controller.state.margin_tracker.snapshot = low_conf_snapshot
+
+        allowed, reason = controller.check_can_trade("MES", "TRENDING", 75.0)
+        assert allowed is False
+        assert "confidence too low" in reason
+
     @pytest.mark.safety_gate
     def test_real_mode_blocks_new_trades_in_eod_window(self):
         """REAL mode should block fresh entries in EOD no-new-trades window."""
@@ -471,6 +483,21 @@ class TestLearningMode:
         controller.set_enforce_rules(False)
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is True  # Should be allowed now
+        assert "learning" in reason.lower() or "bypassed" in reason.lower()
+
+    def test_learning_mode_does_not_fail_closed_on_low_margin_confidence(self):
+        """Learning mode keeps advisory behavior and bypasses confidence hard-block."""
+        limits = RiskLimits(enforce_session_guard=False)
+        controller = HardRiskController(limits, enforce_rules=False)
+
+        low_conf_snapshot = replace(
+            controller.state.margin_tracker.snapshot,
+            confidence=0.1,
+        )
+        controller.state.margin_tracker.snapshot = low_conf_snapshot
+
+        allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
+        assert allowed is True
         assert "learning" in reason.lower() or "bypassed" in reason.lower()
     
     def test_health_check_respects_learning_mode(self):

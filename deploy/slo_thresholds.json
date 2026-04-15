@@ -1,0 +1,5 @@
+{
+  "order_acceptance_rate_min": 0.5,
+  "inference_fallback_rate_max": 0.6,
+  "reconcile_latency_p95_ms_max": 5000.0
+}

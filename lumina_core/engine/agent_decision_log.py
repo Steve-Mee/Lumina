@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 
 @dataclass(slots=True)
@@ -37,9 +40,11 @@ class AgentDecisionLog:
         policy_version: str = "unknown-policy",
         provider_route: list[str] | None = None,
         calibration_factor: float = 1.0,
+        config_snapshot_hash: str | None = None,
     ) -> dict[str, Any]:
         ts = datetime.now(timezone.utc).isoformat()
         prompt_fingerprint = prompt_hash or self._sha256(prompt_text or json.dumps(raw_input, sort_keys=True, ensure_ascii=True))
+        config_fingerprint = str(config_snapshot_hash or self._default_config_snapshot_hash())
         prev_hash = self._last_hash()
 
         payload = {
@@ -58,10 +63,12 @@ class AgentDecisionLog:
                 "model_identifier": str(model_version),
                 "prompt_version": str(prompt_version),
                 "prompt_hash": str(prompt_fingerprint),
+                "config_snapshot_hash": config_fingerprint,
                 "policy_version": str(policy_version),
                 "provider_route": [str(item) for item in (provider_route or ["unknown-provider"])],
                 "calibration_factor": max(0.01, float(calibration_factor or 1.0)),
             },
+            "config_snapshot_hash": config_fingerprint,
             "prev_hash": prev_hash,
             "log_version": "v1",
         }
@@ -95,3 +102,17 @@ class AgentDecisionLog:
     @staticmethod
     def _sha256(value: str) -> str:
         return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+    def _default_config_snapshot_hash(self) -> str:
+        config_path = Path(os.getenv("LUMINA_CONFIG", "config.yaml"))
+        if not config_path.exists():
+            return "CONFIG_MISSING"
+        try:
+            raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            canonical = json.dumps(raw if isinstance(raw, dict) else {"raw": raw}, sort_keys=True, ensure_ascii=True)
+            return self._sha256(canonical)
+        except Exception:
+            try:
+                return self._sha256(config_path.read_text(encoding="utf-8", errors="replace"))
+            except Exception:
+                return "CONFIG_UNREADABLE"

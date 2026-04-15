@@ -203,6 +203,25 @@ Capital Preservation Monitoring (key metrics in JSON):
 - `risk_events`: must remain 0 (fail-closed if any breach)
 - `var_breach_count`: must remain 0 (daily VaR + total open check)
 
+Telemetry calibration checks (new):
+- Build fill calibration profile from real reconciliation telemetry:
+
+```powershell
+python scripts/validation/build_fill_calibration.py
+```
+
+- Verify calibration artifacts:
+  - `state/validation/fill_calibration.json`
+  - `state/validation/fill_calibration_report.json`
+
+Shadow rollout checks (new):
+
+```powershell
+python scripts/validation/build_shadow_rollout_report.py
+```
+
+- Promotion is allowed only when `state/validation/shadow_rollout_report.json` has `ready_for_promotion=true`.
+
 Alerting checks:
 - Verify webhook destination receives risk/health alerts (Slack/Discord/Telegram)
 - Verify no alert flood (dedupe/cooldown active)

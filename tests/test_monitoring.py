@@ -286,6 +286,32 @@ def test_risk_kill_switch_fires_critical_alert(obs_enabled: ObservabilityService
 
 
 @pytest.mark.chaos_metrics
+def test_model_decision_tracks_abstention_rate(obs_enabled: ObservabilityService) -> None:
+    obs_enabled.record_model_decision(agent="reasoning_consensus", abstained=True)
+    obs_enabled.record_model_decision(agent="reasoning_consensus", abstained=False)
+
+    decisions = obs_enabled.collector.get("lumina_model_decisions_total", labels={"agent": "reasoning_consensus"})
+    abstentions = obs_enabled.collector.get("lumina_model_abstentions_total", labels={"agent": "reasoning_consensus"})
+    rate = obs_enabled.collector.get("lumina_model_abstention_rate", labels={"agent": "reasoning_consensus"})
+
+    assert decisions == 2.0
+    assert abstentions == 1.0
+    assert abs(rate - 0.5) < 1e-6
+
+
+@pytest.mark.chaos_metrics
+def test_regime_performance_records_winrate_proxy(obs_enabled: ObservabilityService) -> None:
+    obs_enabled.record_regime_performance(regime="TRENDING", pnl=120.0, won=True)
+    obs_enabled.record_regime_performance(regime="TRENDING", pnl=-40.0, won=False)
+
+    winrate = obs_enabled.collector.get("lumina_regime_winrate", labels={"regime": "TRENDING"})
+    mean_pnl = obs_enabled.collector.get("lumina_regime_mean_pnl", labels={"regime": "TRENDING"})
+
+    assert 0.0 <= winrate <= 1.0
+    assert mean_pnl > 0.0
+
+
+@pytest.mark.chaos_metrics
 def test_risk_loss_threshold_fires_warning(obs_enabled: ObservabilityService) -> None:
     obs_enabled.record_risk_status(
         daily_pnl=-600.0, kill_switch=False, consecutive_losses=1

@@ -85,6 +85,22 @@ status=reconciled_fill
 - Alert op frequente timeout_snapshot events (duidt vaak op feed/subscribe issues).
 - Alert op hoge fill_latency_ms pieken t.o.v. baseline.
 
+## Kalibratie op echte brokertelemetrie
+
+Genereer periodiek (dagelijks of na release) een nieuwe calibratie op basis van auditdata:
+
+```bash
+python scripts/validation/build_fill_calibration.py
+```
+
+Verwachte output:
+- state/validation/fill_calibration.json
+- state/validation/fill_calibration_report.json
+
+Acceptatie:
+- sample_count >= 10 voor productie-promotie
+- status != low_sample_warning
+
 ## Incident handling
 
 1. Check API status endpoint en kijk naar connection_state/last_error.

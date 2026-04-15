@@ -220,3 +220,40 @@ def test_local_inference_engine_applies_regime_aware_calibration(monkeypatch, tm
     assert result["provider"] == "ollama"
     assert result["calibration_factor"] == 1.32
     assert result["harmonized_confidence"] == 0.66
+
+
+def test_local_inference_engine_grok_remote_success_path(monkeypatch, tmp_path):
+    _write_config(tmp_path, primary_provider="grok_remote", fallback_order=[])
+    monkeypatch.chdir(tmp_path)
+
+    engine = LocalInferenceEngine(context=_context())
+
+    class _Response:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"choices": [{"message": {"content": '{"signal":"BUY","confidence":0.7}'}}]}
+
+    monkeypatch.setattr("lumina_core.engine.local_inference_engine.post_xai_chat", lambda **_kwargs: _Response())
+
+    result = engine.infer("remote-ok", model_type="reasoning")
+
+    assert result["signal"] == "BUY"
+    assert result["provider"] == "grok_remote"
+    assert result["confidence"] == 0.7
+
+
+def test_local_inference_engine_grok_remote_missing_key_sets_reason(monkeypatch, tmp_path):
+    _write_config(tmp_path, primary_provider="grok_remote", fallback_order=[])
+    monkeypatch.chdir(tmp_path)
+
+    ctx = _context()
+    ctx.config = SimpleNamespace(xai_key="")
+    engine = LocalInferenceEngine(context=ctx)
+
+    result = engine.infer("remote-missing-key", model_type="reasoning")
+
+    assert result["signal"] == "HOLD"
+    assert result["reason"] == "All inference providers failed"
+    assert "XAI_KEY_MISSING" in engine.cost_tracker.get("local_inference_warning", "")

@@ -1,0 +1,152 @@
+{
+  "status": "fail",
+  "inputs": {
+    "summary_file": "state/last_run_summary.json",
+    "regime_file": "state/regime_oos_results.json",
+    "regime_source": "validator_reports",
+    "metrics": {
+      "pnl_realized": 18384.8,
+      "max_drawdown": 369.12,
+      "var_breach_count": 0
+    }
+  },
+  "validation": {
+    "method": "regime_validation_pack_v1",
+    "stress_report": {
+      "method": "deterministic_overlay_v1",
+      "scenarios": {
+        "volatility_spike": {
+          "pnl_realized": 10111.64,
+          "max_drawdown": 535.22,
+          "var_breach_count": 2
+        },
+        "liquidity_shock": {
+          "pnl_realized": 11398.58,
+          "max_drawdown": 487.24,
+          "var_breach_count": 1
+        },
+        "correlation_breakdown": {
+          "pnl_realized": 8824.7,
+          "max_drawdown": 583.21,
+          "var_breach_count": 3
+        }
+      },
+      "worst_case_drawdown": 583.21,
+      "worst_case_var_breach_count": 3,
+      "gate_checks": {
+        "var_breach_limit": false,
+        "drawdown_limit": true
+      },
+      "gate_thresholds": {
+        "var_breach_limit": 2,
+        "drawdown_limit": 738.24
+      },
+      "gate_fail_reasons": [
+        "VAR_BREACH_LIMIT_EXCEEDED(actual=3,limit=2)"
+      ],
+      "stress_ready_for_real_gate": false
+    },
+    "regime_scorecard": {
+      "required_regimes": [
+        "TRENDING",
+        "RANGING",
+        "HIGH_VOLATILITY",
+        "ROLLOVER"
+      ],
+      "scorecard": {
+        "TRENDING": {
+          "status": "pass",
+          "checks": {
+            "trades": true,
+            "winrate": true,
+            "sharpe": true,
+            "drawdown": true
+          },
+          "metrics": {
+            "trades": 61,
+            "winrate": 0.6077,
+            "sharpe": 1.4595,
+            "maxdd": 6.37
+          },
+          "thresholds": {
+            "min_trades": 20,
+            "min_winrate": 0.4,
+            "min_sharpe": 0.3,
+            "max_drawdown": 1800.0
+          }
+        },
+        "RANGING": {
+          "status": "pass",
+          "checks": {
+            "trades": true,
+            "winrate": true,
+            "sharpe": true,
+            "drawdown": true
+          },
+          "metrics": {
+            "trades": 58,
+            "winrate": 0.5723,
+            "sharpe": 1.2788,
+            "maxdd": 7.04
+          },
+          "thresholds": {
+            "min_trades": 20,
+            "min_winrate": 0.38,
+            "min_sharpe": 0.2,
+            "max_drawdown": 1700.0
+          }
+        },
+        "HIGH_VOLATILITY": {
+          "status": "pass",
+          "checks": {
+            "trades": true,
+            "winrate": true,
+            "sharpe": true,
+            "drawdown": true
+          },
+          "metrics": {
+            "trades": 44,
+            "winrate": 0.531,
+            "sharpe": 1.0425,
+            "maxdd": 9.05
+          },
+          "thresholds": {
+            "min_trades": 15,
+            "min_winrate": 0.33,
+            "min_sharpe": 0.05,
+            "max_drawdown": 2200.0
+          }
+        },
+        "ROLLOVER": {
+          "status": "pass",
+          "checks": {
+            "trades": true,
+            "winrate": true,
+            "sharpe": true,
+            "drawdown": true
+          },
+          "metrics": {
+            "trades": 29,
+            "winrate": 0.5015,
+            "sharpe": 0.9035,
+            "maxdd": 10.05
+          },
+          "thresholds": {
+            "min_trades": 10,
+            "min_winrate": 0.3,
+            "min_sharpe": -0.1,
+            "max_drawdown": 2400.0
+          }
+        }
+      },
+      "missing_regimes": [],
+      "stress_ready_for_real_gate": false,
+      "overall_pass": false,
+      "gate_failure_reasons": [
+        "VAR_BREACH_LIMIT_EXCEEDED(actual=3,limit=2)"
+      ],
+      "promotion_advice": "hold_and_retrain"
+    },
+    "ready_for_real": false
+  }
+}

@@ -11,6 +11,7 @@ from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
 from lumina_core.engine.broker_bridge import Order
 from lumina_core.engine.rl_guardrails import RLGuardrailLayer
 from lumina_core.engine.valuation_engine import ValuationEngine
+from lumina_core.order_gatekeeper import session_guard_allows_trading
 
 TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
 _RL_GUARDRAIL = RLGuardrailLayer()
@@ -648,17 +649,7 @@ def supervisor_loop(app: RuntimeContext) -> None:
                     signal = "HOLD"
 
         session_allowed = True
-        _session_guard = getattr(app.engine, "session_guard", None)
-        _risk_ctrl = getattr(app.engine, "risk_controller", None)
-        _limits = getattr(_risk_ctrl, "_active_limits", None) if _risk_ctrl is not None else None
-        if bool(getattr(_limits, "enforce_session_guard", True)):
-            if _session_guard is None:
-                session_allowed = False
-            else:
-                try:
-                    session_allowed = (not bool(_session_guard.is_rollover_window())) and bool(_session_guard.is_trading_session())
-                except Exception:
-                    session_allowed = False
+        session_allowed, _session_reason = session_guard_allows_trading(app.engine)
 
         risk_allowed = bool(signal == "HOLD")
         if signal in ["BUY", "SELL"]:

@@ -132,3 +132,38 @@ def test_portfolio_var_prefers_max_portfolio_var_usd_key() -> None:
     )
 
     assert allocator.config.max_var_usd == 321.0
+
+
+def test_portfolio_var_scenario_method_uses_stress_floor() -> None:
+    prices = [5000.0 + i * 0.1 for i in range(70)]
+    # Tail stress in final samples
+    prices[-1] = prices[-2] - 90.0
+    prices[-2] = prices[-3] - 75.0
+    swarm = _StubSwarm(
+        nodes={
+            "MES JUN26": _StubNode(market_data=_StubMarketData(_build_close_df(prices)), prices_rolling=deque(prices, maxlen=80)),
+        }
+    )
+
+    allocator = PortfolioVaRAllocator(
+        valuation_engine=ValuationEngine(),
+        swarm_manager=swarm,
+        config={
+            "method": "scenario",
+            "max_var_usd": 20.0,
+            "max_total_open_risk": 5000.0,
+            "min_points": 20,
+            "scenario_shocks": {"base": 0.03, "volatile": 0.07},
+        },
+    )
+
+    allowed, reason, snapshot = allocator.evaluate_proposed_trade(
+        symbol="MES JUN26",
+        proposed_risk=1000.0,
+        open_risk_by_symbol={"MES JUN26": 500.0},
+    )
+
+    assert allowed is False
+    assert snapshot.method == "scenario"
+    assert snapshot.var_usd >= 45.0
+    assert "PORTFOLIO VAR breached" in reason

@@ -116,12 +116,16 @@ class SelfEvolutionMetaAgent:
         stability_gate = bool(float(meta_review.get("win_rate", 0.0) or 0.0) >= 0.45)
         realism_gate = bool(float(meta_review.get("emotional_twin_accuracy", 0.0) or 0.0) >= 0.4)
         consistency_gate = bool(float(meta_review.get("regime_drift", 1.0) or 1.0) <= 0.75)
+        external_release_gates = self._external_release_gates_ok()
+        shadow_evidence = self._shadow_rollout_evidence_ok()
         gates = {
             "stability": stability_gate,
             "risk": bool(safety_ok),
             "realism": realism_gate,
             "consistency": consistency_gate,
             "backtest_green": bool(backtest_green),
+            "external_release_gates": bool(external_release_gates),
+            "shadow_evidence": bool(shadow_evidence),
             "live_promotion_eligible": bool(not self.sim_mode),
         }
 
@@ -148,6 +152,8 @@ class SelfEvolutionMetaAgent:
                 "sim_live_readiness": "not_live_eligible" if self.sim_mode else "eligible_after_gates",
                 "would_auto_apply": should_auto_apply,
                 "auto_apply_executed": bool(should_auto_apply and not self.approval_required and not dry_run),
+                "external_release_gates": bool(external_release_gates),
+                "shadow_evidence": bool(shadow_evidence),
             },
             "lifecycle": lifecycle,
         }
@@ -283,6 +289,32 @@ class SelfEvolutionMetaAgent:
             "gates": gates,
             "transitions": transitions,
         }
+
+    def _external_release_gates_ok(self) -> bool:
+        golden = Path("state/golden_path_baseline.json")
+        slo = Path("state/slo_report.json")
+        try:
+            if not golden.exists() or not slo.exists():
+                return False
+            golden_payload = json.loads(golden.read_text(encoding="utf-8"))
+            slo_payload = json.loads(slo.read_text(encoding="utf-8"))
+            return int(golden_payload.get("return_code", 1)) == 0 and str(slo_payload.get("status", "")).lower() in {
+                "ok",
+                "pass",
+                "green",
+            }
+        except Exception:
+            return False
+
+    def _shadow_rollout_evidence_ok(self) -> bool:
+        report = Path("state/validation/shadow_rollout_report.json")
+        if not report.exists():
+            return False
+        try:
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            return bool(payload.get("ready_for_promotion", False))
+        except Exception:
+            return False
 
     def _auto_fine_tuning_trigger(self, *, meta_review: dict[str, Any]) -> dict[str, Any]:
         if not self.auto_fine_tuning_enabled:

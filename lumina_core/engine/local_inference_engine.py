@@ -12,6 +12,7 @@ import ollama
 import requests
 
 from lumina_core.runtime_context import RuntimeContext
+from lumina_core.xai_client import post_xai_chat
 from .provider_normalization import ProviderNormalizationLayer
 
 _FALLBACK_LOGGER = logging.getLogger("lumina.local_inference")
@@ -223,10 +224,56 @@ class LocalInferenceEngine:
 
     def _try_remote_grok(self, messages: list) -> Optional[Dict]:
         """Fallback naar echte Grok-4 als alles faalt"""
-        if not getattr(self.context, "XAI_KEY", None):
+        xai_key = (
+            getattr(self.context, "XAI_KEY", None)
+            or getattr(self.context, "xai_key", None)
+            or getattr(getattr(self.context, "config", None), "xai_key", None)
+        )
+        if not xai_key:
+            reason = "XAI_KEY_MISSING"
+            self.cost_tracker["local_inference_warning"] = f"grok_remote unavailable: {reason}"
+            self.logger.warning(f"LOCAL_INFERENCE_PROVIDER_SKIPPED,provider=grok_remote,error_code={reason}")
             return None
-        # Je bestaande post_xai_chat logic hier (indien gewenst)
-        return None
+
+        inference_cfg = self.config.get("inference", {})
+        xai_cfg = self.config.get("xai", {})
+        payload = {
+            "model": str(xai_cfg.get("model", "grok-4.1-fast") or "grok-4.1-fast"),
+            "messages": messages,
+            "temperature": float(inference_cfg.get("temperature", 0.1) or 0.1),
+            "max_tokens": int(inference_cfg.get("max_tokens", 1200) or 1200),
+            "response_format": {"type": "json_object"},
+        }
+
+        response = post_xai_chat(
+            payload=payload,
+            xai_key=str(xai_key),
+            logger=self.logger,
+            timeout=int(xai_cfg.get("timeout", 20) or 20),
+            context="local_inference.grok_remote",
+            max_retries=int(xai_cfg.get("max_retries", 1) or 1),
+        )
+        if response is None:
+            reason = "XAI_CALL_FAILED"
+            self.cost_tracker["local_inference_warning"] = f"grok_remote failed: {reason}"
+            self.logger.warning(f"LOCAL_INFERENCE_PROVIDER_FAILED,provider=grok_remote,error_code={reason}")
+            return None
+
+        if response.status_code >= 400:
+            reason = f"XAI_HTTP_{response.status_code}"
+            self.cost_tracker["local_inference_warning"] = f"grok_remote failed: {reason}"
+            self.logger.warning(f"LOCAL_INFERENCE_PROVIDER_FAILED,provider=grok_remote,error_code={reason}")
+            return None
+
+        try:
+            body = response.json()
+            content = body["choices"][0]["message"]["content"]
+            return content if isinstance(content, str) else json.dumps(content)
+        except Exception:
+            reason = "XAI_RESPONSE_SCHEMA_INVALID"
+            self.cost_tracker["local_inference_warning"] = f"grok_remote failed: {reason}"
+            self.logger.warning(f"LOCAL_INFERENCE_PROVIDER_FAILED,provider=grok_remote,error_code={reason}")
+            return None
 
     # Compat met bestaande tests/callers
     def _infer_via_vllm(self, messages: list, model_type: str, **_kwargs: Any) -> Optional[Dict]:

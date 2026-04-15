@@ -63,9 +63,14 @@ M_WS_RECONNECTS = "lumina_websocket_reconnects_total"
 M_WS_HEARTBEAT_AGE = "lumina_websocket_last_heartbeat_age_s"
 M_MODEL_CONFIDENCE = "lumina_model_confidence"
 M_MODEL_DRIFT = "lumina_model_confidence_drift"
+M_MODEL_ABSTENTIONS = "lumina_model_abstentions_total"
+M_MODEL_DECISIONS = "lumina_model_decisions_total"
+M_MODEL_ABSTENTION_RATE = "lumina_model_abstention_rate"
 M_REGIME_CURRENT = "lumina_regime_current"
 M_REGIME_CONFIDENCE = "lumina_regime_confidence"
 M_REGIME_HIGH_RISK_OVERRIDES = "lumina_regime_high_risk_overrides_total"
+M_REGIME_WINRATE = "lumina_regime_winrate"
+M_REGIME_MEAN_PNL = "lumina_regime_mean_pnl"
 M_ALERTS_SENT = "lumina_alerts_sent_total"
 M_UPTIME = "lumina_uptime_seconds"
 M_RESTARTS = "lumina_process_restarts_total"
@@ -468,6 +473,46 @@ class ObservabilityService:
                     severity="warning",
                     data={"agent": agent, "confidence": confidence, "drift": drift},
                 )
+
+    def record_model_decision(self, *, agent: str, abstained: bool) -> None:
+        labels = {"agent": str(agent)}
+        self.collector.inc(
+            M_MODEL_DECISIONS,
+            labels=labels,
+            help_="Total model decisions per agent",
+        )
+        if bool(abstained):
+            self.collector.inc(
+                M_MODEL_ABSTENTIONS,
+                labels=labels,
+                help_="Total model abstentions per agent",
+            )
+
+        decisions = float(self.collector.get(M_MODEL_DECISIONS, labels=labels))
+        abstentions = float(self.collector.get(M_MODEL_ABSTENTIONS, labels=labels))
+        rate = abstentions / decisions if decisions > 0 else 0.0
+        self.collector.set(
+            M_MODEL_ABSTENTION_RATE,
+            rate,
+            labels=labels,
+            help_="Model abstention rate per agent",
+        )
+
+    def record_regime_performance(self, *, regime: str, pnl: float, won: bool) -> None:
+        regime_key = str(regime or "NEUTRAL").upper()
+        labels = {"regime": regime_key}
+        self.collector.observe(
+            M_REGIME_MEAN_PNL,
+            float(pnl),
+            labels=labels,
+            help_="Average realized pnl per closed trade by regime",
+        )
+        self.collector.observe(
+            M_REGIME_WINRATE,
+            1.0 if bool(won) else 0.0,
+            labels=labels,
+            help_="Winrate proxy per regime (running mean of wins)",
+        )
 
     def record_regime_state(
         self,

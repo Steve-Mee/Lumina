@@ -8,10 +8,11 @@ from typing import Any
 
 from .broker_bridge import Order, OrderResult
 from .agent_contracts import apply_agent_policy_gateway
+from .errors import BrokerBridgeError, PolicyGateError, format_error_code
 from .local_inference_engine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine
 from .regime_detector import RegimeDetector, RegimeSnapshot
-from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate, session_guard_allows_trading
 
 
 @dataclass(slots=True)
@@ -71,21 +72,8 @@ class ReasoningService:
         return bool(getattr(app, "FAST_PATH_ONLY", False))
 
     def _session_trading_allowed(self) -> tuple[bool, str]:
-        session_guard = getattr(self.engine, "session_guard", None)
-        if session_guard is None:
-            return True, "Session guard unavailable"
-
-        risk_controller = getattr(self.engine, "risk_controller", None)
-        active_limits = getattr(risk_controller, "_active_limits", None)
-        enforce_guard = bool(getattr(active_limits, "enforce_session_guard", True))
-        if not enforce_guard:
-            return True, "Session guard disabled"
-
-        if session_guard.is_rollover_window():
-            return False, "rollover window"
-        if not session_guard.is_trading_session():
-            return False, "outside trading session"
-        return True, "ok"
+        allowed, reason = session_guard_allows_trading(self.engine)
+        return bool(allowed), str(reason)
 
     def _observability_service(self):
         return getattr(self.engine, "observability_service", None)
@@ -124,12 +112,15 @@ class ReasoningService:
                 provider_route=[str(getattr(self.inference_engine, "active_provider", "unknown-provider"))],
                 calibration_factor=1.0,
             )
-        except Exception:
+        except Exception as exc:
+            app = self._app()
+            code = format_error_code("REASONING_DECISION_LOG", exc, fallback="LOG_WRITE_FAILED")
+            app.logger.debug(f"Decision log write skipped [{code}]: {exc}")
             return
 
     def submit_order(self, order: Order) -> OrderResult:
         if self.container is None or getattr(self.container, "broker", None) is None:
-            raise RuntimeError("BrokerBridge is not configured on ReasoningService")
+            raise BrokerBridgeError("BrokerBridge is not configured on ReasoningService")
 
         mode = str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower()
         dream = self.engine.get_current_dream_snapshot()
@@ -163,7 +154,7 @@ class ReasoningService:
             },
         )
         if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {"BUY", "SELL"}:
-            raise RuntimeError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
+            raise PolicyGateError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
 
         return self.container.broker.submit_order(order)
 
@@ -408,6 +399,15 @@ Wat is jouw trade-besluit?""",
             consistency,
             regime_snapshot.label,
         )
+        obs = self._observability_service()
+        if obs is not None and hasattr(obs, "record_model_decision"):
+            try:
+                obs.record_model_decision(
+                    agent="reasoning_consensus",
+                    abstained=str(consensus.get("signal", "HOLD")).upper() == "HOLD",
+                )
+            except Exception:
+                pass
         self._log_decision(
             agent_id="ReasoningService",
             raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
@@ -471,8 +471,9 @@ Voer meta-reasoning + counter-factuals uit.""",
                     model_version="grok-4.20-0309-reasoning",
                 )
                 return meta
-        except Exception as exc:
-            app.logger.error(f"Meta-reasoning error: {exc}")
+        except (json.JSONDecodeError, KeyError, TypeError, TimeoutError, RuntimeError, ValueError) as exc:
+            code = format_error_code("REASONING_META", exc, fallback="FAILED")
+            app.logger.error(f"Meta-reasoning error [{code}]: {exc}")
 
         fallback = {"meta_score": 0.6, "meta_reasoning": "Meta-reasoning niet gelukt", "counterfactuals": []}
         self._log_decision(

@@ -101,6 +101,35 @@ def test_cost_tracker_updates(engine: LuminaEngine) -> None:
     assert engine.cost_tracker["today"] > before["today"]
 
 
+def test_state_snapshot_contexts_are_structured(engine: LuminaEngine) -> None:
+    engine.live_quotes = [{"last": 5001.0}, {"last": 5002.0}]
+    engine.current_candle = {"open": 5000.0, "close": 5002.0}
+    engine.candle_start_ts = 12345.678
+    engine.sim_position_qty = 1
+    engine.live_position_qty = 2
+    engine.last_entry_price = 5000.25
+    engine.live_trade_signal = "BUY"
+    engine.account_equity = 51234.56
+    engine.realized_pnl_today = 123.45
+    engine.open_pnl = 12.3
+    engine.pending_trade_reconciliations = [{"id": "r1"}, {"id": "r2"}]
+    engine.set_current_dream_fields({"regime": "TRENDING", "confidence": 0.88, "chosen_strategy": "fast_path"})
+
+    snap = engine.serialize_state_snapshot()
+
+    assert snap["market"]["quote_count"] == 2
+    assert snap["position"]["live_trade_signal"] == "BUY"
+    assert snap["risk"]["pending_reconciliations"] == 2
+    assert snap["agent"]["regime"] == "TRENDING"
+
+
+def test_state_snapshot_serialization_is_deterministic(engine: LuminaEngine) -> None:
+    engine.set_current_dream_fields({"regime": "NEUTRAL", "confidence": 0.5, "chosen_strategy": "test"})
+    first = engine.serialize_state_snapshot()
+    second = engine.serialize_state_snapshot()
+    assert first == second
+
+
 def test_dashboard_service_formats_inference_status(engine: LuminaEngine) -> None:
     engine.cost_tracker.update(
         {

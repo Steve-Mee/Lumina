@@ -35,3 +35,6 @@ def test_agent_decision_log_appends_hash_chain(tmp_path: Path) -> None:
     assert lines[1]["prev_hash"] == lines[0]["hash"]
     assert lines[0]["hash"] == first["hash"]
     assert lines[1]["hash"] == second["hash"]
+    assert isinstance(lines[0].get("config_snapshot_hash"), str)
+    assert len(lines[0].get("config_snapshot_hash")) > 0
+    assert lines[0]["lineage"]["config_snapshot_hash"] == lines[0]["config_snapshot_hash"]

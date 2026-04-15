@@ -84,6 +84,7 @@ class RiskLimits:
     enforce_session_guard: bool = True  # fail-closed when calendar data unavailable
     eod_force_close_minutes_before_session_end: int = 30  # force-close window in REAL mode
     eod_no_new_trades_minutes_before_session_end: int = 60  # block new entries near EOD in REAL mode
+    margin_min_confidence: float = 0.6  # minimum snapshot confidence required in REAL enforced mode
     sim_mode: bool = False  # SIM=True bypasses all caps; REAL=False enforces them
     
     def validate(self) -> bool:
@@ -113,6 +114,9 @@ class RiskLimits:
             return False
         if self.eod_no_new_trades_minutes_before_session_end < 0:
             logger.error("eod_no_new_trades_minutes_before_session_end must be >= 0")
+            return False
+        if self.margin_min_confidence < 0.0 or self.margin_min_confidence > 1.0:
+            logger.error("margin_min_confidence must be within 0.0..1.0")
             return False
         return True
 
@@ -247,6 +251,7 @@ class HardRiskController:
             enforce_session_guard=self._base_limits.enforce_session_guard,
             eod_force_close_minutes_before_session_end=self._base_limits.eod_force_close_minutes_before_session_end,
             eod_no_new_trades_minutes_before_session_end=self._base_limits.eod_no_new_trades_minutes_before_session_end,
+            margin_min_confidence=self._base_limits.margin_min_confidence,
         )
         self.state.active_regime = normalized_regime
         self.state.active_risk_state = normalized_risk_state
@@ -453,6 +458,16 @@ class HardRiskController:
         
         # 6. CME Margin requirement check (capital preservation)
         if self.state.margin_tracker is not None:
+            snapshot_conf = float(self.state.margin_tracker.snapshot.confidence)
+            if snapshot_conf < float(limits.margin_min_confidence):
+                conf_reason = (
+                    "CME MARGIN snapshot confidence too low: "
+                    f"confidence={snapshot_conf:.3f} < min={float(limits.margin_min_confidence):.3f}"
+                )
+                if self.enforce_rules and (not self.limits.sim_mode):
+                    return False, conf_reason
+                logger.warning(conf_reason)
+
             if self.state.margin_tracker.is_snapshot_stale():
                 status = self.state.margin_tracker.snapshot_status()
                 stale_reason = (
@@ -606,6 +621,7 @@ class HardRiskController:
                 'enforce_session_guard': self._active_limits.enforce_session_guard,
                 'eod_force_close_minutes_before_session_end': self._active_limits.eod_force_close_minutes_before_session_end,
                 'eod_no_new_trades_minutes_before_session_end': self._active_limits.eod_no_new_trades_minutes_before_session_end,
+                'margin_min_confidence': self._active_limits.margin_min_confidence,
             },
             'portfolio_var': {
                 'value_usd': self.state.portfolio_var_usd,
@@ -707,6 +723,7 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     eod_no_new_trades_minutes_before_session_end = int(
         trading_cfg.get("eod_no_new_trades_minutes_before_session_end", 60)
     )
+    margin_min_confidence = float(risk_cfg.get("margin_min_confidence", 0.6) or 0.6)
 
     if is_sim:
         # SIM: override to unlimited
@@ -738,6 +755,8 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
             eod_force_close_minutes_before_session_end = int(real_profile["eod_force_close_minutes_before_session_end"])
         if real_profile.get("eod_no_new_trades_minutes_before_session_end") is not None:
             eod_no_new_trades_minutes_before_session_end = int(real_profile["eod_no_new_trades_minutes_before_session_end"])
+        if real_profile.get("margin_min_confidence") is not None:
+            margin_min_confidence = float(real_profile["margin_min_confidence"])
         logger.info("[MODE=REAL] RiskLimits: capital preservation caps ENFORCED")
 
     return RiskLimits(
@@ -751,5 +770,6 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
         enforce_session_guard=enforce_session_guard,
         eod_force_close_minutes_before_session_end=eod_force_close_minutes_before_session_end,
         eod_no_new_trades_minutes_before_session_end=eod_no_new_trades_minutes_before_session_end,
+        margin_min_confidence=margin_min_confidence,
         sim_mode=is_sim,
     )

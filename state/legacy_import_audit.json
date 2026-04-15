@@ -1,0 +1,33 @@
+{
+  "timestamp_utc": "2026-04-15T18:14:59.487047+00:00",
+  "summary": {
+    "lumina_core.engine.FastPathEngine": 0,
+    "lumina_core.engine.TapeReadingAgent": 0,
+    "lumina_core.engine.AdvancedBacktesterEngine": 0,
+    "lumina_core.engine.RealisticBacktesterEngine": 0
+  },
+  "deprecation_schedule": {
+    "lumina_core.engine.FastPathEngine": {
+      "tracker_id": "B2-legacy-compat",
+      "deadline_utc": "2026-06-30T00:00:00Z"
+    },
+    "lumina_core.engine.TapeReadingAgent": {
+      "tracker_id": "B2-legacy-compat",
+      "deadline_utc": "2026-06-30T00:00:00Z"
+    },
+    "lumina_core.engine.AdvancedBacktesterEngine": {
+      "tracker_id": "B2-legacy-compat",
+      "deadline_utc": "2026-06-30T00:00:00Z"
+    },
+    "lumina_core.engine.RealisticBacktesterEngine": {
+      "tracker_id": "B2-legacy-compat",
+      "deadline_utc": "2026-06-30T00:00:00Z"
+    }
+  },
+  "occurrences": {
+    "lumina_core.engine.FastPathEngine": [],
+    "lumina_core.engine.TapeReadingAgent": [],
+    "lumina_core.engine.AdvancedBacktesterEngine": [],
+    "lumina_core.engine.RealisticBacktesterEngine": []
+  }
+}
