@@ -74,6 +74,7 @@ lumina_vector_db/chroma.sqlite3
 state/metrics.db
 state/evolution_log.jsonl
 state/last_run_summary_paper_15m.json
+state/sim_stability_history.jsonl
 *_validation.log
 state/test_runs/*.json
 config.yaml.pre_controlled_live.bak
