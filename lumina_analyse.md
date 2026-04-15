@@ -200,7 +200,7 @@ Totaalscore Expert Code Analyse: **7.1/10**
 
 ### Opvolgingsstatus Expert 3 (2026-04-10)
 
-**Status: alles van Expert 3 is afgehandeld, technisch gevalideerd en afgerond.**
+**Status: alle kernpunten van Expert 3 zijn technisch afgehandeld en gevalideerd.**
 
 - ✅ Mode-matrix afdwinging toegevoegd in startup-validatie: `paper->paper`, `sim/real->live` hard fail bij mismatch.
 - ✅ Order-gatekeeper gecentraliseerd: `trade_workers` en `operations_service` lopen nu door dezelfde pre-trade SessionGuard + HardRiskController gating.
