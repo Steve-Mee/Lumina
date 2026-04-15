@@ -7,15 +7,17 @@ from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contra
 
 
 class _RiskController:
-    def __init__(self) -> None:
+    def __init__(self, *, can_trade: bool = True, reason: str = "OK") -> None:
         self._active_limits = SimpleNamespace(enforce_session_guard=False)
+        self._can_trade = bool(can_trade)
+        self._reason = str(reason)
 
     def apply_regime_override(self, **_kwargs):
         return None
 
     def check_can_trade(self, symbol: str, regime: str, proposed_risk: float):
         del symbol, regime, proposed_risk
-        return True, "OK"
+        return self._can_trade, self._reason
 
 
 class _BrokerWithMetadata:
@@ -105,3 +107,56 @@ def test_enforce_pre_trade_gate_blocks_when_broker_metadata_rejects_symbol(monke
 
     assert allowed is False
     assert "broker metadata" in reason.lower()
+
+
+def test_enforce_pre_trade_gate_sim_mode_risk_is_advisory(monkeypatch) -> None:
+    engine = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="sim"),
+        risk_controller=_RiskController(can_trade=False, reason="daily_loss_cap"),
+        session_guard=None,
+        current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
+        market_regime="NEUTRAL",
+        app=SimpleNamespace(logger=SimpleNamespace(warning=lambda *_a, **_k: None)),
+    )
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+    monkeypatch.setenv("LUMINA_ALLOW_STALE_CONTRACTS", "false")
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+    )
+
+    assert allowed is True
+    assert reason == "daily_loss_cap"
+
+
+def test_enforce_pre_trade_gate_sim_real_guard_blocks_on_risk(monkeypatch) -> None:
+    metric_calls: list[tuple[str, str]] = []
+
+    engine = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="sim_real_guard"),
+        risk_controller=_RiskController(can_trade=False, reason="daily_loss_cap"),
+        session_guard=None,
+        current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
+        market_regime="NEUTRAL",
+        observability_service=SimpleNamespace(
+            record_mode_guard_block=lambda *, mode, reason: metric_calls.append((str(mode), str(reason)))
+        ),
+    )
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+    monkeypatch.setenv("LUMINA_ALLOW_STALE_CONTRACTS", "false")
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+    )
+
+    assert allowed is False
+    assert reason == "daily_loss_cap"
+    assert metric_calls == [("sim_real_guard", "risk_daily_loss_cap")]

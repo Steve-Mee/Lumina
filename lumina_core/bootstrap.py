@@ -56,8 +56,28 @@ def publish_traderleague_trade_close(
         container.logger.warning("TraderLeague webhook skipped: missing URL or secret")
         return False
 
-    if account_mode not in {"paper", "real"}:
-        account_mode = "paper"
+    if account_mode not in {"paper", "sim", "real"}:
+        container.logger.warning(
+            "TraderLeague webhook skipped: invalid account mode '%s'",
+            account_mode,
+        )
+        return False
+
+    trade_mode = str(getattr(container.config, "trade_mode", "paper") or "paper").strip().lower()
+    expected_account_mode = {
+        "paper": "paper",
+        "sim": "sim",
+        "sim_real_guard": "sim",
+        "real": "real",
+    }.get(trade_mode, "paper")
+    if account_mode != expected_account_mode:
+        container.logger.warning(
+            "TraderLeague webhook skipped: account mode mismatch (trade_mode=%s, expected=%s, configured=%s)",
+            trade_mode,
+            expected_account_mode,
+            account_mode,
+        )
+        return False
 
     try:
         exit_ts = np.datetime64("now")

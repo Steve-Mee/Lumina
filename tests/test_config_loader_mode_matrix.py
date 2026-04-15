@@ -34,6 +34,46 @@ def test_validate_startup_accepts_real_with_live_backend(monkeypatch: pytest.Mon
     assert ConfigLoader.validate_startup(raise_on_error=True) is True
 
 
+def test_validate_startup_accepts_sim_real_guard_with_live_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("CROSSTRADE_TOKEN", "unit-test-token")
+    monkeypatch.setenv("ENABLE_SIM_REAL_GUARD", "true")
+    monkeypatch.setattr(
+        ConfigLoader,
+        "get",
+        classmethod(lambda cls: {"mode": "sim_real_guard", "broker": {"backend": "live"}}),
+    )
+
+    assert ConfigLoader.validate_startup(raise_on_error=True) is True
+
+
+def test_validate_startup_rejects_sim_real_guard_with_paper_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("ENABLE_SIM_REAL_GUARD", "true")
+    monkeypatch.setattr(
+        ConfigLoader,
+        "get",
+        classmethod(lambda cls: {"mode": "sim_real_guard", "broker": {"backend": "paper"}}),
+    )
+
+    with pytest.raises(RuntimeError, match="trade_mode=sim_real_guard requires broker_backend=live"):
+        ConfigLoader.validate_startup(raise_on_error=True)
+
+
+def test_validate_startup_rejects_sim_real_guard_when_feature_flag_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("CROSSTRADE_TOKEN", "unit-test-token")
+    monkeypatch.delenv("ENABLE_SIM_REAL_GUARD", raising=False)
+    monkeypatch.setattr(
+        ConfigLoader,
+        "get",
+        classmethod(lambda cls: {"mode": "sim_real_guard", "broker": {"backend": "live"}}),
+    )
+
+    with pytest.raises(RuntimeError, match="sim_real_guard is disabled by feature flag"):
+        ConfigLoader.validate_startup(raise_on_error=True)
+
+
 def test_validate_startup_warns_placeholder_api_key_in_sim(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     _set_required_env(monkeypatch)
     monkeypatch.setenv("CROSSTRADE_TOKEN", "unit-test-token")

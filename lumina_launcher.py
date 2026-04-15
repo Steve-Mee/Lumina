@@ -133,6 +133,25 @@ def _load_yaml_config() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _sim_real_guard_launch_flags() -> tuple[bool, bool, bool]:
+    enabled = str(os.getenv("ENABLE_SIM_REAL_GUARD", "false")).strip().lower() == "true"
+    pilot_enabled = str(os.getenv("ENABLE_SIM_REAL_GUARD_PILOT", "false")).strip().lower() == "true"
+    public_enabled = str(os.getenv("ENABLE_SIM_REAL_GUARD_PUBLIC", "false")).strip().lower() == "true"
+    return enabled, pilot_enabled, public_enabled
+
+
+def _available_launcher_trade_modes() -> list[str]:
+    enabled, pilot_enabled, public_enabled = _sim_real_guard_launch_flags()
+    modes = ["paper", "sim", "real"]
+    if enabled and (pilot_enabled or public_enabled):
+        modes.insert(2, "sim_real_guard")
+    return modes
+
+
+def _sim_real_guard_real_promotion_allowed() -> bool:
+    return str(os.getenv("ALLOW_SIM_REAL_GUARD_REAL_PROMOTION", "false")).strip().lower() == "true"
+
+
 def _runtime_command() -> list[str]:
     python_cmd = os.getenv("LUMINA_PYTHON", sys.executable)
     return [python_cmd, str(RUNTIME_ENTRY)]
@@ -539,9 +558,13 @@ def _render_sim_learning_tab() -> None:
             disabled=not go_live_enabled,
             help="Only active when READY_FOR_REAL=True and operator confirmation is ticked above",
         ):
-            _write_env_file(ENV_PATH, {"LUMINA_MODE": "real"})
-            os.environ["LUMINA_MODE"] = "real"
-            st.success("✅ Stability GREEN + confirmed. LUMINA_MODE=real written to .env. Restart launcher to activate.")
+            current_mode = str(os.getenv("LUMINA_MODE", os.getenv("TRADE_MODE", "sim"))).strip().lower()
+            if current_mode == "sim_real_guard" and not _sim_real_guard_real_promotion_allowed():
+                st.error("SIM_REAL_GUARD -> REAL promotion is blocked by default. Set ALLOW_SIM_REAL_GUARD_REAL_PROMOTION=true after the required sign-off gate passes.")
+            else:
+                _write_env_file(ENV_PATH, {"LUMINA_MODE": "real"})
+                os.environ["LUMINA_MODE"] = "real"
+                st.success("✅ Stability GREEN + confirmed. LUMINA_MODE=real written to .env. Restart launcher to activate.")
 
     if not is_green:
         st.info(f"🔒 REAL mode locked until 5 consecutive positive-expectancy days. Progress: {consecutive}/5.")
@@ -1101,8 +1124,13 @@ def _headless_main() -> None:
         duration_value = 15.0
     default_duration = f"{int(duration_value)}m" if duration_value.is_integer() else f"{duration_value}m"
 
+    sim_real_guard_enabled, _pilot_enabled, _public_enabled = _sim_real_guard_launch_flags()
+    allowed_headless_modes = ["paper", "sim", "real"]
+    if sim_real_guard_enabled:
+        allowed_headless_modes.insert(2, "sim_real_guard")
+
     raw_mode = str(headless_cfg.get("default_mode", "paper")).strip().lower()
-    default_mode = raw_mode if raw_mode in {"paper", "sim", "real"} else "paper"
+    default_mode = raw_mode if raw_mode in set(allowed_headless_modes) else "paper"
 
     raw_broker = str(headless_cfg.get("default_broker", "paper")).strip().lower()
     default_broker = raw_broker if raw_broker in {"paper", "live"} else "paper"
@@ -1119,7 +1147,7 @@ def _headless_main() -> None:
     )
     parser.add_argument(
         "--mode",
-        choices=["paper", "sim", "real"],
+        choices=allowed_headless_modes,
         default=default_mode,
         help=f"Trading mode (default: {default_mode}).",
     )
@@ -1166,7 +1194,9 @@ def _headless_main() -> None:
 
     # CLI mode override: writes runtime mode into process env for downstream
     # services that resolve mode from config/env.
-    os.environ["LUMINA_MODE"] = str(args.mode).strip().lower()
+    normalized_mode = str(args.mode).strip().lower()
+    os.environ["LUMINA_MODE"] = normalized_mode
+    os.environ["TRADE_MODE"] = normalized_mode
     os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
     os.environ["LUMINA_SIM_OVERNIGHT"] = "true" if bool(args.overnight_sim) else "false"
     os.environ["LUMINA_STABILITY_CHECK"] = "true" if bool(args.stability_check) else "false"
@@ -1230,11 +1260,12 @@ st.markdown("**Trading runtime, guided setup, hardware-aware model selection, an
 
 with st.sidebar:
     st.header("Bot Configuration")
+    trade_mode_options = _available_launcher_trade_modes()
     trade_mode = st.selectbox(
         "Trading Mode",
-        options=["paper", "sim", "real"],
+        options=trade_mode_options,
         index=0,
-        help="Paper = simulatie | Sim = demo account | Real = echt geld",
+        help="Paper = simulatie | Sim = demo account | Sim Real Guard = sim-account met real guards | Real = echt geld",
     )
     risk_profile = st.selectbox("Risk Profile", options=["Conservative", "Balanced", "Aggressive"], index=1)
     instrument = st.selectbox("Instrument", options=["MES JUN26", "MNQ JUN26", "MYM JUN26", "ES JUN26"], index=0)

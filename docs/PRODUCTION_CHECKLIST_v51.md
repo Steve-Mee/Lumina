@@ -36,6 +36,13 @@ Cutover to REAL is allowed only when all are true:
 4. Final 30m SIM validation passes immediately before cutover.
 5. SIM Stability Check PASSED (`status=GREEN`, `READY_FOR_REAL=true`).
 
+### SIM_REAL_GUARD parity evidence criteria (mandatory before REAL)
+1. `trade_mode=sim_real_guard` runs with `TRADERLEAGUE_ACCOUNT_MODE=sim` and `broker_mode=live`.
+2. `lumina_mode_guard_block_total{mode="sim_real_guard",reason=*}` is present and reasons are operationally expected.
+3. `lumina_mode_parity_drift_total{baseline="real",candidate="sim_real_guard"}` stays stable across staging sessions.
+4. `lumina_mode_eod_force_close_total{mode="sim_real_guard"}` increments only in true EOD windows.
+5. Trade reconciler status remains healthy (`pending_count` bounded, last status not stuck in error states).
+
 Mandatory command before cutover:
 
 ```powershell

@@ -74,6 +74,9 @@ M_REGIME_MEAN_PNL = "lumina_regime_mean_pnl"
 M_ALERTS_SENT = "lumina_alerts_sent_total"
 M_UPTIME = "lumina_uptime_seconds"
 M_RESTARTS = "lumina_process_restarts_total"
+M_MODE_GUARD_BLOCK_TOTAL = "lumina_mode_guard_block_total"
+M_MODE_EOD_FORCE_CLOSE_TOTAL = "lumina_mode_eod_force_close_total"
+M_MODE_PARITY_DRIFT_TOTAL = "lumina_mode_parity_drift_total"
 
 
 # ── Configuration sub-objects ──────────────────────────────────────────────────
@@ -567,6 +570,28 @@ class ObservabilityService:
         """Increment the process-restart counter (used by watchdog)."""
         self.collector.inc(
             M_RESTARTS, help_="Total supervised process restarts by watchdog"
+        )
+
+    def record_mode_guard_block(self, *, mode: str, reason: str) -> None:
+        self.collector.inc(
+            M_MODE_GUARD_BLOCK_TOTAL,
+            labels={"mode": str(mode).lower(), "reason": str(reason).lower()},
+            help_="Total pre-trade guard rejections by mode and reason",
+        )
+
+    def record_mode_eod_force_close(self, *, mode: str) -> None:
+        self.collector.inc(
+            M_MODE_EOD_FORCE_CLOSE_TOTAL,
+            labels={"mode": str(mode).lower()},
+            help_="Total EOD force-close activations by mode",
+        )
+
+    def record_mode_parity_drift(self, *, baseline: str, candidate: str, delta: float) -> None:
+        self.collector.inc(
+            M_MODE_PARITY_DRIFT_TOTAL,
+            amount=float(abs(delta)),
+            labels={"baseline": str(baseline).lower(), "candidate": str(candidate).lower()},
+            help_="Accumulated mode parity drift (absolute delta)",
         )
 
     # ── Snapshot / export ─────────────────────────────────────────────────────

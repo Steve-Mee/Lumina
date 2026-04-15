@@ -179,6 +179,8 @@ class OperationsService:
           paper  – no broker call; returns False immediately (fills tracked externally).
           sim    – live broker connection with unlimited sim funds; skips calendar/session
                    guards; HardRiskController runs in advisory mode (enforce_rules=False).
+                    sim_real_guard – live broker connection on sim-account with REAL-equivalent
+                                     session + risk enforcement for production-parity validation.
           real   – real money; full SessionGuard + HardRiskController enforcement.
         """
         app = self._app()
@@ -226,13 +228,14 @@ class OperationsService:
         )
         if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(action).upper() in {"BUY", "SELL"}:
             app.logger.warning(
-                "place_order blocked by AgentPolicyGateway: %s",
+                "place_order blocked by AgentPolicyGateway [mode=%s]: %s",
+                str(trade_mode).upper(),
                 gateway_result.get("reason"),
             )
             return False
 
         if not _risk_ok:
-            app.logger.warning(f"place_order blocked by gatekeeper: {_risk_reason}")
+            app.logger.warning(f"place_order blocked by gatekeeper [mode={str(trade_mode).upper()}]: {_risk_reason}")
             return False
 
         try:

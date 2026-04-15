@@ -15,6 +15,7 @@ import websockets
 
 from .errors import format_error_code
 from .lumina_engine import LuminaEngine
+from .mode_capabilities import resolve_mode_capabilities
 from .valuation_engine import ValuationEngine
 
 
@@ -106,7 +107,9 @@ class TradeReconciler:
         self._update_status(connection_state="stopped", status="stopped")
 
     def start(self) -> None:
-        if self.engine.config.trade_mode != "real":
+        mode = str(self.engine.config.trade_mode or "paper").strip().lower()
+        capabilities = resolve_mode_capabilities(mode)
+        if not capabilities.reconcile_fills_enabled_default:
             self._update_status(connection_state="disabled", status="skipped_non_real")
             return
         if not bool(self.engine.config.reconcile_fills):
@@ -527,6 +530,19 @@ class TradeReconciler:
                 obs.record_regime_performance(regime=regime, pnl=float(final_pnl), won=float(final_pnl) > 0.0)
             except Exception:
                 pass
+        if (
+            str(pending.mode).strip().lower() == "sim_real_guard"
+            and obs is not None
+            and hasattr(obs, "record_mode_parity_drift")
+        ):
+            try:
+                obs.record_mode_parity_drift(
+                    baseline="real",
+                    candidate="sim_real_guard",
+                    delta=float(abs(slippage_points)),
+                )
+            except Exception:
+                pass
         log_thought = getattr(app, "log_thought", None)
         if callable(log_thought):
             log_thought(
@@ -575,6 +591,10 @@ class TradeReconciler:
         audit_path = Path(self.engine.config.trade_reconciler_audit_log)
         event = dict(payload)
         event["ts"] = datetime.now(timezone.utc).isoformat()
+        mode = str(getattr(self.engine.config, "trade_mode", "paper") or "paper").strip().lower()
+        capabilities = resolve_mode_capabilities(mode)
+        event.setdefault("mode", mode)
+        event.setdefault("account_mode_hint", capabilities.account_mode_hint)
         try:
             audit_path.parent.mkdir(parents=True, exist_ok=True)
             with audit_path.open("a", encoding="utf-8") as handle:

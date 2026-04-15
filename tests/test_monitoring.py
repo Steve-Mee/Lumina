@@ -518,6 +518,47 @@ def test_regime_state_deactivates_previous_label(obs_enabled: ObservabilityServi
     )
 
 
+@pytest.mark.chaos_metrics
+def test_mode_guard_block_metric_records_mode_and_reason(obs_enabled: ObservabilityService) -> None:
+    obs_enabled.record_mode_guard_block(mode="sim_real_guard", reason="outside_trading_session")
+    obs_enabled.record_mode_guard_block(mode="sim_real_guard", reason="outside_trading_session")
+
+    assert (
+        obs_enabled.collector.get(
+            "lumina_mode_guard_block_total",
+            labels={"mode": "sim_real_guard", "reason": "outside_trading_session"},
+        )
+        == 2.0
+    )
+
+
+@pytest.mark.chaos_metrics
+def test_mode_eod_force_close_metric_records_mode(obs_enabled: ObservabilityService) -> None:
+    obs_enabled.record_mode_eod_force_close(mode="sim_real_guard")
+
+    assert (
+        obs_enabled.collector.get(
+            "lumina_mode_eod_force_close_total",
+            labels={"mode": "sim_real_guard"},
+        )
+        == 1.0
+    )
+
+
+@pytest.mark.chaos_metrics
+def test_mode_parity_drift_metric_accumulates_absolute_delta(obs_enabled: ObservabilityService) -> None:
+    obs_enabled.record_mode_parity_drift(baseline="real", candidate="sim_real_guard", delta=1.25)
+    obs_enabled.record_mode_parity_drift(baseline="real", candidate="sim_real_guard", delta=-0.75)
+
+    assert (
+        obs_enabled.collector.get(
+            "lumina_mode_parity_drift_total",
+            labels={"baseline": "real", "candidate": "sim_real_guard"},
+        )
+        == 2.0
+    )
+
+
 # ── SQLite persistence ────────────────────────────────────────────────────────
 
 

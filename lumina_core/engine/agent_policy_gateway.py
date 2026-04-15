@@ -51,7 +51,7 @@ class AgentPolicyGateway:
         approved = True
         reason_code = "accepted"
 
-        if validated.mode not in {"paper", "sim", "real"}:
+        if validated.mode not in {"paper", "sim", "sim_real_guard", "real"}:
             approved = False
             reason_code = "invalid_mode"
             normalized_signal = "HOLD"
@@ -63,11 +63,11 @@ class AgentPolicyGateway:
             approved = False
             reason_code = "hold_window_active"
             normalized_signal = "HOLD"
-        elif normalized_signal in {"BUY", "SELL"} and validated.mode in {"sim", "real"} and not validated.session_allowed:
+        elif normalized_signal in {"BUY", "SELL"} and validated.mode in {"sim", "sim_real_guard", "real"} and not validated.session_allowed:
             approved = False
             reason_code = "session_blocked"
             normalized_signal = "HOLD"
-        elif normalized_signal in {"BUY", "SELL"} and validated.mode in {"sim", "real"} and not validated.risk_allowed:
+        elif normalized_signal in {"BUY", "SELL"} and validated.mode in {"sim", "sim_real_guard", "real"} and not validated.risk_allowed:
             approved = False
             reason_code = "risk_blocked"
             normalized_signal = "HOLD"

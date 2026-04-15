@@ -183,6 +183,74 @@ def test_dashboard_service_builds_inference_provider_figure(engine: LuminaEngine
     assert len(fig.data) == 2
 
 
+def test_dashboard_service_sums_mode_metric_with_labels() -> None:
+    snapshot = {
+        "lumina_mode_guard_block_total{mode=\"sim_real_guard\",reason=\"outside_trading_session\"}": {
+            "name": "lumina_mode_guard_block_total",
+            "value": 3.0,
+            "labels": {"mode": "sim_real_guard", "reason": "outside_trading_session"},
+        },
+        "lumina_mode_guard_block_total{mode=\"sim_real_guard\",reason=\"risk_daily_loss_cap\"}": {
+            "name": "lumina_mode_guard_block_total",
+            "value": 2.0,
+            "labels": {"mode": "sim_real_guard", "reason": "risk_daily_loss_cap"},
+        },
+        "lumina_mode_guard_block_total{mode=\"real\",reason=\"outside_trading_session\"}": {
+            "name": "lumina_mode_guard_block_total",
+            "value": 9.0,
+            "labels": {"mode": "real", "reason": "outside_trading_session"},
+        },
+    }
+
+    total = DashboardService._sum_metric(
+        snapshot,
+        "lumina_mode_guard_block_total",
+        labels={"mode": "sim_real_guard"},
+    )
+
+    assert total == 5.0
+
+
+def test_dashboard_service_builds_mode_parity_panel(engine: LuminaEngine) -> None:
+    engine.config.trade_mode = "sim_real_guard"
+    engine.trade_log = [{"signal": "BUY"}] * 9
+    engine.pending_trade_reconciliations = [{"id": "r1"}, {"id": "r2"}]
+    engine.trade_reconciler_status = {"last_reconciled_trade": {"status": "reconciled_fill"}}
+    engine.observability_service = type(
+        "_Obs",
+        (),
+        {
+            "snapshot": staticmethod(
+                lambda: {
+                    "b": {
+                        "name": "lumina_mode_guard_block_total",
+                        "value": 1.0,
+                        "labels": {"mode": "sim_real_guard", "reason": "outside_trading_session"},
+                    },
+                    "p": {
+                        "name": "lumina_mode_parity_drift_total",
+                        "value": 0.55,
+                        "labels": {"baseline": "real", "candidate": "sim_real_guard"},
+                    },
+                    "e": {
+                        "name": "lumina_mode_eod_force_close_total",
+                        "value": 2.0,
+                        "labels": {"mode": "sim_real_guard"},
+                    },
+                }
+            )
+        },
+    )()
+
+    panel = DashboardService(engine=engine)._build_mode_parity_panel()
+    lines = [str(getattr(child, "children", "")) for child in panel.children]
+
+    assert "Gate reject ratio" in lines[0]
+    assert "Reconciliation delta (vs real baseline): 0.550" in lines[1]
+    assert "Force-close count (SIM_REAL_GUARD): 2" in lines[2]
+    assert "Reconciler pending: 2 | last status: reconciled_fill" in lines[3]
+
+
 @pytest.mark.parametrize(
     "profile,expected",
     [

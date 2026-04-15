@@ -6,7 +6,7 @@ import json
 from functools import lru_cache
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 import yaml
 
 
@@ -185,6 +185,15 @@ class EngineConfig(BaseModel):
             )
         ).strip().lower()
     )
+
+    @field_validator("trade_mode")
+    @classmethod
+    def _validate_trade_mode(cls, value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        allowed = {"paper", "sim", "sim_real_guard", "real"}
+        if normalized not in allowed:
+            raise ValueError("TRADE_MODE must be one of: paper, sim, sim_real_guard, real")
+        return normalized
     max_risk_percent: float = Field(default_factory=lambda: float(os.getenv("MAX_RISK_PERCENT", 1.0)))
     drawdown_kill_percent: float = Field(default_factory=lambda: float(os.getenv("DRAWDOWN_KILL_PERCENT", 8.0)))
 

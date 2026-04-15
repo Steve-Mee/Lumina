@@ -9,6 +9,7 @@ import requests
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
 from lumina_core.engine.broker_bridge import Order
+from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
 from lumina_core.engine.rl_guardrails import RLGuardrailLayer
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.order_gatekeeper import session_guard_allows_trading
@@ -73,8 +74,10 @@ def _push_trader_league_trade(
 
 
 def _enforce_real_eod_force_close(app: RuntimeContext, price: float) -> bool:
-    """Force-close broker positions during REAL-mode EOD window and hold new entries."""
-    if str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower() != "real":
+    """Force-close broker positions during EOD window for modes with real-like guard enforcement."""
+    mode = str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower()
+    capabilities = resolve_mode_capabilities(mode)
+    if not capabilities.eod_force_close_enabled:
         return False
 
     risk_ctrl = getattr(app.engine, "risk_controller", None)
@@ -85,19 +88,26 @@ def _enforce_real_eod_force_close(app: RuntimeContext, price: float) -> bool:
     if not should_close:
         return False
 
-    app.logger.warning("REAL EOD FORCE-CLOSE active: %s", reason)
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ REAL EOD FORCE-CLOSE active: {reason}")
+    obs = getattr(app.engine, "observability_service", None)
+    if obs is not None and hasattr(obs, "record_mode_eod_force_close"):
+        try:
+            obs.record_mode_eod_force_close(mode=mode)
+        except Exception:
+            pass
+
+    app.logger.warning("EOD FORCE-CLOSE active [mode=%s]: %s", mode, reason)
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ EOD FORCE-CLOSE active [{mode.upper()}]: {reason}")
 
     container = getattr(app, "container", None)
     broker = getattr(container, "broker", None) if container is not None else None
     if broker is None:
-        app.logger.error("REAL EOD FORCE-CLOSE: broker unavailable")
+        app.logger.error("EOD FORCE-CLOSE [mode=%s]: broker unavailable", mode)
         return True
 
     try:
         positions = broker.get_positions() if hasattr(broker, "get_positions") else []
     except Exception as exc:
-        app.logger.error(f"REAL EOD FORCE-CLOSE: get_positions failed: {exc}")
+        app.logger.error(f"EOD FORCE-CLOSE [mode={mode}]: get_positions failed: {exc}")
         return True
 
     flattened_any = False
@@ -116,21 +126,22 @@ def _enforce_real_eod_force_close(app: RuntimeContext, price: float) -> bool:
                     order_type="MARKET",
                     stop_loss=0.0,
                     take_profit=0.0,
-                    metadata={"reason": "eod_force_close", "mode": "real"},
+                    metadata={"reason": "eod_force_close", "mode": mode},
                 )
             )
             if bool(getattr(result, "accepted", False)):
                 flattened_any = True
-                app.logger.warning("REAL EOD FORCE-CLOSE executed: %s %s", close_side, symbol)
+                app.logger.warning("EOD FORCE-CLOSE executed [mode=%s]: %s %s", mode, close_side, symbol)
             else:
                 app.logger.error(
-                    "REAL EOD FORCE-CLOSE rejected: %s %s (%s)",
+                    "EOD FORCE-CLOSE rejected [mode=%s]: %s %s (%s)",
+                    mode,
                     close_side,
                     symbol,
                     getattr(result, "message", "unknown"),
                 )
         except Exception as exc:
-            app.logger.error(f"REAL EOD FORCE-CLOSE order error for {symbol}: {exc}")
+            app.logger.error(f"EOD FORCE-CLOSE [mode={mode}] order error for {symbol}: {exc}")
 
     if flattened_any:
         app.engine.live_position_qty = 0

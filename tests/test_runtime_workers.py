@@ -536,6 +536,59 @@ def test_supervisor_loop_real_eod_force_close_flattens_and_holds(monkeypatch):
     assert place_order_calls["count"] == 0
 
 
+def test_enforce_real_eod_force_close_applies_to_sim_real_guard():
+    flatten_orders: list[object] = []
+
+    class BrokerSpy:
+        def get_positions(self):
+            return [SimpleNamespace(symbol="MES JUN26", quantity=1)]
+
+        def submit_order(self, order):
+            flatten_orders.append(order)
+            return SimpleNamespace(accepted=True, message="ok")
+
+    app = SimpleNamespace(
+        engine=SimpleNamespace(
+            config=SimpleNamespace(trade_mode="sim_real_guard", instrument="MES JUN26"),
+            risk_controller=SimpleNamespace(should_force_close_eod=lambda: (True, "within EOD force-close window")),
+            live_position_qty=1,
+            last_entry_price=4998.0,
+            live_trade_signal="BUY",
+        ),
+        container=SimpleNamespace(broker=BrokerSpy()),
+        logger=SimpleNamespace(warning=lambda *_a, **_k: None, error=lambda *_a, **_k: None),
+    )
+
+    activated = runtime_workers._enforce_real_eod_force_close(app, 5000.0)
+
+    assert activated is True
+    assert len(flatten_orders) == 1
+    assert flatten_orders[0].metadata["mode"] == "sim_real_guard"
+
+
+def test_enforce_real_eod_force_close_skips_sim_mode():
+    calls = {"get_positions": 0}
+
+    class BrokerSpy:
+        def get_positions(self):
+            calls["get_positions"] += 1
+            return []
+
+    app = SimpleNamespace(
+        engine=SimpleNamespace(
+            config=SimpleNamespace(trade_mode="sim", instrument="MES JUN26"),
+            risk_controller=SimpleNamespace(should_force_close_eod=lambda: (True, "within EOD force-close window")),
+        ),
+        container=SimpleNamespace(broker=BrokerSpy()),
+        logger=SimpleNamespace(warning=lambda *_a, **_k: None, error=lambda *_a, **_k: None),
+    )
+
+    activated = runtime_workers._enforce_real_eod_force_close(app, 5000.0)
+
+    assert activated is False
+    assert calls["get_positions"] == 0
+
+
 def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(monkeypatch):
     class SwarmSpy:
         def __init__(self):

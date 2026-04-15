@@ -314,6 +314,61 @@ class DashboardService:
         )
         return fig
 
+    @staticmethod
+    def _sum_metric(snapshot: dict[str, Any], metric_name: str, *, labels: dict[str, str] | None = None) -> float:
+        total = 0.0
+        expected = {str(k): str(v) for k, v in (labels or {}).items()}
+        for payload in snapshot.values():
+            if not isinstance(payload, dict):
+                continue
+            if str(payload.get("name", "")) != metric_name:
+                continue
+            observed = {str(k): str(v) for k, v in dict(payload.get("labels", {}) or {}).items()}
+            if any(observed.get(key) != value for key, value in expected.items()):
+                continue
+            total += float(payload.get("value", 0.0) or 0.0)
+        return total
+
+    def _build_mode_parity_panel(self) -> html.Div:
+        mode = str(getattr(self.engine.config, "trade_mode", "paper") or "paper").strip().lower()
+        obs = getattr(self.engine, "observability_service", None)
+        snapshot = obs.snapshot() if (obs is not None and hasattr(obs, "snapshot")) else {}
+
+        guard_blocks = self._sum_metric(
+            snapshot,
+            "lumina_mode_guard_block_total",
+            labels={"mode": mode},
+        )
+        reconciled_trades = max(0, len(getattr(self.engine, "trade_log", []) or []))
+        reject_denom = guard_blocks + float(reconciled_trades)
+        reject_ratio = (guard_blocks / reject_denom) if reject_denom > 0 else 0.0
+
+        parity_delta = self._sum_metric(
+            snapshot,
+            "lumina_mode_parity_drift_total",
+            labels={"baseline": "real", "candidate": "sim_real_guard"},
+        )
+        eod_force_close_count = self._sum_metric(
+            snapshot,
+            "lumina_mode_eod_force_close_total",
+            labels={"mode": mode},
+        )
+
+        reconciler_status = dict(getattr(self.engine, "trade_reconciler_status", {}) or {})
+        pending_reconciles = len(getattr(self.engine, "pending_trade_reconciliations", []) or [])
+        last_reconciled_trade = reconciler_status.get("last_reconciled_trade", {}) if isinstance(reconciler_status, dict) else {}
+        last_reconcile_status = str(last_reconciled_trade.get("status", "n/a")) if isinstance(last_reconciled_trade, dict) else "n/a"
+
+        return html.Div(
+            [
+                html.P(f"Gate reject ratio: {reject_ratio * 100:.1f}% ({int(guard_blocks)} rejects / {int(reject_denom)} checks)", style={"marginBottom": "6px"}),
+                html.P(f"Reconciliation delta (vs real baseline): {parity_delta:.3f}", style={"marginBottom": "6px"}),
+                html.P(f"Force-close count ({mode.upper()}): {int(eod_force_close_count)}", style={"marginBottom": "6px"}),
+                html.P(f"Reconciler pending: {pending_reconciles} | last status: {last_reconcile_status}", style={"color": "#9fb3c8", "marginBottom": 0}),
+            ],
+            style={"fontSize": "15px", "color": "#ddd"},
+        )
+
     def start_dashboard(self) -> None:
         app = self.engine.app
         if app is None:
@@ -389,6 +444,18 @@ class DashboardService:
                     ],
                     className="mb-3",
                 ),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                html.H5("Mode Parity"),
+                                html.Div(id="mode-parity-panel", style={"fontSize": "15px", "color": "#ddd"}),
+                            ],
+                            width=12,
+                        ),
+                    ],
+                    className="mb-3",
+                ),
                 html.H5("Strategy Heatmap - Winrate per Regime"),
                 dcc.Graph(id="heatmap"),
                 html.H5("Laatste Trades & Reflections"),
@@ -431,6 +498,7 @@ class DashboardService:
                 Output("swarm-correlation", "figure"),
                 Output("swarm-allocation", "figure"),
                 Output("swarm-regime-panel", "children"),
+                Output("mode-parity-panel", "children"),
             ],
             Input("interval", "n_intervals"),
         )
@@ -495,6 +563,7 @@ class DashboardService:
             inference_failure_color = "#00ff88" if inference_failures == 0 else "#ff4444"
             inference_history_fig = self._build_inference_provider_figure(tracker)
             swarm_corr_fig, swarm_alloc_fig, swarm_regime_panel = self._build_swarm_figures()
+            mode_parity_panel = self._build_mode_parity_panel()
 
             return (
                 fig_chart,
@@ -520,6 +589,7 @@ class DashboardService:
                 swarm_corr_fig,
                 swarm_alloc_fig,
                 swarm_regime_panel,
+                mode_parity_panel,
             )
 
         @dash_app.callback(

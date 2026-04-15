@@ -4,6 +4,7 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -77,6 +78,22 @@ def test_golden_path_real_mode_fail_closed_without_risk_controller() -> None:
     svc.engine.risk_controller = None
     svc.engine.session_guard = None
     result = svc.place_order("BUY", 1)
+    assert result is False
+    assert broker.calls == 0
+
+
+def test_golden_path_sim_real_guard_mode_session_guard_blocks_outside_hours() -> None:
+    svc, broker = _build_service("sim_real_guard")
+    svc.engine.session_guard.is_trading_session.return_value = False
+    result = svc.place_order("BUY", 1)
+    assert result is False
+    assert broker.calls == 0
+
+
+def test_golden_path_sim_real_guard_mode_blocks_risk_breach() -> None:
+    svc, broker = _build_service("sim_real_guard")
+    with patch("lumina_core.engine.operations_service.enforce_pre_trade_gate", return_value=(False, "daily_loss_cap")):
+        result = svc.place_order("BUY", 1)
     assert result is False
     assert broker.calls == 0
 

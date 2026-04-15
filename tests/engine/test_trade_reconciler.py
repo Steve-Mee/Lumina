@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -10,17 +11,19 @@ from lumina_core.engine import EngineConfig, TradeReconciler
 from lumina_core.engine.lumina_engine import LuminaEngine
 
 
-def _build_engine(tmp_path: Path) -> tuple[LuminaEngine, SimpleNamespace]:
+def _build_engine(tmp_path: Path, *, trade_mode: str = "real") -> tuple[LuminaEngine, SimpleNamespace]:
     cfg = EngineConfig(
         state_file=tmp_path / "state.json",
         thought_log=tmp_path / "thought_log.jsonl",
         bible_file=tmp_path / "bible.json",
         live_jsonl=tmp_path / "live.jsonl",
-        trade_mode="real",
+        trade_mode=trade_mode,
         reconcile_fills=True,
         reconciliation_method="websocket",
         reconciliation_timeout_seconds=15.0,
         use_real_fill_for_pnl=True,
+        trade_reconciler_audit_log=tmp_path / "trade_reconcile_audit.jsonl",
+        trade_reconciler_status_file=tmp_path / "trade_reconcile_status.json",
     )
     engine = LuminaEngine(cfg)
     pushes: list[dict] = []
@@ -239,3 +242,34 @@ def test_trade_reconciler_ignores_duplicate_fill_replay(tmp_path: Path) -> None:
     assert accepted_second is False
     assert len(app.pushes) == 1
     assert app.pushes[0]["reflection"]["reconciliation"]["broker_fill_id"] == "fill-dup-1"
+
+
+def test_trade_reconciler_starts_for_sim_real_guard_mode(tmp_path: Path, monkeypatch) -> None:
+    engine, _app = _build_engine(tmp_path, trade_mode="sim_real_guard")
+    reconciler = TradeReconciler(engine)
+
+    called = {"websocket": 0}
+    monkeypatch.setattr(
+        TradeReconciler,
+        "_run_websocket_loop",
+        lambda self: called.__setitem__("websocket", called["websocket"] + 1),
+    )
+
+    reconciler.start()
+
+    assert called["websocket"] == 1
+
+
+def test_trade_reconciler_audit_contains_mode_and_account_hint(tmp_path: Path) -> None:
+    engine, _app = _build_engine(tmp_path, trade_mode="sim_real_guard")
+    reconciler = TradeReconciler(engine)
+    audit_path = Path(engine.config.trade_reconciler_audit_log)
+
+    reconciler._append_audit_event({"event": "unit_test"})
+
+    lines = [line for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(lines) >= 1
+    event = json.loads(lines[-1])
+    assert event["event"] == "unit_test"
+    assert event["mode"] == "sim_real_guard"
+    assert event["account_mode_hint"] == "sim"

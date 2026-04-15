@@ -36,6 +36,22 @@ Acceptance target for SIM-to-REAL readiness:
   - `MarginTracker` CME margin checks
   - EOD force-close + no-new-trades enforcement
 
+### SIM_REAL_GUARD Phase (new)
+- Purpose: run live-broker execution with SIM account intent and REAL-style guard enforcement.
+- Guard policy: SessionGuard, risk caps, and EOD force-close behave like REAL.
+- Account policy: account intent remains SIM (`TRADERLEAGUE_ACCOUNT_MODE=sim`).
+- Use case: operator validation phase between SIM learning and REAL capital risk.
+
+Operator flow for SIM_REAL_GUARD:
+1. Keep `broker.backend=live` and `trade_mode=sim_real_guard`.
+2. Set `TRADERLEAGUE_ACCOUNT_MODE=sim` and confirm startup accepts mode/account mapping.
+3. Confirm reconciliation is enabled and status file is healthy (`state/trade_reconciler_status.json`).
+4. Monitor parity panel and observability metrics for gate reject ratio, reconciliation delta, and EOD force-close counts.
+5. Promote to REAL only after parity evidence remains stable over the staging window.
+
+Detailed staging procedure:
+- `docs/requests/sim_real_guard_rollout_b_staging_runbook.md`
+
 ---
 
 ## 0) Safety Contract (Read First)

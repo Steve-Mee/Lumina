@@ -50,6 +50,22 @@
 9. If `llama.cpp` is not prepared yet, run the launcher button or `python scripts/setup_llama_cpp.py` first.
 10. If a user presses a blocked admin action, the launcher records the attempt in `state/launcher_support_events.jsonl` for follow-up.
 
+## Trading mode selection for operators
+
+Use the trading mode according to operational intent:
+
+- `paper`: strategy and UI validation without live broker constraints.
+- `sim`: aggressive learning path with advisory risk behavior.
+- `sim_real_guard`: SIM account intent with REAL-like guardrails (session, risk, EOD, reconciler).
+- `real`: full capital-at-risk mode with strict fail-closed enforcement.
+
+For `sim_real_guard` selection:
+
+1. Configure `trade_mode=sim_real_guard`.
+2. Keep `broker.backend=live`.
+3. Set `TRADERLEAGUE_ACCOUNT_MODE=sim`.
+4. Verify parity metrics are visible in observability/dashboard before considering REAL promotion.
+
 ## Current Qwen3.5 defaults
 
 - `light`: `qwen3.5:4b`

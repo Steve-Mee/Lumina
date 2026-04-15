@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
 
 _MONTHS = {
     "JAN": 1,
@@ -37,6 +38,15 @@ def _safe_log_warning(engine: Any, message: str) -> None:
         logger.warning(message)
     except Exception:
         _LOG.warning(message)
+
+
+def _record_mode_guard_block(engine: Any, *, mode: str, reason: str) -> None:
+    obs = getattr(engine, "observability_service", None)
+    if obs is not None and hasattr(obs, "record_mode_guard_block"):
+        try:
+            obs.record_mode_guard_block(mode=str(mode), reason=str(reason))
+        except Exception:
+            pass
 
 
 def _parse_contract_symbol(symbol: str) -> tuple[str | None, int | None, int | None]:
@@ -187,28 +197,34 @@ def enforce_pre_trade_gate(
 ) -> tuple[bool, str]:
     """Single pre-trade gatekeeper for SessionGuard + HardRiskController."""
     mode = str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
+    capabilities = resolve_mode_capabilities(mode)
+
+    def _deny(reason_code: str, user_reason: str) -> tuple[bool, str]:
+        _record_mode_guard_block(engine, mode=mode, reason=reason_code)
+        return False, user_reason
+
     allow_stale = os.getenv("LUMINA_ALLOW_STALE_CONTRACTS", "false").strip().lower() == "true"
-    if mode in {"sim", "real"}:
+    if capabilities.requires_live_broker:
         stale_contract = is_stale_contract_symbol(symbol)
         if stale_contract and not allow_stale:
-            return False, f"Contract symbol stale/expired by calendar check: {symbol}"
+            return _deny("stale_contract", f"Contract symbol stale/expired by calendar check: {symbol}")
         if stale_contract and allow_stale:
             _audit_stale_override(engine, symbol, mode)
 
         broker_ok, broker_reason = _broker_metadata_contract_allowed(engine, symbol)
         if not broker_ok:
-            return False, f"Contract blocked by broker metadata: {symbol} ({broker_reason})"
+            return _deny("broker_metadata_block", f"Contract blocked by broker metadata: {symbol} ({broker_reason})")
 
     risk_controller = getattr(engine, "risk_controller", None)
     if not risk_controller:
-        return False, "Risk controller not available"
+        return _deny("risk_controller_unavailable", "Risk controller not available")
 
     session_ok, session_reason = session_guard_allows_trading(engine)
     if not session_ok:
         session_guard = getattr(engine, "session_guard", None)
         next_open = session_guard.next_open() if (session_guard is not None and hasattr(session_guard, "next_open")) else None
         suffix = f" | next_open={next_open.isoformat()}" if next_open is not None else ""
-        return False, f"Session guard blocked order: {session_reason}{suffix}"
+        return _deny(f"session_{session_reason}", f"Session guard blocked order: {session_reason}{suffix}")
 
     snapshot = resolve_regime_snapshot(engine, regime)
     adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
@@ -218,4 +234,16 @@ def enforce_pre_trade_gate(
         risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
         cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
     )
-    return risk_controller.check_can_trade(symbol, str(snapshot.get("label", regime)), proposed_risk)
+    risk_ok, risk_reason = risk_controller.check_can_trade(symbol, str(snapshot.get("label", regime)), proposed_risk)
+    if capabilities.risk_enforced:
+        if not bool(risk_ok):
+            return _deny(f"risk_{risk_reason}", str(risk_reason))
+        return True, str(risk_reason)
+
+    # Advisory mode (SIM): keep learning path unconstrained while retaining diagnostics.
+    if not bool(risk_ok):
+        _safe_log_warning(
+            engine,
+            f"RISK_ADVISORY,mode={mode},symbol={symbol},reason={risk_reason}",
+        )
+    return True, str(risk_reason)

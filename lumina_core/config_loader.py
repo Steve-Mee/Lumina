@@ -58,7 +58,7 @@ def _looks_like_placeholder(value: Any) -> bool:
 
 def _normalize_mode(value: Any, default: str) -> str:
     text = str(value or "").strip().lower()
-    if text in {"paper", "sim", "real"}:
+    if text in {"paper", "sim", "sim_real_guard", "real"}:
         return text
     return default
 
@@ -206,19 +206,26 @@ class ConfigLoader:
         # 2. Live-broker secrets (only when broker is live)
         trade_mode, broker_mode = cls._resolve_runtime_modes(cfg)
 
-        # 2a. Canonical mode/broker matrix validation.
+        # 2a. Dark-launch feature flag for SIM_REAL_GUARD.
+        sim_real_guard_enabled = str(os.getenv("ENABLE_SIM_REAL_GUARD", "false")).strip().lower() == "true"
+        if trade_mode == "sim_real_guard" and not sim_real_guard_enabled:
+            errors.append(
+                "sim_real_guard is disabled by feature flag: set ENABLE_SIM_REAL_GUARD=true"
+            )
+
+        # 2b. Canonical mode/broker matrix validation.
         # paper => broker backend must remain paper (never real routing).
-        # sim/real => backend must be live to preserve canonical execution semantics.
+        # sim/sim_real_guard/real => backend must be live to preserve canonical execution semantics.
         if trade_mode == "paper" and broker_mode != "paper":
             errors.append(
                 "Invalid mode matrix: trade_mode=paper requires broker_backend=paper"
             )
-        if trade_mode in {"sim", "real"} and broker_mode != "live":
+        if trade_mode in {"sim", "sim_real_guard", "real"} and broker_mode != "live":
             errors.append(
                 f"Invalid mode matrix: trade_mode={trade_mode} requires broker_backend=live"
             )
 
-        # 2b. Live-broker secrets when a live backend is active.
+        # 2c. Live-broker secrets when a live backend is active.
         hard_secret_mode = (trade_mode == "real") or strict_secret_hygiene
         if broker_mode == "live":
             for var in _LIVE_REQUIRED_ENV:
@@ -234,7 +241,7 @@ class ConfigLoader:
                     else:
                         warnings.append(f"Placeholder live-broker env value (advisory mode): {var!r}")
 
-        # 2c. Detect placeholder/default API keys in active security config.
+        # 2d. Detect placeholder/default API keys in active security config.
         api_keys = {}
         if isinstance(security_cfg, dict):
             raw_api_keys = security_cfg.get("api_keys", {})

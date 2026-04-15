@@ -245,8 +245,8 @@ class LuminaEngine:
                 session_guard=self.session_guard,
             )
 
-        if self.config.trade_mode not in {"paper", "sim", "real"}:
-            raise ValueError("TRADE_MODE must be one of: paper, sim, real")
+        if self.config.trade_mode not in {"paper", "sim", "sim_real_guard", "real"}:
+            raise ValueError("TRADE_MODE must be one of: paper, sim, sim_real_guard, real")
 
         if self.config.max_risk_percent <= 0:
             raise ValueError("MAX_RISK_PERCENT must be > 0")

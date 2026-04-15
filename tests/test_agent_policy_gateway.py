@@ -63,3 +63,20 @@ def test_policy_gateway_blocks_risk_rejection() -> None:
     assert result["approved"] is False
     assert result["signal"] == "HOLD"
     assert result["reason"] == "risk_blocked"
+
+
+def test_policy_gateway_accepts_sim_real_guard_mode() -> None:
+    result = apply_agent_policy_gateway(
+        signal="BUY",
+        confluence_score=0.9,
+        min_confluence=0.75,
+        hold_until_ts=0.0,
+        mode="sim_real_guard",
+        session_allowed=True,
+        risk_allowed=True,
+        lineage=_lineage(),
+    )
+
+    assert result["approved"] is True
+    assert result["signal"] == "BUY"
+    assert result["reason"] == "accepted"
