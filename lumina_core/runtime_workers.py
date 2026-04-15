@@ -7,11 +7,13 @@ from datetime import datetime, timezone
 import requests
 
 from lumina_core.runtime_context import RuntimeContext
-from lumina_core.engine.agent_contracts import validate_execution_decision
+from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
 from lumina_core.engine.broker_bridge import Order
+from lumina_core.engine.rl_guardrails import RLGuardrailLayer
 from lumina_core.engine.valuation_engine import ValuationEngine
 
 TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
+_RL_GUARDRAIL = RLGuardrailLayer()
 
 
 def _push_trader_league_trade(
@@ -588,10 +590,21 @@ def supervisor_loop(app: RuntimeContext) -> None:
 
         # RL bias: policy stuurt voorkeur, bestaande flow beslist uiteindelijk.
         rl_action = None
+        baseline_signal = str(signal)
         try:
             if getattr(app.engine, "rl_env", None) is not None and getattr(app.engine, "ppo_trainer", None) is not None:
                 obs = app.engine.rl_env._get_observation()
                 rl_action = app.engine.ppo_trainer.predict_action(obs)
+
+                shadow_state = getattr(app.engine, "rl_shadow_state", {})
+                guarded_action, shadow_state = _RL_GUARDRAIL.apply(
+                    rl_action=dict(rl_action or {}),
+                    baseline_signal=baseline_signal,
+                    regime=str(dream_snapshot.get("regime", "NEUTRAL")),
+                    shadow_state=shadow_state if isinstance(shadow_state, dict) else {},
+                )
+                app.engine.rl_shadow_state = shadow_state
+                rl_action = guarded_action
 
                 rl_signal_map = {0: "HOLD", 1: "BUY", 2: "SELL"}
                 rl_signal = rl_signal_map.get(int(rl_action.get("signal", 0)), "HOLD")
@@ -634,12 +647,40 @@ def supervisor_loop(app: RuntimeContext) -> None:
                     app.logger.warning(f"HardRiskController blocked trade: {_risk_reason}")
                     signal = "HOLD"
 
-        # ── Agent contract gate ─ validate signal, confluence, hold window ────
-        gate_result = validate_execution_decision(
+        session_allowed = True
+        _session_guard = getattr(app.engine, "session_guard", None)
+        _risk_ctrl = getattr(app.engine, "risk_controller", None)
+        _limits = getattr(_risk_ctrl, "_active_limits", None) if _risk_ctrl is not None else None
+        if bool(getattr(_limits, "enforce_session_guard", True)):
+            if _session_guard is None:
+                session_allowed = False
+            else:
+                try:
+                    session_allowed = (not bool(_session_guard.is_rollover_window())) and bool(_session_guard.is_trading_session())
+                except Exception:
+                    session_allowed = False
+
+        risk_allowed = bool(signal == "HOLD")
+        if signal in ["BUY", "SELL"]:
+            risk_allowed = bool(_risk_ok) if "_risk_ok" in locals() else False
+
+        # ── Agent policy gateway ─ central mode/session/risk/confluence enforcement ────
+        gate_result = apply_agent_policy_gateway(
             signal=str(signal),
             confluence_score=float(dream_snapshot.get("confluence_score", 0.0) or 0.0),
             min_confluence=float(min_confluence),
             hold_until_ts=float(hold_until_ts),
+            mode=str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower(),
+            session_allowed=bool(session_allowed),
+            risk_allowed=bool(risk_allowed),
+            lineage={
+                "model_identifier": str(dream_snapshot.get("chosen_strategy", "runtime-supervisor")),
+                "prompt_version": "runtime-supervisor-v1",
+                "prompt_hash": "runtime-supervisor",
+                "policy_version": "agent-policy-gateway-v1",
+                "provider_route": [str(getattr(app.engine, "local_engine", None).active_provider) if getattr(app.engine, "local_engine", None) is not None else "unknown-provider"],
+                "calibration_factor": 1.0,
+            },
         )
         signal = str(gate_result.get("signal", signal))
 

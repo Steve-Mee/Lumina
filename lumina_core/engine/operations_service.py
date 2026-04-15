@@ -17,6 +17,7 @@ import requests
 from .broker_bridge import AccountInfo, Order
 from .lumina_engine import LuminaEngine
 from .valuation_engine import ValuationEngine
+from .agent_contracts import apply_agent_policy_gateway
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 
 logger = logging.getLogger(__name__)
@@ -195,6 +196,34 @@ class OperationsService:
             regime=str(_dream.get("regime", "NEUTRAL")),
             proposed_risk=float(_proposed_risk),
         )
+
+        session_allowed = True
+        if str(_risk_reason).startswith("Session guard blocked"):
+            session_allowed = False
+        gateway_result = apply_agent_policy_gateway(
+            signal=str(action).upper(),
+            confluence_score=float(_dream.get("confluence_score", 1.0) or 1.0),
+            min_confluence=float(getattr(self.engine.config, "min_confluence", 0.0) or 0.0),
+            hold_until_ts=float(_dream.get("hold_until_ts", 0.0) or 0.0),
+            mode=str(trade_mode).strip().lower(),
+            session_allowed=bool(session_allowed),
+            risk_allowed=bool(_risk_ok),
+            lineage={
+                "model_identifier": str(_dream.get("chosen_strategy", "operations-service")),
+                "prompt_version": "operations-service-v1",
+                "prompt_hash": "operations-service",
+                "policy_version": "agent-policy-gateway-v1",
+                "provider_route": [str(getattr(getattr(self.engine, "local_engine", None), "active_provider", "unknown-provider"))],
+                "calibration_factor": 1.0,
+            },
+        )
+        if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(action).upper() in {"BUY", "SELL"}:
+            app.logger.warning(
+                "place_order blocked by AgentPolicyGateway: %s",
+                gateway_result.get("reason"),
+            )
+            return False
+
         if not _risk_ok:
             app.logger.warning(f"place_order blocked by gatekeeper: {_risk_reason}")
             return False

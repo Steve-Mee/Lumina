@@ -73,6 +73,7 @@ lumina_os/tests/test_reconciliation_status.json
 lumina_vector_db/chroma.sqlite3
 state/metrics.db
 state/evolution_log.jsonl
+state/evolution_lifecycle.jsonl
 state/last_run_summary_paper_15m.json
 state/sim_stability_history.jsonl
 *_validation.log

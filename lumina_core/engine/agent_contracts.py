@@ -10,6 +10,7 @@ from typing import Any, Callable, TypeVar
 from pydantic import BaseModel, Field, ValidationError
 
 from .agent_decision_log import AgentDecisionLog
+from .agent_policy_gateway import AgentPolicyGateway, default_lineage
 
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -197,6 +198,29 @@ def enforce_contract(
 
 
 def validate_execution_decision(*, signal: str, confluence_score: float, min_confluence: float, hold_until_ts: float) -> dict[str, Any]:
+    return apply_agent_policy_gateway(
+        signal=signal,
+        confluence_score=confluence_score,
+        min_confluence=min_confluence,
+        hold_until_ts=hold_until_ts,
+        mode="paper",
+        session_allowed=True,
+        risk_allowed=True,
+        lineage=None,
+    )
+
+
+def apply_agent_policy_gateway(
+    *,
+    signal: str,
+    confluence_score: float,
+    min_confluence: float,
+    hold_until_ts: float,
+    mode: str,
+    session_allowed: bool,
+    risk_allowed: bool,
+    lineage: dict[str, Any] | None,
+) -> dict[str, Any]:
     timestamp = datetime.now(timezone.utc).isoformat()
     validated_input = ExecutionDecisionInputSchema.model_validate(
         {
@@ -208,37 +232,47 @@ def validate_execution_decision(*, signal: str, confluence_score: float, min_con
         }
     )
 
-    approved = True
-    reason = "accepted"
-    normalized_signal = str(validated_input.signal).upper()
-    if normalized_signal not in {"BUY", "SELL", "HOLD"}:
-        approved = False
-        reason = "invalid_signal"
-        normalized_signal = "HOLD"
-    elif normalized_signal != "HOLD" and validated_input.confluence_score < validated_input.min_confluence:
-        approved = False
-        reason = "below_min_confluence"
-        normalized_signal = "HOLD"
-    elif validated_input.hold_until_ts > datetime.now(timezone.utc).timestamp():
-        approved = False
-        reason = "hold_window_active"
-        normalized_signal = "HOLD"
+    lineage_payload = lineage or default_lineage(
+        model_identifier="deterministic-rule-gate",
+        prompt_version="execution-gate-v1",
+        prompt_hash=hashlib.sha256(
+            json.dumps(validated_input.model_dump(mode="json"), sort_keys=True, ensure_ascii=True).encode("utf-8")
+        ).hexdigest(),
+        provider_route=["rule-engine"],
+        policy_version="agent-policy-gateway-v1",
+        calibration_factor=1.0,
+    )
 
-    confidence = 1.0 if approved else 0.0
+    gateway = AgentPolicyGateway(policy_version="agent-policy-gateway-v1")
+    gateway_result = gateway.evaluate(
+        {
+            "signal": validated_input.signal,
+            "confidence": 1.0,
+            "confluence_score": validated_input.confluence_score,
+            "min_confluence": validated_input.min_confluence,
+            "hold_until_ts": validated_input.hold_until_ts,
+            "mode": str(mode).strip().lower(),
+            "session_allowed": bool(session_allowed),
+            "risk_allowed": bool(risk_allowed),
+            "lineage": lineage_payload,
+            "context": {},
+        }
+    )
+
     validated_output = ExecutionDecisionOutputSchema.model_validate(
         {
-            "approved": approved,
-            "signal": normalized_signal,
-            "reason": reason,
-            "confidence": confidence,
+            "approved": bool(gateway_result.get("approved", False)),
+            "signal": str(gateway_result.get("signal", "HOLD")),
+            "reason": str(gateway_result.get("reason_code", "unknown")),
+            "confidence": float(gateway_result.get("confidence", 0.0) or 0.0),
         }
     )
 
     payload = {
         "ts": timestamp,
-        "status": "accepted" if approved else "rejected",
-        "agent": "ExecutionGate",
-        "method": "validate_execution_decision",
+        "status": "accepted" if bool(validated_output.approved) else "rejected",
+        "agent": "AgentPolicyGateway",
+        "method": "apply_agent_policy_gateway",
         "prompt_version": "execution-gate-v1",
         "model_hash": "deterministic-rule-gate",
         "confidence": float(validated_output.confidence),

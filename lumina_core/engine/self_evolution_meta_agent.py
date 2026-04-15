@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .lumina_engine import LuminaEngine
+from .evolution_lifecycle import EvolutionLifecycleManager
 from .risk_controller import HardRiskController
 from .valuation_engine import ValuationEngine
 
@@ -38,6 +39,7 @@ class SelfEvolutionMetaAgent:
     drift_threshold: float = 0.25
     ppo_trainer: Any | None = None
     rl_environment: Any | None = None
+    lifecycle_manager: EvolutionLifecycleManager | None = None
 
     @classmethod
     def from_container(
@@ -111,11 +113,23 @@ class SelfEvolutionMetaAgent:
         confidence = float(best.get("confidence", 0.0)) if best else 0.0
         backtest_green = self._backtest_green(nightly_report)
         safety_ok = self._safety_contract_ok()
+        stability_gate = bool(float(meta_review.get("win_rate", 0.0) or 0.0) >= 0.45)
+        realism_gate = bool(float(meta_review.get("emotional_twin_accuracy", 0.0) or 0.0) >= 0.4)
+        consistency_gate = bool(float(meta_review.get("regime_drift", 1.0) or 1.0) <= 0.75)
+        gates = {
+            "stability": stability_gate,
+            "risk": bool(safety_ok),
+            "realism": realism_gate,
+            "consistency": consistency_gate,
+            "backtest_green": bool(backtest_green),
+            "live_promotion_eligible": bool(not self.sim_mode),
+        }
 
         forced_sim_apply = bool(self.sim_mode and best is not None)
         should_auto_apply = bool(forced_sim_apply or (confidence > 85.0 and backtest_green and safety_ok))
         approval_blocked = bool(self.approval_required and should_auto_apply)
 
+        lifecycle = self._build_lifecycle(best=best, gates=gates)
         outcome = {
             "status": "awaiting_human_approval" if approval_blocked else ("proposed" if not should_auto_apply else "applied"),
             "timestamp": now.isoformat(),
@@ -131,9 +145,11 @@ class SelfEvolutionMetaAgent:
                 "safety_ok": safety_ok,
                 "approval_required": self.approval_required,
                 "forced_by_sim_mode": forced_sim_apply,
+                "sim_live_readiness": "not_live_eligible" if self.sim_mode else "eligible_after_gates",
                 "would_auto_apply": should_auto_apply,
                 "auto_apply_executed": bool(should_auto_apply and not self.approval_required and not dry_run),
             },
+            "lifecycle": lifecycle,
         }
 
         if should_auto_apply and not self.approval_required and not dry_run and best is not None:
@@ -188,9 +204,85 @@ class SelfEvolutionMetaAgent:
                     json.dumps(raw_input, sort_keys=True, ensure_ascii=True).encode("utf-8")
                 ).hexdigest(),
                 evolution_log_hash=evolution_log_hash,
+                prompt_version="self-evolution-v1",
+                policy_version="evolution-lifecycle-v1",
+                provider_route=["self-evolution-engine"],
+                calibration_factor=1.0,
             )
         except Exception:
             return
+
+    def _build_lifecycle(self, *, best: dict[str, Any] | None, gates: dict[str, bool]) -> dict[str, Any]:
+        manager = self.lifecycle_manager or EvolutionLifecycleManager()
+        self.lifecycle_manager = manager
+        parent_id = self._prompt_fingerprint()
+        metadata = {
+            "best_candidate": str(best.get("name", "none")) if isinstance(best, dict) else "none",
+            "max_mutation_depth": str(self.max_mutation_depth),
+            "sim_mode": bool(self.sim_mode),
+            "live_readiness": "not_live_eligible" if self.sim_mode else "eligible_after_gates",
+        }
+        version_id = manager.create_version(parent_version_id=parent_id, metadata=metadata)
+        transitions: list[dict[str, Any]] = []
+
+        transitions.append(
+            manager.transition(
+                version_id=version_id,
+                state="shadow",
+                parent_version_id=parent_id,
+                metadata=metadata,
+                gates=gates,
+            )
+        )
+
+        if all(bool(v) for v in gates.values()):
+            transitions.append(
+                manager.transition(
+                    version_id=version_id,
+                    state="canary",
+                    parent_version_id=parent_id,
+                    metadata=metadata,
+                    gates=gates,
+                )
+            )
+            transitions.append(
+                manager.transition(
+                    version_id=version_id,
+                    state="promoted",
+                    parent_version_id=parent_id,
+                    metadata=metadata,
+                    gates=gates,
+                )
+            )
+            current_state = "promoted"
+        else:
+            transitions.append(
+                manager.transition(
+                    version_id=version_id,
+                    state="quarantined",
+                    parent_version_id=parent_id,
+                    metadata=metadata,
+                    gates=gates,
+                )
+            )
+            transitions.append(
+                manager.transition(
+                    version_id=version_id,
+                    state="rolled_back",
+                    parent_version_id=parent_id,
+                    metadata=metadata,
+                    gates=gates,
+                )
+            )
+            current_state = "rolled_back"
+
+        return {
+            "version_id": version_id,
+            "parent_version_id": parent_id,
+            "state": current_state,
+            "gates": gates,
+            "transitions": transitions,
+        }
 
     def _auto_fine_tuning_trigger(self, *, meta_review: dict[str, Any]) -> dict[str, Any]:
         if not self.auto_fine_tuning_enabled:

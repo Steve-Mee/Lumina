@@ -33,6 +33,10 @@ class AgentDecisionLog:
         prompt_hash: str | None = None,
         trade_record_id: str | None = None,
         evolution_log_hash: str | None = None,
+        prompt_version: str = "unknown-prompt",
+        policy_version: str = "unknown-policy",
+        provider_route: list[str] | None = None,
+        calibration_factor: float = 1.0,
     ) -> dict[str, Any]:
         ts = datetime.now(timezone.utc).isoformat()
         prompt_fingerprint = prompt_hash or self._sha256(prompt_text or json.dumps(raw_input, sort_keys=True, ensure_ascii=True))
@@ -50,6 +54,14 @@ class AgentDecisionLog:
             "decision_context_id": str(decision_context_id),
             "trade_record_id": trade_record_id,
             "evolution_log_hash": evolution_log_hash,
+            "lineage": {
+                "model_identifier": str(model_version),
+                "prompt_version": str(prompt_version),
+                "prompt_hash": str(prompt_fingerprint),
+                "policy_version": str(policy_version),
+                "provider_route": [str(item) for item in (provider_route or ["unknown-provider"])],
+                "calibration_factor": max(0.01, float(calibration_factor or 1.0)),
+            },
             "prev_hash": prev_hash,
             "log_version": "v1",
         }

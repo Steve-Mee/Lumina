@@ -132,6 +132,8 @@ def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) ->
     assert result["proposal"]["forced_by_sim_mode"] is True
     assert result["proposal"]["would_auto_apply"] is True
     assert result["proposal"]["auto_apply_executed"] is True
+    assert result["lifecycle"]["state"] in {"promoted", "rolled_back"}
+    assert result["lifecycle"]["version_id"].startswith("evo-")
 
 
 @pytest.mark.chaos_risk

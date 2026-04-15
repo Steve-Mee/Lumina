@@ -308,6 +308,22 @@ Totaalscore Expert Financieel Adviseur: **6.9/10**
 - Niet-gestandaardiseerde agent-output paden die policy checks kunnen omzeilen.
 - Impliciete aannames dat sim-evolution direct representatief is voor live inzet.
 
+### Opvolgingsstatus Expert 5 (2026-04-15)
+
+**Status: Expert-5 verbeterpunten zijn technisch afgedekt en regressie-gevalideerd.**
+
+- ✅ Centrale `AgentPolicyGateway` + `DecisionEnvelope` afdwinging op runtime- en operations-orderpaden.
+- ✅ Evolution lifecycle governance toegevoegd (proposed/shadow/canary/promoted/quarantined/rolled_back).
+- ✅ Beslislineage verplicht gemaakt in immutable decision logs + replay validator toegevoegd.
+- ✅ RL guardrail layer met shadow drift/kill criteria geïntegreerd.
+- ✅ Provider normalisatie + confidence harmonisatie + regime-aware calibratie in inference fallback chain.
+- ✅ Bypass-helperpaden extra afgedicht: ook `trade_workers.submit_order_with_risk_check` en `ReasoningService.submit_order` gebruiken nu gateway-enforcement vóór submit.
+- ✅ Impliciete SIM→LIVE aannames expliciet gemaakt met `sim_live_readiness` en `live_promotion_eligible` metadata.
+
+Validatie:
+- ✅ Gerichte regressie: 39 passed, 2 warnings.
+- ✅ Volledige regressie: 325 passed, 2 warnings.
+
 ### Scores (op 10)
 | Segment | Score |
 |---|---:|

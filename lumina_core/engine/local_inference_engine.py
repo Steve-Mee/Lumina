@@ -12,6 +12,7 @@ import ollama
 import requests
 
 from lumina_core.runtime_context import RuntimeContext
+from .provider_normalization import ProviderNormalizationLayer
 
 _FALLBACK_LOGGER = logging.getLogger("lumina.local_inference")
 
@@ -34,6 +35,7 @@ class LocalInferenceEngine:
         self.backend_override: str | None = None
         self.active_provider = str(self.config.get("inference", {}).get("primary_provider", "ollama"))
         self.session = requests.Session()
+        self.normalization_layer = ProviderNormalizationLayer()
 
         tracker = getattr(context, "COST_TRACKER", None)
         if tracker is None:
@@ -70,6 +72,53 @@ class LocalInferenceEngine:
         self.cost_tracker.setdefault("local_inference_provider_stats", {})
         self.cost_tracker.setdefault("local_inference_warning", "")
         self.cost_tracker.setdefault("local_inference_vllm_runtime_reason", "")
+
+    def _resolve_regime_label(self) -> str:
+        snapshot = getattr(self.context, "current_regime_snapshot", None)
+        if isinstance(snapshot, dict):
+            label = snapshot.get("label")
+            if label:
+                return str(label).strip().upper()
+
+        engine = getattr(self.context, "engine", None)
+        if engine is not None:
+            engine_snapshot = getattr(engine, "current_regime_snapshot", None)
+            if isinstance(engine_snapshot, dict):
+                label = engine_snapshot.get("label")
+                if label:
+                    return str(label).strip().upper()
+
+        current = getattr(self.context, "CURRENT_REGIME", None)
+        if current:
+            return str(current).strip().upper()
+        return "NEUTRAL"
+
+    def _resolve_calibration_factor(self, provider: str) -> float:
+        inference_cfg = self.config.get("inference", {})
+        if not isinstance(inference_cfg, dict):
+            return 1.0
+
+        base = 1.0
+        global_cfg = inference_cfg.get("provider_calibration", {})
+        if isinstance(global_cfg, dict):
+            base = float(global_cfg.get(provider, 1.0) or 1.0)
+
+        regime_label = self._resolve_regime_label()
+        by_regime = inference_cfg.get("provider_calibration_by_regime", {})
+        if not isinstance(by_regime, dict):
+            return max(0.1, base)
+
+        if provider in by_regime and isinstance(by_regime.get(provider), dict):
+            provider_cfg = by_regime.get(provider, {})
+            regime_factor = float(provider_cfg.get(regime_label, provider_cfg.get("DEFAULT", 1.0)) or 1.0)
+            return max(0.1, base * regime_factor)
+
+        if regime_label in by_regime and isinstance(by_regime.get(regime_label), dict):
+            regime_cfg = by_regime.get(regime_label, {})
+            regime_factor = float(regime_cfg.get(provider, regime_cfg.get("DEFAULT", 1.0)) or 1.0)
+            return max(0.1, base * regime_factor)
+
+        return max(0.1, base)
 
     def _record_metrics(self, provider: str, latency_ms: float, success: bool, estimated_cost: float = 0.0) -> None:
         self._ensure_metric_buckets()
@@ -257,6 +306,13 @@ class LocalInferenceEngine:
                 latency_ms = round((time.time() - start) * 1000.0, 2)
                 previous_provider = str(self.active_provider or "")
                 self.active_provider = provider
+                calibration_factor = self._resolve_calibration_factor(provider)
+                parsed = self.normalization_layer.normalize(
+                    provider=provider,
+                    payload=parsed if isinstance(parsed, dict) else {},
+                    provider_chain=provider_chain,
+                    calibration_factor=calibration_factor,
+                )
                 self._record_metrics(provider, latency_ms, success=True, estimated_cost=0.0)
                 if previous_provider and previous_provider != provider:
                     self.logger.info(

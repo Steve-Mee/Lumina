@@ -1,5 +1,6 @@
 from .analysis_service import HumanAnalysisService
 from .agent_decision_log import AgentDecisionLog
+from .agent_policy_gateway import AgentPolicyGateway
 from .bible_engine import BibleEngine
 from .broker_bridge import AccountInfo, BrokerBridge, CrossTradeBroker, Fill, Order, OrderResult, PaperBroker, Position, broker_factory
 from .dashboard_service import DashboardService
@@ -13,11 +14,15 @@ from .memory_service import MemoryService
 from .operations_service import OperationsService
 from .performance_validator import PerformanceValidator
 from .portfolio_var_allocator import PortfolioVaRAllocator
+from .provider_normalization import ProviderNormalizationLayer
+from .replay_validator import DecisionReplayValidator
 from .reporting_service import ReportingService
 from .regime_detector import RegimeDetector, RegimeSnapshot
 from .reasoning_service import ReasoningService
 from .session_guard import SessionGuard
 from .self_evolution_meta_agent import SelfEvolutionMetaAgent
+from .rl_guardrails import RLGuardrailLayer
+from .evolution_lifecycle import EvolutionLifecycleManager
 from .multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
 from .swarm_manager import SwarmManager
 from .trade_reconciler import TradeReconciler
@@ -26,6 +31,7 @@ from .visualization_service import VisualizationService
 __all__ = [
     "HumanAnalysisService",
     "AgentDecisionLog",
+    "AgentPolicyGateway",
     "DashboardService",
     "BrokerBridge",
     "PaperBroker",
@@ -45,6 +51,8 @@ __all__ = [
     "OperationsService",
     "PerformanceValidator",
     "PortfolioVaRAllocator",
+    "ProviderNormalizationLayer",
+    "DecisionReplayValidator",
     "LuminaEngine",
     "LocalInferenceEngine",
     "ReportingService",
@@ -53,6 +61,8 @@ __all__ = [
     "ReasoningService",
     "SessionGuard",
     "SelfEvolutionMetaAgent",
+    "RLGuardrailLayer",
+    "EvolutionLifecycleManager",
     "SymbolNode",
     "MultiSymbolSwarmManager",
     "SwarmManager",

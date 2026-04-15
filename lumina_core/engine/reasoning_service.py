@@ -7,9 +7,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from .broker_bridge import Order, OrderResult
+from .agent_contracts import apply_agent_policy_gateway
 from .local_inference_engine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine
 from .regime_detector import RegimeDetector, RegimeSnapshot
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 
 
 @dataclass(slots=True)
@@ -117,6 +119,10 @@ class ReasoningService:
                 prompt_hash=hashlib.sha256(
                     json.dumps(raw_input, sort_keys=True, ensure_ascii=True).encode("utf-8")
                 ).hexdigest(),
+                prompt_version="reasoning-service-v1",
+                policy_version="reasoning-policy-v1",
+                provider_route=[str(getattr(self.inference_engine, "active_provider", "unknown-provider"))],
+                calibration_factor=1.0,
             )
         except Exception:
             return
@@ -124,6 +130,41 @@ class ReasoningService:
     def submit_order(self, order: Order) -> OrderResult:
         if self.container is None or getattr(self.container, "broker", None) is None:
             raise RuntimeError("BrokerBridge is not configured on ReasoningService")
+
+        mode = str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower()
+        dream = self.engine.get_current_dream_snapshot()
+        price = float(getattr(order, "metadata", {}).get("reference_price", 0.0) if isinstance(getattr(order, "metadata", {}), dict) else 0.0)
+        stop = float(getattr(order, "stop_loss", 0.0) or 0.0)
+        proposed_risk = abs(price - stop) if price > 0.0 and stop > 0.0 else 0.0
+
+        gate_allowed, gate_reason = enforce_pre_trade_gate(
+            self.engine,
+            symbol=str(getattr(order, "symbol", getattr(self.engine.config, "instrument", "UNKNOWN"))),
+            regime=str(dream.get("regime", "NEUTRAL")),
+            proposed_risk=float(proposed_risk),
+        )
+
+        session_allowed = not str(gate_reason).lower().startswith("session guard blocked")
+        gateway_result = apply_agent_policy_gateway(
+            signal=str(getattr(order, "side", "HOLD")).upper(),
+            confluence_score=float(dream.get("confluence_score", 1.0) or 1.0),
+            min_confluence=float(getattr(self.engine.config, "min_confluence", 0.0) or 0.0),
+            hold_until_ts=float(dream.get("hold_until_ts", 0.0) or 0.0),
+            mode=mode,
+            session_allowed=bool(session_allowed),
+            risk_allowed=bool(gate_allowed),
+            lineage={
+                "model_identifier": "reasoning-service-submit-order",
+                "prompt_version": "reasoning-service-v1",
+                "prompt_hash": "reasoning-service-submit-order",
+                "policy_version": "agent-policy-gateway-v1",
+                "provider_route": [str(getattr(self.inference_engine, "active_provider", "unknown-provider"))],
+                "calibration_factor": 1.0,
+            },
+        )
+        if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {"BUY", "SELL"}:
+            raise RuntimeError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
+
         return self.container.broker.submit_order(order)
 
     def refresh_regime_snapshot(

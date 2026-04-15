@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from lumina_core.runtime_context import RuntimeContext
+from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
 from lumina_core.engine.broker_bridge import Order, OrderResult
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, resolve_regime_snapshot
 
@@ -104,6 +105,28 @@ def submit_order_with_risk_check(
     
     if not allowed:
         app.logger.warning(f"Order blocked by risk controller: {reason}")
+        return None
+
+    mode = str(getattr(getattr(app.engine, "config", None), "trade_mode", "paper")).strip().lower()
+    gateway_result = apply_agent_policy_gateway(
+        signal=str(getattr(order, "side", "HOLD")).upper(),
+        confluence_score=float(getattr(order, "metadata", {}).get("confluence_score", 1.0) if isinstance(getattr(order, "metadata", {}), dict) else 1.0),
+        min_confluence=float(getattr(getattr(app.engine, "config", None), "min_confluence", 0.0) or 0.0),
+        hold_until_ts=0.0,
+        mode=mode,
+        session_allowed=True,
+        risk_allowed=True,
+        lineage={
+            "model_identifier": "trade-workers-wrapper",
+            "prompt_version": "trade-workers-v1",
+            "prompt_hash": "trade-workers",
+            "policy_version": "agent-policy-gateway-v1",
+            "provider_route": ["direct-wrapper"],
+            "calibration_factor": 1.0,
+        },
+    )
+    if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {"BUY", "SELL"}:
+        app.logger.warning(f"Order blocked by policy gateway: {gateway_result.get('reason')}")
         return None
 
     container = getattr(app, "container", None)

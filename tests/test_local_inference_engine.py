@@ -27,6 +27,11 @@ def _write_config(tmp_path, *, primary_provider="ollama", fallback_order=None):
         "inference": {
             "primary_provider": primary_provider,
             "fallback_order": fallback_order,
+            "provider_calibration": {"ollama": 1.1, "vllm": 0.9, "grok_remote": 1.0},
+            "provider_calibration_by_regime": {
+                "TRENDING": {"ollama": 1.2, "vllm": 1.0, "DEFAULT": 1.0},
+                "VOLATILE": {"ollama": 0.8, "vllm": 0.9, "DEFAULT": 1.0},
+            },
             "max_tokens": 1200,
             "temperature": 0.65,
             "json_mode": True,
@@ -124,6 +129,8 @@ def test_local_inference_engine_tracks_latency_and_requests(monkeypatch, tmp_pat
     result = engine.infer("metrics-test", model_type="reasoning")
 
     assert result["signal"] == "SELL"
+    assert "harmonized_confidence" in result
+    assert result["provider"] == "ollama"
     assert engine.cost_tracker["local_inference_requests"] == 1
     assert engine.cost_tracker["local_inference_last_provider"] == "ollama"
     assert engine.cost_tracker["local_inference_last_latency_ms"] >= 0.0
@@ -193,3 +200,23 @@ def test_local_inference_engine_reports_vllm_runtime_reason(monkeypatch, tmp_pat
     assert engine._is_vllm_healthy() is False
     assert "vllm._C" in engine.cost_tracker.get("local_inference_vllm_runtime_reason", "")
     assert engine.cost_tracker.get("local_inference_warning", "")
+
+
+def test_local_inference_engine_applies_regime_aware_calibration(monkeypatch, tmp_path):
+    _write_config(tmp_path, primary_provider="ollama", fallback_order=[])
+    monkeypatch.chdir(tmp_path)
+
+    ctx = _context()
+    ctx.current_regime_snapshot = {"label": "TRENDING"}
+    engine = LocalInferenceEngine(context=ctx)
+
+    def _ollama(*_args, **_kwargs):
+        return {"signal": "BUY", "confidence": 0.5}
+
+    monkeypatch.setattr(engine, "_infer_via_ollama", _ollama)
+    result = engine.infer("regime-calibration-test", model_type="reasoning")
+
+    # Base 1.1 * trending 1.2 => 1.32 factor, confidence clipped to <= 1.0.
+    assert result["provider"] == "ollama"
+    assert result["calibration_factor"] == 1.32
+    assert result["harmonized_confidence"] == 0.66
