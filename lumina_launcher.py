@@ -10,6 +10,7 @@ import os
 import secrets
 import subprocess
 import sys
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
@@ -290,6 +291,55 @@ def _service_age_badge(age_seconds: float | None, healthy_threshold_seconds: flo
     return _status_badge("Stale", "warning")
 
 
+def _render_live_age_cards(log_age: float | None, state_age: float | None, last_launch_text: str) -> None:
+    if st is None:
+        return
+
+    now_ts = int(datetime.now().timestamp())
+    log_base = int(log_age) if log_age is not None else -1
+    state_base = int(state_age) if state_age is not None else -1
+    safe_launch = html.escape(last_launch_text, quote=True)
+
+    card_html = f"""
+<div style=\"display:grid;grid-template-columns:repeat(3,minmax(140px,1fr));gap:0.6rem;margin:0.15rem 0 0.4rem 0;\">
+    <div style=\"border:1px solid #e2e8f0;border-radius:0.6rem;padding:0.55rem 0.7rem;background:#f8fafc;\">
+        <div style=\"font-size:0.74rem;color:#475569;\">Log heartbeat</div>
+        <div id=\"lumina-live-log-age\" style=\"font-size:0.95rem;font-weight:600;color:#0f172a;\">-</div>
+    </div>
+    <div style=\"border:1px solid #e2e8f0;border-radius:0.6rem;padding:0.55rem 0.7rem;background:#f8fafc;\">
+        <div style=\"font-size:0.74rem;color:#475569;\">Runtime state update</div>
+        <div id=\"lumina-live-state-age\" style=\"font-size:0.95rem;font-weight:600;color:#0f172a;\">-</div>
+    </div>
+    <div style=\"border:1px solid #e2e8f0;border-radius:0.6rem;padding:0.55rem 0.7rem;background:#f8fafc;\">
+        <div style=\"font-size:0.74rem;color:#475569;\">Last launch</div>
+        <div style=\"font-size:0.95rem;font-weight:600;color:#0f172a;\">{safe_launch}</div>
+    </div>
+</div>
+<script>
+    const nowTs = {now_ts};
+    const baseLog = {log_base};
+    const baseState = {state_base};
+    function prettyAge(seconds) {{
+        if (seconds < 0) return 'Not available';
+        if (seconds < 60) return `${{seconds}}s ago`;
+        if (seconds < 3600) return `${{Math.floor(seconds / 60)}}m ago`;
+        return `${{Math.floor(seconds / 3600)}}h ago`;
+    }}
+    function tick() {{
+        const elapsed = Math.max(0, Math.floor(Date.now() / 1000) - nowTs);
+        const logEl = document.getElementById('lumina-live-log-age');
+        const stateEl = document.getElementById('lumina-live-state-age');
+        if (logEl) logEl.textContent = prettyAge(baseLog < 0 ? -1 : baseLog + elapsed);
+        if (stateEl) stateEl.textContent = prettyAge(baseState < 0 ? -1 : baseState + elapsed);
+    }}
+    tick();
+    setInterval(tick, 1000);
+</script>
+"""
+    data_url = "data:text/html;charset=utf-8," + urllib.parse.quote(card_html)
+    st.iframe(data_url, height=105)
+
+
 def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dashboard_enabled: bool) -> None:
     st.markdown("### Live Activity & Services")
     process_badge = _status_badge("Running", "available") if alive else _status_badge("Stopped", "blocked")
@@ -302,11 +352,7 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
 
     process_state = _load_process_state()
     persisted_start_ts = str(process_state.get("started_at", "")).strip() or "Not started"
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Log heartbeat", _format_age(log_age))
-    c2.metric("Runtime state update", _format_age(state_age))
-    c3.metric("Last launch", st.session_state.get("last_start_ts", persisted_start_ts))
+    _render_live_age_cards(log_age, state_age, st.session_state.get("last_start_ts", persisted_start_ts))
 
     left, right = st.columns(2)
     with left:
