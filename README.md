@@ -9,7 +9,6 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
 - Nightly simulator: nightly_infinite_sim.py
 - Runtime core package: lumina_core/
 - Bible package in app: lumina_bible/
-- Public package source: lumina-bible/
 - Deployment scripts: deploy/
 - Testsuite: tests/
 
@@ -29,8 +28,6 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
   - engine, workers, trainer, simulator en runtime services
 - lumina_bible/
   - runtime bible-engine integratie gebruikt door de app
-- lumina-bible/
-  - standalone package voor distributie naar PyPI
 - lumina_agents/
   - agent-specifieke code
 - lumina_vector_db/
@@ -40,8 +37,6 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
   - validation/ (losse validatie scripts)
 - tests/
   - actieve tests voor runtime/core
-- old/
-  - lokale archiefmap, niet meer op GitHub (genegeerd via .gitignore)
 
 ## Root-bestanden met runtime rol
 

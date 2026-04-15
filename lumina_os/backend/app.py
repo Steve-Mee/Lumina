@@ -219,6 +219,11 @@ def get_trades(
 
 @app.get("/leaderboard")
 def get_leaderboard() -> dict[str, list[dict[str, int | float | str]] | str]:
+    """Public read-only endpoint for aggregated rankings.
+
+    Security policy exception: this endpoint is intentionally public to support
+    anonymous dashboard consumption.
+    """
     db = SessionLocal()
     try:
         trades = db.query(TradeEntry).all()
@@ -431,6 +436,11 @@ def upload_reflection(
 
 @app.get("/global_wisdom")
 def get_global_wisdom() -> dict[str, Any]:
+    """Public read-only endpoint for top community wisdom snapshots.
+
+    Security policy exception: this endpoint is intentionally public to support
+    anonymous dashboard consumption.
+    """
     db = SessionLocal()
     try:
         bibles = db.query(CommunityBible).order_by(CommunityBible.performance_score.desc()).limit(20).all()

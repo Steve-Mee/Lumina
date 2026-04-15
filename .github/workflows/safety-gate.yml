@@ -34,6 +34,47 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-safety-gate.txt
 
+      - name: Validate README path drift
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          readme = Path("README.md")
+          content = readme.read_text(encoding="utf-8")
+          lines = content.splitlines()
+
+          in_section = False
+          missing = []
+          for raw in lines:
+            line = raw.strip()
+            if line == "## Mappenstructuur":
+              in_section = True
+              continue
+            if in_section and line.startswith("## "):
+              break
+            if not in_section:
+              continue
+            if not line.startswith("- "):
+              continue
+
+            token = line[2:].strip()
+            if not token.endswith("/"):
+              continue
+            if "/" in token[:-1]:
+              # Skip nested entries; only validate top-level directory bullets.
+              continue
+            path = Path(token[:-1])
+            if not path.exists() or not path.is_dir():
+              missing.append(token)
+
+          if missing:
+            raise SystemExit(
+              "README path drift detected in '## Mappenstructuur': " + ", ".join(missing)
+            )
+
+          print("README path drift check passed")
+          PY
+
       - name: Run safety gate
         run: |
           python -m pytest -m safety_gate -q
