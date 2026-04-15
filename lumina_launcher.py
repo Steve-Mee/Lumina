@@ -212,6 +212,23 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _linear_trend(values: list[float]) -> list[float]:
+    if len(values) < 2:
+        return values[:]
+    n = float(len(values))
+    xs = list(range(len(values)))
+    sum_x = float(sum(xs))
+    sum_y = float(sum(values))
+    sum_xx = float(sum(x * x for x in xs))
+    sum_xy = float(sum(x * y for x, y in zip(xs, values)))
+    denom = (n * sum_xx) - (sum_x * sum_x)
+    if abs(denom) <= 1e-9:
+        return [float(values[0])] * len(values)
+    slope = ((n * sum_xy) - (sum_x * sum_y)) / denom
+    intercept = (sum_y - (slope * sum_x)) / n
+    return [float((slope * x) + intercept) for x in xs]
+
+
 def _parse_iso_ts(raw_value: Any) -> datetime | None:
     if not raw_value:
         return None
@@ -376,8 +393,19 @@ def _render_sim_learning_tab() -> None:
     criteria = report.get("criteria") if isinstance(report.get("criteria"), dict) else {}
     failures = report.get("failures", []) if isinstance(report.get("failures"), list) else []
     is_green = bool(report.get("READY_FOR_REAL", False))
+    status_label = str(report.get("status", "RED")).strip().upper()
     sharpe_crit = criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
     latest_sharpe = _safe_float(sharpe_crit.get("latest_sharpe", 0.0))
+
+    summary_color = "#16a34a" if is_green else "#dc2626"
+    summary_failures = "none" if not failures else ", ".join(str(x) for x in failures)
+    st.markdown(
+        f"<div style='padding:10px 14px;border-radius:10px;border:1px solid {summary_color};"
+        f"background:{summary_color}14;'><strong>Latest stability_report:</strong> "
+        f"<span style='color:{summary_color};font-weight:700;'>{status_label}</span> "
+        f"| failures: {summary_failures}</div>",
+        unsafe_allow_html=True,
+    )
 
     # ── Streak banner ──────────────────────────────────────────────────────────
     if is_green:
@@ -386,6 +414,8 @@ def _render_sim_learning_tab() -> None:
         st.warning(f"🟡 {consecutive} / 5 consecutive positive-expectancy days — {days_to_green} more needed")
     else:
         st.error(f"🔴 {consecutive} / 5 consecutive positive-expectancy days — {days_to_green} more needed")
+    st.markdown(f"### {consecutive} / 5 consecutive positive expectancy days")
+    st.progress(min(max(consecutive / 5.0, 0.0), 1.0))
 
     # ── Summary metrics ────────────────────────────────────────────────────────
     c1, c2, c3, c4 = st.columns(4)
@@ -408,7 +438,7 @@ def _render_sim_learning_tab() -> None:
         day_labels = [str(r.get("day", "")) for r in tail]
         sharpes = [_safe_float(r.get("sharpe_annualized")) for r in tail]
         proposals = [float(_safe_int(r.get("evolution_proposals"))) for r in tail]
-        expectancies = [_safe_float(r.get("expectancy")) for r in tail]
+        proposal_trend = _linear_trend(proposals)
 
         chart_col1, chart_col2 = st.columns(2)
         with chart_col1:
@@ -420,9 +450,9 @@ def _render_sim_learning_tab() -> None:
             st.line_chart(sharpe_df, height=200)
 
         with chart_col2:
-            st.markdown("##### 🧬 Evolution Proposals + Expectancy ×10 (last 7 days)")
+            st.markdown("##### 🧬 Evolution Proposals Trend (last 7 days)")
             props_df = pd.DataFrame(
-                {"Proposals": proposals, "Expectancy × 10": [e * 10 for e in expectancies]},
+                {"Proposals": proposals, "Trend": proposal_trend},
                 index=day_labels,
             )
             st.line_chart(props_df, height=200)
@@ -481,11 +511,11 @@ def _render_sim_learning_tab() -> None:
             "🚀 Run Aggressive Overnight SIM",
             type="primary",
             use_container_width=True,
-            help="Launches: --headless --mode=sim --duration=240m --overnight-sim --stability-check",
+            help="Launches: --headless --mode=sim --duration=240 --overnight-sim --stability-check",
         ):
             cmd = [
                 sys.executable, "-m", "lumina_launcher",
-                "--headless", "--mode=sim", "--duration=240m",
+                "--headless", "--mode=sim", "--duration=240",
                 "--overnight-sim", "--stability-check",
             ]
             proc = subprocess.Popen(cmd, cwd=str(Path(".").resolve()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
