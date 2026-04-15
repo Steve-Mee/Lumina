@@ -8,6 +8,11 @@ from lumina_core.config_loader import ConfigLoader
 def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("XAI_API_KEY", "unit-test-xai-key")
     monkeypatch.setenv("LUMINA_JWT_SECRET_KEY", "unit-test-jwt-secret")
+    # Ensure ambient shell vars do not override test-provided config unless explicit in test.
+    monkeypatch.delenv("LUMINA_ENFORCE_ENV_RUNTIME_MODE", raising=False)
+    monkeypatch.delenv("TRADE_MODE", raising=False)
+    monkeypatch.delenv("LUMINA_MODE", raising=False)
+    monkeypatch.delenv("BROKER_BACKEND", raising=False)
 
 
 def test_validate_startup_rejects_paper_with_live_backend(monkeypatch: pytest.MonkeyPatch) -> None:

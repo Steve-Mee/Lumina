@@ -1287,8 +1287,18 @@ with st.sidebar:
     dashboard_enabled = st.checkbox("Dashboard", value=True)
     st.divider()
     if st.button("Save Config and Start Bot", type="primary", use_container_width=True):
+        broker_backend = "paper" if trade_mode == "paper" else "live"
+        account_mode = {
+            "paper": "paper",
+            "sim": "sim",
+            "sim_real_guard": "sim",
+            "real": "real",
+        }.get(trade_mode, "paper")
         cfg_updates = {
             "TRADE_MODE": trade_mode,
+            "LUMINA_MODE": trade_mode,
+            "BROKER_BACKEND": broker_backend,
+            "TRADERLEAGUE_ACCOUNT_MODE": account_mode,
             "LUMINA_RISK_PROFILE": risk_profile.lower(),
             "INSTRUMENT": instrument,
             "VOICE_ENABLED": str(voice_enabled).lower(),
