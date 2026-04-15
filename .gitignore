@@ -36,6 +36,7 @@ state/training_pipeline_status.json
 state/finetune_dataset_preview.jsonl
 state/llama_cpp_setup.json
 state/launcher_support_events.jsonl
+state/launcher_bot_process.json
 
 # Docker
 docker-compose.override.yml

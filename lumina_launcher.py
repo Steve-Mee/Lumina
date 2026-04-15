@@ -53,6 +53,7 @@ STATE_PATH = Path("state/lumina_sim_state.json")
 ADMIN_PASSWORD_HASH_PATH = Path("state/launcher_admin_password.json")
 MODEL_CATALOG_STATE_PATH = Path("state/model_catalog_state.json")
 SUPPORT_EVENTS_PATH = Path("state/launcher_support_events.jsonl")
+PROCESS_STATE_PATH = Path("state/launcher_bot_process.json")
 BACKEND_BASE_URL = os.getenv("LUMINA_BACKEND_URL", "http://localhost:8000").rstrip("/")
 LAST_RUN_SUMMARY_PATH = Path("state/last_run_summary.json")
 EVOLUTION_LOG_PATH = Path("state/evolution_log.jsonl")
@@ -155,9 +156,53 @@ def _runtime_command() -> list[str]:
     return [python_cmd, str(RUNTIME_ENTRY)]
 
 
+def _load_process_state() -> dict[str, Any]:
+    if not PROCESS_STATE_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(PROCESS_STATE_PATH.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_process_state(*, pid: int, command: list[str]) -> None:
+    PROCESS_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "pid": int(pid),
+        "started_at": datetime.now().isoformat(timespec="seconds"),
+        "command": command,
+    }
+    PROCESS_STATE_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _clear_process_state() -> None:
+    try:
+        PROCESS_STATE_PATH.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
 def _process_is_alive() -> bool:
     proc = st.session_state.get("bot_process")
-    return proc is not None and proc.poll() is None
+    if proc is not None and proc.poll() is None:
+        return True
+    state = _load_process_state()
+    pid = int(state.get("pid", 0) or 0)
+    if _pid_is_alive(pid):
+        return True
+    _clear_process_state()
+    return False
 
 
 def _start_bot_process() -> tuple[bool, str]:
@@ -177,6 +222,7 @@ def _start_bot_process() -> tuple[bool, str]:
             stderr=subprocess.DEVNULL,
         )
         st.session_state.bot_process = proc
+        _save_process_state(pid=proc.pid, command=command)
         return True, f"Bot started (pid={proc.pid})"
     except Exception as exc:
         return False, f"Failed to start bot: {exc}"
@@ -184,15 +230,30 @@ def _start_bot_process() -> tuple[bool, str]:
 
 def _stop_bot_process() -> tuple[bool, str]:
     proc = st.session_state.get("bot_process")
-    if proc is None:
-        return True, "No running bot process"
-    if proc.poll() is not None:
+    if proc is not None and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=15)
+            st.session_state.bot_process = None
+            _clear_process_state()
+            return True, "Bot stopped"
+        except Exception as exc:
+            return False, f"Failed to stop bot: {exc}"
+
+    state = _load_process_state()
+    pid = int(state.get("pid", 0) or 0)
+    if not _pid_is_alive(pid):
         st.session_state.bot_process = None
+        _clear_process_state()
         return True, "Bot process already stopped"
+
     try:
-        proc.terminate()
-        proc.wait(timeout=15)
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True, text=True)
+        else:
+            os.kill(pid, 15)
         st.session_state.bot_process = None
+        _clear_process_state()
         return True, "Bot stopped"
     except Exception as exc:
         return False, f"Failed to stop bot: {exc}"
@@ -203,6 +264,80 @@ def _tail_file(path: Path, max_chars: int = 4000) -> str:
         return ""
     text = path.read_text(encoding="utf-8", errors="replace")
     return text[-max_chars:]
+
+
+def _file_age_seconds(path: Path) -> float | None:
+    if not path.exists():
+        return None
+    return max(0.0, (datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds())
+
+
+def _format_age(age_seconds: float | None) -> str:
+    if age_seconds is None:
+        return "Not available"
+    if age_seconds < 60:
+        return f"{int(age_seconds)}s ago"
+    if age_seconds < 3600:
+        return f"{int(age_seconds // 60)}m ago"
+    return f"{int(age_seconds // 3600)}h ago"
+
+
+def _service_age_badge(age_seconds: float | None, healthy_threshold_seconds: float = 90.0) -> str:
+    if age_seconds is None:
+        return _status_badge("No feed yet", "warning")
+    if age_seconds <= healthy_threshold_seconds:
+        return _status_badge("Live", "available")
+    return _status_badge("Stale", "warning")
+
+
+def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dashboard_enabled: bool) -> None:
+    st.markdown("### Live Activity & Services")
+    process_badge = _status_badge("Running", "available") if alive else _status_badge("Stopped", "blocked")
+    st.markdown(f"Bot Process {process_badge}", unsafe_allow_html=True)
+
+    log_age = _file_age_seconds(LUMINA_LOG_PATH)
+    state_age = _file_age_seconds(STATE_PATH)
+    screen_share_age = _file_age_seconds(Path("state/live_stream.jsonl"))
+    dashboard_age = _file_age_seconds(Path("journal/swarm_dashboard.html"))
+
+    process_state = _load_process_state()
+    persisted_start_ts = str(process_state.get("started_at", "")).strip() or "Not started"
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Log heartbeat", _format_age(log_age))
+    c2.metric("Runtime state update", _format_age(state_age))
+    c3.metric("Last launch", st.session_state.get("last_start_ts", persisted_start_ts))
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Live Chart Screen Share")
+        if screen_share_enabled:
+            st.markdown(_service_age_badge(screen_share_age), unsafe_allow_html=True)
+            if screen_share_age is None:
+                st.info("Screen share is enabled and waiting for the first chart frame feed.")
+            else:
+                st.caption(f"Last chart feed update: {_format_age(screen_share_age)}")
+        else:
+            st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
+            st.caption("Enable this in the sidebar to publish live chart feed.")
+
+    with right:
+        st.markdown("#### Dashboard")
+        if dashboard_enabled:
+            st.markdown(_service_age_badge(dashboard_age, healthy_threshold_seconds=300.0), unsafe_allow_html=True)
+            if dashboard_age is None:
+                st.info("Dashboard is enabled but no dashboard artifact was found yet.")
+            else:
+                st.caption(f"Last dashboard update: {_format_age(dashboard_age)}")
+                st.caption("Artifact: journal/swarm_dashboard.html")
+        else:
+            st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
+            st.caption("Enable this in the sidebar to generate dashboard output.")
+
+    if alive and log_age is not None and log_age <= 60:
+        st.success("Bot is alive: log activity was updated in the last minute.")
+    elif alive:
+        st.warning("Bot process is running, but log activity looks stale. Check runtime diagnostics.")
 
 
 def _load_runtime_state() -> dict[str, Any]:
@@ -1464,7 +1599,11 @@ with st.sidebar:
         _write_env_file(ENV_PATH, cfg_updates)
         ok, msg = _start_bot_process()
         if ok:
+            st.session_state["last_start_ts"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            st.session_state["screen_share_enabled"] = bool(screen_share_enabled)
+            st.session_state["dashboard_enabled"] = bool(dashboard_enabled)
             st.success(msg)
+            st.info("Services are starting. Check 'Live Activity & Services' on the main screen for live heartbeat.")
         else:
             st.error(msg)
     if st.button("Stop Bot", use_container_width=True):
@@ -1510,7 +1649,8 @@ runtime_status = "available" if alive else "warning"
 runtime_value = "Active bot process" if alive else "Configure in sidebar and start"
 if alive:
     bot_proc = st.session_state.get("bot_process")
-    pid = getattr(bot_proc, "pid", "unknown")
+    persisted = _load_process_state()
+    pid = getattr(bot_proc, "pid", None) or persisted.get("pid") or "unknown"
     runtime_value = f"Active bot process (pid={pid})"
 
 st.markdown(f"Runtime Status {_status_badge(runtime_label, runtime_status)}", unsafe_allow_html=True)
@@ -1527,6 +1667,13 @@ _render_kv_section(
 st.caption(
     "Beast profile requires 64 GB RAM, 20 GB VRAM, and Linux/WSL2 CUDA support for vLLM and Unsloth operations."
 )
+
+env_flags = _parse_env_file(ENV_PATH)
+screen_share_flag = str(env_flags.get("SCREEN_SHARE_ENABLED", "true")).strip().lower() == "true"
+dashboard_flag = str(env_flags.get("DASHBOARD_ENABLED", "true")).strip().lower() == "true"
+screen_share_active = bool(st.session_state.get("screen_share_enabled", screen_share_flag))
+dashboard_active = bool(st.session_state.get("dashboard_enabled", dashboard_flag))
+_render_live_activity_panel(alive=alive, screen_share_enabled=screen_share_active, dashboard_enabled=dashboard_active)
 
 state = _load_runtime_state()
 current_dream = state.get("current_dream", {}) if isinstance(state.get("current_dream"), dict) else {}
