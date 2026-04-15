@@ -1195,8 +1195,11 @@ def _headless_main() -> None:
     # CLI mode override: writes runtime mode into process env for downstream
     # services that resolve mode from config/env.
     normalized_mode = str(args.mode).strip().lower()
+    normalized_broker = str(args.broker).strip().lower()
     os.environ["LUMINA_MODE"] = normalized_mode
     os.environ["TRADE_MODE"] = normalized_mode
+    os.environ["BROKER_BACKEND"] = normalized_broker
+    os.environ["LUMINA_ENFORCE_ENV_RUNTIME_MODE"] = "true"
     os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
     os.environ["LUMINA_SIM_OVERNIGHT"] = "true" if bool(args.overnight_sim) else "false"
     os.environ["LUMINA_STABILITY_CHECK"] = "true" if bool(args.stability_check) else "false"
@@ -1205,6 +1208,9 @@ def _headless_main() -> None:
 
     # Suppress TTS and voice in headless mode.
     os.environ.setdefault("VOICE_ENABLED", "False")
+    # Keep config validation warnings quiet in headless validation contexts.
+    # This fallback is only for local/CI headless runs and must be overridden in production.
+    os.environ.setdefault("LUMINA_JWT_SECRET_KEY", "headless-validation-jwt-secret")
 
     # For live-broker validation without real credentials, inject a stub token
     # so the container config-validation gate does not reject the init.
@@ -1216,15 +1222,22 @@ def _headless_main() -> None:
     # mode; live mode may fail the connectivity check but the simulation still
     # runs (broker_status reflects the outcome).
     container = None
-    try:
-        container = create_application_container()
-    except Exception as exc:  # noqa: BLE001
-        logging.getLogger("lumina.launcher").warning(
-            "Container init skipped in headless mode (%s: %s). "
-            "Running with lightweight simulation only.",
-            type(exc).__name__,
-            exc,
+    live_mock_mode = normalized_mode == "paper" and normalized_broker == "live"
+    if live_mock_mode:
+        logging.getLogger("lumina.launcher").info(
+            "Headless live-mock mode detected (mode=paper, broker=live): "
+            "skipping full container init and using lightweight simulation."
         )
+    else:
+        try:
+            container = create_application_container()
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("lumina.launcher").warning(
+                "Container init skipped in headless mode (%s: %s). "
+                "Running with lightweight simulation only.",
+                type(exc).__name__,
+                exc,
+            )
 
     runtime = HeadlessRuntime(container=container)
     runtime.run(

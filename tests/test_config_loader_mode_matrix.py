@@ -114,3 +114,17 @@ def test_validate_startup_fails_placeholder_api_key_in_real(monkeypatch: pytest.
 
     with pytest.raises(RuntimeError, match="Placeholder/default API key active"):
         ConfigLoader.validate_startup(raise_on_error=True)
+
+
+def test_validate_startup_prefers_env_mode_and_broker_over_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setenv("LUMINA_ENFORCE_ENV_RUNTIME_MODE", "true")
+    monkeypatch.setenv("TRADE_MODE", "paper")
+    monkeypatch.setenv("BROKER_BACKEND", "paper")
+    monkeypatch.setattr(
+        ConfigLoader,
+        "get",
+        classmethod(lambda cls: {"mode": "sim", "broker": {"backend": "paper"}}),
+    )
+
+    assert ConfigLoader.validate_startup(raise_on_error=True) is True

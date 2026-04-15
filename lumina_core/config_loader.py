@@ -152,20 +152,38 @@ class ConfigLoader:
 
     @classmethod
     def _resolve_runtime_modes(cls, cfg: dict[str, Any]) -> tuple[str, str]:
-        trade_mode = _normalize_mode(
-            cfg.get("trade_mode")
-            or cfg.get("mode")
-            or os.getenv("TRADE_MODE")
-            or cls.section("launcher", "default_mode", default="paper"),
-            "paper",
-        )
-        broker_mode = _normalize_broker_backend(
-            cfg.get("broker_backend")
-            or cls.section("broker", "backend", default=None)
-            or os.getenv("BROKER_BACKEND")
-            or cls.section("launcher", "default_broker", default="paper"),
-            "paper",
-        )
+        env_override = str(os.getenv("LUMINA_ENFORCE_ENV_RUNTIME_MODE", "false")).strip().lower() == "true"
+        if env_override:
+            trade_mode_raw = (
+                os.getenv("TRADE_MODE")
+                or os.getenv("LUMINA_MODE")
+                or cfg.get("trade_mode")
+                or cfg.get("mode")
+                or cls.section("launcher", "default_mode", default="paper")
+            )
+            broker_mode_raw = (
+                os.getenv("BROKER_BACKEND")
+                or cfg.get("broker_backend")
+                or cls.section("broker", "backend", default=None)
+                or cls.section("launcher", "default_broker", default="paper")
+            )
+        else:
+            trade_mode_raw = (
+                cfg.get("trade_mode")
+                or cfg.get("mode")
+                or os.getenv("TRADE_MODE")
+                or os.getenv("LUMINA_MODE")
+                or cls.section("launcher", "default_mode", default="paper")
+            )
+            broker_mode_raw = (
+                cfg.get("broker_backend")
+                or cls.section("broker", "backend", default=None)
+                or os.getenv("BROKER_BACKEND")
+                or cls.section("launcher", "default_broker", default="paper")
+            )
+
+        trade_mode = _normalize_mode(trade_mode_raw, "paper")
+        broker_mode = _normalize_broker_backend(broker_mode_raw, "paper")
         return trade_mode, broker_mode
 
     @classmethod
