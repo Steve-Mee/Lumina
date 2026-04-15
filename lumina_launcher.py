@@ -686,6 +686,18 @@ def _status_badge(label: str, status: str) -> str:
     )
 
 
+def _render_kv_section(title: str, rows: list[tuple[str, Any]]) -> None:
+    st.markdown(f"#### {title}")
+    for label, value in rows:
+        left, right = st.columns([1, 2])
+        left.caption(label)
+        if isinstance(value, bool):
+            badge = _status_badge("Yes", "available") if value else _status_badge("No", "blocked")
+            right.markdown(badge, unsafe_allow_html=True)
+        else:
+            right.write(value)
+
+
 def _append_support_event(*, event_type: str, payload: dict[str, Any]) -> None:
     SUPPORT_EVENTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     event = {
@@ -769,6 +781,10 @@ def _render_step_result(result: SetupStepResult) -> None:
         st.caption(result.command)
 
 
+def _runtime_supports_unsloth(snapshot: HardwareSnapshot) -> bool:
+    return snapshot.os_name != "Windows" and snapshot.compute_capability >= 7.0 and snapshot.gpu_vram_gb >= 8.0
+
+
 def _render_tier_requirements(snapshot: HardwareSnapshot) -> None:
     rows: list[dict[str, Any]] = []
     for tier, requirements in HardwareInspector.tier_requirements().items():
@@ -794,18 +810,19 @@ def _render_hardware_summary(snapshot: HardwareSnapshot, recommended: ModelDescr
     col2.metric("RAM", f"{snapshot.ram_gb:.1f} GB")
     col3.metric("GPU VRAM", f"{snapshot.gpu_vram_gb:.1f} GB")
     col4.metric("Recommended Model", recommended.display_name)
-    st.write(
-        {
-            "os": snapshot.os_name,
-            "cpu": snapshot.cpu_name,
-            "cpu_physical_cores": snapshot.cpu_cores_physical,
-            "cpu_logical_cores": snapshot.cpu_cores_logical,
-            "gpu": snapshot.gpu_name or "No NVIDIA GPU detected",
-            "compute_capability": snapshot.compute_capability,
-            "ollama_installed": snapshot.ollama_installed,
-            "ollama_running": snapshot.ollama_running,
-            "vllm_supported": snapshot.vllm_supported,
-        }
+    _render_kv_section(
+        "System Details",
+        [
+            ("Operating System", snapshot.os_name),
+            ("CPU", snapshot.cpu_name),
+            ("CPU Physical Cores", snapshot.cpu_cores_physical),
+            ("CPU Logical Cores", snapshot.cpu_cores_logical),
+            ("GPU", snapshot.gpu_name or "No NVIDIA GPU detected"),
+            ("Compute Capability", f"{snapshot.compute_capability:.1f}" if snapshot.compute_capability else "Unknown"),
+            ("Ollama Installed", snapshot.ollama_installed),
+            ("Ollama Running", snapshot.ollama_running),
+            ("vLLM Supported", snapshot.vllm_supported),
+        ],
     )
     for note in snapshot.notes:
         st.info(note)
@@ -857,15 +874,20 @@ def _render_setup_wizard(setup_service: SetupService, catalog: ModelCatalog) -> 
     )
     _render_hardware_summary(snapshot, recommended_model)
     st.subheader("Recommended installation plan")
-    st.write(
-        {
-            "provider": recommended_model.recommended_provider,
-            "model": recommended_model.display_name,
-            "ollama_tag": recommended_model.ollama_tag,
-            "context_length": recommended_model.context_length,
-            "supports_unsloth": recommended_model.supports_unsloth,
-        }
+    unsloth_runtime_ready = _runtime_supports_unsloth(snapshot)
+    _render_kv_section(
+        "Installation Plan",
+        [
+            ("Provider", recommended_model.recommended_provider),
+            ("Model", recommended_model.display_name),
+            ("Ollama Tag", recommended_model.ollama_tag),
+            ("Context Length", recommended_model.context_length),
+            ("Supports Unsloth (Model)", recommended_model.supports_unsloth),
+            ("Unsloth Runtime Ready", unsloth_runtime_ready),
+        ],
     )
+    if recommended_model.supports_unsloth and not unsloth_runtime_ready:
+        st.info("Dit model ondersteunt Unsloth, maar deze runtime nog niet. Gebruik Linux/WSL2 met CUDA en sm_70+ GPU voor fine-tuning.")
     install_unsloth = st.checkbox(
         "Install optional Unsloth fine-tuning dependencies",
         value=False,

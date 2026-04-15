@@ -39,11 +39,12 @@ class HardwareInspector:
 
     @classmethod
     def capture(cls) -> HardwareSnapshot:
+        os_name = platform.system()
         memory = cls._read_memory_gb()
         gpu_name, gpu_vram_gb, compute_capability, nvidia_smi_available = cls._read_nvidia_gpu()
         ollama_installed = shutil.which("ollama") is not None
         ollama_running = cls._detect_ollama_running()
-        vllm_supported = nvidia_smi_available and compute_capability >= 7.0 and platform.system() != "Windows"
+        vllm_supported = nvidia_smi_available and compute_capability >= 7.0 and os_name != "Windows"
         profile_tier = cls._classify_tier(memory, gpu_vram_gb, compute_capability)
         recommended_model_key, recommended_provider, recommended_context_length = cls._recommend_inference_plan(
             profile_tier=profile_tier,
@@ -55,6 +56,7 @@ class HardwareInspector:
             gpu_vram_gb=gpu_vram_gb,
             ram_gb=memory,
             compute_capability=compute_capability,
+            os_name=os_name,
             ollama_installed=ollama_installed,
             ollama_running=ollama_running,
             vllm_supported=vllm_supported,
@@ -62,7 +64,7 @@ class HardwareInspector:
 
         cpu_name = platform.processor().strip() or "Unknown CPU"
         snapshot = HardwareSnapshot(
-            os_name=platform.system(),
+            os_name=os_name,
             os_version=platform.version(),
             cpu_name=cpu_name,
             cpu_cores_physical=max(1, cls._cpu_count(logical=False)),
@@ -215,6 +217,7 @@ class HardwareInspector:
         gpu_vram_gb: float,
         ram_gb: float,
         compute_capability: float,
+        os_name: str,
         ollama_installed: bool,
         ollama_running: bool,
         vllm_supported: bool,
@@ -227,13 +230,20 @@ class HardwareInspector:
         if gpu_vram_gb <= 0:
             notes.append("Geen NVIDIA GPU gevonden; de app gebruikt CPU/Ollama fallback en vLLM blijft uitgeschakeld.")
         elif not vllm_supported:
-            notes.append("De GPU is zichtbaar maar ondersteunt geen Linux-vLLM pad op deze runtime; gebruik Linux of WSL2 met CUDA voor beast-modus.")
+            blockers: list[str] = []
+            if os_name == "Windows":
+                blockers.append("Windows-native runtime")
+            if compute_capability and compute_capability < 7.0:
+                blockers.append(f"compute capability {compute_capability:.1f} < sm_70")
+            reason = "; ".join(blockers) if blockers else "runtime/gpu beperkingen"
+            notes.append(
+                "De GPU is zichtbaar maar vLLM-pad is geblokkeerd "
+                f"({reason}); gebruik Linux of WSL2 met CUDA voor beast-modus."
+            )
         if profile_tier == "light":
             notes.append(f"Huidig profiel light: minimaal 32 GB RAM en 8 GB VRAM is nodig voor sweet, 64 GB RAM en 20 GB VRAM voor beast. Huidig RAM={ram_gb:.1f} GB.")
         elif profile_tier == "sweet":
-            notes.append("Huidig profiel sweet: voor beast is een Linux-omgeving met sm_70+ GPU en minstens 20 GB VRAM nodig.")
+            notes.append("Huidig profiel sweet: voor beast is 64 GB RAM, minstens 20 GB VRAM en een Linux/WSL2 CUDA runtime met sm_70+ GPU nodig.")
         else:
             notes.append("Huidig profiel beast: hardware is klaar voor grote Qwen-modellen en optionele Unsloth QLoRA op Linux/WSL2.")
-        if compute_capability and compute_capability < 7.0:
-            notes.append(f"Compute capability {compute_capability:.1f} ligt onder sm_70; vLLM-productieprofiel wordt daarom overgeslagen.")
         return notes

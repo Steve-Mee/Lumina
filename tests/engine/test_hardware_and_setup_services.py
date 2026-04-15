@@ -134,3 +134,37 @@ def test_setup_service_upgrade_model_uses_cached_hardware(monkeypatch, tmp_path:
     updated = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     assert len(results) == 2
     assert updated["models"]["reasoning"] == "qwen3.5:9b"
+
+
+def test_hardware_inspector_notes_include_vllm_blockers_once() -> None:
+    notes = HardwareInspector._build_notes(
+        profile_tier="sweet",
+        gpu_vram_gb=11.0,
+        ram_gb=32.0,
+        compute_capability=6.1,
+        os_name="Windows",
+        ollama_installed=True,
+        ollama_running=True,
+        vllm_supported=False,
+    )
+
+    joined = "\n".join(notes)
+    assert "vLLM-pad is geblokkeerd" in joined
+    assert "compute capability 6.1 < sm_70" in joined
+    assert "Windows-native runtime" in joined
+    assert "Compute capability 6.1 ligt onder sm_70" not in joined
+
+
+def test_hardware_inspector_sweet_note_spells_beast_requirements() -> None:
+    notes = HardwareInspector._build_notes(
+        profile_tier="sweet",
+        gpu_vram_gb=11.0,
+        ram_gb=32.0,
+        compute_capability=6.1,
+        os_name="Windows",
+        ollama_installed=True,
+        ollama_running=True,
+        vllm_supported=False,
+    )
+
+    assert any("voor beast is 64 GB RAM" in note for note in notes)
