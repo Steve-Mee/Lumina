@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import base64
+import html
 import hashlib
 import hmac
 import json
+import mimetypes
 import os
 import secrets
 import subprocess
@@ -141,11 +143,7 @@ def _sim_real_guard_launch_flags() -> tuple[bool, bool, bool]:
 
 
 def _available_launcher_trade_modes() -> list[str]:
-    enabled, pilot_enabled, public_enabled = _sim_real_guard_launch_flags()
-    modes = ["paper", "sim", "real"]
-    if enabled and (pilot_enabled or public_enabled):
-        modes.insert(2, "sim_real_guard")
-    return modes
+    return ["paper", "sim", "sim_real_guard", "real"]
 
 
 def _sim_real_guard_real_promotion_allowed() -> bool:
@@ -686,16 +684,121 @@ def _status_badge(label: str, status: str) -> str:
     )
 
 
-def _render_kv_section(title: str, rows: list[tuple[str, Any]]) -> None:
+def _render_kv_section(
+    title: str,
+    rows: list[tuple[str, Any]],
+    help_map: dict[str, str] | None = None,
+) -> None:
     st.markdown(f"#### {title}")
+    explanations = help_map or {}
     for label, value in rows:
         left, right = st.columns([1, 2])
-        left.caption(label)
+        tip = explanations.get(label)
+        if tip:
+            safe_tip = html.escape(tip, quote=True)
+            left.markdown(
+                f"{label} <span title=\"{safe_tip}\" style=\"display:inline-block;width:1rem;height:1rem;line-height:1rem;text-align:center;border-radius:999px;border:1px solid #94a3b8;color:#334155;font-size:0.72rem;margin-left:0.3rem;cursor:help;\">?</span>",
+                unsafe_allow_html=True,
+            )
+        else:
+            left.caption(label)
         if isinstance(value, bool):
             badge = _status_badge("Yes", "available") if value else _status_badge("No", "blocked")
             right.markdown(badge, unsafe_allow_html=True)
         else:
-            right.write(value)
+            right.markdown(str(value))
+
+
+def _render_backend_unavailable_card(service_label: str, exc: Exception) -> None:
+    st.warning(f"{service_label} backend is currently unavailable on localhost:8000.")
+    st.caption("Start the backend service to load live data in this tab.")
+    st.caption(f"Technical detail: {type(exc).__name__}")
+
+
+def _render_live_runtime_card(current_dream: dict[str, Any]) -> None:
+    rows = [
+        ("Signal", current_dream.get("signal", "UNKNOWN")),
+        ("Confidence", current_dream.get("confidence", 0)),
+        ("Stop", current_dream.get("stop", 0)),
+        ("Target", current_dream.get("target", 0)),
+        ("Reason", current_dream.get("reason", "")),
+        ("Why No Trade", current_dream.get("why_no_trade") or "N/A"),
+        ("Confluence Score", current_dream.get("confluence_score", 0)),
+        (
+            "Fib Levels",
+            "Set"
+            if isinstance(current_dream.get("fib_levels"), dict) and current_dream.get("fib_levels")
+            else "N/A",
+        ),
+        ("Swing High", current_dream.get("swing_high", 0)),
+        ("Swing Low", current_dream.get("swing_low", 0)),
+        ("A-B-EEN Direction", current_dream.get("a_been_direction", "NEUTRAL")),
+        ("Chosen Strategy", current_dream.get("chosen_strategy", "None")),
+    ]
+    _render_kv_section(
+        "Current Dream Decision",
+        rows,
+        help_map={
+            "Signal": "The bot's current trade action: BUY, SELL, or HOLD.",
+            "Confidence": "How sure the bot is about this signal (higher means more confidence).",
+            "Stop": "The stop-loss price, used to limit loss if price moves against the trade.",
+            "Target": "The take-profit price where the bot plans to lock in profit.",
+            "Reason": "Short explanation of why the bot chose this signal.",
+            "Why No Trade": "Reason why no position is opened right now, if applicable.",
+            "Confluence Score": "Score showing how many indicators agree on the same direction.",
+            "Fib Levels": "Fibonacci support and resistance levels used in the analysis.",
+            "Swing High": "Recent local high price level used as a technical reference.",
+            "Swing Low": "Recent local low price level used as a technical reference.",
+            "A-B-EEN Direction": "Overall market direction from the internal trend model.",
+            "Chosen Strategy": "Trading strategy currently selected by the bot for this setup.",
+        },
+    )
+
+
+def _render_reports_section(reports_dir: Path) -> None:
+    files = sorted([p for p in reports_dir.iterdir() if p.is_file()], key=lambda p: p.stat().st_mtime, reverse=True)
+    if not files:
+        st.info("No reports found yet.")
+        return
+
+    report_rows: list[dict[str, Any]] = []
+    for p in files[:20]:
+        stat = p.stat()
+        report_rows.append(
+            {
+                "File": p.name,
+                "Type": p.suffix.lower().lstrip("."),
+                "Size (KB)": round(stat.st_size / 1024.0, 1),
+                "Modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
+            }
+        )
+    st.dataframe(pd.DataFrame(report_rows), use_container_width=True)
+
+    selected_name = st.selectbox("Open report preview", [p.name for p in files[:20]], key="report_preview_select")
+    selected_path = next((p for p in files if p.name == selected_name), None)
+    if selected_path is None:
+        return
+
+    mime, _ = mimetypes.guess_type(str(selected_path))
+    mime = mime or "application/octet-stream"
+    file_bytes = selected_path.read_bytes()
+    st.download_button(
+        label=f"Download {selected_path.name}",
+        data=file_bytes,
+        file_name=selected_path.name,
+        mime=mime,
+        use_container_width=True,
+        key=f"download_{selected_path.name}",
+    )
+
+    ext = selected_path.suffix.lower()
+    if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
+        st.image(str(selected_path), caption=selected_path.name, use_container_width=True)
+    elif ext in {".json", ".jsonl", ".txt", ".log", ".yaml", ".yml", ".csv"}:
+        preview = selected_path.read_text(encoding="utf-8", errors="replace")[:8000]
+        st.code(preview)
+    elif ext == ".pdf":
+        st.info("PDF preview is not embedded in this panel. Use the download button to open it locally.")
 
 
 def _append_support_event(*, event_type: str, payload: dict[str, Any]) -> None:
@@ -823,6 +926,17 @@ def _render_hardware_summary(snapshot: HardwareSnapshot, recommended: ModelDescr
             ("Ollama Running", snapshot.ollama_running),
             ("vLLM Supported", snapshot.vllm_supported),
         ],
+        help_map={
+            "Operating System": "The current operating system where LUMINA is running.",
+            "CPU": "The main processor model used for general computation.",
+            "CPU Physical Cores": "Number of real CPU cores available.",
+            "CPU Logical Cores": "Total CPU threads available, including hyper-threading.",
+            "GPU": "Detected NVIDIA GPU model used for acceleration.",
+            "Compute Capability": "NVIDIA architecture capability level required by some GPU runtimes.",
+            "Ollama Installed": "Shows whether Ollama is installed on this machine.",
+            "Ollama Running": "Shows whether the Ollama service is currently running.",
+            "vLLM Supported": "Shows if this runtime can use vLLM on current OS and GPU setup.",
+        },
     )
     for note in snapshot.notes:
         st.info(note)
@@ -943,12 +1057,18 @@ def _render_hardware_tab(snapshot: HardwareSnapshot, catalog: ModelCatalog, curr
         "available" if current_model.key == recommended.key else "warning",
     )
     st.markdown(f"Model Alignment {alignment_badge}", unsafe_allow_html=True)
-    st.write(
-        {
-            "current_model": current_model.display_name,
-            "recommended_model": recommended.display_name,
-            "provider": recommended.recommended_provider,
-        }
+    _render_kv_section(
+        "Model Alignment Details",
+        [
+            ("Current Model", current_model.display_name),
+            ("Recommended Model", recommended.display_name),
+            ("Provider", recommended.recommended_provider),
+        ],
+        help_map={
+            "Current Model": "The model currently configured for reasoning and decisions.",
+            "Recommended Model": "Best-fit model for your current hardware profile.",
+            "Provider": "Inference engine used to run the recommended model.",
+        },
     )
 
 
@@ -978,13 +1098,20 @@ def _render_model_management_tab(
     st.markdown(f"Current Tier Target {current_badge}", unsafe_allow_html=True)
     st.markdown(f"Recommended Model Status {recommended_badge}", unsafe_allow_html=True)
     st.markdown(f"Upgrade Outlook {upgrade_badge}", unsafe_allow_html=True)
-    st.write(
-        {
-            "catalog_version": catalog.version(),
-            "current_model": current_model.display_name,
-            "installed_ollama_models": installed_models,
-            "recommended_model": recommended_model.display_name,
-        }
+    _render_kv_section(
+        "Catalog Summary",
+        [
+            ("Catalog Version", catalog.version()),
+            ("Current Model", current_model.display_name),
+            ("Installed Ollama Models", ", ".join(installed_models) if installed_models else "None"),
+            ("Recommended Model", recommended_model.display_name),
+        ],
+        help_map={
+            "Catalog Version": "Version of the local model catalog used by the launcher.",
+            "Current Model": "Model currently active in your configuration.",
+            "Installed Ollama Models": "Models already downloaded and available in Ollama.",
+            "Recommended Model": "Model suggested for your hardware and runtime.",
+        },
     )
     rows = [
         {
@@ -1291,7 +1418,13 @@ if catalog_state.get("catalog_version") != catalog.version():
     _save_catalog_state(catalog, current_model.key)
 
 st.title("LUMINA OS - Start Screen")
-st.markdown("**Trading runtime, guided setup, hardware-aware model selection, and future-ready fine-tuning in one control plane.**")
+st.markdown("**Trading runtime, hardware-aware model selection, and controlled launch operations in one control plane.**")
+
+recommended_start_model = catalog.recommended_for(
+    ram_gb=snapshot.ram_gb,
+    gpu_vram_gb=snapshot.gpu_vram_gb,
+    vllm_supported=snapshot.vllm_supported,
+)
 
 with st.sidebar:
     st.header("Bot Configuration")
@@ -1321,6 +1454,7 @@ with st.sidebar:
             "LUMINA_MODE": trade_mode,
             "BROKER_BACKEND": broker_backend,
             "TRADERLEAGUE_ACCOUNT_MODE": account_mode,
+            "ENABLE_SIM_REAL_GUARD": "true" if trade_mode == "sim_real_guard" else str(os.getenv("ENABLE_SIM_REAL_GUARD", "false")).lower(),
             "LUMINA_RISK_PROFILE": risk_profile.lower(),
             "INSTRUMENT": instrument,
             "VOICE_ENABLED": str(voice_enabled).lower(),
@@ -1371,15 +1505,27 @@ with st.sidebar:
     st.caption(f"Mode: {'Admin' if admin_mode else 'User'}")
 
 alive = _process_is_alive()
+runtime_label = "Running" if alive else "Ready"
+runtime_status = "available" if alive else "warning"
+runtime_value = "Active bot process" if alive else "Configure in sidebar and start"
 if alive:
     bot_proc = st.session_state.get("bot_process")
     pid = getattr(bot_proc, "pid", "unknown")
-    st.success(f"BOT IS LIVE - pid={pid}")
-else:
-    st.info("Configureer links in de sidebar en klik op START BOT om te beginnen.")
+    runtime_value = f"Active bot process (pid={pid})"
 
-st.info(
-    f"This machine is {snapshot.profile_tier.upper()}. Sweet requires 32 GB RAM and 8 GB VRAM; beast requires 64 GB RAM, 20 GB VRAM, and Linux or WSL2 CUDA support for vLLM and Unsloth."
+st.markdown(f"Runtime Status {_status_badge(runtime_label, runtime_status)}", unsafe_allow_html=True)
+_render_kv_section(
+    "Operations Overview",
+    [
+        ("Runtime", runtime_value),
+        ("Hardware Tier", snapshot.profile_tier.upper()),
+        ("Hardware Envelope", f"RAM {snapshot.ram_gb:.1f} GB | GPU VRAM {snapshot.gpu_vram_gb:.1f} GB"),
+        ("Recommended Model", recommended_start_model.display_name),
+        ("vLLM Path", "Ready" if snapshot.vllm_supported else "Blocked on current runtime"),
+    ],
+)
+st.caption(
+    "Beast profile requires 64 GB RAM, 20 GB VRAM, and Linux/WSL2 CUDA support for vLLM and Unsloth operations."
 )
 
 state = _load_runtime_state()
@@ -1418,7 +1564,7 @@ if admin_mode and len(tabs) > next_optional_idx:
 with tab1:
     st.subheader("Live Dream + Runtime State")
     if current_dream:
-        st.json(current_dream)
+        _render_live_runtime_card(current_dream)
     else:
         st.info("Nog geen runtime state gevonden in state/lumina_sim_state.json")
     col1, col2, col3 = st.columns(3)
@@ -1442,7 +1588,7 @@ with tab4:
         else:
             st.info("Leaderboard is leeg")
     except Exception as exc:
-        st.info(f"Leaderboard backend nog niet gestart ({exc})")
+        _render_backend_unavailable_card("Trader League", exc)
 
 with tab5:
     st.subheader("Global Community Bibles")
@@ -1454,7 +1600,7 @@ with tab5:
         else:
             st.info("Nog geen community bible data")
     except Exception as exc:
-        st.info(f"Community backend nog niet gestart ({exc})")
+        _render_backend_unavailable_card("Community Bibles", exc)
 
 with tab6:
     st.subheader("Ultimate Performance Validation")
@@ -1468,10 +1614,8 @@ with tab6:
             st.error(f"Validation failed: {exc}")
     reports_dir = Path("journal/reports")
     if reports_dir.exists():
-        files = sorted([p.name for p in reports_dir.iterdir() if p.is_file()], reverse=True)
-        if files:
-            st.write("Recent reports:")
-            st.write("\n".join(files[:10]))
+        st.write("Recent reports")
+        _render_reports_section(reports_dir)
 
 if tab7 is not None:
     with tab7:
