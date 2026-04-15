@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
 from lumina_core.engine.broker_bridge import Order
+from lumina_core.engine.local_inference_engine import LocalInferenceEngine
+from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.reasoning_service import ReasoningService
 
 
@@ -24,9 +27,10 @@ def _service(mode: str = "real") -> tuple[ReasoningService, _BrokerSpy]:
         app=SimpleNamespace(),
         get_current_dream_snapshot=lambda: {"confluence_score": 0.9, "regime": "NEUTRAL", "hold_until_ts": 0.0},
     )
+    inference_engine = SimpleNamespace(active_provider="ollama")
     service = ReasoningService(
-        engine=engine,
-        inference_engine=SimpleNamespace(active_provider="ollama"),
+        engine=cast(LuminaEngine, cast(Any, engine)),
+        inference_engine=cast(LocalInferenceEngine, cast(Any, inference_engine)),
         regime_detector=None,
         container=SimpleNamespace(broker=broker),
     )

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 from lumina_core.engine.broker_bridge import Order
+from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import submit_order_with_risk_check
 
 
@@ -34,7 +36,7 @@ def test_submit_order_with_risk_check_blocks_when_pre_trade_fails(monkeypatch) -
     )
 
     result = submit_order_with_risk_check(
-        app,
+        cast(RuntimeContext, cast(Any, app)),
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=100.0,
@@ -54,7 +56,7 @@ def test_submit_order_with_risk_check_submits_when_allowed(monkeypatch) -> None:
     )
 
     result = submit_order_with_risk_check(
-        app,
+        cast(RuntimeContext, cast(Any, app)),
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=100.0,
