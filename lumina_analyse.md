@@ -251,9 +251,23 @@ Totaalscore Expert Daytrader: **7.2/10**
 | Configuratie bevat potentieel gevaarlijke defaults en voorbeeldsleutels | Financiële governance vereist veilige defaults en expliciete provisioning | Verwijder voorbeeld admin key uit effectieve config en forceer startup fail als placeholder aanwezig is | Critical |
 | Geen expliciete stress-test rapportage voor tail risk in standaard output | Voor professioneel kapitaalbeheer is stress- en scenarioanalyse verplicht | Voeg vaste stresssuite toe (vol spike, liquidity shock, correlation breakdown) | Medium |
 
+### Opvolgingsstatus Expert 4 (2026-04-15)
+
+**Status: alle Expert-4 verbeterpunten zijn technisch afgehandeld en regressie-gevalideerd.**
+
+- ✅ Margin governance verbeterd met snapshot metadata + stale detectie.
+- ✅ VaR governance uitgebreid met data quality bands + fallback limieten.
+- ✅ Financial reporting opgesplitst en gelabeld (learning vs realism) inclusief parity deltas.
+- ✅ Config secret hardening mode-aware afgedwongen; placeholder admin key verwijderd uit actieve runtime-config.
+- ✅ Standaard stresssuite output toegevoegd met drie scenariofamilies.
+
+Validatie:
+- ✅ Gerichte regressie (Expert-4 domeinen): 76 passed.
+- ✅ Volledige regressie: 316 passed, 2 warnings.
+
 ### Wat moet verwijderd worden
-- Voorbeeld API key in actieve config.yaml (placeholder met enabled=true hoort niet in productierunpad).
-- Financiële rapporten waarin sim-leermetrics zonder duidelijke label als prestatiebenchmark worden gepresenteerd.
+- ✅ Uitgevoerd: placeholder API key verwijderd uit actieve `config.yaml`.
+- ✅ Uitgevoerd: gemengde financiële rapportering opgeschoond met expliciete channel-labels.
 
 ### Scores (op 10)
 | Segment | Score |

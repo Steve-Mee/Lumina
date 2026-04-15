@@ -22,6 +22,7 @@ from lumina_core.engine.sim_stability_checker import (
     format_stability_report,
     generate_stability_report,
 )
+from lumina_core.engine.stress_suite_runner import StressSuiteRunner
 
 logger = logging.getLogger("lumina.headless")
 
@@ -407,6 +408,7 @@ class HeadlessRuntime:
     def __init__(self, container: Any | None = None) -> None:
         self._container = container
         self._logger = logging.getLogger("lumina.headless")
+        self._stress_runner = StressSuiteRunner()
 
     # ------------------------------------------------------------------
     # Public API
@@ -547,7 +549,27 @@ class HeadlessRuntime:
             "metrics_learning": sim_learning,
             "metrics_realism": sim_realism,
             "metrics_primary": "learning" if mode_normalized == "sim" else "realism",
+            "financial_reporting": {
+                "learning_label": "Learning Fitness (niet productie-benchmark)",
+                "realism_label": "Realism Adjusted (wel vergelijkbaar voor live readiness)",
+                "metrics_for_readiness_gate": "realism",
+                "parity_delta_pnl_realized": round(
+                    float(sim_learning.get("pnl_realized", 0.0) or 0.0) - float(sim_realism.get("pnl_realized", 0.0) or 0.0),
+                    2,
+                ),
+                "parity_delta_max_drawdown": round(
+                    float(sim_learning.get("max_drawdown", 0.0) or 0.0) - float(sim_realism.get("max_drawdown", 0.0) or 0.0),
+                    2,
+                ),
+                "parity_delta_sharpe_annualized": round(
+                    float(sim_learning.get("sharpe_annualized", 0.0) or 0.0) - float(sim_realism.get("sharpe_annualized", 0.0) or 0.0),
+                    4,
+                ),
+            },
         }
+
+        summary["stress_report"] = self._stress_runner.build_report(sim_realism)
+        summary["stress_ready_for_real_gate"] = bool(summary["stress_report"].get("stress_ready_for_real_gate", False))
 
         should_run_stability = mode_normalized == "sim"
         if should_run_stability:

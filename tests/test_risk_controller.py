@@ -6,12 +6,14 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
 import json
+from dataclasses import replace
 
 from lumina_core.engine.risk_controller import (
     HardRiskController,
     RiskLimits,
     RiskState,
 )
+from lumina_core.engine.margin_snapshot_provider import MarginSnapshot
 
 
 class _StubPortfolioAllocator:
@@ -374,6 +376,19 @@ class TestHardRiskController:
         allowed, reason = controller.check_can_trade("MES", "trending_up", 100.0)
         assert allowed is False
         assert "PORTFOLIO VAR breached" in reason
+
+    def test_stale_margin_snapshot_blocks_trade_in_enforced_mode(self, controller):
+        """Stale margin snapshot should fail-closed when rules are enforced."""
+        stale_snapshot = replace(
+            controller.state.margin_tracker.snapshot,
+            as_of=_utcnow() - timedelta(hours=300),
+            stale_after_hours=24,
+        )
+        controller.state.margin_tracker.snapshot = stale_snapshot
+
+        allowed, reason = controller.check_can_trade("MES", "TRENDING", 75.0)
+        assert allowed is False
+        assert "snapshot stale" in reason
 
     @pytest.mark.safety_gate
     def test_real_mode_blocks_new_trades_in_eod_window(self):

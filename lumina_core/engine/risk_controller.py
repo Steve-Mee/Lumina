@@ -15,6 +15,8 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+from .margin_snapshot_provider import MarginSnapshot, MarginSnapshotProvider
+
 logger = logging.getLogger(__name__)
 
 
@@ -26,25 +28,27 @@ def _utcnow() -> datetime:
 class MarginTracker:
     """Track CME futures margin requirements per instrument (capital preservation)."""
     
-    # CME maintenance margin requirements (approximate as of 2026)
-    CME_MARGINS = {
-        "MES": 8400.0,        # E-mini S&P 500
-        "MNQ": 10500.0,       # E-mini Nasdaq-100
-        "MYM": 7000.0,        # E-mini Dow
-        "RTY": 5500.0,        # E-mini Russell 2000
-        "ZB": 3300.0,         # Treasury Bond
-        "ZN": 2600.0,         # Treasury Note
-        "YM": 21000.0,        # Micro Dow
-        "ES": 20000.0,        # Standard S&P 500
-        "NQ": 32000.0,        # Standard Nasdaq
-    }
-    
+    # CME maintenance margin requirements now come from MarginSnapshotProvider.
+    snapshot: MarginSnapshot = field(default_factory=MarginSnapshotProvider.from_config)
     account_equity: float = 50000.0  # Current account equity
     
     def get_margin_requirement(self, symbol: str) -> float:
         """Get maintenance margin for a symbol. Defaults to 3% of equity if unknown."""
         symbol_upper = str(symbol).strip().upper()
-        return self.CME_MARGINS.get(symbol_upper, self.account_equity * 0.03)
+        return self.snapshot.margins.get(symbol_upper, self.account_equity * 0.03)
+
+    def is_snapshot_stale(self) -> bool:
+        return bool(self.snapshot.stale)
+
+    def snapshot_status(self) -> dict[str, Any]:
+        return {
+            "source": self.snapshot.source,
+            "as_of": self.snapshot.as_of.isoformat(),
+            "confidence": float(self.snapshot.confidence),
+            "stale_after_hours": int(self.snapshot.stale_after_hours),
+            "age_hours": float(round(self.snapshot.age_hours, 3)),
+            "stale": bool(self.snapshot.stale),
+        }
     
     def available_margin(self, positions_margin_used: float) -> float:
         """Calculate available margin after positions."""
@@ -449,6 +453,17 @@ class HardRiskController:
         
         # 6. CME Margin requirement check (capital preservation)
         if self.state.margin_tracker is not None:
+            if self.state.margin_tracker.is_snapshot_stale():
+                status = self.state.margin_tracker.snapshot_status()
+                stale_reason = (
+                    "CME MARGIN snapshot stale: "
+                    f"age={status['age_hours']}h > ttl={status['stale_after_hours']}h "
+                    f"source={status['source']}"
+                )
+                if self.enforce_rules and (not self.limits.sim_mode):
+                    return False, stale_reason
+                logger.warning(stale_reason)
+
             total_margin_used = sum(
                 self.state.margin_tracker.get_margin_requirement(sym)
                 for sym in self.state.open_risk_by_symbol.keys()
@@ -598,6 +613,12 @@ class HardRiskController:
                 'breached': self.state.portfolio_var_breached,
                 'reason': self.state.portfolio_var_reason,
             },
+            'margin_snapshot': (
+                self.state.margin_tracker.snapshot_status() if self.state.margin_tracker is not None else {
+                    'source': 'unavailable',
+                    'stale': True,
+                }
+            ),
             'recent_trades': list(self.state.trade_history)[-10:],
         }
     

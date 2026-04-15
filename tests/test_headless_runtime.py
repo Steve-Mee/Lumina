@@ -47,6 +47,9 @@ REQUIRED_FIELDS: dict[str, type] = {
     "metrics_learning": dict,
     "metrics_realism": dict,
     "metrics_primary": str,
+    "financial_reporting": dict,
+    "stress_report": dict,
+    "stress_ready_for_real_gate": bool,
 }
 
 
@@ -180,6 +183,11 @@ class TestHeadlessRuntime:
         assert summary["metrics_primary"] == "learning"
         assert isinstance(summary["metrics_learning"], dict)
         assert isinstance(summary["metrics_realism"], dict)
+        assert summary["financial_reporting"]["metrics_for_readiness_gate"] == "realism"
+        assert "parity_delta_pnl_realized" in summary["financial_reporting"]
+        assert "parity_delta_max_drawdown" in summary["financial_reporting"]
+        assert "parity_delta_sharpe_annualized" in summary["financial_reporting"]
+        assert "volatility_spike" in summary["stress_report"]["scenarios"]
 
         captured = capsys.readouterr()
         assert "SIM LEARNING MODE ACTIVE" in captured.out
@@ -201,6 +209,8 @@ class TestHeadlessRuntime:
         assert summary["schema_version"] == "1.0"
         assert summary["duration_minutes"] == pytest.approx(1.0)
         assert summary["metrics_primary"] == "realism"
+        assert summary["financial_reporting"]["metrics_for_readiness_gate"] == "realism"
+        assert isinstance(summary["stress_report"]["worst_case_drawdown"], (int, float))
 
     def test_summary_written_to_disk(self, tmp_path, monkeypatch):
         """Summary JSON is persisted to the configured path."""

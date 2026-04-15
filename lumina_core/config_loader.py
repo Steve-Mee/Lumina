@@ -34,6 +34,8 @@ _PLACEHOLDER_PATTERNS = (
     "todo",
     "fixme",
     "insert_",
+    "replace_me",
+    "example",
 )
 
 # Required environment variable names.
@@ -43,6 +45,15 @@ _REQUIRED_ENV_SECRETS: tuple[str, ...] = (
 )
 # Keys that must be present only when broker_backend == "live".
 _LIVE_REQUIRED_ENV: tuple[str, ...] = ("CROSSTRADE_TOKEN",)
+
+
+def _looks_like_placeholder(value: Any) -> bool:
+    text = str(value or "").strip().lower()
+    if not text:
+        return True
+    if text.startswith("${") and text.endswith("}"):
+        return True
+    return any(p in text for p in _PLACEHOLDER_PATTERNS)
 
 
 def _normalize_mode(value: Any, default: str) -> str:
@@ -173,13 +184,24 @@ class ConfigLoader:
         errors: list[str] = []
         warnings: list[str] = []
 
+        security_cfg = cls.section("security", default={})
+        strict_secret_hygiene = bool(
+            (security_cfg.get("strict_secret_hygiene", False) if isinstance(security_cfg, dict) else False)
+        )
+
         # 1. Required env secrets
         for var in _REQUIRED_ENV_SECRETS:
             val = os.getenv(var, "")
             if not val:
-                errors.append(f"Missing required env var: {var}")
-            elif any(p in val.lower() for p in _PLACEHOLDER_PATTERNS):
-                errors.append(f"Placeholder value detected in env var {var!r}")
+                if strict_secret_hygiene:
+                    errors.append(f"Missing required env var: {var}")
+                else:
+                    warnings.append(f"Missing env var (non-strict mode): {var}")
+            elif _looks_like_placeholder(val):
+                if strict_secret_hygiene:
+                    errors.append(f"Placeholder value detected in env var {var!r}")
+                else:
+                    warnings.append(f"Placeholder-like env value detected (non-strict): {var!r}")
 
         # 2. Live-broker secrets (only when broker is live)
         trade_mode, broker_mode = cls._resolve_runtime_modes(cfg)
@@ -197,13 +219,37 @@ class ConfigLoader:
             )
 
         # 2b. Live-broker secrets when a live backend is active.
+        hard_secret_mode = (trade_mode == "real") or strict_secret_hygiene
         if broker_mode == "live":
             for var in _LIVE_REQUIRED_ENV:
                 val = os.getenv(var, "")
                 if not val:
-                    errors.append(f"Missing required env var for live broker: {var}")
-                elif any(p in val.lower() for p in _PLACEHOLDER_PATTERNS):
-                    errors.append(f"Placeholder value in live-broker env var {var!r}")
+                    if hard_secret_mode:
+                        errors.append(f"Missing required env var for live broker: {var}")
+                    else:
+                        warnings.append(f"Missing live-broker env var (advisory mode): {var}")
+                elif _looks_like_placeholder(val):
+                    if hard_secret_mode:
+                        errors.append(f"Placeholder value in live-broker env var {var!r}")
+                    else:
+                        warnings.append(f"Placeholder live-broker env value (advisory mode): {var!r}")
+
+        # 2c. Detect placeholder/default API keys in active security config.
+        api_keys = {}
+        if isinstance(security_cfg, dict):
+            raw_api_keys = security_cfg.get("api_keys", {})
+            if isinstance(raw_api_keys, dict):
+                api_keys = raw_api_keys
+        for api_key, meta in api_keys.items():
+            enabled = bool(meta.get("enabled", True)) if isinstance(meta, dict) else True
+            if not enabled:
+                continue
+            if _looks_like_placeholder(api_key):
+                msg = f"Placeholder/default API key active in security.api_keys: {api_key!r}"
+                if hard_secret_mode:
+                    errors.append(msg)
+                else:
+                    warnings.append(msg)
 
         # 3. Collect non-secret summary fields for the startup report
         symbols = cfg.get("swarm_symbols", [])
@@ -224,13 +270,16 @@ class ConfigLoader:
             for w in warnings:
                 _LOG.warning("[ConfigLoader] %s", w)
 
+        secret_hygiene_status = "pass" if not errors and not warnings else ("fail" if errors else "warn")
+
         # Startup config report (single INFO line)
         _LOG.info(
-            "[ConfigLoader] startup OK | broker=%s trade_mode=%s symbols=%s model=%s log_level=%s",
+            "[ConfigLoader] startup OK | broker=%s trade_mode=%s symbols=%s model=%s log_level=%s secret_hygiene_status=%s",
             broker_mode,
             trade_mode,
             symbols,
             model_name,
             log_level,
+            secret_hygiene_status,
         )
         return True

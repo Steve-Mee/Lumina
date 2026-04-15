@@ -151,13 +151,9 @@ security:
   
   # API Key Configuration
   api_key_header: "X-API-Key"
-  api_keys:
-    # Example admin key (replace with your own generated key)
-    # Generate: python -c "import secrets; print(f'sk_{secrets.token_hex(32)}')"
-    "sk_example_admin_key_replace_me": 
-      name: "Admin Console"
-      role: "admin"
-      enabled: true
+  # Define active keys here via secure provisioning (no placeholders in runtime config).
+  # Generate: python -c "import secrets; print(f'sk_{secrets.token_hex(32)}')"
+  api_keys: {}
   
   # Rate Limiting (token bucket algorithm)
   rate_limit_enabled: true

@@ -18,6 +18,11 @@ class PortfolioVaRSnapshot:
     confidence: float
     window_days: int
     method: str
+    data_points: int
+    quality_score: float
+    quality_band: str
+    effective_max_var_usd: float
+    effective_max_total_open_risk: float
     breached: bool
     reason: str
     symbols: list[str]
@@ -33,6 +38,12 @@ class PortfolioVaRConfig:
     method: str = "historical"
     min_points: int = 20
     enforce_fail_closed: bool = True
+    quality_green_min: float = 80.0
+    quality_amber_min: float = 55.0
+    amber_var_limit_multiplier: float = 0.85
+    amber_total_open_risk_multiplier: float = 0.9
+    red_var_limit_multiplier: float = 0.7
+    red_total_open_risk_multiplier: float = 0.8
 
 
 class PortfolioVaRAllocator:
@@ -63,6 +74,12 @@ class PortfolioVaRAllocator:
             method=str(raw.get("method", "historical") or "historical").strip().lower(),
             min_points=max(10, int(raw.get("min_points", 20) or 20)),
             enforce_fail_closed=bool(raw.get("enforce_fail_closed", True)),
+            quality_green_min=float(raw.get("quality_green_min", 80.0) or 80.0),
+            quality_amber_min=float(raw.get("quality_amber_min", 55.0) or 55.0),
+            amber_var_limit_multiplier=float(raw.get("amber_var_limit_multiplier", 0.85) or 0.85),
+            amber_total_open_risk_multiplier=float(raw.get("amber_total_open_risk_multiplier", 0.9) or 0.9),
+            red_var_limit_multiplier=float(raw.get("red_var_limit_multiplier", 0.7) or 0.7),
+            red_total_open_risk_multiplier=float(raw.get("red_total_open_risk_multiplier", 0.8) or 0.8),
         )
 
     def evaluate_proposed_trade(
@@ -75,15 +92,24 @@ class PortfolioVaRAllocator:
         exposures = self._build_exposures(symbol=symbol, proposed_risk=proposed_risk, current=open_risk_by_symbol)
         total_open_risk = sum(exposures.values())
         symbols = list(exposures.keys())
+        quality_score = 0.0
+        quality_band = "red"
+        effective_max_var_usd = float(self.config.max_var_usd)
+        effective_max_total_open_risk = float(self.config.max_total_open_risk)
 
-        if total_open_risk > self.config.max_total_open_risk:
+        if total_open_risk > effective_max_total_open_risk:
             snapshot = self._snapshot(
                 var_usd=0.0,
                 total_open_risk=total_open_risk,
+                data_points=0,
+                quality_score=quality_score,
+                quality_band=quality_band,
+                effective_max_var_usd=effective_max_var_usd,
+                effective_max_total_open_risk=effective_max_total_open_risk,
                 breached=True,
                 reason=(
                     f"MAX TOTAL OPEN RISK exceeded: {total_open_risk:.2f} > "
-                    f"{self.config.max_total_open_risk:.2f}"
+                    f"{effective_max_total_open_risk:.2f}"
                 ),
                 symbols=symbols,
                 correlation_matrix={},
@@ -92,14 +118,45 @@ class PortfolioVaRAllocator:
             return False, snapshot.reason, snapshot
 
         returns_df = self._returns_frame(exposures)
-        if returns_df is None or returns_df.empty or len(returns_df) < self.config.min_points:
+        data_points = int(0 if returns_df is None else len(returns_df))
+        quality_score = self._quality_score(data_points)
+        quality_band = self._quality_band(quality_score)
+        effective_max_var_usd, effective_max_total_open_risk = self._effective_limits(quality_band)
+
+        if total_open_risk > effective_max_total_open_risk:
             reason = (
-                f"Portfolio VaR unavailable: insufficient bar history "
-                f"({0 if returns_df is None else len(returns_df)} < {self.config.min_points})"
+                f"MAX TOTAL OPEN RISK exceeded (quality={quality_band}): "
+                f"{total_open_risk:.2f} > {effective_max_total_open_risk:.2f}"
             )
             snapshot = self._snapshot(
                 var_usd=0.0,
                 total_open_risk=total_open_risk,
+                data_points=data_points,
+                quality_score=quality_score,
+                quality_band=quality_band,
+                effective_max_var_usd=effective_max_var_usd,
+                effective_max_total_open_risk=effective_max_total_open_risk,
+                breached=True,
+                reason=reason,
+                symbols=symbols,
+                correlation_matrix={},
+            )
+            self._record_observability(snapshot)
+            return False, reason, snapshot
+
+        if returns_df is None or returns_df.empty or data_points < self.config.min_points:
+            reason = (
+                f"Portfolio VaR unavailable: insufficient bar history "
+                f"({data_points} < {self.config.min_points})"
+            )
+            snapshot = self._snapshot(
+                var_usd=0.0,
+                total_open_risk=total_open_risk,
+                data_points=data_points,
+                quality_score=quality_score,
+                quality_band=quality_band,
+                effective_max_var_usd=effective_max_var_usd,
+                effective_max_total_open_risk=effective_max_total_open_risk,
                 breached=self.config.enforce_fail_closed,
                 reason=reason,
                 symbols=symbols,
@@ -117,15 +174,20 @@ class PortfolioVaRAllocator:
         }
         pnl_series = self._portfolio_pnl_series(exposures=exposures, returns_df=returns_df)
         var_usd = self._calculate_var_usd(pnl_series)
-        breached = var_usd > self.config.max_var_usd
+        breached = var_usd > effective_max_var_usd
         reason = (
-            f"PORTFOLIO VAR breached: {var_usd:.2f} > {self.config.max_var_usd:.2f}"
+            f"PORTFOLIO VAR breached ({quality_band}): {var_usd:.2f} > {effective_max_var_usd:.2f}"
             if breached
             else "OK"
         )
         snapshot = self._snapshot(
             var_usd=var_usd,
             total_open_risk=total_open_risk,
+            data_points=data_points,
+            quality_score=quality_score,
+            quality_band=quality_band,
+            effective_max_var_usd=effective_max_var_usd,
+            effective_max_total_open_risk=effective_max_total_open_risk,
             breached=breached,
             reason=reason,
             symbols=symbols,
@@ -234,6 +296,11 @@ class PortfolioVaRAllocator:
         *,
         var_usd: float,
         total_open_risk: float,
+        data_points: int,
+        quality_score: float,
+        quality_band: str,
+        effective_max_var_usd: float,
+        effective_max_total_open_risk: float,
         breached: bool,
         reason: str,
         symbols: list[str],
@@ -247,11 +314,45 @@ class PortfolioVaRAllocator:
             confidence=float(self.config.confidence),
             window_days=int(self.config.window_days),
             method=str(self.config.method),
+            data_points=int(data_points),
+            quality_score=float(quality_score),
+            quality_band=str(quality_band),
+            effective_max_var_usd=float(effective_max_var_usd),
+            effective_max_total_open_risk=float(effective_max_total_open_risk),
             breached=bool(breached),
             reason=str(reason),
             symbols=list(symbols),
             correlation_matrix=correlation_matrix,
         )
+
+    def _quality_score(self, data_points: int) -> float:
+        points = max(0, int(data_points))
+        minimum = max(1, int(self.config.min_points))
+        # 0..100 score with bonus for deeper history, capped at 100.
+        return max(0.0, min(100.0, (points / float(minimum)) * 50.0 + 50.0)) if points >= minimum else max(0.0, (points / float(minimum)) * 50.0)
+
+    def _quality_band(self, score: float) -> str:
+        if score >= float(self.config.quality_green_min):
+            return "green"
+        if score >= float(self.config.quality_amber_min):
+            return "amber"
+        return "red"
+
+    def _effective_limits(self, band: str) -> tuple[float, float]:
+        base_var = float(self.config.max_var_usd)
+        base_total = float(self.config.max_total_open_risk)
+        b = str(band).strip().lower()
+        if b == "amber":
+            return (
+                base_var * float(self.config.amber_var_limit_multiplier),
+                base_total * float(self.config.amber_total_open_risk_multiplier),
+            )
+        if b == "red":
+            return (
+                base_var * float(self.config.red_var_limit_multiplier),
+                base_total * float(self.config.red_total_open_risk_multiplier),
+            )
+        return base_var, base_total
 
     def _record_observability(self, snapshot: PortfolioVaRSnapshot) -> None:
         obs = self.observability_service

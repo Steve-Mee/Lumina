@@ -80,6 +80,8 @@ def test_portfolio_var_blocks_on_correlated_spike() -> None:
     assert snapshot.breached is True
     assert snapshot.var_usd > snapshot.max_var_usd
     assert "MES JUN26" in snapshot.correlation_matrix
+    assert snapshot.quality_band in {"green", "amber", "red"}
+    assert snapshot.effective_max_var_usd <= snapshot.max_var_usd
 
 
 def test_portfolio_var_respects_total_open_risk_cap() -> None:
@@ -108,7 +110,7 @@ def test_portfolio_var_respects_total_open_risk_cap() -> None:
 
     assert allowed is False
     assert "MAX TOTAL OPEN RISK exceeded" in reason
-    assert snapshot.total_open_risk > snapshot.max_total_open_risk
+    assert snapshot.total_open_risk > snapshot.effective_max_total_open_risk
 
 
 def test_portfolio_var_prefers_max_portfolio_var_usd_key() -> None:
