@@ -1,4 +1,5 @@
 from .analysis_service import HumanAnalysisService
+from .audit_log_service import AuditLogService
 from .agent_blackboard import AgentBlackboard, BlackboardEvent
 from .agent_decision_log import AgentDecisionLog
 from .agent_policy_gateway import AgentPolicyGateway
@@ -32,6 +33,7 @@ from .visualization_service import VisualizationService
 
 __all__ = [
     "HumanAnalysisService",
+    "AuditLogService",
     "AgentBlackboard",
     "BlackboardEvent",
     "AgentDecisionLog",

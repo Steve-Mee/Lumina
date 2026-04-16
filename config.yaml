@@ -163,6 +163,17 @@ risk_controller:
   es_95_limit_usd: 1500.0
   es_99_limit_usd: 2200.0
 
+  # LIVING ORGANISM v52 - Regime-aware Monte-Carlo projected max drawdown
+  enable_mc_drawdown_calc: true
+  mc_drawdown_paths: 10000
+  mc_drawdown_horizon_days: 252
+  mc_drawdown_min_samples: 40
+  mc_drawdown_insufficient_data_policy: "fail_closed_real_only"  # advisory | fail_closed_real_only | fail_closed_all_enforced
+  enable_mc_drawdown_enforce_sim_real_guard: true
+  enable_mc_drawdown_enforce_real: true
+  mc_drawdown_threshold_pct: 12.0
+  mc_drawdown_random_seed: 4242
+
   # LIVING ORGANISM v51 - SIM reward shaping against tail risk
   sim_var_penalty_coeff: 0.04
   sim_es_penalty_coeff: 0.06
@@ -227,6 +238,10 @@ portfolio_var:
   max_var_usd: 1200
   max_total_open_risk: 3000
   method: historical
+
+audit:
+  trade_decision_jsonl: "logs/trade_decision_audit.jsonl"
+  fail_closed_real: true
 
 regime:
   enabled: true

@@ -7,12 +7,14 @@ from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contra
 
 
 class _RiskController:
-    def __init__(self, *, can_trade: bool = True, reason: str = "OK", var_es_ok: bool = True, var_es_reason: str = "VAR_ES OK") -> None:
+    def __init__(self, *, can_trade: bool = True, reason: str = "OK", var_es_ok: bool = True, var_es_reason: str = "VAR_ES OK", mc_ok: bool = True, mc_reason: str = "MC drawdown OK") -> None:
         self._active_limits = SimpleNamespace(enforce_session_guard=False)
         self._can_trade = bool(can_trade)
         self._reason = str(reason)
         self._var_es_ok = bool(var_es_ok)
         self._var_es_reason = str(var_es_reason)
+        self._mc_ok = bool(mc_ok)
+        self._mc_reason = str(mc_reason)
 
     def apply_regime_override(self, **_kwargs):
         return None
@@ -24,6 +26,13 @@ class _RiskController:
     def check_var_es_pre_trade(self, proposed_risk: float):
         del proposed_risk
         return self._var_es_ok, self._var_es_reason, {}
+
+    def check_monte_carlo_drawdown_pre_trade(self, proposed_risk: float):
+        del proposed_risk
+        return self._mc_ok, self._mc_reason, {}
+
+    def record_regime_snapshot(self, _snapshot):
+        return None
 
 
 class _BrokerWithMetadata:
@@ -212,3 +221,50 @@ def test_enforce_pre_trade_gate_sim_var_es_is_advisory(monkeypatch) -> None:
 
     assert allowed is True
     assert reason == "OK"
+
+
+def test_enforce_pre_trade_gate_real_blocks_on_mc_drawdown(monkeypatch) -> None:
+    engine = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="real"),
+        risk_controller=_RiskController(mc_ok=False, mc_reason="MC projected max drawdown 13.5% > threshold 12.0%"),
+        session_guard=None,
+        current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
+        market_regime="NEUTRAL",
+        observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
+    )
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+    )
+
+    assert allowed is False
+    assert "drawdown" in reason.lower()
+
+
+def test_enforce_pre_trade_gate_real_fail_closed_when_audit_write_fails(monkeypatch) -> None:
+    engine = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="real"),
+        risk_controller=_RiskController(),
+        session_guard=None,
+        current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
+        market_regime="NEUTRAL",
+        observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
+        audit_log_service=SimpleNamespace(log_decision=lambda *_args, **_kwargs: False),
+    )
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+    )
+
+    assert allowed is False
+    assert "audit fail-closed" in reason.lower()

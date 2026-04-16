@@ -104,6 +104,15 @@ class RiskLimits:
     var_99_limit_usd: float = 1800.0
     es_95_limit_usd: float = 1500.0
     es_99_limit_usd: float = 2200.0
+    enable_mc_drawdown_calc: bool = True
+    mc_drawdown_paths: int = 10000
+    mc_drawdown_horizon_days: int = 252
+    mc_drawdown_min_samples: int = 40
+    mc_drawdown_insufficient_data_policy: str = "advisory"  # advisory | fail_closed_real_only | fail_closed_all_enforced
+    enable_mc_drawdown_enforce_sim_real_guard: bool = True
+    enable_mc_drawdown_enforce_real: bool = True
+    mc_drawdown_threshold_pct: float = 12.0
+    mc_drawdown_random_seed: int = 4242
     real_capital_safety_threshold_usd: float = 1000.0
     runtime_mode: str = "real"
     sim_mode: bool = False  # SIM=True bypasses all caps; REAL=False enforces them
@@ -163,6 +172,21 @@ class RiskLimits:
         if self.var_95_limit_usd <= 0 or self.var_99_limit_usd <= 0 or self.es_95_limit_usd <= 0 or self.es_99_limit_usd <= 0:
             logger.error("VaR/ES limits must be > 0")
             return False
+        if self.mc_drawdown_paths < 1000:
+            logger.error("mc_drawdown_paths must be >= 1000")
+            return False
+        if self.mc_drawdown_horizon_days < 20:
+            logger.error("mc_drawdown_horizon_days must be >= 20")
+            return False
+        if self.mc_drawdown_min_samples < 10:
+            logger.error("mc_drawdown_min_samples must be >= 10")
+            return False
+        if str(self.mc_drawdown_insufficient_data_policy).strip().lower() not in {"advisory", "fail_closed_real_only", "fail_closed_all_enforced"}:
+            logger.error("mc_drawdown_insufficient_data_policy must be advisory | fail_closed_real_only | fail_closed_all_enforced")
+            return False
+        if self.mc_drawdown_threshold_pct <= 0.0 or self.mc_drawdown_threshold_pct > 100.0:
+            logger.error("mc_drawdown_threshold_pct must be within (0.0, 100.0]")
+            return False
         if self.real_capital_safety_threshold_usd <= 0:
             logger.error("real_capital_safety_threshold_usd must be > 0")
             return False
@@ -193,6 +217,18 @@ class RiskState:
     es_99_usd: float = 0.0
     var_es_breached: bool = False
     var_es_reason: str = ""
+    mc_drawdown_p50_pct: float = 0.0
+    mc_drawdown_p95_pct: float = 0.0
+    mc_drawdown_p99_pct: float = 0.0
+    mc_drawdown_worst_pct: float = 0.0
+    mc_drawdown_threshold_pct: float = 0.0
+    mc_drawdown_breached: bool = False
+    mc_drawdown_reason: str = ""
+    mc_drawdown_samples: int = 0
+    mc_drawdown_paths_run: int = 0
+    regime_history: deque = field(default_factory=lambda: deque(maxlen=2000))
+    regime_detector_history: deque = field(default_factory=lambda: deque(maxlen=5000))
+    regime_detector_last_anchor: str = ""
     margin_tracker: Optional[MarginTracker] = field(default_factory=MarginTracker)  # Capital preservation
 
 
@@ -321,8 +357,18 @@ class HardRiskController:
             var_99_limit_usd=self._base_limits.var_99_limit_usd,
             es_95_limit_usd=self._base_limits.es_95_limit_usd,
             es_99_limit_usd=self._base_limits.es_99_limit_usd,
+            enable_mc_drawdown_calc=self._base_limits.enable_mc_drawdown_calc,
+            mc_drawdown_paths=self._base_limits.mc_drawdown_paths,
+            mc_drawdown_horizon_days=self._base_limits.mc_drawdown_horizon_days,
+            mc_drawdown_min_samples=self._base_limits.mc_drawdown_min_samples,
+            mc_drawdown_insufficient_data_policy=self._base_limits.mc_drawdown_insufficient_data_policy,
+            enable_mc_drawdown_enforce_sim_real_guard=self._base_limits.enable_mc_drawdown_enforce_sim_real_guard,
+            enable_mc_drawdown_enforce_real=self._base_limits.enable_mc_drawdown_enforce_real,
+            mc_drawdown_threshold_pct=self._base_limits.mc_drawdown_threshold_pct,
+            mc_drawdown_random_seed=self._base_limits.mc_drawdown_random_seed,
             real_capital_safety_threshold_usd=self._base_limits.real_capital_safety_threshold_usd,
             runtime_mode=self._base_limits.runtime_mode,
+            sim_mode=self._base_limits.sim_mode,
         )
         self.state.active_regime = normalized_regime
         self.state.active_risk_state = normalized_risk_state
@@ -437,6 +483,308 @@ class HardRiskController:
             denom = max(abs(risk_taken), 1.0)
             returns.append(pnl / denom)
         return returns
+
+    def record_regime_snapshot(self, snapshot: dict[str, Any] | None) -> None:
+        if not isinstance(snapshot, dict):
+            return
+        label = str(snapshot.get("label", self.state.active_regime) or self.state.active_regime).upper()
+        features = snapshot.get("features", {}) if isinstance(snapshot.get("features", {}), dict) else {}
+        self.state.regime_history.append(
+            {
+                "ts": _utcnow().isoformat(),
+                "label": label,
+                "risk_state": str(snapshot.get("risk_state", "NORMAL") or "NORMAL").upper(),
+                "realized_vol_ratio": float(features.get("realized_vol_ratio", 1.0) or 1.0),
+            }
+        )
+
+    def record_regime_detector_history(self, *, detector: Any, market_df: Any, instrument: str) -> int:
+        """Import historical regime labels from regime detector outputs for MC modeling."""
+        if detector is None or market_df is None:
+            return 0
+        if not all(hasattr(market_df, attr) for attr in ("tail", "reset_index", "iloc", "columns")):
+            return 0
+        required = {"timestamp", "open", "high", "low", "close", "volume"}
+        try:
+            columns = set(str(col) for col in list(market_df.columns))
+        except Exception:
+            return 0
+        if not required.issubset(columns):
+            return 0
+
+        try:
+            anchor = str(market_df.iloc[-1].get("timestamp", "") or "")
+        except Exception:
+            return 0
+        if anchor and anchor == self.state.regime_detector_last_anchor:
+            return 0
+
+        lookback = max(20, int(getattr(detector, "lookback_bars", 120) or 120))
+        stride = max(1, min(10, lookback // 12))
+        max_windows = 300
+        tail_size = max(lookback + 2, lookback + (max_windows * stride))
+        try:
+            rows = market_df.tail(tail_size).reset_index(drop=True)
+        except Exception:
+            return 0
+        if len(rows) <= lookback:
+            return 0
+
+        last_ts = ""
+        if self.state.regime_detector_history:
+            try:
+                last_ts = str(self.state.regime_detector_history[-1].get("ts", "") or "")
+            except Exception:
+                last_ts = ""
+
+        appended = 0
+        for end_idx in range(lookback, len(rows), stride):
+            window = rows.iloc[: end_idx + 1]
+            try:
+                snapshot = detector.detect(window, instrument=str(instrument))
+            except Exception:
+                continue
+            label = str(getattr(snapshot, "label", self.state.active_regime) or self.state.active_regime).upper()
+            risk_state = str(getattr(snapshot, "risk_state", "NORMAL") or "NORMAL").upper()
+            features = getattr(snapshot, "features", {}) or {}
+            features = features if isinstance(features, dict) else {}
+            ts = str(getattr(snapshot, "timestamp", "") or window.iloc[-1].get("timestamp", ""))
+            if last_ts and ts and ts <= last_ts:
+                continue
+
+            close_now = float(window.iloc[-1].get("close", 0.0) or 0.0)
+            close_prev = float(window.iloc[-2].get("close", close_now) or close_now)
+            ret = 0.0 if abs(close_prev) < 1e-9 else (close_now - close_prev) / abs(close_prev)
+            self.state.regime_detector_history.append(
+                {
+                    "ts": ts,
+                    "label": label,
+                    "risk_state": risk_state,
+                    "realized_vol_ratio": float(features.get("realized_vol_ratio", 1.0) or 1.0),
+                    "return_pct": float(np.clip(ret, -0.95, 0.95)),
+                }
+            )
+            last_ts = ts
+            appended += 1
+
+        if anchor:
+            self.state.regime_detector_last_anchor = anchor
+        return appended
+
+    def _mc_enforcement_enabled(self) -> bool:
+        mode = str(self._active_limits.runtime_mode or "sim").strip().lower()
+        if not self.enforce_rules:
+            return False
+        if mode == "real":
+            return bool(self._active_limits.enable_mc_drawdown_enforce_real)
+        if mode == "sim_real_guard":
+            return bool(self._active_limits.enable_mc_drawdown_enforce_sim_real_guard)
+        return False
+
+    def _should_fail_closed_on_mc_data(self) -> bool:
+        limits = self._active_limits
+        mode = str(limits.runtime_mode or "sim").strip().lower()
+        policy = str(limits.mc_drawdown_insufficient_data_policy or "fail_closed_real_only").strip().lower()
+        if policy == "advisory":
+            return False
+        if policy == "fail_closed_all_enforced":
+            return bool(self._mc_enforcement_enabled())
+        if policy == "fail_closed_real_only":
+            return bool(self._mc_enforcement_enabled() and mode == "real")
+        return False
+
+    def _regime_transition_weights(self) -> dict[str, dict[str, float]]:
+        history: list[str] = []
+        history.extend(
+            str(item.get("label", "NEUTRAL") or "NEUTRAL").upper()
+            for item in self.state.regime_detector_history
+            if isinstance(item, dict)
+        )
+        history.extend(
+            str(item.get("label", "NEUTRAL") or "NEUTRAL").upper()
+            for item in self.state.regime_history
+            if isinstance(item, dict)
+        )
+        if len(history) < 2:
+            return {}
+        transitions: dict[str, dict[str, float]] = {}
+        for idx in range(len(history) - 1):
+            src = history[idx]
+            dst = history[idx + 1]
+            bucket = transitions.setdefault(src, {})
+            bucket[dst] = float(bucket.get(dst, 0.0) + 1.0)
+        for src, bucket in transitions.items():
+            total = max(1.0, sum(bucket.values()))
+            transitions[src] = {k: float(v / total) for k, v in bucket.items()}
+        return transitions
+
+    def _regime_return_buckets(self) -> dict[str, list[float]]:
+        buckets: dict[str, list[float]] = {}
+        for item in list(self.state.regime_detector_history):
+            if not isinstance(item, dict):
+                continue
+            regime = str(item.get("label", self.state.active_regime) or self.state.active_regime).upper()
+            ret = float(item.get("return_pct", 0.0) or 0.0)
+            buckets.setdefault(regime, []).append(float(np.clip(ret, -0.95, 0.95)))
+        for trade in list(self.state.trade_history):
+            if not isinstance(trade, dict):
+                continue
+            regime = str(trade.get("regime", self.state.active_regime) or self.state.active_regime).upper()
+            pnl = float(trade.get("pnl", 0.0) or 0.0)
+            risk_taken = max(1.0, abs(float(trade.get("risk_taken", 0.0) or 0.0)))
+            buckets.setdefault(regime, []).append(float(pnl / risk_taken))
+        return buckets
+
+    @staticmethod
+    def _sample_next_regime(current: str, transition_weights: dict[str, dict[str, float]], rng: np.random.Generator) -> str:
+        bucket = transition_weights.get(current, {})
+        if not bucket:
+            return current
+        labels = list(bucket.keys())
+        probs = np.asarray([float(bucket[label]) for label in labels], dtype=np.float64)
+        if float(probs.sum()) <= 0.0:
+            return current
+        probs = probs / probs.sum()
+        idx = int(rng.choice(len(labels), p=probs))
+        return labels[idx]
+
+    def _simulate_path_drawdown_pct(
+        self,
+        *,
+        regime_returns: dict[str, list[float]],
+        global_returns: list[float],
+        transition_weights: dict[str, dict[str, float]],
+        exposure_scale: float,
+        start_regime: str,
+        rng: np.random.Generator,
+    ) -> float:
+        equity = 1.0
+        peak = 1.0
+        max_drawdown = 0.0
+        regime = str(start_regime or "NEUTRAL").upper()
+        horizon = max(1, int(self._active_limits.mc_drawdown_horizon_days))
+        for _ in range(horizon):
+            series = regime_returns.get(regime) or global_returns
+            sampled = float(rng.choice(series)) if series else 0.0
+            scaled = float(np.clip(sampled * exposure_scale, -0.95, 0.95))
+            equity = max(1e-6, equity * (1.0 + scaled))
+            peak = max(peak, equity)
+            drawdown = (peak - equity) / max(peak, 1e-9)
+            max_drawdown = max(max_drawdown, drawdown)
+            regime = self._sample_next_regime(regime, transition_weights, rng)
+        return float(max_drawdown * 100.0)
+
+    def check_monte_carlo_drawdown_pre_trade(self, proposed_risk: float) -> tuple[bool, str, dict[str, float | str | bool | list[float]]]:
+        limits = self._active_limits
+        mode = str(limits.runtime_mode or "sim").strip().lower()
+        threshold_pct = float(limits.mc_drawdown_threshold_pct)
+        if not bool(limits.enable_mc_drawdown_calc):
+            payload = {
+                "breached": False,
+                "decision": "allow",
+                "mode": mode,
+                "paths": 0.0,
+                "horizon_days": float(limits.mc_drawdown_horizon_days),
+                "projected_max_drawdown_pct": 0.0,
+                "threshold_pct": threshold_pct,
+                "distribution": [],
+                "reason_code": "MC_DISABLED",
+            }
+            self.state.mc_drawdown_breached = False
+            self.state.mc_drawdown_reason = "Monte Carlo drawdown disabled"
+            return True, self.state.mc_drawdown_reason, payload
+
+        global_returns = self._portfolio_return_series()
+        min_samples = max(10, int(limits.mc_drawdown_min_samples))
+        if len(global_returns) < min_samples:
+            should_block = bool(self._should_fail_closed_on_mc_data())
+            reason = f"MC insufficient return samples ({len(global_returns)} < {min_samples})"
+            self.state.mc_drawdown_breached = should_block
+            self.state.mc_drawdown_reason = reason
+            self.state.mc_drawdown_samples = int(len(global_returns))
+            payload = {
+                "breached": should_block,
+                "decision": "block" if should_block else "allow",
+                "mode": mode,
+                "paths": 0.0,
+                "horizon_days": float(limits.mc_drawdown_horizon_days),
+                "projected_max_drawdown_pct": 0.0,
+                "threshold_pct": threshold_pct,
+                "distribution": [],
+                "reason_code": "MC_INSUFFICIENT_DATA",
+                "samples": float(len(global_returns)),
+            }
+            return (not should_block), reason, payload
+
+        regime_returns = self._regime_return_buckets()
+        transition_weights = self._regime_transition_weights()
+        current_exposure = sum(float(v) for v in self.state.open_risk_by_symbol.values())
+        total_exposure = max(0.0, current_exposure + float(proposed_risk))
+        max_exposure = max(1.0, float(limits.max_total_open_risk))
+        exposure_scale = max(0.25, min(2.0, total_exposure / max_exposure))
+        start_regime = str(self.state.active_regime or "NEUTRAL").upper()
+
+        seed = int(limits.mc_drawdown_random_seed) + int(len(self.state.trade_history))
+        rng = np.random.default_rng(seed)
+        path_count = int(max(1000, limits.mc_drawdown_paths))
+        dist: list[float] = []
+        for _ in range(path_count):
+            dist.append(
+                self._simulate_path_drawdown_pct(
+                    regime_returns=regime_returns,
+                    global_returns=global_returns,
+                    transition_weights=transition_weights,
+                    exposure_scale=exposure_scale,
+                    start_regime=start_regime,
+                    rng=rng,
+                )
+            )
+
+        dist_arr = np.asarray(dist, dtype=np.float64)
+        p50 = float(np.quantile(dist_arr, 0.50))
+        p95 = float(np.quantile(dist_arr, 0.95))
+        p99 = float(np.quantile(dist_arr, 0.99))
+        worst = float(dist_arr.max()) if dist else 0.0
+
+        self.state.mc_drawdown_p50_pct = p50
+        self.state.mc_drawdown_p95_pct = p95
+        self.state.mc_drawdown_p99_pct = p99
+        self.state.mc_drawdown_worst_pct = worst
+        self.state.mc_drawdown_threshold_pct = threshold_pct
+        self.state.mc_drawdown_samples = int(len(global_returns))
+        self.state.mc_drawdown_paths_run = int(path_count)
+
+        breached = bool(worst > threshold_pct)
+        should_block = bool(breached and self._mc_enforcement_enabled())
+        self.state.mc_drawdown_breached = breached
+        self.state.mc_drawdown_reason = (
+            f"MC projected max drawdown {worst:.2f}% > threshold {threshold_pct:.2f}%"
+            if breached
+            else "MC drawdown OK"
+        )
+
+        payload = {
+            "breached": breached,
+            "decision": "block" if should_block else "allow",
+            "mode": mode,
+            "paths": float(path_count),
+            "horizon_days": float(limits.mc_drawdown_horizon_days),
+            "projected_max_drawdown_pct": worst,
+            "p50_max_drawdown_pct": p50,
+            "p95_max_drawdown_pct": p95,
+            "p99_max_drawdown_pct": p99,
+            "threshold_pct": threshold_pct,
+            "samples": float(len(global_returns)),
+            "distribution": [float(x) for x in dist[-256:]],
+            "reason_code": "MC_DRAWDOWN_BREACH" if breached else "MC_DRAWDOWN_OK",
+        }
+        if should_block:
+            return False, self.state.mc_drawdown_reason, payload
+        return True, self.state.mc_drawdown_reason, payload
+
+    def get_monte_carlo_snapshot(self, *, proposed_risk: float = 0.0) -> dict[str, float | str | bool | list[float]]:
+        _ok, _reason, payload = self.check_monte_carlo_drawdown_pre_trade(proposed_risk=float(proposed_risk))
+        return payload
 
     def _calculate_var_es_pair(self, *, returns: list[float], confidence: float, method: str) -> tuple[float, float]:
         """LIVING ORGANISM v51: Calculate normalized VaR/ES for a confidence level."""
@@ -708,6 +1056,10 @@ class HardRiskController:
         var_ok, var_reason, _payload = self.check_var_es_pre_trade(float(proposed_risk))
         if not var_ok:
             return False, var_reason
+
+        mc_ok, mc_reason, _mc_payload = self.check_monte_carlo_drawdown_pre_trade(float(proposed_risk))
+        if not mc_ok:
+            return False, mc_reason
         
         # 6. CME Margin requirement check (capital preservation)
         if self.state.margin_tracker is not None:
@@ -882,10 +1234,17 @@ class HardRiskController:
                 'var_99_limit_usd': self._active_limits.var_99_limit_usd,
                 'es_95_limit_usd': self._active_limits.es_95_limit_usd,
                 'es_99_limit_usd': self._active_limits.es_99_limit_usd,
+                'mc_drawdown_paths': self._active_limits.mc_drawdown_paths,
+                'mc_drawdown_horizon_days': self._active_limits.mc_drawdown_horizon_days,
+                'mc_drawdown_threshold_pct': self._active_limits.mc_drawdown_threshold_pct,
                 'var_es_insufficient_data_policy': self._active_limits.var_es_insufficient_data_policy,
                 'enable_var_es_calc': self._active_limits.enable_var_es_calc,
                 'enable_var_es_enforce_sim_real_guard': self._active_limits.enable_var_es_enforce_sim_real_guard,
                 'enable_var_es_enforce_real': self._active_limits.enable_var_es_enforce_real,
+                'enable_mc_drawdown_calc': self._active_limits.enable_mc_drawdown_calc,
+                'enable_mc_drawdown_enforce_sim_real_guard': self._active_limits.enable_mc_drawdown_enforce_sim_real_guard,
+                'enable_mc_drawdown_enforce_real': self._active_limits.enable_mc_drawdown_enforce_real,
+                'mc_drawdown_insufficient_data_policy': self._active_limits.mc_drawdown_insufficient_data_policy,
                 'var_es_high_risk_limit_multiplier': self._active_limits.var_es_high_risk_limit_multiplier,
                 'var_es_normal_risk_limit_multiplier': self._active_limits.var_es_normal_risk_limit_multiplier,
                 'runtime_mode': self._active_limits.runtime_mode,
@@ -906,6 +1265,17 @@ class HardRiskController:
                 'reason': self.state.var_es_reason,
                 'method': self._active_limits.var_es_method,
                 'window': self._active_limits.var_es_window,
+            },
+            'monte_carlo_drawdown': {
+                'p50_pct': self.state.mc_drawdown_p50_pct,
+                'p95_pct': self.state.mc_drawdown_p95_pct,
+                'p99_pct': self.state.mc_drawdown_p99_pct,
+                'projected_max_pct': self.state.mc_drawdown_worst_pct,
+                'threshold_pct': self.state.mc_drawdown_threshold_pct,
+                'breached': self.state.mc_drawdown_breached,
+                'reason': self.state.mc_drawdown_reason,
+                'samples': self.state.mc_drawdown_samples,
+                'paths_run': self.state.mc_drawdown_paths_run,
             },
             'margin_snapshot': (
                 self.state.margin_tracker.snapshot_status() if self.state.margin_tracker is not None else {
@@ -1017,6 +1387,15 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     var_99_limit_usd = float(risk_cfg.get("var_99_limit_usd", 1800.0) or 1800.0)
     es_95_limit_usd = float(risk_cfg.get("es_95_limit_usd", 1500.0) or 1500.0)
     es_99_limit_usd = float(risk_cfg.get("es_99_limit_usd", 2200.0) or 2200.0)
+    enable_mc_drawdown_calc = bool(risk_cfg.get("enable_mc_drawdown_calc", True))
+    mc_drawdown_paths = int(risk_cfg.get("mc_drawdown_paths", 10000) or 10000)
+    mc_drawdown_horizon_days = int(risk_cfg.get("mc_drawdown_horizon_days", 252) or 252)
+    mc_drawdown_min_samples = int(risk_cfg.get("mc_drawdown_min_samples", 40) or 40)
+    mc_drawdown_insufficient_data_policy = str(risk_cfg.get("mc_drawdown_insufficient_data_policy", "advisory") or "advisory").strip().lower()
+    enable_mc_drawdown_enforce_sim_real_guard = bool(risk_cfg.get("enable_mc_drawdown_enforce_sim_real_guard", True))
+    enable_mc_drawdown_enforce_real = bool(risk_cfg.get("enable_mc_drawdown_enforce_real", True))
+    mc_drawdown_threshold_pct = float(risk_cfg.get("mc_drawdown_threshold_pct", 12.0) or 12.0)
+    mc_drawdown_random_seed = int(risk_cfg.get("mc_drawdown_random_seed", 4242) or 4242)
     real_capital_safety_threshold_usd = float(risk_cfg.get("real_capital_safety_threshold_usd", 1000.0) or 1000.0)
 
     if is_sim:
@@ -1081,6 +1460,24 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
             es_95_limit_usd = float(real_profile["es_95_limit_usd"])
         if real_profile.get("es_99_limit_usd") is not None:
             es_99_limit_usd = float(real_profile["es_99_limit_usd"])
+        if real_profile.get("enable_mc_drawdown_calc") is not None:
+            enable_mc_drawdown_calc = bool(real_profile["enable_mc_drawdown_calc"])
+        if real_profile.get("mc_drawdown_paths") is not None:
+            mc_drawdown_paths = int(real_profile["mc_drawdown_paths"])
+        if real_profile.get("mc_drawdown_horizon_days") is not None:
+            mc_drawdown_horizon_days = int(real_profile["mc_drawdown_horizon_days"])
+        if real_profile.get("mc_drawdown_min_samples") is not None:
+            mc_drawdown_min_samples = int(real_profile["mc_drawdown_min_samples"])
+        if real_profile.get("mc_drawdown_insufficient_data_policy") is not None:
+            mc_drawdown_insufficient_data_policy = str(real_profile["mc_drawdown_insufficient_data_policy"]).strip().lower()
+        if real_profile.get("enable_mc_drawdown_enforce_sim_real_guard") is not None:
+            enable_mc_drawdown_enforce_sim_real_guard = bool(real_profile["enable_mc_drawdown_enforce_sim_real_guard"])
+        if real_profile.get("enable_mc_drawdown_enforce_real") is not None:
+            enable_mc_drawdown_enforce_real = bool(real_profile["enable_mc_drawdown_enforce_real"])
+        if real_profile.get("mc_drawdown_threshold_pct") is not None:
+            mc_drawdown_threshold_pct = float(real_profile["mc_drawdown_threshold_pct"])
+        if real_profile.get("mc_drawdown_random_seed") is not None:
+            mc_drawdown_random_seed = int(real_profile["mc_drawdown_random_seed"])
         if real_profile.get("real_capital_safety_threshold_usd") is not None:
             real_capital_safety_threshold_usd = float(real_profile["real_capital_safety_threshold_usd"])
         logger.info("[MODE=REAL] RiskLimits: capital preservation caps ENFORCED")
@@ -1112,6 +1509,15 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
         var_99_limit_usd=var_99_limit_usd,
         es_95_limit_usd=es_95_limit_usd,
         es_99_limit_usd=es_99_limit_usd,
+        enable_mc_drawdown_calc=enable_mc_drawdown_calc,
+        mc_drawdown_paths=mc_drawdown_paths,
+        mc_drawdown_horizon_days=mc_drawdown_horizon_days,
+        mc_drawdown_min_samples=mc_drawdown_min_samples,
+        mc_drawdown_insufficient_data_policy=mc_drawdown_insufficient_data_policy,
+        enable_mc_drawdown_enforce_sim_real_guard=enable_mc_drawdown_enforce_sim_real_guard,
+        enable_mc_drawdown_enforce_real=enable_mc_drawdown_enforce_real,
+        mc_drawdown_threshold_pct=mc_drawdown_threshold_pct,
+        mc_drawdown_random_seed=mc_drawdown_random_seed,
         real_capital_safety_threshold_usd=real_capital_safety_threshold_usd,
         runtime_mode=global_mode,
         sim_mode=is_sim,

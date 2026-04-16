@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -47,6 +48,176 @@ def _record_mode_guard_block(engine: Any, *, mode: str, reason: str) -> None:
             obs.record_mode_guard_block(mode=str(mode), reason=str(reason))
         except Exception:
             pass
+
+
+def _audit_trade_decision(engine: Any, payload: dict[str, Any], *, mode: str) -> bool:
+    service = getattr(engine, "audit_log_service", None)
+    if service is None or not hasattr(service, "log_decision"):
+        return True
+    try:
+        return bool(service.log_decision(payload, is_real_mode=str(mode).lower() == "real"))
+    except Exception:
+        return False
+
+
+def _resolve_blackboard(engine: Any) -> Any | None:
+    board = getattr(engine, "blackboard", None)
+    if board is not None:
+        return board
+    app = getattr(engine, "app", None)
+    return getattr(app, "blackboard", None)
+
+
+def _agents_from_blackboard(engine: Any) -> list[dict[str, Any]]:
+    board = _resolve_blackboard(engine)
+    if board is None or not hasattr(board, "latest"):
+        return []
+
+    topics = (
+        "agent.rl.proposal",
+        "agent.news.proposal",
+        "agent.emotional_twin.proposal",
+        "agent.swarm.proposal",
+        "agent.tape.proposal",
+    )
+    agents: list[dict[str, Any]] = []
+    for topic in topics:
+        try:
+            event = board.latest(topic)
+        except Exception:
+            event = None
+        if event is None:
+            continue
+
+        payload = getattr(event, "payload", {}) if hasattr(event, "payload") else {}
+        payload = payload if isinstance(payload, dict) else {}
+        producer = str(getattr(event, "producer", "") or "")
+        agent_id = str(payload.get("agent_id") or payload.get("chosen_strategy") or producer or topic)
+        confidence = float(
+            payload.get("confidence", payload.get("confluence_score", getattr(event, "confidence", 0.0))) or 0.0
+        )
+        agents.append(
+            {
+                "agent_id": agent_id,
+                "topic": topic,
+                "producer": producer,
+                "confidence": confidence,
+                "signal": str(payload.get("signal", payload.get("sentiment_signal", "")) or ""),
+                "reason": str(payload.get("reason", payload.get("why_no_trade", "")) or ""),
+                "timestamp": str(getattr(event, "timestamp", "") or ""),
+                "correlation_id": str(getattr(event, "correlation_id", "") or ""),
+                "sequence": int(getattr(event, "sequence", 0) or 0),
+                "lineage": {
+                    "event_hash": str(getattr(event, "event_hash", "") or ""),
+                    "prev_hash": str(getattr(event, "prev_hash", "") or ""),
+                },
+            }
+        )
+    return agents
+
+
+def _execution_aggregate_lineage(engine: Any) -> dict[str, Any]:
+    board = _resolve_blackboard(engine)
+    if board is None or not hasattr(board, "latest"):
+        return {}
+    try:
+        event = board.latest("execution.aggregate")
+    except Exception:
+        event = None
+    if event is None:
+        return {}
+
+    payload = getattr(event, "payload", {}) if hasattr(event, "payload") else {}
+    payload = payload if isinstance(payload, dict) else {}
+    return {
+        "topic": "execution.aggregate",
+        "producer": str(getattr(event, "producer", "") or ""),
+        "confidence": float(getattr(event, "confidence", 0.0) or 0.0),
+        "timestamp": str(getattr(event, "timestamp", "") or ""),
+        "correlation_id": str(getattr(event, "correlation_id", "") or ""),
+        "sequence": int(getattr(event, "sequence", 0) or 0),
+        "lineage": {
+            "event_hash": str(getattr(event, "event_hash", "") or ""),
+            "prev_hash": str(getattr(event, "prev_hash", "") or ""),
+        },
+        "signal": str(payload.get("signal", "") or ""),
+        "chosen_strategy": str(payload.get("chosen_strategy", "") or ""),
+    }
+
+
+def _agents_from_dream(engine: Any) -> list[dict[str, Any]]:
+    blackboard_agents = _agents_from_blackboard(engine)
+    if blackboard_agents:
+        return blackboard_agents
+
+    snapshot = {}
+    if hasattr(engine, "get_current_dream_snapshot"):
+        try:
+            snapshot = engine.get_current_dream_snapshot() or {}
+        except Exception:
+            snapshot = {}
+    if not isinstance(snapshot, dict):
+        return []
+
+    chosen_strategy = str(snapshot.get("chosen_strategy", "unknown") or "unknown")
+    confidence = float(snapshot.get("confidence", snapshot.get("confluence_score", 0.0)) or 0.0)
+    reason = str(snapshot.get("reason", "") or "")
+    return [
+        {
+            "agent_id": chosen_strategy,
+            "topic": "dream.snapshot",
+            "producer": "lumina_engine",
+            "confidence": confidence,
+            "reason": reason,
+        }
+    ]
+
+
+def _build_audit_payload(
+    engine: Any,
+    *,
+    symbol: str,
+    regime: str,
+    proposed_risk: float,
+    mode: str,
+    stage: str,
+    final_decision: str,
+    reason: str,
+    var_payload: dict[str, Any] | None = None,
+    mc_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    snapshot = {}
+    if hasattr(engine, "get_current_dream_snapshot"):
+        try:
+            snapshot = engine.get_current_dream_snapshot() or {}
+        except Exception:
+            snapshot = {}
+    if not isinstance(snapshot, dict):
+        snapshot = {}
+
+    probability = float(snapshot.get("confidence", snapshot.get("confluence_score", 0.0)) or 0.0)
+    expected_value = float(snapshot.get("expected_value", snapshot.get("ev", 0.0)) or 0.0)
+    decision_id = f"{symbol}-{int(datetime.now(timezone.utc).timestamp() * 1000)}-{uuid.uuid4().hex[:8]}"
+    agents = _agents_from_dream(engine)
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "decision_id": decision_id,
+        "stage": stage,
+        "symbol": str(symbol),
+        "regime": str(regime),
+        "mode": str(mode),
+        "proposed_risk": float(proposed_risk),
+        "agents_involved": agents,
+        "agent_lineage": agents,
+        "execution_aggregate_lineage": _execution_aggregate_lineage(engine),
+        "probability": probability,
+        "expected_value": expected_value,
+        "var_impact": dict(var_payload or {}),
+        "monte_carlo": dict(mc_payload or {}),
+        "final_decision": str(final_decision),
+        "reason": str(reason),
+    }
 
 
 def _parse_contract_symbol(symbol: str) -> tuple[str | None, int | None, int | None]:
@@ -199,8 +370,29 @@ def enforce_pre_trade_gate(
     mode = str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
     capabilities = resolve_mode_capabilities(mode)
 
+    def _audit_or_fail_closed(payload: dict[str, Any], *, reason_code: str = "audit_fail_closed") -> tuple[bool, str]:
+        ok = _audit_trade_decision(engine, payload, mode=mode)
+        if mode == "real" and not ok:
+            _record_mode_guard_block(engine, mode=mode, reason=reason_code)
+            return False, "AUDIT FAIL-CLOSED: trade decision log write failed"
+        return True, ""
+
     def _deny(reason_code: str, user_reason: str) -> tuple[bool, str]:
         _record_mode_guard_block(engine, mode=mode, reason=reason_code)
+        audit_ok, audit_reason = _audit_or_fail_closed(
+            _build_audit_payload(
+                engine,
+                symbol=symbol,
+                regime=str(regime),
+                proposed_risk=float(proposed_risk),
+                mode=mode,
+                stage="policy_gate",
+                final_decision="block",
+                reason=str(user_reason),
+            ),
+        )
+        if not audit_ok:
+            return False, f"{user_reason} | {audit_reason}"
         return False, user_reason
 
     allow_stale = os.getenv("LUMINA_ALLOW_STALE_CONTRACTS", "false").strip().lower() == "true"
@@ -234,31 +426,103 @@ def enforce_pre_trade_gate(
         risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
         cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
     )
+    if hasattr(risk_controller, "record_regime_snapshot"):
+        try:
+            risk_controller.record_regime_snapshot(snapshot)
+        except Exception:
+            pass
+    if hasattr(risk_controller, "record_regime_detector_history"):
+        try:
+            reasoning_service = getattr(engine, "reasoning_service", None)
+            regime_detector = getattr(reasoning_service, "regime_detector", None)
+            market_df = getattr(engine, "ohlc_1min", None)
+            instrument = str(getattr(getattr(engine, "config", None), "instrument", symbol) or symbol)
+            risk_controller.record_regime_detector_history(
+                detector=regime_detector,
+                market_df=market_df,
+                instrument=instrument,
+            )
+        except Exception:
+            pass
 
     # LIVING ORGANISM v51: explicit VaR/ES gate before final order admission.
     if hasattr(risk_controller, "check_var_es_pre_trade"):
         var_result = risk_controller.check_var_es_pre_trade(float(proposed_risk))
         var_ok = True
         var_reason = "VAR_ES gate skipped (legacy contract)"
+        var_payload: dict[str, Any] = {}
         if isinstance(var_result, tuple):
             if len(var_result) >= 2:
                 var_ok = bool(var_result[0])
                 var_reason = str(var_result[1])
+            if len(var_result) >= 3 and isinstance(var_result[2], dict):
+                var_payload = dict(var_result[2])
             elif len(var_result) == 1:
                 var_ok = bool(var_result[0])
                 var_reason = "VAR_ES gate result missing reason"
+
+        mc_ok = True
+        mc_reason = "MC drawdown gate skipped (legacy contract)"
+        mc_payload: dict[str, Any] = {}
+        if hasattr(risk_controller, "check_monte_carlo_drawdown_pre_trade"):
+            mc_result = risk_controller.check_monte_carlo_drawdown_pre_trade(float(proposed_risk))
+            if isinstance(mc_result, tuple):
+                if len(mc_result) >= 2:
+                    mc_ok = bool(mc_result[0])
+                    mc_reason = str(mc_result[1])
+                if len(mc_result) >= 3 and isinstance(mc_result[2], dict):
+                    mc_payload = dict(mc_result[2])
+
+        audit_ok, audit_reason = _audit_or_fail_closed(
+            _build_audit_payload(
+                engine,
+                symbol=symbol,
+                regime=str(snapshot.get("label", regime)),
+                proposed_risk=float(proposed_risk),
+                mode=mode,
+                stage="risk_gate",
+                final_decision="allow" if (var_ok and mc_ok) else "block",
+                reason=(str(var_reason) if not var_ok else str(mc_reason)),
+                var_payload=var_payload,
+                mc_payload=mc_payload,
+            ),
+        )
+        if not audit_ok:
+            return False, audit_reason
+
         if capabilities.risk_enforced and not bool(var_ok):
             return _deny("risk_var_es", str(var_reason))
+        if capabilities.risk_enforced and not bool(mc_ok):
+            return _deny("risk_mc_drawdown", str(mc_reason))
         if not capabilities.risk_enforced and not bool(var_ok):
             _safe_log_warning(
                 engine,
                 f"RISK_VAR_ES_ADVISORY,mode={mode},symbol={symbol},reason={var_reason}",
+            )
+        if not capabilities.risk_enforced and not bool(mc_ok):
+            _safe_log_warning(
+                engine,
+                f"RISK_MC_DRAWDOWN_ADVISORY,mode={mode},symbol={symbol},reason={mc_reason}",
             )
 
     risk_ok, risk_reason = risk_controller.check_can_trade(symbol, str(snapshot.get("label", regime)), proposed_risk)
     if capabilities.risk_enforced:
         if not bool(risk_ok):
             return _deny(f"risk_{risk_reason}", str(risk_reason))
+        audit_ok, audit_reason = _audit_or_fail_closed(
+            _build_audit_payload(
+                engine,
+                symbol=symbol,
+                regime=str(snapshot.get("label", regime)),
+                proposed_risk=float(proposed_risk),
+                mode=mode,
+                stage="policy_gate",
+                final_decision="allow",
+                reason=str(risk_reason),
+            ),
+        )
+        if not audit_ok:
+            return False, audit_reason
         return True, str(risk_reason)
 
     # Advisory mode (SIM): keep learning path unconstrained while retaining diagnostics.
@@ -267,4 +531,16 @@ def enforce_pre_trade_gate(
             engine,
             f"RISK_ADVISORY,mode={mode},symbol={symbol},reason={risk_reason}",
         )
+    _audit_or_fail_closed(
+        _build_audit_payload(
+            engine,
+            symbol=symbol,
+            regime=str(snapshot.get("label", regime)),
+            proposed_risk=float(proposed_risk),
+            mode=mode,
+            stage="policy_gate",
+            final_decision="allow",
+            reason=str(risk_reason),
+        ),
+    )
     return True, str(risk_reason)

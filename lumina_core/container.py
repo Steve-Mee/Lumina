@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from lumina_core.engine import (
     AgentBlackboard,
     AgentDecisionLog,
+    AuditLogService,
     DashboardService,
     EngineConfig,
     MetaAgentOrchestrator,
@@ -135,6 +136,7 @@ class ApplicationContainer:
     rl_environment: RLTradingEnvironment | None = field(default=None, init=False)
     observability_service: ObservabilityService = field(init=False)
     decision_log: AgentDecisionLog = field(init=False)
+    audit_log_service: AuditLogService = field(init=False)
     blackboard: AgentBlackboard = field(init=False)
     self_evolution_meta_agent: SelfEvolutionMetaAgent = field(init=False)
     meta_agent_orchestrator: MetaAgentOrchestrator = field(init=False)
@@ -176,6 +178,12 @@ class ApplicationContainer:
         self.engine.observability_service = self.observability_service
         self.decision_log = AgentDecisionLog()
         self.engine.decision_log = self.decision_log
+        self.audit_log_service = AuditLogService(
+            path=self.config.trade_decision_audit_log,
+            enabled=True,
+            fail_closed_real=bool(self.config.trade_decision_audit_fail_closed_real),
+        )
+        self.engine.audit_log_service = self.audit_log_service
         self.runtime_context = RuntimeContext(engine=self.engine, app=None, container=self)
         self.regime_detector = RegimeDetector(config=getattr(self.config, "regime", {}), valuation_engine=self.engine.valuation_engine)
         self.engine.regime_detector = self.regime_detector

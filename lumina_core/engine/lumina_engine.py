@@ -158,6 +158,8 @@ class LuminaEngine:
     portfolio_var_allocator: Any | None = None
     # Immutable agent decision log sink
     decision_log: Any | None = None
+    # Central trade decision JSONL audit sink
+    audit_log_service: Any | None = None
     # ReasoningService (AI layer – injected by container)
     reasoning_service: Any | None = None
     # Central pub/sub bus for all agent communication.

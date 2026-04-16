@@ -1,3 +1,26 @@
+## Monte-Carlo Drawdown Guard (v52)
+
+### Doel
+- REAL mode blokkeert nieuwe posities wanneer geprojecteerde maximale drawdown boven de ingestelde drempel komt.
+- Elke trade-beslissing wordt append-only vastgelegd in JSONL auditlog.
+
+### Config
+- `risk_controller.enable_mc_drawdown_calc`
+- `risk_controller.mc_drawdown_paths` (default `10000`)
+- `risk_controller.mc_drawdown_horizon_days` (default `252`)
+- `risk_controller.mc_drawdown_threshold_pct`
+- `risk_controller.enable_mc_drawdown_enforce_real`
+- `audit.trade_decision_jsonl`
+
+### Operationele checks
+- Bevestig dat dashboardpaneel `Drawdown Distribution` gevuld is (P50/P95/P99/Projected Max).
+- Bevestig in REAL dat gate reason `risk_mc_drawdown` verschijnt bij threshold breach.
+- Bevestig dat `logs/trade_decision_audit.jsonl` entries bevat met `stage`, `final_decision`, `reason`, `var_impact`, `monte_carlo`.
+
+### Incident handling
+- Bij onverwacht hoge projected drawdown: geen override toepassen zonder expliciete risk sign-off.
+- Bij audit-log write failure in REAL: behandel als deployment-blocker (fail-closed policy).
+
 # PRODUCTION RUNBOOK v51 - Lumina Living Organism
 
 Date: 2026-04-08  

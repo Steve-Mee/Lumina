@@ -547,6 +547,48 @@ class DashboardService:
             style={"fontSize": "15px", "color": "#ddd"},
         )
 
+    def _build_drawdown_distribution_figure(self) -> go.Figure:
+        fig = self._build_empty_figure("Projected Max Drawdown Distribution")
+        risk_controller = getattr(self.engine, "risk_controller", None)
+        if risk_controller is None:
+            fig.add_annotation(text="Risk controller unavailable", showarrow=False, font={"color": "#9fb3c8"})
+            return fig
+
+        mc = (
+            risk_controller.get_status().get("monte_carlo_drawdown", {})
+            if hasattr(risk_controller, "get_status")
+            else {}
+        )
+        if not isinstance(mc, dict):
+            mc = {}
+        p50 = float(mc.get("p50_pct", 0.0) or 0.0)
+        p95 = float(mc.get("p95_pct", 0.0) or 0.0)
+        p99 = float(mc.get("p99_pct", 0.0) or 0.0)
+        projected = float(mc.get("projected_max_pct", 0.0) or 0.0)
+        threshold = float(mc.get("threshold_pct", 0.0) or 0.0)
+
+        if projected <= 0.0 and p95 <= 0.0:
+            fig.add_annotation(text="Waiting for Monte-Carlo samples...", showarrow=False, font={"color": "#9fb3c8"})
+            return fig
+
+        labels = ["P50", "P95", "P99", "Projected Max"]
+        values = [p50, p95, p99, projected]
+        colors = ["#00d4ff", "#00ff88", "#ffc857", "#ff6b6b" if projected > threshold > 0 else "#9fb3c8"]
+        fig = go.Figure(
+            data=[
+                go.Bar(x=labels, y=values, marker_color=colors, text=[f"{v:.2f}%" for v in values], textposition="auto")
+            ]
+        )
+        if threshold > 0.0:
+            fig.add_hline(y=threshold, line_dash="dash", line_color="#ff4444", annotation_text=f"Threshold {threshold:.2f}%")
+        fig.update_layout(
+            title="Projected Max Drawdown Distribution",
+            yaxis_title="Drawdown %",
+            template="plotly_dark",
+            height=300,
+        )
+        return fig
+
     def start_dashboard(self) -> None:
         app = self.engine.app
         if app is None:
@@ -642,6 +684,12 @@ class DashboardService:
                     ],
                     className="mb-3",
                 ),
+                dbc.Row(
+                    [
+                        dbc.Col([html.H5("Drawdown Distribution"), dcc.Graph(id="drawdown-distribution")], width=12),
+                    ],
+                    className="mb-3",
+                ),
                 html.H5("Strategy Heatmap - Winrate per Regime"),
                 dcc.Graph(id="heatmap"),
                 html.H5("Laatste Trades & Reflections"),
@@ -687,6 +735,7 @@ class DashboardService:
                 Output("mode-parity-panel", "children"),
                 Output("blackboard-health-panel", "children"),
                 Output("blackboard-health-trend", "figure"),
+                Output("drawdown-distribution", "figure"),
             ],
             Input("interval", "n_intervals"),
         )
@@ -756,6 +805,7 @@ class DashboardService:
             self._record_blackboard_health_sample(blackboard_health)
             blackboard_health_panel = self._build_blackboard_health_panel(blackboard_health)
             blackboard_health_trend = self._build_blackboard_health_trend_figure()
+            drawdown_distribution_fig = self._build_drawdown_distribution_figure()
 
             return (
                 fig_chart,
@@ -784,6 +834,7 @@ class DashboardService:
                 mode_parity_panel,
                 blackboard_health_panel,
                 blackboard_health_trend,
+                drawdown_distribution_fig,
             )
 
         @dash_app.callback(

@@ -108,6 +108,21 @@ class EngineConfig(BaseModel):
     live_jsonl: Path = Field(default_factory=lambda: Path("state/live_stream.jsonl"))
     trade_reconciler_status_file: Path = Field(default_factory=lambda: Path(os.getenv("TRADE_RECONCILER_STATUS_FILE", "state/trade_reconciler_status.json")))
     trade_reconciler_audit_log: Path = Field(default_factory=lambda: Path(os.getenv("TRADE_RECONCILER_AUDIT_LOG", "logs/trade_fill_audit.jsonl")))
+    trade_decision_audit_log: Path = Field(
+        default_factory=lambda: Path(
+            str(
+                os.getenv("TRADE_DECISION_AUDIT_LOG")
+                or _config_yaml_nested("logs/trade_decision_audit.jsonl", "audit", "trade_decision_jsonl")
+                or "logs/trade_decision_audit.jsonl"
+            )
+        )
+    )
+    trade_decision_audit_fail_closed_real: bool = Field(
+        default_factory=lambda: str(
+            os.getenv("TRADE_DECISION_AUDIT_FAIL_CLOSED_REAL")
+            or _config_yaml_nested(True, "audit", "fail_closed_real")
+        ).strip().lower() == "true"
+    )
 
     instrument: str = Field(default_factory=lambda: os.getenv("INSTRUMENT", "MES JUN26"))
     swarm_symbols: list[str] = Field(default_factory=_parse_swarm_symbols)

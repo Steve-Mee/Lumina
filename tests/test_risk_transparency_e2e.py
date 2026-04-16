@@ -1,0 +1,112 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+from lumina_core.engine.audit_log_service import AuditLogService
+from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+
+
+def _bb_event(*, topic: str, producer: str, payload: dict, confidence: float, sequence: int):
+    return SimpleNamespace(
+        topic=topic,
+        producer=producer,
+        payload=payload,
+        confidence=confidence,
+        timestamp="2026-04-16T10:30:00+00:00",
+        correlation_id=f"corr-{sequence}",
+        sequence=sequence,
+        event_hash=f"hash-{sequence}",
+        prev_hash=f"hash-{sequence - 1}",
+    )
+
+
+def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -> None:
+    audit_path = tmp_path / "trade_decision_audit.jsonl"
+    risk_limits = RiskLimits(
+        enforce_session_guard=False,
+        runtime_mode="real",
+        mc_drawdown_paths=1200,
+        mc_drawdown_horizon_days=60,
+        mc_drawdown_min_samples=20,
+        mc_drawdown_threshold_pct=4.0,
+        enable_mc_drawdown_enforce_real=True,
+        daily_loss_cap=-10000.0,
+        max_consecutive_losses=50,
+    )
+    risk_controller = HardRiskController(risk_limits, enforce_rules=True)
+    for i in range(40):
+        pnl = -140.0 if i % 2 == 0 else 35.0
+        risk_controller.record_trade_result("MES", "HIGH_VOLATILITY", pnl=pnl, risk_taken=100.0)
+
+    engine = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
+        risk_controller=risk_controller,
+        session_guard=None,
+        current_regime_snapshot={
+            "label": "HIGH_VOLATILITY",
+            "risk_state": "HIGH_RISK",
+            "adaptive_policy": {"risk_multiplier": 0.55, "cooldown_minutes": 45},
+            "features": {"realized_vol_ratio": 1.95},
+        },
+        market_regime="HIGH_VOLATILITY",
+        observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
+        audit_log_service=AuditLogService(path=audit_path, enabled=True, fail_closed_real=True),
+        blackboard=SimpleNamespace(
+            latest=lambda topic: {
+                "agent.rl.proposal": _bb_event(
+                    topic="agent.rl.proposal",
+                    producer="rl_policy",
+                    payload={"signal": "BUY", "confidence": 0.81, "reason": "rl bias"},
+                    confidence=0.81,
+                    sequence=11,
+                ),
+                "agent.news.proposal": _bb_event(
+                    topic="agent.news.proposal",
+                    producer="news_agent",
+                    payload={"signal": "HOLD", "confidence": 0.74, "reason": "event risk"},
+                    confidence=0.74,
+                    sequence=12,
+                ),
+                "execution.aggregate": _bb_event(
+                    topic="execution.aggregate",
+                    producer="runtime_workers.pre_dream_daemon",
+                    payload={"signal": "BUY", "chosen_strategy": "ppo_live_policy"},
+                    confidence=0.86,
+                    sequence=13,
+                ),
+            }.get(str(topic))
+        ),
+        get_current_dream_snapshot=lambda: {
+            "chosen_strategy": "ppo_live_policy",
+            "confidence": 0.86,
+            "expected_value": -22.0,
+            "reason": "high volatility pressure",
+        },
+    )
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="HIGH_VOLATILITY",
+        proposed_risk=250.0,
+    )
+
+    assert allowed is False
+    assert "drawdown" in reason.lower()
+
+    lines = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert lines, "Expected at least one trade decision audit event"
+    risk_gate_events = [row for row in lines if str(row.get("stage")) == "risk_gate"]
+    assert risk_gate_events, "Expected a risk_gate audit entry"
+    risk_gate = risk_gate_events[-1]
+    assert risk_gate["final_decision"] == "block"
+    assert "monte_carlo" in risk_gate
+    assert float(risk_gate["monte_carlo"].get("projected_max_drawdown_pct", 0.0)) > 0.0
+    assert isinstance(risk_gate.get("agents_involved"), list)
+    assert len(risk_gate["agents_involved"]) >= 2
+    assert risk_gate["agents_involved"][0].get("topic", "").startswith("agent.")
+    assert "lineage" in risk_gate["agents_involved"][0]
+    assert risk_gate.get("execution_aggregate_lineage", {}).get("topic") == "execution.aggregate"

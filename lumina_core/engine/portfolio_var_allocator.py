@@ -27,6 +27,9 @@ class PortfolioVaRSnapshot:
     reason: str
     symbols: list[str]
     correlation_matrix: dict[str, dict[str, float]]
+    projected_drawdown_pre_pct: float
+    projected_drawdown_post_pct: float
+    projected_drawdown_delta_pct: float
 
 
 @dataclass(slots=True)
@@ -96,6 +99,7 @@ class PortfolioVaRAllocator:
         proposed_risk: float,
         open_risk_by_symbol: dict[str, float],
     ) -> tuple[bool, str, PortfolioVaRSnapshot]:
+        pre_trade_total_open_risk = sum(max(0.0, float(v or 0.0)) for v in dict(open_risk_by_symbol).values())
         exposures = self._build_exposures(symbol=symbol, proposed_risk=proposed_risk, current=open_risk_by_symbol)
         total_open_risk = sum(exposures.values())
         symbols = list(exposures.keys())
@@ -105,6 +109,8 @@ class PortfolioVaRAllocator:
         effective_max_total_open_risk = float(self.config.max_total_open_risk)
 
         if total_open_risk > effective_max_total_open_risk:
+            pre_drawdown_pct = self._projected_drawdown_pct(pre_trade_total_open_risk, effective_max_total_open_risk)
+            post_drawdown_pct = self._projected_drawdown_pct(total_open_risk, effective_max_total_open_risk)
             snapshot = self._snapshot(
                 var_usd=0.0,
                 total_open_risk=total_open_risk,
@@ -120,6 +126,8 @@ class PortfolioVaRAllocator:
                 ),
                 symbols=symbols,
                 correlation_matrix={},
+                projected_drawdown_pre_pct=pre_drawdown_pct,
+                projected_drawdown_post_pct=post_drawdown_pct,
             )
             self._record_observability(snapshot)
             return False, snapshot.reason, snapshot
@@ -135,6 +143,8 @@ class PortfolioVaRAllocator:
                 f"MAX TOTAL OPEN RISK exceeded (quality={quality_band}): "
                 f"{total_open_risk:.2f} > {effective_max_total_open_risk:.2f}"
             )
+            pre_drawdown_pct = self._projected_drawdown_pct(pre_trade_total_open_risk, effective_max_total_open_risk)
+            post_drawdown_pct = self._projected_drawdown_pct(total_open_risk, effective_max_total_open_risk)
             snapshot = self._snapshot(
                 var_usd=0.0,
                 total_open_risk=total_open_risk,
@@ -147,6 +157,8 @@ class PortfolioVaRAllocator:
                 reason=reason,
                 symbols=symbols,
                 correlation_matrix={},
+                projected_drawdown_pre_pct=pre_drawdown_pct,
+                projected_drawdown_post_pct=post_drawdown_pct,
             )
             self._record_observability(snapshot)
             return False, reason, snapshot
@@ -156,6 +168,8 @@ class PortfolioVaRAllocator:
                 f"Portfolio VaR unavailable: insufficient bar history "
                 f"({data_points} < {self.config.min_points})"
             )
+            pre_drawdown_pct = self._projected_drawdown_pct(pre_trade_total_open_risk, effective_max_total_open_risk)
+            post_drawdown_pct = self._projected_drawdown_pct(total_open_risk, effective_max_total_open_risk)
             snapshot = self._snapshot(
                 var_usd=0.0,
                 total_open_risk=total_open_risk,
@@ -168,6 +182,8 @@ class PortfolioVaRAllocator:
                 reason=reason,
                 symbols=symbols,
                 correlation_matrix={},
+                projected_drawdown_pre_pct=pre_drawdown_pct,
+                projected_drawdown_post_pct=post_drawdown_pct,
             )
             self._record_observability(snapshot)
             if self.config.enforce_fail_closed:
@@ -187,6 +203,8 @@ class PortfolioVaRAllocator:
             if breached
             else "OK"
         )
+        pre_drawdown_pct = self._projected_drawdown_pct(pre_trade_total_open_risk, effective_max_total_open_risk)
+        post_drawdown_pct = self._projected_drawdown_pct(total_open_risk, effective_max_total_open_risk)
         snapshot = self._snapshot(
             var_usd=var_usd,
             total_open_risk=total_open_risk,
@@ -199,6 +217,8 @@ class PortfolioVaRAllocator:
             reason=reason,
             symbols=symbols,
             correlation_matrix=corr_dict,
+            projected_drawdown_pre_pct=pre_drawdown_pct,
+            projected_drawdown_post_pct=post_drawdown_pct,
         )
         self._record_observability(snapshot)
         return (not breached), reason, snapshot
@@ -341,6 +361,8 @@ class PortfolioVaRAllocator:
         reason: str,
         symbols: list[str],
         correlation_matrix: dict[str, dict[str, float]],
+        projected_drawdown_pre_pct: float,
+        projected_drawdown_post_pct: float,
     ) -> PortfolioVaRSnapshot:
         return PortfolioVaRSnapshot(
             var_usd=float(var_usd),
@@ -359,7 +381,17 @@ class PortfolioVaRAllocator:
             reason=str(reason),
             symbols=list(symbols),
             correlation_matrix=correlation_matrix,
+            projected_drawdown_pre_pct=float(projected_drawdown_pre_pct),
+            projected_drawdown_post_pct=float(projected_drawdown_post_pct),
+            projected_drawdown_delta_pct=float(projected_drawdown_post_pct - projected_drawdown_pre_pct),
         )
+
+    @staticmethod
+    def _projected_drawdown_pct(total_open_risk: float, effective_limit: float) -> float:
+        if effective_limit <= 0.0:
+            return 0.0
+        utilization = max(0.0, float(total_open_risk) / float(effective_limit))
+        return float(min(100.0, utilization * 100.0))
 
     def _quality_score(self, data_points: int) -> float:
         points = max(0, int(data_points))

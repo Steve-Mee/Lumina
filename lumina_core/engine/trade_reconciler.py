@@ -602,6 +602,27 @@ class TradeReconciler:
         except Exception:
             pass
 
+        audit_service = getattr(self.engine, "audit_log_service", None)
+        if audit_service is not None and hasattr(audit_service, "log_decision"):
+            decision_payload = {
+                "timestamp": event.get("ts"),
+                "stage": "reconciliation",
+                "final_decision": "reconciled",
+                "reason": str(event.get("event", "reconciliation_event")),
+                "mode": mode,
+                "symbol": str(event.get("symbol", self.engine.config.instrument)),
+                "probability": 0.0,
+                "expected_value": float(event.get("pnl", 0.0) or 0.0),
+                "agents_involved": [{"agent_id": "trade_reconciler", "confidence": 1.0}],
+                "var_impact": {},
+                "monte_carlo": {},
+                "reconciliation": event,
+            }
+            try:
+                audit_service.log_decision(decision_payload, is_real_mode=mode == "real")
+            except Exception:
+                pass
+
     def _update_status(self, **updates: Any) -> None:
         status = dict(getattr(self.engine, "trade_reconciler_status", {}) or {})
         status.setdefault("method", self.engine.config.reconciliation_method)

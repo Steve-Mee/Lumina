@@ -7,6 +7,9 @@ from pathlib import Path
 import tempfile
 import json
 from dataclasses import replace
+from types import SimpleNamespace
+
+import pandas as pd
 
 from lumina_core.engine.risk_controller import (
     HardRiskController,
@@ -497,6 +500,91 @@ class TestHardRiskController:
         assert "VAR_ES breached" in reason
         assert float(payload["limit_multiplier"]) == 0.5
         assert float(payload["effective_var_95_limit_usd"]) == 100.0
+
+    def test_mc_drawdown_snapshot_populates_distribution(self):
+        """Monte-Carlo drawdown snapshot should return percentile fields when samples exist."""
+        limits = RiskLimits(
+            enforce_session_guard=False,
+            runtime_mode="real",
+            mc_drawdown_paths=1200,
+            mc_drawdown_horizon_days=40,
+            mc_drawdown_min_samples=20,
+            mc_drawdown_threshold_pct=99.0,
+        )
+        controller = HardRiskController(limits, enforce_rules=True)
+        for i in range(30):
+            pnl = -80.0 if i % 5 == 0 else 45.0
+            controller.record_trade_result("MES", "TRENDING", pnl=pnl, risk_taken=100.0)
+
+        ok, reason, payload = controller.check_monte_carlo_drawdown_pre_trade(100.0)
+        assert isinstance(ok, bool)
+        assert isinstance(reason, str)
+        assert float(payload["p95_max_drawdown_pct"]) >= 0.0
+        assert float(payload["projected_max_drawdown_pct"]) >= float(payload["p95_max_drawdown_pct"])
+
+    def test_mc_drawdown_real_mode_blocks_when_threshold_breached(self):
+        """REAL mode must block new positions when projected max drawdown exceeds threshold."""
+        limits = RiskLimits(
+            enforce_session_guard=False,
+            runtime_mode="real",
+            mc_drawdown_paths=1500,
+            mc_drawdown_horizon_days=60,
+            mc_drawdown_min_samples=20,
+            mc_drawdown_threshold_pct=4.0,
+            enable_mc_drawdown_enforce_real=True,
+            max_consecutive_losses=50,
+            daily_loss_cap=-10000.0,
+        )
+        controller = HardRiskController(limits, enforce_rules=True)
+        for i in range(30):
+            pnl = -120.0 if i % 2 == 0 else 30.0
+            controller.record_trade_result("MES", "HIGH_VOLATILITY", pnl=pnl, risk_taken=100.0)
+
+        allowed, reason = controller.check_can_trade("MES", "HIGH_VOLATILITY", 250.0)
+        assert allowed is False
+        assert "drawdown" in reason.lower()
+
+    def test_mc_regime_buckets_include_regime_detector_history(self):
+        """Monte-Carlo buckets should include regime-detector historical returns when available."""
+        limits = RiskLimits(enforce_session_guard=False, runtime_mode="real")
+        controller = HardRiskController(limits, enforce_rules=True)
+
+        rows = []
+        price = 5000.0
+        for idx in range(180):
+            price = price + (0.75 if idx % 2 == 0 else -0.35)
+            rows.append(
+                {
+                    "timestamp": (datetime(2026, 4, 1, tzinfo=timezone.utc) + timedelta(minutes=idx)).isoformat(),
+                    "open": price - 0.2,
+                    "high": price + 0.4,
+                    "low": price - 0.4,
+                    "close": price,
+                    "volume": 1200.0,
+                }
+            )
+        frame = pd.DataFrame(rows)
+
+        detector = SimpleNamespace(
+            lookback_bars=60,
+            detect=lambda window, instrument: SimpleNamespace(
+                label=("TRENDING" if float(window.iloc[-1]["close"]) >= float(window.iloc[-2]["close"]) else "RANGING"),
+                risk_state="NORMAL",
+                features={"realized_vol_ratio": 1.1},
+                timestamp=str(window.iloc[-1]["timestamp"]),
+            ),
+        )
+
+        added = controller.record_regime_detector_history(
+            detector=detector,
+            market_df=frame,
+            instrument="MES JUN26",
+        )
+
+        buckets = controller._regime_return_buckets()
+        assert added > 0
+        assert "TRENDING" in buckets or "RANGING" in buckets
+        assert any(abs(v) > 0.0 for values in buckets.values() for v in values)
 
     def test_stale_margin_snapshot_blocks_trade_in_enforced_mode(self, controller):
         """Stale margin snapshot should fail-closed when rules are enforced."""

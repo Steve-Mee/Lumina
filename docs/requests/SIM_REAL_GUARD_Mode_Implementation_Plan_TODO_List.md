@@ -234,3 +234,34 @@
 - [ ] Rollout C klaar
 - [ ] Rollout D klaar
 - [ ] Release-go akkoord
+
+## Delta 2026-04-16 - Risk Transparency Implementation Kickoff
+
+- [x] Centrale audit service toegevoegd: `lumina_core/engine/audit_log_service.py`.
+- [x] Gatekeeper audit-integratie toegevoegd voor pre-trade beslissingen inclusief VaR + Monte-Carlo payload.
+- [x] Monte-Carlo projected drawdown (regime-aware) toegevoegd in `risk_controller.py` met REAL hard-block pad.
+- [x] Reconciler events gespiegeld naar centrale trade-decision auditstream.
+- [x] Dashboard hook toegevoegd voor live projected drawdown distribution.
+- [x] Config uitgebreid met Monte-Carlo parameters en audit pad.
+- [x] Nieuwe tests toegevoegd:
+  - [x] `tests/test_audit_log_service.py`
+  - [x] `tests/test_trade_reconciler_audit_integration.py`
+  - [x] `tests/test_dashboard_drawdown_distribution.py`
+  - [x] `tests/test_risk_transparency_e2e.py`
+
+## Delta 2026-04-16 - Step 2 uitgevoerd
+
+- [x] Audit payload verrijkt met expliciete multi-agent herkomst uit blackboard topics (`agent.rl.proposal`, `agent.news.proposal`, `agent.emotional_twin.proposal`, `agent.swarm.proposal`, `agent.tape.proposal`).
+- [x] Per agent lineage toegevoegd in audit event (`topic`, `producer`, `correlation_id`, `sequence`, `event_hash`, `prev_hash`, `signal`, `reason`).
+- [x] `execution.aggregate` lineage toegevoegd als aparte auditsectie voor end-to-end traceability.
+- [x] Tweede e2e test toegevoegd voor dashboardpaneel met runtime snapshot updates:
+  - [x] `tests/test_dashboard_drawdown_runtime_e2e.py`
+
+## Delta 2026-04-16 - P0 hardening na kwaliteitsreview
+
+- [x] REAL-mode audit fail-closed afgedwongen in gatekeeper: als `trade_decision` audit write faalt, wordt ordertoelating geblokkeerd.
+- [x] Regimehistorie voor Monte-Carlo verdiept met regime-detector brondata (`regime_detector.detect(...)` over historische OHLCV-windowing) naast runtime snapshots/trade history.
+- [x] Risk-controller buckets/transities uitgebreid met regime-detector returns en labels voor robuustere regime-aware drawdownprojectie.
+- [x] Nieuwe regressietests toegevoegd:
+  - [x] `test_enforce_pre_trade_gate_real_fail_closed_when_audit_write_fails`
+  - [x] `test_mc_regime_buckets_include_regime_detector_history`
