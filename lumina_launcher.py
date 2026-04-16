@@ -344,6 +344,39 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
     st.markdown("### Live Activity & Services")
     process_badge = _status_badge("Running", "available") if alive else _status_badge("Stopped", "blocked")
     st.markdown(f"Bot Process {process_badge}", unsafe_allow_html=True)
+    if alive:
+        st.markdown(
+            """
+            <style>
+            @keyframes luminaPulse {
+                0% { transform: scale(0.9); opacity: 0.8; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.5); }
+                70% { transform: scale(1.0); opacity: 1; box-shadow: 0 0 0 10px rgba(16, 185, 129, 0.0); }
+                100% { transform: scale(0.9); opacity: 0.8; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.0); }
+            }
+            .lumina-live-pulse {
+                width: 10px;
+                height: 10px;
+                border-radius: 999px;
+                background: #10b981;
+                display: inline-block;
+                margin-right: 8px;
+                animation: luminaPulse 1.8s infinite;
+            }
+            .lumina-live-label {
+                display: inline-flex;
+                align-items: center;
+                color: #065f46;
+                font-size: 0.88rem;
+                font-weight: 600;
+                margin: 0.15rem 0 0.45rem 0;
+            }
+            </style>
+            <div class=\"lumina-live-label\"><span class=\"lumina-live-pulse\"></span>Live execution heartbeat</div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption("Heartbeat indicator becomes active when the bot is running.")
 
     log_age = _file_age_seconds(LUMINA_LOG_PATH)
     state_age = _file_age_seconds(STATE_PATH)

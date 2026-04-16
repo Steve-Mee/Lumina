@@ -7,10 +7,12 @@ from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contra
 
 
 class _RiskController:
-    def __init__(self, *, can_trade: bool = True, reason: str = "OK") -> None:
+    def __init__(self, *, can_trade: bool = True, reason: str = "OK", var_es_ok: bool = True, var_es_reason: str = "VAR_ES OK") -> None:
         self._active_limits = SimpleNamespace(enforce_session_guard=False)
         self._can_trade = bool(can_trade)
         self._reason = str(reason)
+        self._var_es_ok = bool(var_es_ok)
+        self._var_es_reason = str(var_es_reason)
 
     def apply_regime_override(self, **_kwargs):
         return None
@@ -18,6 +20,10 @@ class _RiskController:
     def check_can_trade(self, symbol: str, regime: str, proposed_risk: float):
         del symbol, regime, proposed_risk
         return self._can_trade, self._reason
+
+    def check_var_es_pre_trade(self, proposed_risk: float):
+        del proposed_risk
+        return self._var_es_ok, self._var_es_reason, {}
 
 
 class _BrokerWithMetadata:
@@ -160,3 +166,49 @@ def test_enforce_pre_trade_gate_sim_real_guard_blocks_on_risk(monkeypatch) -> No
     assert allowed is False
     assert reason == "daily_loss_cap"
     assert metric_calls == [("sim_real_guard", "risk_daily_loss_cap")]
+
+
+def test_enforce_pre_trade_gate_real_blocks_on_var_es(monkeypatch) -> None:
+    engine = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="real"),
+        risk_controller=_RiskController(var_es_ok=False, var_es_reason="VAR_ES breached: VaR95 1400 > 1200"),
+        session_guard=None,
+        current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
+        market_regime="NEUTRAL",
+        observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
+    )
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+    )
+
+    assert allowed is False
+    assert "VAR_ES breached" in reason
+
+
+def test_enforce_pre_trade_gate_sim_var_es_is_advisory(monkeypatch) -> None:
+    engine = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="sim"),
+        risk_controller=_RiskController(var_es_ok=False, var_es_reason="VAR_ES breached: ES95 1600 > 1500"),
+        session_guard=None,
+        current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
+        market_regime="NEUTRAL",
+        app=SimpleNamespace(logger=SimpleNamespace(warning=lambda *_a, **_k: None)),
+    )
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+    )
+
+    assert allowed is True
+    assert reason == "OK"

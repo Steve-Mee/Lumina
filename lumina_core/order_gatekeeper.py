@@ -234,6 +234,27 @@ def enforce_pre_trade_gate(
         risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
         cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
     )
+
+    # LIVING ORGANISM v51: explicit VaR/ES gate before final order admission.
+    if hasattr(risk_controller, "check_var_es_pre_trade"):
+        var_result = risk_controller.check_var_es_pre_trade(float(proposed_risk))
+        var_ok = True
+        var_reason = "VAR_ES gate skipped (legacy contract)"
+        if isinstance(var_result, tuple):
+            if len(var_result) >= 2:
+                var_ok = bool(var_result[0])
+                var_reason = str(var_result[1])
+            elif len(var_result) == 1:
+                var_ok = bool(var_result[0])
+                var_reason = "VAR_ES gate result missing reason"
+        if capabilities.risk_enforced and not bool(var_ok):
+            return _deny("risk_var_es", str(var_reason))
+        if not capabilities.risk_enforced and not bool(var_ok):
+            _safe_log_warning(
+                engine,
+                f"RISK_VAR_ES_ADVISORY,mode={mode},symbol={symbol},reason={var_reason}",
+            )
+
     risk_ok, risk_reason = risk_controller.check_can_trade(symbol, str(snapshot.get("label", regime)), proposed_risk)
     if capabilities.risk_enforced:
         if not bool(risk_ok):

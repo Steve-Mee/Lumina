@@ -1,5 +1,33 @@
 # v50 Living Organism Refactoring – Complete Diff Summary
 
+## v51 Capital Preservation Upgrade (SIM/REAL Guard)
+
+Status: COMPLETE
+Scope: stochastic execution costs, VaR/ES tail-risk controls, fail-closed REAL guardrails
+
+### Files Updated
+- `lumina_core/rl_environment.py`
+- `lumina_core/ppo_trainer.py`
+- `lumina_core/engine/risk_controller.py`
+- `lumina_core/order_gatekeeper.py`
+- `config.yaml`
+- `tests/test_risk_controller.py`
+- `tests/test_order_gatekeeper_contracts.py`
+- `tests/test_rl_environment_risk_costs.py`
+
+### Behavioral Deltas
+- Added stochastic slippage model in RL step path: `base + volatility_factor * gauss(0, sigma)`.
+- Added NinjaTrader-style per-side fee stack (commission + exchange + clearing + NFA) sourced from config.
+- Added REAL fail-closed capital-floor check in RL environment: entry is denied when projected net equity would breach safety threshold.
+- Added historical/parametric VaR95/VaR99 and ES95/ES99 calculations in hard risk controller.
+- Added explicit VaR/ES pre-order gate in gatekeeper before final order admission.
+- Added SIM reward penalty component for elevated VaR/ES to discourage tail-risk behavior during learning.
+
+### Safety/Performance Notes
+- SIM remains advisory and lightweight with bounded O(window) VaR/ES calculations.
+- REAL/sim_real_guard remain fail-closed on VaR/ES breaches and insufficient risk data when configured.
+- No network calls or blocking I/O were added to hot order or RL step loops.
+
 **Status**: ✅ COMPLETE  
 **Scope**: Radical simplification, duplicate elimination, canonical path consolidation  
 **Date**: Following v45.1.1  

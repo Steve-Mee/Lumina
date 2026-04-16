@@ -377,6 +377,127 @@ class TestHardRiskController:
         assert allowed is False
         assert "PORTFOLIO VAR breached" in reason
 
+    def test_var_es_historical_breach_blocks_trade(self):
+        """Historical VaR/ES breach should block in enforced mode."""
+        limits = RiskLimits(
+            enforce_session_guard=False,
+            daily_loss_cap=-10000.0,
+            max_consecutive_losses=50,
+            var_es_method="historical",
+            var_es_window=50,
+            var_es_min_samples=10,
+            var_95_limit_usd=50.0,
+            var_99_limit_usd=60.0,
+            es_95_limit_usd=70.0,
+            es_99_limit_usd=80.0,
+        )
+        controller = HardRiskController(limits, enforce_rules=True)
+        for _ in range(20):
+            controller.record_trade_result("MES", "TRENDING", pnl=-120.0, risk_taken=100.0)
+
+        allowed, reason = controller.check_can_trade("MES", "TRENDING", 200.0)
+        assert allowed is False
+        assert "VAR_ES breached" in reason
+
+    def test_var_es_parametric_populates_status(self):
+        """Parametric VaR/ES path should populate state snapshot."""
+        limits = RiskLimits(
+            enforce_session_guard=False,
+            var_es_method="parametric",
+            var_es_window=60,
+            var_es_min_samples=12,
+        )
+        controller = HardRiskController(limits, enforce_rules=True)
+        for i in range(24):
+            pnl = 80.0 if i % 3 else -40.0
+            controller.record_trade_result("MES", "TRENDING", pnl=pnl, risk_taken=100.0)
+
+        ok, reason, snapshot = controller.check_var_es_pre_trade(150.0)
+        assert isinstance(ok, bool)
+        assert isinstance(reason, str)
+        assert float(snapshot["var_95_usd"]) >= 0.0
+        assert float(snapshot["es_95_usd"]) >= 0.0
+        status = controller.get_status()
+        assert "var_es" in status
+        assert status["var_es"]["method"] == "parametric"
+
+    def test_var_es_insufficient_samples_fail_closed(self):
+        """Insufficient VaR samples should fail-closed in enforced mode when configured."""
+        limits = RiskLimits(
+            enforce_session_guard=False,
+            max_consecutive_losses=50,
+            var_es_method="historical",
+            var_es_window=30,
+            var_es_min_samples=25,
+            var_es_fail_closed_on_insufficient_data=True,
+        )
+        controller = HardRiskController(limits, enforce_rules=True)
+        for _ in range(5):
+            controller.record_trade_result("MES", "TRENDING", pnl=-10.0, risk_taken=100.0)
+
+        allowed, reason = controller.check_can_trade("MES", "TRENDING", 100.0)
+        assert allowed is False
+        assert "insufficient return samples" in reason
+
+    def test_var_es_insufficient_samples_real_only_policy_skips_sim_real_guard(self):
+        """fail_closed_real_only should remain advisory in sim_real_guard mode."""
+        limits = RiskLimits(
+            enforce_session_guard=False,
+            runtime_mode="sim_real_guard",
+            max_consecutive_losses=50,
+            var_es_min_samples=25,
+            var_es_fail_closed_on_insufficient_data=False,
+            var_es_insufficient_data_policy="fail_closed_real_only",
+        )
+        controller = HardRiskController(limits, enforce_rules=True)
+        for _ in range(5):
+            controller.record_trade_result("MES", "TRENDING", pnl=-10.0, risk_taken=100.0)
+
+        allowed, reason = controller.check_can_trade("MES", "TRENDING", 100.0)
+        assert allowed is True
+        assert "OK" in reason
+
+    def test_var_es_feature_flag_disable_calculation(self):
+        """When calculation is disabled, VaR/ES returns allow with disabled reason-code."""
+        limits = RiskLimits(
+            enforce_session_guard=False,
+            runtime_mode="real",
+            enable_var_es_calc=False,
+        )
+        controller = HardRiskController(limits, enforce_rules=True)
+
+        ok, reason, payload = controller.check_var_es_pre_trade(120.0)
+        assert ok is True
+        assert "disabled" in reason.lower()
+        assert payload["reason_code"] == "VAR_ES_DISABLED"
+        assert payload["decision"] == "allow"
+
+    def test_var_es_high_risk_multiplier_tightens_limits(self):
+        """HIGH_RISK regime should apply tighter VaR/ES limits via multiplier."""
+        limits = RiskLimits(
+            enforce_session_guard=False,
+            runtime_mode="real",
+            max_consecutive_losses=50,
+            var_es_method="historical",
+            var_es_window=50,
+            var_es_min_samples=10,
+            var_95_limit_usd=200.0,
+            var_99_limit_usd=400.0,
+            es_95_limit_usd=500.0,
+            es_99_limit_usd=600.0,
+            var_es_high_risk_limit_multiplier=0.5,
+        )
+        controller = HardRiskController(limits, enforce_rules=True)
+        controller.state.active_risk_state = "HIGH_RISK"
+        for _ in range(20):
+            controller.record_trade_result("MES", "TRENDING", pnl=-120.0, risk_taken=100.0)
+
+        ok, reason, payload = controller.check_var_es_pre_trade(200.0)
+        assert ok is False
+        assert "VAR_ES breached" in reason
+        assert float(payload["limit_multiplier"]) == 0.5
+        assert float(payload["effective_var_95_limit_usd"]) == 100.0
+
     def test_stale_margin_snapshot_blocks_trade_in_enforced_mode(self, controller):
         """Stale margin snapshot should fail-closed when rules are enforced."""
         stale_snapshot = replace(

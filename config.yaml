@@ -132,6 +132,40 @@ risk_controller:
   # Cooldown period after loss streak (minutes)
   # After max_consecutive_losses is reached, wait this long before resuming
   cooldown_after_streak: 30
+
+  # LIVING ORGANISM v51 - RL execution costs (SIM fast, REAL realistic)
+  slippage_base_points: 0.125
+  slippage_sigma: 0.5
+  slippage_volatility_factor: 1.0
+  commission_per_side_usd: 1.29
+  exchange_fee_per_side_usd: 0.35
+  clearing_fee_per_side_usd: 0.10
+  nfa_fee_per_side_usd: 0.02
+
+  # LIVING ORGANISM v51 - REAL fail-closed capital floor
+  real_capital_safety_threshold_usd: 1000.0
+  real_capital_safety_threshold_ratio: 0.90
+
+  # LIVING ORGANISM v51 - VaR/ES risk envelope
+  var_es_method: "historical"               # historical | parametric
+  var_es_window: 200
+  var_es_min_samples: 40
+  var_es_fail_closed_on_insufficient_data: true
+  var_es_insufficient_data_policy: "fail_closed_real_only"  # advisory | fail_closed_real_only | fail_closed_all_enforced
+  enable_var_es_calc: true
+  enable_var_es_enforce_sim_real_guard: true
+  enable_var_es_enforce_real: true
+  var_es_high_risk_limit_multiplier: 0.80
+  var_es_normal_risk_limit_multiplier: 1.00
+  var_es_reason_codes_enabled: true
+  var_95_limit_usd: 1200.0
+  var_99_limit_usd: 1800.0
+  es_95_limit_usd: 1500.0
+  es_99_limit_usd: 2200.0
+
+  # LIVING ORGANISM v51 - SIM reward shaping against tail risk
+  sim_var_penalty_coeff: 0.04
+  sim_es_penalty_coeff: 0.06
   
   # Enable risk controller (set to false only for testing)
   enabled: true

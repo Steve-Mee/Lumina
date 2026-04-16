@@ -2,6 +2,7 @@ from __future__ import annotations
 # pyright: reportMissingImports=false
 
 from dataclasses import dataclass
+import random
 from typing import Any
 
 import numpy as np
@@ -16,14 +17,27 @@ except Exception as exc:  # pragma: no cover
 
 @dataclass(slots=True)
 class RLConfig:
+    """LIVING ORGANISM v51: RL execution-cost and reward controls."""
+
     max_steps: int = 5000
     slippage_points: float = 0.125
+    slippage_sigma: float = 0.5
+    slippage_volatility_factor: float = 1.0
+    commission_per_side_usd: float = 1.29
+    exchange_fee_per_side_usd: float = 0.35
+    clearing_fee_per_side_usd: float = 0.10
+    nfa_fee_per_side_usd: float = 0.02
+    real_safety_threshold_usd: float = 1000.0
+    real_safety_threshold_ratio: float = 0.90
+    sim_var_penalty_coeff: float = 0.04
+    sim_es_penalty_coeff: float = 0.06
+    trade_mode: str = "sim"
     drawdown_penalty_coeff: float = 0.2
     sharpe_bonus_coeff: float = 0.05
 
 
 class RLTradingEnvironment(gym.Env):
-    """Gymnasium-compatible environment backed by LuminaEngine state."""
+    """LIVING ORGANISM v51: Gymnasium-compatible environment with safety-first costs."""
 
     metadata = {"render_modes": ["human"]}
 
@@ -31,9 +45,10 @@ class RLTradingEnvironment(gym.Env):
         super().__init__()
         self.engine = engine
         self.data = simulator_data
-        self.config = config or RLConfig()
+        self.config = config or self._config_from_engine(engine)
         self.valuation_engine = ValuationEngine()
         self.instrument = str(getattr(self.engine.config, "instrument", "MES"))
+        self.trade_mode = str(self.config.trade_mode or getattr(getattr(self.engine, "config", None), "trade_mode", "sim")).strip().lower()
 
         # Action layout: [side, qty_norm, stop_pct, target_pct]
         # side in [0, 2] -> HOLD, BUY, SELL
@@ -56,8 +71,56 @@ class RLTradingEnvironment(gym.Env):
         self._qty = 0
         self._entry_price = 0.0
         self._equity = 50000.0
+        self._initial_equity = 50000.0
         self._equity_curve: list[float] = [50000.0]
         self._returns: list[float] = []
+
+    @staticmethod
+    def _config_from_engine(engine: Any) -> RLConfig:
+        """LIVING ORGANISM v51: Build RLConfig from runtime risk config with safe defaults."""
+        risk_cfg = getattr(getattr(engine, "config", None), "risk_controller", {})
+        risk_cfg = risk_cfg if isinstance(risk_cfg, dict) else {}
+        trade_mode = str(getattr(getattr(engine, "config", None), "trade_mode", "sim") or "sim").strip().lower()
+        return RLConfig(
+            slippage_points=float(risk_cfg.get("slippage_base_points", 0.125) or 0.125),
+            slippage_sigma=float(risk_cfg.get("slippage_sigma", 0.5) or 0.5),
+            slippage_volatility_factor=float(risk_cfg.get("slippage_volatility_factor", 1.0) or 1.0),
+            commission_per_side_usd=float(risk_cfg.get("commission_per_side_usd", 1.29) or 1.29),
+            exchange_fee_per_side_usd=float(risk_cfg.get("exchange_fee_per_side_usd", 0.35) or 0.35),
+            clearing_fee_per_side_usd=float(risk_cfg.get("clearing_fee_per_side_usd", 0.10) or 0.10),
+            nfa_fee_per_side_usd=float(risk_cfg.get("nfa_fee_per_side_usd", 0.02) or 0.02),
+            real_safety_threshold_usd=float(risk_cfg.get("real_capital_safety_threshold_usd", 1000.0) or 1000.0),
+            real_safety_threshold_ratio=float(risk_cfg.get("real_capital_safety_threshold_ratio", 0.90) or 0.90),
+            sim_var_penalty_coeff=float(risk_cfg.get("sim_var_penalty_coeff", 0.04) or 0.04),
+            sim_es_penalty_coeff=float(risk_cfg.get("sim_es_penalty_coeff", 0.06) or 0.06),
+            trade_mode=trade_mode,
+        )
+
+    def _recent_volatility_points(self, price: float) -> float:
+        closes = [float(self.data[i].get("close", self.data[i].get("last", 0.0)) or 0.0) for i in range(max(0, self._idx - 30), self._idx + 1)]
+        closes = [c for c in closes if c > 0.0]
+        if len(closes) < 6 or price <= 0.0:
+            return max(self.valuation_engine.tick_size(self.instrument), self.config.slippage_points)
+        arr = np.asarray(closes, dtype=np.float64)
+        ret = np.diff(arr) / np.maximum(arr[:-1], 1e-9)
+        vol = float(np.std(ret))
+        return max(self.valuation_engine.tick_size(self.instrument), abs(vol * price))
+
+    def _stochastic_slippage_points(self, price: float) -> float:
+        """LIVING ORGANISM v51: stochastic slippage = base + volatility_factor * gauss(0, sigma)."""
+        base = float(self.config.slippage_points)
+        volatility_factor = float(self.config.slippage_volatility_factor) * self._recent_volatility_points(price)
+        shock = random.gauss(0.0, float(self.config.slippage_sigma))
+        return float(max(0.0, base + (volatility_factor * shock)))
+
+    def _fees_usd(self, *, quantity: int, sides: int) -> float:
+        per_side = (
+            float(self.config.commission_per_side_usd)
+            + float(self.config.exchange_fee_per_side_usd)
+            + float(self.config.clearing_fee_per_side_usd)
+            + float(self.config.nfa_fee_per_side_usd)
+        )
+        return float(max(0, int(quantity)) * max(1, int(sides)) * max(0.0, per_side))
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
@@ -66,6 +129,7 @@ class RLTradingEnvironment(gym.Env):
         self._qty = 0
         self._entry_price = 0.0
         self._equity = 50000.0
+        self._initial_equity = 50000.0
         self._equity_curve = [50000.0]
         self._returns = []
         return self._get_observation(), {}
@@ -89,19 +153,46 @@ class RLTradingEnvironment(gym.Env):
 
         realized_pnl = 0.0
         slippage_cost = 0.0
+        fees_cost = 0.0
+        blocked_by_capital_preservation = False
+        block_reason = ""
 
         if self._position == 0 and side != 0:
-            self._position = side
-            self._qty = qty
-            entry_ticks = max(0.0, float(self.config.slippage_points) / max(self.valuation_engine.tick_size(self.instrument), 1e-9))
+            slippage_points = self._stochastic_slippage_points(price)
+            entry_ticks = max(0.0, float(slippage_points) / max(self.valuation_engine.tick_size(self.instrument), 1e-9))
             fill = self.valuation_engine.apply_entry_fill(
                 symbol=self.instrument,
                 price=price,
                 side=side,
                 slippage_ticks=entry_ticks,
             )
-            self._entry_price = fill
-            slippage_cost += abs(fill - price) * qty * self.valuation_engine.point_value(self.instrument)
+            entry_slippage_cost = abs(fill - price) * qty * self.valuation_engine.point_value(self.instrument)
+            entry_fees = self._fees_usd(quantity=qty, sides=1)
+
+            if self.trade_mode == "real":
+                safety_floor = max(
+                    float(self.config.real_safety_threshold_usd),
+                    float(self._initial_equity * float(self.config.real_safety_threshold_ratio)),
+                )
+                projected_equity = float(self._equity - entry_slippage_cost - entry_fees)
+                if projected_equity < safety_floor:
+                    blocked_by_capital_preservation = True
+                    block_reason = (
+                        "REAL fail-closed: projected net below safety threshold "
+                        f"({projected_equity:.2f} < {safety_floor:.2f})"
+                    )
+                else:
+                    self._position = side
+                    self._qty = qty
+                    self._entry_price = fill
+                    slippage_cost += entry_slippage_cost
+                    fees_cost += entry_fees
+            else:
+                self._position = side
+                self._qty = qty
+                self._entry_price = fill
+                slippage_cost += entry_slippage_cost
+                fees_cost += entry_fees
 
         if self._position != 0:
             stop = self._entry_price * (1.0 - stop_pct if self._position > 0 else 1.0 + stop_pct)
@@ -112,7 +203,7 @@ class RLTradingEnvironment(gym.Env):
             flatten = side == 0 and np.random.random() < 0.05
 
             if hit_stop or hit_target or flatten:
-                exit_ticks = max(0.0, float(self.config.slippage_points) / max(self.valuation_engine.tick_size(self.instrument), 1e-9))
+                exit_ticks = max(0.0, float(self._stochastic_slippage_points(price)) / max(self.valuation_engine.tick_size(self.instrument), 1e-9))
                 exit_fill = self.valuation_engine.apply_exit_fill(
                     symbol=self.instrument,
                     price=price,
@@ -120,6 +211,7 @@ class RLTradingEnvironment(gym.Env):
                     slippage_ticks=exit_ticks,
                 )
                 slippage_cost += abs(exit_fill - price) * self._qty * self.valuation_engine.point_value(self.instrument)
+                fees_cost += self._fees_usd(quantity=self._qty, sides=1)
                 realized_pnl = self.valuation_engine.pnl_dollars(
                     symbol=self.instrument,
                     entry_price=self._entry_price,
@@ -132,14 +224,32 @@ class RLTradingEnvironment(gym.Env):
                 self._entry_price = 0.0
 
         prev_equity = self._equity
-        self._equity += realized_pnl - slippage_cost
+        self._equity += realized_pnl - slippage_cost - fees_cost
         self._equity_curve.append(self._equity)
 
         ret = (self._equity - prev_equity) / max(prev_equity, 1e-6)
         self._returns.append(ret)
         drawdown_penalty = self._drawdown() * self.config.drawdown_penalty_coeff
         sharpe_bonus = self._rolling_sharpe() * self.config.sharpe_bonus_coeff
-        reward = float(realized_pnl - slippage_cost - drawdown_penalty + sharpe_bonus)
+        reward = float(realized_pnl - slippage_cost - fees_cost - drawdown_penalty + sharpe_bonus)
+
+        var_es_penalty = 0.0
+        risk_controller = getattr(self.engine, "risk_controller", None)
+        if self.trade_mode == "sim" and risk_controller is not None and hasattr(risk_controller, "get_var_es_snapshot"):
+            snapshot = risk_controller.get_var_es_snapshot(proposed_risk=0.0)
+            limits = getattr(risk_controller, "_active_limits", None)
+            var_limit = max(float(getattr(limits, "var_95_limit_usd", 1.0) or 1.0), 1.0)
+            es_limit = max(float(getattr(limits, "es_95_limit_usd", 1.0) or 1.0), 1.0)
+            var_ratio = float(snapshot.get("var_95_usd", 0.0) or 0.0) / var_limit
+            es_ratio = float(snapshot.get("es_95_usd", 0.0) or 0.0) / es_limit
+            var_es_penalty = (
+                float(self.config.sim_var_penalty_coeff) * max(0.0, var_ratio)
+                + float(self.config.sim_es_penalty_coeff) * max(0.0, es_ratio)
+            )
+            reward -= var_es_penalty
+
+        if blocked_by_capital_preservation:
+            reward -= 5.0
 
         self._idx += 1
         terminated = self._idx >= min(len(self.data) - 1, self.config.max_steps)
@@ -147,9 +257,13 @@ class RLTradingEnvironment(gym.Env):
         info = {
             "realized_pnl": realized_pnl,
             "slippage_cost": slippage_cost,
+            "fees_cost": fees_cost,
             "equity": self._equity,
             "drawdown": self._drawdown(),
             "sharpe": self._rolling_sharpe(),
+            "var_es_penalty": var_es_penalty,
+            "blocked_by_capital_preservation": blocked_by_capital_preservation,
+            "block_reason": block_reason,
         }
         return self._get_observation(), reward, terminated, False, info
 

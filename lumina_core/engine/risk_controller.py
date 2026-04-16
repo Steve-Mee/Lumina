@@ -11,9 +11,13 @@ from datetime import datetime, timedelta, timezone
 from collections import deque
 import json
 import logging
+import math
+from statistics import NormalDist
 import os
 from pathlib import Path
 from typing import Any, Optional
+
+import numpy as np
 
 from .margin_snapshot_provider import MarginSnapshot, MarginSnapshotProvider
 
@@ -85,6 +89,23 @@ class RiskLimits:
     eod_force_close_minutes_before_session_end: int = 30  # force-close window in REAL mode
     eod_no_new_trades_minutes_before_session_end: int = 60  # block new entries near EOD in REAL mode
     margin_min_confidence: float = 0.6  # minimum snapshot confidence required in REAL enforced mode
+    var_es_method: str = "historical"  # historical | parametric
+    var_es_window: int = 200  # number of return observations
+    var_es_min_samples: int = 40  # fail-closed threshold in enforced modes
+    var_es_fail_closed_on_insufficient_data: bool = False
+    var_es_insufficient_data_policy: str = "advisory"  # advisory | fail_closed_real_only | fail_closed_all_enforced
+    enable_var_es_calc: bool = True
+    enable_var_es_enforce_sim_real_guard: bool = True
+    enable_var_es_enforce_real: bool = True
+    var_es_high_risk_limit_multiplier: float = 0.8
+    var_es_normal_risk_limit_multiplier: float = 1.0
+    var_es_reason_codes_enabled: bool = True
+    var_95_limit_usd: float = 1200.0
+    var_99_limit_usd: float = 1800.0
+    es_95_limit_usd: float = 1500.0
+    es_99_limit_usd: float = 2200.0
+    real_capital_safety_threshold_usd: float = 1000.0
+    runtime_mode: str = "real"
     sim_mode: bool = False  # SIM=True bypasses all caps; REAL=False enforces them
     
     def validate(self) -> bool:
@@ -118,6 +139,33 @@ class RiskLimits:
         if self.margin_min_confidence < 0.0 or self.margin_min_confidence > 1.0:
             logger.error("margin_min_confidence must be within 0.0..1.0")
             return False
+        if str(self.var_es_method).strip().lower() not in {"historical", "parametric"}:
+            logger.error("var_es_method must be historical or parametric")
+            return False
+        if self.var_es_window < 20:
+            logger.error("var_es_window must be >= 20")
+            return False
+        if self.var_es_min_samples < 10:
+            logger.error("var_es_min_samples must be >= 10")
+            return False
+        if str(self.var_es_insufficient_data_policy).strip().lower() not in {"advisory", "fail_closed_real_only", "fail_closed_all_enforced"}:
+            logger.error("var_es_insufficient_data_policy must be advisory | fail_closed_real_only | fail_closed_all_enforced")
+            return False
+        if self.var_es_high_risk_limit_multiplier <= 0.0 or self.var_es_high_risk_limit_multiplier > 2.0:
+            logger.error("var_es_high_risk_limit_multiplier must be within (0.0, 2.0]")
+            return False
+        if self.var_es_normal_risk_limit_multiplier <= 0.0 or self.var_es_normal_risk_limit_multiplier > 2.0:
+            logger.error("var_es_normal_risk_limit_multiplier must be within (0.0, 2.0]")
+            return False
+        if str(self.runtime_mode).strip().lower() not in {"sim", "real", "sim_real_guard", "paper"}:
+            logger.error("runtime_mode must be sim | real | sim_real_guard | paper")
+            return False
+        if self.var_95_limit_usd <= 0 or self.var_99_limit_usd <= 0 or self.es_95_limit_usd <= 0 or self.es_99_limit_usd <= 0:
+            logger.error("VaR/ES limits must be > 0")
+            return False
+        if self.real_capital_safety_threshold_usd <= 0:
+            logger.error("real_capital_safety_threshold_usd must be > 0")
+            return False
         return True
 
 
@@ -139,6 +187,12 @@ class RiskState:
     portfolio_var_limit_usd: float = 1200.0
     portfolio_var_breached: bool = False
     portfolio_var_reason: str = ""
+    var_95_usd: float = 0.0
+    var_99_usd: float = 0.0
+    es_95_usd: float = 0.0
+    es_99_usd: float = 0.0
+    var_es_breached: bool = False
+    var_es_reason: str = ""
     margin_tracker: Optional[MarginTracker] = field(default_factory=MarginTracker)  # Capital preservation
 
 
@@ -252,6 +306,23 @@ class HardRiskController:
             eod_force_close_minutes_before_session_end=self._base_limits.eod_force_close_minutes_before_session_end,
             eod_no_new_trades_minutes_before_session_end=self._base_limits.eod_no_new_trades_minutes_before_session_end,
             margin_min_confidence=self._base_limits.margin_min_confidence,
+            var_es_method=self._base_limits.var_es_method,
+            var_es_window=self._base_limits.var_es_window,
+            var_es_min_samples=self._base_limits.var_es_min_samples,
+            var_es_fail_closed_on_insufficient_data=self._base_limits.var_es_fail_closed_on_insufficient_data,
+            var_es_insufficient_data_policy=self._base_limits.var_es_insufficient_data_policy,
+            enable_var_es_calc=self._base_limits.enable_var_es_calc,
+            enable_var_es_enforce_sim_real_guard=self._base_limits.enable_var_es_enforce_sim_real_guard,
+            enable_var_es_enforce_real=self._base_limits.enable_var_es_enforce_real,
+            var_es_high_risk_limit_multiplier=self._base_limits.var_es_high_risk_limit_multiplier,
+            var_es_normal_risk_limit_multiplier=self._base_limits.var_es_normal_risk_limit_multiplier,
+            var_es_reason_codes_enabled=self._base_limits.var_es_reason_codes_enabled,
+            var_95_limit_usd=self._base_limits.var_95_limit_usd,
+            var_99_limit_usd=self._base_limits.var_99_limit_usd,
+            es_95_limit_usd=self._base_limits.es_95_limit_usd,
+            es_99_limit_usd=self._base_limits.es_99_limit_usd,
+            real_capital_safety_threshold_usd=self._base_limits.real_capital_safety_threshold_usd,
+            runtime_mode=self._base_limits.runtime_mode,
         )
         self.state.active_regime = normalized_regime
         self.state.active_risk_state = normalized_risk_state
@@ -355,6 +426,183 @@ class HardRiskController:
             if symbol in str(symbols):
                 return regime
         return None
+
+    def _portfolio_return_series(self) -> list[float]:
+        """LIVING ORGANISM v51: Build normalized return samples from realized trade history."""
+        window = max(20, int(self._active_limits.var_es_window))
+        returns: list[float] = []
+        for trade in list(self.state.trade_history)[-window:]:
+            pnl = float(trade.get("pnl", 0.0) or 0.0)
+            risk_taken = float(trade.get("risk_taken", 0.0) or 0.0)
+            denom = max(abs(risk_taken), 1.0)
+            returns.append(pnl / denom)
+        return returns
+
+    def _calculate_var_es_pair(self, *, returns: list[float], confidence: float, method: str) -> tuple[float, float]:
+        """LIVING ORGANISM v51: Calculate normalized VaR/ES for a confidence level."""
+        if not returns:
+            return 0.0, 0.0
+        alpha = max(1e-6, 1.0 - float(confidence))
+        arr = np.asarray(returns, dtype=np.float64)
+        method_key = str(method or "historical").strip().lower()
+
+        if method_key == "parametric":
+            mu = float(arr.mean())
+            sigma = float(arr.std(ddof=0))
+            if sigma <= 1e-9:
+                var_ret = abs(min(0.0, mu))
+                return var_ret, var_ret
+            z = NormalDist().inv_cdf(alpha)
+            q = mu + (sigma * z)
+            var_ret = abs(min(0.0, q))
+            pdf = math.exp(-0.5 * (z**2)) / math.sqrt(2.0 * math.pi)
+            es_tail = mu - (sigma * (pdf / alpha))
+            es_ret = abs(min(0.0, es_tail))
+            return float(var_ret), float(max(es_ret, var_ret))
+
+        quantile = float(np.quantile(arr, alpha))
+        var_ret = abs(min(0.0, quantile))
+        tail = arr[arr <= quantile]
+        if tail.size == 0:
+            return var_ret, var_ret
+        es_ret = abs(min(0.0, float(tail.mean())))
+        return float(var_ret), float(max(es_ret, var_ret))
+
+    def _var_es_enforcement_enabled(self) -> bool:
+        """Decide if VaR/ES should hard-block orders in the active runtime mode."""
+        mode = str(self._active_limits.runtime_mode or "sim").strip().lower()
+        if not self.enforce_rules:
+            return False
+        if mode == "real":
+            return bool(self._active_limits.enable_var_es_enforce_real)
+        if mode == "sim_real_guard":
+            return bool(self._active_limits.enable_var_es_enforce_sim_real_guard)
+        return False
+
+    def _should_fail_closed_on_var_es_data(self) -> bool:
+        """Resolve insufficient-data behavior from policy with legacy compatibility."""
+        limits = self._active_limits
+        mode = str(limits.runtime_mode or "sim").strip().lower()
+        reason_codes_enabled = bool(limits.var_es_reason_codes_enabled)
+        policy = str(limits.var_es_insufficient_data_policy or "fail_closed_real_only").strip().lower()
+
+        if bool(limits.var_es_fail_closed_on_insufficient_data):
+            return bool(self._var_es_enforcement_enabled())
+        if policy == "advisory":
+            return False
+        if policy == "fail_closed_all_enforced":
+            return bool(self._var_es_enforcement_enabled())
+        if policy == "fail_closed_real_only":
+            return bool(self._var_es_enforcement_enabled() and mode == "real")
+        return False
+
+    def check_var_es_pre_trade(self, proposed_risk: float) -> tuple[bool, str, dict[str, float | str | bool]]:
+        """LIVING ORGANISM v51: Enforce VaR/ES guard before order placement."""
+        limits = self._active_limits
+        mode = str(limits.runtime_mode or "sim").strip().lower()
+        reason_codes_enabled = bool(limits.var_es_reason_codes_enabled)
+
+        if not bool(limits.enable_var_es_calc):
+            reason = "VAR_ES disabled by feature flag"
+            self.state.var_es_breached = False
+            self.state.var_es_reason = reason
+            payload: dict[str, float | str | bool] = {
+                "method": str(limits.var_es_method),
+                "samples": 0.0,
+                "var_95_usd": 0.0,
+                "var_99_usd": 0.0,
+                "es_95_usd": 0.0,
+                "es_99_usd": 0.0,
+                "breached": False,
+                "decision": "allow",
+                "reason_code": "VAR_ES_DISABLED" if reason_codes_enabled else "",
+                "mode": mode,
+            }
+            return True, reason, payload
+
+        exposure_usd = sum(float(v) for v in self.state.open_risk_by_symbol.values()) + max(0.0, float(proposed_risk))
+        returns = self._portfolio_return_series()
+        min_samples = max(10, int(limits.var_es_min_samples))
+
+        if len(returns) < min_samples:
+            reason = f"VAR_ES insufficient return samples ({len(returns)} < {min_samples})"
+            self.state.var_es_breached = bool(self._should_fail_closed_on_var_es_data())
+            self.state.var_es_reason = reason
+            payload: dict[str, float | str | bool] = {
+                "method": str(limits.var_es_method),
+                "samples": float(len(returns)),
+                "var_95_usd": 0.0,
+                "var_99_usd": 0.0,
+                "es_95_usd": 0.0,
+                "es_99_usd": 0.0,
+                "breached": bool(self.state.var_es_breached),
+                "decision": "block" if self.state.var_es_breached else "allow",
+                "reason_code": "VAR_ES_INSUFFICIENT_DATA" if reason_codes_enabled else "",
+                "mode": mode,
+            }
+            if self.state.var_es_breached:
+                return False, reason, payload
+            return True, reason, payload
+
+        var95_ret, es95_ret = self._calculate_var_es_pair(returns=returns, confidence=0.95, method=limits.var_es_method)
+        var99_ret, es99_ret = self._calculate_var_es_pair(returns=returns, confidence=0.99, method=limits.var_es_method)
+
+        self.state.var_95_usd = float(var95_ret * exposure_usd)
+        self.state.es_95_usd = float(es95_ret * exposure_usd)
+        self.state.var_99_usd = float(var99_ret * exposure_usd)
+        self.state.es_99_usd = float(es99_ret * exposure_usd)
+
+        risk_state = str(self.state.active_risk_state or "NORMAL").upper()
+        limit_multiplier = float(
+            limits.var_es_high_risk_limit_multiplier if risk_state in {"HIGH", "HIGH_RISK", "RISK_OFF"}
+            else limits.var_es_normal_risk_limit_multiplier
+        )
+        eff_var95_limit = float(limits.var_95_limit_usd) * limit_multiplier
+        eff_var99_limit = float(limits.var_99_limit_usd) * limit_multiplier
+        eff_es95_limit = float(limits.es_95_limit_usd) * limit_multiplier
+        eff_es99_limit = float(limits.es_99_limit_usd) * limit_multiplier
+
+        breached_reasons: list[str] = []
+        if self.state.var_95_usd > eff_var95_limit:
+            breached_reasons.append(f"VaR95 {self.state.var_95_usd:.2f} > {eff_var95_limit:.2f}")
+        if self.state.var_99_usd > eff_var99_limit:
+            breached_reasons.append(f"VaR99 {self.state.var_99_usd:.2f} > {eff_var99_limit:.2f}")
+        if self.state.es_95_usd > eff_es95_limit:
+            breached_reasons.append(f"ES95 {self.state.es_95_usd:.2f} > {eff_es95_limit:.2f}")
+        if self.state.es_99_usd > eff_es99_limit:
+            breached_reasons.append(f"ES99 {self.state.es_99_usd:.2f} > {eff_es99_limit:.2f}")
+
+        self.state.var_es_breached = len(breached_reasons) > 0
+        self.state.var_es_reason = "VAR_ES OK" if not breached_reasons else "VAR_ES breached: " + " | ".join(breached_reasons)
+        should_block = bool(self.state.var_es_breached and self._var_es_enforcement_enabled())
+        payload = {
+            "method": str(limits.var_es_method),
+            "samples": float(len(returns)),
+            "var_95_usd": float(self.state.var_95_usd),
+            "var_99_usd": float(self.state.var_99_usd),
+            "es_95_usd": float(self.state.es_95_usd),
+            "es_99_usd": float(self.state.es_99_usd),
+            "breached": bool(self.state.var_es_breached),
+            "decision": "block" if should_block else "allow",
+            "reason_code": (
+                "VAR_ES_LIMIT_BREACH" if self.state.var_es_breached else "VAR_ES_OK"
+            ) if reason_codes_enabled else "",
+            "mode": mode,
+            "risk_state": risk_state,
+            "limit_multiplier": float(limit_multiplier),
+            "effective_var_95_limit_usd": float(eff_var95_limit),
+            "effective_var_99_limit_usd": float(eff_var99_limit),
+            "effective_es_95_limit_usd": float(eff_es95_limit),
+            "effective_es_99_limit_usd": float(eff_es99_limit),
+        }
+        if should_block:
+            return False, self.state.var_es_reason, payload
+        return True, self.state.var_es_reason, payload
+
+    def get_var_es_snapshot(self, *, proposed_risk: float = 0.0) -> dict[str, float | str | bool]:
+        """LIVING ORGANISM v51: Return latest VaR/ES snapshot and refresh values."""
+        _ok, _reason, payload = self.check_var_es_pre_trade(proposed_risk=float(proposed_risk))
+        return payload
     
     def check_can_trade(self, symbol: str, regime: str, proposed_risk: float) -> tuple[bool, str]:
         """
@@ -455,6 +703,11 @@ class HardRiskController:
         else:
             self.state.portfolio_var_breached = False
             self.state.portfolio_var_reason = "Portfolio VaR allocator unavailable"
+
+        # 5b. Internal VaR/ES envelope (historical/parametric)
+        var_ok, var_reason, _payload = self.check_var_es_pre_trade(float(proposed_risk))
+        if not var_ok:
+            return False, var_reason
         
         # 6. CME Margin requirement check (capital preservation)
         if self.state.margin_tracker is not None:
@@ -622,12 +875,37 @@ class HardRiskController:
                 'eod_force_close_minutes_before_session_end': self._active_limits.eod_force_close_minutes_before_session_end,
                 'eod_no_new_trades_minutes_before_session_end': self._active_limits.eod_no_new_trades_minutes_before_session_end,
                 'margin_min_confidence': self._active_limits.margin_min_confidence,
+                'var_es_method': self._active_limits.var_es_method,
+                'var_es_window': self._active_limits.var_es_window,
+                'var_es_min_samples': self._active_limits.var_es_min_samples,
+                'var_95_limit_usd': self._active_limits.var_95_limit_usd,
+                'var_99_limit_usd': self._active_limits.var_99_limit_usd,
+                'es_95_limit_usd': self._active_limits.es_95_limit_usd,
+                'es_99_limit_usd': self._active_limits.es_99_limit_usd,
+                'var_es_insufficient_data_policy': self._active_limits.var_es_insufficient_data_policy,
+                'enable_var_es_calc': self._active_limits.enable_var_es_calc,
+                'enable_var_es_enforce_sim_real_guard': self._active_limits.enable_var_es_enforce_sim_real_guard,
+                'enable_var_es_enforce_real': self._active_limits.enable_var_es_enforce_real,
+                'var_es_high_risk_limit_multiplier': self._active_limits.var_es_high_risk_limit_multiplier,
+                'var_es_normal_risk_limit_multiplier': self._active_limits.var_es_normal_risk_limit_multiplier,
+                'runtime_mode': self._active_limits.runtime_mode,
+                'real_capital_safety_threshold_usd': self._active_limits.real_capital_safety_threshold_usd,
             },
             'portfolio_var': {
                 'value_usd': self.state.portfolio_var_usd,
                 'limit_usd': self.state.portfolio_var_limit_usd,
                 'breached': self.state.portfolio_var_breached,
                 'reason': self.state.portfolio_var_reason,
+            },
+            'var_es': {
+                'var_95_usd': self.state.var_95_usd,
+                'var_99_usd': self.state.var_99_usd,
+                'es_95_usd': self.state.es_95_usd,
+                'es_99_usd': self.state.es_99_usd,
+                'breached': self.state.var_es_breached,
+                'reason': self.state.var_es_reason,
+                'method': self._active_limits.var_es_method,
+                'window': self._active_limits.var_es_window,
             },
             'margin_snapshot': (
                 self.state.margin_tracker.snapshot_status() if self.state.margin_tracker is not None else {
@@ -724,6 +1002,22 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
         trading_cfg.get("eod_no_new_trades_minutes_before_session_end", 60)
     )
     margin_min_confidence = float(risk_cfg.get("margin_min_confidence", 0.6) or 0.6)
+    var_es_method = str(risk_cfg.get("var_es_method", "historical") or "historical").strip().lower()
+    var_es_window = int(risk_cfg.get("var_es_window", 200) or 200)
+    var_es_min_samples = int(risk_cfg.get("var_es_min_samples", 40) or 40)
+    var_es_fail_closed_on_insufficient_data = bool(risk_cfg.get("var_es_fail_closed_on_insufficient_data", False))
+    var_es_insufficient_data_policy = str(risk_cfg.get("var_es_insufficient_data_policy", "fail_closed_real_only") or "fail_closed_real_only").strip().lower()
+    enable_var_es_calc = bool(risk_cfg.get("enable_var_es_calc", True))
+    enable_var_es_enforce_sim_real_guard = bool(risk_cfg.get("enable_var_es_enforce_sim_real_guard", True))
+    enable_var_es_enforce_real = bool(risk_cfg.get("enable_var_es_enforce_real", True))
+    var_es_high_risk_limit_multiplier = float(risk_cfg.get("var_es_high_risk_limit_multiplier", 0.8) or 0.8)
+    var_es_normal_risk_limit_multiplier = float(risk_cfg.get("var_es_normal_risk_limit_multiplier", 1.0) or 1.0)
+    var_es_reason_codes_enabled = bool(risk_cfg.get("var_es_reason_codes_enabled", True))
+    var_95_limit_usd = float(risk_cfg.get("var_95_limit_usd", 1200.0) or 1200.0)
+    var_99_limit_usd = float(risk_cfg.get("var_99_limit_usd", 1800.0) or 1800.0)
+    es_95_limit_usd = float(risk_cfg.get("es_95_limit_usd", 1500.0) or 1500.0)
+    es_99_limit_usd = float(risk_cfg.get("es_99_limit_usd", 2200.0) or 2200.0)
+    real_capital_safety_threshold_usd = float(risk_cfg.get("real_capital_safety_threshold_usd", 1000.0) or 1000.0)
 
     if is_sim:
         # SIM: override to unlimited
@@ -757,6 +1051,38 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
             eod_no_new_trades_minutes_before_session_end = int(real_profile["eod_no_new_trades_minutes_before_session_end"])
         if real_profile.get("margin_min_confidence") is not None:
             margin_min_confidence = float(real_profile["margin_min_confidence"])
+        if real_profile.get("var_es_method") is not None:
+            var_es_method = str(real_profile["var_es_method"]).strip().lower()
+        if real_profile.get("var_es_window") is not None:
+            var_es_window = int(real_profile["var_es_window"])
+        if real_profile.get("var_es_min_samples") is not None:
+            var_es_min_samples = int(real_profile["var_es_min_samples"])
+        if real_profile.get("var_es_fail_closed_on_insufficient_data") is not None:
+            var_es_fail_closed_on_insufficient_data = bool(real_profile["var_es_fail_closed_on_insufficient_data"])
+        if real_profile.get("var_es_insufficient_data_policy") is not None:
+            var_es_insufficient_data_policy = str(real_profile["var_es_insufficient_data_policy"]).strip().lower()
+        if real_profile.get("enable_var_es_calc") is not None:
+            enable_var_es_calc = bool(real_profile["enable_var_es_calc"])
+        if real_profile.get("enable_var_es_enforce_sim_real_guard") is not None:
+            enable_var_es_enforce_sim_real_guard = bool(real_profile["enable_var_es_enforce_sim_real_guard"])
+        if real_profile.get("enable_var_es_enforce_real") is not None:
+            enable_var_es_enforce_real = bool(real_profile["enable_var_es_enforce_real"])
+        if real_profile.get("var_es_high_risk_limit_multiplier") is not None:
+            var_es_high_risk_limit_multiplier = float(real_profile["var_es_high_risk_limit_multiplier"])
+        if real_profile.get("var_es_normal_risk_limit_multiplier") is not None:
+            var_es_normal_risk_limit_multiplier = float(real_profile["var_es_normal_risk_limit_multiplier"])
+        if real_profile.get("var_es_reason_codes_enabled") is not None:
+            var_es_reason_codes_enabled = bool(real_profile["var_es_reason_codes_enabled"])
+        if real_profile.get("var_95_limit_usd") is not None:
+            var_95_limit_usd = float(real_profile["var_95_limit_usd"])
+        if real_profile.get("var_99_limit_usd") is not None:
+            var_99_limit_usd = float(real_profile["var_99_limit_usd"])
+        if real_profile.get("es_95_limit_usd") is not None:
+            es_95_limit_usd = float(real_profile["es_95_limit_usd"])
+        if real_profile.get("es_99_limit_usd") is not None:
+            es_99_limit_usd = float(real_profile["es_99_limit_usd"])
+        if real_profile.get("real_capital_safety_threshold_usd") is not None:
+            real_capital_safety_threshold_usd = float(real_profile["real_capital_safety_threshold_usd"])
         logger.info("[MODE=REAL] RiskLimits: capital preservation caps ENFORCED")
 
     return RiskLimits(
@@ -771,5 +1097,22 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
         eod_force_close_minutes_before_session_end=eod_force_close_minutes_before_session_end,
         eod_no_new_trades_minutes_before_session_end=eod_no_new_trades_minutes_before_session_end,
         margin_min_confidence=margin_min_confidence,
+        var_es_method=var_es_method,
+        var_es_window=var_es_window,
+        var_es_min_samples=var_es_min_samples,
+        var_es_fail_closed_on_insufficient_data=var_es_fail_closed_on_insufficient_data,
+        var_es_insufficient_data_policy=var_es_insufficient_data_policy,
+        enable_var_es_calc=enable_var_es_calc,
+        enable_var_es_enforce_sim_real_guard=enable_var_es_enforce_sim_real_guard,
+        enable_var_es_enforce_real=enable_var_es_enforce_real,
+        var_es_high_risk_limit_multiplier=var_es_high_risk_limit_multiplier,
+        var_es_normal_risk_limit_multiplier=var_es_normal_risk_limit_multiplier,
+        var_es_reason_codes_enabled=var_es_reason_codes_enabled,
+        var_95_limit_usd=var_95_limit_usd,
+        var_99_limit_usd=var_99_limit_usd,
+        es_95_limit_usd=es_95_limit_usd,
+        es_99_limit_usd=es_99_limit_usd,
+        real_capital_safety_threshold_usd=real_capital_safety_threshold_usd,
+        runtime_mode=global_mode,
         sim_mode=is_sim,
     )
