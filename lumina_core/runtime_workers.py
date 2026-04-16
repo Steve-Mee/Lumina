@@ -217,6 +217,7 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
             meta = asyncio.run(app.meta_reasoning_and_counterfactuals(consensus, price, pa_summary, past_experiences))
 
             app.world_model = app.update_world_model(df, regime, pa_summary)
+            blackboard = getattr(app, "blackboard", None)
 
             news_agent = getattr(app, "news_agent", None)
             if news_agent is not None and hasattr(news_agent, "run_news_cycle"):
@@ -237,9 +238,20 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
                         hold_until_ts = float(news_cycle.get("news_avoidance_hold_until_ts", 0.0) or 0.0)
                         if avoid and hold_until_ts > 0.0:
                             current_hold = float(app.get_current_dream_snapshot().get("hold_until_ts", 0.0) or 0.0)
-                            app.set_current_dream_value("hold_until_ts", max(current_hold, hold_until_ts))
-                            app.set_current_dream_value("why_no_trade", str(news_cycle.get("news_avoidance_reason", "news_avoidance_window")))
-                            app.set_current_dream_value("signal", "HOLD")
+                            news_updates = {
+                                "hold_until_ts": max(current_hold, hold_until_ts),
+                                "why_no_trade": str(news_cycle.get("news_avoidance_reason", "news_avoidance_window")),
+                                "signal": "HOLD",
+                            }
+                            if blackboard is not None and hasattr(blackboard, "publish_sync"):
+                                blackboard.publish_sync(
+                                    topic="agent.news.proposal",
+                                    producer="runtime_workers.pre_dream_daemon",
+                                    payload=news_updates,
+                                    confidence=float(news_cycle.get("confidence", 0.8) or 0.8),
+                                )
+                            else:
+                                app.set_current_dream_fields(news_updates)
 
                         sentiment_signal = str(news_cycle.get("sentiment_signal", cached_news_data.get("overall_sentiment", "neutral")))
                         sentiment_score = float(news_cycle.get("sentiment_score", 0.0) or 0.0)
@@ -277,7 +289,15 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
 
             news_data = cached_news_data
             news_impact = app.resolve_news_multiplier(news_data, app.engine.config.news_impact_multipliers, default=1.0)
-            app.set_current_dream_value("news_impact", news_impact)
+            if blackboard is not None and hasattr(blackboard, "publish_sync"):
+                blackboard.publish_sync(
+                    topic="agent.news.proposal",
+                    producer="runtime_workers.pre_dream_daemon",
+                    payload={"news_impact": float(news_impact)},
+                    confidence=0.75,
+                )
+            else:
+                app.set_current_dream_value("news_impact", news_impact)
 
             macro_news_sentiment = "neutral"
             macro_news_score = 0.0
@@ -334,7 +354,17 @@ Return JSON only with: signal, confidence, stop, target, reason, why_no_trade, c
                 if twin is not None and hasattr(twin, "apply_correction"):
                     dream_json = twin.apply_correction(dream_json)
 
-                app.set_current_dream_fields(dream_json)
+                blackboard = getattr(app, "blackboard", None)
+                aggregate_confidence = float(max(min(dream_json.get("confluence_score", 0.0) or 0.0, 1.0), 0.0))
+                if blackboard is not None and hasattr(blackboard, "publish_sync"):
+                    blackboard.publish_sync(
+                        topic="execution.aggregate",
+                        producer="runtime_workers.pre_dream_daemon",
+                        payload=dict(dream_json),
+                        confidence=aggregate_confidence,
+                    )
+                else:
+                    app.set_current_dream_fields(dream_json)
                 app.set_current_dream_value("confluence_score", max(min_conf, consensus["confidence"], meta.get("meta_score", 0.5)))
                 dream_snapshot = app.get_current_dream_snapshot()
 

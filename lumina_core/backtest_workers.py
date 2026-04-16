@@ -128,12 +128,15 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                 # Nightly infinite simulation om 03:00 (1x per kalenderdag).
                 now_dt = datetime.now()
                 today = now_dt.date().isoformat()
+                _sim_results: dict[str, Any] = {}
                 if now_dt.hour == 3 and getattr(app.engine, "infinite_simulator", None) is not None:
                     if getattr(app.engine, "infinite_sim_last_run_date", None) != today:
                         print("🌌 Nightly Infinite Simulation started...")
-                        _sim_results = app.engine.infinite_simulator.run_nightly_simulation(
-                            num_trades_total=1_000_000
-                        )
+                        simulator = app.engine.infinite_simulator
+                        if hasattr(simulator, "run_nightly_simulation"):
+                            _sim_results = simulator.run_nightly_simulation(num_trades_total=1_000_000)
+                        else:
+                            _sim_results = simulator.run_nightly()
                         app.engine.infinite_sim_last_run_date = today
 
                 # Nightly EmotionalTwin training om 04:00 (1x per kalenderdag).
@@ -160,3 +163,26 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                         )
                     except Exception as exc:
                         app.logger.error(f"Ultimate validation cycle failed: {exc}")
+
+                orchestrator = getattr(app.engine, "meta_agent_orchestrator", None)
+                if orchestrator is not None and hasattr(orchestrator, "run_nightly_reflection"):
+                    try:
+                        nightly_report = {
+                            "trades": int(_sim_results.get("trades", 0) if isinstance(_sim_results, dict) else 0),
+                            "wins": int(_sim_results.get("wins", 0) if isinstance(_sim_results, dict) else 0),
+                            "winrate": float(_sim_results.get("winrate", 0.0) if isinstance(_sim_results, dict) else 0.0),
+                            "net_pnl": float(_sim_results.get("net_pnl", 0.0) if isinstance(_sim_results, dict) else 0.0),
+                            "sharpe": float(_sim_results.get("mean_worker_sharpe", 0.0) if isinstance(_sim_results, dict) else 0.0),
+                            "advanced_backtest": {
+                                "base": base_res,
+                                "walk_forward": wf,
+                                "regime_oos": regime_res,
+                                "monte_carlo": monte,
+                            },
+                        }
+                        orchestrator.run_nightly_reflection(
+                            nightly_report=nightly_report,
+                            dry_run=str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower() in {"sim", "paper"},
+                        )
+                    except Exception as exc:
+                        app.logger.error(f"Meta-agent nightly reflection failed: {exc}")

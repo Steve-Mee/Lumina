@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
 from typing import Any
 
 import dash
@@ -23,10 +24,13 @@ class DashboardService:
 
     engine: LuminaEngine
     visualization_service: Any | None = None
+    blackboard_health_history: deque[dict[str, float | str]] = field(init=False)
 
     def __post_init__(self) -> None:
         if self.engine is None:
             raise ValueError("DashboardService requires a LuminaEngine")
+        history_points = max(5, int(getattr(self.engine.config, "blackboard_health_trend_points", 30) or 30))
+        self.blackboard_health_history = deque(maxlen=history_points)
 
     def update_performance_log(self, trade_data: dict[str, Any]) -> None:
         self.engine.update_performance_log(trade_data)
@@ -369,6 +373,180 @@ class DashboardService:
             style={"fontSize": "15px", "color": "#ddd"},
         )
 
+    def _classify_blackboard_health(
+        self,
+        *,
+        blackboard_enabled: bool,
+        meta_enabled: bool,
+        publish_latency: float,
+        reject_total: float,
+        drop_total: float,
+        sub_error_total: float,
+        latest_conf: float,
+        has_execution_event: bool,
+    ) -> tuple[str, str, str]:
+        red_latency = float(getattr(self.engine.config, "blackboard_health_latency_red_ms", 1000.0) or 1000.0)
+        amber_latency = float(getattr(self.engine.config, "blackboard_health_latency_amber_ms", 250.0) or 250.0)
+        min_confidence = float(getattr(self.engine.config, "blackboard_health_min_confidence", 0.80) or 0.80)
+        if not blackboard_enabled:
+            return ("RED", "#ff6b6b", "blackboard disabled")
+        if reject_total > 0:
+            return ("RED", "#ff6b6b", "unauthorized or malformed events rejected")
+        if sub_error_total > 0:
+            return ("RED", "#ff6b6b", "subscriber errors detected")
+        if publish_latency > red_latency:
+            return ("RED", "#ff6b6b", f"publish latency above {red_latency:.0f} ms")
+        if has_execution_event and latest_conf < min_confidence:
+            return ("RED", "#ff6b6b", f"latest aggregate confidence below {min_confidence:.2f}")
+        if drop_total > 0:
+            return ("AMBER", "#ffc857", "non-critical telemetry drops detected")
+        if publish_latency > amber_latency:
+            return ("AMBER", "#ffc857", f"publish latency above {amber_latency:.0f} ms")
+        if not meta_enabled:
+            return ("AMBER", "#ffc857", "meta-orchestrator not enabled")
+        if not has_execution_event:
+            return ("AMBER", "#ffc857", "no execution aggregate observed yet")
+        return ("GREEN", "#00ff88", "blackboard and orchestrator healthy")
+
+    def _collect_blackboard_health_state(self) -> dict[str, Any]:
+        obs = getattr(self.engine, "observability_service", None)
+        snapshot = obs.snapshot() if (obs is not None and hasattr(obs, "snapshot")) else {}
+        publish_latency = self._sum_metric(snapshot, "lumina_blackboard_publish_latency_ms")
+        reject_total = self._sum_metric(snapshot, "lumina_blackboard_reject_total")
+        drop_total = self._sum_metric(snapshot, "lumina_blackboard_drop_total")
+        sub_error_total = self._sum_metric(snapshot, "lumina_blackboard_subscription_error_total")
+
+        blackboard = getattr(self.engine, "blackboard", None)
+        meta_agent = getattr(self.engine, "meta_agent_orchestrator", None)
+        execution_event = blackboard.latest("execution.aggregate") if (blackboard is not None and hasattr(blackboard, "latest")) else None
+        has_execution_event = execution_event is not None
+        latest_conf = float(getattr(execution_event, "confidence", 0.0) or 0.0) if execution_event is not None else 0.0
+        latest_seq = int(getattr(execution_event, "sequence", 0) or 0) if execution_event is not None else 0
+        status, status_color, reason = self._classify_blackboard_health(
+            blackboard_enabled=blackboard is not None,
+            meta_enabled=meta_agent is not None,
+            publish_latency=publish_latency,
+            reject_total=reject_total,
+            drop_total=drop_total,
+            sub_error_total=sub_error_total,
+            latest_conf=latest_conf,
+            has_execution_event=has_execution_event,
+        )
+        return {
+            "blackboard_enabled": blackboard is not None,
+            "meta_enabled": meta_agent is not None,
+            "publish_latency": publish_latency,
+            "reject_total": reject_total,
+            "drop_total": drop_total,
+            "sub_error_total": sub_error_total,
+            "latest_conf": latest_conf,
+            "latest_seq": latest_seq,
+            "has_execution_event": has_execution_event,
+            "status": status,
+            "status_color": status_color,
+            "reason": reason,
+        }
+
+    def _record_blackboard_health_sample(self, health: dict[str, Any]) -> None:
+        self.blackboard_health_history.append(
+            {
+                "ts": time.strftime("%H:%M:%S"),
+                "publish_latency": float(health.get("publish_latency", 0.0) or 0.0),
+                "reject_total": float(health.get("reject_total", 0.0) or 0.0),
+                "drop_total": float(health.get("drop_total", 0.0) or 0.0),
+                "sub_error_total": float(health.get("sub_error_total", 0.0) or 0.0),
+                "status": str(health.get("status", "AMBER") or "AMBER"),
+                "status_color": str(health.get("status_color", "#ffc857") or "#ffc857"),
+            }
+        )
+
+    def _build_blackboard_health_trend_figure(self) -> go.Figure:
+        fig = self._build_empty_figure("Blackboard Health Trend")
+        if not self.blackboard_health_history:
+            fig.add_annotation(text="Waiting for blackboard samples...", showarrow=False, font={"color": "#9fb3c8"})
+            return fig
+
+        labels = [str(sample.get("ts", "")) for sample in self.blackboard_health_history]
+        latency = [float(sample.get("publish_latency", 0.0) or 0.0) for sample in self.blackboard_health_history]
+        rejects = [float(sample.get("reject_total", 0.0) or 0.0) for sample in self.blackboard_health_history]
+        drops = [float(sample.get("drop_total", 0.0) or 0.0) for sample in self.blackboard_health_history]
+        sub_errors = [float(sample.get("sub_error_total", 0.0) or 0.0) for sample in self.blackboard_health_history]
+        status_colors = [str(sample.get("status_color", "#ffc857") or "#ffc857") for sample in self.blackboard_health_history]
+
+        fig = go.Figure()
+        # Left yaxis: latency trend
+        fig.add_trace(go.Scatter(
+            x=labels,
+            y=latency,
+            mode="lines+markers",
+            name="Latency ms",
+            line={"color": "#00d4ff", "width": 2},
+            marker={"color": status_colors, "size": 8}
+        ))
+        # Right yaxis: counter trends with status coloring
+        fig.add_trace(go.Scatter(
+            x=labels,
+            y=rejects,
+            mode="lines+markers",
+            name="Rejects",
+            yaxis="y2",
+            line={"color": "#ff6b6b", "width": 2},
+            marker={"color": status_colors, "size": 8}
+        ))
+        fig.add_trace(go.Scatter(
+            x=labels,
+            y=drops,
+            mode="lines+markers",
+            name="Drops",
+            yaxis="y2",
+            line={"color": "#ffc857", "width": 2},
+            marker={"color": status_colors, "size": 8}
+        ))
+        fig.add_trace(go.Scatter(
+            x=labels,
+            y=sub_errors,
+            mode="lines+markers",
+            name="Subscriber Errors",
+            yaxis="y2",
+            line={"color": "#d946ef", "width": 2},
+            marker={"color": status_colors, "size": 8}
+        ))
+        fig.update_layout(
+            title="Blackboard Health Trend",
+            template="plotly_dark",
+            height=280,
+            margin={"l": 40, "r": 40, "t": 40, "b": 40},
+            xaxis={"title": "Sample"},
+            yaxis={"title": "Latency (ms)"},
+            yaxis2={"title": "Counters", "overlaying": "y", "side": "right", "rangemode": "tozero"},
+            legend={"orientation": "h", "y": 1.15},
+        )
+        return fig
+
+    def _build_blackboard_health_panel(self, health: dict[str, Any] | None = None) -> html.Div:
+        health_data = health or self._collect_blackboard_health_state()
+        blackboard_enabled = bool(health_data.get("blackboard_enabled", False))
+        meta_enabled = bool(health_data.get("meta_enabled", False))
+        status = str(health_data.get("status", "AMBER") or "AMBER")
+        status_color = str(health_data.get("status_color", "#ffc857") or "#ffc857")
+        publish_latency = float(health_data.get("publish_latency", 0.0) or 0.0)
+        reject_total = float(health_data.get("reject_total", 0.0) or 0.0)
+        drop_total = float(health_data.get("drop_total", 0.0) or 0.0)
+        sub_error_total = float(health_data.get("sub_error_total", 0.0) or 0.0)
+        latest_seq = int(health_data.get("latest_seq", 0) or 0)
+        latest_conf = float(health_data.get("latest_conf", 0.0) or 0.0)
+        reason = str(health_data.get("reason", "") or "")
+
+        return html.Div(
+            [
+                html.P(f"Status: {status} | Blackboard: {'enabled' if blackboard_enabled else 'disabled'} | Meta-Orchestrator: {'enabled' if meta_enabled else 'disabled'}", style={"marginBottom": "6px", "color": status_color, "fontWeight": "700"}),
+                html.P(f"Publish latency sum: {publish_latency:.2f} ms | Rejects: {int(reject_total)} | Drops: {int(drop_total)}", style={"marginBottom": "6px"}),
+                html.P(f"Subscriber errors: {int(sub_error_total)} | Latest execution seq: {latest_seq} | Latest conf: {latest_conf:.2f}", style={"marginBottom": "6px", "color": "#9fb3c8"}),
+                html.P(f"Reason: {reason}", style={"marginBottom": 0, "color": status_color}),
+            ],
+            style={"fontSize": "15px", "color": "#ddd"},
+        )
+
     def start_dashboard(self) -> None:
         app = self.engine.app
         if app is None:
@@ -451,7 +629,15 @@ class DashboardService:
                                 html.H5("Mode Parity"),
                                 html.Div(id="mode-parity-panel", style={"fontSize": "15px", "color": "#ddd"}),
                             ],
-                            width=12,
+                            width=6,
+                        ),
+                        dbc.Col(
+                            [
+                                html.H5("Blackboard Health"),
+                                html.Div(id="blackboard-health-panel", style={"fontSize": "15px", "color": "#ddd"}),
+                                dcc.Graph(id="blackboard-health-trend"),
+                            ],
+                            width=6,
                         ),
                     ],
                     className="mb-3",
@@ -499,6 +685,8 @@ class DashboardService:
                 Output("swarm-allocation", "figure"),
                 Output("swarm-regime-panel", "children"),
                 Output("mode-parity-panel", "children"),
+                Output("blackboard-health-panel", "children"),
+                Output("blackboard-health-trend", "figure"),
             ],
             Input("interval", "n_intervals"),
         )
@@ -564,6 +752,10 @@ class DashboardService:
             inference_history_fig = self._build_inference_provider_figure(tracker)
             swarm_corr_fig, swarm_alloc_fig, swarm_regime_panel = self._build_swarm_figures()
             mode_parity_panel = self._build_mode_parity_panel()
+            blackboard_health = self._collect_blackboard_health_state()
+            self._record_blackboard_health_sample(blackboard_health)
+            blackboard_health_panel = self._build_blackboard_health_panel(blackboard_health)
+            blackboard_health_trend = self._build_blackboard_health_trend_figure()
 
             return (
                 fig_chart,
@@ -590,6 +782,8 @@ class DashboardService:
                 swarm_alloc_fig,
                 swarm_regime_panel,
                 mode_parity_panel,
+                blackboard_health_panel,
+                blackboard_health_trend,
             )
 
         @dash_app.callback(

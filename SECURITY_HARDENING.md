@@ -1,5 +1,42 @@
 # Lumina v50 Security Hardening - Implementation Summary
 
+## v52 CNS Security Delta (Blackboard + Meta-Orchestrator)
+
+Status: IMPLEMENTED
+
+### Security Controls Added
+- Central blackboard event bus with append-only JSONL persistence (`state/agent_blackboard.jsonl`).
+- Event hash chaining (`prev_hash` + `event_hash`) to strengthen tamper evidence across agent messages.
+- Per-topic monotonic sequence numbers to preserve deterministic in-topic event order.
+- Producer allowlists on critical topics to reject unauthorized publishers and reduce topic spoofing risk.
+- Thought audit dual-write path (`state/thought_log.jsonl` and `state/lumina_thought_log.jsonl`) controlled by `LUMINA_DUAL_THOUGHT_LOG=true|false`.
+- Blackboard security audit entries for rejects, drops, and subscriber failures in `logs/security_audit.jsonl`.
+- Centralized REAL fail-closed control in engine blackboard consumer:
+  - If final `execution.aggregate` confidence is below `0.8`, signal is forced to `HOLD`.
+  - Reason code persisted as `fail_closed_low_blackboard_confidence`.
+
+### Reliability + Safety Policies
+- Backpressure policy split:
+  - Critical execution topics use `block_fail` semantics when subscriber queues are full.
+  - Non-critical telemetry topics use `drop-and-audit` semantics.
+- Rollout flags:
+  - `LUMINA_BLACKBOARD_ENABLED`
+  - `LUMINA_BLACKBOARD_ENFORCED`
+  - `LUMINA_META_ORCHESTRATOR_ENABLED`
+- Fail-closed startup rule: `LUMINA_BLACKBOARD_ENFORCED=true` with blackboard disabled aborts startup.
+
+### Threat Model Additions
+- Reduces unauthorized direct agent-to-agent coupling by routing updated agent outputs through pub/sub topics.
+- Minimizes hidden side effects by making final execution intent observable and auditable on `execution.aggregate`.
+- Maintains fail-closed behavior under low-confidence aggregate decisions in REAL mode.
+- Makes queue saturation visible and policy-driven instead of silent.
+- Narrows the attack surface for forged agent messages by topic/producer authorization.
+
+### Operational Notes
+- Monitor growth of `state/agent_blackboard.jsonl` and configure retention/rotation policy at ops level.
+- Keep dual-write enabled during migration for audit parity; disable legacy path only after retention checks and runbook sign-off.
+- During phased rollout, keep orchestrator enabled only after blackboard event quality and audit volume are validated in SIM/SIM_REAL_GUARD first.
+
 **Commit:** `ff8b311` - Production security hardening  
 **Date:** 2026-04-06  
 **Status:** ✅ Complete - All 176 tests pass (23 new security tests)

@@ -40,6 +40,7 @@ class SelfEvolutionMetaAgent:
     ppo_trainer: Any | None = None
     rl_environment: Any | None = None
     lifecycle_manager: EvolutionLifecycleManager | None = None
+    blackboard: Any | None = None
 
     @classmethod
     def from_container(
@@ -83,10 +84,12 @@ class SelfEvolutionMetaAgent:
             drift_threshold=float(ft_cfg.get("drift_threshold", 0.25) or 0.25),
             ppo_trainer=getattr(container, "ppo_trainer", None),
             rl_environment=getattr(container, "rl_environment", None),
+            blackboard=getattr(container, "blackboard", None),
         )
 
     def run_nightly_evolution(self, *, nightly_report: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
+        nightly_report = self._hydrate_report_from_blackboard(dict(nightly_report))
         if not self.enabled:
             result = {
                 "status": "disabled",
@@ -182,7 +185,49 @@ class SelfEvolutionMetaAgent:
             decision_context_id="nightly_evolution",
             evolution_log_hash=str(outcome.get("hash", "")) if isinstance(outcome, dict) else None,
         )
+        if self.blackboard is not None and hasattr(self.blackboard, "publish_sync"):
+            try:
+                self.blackboard.publish_sync(
+                    topic="agent.meta.proposal",
+                    producer="self_evolution_meta_agent",
+                    payload={
+                        "status": str(outcome.get("status", "unknown")),
+                        "proposal": dict(outcome.get("proposal", {})),
+                        "timestamp": now.isoformat(),
+                    },
+                    confidence=max(0.0, min(1.0, float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0) / 100.0)),
+                )
+            except Exception:
+                pass
         return outcome
+
+    def _hydrate_report_from_blackboard(self, report: dict[str, Any]) -> dict[str, Any]:
+        if self.blackboard is None or not hasattr(self.blackboard, "history"):
+            return report
+        if int(report.get("trades", 0) or 0) > 0:
+            return report
+
+        try:
+            recent = self.blackboard.history("execution.aggregate", limit=2000, within_hours=24)
+        except Exception:
+            return report
+
+        trades = 0
+        wins = 0
+        net_pnl = 0.0
+        for event in recent:
+            payload = event.payload if isinstance(getattr(event, "payload", None), dict) else {}
+            if payload.get("executed") is True:
+                trades += 1
+            pnl = float(payload.get("pnl", 0.0) or 0.0)
+            if pnl > 0:
+                wins += 1
+            net_pnl += pnl
+
+        report.setdefault("trades", trades)
+        report.setdefault("wins", wins)
+        report.setdefault("net_pnl", net_pnl)
+        return report
 
     def _log_agent_decision(
         self,

@@ -417,6 +417,25 @@ class NewsAgent:
 
         self._last_update_dt = now_utc
         self._cached_result = dict(result)
+        blackboard = getattr(self.engine, "blackboard", None)
+        if blackboard is not None and hasattr(blackboard, "publish_sync"):
+            try:
+                current_dream = self.engine.get_current_dream_snapshot()
+                blackboard.publish_sync(
+                    topic="agent.news.proposal",
+                    producer="news_agent",
+                    payload={
+                        "news_impact": float(multiplier),
+                        "news_sentiment": sentiment_signal,
+                        "news_sentiment_score": float(sentiment_score),
+                        "hold_until_ts": float(hold_until_ts) if bool(avoid) else 0.0,
+                        "why_no_trade": avoid_reason if bool(avoid) else "",
+                        "signal": "HOLD" if bool(avoid) else str(current_dream.get("signal", "")),
+                    },
+                    confidence=round(float(confidence), 4),
+                )
+            except Exception:
+                pass
         self._log_decision(
             raw_input={"prompt": prompt, "events": events, "news_data": news_data},
             raw_output=result,

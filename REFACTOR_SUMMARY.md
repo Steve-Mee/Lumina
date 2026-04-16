@@ -1,5 +1,70 @@
 # v50 Living Organism Refactoring – Complete Diff Summary
 
+## v52 AGI Swarm CNS Bootstrap
+
+Status: IMPLEMENTED
+Scope: blackboard-first agent communication, nightly meta orchestration, REAL fail-closed confidence gate, rollout flags, and blackboard security/backpressure controls
+
+### Added
+- `lumina_core/engine/agent_blackboard.py`
+   - Async-capable publish/subscribe bus with append-only JSONL persistence (`state/agent_blackboard.jsonl`)
+   - Topic history/latest cache, per-topic sequence ordering, and event hash chaining
+   - Producer allowlists + audit entries for unauthorized publishers
+   - Topic backpressure policies: critical topics block/fail, telemetry topics drop-and-audit
+   - Thought-log dual write support (`state/thought_log.jsonl` + `state/lumina_thought_log.jsonl`) via `LUMINA_DUAL_THOUGHT_LOG`
+- `lumina_core/engine/meta_agent_orchestrator.py`
+   - Wraps `SelfEvolutionMetaAgent`
+   - Runs nightly 24h reflection, proposes hyperparameter updates, triggers retraining, and publishes evolution outcomes to blackboard
+
+### Updated Core Wiring
+- `lumina_core/container.py`
+   - Injects `AgentBlackboard` and `MetaAgentOrchestrator`
+   - Binds blackboard into `LuminaEngine`
+   - Adds rollout feature flags: `LUMINA_BLACKBOARD_ENABLED`, `LUMINA_BLACKBOARD_ENFORCED`, `LUMINA_META_ORCHESTRATOR_ENABLED`
+- `lumina_core/runtime_bootstrap.py`
+   - Runtime bootstrap now binds blackboard/meta orchestrator from container to app/engine
+- `lumina_core/engine/lumina_engine.py`
+   - Blackboard subscriptions for agent proposals and execution aggregate topic
+   - REAL-mode fail-closed: aggregate blackboard confidence `< 0.8` forces `HOLD`
+
+### Updated Agent Paths
+- `lumina_core/engine/emotional_twin_agent.py`
+   - Publishes correction proposals to `agent.emotional_twin.proposal`
+- `lumina_agents/news_agent.py`
+   - Publishes news-derived decision overlays to `agent.news.proposal`
+- `lumina_core/engine/market_data_service.py`
+   - Publishes tape-reading outputs to `agent.tape.proposal` and `market.tape`
+- `lumina_core/engine/multi_symbol_swarm_manager.py`
+   - Publishes primary dream updates to `agent.swarm.proposal`
+- `lumina_core/engine/swarm_manager.py`
+   - Publishes cycle snapshots to `agent.swarm.snapshot`
+- `lumina_core/runtime_workers.py`
+   - News overlays and final pre-dream decision published via blackboard topics for centralized confidence gating
+
+### Further Considerations Implemented
+- Ordering policy:
+   - Strict in-order sequencing per topic via monotonic `sequence` field
+   - Eventual consistency across topics retained to avoid global lock contention
+- Backpressure strategy:
+   - `execution.aggregate` and `agent.*.proposal` topics fail hard on full async queues
+   - Telemetry topics such as `market.tape`, `meta.reflection`, and `agent.swarm.snapshot` drop-and-audit under pressure
+- Rollout controls:
+   - Feature-flagged activation and enforcement for blackboard/orchestrator to support staged rollout and rollback
+
+### Nightly Integration
+- `lumina_core/infinite_simulator.py`
+   - Added `run_nightly_simulation(...)` alias
+   - Nightly run can invoke meta orchestrator reflection
+- `lumina_core/backtest_workers.py`
+   - Nightly daemon now triggers meta orchestrator with simulator/backtest summary
+
+### Test Additions
+- `tests/test_agent_blackboard.py`
+- `tests/test_meta_agent_orchestrator.py`
+- `tests/test_blackboard_integration_nightly.py`
+- `tests/test_news_tape_blackboard.py`
+- `tests/test_runtime_bootstrap.py` (injection coverage)
+
 ## v51 Capital Preservation Upgrade (SIM/REAL Guard)
 
 Status: COMPLETE

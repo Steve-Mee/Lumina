@@ -251,6 +251,320 @@ def test_dashboard_service_builds_mode_parity_panel(engine: LuminaEngine) -> Non
     assert "Reconciler pending: 2 | last status: reconciled_fill" in lines[3]
 
 
+def test_dashboard_service_builds_blackboard_health_panel(engine: LuminaEngine) -> None:
+    engine.observability_service = type(
+        "_Obs",
+        (),
+        {
+            "snapshot": staticmethod(
+                lambda: {
+                    "lat": {
+                        "name": "lumina_blackboard_publish_latency_ms",
+                        "value": 24.5,
+                        "labels": {},
+                    },
+                    "rej": {
+                        "name": "lumina_blackboard_reject_total",
+                        "value": 2.0,
+                        "labels": {},
+                    },
+                    "drop": {
+                        "name": "lumina_blackboard_drop_total",
+                        "value": 1.0,
+                        "labels": {},
+                    },
+                    "sub": {
+                        "name": "lumina_blackboard_subscription_error_total",
+                        "value": 3.0,
+                        "labels": {},
+                    },
+                }
+            )
+        },
+    )()
+    engine.blackboard = type(
+        "_Blackboard",
+        (),
+        {
+            "latest": staticmethod(
+                lambda _topic: type(
+                    "_Event",
+                    (),
+                    {"confidence": 0.84, "sequence": 17},
+                )()
+            )
+        },
+    )()
+    engine.meta_agent_orchestrator = object()
+
+    panel = DashboardService(engine=engine)._build_blackboard_health_panel()
+    lines = [str(getattr(child, "children", "")) for child in panel.children]
+
+    assert "Status: RED | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
+    assert "Publish latency sum: 24.50 ms | Rejects: 2 | Drops: 1" in lines[1]
+    assert "Subscriber errors: 3 | Latest execution seq: 17 | Latest conf: 0.84" in lines[2]
+    assert "Reason: unauthorized or malformed events rejected" in lines[3]
+
+
+def test_dashboard_service_builds_green_blackboard_health_panel(engine: LuminaEngine) -> None:
+    engine.observability_service = type(
+        "_Obs",
+        (),
+        {
+            "snapshot": staticmethod(
+                lambda: {
+                    "lat": {
+                        "name": "lumina_blackboard_publish_latency_ms",
+                        "value": 24.5,
+                        "labels": {},
+                    },
+                    "rej": {
+                        "name": "lumina_blackboard_reject_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                    "drop": {
+                        "name": "lumina_blackboard_drop_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                    "sub": {
+                        "name": "lumina_blackboard_subscription_error_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                }
+            )
+        },
+    )()
+    engine.blackboard = type(
+        "_Blackboard",
+        (),
+        {
+            "latest": staticmethod(
+                lambda _topic: type(
+                    "_Event",
+                    (),
+                    {"confidence": 0.91, "sequence": 42},
+                )()
+            )
+        },
+    )()
+    engine.meta_agent_orchestrator = object()
+
+    panel = DashboardService(engine=engine)._build_blackboard_health_panel()
+    lines = [str(getattr(child, "children", "")) for child in panel.children]
+
+    assert "Status: GREEN | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
+    assert "Reason: blackboard and orchestrator healthy" in lines[3]
+
+
+def test_dashboard_service_builds_amber_blackboard_health_panel(engine: LuminaEngine) -> None:
+    engine.observability_service = type(
+        "_Obs",
+        (),
+        {
+            "snapshot": staticmethod(
+                lambda: {
+                    "lat": {
+                        "name": "lumina_blackboard_publish_latency_ms",
+                        "value": 410.0,
+                        "labels": {},
+                    },
+                    "rej": {
+                        "name": "lumina_blackboard_reject_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                    "drop": {
+                        "name": "lumina_blackboard_drop_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                    "sub": {
+                        "name": "lumina_blackboard_subscription_error_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                }
+            )
+        },
+    )()
+    engine.blackboard = type(
+        "_Blackboard",
+        (),
+        {
+            "latest": staticmethod(
+                lambda _topic: type(
+                    "_Event",
+                    (),
+                    {"confidence": 0.88, "sequence": 23},
+                )()
+            )
+        },
+    )()
+    engine.meta_agent_orchestrator = object()
+
+    panel = DashboardService(engine=engine)._build_blackboard_health_panel()
+    lines = [str(getattr(child, "children", "")) for child in panel.children]
+
+    assert "Status: AMBER | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
+    assert "Reason: publish latency above 250 ms" in lines[3]
+
+
+def test_dashboard_service_builds_red_blackboard_health_panel_for_low_confidence(engine: LuminaEngine) -> None:
+    engine.observability_service = type(
+        "_Obs",
+        (),
+        {
+            "snapshot": staticmethod(
+                lambda: {
+                    "lat": {
+                        "name": "lumina_blackboard_publish_latency_ms",
+                        "value": 12.0,
+                        "labels": {},
+                    },
+                    "rej": {
+                        "name": "lumina_blackboard_reject_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                    "drop": {
+                        "name": "lumina_blackboard_drop_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                    "sub": {
+                        "name": "lumina_blackboard_subscription_error_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                }
+            )
+        },
+    )()
+    engine.blackboard = type(
+        "_Blackboard",
+        (),
+        {
+            "latest": staticmethod(
+                lambda _topic: type(
+                    "_Event",
+                    (),
+                    {"confidence": 0.74, "sequence": 8},
+                )()
+            )
+        },
+    )()
+    engine.meta_agent_orchestrator = object()
+
+    panel = DashboardService(engine=engine)._build_blackboard_health_panel()
+    lines = [str(getattr(child, "children", "")) for child in panel.children]
+
+    assert "Status: RED | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
+    assert "Reason: latest aggregate confidence below 0.80" in lines[3]
+
+
+def test_dashboard_service_uses_configurable_blackboard_thresholds(engine: LuminaEngine) -> None:
+    engine.config.blackboard_health_latency_amber_ms = 500.0
+    engine.config.blackboard_health_latency_red_ms = 1500.0
+    engine.config.blackboard_health_min_confidence = 0.70
+    engine.observability_service = type(
+        "_Obs",
+        (),
+        {
+            "snapshot": staticmethod(
+                lambda: {
+                    "lat": {
+                        "name": "lumina_blackboard_publish_latency_ms",
+                        "value": 410.0,
+                        "labels": {},
+                    },
+                    "rej": {
+                        "name": "lumina_blackboard_reject_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                    "drop": {
+                        "name": "lumina_blackboard_drop_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                    "sub": {
+                        "name": "lumina_blackboard_subscription_error_total",
+                        "value": 0.0,
+                        "labels": {},
+                    },
+                }
+            )
+        },
+    )()
+    engine.blackboard = type(
+        "_Blackboard",
+        (),
+        {
+            "latest": staticmethod(
+                lambda _topic: type(
+                    "_Event",
+                    (),
+                    {"confidence": 0.74, "sequence": 5},
+                )()
+            )
+        },
+    )()
+    engine.meta_agent_orchestrator = object()
+
+    panel = DashboardService(engine=engine)._build_blackboard_health_panel()
+    lines = [str(getattr(child, "children", "")) for child in panel.children]
+
+    assert "Status: GREEN | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
+    assert "Reason: blackboard and orchestrator healthy" in lines[3]
+
+
+def test_dashboard_service_builds_blackboard_trend_figure(engine: LuminaEngine) -> None:
+    service = DashboardService(engine=engine)
+    service._record_blackboard_health_sample(
+        {
+            "publish_latency": 100.0,
+            "reject_total": 0.0,
+            "drop_total": 1.0,
+            "sub_error_total": 0.0,
+            "status": "AMBER",
+        }
+    )
+    service._record_blackboard_health_sample(
+        {
+            "publish_latency": 60.0,
+            "reject_total": 0.0,
+            "drop_total": 0.0,
+            "sub_error_total": 0.0,
+            "status": "GREEN",
+        }
+    )
+
+    fig = service._build_blackboard_health_trend_figure()
+
+    assert fig.layout.title.text == "Blackboard Health Trend"
+    assert len(fig.data) == 3
+    assert list(fig.data[0].y) == [100.0, 60.0]
+    assert list(fig.data[1].y) == [0.0, 0.0]
+    assert list(fig.data[2].y) == [1.0, 0.0]
+
+
+def test_engine_config_reads_blackboard_health_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BLACKBOARD_HEALTH_LATENCY_AMBER_MS", "333")
+    monkeypatch.setenv("BLACKBOARD_HEALTH_LATENCY_RED_MS", "1444")
+    monkeypatch.setenv("BLACKBOARD_HEALTH_MIN_CONFIDENCE", "0.83")
+    monkeypatch.setenv("BLACKBOARD_HEALTH_TREND_POINTS", "12")
+
+    cfg = EngineConfig()
+
+    assert cfg.blackboard_health_latency_amber_ms == 333.0
+    assert cfg.blackboard_health_latency_red_ms == 1444.0
+    assert cfg.blackboard_health_min_confidence == 0.83
+    assert cfg.blackboard_health_trend_points == 12
+
+
 @pytest.mark.parametrize(
     "profile,expected",
     [

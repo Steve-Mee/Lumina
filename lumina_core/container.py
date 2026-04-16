@@ -11,9 +11,11 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 
 from lumina_core.engine import (
+    AgentBlackboard,
     AgentDecisionLog,
     DashboardService,
     EngineConfig,
+    MetaAgentOrchestrator,
     HumanAnalysisService,
     LocalInferenceEngine,
     MarketDataService,
@@ -23,6 +25,7 @@ from lumina_core.engine import (
     ReportingService,
     RegimeDetector,
     ReasoningService,
+    SelfEvolutionMetaAgent,
     SwarmManager,
     TradeReconciler,
     VisualizationService,
@@ -33,6 +36,7 @@ from lumina_core.engine.risk_controller import HardRiskController
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.engine.lumina_engine import LuminaEngine
+from lumina_core.engine.self_evolution_meta_agent import load_evolution_config
 from lumina_core.infinite_simulator import InfiniteSimulator
 from lumina_core.logging_utils import build_logger
 from lumina_core.monitoring import ObservabilityService
@@ -131,6 +135,9 @@ class ApplicationContainer:
     rl_environment: RLTradingEnvironment | None = field(default=None, init=False)
     observability_service: ObservabilityService = field(init=False)
     decision_log: AgentDecisionLog = field(init=False)
+    blackboard: AgentBlackboard = field(init=False)
+    self_evolution_meta_agent: SelfEvolutionMetaAgent = field(init=False)
+    meta_agent_orchestrator: MetaAgentOrchestrator = field(init=False)
     
     # Voice/audio components
     voice_recognizer: Optional[sr.Recognizer] = field(default=None, init=False)
@@ -263,6 +270,20 @@ class ApplicationContainer:
     def _init_services(self) -> None:
         """Initialize all services in dependency order."""
         # Level 1: Services with no service dependencies (only engine)
+        blackboard_enabled = os.getenv("LUMINA_BLACKBOARD_ENABLED", "true").strip().lower() == "true"
+        blackboard_enforced = os.getenv("LUMINA_BLACKBOARD_ENFORCED", "false").strip().lower() == "true"
+        orchestrator_enabled = os.getenv("LUMINA_META_ORCHESTRATOR_ENABLED", "true").strip().lower() == "true"
+
+        if blackboard_enforced and not blackboard_enabled:
+            raise RuntimeError("LUMINA_BLACKBOARD_ENFORCED=true requires LUMINA_BLACKBOARD_ENABLED=true")
+
+        if blackboard_enabled:
+            self.blackboard = AgentBlackboard(obs_service=self.observability_service)
+            self.blackboard.load_recent_from_disk()
+            self.engine.bind_blackboard(self.blackboard)
+        else:
+            self.blackboard = None  # type: ignore[assignment]
+
         self.market_data_service = MarketDataService(engine=self.engine)
         self.memory_service = MemoryService(engine=self.engine)
         self.operations_service = OperationsService(engine=self.engine, container=self)
@@ -296,6 +317,30 @@ class ApplicationContainer:
             ppo_trainer=self.ppo_trainer,
         )
         self.engine.infinite_simulator = self.infinite_simulator  # Fase 3.1
+
+        evolution_cfg = load_evolution_config()
+        self.self_evolution_meta_agent = SelfEvolutionMetaAgent.from_container(
+            container=self,
+            enabled=bool(evolution_cfg.get("enabled", True)),
+            approval_required=bool(evolution_cfg.get("approval_required", True)),
+            mode=str(evolution_cfg.get("mode", getattr(self.config, "trade_mode", "real"))),
+            aggressive_evolution=bool(evolution_cfg.get("aggressive_evolution", False)),
+            max_mutation_depth=str(evolution_cfg.get("max_mutation_depth", "conservative")),
+            obs_service=self.observability_service,
+            fine_tuning_cfg=evolution_cfg.get("fine_tuning", {}),
+        )
+        self.self_evolution_meta_agent.blackboard = self.blackboard
+        if orchestrator_enabled and self.blackboard is not None:
+            self.meta_agent_orchestrator = MetaAgentOrchestrator(
+                blackboard=self.blackboard,
+                self_evolution_agent=self.self_evolution_meta_agent,
+                ppo_trainer=self.ppo_trainer,
+                bible_engine=self.engine.bible_engine,
+            )
+            self.engine.meta_agent_orchestrator = self.meta_agent_orchestrator
+        else:
+            self.meta_agent_orchestrator = None  # type: ignore[assignment]
+            self.engine.meta_agent_orchestrator = None
 
         # Level 4: Validators and reconcilers
         self.performance_validator = PerformanceValidator(

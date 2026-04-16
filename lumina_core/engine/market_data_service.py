@@ -81,6 +81,35 @@ class MarketDataService:
         avg_latency = sum(self.latency_window) / max(1, len(self.latency_window))
         setattr(app, "MARKET_DATA_LATENCY_MS", round(avg_latency, 2))
 
+    def _publish_tape_signal(self, tape_signal: dict[str, Any]) -> None:
+        blackboard = getattr(self.engine, "blackboard", None)
+        if blackboard is None or not hasattr(blackboard, "publish_sync"):
+            return
+        tape_payload = {
+            "tape_signal": str(tape_signal.get("signal", "HOLD")),
+            "tape_direction": str(tape_signal.get("direction", "NEUTRAL")),
+            "tape_confidence": float(tape_signal.get("confidence", 0.0) or 0.0),
+            "tape_reason": str(tape_signal.get("reason", "")),
+            "tape_fast_path_trigger": bool(tape_signal.get("fast_path_trigger", False)),
+            "cumulative_delta_10": float(tape_signal.get("cumulative_delta_10", 0.0) or 0.0),
+            "bid_ask_imbalance": float(tape_signal.get("bid_ask_imbalance", 1.0) or 1.0),
+        }
+        try:
+            blackboard.publish_sync(
+                topic="agent.tape.proposal",
+                producer="market_data_service",
+                payload=tape_payload,
+                confidence=float(tape_signal.get("confidence", 0.0) or 0.0),
+            )
+            blackboard.publish_sync(
+                topic="market.tape",
+                producer="market_data_service",
+                payload=dict(tape_signal),
+                confidence=float(tape_signal.get("confidence", 0.0) or 0.0),
+            )
+        except Exception:
+            return
+
     async def websocket_listener(self) -> None:
         app = self._app()
         last_tick_print = 0.0
@@ -139,6 +168,7 @@ class MarketDataService:
                             tape_snapshot = self.engine.market_data.get_tape_snapshot()
                             tape_signal = self.tape_agent.score_momentum(tape_snapshot)
                             self.engine.market_data.last_tape_signal = tape_signal
+                            self._publish_tape_signal(tape_signal)
 
                             if closed_candle is not None:
                                 minute_start = ts.replace(second=0, microsecond=0)

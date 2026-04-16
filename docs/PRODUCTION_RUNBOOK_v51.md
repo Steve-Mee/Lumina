@@ -9,6 +9,32 @@ This is the official switch-flip runbook for moving Lumina v51 from paper valida
 Delta reference:
 - SIM vs REAL safety split addendum: `docs/RUNBOOK_DELTA_SIM_REAL_v52.md`
 
+AGI swarm CNS rollout flags:
+- `LUMINA_BLACKBOARD_ENABLED=true|false`
+- `LUMINA_BLACKBOARD_ENFORCED=true|false`
+- `LUMINA_META_ORCHESTRATOR_ENABLED=true|false`
+- `LUMINA_DUAL_THOUGHT_LOG=true|false`
+
+Recommended rollout order:
+1. `LUMINA_BLACKBOARD_ENABLED=true`, `LUMINA_BLACKBOARD_ENFORCED=false`, `LUMINA_META_ORCHESTRATOR_ENABLED=false`
+2. Validate blackboard event quality and audit volume in SIM / SIM_REAL_GUARD
+3. Enable orchestrator
+4. Only then consider `LUMINA_BLACKBOARD_ENFORCED=true`
+
+Rollout / rollback matrix by mode:
+
+| Mode | Blackboard enabled | Blackboard enforced | Meta-Orchestrator enabled | Dual thought log | Rollback action |
+| --- | --- | --- | --- | --- | --- |
+| `sim` | `true` | `false` | `true` after event quality is green | `true` | Disable orchestrator first, then set `LUMINA_BLACKBOARD_ENABLED=false` if event quality degrades |
+| `sim_real_guard` | `true` | `false` during staging, `true` only after stable parity evidence | `true` after nightly validation is green | `true` | Set `LUMINA_BLACKBOARD_ENFORCED=false`; if critical rejects persist, disable orchestrator and revert to legacy path |
+| `real` | `true` mandatory | `true` mandatory | `true` only after SIM_REAL_GUARD proves stable | `true` during migration, optional later | If blackboard health turns RED: halt trading, set account back to guarded path, keep blackboard enabled for forensics, disable orchestrator only if nightly flow is implicated |
+
+Rollback principles:
+- Never disable blackboard enforcement in `real` as a live hotfix to keep trading; rollback means reduce mode risk, not remove fail-closed safety.
+- If only nightly orchestration is unstable, disable `LUMINA_META_ORCHESTRATOR_ENABLED` first and keep blackboard active.
+- If non-critical telemetry drops rise but execution topics remain healthy, continue guarded observation and do not treat as an automatic trading stop.
+- If unauthorized producer rejects appear on execution-critical topics, stop promotion and investigate before any further rollout.
+
 ## Phase Model (Mission-Critical)
 
 ### SIM Aggressive Learning Phase
@@ -48,6 +74,42 @@ Operator flow for SIM_REAL_GUARD:
 3. Confirm reconciliation is enabled and status file is healthy (`state/trade_reconciler_status.json`).
 4. Monitor parity panel and observability metrics for gate reject ratio, reconciliation delta, and EOD force-close counts.
 5. Promote to REAL only after parity evidence remains stable over the staging window.
+
+Operator flow for Blackboard + Meta-Orchestrator health:
+1. Confirm `state/agent_blackboard.jsonl` is receiving ordered append-only events.
+2. Confirm `logs/security_audit.jsonl` contains no unauthorized producer or queue saturation events for critical topics.
+3. Confirm metrics snapshot includes blackboard latency/reject/drop counters.
+4. Confirm `state/thought_log.jsonl` and `state/lumina_thought_log.jsonl` both receive entries while migration dual-write is enabled.
+5. Confirm nightly runs emit reflection/evolution entries before enabling enforced mode.
+
+### Blackboard Health Monitoring Knobs (Operator-Tunable)
+
+**Environment variables for dashboard health classification and alerting:**
+
+| Knob | Env Variable | Default | Range | Impact |
+| --- | --- | --- | --- | --- |
+| Max publish latency (ms) | `LUMINA_BLACKBOARD_MAX_LATENCY_MS` | 500 | 100–2000 | Health turns YELLOW if cumulative latency exceeds this threshold |
+| Max rejects per sample | `LUMINA_BLACKBOARD_MAX_REJECTS` | 5 | 0–50 | Health turns RED if reject counter increment exceeds this in a single dashboard interval |
+| Max drops per sample | `LUMINA_BLACKBOARD_MAX_DROPS` | 3 | 0–20 | Health turns RED if drop counter increment exceeds this |
+| Subscriber error alert | `LUMINA_BLACKBOARD_SUB_ERROR_THRESHOLD` | 0 | 0–100 | Health turns RED on first non-zero subscriber error; set >0 to downgrade to YELLOW |
+| Sample retention | `LUMINA_BLACKBOARD_HEALTH_SAMPLES` | 20 | 10–100 | Number of historical samples kept in dashboard trend chart |
+
+**Dashboard health trend displays (left yaxis = latency ms, right yaxis = counters):**
+- Latency trend line (blue #00d4ff): publish latency per sample
+- Rejects trend line (red #ff6b6b): cumulative rejects per sample window
+- Drops trend line (gold #ffc857): cumulative drops per sample window
+- Subscriber errors trend line (purple #d946ef): cumulative subscription errors per sample window
+
+**Sample coloring by health status:**
+- 🟢 GREEN: all metrics < thresholds and no subscriber errors
+- 🟡 YELLOW: latency near threshold or minor rejects/drops
+- 🔴 RED: reject/drop threshold exceeded or subscriber errors detected
+
+**Operator tuning guide:**
+- High-latency environment? Increase `LUMINA_BLACKBOARD_MAX_LATENCY_MS` to 1500–2000 and monitor for execution event delays.
+- Frequent rejects? Lower `LUMINA_BLACKBOARD_MAX_REJECTS` to 2–3 to catch unauthorized producer early; investigate ACL and topic perms.
+- Subscriber errors appearing? Do NOT ignore: check broker connectivity, blackboard queue saturation, and meta-orchestrator thread health immediately.
+- Tuning for staging: use defaults; for long-duration real trading, loosen latency by 200ms if parity metrics are stable.
 
 Detailed staging procedure:
 - `docs/requests/sim_real_guard_rollout_b_staging_runbook.md`

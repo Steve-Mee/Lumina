@@ -29,6 +29,18 @@ def start_runtime_services(
     """Start all runtime workers from a single engine-driven bootstrap call."""
     app = getattr(supervisor_loop_fn, "__self__", None)
     engine = getattr(app, "engine", None)
+    container = getattr(app, "container", None)
+    if engine is not None and container is not None:
+        blackboard = getattr(container, "blackboard", None)
+        if blackboard is not None:
+            engine.bind_blackboard(blackboard)
+            setattr(app, "blackboard", blackboard)
+
+        meta_agent_orchestrator = getattr(container, "meta_agent_orchestrator", None)
+        if meta_agent_orchestrator is not None:
+            engine.meta_agent_orchestrator = meta_agent_orchestrator
+            setattr(app, "meta_agent_orchestrator", meta_agent_orchestrator)
+
     if engine is not None and getattr(engine, "swarm", None) is None and bool(getattr(engine.config, "swarm_enabled", True)):
         engine.swarm = SwarmManager(engine)
         if app is not None and not hasattr(app, "swarm_manager"):

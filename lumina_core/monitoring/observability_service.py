@@ -77,6 +77,10 @@ M_RESTARTS = "lumina_process_restarts_total"
 M_MODE_GUARD_BLOCK_TOTAL = "lumina_mode_guard_block_total"
 M_MODE_EOD_FORCE_CLOSE_TOTAL = "lumina_mode_eod_force_close_total"
 M_MODE_PARITY_DRIFT_TOTAL = "lumina_mode_parity_drift_total"
+M_BLACKBOARD_PUBLISH_LATENCY = "lumina_blackboard_publish_latency_ms"
+M_BLACKBOARD_REJECT_TOTAL = "lumina_blackboard_reject_total"
+M_BLACKBOARD_DROP_TOTAL = "lumina_blackboard_drop_total"
+M_BLACKBOARD_SUBSCRIPTION_ERROR_TOTAL = "lumina_blackboard_subscription_error_total"
 
 
 # ── Configuration sub-objects ──────────────────────────────────────────────────
@@ -592,6 +596,40 @@ class ObservabilityService:
             amount=float(abs(delta)),
             labels={"baseline": str(baseline).lower(), "candidate": str(candidate).lower()},
             help_="Accumulated mode parity drift (absolute delta)",
+        )
+
+    def record_blackboard_publish(self, *, topic: str, producer: str, elapsed_ms: float) -> None:
+        self.collector.observe(
+            M_BLACKBOARD_PUBLISH_LATENCY,
+            float(elapsed_ms),
+            labels={"topic": str(topic).lower(), "producer": str(producer).lower()},
+            help_="Blackboard publish latency in milliseconds",
+        )
+
+    def record_blackboard_reject(self, *, topic: str, producer: str, reason: str) -> None:
+        self.collector.inc(
+            M_BLACKBOARD_REJECT_TOTAL,
+            labels={"topic": str(topic).lower(), "producer": str(producer).lower(), "reason": str(reason).lower()},
+            help_="Total rejected blackboard events",
+        )
+
+    def record_blackboard_drop(self, *, topic: str, producer: str, reason: str, critical: bool) -> None:
+        self.collector.inc(
+            M_BLACKBOARD_DROP_TOTAL,
+            labels={
+                "topic": str(topic).lower(),
+                "producer": str(producer).lower(),
+                "reason": str(reason).lower(),
+                "critical": str(bool(critical)).lower(),
+            },
+            help_="Total dropped blackboard events due to backpressure",
+        )
+
+    def record_blackboard_subscription_error(self, *, topic: str, producer: str) -> None:
+        self.collector.inc(
+            M_BLACKBOARD_SUBSCRIPTION_ERROR_TOTAL,
+            labels={"topic": str(topic).lower(), "producer": str(producer).lower()},
+            help_="Total blackboard subscriber callback errors",
         )
 
     # ── Snapshot / export ─────────────────────────────────────────────────────

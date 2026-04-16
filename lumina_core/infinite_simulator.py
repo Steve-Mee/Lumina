@@ -181,7 +181,21 @@ class InfiniteSimulator:
         report_path = out_dir / f"nightly_sim_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         report["report_path"] = str(report_path)
+
+        orchestrator = getattr(getattr(self.runtime, "engine", None), "meta_agent_orchestrator", None)
+        if orchestrator is not None and hasattr(orchestrator, "run_nightly_reflection"):
+            try:
+                orchestrator.run_nightly_reflection(
+                    nightly_report=report,
+                    dry_run=str(getattr(self.runtime.engine.config, "trade_mode", "paper")).strip().lower() in {"sim", "paper"},
+                )
+            except Exception:
+                pass
         return report
+
+    def run_nightly_simulation(self, *, num_trades_total: int = 1_000_000) -> dict[str, Any]:
+        self.target_trades_per_night = max(1000, int(num_trades_total))
+        return self.run_nightly()
 
     def _load_real_historical_ticks(self, days_back: int, limit: int) -> list[dict[str, Any]]:
         if hasattr(self.market_data_service, "load_historical_ohlc_extended"):

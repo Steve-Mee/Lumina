@@ -278,7 +278,15 @@ class EmotionalTwinAgent:
     def run_cycle(self) -> Dict[str, Any]:
         main_dream = self.context.get_current_dream_snapshot()
         corrected = self.apply_correction(main_dream)
-        if hasattr(self.context, "set_current_dream_fields"):
+        blackboard = getattr(self.context, "blackboard", None)
+        if blackboard is not None and hasattr(blackboard, "publish_sync"):
+            blackboard.publish_sync(
+                topic="agent.emotional_twin.proposal",
+                producer="emotional_twin_agent",
+                payload=corrected,
+                confidence=float(max(0.0, min(1.0, corrected.get("confluence_score", 0.0) or 0.0))),
+            )
+        elif hasattr(self.context, "set_current_dream_fields"):
             self.context.set_current_dream_fields(corrected)
         result = dict(corrected)
         result["emotional_bias"] = getattr(self, "_last_bias", {})

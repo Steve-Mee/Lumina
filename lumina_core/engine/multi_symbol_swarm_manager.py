@@ -358,7 +358,17 @@ class MultiSymbolSwarmManager:
                     updates["swarm_arb_signal"] = str(first.get("trade_b", "HOLD"))
                 updates["swarm_arb_reason"] = str(first.get("reason", "inter-symbol spread signal"))
 
-        self.engine.set_current_dream_fields(updates)
+        blackboard = getattr(self.engine, "blackboard", None)
+        if blackboard is not None and hasattr(blackboard, "publish_sync"):
+            confidence = float(min(1.0, max(0.0, consensus_mult / max(1.0, float(self.trend_consensus_multiplier)))))
+            blackboard.publish_sync(
+                topic="agent.swarm.proposal",
+                producer="swarm_manager",
+                payload=updates,
+                confidence=confidence,
+            )
+        else:
+            self.engine.set_current_dream_fields(updates)
         return updates
 
     def register_trade_result(self, symbol: str, pnl: float) -> None:

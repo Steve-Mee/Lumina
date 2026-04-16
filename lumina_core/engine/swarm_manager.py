@@ -18,6 +18,14 @@ class SwarmManager(MultiSymbolSwarmManager):
 
     def run_swarm_cycle(self) -> dict[str, Any]:
         snapshot = self.run_cycle()
+        blackboard = getattr(self.engine, "blackboard", None)
+        if blackboard is not None and hasattr(blackboard, "publish_sync"):
+            blackboard.publish_sync(
+                topic="agent.swarm.snapshot",
+                producer="swarm_manager",
+                payload=snapshot if isinstance(snapshot, dict) else {},
+                confidence=0.8,
+            )
         allocation = snapshot.get("capital_allocation_pct", {}) if isinstance(snapshot, dict) else {}
         correlation_matrix = snapshot.get("correlation_matrix", {}) if isinstance(snapshot, dict) else {}
         regimes = snapshot.get("regimes", {}) if isinstance(snapshot, dict) else {}

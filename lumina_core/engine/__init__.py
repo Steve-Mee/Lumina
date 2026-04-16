@@ -1,4 +1,5 @@
 from .analysis_service import HumanAnalysisService
+from .agent_blackboard import AgentBlackboard, BlackboardEvent
 from .agent_decision_log import AgentDecisionLog
 from .agent_policy_gateway import AgentPolicyGateway
 from .bible_engine import BibleEngine
@@ -21,6 +22,7 @@ from .regime_detector import RegimeDetector, RegimeSnapshot
 from .reasoning_service import ReasoningService
 from .session_guard import SessionGuard
 from .self_evolution_meta_agent import SelfEvolutionMetaAgent
+from .meta_agent_orchestrator import MetaAgentOrchestrator
 from .rl_guardrails import RLGuardrailLayer
 from .evolution_lifecycle import EvolutionLifecycleManager
 from .multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
@@ -30,6 +32,8 @@ from .visualization_service import VisualizationService
 
 __all__ = [
     "HumanAnalysisService",
+    "AgentBlackboard",
+    "BlackboardEvent",
     "AgentDecisionLog",
     "AgentPolicyGateway",
     "DashboardService",
@@ -61,6 +65,7 @@ __all__ = [
     "ReasoningService",
     "SessionGuard",
     "SelfEvolutionMetaAgent",
+    "MetaAgentOrchestrator",
     "RLGuardrailLayer",
     "EvolutionLifecycleManager",
     "SymbolNode",

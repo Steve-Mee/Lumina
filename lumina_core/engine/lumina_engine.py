@@ -160,6 +160,11 @@ class LuminaEngine:
     decision_log: Any | None = None
     # ReasoningService (AI layer – injected by container)
     reasoning_service: Any | None = None
+    # Central pub/sub bus for all agent communication.
+    blackboard: Any | None = None
+    blackboard_tokens: list[str] = field(default_factory=list)
+    # Nightly meta orchestrator wrapper around self-evolution.
+    meta_agent_orchestrator: Any | None = None
     # Market data service for bar/candle loading
     market_data_service: Any | None = None
     # Memory service for persistent state
@@ -651,6 +656,51 @@ class LuminaEngine:
     def get_current_dream_snapshot(self) -> dict[str, Any]:
         return self.dream_state.snapshot()
 
+    def bind_blackboard(self, blackboard: Any) -> None:
+        """Bind engine consumers to blackboard topics and enforce REAL safety gates."""
+        self.blackboard = blackboard
+        self.blackboard_tokens = []
+
+        if blackboard is None or not hasattr(blackboard, "subscribe"):
+            return
+
+        def _proposal_handler(event: Any) -> None:
+            payload = getattr(event, "payload", {})
+            if not isinstance(payload, dict):
+                return
+            self.set_current_dream_fields(payload)
+
+        def _execution_handler(event: Any) -> None:
+            payload = getattr(event, "payload", {})
+            confidence = float(getattr(event, "confidence", payload.get("confidence", 0.0)) or 0.0)
+            if not isinstance(payload, dict):
+                return
+
+            mode = str(getattr(self.config, "trade_mode", "paper")).strip().lower()
+            if mode == "real" and confidence < 0.8:
+                safe_payload = dict(payload)
+                safe_payload["signal"] = "HOLD"
+                safe_payload["why_no_trade"] = "fail_closed_low_blackboard_confidence"
+                safe_payload["confidence"] = confidence
+                self.set_current_dream_fields(safe_payload)
+                return
+            self.set_current_dream_fields(payload)
+
+        topic_handlers = {
+            "agent.news.proposal": _proposal_handler,
+            "agent.rl.proposal": _proposal_handler,
+            "agent.emotional_twin.proposal": _proposal_handler,
+            "agent.swarm.proposal": _proposal_handler,
+            "agent.tape.proposal": _proposal_handler,
+            "execution.aggregate": _execution_handler,
+        }
+        for topic, handler in topic_handlers.items():
+            try:
+                token = blackboard.subscribe(topic, handler)
+            except Exception:
+                continue
+            self.blackboard_tokens.append(str(token))
+
     def set_current_dream_fields(self, updates: dict[str, Any]) -> None:
         self.dream_state.update(updates)
 
@@ -698,20 +748,27 @@ class LuminaEngine:
             else:
                 target = current_price - (stop - current_price) * rr
 
-        self.set_current_dream_fields(
-            {
-                "signal": signal,
-                "confidence": confidence,
-                "confluence_score": confidence,
-                "stop": round(float(stop), 2),
-                "target": round(float(target), 2),
-                "reason": str(action_payload.get("reason", "PPO policy decision")),
-                "chosen_strategy": "ppo_live_policy",
-                "regime": regime,
-                "qty": qty,
-                "policy_ts": time.time(),
-            }
-        )
+        updates = {
+            "signal": signal,
+            "confidence": confidence,
+            "confluence_score": confidence,
+            "stop": round(float(stop), 2),
+            "target": round(float(target), 2),
+            "reason": str(action_payload.get("reason", "PPO policy decision")),
+            "chosen_strategy": "ppo_live_policy",
+            "regime": regime,
+            "qty": qty,
+            "policy_ts": time.time(),
+        }
+        if self.blackboard is not None and hasattr(self.blackboard, "publish_sync"):
+            self.blackboard.publish_sync(
+                topic="agent.rl.proposal",
+                producer="rl_policy",
+                payload=updates,
+                confidence=confidence,
+            )
+        else:
+            self.set_current_dream_fields(updates)
         return True
 
     def __getattr__(self, name: str) -> Any:
