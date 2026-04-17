@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -96,7 +97,8 @@ def _forward_shutdown(child: Optional[subprocess.Popen], signum: int) -> None:
 
 
 def main() -> int:
-    entrypoint = os.getenv("LUMINA_ENTRYPOINT", "lumina_v45.1.1.py")
+    entrypoint = os.getenv("LUMINA_ENTRYPOINT", "lumina_core/engine/runtime_entrypoint.py")
+    entrypoint_args = shlex.split(os.getenv("LUMINA_ENTRYPOINT_ARGS", "--mode auto"))
     max_restarts = int(os.getenv("LUMINA_MAX_RESTARTS", "5"))
 
     _prepare_persistent_links()
@@ -122,7 +124,7 @@ def main() -> int:
             return 0
 
         _touch_heartbeat()
-        cmd = [sys.executable, entrypoint]
+        cmd = [sys.executable, entrypoint, *entrypoint_args]
         child = subprocess.Popen(cmd, cwd="/app")
         PID_FILE.write_text(str(child.pid), encoding="utf-8")
 

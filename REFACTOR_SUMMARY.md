@@ -1,5 +1,38 @@
 # v50 Living Organism Refactoring – Complete Diff Summary
 
+## Root Entrypoints Consolidation (runtime_entrypoint)
+
+Status: IMPLEMENTED (April 2026)
+Scope: centralize runtime/bootstrap dispatch in one module and reduce root scripts to thin wrappers
+
+### Before
+- Runtime startup logic was spread across multiple root files:
+   - `lumina_v45.1.1.py` handled full container bootstrap and main loop startup.
+   - `nightly_infinite_sim.py` performed separate manual bootstrap/service wiring.
+   - `lumina_launcher.py` contained a second headless runtime path.
+- Watchdog/compose referenced legacy root entrypoint (`lumina_v45.1.1.py`).
+- Startup mode behavior depended on multiple partially duplicated flows.
+
+### After
+- Added central launcher module: `lumina_core/engine/runtime_entrypoint.py`
+   - Uses `argparse` and `ApplicationContainer` as canonical bootstrap path.
+   - Supports unified flags: `--headless`, `--sim-only`, `--real-safe`.
+   - Handles SIM/REAL/nightly dispatch from one location.
+- Root scripts are now thin wrappers:
+   - `lumina_v45.1.1.py` delegates to central runtime entrypoint.
+   - `nightly_infinite_sim.py` delegates to central runtime entrypoint in nightly mode.
+   - `lumina_launcher.py` headless flow delegates to central runtime entrypoint.
+- `watchdog.py` remains supervisor (restart/backoff/heartbeat intact) but now routes via central entrypoint defaults.
+- Docker defaults updated to use central entrypoint through watchdog:
+   - `Dockerfile`, `docker-compose.yml`, `docker-compose.prod.yml`
+   - `LUMINA_ENTRYPOINT=lumina_core/engine/runtime_entrypoint.py`
+   - `LUMINA_ENTRYPOINT_ARGS=--mode auto`
+
+### Maintainer Impact
+- Single source of truth for runtime dispatch and bootstrap sequencing.
+- Lower change-surface for future mode additions/safety gates.
+- Existing launch commands remain valid while now converging through one central path.
+
 ## v52 AGI Swarm CNS Bootstrap
 
 Status: IMPLEMENTED

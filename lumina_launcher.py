@@ -24,10 +24,8 @@ _IS_HEADLESS = "--headless" in sys.argv or "--stability-check" in sys.argv
 
 if not _IS_HEADLESS:
     import streamlit as st  # type: ignore[import]
-    import streamlit.components.v1 as components  # type: ignore[import]
 else:
     st = None  # type: ignore[assignment]  # placeholder; unused in headless path
-    components = None  # type: ignore[assignment]
 import yaml
 
 from lumina_core.container import create_application_container
@@ -50,7 +48,7 @@ if not _IS_HEADLESS:
 
 ENV_PATH = Path(".env")
 CONFIG_PATH = Path("config.yaml")
-RUNTIME_ENTRY = Path("lumina_v45.1.1.py")
+RUNTIME_ENTRY = Path("lumina_core/engine/runtime_entrypoint.py")
 LUMINA_LOG_PATH = Path("logs/lumina_full_log.csv")
 STATE_PATH = Path("state/lumina_sim_state.json")
 ADMIN_PASSWORD_HASH_PATH = Path("state/launcher_admin_password.json")
@@ -156,7 +154,7 @@ def _sim_real_guard_real_promotion_allowed() -> bool:
 
 def _runtime_command() -> list[str]:
     python_cmd = os.getenv("LUMINA_PYTHON", sys.executable)
-    return [python_cmd, str(RUNTIME_ENTRY)]
+    return [python_cmd, str(RUNTIME_ENTRY), "--mode", "auto"]
 
 
 def _load_process_state() -> dict[str, Any]:
@@ -399,11 +397,14 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
             value=bool(st.session_state.get("live_status_auto_refresh", True)),
             key="live_status_auto_refresh",
         )
-        if auto_refresh and components is not None:
-            components.html(
-                "<script>setTimeout(function(){ window.parent.location.reload(); }, 5000);</script>",
-                height=0,
+        if auto_refresh:
+            refresh_html = (
+                "<html><body><script>"
+                "setTimeout(function(){ window.parent.location.reload(); }, 5000);"
+                "</script></body></html>"
             )
+            refresh_url = "data:text/html;charset=utf-8," + urllib.parse.quote(refresh_html)
+            st.iframe(refresh_url, height=0, width="content")
         st.markdown(
             """
             <style>
@@ -1525,170 +1526,14 @@ def _render_training_panel(current_model: ModelDescriptor, snapshot: HardwareSna
 
 
 # ── Headless entry point (injected before Streamlit UI body) ───────────────────
-# ── Headless helpers ──────────────────────────────────────────────────────────
-
-def _parse_duration_minutes(value: str) -> float:
-    """Parse "15m", "5m", "30s", "1h" → float minutes."""
-    from lumina_core.runtime.headless_runtime import parse_duration_minutes
-    return parse_duration_minutes(value)
-
 
 def _headless_main() -> None:
-    """
-    CLI entry point for headless paper/live-mock trade-loop validation.
+    """Delegate headless launcher runtime to the central runtime entrypoint."""
+    from lumina_core.engine.runtime_entrypoint import run_with_mode
 
-    Invoked when ``--headless`` is present in sys.argv.  Parses the remaining
-    flags, creates an ApplicationContainer (best-effort), and delegates to
-    HeadlessRuntime.run().  The structured JSON summary is printed to stdout
-    and persisted to state/last_run_summary.json.
-
-    Usage::
-
-        python -m lumina_launcher --headless --mode=paper --duration=15m --broker=paper
-        python -m lumina_launcher --headless --mode=paper --duration=5m  --broker=live
-    """
-    import argparse
-    import logging
-
-    from lumina_core.runtime.headless_runtime import HeadlessRuntime
-
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-
-    headless_cfg = _load_yaml_config().get("headless", {})
-    if not isinstance(headless_cfg, dict):
-        headless_cfg = {}
-
-    raw_duration = headless_cfg.get("default_duration_minutes", 15)
-    try:
-        duration_value = float(raw_duration)
-    except (TypeError, ValueError):
-        duration_value = 15.0
-    default_duration = f"{int(duration_value)}m" if duration_value.is_integer() else f"{duration_value}m"
-
-    sim_real_guard_enabled, _pilot_enabled, _public_enabled = _sim_real_guard_launch_flags()
-    allowed_headless_modes = ["paper", "sim", "real"]
-    if sim_real_guard_enabled:
-        allowed_headless_modes.insert(2, "sim_real_guard")
-
-    raw_mode = str(headless_cfg.get("default_mode", "paper")).strip().lower()
-    default_mode = raw_mode if raw_mode in set(allowed_headless_modes) else "paper"
-
-    raw_broker = str(headless_cfg.get("default_broker", "paper")).strip().lower()
-    default_broker = raw_broker if raw_broker in {"paper", "live"} else "paper"
-
-    parser = argparse.ArgumentParser(
-        prog="lumina_launcher",
-        description="LUMINA OS Launcher – headless trade-loop validation mode",
-    )
-    parser.add_argument(
-        "--headless",
-        action="store_true",
-        default=False,
-        help="Run in headless (non-UI) mode; output structured JSON summary.",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=allowed_headless_modes,
-        default=default_mode,
-        help=f"Trading mode (default: {default_mode}).",
-    )
-    parser.add_argument(
-        "--duration",
-        default=default_duration,
-        metavar="DURATION",
-        help=f"Simulated session length, e.g. 15m, 5m, 1h (default: {default_duration}).",
-    )
-    parser.add_argument(
-        "--broker",
-        choices=["paper", "live"],
-        default=default_broker,
-        help=f"Broker backend to validate: paper or live (default: {default_broker}).",
-    )
-    parser.add_argument(
-        "--aggressive-sim",
-        action="store_true",
-        default=False,
-        help="Enable aggressive SIM learning profile (extended duration + elevated proposal cadence).",
-    )
-    parser.add_argument(
-        "--overnight-sim",
-        action="store_true",
-        default=False,
-        help="Enable overnight SIM mode (runs 4-hour equivalent simulation in one go).",
-    )
-    parser.add_argument(
-        "--stability-check",
-        action="store_true",
-        default=False,
-        help="Run SIM Stability Checker standalone, or after headless SIM run when combined with --headless.",
-    )
-
-    args, _ = parser.parse_known_args()
-
-    if bool(args.stability_check) and not bool(args.headless):
-        append_info = append_history_entry_for_latest_summary()
-        report = generate_stability_report(limit=0)
-        report["history_append"] = append_info
-        rendered = format_stability_report(report, color=True)
-        print(rendered, flush=True)
-        return
-
-    # CLI mode override: writes runtime mode into process env for downstream
-    # services that resolve mode from config/env.
-    normalized_mode = str(args.mode).strip().lower()
-    normalized_broker = str(args.broker).strip().lower()
-    os.environ["LUMINA_MODE"] = normalized_mode
-    os.environ["TRADE_MODE"] = normalized_mode
-    os.environ["BROKER_BACKEND"] = normalized_broker
-    os.environ["LUMINA_ENFORCE_ENV_RUNTIME_MODE"] = "true"
-    os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
-    os.environ["LUMINA_SIM_OVERNIGHT"] = "true" if bool(args.overnight_sim) else "false"
-    os.environ["LUMINA_STABILITY_CHECK"] = "true" if bool(args.stability_check) else "false"
-
-    duration_minutes = _parse_duration_minutes(args.duration)
-
-    # Suppress TTS and voice in headless mode.
-    os.environ.setdefault("VOICE_ENABLED", "False")
-    # Keep config validation warnings quiet in headless validation contexts.
-    # This fallback is only for local/CI headless runs and must be overridden in production.
-    os.environ.setdefault("LUMINA_JWT_SECRET_KEY", "headless-validation-jwt-secret")
-
-    # For live-broker validation without real credentials, inject a stub token
-    # so the container config-validation gate does not reject the init.
-    if args.broker == "live":
-        os.environ.setdefault("CROSSTRADE_TOKEN", "headless-validation-stub")
-
-    # Optional: try to initialise the full ApplicationContainer for richer
-    # metrics.  Most environments (CI, Docker sandbox) will succeed for paper
-    # mode; live mode may fail the connectivity check but the simulation still
-    # runs (broker_status reflects the outcome).
-    container = None
-    live_mock_mode = normalized_mode == "paper" and normalized_broker == "live"
-    if live_mock_mode:
-        logging.getLogger("lumina.launcher").info(
-            "Headless live-mock mode detected (mode=paper, broker=live): "
-            "skipping full container init and using lightweight simulation."
-        )
-    else:
-        try:
-            container = create_application_container()
-        except Exception as exc:  # noqa: BLE001
-            logging.getLogger("lumina.launcher").warning(
-                "Container init skipped in headless mode (%s: %s). "
-                "Running with lightweight simulation only.",
-                type(exc).__name__,
-                exc,
-            )
-
-    runtime = HeadlessRuntime(container=container)
-    runtime.run(
-        duration_minutes=duration_minutes,
-        mode=args.mode,
-        broker_mode=args.broker,
-        aggressive_sim=bool(args.aggressive_sim),
-        overnight_sim=bool(args.overnight_sim),
-        stability_check=bool(args.stability_check),
-    )
+    exit_code = run_with_mode("sim", argv=list(sys.argv[1:]))
+    if exit_code != 0:
+        raise SystemExit(exit_code)
 
 
 # ── Headless entry point (injected before Streamlit UI body) ───────────────────

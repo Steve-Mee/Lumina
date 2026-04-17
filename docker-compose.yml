@@ -11,7 +11,8 @@ services:
       TZ: UTC
       PYTHONUNBUFFERED: "1"
       LUMINA_MAX_RESTARTS: "5"
-      LUMINA_ENTRYPOINT: "lumina_v45.1.1.py"
+      LUMINA_ENTRYPOINT: "lumina_core/engine/runtime_entrypoint.py"
+      LUMINA_ENTRYPOINT_ARGS: "--mode auto"
       LUMINA_STATE_FILE: "/app/state/lumina_sim_state.json"
       LUMINA_BIBLE_FILE: "/app/state/lumina_daytrading_bible.json"
       LUMINA_THOUGHT_LOG: "/app/state/lumina_thought_log.jsonl"
