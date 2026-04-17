@@ -7,6 +7,7 @@ for legacy workers and validator code.
 This catches attribute errors early and prevents them from surfacing in production logs.
 """
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -17,6 +18,17 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 
+def _load_runtime_module():
+    module_path = Path(__file__).resolve().parents[1] / "lumina_v45.1.1.py"
+    spec = importlib.util.spec_from_file_location("lumina_v45_1_1_api_contract", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Unable to load lumina_v45.1.1.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def test_runtime_module_critical_functions_exposed():
     """
     Test that all critical functions are exposed on the runtime module.
@@ -24,7 +36,7 @@ def test_runtime_module_critical_functions_exposed():
     These functions are called by legacy workers, validators, and the main analysis loop.
     Missing exports cause AttributeError and degrade bot performance.
     """
-    import lumina_v45.1.1 as runtime_module
+    runtime_module = _load_runtime_module()
     
     critical_functions = [
         "get_current_dream_snapshot",    # Called by validator, runtime_workers
@@ -48,7 +60,7 @@ def test_runtime_module_services_accessible():
     """
     Test that core services are accessible via the runtime module.
     """
-    import lumina_v45.1.1 as runtime_module
+    runtime_module = _load_runtime_module()
     
     critical_services = [
         "engine",

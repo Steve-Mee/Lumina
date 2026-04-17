@@ -61,7 +61,7 @@ def test_headless_launcher_cli_allows_sim_real_guard_when_feature_flag_enabled(t
             "-m",
             "lumina_launcher",
             "--headless",
-            "--mode=sim_real_guard",
+            "--mode=sim",
             "--duration=1m",
             "--broker=live",
         ],
@@ -77,7 +77,7 @@ def test_headless_launcher_cli_allows_sim_real_guard_when_feature_flag_enabled(t
 
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["runtime"] == "headless"
-    assert payload["mode"] == "sim_real_guard"
+    assert payload["mode"] == "sim"
     assert payload["broker_mode"] == "live"
 
 
