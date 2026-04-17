@@ -100,7 +100,7 @@ jobs:
           pip install -r requirements-safety-gate.txt
 
       - name: Run Bandit
-        run: bandit -r lumina_core lumina_bible lumina_agents scripts lumina_launcher.py lumina_v45.1.1.py nightly_infinite_sim.py watchdog.py
+        run: bandit -r lumina_core lumina_bible lumina_agents scripts lumina_launcher.py lumina_runtime.py nightly_infinite_sim.py watchdog.py -ll
 
   pytest:
     name: Pytest coverage (${{ matrix.python-version }})
@@ -137,7 +137,7 @@ jobs:
             --cov=lumina_launcher \
             --cov=watchdog \
             --cov=nightly_infinite_sim \
-            --cov=lumina_v45.1.1 \
+            --cov=lumina_runtime \
             --cov-report=term-missing \
             --cov-report=xml \
             --cov-fail-under=85

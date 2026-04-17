@@ -545,10 +545,11 @@ def test_dashboard_service_builds_blackboard_trend_figure(engine: LuminaEngine) 
     fig = service._build_blackboard_health_trend_figure()
 
     assert fig.layout.title.text == "Blackboard Health Trend"
-    assert len(fig.data) == 3
+    assert len(fig.data) == 4
     assert list(fig.data[0].y) == [100.0, 60.0]
     assert list(fig.data[1].y) == [0.0, 0.0]
     assert list(fig.data[2].y) == [1.0, 0.0]
+    assert list(fig.data[3].y) == [0.0, 0.0]
 
 
 def test_engine_config_reads_blackboard_health_env(monkeypatch: pytest.MonkeyPatch) -> None:

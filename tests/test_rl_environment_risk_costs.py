@@ -3,7 +3,6 @@ from __future__ import annotations
 from time import perf_counter
 from types import SimpleNamespace
 
-import pytest
 
 from lumina_core.rl_environment import RLConfig, RLTradingEnvironment
 

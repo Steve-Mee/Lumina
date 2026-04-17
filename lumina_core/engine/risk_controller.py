@@ -831,7 +831,6 @@ class HardRiskController:
         """Resolve insufficient-data behavior from policy with legacy compatibility."""
         limits = self._active_limits
         mode = str(limits.runtime_mode or "sim").strip().lower()
-        reason_codes_enabled = bool(limits.var_es_reason_codes_enabled)
         policy = str(limits.var_es_insufficient_data_policy or "fail_closed_real_only").strip().lower()
 
         if bool(limits.var_es_fail_closed_on_insufficient_data):
@@ -1018,7 +1017,7 @@ class HardRiskController:
                     return False, reason
                 else:
                     # Cooldown period expired, reset counter
-                    logger.info(f"Loss streak cooldown expired; resetting consecutive loss counter")
+                    logger.info("Loss streak cooldown expired; resetting consecutive loss counter")
                     self.state.consecutive_losses = 0
             else:
                 reason = f"MAX CONSECUTIVE LOSSES breached: {self.state.consecutive_losses} >= {limits.max_consecutive_losses}"

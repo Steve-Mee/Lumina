@@ -31,6 +31,7 @@ import logging
 import os
 import threading
 import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -701,6 +702,11 @@ class ObservabilityService:
         if not self.webhook.enabled or not self.webhook.url:
             return
 
+        parsed = urllib.parse.urlparse(self.webhook.url)
+        if parsed.scheme not in {"http", "https"}:
+            logger.error("Webhook delivery blocked: unsupported URL scheme '%s'", parsed.scheme)
+            return
+
         try:
             payload = self._build_webhook_payload(
                 title=title,
@@ -715,7 +721,7 @@ class ObservabilityService:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=self.webhook.timeout_s) as resp:
+            with urllib.request.urlopen(req, timeout=self.webhook.timeout_s) as resp:  # nosec B310
                 if resp.status >= 400:
                     logger.error("Webhook delivery failed: HTTP %d", resp.status)
         except Exception as exc:

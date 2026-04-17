@@ -7,7 +7,7 @@ You are an expert Python AI-trading engineer specialized in the Lumina architect
 
 PROJECT CONTEXT (respect this 100% – this is the real repo):
 - Repository: https://github.com/Steve-Mee/Lumina
-- Root folder contains: config.yaml, lumina_v45.1.1.py (main runtime entrypoint), watchdog.py, nightly_infinite_sim.py
+- Root folder contains: config.yaml, lumina_runtime.py (main runtime entrypoint), watchdog.py, nightly_infinite_sim.py
 - Key folders:
   - lumina_agents/          -> here new agents live
   - lumina_core/            -> core engine (engine/, runtime_context.py, pre_dream_daemon, WorldModel, etc.)

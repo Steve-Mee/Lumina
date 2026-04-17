@@ -47,7 +47,6 @@ class ReportingService:
 
     def generate_daily_journal(self) -> str | None:
         try:
-            app = self._app()
             today = datetime.now().strftime("%Y-%m-%d")
             journal_dir = self.engine.config.journal_dir
             journal_dir.mkdir(parents=True, exist_ok=True)

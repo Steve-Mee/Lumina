@@ -82,7 +82,7 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
         with app.live_data_lock:
             if len(app.ohlc_1min) >= 7200 and not app.is_market_open():
                 snapshot = app.ohlc_1min.tail(14400).copy()
-                app.logger.info(f"Starting ADVANCED backtest...")
+                app.logger.info("Starting ADVANCED backtest...")
 
                 # 1. Realistic base
                 base_res = app.engine.backtester.run_backtest_on_snapshot(snapshot)
@@ -110,7 +110,7 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                 })
 
                 worst_regime_dd = max((v["maxdd"] for v in regime_res.values()), default=0.0)
-                print(f"✅ ADVANCED BACKTEST COMPLETE")
+                print("✅ ADVANCED BACKTEST COMPLETE")
                 print(f"   Walk-Forward avg Sharpe : {wf['avg_test_sharpe']:.2f}")
                 print(f"   Worst regime MaxDD      : {worst_regime_dd:.1f}%")
                 print(f"   Monte Carlo worst DD    : {monte['worst_maxdd']:.1f}%")
@@ -140,12 +140,12 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                         app.engine.infinite_sim_last_run_date = today
 
                 # Nightly EmotionalTwin training om 04:00 (1x per kalenderdag).
-                if now_dt.hour == 4 and getattr(app.engine, "emotional_twin", None) is not None:
+                if now_dt.hour == 4 and getattr(app.engine, "emotional_twin_agent", None) is not None:
                     if getattr(app.engine, "emotional_twin_last_train_date", None) != today:
                         print("🧠 Nightly EmotionalTwin training started...")
                         reflections = list(getattr(app, "trade_reflection_history", []) or [])
                         feedback = list(getattr(app, "user_feedback_history", []) or [])
-                        app.engine.emotional_twin.nightly_train(reflections, feedback)
+                        app.engine.emotional_twin_agent.nightly_train(reflections, feedback)
                         app.engine.emotional_twin_last_train_date = today
 
                 # Ultimate validation na nightly cycle (3y swarm + paper vs real).

@@ -21,7 +21,19 @@ def log_event(logger: logging.Logger, event_name: str, level: int = logging.INFO
     payload_parts = [f"event={event_name}", f"code={code}"]
     for key, value in sorted(fields.items()):
         payload_parts.append(f"{key}={value}")
-    logger.log(level, ",".join(payload_parts))
+    message = ",".join(payload_parts)
+    if hasattr(logger, "log"):
+        logger.log(level, message)
+        return
+
+    if level >= logging.ERROR and hasattr(logger, "error"):
+        logger.error(message)
+        return
+    if level >= logging.WARNING and hasattr(logger, "warning"):
+        logger.warning(message)
+        return
+    if hasattr(logger, "info"):
+        logger.info(message)
 
 
 def build_logger(name: str, log_level: str = "INFO", file_path: str = "logs/lumina_full_log.csv") -> logging.Logger:

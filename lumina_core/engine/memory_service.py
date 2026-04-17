@@ -55,7 +55,6 @@ class MemoryService:
             return "Vector memory niet beschikbaar."
 
     def update_world_model(self, df: pd.DataFrame, regime: str, pa_summary: str) -> dict[str, Any]:
-        app = self._app()
         world_model = self.engine.world_model or {
             "macro": {"vix": 18.5, "dxy": 103.2, "ten_year_yield": 4.15, "news_sentiment": "neutral"},
             "micro": {"regime": "NEUTRAL", "orderflow_bias": "balanced", "volume_profile": "fair_value", "last_update": None},

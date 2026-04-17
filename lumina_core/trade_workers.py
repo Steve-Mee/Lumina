@@ -1,6 +1,4 @@
 # CANONICAL IMPLEMENTATION – v50 Living Organism
-import sys
-from pathlib import Path
 
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
@@ -71,6 +69,26 @@ def check_pre_trade_risk(
     Returns:
         (allowed: bool, reason: str)
     """
+    trade_mode = str(getattr(getattr(app.engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
+    if trade_mode == "paper":
+        risk_controller = getattr(app.engine, "risk_controller", None)
+        if risk_controller is None:
+            return False, "Risk controller not available"
+
+        snapshot = _refresh_regime_snapshot(app, regime)
+        adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
+        risk_controller.apply_regime_override(
+            regime=str(snapshot.get("label", regime or "NEUTRAL")),
+            risk_state=str(snapshot.get("risk_state", "NORMAL")),
+            risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
+            cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
+        )
+        return risk_controller.check_can_trade(
+            symbol,
+            str(snapshot.get("label", regime or "NEUTRAL")),
+            proposed_risk,
+        )
+
     return enforce_pre_trade_gate(
         app.engine,
         symbol=symbol,

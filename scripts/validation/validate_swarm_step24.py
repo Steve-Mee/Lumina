@@ -8,7 +8,6 @@ import pandas as pd
 import numpy as np
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-from datetime import datetime
 
 from lumina_core.engine.swarm_manager import SwarmManager
 
@@ -102,7 +101,7 @@ def main():
     if mult > 1.0:
         print(f"  ✅ CONSENSUS: {int(np.sum([r == 'TRENDING' for r in regimes.values()]))}/4 symbols trending")
     else:
-        print(f"  ⚠️ No consensus (insufficient trending symbols)")
+        print("  ⚠️ No consensus (insufficient trending symbols)")
     
     # Capital Allocation
     print_header("5. RISK PARITY + KELLY CAPITAL ALLOCATION")

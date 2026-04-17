@@ -321,23 +321,23 @@ class MarketDataService:
 
                 o = float(bar.get("open") or bar.get("last") or 0.0)
                 h = float(bar.get("high") or bar.get("last") or 0.0)
-                l = float(bar.get("low") or bar.get("last") or 0.0)
+                low_price = float(bar.get("low") or bar.get("last") or 0.0)
                 c = float(bar.get("close") or bar.get("last") or 0.0)
                 v = max(1, int(bar.get("volume", 1)))
 
                 # Price path with directional bias from open->close.
-                path = [o, h, l, c]
+                path = [o, h, low_price, c]
                 if c < o:
-                    path = [o, l, h, c]
+                    path = [o, low_price, h, c]
                 if ticks_per_bar > 4:
-                    extra = [c + (h - l) * 0.25, c - (h - l) * 0.25]
+                    extra = [c + (h - low_price) * 0.25, c - (h - low_price) * 0.25]
                     path.extend(extra[: max(0, ticks_per_bar - 4)])
 
                 per_tick_vol = max(1, int(v / max(1, len(path))))
                 cum_vol = 0
                 for idx, px in enumerate(path):
                     cum_vol += per_tick_vol
-                    spread = max(0.25, abs(h - l) * 0.02)
+                    spread = max(0.25, abs(h - low_price) * 0.02)
                     ticks.append(
                         {
                             "timestamp": (bar_ts + pd.Timedelta(seconds=idx * (60 / max(1, len(path))))).isoformat(),

@@ -80,7 +80,7 @@ Because `sim_real_guard` is intentionally not public in the launcher selector ye
 Start command in each isolated workspace:
 
 ```powershell
-c:/NinjaTraderAI_Bot/.venv/Scripts/python.exe lumina_v45.1.1.py
+c:/NinjaTraderAI_Bot/.venv/Scripts/python.exe lumina_runtime.py
 ```
 
 If the staging workspace lives at another path, use that workspace's venv and runtime entry.

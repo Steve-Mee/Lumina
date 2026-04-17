@@ -4,7 +4,6 @@ from __future__ import annotations
 from collections import deque
 import json
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -12,7 +11,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .fast_path_engine import FastPathEngine
+    pass
 
 from lumina_bible import BibleEngine
 from .dream_state import DreamState
@@ -123,7 +122,7 @@ class LuminaEngine:
     rl_confidence_threshold: float = 0.78
     current_regime_snapshot: dict[str, Any] = field(default_factory=dict)
     regime_detector: Any | None = None
-    # Lokale Ollama inference engine – wordt na constructie gekoppeld in lumina_v45.1.1.py
+    # Lokale Ollama inference engine – wordt na constructie gekoppeld via ApplicationContainer
     local_engine: Any | None = None
     # Rule-based fast-path engine (< 200 ms, geen LLM)
     fast_path: Any | None = None

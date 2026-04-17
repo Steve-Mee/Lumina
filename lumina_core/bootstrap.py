@@ -6,13 +6,12 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import logging
 import os
 import time
 import numpy as np
 import requests
 
-from typing import Any, Callable
+from typing import Callable
 
 from lumina_core import backtest_workers, runtime_workers, trade_workers
 from lumina_core.container import ApplicationContainer

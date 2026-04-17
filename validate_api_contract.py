@@ -4,7 +4,7 @@ import sys
 import importlib.util
 
 # Import the runtime module using importlib
-spec = importlib.util.spec_from_file_location("lumina_runtime", "lumina_v45.1.1.py")
+spec = importlib.util.spec_from_file_location("lumina_runtime", "lumina_runtime.py")
 runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 

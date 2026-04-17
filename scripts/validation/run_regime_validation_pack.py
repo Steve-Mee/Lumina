@@ -9,8 +9,8 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from lumina_core.engine.stress_suite_runner import StressSuiteRunner
-from scripts.validation.build_regime_oos_results import build_regime_oos_results
+from lumina_core.engine.stress_suite_runner import StressSuiteRunner  # noqa: E402
+from scripts.validation.build_regime_oos_results import build_regime_oos_results  # noqa: E402
 
 
 def _load_json(path: Path) -> dict[str, Any]:

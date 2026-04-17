@@ -6,8 +6,6 @@ import math
 import os
 import sqlite3
 import subprocess
-import sys
-import time
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path

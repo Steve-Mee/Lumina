@@ -7,10 +7,10 @@ Scope: centralize runtime/bootstrap dispatch in one module and reduce root scrip
 
 ### Before
 - Runtime startup logic was spread across multiple root files:
-   - `lumina_v45.1.1.py` handled full container bootstrap and main loop startup.
+   - `lumina_runtime.py` handled full container bootstrap and main loop startup.
    - `nightly_infinite_sim.py` performed separate manual bootstrap/service wiring.
    - `lumina_launcher.py` contained a second headless runtime path.
-- Watchdog/compose referenced legacy root entrypoint (`lumina_v45.1.1.py`).
+- Watchdog/compose referenced the legacy root entrypoint wrapper (`lumina_runtime.py`).
 - Startup mode behavior depended on multiple partially duplicated flows.
 
 ### After
@@ -19,7 +19,7 @@ Scope: centralize runtime/bootstrap dispatch in one module and reduce root scrip
    - Supports unified flags: `--headless`, `--sim-only`, `--real-safe`.
    - Handles SIM/REAL/nightly dispatch from one location.
 - Root scripts are now thin wrappers:
-   - `lumina_v45.1.1.py` delegates to central runtime entrypoint.
+   - `lumina_runtime.py` delegates to central runtime entrypoint.
    - `nightly_infinite_sim.py` delegates to central runtime entrypoint in nightly mode.
    - `lumina_launcher.py` headless flow delegates to central runtime entrypoint.
 - `watchdog.py` remains supervisor (restart/backoff/heartbeat intact) but now routes via central entrypoint defaults.
@@ -237,7 +237,7 @@ Lumina has been refactored from v45.1.1 to v50 (The Living Organism) by:
 
 ## Files Modified with Import Updates (5 items)
 
-### 1. lumina_v45.1.1.py
+### 1. lumina_runtime.py
 **Change**:
 ```python
 # OLD
@@ -483,6 +483,42 @@ from lumina_agents.news_agent import NewsAgent
 
 ## Code Consolidation Summary
 
+---
+
+## v51 Legacy Cleanup (April 2026)
+
+**Legacy removal complete – v51 clean slate.**
+
+### Changes applied
+
+1. **Entrypoint renamed**: `lumina_v45.1.1.py` → `lumina_runtime.py`
+   - All references updated: CI/CD, tests, validate_api_contract.py, internal error messages
+   - Internal `legacy_fn_map` variable renamed to `_compat_fn_map`
+
+2. **PascalCase deprecation shims deleted** (5 files, no production callers):
+   - `lumina_core/engine/AdvancedBacktesterEngine.py`
+   - `lumina_core/engine/FastPathEngine.py`
+   - `lumina_core/engine/LocalInferenceEngine.py`
+   - `lumina_core/engine/RealisticBacktesterEngine.py`
+   - `lumina_core/engine/TapeReadingAgent.py`
+
+3. **Participant ID made config-driven**:
+   - New `participant_id` field in `EngineConfig` (reads env vars `LUMINA_TRADER_NAME` / `TRADERLEAGUE_PARTICIPANT_HANDLE`, falls back to `config.yaml`, defaults to `"LUMINA_Steve"`)
+   - `config.yaml`: added `participant_id: "LUMINA_Steve"` key
+   - `lumina_core/runtime_workers.py`: reads `engine.config.participant_id` dynamically
+   - `lumina_bible/workflows.py`: fallback string updated to `"LUMINA_Steve"`
+   - `lumina_os/frontend/leaderboard_view.py`: reads `LUMINA_TRADER_NAME` env var
+
+4. **v45 string literals eliminated**:
+   - `analysis_service.py`: `"v45_event_driven"` → `"event_driven"`, `"v45_vision"` → `"vision_analysis"`, `DEEP_ANALYSIS_V45` → `DEEP_ANALYSIS`, `"v45.1.1_cached"` → `"cached_fast_path"`
+   - `dashboard_service.py`: `"LUMINA v45 - Live Human Trading Partner"` → `"LUMINA v51 - ..."`
+   - `lumina_engine.py`: Dutch comment updated to reference `ApplicationContainer`
+   - `tests/test_runtime_workers.py`: test data `"chosen_strategy": "v45"` → `"event_driven"`
+
+5. **Backward-compat alias removed**:
+   - `container.py`: `engine.emotional_twin` alias removed
+   - `backtest_workers.py` and `analysis_service.py`: migrated to `engine.emotional_twin_agent` (canonical)
+
 | Module | Lines | Type | Status | Header |
 |--------|-------|------|--------|--------|
 | emotional_twin_agent.py | 357 | Full impl | ✅ | ✅ |
@@ -494,7 +530,7 @@ from lumina_agents.news_agent import NewsAgent
 | workflows.py | 199 | Merged | ✅ | ✅ |
 | bible_engine.py | ~150 | Core | ✅ | ✅ |
 | news_agent.py | ~100 | xAI agent | ✅ | ✅ |
-| lumina_v45.1.1.py | ~1000 | Entry | ✅ | ✅ |
+| lumina_runtime.py | ~1000 | Entry | ✅ | ✅ |
 | watchdog.py | ~200 | Entry | ✅ | ✅ |
 | nightly_infinite_sim.py | ~100 | Entry | ✅ | ✅ |
 

@@ -230,6 +230,14 @@ class EngineConfig(BaseModel):
     journal_pdf_dir: Path = Field(default_factory=lambda: Path(os.getenv("JOURNAL_PDF_DIR", "journal/pdf")))
     discord_webhook: str = Field(default_factory=lambda: os.getenv("DISCORD_WEBHOOK", ""))
     risk_profile: str = Field(default_factory=lambda: os.getenv("LUMINA_RISK_PROFILE", "Balanced").lower())
+    participant_id: str = Field(
+        default_factory=lambda: str(
+            os.getenv("LUMINA_TRADER_NAME")
+            or os.getenv("TRADERLEAGUE_PARTICIPANT_HANDLE")
+            or _config_yaml_value("participant_id", "LUMINA_Steve")
+            or "LUMINA_Steve"
+        ).strip()
+    )
     news_avoidance_minutes: int = Field(default_factory=lambda: int(_config_yaml_value("news_avoidance_minutes", 3) or 3))
     timeframes: dict[str, int] = Field(
         default_factory=lambda: {

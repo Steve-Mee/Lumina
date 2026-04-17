@@ -4,12 +4,10 @@ import pytest
 import pandas as pd
 import numpy as np
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from datetime import datetime
 
 from lumina_core.engine.multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
-from lumina_core.engine.dream_state import DreamState
-from lumina_core.engine.market_data_manager import MarketDataManager
 
 
 @pytest.fixture
@@ -317,7 +315,7 @@ class TestSwarmCycle:
 
     def test_apply_to_primary_dream_with_snapshot(self, swarm_manager):
         """Test dream state updates from swarm."""
-        snapshot = swarm_manager.run_cycle()
+        swarm_manager.run_cycle()
         updates = swarm_manager.apply_to_primary_dream()
         assert "swarm_ts" in updates
         assert "position_size_multiplier" in updates

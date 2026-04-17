@@ -484,7 +484,7 @@ class BacktesterEngine:
                 encoding="utf-8",
             )
 
-    def _apply_entry_fill(price: float, side: int, slip_ticks: float) -> float:
+    def _apply_entry_fill(self, price: float, side: int, slip_ticks: float) -> float:
         instrument = str(getattr(self.app.engine.config, "instrument", "MES"))
         return self.valuation_engine.apply_entry_fill(
             symbol=instrument,
@@ -493,7 +493,7 @@ class BacktesterEngine:
             slippage_ticks=slip_ticks,
         )
 
-    def _apply_exit_fill(price: float, side: int, slip_ticks: float) -> float:
+    def _apply_exit_fill(self, price: float, side: int, slip_ticks: float) -> float:
         instrument = str(getattr(self.app.engine.config, "instrument", "MES"))
         return self.valuation_engine.apply_exit_fill(
             symbol=instrument,

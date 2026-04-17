@@ -60,7 +60,6 @@ class HumanAnalysisService:
         return self.engine.cost_tracker
 
     def is_cache_valid(self, current_price: float, current_regime: str, pa_summary: str) -> bool:
-        app = self._app()
         with self.cache_lock:
             ts = self.last_deep_analysis["timestamp"]
             if ts is None:
@@ -143,7 +142,7 @@ class HumanAnalysisService:
                 "signal": signal,
                 "confidence": confidence,
                 "confluence_score": confidence,
-                "chosen_strategy": "v45_event_driven",
+                "chosen_strategy": "event_driven",
                 "stop": round(stop, 2) if stop else 0.0,
                 "target": round(target, 2) if target else 0.0,
                 "fib_levels": fib_levels,
@@ -184,7 +183,7 @@ class HumanAnalysisService:
                             "temperature": 0.2,
                         },
                         timeout=20,
-                        context="v45_vision",
+                        context="vision_analysis",
                     ) or {}
 
                 ai_fibs = vision_obj.get("ai_fibs", {}) if isinstance(vision_obj, dict) else {}
@@ -200,14 +199,14 @@ class HumanAnalysisService:
                 app.logger.error(f"Vision deep_analysis error [{code}]: {exc}")
 
         app.logger.info(
-            f"DEEP_ANALYSIS_V45,signal={consensus.get('signal','HOLD')},conf={float(consensus.get('confidence', 0.0)):.2f},regime={regime},vix={world_model['macro']['vix']:.1f}"
+            f"DEEP_ANALYSIS,signal={consensus.get('signal','HOLD')},conf={float(consensus.get('confidence', 0.0)):.2f},regime={regime},vix={world_model['macro']['vix']:.1f}"
         )
 
         if float(tracker.get("today", 0.0)) <= cost_before:
             tracker["today"] = float(tracker.get("today", 0.0)) + 0.08
 
         # EmotionalTwin correctie op deep-analysis result.
-        twin = getattr(self.engine, "emotional_twin", None)
+        twin = getattr(self.engine, "emotional_twin_agent", None)
         if twin is not None and hasattr(twin, "apply_correction"):
             corrected = twin.apply_correction(self.engine.get_current_dream_snapshot())
             self.engine.set_current_dream_fields(corrected)
@@ -361,7 +360,7 @@ class HumanAnalysisService:
                                     "fib_levels": cached.get("ai_fibs", {}),
                                     "swing_high": float(cached.get("swing_high", 0.0)),
                                     "swing_low": float(cached.get("swing_low", 0.0)),
-                                    "chosen_strategy": "v45.1.1_cached",
+                                    "chosen_strategy": "cached_fast_path",
                                 }
                             )
                         continue
@@ -391,3 +390,6 @@ class HumanAnalysisService:
                 code = format_error_code("ANALYSIS_LOOP", exc, fallback="MAIN_LOOP_FAILED")
                 app.logger.error(f"Main loop error [{code}]: {exc}")
                 time.sleep(10)
+
+
+AnalysisService = HumanAnalysisService

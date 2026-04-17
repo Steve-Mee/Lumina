@@ -3,7 +3,6 @@ Lumina v50 Security Module - Production-grade authentication, authorization, rat
 Fail-closed design: all security failures default to denial of access.
 """
 
-import hashlib
 import json
 import logging
 import os
@@ -33,6 +32,7 @@ class SecurityConfig:
             config_dict: Loaded config.yaml security section
         """
         self.config = config_dict or {}
+        use_env_fallback = config_dict is None
         
         # CORS settings
         self.cors_allowed_origins: list[str] = self.config.get("cors_allowed_origins", [])
@@ -45,7 +45,10 @@ class SecurityConfig:
             logger.warning("CORS allowed origins is empty; API will reject all cross-origin requests")
         
         # JWT settings
-        self.jwt_secret_key = os.getenv("LUMINA_JWT_SECRET_KEY") or self.config.get("jwt_secret_key", "")
+        if use_env_fallback:
+            self.jwt_secret_key = os.getenv("LUMINA_JWT_SECRET_KEY") or self.config.get("jwt_secret_key", "")
+        else:
+            self.jwt_secret_key = self.config.get("jwt_secret_key", "")
         if not self.jwt_secret_key:
             raise ValueError(
                 "JWT secret key is not set. "
@@ -154,7 +157,7 @@ class APIKeyAuthenticator:
     def verify_api_key(self, key: str) -> Optional[dict[str, Any]]:
         """Verify API key and return associated metadata. Returns None if invalid."""
         if key not in self.config.api_keys:
-            logger.warning(f"Invalid API key attempt")
+            logger.warning("Invalid API key attempt")
             return None
         
         key_meta = self.config.api_keys[key]

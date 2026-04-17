@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 from types import SimpleNamespace
 from unittest.mock import MagicMock
-from datetime import datetime
 
 from lumina_core.engine.swarm_manager import SwarmManager
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
@@ -88,7 +87,7 @@ class TestEmotionalTwinAndSwarmIntegration:
         """Verify swarm can update dream state with allocation context."""
         swarm = SwarmManager(integrated_engine)  # type: ignore[arg-type]
         
-        snapshot = swarm.run_cycle()
+        swarm.run_cycle()
         updates = swarm.apply_to_primary_dream()
         
         assert 'swarm_ts' in updates

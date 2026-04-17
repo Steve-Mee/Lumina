@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -15,7 +14,6 @@ from lumina_core.runtime.headless_runtime import (
     _generate_synthetic_ticks,
     _run_simulation,
     _validate_broker,
-    _check_session_guard,
     parse_duration_minutes,
 )
 

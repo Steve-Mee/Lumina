@@ -145,8 +145,8 @@ class ApplicationContainer:
     meta_agent_orchestrator: MetaAgentOrchestrator = field(init=False)
     
     # Voice/audio components
-    voice_recognizer: Optional[sr.Recognizer] = field(default=None, init=False)
-    tts_engine: Optional[pyttsx3.Engine] = field(default=None, init=False)
+    voice_recognizer: Optional[Any] = field(default=None, init=False)
+    tts_engine: Optional[Any] = field(default=None, init=False)
     
     # Instrument symbols
     swarm_symbols: list[str] = field(default_factory=list, init=False)
@@ -321,7 +321,6 @@ class ApplicationContainer:
         # Level 3: Agents and simulators
         self.emotional_twin_agent = EmotionalTwinAgent(engine=self.engine)
         self.engine.emotional_twin_agent = self.emotional_twin_agent  # Fase 3.1
-        self.engine.emotional_twin = self.emotional_twin_agent  # backward-compat alias
         self.infinite_simulator = InfiniteSimulator(
             runtime=self.runtime_context,
             market_data_service=self.market_data_service,

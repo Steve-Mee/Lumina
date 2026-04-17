@@ -5,10 +5,10 @@ from pathlib import Path
 
 
 def _load_oop_entrypoint_module():
-    module_path = Path(__file__).resolve().parents[1] / "lumina_v45.1.1.py"
-    spec = importlib.util.spec_from_file_location("lumina_v45_1_1", module_path)
+    module_path = Path(__file__).resolve().parents[1] / "lumina_runtime.py"
+    spec = importlib.util.spec_from_file_location("lumina_runtime", module_path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Unable to load lumina_v45.1.1.py")
+        raise RuntimeError("Unable to load lumina_runtime.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

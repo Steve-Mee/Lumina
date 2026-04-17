@@ -49,7 +49,7 @@ def _post_reflection_to_lumina_os(app: Any, ref_json: dict[str, Any], pnl_dollar
     trader_name = str(
         os.getenv("LUMINA_TRADER_NAME")
         or os.getenv("TRADERLEAGUE_PARTICIPANT_HANDLE")
-        or "LUMINA_v45_Steve"
+        or "LUMINA_Steve"
     )
     payload = {
         "trader_name": trader_name,

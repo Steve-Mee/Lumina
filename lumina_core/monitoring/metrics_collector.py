@@ -214,8 +214,11 @@ class MetricsCollector:
                     if entry.type_ == MetricType.HISTOGRAM and entry._window:
                         sd = sorted(entry._window)
                         n = len(sd)
+                        extra_labels = ",".join(
+                            f'{k}="{v}"' for k, v in sorted(entry.labels.items())
+                        )
                         extra = (
-                            f",{','.join(f'{k}=\"{v}\"' for k, v in sorted(entry.labels.items()))}"
+                            f",{extra_labels}"
                             if entry.labels
                             else ""
                         )

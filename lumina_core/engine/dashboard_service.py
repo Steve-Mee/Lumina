@@ -600,7 +600,7 @@ class DashboardService:
         dash_app.layout = dbc.Container(
             [
                 html.H1(
-                    "LUMINA v45 - Live Human Trading Partner",
+                    "LUMINA v51 - Live Human Trading Partner",
                     style={"textAlign": "center", "color": "#00ff88", "marginBottom": "20px"},
                 ),
                 html.Div(

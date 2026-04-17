@@ -16,7 +16,7 @@ from backend.evolution_endpoints import router as evolution_router
 from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
 
 # Import security module — lumina_core is installed as a package, no sys.path needed
-from lumina_core.security import get_security_module, TokenPayload
+from lumina_core.security import get_security_module
 from lumina_core.monitoring import ObservabilityService
 
 logger = logging.getLogger(__name__)

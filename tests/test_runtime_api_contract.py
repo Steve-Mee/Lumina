@@ -1,8 +1,8 @@
 """
 Regression test for runtime module API contracts.
 
-Ensures that critical functions exposed on lumina_v45.1.1 remain available
-for legacy workers and validator code.
+Ensures that critical functions exposed on lumina_runtime remain available
+for validators and runtime callers.
 
 This catches attribute errors early and prevents them from surfacing in production logs.
 """
@@ -19,10 +19,10 @@ sys.path.insert(0, str(project_root))
 
 
 def _load_runtime_module():
-    module_path = Path(__file__).resolve().parents[1] / "lumina_v45.1.1.py"
-    spec = importlib.util.spec_from_file_location("lumina_v45_1_1_api_contract", module_path)
+    module_path = Path(__file__).resolve().parents[1] / "lumina_runtime.py"
+    spec = importlib.util.spec_from_file_location("lumina_runtime_api_contract", module_path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("Unable to load lumina_v45.1.1.py")
+        raise RuntimeError("Unable to load lumina_runtime.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)

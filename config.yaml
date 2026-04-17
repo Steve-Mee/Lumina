@@ -3,6 +3,10 @@
 # "real" = capital preservation ONLY – every conservative cap enforced
 mode: "sim"
 
+# ── TRADER IDENTITY ──────────────────────────────────────────────────────────
+# Overridden by env vars LUMINA_TRADER_NAME or TRADERLEAGUE_PARTICIPANT_HANDLE
+participant_id: "LUMINA_Steve"
+
 sim:
   aggressive_evolution: true         # SelfEvolutionMetaAgent auto-applies without human approval
   approval_required: false           # Mutations applied immediately
@@ -83,7 +87,7 @@ trading:
   news_avoidance_high_impact_pre_minutes: 15
   news_avoidance_high_impact_post_minutes: 10
   
-  # Default (legacy support)
+  # Kept for compatibility with older configs; prefer news_avoidance_pre_minutes / news_avoidance_post_minutes
   news_avoidance_minutes: 3
   
   news_impact_multipliers:

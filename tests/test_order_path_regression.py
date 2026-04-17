@@ -13,10 +13,9 @@ from __future__ import annotations
 from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pandas as pd
-import pytest
 
 from lumina_core.engine.operations_service import OperationsService
 from lumina_core.runtime_context import RuntimeContext

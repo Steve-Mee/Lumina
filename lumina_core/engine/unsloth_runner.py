@@ -66,7 +66,7 @@ def main() -> int:
         random_state=3407,
     )
 
-    dataset = load_dataset("json", data_files=str(dataset_path), split="train")
+    dataset = load_dataset("json", data_files=str(dataset_path), split="train")  # nosec B615
 
     def format_example(example: dict) -> dict:
         messages = example.get("messages")

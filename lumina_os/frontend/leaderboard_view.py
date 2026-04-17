@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+import os
 
 import pandas as pd
 import plotly.express as px
@@ -69,7 +70,8 @@ def render_leaderboard_tab(api_base_url: str) -> None:
         if last_error:
             st.warning(f"Last reconciler error: {last_error}")
 
-    recent_payload = _get_json(f"{api_base_url}/trades?limit=10&participant=LUMINA_v45_Steve")
+    _participant = os.getenv("LUMINA_TRADER_NAME") or os.getenv("TRADERLEAGUE_PARTICIPANT_HANDLE") or "LUMINA_Steve"
+    recent_payload = _get_json(f"{api_base_url}/trades?limit=10&participant={_participant}")
     recent_df = pd.DataFrame(recent_payload if isinstance(recent_payload, list) else [])
     if not recent_df.empty:
         cols = [
@@ -90,7 +92,7 @@ def render_leaderboard_tab(api_base_url: str) -> None:
         ]
         st.dataframe(recent_df[cols], width='stretch')
 
-    chart_payload = _get_json(f"{api_base_url}/trades?limit=100&participant=LUMINA_v45_Steve")
+    chart_payload = _get_json(f"{api_base_url}/trades?limit=100&participant={_participant}")
     chart_df = pd.DataFrame(chart_payload if isinstance(chart_payload, list) else [])
     if not chart_df.empty and "ts" in chart_df.columns:
         chart_df["ts"] = pd.to_datetime(chart_df["ts"], errors="coerce")

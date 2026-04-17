@@ -21,7 +21,7 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from fastapi import APIRouter, HTTPException, Header, Query
 from fastapi.responses import PlainTextResponse
 
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])

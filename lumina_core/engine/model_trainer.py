@@ -177,7 +177,7 @@ class ModelTrainer:
                     f"PARAMETER num_ctx {context_length}",
                     f"PARAMETER temperature {temperature}",
                     'SYSTEM "You are Lumina trading reasoning. Respond in strict JSON whenever a trade decision is requested."',
-                    f'TEMPLATE "{{{{ if .System }}}}<|system|>{{{{ .System }}}}{{{{ end }}}}{{{{ if .Prompt }}}}<|user|>{{{{ .Prompt }}}}{{{{ end }}}}<|assistant|>"',
+                    'TEMPLATE "{{ if .System }}<|system|>{{ .System }}{{ end }}{{ if .Prompt }}<|user|>{{ .Prompt }}{{ end }}<|assistant|>"',
                     f'# model_name={model_name}',
                 ]
             )

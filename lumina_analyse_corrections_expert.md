@@ -380,7 +380,7 @@ Voor elke taak moet dit expliciet gevalideerd worden:
 2. Gebruik import-audit om legacy gebruik te meten.
 3. Verwijder pas na nul actieve dependents.
 - Betrokken bestanden:
-1. [lumina_v45.1.1.py](lumina_v45.1.1.py)
+1. [lumina_runtime.py](lumina_runtime.py)
 2. [lumina_core/engine/FastPathEngine.py](lumina_core/engine/FastPathEngine.py)
 3. [lumina_core/engine/TapeReadingAgent.py](lumina_core/engine/TapeReadingAgent.py)
 4. [lumina_core/engine/AdvancedBacktesterEngine.py](lumina_core/engine/AdvancedBacktesterEngine.py)

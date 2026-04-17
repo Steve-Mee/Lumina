@@ -5,7 +5,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Sequence
 
@@ -106,46 +106,68 @@ def _run_real_runtime(*, run_human_loop: bool = False) -> int:
     return 0
 
 
-def _run_headless_sim(args: argparse.Namespace) -> int:
-    os.environ["LUMINA_MODE"] = "sim"
-    os.environ["TRADE_MODE"] = "sim"
-    os.environ["LUMINA_ENFORCE_ENV_RUNTIME_MODE"] = "true"
-    os.environ["BROKER_BACKEND"] = str(args.broker).strip().lower()
+def _run_headless_sim(args: argparse.Namespace, *, mode_label: str = "sim") -> int:
+    normalized_label = "sim" if str(mode_label).strip().lower() not in {"paper", "sim"} else str(mode_label).strip().lower()
+    managed_keys = [
+        "LUMINA_MODE",
+        "TRADE_MODE",
+        "LUMINA_ENFORCE_ENV_RUNTIME_MODE",
+        "BROKER_BACKEND",
+        "LUMINA_AGGRESSIVE_SIM",
+        "LUMINA_SIM_OVERNIGHT",
+        "LUMINA_STABILITY_CHECK",
+        "VOICE_ENABLED",
+        "LUMINA_JWT_SECRET_KEY",
+        "CROSSTRADE_TOKEN",
+    ]
+    previous_env = {key: os.environ.get(key) for key in managed_keys}
 
-    os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
-    os.environ["LUMINA_SIM_OVERNIGHT"] = "true" if bool(args.overnight_sim) else "false"
-    os.environ["LUMINA_STABILITY_CHECK"] = "true" if bool(args.stability_check) else "false"
+    try:
+        os.environ["LUMINA_MODE"] = normalized_label
+        os.environ["TRADE_MODE"] = normalized_label
+        os.environ["LUMINA_ENFORCE_ENV_RUNTIME_MODE"] = "true"
+        os.environ["BROKER_BACKEND"] = str(args.broker).strip().lower()
 
-    os.environ.setdefault("VOICE_ENABLED", "False")
-    os.environ.setdefault("LUMINA_JWT_SECRET_KEY", "headless-validation-jwt-secret")
-    if str(args.broker).lower() == "live":
-        os.environ.setdefault("CROSSTRADE_TOKEN", "headless-validation-stub")
+        os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
+        os.environ["LUMINA_SIM_OVERNIGHT"] = "true" if bool(args.overnight_sim) else "false"
+        os.environ["LUMINA_STABILITY_CHECK"] = "true" if bool(args.stability_check) else "false"
 
-    if bool(args.stability_check) and not bool(args.headless):
-        report = generate_stability_report(limit=0)
-        print(format_stability_report(report, color=True), flush=True)
+        os.environ.setdefault("VOICE_ENABLED", "False")
+        os.environ.setdefault("LUMINA_JWT_SECRET_KEY", "headless-validation-jwt-secret")
+        if str(args.broker).lower() == "live":
+            os.environ.setdefault("CROSSTRADE_TOKEN", "headless-validation-stub")
+
+        if bool(args.stability_check) and not bool(args.headless):
+            report = generate_stability_report(limit=0)
+            print(format_stability_report(report, color=True), flush=True)
+            return 0
+
+        duration_minutes = parse_duration_minutes(str(args.duration))
+
+        container: ApplicationContainer | None = None
+        should_try_container = str(args.broker).lower() == "live" and normalized_label != "paper"
+        if should_try_container:
+            try:
+                container = create_application_container()
+            except Exception:
+                container = None
+
+        runtime = HeadlessRuntime(container=container)
+        runtime.run(
+            duration_minutes=duration_minutes,
+            mode=normalized_label,
+            broker_mode=str(args.broker),
+            aggressive_sim=bool(args.aggressive_sim),
+            overnight_sim=bool(args.overnight_sim),
+            stability_check=bool(args.stability_check),
+        )
         return 0
-
-    duration_minutes = parse_duration_minutes(str(args.duration))
-
-    container: ApplicationContainer | None = None
-    should_try_container = str(args.broker).lower() == "live"
-    if should_try_container:
-        try:
-            container = create_application_container()
-        except Exception:
-            container = None
-
-    runtime = HeadlessRuntime(container=container)
-    runtime.run(
-        duration_minutes=duration_minutes,
-        mode="sim",
-        broker_mode=str(args.broker),
-        aggressive_sim=bool(args.aggressive_sim),
-        overnight_sim=bool(args.overnight_sim),
-        stability_check=bool(args.stability_check),
-    )
-    return 0
+    finally:
+        for key, value in previous_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def _run_nightly() -> int:
@@ -218,7 +240,9 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
     if resolved_mode == "sim":
         if not args.headless:
             args.headless = True
-        return _run_headless_sim(args)
+        requested_mode = str(args.mode).strip().lower()
+        headless_mode_label = "paper" if requested_mode == "paper" else "sim"
+        return _run_headless_sim(args, mode_label=headless_mode_label)
 
     if bool(args.real_safe):
         os.environ.setdefault("LUMINA_REAL_SAFE", "true")

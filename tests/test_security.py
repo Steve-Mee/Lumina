@@ -4,9 +4,7 @@ Run: pytest tests/test_security.py -v
 """
 
 import json
-import os
 import pytest
-from unittest.mock import MagicMock, patch
 
 from lumina_core.security import (
     SecurityConfig,

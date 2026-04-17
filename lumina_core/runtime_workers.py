@@ -1,8 +1,7 @@
 import asyncio
-import json
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 import requests
 
@@ -49,7 +48,7 @@ def _push_trader_league_trade(
             }
         )
     payload = {
-        "participant": "LUMINA_v45_Steve",
+        "participant": str(getattr(getattr(app, "config", None), "participant_id", None) or "LUMINA_Steve"),
         "mode": mode,
         "symbol": symbol,
         "signal": signal,
@@ -855,6 +854,8 @@ def supervisor_loop(app: RuntimeContext) -> None:
                         app.logger.error(f"Swarm trade register error: {exc}")
 
                 if app.engine.config.trade_mode == "paper":
+                    reflection_payload = {}
+                    chart_payload = None
                     _push_trader_league_trade(
                         app,
                         mode=app.engine.config.trade_mode,
@@ -864,8 +865,8 @@ def supervisor_loop(app: RuntimeContext) -> None:
                         exit_price=float(price),
                         qty=int(abs(app.sim_position_qty)),
                         pnl_dollars=float(pnl_dollars),
-                        reflection=ref_json if "ref_json" in locals() else {},
-                        chart_base64=chart_base64 if "chart_base64" in locals() else None,
+                        reflection=reflection_payload,
+                        chart_base64=chart_payload,
                     )
 
                 app.sim_position_qty = 0
@@ -928,3 +929,7 @@ def supervisor_loop(app: RuntimeContext) -> None:
             last_save = time.time()
 
         time.sleep(1)
+
+
+def run_forever_loop(app: RuntimeContext) -> None:
+    supervisor_loop(app)

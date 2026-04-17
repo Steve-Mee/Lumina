@@ -5,7 +5,6 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import tempfile
-import json
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -14,9 +13,7 @@ import pandas as pd
 from lumina_core.engine.risk_controller import (
     HardRiskController,
     RiskLimits,
-    RiskState,
 )
-from lumina_core.engine.margin_snapshot_provider import MarginSnapshot
 
 
 class _StubPortfolioAllocator:
