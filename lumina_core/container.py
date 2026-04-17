@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
@@ -83,7 +84,9 @@ class ConfigService:
 
     def load(self) -> EngineConfig:
         """Load env/yaml-backed runtime config after dotenv is available."""
-        load_dotenv()
+        # Avoid python-dotenv fallback introspection on __main__, which can recurse
+        # when module-level __getattr__ is present in runtime entrypoints.
+        load_dotenv(dotenv_path=Path.cwd() / ".env")
         return EngineConfig()
 
 

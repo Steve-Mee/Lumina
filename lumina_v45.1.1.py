@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import sys
 from functools import lru_cache
 
 from lumina_core.container import ApplicationContainer, create_application_container
@@ -44,7 +45,9 @@ def __getattr__(name: str):
     attr_map = {
         "CONFIG": "config",
         "ENGINE": "engine",
+        "engine": "engine",
         "RUNTIME_CONTEXT": "runtime_context",
+        "runtime_context": "runtime_context",
         "logger": "logger",
         "SWARM_SYMBOLS": "swarm_symbols",
         "INSTRUMENT": "primary_instrument",
@@ -68,7 +71,18 @@ def __getattr__(name: str):
     
     if name in attr_map:
         return getattr(container, attr_map[name])
-    
+
+    if name == "log_thought":
+        return container.operations_service.log_thought
+    if name == "detect_market_regime":
+        return container.engine.detect_market_regime
+    if name == "generate_multi_tf_chart":
+        return container.visualization_service.generate_multi_tf_chart
+    if name == "tk":
+        import tkinter as tk
+
+        return tk
+
     raise AttributeError(f"module 'lumina_v45.1.1' has no attribute '{name}'")
 
 
@@ -91,6 +105,18 @@ def main() -> None:
     and starts the trading loop.
     """
     container = get_container()
+    runtime_app = sys.modules[__name__]
+    container.engine.bind_app(runtime_app)
+    container.runtime_context.app = runtime_app
+
+    # Publish the compatibility API onto the runtime module for legacy workers.
+    for exported_name, exported_fn in create_public_api(container).items():
+        setattr(runtime_app, exported_name, exported_fn)
+    setattr(runtime_app, "engine", container.engine)
+    setattr(runtime_app, "runtime_context", container.runtime_context)
+    setattr(runtime_app, "logger", container.logger)
+    setattr(runtime_app, "INSTRUMENT", container.primary_instrument)
+    setattr(runtime_app, "SWARM_SYMBOLS", list(container.swarm_symbols))
     
     print(f"🚀 LUMINA OOP runtime started (Mode: {container.config.trade_mode.upper()})")
     print(f"🕸️ Swarm active on symbols: {', '.join(container.swarm_symbols)}")

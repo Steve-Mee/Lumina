@@ -143,7 +143,11 @@ class VisualizationService:
         )
 
         img_bytes = BytesIO()
-        fig.write_image(img_bytes, format="png", scale=2)
+        try:
+            fig.write_image(img_bytes, format="png", scale=2)
+        except Exception as exc:
+            app.logger.warning(f"CHART_GEN_EXPORT_SKIPPED,reason={exc}")
+            return None
         img_bytes.seek(0)
         base64_img = base64.b64encode(img_bytes.read()).decode("utf-8")
 
