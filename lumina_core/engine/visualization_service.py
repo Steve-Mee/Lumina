@@ -8,7 +8,7 @@ from datetime import datetime
 from io import BytesIO
 from typing import Any, Callable
 
-from PIL import Image, ImageTk
+from PIL import Image
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -39,6 +39,12 @@ class VisualizationService:
         if self.dashboard_launcher is None:
             raise RuntimeError("VisualizationService.dashboard_launcher is not configured")
         self.dashboard_launcher()
+
+    @staticmethod
+    def _create_photo_image(pil_img: Image.Image) -> Any:
+        from PIL import ImageTk
+
+        return ImageTk.PhotoImage(pil_img)
 
     def generate_multi_tf_chart(self, ai_fibs: dict | None = None) -> str | None:
         app = self._app()
@@ -276,7 +282,7 @@ class VisualizationService:
             pil_img = Image.open(BytesIO(img_data)).resize((1400, 800), Image.Resampling.LANCZOS)
             with self.chart_update_lock:
                 win: Any = self.live_chart_window
-                self.latest_chart_image = ImageTk.PhotoImage(pil_img)
+                self.latest_chart_image = self._create_photo_image(pil_img)
                 setattr(app, "latest_chart_image", self.latest_chart_image)
                 win.chart_label.config(image=self.latest_chart_image)
                 win.chart_label.image = self.latest_chart_image

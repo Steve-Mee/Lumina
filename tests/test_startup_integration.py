@@ -29,7 +29,8 @@ def test_main_calls_bootstrap_then_forever_loop(monkeypatch):
     monkeypatch.setattr(module, "get_container", lambda: dummy_container)
     monkeypatch.setattr(module, "bootstrap_runtime", lambda container: calls.append("bootstrap_runtime"))
 
-    module.main()
+    # Force the legacy no-CLI startup path; pytest injects argv values by default.
+    module.main([])
 
     assert calls == ["bootstrap_runtime", "run_forever_loop"]
 
@@ -39,7 +40,7 @@ def test_legacy_symbol_bridge_maps_to_container_attributes(monkeypatch):
 
     dummy_container = SimpleNamespace(
         config=object(),
-        engine=object(),
+        engine=SimpleNamespace(detect_market_regime=lambda *_args, **_kwargs: None),
         analysis_service=object(),
     )
     monkeypatch.setattr(module, "get_container", lambda: dummy_container)

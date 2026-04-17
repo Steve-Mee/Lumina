@@ -11,6 +11,9 @@ from lumina_core.engine.model_catalog import ModelCatalog
 from lumina_core.engine.setup_service import SetupService
 
 
+CATALOG_PATH = Path(__file__).resolve().parents[2] / "lumina_model_catalog.json"
+
+
 def test_hardware_inspector_capture_uses_recommendation(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(platform, "system", lambda: "Linux")
@@ -47,7 +50,7 @@ def test_setup_service_applies_recommended_config(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     service = SetupService(config_path=config_path)
-    catalog = ModelCatalog(Path("c:/NinjaTraderAI_Bot/lumina_model_catalog.json"))
+    catalog = ModelCatalog(CATALOG_PATH)
     model = catalog.get("qwen3.5-9b")
     assert model is not None
     snapshot = HardwareSnapshot(
@@ -131,7 +134,7 @@ def test_setup_service_upgrade_model_uses_cached_hardware(monkeypatch, tmp_path:
             "R", (), {"name": "model_pull", "success": True, "message": descriptor.key, "command": "ollama pull"}
         )(),
     )
-    catalog = ModelCatalog(Path("c:/NinjaTraderAI_Bot/lumina_model_catalog.json"))
+    catalog = ModelCatalog(CATALOG_PATH)
     model = catalog.get("qwen3.5-9b")
     assert model is not None
 

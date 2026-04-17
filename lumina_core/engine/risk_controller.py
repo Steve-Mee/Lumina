@@ -764,9 +764,13 @@ class HardRiskController:
 
         seed = int(limits.mc_drawdown_random_seed) + int(len(self.state.trade_history))
         rng = np.random.default_rng(seed)
-        path_count = int(max(1000, limits.mc_drawdown_paths))
+        configured_path_count = int(max(1000, limits.mc_drawdown_paths))
+        horizon_days = max(1, int(limits.mc_drawdown_horizon_days))
+        max_steps = int(max(100_000, float(os.getenv("LUMINA_MC_DRAWDOWN_MAX_STEPS", "500000"))))
+        max_paths_for_budget = max(1000, max_steps // horizon_days)
+        effective_path_count = int(min(configured_path_count, max_paths_for_budget))
         dist: list[float] = []
-        for _ in range(path_count):
+        for _ in range(effective_path_count):
             dist.append(
                 self._simulate_path_drawdown_pct(
                     regime_returns=regime_returns,
@@ -790,7 +794,7 @@ class HardRiskController:
         self.state.mc_drawdown_worst_pct = worst
         self.state.mc_drawdown_threshold_pct = threshold_pct
         self.state.mc_drawdown_samples = int(len(global_returns))
-        self.state.mc_drawdown_paths_run = int(path_count)
+        self.state.mc_drawdown_paths_run = int(effective_path_count)
 
         breached = bool(worst > threshold_pct)
         should_block = bool(breached and self._mc_enforcement_enabled())
@@ -803,7 +807,8 @@ class HardRiskController:
             "breached": breached,
             "decision": "block" if should_block else "allow",
             "mode": mode,
-            "paths": float(path_count),
+            "paths": float(configured_path_count),
+            "paths_effective": float(effective_path_count),
             "horizon_days": float(limits.mc_drawdown_horizon_days),
             "projected_max_drawdown_pct": worst,
             "p50_max_drawdown_pct": p50,
