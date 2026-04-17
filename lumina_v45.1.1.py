@@ -118,18 +118,18 @@ def main() -> None:
     setattr(runtime_app, "INSTRUMENT", container.primary_instrument)
     setattr(runtime_app, "SWARM_SYMBOLS", list(container.swarm_symbols))
     
-    print(f"🚀 LUMINA OOP runtime started (Mode: {container.config.trade_mode.upper()})")
-    print(f"🕸️ Swarm active on symbols: {', '.join(container.swarm_symbols)}")
+    print(f"LUMINA OOP runtime started (Mode: {container.config.trade_mode.upper()})")
+    print(f"Swarm active on symbols: {', '.join(container.swarm_symbols)}")
     
     # Bootstrap all services and daemons
     bootstrap_runtime(container)
     
     # Start the main trading loop
     if container.config.use_human_main_loop:
-        print("✨ Human-like main loop starting...")
+        print("Human-like main loop starting...")
         threading.Thread(target=container.analysis_service.run_main_loop, daemon=True).start()
     else:
-        print("ℹ️ USE_HUMAN_MAIN_LOOP=False -> human-like loop not started")
+        print("USE_HUMAN_MAIN_LOOP=False -> human-like loop not started")
     
     # Run the forever loop (blocking)
     container.operations_service.run_forever_loop()
@@ -139,7 +139,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n🛑 Shutdown signal received")
+        print("\nShutdown signal received")
     except Exception as e:
         get_container().logger.error(f"Fatal error: {e}", exc_info=True)
         raise

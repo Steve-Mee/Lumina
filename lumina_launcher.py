@@ -194,13 +194,51 @@ def _pid_is_alive(pid: int) -> bool:
         return False
 
 
+def _pid_command_line(pid: int) -> str:
+    if pid <= 0:
+        return ""
+    try:
+        if os.name == "nt":
+            query = f"(Get-CimInstance Win32_Process -Filter \"ProcessId = {pid}\").CommandLine"
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            return (result.stdout or "").strip()
+        proc_cmdline = Path(f"/proc/{pid}/cmdline")
+        if not proc_cmdline.exists():
+            return ""
+        raw = proc_cmdline.read_text(encoding="utf-8", errors="replace")
+        return raw.replace("\x00", " ").strip()
+    except Exception:
+        return ""
+
+
+def _pid_matches_runtime(pid: int, expected_command: list[str]) -> bool:
+    cmdline = _pid_command_line(pid).lower()
+    if not cmdline:
+        return False
+    runtime_token = str(RUNTIME_ENTRY).lower()
+    if runtime_token not in cmdline:
+        return False
+    expected_python = str(expected_command[0]).lower() if expected_command else ""
+    if expected_python and Path(expected_python).name.lower() not in cmdline:
+        return False
+    return True
+
+
 def _process_is_alive() -> bool:
     proc = st.session_state.get("bot_process")
     if proc is not None and proc.poll() is None:
         return True
+    st.session_state.bot_process = None
     state = _load_process_state()
+    command = state.get("command", [])
+    expected_command = command if isinstance(command, list) else []
     pid = int(state.get("pid", 0) or 0)
-    if _pid_is_alive(pid):
+    if _pid_is_alive(pid) and _pid_matches_runtime(pid, expected_command):
         return True
     _clear_process_state()
     return False
