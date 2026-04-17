@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from lumina_core.engine.audit_log_service import AuditLogService
-from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
+from lumina_core.engine.risk_controller import HardRiskController, RiskLimits, risk_limits_from_config
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 
 
@@ -110,3 +110,59 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
     assert risk_gate["agents_involved"][0].get("topic", "").startswith("agent.")
     assert "lineage" in risk_gate["agents_involved"][0]
     assert risk_gate.get("execution_aggregate_lineage", {}).get("topic") == "execution.aggregate"
+
+
+def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Path) -> None:
+    audit_path = tmp_path / "trade_decision_audit.jsonl"
+    limits = risk_limits_from_config(
+        {
+            "mode": "real",
+            "risk_controller": {
+                "enforce_session_guard": False,
+                "mc_drawdown_threshold_pct": 95.0,
+            },
+        }
+    )
+    risk_controller = HardRiskController(limits, enforce_rules=True)
+    for i in range(60):
+        pnl = 30.0 if i % 3 else -20.0
+        risk_controller.record_trade_result("MES", "TRENDING", pnl=pnl, risk_taken=100.0)
+
+    engine = SimpleNamespace(
+        config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
+        risk_controller=risk_controller,
+        session_guard=None,
+        current_regime_snapshot={
+            "label": "TRENDING",
+            "risk_state": "NORMAL",
+            "adaptive_policy": {"risk_multiplier": 1.0, "cooldown_minutes": 30},
+            "features": {"realized_vol_ratio": 1.1},
+        },
+        market_regime="TRENDING",
+        observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
+        audit_log_service=AuditLogService(path=audit_path, enabled=True, fail_closed_real=True),
+        get_current_dream_snapshot=lambda: {
+            "chosen_strategy": "ppo_live_policy",
+            "confidence": 0.77,
+            "expected_value": 6.0,
+            "reason": "default config validation",
+        },
+    )
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="TRENDING",
+        proposed_risk=100.0,
+    )
+
+    assert allowed is True
+    assert reason == "OK"
+
+    lines = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    risk_gate_events = [row for row in lines if str(row.get("stage")) == "risk_gate"]
+    assert risk_gate_events, "Expected risk_gate audit event for active pre-trade path"
+    risk_gate = risk_gate_events[-1]
+    mc = risk_gate.get("monte_carlo", {}) if isinstance(risk_gate.get("monte_carlo", {}), dict) else {}
+    assert int(float(mc.get("paths", 0.0) or 0.0)) == 10000
+    assert int(float(mc.get("horizon_days", 0.0) or 0.0)) == 252
