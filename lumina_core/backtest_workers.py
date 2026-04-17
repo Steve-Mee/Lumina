@@ -7,7 +7,7 @@ from lumina_core.runtime_context import RuntimeContext
 
 
 def run_backtest_on_snapshot(app: RuntimeContext, snapshot: list[dict[str, Any]]) -> None:
-    print(f"🔬 Auto-backtest started on {len(snapshot)} ticks")
+    app.logger.info(f"Auto-backtest started on {len(snapshot)} ticks")
     results = BacktesterEngine(app=app).generate_full_report(snapshot)
 
     trades = int(results.get("trades", 0))
@@ -82,7 +82,7 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
         with app.live_data_lock:
             if len(app.ohlc_1min) >= 7200 and not app.is_market_open():
                 snapshot = app.ohlc_1min.tail(14400).copy()
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔬 Starting ADVANCED backtest...")
+                app.logger.info(f"Starting ADVANCED backtest...")
 
                 # 1. Realistic base
                 base_res = app.engine.backtester.run_backtest_on_snapshot(snapshot)

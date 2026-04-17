@@ -247,6 +247,12 @@ def create_public_api(container: ApplicationContainer) -> dict[str, Callable]:
         "save_state": container.engine.save_state,
         "load_state": container.engine.load_state,
         "calculate_adaptive_risk_and_qty": container.engine.calculate_adaptive_risk_and_qty,
+        "get_current_dream_snapshot": container.engine.get_current_dream_snapshot,
+        "generate_price_action_summary": container.engine.generate_price_action_summary,
+        "is_significant_event": container.engine.is_significant_event,
+        
+        # Operations service
+        "get_mtf_snapshots": container.operations_service.get_mtf_snapshots,
         
         # TraderLeague integration
         "publish_traderleague_trade_close": lambda **kwargs: publish_traderleague_trade_close(container, **kwargs),

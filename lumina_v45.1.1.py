@@ -41,7 +41,7 @@ def __getattr__(name: str):
     """
     container = get_container()
     
-    # Map old global names to container attributes
+    # Map old global names to container attributes (direct service access)
     attr_map = {
         "CONFIG": "config",
         "ENGINE": "engine",
@@ -72,15 +72,22 @@ def __getattr__(name: str):
     if name in attr_map:
         return getattr(container, attr_map[name])
 
-    if name == "log_thought":
-        return container.operations_service.log_thought
-    if name == "detect_market_regime":
-        return container.engine.detect_market_regime
-    if name == "generate_multi_tf_chart":
-        return container.visualization_service.generate_multi_tf_chart
+    # Explicit legacy function mappings (for defensive compatibility)
+    legacy_function_map = {
+        "log_thought": lambda: container.operations_service.log_thought,
+        "detect_market_regime": lambda: container.engine.detect_market_regime,
+        "generate_multi_tf_chart": lambda: container.visualization_service.generate_multi_tf_chart,
+        "get_current_dream_snapshot": lambda: container.engine.get_current_dream_snapshot,
+        "get_mtf_snapshots": lambda: container.operations_service.get_mtf_snapshots,
+        "generate_price_action_summary": lambda: container.engine.generate_price_action_summary,
+        "is_significant_event": lambda: container.engine.is_significant_event,
+    }
+    
+    if name in legacy_function_map:
+        return legacy_function_map[name]()
+    
     if name == "tk":
         import tkinter as tk
-
         return tk
 
     raise AttributeError(f"module 'lumina_v45.1.1' has no attribute '{name}'")

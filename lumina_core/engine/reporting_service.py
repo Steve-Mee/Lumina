@@ -279,7 +279,7 @@ Wat moet er verbeterd worden? Geef JSON met: reflection, suggested_bible_updates
             if isinstance(ref, dict):
                 if ref.get("suggested_bible_updates"):
                     self.engine.evolve_bible(ref["suggested_bible_updates"])
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] 📊 BACKTEST REFLECTION: {ref.get('reflection','')[:120]}")
+                self.engine.logger.info(f"Backtest reflection: {ref.get('reflection','')[:120]}")
                 app.store_experience_to_vector_db(
                     context=f"Backtest Reflection: Sharpe {backtest_results['sharpe']}, Winrate {backtest_results['winrate']:.1%}",
                     metadata={"type": "backtest_reflection", "date": datetime.now().isoformat()},

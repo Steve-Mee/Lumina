@@ -367,25 +367,24 @@ class HumanAnalysisService:
                         continue
 
                     if app.is_significant_event(current_price, previous_price, regime):
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🔥 Significant event → diepe analyse")
+                        app.logger.info(f"Significant event detected at {current_price} → deep analysis triggered")
                         self.deep_analysis(current_price, regime, mtf_data, pa_summary)
                     else:
                         tape_signal = dict(getattr(self.engine.market_data, "last_tape_signal", {}) or {})
                         if bool(tape_signal.get("fast_path_trigger", False)):
-                            print(
-                                f"[{datetime.now().strftime('%H:%M:%S')}] ⚡ Tape momentum trigger → diepe analyse "
-                                f"({tape_signal.get('reason', '')})"
+                            app.logger.info(
+                                f"Tape momentum trigger detected ({tape_signal.get('reason', '')}) → deep analysis"
                             )
                             self.deep_analysis(current_price, regime, mtf_data, pa_summary)
                         else:
-                            print(f"[{datetime.now().strftime('%H:%M:%S')}] 🟢 Lichte scan – geen diepe analyse nodig")
+                            app.logger.debug(f"Light scan at {current_price} – no deep analysis needed")
 
                 if int(datetime.now().second) == 0:
                     tracker = self._cost_tracker()
-                    print(
-                        f"💰 Kosten vandaag: ${float(tracker.get('today', 0.0)):.2f} | "
-                        f"Cached: {int(tracker.get('cached_analyses', 0))} | "
-                        f"Reasoning: {int(tracker.get('reasoning_tokens', 0))} tokens"
+                    app.logger.info(
+                        f"Cost report | Today: ${float(tracker.get('today', 0.0)):.2f} | "
+                        f"Cached analyses: {int(tracker.get('cached_analyses', 0))} | "
+                        f"Reasoning tokens: {int(tracker.get('reasoning_tokens', 0))}"
                     )
                 time.sleep(5)
             except Exception as exc:

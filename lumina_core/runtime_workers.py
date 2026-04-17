@@ -901,8 +901,8 @@ def supervisor_loop(app: RuntimeContext) -> None:
             rl_bias = ""
             if isinstance(rl_action, dict):
                 rl_bias = f" | RL {int(rl_action.get('signal', 0))}:{float(rl_action.get('qty_pct', 1.0)):.2f}"
-            print(
-                f"[{now.strftime('%H:%M:%S')}] 💰 {mode_text} | Equity ${app.account_equity:,.0f} | "
+            app.logger.info(
+                f"Status [{mode_text}] | Equity ${app.account_equity:,.0f} | "
                 f"Open PnL ${app.open_pnl:,.0f} | Realized ${app.realized_pnl_today:,.0f} | "
                 f"Conf {dream_snapshot.get('confluence_score', 0):.2f}{rl_bias}"
             )
@@ -921,7 +921,7 @@ def supervisor_loop(app: RuntimeContext) -> None:
             expectancy = app.np.mean(app.pnl_history) if app.pnl_history else 0
             profit_factor = abs(sum([p for p in app.pnl_history if p > 0]) / sum([abs(p) for p in app.pnl_history if p < 0]) + 1e-8) if any(p < 0 for p in app.pnl_history) else 0
             maxdd = min((app.np.maximum.accumulate(app.equity_curve) - app.equity_curve) / app.np.maximum.accumulate(app.equity_curve)) * 100 if len(app.equity_curve) > 1 else 0
-            print(f"[{now.strftime('%H:%M:%S')}] 📊 ORACLE → Sharpe {sharpe:.2f} | Exp {expectancy:.0f}$ | Winrate {winrate:.1%} | PF {profit_factor:.2f} | MaxDD {maxdd:.1f}%")
+            app.logger.info(f"ORACLE metrics | Sharpe {sharpe:.2f} | Expected ${expectancy:.0f} | Winrate {winrate:.1%} | PF {profit_factor:.2f} | MaxDD {maxdd:.1f}%")
 
         if time.time() - last_save > 30:
             app.save_state()
