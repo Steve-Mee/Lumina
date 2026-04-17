@@ -15,7 +15,13 @@
   "reportMissingImports": false,
   "reportMissingModuleSource": false,
   "exclude": [
+    "**/node_modules",
+    "**/.*",
+    ".git",
     "**/.venv",
+    "**/.venv*",
+    "**/.venv_py313_backup_20260406_104715",
+    ".venv_py313_backup_20260406_104715",
     "**/__pycache__",
     "logs",
     "state",
