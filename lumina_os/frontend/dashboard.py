@@ -371,7 +371,7 @@ def _render_sim_evolution_dashboard_tab() -> None:
         if st.button(
             "🚀 Run Aggressive Overnight SIM",
             type="primary",
-            use_container_width=True,
+            width='stretch',
             help="Launches: --headless --mode=sim --duration=240 --overnight-sim --stability-check",
         ):
             cmd = [
@@ -385,7 +385,7 @@ def _render_sim_evolution_dashboard_tab() -> None:
     with btn_col2:
         if st.button(
             "🔍 Check Stability Now",
-            use_container_width=True,
+            width='stretch',
             help="Re-generates the stability report from all available SIM summaries",
         ):
             st.rerun()
@@ -396,7 +396,7 @@ def _render_sim_evolution_dashboard_tab() -> None:
         if st.button(
             "🔴 Switch to REAL Mode",
             type="primary",
-            use_container_width=True,
+            width='stretch',
             disabled=not go_live_enabled,
             help="Only active when READY_FOR_REAL=True and operator confirmation is ticked above",
         ):
@@ -617,7 +617,7 @@ def _render_observability_tab(base_url: str) -> None:
                 ).sort_values("Time (UTC)", ascending=False)
 
                 with st.expander(f"Regime Flip History ({len(flip_df)} events)", expanded=False):
-                    st.dataframe(flip_df, use_container_width=True)
+                    st.dataframe(flip_df, width='stretch')
     except Exception:
         pass  # history is best-effort; never crash the dashboard
 

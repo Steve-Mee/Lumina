@@ -741,7 +741,7 @@ def _render_sim_learning_tab() -> None:
         if st.button(
             "🚀 Run Aggressive Overnight SIM",
             type="primary",
-            use_container_width=True,
+            width='stretch',
             help="Launches: --headless --mode=sim --duration=240 --overnight-sim --stability-check",
         ):
             cmd = [
@@ -755,7 +755,7 @@ def _render_sim_learning_tab() -> None:
     with btn_col2:
         if st.button(
             "🔍 Check Stability Now",
-            use_container_width=True,
+            width='stretch',
             help="Re-generates the stability report from all available SIM summaries",
         ):
             st.rerun()
@@ -766,7 +766,7 @@ def _render_sim_learning_tab() -> None:
         if st.button(
             "🔴 Switch to REAL Mode",
             type="primary",
-            use_container_width=True,
+            width='stretch',
             disabled=not go_live_enabled,
             help="Only active when READY_FOR_REAL=True and operator confirmation is ticked above",
         ):
@@ -986,7 +986,7 @@ def _render_reports_section(reports_dir: Path) -> None:
                 "Modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
             }
         )
-    st.dataframe(pd.DataFrame(report_rows), use_container_width=True)
+    st.dataframe(pd.DataFrame(report_rows), width='stretch')
 
     selected_name = st.selectbox("Open report preview", [p.name for p in files[:20]], key="report_preview_select")
     selected_path = next((p for p in files if p.name == selected_name), None)
@@ -1001,13 +1001,13 @@ def _render_reports_section(reports_dir: Path) -> None:
         data=file_bytes,
         file_name=selected_path.name,
         mime=mime,
-        use_container_width=True,
+        width='stretch',
         key=f"download_{selected_path.name}",
     )
 
     ext = selected_path.suffix.lower()
     if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
-        st.image(str(selected_path), caption=selected_path.name, use_container_width=True)
+        st.image(str(selected_path), caption=selected_path.name, width='stretch')
     elif ext in {".json", ".jsonl", ".txt", ".log", ".yaml", ".yml", ".csv"}:
         preview = selected_path.read_text(encoding="utf-8", errors="replace")[:8000]
         st.code(preview)
@@ -1037,7 +1037,7 @@ def _render_guarded_action_button(
     snapshot: HardwareSnapshot,
     action_key: str,
 ) -> None:
-    if st.button(label, use_container_width=True):
+    if st.button(label, width='stretch'):
         if not allowed:
             _append_support_event(
                 event_type="blocked_launcher_action",
@@ -1117,7 +1117,7 @@ def _render_tier_requirements(snapshot: HardwareSnapshot) -> None:
                 else "no",
             }
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch')
 
 
 def _render_hardware_summary(snapshot: HardwareSnapshot, recommended: ModelDescriptor) -> None:
@@ -1226,7 +1226,7 @@ def _render_setup_wizard(setup_service: SetupService, catalog: ModelCatalog) -> 
         type="password",
         help="Optional but strongly recommended during first setup.",
     )
-    if st.button("Run Guided Installation", type="primary", use_container_width=True):
+    if st.button("Run Guided Installation", type="primary", width='stretch'):
         results = _run_guided_setup(
             setup_service=setup_service,
             snapshot=snapshot,
@@ -1243,7 +1243,7 @@ def _render_setup_wizard(setup_service: SetupService, catalog: ModelCatalog) -> 
         st.subheader("Last setup run")
         steps = previous_status.get("steps", [])
         if isinstance(steps, list) and steps:
-            st.dataframe(pd.DataFrame(steps), use_container_width=True)
+            st.dataframe(pd.DataFrame(steps), width='stretch')
     st.info("If package installation changed the environment, rerun Streamlit once so the launcher loads those packages cleanly.")
     st.stop()
 
@@ -1261,7 +1261,7 @@ def _render_hardware_tab(snapshot: HardwareSnapshot, catalog: ModelCatalog, curr
     st.markdown(f"Ollama Runtime {ollama_badge}", unsafe_allow_html=True)
     st.markdown(f"vLLM Path {vllm_badge}", unsafe_allow_html=True)
     _render_hardware_summary(snapshot, recommended)
-    if st.button("Refresh Hardware Scan", use_container_width=True, key="refresh_hardware_scan"):
+    if st.button("Refresh Hardware Scan", width='stretch', key="refresh_hardware_scan"):
         refreshed = _refresh_hardware_snapshot()
         st.success(f"Hardware scan refreshed: {refreshed.profile_tier}")
         st.rerun()
@@ -1339,7 +1339,7 @@ def _render_model_management_tab(
         }
         for model in catalog.models()
     ]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+    st.dataframe(pd.DataFrame(rows), width='stretch')
     upgrade_targets = catalog.upgrade_targets(current_model.key)
     if not upgrade_targets:
         st.info("No higher upgrade targets registered for the current model.")
@@ -1354,12 +1354,12 @@ def _render_model_management_tab(
             else:
                 st.warning("This upgrade is heavier than the current machine recommendation. The launcher still shows what hardware is needed.")
             st.write(selected_model.upgrade_notes)
-            if st.button("Install or Upgrade Selected Model", type="primary", use_container_width=True):
+            if st.button("Install or Upgrade Selected Model", type="primary", width='stretch'):
                 results = setup_service.upgrade_model(selected_model)
                 for result in results:
                     _render_step_result(result)
                 _save_catalog_state(catalog, selected_model.key)
-    if st.button("Install Recommended Model For This Hardware", use_container_width=True):
+    if st.button("Install Recommended Model For This Hardware", width='stretch'):
         results = setup_service.upgrade_model(recommended_model)
         for result in results:
             _render_step_result(result)
@@ -1386,7 +1386,7 @@ def _render_training_panel(current_model: ModelDescriptor, snapshot: HardwareSna
     else:
         for reason in report.reasons:
             st.warning(reason)
-    if st.button("Build Dataset Preview", use_container_width=True):
+    if st.button("Build Dataset Preview", width='stretch'):
         preview_path = trainer.build_training_dataset()
         st.success(f"Dataset preview written to {preview_path}")
     preview_path = Path("state/finetune_dataset_preview.jsonl")
@@ -1655,7 +1655,7 @@ with st.sidebar:
     screen_share_enabled = st.checkbox("Live Chart Screen Share", value=True)
     dashboard_enabled = st.checkbox("Dashboard", value=True)
     st.divider()
-    if st.button("Save Config and Start Bot", type="primary", use_container_width=True):
+    if st.button("Save Config and Start Bot", type="primary", width='stretch'):
         broker_backend = "paper" if trade_mode == "paper" else "live"
         account_mode = {
             "paper": "paper",
@@ -1685,7 +1685,7 @@ with st.sidebar:
             st.info("Services are starting. Check 'Live Activity & Services' on the main screen for live heartbeat.")
         else:
             st.error(msg)
-    if st.button("Stop Bot", use_container_width=True):
+    if st.button("Stop Bot", width='stretch'):
         ok, msg = _stop_bot_process()
         if ok:
             st.info(msg)
@@ -1710,13 +1710,13 @@ with st.sidebar:
     else:
         admin_password_input = st.text_input("Admin Password", type="password", key="admin_access_password")
         col_admin_a, col_admin_b = st.columns(2)
-        if col_admin_a.button("Unlock", use_container_width=True):
+        if col_admin_a.button("Unlock", width='stretch'):
             if _verify_admin_password(admin_password_input):
                 st.session_state.admin_authenticated = True
                 st.success("Admin unlocked")
             else:
                 st.error("Invalid admin password")
-        if col_admin_b.button("Lock", use_container_width=True):
+        if col_admin_b.button("Lock", width='stretch'):
             st.session_state.admin_authenticated = False
             st.info("Admin locked")
     admin_mode = bool(st.session_state.get("admin_authenticated", False))
@@ -1810,7 +1810,7 @@ with tab4:
         leaderboard_payload = _backend_get("/leaderboard")
         leaderboard = leaderboard_payload.get("leaderboard", [])
         if isinstance(leaderboard, list) and leaderboard:
-            st.dataframe(pd.DataFrame(leaderboard), use_container_width=True)
+            st.dataframe(pd.DataFrame(leaderboard), width='stretch')
         else:
             st.info("Leaderboard is leeg")
     except Exception as exc:
@@ -1822,7 +1822,7 @@ with tab5:
         wisdom_payload = _backend_get("/global_wisdom")
         top_bibles = wisdom_payload.get("top_bibles", [])
         if isinstance(top_bibles, list) and top_bibles:
-            st.dataframe(pd.DataFrame(top_bibles), use_container_width=True)
+            st.dataframe(pd.DataFrame(top_bibles), width='stretch')
         else:
             st.info("Nog geen community bible data")
     except Exception as exc:
@@ -1873,7 +1873,7 @@ if tab8 is not None:
         current_password = st.text_input("Current Password", type="password", key="admin_pwd_current")
         new_password = st.text_input("New Password", type="password", key="admin_pwd_new")
         confirm_password = st.text_input("Confirm New Password", type="password", key="admin_pwd_confirm")
-        if st.button("Update Admin Password", use_container_width=True):
+        if st.button("Update Admin Password", width='stretch'):
             if not _verify_admin_password(current_password):
                 st.error("Current password is incorrect")
             elif len(new_password) < 12:

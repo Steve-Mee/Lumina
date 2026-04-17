@@ -48,7 +48,7 @@ def render_leaderboard_tab(api_base_url: str) -> None:
     if lumina_rank != "-":
         st.caption(f"LUMINA total PnL: ${lumina_pnl:,.2f}")
 
-    st.dataframe(leaderboard_df, use_container_width=True)
+    st.dataframe(leaderboard_df, width='stretch')
 
     st.markdown("---")
     st.subheader("Fill Reconciliation Status")
@@ -88,7 +88,7 @@ def render_leaderboard_tab(api_base_url: str) -> None:
             ]
             if column in recent_df.columns
         ]
-        st.dataframe(recent_df[cols], use_container_width=True)
+        st.dataframe(recent_df[cols], width='stretch')
 
     chart_payload = _get_json(f"{api_base_url}/trades?limit=100&participant=LUMINA_v45_Steve")
     chart_df = pd.DataFrame(chart_payload if isinstance(chart_payload, list) else [])
@@ -107,7 +107,7 @@ def render_leaderboard_tab(api_base_url: str) -> None:
                     title="Slippage (points)",
                     markers=True,
                 )
-                left.plotly_chart(slippage_fig, use_container_width=True)
+                left.plotly_chart(slippage_fig, width='stretch')
 
         if "fill_latency_ms" in chart_df.columns:
             latency_df = chart_df.dropna(subset=["fill_latency_ms"]).copy()
@@ -119,4 +119,4 @@ def render_leaderboard_tab(api_base_url: str) -> None:
                     title="Fill latency (ms)",
                     markers=True,
                 )
-                right.plotly_chart(latency_fig, use_container_width=True)
+                right.plotly_chart(latency_fig, width='stretch')
