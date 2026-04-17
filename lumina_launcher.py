@@ -24,8 +24,10 @@ _IS_HEADLESS = "--headless" in sys.argv or "--stability-check" in sys.argv
 
 if not _IS_HEADLESS:
     import streamlit as st  # type: ignore[import]
+    import streamlit.components.v1 as components  # type: ignore[import]
 else:
     st = None  # type: ignore[assignment]  # placeholder; unused in headless path
+    components = None  # type: ignore[assignment]
 import yaml
 
 from lumina_core.container import create_application_container
@@ -321,6 +323,15 @@ def _format_age(age_seconds: float | None) -> str:
     return f"{int(age_seconds // 3600)}h ago"
 
 
+def _format_timestamp(path: Path) -> str:
+    if not path.exists():
+        return "Not available"
+    try:
+        return datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return "Not available"
+
+
 def _service_age_badge(age_seconds: float | None, healthy_threshold_seconds: float = 90.0) -> str:
     if age_seconds is None:
         return _status_badge("No feed yet", "warning")
@@ -383,6 +394,16 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
     process_badge = _status_badge("Running", "available") if alive else _status_badge("Stopped", "blocked")
     st.markdown(f"Bot Process {process_badge}", unsafe_allow_html=True)
     if alive:
+        auto_refresh = st.toggle(
+            "Auto-refresh live status (5s)",
+            value=bool(st.session_state.get("live_status_auto_refresh", True)),
+            key="live_status_auto_refresh",
+        )
+        if auto_refresh and components is not None:
+            components.html(
+                "<script>setTimeout(function(){ window.parent.location.reload(); }, 5000);</script>",
+                height=0,
+            )
         st.markdown(
             """
             <style>
@@ -418,8 +439,10 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
 
     log_age = _file_age_seconds(LUMINA_LOG_PATH)
     state_age = _file_age_seconds(STATE_PATH)
-    screen_share_age = _file_age_seconds(Path("state/live_stream.jsonl"))
-    dashboard_age = _file_age_seconds(Path("journal/swarm_dashboard.html"))
+    screen_share_path = Path("state/live_stream.jsonl")
+    dashboard_path = Path("journal/swarm_dashboard.html")
+    screen_share_age = _file_age_seconds(screen_share_path)
+    dashboard_age = _file_age_seconds(dashboard_path)
 
     process_state = _load_process_state()
     persisted_start_ts = str(process_state.get("started_at", "")).strip() or "Not started"
@@ -433,7 +456,7 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
             if screen_share_age is None:
                 st.info("Screen share is enabled and waiting for the first chart frame feed.")
             else:
-                st.caption(f"Last chart feed update: {_format_age(screen_share_age)}")
+                st.caption(f"Last chart feed update timestamp: {_format_timestamp(screen_share_path)}")
         else:
             st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
             st.caption("Enable this in the sidebar to publish live chart feed.")
@@ -445,16 +468,33 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
             if dashboard_age is None:
                 st.info("Dashboard is enabled but no dashboard artifact was found yet.")
             else:
-                st.caption(f"Last dashboard update: {_format_age(dashboard_age)}")
+                st.caption(f"Last dashboard update timestamp: {_format_timestamp(dashboard_path)}")
                 st.caption("Artifact: journal/swarm_dashboard.html")
         else:
             st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
             st.caption("Enable this in the sidebar to generate dashboard output.")
 
-    if alive and log_age is not None and log_age <= 60:
-        st.success("Bot is alive: log activity was updated in the last minute.")
-    elif alive:
-        st.warning("Bot process is running, but log activity looks stale. Check runtime diagnostics.")
+    if alive:
+        primary_heartbeat_ok = log_age is not None and log_age <= 180
+        secondary_heartbeat_ok = (
+            (dashboard_age is not None and dashboard_age <= 300)
+            or (screen_share_age is not None and screen_share_age <= 180)
+        )
+        if primary_heartbeat_ok:
+            st.success("Bot is alive: log activity was updated in the last 3 minutes.")
+        elif secondary_heartbeat_ok:
+            st.info("Bot process is running and secondary services are live; primary log heartbeat is delayed.")
+        else:
+            st.warning("Bot process is running, but heartbeat artifacts look stale. Check runtime diagnostics.")
+
+    st.markdown("#### Recent Bot Activity")
+    recent_log = _tail_file(LUMINA_LOG_PATH, max_chars=8000).strip()
+    if not recent_log:
+        st.caption("No runtime log output yet.")
+    else:
+        lines = recent_log.splitlines()
+        excerpt = "\n".join(lines[-24:])
+        st.code(excerpt, language="text")
 
 
 def _load_runtime_state() -> dict[str, Any]:
