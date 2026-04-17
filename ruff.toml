@@ -1,0 +1,10 @@
+target-version = "py311"
+line-length = 120
+
+extend-exclude = [
+  ".venv",
+  "logs",
+  "state",
+  "journal",
+  "lumina_vector_db"
+]

@@ -10,8 +10,16 @@
   "extraPaths": [
     "lumina_os"
   ],
-  "pythonVersion": "3.12",
-  "typeCheckingMode": "basic",
+  "pythonVersion": "3.11",
+  "typeCheckingMode": "standard",
   "reportMissingImports": false,
-  "reportMissingModuleSource": false
+  "reportMissingModuleSource": false,
+  "exclude": [
+    "**/.venv",
+    "**/__pycache__",
+    "logs",
+    "state",
+    "journal",
+    "lumina_vector_db"
+  ]
 }

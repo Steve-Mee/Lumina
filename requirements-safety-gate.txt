@@ -22,3 +22,7 @@ websockets==16.0
 xai-sdk==1.11.0
 fastapi==0.135.3
 PyJWT==2.12.1
+ruff==0.12.7
+mypy==1.17.1
+bandit==1.8.6
+pytest-cov==7.0.0

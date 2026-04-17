@@ -2,6 +2,8 @@
 
 Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en research-assets.
 
+[![Lumina Quality Gate](../../actions/workflows/lumina-quality-gate.yml/badge.svg?branch=main)](../../actions/workflows/lumina-quality-gate.yml)
+
 ## Snelle Navigatie
 
 - Runtime entrypoint: lumina_v45.1.1.py
