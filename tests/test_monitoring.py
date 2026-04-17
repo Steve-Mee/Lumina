@@ -10,6 +10,7 @@ Coverage:
   - Chaos: high latency → alert fires; sequential alerts respect cooldown;
     kill-switch triggers critical alert
 """
+
 from __future__ import annotations
 
 import tempfile
@@ -50,7 +51,7 @@ def obs_enabled() -> ObservabilityService:
         ),
         webhook=WebhookConfig(url="", enabled=False),
         flush_interval_s=3600.0,  # prevent background flush in tests
-        _alert_cooldown_s=0.0,    # disable cooldown so alerts always fire
+        _alert_cooldown_s=0.0,  # disable cooldown so alerts always fire
     )
 
 
@@ -222,9 +223,7 @@ def test_latency_below_threshold_no_alert(obs_enabled: ObservabilityService) -> 
 @pytest.mark.chaos_metrics_latency
 def test_latency_above_threshold_fires_alert(obs_enabled: ObservabilityService) -> None:
     obs_enabled.record_latency("inference", 500.0)  # > 200 ms threshold
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "latency_inference"}
-    )
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "latency_inference"})
     assert alerts == 1.0
 
 
@@ -236,9 +235,7 @@ def test_latency_alert_cooldown_prevents_duplicate(obs_enabled: ObservabilitySer
     object.__setattr__(obs_enabled, "_alert_cooldown_s", 60.0)
     obs_enabled.record_latency("market_data", 1000.0)
     obs_enabled.record_latency("market_data", 1000.0)
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "latency_market_data"}
-    )
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "latency_market_data"})
     assert alerts == 1.0  # second call suppressed by cooldown
 
 
@@ -254,9 +251,7 @@ def test_chaos_latency_spike_increments_counter(obs_enabled: ObservabilityServic
         obs_enabled.record_latency("reasoning", latency_ms)
 
     # At least 2 spikes above 200 ms → but cooldown_s = 0 so both fire
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "latency_reasoning"}
-    )
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "latency_reasoning"})
     assert alerts >= 2.0
 
 
@@ -265,20 +260,14 @@ def test_chaos_latency_spike_increments_counter(obs_enabled: ObservabilityServic
 
 @pytest.mark.chaos_metrics
 def test_risk_daily_pnl_recorded(obs_enabled: ObservabilityService) -> None:
-    obs_enabled.record_risk_status(
-        daily_pnl=-200.0, kill_switch=False, consecutive_losses=1
-    )
+    obs_enabled.record_risk_status(daily_pnl=-200.0, kill_switch=False, consecutive_losses=1)
     assert obs_enabled.collector.get("lumina_risk_daily_pnl") == -200.0
 
 
 @pytest.mark.chaos_metrics
 def test_risk_kill_switch_fires_critical_alert(obs_enabled: ObservabilityService) -> None:
-    obs_enabled.record_risk_status(
-        daily_pnl=-1200.0, kill_switch=True, consecutive_losses=5
-    )
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "kill_switch"}
-    )
+    obs_enabled.record_risk_status(daily_pnl=-1200.0, kill_switch=True, consecutive_losses=5)
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "kill_switch"})
     assert alerts == 1.0
     assert obs_enabled.collector.get("lumina_risk_kill_switch_active") == 1.0
 
@@ -311,23 +300,15 @@ def test_regime_performance_records_winrate_proxy(obs_enabled: ObservabilityServ
 
 @pytest.mark.chaos_metrics
 def test_risk_loss_threshold_fires_warning(obs_enabled: ObservabilityService) -> None:
-    obs_enabled.record_risk_status(
-        daily_pnl=-600.0, kill_switch=False, consecutive_losses=1
-    )
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "daily_loss"}
-    )
+    obs_enabled.record_risk_status(daily_pnl=-600.0, kill_switch=False, consecutive_losses=1)
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "daily_loss"})
     assert alerts == 1.0
 
 
 @pytest.mark.chaos_metrics
 def test_risk_consecutive_losses_fires_alert(obs_enabled: ObservabilityService) -> None:
-    obs_enabled.record_risk_status(
-        daily_pnl=50.0, kill_switch=False, consecutive_losses=3
-    )
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "consecutive_losses"}
-    )
+    obs_enabled.record_risk_status(daily_pnl=50.0, kill_switch=False, consecutive_losses=3)
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "consecutive_losses"})
     assert alerts == 1.0
 
 
@@ -353,9 +334,7 @@ def test_portfolio_var_records_gauge_and_breach_alert(obs_enabled: Observability
         )
         == 1500.0
     )
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "portfolio_var_breach"}
-    )
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "portfolio_var_breach"})
     assert alerts == 1.0
 
 
@@ -364,15 +343,9 @@ def test_portfolio_var_records_gauge_and_breach_alert(obs_enabled: Observability
 
 @pytest.mark.chaos_metrics
 def test_evolution_acceptance_rate_computed(obs_enabled: ObservabilityService) -> None:
-    obs_enabled.record_evolution_proposal(
-        status="proposed", confidence=70.0, best_candidate="challenger_a"
-    )
-    obs_enabled.record_evolution_proposal(
-        status="proposed", confidence=75.0, best_candidate="challenger_b"
-    )
-    obs_enabled.record_evolution_proposal(
-        status="applied", confidence=90.0, best_candidate="challenger_c"
-    )
+    obs_enabled.record_evolution_proposal(status="proposed", confidence=70.0, best_candidate="challenger_a")
+    obs_enabled.record_evolution_proposal(status="proposed", confidence=75.0, best_candidate="challenger_b")
+    obs_enabled.record_evolution_proposal(status="applied", confidence=90.0, best_candidate="challenger_c")
     rate = obs_enabled.collector.get("lumina_evolution_acceptance_rate")
     assert abs(rate - 1 / 3) < 0.01
 
@@ -402,18 +375,8 @@ def test_chaos_event_increments_counter(obs_enabled: ObservabilityService) -> No
     obs_enabled.record_chaos_event("websocket_drop")
     obs_enabled.record_chaos_event("websocket_drop")
     obs_enabled.record_chaos_event("api_5xx")
-    assert (
-        obs_enabled.collector.get(
-            "lumina_chaos_events_total", labels={"type": "websocket_drop"}
-        )
-        == 2.0
-    )
-    assert (
-        obs_enabled.collector.get(
-            "lumina_chaos_events_total", labels={"type": "api_5xx"}
-        )
-        == 1.0
-    )
+    assert obs_enabled.collector.get("lumina_chaos_events_total", labels={"type": "websocket_drop"}) == 2.0
+    assert obs_enabled.collector.get("lumina_chaos_events_total", labels={"type": "api_5xx"}) == 1.0
 
 
 # ── ObservabilityService: WebSocket health ─────────────────────────────────────
@@ -423,18 +386,14 @@ def test_chaos_event_increments_counter(obs_enabled: ObservabilityService) -> No
 def test_websocket_disconnect_fires_alert(obs_enabled: ObservabilityService) -> None:
     obs_enabled.record_websocket_status(connected=False, reconnects=2)
     assert obs_enabled.collector.get("lumina_websocket_connected") == 0.0
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "websocket_down"}
-    )
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "websocket_down"})
     assert alerts == 1.0
 
 
 @pytest.mark.chaos_metrics
 def test_websocket_stale_heartbeat_fires_alert(obs_enabled: ObservabilityService) -> None:
     obs_enabled.record_websocket_heartbeat_age(90.0)  # threshold = 30 s
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "websocket_stale"}
-    )
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "websocket_stale"})
     assert alerts == 1.0
 
 
@@ -448,9 +407,7 @@ def test_model_confidence_drift_alert(obs_enabled: ObservabilityService) -> None
         obs_enabled.record_model_confidence("ollama", 0.80)
     # Inject an outlier with very different confidence
     obs_enabled.record_model_confidence("ollama", 0.10)
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "confidence_drift_ollama"}
-    )
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "confidence_drift_ollama"})
     assert alerts >= 1.0
 
 
@@ -458,9 +415,7 @@ def test_model_confidence_drift_alert(obs_enabled: ObservabilityService) -> None
 def test_model_confidence_no_drift_no_alert(obs_enabled: ObservabilityService) -> None:
     for v in [0.79, 0.80, 0.81, 0.80, 0.79]:
         obs_enabled.record_model_confidence("vllm", v)
-    alerts = obs_enabled.collector.get(
-        "lumina_alerts_sent_total", labels={"type": "confidence_drift_vllm"}
-    )
+    alerts = obs_enabled.collector.get("lumina_alerts_sent_total", labels={"type": "confidence_drift_vllm"})
     assert alerts == 0.0
 
 
@@ -624,5 +579,5 @@ def test_chaos_ci_nightly_monitoring_smoke(obs_enabled: ObservabilityService) ->
     snap = obs_enabled.snapshot()
     assert snap.get("lumina_pnl_daily", {}).get("value") == 320.0
     assert snap.get("lumina_risk_kill_switch_active", {}).get("value") == 0.0
-    assert snap.get("lumina_model_confidence{agent=\"ollama\"}", {}).get("value", 0) > 0
-    assert snap.get("lumina_regime_confidence{regime=\"TRENDING\"}", {}).get("value", 0) == 0.81
+    assert snap.get('lumina_model_confidence{agent="ollama"}', {}).get("value", 0) > 0
+    assert snap.get('lumina_regime_confidence{regime="TRENDING"}', {}).get("value", 0) == 0.81

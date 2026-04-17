@@ -73,8 +73,18 @@ def generate_price_action_summary(df: pd.DataFrame, timeframes: dict[str, int]) 
     if recent_vol > 0 and last_vol > recent_vol * 2.5:
         summary_parts.append(f"Volume spike {last_vol / recent_vol:.1f}x gemiddeld")
 
-    df_5 = df.set_index("timestamp").resample("5min").agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}).dropna()
-    df_15 = df.set_index("timestamp").resample("15min").agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}).dropna()
+    df_5 = (
+        df.set_index("timestamp")
+        .resample("5min")
+        .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+        .dropna()
+    )
+    df_15 = (
+        df.set_index("timestamp")
+        .resample("15min")
+        .agg({"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"})
+        .dropna()
+    )
 
     pat5 = detect_candle_patterns(df_5, "5min")
     pat15 = detect_candle_patterns(df_15, "15min")
@@ -143,7 +153,9 @@ def detect_market_structure(df: pd.DataFrame) -> dict[str, Any]:
         structure["bos"] = "bullish_BOS"
     elif current_high < last_swing_high and current_low < last_swing_low:
         structure["bos"] = "bearish_BOS"
-    if (current_high < last_swing_high and current_low > last_swing_low) or (current_high > last_swing_high and current_low < last_swing_low):
+    if (current_high < last_swing_high and current_low > last_swing_low) or (
+        current_high > last_swing_high and current_low < last_swing_low
+    ):
         structure["choch"] = "CHOCH_detected"
 
     structure["order_blocks"] = [
@@ -188,13 +200,17 @@ def is_significant_event(current_price: float, previous_price: float, regime: st
     return price_change > event_threshold or regime in ["TRENDING", "BREAKOUT", "VOLATILE"]
 
 
-def update_cost_tracker_from_usage(cost_tracker: dict[str, Any], usage: dict[str, Any] | None, channel: str = "reasoning") -> None:
+def update_cost_tracker_from_usage(
+    cost_tracker: dict[str, Any], usage: dict[str, Any] | None, channel: str = "reasoning"
+) -> None:
     if not usage:
         return
 
     tokens = usage.get("total_tokens")
     if tokens is None:
-        tokens = (usage.get("prompt_tokens") or usage.get("input_tokens") or 0) + (usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+        tokens = (usage.get("prompt_tokens") or usage.get("input_tokens") or 0) + (
+            usage.get("completion_tokens") or usage.get("output_tokens") or 0
+        )
 
     try:
         token_count = int(tokens)

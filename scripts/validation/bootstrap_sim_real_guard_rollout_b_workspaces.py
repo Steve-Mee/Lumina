@@ -89,7 +89,9 @@ def bootstrap_workspace(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Bootstrap isolated Rollout B workspaces for sim vs sim_real_guard parity runs.")
+    parser = argparse.ArgumentParser(
+        description="Bootstrap isolated Rollout B workspaces for sim vs sim_real_guard parity runs."
+    )
     parser.add_argument("--source-root", required=True)
     parser.add_argument("--control-root", required=True)
     parser.add_argument("--candidate-root", required=True)

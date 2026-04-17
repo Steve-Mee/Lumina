@@ -155,11 +155,17 @@ def _build_window_report(control_root: Path, candidate_root: Path, window_label:
 
     reconciled = [row for row in candidate_audit if str(row.get("event", "")).lower() == "reconciled"]
     timeout_snapshot = [row for row in reconciled if str(row.get("status", "")).lower() == "timeout_snapshot"]
-    fill_latencies = [float(row.get("fill_latency_ms", 0.0) or 0.0) for row in reconciled if row.get("fill_latency_ms") is not None]
+    fill_latencies = [
+        float(row.get("fill_latency_ms", 0.0) or 0.0) for row in reconciled if row.get("fill_latency_ms") is not None
+    ]
     timeout_ratio = (len(timeout_snapshot) / len(reconciled)) if reconciled else 0.0
     p95_fill_latency = _quantile(fill_latencies, 0.95)
 
-    unmatched_candidate_reasons = sorted(set(candidate_guard_reasons) - {f"risk_{key}" for key in control_advisories} - {"session_outside_trading_session", "session_rollover_window", "stale_contract", "broker_metadata_block"})
+    unmatched_candidate_reasons = sorted(
+        set(candidate_guard_reasons)
+        - {f"risk_{key}" for key in control_advisories}
+        - {"session_outside_trading_session", "session_rollover_window", "stale_contract", "broker_metadata_block"}
+    )
     pending_count = int(candidate_status.get("pending_count", 0) or 0)
     last_error = str(candidate_status.get("last_error") or "").strip()
 
@@ -209,7 +215,9 @@ def _resolve_python_executable(root: Path, explicit_python_exe: str) -> str:
     return str(root / ".venv" / "Scripts" / "python.exe")
 
 
-def _run_lane(root: Path, *, mode: str, duration: str, broker: str, extra_env: dict[str, str], summary_path: Path, python_exe: str) -> subprocess.Popen[str]:
+def _run_lane(
+    root: Path, *, mode: str, duration: str, broker: str, extra_env: dict[str, str], summary_path: Path, python_exe: str
+) -> subprocess.Popen[str]:
     env = os.environ.copy()
     env.update(extra_env)
     env["LUMINA_HEADLESS_SUMMARY_PATH"] = str(summary_path)
@@ -285,7 +293,9 @@ def _build_rollout_decision(history: list[dict[str, Any]]) -> dict[str, Any]:
         "unresolved_error_window_count": len(unresolved_errors),
         "explainability_failure_window_count": len(explainability_failures),
         "ready_for_rollout_c": ready,
-        "decision": "GO_TO_ROLLOUT_C" if ready else ("REPEAT_ROLLOUT_B" if enough_windows else "ROLL_OUT_B_IN_PROGRESS"),
+        "decision": "GO_TO_ROLLOUT_C"
+        if ready
+        else ("REPEAT_ROLLOUT_B" if enough_windows else "ROLL_OUT_B_IN_PROGRESS"),
     }
 
 
@@ -354,9 +364,13 @@ def main() -> int:
     control_stdout, control_stderr = control_proc.communicate()
     candidate_stdout, candidate_stderr = candidate_proc.communicate()
     if control_proc.returncode != 0:
-        raise SystemExit(f"Control lane failed with code {control_proc.returncode}\nSTDOUT:\n{control_stdout}\nSTDERR:\n{control_stderr}")
+        raise SystemExit(
+            f"Control lane failed with code {control_proc.returncode}\nSTDOUT:\n{control_stdout}\nSTDERR:\n{control_stderr}"
+        )
     if candidate_proc.returncode != 0:
-        raise SystemExit(f"Candidate lane failed with code {candidate_proc.returncode}\nSTDOUT:\n{candidate_stdout}\nSTDERR:\n{candidate_stderr}")
+        raise SystemExit(
+            f"Candidate lane failed with code {candidate_proc.returncode}\nSTDOUT:\n{candidate_stdout}\nSTDERR:\n{candidate_stderr}"
+        )
 
     report = _build_window_report(control_root, candidate_root, args.window_label, args.duration)
     report["lane_outputs"] = {
@@ -370,12 +384,17 @@ def main() -> int:
     decision = _build_rollout_decision(history)
     decision_path = history_path.parent / "rollout_b_decision.json"
     decision_path.write_text(json.dumps(decision, indent=2), encoding="utf-8")
-    print(json.dumps({
-        "status": report["decision"],
-        "report": str(report_path),
-        "history": str(history_path),
-        "rollout_decision": str(decision_path),
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": report["decision"],
+                "report": str(report_path),
+                "history": str(history_path),
+                "rollout_decision": str(decision_path),
+            },
+            indent=2,
+        )
+    )
     return 0 if report["decision"] == "GO_WINDOW" else 2
 
 

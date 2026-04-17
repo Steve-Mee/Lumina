@@ -16,6 +16,7 @@ Key design notes
 * All mock setup (MagicMock, patch) must be imported inside _render() so
   the extracted script is self-contained.
 """
+
 from __future__ import annotations
 
 import sys
@@ -72,17 +73,33 @@ def test_evolution_approval_tab_renders_with_proposals() -> None:
     def _render() -> None:
         from unittest.mock import MagicMock, patch
         from evolution_approval import render_evolution_approval_tab
+
         _mock = MagicMock()
         _mock.ok = True
         _mock.json.return_value = [
             {
-                "status": "proposed", "timestamp": "2026-04-06T13:30:56+00:00",
+                "status": "proposed",
+                "timestamp": "2026-04-06T13:30:56+00:00",
                 "hash": "abc123def456full",
                 "meta_review": {"trades": 240, "win_rate": 0.5458, "net_pnl": 842.5, "sharpe": 0.84},
                 "champion": {"name": "champion", "hyperparams": {"max_risk_percent": 1.0, "fast_path_threshold": 0.78}},
                 "challengers": [
-                    {"name": "challenger_a", "prompt_tweak": "Conservative.", "hyperparam_suggestion": {"fast_path_threshold": 0.82, "max_risk_percent": 0.9}, "score": 53.86, "confidence": 99.0, "risk_penalty": 0.0},
-                    {"name": "challenger_b", "prompt_tweak": "Trend.", "hyperparam_suggestion": {"fast_path_threshold": 0.75}, "score": 49.36, "confidence": 99.0, "risk_penalty": 4.5},
+                    {
+                        "name": "challenger_a",
+                        "prompt_tweak": "Conservative.",
+                        "hyperparam_suggestion": {"fast_path_threshold": 0.82, "max_risk_percent": 0.9},
+                        "score": 53.86,
+                        "confidence": 99.0,
+                        "risk_penalty": 0.0,
+                    },
+                    {
+                        "name": "challenger_b",
+                        "prompt_tweak": "Trend.",
+                        "hyperparam_suggestion": {"fast_path_threshold": 0.75},
+                        "score": 49.36,
+                        "confidence": 99.0,
+                        "risk_penalty": 4.5,
+                    },
                 ],
                 "best_candidate": {"name": "challenger_a", "score": 53.86, "confidence": 99.0},
                 "proposal": {"confidence": 99.0, "backtest_green": True, "safety_ok": False},
@@ -96,9 +113,7 @@ def test_evolution_approval_tab_renders_with_proposals() -> None:
 
     assert not at.exception, f"AppTest raised: {at.exception}"
     subheaders = [e.value for e in at.subheader]
-    assert any("Evolution" in s for s in subheaders), (
-        f"Expected 'Evolution' subheader, got: {subheaders}"
-    )
+    assert any("Evolution" in s for s in subheaders), f"Expected 'Evolution' subheader, got: {subheaders}"
 
 
 def test_evolution_approval_tab_shows_challenger_metrics() -> None:
@@ -107,16 +122,25 @@ def test_evolution_approval_tab_shows_challenger_metrics() -> None:
     def _render() -> None:
         from unittest.mock import MagicMock, patch
         from evolution_approval import render_evolution_approval_tab
+
         _mock = MagicMock()
         _mock.ok = True
         _mock.json.return_value = [
             {
-                "status": "proposed", "timestamp": "2026-04-06T13:30:56+00:00",
+                "status": "proposed",
+                "timestamp": "2026-04-06T13:30:56+00:00",
                 "hash": "abc123",
                 "meta_review": {"trades": 240, "win_rate": 0.5458, "net_pnl": 842.5, "sharpe": 0.84},
                 "champion": {"name": "champion", "hyperparams": {}},
                 "challengers": [
-                    {"name": "challenger_a", "prompt_tweak": "A", "hyperparam_suggestion": {"fast_path_threshold": 0.82}, "score": 53.86, "confidence": 99.0, "risk_penalty": 0.0},
+                    {
+                        "name": "challenger_a",
+                        "prompt_tweak": "A",
+                        "hyperparam_suggestion": {"fast_path_threshold": 0.82},
+                        "score": 53.86,
+                        "confidence": 99.0,
+                        "risk_penalty": 0.0,
+                    },
                 ],
                 "best_candidate": {"name": "challenger_a", "score": 53.86, "confidence": 99.0},
                 "proposal": {"confidence": 99.0, "backtest_green": True, "safety_ok": False},
@@ -141,6 +165,7 @@ def test_evolution_approval_tab_empty_state() -> None:
     def _render() -> None:
         from unittest.mock import MagicMock, patch
         from evolution_approval import render_evolution_approval_tab
+
         _mock = MagicMock()
         _mock.ok = True
         _mock.json.return_value = []
@@ -152,9 +177,7 @@ def test_evolution_approval_tab_empty_state() -> None:
 
     assert not at.exception, f"AppTest raised: {at.exception}"
     info_messages = [e.value for e in at.info]
-    assert any("caught up" in m for m in info_messages), (
-        f"Expected 'caught up' info message, got: {info_messages}"
-    )
+    assert any("caught up" in m for m in info_messages), f"Expected 'caught up' info message, got: {info_messages}"
 
 
 def test_evolution_approval_tab_approve_button_present() -> None:
@@ -163,17 +186,33 @@ def test_evolution_approval_tab_approve_button_present() -> None:
     def _render() -> None:
         from unittest.mock import MagicMock, patch
         from evolution_approval import render_evolution_approval_tab
+
         _mock = MagicMock()
         _mock.ok = True
         _mock.json.return_value = [
             {
-                "status": "proposed", "timestamp": "2026-04-06T13:30:56+00:00",
+                "status": "proposed",
+                "timestamp": "2026-04-06T13:30:56+00:00",
                 "hash": "abc123",
                 "meta_review": {"trades": 240, "win_rate": 0.5458, "net_pnl": 842.5, "sharpe": 0.84},
                 "champion": {"name": "champion", "hyperparams": {}},
                 "challengers": [
-                    {"name": "challenger_a", "prompt_tweak": "A", "hyperparam_suggestion": {}, "score": 53.86, "confidence": 99.0, "risk_penalty": 0.0},
-                    {"name": "challenger_b", "prompt_tweak": "B", "hyperparam_suggestion": {}, "score": 49.36, "confidence": 99.0, "risk_penalty": 4.5},
+                    {
+                        "name": "challenger_a",
+                        "prompt_tweak": "A",
+                        "hyperparam_suggestion": {},
+                        "score": 53.86,
+                        "confidence": 99.0,
+                        "risk_penalty": 0.0,
+                    },
+                    {
+                        "name": "challenger_b",
+                        "prompt_tweak": "B",
+                        "hyperparam_suggestion": {},
+                        "score": 49.36,
+                        "confidence": 99.0,
+                        "risk_penalty": 4.5,
+                    },
                 ],
                 "best_candidate": {"name": "challenger_a", "score": 53.86, "confidence": 99.0},
                 "proposal": {"confidence": 99.0, "backtest_green": True, "safety_ok": False},
@@ -188,9 +227,7 @@ def test_evolution_approval_tab_approve_button_present() -> None:
     assert not at.exception, f"AppTest raised: {at.exception}"
     button_labels = [b.label for b in at.button]
     approve_buttons = [lbl for lbl in button_labels if "Approve" in lbl]
-    assert len(approve_buttons) >= 2, (
-        f"Expected at least 2 approve buttons, got: {approve_buttons}"
-    )
+    assert len(approve_buttons) >= 2, f"Expected at least 2 approve buttons, got: {approve_buttons}"
 
 
 def test_evolution_approval_tab_no_api_key_shows_input() -> None:
@@ -199,6 +236,7 @@ def test_evolution_approval_tab_no_api_key_shows_input() -> None:
     def _render() -> None:
         from unittest.mock import MagicMock, patch
         from evolution_approval import render_evolution_approval_tab
+
         _mock = MagicMock()
         _mock.ok = True
         _mock.json.return_value = []
@@ -210,6 +248,4 @@ def test_evolution_approval_tab_no_api_key_shows_input() -> None:
 
     assert not at.exception, f"AppTest raised: {at.exception}"
     input_labels = [inp.label for inp in at.text_input]
-    assert any("API" in lbl for lbl in input_labels), (
-        f"Expected API key input field, got: {input_labels}"
-    )
+    assert any("API" in lbl for lbl in input_labels), f"Expected API key input field, got: {input_labels}"

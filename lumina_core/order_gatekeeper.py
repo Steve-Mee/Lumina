@@ -327,10 +327,7 @@ def _broker_metadata_contract_allowed(engine: Any, symbol: str) -> tuple[bool, s
 def _audit_stale_override(engine: Any, symbol: str, mode: str) -> None:
     _safe_log_warning(
         engine,
-        (
-            "OVERRIDE_AUDIT,gate=stale_contract,"
-            f"mode={mode},symbol={symbol},source=LUMINA_ALLOW_STALE_CONTRACTS"
-        ),
+        (f"OVERRIDE_AUDIT,gate=stale_contract,mode={mode},symbol={symbol},source=LUMINA_ALLOW_STALE_CONTRACTS"),
     )
 
 
@@ -414,7 +411,9 @@ def enforce_pre_trade_gate(
     session_ok, session_reason = session_guard_allows_trading(engine)
     if not session_ok:
         session_guard = getattr(engine, "session_guard", None)
-        next_open = session_guard.next_open() if (session_guard is not None and hasattr(session_guard, "next_open")) else None
+        next_open = (
+            session_guard.next_open() if (session_guard is not None and hasattr(session_guard, "next_open")) else None
+        )
         suffix = f" | next_open={next_open.isoformat()}" if next_open is not None else ""
         return _deny(f"session_{session_reason}", f"Session guard blocked order: {session_reason}{suffix}")
 

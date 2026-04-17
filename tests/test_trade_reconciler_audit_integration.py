@@ -38,7 +38,9 @@ def test_reconciler_mirrors_events_to_trade_decision_audit(tmp_path: Path) -> No
     )
 
     fill_lines = [json.loads(line) for line in fill_audit.read_text(encoding="utf-8").splitlines() if line.strip()]
-    decision_lines = [json.loads(line) for line in decision_audit.read_text(encoding="utf-8").splitlines() if line.strip()]
+    decision_lines = [
+        json.loads(line) for line in decision_audit.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
     assert len(fill_lines) == 1
     assert fill_lines[0]["event"] == "reconciled"

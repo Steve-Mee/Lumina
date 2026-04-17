@@ -31,7 +31,9 @@ class _FakeSession:
     def post(self, url: str, headers=None, json=None, timeout: float = 0):
         self.calls.append(("POST", url, headers, json))
         payload = json if isinstance(json, dict) else {}
-        return _FakeResponse(201, {"orderId": "order-123", "filledQuantity": payload.get("quantity", 0), "fillPrice": 5001.25})
+        return _FakeResponse(
+            201, {"orderId": "order-123", "filledQuantity": payload.get("quantity", 0), "fillPrice": 5001.25}
+        )
 
     def get(self, url: str, headers=None, timeout: float = 0):
         self.calls.append(("GET", url, headers, None))
@@ -60,7 +62,9 @@ def test_paper_broker_submit_order_and_fill_tracking() -> None:
     )
     broker = PaperBroker(engine=engine)
 
-    result = broker.submit_order(Order(symbol="MES JUN26", side="BUY", quantity=2, stop_loss=4995.0, take_profit=5010.0))
+    result = broker.submit_order(
+        Order(symbol="MES JUN26", side="BUY", quantity=2, stop_loss=4995.0, take_profit=5010.0)
+    )
 
     assert result.accepted is True
     assert result.status == "filled"
@@ -81,7 +85,9 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge() -> None:
     )
     broker._session = cast(Any, fake_session)  # test seam
 
-    direct = broker.submit_order(Order(symbol="MES JUN26", side="SELL", quantity=1, stop_loss=5010.0, take_profit=4990.0))
+    direct = broker.submit_order(
+        Order(symbol="MES JUN26", side="SELL", quantity=1, stop_loss=5010.0, take_profit=4990.0)
+    )
     assert direct.accepted is True
     assert direct.order_id == "order-123"
 
@@ -100,11 +106,13 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge() -> None:
     container = SimpleNamespace(broker=broker_spy)
 
     engine = SimpleNamespace(
-        app=SimpleNamespace(logger=SimpleNamespace(
-            error=lambda *a, **k: None,
-            info=lambda *a, **k: None,
-            warning=lambda *a, **k: None,
-        )),
+        app=SimpleNamespace(
+            logger=SimpleNamespace(
+                error=lambda *a, **k: None,
+                info=lambda *a, **k: None,
+                warning=lambda *a, **k: None,
+            )
+        ),
         config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
         get_current_dream_snapshot=lambda: {"stop": 4990.0, "target": 5010.0, "regime": "NEUTRAL"},
         risk_controller=SimpleNamespace(

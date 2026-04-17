@@ -26,7 +26,11 @@ def main() -> int:
     evolution_rows = _read_jsonl(Path("state/evolution_log.jsonl"))
     lifecycle_rows = _read_jsonl(Path("state/evolution_lifecycle.jsonl"))
 
-    proposed = [r for r in evolution_rows if str(r.get("status", "")).lower() in {"proposed", "applied", "awaiting_human_approval"}]
+    proposed = [
+        r
+        for r in evolution_rows
+        if str(r.get("status", "")).lower() in {"proposed", "applied", "awaiting_human_approval"}
+    ]
     promoted = [r for r in lifecycle_rows if str(r.get("state", "")).lower() == "promoted"]
     rolled_back = [r for r in lifecycle_rows if str(r.get("state", "")).lower() == "rolled_back"]
 

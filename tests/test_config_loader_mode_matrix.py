@@ -79,7 +79,9 @@ def test_validate_startup_rejects_sim_real_guard_when_feature_flag_disabled(monk
         ConfigLoader.validate_startup(raise_on_error=True)
 
 
-def test_validate_startup_warns_placeholder_api_key_in_sim(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+def test_validate_startup_warns_placeholder_api_key_in_sim(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
     _set_required_env(monkeypatch)
     monkeypatch.setenv("CROSSTRADE_TOKEN", "unit-test-token")
     cfg = {

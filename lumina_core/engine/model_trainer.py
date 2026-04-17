@@ -46,15 +46,21 @@ class ModelTrainer:
 
         if platform_name == "Windows":
             supported = False
-            reasons.append("Unsloth fine-tuning wordt niet ondersteund op Windows native; gebruik WSL2 of Linux met CUDA.")
+            reasons.append(
+                "Unsloth fine-tuning wordt niet ondersteund op Windows native; gebruik WSL2 of Linux met CUDA."
+            )
         if not cuda_available:
             supported = False
             reasons.append("CUDA/GPU is niet beschikbaar; LoRA/QLoRA training is daarom nu niet uitvoerbaar.")
         if not unsloth_installed:
             supported = False
-            reasons.append("Unsloth is niet geinstalleerd; installeer requirements_finetune.txt in een Linux/WSL2 omgeving.")
+            reasons.append(
+                "Unsloth is niet geinstalleerd; installeer requirements_finetune.txt in een Linux/WSL2 omgeving."
+            )
         if not ollama_installed:
-            reasons.append("Ollama is niet gevonden; export naar een lokaal runtime model kan nog niet worden afgerond.")
+            reasons.append(
+                "Ollama is niet gevonden; export naar een lokaal runtime model kan nog niet worden afgerond."
+            )
 
         report = TrainingEnvironmentReport(
             supported=supported,
@@ -137,7 +143,9 @@ class ModelTrainer:
         output_path.write_text("\n".join(examples) + ("\n" if examples else ""), encoding="utf-8")
         return output_path
 
-    def build_unsloth_command(self, *, base_model: str, output_dir: Path, model_name: str = "lumina-qwen-custom") -> list[str]:
+    def build_unsloth_command(
+        self, *, base_model: str, output_dir: Path, model_name: str = "lumina-qwen-custom"
+    ) -> list[str]:
         return [
             sys.executable,
             "-m",
@@ -153,10 +161,20 @@ class ModelTrainer:
             "--save-merged-16bit",
         ]
 
-    def build_gguf_export_command(self, *, merged_model_dir: Path, output_file: Path, quantization: str = "q4_k_m") -> list[str]:
+    def build_gguf_export_command(
+        self, *, merged_model_dir: Path, output_file: Path, quantization: str = "q4_k_m"
+    ) -> list[str]:
         converter = self._resolve_gguf_converter()
         if converter.suffix.lower() == ".py":
-            return [sys.executable, str(converter), str(merged_model_dir), "--outfile", str(output_file), "--outtype", quantization]
+            return [
+                sys.executable,
+                str(converter),
+                str(merged_model_dir),
+                "--outfile",
+                str(output_file),
+                "--outtype",
+                quantization,
+            ]
         return [str(converter), str(merged_model_dir), "--outfile", str(output_file), "--outtype", quantization]
 
     def write_modelfile(
@@ -178,7 +196,7 @@ class ModelTrainer:
                     f"PARAMETER temperature {temperature}",
                     'SYSTEM "You are Lumina trading reasoning. Respond in strict JSON whenever a trade decision is requested."',
                     'TEMPLATE "{{ if .System }}<|system|>{{ .System }}{{ end }}{{ if .Prompt }}<|user|>{{ .Prompt }}{{ end }}<|assistant|>"',
-                    f'# model_name={model_name}',
+                    f"# model_name={model_name}",
                 ]
             )
             + "\n",
@@ -202,7 +220,9 @@ class ModelTrainer:
         modelfile = self.write_modelfile(output_dir=output_dir, gguf_path=gguf_file, model_name=model_name)
         return {
             "train": self.build_unsloth_command(base_model=base_model, output_dir=output_dir, model_name=model_name),
-            "export": self.build_gguf_export_command(merged_model_dir=merged_dir, output_file=gguf_file, quantization=quantization),
+            "export": self.build_gguf_export_command(
+                merged_model_dir=merged_dir, output_file=gguf_file, quantization=quantization
+            ),
             "register": self.build_ollama_create_command(model_name=model_name, modelfile=modelfile),
             "modelfile": str(modelfile),
             "gguf": str(gguf_file),
@@ -243,7 +263,9 @@ class ModelTrainer:
         return completed.returncode == 0, output
 
     def create_export_instructions(self, *, base_model: str, output_dir: Path) -> list[str]:
-        pipeline = self.build_full_pipeline_commands(base_model=base_model, output_dir=output_dir, model_name="lumina-qwen-custom")
+        pipeline = self.build_full_pipeline_commands(
+            base_model=base_model, output_dir=output_dir, model_name="lumina-qwen-custom"
+        )
         return [
             "1. Installeer Linux of WSL2 met NVIDIA CUDA drivers.",
             "2. Activeer een aparte fine-tuning omgeving en voer pip install -r requirements_finetune.txt uit.",

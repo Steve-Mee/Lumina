@@ -193,18 +193,21 @@ class LuminaEngine:
         # FastPathEngine wordt hier lazy geladen om circulaire imports te vermijden
         if self.fast_path is None:
             from .fast_path_engine import FastPathEngine  # noqa: PLC0415
+
             self.fast_path = FastPathEngine(engine=self)
 
         # RealisticBacktesterEngine lazy init
         if self.backtester is None:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
             from .realistic_backtester_engine import RealisticBacktesterEngine  # noqa: PLC0415
+
             self.backtester = RealisticBacktesterEngine(RuntimeContext(engine=self))
 
         # AdvancedBacktesterEngine lazy init
         if self.advanced_backtester is None:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
             from .advanced_backtester_engine import AdvancedBacktesterEngine  # noqa: PLC0415
+
             self.advanced_backtester = AdvancedBacktesterEngine(RuntimeContext(engine=self))
 
         # RLTradingEnvironment, PPOTrainer, InfiniteSimulator, EmotionalTwinAgent,
@@ -223,7 +226,7 @@ class LuminaEngine:
 
         # Hard Risk Controller initialization
         if self.risk_controller is None:
-            session_config = getattr(self.config, 'session', {})
+            session_config = getattr(self.config, "session", {})
             if not isinstance(session_config, dict):
                 session_config = {}
             limits = risk_limits_from_config()
@@ -231,16 +234,17 @@ class LuminaEngine:
             # Keep session calendar as source-of-truth for REAL mode behavior.
             limits.enforce_session_guard = bool(
                 session_config.get(
-                    'enforce_calendar',
+                    "enforce_calendar",
                     limits.enforce_session_guard,
                 )
             )
-            
-            state_file = getattr(self.config, 'state_dir', None)
+
+            state_file = getattr(self.config, "state_dir", None)
             if state_file:
                 from pathlib import Path  # noqa: PLC0415
-                state_file = Path(state_file) / 'risk_controller_state.json'
-            
+
+                state_file = Path(state_file) / "risk_controller_state.json"
+
             # Rules are enforced in REAL mode only. SIM is unconstrained learning.
             enforce_rules = self.config.trade_mode == "real"
 
@@ -272,6 +276,7 @@ class LuminaEngine:
         }
         try:
             from lumina_core.config_loader import ConfigLoader  # noqa: PLC0415
+
             data = ConfigLoader.get()
 
             sim_cfg = data.get("sim", {}) if isinstance(data.get("sim"), dict) else {}
@@ -779,6 +784,7 @@ class LuminaEngine:
 
         if self.app is not None and hasattr(self.app, name):
             import warnings  # noqa: PLC0415
+
             warnings.warn(
                 f"LuminaEngine: accessing '{name}' via app-delegation shim is deprecated. "
                 f"Add an explicit attribute to LuminaEngine or access self.app.{name} directly.",
@@ -807,6 +813,7 @@ class LuminaEngine:
 
         if getattr(self, "app", None) is not None and hasattr(self.app, name):
             import warnings  # noqa: PLC0415
+
             warnings.warn(
                 f"LuminaEngine: setting '{name}' via app-delegation shim is deprecated. "
                 f"Add an explicit attribute to LuminaEngine or set self.app.{name} directly.",

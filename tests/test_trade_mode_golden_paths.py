@@ -110,9 +110,7 @@ def test_is_market_open_fail_closed_when_session_guard_unavailable() -> None:
     svc.engine.session_guard = None
 
     assert svc.is_market_open() is False
-    svc.engine.app.logger.warning.assert_called_with(
-        "OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_UNAVAILABLE"
-    )
+    svc.engine.app.logger.warning.assert_called_with("OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_UNAVAILABLE")
 
 
 def test_is_market_open_fail_closed_when_session_guard_errors() -> None:

@@ -57,7 +57,10 @@ def main() -> int:
         "sample_count": len(reconciled),
         "symbol_commission_multiplier": {"MES": round(commission_mult, 4), "MNQ": round(commission_mult, 4)},
         "symbol_spread_multiplier": {"default": round(spread_mult, 4)},
-        "fill_latency_multiplier": {"default": round(latency_mult, 4), "volatile": round(_bounded(latency_mult * 1.2, 0.8, 3.0), 4)},
+        "fill_latency_multiplier": {
+            "default": round(latency_mult, 4),
+            "volatile": round(_bounded(latency_mult * 1.2, 0.8, 3.0), 4),
+        },
         "medians": {
             "slippage_points": round(median_slippage, 4),
             "commission": round(median_commission, 4),

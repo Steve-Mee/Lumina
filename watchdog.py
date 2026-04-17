@@ -18,6 +18,7 @@ PID_FILE = TEMP_DIR / "lumina_child.pid"
 
 # ── Observability bootstrap (zero-overhead when monitoring.enabled = false) ────
 
+
 def _start_watchdog_observability():
     """Load config and start the ObservabilityService if monitoring is enabled.
 
@@ -48,8 +49,12 @@ def _prepare_persistent_links() -> None:
     """Route file-based defaults into mounted volume paths without app code changes."""
     links = {
         Path("/app/lumina_sim_state.json"): Path(os.getenv("LUMINA_STATE_FILE", "/app/state/lumina_sim_state.json")),
-        Path("/app/lumina_daytrading_bible.json"): Path(os.getenv("LUMINA_BIBLE_FILE", "/app/state/lumina_daytrading_bible.json")),
-        Path("/app/lumina_thought_log.jsonl"): Path(os.getenv("LUMINA_THOUGHT_LOG", "/app/state/lumina_thought_log.jsonl")),
+        Path("/app/lumina_daytrading_bible.json"): Path(
+            os.getenv("LUMINA_BIBLE_FILE", "/app/state/lumina_daytrading_bible.json")
+        ),
+        Path("/app/lumina_thought_log.jsonl"): Path(
+            os.getenv("LUMINA_THOUGHT_LOG", "/app/state/lumina_thought_log.jsonl")
+        ),
         Path("/app/lumina_full_log.csv"): Path(os.getenv("LUMINA_LOG_FILE", "/app/logs/lumina_full_log.csv")),
     }
 

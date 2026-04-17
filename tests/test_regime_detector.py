@@ -140,7 +140,9 @@ def _build_reasoning_engine(frame: pd.DataFrame) -> tuple[SimpleNamespace, HardR
         enforce_rules=True,
     )
     app = SimpleNamespace(
-        logger=SimpleNamespace(info=lambda *args, **kwargs: None, warning=lambda *args, **kwargs: None, error=lambda *args, **kwargs: None),
+        logger=SimpleNamespace(
+            info=lambda *args, **kwargs: None, warning=lambda *args, **kwargs: None, error=lambda *args, **kwargs: None
+        ),
         FAST_PATH_ONLY=False,
     )
     engine = SimpleNamespace(
@@ -162,7 +164,9 @@ def test_reasoning_service_updates_regime_snapshot_and_risk_limits() -> None:
     detector = RegimeDetector()
     reasoning = ReasoningService(
         engine=engine,
-        inference_engine=SimpleNamespace(infer_json=lambda *args, **kwargs: {"signal": "BUY", "confidence": 0.9, "reason": "ok"}),
+        inference_engine=SimpleNamespace(
+            infer_json=lambda *args, **kwargs: {"signal": "BUY", "confidence": 0.9, "reason": "ok"}
+        ),
         regime_detector=detector,
     )
 

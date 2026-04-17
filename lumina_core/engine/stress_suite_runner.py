@@ -61,12 +61,10 @@ class StressSuiteRunner:
         }
         gate_fail_reasons: list[str] = []
         if not gate_checks["var_breach_limit"]:
-            gate_fail_reasons.append(
-                f"VAR_BREACH_LIMIT_EXCEEDED(actual={worst_var_breach},limit={var_breach_limit})"
-            )
+            gate_fail_reasons.append(f"VAR_BREACH_LIMIT_EXCEEDED(actual={worst_var_breach},limit={var_breach_limit})")
         if not gate_checks["drawdown_limit"]:
             gate_fail_reasons.append(
-                f"DRAWDOWN_LIMIT_EXCEEDED(actual={round(worst_drawdown,2)},limit={round(drawdown_limit,2)})"
+                f"DRAWDOWN_LIMIT_EXCEEDED(actual={round(worst_drawdown, 2)},limit={round(drawdown_limit, 2)})"
             )
         ready_for_real = all(gate_checks.values())
 

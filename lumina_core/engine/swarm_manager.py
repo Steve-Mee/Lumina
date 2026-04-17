@@ -46,9 +46,7 @@ class SwarmManager(MultiSymbolSwarmManager):
             primary_row = correlation_matrix.get(primary_symbol, {})
             if isinstance(primary_row, dict):
                 correlation_to_primary = {
-                    str(symbol): float(value)
-                    for symbol, value in primary_row.items()
-                    if str(symbol) != primary_symbol
+                    str(symbol): float(value) for symbol, value in primary_row.items() if str(symbol) != primary_symbol
                 }
 
         arbitrage_signals = snapshot.get("arbitrage_signals", []) if isinstance(snapshot, dict) else []

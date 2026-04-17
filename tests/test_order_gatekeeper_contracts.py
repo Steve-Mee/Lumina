@@ -7,7 +7,16 @@ from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contra
 
 
 class _RiskController:
-    def __init__(self, *, can_trade: bool = True, reason: str = "OK", var_es_ok: bool = True, var_es_reason: str = "VAR_ES OK", mc_ok: bool = True, mc_reason: str = "MC drawdown OK") -> None:
+    def __init__(
+        self,
+        *,
+        can_trade: bool = True,
+        reason: str = "OK",
+        var_es_ok: bool = True,
+        var_es_reason: str = "VAR_ES OK",
+        mc_ok: bool = True,
+        mc_reason: str = "MC drawdown OK",
+    ) -> None:
         self._active_limits = SimpleNamespace(enforce_session_guard=False)
         self._can_trade = bool(can_trade)
         self._reason = str(reason)

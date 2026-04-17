@@ -117,7 +117,9 @@ class HumanAnalysisService:
             )
         )
         past_experiences = app.retrieve_relevant_experiences(f"Prijs {price:.2f} | Regime {regime}")
-        meta = app.run_async_safely(app.meta_reasoning_and_counterfactuals(consensus, price, pa_summary, past_experiences))
+        meta = app.run_async_safely(
+            app.meta_reasoning_and_counterfactuals(consensus, price, pa_summary, past_experiences)
+        )
         world_model = app.update_world_model(df_snapshot, regime, pa_summary)
 
         signal = consensus.get("signal", "HOLD")
@@ -163,28 +165,34 @@ class HumanAnalysisService:
                 if local_engine is not None and hasattr(local_engine, "vision_infer"):
                     vision_obj = local_engine.vision_infer(chart_base64, vision_prompt)
                 else:
-                    vision_obj = app.infer_json(
-                        {
-                            "model": self.engine.config.vision_model,
-                            "messages": [
-                                {
-                                    "role": "system",
-                                    "content": "Je bent een professionele chart-analist. Geef ALLEEN JSON met keys: summary (string), ai_fibs (dict met fib-ratio->prijs).",
-                                },
-                                {
-                                    "role": "user",
-                                    "content": [
-                                        {"type": "text", "text": vision_prompt},
-                                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{chart_base64}"}},
-                                    ],
-                                },
-                            ],
-                            "max_tokens": 220,
-                            "temperature": 0.2,
-                        },
-                        timeout=20,
-                        context="vision_analysis",
-                    ) or {}
+                    vision_obj = (
+                        app.infer_json(
+                            {
+                                "model": self.engine.config.vision_model,
+                                "messages": [
+                                    {
+                                        "role": "system",
+                                        "content": "Je bent een professionele chart-analist. Geef ALLEEN JSON met keys: summary (string), ai_fibs (dict met fib-ratio->prijs).",
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": [
+                                            {"type": "text", "text": vision_prompt},
+                                            {
+                                                "type": "image_url",
+                                                "image_url": {"url": f"data:image/png;base64,{chart_base64}"},
+                                            },
+                                        ],
+                                    },
+                                ],
+                                "max_tokens": 220,
+                                "temperature": 0.2,
+                            },
+                            timeout=20,
+                            context="vision_analysis",
+                        )
+                        or {}
+                    )
 
                 ai_fibs = vision_obj.get("ai_fibs", {}) if isinstance(vision_obj, dict) else {}
                 if isinstance(ai_fibs, dict) and ai_fibs:
@@ -199,7 +207,7 @@ class HumanAnalysisService:
                 app.logger.error(f"Vision deep_analysis error [{code}]: {exc}")
 
         app.logger.info(
-            f"DEEP_ANALYSIS,signal={consensus.get('signal','HOLD')},conf={float(consensus.get('confidence', 0.0)):.2f},regime={regime},vix={world_model['macro']['vix']:.1f}"
+            f"DEEP_ANALYSIS,signal={consensus.get('signal', 'HOLD')},conf={float(consensus.get('confidence', 0.0)):.2f},regime={regime},vix={world_model['macro']['vix']:.1f}"
         )
 
         if float(tracker.get("today", 0.0)) <= cost_before:
@@ -254,13 +262,15 @@ class HumanAnalysisService:
                     df.set_index("timestamp", inplace=True)
                     five_min = (
                         df.resample("5min")
-                        .agg({
-                            "open": "first",
-                            "high": "max",
-                            "low": "min",
-                            "close": "last",
-                            "volume": "sum",
-                        })
+                        .agg(
+                            {
+                                "open": "first",
+                                "high": "max",
+                                "low": "min",
+                                "close": "last",
+                                "volume": "sum",
+                            }
+                        )
                         .dropna()
                     )
                     if len(five_min) == 0:
@@ -275,7 +285,10 @@ class HumanAnalysisService:
                     self.last_5min_candle = current_5min_ts
                     log_event(app.logger, "analysis.new_candle", ts=datetime.now().strftime("%H:%M:%S"))
 
-                    if bool(getattr(self.engine, "rl_policy_enabled", False)) and getattr(self.engine, "rl_policy_model", None) is not None:
+                    if (
+                        bool(getattr(self.engine, "rl_policy_enabled", False))
+                        and getattr(self.engine, "rl_policy_model", None) is not None
+                    ):
                         try:
                             from lumina_core.rl_environment import RLTradingEnvironment
 
@@ -286,7 +299,9 @@ class HumanAnalysisService:
                             trainer = self.ppo_trainer
                             if trainer is not None:
                                 rl_action = trainer.infer_live_action(obs)
-                                applied = self.engine.apply_rl_live_decision(rl_action, current_price=current_price, regime=regime)
+                                applied = self.engine.apply_rl_live_decision(
+                                    rl_action, current_price=current_price, regime=regime
+                                )
                                 if applied:
                                     log_event(
                                         app.logger,
@@ -302,40 +317,44 @@ class HumanAnalysisService:
 
                     fast_result = self.engine.fast_path.run(self.engine.ohlc_1min, current_price, regime)
                     if not fast_result["used_llm"]:
-                            # Hard Risk Controller — VERY FIRST check before applying fast-path signal
-                            _fp_signal = fast_result.get("signal", "HOLD")
-                            if _fp_signal in {"BUY", "SELL"}:
-                                _risk_ctrl = getattr(self.engine, "risk_controller", None)
-                                if _risk_ctrl is not None:
-                                    _fp_stop = float(fast_result.get("stop", current_price * 0.99 if _fp_signal == "BUY" else current_price * 1.01))
-                                    _fp_risk = abs(current_price - _fp_stop)
-                                    _rc_ok, _rc_reason = _risk_ctrl.check_can_trade(
-                                        str(self.engine.config.instrument), str(regime), float(_fp_risk)
+                        # Hard Risk Controller — VERY FIRST check before applying fast-path signal
+                        _fp_signal = fast_result.get("signal", "HOLD")
+                        if _fp_signal in {"BUY", "SELL"}:
+                            _risk_ctrl = getattr(self.engine, "risk_controller", None)
+                            if _risk_ctrl is not None:
+                                _fp_stop = float(
+                                    fast_result.get(
+                                        "stop", current_price * 0.99 if _fp_signal == "BUY" else current_price * 1.01
                                     )
-                                    if not _rc_ok:
-                                        app.logger.warning(f"HardRiskController blocked fast-path signal: {_rc_reason}")
-                                        fast_result = dict(fast_result)
-                                        fast_result["signal"] = "HOLD"
-                            self.engine.set_current_dream_fields(
-                                {
-                                    "signal": fast_result["signal"],
-                                    "confidence": fast_result["confidence"],
-                                    "stop": fast_result["stop"],
-                                    "target": fast_result["target"],
-                                    "reason": fast_result["reason"],
-                                    "confluence_score": fast_result["confidence"],
-                                    "chosen_strategy": fast_result["chosen_strategy"],
-                                }
-                            )
-                            log_event(
-                                app.logger,
-                                "analysis.fast_path",
-                                source="fast_path_engine",
-                                signal=str(fast_result["signal"]),
-                                confidence=round(float(fast_result["confidence"]), 2),
-                                latency_ms=float(fast_result["latency_ms"]),
-                            )
-                            continue
+                                )
+                                _fp_risk = abs(current_price - _fp_stop)
+                                _rc_ok, _rc_reason = _risk_ctrl.check_can_trade(
+                                    str(self.engine.config.instrument), str(regime), float(_fp_risk)
+                                )
+                                if not _rc_ok:
+                                    app.logger.warning(f"HardRiskController blocked fast-path signal: {_rc_reason}")
+                                    fast_result = dict(fast_result)
+                                    fast_result["signal"] = "HOLD"
+                        self.engine.set_current_dream_fields(
+                            {
+                                "signal": fast_result["signal"],
+                                "confidence": fast_result["confidence"],
+                                "stop": fast_result["stop"],
+                                "target": fast_result["target"],
+                                "reason": fast_result["reason"],
+                                "confluence_score": fast_result["confidence"],
+                                "chosen_strategy": fast_result["chosen_strategy"],
+                            }
+                        )
+                        log_event(
+                            app.logger,
+                            "analysis.fast_path",
+                            source="fast_path_engine",
+                            signal=str(fast_result["signal"]),
+                            confidence=round(float(fast_result["confidence"]), 2),
+                            latency_ms=float(fast_result["latency_ms"]),
+                        )
+                        continue
                     else:
                         log_event(app.logger, "analysis.llm_takeover", reason="fast_path_low_confidence")
                     mtf_data = app.get_mtf_snapshots()
@@ -347,7 +366,11 @@ class HumanAnalysisService:
                         tracker["cached_analyses"] = int(tracker.get("cached_analyses", 0)) + 1
                         with self.cache_lock:
                             cached = dict(self.last_deep_analysis)
-                            consensus = cached.get("consensus") or {"signal": "HOLD", "confidence": 0.0, "reason": "cache-empty"}
+                            consensus = cached.get("consensus") or {
+                                "signal": "HOLD",
+                                "confidence": 0.0,
+                                "reason": "cache-empty",
+                            }
                             meta = cached.get("meta") or {}
                             self.engine.set_current_dream_fields(
                                 {

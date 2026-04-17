@@ -18,14 +18,14 @@ def health_check_market_open(app: RuntimeContext, symbol: str, regime: str) -> t
     """
     FIRST CHECK: immediately after market open.
     Verify risk state is healthy before trading begins.
-    
+
     Call this once at startup/market open to ensure system is ready for trading.
-    
+
     Args:
         app: RuntimeContext
         symbol: Primary trading symbol (e.g., "MES")
         regime: Market regime (e.g., "trending_up")
-    
+
     Returns:
         (healthy: bool, status_message: str)
     """
@@ -52,20 +52,20 @@ def check_pre_trade_risk(
 ) -> tuple[bool, str]:
     """
     Hard Risk Controller: LAST pre-trade check (fail-closed).
-    
+
     Call this BEFORE any order submission to ensure:
     - Daily loss cap not breached
     - No consecutive loss streak
     - Per-instrument risk limits respected
     - Per-regime exposure limits respected
     - Kill-switch not engaged
-    
+
     Args:
         app: RuntimeContext
         symbol: Instrument to trade (e.g., "MES")
         regime: Market regime (e.g., "trending_up")
         proposed_risk: Risk amount for trade (USD)
-    
+
     Returns:
         (allowed: bool, reason: str)
     """
@@ -106,21 +106,21 @@ def submit_order_with_risk_check(
 ) -> OrderResult | None:
     """
     Submit order ONLY after passing Hard Risk Controller.
-    
+
     This wrapper ensures risk check is the LAST gate before order submission.
-    
+
     Args:
         app: RuntimeContext
         symbol: Instrument
         regime: Market regime
         proposed_risk: Risk amount (USD)
         order: BrokerBridge order payload
-    
+
     Returns:
         OrderResult if check passes, None if blocked
     """
     allowed, reason = check_pre_trade_risk(app, symbol, regime, proposed_risk)
-    
+
     if not allowed:
         app.logger.warning(f"Order blocked by risk controller: {reason}")
         return None
@@ -128,7 +128,11 @@ def submit_order_with_risk_check(
     mode = str(getattr(getattr(app.engine, "config", None), "trade_mode", "paper")).strip().lower()
     gateway_result = apply_agent_policy_gateway(
         signal=str(getattr(order, "side", "HOLD")).upper(),
-        confluence_score=float(getattr(order, "metadata", {}).get("confluence_score", 1.0) if isinstance(getattr(order, "metadata", {}), dict) else 1.0),
+        confluence_score=float(
+            getattr(order, "metadata", {}).get("confluence_score", 1.0)
+            if isinstance(getattr(order, "metadata", {}), dict)
+            else 1.0
+        ),
         min_confluence=float(getattr(getattr(app.engine, "config", None), "min_confluence", 0.0) or 0.0),
         hold_until_ts=0.0,
         mode=mode,
@@ -143,7 +147,10 @@ def submit_order_with_risk_check(
             "calibration_factor": 1.0,
         },
     )
-    if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {"BUY", "SELL"}:
+    if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {
+        "BUY",
+        "SELL",
+    }:
         app.logger.warning(f"Order blocked by policy gateway: {gateway_result.get('reason')}")
         return None
 
@@ -155,12 +162,14 @@ def submit_order_with_risk_check(
     return container.broker.submit_order(order)
 
 
-def reflect_on_trade(app: RuntimeContext, pnl_dollars: float, entry_price: float, exit_price: float, position_qty: int) -> None:
+def reflect_on_trade(
+    app: RuntimeContext, pnl_dollars: float, entry_price: float, exit_price: float, position_qty: int
+) -> None:
     _reflect_on_trade(app, pnl_dollars, entry_price, exit_price, position_qty)
-    
+
     # Record trade in risk controller
     if app.engine.risk_controller:
-        symbol = getattr(app.engine.swarm, 'current_symbol', 'UNKNOWN')
+        symbol = getattr(app.engine.swarm, "current_symbol", "UNKNOWN")
         snapshot = _refresh_regime_snapshot(app, getattr(app, "market_regime", "NEUTRAL"))
         regime = str(snapshot.get("label", getattr(app, "market_regime", "NEUTRAL")))
         risk_taken = abs(position_qty * (exit_price - entry_price))

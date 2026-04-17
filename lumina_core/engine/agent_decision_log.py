@@ -43,7 +43,9 @@ class AgentDecisionLog:
         config_snapshot_hash: str | None = None,
     ) -> dict[str, Any]:
         ts = datetime.now(timezone.utc).isoformat()
-        prompt_fingerprint = prompt_hash or self._sha256(prompt_text or json.dumps(raw_input, sort_keys=True, ensure_ascii=True))
+        prompt_fingerprint = prompt_hash or self._sha256(
+            prompt_text or json.dumps(raw_input, sort_keys=True, ensure_ascii=True)
+        )
         config_fingerprint = str(config_snapshot_hash or self._default_config_snapshot_hash())
         prev_hash = self._last_hash()
 

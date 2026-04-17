@@ -18,6 +18,7 @@ from typing import Any
 
 import pandas as pd
 import requests
+
 # ── Headless detection: must precede any Streamlit initialisation ──────────────
 _IS_HEADLESS = "--headless" in sys.argv or "--stability-check" in sys.argv
 
@@ -195,7 +196,7 @@ def _pid_command_line(pid: int) -> str:
         return ""
     try:
         if os.name == "nt":
-            query = f"(Get-CimInstance Win32_Process -Filter \"ProcessId = {pid}\").CommandLine"
+            query = f'(Get-CimInstance Win32_Process -Filter "ProcessId = {pid}").CommandLine'
             result = subprocess.run(
                 ["powershell", "-NoProfile", "-Command", query],
                 check=False,
@@ -473,9 +474,8 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
 
     if alive:
         primary_heartbeat_ok = log_age is not None and log_age <= 180
-        secondary_heartbeat_ok = (
-            (dashboard_age is not None and dashboard_age <= 300)
-            or (screen_share_age is not None and screen_share_age <= 180)
+        secondary_heartbeat_ok = (dashboard_age is not None and dashboard_age <= 300) or (
+            screen_share_age is not None and screen_share_age <= 180
         )
         if primary_heartbeat_ok:
             st.success("Bot is alive: log activity was updated in the last 3 minutes.")
@@ -617,7 +617,9 @@ def _window_metrics(summary: dict[str, Any], rows: list[dict[str, Any]], window_
 
 
 def _proposal_snapshot(rows: list[dict[str, Any]]) -> tuple[int, list[dict[str, Any]]]:
-    proposals = [row for row in rows if str(row.get("status", "")).lower() == "proposed" or isinstance(row.get("proposal"), dict)]
+    proposals = [
+        row for row in rows if str(row.get("status", "")).lower() == "proposed" or isinstance(row.get("proposal"), dict)
+    ]
     latest = list(reversed(proposals))[:5]
     rendered: list[dict[str, Any]] = []
     for row in latest:
@@ -700,7 +702,9 @@ def _render_sim_learning_tab() -> None:
     failures = report.get("failures", []) if isinstance(report.get("failures"), list) else []
     is_green = bool(report.get("READY_FOR_REAL", False))
     status_label = str(report.get("status", "RED")).strip().upper()
-    sharpe_crit = criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
+    sharpe_crit = (
+        criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
+    )
     latest_sharpe = _safe_float(sharpe_crit.get("latest_sharpe", 0.0))
 
     summary_color = "#16a34a" if is_green else "#dc2626"
@@ -770,7 +774,11 @@ def _render_sim_learning_tab() -> None:
     exp = criteria.get("positive_expectancy_5d", {}) if isinstance(criteria.get("positive_expectancy_5d"), dict) else {}
     consistent = criteria.get("consistent_sharpe", {}) if isinstance(criteria.get("consistent_sharpe"), dict) else {}
     risk = criteria.get("zero_risk_and_var", {}) if isinstance(criteria.get("zero_risk_and_var"), dict) else {}
-    trend = criteria.get("evolution_proposals_trend", {}) if isinstance(criteria.get("evolution_proposals_trend"), dict) else {}
+    trend = (
+        criteria.get("evolution_proposals_trend", {})
+        if isinstance(criteria.get("evolution_proposals_trend"), dict)
+        else {}
+    )
 
     sc1, sc2, sc3, sc4, sc5 = st.columns(5)
     sc1.metric(
@@ -816,21 +824,28 @@ def _render_sim_learning_tab() -> None:
         if st.button(
             "🚀 Run Aggressive Overnight SIM",
             type="primary",
-            width='stretch',
+            width="stretch",
             help="Launches: --headless --mode=sim --duration=240 --overnight-sim --stability-check",
         ):
             cmd = [
-                sys.executable, "-m", "lumina_launcher",
-                "--headless", "--mode=sim", "--duration=240",
-                "--overnight-sim", "--stability-check",
+                sys.executable,
+                "-m",
+                "lumina_launcher",
+                "--headless",
+                "--mode=sim",
+                "--duration=240",
+                "--overnight-sim",
+                "--stability-check",
             ]
-            proc = subprocess.Popen(cmd, cwd=str(Path(".").resolve()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            proc = subprocess.Popen(
+                cmd, cwd=str(Path(".").resolve()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             st.success(f"✅ Overnight SIM launched (PID {proc.pid}). Results appear in state/test_runs/ on completion.")
 
     with btn_col2:
         if st.button(
             "🔍 Check Stability Now",
-            width='stretch',
+            width="stretch",
             help="Re-generates the stability report from all available SIM summaries",
         ):
             st.rerun()
@@ -841,17 +856,21 @@ def _render_sim_learning_tab() -> None:
         if st.button(
             "🔴 Switch to REAL Mode",
             type="primary",
-            width='stretch',
+            width="stretch",
             disabled=not go_live_enabled,
             help="Only active when READY_FOR_REAL=True and operator confirmation is ticked above",
         ):
             current_mode = str(os.getenv("LUMINA_MODE", os.getenv("TRADE_MODE", "sim"))).strip().lower()
             if current_mode == "sim_real_guard" and not _sim_real_guard_real_promotion_allowed():
-                st.error("SIM_REAL_GUARD -> REAL promotion is blocked by default. Set ALLOW_SIM_REAL_GUARD_REAL_PROMOTION=true after the required sign-off gate passes.")
+                st.error(
+                    "SIM_REAL_GUARD -> REAL promotion is blocked by default. Set ALLOW_SIM_REAL_GUARD_REAL_PROMOTION=true after the required sign-off gate passes."
+                )
             else:
                 _write_env_file(ENV_PATH, {"LUMINA_MODE": "real"})
                 os.environ["LUMINA_MODE"] = "real"
-                st.success("✅ Stability GREEN + confirmed. LUMINA_MODE=real written to .env. Restart launcher to activate.")
+                st.success(
+                    "✅ Stability GREEN + confirmed. LUMINA_MODE=real written to .env. Restart launcher to activate."
+                )
 
     if not is_green:
         st.info(f"🔒 REAL mode locked until 5 consecutive positive-expectancy days. Progress: {consecutive}/5.")
@@ -986,7 +1005,7 @@ def _render_kv_section(
         if tip:
             safe_tip = html.escape(tip, quote=True)
             left.markdown(
-                f"{label} <span title=\"{safe_tip}\" style=\"display:inline-block;width:1rem;height:1rem;line-height:1rem;text-align:center;border-radius:999px;border:1px solid #94a3b8;color:#334155;font-size:0.72rem;margin-left:0.3rem;cursor:help;\">?</span>",
+                f'{label} <span title="{safe_tip}" style="display:inline-block;width:1rem;height:1rem;line-height:1rem;text-align:center;border-radius:999px;border:1px solid #94a3b8;color:#334155;font-size:0.72rem;margin-left:0.3rem;cursor:help;">?</span>',
                 unsafe_allow_html=True,
             )
         else:
@@ -1015,9 +1034,7 @@ def _render_live_runtime_card(current_dream: dict[str, Any]) -> None:
         ("Confluence Score", current_dream.get("confluence_score", 0)),
         (
             "Fib Levels",
-            "Set"
-            if isinstance(current_dream.get("fib_levels"), dict) and current_dream.get("fib_levels")
-            else "N/A",
+            "Set" if isinstance(current_dream.get("fib_levels"), dict) and current_dream.get("fib_levels") else "N/A",
         ),
         ("Swing High", current_dream.get("swing_high", 0)),
         ("Swing Low", current_dream.get("swing_low", 0)),
@@ -1061,7 +1078,7 @@ def _render_reports_section(reports_dir: Path) -> None:
                 "Modified": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),
             }
         )
-    st.dataframe(pd.DataFrame(report_rows), width='stretch')
+    st.dataframe(pd.DataFrame(report_rows), width="stretch")
 
     selected_name = st.selectbox("Open report preview", [p.name for p in files[:20]], key="report_preview_select")
     selected_path = next((p for p in files if p.name == selected_name), None)
@@ -1076,13 +1093,13 @@ def _render_reports_section(reports_dir: Path) -> None:
         data=file_bytes,
         file_name=selected_path.name,
         mime=mime,
-        width='stretch',
+        width="stretch",
         key=f"download_{selected_path.name}",
     )
 
     ext = selected_path.suffix.lower()
     if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
-        st.image(str(selected_path), caption=selected_path.name, width='stretch')
+        st.image(str(selected_path), caption=selected_path.name, width="stretch")
     elif ext in {".json", ".jsonl", ".txt", ".log", ".yaml", ".yml", ".csv"}:
         preview = selected_path.read_text(encoding="utf-8", errors="replace")[:8000]
         st.code(preview)
@@ -1112,7 +1129,7 @@ def _render_guarded_action_button(
     snapshot: HardwareSnapshot,
     action_key: str,
 ) -> None:
-    if st.button(label, width='stretch'):
+    if st.button(label, width="stretch"):
         if not allowed:
             _append_support_event(
                 event_type="blocked_launcher_action",
@@ -1192,7 +1209,7 @@ def _render_tier_requirements(snapshot: HardwareSnapshot) -> None:
                 else "no",
             }
         )
-    st.dataframe(pd.DataFrame(rows), width='stretch')
+    st.dataframe(pd.DataFrame(rows), width="stretch")
 
 
 def _render_hardware_summary(snapshot: HardwareSnapshot, recommended: ModelDescriptor) -> None:
@@ -1290,7 +1307,9 @@ def _render_setup_wizard(setup_service: SetupService, catalog: ModelCatalog) -> 
         ],
     )
     if recommended_model.supports_unsloth and not unsloth_runtime_ready:
-        st.info("Dit model ondersteunt Unsloth, maar deze runtime nog niet. Gebruik Linux/WSL2 met CUDA en sm_70+ GPU voor fine-tuning.")
+        st.info(
+            "Dit model ondersteunt Unsloth, maar deze runtime nog niet. Gebruik Linux/WSL2 met CUDA en sm_70+ GPU voor fine-tuning."
+        )
     install_unsloth = st.checkbox(
         "Install optional Unsloth fine-tuning dependencies",
         value=False,
@@ -1301,7 +1320,7 @@ def _render_setup_wizard(setup_service: SetupService, catalog: ModelCatalog) -> 
         type="password",
         help="Optional but strongly recommended during first setup.",
     )
-    if st.button("Run Guided Installation", type="primary", width='stretch'):
+    if st.button("Run Guided Installation", type="primary", width="stretch"):
         results = _run_guided_setup(
             setup_service=setup_service,
             snapshot=snapshot,
@@ -1312,14 +1331,18 @@ def _render_setup_wizard(setup_service: SetupService, catalog: ModelCatalog) -> 
         for result in results:
             _render_step_result(result)
         if all(result.success for result in results if result.name != "unsloth_dependencies"):
-            st.success("Guided setup completed. Rerun the launcher if newly installed packages were added to the environment.")
+            st.success(
+                "Guided setup completed. Rerun the launcher if newly installed packages were added to the environment."
+            )
     previous_status = setup_service.load_status()
     if previous_status:
         st.subheader("Last setup run")
         steps = previous_status.get("steps", [])
         if isinstance(steps, list) and steps:
-            st.dataframe(pd.DataFrame(steps), width='stretch')
-    st.info("If package installation changed the environment, rerun Streamlit once so the launcher loads those packages cleanly.")
+            st.dataframe(pd.DataFrame(steps), width="stretch")
+    st.info(
+        "If package installation changed the environment, rerun Streamlit once so the launcher loads those packages cleanly."
+    )
     st.stop()
 
 
@@ -1330,13 +1353,17 @@ def _render_hardware_tab(snapshot: HardwareSnapshot, catalog: ModelCatalog, curr
         vllm_supported=snapshot.vllm_supported,
     )
     hardware_fit_badge = _status_badge(snapshot.profile_tier.upper(), "ready")
-    ollama_badge = _status_badge("Ready" if snapshot.ollama_running else "Needs Attention", "available" if snapshot.ollama_running else "warning")
-    vllm_badge = _status_badge("Ready" if snapshot.vllm_supported else "Blocked", "available" if snapshot.vllm_supported else "blocked")
+    ollama_badge = _status_badge(
+        "Ready" if snapshot.ollama_running else "Needs Attention", "available" if snapshot.ollama_running else "warning"
+    )
+    vllm_badge = _status_badge(
+        "Ready" if snapshot.vllm_supported else "Blocked", "available" if snapshot.vllm_supported else "blocked"
+    )
     st.markdown(f"Hardware Tier {hardware_fit_badge}", unsafe_allow_html=True)
     st.markdown(f"Ollama Runtime {ollama_badge}", unsafe_allow_html=True)
     st.markdown(f"vLLM Path {vllm_badge}", unsafe_allow_html=True)
     _render_hardware_summary(snapshot, recommended)
-    if st.button("Refresh Hardware Scan", width='stretch', key="refresh_hardware_scan"):
+    if st.button("Refresh Hardware Scan", width="stretch", key="refresh_hardware_scan"):
         refreshed = _refresh_hardware_snapshot()
         st.success(f"Hardware scan refreshed: {refreshed.profile_tier}")
         st.rerun()
@@ -1414,7 +1441,7 @@ def _render_model_management_tab(
         }
         for model in catalog.models()
     ]
-    st.dataframe(pd.DataFrame(rows), width='stretch')
+    st.dataframe(pd.DataFrame(rows), width="stretch")
     upgrade_targets = catalog.upgrade_targets(current_model.key)
     if not upgrade_targets:
         st.info("No higher upgrade targets registered for the current model.")
@@ -1423,18 +1450,22 @@ def _render_model_management_tab(
         selected_label = st.selectbox("Upgrade target", list(target_labels.keys()))
         selected_model = catalog.get(target_labels[selected_label])
         if selected_model is not None:
-            fits_hardware = snapshot.ram_gb >= selected_model.ram_min_gb and snapshot.gpu_vram_gb >= selected_model.vram_min_gb
+            fits_hardware = (
+                snapshot.ram_gb >= selected_model.ram_min_gb and snapshot.gpu_vram_gb >= selected_model.vram_min_gb
+            )
             if fits_hardware:
                 st.success("This upgrade fits the current machine.")
             else:
-                st.warning("This upgrade is heavier than the current machine recommendation. The launcher still shows what hardware is needed.")
+                st.warning(
+                    "This upgrade is heavier than the current machine recommendation. The launcher still shows what hardware is needed."
+                )
             st.write(selected_model.upgrade_notes)
-            if st.button("Install or Upgrade Selected Model", type="primary", width='stretch'):
+            if st.button("Install or Upgrade Selected Model", type="primary", width="stretch"):
                 results = setup_service.upgrade_model(selected_model)
                 for result in results:
                     _render_step_result(result)
                 _save_catalog_state(catalog, selected_model.key)
-    if st.button("Install Recommended Model For This Hardware", width='stretch'):
+    if st.button("Install Recommended Model For This Hardware", width="stretch"):
         results = setup_service.upgrade_model(recommended_model)
         for result in results:
             _render_step_result(result)
@@ -1461,7 +1492,7 @@ def _render_training_panel(current_model: ModelDescriptor, snapshot: HardwareSna
     else:
         for reason in report.reasons:
             st.warning(reason)
-    if st.button("Build Dataset Preview", width='stretch'):
+    if st.button("Build Dataset Preview", width="stretch"):
         preview_path = trainer.build_training_dataset()
         st.success(f"Dataset preview written to {preview_path}")
     preview_path = Path("state/finetune_dataset_preview.jsonl")
@@ -1475,11 +1506,20 @@ def _render_training_panel(current_model: ModelDescriptor, snapshot: HardwareSna
     st.caption(f"GGUF target: {pipeline['gguf']}")
     st.write("llama.cpp toolchain")
     st.write(llama_cpp)
-    prepare_badge = _status_badge("Available" if gate["can_prepare_toolchain"] else "Blocked", "available" if gate["can_prepare_toolchain"] else "blocked")
-    export_badge = _status_badge("Available" if gate["can_export"] else "Blocked", "available" if gate["can_export"] else "blocked")
-    register_badge = _status_badge("Ready" if gate["can_register"] else "Blocked", "ready" if gate["can_register"] else "blocked")
+    prepare_badge = _status_badge(
+        "Available" if gate["can_prepare_toolchain"] else "Blocked",
+        "available" if gate["can_prepare_toolchain"] else "blocked",
+    )
+    export_badge = _status_badge(
+        "Available" if gate["can_export"] else "Blocked", "available" if gate["can_export"] else "blocked"
+    )
+    register_badge = _status_badge(
+        "Ready" if gate["can_register"] else "Blocked", "ready" if gate["can_register"] else "blocked"
+    )
     if not gate["linux_or_wsl2"]:
-        st.info("Toolchain, export, and registration actions are blocked on this runtime. Use Linux or WSL2 to continue.")
+        st.info(
+            "Toolchain, export, and registration actions are blocked on this runtime. Use Linux or WSL2 to continue."
+        )
     st.markdown(f"Prepare llama.cpp Toolchain {prepare_badge}", unsafe_allow_html=True)
     _render_guarded_action_button(
         label="Prepare llama.cpp Toolchain",
@@ -1517,11 +1557,14 @@ def _render_training_panel(current_model: ModelDescriptor, snapshot: HardwareSna
     )
     st.caption(str(gate["register_reason"]))
     st.write("What still depends on the correct environment")
-    for instruction in trainer.create_export_instructions(base_model=current_model.ollama_tag, output_dir=Path("state/unsloth-output")):
+    for instruction in trainer.create_export_instructions(
+        base_model=current_model.ollama_tag, output_dir=Path("state/unsloth-output")
+    ):
         st.write(f"- {instruction}")
 
 
 # ── Headless entry point (injected before Streamlit UI body) ───────────────────
+
 
 def _headless_main() -> None:
     """Delegate headless launcher runtime to the central runtime entrypoint."""
@@ -1551,7 +1594,9 @@ if catalog_state.get("catalog_version") != catalog.version():
     _save_catalog_state(catalog, current_model.key)
 
 st.title("LUMINA OS - Start Screen")
-st.markdown("**Trading runtime, hardware-aware model selection, and controlled launch operations in one control plane.**")
+st.markdown(
+    "**Trading runtime, hardware-aware model selection, and controlled launch operations in one control plane.**"
+)
 
 recommended_start_model = catalog.recommended_for(
     ram_gb=snapshot.ram_gb,
@@ -1574,7 +1619,7 @@ with st.sidebar:
     screen_share_enabled = st.checkbox("Live Chart Screen Share", value=True)
     dashboard_enabled = st.checkbox("Dashboard", value=True)
     st.divider()
-    if st.button("Save Config and Start Bot", type="primary", width='stretch'):
+    if st.button("Save Config and Start Bot", type="primary", width="stretch"):
         broker_backend = "paper" if trade_mode == "paper" else "live"
         account_mode = {
             "paper": "paper",
@@ -1587,7 +1632,9 @@ with st.sidebar:
             "LUMINA_MODE": trade_mode,
             "BROKER_BACKEND": broker_backend,
             "TRADERLEAGUE_ACCOUNT_MODE": account_mode,
-            "ENABLE_SIM_REAL_GUARD": "true" if trade_mode == "sim_real_guard" else str(os.getenv("ENABLE_SIM_REAL_GUARD", "false")).lower(),
+            "ENABLE_SIM_REAL_GUARD": "true"
+            if trade_mode == "sim_real_guard"
+            else str(os.getenv("ENABLE_SIM_REAL_GUARD", "false")).lower(),
             "LUMINA_RISK_PROFILE": risk_profile.lower(),
             "INSTRUMENT": instrument,
             "VOICE_ENABLED": str(voice_enabled).lower(),
@@ -1604,7 +1651,7 @@ with st.sidebar:
             st.info("Services are starting. Check 'Live Activity & Services' on the main screen for live heartbeat.")
         else:
             st.error(msg)
-    if st.button("Stop Bot", width='stretch'):
+    if st.button("Stop Bot", width="stretch"):
         ok, msg = _stop_bot_process()
         if ok:
             st.info(msg)
@@ -1617,7 +1664,9 @@ with st.sidebar:
         gpu_vram_gb=snapshot.gpu_vram_gb,
         vllm_supported=snapshot.vllm_supported,
     )
-    st.caption(f"Tier: {snapshot.profile_tier} | GPU VRAM: {snapshot.gpu_vram_gb:.1f} GB | RAM: {snapshot.ram_gb:.1f} GB")
+    st.caption(
+        f"Tier: {snapshot.profile_tier} | GPU VRAM: {snapshot.gpu_vram_gb:.1f} GB | RAM: {snapshot.ram_gb:.1f} GB"
+    )
     st.caption(f"Recommended model: {recommended_model.display_name}")
     st.divider()
     st.subheader("Admin Access")
@@ -1629,13 +1678,13 @@ with st.sidebar:
     else:
         admin_password_input = st.text_input("Admin Password", type="password", key="admin_access_password")
         col_admin_a, col_admin_b = st.columns(2)
-        if col_admin_a.button("Unlock", width='stretch'):
+        if col_admin_a.button("Unlock", width="stretch"):
             if _verify_admin_password(admin_password_input):
                 st.session_state.admin_authenticated = True
                 st.success("Admin unlocked")
             else:
                 st.error("Invalid admin password")
-        if col_admin_b.button("Lock", width='stretch'):
+        if col_admin_b.button("Lock", width="stretch"):
             st.session_state.admin_authenticated = False
             st.info("Admin locked")
     admin_mode = bool(st.session_state.get("admin_authenticated", False))
@@ -1662,9 +1711,7 @@ _render_kv_section(
         ("vLLM Path", "Ready" if snapshot.vllm_supported else "Blocked on current runtime"),
     ],
 )
-st.caption(
-    "Beast profile requires 64 GB RAM, 20 GB VRAM, and Linux/WSL2 CUDA support for vLLM and Unsloth operations."
-)
+st.caption("Beast profile requires 64 GB RAM, 20 GB VRAM, and Linux/WSL2 CUDA support for vLLM and Unsloth operations.")
 
 env_flags = _parse_env_file(ENV_PATH)
 screen_share_flag = str(env_flags.get("SCREEN_SHARE_ENABLED", "true")).strip().lower() == "true"
@@ -1721,7 +1768,9 @@ with tab2:
     _render_hardware_tab(snapshot, catalog, current_model)
 
 with tab3:
-    _render_model_management_tab(setup_service=setup_service, catalog=catalog, snapshot=snapshot, current_model=current_model)
+    _render_model_management_tab(
+        setup_service=setup_service, catalog=catalog, snapshot=snapshot, current_model=current_model
+    )
 
 with tab4:
     st.subheader("Trader League Leaderboard")
@@ -1729,7 +1778,7 @@ with tab4:
         leaderboard_payload = _backend_get("/leaderboard")
         leaderboard = leaderboard_payload.get("leaderboard", [])
         if isinstance(leaderboard, list) and leaderboard:
-            st.dataframe(pd.DataFrame(leaderboard), width='stretch')
+            st.dataframe(pd.DataFrame(leaderboard), width="stretch")
         else:
             st.info("Leaderboard is leeg")
     except Exception as exc:
@@ -1741,7 +1790,7 @@ with tab5:
         wisdom_payload = _backend_get("/global_wisdom")
         top_bibles = wisdom_payload.get("top_bibles", [])
         if isinstance(top_bibles, list) and top_bibles:
-            st.dataframe(pd.DataFrame(top_bibles), width='stretch')
+            st.dataframe(pd.DataFrame(top_bibles), width="stretch")
         else:
             st.info("Nog geen community bible data")
     except Exception as exc:
@@ -1792,7 +1841,7 @@ if tab8 is not None:
         current_password = st.text_input("Current Password", type="password", key="admin_pwd_current")
         new_password = st.text_input("New Password", type="password", key="admin_pwd_new")
         confirm_password = st.text_input("Confirm New Password", type="password", key="admin_pwd_confirm")
-        if st.button("Update Admin Password", width='stretch'):
+        if st.button("Update Admin Password", width="stretch"):
             if not _verify_admin_password(current_password):
                 st.error("Current password is incorrect")
             elif len(new_password) < 12:

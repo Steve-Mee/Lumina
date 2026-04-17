@@ -30,9 +30,21 @@ class _StubPPOTrainer:
 def _seed_low_acceptance_log(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     entries = [
-        {"timestamp": "2026-04-07T10:00:00+00:00", "status": "proposed", "meta_review": {"rl_drift": 0.1, "regime_drift": 0.1}},
-        {"timestamp": "2026-04-07T11:00:00+00:00", "status": "awaiting_human_approval", "meta_review": {"rl_drift": 0.1, "regime_drift": 0.1}},
-        {"timestamp": "2026-04-08T09:00:00+00:00", "status": "proposed", "meta_review": {"rl_drift": 0.1, "regime_drift": 0.1}},
+        {
+            "timestamp": "2026-04-07T10:00:00+00:00",
+            "status": "proposed",
+            "meta_review": {"rl_drift": 0.1, "regime_drift": 0.1},
+        },
+        {
+            "timestamp": "2026-04-07T11:00:00+00:00",
+            "status": "awaiting_human_approval",
+            "meta_review": {"rl_drift": 0.1, "regime_drift": 0.1},
+        },
+        {
+            "timestamp": "2026-04-08T09:00:00+00:00",
+            "status": "proposed",
+            "meta_review": {"rl_drift": 0.1, "regime_drift": 0.1},
+        },
     ]
     path.write_text("\n".join(json.dumps(e) for e in entries) + "\n", encoding="utf-8")
 

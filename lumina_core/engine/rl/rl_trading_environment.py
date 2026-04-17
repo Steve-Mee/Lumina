@@ -28,9 +28,7 @@ class RLTradingEnvironment(gym.Env):
         self.instrument = str(getattr(self.context.engine.config, "instrument", "MES"))
 
         # Observation space (20 features)
-        self.observation_space = gym.spaces.Box(
-            low=-10, high=10, shape=(20,), dtype=np.float32
-        )
+        self.observation_space = gym.spaces.Box(low=-10, high=10, shape=(20,), dtype=np.float32)
 
         # PPO verwacht een enkelvoudige action space. We encoden:
         # [signal(0..2), qty_pct(0.1..2.0), stop_mult(0.5..2.0), target_mult(1.5..4.0)]
@@ -104,12 +102,8 @@ class RLTradingEnvironment(gym.Env):
         # Gebruik FastPath + RL action
         _fast = self.fast_path.run(self.context.ohlc_1min.tail(60), price, regime)
         if signal != "HOLD":
-            qty = int(
-                self.context.calculate_adaptive_risk_and_qty(price, regime, 0) * qty_pct
-            )
-            pnl = self._simulate_single_trade(
-                price, signal, qty, stop_mult, target_mult
-            )
+            qty = int(self.context.calculate_adaptive_risk_and_qty(price, regime, 0) * qty_pct)
+            pnl = self._simulate_single_trade(price, signal, qty, stop_mult, target_mult)
 
             self.pnl_history.append(pnl)
             self.equity_curve.append(self.equity_curve[-1] + pnl)

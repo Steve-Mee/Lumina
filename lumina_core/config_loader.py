@@ -15,6 +15,7 @@ during a process lifetime unless ConfigLoader.invalidate() is called.
 LocalInferenceEngine hot-reload: call ConfigLoader.invalidate() then
 ConfigLoader.get() to pick up config.yaml changes without a restart.
 """
+
 from __future__ import annotations
 
 import logging
@@ -101,10 +102,12 @@ class ConfigLoader:
             # share one in-memory copy.
             try:
                 from lumina_core.engine.engine_config import _load_yaml_config  # noqa: PLC0415
+
                 cls._cache = _load_yaml_config()
             except Exception:  # pragma: no cover
                 # Fallback if engine_config is unavailable (e.g. isolated test).
                 import yaml  # noqa: PLC0415
+
                 cfg_path = _resolve_config_path()
                 if not cfg_path.exists():
                     cls._cache = {}
@@ -124,6 +127,7 @@ class ConfigLoader:
         # Also clear the lru_cache in engine_config so both stay in sync.
         try:
             from lumina_core.engine.engine_config import _load_yaml_config  # noqa: PLC0415
+
             _load_yaml_config.cache_clear()
         except Exception:  # pragma: no cover
             pass
@@ -227,21 +231,15 @@ class ConfigLoader:
         # 2a. Dark-launch feature flag for SIM_REAL_GUARD.
         sim_real_guard_enabled = str(os.getenv("ENABLE_SIM_REAL_GUARD", "false")).strip().lower() == "true"
         if trade_mode == "sim_real_guard" and not sim_real_guard_enabled:
-            errors.append(
-                "sim_real_guard is disabled by feature flag: set ENABLE_SIM_REAL_GUARD=true"
-            )
+            errors.append("sim_real_guard is disabled by feature flag: set ENABLE_SIM_REAL_GUARD=true")
 
         # 2b. Canonical mode/broker matrix validation.
         # paper => broker backend must remain paper (never real routing).
         # sim/sim_real_guard/real => backend must be live to preserve canonical execution semantics.
         if trade_mode == "paper" and broker_mode != "paper":
-            errors.append(
-                "Invalid mode matrix: trade_mode=paper requires broker_backend=paper"
-            )
+            errors.append("Invalid mode matrix: trade_mode=paper requires broker_backend=paper")
         if trade_mode in {"sim", "sim_real_guard", "real"} and broker_mode != "live":
-            errors.append(
-                f"Invalid mode matrix: trade_mode={trade_mode} requires broker_backend=live"
-            )
+            errors.append(f"Invalid mode matrix: trade_mode={trade_mode} requires broker_backend=live")
 
         # 2c. Live-broker secrets when a live backend is active.
         hard_secret_mode = (trade_mode == "real") or strict_secret_hygiene
@@ -285,10 +283,7 @@ class ConfigLoader:
             for err in errors:
                 _LOG.error("[ConfigLoader] %s", err)
             if raise_on_error:
-                raise RuntimeError(
-                    f"Config validation failed ({len(errors)} error(s)): "
-                    + "; ".join(errors)
-                )
+                raise RuntimeError(f"Config validation failed ({len(errors)} error(s)): " + "; ".join(errors))
             return False
 
         if warnings:

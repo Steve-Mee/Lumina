@@ -102,9 +102,7 @@ def contract_check(expected_broker_status: str) -> int:
 
     got_broker_status = str(payload.get("broker_status", "")).strip().lower()
     if got_broker_status != expected_broker_status.strip().lower():
-        print(
-            f"[ERROR] Expected broker_status='{expected_broker_status}', got '{payload.get('broker_status')}'"
-        )
+        print(f"[ERROR] Expected broker_status='{expected_broker_status}', got '{payload.get('broker_status')}'")
         return 4
 
     if int(payload.get("risk_events", 0) or 0) != 0:
@@ -114,9 +112,7 @@ def contract_check(expected_broker_status: str) -> int:
         print(f"[WARNING] Expected var_breach_count=0, got {payload.get('var_breach_count')}")
 
     print(f"[OK] Contract verified from {found}")
-    print(
-        f"     runtime={payload.get('runtime')}, broker_status={payload.get('broker_status')}"
-    )
+    print(f"     runtime={payload.get('runtime')}, broker_status={payload.get('broker_status')}")
     print(
         f"     trades={payload.get('total_trades')}, pnl={payload.get('pnl_realized')}, risk_events={payload.get('risk_events')}"
     )

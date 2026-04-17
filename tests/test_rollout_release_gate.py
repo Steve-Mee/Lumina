@@ -40,7 +40,9 @@ def test_release_gate_report_stays_blocked_without_signoff() -> None:
             "explainability_failure_window_count": 0,
             "ready_for_rollout_c": True,
         },
-        history=[{"decision": "GO_WINDOW", "candidate": {"force_close_count": 1, "reconciled_count": 1}} for _ in range(10)],
+        history=[
+            {"decision": "GO_WINDOW", "candidate": {"force_close_count": 1, "reconciled_count": 1}} for _ in range(10)
+        ],
         signoff={"approvals": [{"name": "ops-1"}]},
         incidents={"incidents": []},
     )

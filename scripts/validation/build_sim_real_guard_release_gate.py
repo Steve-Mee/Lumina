@@ -89,7 +89,9 @@ def build_release_gate_report(
     ]
     longest_go_streak = _go_window_streak(history)
     any_force_close = any(int(item.get("candidate", {}).get("force_close_count", 0) or 0) > 0 for item in history)
-    any_reconciler_evidence = any(int(item.get("candidate", {}).get("reconciled_count", 0) or 0) > 0 for item in history)
+    any_reconciler_evidence = any(
+        int(item.get("candidate", {}).get("reconciled_count", 0) or 0) > 0 for item in history
+    )
     explainability_failures = int(rollout_decision.get("explainability_failure_window_count", 0) or 0)
 
     acceptance_checks = {
@@ -165,7 +167,17 @@ def main() -> int:
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(json.dumps({"status": "ok", "output": str(output_path), "controlled_pilot_ready": report["controlled_pilot_ready"], "ga_ready": report["ga_ready"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "output": str(output_path),
+                "controlled_pilot_ready": report["controlled_pilot_ready"],
+                "ga_ready": report["ga_ready"],
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

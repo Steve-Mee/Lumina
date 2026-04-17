@@ -36,7 +36,10 @@ def _push_trader_league_trade(
     reconciliation_status: str | None = None,
 ) -> None:
     reflection_payload = dict(reflection or {})
-    if any(value is not None for value in (broker_fill_id, commission, slippage_points, fill_latency_ms, reconciliation_status)):
+    if any(
+        value is not None
+        for value in (broker_fill_id, commission, slippage_points, fill_latency_ms, reconciliation_status)
+    ):
         reflection_payload.setdefault("reconciliation", {})
         reflection_payload["reconciliation"].update(
             {
@@ -157,7 +160,11 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
     while True:
         try:
             with app.live_data_lock:
-                price = app.live_quotes[-1]["last"] if app.live_quotes else (app.ohlc_1min["close"].iloc[-1] if len(app.ohlc_1min) > 0 else 0.0)
+                price = (
+                    app.live_quotes[-1]["last"]
+                    if app.live_quotes
+                    else (app.ohlc_1min["close"].iloc[-1] if len(app.ohlc_1min) > 0 else 0.0)
+                )
                 df = app.ohlc_1min.copy()
 
             regime = app.detect_market_regime(df)
@@ -167,7 +174,10 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
             rl_action: dict[str, float] | None = None
             rl_signal = "HOLD"
             try:
-                if getattr(app.engine, "rl_env", None) is not None and getattr(app.engine, "ppo_trainer", None) is not None:
+                if (
+                    getattr(app.engine, "rl_env", None) is not None
+                    and getattr(app.engine, "ppo_trainer", None) is not None
+                ):
                     obs = app.engine.rl_env._get_observation()
                     rl_action = app.engine.ppo_trainer.predict_action(obs)
                     rl_signal_map = {0: "HOLD", 1: "BUY", 2: "SELL"}
@@ -183,7 +193,9 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
             if not fast_result["used_llm"]:
                 continue  # Fast path heeft al beslist
 
-            recent_winrate = float(app.np.mean(app.np.array(app.pnl_history[-15:]) > 0)) if len(app.pnl_history) > 10 else 0.5
+            recent_winrate = (
+                float(app.np.mean(app.np.array(app.pnl_history[-15:]) > 0)) if len(app.pnl_history) > 10 else 0.5
+            )
             min_conf = app.calculate_dynamic_confluence(regime, recent_winrate)
 
             mtf_data = app.get_mtf_snapshots()
@@ -225,9 +237,7 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
                     if isinstance(news_cycle, dict):
                         dynamic = news_cycle.get("dynamic_multipliers")
                         if isinstance(dynamic, dict) and dynamic:
-                            app.engine.config.news_impact_multipliers = {
-                                str(k): float(v) for k, v in dynamic.items()
-                            }
+                            app.engine.config.news_impact_multipliers = {str(k): float(v) for k, v in dynamic.items()}
 
                         cycle_news_data = news_cycle.get("news_data")
                         if isinstance(cycle_news_data, dict):
@@ -252,7 +262,9 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
                             else:
                                 app.set_current_dream_fields(news_updates)
 
-                        sentiment_signal = str(news_cycle.get("sentiment_signal", cached_news_data.get("overall_sentiment", "neutral")))
+                        sentiment_signal = str(
+                            news_cycle.get("sentiment_signal", cached_news_data.get("overall_sentiment", "neutral"))
+                        )
                         sentiment_score = float(news_cycle.get("sentiment_score", 0.0) or 0.0)
                         dynamic_multiplier = float(news_cycle.get("dynamic_multiplier", 1.0) or 1.0)
                         world_model_news = {
@@ -260,7 +272,9 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
                             "overall_sentiment": sentiment_signal,
                             "sentiment_score": sentiment_score,
                             "impact": cached_news_data.get("impact", "medium"),
-                            "events_count": len(cached_news_data.get("events", [])) if isinstance(cached_news_data.get("events", []), list) else 0,
+                            "events_count": len(cached_news_data.get("events", []))
+                            if isinstance(cached_news_data.get("events", []), list)
+                            else 0,
                             "multiplier": dynamic_multiplier,
                             "news_avoidance_window": avoid,
                         }
@@ -306,31 +320,39 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
                 if isinstance(macro, dict):
                     macro_news_sentiment = str(macro.get("news_sentiment", macro_news_sentiment))
                     macro_news_score = float(macro.get("news_sentiment_score", macro_news_score) or 0.0)
-                    macro_news_multiplier = float(macro.get("news_multiplier", macro_news_multiplier) or macro_news_multiplier)
+                    macro_news_multiplier = float(
+                        macro.get("news_multiplier", macro_news_multiplier) or macro_news_multiplier
+                    )
 
             avoid_active = bool(float(app.get_current_dream_snapshot().get("hold_until_ts", 0.0) or 0.0) > time.time())
 
             vision_content = [
-                {"type": "text", "text": f"""Multi-Agent Consensus: {consensus['signal']} (conf {consensus['confidence']:.2f})
+                {
+                    "type": "text",
+                    "text": f"""Multi-Agent Consensus: {consensus["signal"]} (conf {consensus["confidence"]:.2f})
 RL Policy Bias: {rl_context}
 Relevante ervaringen: {past_experiences}
-Meta-reasoning: {meta.get('meta_reasoning', '')}
-Counter-factuals: {meta.get('counterfactuals', [])}
+Meta-reasoning: {meta.get("meta_reasoning", "")}
+Counter-factuals: {meta.get("counterfactuals", [])}
 World Model (Macro + Micro): 
-Macro -> VIX {app.world_model['macro']['vix']:.1f}, DXY {app.world_model['macro']['dxy']:.1f}, 10y {app.world_model['macro']['ten_year_yield']:.2f}
-Micro -> Regime {app.world_model['micro']['regime']}, Orderflow {app.world_model['micro']['orderflow_bias']}
-News Sentiment: {macro_news_sentiment} (score {macro_news_score:.2f}, impact {news_data['impact']})
+Macro -> VIX {app.world_model["macro"]["vix"]:.1f}, DXY {app.world_model["macro"]["dxy"]:.1f}, 10y {app.world_model["macro"]["ten_year_yield"]:.2f}
+Micro -> Regime {app.world_model["micro"]["regime"]}, Orderflow {app.world_model["micro"]["orderflow_bias"]}
+News Sentiment: {macro_news_sentiment} (score {macro_news_score:.2f}, impact {news_data["impact"]})
 News Multiplier: {macro_news_multiplier:.2f} | Avoidance Active: {str(avoid_active)}
 Use this full world model as the basis for your decision.
 Use RL Policy Bias as directional prior, not as absolute rule.
-Return JSON only with: signal, confidence, stop, target, reason, why_no_trade, confluence_score, chosen_strategy, fib_levels_drawn, narrative_reasoning"""},
+Return JSON only with: signal, confidence, stop, target, reason, why_no_trade, confluence_score, chosen_strategy, fib_levels_drawn, narrative_reasoning""",
+                },
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{chart_base64}"}},
             ]
 
             payload = {
                 "model": app.engine.config.vision_model,
                 "messages": [
-                    {"role": "system", "content": "You are visually trained. Use all layers, including the dynamic world model."},
+                    {
+                        "role": "system",
+                        "content": "You are visually trained. Use all layers, including the dynamic world model.",
+                    },
                     {"role": "user", "content": vision_content},
                 ],
                 "max_tokens": 1300,
@@ -364,7 +386,9 @@ Return JSON only with: signal, confidence, stop, target, reason, why_no_trade, c
                     )
                 else:
                     app.set_current_dream_fields(dream_json)
-                app.set_current_dream_value("confluence_score", max(min_conf, consensus["confidence"], meta.get("meta_score", 0.5)))
+                app.set_current_dream_value(
+                    "confluence_score", max(min_conf, consensus["confidence"], meta.get("meta_score", 0.5))
+                )
                 dream_snapshot = app.get_current_dream_snapshot()
 
                 raw_fibs = dream_json.get("fib_levels_drawn", {})
@@ -446,8 +470,12 @@ def voice_listener_thread(app: RuntimeContext) -> None:
                     app.process_user_feedback("Dit was een goede trade", {"signal": dream_snapshot.get("signal")})
                     app.speak("Thanks for the positive feedback. I will adapt my strategy.")
                 elif any(x in command for x in ["slecht", "slechte trade", "was slecht", "niet goed"]):
-                    reason = command.split("omdat", 1)[1].strip() if "omdat" in command else "no specific reason provided"
-                    app.process_user_feedback(f"Dit was een slechte trade omdat {reason}", {"signal": dream_snapshot.get("signal")})
+                    reason = (
+                        command.split("omdat", 1)[1].strip() if "omdat" in command else "no specific reason provided"
+                    )
+                    app.process_user_feedback(
+                        f"Dit was een slechte trade omdat {reason}", {"signal": dream_snapshot.get("signal")}
+                    )
                     app.speak("Thanks for the feedback. I will improve this.")
                 elif any(x in command for x in ["verbeter", "pas aan", "update"]):
                     app.process_user_feedback(command)
@@ -503,7 +531,11 @@ def supervisor_loop(app: RuntimeContext) -> None:
 
     while True:
         with app.live_data_lock:
-            price = app.live_quotes[-1]["last"] if app.live_quotes else (app.ohlc_1min["close"].iloc[-1] if len(app.ohlc_1min) else 0.0)
+            price = (
+                app.live_quotes[-1]["last"]
+                if app.live_quotes
+                else (app.ohlc_1min["close"].iloc[-1] if len(app.ohlc_1min) else 0.0)
+            )
 
         now = datetime.now()
 
@@ -582,7 +614,9 @@ def supervisor_loop(app: RuntimeContext) -> None:
                 app.engine.live_trade_signal = "HOLD"
             app.engine.last_realized_pnl_snapshot = current_realized_pnl
 
-        if app.engine.config.trade_mode == "real" and app.account_equity < app.account_balance * (1 - app.engine.config.drawdown_kill_percent / 100):
+        if app.engine.config.trade_mode == "real" and app.account_equity < app.account_balance * (
+            1 - app.engine.config.drawdown_kill_percent / 100
+        ):
             print(f"🚨 REAL DRAWDOWN KILL ({app.engine.config.drawdown_kill_percent}%) - STOPPING")
             app.save_state()
             raise SystemExit("Drawdown kill - real money")
@@ -598,9 +632,7 @@ def supervisor_loop(app: RuntimeContext) -> None:
         swarm_manager = getattr(app, "swarm_manager", None) or getattr(app.engine, "swarm", None)
         current_swarm_minute = (now.year, now.month, now.day, now.hour, now.minute)
         should_run_swarm = (
-            swarm_manager is not None
-            and int(now.minute) % 5 == 0
-            and swarm_last_cycle_minute != current_swarm_minute
+            swarm_manager is not None and int(now.minute) % 5 == 0 and swarm_last_cycle_minute != current_swarm_minute
         )
         if should_run_swarm:
             try:
@@ -620,7 +652,10 @@ def supervisor_loop(app: RuntimeContext) -> None:
                 app.logger.error(f"Swarm cycle error: {exc}")
 
         hold_until_ts = float(dream_snapshot.get("hold_until_ts", 0.0) or 0.0)
-        min_confluence = float(dream_snapshot.get("min_confluence_override", app.engine.config.min_confluence) or app.engine.config.min_confluence)
+        min_confluence = float(
+            dream_snapshot.get("min_confluence_override", app.engine.config.min_confluence)
+            or app.engine.config.min_confluence
+        )
         qty_multiplier = float(dream_snapshot.get("position_size_multiplier", 1.0) or 1.0)
         stop_widen_multiplier = float(dream_snapshot.get("stop_widen_multiplier", 1.0) or 1.0)
         signal = dream_snapshot.get("signal", "HOLD")
@@ -709,7 +744,11 @@ def supervisor_loop(app: RuntimeContext) -> None:
                 "prompt_version": "runtime-supervisor-v1",
                 "prompt_hash": "runtime-supervisor",
                 "policy_version": "agent-policy-gateway-v1",
-                "provider_route": [str(getattr(app.engine, "local_engine", None).active_provider) if getattr(app.engine, "local_engine", None) is not None else "unknown-provider"],
+                "provider_route": [
+                    str(getattr(app.engine, "local_engine", None).active_provider)
+                    if getattr(app.engine, "local_engine", None) is not None
+                    else "unknown-provider"
+                ],
                 "calibration_factor": 1.0,
             },
         )
@@ -762,12 +801,16 @@ def supervisor_loop(app: RuntimeContext) -> None:
                             side=side,
                             slippage_ticks=est_slip_ticks,
                         )
-                        print(f"[{now.strftime('%H:%M:%S')}] 📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (adaptive risk)")
+                        print(
+                            f"[{now.strftime('%H:%M:%S')}] 📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (adaptive risk)"
+                        )
                     else:
                         app.logger.warning("Paper broker rejected simulated order")
             else:
                 if app.place_order(signal, qty):
-                    print(f"[{now.strftime('%H:%M:%S')}] ✅ {app.engine.config.trade_mode.upper()} {signal} {qty}x @ {price:.2f} (regime-adapted)")
+                    print(
+                        f"[{now.strftime('%H:%M:%S')}] ✅ {app.engine.config.trade_mode.upper()} {signal} {qty}x @ {price:.2f} (regime-adapted)"
+                    )
 
         if app.engine.config.trade_mode == "paper":
             if app.sim_position_qty != 0:
@@ -787,7 +830,9 @@ def supervisor_loop(app: RuntimeContext) -> None:
             stop = dream_snapshot.get("stop", 0)
             target = dream_snapshot.get("target", 0)
             hit_stop = (app.sim_position_qty > 0 and price <= stop) or (app.sim_position_qty < 0 and price >= stop)
-            hit_target = (app.sim_position_qty > 0 and price >= target) or (app.sim_position_qty < 0 and price <= target)
+            hit_target = (app.sim_position_qty > 0 and price >= target) or (
+                app.sim_position_qty < 0 and price <= target
+            )
 
             if hit_stop or hit_target:
                 pnl_dollars = valuation_engine.pnl_dollars(
@@ -871,7 +916,9 @@ def supervisor_loop(app: RuntimeContext) -> None:
 
                 app.sim_position_qty = 0
                 app.sim_entry_price = 0.0
-                print(f"[{now.strftime('%H:%M:%S')}] 🎯 TRADE CLOSED → {'WIN' if pnl_dollars > 0 else 'LOSS'} ${pnl_dollars:.0f}")
+                print(
+                    f"[{now.strftime('%H:%M:%S')}] 🎯 TRADE CLOSED → {'WIN' if pnl_dollars > 0 else 'LOSS'} ${pnl_dollars:.0f}"
+                )
 
                 # Immediate post-trade reflection via RealisticBacktesterEngine
                 try:
@@ -879,7 +926,9 @@ def supervisor_loop(app: RuntimeContext) -> None:
                         bt_snapshot = app.ohlc_1min.tail(500).copy()
                     if len(bt_snapshot) >= 60:
                         bt_result = app.engine.backtester.run_backtest_on_snapshot(bt_snapshot)
-                        app.log_thought({"type": "trade_reflection_backtest", "pnl": pnl_dollars, "backtest": bt_result})
+                        app.log_thought(
+                            {"type": "trade_reflection_backtest", "pnl": pnl_dollars, "backtest": bt_result}
+                        )
                         print(
                             f"[{now.strftime('%H:%M:%S')}] 🔬 POST-TRADE BACKTEST → "
                             f"Sharpe {bt_result['sharpe']:.2f} | WR {bt_result['winrate']:.1%} | "
@@ -897,7 +946,9 @@ def supervisor_loop(app: RuntimeContext) -> None:
             except Exception as exc:
                 app.logger.error(f"Swarm dashboard error: {exc}")
 
-        mode_text = {"paper": "PAPER (internal sim)", "sim": "SIM (real orders on demo)", "real": "REAL MONEY"}.get(app.engine.config.trade_mode, app.engine.config.trade_mode.upper())
+        mode_text = {"paper": "PAPER (internal sim)", "sim": "SIM (real orders on demo)", "real": "REAL MONEY"}.get(
+            app.engine.config.trade_mode, app.engine.config.trade_mode.upper()
+        )
         if time.time() - last_status_print >= app.engine.config.status_print_interval_sec:
             rl_bias = ""
             if isinstance(rl_action, dict):
@@ -920,9 +971,23 @@ def supervisor_loop(app: RuntimeContext) -> None:
             sharpe = (app.np.mean(returns) / (app.np.std(returns) + 1e-8)) * app.np.sqrt(252) if len(returns) > 1 else 0
             winrate = app.np.mean(app.np.array(app.pnl_history) > 0) if app.pnl_history else 0
             expectancy = app.np.mean(app.pnl_history) if app.pnl_history else 0
-            profit_factor = abs(sum([p for p in app.pnl_history if p > 0]) / sum([abs(p) for p in app.pnl_history if p < 0]) + 1e-8) if any(p < 0 for p in app.pnl_history) else 0
-            maxdd = min((app.np.maximum.accumulate(app.equity_curve) - app.equity_curve) / app.np.maximum.accumulate(app.equity_curve)) * 100 if len(app.equity_curve) > 1 else 0
-            app.logger.info(f"ORACLE metrics | Sharpe {sharpe:.2f} | Expected ${expectancy:.0f} | Winrate {winrate:.1%} | PF {profit_factor:.2f} | MaxDD {maxdd:.1f}%")
+            profit_factor = (
+                abs(sum([p for p in app.pnl_history if p > 0]) / sum([abs(p) for p in app.pnl_history if p < 0]) + 1e-8)
+                if any(p < 0 for p in app.pnl_history)
+                else 0
+            )
+            maxdd = (
+                min(
+                    (app.np.maximum.accumulate(app.equity_curve) - app.equity_curve)
+                    / app.np.maximum.accumulate(app.equity_curve)
+                )
+                * 100
+                if len(app.equity_curve) > 1
+                else 0
+            )
+            app.logger.info(
+                f"ORACLE metrics | Sharpe {sharpe:.2f} | Expected ${expectancy:.0f} | Winrate {winrate:.1%} | PF {profit_factor:.2f} | MaxDD {maxdd:.1f}%"
+            )
 
         if time.time() - last_save > 30:
             app.save_state()

@@ -187,7 +187,8 @@ class InfiniteSimulator:
             try:
                 orchestrator.run_nightly_reflection(
                     nightly_report=report,
-                    dry_run=str(getattr(self.runtime.engine.config, "trade_mode", "paper")).strip().lower() in {"sim", "paper"},
+                    dry_run=str(getattr(self.runtime.engine.config, "trade_mode", "paper")).strip().lower()
+                    in {"sim", "paper"},
                 )
             except Exception:
                 pass
@@ -296,7 +297,9 @@ class InfiniteSimulator:
                 "target_trades": per_worker,
                 "seed": int(time.time()) + i * 13,
                 "point_value": self.point_value,
-                "symbol": str(getattr(self.runtime, "INSTRUMENT", getattr(self.runtime.engine.config, "instrument", "MES"))),
+                "symbol": str(
+                    getattr(self.runtime, "INSTRUMENT", getattr(self.runtime.engine.config, "instrument", "MES"))
+                ),
             }
             for i in range(worker_count)
         ]
@@ -342,9 +345,9 @@ class InfiniteSimulator:
 
         for s in samples[:800]:
             context = (
-                f"Sim trade {s.get('regime','NEUTRAL')} qty={s.get('qty',1)} "
-                f"entry={float(s.get('entry',0.0)):.2f} exit={float(s.get('exit',0.0)):.2f} "
-                f"pnl={float(s.get('pnl',0.0)):.2f}"
+                f"Sim trade {s.get('regime', 'NEUTRAL')} qty={s.get('qty', 1)} "
+                f"entry={float(s.get('entry', 0.0)):.2f} exit={float(s.get('exit', 0.0)):.2f} "
+                f"pnl={float(s.get('pnl', 0.0)):.2f}"
             )
             metadata = {
                 "type": "infinite_sim_trade",

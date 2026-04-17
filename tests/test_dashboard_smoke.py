@@ -13,6 +13,7 @@ Coverage:
   - With API key → main metric sections are rendered
   - Health endpoint error → degrades gracefully (no exception)
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -28,6 +29,7 @@ _MOD_KEY = "__dashboard_smoke_test__"
 
 
 # ── Response stub ─────────────────────────────────────────────────────────────
+
 
 def _mock_resp(data: Any, status_code: int = 200) -> MagicMock:
     resp = MagicMock()
@@ -100,6 +102,7 @@ _HISTORY_ROWS = [
 
 # ── Dashboard loader ──────────────────────────────────────────────────────────
 
+
 def _build_st_mock() -> MagicMock:
     """Return a MagicMock that handles variable-arity columns/tabs calls."""
     st = MagicMock()
@@ -114,8 +117,8 @@ def _build_st_mock() -> MagicMock:
 
     st.columns.side_effect = _columns
     st.tabs.side_effect = _tabs
-    st.text_input.return_value = ""    # default: no API key
-    st.checkbox.return_value = False   # auto-refresh off
+    st.text_input.return_value = ""  # default: no API key
+    st.checkbox.return_value = False  # auto-refresh off
     return st
 
 
@@ -156,15 +159,18 @@ def _load_render_fn(st_mock: MagicMock) -> Any:
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
+
 def test_render_normal_regime_no_exception() -> None:
     """Tab renders without raising for a healthy TRENDING regime."""
     st_mock = _build_st_mock()
     render = _load_render_fn(st_mock)
 
     st_mock.markdown.reset_mock()
-    responses = iter([
-        _mock_resp(_HEALTH_NORMAL),
-    ])
+    responses = iter(
+        [
+            _mock_resp(_HEALTH_NORMAL),
+        ]
+    )
     with patch("requests.get", side_effect=lambda *a, **kw: next(responses)):
         render("http://localhost:8000")  # must not raise
 
@@ -208,12 +214,14 @@ def test_render_with_api_key_shows_metrics_sections() -> None:
     prom_resp = MagicMock()
     prom_resp.ok = True
     prom_resp.text = ""
-    responses = iter([
-        _mock_resp(_HEALTH_NORMAL),
-        _mock_resp(_SNAP_JSON),
-        _mock_resp([]),   # regime history
-        prom_resp,        # raw Prometheus expander
-    ])
+    responses = iter(
+        [
+            _mock_resp(_HEALTH_NORMAL),
+            _mock_resp(_SNAP_JSON),
+            _mock_resp([]),  # regime history
+            prom_resp,  # raw Prometheus expander
+        ]
+    )
 
     st_mock.markdown.reset_mock()
     with patch("requests.get", side_effect=lambda *a, **kw: next(responses)):
@@ -234,12 +242,14 @@ def test_render_regime_history_expander_shown_when_rows_exist() -> None:
     prom_resp = MagicMock()
     prom_resp.ok = True
     prom_resp.text = ""
-    responses = iter([
-        _mock_resp(_HEALTH_NORMAL),
-        _mock_resp(_SNAP_JSON),
-        _mock_resp(_HISTORY_ROWS),  # 2 active regime-flip rows
-        prom_resp,
-    ])
+    responses = iter(
+        [
+            _mock_resp(_HEALTH_NORMAL),
+            _mock_resp(_SNAP_JSON),
+            _mock_resp(_HISTORY_ROWS),  # 2 active regime-flip rows
+            prom_resp,
+        ]
+    )
 
     st_mock.expander.reset_mock()
     with patch("requests.get", side_effect=lambda *a, **kw: next(responses)):

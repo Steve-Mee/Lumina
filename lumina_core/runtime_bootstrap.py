@@ -41,7 +41,11 @@ def start_runtime_services(
             engine.meta_agent_orchestrator = meta_agent_orchestrator
             setattr(app, "meta_agent_orchestrator", meta_agent_orchestrator)
 
-    if engine is not None and getattr(engine, "swarm", None) is None and bool(getattr(engine.config, "swarm_enabled", True)):
+    if (
+        engine is not None
+        and getattr(engine, "swarm", None) is None
+        and bool(getattr(engine.config, "swarm_enabled", True))
+    ):
         engine.swarm = SwarmManager(engine)
         if app is not None and not hasattr(app, "swarm_manager"):
             setattr(app, "swarm_manager", engine.swarm)

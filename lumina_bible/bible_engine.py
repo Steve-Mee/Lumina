@@ -36,24 +36,24 @@ Regels (v51 CAPITAL PRESERVATION FIRST):
     "evolvable_layer": {
         "mtf_matrix": {"dominant_tf": "240min", "confluence_scores": {}},
         "filters": ["volume_delta > 2.0x avg", "price_above_ema_50", "adx > 22"],
-        "probability_model": {
-            "base_winrate": 0.55,
-            "confluence_bonus": 0.15,
-            "risk_penalty": 0.10
-        },
+        "probability_model": {"base_winrate": 0.55, "confluence_bonus": 0.15, "risk_penalty": 0.10},
         "news_avoidance": {
             "pre_event_minutes": 10,
             "post_event_minutes": 5,
             "high_impact_pre_minutes": 15,
-            "high_impact_post_minutes": 10
+            "high_impact_post_minutes": 10,
         },
         "eod_management": {
             "force_close_minutes_before_session_end": 30,
             "no_new_trades_minutes_before_session_end": 60,
-            "overnight_gap_protection_enabled": True
+            "overnight_gap_protection_enabled": True,
         },
         "last_reflection": "2026-04-08: v51 Capital Preservation Reset - base_winrate 0.71→0.55, news_avoidance extended, EOD protection added",
-        "lessons_learned": ["Capital preservation > profit growth", "Skip low-confidence trades", "Avoid news windows aggressively"],
+        "lessons_learned": [
+            "Capital preservation > profit growth",
+            "Skip low-confidence trades",
+            "Avoid news windows aggressively",
+        ],
     },
 }
 

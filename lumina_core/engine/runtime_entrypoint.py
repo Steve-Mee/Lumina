@@ -107,7 +107,9 @@ def _run_real_runtime(*, run_human_loop: bool = False) -> int:
 
 
 def _run_headless_sim(args: argparse.Namespace, *, mode_label: str = "sim") -> int:
-    normalized_label = "sim" if str(mode_label).strip().lower() not in {"paper", "sim"} else str(mode_label).strip().lower()
+    normalized_label = (
+        "sim" if str(mode_label).strip().lower() not in {"paper", "sim"} else str(mode_label).strip().lower()
+    )
     managed_keys = [
         "LUMINA_MODE",
         "TRADE_MODE",

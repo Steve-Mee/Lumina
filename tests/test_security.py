@@ -102,10 +102,12 @@ class TestJWTAuthenticator:
 
     @pytest.fixture
     def auth(self):
-        config = SecurityConfig({
-            "cors_allowed_origins": ["http://localhost"],
-            "jwt_secret_key": "x" * 32,
-        })
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost"],
+                "jwt_secret_key": "x" * 32,
+            }
+        )
         return JWTAuthenticator(config)
 
     def test_create_and_verify_token(self, auth):
@@ -198,22 +200,26 @@ class TestRateLimiter:
 
     @pytest.fixture
     def rate_limiter(self):
-        config = SecurityConfig({
-            "cors_allowed_origins": ["http://localhost"],
-            "jwt_secret_key": "x" * 32,
-            "rate_limit_enabled": True,
-            "rate_limit_requests_per_minute": 60,
-            "rate_limit_burst_size": 10,
-        })
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost"],
+                "jwt_secret_key": "x" * 32,
+                "rate_limit_enabled": True,
+                "rate_limit_requests_per_minute": 60,
+                "rate_limit_burst_size": 10,
+            }
+        )
         return RateLimiter(config)
 
     def test_rate_limiting_disabled(self):
         """Disabled rate limiting should always allow."""
-        config = SecurityConfig({
-            "cors_allowed_origins": ["http://localhost"],
-            "jwt_secret_key": "x" * 32,
-            "rate_limit_enabled": False,
-        })
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost"],
+                "jwt_secret_key": "x" * 32,
+                "rate_limit_enabled": False,
+            }
+        )
         limiter = RateLimiter(config)
         for _ in range(100):
             assert limiter.is_allowed("client1") is True
@@ -249,12 +255,14 @@ class TestSecurityAuditLog:
 
     @pytest.fixture
     def audit_log(self, tmp_path):
-        config = SecurityConfig({
-            "cors_allowed_origins": ["http://localhost"],
-            "jwt_secret_key": "x" * 32,
-            "audit_log_enabled": True,
-            "audit_log_path": str(tmp_path / "audit.jsonl"),
-        })
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost"],
+                "jwt_secret_key": "x" * 32,
+                "audit_log_enabled": True,
+                "audit_log_path": str(tmp_path / "audit.jsonl"),
+            }
+        )
         return SecurityAuditLog(config)
 
     def test_audit_log_action(self, audit_log, tmp_path):
@@ -298,13 +306,15 @@ class TestDangerousConfigValidator:
 
     def test_detects_cors_wildcard(self):
         """Validator should detect CORS wildcard."""
-        config = SecurityConfig({
-            "cors_allowed_origins": ["http://localhost"],
-            "jwt_secret_key": "x" * 32,
-            "dangerous_configs": {
-                "cors_allowed_origins": ["*"],
-            },
-        })
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost"],
+                "jwt_secret_key": "x" * 32,
+                "dangerous_configs": {
+                    "cors_allowed_origins": ["*"],
+                },
+            }
+        )
         validator = DangerousConfigValidator(config)
         violations = validator.validate({"cors_allowed_origins": ["*"]})
         assert len(violations) > 0
@@ -312,13 +322,15 @@ class TestDangerousConfigValidator:
 
     def test_detects_weak_jwt_secret(self):
         """Validator should detect weak JWT secret."""
-        config = SecurityConfig({
-            "cors_allowed_origins": ["http://localhost"],
-            "jwt_secret_key": "x" * 32,
-            "dangerous_configs": {
-                "jwt_secret_key": ["default", "secret", "12345678"],
-            },
-        })
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost"],
+                "jwt_secret_key": "x" * 32,
+                "dangerous_configs": {
+                    "jwt_secret_key": ["default", "secret", "12345678"],
+                },
+            }
+        )
         validator = DangerousConfigValidator(config)
         violations = validator.validate({"jwt_secret_key": "default"})
         assert len(violations) > 0
@@ -326,18 +338,22 @@ class TestDangerousConfigValidator:
 
     def test_accepts_safe_config(self):
         """Validator should accept safe configuration."""
-        config = SecurityConfig({
-            "cors_allowed_origins": ["http://localhost"],
-            "jwt_secret_key": "x" * 32,
-            "dangerous_configs": {
-                "cors_allowed_origins": ["*"],
-            },
-        })
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost"],
+                "jwt_secret_key": "x" * 32,
+                "dangerous_configs": {
+                    "cors_allowed_origins": ["*"],
+                },
+            }
+        )
         validator = DangerousConfigValidator(config)
-        violations = validator.validate({
-            "cors_allowed_origins": ["http://localhost:3000"],
-            "jwt_secret_key": "y" * 32,
-        })
+        violations = validator.validate(
+            {
+                "cors_allowed_origins": ["http://localhost:3000"],
+                "jwt_secret_key": "y" * 32,
+            }
+        )
         assert len(violations) == 0
 
 

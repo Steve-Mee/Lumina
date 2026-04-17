@@ -70,11 +70,13 @@ def main() -> int:
     build_dir.mkdir(parents=True, exist_ok=True)
 
     if shutil.which("cmake") is None:
-        _write_status({
-            "supported": False,
-            "platform": system,
-            "message": "cmake is vereist voor llama.cpp build. Installeer cmake en voer het script opnieuw uit.",
-        })
+        _write_status(
+            {
+                "supported": False,
+                "platform": system,
+                "message": "cmake is vereist voor llama.cpp build. Installeer cmake en voer het script opnieuw uit.",
+            }
+        )
         print("cmake is vereist voor llama.cpp build")
         return 1
 

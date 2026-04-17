@@ -37,7 +37,11 @@ def _matches(
         return False
     if config_hash:
         top_level = str(row.get("config_snapshot_hash", ""))
-        lineage_hash = str((row.get("lineage") or {}).get("config_snapshot_hash", "")) if isinstance(row.get("lineage"), dict) else ""
+        lineage_hash = (
+            str((row.get("lineage") or {}).get("config_snapshot_hash", ""))
+            if isinstance(row.get("lineage"), dict)
+            else ""
+        )
         if top_level != config_hash and lineage_hash != config_hash:
             return False
     return True

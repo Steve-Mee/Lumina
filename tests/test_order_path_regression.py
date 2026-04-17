@@ -8,6 +8,7 @@ Mode-semantiek Lumina:
            NIET (enforce_rules=False op RiskController voor SIM).
   real   – echt geld; volledige SessionGuard + HardRiskController enforcement.
 """
+
 from __future__ import annotations
 
 from contextlib import nullcontext
@@ -23,6 +24,7 @@ from lumina_core.trade_workers import check_pre_trade_risk
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
+
 
 def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: bool = True):
     """Minimal LuminaEngine stand-in."""
@@ -68,8 +70,9 @@ def _make_container(accepted: bool = True):
     return SimpleNamespace(broker=broker)
 
 
-def _make_service(trade_mode: str, risk_ok: bool = True, enforce_session_guard: bool = True,
-                  broker_accepted: bool = True) -> tuple[OperationsService, Any]:
+def _make_service(
+    trade_mode: str, risk_ok: bool = True, enforce_session_guard: bool = True, broker_accepted: bool = True
+) -> tuple[OperationsService, Any]:
     engine = _make_engine(trade_mode, risk_ok=risk_ok, enforce_session_guard=enforce_session_guard)
     container = _make_container(accepted=broker_accepted)
     svc = OperationsService.__new__(OperationsService)
@@ -77,11 +80,13 @@ def _make_service(trade_mode: str, risk_ok: bool = True, enforce_session_guard: 
     object.__setattr__(svc, "container", container)
     object.__setattr__(svc, "thought_queue", __import__("queue").Queue())
     from lumina_core.engine.valuation_engine import ValuationEngine
+
     object.__setattr__(svc, "valuation_engine", ValuationEngine())
     return svc, container
 
 
 # ─── PAPER tests ─────────────────────────────────────────────────────────────
+
 
 def test_paper_mode_returns_false_immediately():
     """Paper mode nooit een broker-call — altijd False."""
@@ -101,6 +106,7 @@ def test_paper_mode_skips_risk_controller():
 
 
 # ─── SIM tests ───────────────────────────────────────────────────────────────
+
 
 def test_sim_mode_submits_to_broker():
     """SIM stuurt naar broker (sim money, live orders)."""
@@ -140,6 +146,7 @@ def test_sim_mode_financial_risk_waived_via_enforce_rules_false():
 
 
 # ─── REAL tests ──────────────────────────────────────────────────────────────
+
 
 def test_real_mode_submits_when_all_gates_pass():
     """REAL mode: SessionGuard OK + RiskController OK → broker submit."""
@@ -199,6 +206,7 @@ def test_real_mode_no_risk_controller_fails_closed():
 
 # ─── check_pre_trade_risk SIM-exempt SessionGuard ────────────────────────────
 
+
 def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
     """Create a RuntimeContext mock for check_pre_trade_risk tests."""
     risk_ctrl: Any = MagicMock()
@@ -208,7 +216,7 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
     risk_ctrl._active_limits = limits
 
     session_guard: Any = MagicMock()
-    session_guard.is_rollover_window.return_value = True   # actief rollover window
+    session_guard.is_rollover_window.return_value = True  # actief rollover window
     session_guard.is_trading_session.return_value = False
 
     engine = SimpleNamespace(

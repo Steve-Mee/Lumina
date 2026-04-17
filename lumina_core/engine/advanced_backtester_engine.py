@@ -46,15 +46,17 @@ class AdvancedBacktesterEngine:
             train_res = self.realistic.run_backtest_on_snapshot(train.reset_index())
             test_res = self.realistic.run_backtest_on_snapshot(test.reset_index())
 
-            results.append({
-                "train_period": f"{train.index[0].date()} -> {train.index[-1].date()}",
-                "test_period": f"{test.index[0].date()} -> {test.index[-1].date()}",
-                "train_sharpe": train_res["sharpe"],
-                "test_sharpe": test_res["sharpe"],
-                "train_maxdd": train_res["maxdd"],
-                "test_maxdd": test_res["maxdd"],
-                "test_trades": test_res["trades"],
-            })
+            results.append(
+                {
+                    "train_period": f"{train.index[0].date()} -> {train.index[-1].date()}",
+                    "test_period": f"{test.index[0].date()} -> {test.index[-1].date()}",
+                    "train_sharpe": train_res["sharpe"],
+                    "test_sharpe": test_res["sharpe"],
+                    "train_maxdd": train_res["maxdd"],
+                    "test_maxdd": test_res["maxdd"],
+                    "test_trades": test_res["trades"],
+                }
+            )
 
             current += timedelta(days=self.step_days)
 
@@ -62,9 +64,7 @@ class AdvancedBacktesterEngine:
         avg_test_sharpe = float(np.mean(test_sharpes)) if test_sharpes else 0.0
         worst_test_dd = max((r["test_maxdd"] for r in results), default=0.0)
 
-        self.logger.info(
-            f"WALK_FORWARD_COMPLETE,avg_test_sharpe={avg_test_sharpe:.2f},worst_dd={worst_test_dd:.1f}%"
-        )
+        self.logger.info(f"WALK_FORWARD_COMPLETE,avg_test_sharpe={avg_test_sharpe:.2f},worst_dd={worst_test_dd:.1f}%")
 
         return {
             "walk_forward_results": results,

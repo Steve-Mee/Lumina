@@ -71,6 +71,7 @@ def _assert_summary_structure(summary: dict[str, Any]) -> None:
 # Unit tests – simulation kernel
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateSyntheticTicks:
     def test_returns_requested_count(self):
         ticks = _generate_synthetic_ticks(n=500, seed=42)
@@ -100,9 +101,17 @@ class TestRunSimulation:
     def test_returns_all_expected_keys(self):
         ticks = _generate_synthetic_ticks(n=2000, seed=42)
         result = _run_simulation(ticks, seed=42)
-        for key in ("total_trades", "pnl_realized", "max_drawdown",
-                    "risk_events", "var_breach_count", "wins", "win_rate",
-                    "mean_pnl_per_trade", "sharpe_annualized"):
+        for key in (
+            "total_trades",
+            "pnl_realized",
+            "max_drawdown",
+            "risk_events",
+            "var_breach_count",
+            "wins",
+            "win_rate",
+            "mean_pnl_per_trade",
+            "sharpe_annualized",
+        ):
             assert key in result, f"Missing key: {key}"
 
     def test_trade_count_positive(self):
@@ -138,14 +147,17 @@ class TestValidateBroker:
 
 
 class TestParseDurationMinutes:
-    @pytest.mark.parametrize("value,expected", [
-        ("15m", 15.0),
-        ("5m", 5.0),
-        ("1m", 1.0),
-        ("60s", 1.0),
-        ("1h", 60.0),
-        ("30", 30.0),
-    ])
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("15m", 15.0),
+            ("5m", 5.0),
+            ("1m", 1.0),
+            ("60s", 1.0),
+            ("1h", 60.0),
+            ("30", 30.0),
+        ],
+    )
     def test_parses_correctly(self, value, expected):
         assert parse_duration_minutes(value) == pytest.approx(expected, rel=1e-6)
 
@@ -157,6 +169,7 @@ class TestParseDurationMinutes:
 # ---------------------------------------------------------------------------
 # HeadlessRuntime integration tests (1-minute dry-run)
 # ---------------------------------------------------------------------------
+
 
 class TestHeadlessRuntime:
     """Integration tests: run the full runtime end-to-end and validate output."""
@@ -194,6 +207,7 @@ class TestHeadlessRuntime:
         """1-minute paper dry-run produces a complete, well-typed JSON summary."""
         # Redirect summary file to tmp_path
         import lumina_core.runtime.headless_runtime as hr_mod
+
         monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
 
         runtime = HeadlessRuntime(container=None)
@@ -213,6 +227,7 @@ class TestHeadlessRuntime:
     def test_summary_written_to_disk(self, tmp_path, monkeypatch):
         """Summary JSON is persisted to the configured path."""
         import lumina_core.runtime.headless_runtime as hr_mod
+
         out_path = tmp_path / "last_run_summary.json"
         monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", out_path)
 
@@ -226,6 +241,7 @@ class TestHeadlessRuntime:
     def test_live_broker_mode_returns_summary(self, tmp_path, monkeypatch):
         """live broker_mode completes; broker_status may vary but summary is valid."""
         import lumina_core.runtime.headless_runtime as hr_mod
+
         monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
         # Inject a stub token so live-broker path does not raise on missing creds.
         monkeypatch.setenv("CROSSTRADE_TOKEN", "headless-integration-test-stub")
@@ -240,6 +256,7 @@ class TestHeadlessRuntime:
     def test_summary_has_positive_trades(self, tmp_path, monkeypatch):
         """A non-trivial duration generates at least one simulated trade."""
         import lumina_core.runtime.headless_runtime as hr_mod
+
         monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
 
         runtime = HeadlessRuntime(container=None)
@@ -251,16 +268,16 @@ class TestHeadlessRuntime:
         """When a container is passed whose evolution log has 'proposed' entries,
         the count is reflected in the summary."""
         import lumina_core.runtime.headless_runtime as hr_mod
+
         monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
 
         # Write a fake evolution log with 3 proposed entries
         evo_log = tmp_path / "evolution_log.jsonl"
         for i in range(3):
-            evo_log.open("a").write(
-                json.dumps({"status": "proposed", "id": i}) + "\n"
-            )
+            evo_log.open("a").write(json.dumps({"status": "proposed", "id": i}) + "\n")
         monkeypatch.setattr(
-            hr_mod, "_count_evolution_proposals",
+            hr_mod,
+            "_count_evolution_proposals",
             lambda _container: 3,
         )
 
@@ -274,6 +291,7 @@ class TestHeadlessRuntime:
         """Realized PnL must be a finite number (not NaN/Inf)."""
         import math
         import lumina_core.runtime.headless_runtime as hr_mod
+
         monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
 
         runtime = HeadlessRuntime(container=None)

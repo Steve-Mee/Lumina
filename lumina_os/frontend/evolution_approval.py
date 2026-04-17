@@ -6,6 +6,7 @@ ObservabilityService via the backend REST layer.
 
 Auto-refreshes every 30 s when enabled.
 """
+
 from __future__ import annotations
 
 import time
@@ -135,8 +136,7 @@ def render_evolution_approval_tab(base_url: str, api_key: str = "") -> None:
             backtest_badge = "✅ Green" if backtest_ok else "🔴 Failed"
 
             st.caption(
-                f"Backtest: {backtest_badge}  ·  Safety: {safety_badge}  ·  "
-                f"Confidence: **{confidence_val:.1f}%**"
+                f"Backtest: {backtest_badge}  ·  Safety: {safety_badge}  ·  Confidence: **{confidence_val:.1f}%**"
             )
 
             st.divider()
@@ -192,9 +192,7 @@ def render_evolution_approval_tab(base_url: str, api_key: str = "") -> None:
                                 time.sleep(1)
                                 st.rerun()
                             else:
-                                st.error(
-                                    f"Approval failed: HTTP {resp.status_code} — {resp.text}"
-                                )
+                                st.error(f"Approval failed: HTTP {resp.status_code} — {resp.text}")
                         except Exception as exc:
                             st.error(f"Request error: {exc}")
 
@@ -232,8 +230,6 @@ def render_evolution_approval_tab(base_url: str, api_key: str = "") -> None:
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(
-                                f"Rejection failed: HTTP {resp.status_code} — {resp.text}"
-                            )
+                            st.error(f"Rejection failed: HTTP {resp.status_code} — {resp.text}")
                     except Exception as exc:
                         st.error(f"Request error: {exc}")

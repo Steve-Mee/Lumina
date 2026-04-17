@@ -16,6 +16,7 @@ The router is mounted in lumina_os/backend/app.py via:
 /metrics is intentionally unauthenticated to support standard Prometheus scraping.
 /metrics/json and /metrics/history require an API key (standard app auth).
 """
+
 from __future__ import annotations
 
 import time
@@ -196,9 +197,7 @@ async def get_health() -> dict[str, Any]:
 )
 async def get_metric_history(
     metric: str = Query(..., description="Exact metric name to query"),
-    since: Optional[float] = Query(
-        None, description="Unix timestamp lower bound (inclusive)"
-    ),
+    since: Optional[float] = Query(None, description="Unix timestamp lower bound (inclusive)"),
     limit: int = Query(200, ge=1, le=2000, description="Maximum rows to return"),
     x_api_key: Optional[str] = Header(None),
 ) -> list[dict[str, Any]]:
@@ -220,9 +219,7 @@ async def get_metric_history(
     ),
 )
 async def get_regime_history(
-    since: Optional[float] = Query(
-        None, description="Unix timestamp lower bound (inclusive)"
-    ),
+    since: Optional[float] = Query(None, description="Unix timestamp lower bound (inclusive)"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum rows to return"),
     x_api_key: Optional[str] = Header(None),
 ) -> list[dict[str, Any]]:

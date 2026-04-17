@@ -106,8 +106,12 @@ class EngineConfig(BaseModel):
     thought_log: Path = Field(default_factory=lambda: Path("state/lumina_thought_log.jsonl"))
     bible_file: Path = Field(default_factory=lambda: Path("state/lumina_daytrading_bible.json"))
     live_jsonl: Path = Field(default_factory=lambda: Path("state/live_stream.jsonl"))
-    trade_reconciler_status_file: Path = Field(default_factory=lambda: Path(os.getenv("TRADE_RECONCILER_STATUS_FILE", "state/trade_reconciler_status.json")))
-    trade_reconciler_audit_log: Path = Field(default_factory=lambda: Path(os.getenv("TRADE_RECONCILER_AUDIT_LOG", "logs/trade_fill_audit.jsonl")))
+    trade_reconciler_status_file: Path = Field(
+        default_factory=lambda: Path(os.getenv("TRADE_RECONCILER_STATUS_FILE", "state/trade_reconciler_status.json"))
+    )
+    trade_reconciler_audit_log: Path = Field(
+        default_factory=lambda: Path(os.getenv("TRADE_RECONCILER_AUDIT_LOG", "logs/trade_fill_audit.jsonl"))
+    )
     trade_decision_audit_log: Path = Field(
         default_factory=lambda: Path(
             str(
@@ -119,25 +123,37 @@ class EngineConfig(BaseModel):
     )
     trade_decision_audit_fail_closed_real: bool = Field(
         default_factory=lambda: str(
-            os.getenv("TRADE_DECISION_AUDIT_FAIL_CLOSED_REAL")
-            or _config_yaml_nested(True, "audit", "fail_closed_real")
-        ).strip().lower() == "true"
+            os.getenv("TRADE_DECISION_AUDIT_FAIL_CLOSED_REAL") or _config_yaml_nested(True, "audit", "fail_closed_real")
+        )
+        .strip()
+        .lower()
+        == "true"
     )
 
     instrument: str = Field(default_factory=lambda: os.getenv("INSTRUMENT", "MES JUN26"))
     swarm_symbols: list[str] = Field(default_factory=_parse_swarm_symbols)
     swarm_enabled: bool = Field(default_factory=lambda: os.getenv("SWARM_ENABLED", "True").lower() == "true")
     supported_swarm_roots: list[str] = Field(default_factory=lambda: ["MES", "MNQ", "MYM", "ES"])
-    xai_key: str | None = Field(default_factory=lambda: str(os.getenv("XAI_API_KEY") or _config_yaml_section_value("xai", "api_key", "")).strip() or None)
-    xai_model: str = Field(default_factory=lambda: str(_config_yaml_section_value("xai", "model", "grok-4.1-fast")).strip() or "grok-4.1-fast")
-    xai_update_interval_sec: int = Field(default_factory=lambda: int(_config_yaml_section_value("xai", "update_interval_sec", 60) or 60))
+    xai_key: str | None = Field(
+        default_factory=lambda: str(
+            os.getenv("XAI_API_KEY") or _config_yaml_section_value("xai", "api_key", "")
+        ).strip()
+        or None
+    )
+    xai_model: str = Field(
+        default_factory=lambda: str(_config_yaml_section_value("xai", "model", "grok-4.1-fast")).strip()
+        or "grok-4.1-fast"
+    )
+    xai_update_interval_sec: int = Field(
+        default_factory=lambda: int(_config_yaml_section_value("xai", "update_interval_sec", 60) or 60)
+    )
     finnhub_api_key: str | None = Field(default_factory=lambda: os.getenv("FINNHUB_API_KEY"))
     broker_backend: str = Field(
         default_factory=lambda: str(
-            os.getenv("BROKER_BACKEND")
-            or _config_yaml_nested("paper", "broker", "backend")
-            or "paper"
-        ).strip().lower()
+            os.getenv("BROKER_BACKEND") or _config_yaml_nested("paper", "broker", "backend") or "paper"
+        )
+        .strip()
+        .lower()
     )
     broker_crosstrade_api_key: str | None = Field(
         default_factory=lambda: str(
@@ -171,9 +187,19 @@ class EngineConfig(BaseModel):
     )
     crosstrade_account: str = Field(default_factory=lambda: os.getenv("CROSSTRADE_ACCOUNT", "DEMO5042070"))
     reconcile_fills: bool = Field(default_factory=lambda: _env_or_yaml_bool("RECONCILE_FILLS", "reconcile_fills", True))
-    reconciliation_method: str = Field(default_factory=lambda: str(_env_or_yaml("RECONCILIATION_METHOD", "reconciliation_method", "websocket")).strip().lower())
-    reconciliation_timeout_seconds: float = Field(default_factory=lambda: _env_or_yaml_float("RECONCILIATION_TIMEOUT_SECONDS", "reconciliation_timeout_seconds", 15.0))
-    use_real_fill_for_pnl: bool = Field(default_factory=lambda: _env_or_yaml_bool("USE_REAL_FILL_FOR_PNL", "use_real_fill_for_pnl", True))
+    reconciliation_method: str = Field(
+        default_factory=lambda: str(_env_or_yaml("RECONCILIATION_METHOD", "reconciliation_method", "websocket"))
+        .strip()
+        .lower()
+    )
+    reconciliation_timeout_seconds: float = Field(
+        default_factory=lambda: _env_or_yaml_float(
+            "RECONCILIATION_TIMEOUT_SECONDS", "reconciliation_timeout_seconds", 15.0
+        )
+    )
+    use_real_fill_for_pnl: bool = Field(
+        default_factory=lambda: _env_or_yaml_bool("USE_REAL_FILL_FOR_PNL", "use_real_fill_for_pnl", True)
+    )
     crosstrade_fill_ws_url: str = Field(
         default_factory=lambda: str(
             os.getenv("CROSSTRADE_FILL_WS_URL")
@@ -181,7 +207,9 @@ class EngineConfig(BaseModel):
             or "wss://app.crosstrade.io/ws/stream"
         ).strip()
     )
-    crosstrade_fill_poll_url: str = Field(default_factory=lambda: str(os.getenv("CROSSTRADE_FILL_POLL_URL", "")).strip())
+    crosstrade_fill_poll_url: str = Field(
+        default_factory=lambda: str(os.getenv("CROSSTRADE_FILL_POLL_URL", "")).strip()
+    )
 
     trade_mode: str = Field(
         default_factory=lambda: str(
@@ -190,15 +218,15 @@ class EngineConfig(BaseModel):
             or _config_yaml_value("mode", "")
             or (
                 "real"
-                if str(
-                    os.getenv("BROKER_BACKEND")
-                    or _config_yaml_nested("paper", "broker", "backend")
-                    or "paper"
-                ).strip().lower()
+                if str(os.getenv("BROKER_BACKEND") or _config_yaml_nested("paper", "broker", "backend") or "paper")
+                .strip()
+                .lower()
                 == "live"
                 else "paper"
             )
-        ).strip().lower()
+        )
+        .strip()
+        .lower()
     )
 
     @field_validator("trade_mode")
@@ -209,22 +237,43 @@ class EngineConfig(BaseModel):
         if normalized not in allowed:
             raise ValueError("TRADE_MODE must be one of: paper, sim, sim_real_guard, real")
         return normalized
+
     max_risk_percent: float = Field(default_factory=lambda: float(os.getenv("MAX_RISK_PERCENT", 1.0)))
     drawdown_kill_percent: float = Field(default_factory=lambda: float(os.getenv("DRAWDOWN_KILL_PERCENT", 8.0)))
 
-    use_human_main_loop: bool = Field(default_factory=lambda: os.getenv("USE_HUMAN_MAIN_LOOP", "True").lower() == "true")
-    start_pre_dream_backup: bool = Field(default_factory=lambda: os.getenv("START_PRE_DREAM_BACKUP", "False").lower() == "true")
-    screen_share_enabled: bool = Field(default_factory=lambda: os.getenv("SCREEN_SHARE_ENABLED", "True").lower() == "true")
+    use_human_main_loop: bool = Field(
+        default_factory=lambda: os.getenv("USE_HUMAN_MAIN_LOOP", "True").lower() == "true"
+    )
+    start_pre_dream_backup: bool = Field(
+        default_factory=lambda: os.getenv("START_PRE_DREAM_BACKUP", "False").lower() == "true"
+    )
+    screen_share_enabled: bool = Field(
+        default_factory=lambda: os.getenv("SCREEN_SHARE_ENABLED", "True").lower() == "true"
+    )
     dashboard_enabled: bool = Field(default_factory=lambda: os.getenv("DASHBOARD_ENABLED", "True").lower() == "true")
-    voice_input_enabled: bool = Field(default_factory=lambda: os.getenv("VOICE_INPUT_ENABLED", "True").lower() == "true")
+    voice_input_enabled: bool = Field(
+        default_factory=lambda: os.getenv("VOICE_INPUT_ENABLED", "True").lower() == "true"
+    )
     vision_model: str = Field(default_factory=lambda: os.getenv("VISION_MODEL", "grok-4-vision-0309"))
     voice_wake_word: str = Field(default_factory=lambda: os.getenv("VOICE_WAKE_WORD", "lumina").strip().lower())
-    dashboard_chart_refresh_sec: int = Field(default_factory=lambda: int(os.getenv("DASHBOARD_CHART_REFRESH_SEC", "20")))
-    blackboard_health_latency_amber_ms: float = Field(default_factory=lambda: float(os.getenv("BLACKBOARD_HEALTH_LATENCY_AMBER_MS", "250.0")))
-    blackboard_health_latency_red_ms: float = Field(default_factory=lambda: float(os.getenv("BLACKBOARD_HEALTH_LATENCY_RED_MS", "1000.0")))
-    blackboard_health_min_confidence: float = Field(default_factory=lambda: float(os.getenv("BLACKBOARD_HEALTH_MIN_CONFIDENCE", "0.80")))
-    blackboard_health_trend_points: int = Field(default_factory=lambda: int(os.getenv("BLACKBOARD_HEALTH_TREND_POINTS", "30")))
-    status_print_interval_sec: float = Field(default_factory=lambda: float(os.getenv("STATUS_PRINT_INTERVAL_SEC", "5.0")))
+    dashboard_chart_refresh_sec: int = Field(
+        default_factory=lambda: int(os.getenv("DASHBOARD_CHART_REFRESH_SEC", "20"))
+    )
+    blackboard_health_latency_amber_ms: float = Field(
+        default_factory=lambda: float(os.getenv("BLACKBOARD_HEALTH_LATENCY_AMBER_MS", "250.0"))
+    )
+    blackboard_health_latency_red_ms: float = Field(
+        default_factory=lambda: float(os.getenv("BLACKBOARD_HEALTH_LATENCY_RED_MS", "1000.0"))
+    )
+    blackboard_health_min_confidence: float = Field(
+        default_factory=lambda: float(os.getenv("BLACKBOARD_HEALTH_MIN_CONFIDENCE", "0.80"))
+    )
+    blackboard_health_trend_points: int = Field(
+        default_factory=lambda: int(os.getenv("BLACKBOARD_HEALTH_TREND_POINTS", "30"))
+    )
+    status_print_interval_sec: float = Field(
+        default_factory=lambda: float(os.getenv("STATUS_PRINT_INTERVAL_SEC", "5.0"))
+    )
     event_threshold: float = Field(default_factory=lambda: float(os.getenv("EVENT_THRESHOLD", "0.003")))
     journal_dir: Path = Field(default_factory=lambda: Path(os.getenv("JOURNAL_DIR", "journal")))
     journal_pdf_dir: Path = Field(default_factory=lambda: Path(os.getenv("JOURNAL_PDF_DIR", "journal/pdf")))
@@ -238,7 +287,9 @@ class EngineConfig(BaseModel):
             or "LUMINA_Steve"
         ).strip()
     )
-    news_avoidance_minutes: int = Field(default_factory=lambda: int(_config_yaml_value("news_avoidance_minutes", 3) or 3))
+    news_avoidance_minutes: int = Field(
+        default_factory=lambda: int(_config_yaml_value("news_avoidance_minutes", 3) or 3)
+    )
     timeframes: dict[str, int] = Field(
         default_factory=lambda: {
             "5min": 300,
@@ -258,12 +309,24 @@ class EngineConfig(BaseModel):
     )
     news_impact_multipliers: dict[str, float] = Field(
         default_factory=lambda: {
-            "high_bullish": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_bullish", 1.3)),
-            "high_bearish": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_bearish", 0.6)),
-            "high_neutral": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_neutral", 0.9)),
-            "medium_bullish": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_bullish", 1.1)),
-            "medium_bearish": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_bearish", 0.9)),
-            "medium_neutral": float(_safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_neutral", 1.0)),
+            "high_bullish": float(
+                _safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_bullish", 1.3)
+            ),
+            "high_bearish": float(
+                _safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_bearish", 0.6)
+            ),
+            "high_neutral": float(
+                _safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("high_neutral", 0.9)
+            ),
+            "medium_bullish": float(
+                _safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_bullish", 1.1)
+            ),
+            "medium_bearish": float(
+                _safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_bearish", 0.9)
+            ),
+            "medium_neutral": float(
+                _safe_dict(_config_yaml_value("news_impact_multipliers", {})).get("medium_neutral", 1.0)
+            ),
         }
     )
     regime_risk_multipliers: dict[str, float] = Field(

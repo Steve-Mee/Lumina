@@ -360,15 +360,27 @@ class DashboardService:
 
         reconciler_status = dict(getattr(self.engine, "trade_reconciler_status", {}) or {})
         pending_reconciles = len(getattr(self.engine, "pending_trade_reconciliations", []) or [])
-        last_reconciled_trade = reconciler_status.get("last_reconciled_trade", {}) if isinstance(reconciler_status, dict) else {}
-        last_reconcile_status = str(last_reconciled_trade.get("status", "n/a")) if isinstance(last_reconciled_trade, dict) else "n/a"
+        last_reconciled_trade = (
+            reconciler_status.get("last_reconciled_trade", {}) if isinstance(reconciler_status, dict) else {}
+        )
+        last_reconcile_status = (
+            str(last_reconciled_trade.get("status", "n/a")) if isinstance(last_reconciled_trade, dict) else "n/a"
+        )
 
         return html.Div(
             [
-                html.P(f"Gate reject ratio: {reject_ratio * 100:.1f}% ({int(guard_blocks)} rejects / {int(reject_denom)} checks)", style={"marginBottom": "6px"}),
+                html.P(
+                    f"Gate reject ratio: {reject_ratio * 100:.1f}% ({int(guard_blocks)} rejects / {int(reject_denom)} checks)",
+                    style={"marginBottom": "6px"},
+                ),
                 html.P(f"Reconciliation delta (vs real baseline): {parity_delta:.3f}", style={"marginBottom": "6px"}),
-                html.P(f"Force-close count ({mode.upper()}): {int(eod_force_close_count)}", style={"marginBottom": "6px"}),
-                html.P(f"Reconciler pending: {pending_reconciles} | last status: {last_reconcile_status}", style={"color": "#9fb3c8", "marginBottom": 0}),
+                html.P(
+                    f"Force-close count ({mode.upper()}): {int(eod_force_close_count)}", style={"marginBottom": "6px"}
+                ),
+                html.P(
+                    f"Reconciler pending: {pending_reconciles} | last status: {last_reconcile_status}",
+                    style={"color": "#9fb3c8", "marginBottom": 0},
+                ),
             ],
             style={"fontSize": "15px", "color": "#ddd"},
         )
@@ -418,7 +430,11 @@ class DashboardService:
 
         blackboard = getattr(self.engine, "blackboard", None)
         meta_agent = getattr(self.engine, "meta_agent_orchestrator", None)
-        execution_event = blackboard.latest("execution.aggregate") if (blackboard is not None and hasattr(blackboard, "latest")) else None
+        execution_event = (
+            blackboard.latest("execution.aggregate")
+            if (blackboard is not None and hasattr(blackboard, "latest"))
+            else None
+        )
         has_execution_event = execution_event is not None
         latest_conf = float(getattr(execution_event, "confidence", 0.0) or 0.0) if execution_event is not None else 0.0
         latest_seq = int(getattr(execution_event, "sequence", 0) or 0) if execution_event is not None else 0
@@ -471,46 +487,56 @@ class DashboardService:
         rejects = [float(sample.get("reject_total", 0.0) or 0.0) for sample in self.blackboard_health_history]
         drops = [float(sample.get("drop_total", 0.0) or 0.0) for sample in self.blackboard_health_history]
         sub_errors = [float(sample.get("sub_error_total", 0.0) or 0.0) for sample in self.blackboard_health_history]
-        status_colors = [str(sample.get("status_color", "#ffc857") or "#ffc857") for sample in self.blackboard_health_history]
+        status_colors = [
+            str(sample.get("status_color", "#ffc857") or "#ffc857") for sample in self.blackboard_health_history
+        ]
 
         fig = go.Figure()
         # Left yaxis: latency trend
-        fig.add_trace(go.Scatter(
-            x=labels,
-            y=latency,
-            mode="lines+markers",
-            name="Latency ms",
-            line={"color": "#00d4ff", "width": 2},
-            marker={"color": status_colors, "size": 8}
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=labels,
+                y=latency,
+                mode="lines+markers",
+                name="Latency ms",
+                line={"color": "#00d4ff", "width": 2},
+                marker={"color": status_colors, "size": 8},
+            )
+        )
         # Right yaxis: counter trends with status coloring
-        fig.add_trace(go.Scatter(
-            x=labels,
-            y=rejects,
-            mode="lines+markers",
-            name="Rejects",
-            yaxis="y2",
-            line={"color": "#ff6b6b", "width": 2},
-            marker={"color": status_colors, "size": 8}
-        ))
-        fig.add_trace(go.Scatter(
-            x=labels,
-            y=drops,
-            mode="lines+markers",
-            name="Drops",
-            yaxis="y2",
-            line={"color": "#ffc857", "width": 2},
-            marker={"color": status_colors, "size": 8}
-        ))
-        fig.add_trace(go.Scatter(
-            x=labels,
-            y=sub_errors,
-            mode="lines+markers",
-            name="Subscriber Errors",
-            yaxis="y2",
-            line={"color": "#d946ef", "width": 2},
-            marker={"color": status_colors, "size": 8}
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=labels,
+                y=rejects,
+                mode="lines+markers",
+                name="Rejects",
+                yaxis="y2",
+                line={"color": "#ff6b6b", "width": 2},
+                marker={"color": status_colors, "size": 8},
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=labels,
+                y=drops,
+                mode="lines+markers",
+                name="Drops",
+                yaxis="y2",
+                line={"color": "#ffc857", "width": 2},
+                marker={"color": status_colors, "size": 8},
+            )
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=labels,
+                y=sub_errors,
+                mode="lines+markers",
+                name="Subscriber Errors",
+                yaxis="y2",
+                line={"color": "#d946ef", "width": 2},
+                marker={"color": status_colors, "size": 8},
+            )
+        )
         fig.update_layout(
             title="Blackboard Health Trend",
             template="plotly_dark",
@@ -539,9 +565,18 @@ class DashboardService:
 
         return html.Div(
             [
-                html.P(f"Status: {status} | Blackboard: {'enabled' if blackboard_enabled else 'disabled'} | Meta-Orchestrator: {'enabled' if meta_enabled else 'disabled'}", style={"marginBottom": "6px", "color": status_color, "fontWeight": "700"}),
-                html.P(f"Publish latency sum: {publish_latency:.2f} ms | Rejects: {int(reject_total)} | Drops: {int(drop_total)}", style={"marginBottom": "6px"}),
-                html.P(f"Subscriber errors: {int(sub_error_total)} | Latest execution seq: {latest_seq} | Latest conf: {latest_conf:.2f}", style={"marginBottom": "6px", "color": "#9fb3c8"}),
+                html.P(
+                    f"Status: {status} | Blackboard: {'enabled' if blackboard_enabled else 'disabled'} | Meta-Orchestrator: {'enabled' if meta_enabled else 'disabled'}",
+                    style={"marginBottom": "6px", "color": status_color, "fontWeight": "700"},
+                ),
+                html.P(
+                    f"Publish latency sum: {publish_latency:.2f} ms | Rejects: {int(reject_total)} | Drops: {int(drop_total)}",
+                    style={"marginBottom": "6px"},
+                ),
+                html.P(
+                    f"Subscriber errors: {int(sub_error_total)} | Latest execution seq: {latest_seq} | Latest conf: {latest_conf:.2f}",
+                    style={"marginBottom": "6px", "color": "#9fb3c8"},
+                ),
                 html.P(f"Reason: {reason}", style={"marginBottom": 0, "color": status_color}),
             ],
             style={"fontSize": "15px", "color": "#ddd"},
@@ -580,7 +615,9 @@ class DashboardService:
             ]
         )
         if threshold > 0.0:
-            fig.add_hline(y=threshold, line_dash="dash", line_color="#ff4444", annotation_text=f"Threshold {threshold:.2f}%")
+            fig.add_hline(
+                y=threshold, line_dash="dash", line_color="#ff4444", annotation_text=f"Threshold {threshold:.2f}%"
+            )
         fig.update_layout(
             title="Projected Max Drawdown Distribution",
             yaxis_title="Drawdown %",
@@ -624,25 +661,176 @@ class DashboardService:
                 ),
                 dbc.Row(
                     [
-                        dbc.Col([dbc.Card([dbc.CardBody([html.H5("API Kosten Vandaag", className="text-muted text-center"), html.H2(id="cost-meter", className="text-center", style={"fontSize": "42px", "fontWeight": "bold"})])], color="dark", outline=True)], width=3),
-                        dbc.Col([dbc.Card([dbc.CardBody([html.H5("Netto Resultaat Vandaag", className="text-muted text-center"), html.H2(id="pnl-meter", className="text-center", style={"fontSize": "42px", "fontWeight": "bold"})])], color="dark", outline=True)], width=3),
-                        dbc.Col([dbc.Card([dbc.CardBody([html.H5("Kosten als % van Resultaat", className="text-muted text-center"), html.H2(id="percentage-meter", className="text-center", style={"fontSize": "42px", "fontWeight": "bold"})])], color="dark", outline=True)], width=3),
-                        dbc.Col([dbc.Card([dbc.CardBody([html.H5("Cache Hits Vandaag", className="text-muted text-center"), html.H2(id="cache-meter", className="text-center", style={"fontSize": "42px", "fontWeight": "bold"})])], color="dark", outline=True)], width=3),
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5("API Kosten Vandaag", className="text-muted text-center"),
+                                                html.H2(
+                                                    id="cost-meter",
+                                                    className="text-center",
+                                                    style={"fontSize": "42px", "fontWeight": "bold"},
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    color="dark",
+                                    outline=True,
+                                )
+                            ],
+                            width=3,
+                        ),
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5("Netto Resultaat Vandaag", className="text-muted text-center"),
+                                                html.H2(
+                                                    id="pnl-meter",
+                                                    className="text-center",
+                                                    style={"fontSize": "42px", "fontWeight": "bold"},
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    color="dark",
+                                    outline=True,
+                                )
+                            ],
+                            width=3,
+                        ),
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5(
+                                                    "Kosten als % van Resultaat", className="text-muted text-center"
+                                                ),
+                                                html.H2(
+                                                    id="percentage-meter",
+                                                    className="text-center",
+                                                    style={"fontSize": "42px", "fontWeight": "bold"},
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    color="dark",
+                                    outline=True,
+                                )
+                            ],
+                            width=3,
+                        ),
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5("Cache Hits Vandaag", className="text-muted text-center"),
+                                                html.H2(
+                                                    id="cache-meter",
+                                                    className="text-center",
+                                                    style={"fontSize": "42px", "fontWeight": "bold"},
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    color="dark",
+                                    outline=True,
+                                )
+                            ],
+                            width=3,
+                        ),
                     ],
                     className="mb-4",
                 ),
                 dbc.Row(
                     [
-                        dbc.Col([dbc.Card([dbc.CardBody([html.H5("Inference Provider", className="text-muted text-center"), html.H2(id="inference-provider-meter", className="text-center", style={"fontSize": "34px", "fontWeight": "bold"})])], color="dark", outline=True)], width=4),
-                        dbc.Col([dbc.Card([dbc.CardBody([html.H5("Inference Avg Latency", className="text-muted text-center"), html.H2(id="inference-latency-meter", className="text-center", style={"fontSize": "34px", "fontWeight": "bold"})])], color="dark", outline=True)], width=4),
-                        dbc.Col([dbc.Card([dbc.CardBody([html.H5("Inference Failures", className="text-muted text-center"), html.H2(id="inference-fail-meter", className="text-center", style={"fontSize": "34px", "fontWeight": "bold"})])], color="dark", outline=True)], width=4),
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5("Inference Provider", className="text-muted text-center"),
+                                                html.H2(
+                                                    id="inference-provider-meter",
+                                                    className="text-center",
+                                                    style={"fontSize": "34px", "fontWeight": "bold"},
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    color="dark",
+                                    outline=True,
+                                )
+                            ],
+                            width=4,
+                        ),
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5("Inference Avg Latency", className="text-muted text-center"),
+                                                html.H2(
+                                                    id="inference-latency-meter",
+                                                    className="text-center",
+                                                    style={"fontSize": "34px", "fontWeight": "bold"},
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    color="dark",
+                                    outline=True,
+                                )
+                            ],
+                            width=4,
+                        ),
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5("Inference Failures", className="text-muted text-center"),
+                                                html.H2(
+                                                    id="inference-fail-meter",
+                                                    className="text-center",
+                                                    style={"fontSize": "34px", "fontWeight": "bold"},
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    color="dark",
+                                    outline=True,
+                                )
+                            ],
+                            width=4,
+                        ),
                     ],
                     className="mb-4",
                 ),
-                dbc.Row([
-                    dbc.Col([dcc.Graph(id="live-chart")], width=8),
-                    dbc.Col([html.H5("Account Status & Equity Curve"), html.Div(id="status-panel", style={"fontSize": "18px", "color": "#0ff"}), dcc.Graph(id="equity-curve")], width=4),
-                ]),
+                dbc.Row(
+                    [
+                        dbc.Col([dcc.Graph(id="live-chart")], width=8),
+                        dbc.Col(
+                            [
+                                html.H5("Account Status & Equity Curve"),
+                                html.Div(id="status-panel", style={"fontSize": "18px", "color": "#0ff"}),
+                                dcc.Graph(id="equity-curve"),
+                            ],
+                            width=4,
+                        ),
+                    ]
+                ),
                 dbc.Row(
                     [
                         dbc.Col([dcc.Graph(id="inference-provider-figure")], width=12),
@@ -653,14 +841,26 @@ class DashboardService:
                     [
                         dbc.Col([html.H5("Swarm Correlation Matrix"), dcc.Graph(id="swarm-correlation")], width=6),
                         dbc.Col([html.H5("Swarm Allocation"), dcc.Graph(id="swarm-allocation")], width=4),
-                        dbc.Col([html.H5("Regime Consensus"), html.Div(id="swarm-regime-panel", style={"fontSize": "15px", "color": "#ddd"})], width=2),
+                        dbc.Col(
+                            [
+                                html.H5("Regime Consensus"),
+                                html.Div(id="swarm-regime-panel", style={"fontSize": "15px", "color": "#ddd"}),
+                            ],
+                            width=2,
+                        ),
                     ],
                     className="mb-3",
                 ),
                 dbc.Row(
                     [
                         dbc.Col([html.H5("Pair Spread Drill-down"), dcc.Graph(id="swarm-spread-drilldown")], width=9),
-                        dbc.Col([html.H5("Pair Detail"), html.Div(id="swarm-spread-detail", style={"fontSize": "15px", "color": "#ddd"})], width=3),
+                        dbc.Col(
+                            [
+                                html.H5("Pair Detail"),
+                                html.Div(id="swarm-spread-detail", style={"fontSize": "15px", "color": "#ddd"}),
+                            ],
+                            width=3,
+                        ),
                     ],
                     className="mb-3",
                 ),
@@ -694,14 +894,21 @@ class DashboardService:
                 dcc.Graph(id="heatmap"),
                 html.H5("Laatste Trades & Reflections"),
                 dbc.Table(id="trade-table", bordered=True, color="dark"),
-                dbc.Modal([
-                    dbc.ModalHeader("Afsluiten bevestigen"),
-                    dbc.ModalBody("Weet je zeker dat je LUMINA volledig wilt afsluiten?"),
-                    dbc.ModalFooter([
-                        dbc.Button("Annuleren", id="shutdown-cancel-btn", className="ms-auto", n_clicks=0),
-                        dbc.Button("Afsluiten", id="shutdown-confirm-btn", color="danger", n_clicks=0),
-                    ]),
-                ], id="shutdown-modal", centered=True, is_open=False),
+                dbc.Modal(
+                    [
+                        dbc.ModalHeader("Afsluiten bevestigen"),
+                        dbc.ModalBody("Weet je zeker dat je LUMINA volledig wilt afsluiten?"),
+                        dbc.ModalFooter(
+                            [
+                                dbc.Button("Annuleren", id="shutdown-cancel-btn", className="ms-auto", n_clicks=0),
+                                dbc.Button("Afsluiten", id="shutdown-confirm-btn", color="danger", n_clicks=0),
+                            ]
+                        ),
+                    ],
+                    id="shutdown-modal",
+                    centered=True,
+                    is_open=False,
+                ),
                 dcc.Interval(id="interval", interval=8000, n_intervals=0),
             ],
             fluid=True,
@@ -742,7 +949,9 @@ class DashboardService:
         def update_dashboard(_: int):
             chart_base64 = None
             now_ts = time.time()
-            if self.visualization_service is not None and now_ts - self.engine.dashboard_last_chart_ts >= int(self.engine.config.dashboard_chart_refresh_sec):
+            if self.visualization_service is not None and now_ts - self.engine.dashboard_last_chart_ts >= int(
+                self.engine.config.dashboard_chart_refresh_sec
+            ):
                 chart_base64 = self.visualization_service.generate_multi_tf_chart(self.engine.AI_DRAWN_FIBS)
                 self.engine.dashboard_last_has_image = bool(chart_base64)
                 self.engine.dashboard_last_chart_ts = now_ts
@@ -758,7 +967,17 @@ class DashboardService:
             trade_mode = self.engine.config.trade_mode.upper()
 
             table_header = [html.Thead(html.Tr([html.Th("Tijd"), html.Th("Signal"), html.Th("PnL"), html.Th("Conf")]))]
-            rows = [html.Tr([html.Td(t.get("ts", "")), html.Td(t.get("signal", "")), html.Td(f"${t.get('pnl', 0):,.0f}"), html.Td(f"{t.get('confluence', 0):.2f}")]) for t in self.engine.trade_log[-10:]]
+            rows = [
+                html.Tr(
+                    [
+                        html.Td(t.get("ts", "")),
+                        html.Td(t.get("signal", "")),
+                        html.Td(f"${t.get('pnl', 0):,.0f}"),
+                        html.Td(f"{t.get('confluence', 0):.2f}"),
+                    ]
+                )
+                for t in self.engine.trade_log[-10:]
+            ]
             table_body = [html.Tbody(rows)]
 
             heatmap_fig = self.generate_strategy_heatmap() or go.Figure()
@@ -767,14 +986,20 @@ class DashboardService:
             pnl_today = self.engine.realized_pnl_today + self.engine.open_pnl
             inference_lines = self._build_inference_status_lines(tracker)
 
-            status = html.Div([
-                html.P(f"Mode: {trade_mode} | Equity: ${self.engine.account_equity:,.0f}"),
-                html.P(f"Open PnL: ${self.engine.open_pnl:,.0f} | Realized PnL: ${self.engine.realized_pnl_today:,.0f}"),
-                html.P(f"Current Dream: {dream_snapshot.get('chosen_strategy')} -> {dream_snapshot.get('signal')} (conf {dream_snapshot.get('confluence_score', 0):.2f})"),
-                html.P(inference_lines[0], style={"color": "#7fd4ff"}),
-                html.P(inference_lines[1], style={"color": "#bbbbbb"}),
-                html.P(inference_lines[2], style={"color": "#ffc857"}) if len(inference_lines) > 2 else html.Div(),
-            ])
+            status = html.Div(
+                [
+                    html.P(f"Mode: {trade_mode} | Equity: ${self.engine.account_equity:,.0f}"),
+                    html.P(
+                        f"Open PnL: ${self.engine.open_pnl:,.0f} | Realized PnL: ${self.engine.realized_pnl_today:,.0f}"
+                    ),
+                    html.P(
+                        f"Current Dream: {dream_snapshot.get('chosen_strategy')} -> {dream_snapshot.get('signal')} (conf {dream_snapshot.get('confluence_score', 0):.2f})"
+                    ),
+                    html.P(inference_lines[0], style={"color": "#7fd4ff"}),
+                    html.P(inference_lines[1], style={"color": "#bbbbbb"}),
+                    html.P(inference_lines[2], style={"color": "#ffc857"}) if len(inference_lines) > 2 else html.Div(),
+                ]
+            )
 
             if pnl_today > 0:
                 percentage = (cost_today / abs(pnl_today)) * 100
@@ -796,7 +1021,9 @@ class DashboardService:
             inference_avg_latency = total_inference_latency / inference_requests if inference_requests > 0 else 0.0
             inference_failures = int(tracker.get("local_inference_failures", 0))
             inference_provider_color = "#7fd4ff" if inference_provider != "pending" else "#888888"
-            inference_latency_color = "#00ff88" if inference_avg_latency < 900 else "#ffc857" if inference_avg_latency < 2500 else "#ff4444"
+            inference_latency_color = (
+                "#00ff88" if inference_avg_latency < 900 else "#ffc857" if inference_avg_latency < 2500 else "#ff4444"
+            )
             inference_failure_color = "#00ff88" if inference_failures == 0 else "#ff4444"
             inference_history_fig = self._build_inference_provider_figure(tracker)
             swarm_corr_fig, swarm_alloc_fig, swarm_regime_panel = self._build_swarm_figures()
@@ -850,7 +1077,13 @@ class DashboardService:
         def update_spread_drilldown(click_data: dict[str, Any] | None, _: int):
             return self._build_swarm_spread_drilldown(click_data)
 
-        @dash_app.callback(Output("shutdown-modal", "is_open"), Input("shutdown-btn", "n_clicks"), Input("shutdown-cancel-btn", "n_clicks"), Input("shutdown-confirm-btn", "n_clicks"), prevent_initial_call=True)
+        @dash_app.callback(
+            Output("shutdown-modal", "is_open"),
+            Input("shutdown-btn", "n_clicks"),
+            Input("shutdown-cancel-btn", "n_clicks"),
+            Input("shutdown-confirm-btn", "n_clicks"),
+            prevent_initial_call=True,
+        )
         def toggle_shutdown_modal(open_clicks: int, cancel_clicks: int, confirm_clicks: int):
             if cancel_clicks > 0 or (open_clicks == 0 and confirm_clicks == 0):
                 return False
@@ -858,7 +1091,11 @@ class DashboardService:
                 return True
             return False
 
-        @dash_app.callback(Output("shutdown-feedback", "children"), Input("shutdown-confirm-btn", "n_clicks"), prevent_initial_call=True)
+        @dash_app.callback(
+            Output("shutdown-feedback", "children"),
+            Input("shutdown-confirm-btn", "n_clicks"),
+            prevent_initial_call=True,
+        )
         def execute_shutdown(confirm_clicks: int):
             if confirm_clicks > 0:
                 print(f"[{time.strftime('%H:%M:%S')}] 🛑 Shutdown button confirmed from dashboard")

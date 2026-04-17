@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 
-
 class LuminaEngineError(RuntimeError):
     """Base class for engine-level operational errors."""
 

@@ -73,11 +73,7 @@ class ModelCatalog:
 
     def recommended_for(self, *, ram_gb: float, gpu_vram_gb: float, vllm_supported: bool) -> ModelDescriptor:
         candidates = self.models()
-        compatible = [
-            model
-            for model in candidates
-            if ram_gb >= model.ram_min_gb and gpu_vram_gb >= model.vram_min_gb
-        ]
+        compatible = [model for model in candidates if ram_gb >= model.ram_min_gb and gpu_vram_gb >= model.vram_min_gb]
         if vllm_supported:
             preferred = [model for model in compatible if model.recommended_provider == "vllm"]
             if preferred:

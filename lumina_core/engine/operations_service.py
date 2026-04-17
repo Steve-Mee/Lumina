@@ -127,12 +127,24 @@ class OperationsService:
                 high_impact = [
                     event
                     for event in events
-                    if event.get("impact") in ["high", "3"] or event.get("event", "").lower() in ["fomc", "nfp", "cpi", "ppi"]
+                    if event.get("impact") in ["high", "3"]
+                    or event.get("event", "").lower() in ["fomc", "nfp", "cpi", "ppi"]
                 ]
                 sentiment = "neutral"
-                if any("rate" in event.get("event", "").lower() or "fomc" in event.get("event", "").lower() for event in high_impact):
-                    sentiment = "bullish" if len([event for event in high_impact if "cut" in str(event).lower()]) > 0 else "bearish"
-                return {"events": high_impact[:4], "overall_sentiment": sentiment, "impact": "high" if high_impact else "medium"}
+                if any(
+                    "rate" in event.get("event", "").lower() or "fomc" in event.get("event", "").lower()
+                    for event in high_impact
+                ):
+                    sentiment = (
+                        "bullish"
+                        if len([event for event in high_impact if "cut" in str(event).lower()]) > 0
+                        else "bearish"
+                    )
+                return {
+                    "events": high_impact[:4],
+                    "overall_sentiment": sentiment,
+                    "impact": "high" if high_impact else "medium",
+                }
         except requests.RequestException as exc:
             app.logger.error(f"Finnhub request error: {exc}")
         except (ValueError, TypeError) as exc:
@@ -221,7 +233,9 @@ class OperationsService:
                 "prompt_version": "operations-service-v1",
                 "prompt_hash": "operations-service",
                 "policy_version": "agent-policy-gateway-v1",
-                "provider_route": [str(getattr(getattr(self.engine, "local_engine", None), "active_provider", "unknown-provider"))],
+                "provider_route": [
+                    str(getattr(getattr(self.engine, "local_engine", None), "active_provider", "unknown-provider"))
+                ],
                 "calibration_factor": 1.0,
             },
         )
@@ -318,7 +332,7 @@ class OperationsService:
             app.logger.warning(f"Emergency stop window close warning: {exc}")
 
         self.engine.save_state()
-        
+
         # Clean shutdown via SIGTERM signal (replaces os._exit(0))
         logger.info("Sending SIGTERM for graceful shutdown")
         os.kill(os.getpid(), signal.SIGTERM)
@@ -326,9 +340,7 @@ class OperationsService:
     def is_market_open(self) -> bool:
         session_guard = getattr(self.engine, "session_guard", None)
         if session_guard is None:
-            self._app().logger.warning(
-                "OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_UNAVAILABLE"
-            )
+            self._app().logger.warning("OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_UNAVAILABLE")
             return False
         try:
             return bool(session_guard.is_trading_session())

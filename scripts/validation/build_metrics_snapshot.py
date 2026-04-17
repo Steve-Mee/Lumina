@@ -67,7 +67,12 @@ def _extract_order_metrics(log_text: str) -> tuple[float, dict[str, int], int, i
 
 def _extract_inference_metrics(log_text: str) -> tuple[float, int, int]:
     requests = len(re.findall(r"\bINFERENCE,", log_text))
-    fallback = len(re.findall(r"All inference providers failed|FAST_PATH_ONLY enabled|LOCAL_INFERENCE_GATE,provider=vllm,action=skip", log_text))
+    fallback = len(
+        re.findall(
+            r"All inference providers failed|FAST_PATH_ONLY enabled|LOCAL_INFERENCE_GATE,provider=vllm,action=skip",
+            log_text,
+        )
+    )
     rate = (fallback / requests) if requests > 0 else 0.0
     return rate, requests, fallback
 
@@ -168,9 +173,15 @@ def main() -> int:
     snapshot["previous_timestamp_utc"] = previous.get("timestamp_utc") if isinstance(previous, dict) else None
     if isinstance(previous, dict):
         snapshot["delta"] = {
-            "order_acceptance_rate": round(snapshot["order_acceptance_rate"] - float(previous.get("order_acceptance_rate", 0.0)), 6),
-            "inference_fallback_rate": round(snapshot["inference_fallback_rate"] - float(previous.get("inference_fallback_rate", 0.0)), 6),
-            "reconcile_latency_p95_ms": round(snapshot["reconcile_latency_p95_ms"] - float(previous.get("reconcile_latency_p95_ms", 0.0)), 3),
+            "order_acceptance_rate": round(
+                snapshot["order_acceptance_rate"] - float(previous.get("order_acceptance_rate", 0.0)), 6
+            ),
+            "inference_fallback_rate": round(
+                snapshot["inference_fallback_rate"] - float(previous.get("inference_fallback_rate", 0.0)), 6
+            ),
+            "reconcile_latency_p95_ms": round(
+                snapshot["reconcile_latency_p95_ms"] - float(previous.get("reconcile_latency_p95_ms", 0.0)), 3
+            ),
         }
     else:
         snapshot["delta"] = None

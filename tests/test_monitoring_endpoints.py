@@ -8,6 +8,7 @@ Coverage:
   - GET /api/monitoring/regime/history — history query delegation + auth
   - 503 when observability service not injected
 """
+
 from __future__ import annotations
 
 import sys
@@ -35,6 +36,7 @@ _client = TestClient(_test_app, raise_server_exceptions=True)
 
 
 # ── Snapshot factory ──────────────────────────────────────────────────────────
+
 
 def _make_snap(
     *,
@@ -107,6 +109,7 @@ def _make_obs(snap: dict[str, Any] | None = None) -> MagicMock:
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture(autouse=True)
 def _reset_obs() -> Any:
     """Ensure the singleton is cleared between tests so no state leaks."""
@@ -116,6 +119,7 @@ def _reset_obs() -> Any:
 
 
 # ── GET /api/monitoring/health ────────────────────────────────────────────────
+
 
 def test_health_503_when_no_obs_service() -> None:
     resp = _client.get("/api/monitoring/health")
@@ -206,6 +210,7 @@ def test_health_uptime_forwarded_from_meta() -> None:
 
 # ── GET /api/monitoring/metrics (Prometheus, no auth) ─────────────────────────
 
+
 def test_prometheus_metrics_200_without_auth() -> None:
     obs = _make_obs()
     set_observability_service(obs)
@@ -221,6 +226,7 @@ def test_prometheus_metrics_503_when_no_service() -> None:
 
 
 # ── GET /api/monitoring/metrics/json (requires API key) ───────────────────────
+
 
 def test_json_metrics_returns_401_without_key() -> None:
     obs = _make_obs()
@@ -239,10 +245,11 @@ def test_json_metrics_returns_snapshot_with_key() -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert 'lumina_regime_current{regime="RANGING",risk_state="NORMAL"}' in body
-    assert abs(body['lumina_regime_confidence{regime="RANGING"}']['value'] - 0.55) < 0.001
+    assert abs(body['lumina_regime_confidence{regime="RANGING"}']["value"] - 0.55) < 0.001
 
 
 # ── GET /api/monitoring/regime/history ────────────────────────────────────────
+
 
 def test_regime_history_returns_401_without_key() -> None:
     obs = _make_obs()
@@ -299,9 +306,7 @@ def test_regime_history_passes_since_and_limit_to_collector() -> None:
         "/api/monitoring/regime/history?since=1712300000.0&limit=50",
         headers={"X-API-Key": "k"},
     )
-    obs.collector.query_history.assert_called_once_with(
-        "lumina_regime_current", since_ts=1712300000.0, limit=50
-    )
+    obs.collector.query_history.assert_called_once_with("lumina_regime_current", since_ts=1712300000.0, limit=50)
 
 
 def test_regime_history_503_when_no_service() -> None:

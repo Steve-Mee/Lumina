@@ -21,9 +21,21 @@ def _write_metrics_db(path: Path) -> None:
             )"""
         )
         rows = [
-            (1.0, "lumina_mode_guard_block_total", json.dumps({"mode": "sim_real_guard", "reason": "risk_daily_loss_cap"}), "counter", 2.0),
+            (
+                1.0,
+                "lumina_mode_guard_block_total",
+                json.dumps({"mode": "sim_real_guard", "reason": "risk_daily_loss_cap"}),
+                "counter",
+                2.0,
+            ),
             (1.0, "lumina_mode_eod_force_close_total", json.dumps({"mode": "sim_real_guard"}), "counter", 1.0),
-            (1.0, "lumina_mode_parity_drift_total", json.dumps({"baseline": "real", "candidate": "sim_real_guard"}), "counter", 0.4),
+            (
+                1.0,
+                "lumina_mode_parity_drift_total",
+                json.dumps({"baseline": "real", "candidate": "sim_real_guard"}),
+                "counter",
+                0.4,
+            ),
         ]
         con.executemany("INSERT INTO metrics(ts, name, labels, type, value) VALUES (?,?,?,?,?)", rows)
         con.commit()
@@ -40,7 +52,9 @@ def test_build_window_report_extracts_automated_parity_evidence(tmp_path: Path) 
     (candidate_root / "logs").mkdir(parents=True, exist_ok=True)
 
     (control_root / "state" / "last_run_summary.json").write_text(json.dumps({"mode": "sim"}), encoding="utf-8")
-    (candidate_root / "state" / "last_run_summary.json").write_text(json.dumps({"mode": "sim_real_guard"}), encoding="utf-8")
+    (candidate_root / "state" / "last_run_summary.json").write_text(
+        json.dumps({"mode": "sim_real_guard"}), encoding="utf-8"
+    )
     (candidate_root / "state" / "trade_reconciler_status.json").write_text(
         json.dumps({"pending_count": 0, "last_error": ""}), encoding="utf-8"
     )

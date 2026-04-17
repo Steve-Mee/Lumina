@@ -14,6 +14,7 @@ State files
 
 Requires an X-API-Key header for approve/reject mutations.
 """
+
 from __future__ import annotations
 
 import json
@@ -33,9 +34,7 @@ _obs_service: Any = None
 
 # ── State file paths (overridable via env vars for testing) ───────────────────
 _EVOLUTION_LOG = Path(os.getenv("EVOLUTION_LOG_PATH", "state/evolution_log.jsonl"))
-_EVOLUTION_DECISIONS = Path(
-    os.getenv("EVOLUTION_DECISIONS_PATH", "state/evolution_decisions.jsonl")
-)
+_EVOLUTION_DECISIONS = Path(os.getenv("EVOLUTION_DECISIONS_PATH", "state/evolution_decisions.jsonl"))
 _CONFIG_PATH = Path(os.getenv("LUMINA_CONFIG", "config.yaml"))
 _EVOLUTION_TRIGGER = Path(os.getenv("EVOLUTION_TRIGGER_PATH", "state/evolution_trigger.json"))
 
@@ -211,8 +210,7 @@ async def approve_proposal(
         _obs_service.send_alert(
             title="Evolution Proposal Approved",
             message=(
-                f"Challenger **{body.challenger_name}** promoted to champion. "
-                f"Hyperparams applied: {new_hyperparams}"
+                f"Challenger **{body.challenger_name}** promoted to champion. Hyperparams applied: {new_hyperparams}"
             ),
             severity="info",
             data={

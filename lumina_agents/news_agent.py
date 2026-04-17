@@ -74,7 +74,7 @@ class NewsAgent:
                 return max(1, int(pre))
             except (TypeError, ValueError):
                 pass
-        
+
         # Fallback to legacy config
         raw = getattr(self.engine.config, "news_avoidance_minutes", 3)
         try:
@@ -82,7 +82,7 @@ class NewsAgent:
         except (TypeError, ValueError):
             minutes = 3
         return max(1, minutes)
-    
+
     def _news_avoidance_post_minutes(self) -> int:
         """Post-event avoidance window (default 5 minutes)."""
         post = getattr(self.engine.config, "news_avoidance_post_minutes", 5)
@@ -90,7 +90,7 @@ class NewsAgent:
             return max(1, int(post))
         except (TypeError, ValueError):
             return 5
-    
+
     def _news_avoidance_high_impact_pre_minutes(self) -> int:
         """Pre-event window for high-impact events (default 15 minutes)."""
         pre = getattr(self.engine.config, "news_avoidance_high_impact_pre_minutes", 15)
@@ -98,7 +98,7 @@ class NewsAgent:
             return max(1, int(pre))
         except (TypeError, ValueError):
             return 15
-    
+
     def _news_avoidance_high_impact_post_minutes(self) -> int:
         """Post-event window for high-impact events (default 10 minutes)."""
         post = getattr(self.engine.config, "news_avoidance_high_impact_post_minutes", 10)
@@ -108,7 +108,9 @@ class NewsAgent:
             return 10
 
     def _xai_client(self) -> Client | None:
-        api_key = str(getattr(self.engine.config, "xai_key", "") or "").strip() or str(os.getenv("XAI_API_KEY", "")).strip()
+        api_key = (
+            str(getattr(self.engine.config, "xai_key", "") or "").strip() or str(os.getenv("XAI_API_KEY", "")).strip()
+        )
         if not api_key:
             return None
         try:
@@ -149,8 +151,10 @@ class NewsAgent:
             event_name = str(event.get("event", "Unknown Event")).strip()
             impact = str(event.get("impact", "")).strip().lower()
             event_name_l = event_name.lower()
-            is_high = impact in {"3", "high", "three", "3-star", "3_star"} or any(key in event_name_l for key in keywords)
-            
+            is_high = impact in {"3", "high", "three", "3-star", "3_star"} or any(
+                key in event_name_l for key in keywords
+            )
+
             if not is_high:
                 continue
 
@@ -169,7 +173,11 @@ class NewsAgent:
             window_start = event_dt - timedelta(minutes=avoid_pre_minutes)
             window_end = event_dt + timedelta(minutes=avoid_post_minutes)
             if window_start <= now_utc <= window_end:
-                return True, window_end.timestamp(), f"News avoidance window active: {event_name} (impact: {'high' if is_high else 'normal'})"
+                return (
+                    True,
+                    window_end.timestamp(),
+                    f"News avoidance window active: {event_name} (impact: {'high' if is_high else 'normal'})",
+                )
 
         return False, 0.0, ""
 
@@ -331,7 +339,9 @@ class NewsAgent:
                     float(parsed.get("sentiment_score", 0.0)),
                 )
                 high_impact = bool(parsed.get("high_impact", False))
-                high_impact_events = [str(item) for item in self._safe_list(parsed.get("high_impact_events")) if str(item).strip()]
+                high_impact_events = [
+                    str(item) for item in self._safe_list(parsed.get("high_impact_events")) if str(item).strip()
+                ]
                 summary = str(parsed.get("summary", "")).strip() or "xAI sentiment cycle"
             except Exception:
                 fallback_level = 1
@@ -397,7 +407,11 @@ class NewsAgent:
             "cache_ttl_seconds": int(cache_ttl_seconds),
         }
 
-        macro = self._safe_dict(getattr(app, "world_model", {}).get("macro", {})) if isinstance(getattr(app, "world_model", {}), dict) else {}
+        macro = (
+            self._safe_dict(getattr(app, "world_model", {}).get("macro", {}))
+            if isinstance(getattr(app, "world_model", {}), dict)
+            else {}
+        )
         macro["news_sentiment"] = sentiment_signal
         macro["news_sentiment_score"] = sentiment_score
         macro["news_multiplier"] = multiplier

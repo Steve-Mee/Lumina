@@ -51,8 +51,12 @@ def test_portfolio_var_blocks_on_correlated_spike() -> None:
 
     swarm = _StubSwarm(
         nodes={
-            "MES JUN26": _StubNode(market_data=_StubMarketData(_build_close_df(mes)), prices_rolling=deque(mes, maxlen=60)),
-            "NQ JUN26": _StubNode(market_data=_StubMarketData(_build_close_df(nq)), prices_rolling=deque(nq, maxlen=60)),
+            "MES JUN26": _StubNode(
+                market_data=_StubMarketData(_build_close_df(mes)), prices_rolling=deque(mes, maxlen=60)
+            ),
+            "NQ JUN26": _StubNode(
+                market_data=_StubMarketData(_build_close_df(nq)), prices_rolling=deque(nq, maxlen=60)
+            ),
         }
     )
 
@@ -88,7 +92,9 @@ def test_portfolio_var_respects_total_open_risk_cap() -> None:
     prices = [5000.0 + i * 0.2 for i in range(40)]
     swarm = _StubSwarm(
         nodes={
-            "MES JUN26": _StubNode(market_data=_StubMarketData(_build_close_df(prices)), prices_rolling=deque(prices, maxlen=60)),
+            "MES JUN26": _StubNode(
+                market_data=_StubMarketData(_build_close_df(prices)), prices_rolling=deque(prices, maxlen=60)
+            ),
         }
     )
 
@@ -117,7 +123,9 @@ def test_portfolio_var_prefers_max_portfolio_var_usd_key() -> None:
     prices = [5000.0 + i * 0.3 for i in range(40)]
     swarm = _StubSwarm(
         nodes={
-            "MES JUN26": _StubNode(market_data=_StubMarketData(_build_close_df(prices)), prices_rolling=deque(prices, maxlen=60)),
+            "MES JUN26": _StubNode(
+                market_data=_StubMarketData(_build_close_df(prices)), prices_rolling=deque(prices, maxlen=60)
+            ),
         }
     )
 
@@ -141,7 +149,9 @@ def test_portfolio_var_scenario_method_uses_stress_floor() -> None:
     prices[-2] = prices[-3] - 75.0
     swarm = _StubSwarm(
         nodes={
-            "MES JUN26": _StubNode(market_data=_StubMarketData(_build_close_df(prices)), prices_rolling=deque(prices, maxlen=80)),
+            "MES JUN26": _StubNode(
+                market_data=_StubMarketData(_build_close_df(prices)), prices_rolling=deque(prices, maxlen=80)
+            ),
         }
     )
 

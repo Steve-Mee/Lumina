@@ -52,7 +52,14 @@ class VisualizationService:
             df["timestamp"] = pd.to_datetime(df["timestamp"])
             df.set_index("timestamp", inplace=True)
 
-        tfs = [("1min", "1min"), ("5min", "5min"), ("15min", "15min"), ("30min", "30min"), ("60min", "60min"), ("240min", "240min")]
+        tfs = [
+            ("1min", "1min"),
+            ("5min", "5min"),
+            ("15min", "15min"),
+            ("30min", "30min"),
+            ("60min", "60min"),
+            ("240min", "240min"),
+        ]
         fig = make_subplots(
             rows=3,
             cols=2,
@@ -107,11 +114,25 @@ class VisualizationService:
             if tf_name in ["1min", "15min"]:
                 for ratio, price in fib_levels.items():
                     if ratio in ["0.382", "0.618", "0.786"]:
-                        fig.add_hline(y=float(price), line_dash="dash", line_color="#ffff00", annotation_text=f"Bot Fib {ratio}", row=subplot_row, col=subplot_col)
+                        fig.add_hline(
+                            y=float(price),
+                            line_dash="dash",
+                            line_color="#ffff00",
+                            annotation_text=f"Bot Fib {ratio}",
+                            row=subplot_row,
+                            col=subplot_col,
+                        )
 
             if ai_fibs and tf_name in ["1min", "15min"]:
                 for ratio, price in ai_fibs.items():
-                    fig.add_hline(y=float(price), line_dash="solid", line_color="#00ff00", annotation_text=f"AI Fib {ratio}", row=subplot_row, col=subplot_col)
+                    fig.add_hline(
+                        y=float(price),
+                        line_dash="solid",
+                        line_color="#00ff00",
+                        annotation_text=f"AI Fib {ratio}",
+                        row=subplot_row,
+                        col=subplot_col,
+                    )
 
             if structure.get("bos"):
                 fig.add_hline(
@@ -123,12 +144,33 @@ class VisualizationService:
                     col=subplot_col,
                 )
             if structure.get("choch"):
-                fig.add_hline(y=swing_high, line_color="#ff00ff", line_width=2, annotation_text="CHOCH", row=subplot_row, col=subplot_col)
+                fig.add_hline(
+                    y=swing_high,
+                    line_color="#ff00ff",
+                    line_width=2,
+                    annotation_text="CHOCH",
+                    row=subplot_row,
+                    col=subplot_col,
+                )
 
             order_blocks = structure.get("order_blocks", [])
             if len(order_blocks) >= 2:
-                fig.add_hline(y=order_blocks[0]["price"], line_color="#ff8800", line_dash="dot", annotation_text="Bull OB", row=subplot_row, col=subplot_col)
-                fig.add_hline(y=order_blocks[1]["price"], line_color="#ff8800", line_dash="dot", annotation_text="Bear OB", row=subplot_row, col=subplot_col)
+                fig.add_hline(
+                    y=order_blocks[0]["price"],
+                    line_color="#ff8800",
+                    line_dash="dot",
+                    annotation_text="Bull OB",
+                    row=subplot_row,
+                    col=subplot_col,
+                )
+                fig.add_hline(
+                    y=order_blocks[1]["price"],
+                    line_color="#ff8800",
+                    line_dash="dot",
+                    annotation_text="Bear OB",
+                    row=subplot_row,
+                    col=subplot_col,
+                )
 
         current_price = float(df["close"].iloc[-1])
         regime = self.engine.detect_market_regime(df.reset_index())
@@ -156,7 +198,7 @@ class VisualizationService:
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         app.logger.info(
-            f"CHART_GEN_COMPLETE,duration_ms={duration_ms:.0f},base64_kb={len(base64_img)//1000},screen_share_updated=YES"
+            f"CHART_GEN_COMPLETE,duration_ms={duration_ms:.0f},base64_kb={len(base64_img) // 1000},screen_share_updated=YES"
         )
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 🖼️ v28 Chart gegenereerd + screen-share geupdatet")
         return base64_img
@@ -223,7 +265,10 @@ class VisualizationService:
 
     def update_live_chart(self, chart_base64: str, status_msg: str = "AI Decision & Chart updated") -> None:
         app = self._app()
-        if not bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled)) or not self.live_chart_window:
+        if (
+            not bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled))
+            or not self.live_chart_window
+        ):
             return
 
         try:

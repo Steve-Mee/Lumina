@@ -34,7 +34,9 @@ def main() -> int:
             "regimes": generated,
         }
 
-    regime_results = regime_payload.get("regimes") if isinstance(regime_payload.get("regimes"), dict) else regime_payload
+    regime_results = (
+        regime_payload.get("regimes") if isinstance(regime_payload.get("regimes"), dict) else regime_payload
+    )
     if not isinstance(regime_results, dict):
         regime_results = {}
 

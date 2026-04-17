@@ -124,7 +124,13 @@ def test_setup_service_upgrade_model_uses_cached_hardware(monkeypatch, tmp_path:
         encoding="utf-8",
     )
     service = SetupService(config_path=config_path)
-    monkeypatch.setattr(service, "pull_model", lambda descriptor: type("R", (), {"name": "model_pull", "success": True, "message": descriptor.key, "command": "ollama pull"})())
+    monkeypatch.setattr(
+        service,
+        "pull_model",
+        lambda descriptor: type(
+            "R", (), {"name": "model_pull", "success": True, "message": descriptor.key, "command": "ollama pull"}
+        )(),
+    )
     catalog = ModelCatalog(Path("c:/NinjaTraderAI_Bot/lumina_model_catalog.json"))
     model = catalog.get("qwen3.5-9b")
     assert model is not None

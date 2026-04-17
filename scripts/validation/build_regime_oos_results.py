@@ -39,7 +39,13 @@ def _from_summary(summary: dict[str, Any]) -> dict[str, Any]:
     allocations = {
         "TRENDING": {"trade_share": 0.32, "sharpe_mul": 1.05, "winrate_mul": 1.03, "dd_mul": 0.95, "pnl_mul": 1.1},
         "RANGING": {"trade_share": 0.30, "sharpe_mul": 0.92, "winrate_mul": 0.97, "dd_mul": 1.05, "pnl_mul": 0.9},
-        "HIGH_VOLATILITY": {"trade_share": 0.23, "sharpe_mul": 0.75, "winrate_mul": 0.9, "dd_mul": 1.35, "pnl_mul": 0.8},
+        "HIGH_VOLATILITY": {
+            "trade_share": 0.23,
+            "sharpe_mul": 0.75,
+            "winrate_mul": 0.9,
+            "dd_mul": 1.35,
+            "pnl_mul": 0.8,
+        },
         "ROLLOVER": {"trade_share": 0.15, "sharpe_mul": 0.65, "winrate_mul": 0.85, "dd_mul": 1.5, "pnl_mul": 0.7},
     }
 

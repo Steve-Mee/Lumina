@@ -101,11 +101,15 @@ class SelfEvolutionMetaAgent:
 
         meta_review = self._meta_review(nightly_report)
         fine_tune_trigger = self._auto_fine_tuning_trigger(meta_review=meta_review)
-        fine_tune_result = self._execute_auto_fine_tune(nightly_report, dry_run=dry_run) if fine_tune_trigger["triggered"] else {
-            "triggered": False,
-            "executed": False,
-            "reason": fine_tune_trigger["reason"],
-        }
+        fine_tune_result = (
+            self._execute_auto_fine_tune(nightly_report, dry_run=dry_run)
+            if fine_tune_trigger["triggered"]
+            else {
+                "triggered": False,
+                "executed": False,
+                "reason": fine_tune_trigger["reason"],
+            }
+        )
         champion = self._current_champion()
         if fine_tune_result.get("executed") and fine_tune_result.get("champion_candidate"):
             champion = dict(fine_tune_result["champion_candidate"])
@@ -138,7 +142,9 @@ class SelfEvolutionMetaAgent:
 
         lifecycle = self._build_lifecycle(best=best, gates=gates)
         outcome = {
-            "status": "awaiting_human_approval" if approval_blocked else ("proposed" if not should_auto_apply else "applied"),
+            "status": "awaiting_human_approval"
+            if approval_blocked
+            else ("proposed" if not should_auto_apply else "applied"),
             "timestamp": now.isoformat(),
             "dry_run": dry_run,
             "meta_review": meta_review,
@@ -195,7 +201,9 @@ class SelfEvolutionMetaAgent:
                         "proposal": dict(outcome.get("proposal", {})),
                         "timestamp": now.isoformat(),
                     },
-                    confidence=max(0.0, min(1.0, float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0) / 100.0)),
+                    confidence=max(
+                        0.0, min(1.0, float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0) / 100.0)
+                    ),
                 )
             except Exception:
                 pass
@@ -542,7 +550,9 @@ class SelfEvolutionMetaAgent:
                 "risk_profile": str(getattr(cfg, "risk_profile", "balanced")),
                 "max_risk_percent": float(getattr(cfg, "max_risk_percent", 1.0)),
                 "drawdown_kill_percent": float(getattr(cfg, "drawdown_kill_percent", 8.0)),
-                "fast_path_threshold": float(getattr(cfg, "rl_confidence_threshold", 0.78) if hasattr(cfg, "rl_confidence_threshold") else 0.78),
+                "fast_path_threshold": float(
+                    getattr(cfg, "rl_confidence_threshold", 0.78) if hasattr(cfg, "rl_confidence_threshold") else 0.78
+                ),
             },
         }
 
@@ -650,7 +660,9 @@ class SelfEvolutionMetaAgent:
         risk_penalty = 0.0
         if float(suggestion.get("max_risk_percent", 1.0)) > float(getattr(self.engine.config, "max_risk_percent", 1.0)):
             risk_penalty += 2.5
-        if float(suggestion.get("drawdown_kill_percent", 8.0)) > float(getattr(self.engine.config, "drawdown_kill_percent", 8.0)):
+        if float(suggestion.get("drawdown_kill_percent", 8.0)) > float(
+            getattr(self.engine.config, "drawdown_kill_percent", 8.0)
+        ):
             risk_penalty += 2.0
 
         score = max(0.0, quality - risk_penalty)
@@ -803,9 +815,11 @@ def load_evolution_config(config_path: str = "config.yaml") -> dict[str, Any]:
         if not isinstance(fine_tuning, dict):
             fine_tuning = {}
 
-        mode = str(
-            os.getenv("LUMINA_MODE") or (data.get("mode", "sim") if isinstance(data, dict) else "sim")
-        ).strip().lower()
+        mode = (
+            str(os.getenv("LUMINA_MODE") or (data.get("mode", "sim") if isinstance(data, dict) else "sim"))
+            .strip()
+            .lower()
+        )
         sim_cfg = data.get("sim", {}) if isinstance(data, dict) and isinstance(data.get("sim"), dict) else {}
         real_cfg = data.get("real", {}) if isinstance(data, dict) and isinstance(data.get("real"), dict) else {}
 

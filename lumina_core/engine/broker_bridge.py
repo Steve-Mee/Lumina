@@ -365,7 +365,9 @@ class CrossTradeBroker(BrokerBridge):
                 self.logger.warning(f"CrossTrade websocket subscribe probe failed: {exc}")
 
 
-def broker_factory(config: Any | None = None, engine: Any | None = None, logger: logging.Logger | None = None) -> BrokerBridge:
+def broker_factory(
+    config: Any | None = None, engine: Any | None = None, logger: logging.Logger | None = None
+) -> BrokerBridge:
     backend = "paper"
     if config is not None:
         backend = str(getattr(config, "broker_backend", "paper") or "paper").strip().lower()
@@ -374,9 +376,7 @@ def broker_factory(config: Any | None = None, engine: Any | None = None, logger:
 
     if backend == "live":
         api_key = str(
-            getattr(config, "broker_crosstrade_api_key", None)
-            or getattr(config, "crosstrade_token", "")
-            or ""
+            getattr(config, "broker_crosstrade_api_key", None) or getattr(config, "crosstrade_token", "") or ""
         ).strip()
         account = str(getattr(config, "crosstrade_account", "DEMO5042070")).strip()
         websocket_url = str(

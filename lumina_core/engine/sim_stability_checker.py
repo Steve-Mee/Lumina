@@ -240,7 +240,9 @@ def _daily_expectancy_from_history(history_rows: list[dict[str, Any]]) -> dict[s
     return by_day
 
 
-def _compute_rolling_positive_expectancy(days: dict[str, dict[str, float]], *, window_days: int = 7) -> tuple[int, dict[str, float], list[str], str | None]:
+def _compute_rolling_positive_expectancy(
+    days: dict[str, dict[str, float]], *, window_days: int = 7
+) -> tuple[int, dict[str, float], list[str], str | None]:
     """
     Compute consecutive positive expectancy streak anchored on the latest day
     within a rolling calendar window.
@@ -251,8 +253,7 @@ def _compute_rolling_positive_expectancy(days: dict[str, dict[str, float]], *, w
     latest_day = max(days.keys())
     latest_dt = datetime.fromisoformat(latest_day).replace(tzinfo=timezone.utc)
     window: list[str] = [
-        (latest_dt - timedelta(days=offset)).date().isoformat()
-        for offset in range(window_days - 1, -1, -1)
+        (latest_dt - timedelta(days=offset)).date().isoformat() for offset in range(window_days - 1, -1, -1)
     ]
 
     present = set(days.keys())
@@ -552,7 +553,11 @@ def format_stability_report(report: dict[str, Any], *, color: bool = False) -> s
         f"(risk_events={risk.get('total_risk_events', 0)}, var_breaches={risk.get('total_var_breaches', 0)})"
     )
 
-    trend = criteria.get("evolution_proposals_trend", {}) if isinstance(criteria.get("evolution_proposals_trend"), dict) else {}
+    trend = (
+        criteria.get("evolution_proposals_trend", {})
+        if isinstance(criteria.get("evolution_proposals_trend"), dict)
+        else {}
+    )
     lines.append(
         "- Evolution proposals trend (7d + 30d slope): "
         f"{_status_token(bool(trend.get('ok', False)), color=color)} "

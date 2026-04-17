@@ -7,6 +7,8 @@ def build_news_key(news_data: Mapping[str, str]) -> str:
     return f"{impact}_{sentiment}"
 
 
-def resolve_news_multiplier(news_data: Mapping[str, str], multipliers: Mapping[str, float], default: float = 1.0) -> float:
+def resolve_news_multiplier(
+    news_data: Mapping[str, str], multipliers: Mapping[str, float], default: float = 1.0
+) -> float:
     key = build_news_key(news_data)
     return float(multipliers.get(key, default))

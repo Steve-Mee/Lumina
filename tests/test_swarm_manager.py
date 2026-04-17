@@ -53,7 +53,7 @@ class TestSymbolNodeInitialization:
 
     def test_symbol_node_adds_prices(self):
         """Test price rolling window appends correctly."""
-        node = SymbolNode(symbol="MES JUN26", prices_rolling=__import__('collections').deque(maxlen=5))
+        node = SymbolNode(symbol="MES JUN26", prices_rolling=__import__("collections").deque(maxlen=5))
         node.prices_rolling.append(100.0)
         node.prices_rolling.append(101.0)
         assert len(node.prices_rolling) == 2
@@ -83,7 +83,8 @@ class TestSwarmManagerInitialization:
     def test_symbol_normalization(self, mock_engine):
         """Test that symbols are normalized to uppercase."""
         manager = MultiSymbolSwarmManager(
-            engine=mock_engine, symbols=["mes jun26", "MNQ JUN26", "  mym jun26  "]  # type: ignore
+            engine=mock_engine,
+            symbols=["mes jun26", "MNQ JUN26", "  mym jun26  "],  # type: ignore
         )
         symbols = list(manager.nodes.keys())
         assert "MES JUN26" in symbols
@@ -269,8 +270,8 @@ class TestArbitrageDetection:
         """Test arbitrage detection with simulated spread."""
         # Create highly correlated prices for MES and a spread for MNQ
         base = np.linspace(100, 102, 15)
-        swarm_manager.nodes["MES JUN26"].prices_rolling = __import__('collections').deque(base, maxlen=30)
-        swarm_manager.nodes["MNQ JUN26"].prices_rolling = __import__('collections').deque(base * 0.5, maxlen=30)
+        swarm_manager.nodes["MES JUN26"].prices_rolling = __import__("collections").deque(base, maxlen=30)
+        swarm_manager.nodes["MNQ JUN26"].prices_rolling = __import__("collections").deque(base * 0.5, maxlen=30)
 
         signals = swarm_manager.detect_inter_symbol_arbitrage()
         # With highly correlated data, may or may not trigger; verify structure
@@ -283,8 +284,8 @@ class TestArbitrageDetection:
     def test_arbitrage_signal_structure(self, swarm_manager):
         """Verify arbitrage signals have correct structure."""
         # Manually trigger signal by setting extreme spreads
-        swarm_manager.nodes["MES JUN26"].prices_rolling = __import__('collections').deque([100] * 15, maxlen=30)
-        swarm_manager.nodes["MNQ JUN26"].prices_rolling = __import__('collections').deque([40] * 15, maxlen=30)
+        swarm_manager.nodes["MES JUN26"].prices_rolling = __import__("collections").deque([100] * 15, maxlen=30)
+        swarm_manager.nodes["MNQ JUN26"].prices_rolling = __import__("collections").deque([40] * 15, maxlen=30)
 
         signals = swarm_manager.detect_inter_symbol_arbitrage()
         for sig in signals:
@@ -344,7 +345,7 @@ class TestTradeResultRegistration:
         swarm_manager.register_trade_result("MES JUN26", 100.0)
         swarm_manager.register_trade_result("MES JUN26", -50.0)
         swarm_manager.register_trade_result("MESJUN26", 75.0)  # Wrong format, should be ignored
-        
+
         node = swarm_manager.nodes["MES JUN26"]
         assert len(node.pnl_history) == 2
         assert list(node.pnl_history) == [100.0, -50.0]

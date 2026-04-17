@@ -241,9 +241,15 @@ class HardwareInspector:
                 f"({reason}); gebruik Linux of WSL2 met CUDA voor beast-modus."
             )
         if profile_tier == "light":
-            notes.append(f"Huidig profiel light: minimaal 32 GB RAM en 8 GB VRAM is nodig voor sweet, 64 GB RAM en 20 GB VRAM voor beast. Huidig RAM={ram_gb:.1f} GB.")
+            notes.append(
+                f"Huidig profiel light: minimaal 32 GB RAM en 8 GB VRAM is nodig voor sweet, 64 GB RAM en 20 GB VRAM voor beast. Huidig RAM={ram_gb:.1f} GB."
+            )
         elif profile_tier == "sweet":
-            notes.append("Huidig profiel sweet: voor beast is 64 GB RAM, minstens 20 GB VRAM en een Linux/WSL2 CUDA runtime met sm_70+ GPU nodig.")
+            notes.append(
+                "Huidig profiel sweet: voor beast is 64 GB RAM, minstens 20 GB VRAM en een Linux/WSL2 CUDA runtime met sm_70+ GPU nodig."
+            )
         else:
-            notes.append("Huidig profiel beast: hardware is klaar voor grote Qwen-modellen en optionele Unsloth QLoRA op Linux/WSL2.")
+            notes.append(
+                "Huidig profiel beast: hardware is klaar voor grote Qwen-modellen en optionele Unsloth QLoRA op Linux/WSL2."
+            )
         return notes

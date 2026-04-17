@@ -81,7 +81,9 @@ def test_model_trainer_action_gate_status_blocks_windows_export(monkeypatch, tmp
     assert gate["can_register"] is False
 
 
-def test_model_trainer_action_gate_status_allows_linux_export_when_converter_exists(monkeypatch, tmp_path: Path) -> None:
+def test_model_trainer_action_gate_status_allows_linux_export_when_converter_exists(
+    monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr("platform.system", lambda: "Linux")
     tools_dir = tmp_path / "tools" / "llama.cpp"

@@ -97,7 +97,11 @@ class TradeReconciler:
         return self.engine.app
 
     def _get_pending_closes(self) -> list[PendingTradeClose]:
-        return [PendingTradeClose.from_dict(item) for item in getattr(self.engine, "pending_trade_reconciliations", []) if isinstance(item, dict)]
+        return [
+            PendingTradeClose.from_dict(item)
+            for item in getattr(self.engine, "pending_trade_reconciliations", [])
+            if isinstance(item, dict)
+        ]
 
     def _set_pending_closes(self, items: list[PendingTradeClose]) -> None:
         self.engine.pending_trade_reconciliations = [item.to_dict() for item in items]
@@ -152,7 +156,9 @@ class TradeReconciler:
             chart_base64=chart_base64,
             expected_close_side=expected_close_side,
         )
-        items = [item for item in self._get_pending_closes() if item.symbol != pending.symbol or item.status != "closing"]
+        items = [
+            item for item in self._get_pending_closes() if item.symbol != pending.symbol or item.status != "closing"
+        ]
         items.append(pending)
         self._set_pending_closes(items)
         app = self._app()
@@ -290,7 +296,9 @@ class TradeReconciler:
         app = self._app()
         url = str(self.engine.config.crosstrade_fill_poll_url or "").strip()
         if not url:
-            app.logger.warning("TradeReconciler polling enabled without CROSSTRADE_FILL_POLL_URL; timeout fallback only")
+            app.logger.warning(
+                "TradeReconciler polling enabled without CROSSTRADE_FILL_POLL_URL; timeout fallback only"
+            )
         self._update_status(connection_state="polling", status="polling")
         while not self.stop_requested:
             if url:
@@ -337,7 +345,9 @@ class TradeReconciler:
                 "price": normalized.price,
                 "commission": normalized.commission,
                 "event_ts": normalized.event_ts.isoformat(),
-            } if normalized is not None else None,
+            }
+            if normalized is not None
+            else None,
         }
         self._update_status(status="self_test", last_self_test=result)
         return result
@@ -377,10 +387,14 @@ class TradeReconciler:
                 consumed_fill_ids.add(item.fill_id)
                 matched_ids.add(item.fill_id)
         if matched_ids:
-            self._recent_fills = deque([fill for fill in self._recent_fills if fill.fill_id not in matched_ids], maxlen=100)
+            self._recent_fills = deque(
+                [fill for fill in self._recent_fills if fill.fill_id not in matched_ids], maxlen=100
+            )
         self._set_pending_closes(unresolved)
 
-    def _find_matching_fill_bundle(self, *, pending: PendingTradeClose, consumed_fill_ids: set[str]) -> list[FillEvent] | None:
+    def _find_matching_fill_bundle(
+        self, *, pending: PendingTradeClose, consumed_fill_ids: set[str]
+    ) -> list[FillEvent] | None:
         timeout_seconds = self._timeout_seconds()
         fills = sorted(self._recent_fills, key=lambda row: row.event_ts)
         matched: list[FillEvent] = []
@@ -455,7 +469,9 @@ class TradeReconciler:
             volume=max(1.0, float(quantity)),
             avg_volume=max(1.0, float(quantity)),
             pending_age=1,
-            regime=str(pending.reflection.get("regime", "NEUTRAL")) if isinstance(pending.reflection, dict) else "NEUTRAL",
+            regime=str(pending.reflection.get("regime", "NEUTRAL"))
+            if isinstance(pending.reflection, dict)
+            else "NEUTRAL",
         )
         fill_latency_ms = max(observed_latency_ms, est_latency_ms)
 

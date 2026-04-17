@@ -16,15 +16,11 @@ def clear_demo_data() -> tuple[int, int]:
         deleted_trades = 0
         if demo_ids:
             deleted_trades = (
-                db.query(TradeEntry)
-                .filter(TradeEntry.participant_id.in_(demo_ids))
-                .delete(synchronize_session=False)
+                db.query(TradeEntry).filter(TradeEntry.participant_id.in_(demo_ids)).delete(synchronize_session=False)
             )
 
         deleted_participants = (
-            db.query(Participant)
-            .filter(Participant.name.like("DEMO_%"))
-            .delete(synchronize_session=False)
+            db.query(Participant).filter(Participant.name.like("DEMO_%")).delete(synchronize_session=False)
         )
         db.commit()
         return deleted_participants, deleted_trades
@@ -138,9 +134,7 @@ def main() -> None:
 
     if args.clear:
         deleted_participants, deleted_trades = clear_demo_data()
-        print(
-            f"Demo data verwijderd: participants={deleted_participants}, trades={deleted_trades}"
-        )
+        print(f"Demo data verwijderd: participants={deleted_participants}, trades={deleted_trades}")
         return
 
     deleted_participants, deleted_trades = clear_demo_data()

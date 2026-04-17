@@ -185,17 +185,17 @@ def test_dashboard_service_builds_inference_provider_figure(engine: LuminaEngine
 
 def test_dashboard_service_sums_mode_metric_with_labels() -> None:
     snapshot = {
-        "lumina_mode_guard_block_total{mode=\"sim_real_guard\",reason=\"outside_trading_session\"}": {
+        'lumina_mode_guard_block_total{mode="sim_real_guard",reason="outside_trading_session"}': {
             "name": "lumina_mode_guard_block_total",
             "value": 3.0,
             "labels": {"mode": "sim_real_guard", "reason": "outside_trading_session"},
         },
-        "lumina_mode_guard_block_total{mode=\"sim_real_guard\",reason=\"risk_daily_loss_cap\"}": {
+        'lumina_mode_guard_block_total{mode="sim_real_guard",reason="risk_daily_loss_cap"}': {
             "name": "lumina_mode_guard_block_total",
             "value": 2.0,
             "labels": {"mode": "sim_real_guard", "reason": "risk_daily_loss_cap"},
         },
-        "lumina_mode_guard_block_total{mode=\"real\",reason=\"outside_trading_session\"}": {
+        'lumina_mode_guard_block_total{mode="real",reason="outside_trading_session"}': {
             "name": "lumina_mode_guard_block_total",
             "value": 9.0,
             "labels": {"mode": "real", "reason": "outside_trading_session"},

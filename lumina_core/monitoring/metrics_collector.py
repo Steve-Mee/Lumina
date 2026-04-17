@@ -11,6 +11,7 @@ no prometheus_client library required.
 NullMetricsCollector is the zero-overhead variant used when
 monitoring.enabled = false in config.yaml.
 """
+
 from __future__ import annotations
 
 import json
@@ -204,9 +205,7 @@ class MetricsCollector:
                 for entry in entries:
                     label_str = ""
                     if entry.labels:
-                        pairs = ",".join(
-                            f'{k}="{v}"' for k, v in sorted(entry.labels.items())
-                        )
+                        pairs = ",".join(f'{k}="{v}"' for k, v in sorted(entry.labels.items()))
                         label_str = f"{{{pairs}}}"
 
                     lines.append(f"{metric_name}{label_str} {entry.value} {ts_ms}")
@@ -214,26 +213,16 @@ class MetricsCollector:
                     if entry.type_ == MetricType.HISTOGRAM and entry._window:
                         sd = sorted(entry._window)
                         n = len(sd)
-                        extra_labels = ",".join(
-                            f'{k}="{v}"' for k, v in sorted(entry.labels.items())
-                        )
-                        extra = (
-                            f",{extra_labels}"
-                            if entry.labels
-                            else ""
-                        )
+                        extra_labels = ",".join(f'{k}="{v}"' for k, v in sorted(entry.labels.items()))
+                        extra = f",{extra_labels}" if entry.labels else ""
                         for pct, idx in [
                             ("0.5", max(0, int(n * 0.50) - 1)),
                             ("0.95", max(0, int(n * 0.95) - 1)),
                             ("0.99", max(0, int(n * 0.99) - 1)),
                         ]:
-                            lines.append(
-                                f'{metric_name}_bucket{{le="{pct}"{extra}}} {sd[idx]} {ts_ms}'
-                            )
+                            lines.append(f'{metric_name}_bucket{{le="{pct}"{extra}}} {sd[idx]} {ts_ms}')
                         lines.append(f"{metric_name}_count{label_str} {n} {ts_ms}")
-                        lines.append(
-                            f"{metric_name}_sum{label_str} {sum(entry._window):.4f} {ts_ms}"
-                        )
+                        lines.append(f"{metric_name}_sum{label_str} {sum(entry._window):.4f} {ts_ms}")
 
         lines.append("")
         return "\n".join(lines)
@@ -252,9 +241,7 @@ class MetricsCollector:
                value   REAL NOT NULL
             )"""
         )
-        con.execute(
-            "CREATE INDEX IF NOT EXISTS idx_metrics_name_ts ON metrics(name, ts)"
-        )
+        con.execute("CREATE INDEX IF NOT EXISTS idx_metrics_name_ts ON metrics(name, ts)")
         con.commit()
         con.close()
 
@@ -266,9 +253,7 @@ class MetricsCollector:
         rows: list[tuple[float, str, str, str, float]] = []
         with self._lock:
             for entry in self._store.values():
-                rows.append(
-                    (ts, entry.name, json.dumps(entry.labels), entry.type_.value, entry.value)
-                )
+                rows.append((ts, entry.name, json.dumps(entry.labels), entry.type_.value, entry.value))
         if not rows:
             return
         try:
@@ -294,8 +279,7 @@ class MetricsCollector:
         try:
             con = sqlite3.connect(str(self._db_path))
             rows = con.execute(
-                "SELECT ts, name, labels, type, value "
-                "FROM metrics WHERE name=? AND ts>=? ORDER BY ts DESC LIMIT ?",
+                "SELECT ts, name, labels, type, value FROM metrics WHERE name=? AND ts>=? ORDER BY ts DESC LIMIT ?",
                 (metric_name, since_ts or 0.0, limit),
             ).fetchall()
             con.close()

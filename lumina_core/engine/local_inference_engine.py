@@ -49,6 +49,7 @@ class LocalInferenceEngine:
 
     def _load_config(self) -> Dict:
         from lumina_core.config_loader import ConfigLoader  # noqa: PLC0415
+
         ConfigLoader.invalidate()
         self.config_mtime = self.config_path.stat().st_mtime if self.config_path.exists() else 0.0
         return dict(ConfigLoader.get())
@@ -134,9 +135,9 @@ class LocalInferenceEngine:
         ) + float(estimated_cost)
 
         if not success:
-            self.cost_tracker["local_inference_failures"] = int(
-                self.cost_tracker.get("local_inference_failures", 0)
-            ) + 1
+            self.cost_tracker["local_inference_failures"] = (
+                int(self.cost_tracker.get("local_inference_failures", 0)) + 1
+            )
 
         provider_stats = self.cost_tracker.setdefault("local_inference_provider_stats", {})
         stats = provider_stats.setdefault(
@@ -328,7 +329,9 @@ class LocalInferenceEngine:
                 if provider == "vllm":
                     if not self._is_vllm_healthy():
                         if not self.cost_tracker.get("local_inference_warning"):
-                            self.cost_tracker["local_inference_warning"] = "vLLM unavailable - auto-routed to fallback providers"
+                            self.cost_tracker["local_inference_warning"] = (
+                                "vLLM unavailable - auto-routed to fallback providers"
+                            )
                         self.logger.warning("LOCAL_INFERENCE_GATE,provider=vllm,action=skip,reason=health_down")
                         continue
                     result = self._infer_via_vllm(messages, model_type)

@@ -240,7 +240,9 @@ class RegimeDetector:
         recent_move = float(close.iloc[-1] - close.iloc[-20]) if len(close) >= 20 else 0.0
         path_length = float(close.diff().abs().tail(20).sum() or 0.0)
         price_efficiency = abs(recent_move) / max(path_length, 1e-9)
-        range_compression = float((high.tail(12) - low.tail(12)).mean() / max((high.tail(40) - low.tail(40)).mean(), 1e-9))
+        range_compression = float(
+            (high.tail(12) - low.tail(12)).mean() / max((high.tail(40) - low.tail(40)).mean(), 1e-9)
+        )
         gap_score = float(abs(close.iloc[-1] - close.iloc[-2]) / max(atr_fast, 1e-9)) if len(close) >= 2 else 0.0
         slope_strength = self._slope_strength(close.tail(30))
         breakout_score = 0.0
@@ -354,7 +356,9 @@ class RegimeDetector:
         elif label == "HIGH_VOLATILITY":
             score = min(1.0, max(features["atr_ratio"], features["realized_vol_ratio"]) / 2.2)
         elif label == "NEWS_DRIVEN":
-            score = min(1.0, (features["volume_ratio"] / 3.0 + features["gap_score"] / 2.0 + features["breakout_score"]) / 3.0)
+            score = min(
+                1.0, (features["volume_ratio"] / 3.0 + features["gap_score"] / 2.0 + features["breakout_score"]) / 3.0
+            )
         elif label == "ROLLOVER":
             score = features["rollover_score"]
         elif label == "LOW_LIQUIDITY":

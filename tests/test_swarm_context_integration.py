@@ -64,7 +64,12 @@ def test_deep_analysis_writes_swarm_regime_into_dream_state():
     )
 
     app = SimpleNamespace(
-        logger=SimpleNamespace(warning=lambda *_a, **_k: None, info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None),
+        logger=SimpleNamespace(
+            warning=lambda *_a, **_k: None,
+            info=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+            debug=lambda *_a, **_k: None,
+        ),
         run_async_safely=lambda value: value,
         multi_agent_consensus=lambda *_a, **_k: {"signal": "BUY", "confidence": 0.81, "reason": "ok"},
         retrieve_relevant_experiences=lambda *_a, **_k: [],

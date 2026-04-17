@@ -18,11 +18,11 @@ class RealisticBacktesterEngine:
     def __init__(self, context: RuntimeContext):
         self.context = context
         self.logger = context.logger
-        self.fast_path = context.fast_path          # uit stap 1.2
-        self.local_engine = context.local_engine    # uit LocalInferenceEngine
+        self.fast_path = context.fast_path  # uit stap 1.2
+        self.local_engine = context.local_engine  # uit LocalInferenceEngine
         self.valuation_engine = ValuationEngine()
         self.instrument = str(getattr(self.context.engine.config, "instrument", "MES"))
-        self.partial_fill_prob = 0.35               # 35% kans op partial
+        self.partial_fill_prob = 0.35  # 35% kans op partial
 
     def _calculate_slippage(self, price: float, volume: float, regime: str, side: str) -> float:
         avg_volume = float(getattr(self.context, "avg_volume_delta_10", volume) or volume)
@@ -75,12 +75,16 @@ class RealisticBacktesterEngine:
             row = df.iloc[i]
             price = float(row["close"])
             volume = float(row["volume"])
-            regime = self.context.detect_market_regime(df.iloc[:i+1])  # rolling regime
+            regime = self.context.detect_market_regime(df.iloc[: i + 1])  # rolling regime
 
             # Fast Path (of LLM fallback) voor signaal
-            fast_result = self.fast_path.run(df.iloc[:i+1], price, regime)
+            fast_result = self.fast_path.run(df.iloc[: i + 1], price, regime)
 
-            if position == 0 and fast_result["signal"] in ["BUY", "SELL"] and fast_result["confidence"] > self.context.MIN_CONFLUENCE:
+            if (
+                position == 0
+                and fast_result["signal"] in ["BUY", "SELL"]
+                and fast_result["confidence"] > self.context.MIN_CONFLUENCE
+            ):
                 qty = self.context.calculate_adaptive_risk_and_qty(price, regime, fast_result["stop"])
                 side = fast_result["signal"]
 
@@ -94,14 +98,16 @@ class RealisticBacktesterEngine:
                     entry_price = fill_price
                     commission = self._apply_commission(abs(filled_qty), "entry")
                     equity -= commission
-                    trades.append({
-                        "ts": row.name,
-                        "signal": side,
-                        "entry": entry_price,
-                        "qty": filled_qty,
-                        "slippage": slippage,
-                        "partial": filled_qty != qty
-                    })
+                    trades.append(
+                        {
+                            "ts": row.name,
+                            "signal": side,
+                            "entry": entry_price,
+                            "qty": filled_qty,
+                            "slippage": slippage,
+                            "partial": filled_qty != qty,
+                        }
+                    )
 
             # Exit check
             if position != 0:
@@ -128,11 +134,7 @@ class RealisticBacktesterEngine:
                     pnl_history.append(pnl)
                     equity_curve.append(equity)
 
-                    trades[-1].update({
-                        "exit": exit_price_real,
-                        "pnl": pnl,
-                        "exit_slip": exit_slip
-                    })
+                    trades[-1].update({"exit": exit_price_real, "pnl": pnl, "exit_slip": exit_slip})
 
                     position = 0
                     entry_price = 0.0
@@ -149,7 +151,9 @@ class RealisticBacktesterEngine:
         equity_arr = np.array(equity_curve)
         maxdd = min((np.maximum.accumulate(equity_arr) - equity_arr) / np.maximum.accumulate(equity_arr)) * 100
 
-        self.logger.info(f"REAL_BACKTEST_COMPLETE,trades={len(pnl_history)},sharpe={sharpe:.2f},winrate={winrate:.1%},maxdd={maxdd:.1f}%")
+        self.logger.info(
+            f"REAL_BACKTEST_COMPLETE,trades={len(pnl_history)},sharpe={sharpe:.2f},winrate={winrate:.1%},maxdd={maxdd:.1f}%"
+        )
 
         return {
             "sharpe": round(sharpe, 2),
@@ -159,7 +163,7 @@ class RealisticBacktesterEngine:
             "avg_pnl": round(np.mean(pnl_array), 1),
             "total_pnl": round(np.sum(pnl_array), 1),
             "equity_curve": equity_curve[-200:],
-            "trades_detail": trades[-50:]  # laatste 50 voor journal
+            "trades_detail": trades[-50:],  # laatste 50 voor journal
         }
 
     def monte_carlo(self, snapshot: pd.DataFrame, runs: int = 1000) -> Dict:
@@ -178,5 +182,5 @@ class RealisticBacktesterEngine:
             "mean_sharpe": np.mean([r["sharpe"] for r in results]),
             "median_maxdd": np.median([r["maxdd"] for r in results]),
             "worst_maxdd": max([r["maxdd"] for r in results]),
-            "winrate_95pct": np.percentile([r["winrate"] for r in results], 5)
+            "winrate_95pct": np.percentile([r["winrate"] for r in results], 5),
         }

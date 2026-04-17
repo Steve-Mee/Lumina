@@ -12,7 +12,7 @@ from .lumina_engine import LuminaEngine
 @dataclass(slots=True)
 class PositionSizer:
     """Fractional Kelly-based position sizing for capital preservation (v51)."""
-    
+
     @staticmethod
     def calculate_kelly_fraction(
         win_rate: float,
@@ -22,41 +22,41 @@ class PositionSizer:
     ) -> float:
         """
         Calculate optimal Kelly fraction with cap for safety.
-        
+
         Kelly formula: f* = (bp - q) / b
         where:
           - f* = optimal Kelly fraction
           - b = average_win / average_loss (reward/risk ratio)
           - p = probability of win
           - q = probability of loss (1 - p)
-        
+
         Args:
             win_rate: Probability of winning (0-1)
             avg_win: Average size of winning trade (default 1.0)
             avg_loss: Average size of losing trade (default 1.0)
             kelly_fraction_max: Maximum Kelly fraction to use (default 0.25 for safety)
-        
+
         Returns:
             Actual Kelly fraction to use (capped at kelly_fraction_max)
         """
         if win_rate <= 0 or win_rate >= 1:
             return 0.0
-        
+
         loss_rate = 1.0 - win_rate
         if avg_loss <= 0:
             return 0.0
-        
+
         b = avg_win / avg_loss  # Reward/risk ratio
         q = loss_rate
-        
+
         # Kelly formula
         kelly_optimal = (b * win_rate - q) / b
-        
+
         # Cap at kelly_fraction_max for safety
         kelly_safe = max(0.0, min(kelly_optimal, kelly_fraction_max))
-        
+
         return float(kelly_safe)
-    
+
     @staticmethod
     def calculate_position_size(
         account_equity: float,
@@ -66,22 +66,22 @@ class PositionSizer:
     ) -> float:
         """
         Calculate trade size based on Kelly fraction and confidence.
-        
+
         Trade size = account_equity * kelly_fraction * confidence
         Only apply Kelly if confidence >= min_confidence.
-        
+
         Args:
             account_equity: Current account equity (USD)
             kelly_fraction: Kelly fraction to apply (0-1)
             confidence: Current signal confidence (0-1)
             min_confidence: Minimum confidence to apply Kelly (default 0.65)
-        
+
         Returns:
             Position size in USD (0 if below min_confidence)
         """
         if confidence < min_confidence:
             return 0.0
-        
+
         return float(account_equity * kelly_fraction * min(confidence, 1.0))
 
 
@@ -92,7 +92,7 @@ class FastPathEngine:
     Supports both direct engine= construction (internal services) and
     RuntimeContext injection via context= (compatibility with LocalInferenceEngine).
     Beslissingstijd < 200 ms. LLM-takeover als confidence < fast_path_threshold.
-    
+
     v51 Capital Preservation:
     - Fractional Kelly position sizing (25% max)
     - News avoidance windows (configurable pre/post)
@@ -122,12 +122,8 @@ class FastPathEngine:
         for period in [8, 21, 34, 55]:
             emas[f"ema_{period}"] = float(close.ewm(span=period, adjust=False).mean().iloc[-1])
 
-        ribbon_bullish = all(
-            emas[f"ema_{p}"] > emas[f"ema_{q}"] for p, q in [(8, 21), (21, 34), (34, 55)]
-        )
-        ribbon_bearish = all(
-            emas[f"ema_{p}"] < emas[f"ema_{q}"] for p, q in [(8, 21), (21, 34), (34, 55)]
-        )
+        ribbon_bullish = all(emas[f"ema_{p}"] > emas[f"ema_{q}"] for p, q in [(8, 21), (21, 34), (34, 55)])
+        ribbon_bearish = all(emas[f"ema_{p}"] < emas[f"ema_{q}"] for p, q in [(8, 21), (21, 34), (34, 55)])
 
         prev_ema8 = float(close.ewm(span=8, adjust=False).mean().iloc[-3])
         last_price_prev = float(close.iloc[-3])
@@ -165,7 +161,8 @@ class FastPathEngine:
     def regime_filter(self, regime: str) -> float:
         """Regime risk multiplier from engine config."""
         multipliers: dict[str, float] = getattr(
-            self.engine.config, "regime_risk_multipliers",
+            self.engine.config,
+            "regime_risk_multipliers",
             {"TRENDING_UP": 1.2, "TRENDING_DOWN": 1.2, "RANGING": 0.8, "VOLATILE": 0.9, "NEUTRAL": 1.0},
         )
         return float(multipliers.get(regime.upper(), 1.0))
@@ -301,9 +298,13 @@ class FastPathEngine:
         else:
             stop = target = 0.0
 
-        reason_str = " | ".join(reasons) if reasons else (
-            f"ribbon={'bull' if ribbon_bull else 'bear' if ribbon_bear else 'mixed'}, "
-            f"tape={tape_val:.1f}, fib={fib_score:.2f}, regime={regime_norm}"
+        reason_str = (
+            " | ".join(reasons)
+            if reasons
+            else (
+                f"ribbon={'bull' if ribbon_bull else 'bear' if ribbon_bear else 'mixed'}, "
+                f"tape={tape_val:.1f}, fib={fib_score:.2f}, regime={regime_norm}"
+            )
         )
 
         return self._result(

@@ -114,9 +114,13 @@ class MarketDataService:
         app = self._app()
         last_tick_print = 0.0
         uri = "wss://app.crosstrade.io/ws/stream"
-        headers = {"Authorization": f"Bearer {getattr(app, 'CROSSTRADE_TOKEN', self.engine.config.crosstrade_token or '')}"}
+        headers = {
+            "Authorization": f"Bearer {getattr(app, 'CROSSTRADE_TOKEN', self.engine.config.crosstrade_token or '')}"
+        }
         instrument = self._normalize_symbol(getattr(app, "INSTRUMENT", self.engine.config.instrument))
-        configured_swarm = [self._normalize_symbol(s) for s in getattr(app, "SWARM_SYMBOLS", self.engine.config.swarm_symbols)]
+        configured_swarm = [
+            self._normalize_symbol(s) for s in getattr(app, "SWARM_SYMBOLS", self.engine.config.swarm_symbols)
+        ]
         if instrument not in configured_swarm:
             configured_swarm.insert(0, instrument)
         subscribed_symbols = [s for s in configured_swarm if s]
@@ -178,7 +182,7 @@ class MarketDataService:
                                     f"L={closed_candle['low']:.2f} C={closed_candle['close']:.2f} V={closed_candle['volume']}"
                                 )
 
-                            if time.time() - last_tick_print >= float(getattr(app, 'TICK_PRINT_INTERVAL_SEC', 2.0)):
+                            if time.time() - last_tick_print >= float(getattr(app, "TICK_PRINT_INTERVAL_SEC", 2.0)):
                                 tape_txt = (
                                     f"delta10={tape_signal.get('cumulative_delta_10', 0.0):.0f} "
                                     f"imb={tape_signal.get('bid_ask_imbalance', 1.0):.2f} "
@@ -364,7 +368,7 @@ class MarketDataService:
                     deltas = df["timestamp"].diff().dt.total_seconds()
                     max_gap = deltas.max() if len(deltas) > 1 else 0
                 if max_gap > 120:
-                    print(f"GAP DETECTED ({max_gap/60:.1f} min) -> recovery")
+                    print(f"GAP DETECTED ({max_gap / 60:.1f} min) -> recovery")
                     self.load_historical_ohlc(days_back=2, limit=2000)
             except Exception as exc:
                 self._app().logger.error(f"Gap recovery error: {exc}")

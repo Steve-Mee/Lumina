@@ -124,7 +124,11 @@ class ReasoningService:
 
         mode = str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower()
         dream = self.engine.get_current_dream_snapshot()
-        price = float(getattr(order, "metadata", {}).get("reference_price", 0.0) if isinstance(getattr(order, "metadata", {}), dict) else 0.0)
+        price = float(
+            getattr(order, "metadata", {}).get("reference_price", 0.0)
+            if isinstance(getattr(order, "metadata", {}), dict)
+            else 0.0
+        )
         stop = float(getattr(order, "stop_loss", 0.0) or 0.0)
         proposed_risk = abs(price - stop) if price > 0.0 and stop > 0.0 else 0.0
 
@@ -153,7 +157,10 @@ class ReasoningService:
                 "calibration_factor": 1.0,
             },
         )
-        if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {"BUY", "SELL"}:
+        if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {
+            "BUY",
+            "SELL",
+        }:
             raise PolicyGateError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
 
         return self.container.broker.submit_order(order)
@@ -275,7 +282,13 @@ class ReasoningService:
             }
             self._log_decision(
                 agent_id="ReasoningService",
-                raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
+                raw_input={
+                    "price": price,
+                    "mtf_data": mtf_data,
+                    "pa_summary": pa_summary,
+                    "structure": structure,
+                    "fib_levels": fib_levels,
+                },
                 raw_output=blocked,
                 confidence=float(blocked.get("confidence", 0.0)),
                 policy_outcome="session_blocked",
@@ -296,7 +309,13 @@ class ReasoningService:
             }
             self._log_decision(
                 agent_id="ReasoningService",
-                raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
+                raw_input={
+                    "price": price,
+                    "mtf_data": mtf_data,
+                    "pa_summary": pa_summary,
+                    "structure": structure,
+                    "fib_levels": fib_levels,
+                },
                 raw_output=fast_path,
                 confidence=float(fast_path.get("confidence", 0.0)),
                 policy_outcome="fast_path_only",
@@ -325,7 +344,13 @@ class ReasoningService:
             }
             self._log_decision(
                 agent_id="ReasoningService",
-                raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
+                raw_input={
+                    "price": price,
+                    "mtf_data": mtf_data,
+                    "pa_summary": pa_summary,
+                    "structure": structure,
+                    "fib_levels": fib_levels,
+                },
                 raw_output=conservative,
                 confidence=float(conservative.get("confidence", 0.0)),
                 policy_outcome="high_risk_hold",
@@ -354,7 +379,7 @@ class ReasoningService:
                         "content": f"""Huidige prijs: {price:.2f}
 MTF: {mtf_data}
 Price Action: {pa_summary}
-Structure: BOS={structure.get('bos')}, CHOCH={structure.get('choch')}
+Structure: BOS={structure.get("bos")}, CHOCH={structure.get("choch")}
 Fibs: {fib_levels}
 Wat is jouw trade-besluit?""",
                     },
@@ -410,7 +435,13 @@ Wat is jouw trade-besluit?""",
                 pass
         self._log_decision(
             agent_id="ReasoningService",
-            raw_input={"price": price, "mtf_data": mtf_data, "pa_summary": pa_summary, "structure": structure, "fib_levels": fib_levels},
+            raw_input={
+                "price": price,
+                "mtf_data": mtf_data,
+                "pa_summary": pa_summary,
+                "structure": structure,
+                "fib_levels": fib_levels,
+            },
             raw_output=consensus,
             confidence=float(consensus.get("confidence", 0.0)),
             policy_outcome="consensus_generated",
@@ -446,7 +477,7 @@ Geef ALLEEN JSON met: meta_score (0-1), meta_reasoning (max 120 chars), counterf
                 },
                 {
                     "role": "user",
-                    "content": f"""Huidige consensus: {consensus['signal']} (conf {consensus['confidence']:.2f})
+                    "content": f"""Huidige consensus: {consensus["signal"]} (conf {consensus["confidence"]:.2f})
 Price Action: {pa_summary}
 Relevante eerdere ervaringen: {past_experiences}
 Prijs: {price:.2f}
@@ -463,7 +494,12 @@ Voer meta-reasoning + counter-factuals uit.""",
                 app.logger.info(f"META_REASONING_COMPLETE,meta_score={meta.get('meta_score', 0.5):.2f}")
                 self._log_decision(
                     agent_id="ReasoningService",
-                    raw_input={"consensus": consensus, "price": price, "pa_summary": pa_summary, "past_experiences": past_experiences},
+                    raw_input={
+                        "consensus": consensus,
+                        "price": price,
+                        "pa_summary": pa_summary,
+                        "past_experiences": past_experiences,
+                    },
                     raw_output=meta,
                     confidence=float(meta.get("meta_score", 0.0)),
                     policy_outcome="meta_reasoning_success",
@@ -478,7 +514,12 @@ Voer meta-reasoning + counter-factuals uit.""",
         fallback = {"meta_score": 0.6, "meta_reasoning": "Meta-reasoning niet gelukt", "counterfactuals": []}
         self._log_decision(
             agent_id="ReasoningService",
-            raw_input={"consensus": consensus, "price": price, "pa_summary": pa_summary, "past_experiences": past_experiences},
+            raw_input={
+                "consensus": consensus,
+                "price": price,
+                "pa_summary": pa_summary,
+                "past_experiences": past_experiences,
+            },
             raw_output=fallback,
             confidence=float(fallback.get("meta_score", 0.0)),
             policy_outcome="meta_reasoning_fallback",

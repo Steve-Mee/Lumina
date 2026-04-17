@@ -27,13 +27,13 @@ class SecurityConfig:
     def __init__(self, config_dict: Optional[dict[str, Any]] = None):
         """
         Initialize security config.
-        
+
         Args:
             config_dict: Loaded config.yaml security section
         """
         self.config = config_dict or {}
         use_env_fallback = config_dict is None
-        
+
         # CORS settings
         self.cors_allowed_origins: list[str] = self.config.get("cors_allowed_origins", [])
         if "*" in self.cors_allowed_origins:
@@ -43,7 +43,7 @@ class SecurityConfig:
             )
         if not self.cors_allowed_origins:
             logger.warning("CORS allowed origins is empty; API will reject all cross-origin requests")
-        
+
         # JWT settings
         if use_env_fallback:
             self.jwt_secret_key = os.getenv("LUMINA_JWT_SECRET_KEY") or self.config.get("jwt_secret_key", "")
@@ -56,29 +56,29 @@ class SecurityConfig:
             )
         if len(self.jwt_secret_key) < 32:
             raise ValueError("JWT secret key must be at least 32 characters")
-        
+
         self.jwt_algorithm = self.config.get("jwt_algorithm", "HS256")
         self.jwt_expiration_minutes = self.config.get("jwt_expiration_minutes", 1440)  # 24h
-        
+
         # API key settings
         self.api_key_header = self.config.get("api_key_header", "X-API-Key")
         self.api_keys: dict[str, dict[str, Any]] = self.config.get("api_keys", {})
-        
+
         # Rate limiting settings
         self.rate_limit_enabled = self.config.get("rate_limit_enabled", True)
         self.rate_limit_requests_per_minute = self.config.get("rate_limit_requests_per_minute", 60)
         self.rate_limit_burst_size = self.config.get("rate_limit_burst_size", 10)
-        
+
         # Admin role requirement for destructive operations
         self.admin_role_required = self.config.get("admin_role_required", True)
-        
+
         # Audit logging
         self.audit_log_enabled = self.config.get("audit_log_enabled", True)
         self.audit_log_path = self.config.get("audit_log_path", "logs/security_audit.jsonl")
-        
+
         # Dangerous config validation
         self.dangerous_configs: dict[str, Any] = self.config.get("dangerous_configs", {})
-        
+
         logger.info(
             f"SecurityConfig initialized: "
             f"CORS={len(self.cors_allowed_origins)} origins, "
@@ -159,12 +159,12 @@ class APIKeyAuthenticator:
         if key not in self.config.api_keys:
             logger.warning("Invalid API key attempt")
             return None
-        
+
         key_meta = self.config.api_keys[key]
         if key_meta.get("enabled", True) is False:
             logger.warning(f"API key disabled: {key_meta.get('name', 'unknown')}")
             return None
-        
+
         return key_meta
 
     def generate_api_key(self, name: str, role: str = "user") -> str:
@@ -186,7 +186,7 @@ class RateLimiter:
         """Check if client is allowed to make a request."""
         if not self.config.rate_limit_enabled:
             return True
-        
+
         with self.lock:
             now = time.time()
             if client_id not in self.buckets:
@@ -194,7 +194,7 @@ class RateLimiter:
                     "tokens": self.config.rate_limit_burst_size,
                     "last_refill": now,
                 }
-            
+
             bucket = self.buckets[client_id]
             elapsed = now - bucket["last_refill"]
             refill_rate = self.config.rate_limit_requests_per_minute / 60.0
@@ -203,11 +203,11 @@ class RateLimiter:
                 bucket["tokens"] + elapsed * refill_rate,
             )
             bucket["last_refill"] = now
-            
+
             if bucket["tokens"] >= 1:
                 bucket["tokens"] -= 1
                 return True
-            
+
             logger.warning(f"Rate limit exceeded for client: {client_id}")
             return False
 
@@ -232,7 +232,7 @@ class SecurityAuditLog:
         """Log a security-relevant action."""
         if not self.config.audit_log_enabled:
             return
-        
+
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "action": action,
@@ -242,7 +242,7 @@ class SecurityAuditLog:
             "status": status,
             "details": details or {},
         }
-        
+
         with self.lock:
             try:
                 with open(self.config.audit_log_path, "a", encoding="utf-8") as f:
@@ -296,23 +296,23 @@ class DangerousConfigValidator:
         """Check actual config against dangerous patterns. Returns list of violations."""
         violations: list[str] = []
         security_cfg = self._extract_security_section(actual_config)
-        
+
         # Check CORS
         if security_cfg.get("cors_allowed_origins", []) == ["*"]:
             violations.append("CORS wildcard '*' found in config")
-        
+
         # Check JWT secret
         jwt_secret = security_cfg.get("jwt_secret_key", "")
         if jwt_secret in ("default", "secret", "12345678"):
             violations.append("Default or weak JWT secret key found in config")
-        
+
         # Check dangerous flags
         dangerous_patterns = self.config.dangerous_configs
         for config_path, forbidden_values in dangerous_patterns.items():
             value = self._resolve_config_path(actual_config, config_path)
             if value in forbidden_values or value is True:
                 violations.append(f"Dangerous config value found: {config_path}={value}")
-        
+
         return violations
 
     @staticmethod
@@ -356,7 +356,7 @@ def require_auth(
 ) -> Callable[[Callable[P, Any]], Callable[P, Any]]:
     """
     Decorator for FastAPI endpoints to require authentication.
-    
+
     Args:
         required_role: Optional role requirement (e.g., "admin"). If None, any authenticated user allowed.
     """
@@ -367,7 +367,9 @@ def require_auth(
             # Extract from request (this is a template; actual implementation depends on FastAPI context)
             # In FastAPI, use: Depends(get_current_user) approach instead
             return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
 
 

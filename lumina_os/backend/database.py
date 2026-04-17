@@ -25,8 +25,8 @@ class Participant(Base):
     __tablename__ = "participants"
     id = Column(Integer, primary_key=True)
     name = Column(String, unique=True)
-    mode = Column(String)                    # "paper" / "real"
-    is_lumina = Column(Integer, default=0)   # 1 = jouw bot
+    mode = Column(String)  # "paper" / "real"
+    is_lumina = Column(Integer, default=0)  # 1 = jouw bot
 
 
 class TradeEntry(Base):
@@ -48,7 +48,7 @@ class TradeEntry(Base):
     sharpe = Column(Float)
     maxdd = Column(Float)
     reflection = Column(JSON)
-    chart_base64 = Column(String)            # voor replay
+    chart_base64 = Column(String)  # voor replay
 
 
 class CommunityBible(Base):

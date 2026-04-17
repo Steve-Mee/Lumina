@@ -138,7 +138,11 @@ class SetupService:
     def upgrade_model(self, descriptor: ModelDescriptor) -> list[SetupStepResult]:
         results = [self.pull_model(descriptor)]
         if results[-1].success:
-            cached_hardware = HardwareSnapshot(**json.loads(Path("state/hardware_snapshot.json").read_text(encoding="utf-8"))) if Path("state/hardware_snapshot.json").exists() else None
+            cached_hardware = (
+                HardwareSnapshot(**json.loads(Path("state/hardware_snapshot.json").read_text(encoding="utf-8")))
+                if Path("state/hardware_snapshot.json").exists()
+                else None
+            )
             if cached_hardware is not None:
                 results.append(self.apply_recommended_config(hardware=cached_hardware, model=descriptor))
         return results

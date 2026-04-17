@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -233,7 +234,11 @@ class PerformanceValidator:
         app = self._app()
         if self.market_data_service is None:
             raise RuntimeError("PerformanceValidator.market_data_service is not configured")
-        symbols = [str(s).strip().upper() for s in getattr(app, "SWARM_SYMBOLS", [self.engine.config.instrument]) if str(s).strip()]
+        symbols = [
+            str(s).strip().upper()
+            for s in getattr(app, "SWARM_SYMBOLS", [self.engine.config.instrument])
+            if str(s).strip()
+        ]
         results: list[dict[str, Any]] = []
 
         for symbol in symbols:
@@ -273,10 +278,7 @@ class PerformanceValidator:
 
         monthly_returns = [float(x["monthly_return"]) for x in results]
         per_symbol_worst_dd = [float(x["worst_maxdd_all_tests"]) for x in results]
-        consistency_hits = [
-            goals["min_monthly_return"] <= m <= goals["max_monthly_return"]
-            for m in monthly_returns
-        ]
+        consistency_hits = [goals["min_monthly_return"] <= m <= goals["max_monthly_return"] for m in monthly_returns]
 
         agg = {
             "mean_monthly_return": float(np.mean(monthly_returns)),
@@ -443,8 +445,12 @@ class PerformanceValidator:
             fig, axes = plt.subplots(2, 2, figsize=(12, 8))
 
             axes[0, 0].bar(symbol_names, monthly_returns, color="#1f77b4")
-            axes[0, 0].axhline(self._goal_targets()["min_monthly_return"] * 100.0, color="green", linestyle="--", linewidth=1)
-            axes[0, 0].axhline(self._goal_targets()["max_monthly_return"] * 100.0, color="green", linestyle="--", linewidth=1)
+            axes[0, 0].axhline(
+                self._goal_targets()["min_monthly_return"] * 100.0, color="green", linestyle="--", linewidth=1
+            )
+            axes[0, 0].axhline(
+                self._goal_targets()["max_monthly_return"] * 100.0, color="green", linestyle="--", linewidth=1
+            )
             axes[0, 0].set_title("Monthly Return by Symbol (%)")
             axes[0, 0].tick_params(axis="x", rotation=30)
 
@@ -501,7 +507,9 @@ class PerformanceValidator:
             pdf = PerformanceValidatorPDF()
             pdf.add_page()
             pdf.set_font("Helvetica", "B", 13)
-            pdf.cell(0, 8, f"Monthly Validation Report - {datetime.now().strftime('%Y-%m')}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(
+                0, 8, f"Monthly Validation Report - {datetime.now().strftime('%Y-%m')}", new_x="LMARGIN", new_y="NEXT"
+            )
             pdf.set_font("Helvetica", "", 11)
             pdf.cell(0, 7, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", new_x="LMARGIN", new_y="NEXT")
             pdf.cell(0, 7, f"Goal met: {bool(validator_summary.get('goal_met', False))}", new_x="LMARGIN", new_y="NEXT")
@@ -520,8 +528,8 @@ class PerformanceValidator:
                 0,
                 7,
                 (
-                    f"Goals -> Monthly {float(goals.get('min_monthly_return', 0.0))*100.0:.1f}% to "
-                    f"{float(goals.get('max_monthly_return', 0.0))*100.0:.1f}% | "
+                    f"Goals -> Monthly {float(goals.get('min_monthly_return', 0.0)) * 100.0:.1f}% to "
+                    f"{float(goals.get('max_monthly_return', 0.0)) * 100.0:.1f}% | "
                     f"MaxDD <= {float(goals.get('max_maxdd', 0.0)):.2f}% | "
                     f"Paper/Real Corr >= {float(goals.get('min_paper_real_corr', 0.0)):.2f}"
                 ),
@@ -567,7 +575,7 @@ class PerformanceValidator:
                     0,
                     6,
                     (
-                        f"{row.get('symbol','?')}: Monthly {float(row.get('monthly_return', 0.0))*100.0:.2f}%, "
+                        f"{row.get('symbol', '?')}: Monthly {float(row.get('monthly_return', 0.0)) * 100.0:.2f}%, "
                         f"Sharpe {float(row.get('sharpe', 0)):.2f}, Winrate {float(row.get('winrate', 0)):.1%}, "
                         f"Worst MaxDD {float(row.get('worst_maxdd_all_tests', 0.0)):.2f}%, "
                         f"Net {float(row.get('net_pnl', 0)):.2f}, Trades {int(row.get('trades', 0))}"
@@ -588,7 +596,7 @@ class PerformanceValidator:
 
         if not bool(summary.get("goal_met", False)):
             reason = (
-                f"Goal not met: monthly={float(summary.get('aggregate', {}).get('mean_monthly_return', 0.0))*100.0:.2f}%, "
+                f"Goal not met: monthly={float(summary.get('aggregate', {}).get('mean_monthly_return', 0.0)) * 100.0:.2f}%, "
                 f"worst_maxdd={float(summary.get('aggregate', {}).get('worst_maxdd', 0.0)):.2f}%, "
                 f"paper_real_corr={float(summary.get('side_by_side', {}).get('correlation', 0.0)):.3f}"
             )
@@ -609,7 +617,9 @@ class PerformanceValidator:
                     existing = [x for x in self.side_by_side_log if str(x.get("monthly_marker", "")) == marker]
                     if not existing:
                         result = self.run_validation_cycle()
-                        self.side_by_side_log.append({"monthly_marker": marker, "result_path": result.get("json_path", "")})
+                        self.side_by_side_log.append(
+                            {"monthly_marker": marker, "result_path": result.get("json_path", "")}
+                        )
                         app.log_thought({"type": "monthly_validator_cycle", "result": result})
                 else:
                     # Keep side-by-side tracking alive even outside monthly runs.

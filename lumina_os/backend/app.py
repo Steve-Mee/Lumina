@@ -71,12 +71,12 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None)) -> dict[str, A
     if not x_api_key:
         SECURITY["audit_log"].log_auth_attempt("unknown", False, "api_key")
         raise HTTPException(status_code=401, detail="API key required")
-    
+
     key_meta = SECURITY["api_key"].verify_api_key(x_api_key)
     if not key_meta:
         SECURITY["audit_log"].log_auth_attempt("unknown", False, "api_key")
         raise HTTPException(status_code=401, detail="Invalid API key")
-    
+
     SECURITY["audit_log"].log_auth_attempt(key_meta.get("name", "api_key"), True, "api_key")
     return {"api_key": x_api_key, "metadata": key_meta}
 
@@ -85,7 +85,7 @@ async def verify_admin_role(auth: dict[str, Any] = Depends(verify_api_key)) -> d
     """Dependency to verify admin role for destructive operations."""
     if not SECURITY["config"].admin_role_required:
         return auth
-    
+
     role = auth["metadata"].get("role", "user")
     if role != "admin":
         SECURITY["audit_log"].log_unauthorized_access(
@@ -94,7 +94,7 @@ async def verify_admin_role(auth: dict[str, Any] = Depends(verify_api_key)) -> d
             f"insufficient_role_{role}",
         )
         raise HTTPException(status_code=403, detail="Admin role required")
-    
+
     return auth
 
 
@@ -311,7 +311,7 @@ def delete_all_trades(
     try:
         deleted = db.query(TradeEntry).delete()
         db.commit()
-        
+
         # Audit log
         SECURITY["audit_log"].log_admin_action(
             username=admin_auth["metadata"].get("name", "unknown"),
@@ -320,7 +320,7 @@ def delete_all_trades(
             details={"deleted_count": deleted},
         )
         logger.info(f"Admin action: deleted {deleted} trades")
-        
+
         return {"deleted": deleted}
     finally:
         db.close()
@@ -339,17 +339,13 @@ def delete_demo_data(
         deleted_trades = 0
         if demo_ids:
             deleted_trades = (
-                db.query(TradeEntry)
-                .filter(TradeEntry.participant_id.in_(demo_ids))
-                .delete(synchronize_session=False)
+                db.query(TradeEntry).filter(TradeEntry.participant_id.in_(demo_ids)).delete(synchronize_session=False)
             )
         deleted_participants = (
-            db.query(Participant)
-            .filter(Participant.name.like("DEMO_%"))
-            .delete(synchronize_session=False)
+            db.query(Participant).filter(Participant.name.like("DEMO_%")).delete(synchronize_session=False)
         )
         db.commit()
-        
+
         # Audit log
         SECURITY["audit_log"].log_admin_action(
             username=admin_auth["metadata"].get("name", "unknown"),
@@ -361,7 +357,7 @@ def delete_demo_data(
             },
         )
         logger.info(f"Admin action: deleted {deleted_participants} demo participants and {deleted_trades} trades")
-        
+
         return {
             "deleted_participants": deleted_participants,
             "deleted_trades": deleted_trades,
@@ -445,7 +441,11 @@ def get_global_wisdom() -> dict[str, Any]:
     try:
         bibles = db.query(CommunityBible).order_by(CommunityBible.performance_score.desc()).limit(20).all()
         total = len(bibles)
-        average_score = round(sum(float(getattr(cast(Any, item), "performance_score", 0.0) or 0.0) for item in bibles) / total, 2) if total else 0.0
+        average_score = (
+            round(sum(float(getattr(cast(Any, item), "performance_score", 0.0) or 0.0) for item in bibles) / total, 2)
+            if total
+            else 0.0
+        )
         return {
             "top_bibles": [
                 {

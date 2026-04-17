@@ -185,7 +185,9 @@ class AgentBlackboard:
                 if policy.critical or str(policy.overflow_strategy).strip().lower() == "block_fail":
                     raise RuntimeError(f"critical blackboard topic queue full: {topic_key}")
                 continue
-        self._record_publish_latency(topic=topic_key, producer=producer, elapsed_ms=(time.perf_counter() - started) * 1000.0)
+        self._record_publish_latency(
+            topic=topic_key, producer=producer, elapsed_ms=(time.perf_counter() - started) * 1000.0
+        )
         return event
 
     def subscribe(self, topic: str, callback: Callable[[BlackboardEvent], None]) -> str:
@@ -243,7 +245,9 @@ class AgentBlackboard:
     def load_recent_from_disk(self, *, per_topic_limit: int = 50) -> None:
         if not self.persistence_path.exists():
             return
-        topic_buckets: dict[str, deque[BlackboardEvent]] = defaultdict(lambda: deque(maxlen=max(1, int(per_topic_limit))))
+        topic_buckets: dict[str, deque[BlackboardEvent]] = defaultdict(
+            lambda: deque(maxlen=max(1, int(per_topic_limit)))
+        )
         try:
             with self.persistence_path.open("r", encoding="utf-8") as handle:
                 for raw in handle:
@@ -360,10 +364,14 @@ class AgentBlackboard:
     def _record_drop(self, *, topic: str, producer: str, reason: str, critical: bool) -> None:
         if self.obs_service is not None and hasattr(self.obs_service, "record_blackboard_drop"):
             try:
-                self.obs_service.record_blackboard_drop(topic=topic, producer=producer, reason=reason, critical=critical)
+                self.obs_service.record_blackboard_drop(
+                    topic=topic, producer=producer, reason=reason, critical=critical
+                )
             except Exception:
                 pass
-        self._append_audit_entry(action="blackboard_drop", topic=topic, producer=producer, details={"reason": reason, "critical": critical})
+        self._append_audit_entry(
+            action="blackboard_drop", topic=topic, producer=producer, details={"reason": reason, "critical": critical}
+        )
 
     def _record_subscription_error(self, *, topic: str, producer: str, error: str) -> None:
         if self.obs_service is not None and hasattr(self.obs_service, "record_blackboard_subscription_error"):
@@ -371,7 +379,9 @@ class AgentBlackboard:
                 self.obs_service.record_blackboard_subscription_error(topic=topic, producer=producer)
             except Exception:
                 pass
-        self._append_audit_entry(action="blackboard_subscription_error", topic=topic, producer=producer, details={"error": error})
+        self._append_audit_entry(
+            action="blackboard_subscription_error", topic=topic, producer=producer, details={"error": error}
+        )
 
     def _append_audit_entry(self, *, action: str, topic: str, producer: str, details: dict[str, Any]) -> None:
         payload = {

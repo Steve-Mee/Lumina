@@ -24,6 +24,7 @@ Zero-overhead when disabled:
     If monitoring.enabled = false, from_config() returns a service backed by
     NullMetricsCollector; all record_* calls are pure no-ops.
 """
+
 from __future__ import annotations
 
 import json
@@ -150,20 +151,14 @@ class ObservabilityService:
         thresholds = AlertThresholds(
             latency_ms=float(raw_thresh.get("latency_ms", 500.0)),
             daily_loss_usd=float(raw_thresh.get("daily_loss_usd", -800.0)),
-            websocket_heartbeat_stale_s=float(
-                raw_thresh.get("websocket_heartbeat_stale_s", 60.0)
-            ),
-            model_confidence_drift=float(
-                raw_thresh.get("model_confidence_drift", 0.25)
-            ),
+            websocket_heartbeat_stale_s=float(raw_thresh.get("websocket_heartbeat_stale_s", 60.0)),
+            model_confidence_drift=float(raw_thresh.get("model_confidence_drift", 0.25)),
             consecutive_losses=int(raw_thresh.get("consecutive_losses", 3)),
         )
 
         raw_webhook = monitoring.get("webhook", {})
         webhook = WebhookConfig(
-            url=str(
-                raw_webhook.get("url", os.getenv("LUMINA_ALERT_WEBHOOK_URL", ""))
-            ),
+            url=str(raw_webhook.get("url", os.getenv("LUMINA_ALERT_WEBHOOK_URL", ""))),
             platform=str(raw_webhook.get("platform", "discord")),
             telegram_chat_id=str(raw_webhook.get("telegram_chat_id", "")),
             enabled=bool(raw_webhook.get("enabled", True)),
@@ -198,9 +193,7 @@ class ObservabilityService:
             name="lumina-obs",
         )
         self._bg_thread.start()
-        logger.info(
-            "ObservabilityService started (flush_interval=%ss)", self.flush_interval_s
-        )
+        logger.info("ObservabilityService started (flush_interval=%ss)", self.flush_interval_s)
 
     def stop(self) -> None:
         """Stop the background thread and flush remaining data to SQLite."""
@@ -234,10 +227,7 @@ class ObservabilityService:
             self._fire_alert(
                 alert_type=f"latency_{source}",
                 title=f"High Latency: {source}",
-                message=(
-                    f"{source} latency = {elapsed_ms:.1f} ms "
-                    f"(threshold: {self.thresholds.latency_ms:.0f} ms)"
-                ),
+                message=(f"{source} latency = {elapsed_ms:.1f} ms (threshold: {self.thresholds.latency_ms:.0f} ms)"),
                 severity="warning",
                 data={"source": source, "elapsed_ms": elapsed_ms},
             )
@@ -274,10 +264,7 @@ class ObservabilityService:
             self._fire_alert(
                 alert_type="daily_loss",
                 title="Daily Loss Threshold Breached",
-                message=(
-                    f"Daily PnL ${daily_pnl:.2f} below "
-                    f"threshold ${self.thresholds.daily_loss_usd:.2f}"
-                ),
+                message=(f"Daily PnL ${daily_pnl:.2f} below threshold ${self.thresholds.daily_loss_usd:.2f}"),
                 severity="warning",
                 data={"daily_pnl": daily_pnl},
             )
@@ -299,9 +286,7 @@ class ObservabilityService:
         best_candidate: str | None = None,
     ) -> None:
         """Record a nightly self-evolution proposal to metrics."""
-        self.collector.inc(
-            M_EVOLUTION_PROPOSALS, help_="Total self-evolution proposals generated"
-        )
+        self.collector.inc(M_EVOLUTION_PROPOSALS, help_="Total self-evolution proposals generated")
         self.collector.set(
             M_EVOLUTION_LAST_CONFIDENCE,
             confidence,
@@ -315,9 +300,7 @@ class ObservabilityService:
 
         total_proposals = self.collector.get(M_EVOLUTION_PROPOSALS)
         total_acceptances = self.collector.get(M_EVOLUTION_ACCEPTANCES)
-        acceptance_rate = (
-            float(total_acceptances / total_proposals) if total_proposals > 0 else 0.0
-        )
+        acceptance_rate = float(total_acceptances / total_proposals) if total_proposals > 0 else 0.0
         self.collector.set(
             M_EVOLUTION_ACCEPTANCE_RATE,
             acceptance_rate,
@@ -325,8 +308,7 @@ class ObservabilityService:
         )
 
         logger.info(
-            "Evolution proposal recorded: status=%s confidence=%.1f "
-            "candidate=%s acceptance_rate=%.2f",
+            "Evolution proposal recorded: status=%s confidence=%.1f candidate=%s acceptance_rate=%.2f",
             status,
             confidence,
             best_candidate or "none",
@@ -374,9 +356,7 @@ class ObservabilityService:
             self._fire_alert(
                 alert_type="portfolio_var_breach",
                 title="Portfolio VaR Breach",
-                message=(
-                    f"Portfolio VaR ${float(var_usd):.2f} exceeds limit ${float(max_var_usd):.2f}"
-                ),
+                message=(f"Portfolio VaR ${float(var_usd):.2f} exceeds limit ${float(max_var_usd):.2f}"),
                 severity="critical",
                 data={
                     "var_usd": round(float(var_usd), 2),
@@ -415,9 +395,7 @@ class ObservabilityService:
         reconnects: int = 0,
     ) -> None:
         """Record WebSocket connection health."""
-        self.collector.set(
-            M_WS_CONNECTED, float(connected), help_="WebSocket connected: 1=yes 0=no"
-        )
+        self.collector.set(M_WS_CONNECTED, float(connected), help_="WebSocket connected: 1=yes 0=no")
         if reconnects > 0:
             self.collector.inc(
                 M_WS_RECONNECTS,
@@ -573,9 +551,7 @@ class ObservabilityService:
 
     def record_process_restart(self) -> None:
         """Increment the process-restart counter (used by watchdog)."""
-        self.collector.inc(
-            M_RESTARTS, help_="Total supervised process restarts by watchdog"
-        )
+        self.collector.inc(M_RESTARTS, help_="Total supervised process restarts by watchdog")
 
     def record_mode_guard_block(self, *, mode: str, reason: str) -> None:
         self.collector.inc(
@@ -770,10 +746,7 @@ class ObservabilityService:
                     "title": title,
                     "description": message,
                     "color": colour,
-                    "fields": [
-                        {"name": str(k), "value": str(v), "inline": True}
-                        for k, v in data.items()
-                    ],
+                    "fields": [{"name": str(k), "value": str(v), "inline": True} for k, v in data.items()],
                     "footer": {"text": "Lumina v50 Observability"},
                 }
             ]

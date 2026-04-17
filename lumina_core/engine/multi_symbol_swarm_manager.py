@@ -144,10 +144,7 @@ class MultiSymbolSwarmManager:
         if min_len < 5:
             return pd.DataFrame(index=self.symbols, columns=self.symbols, dtype=float)
 
-        data = {
-            sym: np.array(list(node.returns_rolling)[-min_len:], dtype=float)
-            for sym, node in self.nodes.items()
-        }
+        data = {sym: np.array(list(node.returns_rolling)[-min_len:], dtype=float) for sym, node in self.nodes.items()}
         matrix = pd.DataFrame(data).corr()
         return matrix.reindex(index=self.symbols, columns=self.symbols)
 

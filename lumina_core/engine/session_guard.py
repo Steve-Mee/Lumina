@@ -126,7 +126,7 @@ class SessionGuard:
         session_close = self.next_close(now_utc)
         if session_close is None:
             return False
-        
+
         close_window_start = session_close - timedelta(minutes=force_close_minutes)
         return close_window_start <= now_utc < session_close
 
@@ -139,7 +139,7 @@ class SessionGuard:
         session_close = self.next_close(now_utc)
         if session_close is None:
             return False
-        
+
         no_new_trades_start = session_close - timedelta(minutes=no_new_trades_minutes)
         return no_new_trades_start <= now_utc < session_close
 
@@ -151,10 +151,10 @@ class SessionGuard:
         now_utc = self._as_utc(ts)
         session_close = self.next_close(now_utc)
         session_open = self.next_open(now_utc)
-        
+
         if session_close is None or session_open is None:
             return False
-        
+
         # If session_open is next day AND we're open to current close, we're at EOD
         # and overnight gap is upcoming
         return now_utc >= session_close and now_utc < session_open

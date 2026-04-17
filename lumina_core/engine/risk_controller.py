@@ -31,11 +31,11 @@ def _utcnow() -> datetime:
 @dataclass
 class MarginTracker:
     """Track CME futures margin requirements per instrument (capital preservation)."""
-    
+
     # CME maintenance margin requirements now come from MarginSnapshotProvider.
     snapshot: MarginSnapshot = field(default_factory=MarginSnapshotProvider.from_config)
     account_equity: float = 50000.0  # Current account equity
-    
+
     def get_margin_requirement(self, symbol: str) -> float:
         """Get maintenance margin for a symbol. Defaults to 3% of equity if unknown."""
         symbol_upper = str(symbol).strip().upper()
@@ -53,11 +53,11 @@ class MarginTracker:
             "age_hours": float(round(self.snapshot.age_hours, 3)),
             "stale": bool(self.snapshot.stale),
         }
-    
+
     def available_margin(self, positions_margin_used: float) -> float:
         """Calculate available margin after positions."""
         return max(0.0, self.account_equity - positions_margin_used)
-    
+
     def can_open_position(self, symbol: str, positions_margin_used: float, safety_buffer_pct: float = 0.2) -> bool:
         """
         Check if we can open a position without violating CME margin requirements.
@@ -67,7 +67,7 @@ class MarginTracker:
         available = self.available_margin(positions_margin_used)
         margin_with_buffer = required_margin * (1.0 + safety_buffer_pct)
         return available >= margin_with_buffer
-    
+
     def margin_utilization_pct(self, positions_margin_used: float) -> float:
         """Get margin utilization as percentage of account equity."""
         if self.account_equity <= 0:
@@ -78,6 +78,7 @@ class MarginTracker:
 @dataclass
 class RiskLimits:
     """Risk configuration limits (from config.yaml)."""
+
     daily_loss_cap: float = -1000.0  # USD: max daily loss before hard stop
     max_consecutive_losses: int = 3  # trades in a row
     max_open_risk_per_instrument: float = 500.0  # USD per symbol
@@ -108,7 +109,9 @@ class RiskLimits:
     mc_drawdown_paths: int = 10000
     mc_drawdown_horizon_days: int = 252
     mc_drawdown_min_samples: int = 40
-    mc_drawdown_insufficient_data_policy: str = "advisory"  # advisory | fail_closed_real_only | fail_closed_all_enforced
+    mc_drawdown_insufficient_data_policy: str = (
+        "advisory"  # advisory | fail_closed_real_only | fail_closed_all_enforced
+    )
     enable_mc_drawdown_enforce_sim_real_guard: bool = True
     enable_mc_drawdown_enforce_real: bool = True
     mc_drawdown_threshold_pct: float = 12.0
@@ -116,7 +119,7 @@ class RiskLimits:
     real_capital_safety_threshold_usd: float = 1000.0
     runtime_mode: str = "real"
     sim_mode: bool = False  # SIM=True bypasses all caps; REAL=False enforces them
-    
+
     def validate(self) -> bool:
         """Validate that limits are sensible."""
         if self.daily_loss_cap >= 0:
@@ -157,8 +160,14 @@ class RiskLimits:
         if self.var_es_min_samples < 10:
             logger.error("var_es_min_samples must be >= 10")
             return False
-        if str(self.var_es_insufficient_data_policy).strip().lower() not in {"advisory", "fail_closed_real_only", "fail_closed_all_enforced"}:
-            logger.error("var_es_insufficient_data_policy must be advisory | fail_closed_real_only | fail_closed_all_enforced")
+        if str(self.var_es_insufficient_data_policy).strip().lower() not in {
+            "advisory",
+            "fail_closed_real_only",
+            "fail_closed_all_enforced",
+        }:
+            logger.error(
+                "var_es_insufficient_data_policy must be advisory | fail_closed_real_only | fail_closed_all_enforced"
+            )
             return False
         if self.var_es_high_risk_limit_multiplier <= 0.0 or self.var_es_high_risk_limit_multiplier > 2.0:
             logger.error("var_es_high_risk_limit_multiplier must be within (0.0, 2.0]")
@@ -169,7 +178,12 @@ class RiskLimits:
         if str(self.runtime_mode).strip().lower() not in {"sim", "real", "sim_real_guard", "paper"}:
             logger.error("runtime_mode must be sim | real | sim_real_guard | paper")
             return False
-        if self.var_95_limit_usd <= 0 or self.var_99_limit_usd <= 0 or self.es_95_limit_usd <= 0 or self.es_99_limit_usd <= 0:
+        if (
+            self.var_95_limit_usd <= 0
+            or self.var_99_limit_usd <= 0
+            or self.es_95_limit_usd <= 0
+            or self.es_99_limit_usd <= 0
+        ):
             logger.error("VaR/ES limits must be > 0")
             return False
         if self.mc_drawdown_paths < 1000:
@@ -181,8 +195,14 @@ class RiskLimits:
         if self.mc_drawdown_min_samples < 10:
             logger.error("mc_drawdown_min_samples must be >= 10")
             return False
-        if str(self.mc_drawdown_insufficient_data_policy).strip().lower() not in {"advisory", "fail_closed_real_only", "fail_closed_all_enforced"}:
-            logger.error("mc_drawdown_insufficient_data_policy must be advisory | fail_closed_real_only | fail_closed_all_enforced")
+        if str(self.mc_drawdown_insufficient_data_policy).strip().lower() not in {
+            "advisory",
+            "fail_closed_real_only",
+            "fail_closed_all_enforced",
+        }:
+            logger.error(
+                "mc_drawdown_insufficient_data_policy must be advisory | fail_closed_real_only | fail_closed_all_enforced"
+            )
             return False
         if self.mc_drawdown_threshold_pct <= 0.0 or self.mc_drawdown_threshold_pct > 100.0:
             logger.error("mc_drawdown_threshold_pct must be within (0.0, 100.0]")
@@ -196,6 +216,7 @@ class RiskLimits:
 @dataclass
 class RiskState:
     """Current risk state tracking (runtime)."""
+
     daily_pnl: float = 0.0  # accumulated P&L today
     consecutive_losses: int = 0  # count of consecutive losing trades
     last_loss_time: Optional[datetime] = None  # when last loss occurred
@@ -235,20 +256,20 @@ class RiskState:
 class HardRiskController:
     """
     Unbreakable safety layer for Lumina trading.
-    
+
     Every trade decision MUST pass through these checks:
     1. Daily loss cap check
     2. Consecutive loss check (+ cooldown)
     3. Per-instrument risk check
     4. Per-regime exposure check
     5. Kill-switch override (emergency stop)
-    
+
     Architecture:
     - FIRST check: immediately after market open (in lumina_engine._run_cycle)
     - LAST check: just before order submission (in trade_workers.submit_order)
     - Fail-closed: any check failure = NO TRADING
     """
-    
+
     def __init__(
         self,
         limits: RiskLimits,
@@ -260,7 +281,7 @@ class HardRiskController:
     ):
         """
         Initialize risk controller with limits and optional state persistence.
-        
+
         Args:
             limits: RiskLimits configuration
             state_file: Optional path to persist kill-switch state across restarts
@@ -268,7 +289,7 @@ class HardRiskController:
         """
         if not limits.validate():
             raise ValueError("Invalid risk limits configuration")
-        
+
         self.limits = limits
         self.state = RiskState()
         self.state_file = state_file
@@ -286,11 +307,11 @@ class HardRiskController:
             except Exception as exc:
                 logger.error("SessionGuard init failed: %s", exc)
                 self.session_guard = None
-        
+
         mode_str = "ENFORCED" if enforce_rules else "LEARNING/TESTING MODE (rules bypassed)"
         logger.info(f"HardRiskController initialized with limits: {limits}")
         logger.info(f"Risk enforcement: {mode_str}")
-        
+
         # Load persistent state if available (e.g., kill-switch from previous crash)
         if self.state_file and self.state_file.exists():
             self._load_state()
@@ -318,7 +339,9 @@ class HardRiskController:
             )
         )
         max_open_risk = float(
-            override_cfg.get("max_open_risk_per_instrument", self._base_limits.max_open_risk_per_instrument * multiplier)
+            override_cfg.get(
+                "max_open_risk_per_instrument", self._base_limits.max_open_risk_per_instrument * multiplier
+            )
         )
         max_regime_risk = float(
             override_cfg.get("max_exposure_per_regime", self._base_limits.max_exposure_per_regime * multiplier)
@@ -327,7 +350,9 @@ class HardRiskController:
         cooldown = int(
             override_cfg.get(
                 "cooldown_after_streak",
-                cooldown_after_streak if cooldown_after_streak is not None else max(base_cooldown, int(base_cooldown / max(multiplier, 0.25))),
+                cooldown_after_streak
+                if cooldown_after_streak is not None
+                else max(base_cooldown, int(base_cooldown / max(multiplier, 0.25))),
             )
         )
         self._active_limits = RiskLimits(
@@ -372,44 +397,52 @@ class HardRiskController:
         )
         self.state.active_regime = normalized_regime
         self.state.active_risk_state = normalized_risk_state
-    
+
     def _load_state(self) -> None:
         """Load persistent state from disk (kill-switch, daily_pnl recovery)."""
         try:
             if self.state_file is None:
                 return
-            with open(str(self.state_file), 'r') as f:
+            with open(str(self.state_file), "r") as f:
                 data = json.load(f)
-                self.state.daily_pnl = data.get('daily_pnl', 0.0)
-                self.state.consecutive_losses = data.get('consecutive_losses', 0)
-                self.state.kill_switch_engaged = data.get('kill_switch_engaged', False)
-                self.state.kill_switch_reason = data.get('kill_switch_reason', '')
-                logger.info(f"Loaded persistent risk state: daily_pnl={self.state.daily_pnl}, "
-                           f"kill_switch={self.state.kill_switch_engaged}")
+                self.state.daily_pnl = data.get("daily_pnl", 0.0)
+                self.state.consecutive_losses = data.get("consecutive_losses", 0)
+                self.state.kill_switch_engaged = data.get("kill_switch_engaged", False)
+                self.state.kill_switch_reason = data.get("kill_switch_reason", "")
+                logger.info(
+                    f"Loaded persistent risk state: daily_pnl={self.state.daily_pnl}, "
+                    f"kill_switch={self.state.kill_switch_engaged}"
+                )
         except Exception as e:
             logger.error(f"Failed to load risk state: {e}")
-    
+
     def _save_state(self) -> None:
         """Persist state to disk (mainly for kill-switch recovery)."""
         if not self.state_file:
             return
         try:
             self.state_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.state_file, 'w') as f:
-                json.dump({
-                    'daily_pnl': self.state.daily_pnl,
-                    'consecutive_losses': self.state.consecutive_losses,
-                    'kill_switch_engaged': self.state.kill_switch_engaged,
-                    'kill_switch_reason': self.state.kill_switch_reason,
-                    'timestamp': _utcnow().isoformat(),
-                }, f, indent=2)
+            with open(self.state_file, "w") as f:
+                json.dump(
+                    {
+                        "daily_pnl": self.state.daily_pnl,
+                        "consecutive_losses": self.state.consecutive_losses,
+                        "kill_switch_engaged": self.state.kill_switch_engaged,
+                        "kill_switch_reason": self.state.kill_switch_reason,
+                        "timestamp": _utcnow().isoformat(),
+                    },
+                    f,
+                    indent=2,
+                )
         except Exception as e:
             logger.error(f"Failed to save risk state: {e}")
-    
+
     def reset_daily(self) -> None:
         """Reset daily P&L and loss counters (call at market close or next day open)."""
-        logger.info(f"Resetting daily metrics. Previous daily_pnl={self.state.daily_pnl}, "
-                   f"consecutive_losses={self.state.consecutive_losses}")
+        logger.info(
+            f"Resetting daily metrics. Previous daily_pnl={self.state.daily_pnl}, "
+            f"consecutive_losses={self.state.consecutive_losses}"
+        )
         self.state.daily_pnl = 0.0
         self.state.consecutive_losses = 0
         self.state.last_loss_time = None
@@ -417,11 +450,11 @@ class HardRiskController:
         self.state.open_risk_all_regimes.clear()
         # Do NOT reset kill_switch here; it's persistent
         self._save_state()
-    
+
     def record_trade_result(self, symbol: str, regime: str, pnl: float, risk_taken: float) -> None:
         """
         Record completed trade result and update risk state.
-        
+
         Args:
             symbol: Instrument symbol
             regime: Market regime label
@@ -429,14 +462,16 @@ class HardRiskController:
             risk_taken: Risk exposure that was on the trade
         """
         self.state.daily_pnl += pnl
-        self.state.trade_history.append({
-            'timestamp': _utcnow().isoformat(),
-            'symbol': symbol,
-            'regime': regime,
-            'pnl': pnl,
-            'risk_taken': risk_taken,
-        })
-        
+        self.state.trade_history.append(
+            {
+                "timestamp": _utcnow().isoformat(),
+                "symbol": symbol,
+                "regime": regime,
+                "pnl": pnl,
+                "risk_taken": risk_taken,
+            }
+        )
+
         # Update consecutive loss counter
         if pnl < 0:
             self.state.consecutive_losses += 1
@@ -444,27 +479,26 @@ class HardRiskController:
             logger.warning(f"Loss recorded: {pnl:.2f} USD. Consecutive losses: {self.state.consecutive_losses}")
         else:
             self.state.consecutive_losses = 0
-        
+
         self._save_state()
-    
+
     def set_open_risk(self, symbol: str, regime: str, risk_amount: float) -> None:
         """
         Update open risk for a symbol/regime (called when opening positions).
-        
+
         Args:
             symbol: Instrument symbol
             regime: Market regime
             risk_amount: Current risk exposure (USD)
         """
         self.state.open_risk_by_symbol[symbol] = risk_amount
-        
+
         # Aggregate regime exposure
         regime_risk = sum(
-            v for k, v in self.state.open_risk_by_symbol.items()
-            if self._get_regime_for_symbol(k) == regime
+            v for k, v in self.state.open_risk_by_symbol.items() if self._get_regime_for_symbol(k) == regime
         )
         self.state.open_risk_all_regimes[regime] = regime_risk
-    
+
     def _get_regime_for_symbol(self, symbol: str) -> Optional[str]:
         """Get regime for a symbol (helper; in real code, query from RuntimeContext)."""
         # Placeholder: in actual integration, query from runtime_context.market_regime[symbol]
@@ -636,7 +670,9 @@ class HardRiskController:
         return buckets
 
     @staticmethod
-    def _sample_next_regime(current: str, transition_weights: dict[str, dict[str, float]], rng: np.random.Generator) -> str:
+    def _sample_next_regime(
+        current: str, transition_weights: dict[str, dict[str, float]], rng: np.random.Generator
+    ) -> str:
         bucket = transition_weights.get(current, {})
         if not bucket:
             return current
@@ -674,7 +710,9 @@ class HardRiskController:
             regime = self._sample_next_regime(regime, transition_weights, rng)
         return float(max_drawdown * 100.0)
 
-    def check_monte_carlo_drawdown_pre_trade(self, proposed_risk: float) -> tuple[bool, str, dict[str, float | str | bool | list[float]]]:
+    def check_monte_carlo_drawdown_pre_trade(
+        self, proposed_risk: float
+    ) -> tuple[bool, str, dict[str, float | str | bool | list[float]]]:
         limits = self._active_limits
         mode = str(limits.runtime_mode or "sim").strip().lower()
         threshold_pct = float(limits.mc_drawdown_threshold_pct)
@@ -758,9 +796,7 @@ class HardRiskController:
         should_block = bool(breached and self._mc_enforcement_enabled())
         self.state.mc_drawdown_breached = breached
         self.state.mc_drawdown_reason = (
-            f"MC projected max drawdown {worst:.2f}% > threshold {threshold_pct:.2f}%"
-            if breached
-            else "MC drawdown OK"
+            f"MC projected max drawdown {worst:.2f}% > threshold {threshold_pct:.2f}%" if breached else "MC drawdown OK"
         )
 
         payload = {
@@ -901,7 +937,8 @@ class HardRiskController:
 
         risk_state = str(self.state.active_risk_state or "NORMAL").upper()
         limit_multiplier = float(
-            limits.var_es_high_risk_limit_multiplier if risk_state in {"HIGH", "HIGH_RISK", "RISK_OFF"}
+            limits.var_es_high_risk_limit_multiplier
+            if risk_state in {"HIGH", "HIGH_RISK", "RISK_OFF"}
             else limits.var_es_normal_risk_limit_multiplier
         )
         eff_var95_limit = float(limits.var_95_limit_usd) * limit_multiplier
@@ -920,7 +957,9 @@ class HardRiskController:
             breached_reasons.append(f"ES99 {self.state.es_99_usd:.2f} > {eff_es99_limit:.2f}")
 
         self.state.var_es_breached = len(breached_reasons) > 0
-        self.state.var_es_reason = "VAR_ES OK" if not breached_reasons else "VAR_ES breached: " + " | ".join(breached_reasons)
+        self.state.var_es_reason = (
+            "VAR_ES OK" if not breached_reasons else "VAR_ES breached: " + " | ".join(breached_reasons)
+        )
         should_block = bool(self.state.var_es_breached and self._var_es_enforcement_enabled())
         payload = {
             "method": str(limits.var_es_method),
@@ -931,9 +970,9 @@ class HardRiskController:
             "es_99_usd": float(self.state.es_99_usd),
             "breached": bool(self.state.var_es_breached),
             "decision": "block" if should_block else "allow",
-            "reason_code": (
-                "VAR_ES_LIMIT_BREACH" if self.state.var_es_breached else "VAR_ES_OK"
-            ) if reason_codes_enabled else "",
+            "reason_code": ("VAR_ES_LIMIT_BREACH" if self.state.var_es_breached else "VAR_ES_OK")
+            if reason_codes_enabled
+            else "",
             "mode": mode,
             "risk_state": risk_state,
             "limit_multiplier": float(limit_multiplier),
@@ -950,21 +989,21 @@ class HardRiskController:
         """LIVING ORGANISM v51: Return latest VaR/ES snapshot and refresh values."""
         _ok, _reason, payload = self.check_var_es_pre_trade(proposed_risk=float(proposed_risk))
         return payload
-    
+
     def check_can_trade(self, symbol: str, regime: str, proposed_risk: float) -> tuple[bool, str]:
         """
         Main entry point: check if new trade is allowed.
-        
+
         Call this FIRST (immediately after market open) and LAST (before order submission).
         Fail-closed: any check failure = return (False, reason).
-        
+
         In learning/testing/backtest mode, rules are bypassed (returns OK).
-        
+
         Args:
             symbol: Instrument to trade
             regime: Current market regime
             proposed_risk: Risk amount for proposed trade (USD)
-        
+
         Returns:
             (allowed: bool, reason: str)
         """
@@ -975,7 +1014,7 @@ class HardRiskController:
         # 1. Kill-switch check (highest priority, persistent)
         if self.state.kill_switch_engaged:
             return False, f"KILL SWITCH ENGAGED: {self.state.kill_switch_reason} (since {self.state.kill_switch_time})"
-        
+
         # 2. Daily loss cap check
         limits = self._active_limits
 
@@ -989,13 +1028,15 @@ class HardRiskController:
                 nxt = self.session_guard.next_open()
                 suffix = f" | next_open={nxt.isoformat()}" if nxt is not None else ""
                 return False, f"SESSION GUARD blocked order: market closed{suffix}"
-            if limits.eod_no_new_trades_minutes_before_session_end > 0 and self.session_guard.should_block_new_eod_trades(
-                no_new_trades_minutes=limits.eod_no_new_trades_minutes_before_session_end
+            if (
+                limits.eod_no_new_trades_minutes_before_session_end > 0
+                and self.session_guard.should_block_new_eod_trades(
+                    no_new_trades_minutes=limits.eod_no_new_trades_minutes_before_session_end
+                )
             ):
                 minutes_to_close = self.session_guard.minutes_to_session_end()
                 return False, (
-                    "SESSION GUARD blocked order: within EOD no-new-trades window "
-                    f"({minutes_to_close:.1f}m to close)"
+                    f"SESSION GUARD blocked order: within EOD no-new-trades window ({minutes_to_close:.1f}m to close)"
                 )
 
         # 3. Daily loss cap check
@@ -1003,7 +1044,7 @@ class HardRiskController:
             reason = f"DAILY LOSS CAP breached: {self.state.daily_pnl:.2f} USD <= {limits.daily_loss_cap:.2f}"
             self._engage_kill_switch("daily_loss_cap", reason)
             return False, reason
-        
+
         # 4. Consecutive loss streak + cooldown
         if self.state.consecutive_losses >= limits.max_consecutive_losses:
             if self.state.last_loss_time:
@@ -1012,8 +1053,10 @@ class HardRiskController:
                 cooldown_period = timedelta(minutes=cooldown_minutes)
                 if elapsed < cooldown_period:
                     remaining = cooldown_period - elapsed
-                    reason = f"LOSS STREAK COOLDOWN: {self.state.consecutive_losses} consecutive losses, " \
-                            f"{remaining.total_seconds():.0f}s remaining"
+                    reason = (
+                        f"LOSS STREAK COOLDOWN: {self.state.consecutive_losses} consecutive losses, "
+                        f"{remaining.total_seconds():.0f}s remaining"
+                    )
                     return False, reason
                 else:
                     # Cooldown period expired, reset counter
@@ -1027,10 +1070,7 @@ class HardRiskController:
         # 5. Portfolio-level VaR + total open risk check
         total_open_risk = sum(float(v) for v in self.state.open_risk_by_symbol.values()) + float(proposed_risk)
         if total_open_risk > limits.max_total_open_risk:
-            reason = (
-                f"MAX TOTAL OPEN RISK exceeded: {total_open_risk:.2f} > "
-                f"{limits.max_total_open_risk:.2f}"
-            )
+            reason = f"MAX TOTAL OPEN RISK exceeded: {total_open_risk:.2f} > {limits.max_total_open_risk:.2f}"
             self.state.portfolio_var_breached = True
             self.state.portfolio_var_reason = reason
             return False, reason
@@ -1059,7 +1099,7 @@ class HardRiskController:
         mc_ok, mc_reason, _mc_payload = self.check_monte_carlo_drawdown_pre_trade(float(proposed_risk))
         if not mc_ok:
             return False, mc_reason
-        
+
         # 6. CME Margin requirement check (capital preservation)
         if self.state.margin_tracker is not None:
             snapshot_conf = float(self.state.margin_tracker.snapshot.confidence)
@@ -1084,54 +1124,55 @@ class HardRiskController:
                 logger.warning(stale_reason)
 
             total_margin_used = sum(
-                self.state.margin_tracker.get_margin_requirement(sym)
-                for sym in self.state.open_risk_by_symbol.keys()
+                self.state.margin_tracker.get_margin_requirement(sym) for sym in self.state.open_risk_by_symbol.keys()
             )
             if not self.state.margin_tracker.can_open_position(symbol, total_margin_used, safety_buffer_pct=0.2):
                 margin_avail = self.state.margin_tracker.available_margin(total_margin_used)
                 margin_req = self.state.margin_tracker.get_margin_requirement(symbol)
                 reason = f"CME MARGIN insufficient for {symbol}: {margin_req:.0f} required, {margin_avail:.0f} available (20% buffer applied)"
                 return False, reason
-        
+
         # 7. Per-instrument open risk check
         current_symbol_risk = self.state.open_risk_by_symbol.get(symbol, 0.0)
         total_symbol_risk = current_symbol_risk + proposed_risk
         if total_symbol_risk > limits.max_open_risk_per_instrument:
             reason = f"MAX INSTRUMENT RISK exceeded for {symbol}: {total_symbol_risk:.2f} > {limits.max_open_risk_per_instrument:.2f}"
             return False, reason
-        
+
         # 8. Per-regime exposure check
         current_regime_risk = self.state.open_risk_all_regimes.get(regime, 0.0)
         total_regime_risk = current_regime_risk + proposed_risk
         if total_regime_risk > limits.max_exposure_per_regime:
             reason = f"MAX REGIME EXPOSURE exceeded for {regime}: {total_regime_risk:.2f} > {limits.max_exposure_per_regime:.2f}"
             return False, reason
-        
+
         # All checks passed
         return True, "OK"
-    
+
     def _engage_kill_switch(self, rule: str, reason: str) -> None:
         """
         Engage the hard kill-switch (persistent state).
-        
+
         This is PERMANENT until manually reset (fail-closed safety model).
         """
         if self.state.kill_switch_engaged:
             return  # Already engaged
-        
+
         self.state.kill_switch_engaged = True
         self.state.kill_switch_reason = f"{rule}: {reason}"
         self.state.kill_switch_time = _utcnow()
-        
-        logger.critical(f"!!! KILL SWITCH ENGAGED !!!\nReason: {self.state.kill_switch_reason}\n"
-                       f"Time: {self.state.kill_switch_time}\nNO NEW ORDERS ALLOWED")
-        
+
+        logger.critical(
+            f"!!! KILL SWITCH ENGAGED !!!\nReason: {self.state.kill_switch_reason}\n"
+            f"Time: {self.state.kill_switch_time}\nNO NEW ORDERS ALLOWED"
+        )
+
         self._save_state()
-    
+
     def reset_kill_switch(self, authorization_code: str = "") -> bool:
         """
         Manually reset kill-switch (requires authorization in production).
-        
+
         This is intentionally restricted to prevent accidental re-engagement of trading.
         In production, this should require:
         - Admin API key
@@ -1141,46 +1182,46 @@ class HardRiskController:
         if not self.state.kill_switch_engaged:
             logger.info("Kill-switch is not engaged, no reset needed")
             return True
-        
+
         logger.warning(f"Resetting kill-switch. Previous reason: {self.state.kill_switch_reason}")
         self.state.kill_switch_engaged = False
         self.state.kill_switch_reason = ""
         self.state.kill_switch_time = None
         self._save_state()
         return True
-    
+
     def set_enforce_rules(self, enforce: bool) -> None:
         """
         Change enforcement mode (learning/testing vs. live).
-        
+
         Args:
             enforce: True for live mode (rules enforced), False for learning/testing
         """
         mode_str = "ENFORCED" if enforce else "LEARNING/TESTING (rules bypassed)"
         logger.info(f"Risk enforcement changed: {mode_str}")
         self.enforce_rules = enforce
-    
+
     def health_check_market_open(self, symbol: str, regime: str) -> tuple[bool, str]:
         """
         FIRST check: called immediately after market open.
         Verifies risk state is healthy before trading begins.
-        
+
         This is separate from check_can_trade to allow for initialization/warmup logic.
-        
+
         Args:
             symbol: Primary trading symbol
             regime: Current market regime
-        
+
         Returns:
             (healthy: bool, status_message: str)
         """
         if not self.enforce_rules:
             return True, "Market open health check passed (learning mode)"
-        
+
         # Check if kill-switch is engaged
         if self.state.kill_switch_engaged:
             return False, f"KILL SWITCH ENGAGED at market open: {self.state.kill_switch_reason}"
-        
+
         # Check if we're in cooldown
         limits = self._active_limits
         if self.state.consecutive_losses >= limits.max_consecutive_losses:
@@ -1191,105 +1232,109 @@ class HardRiskController:
                 if elapsed < cooldown_period:
                     remaining = cooldown_period - elapsed
                     return False, f"LOSS STREAK COOLDOWN active: {remaining.total_seconds():.0f}s remaining"
-        
+
         # All good
-        logger.info(f"Market open health check passed. Daily P&L: {self.state.daily_pnl:.2f}, "
-                   f"Consecutive losses: {self.state.consecutive_losses}")
+        logger.info(
+            f"Market open health check passed. Daily P&L: {self.state.daily_pnl:.2f}, "
+            f"Consecutive losses: {self.state.consecutive_losses}"
+        )
         return True, "Market open health check passed"
-    
+
     def get_status(self) -> dict:
         """Return current risk state for monitoring/dashboards."""
         return {
-            'daily_pnl': self.state.daily_pnl,
-            'daily_pnl_cap': self._active_limits.daily_loss_cap,
-            'daily_pnl_remaining': self._active_limits.daily_loss_cap - self.state.daily_pnl,
-            'consecutive_losses': self.state.consecutive_losses,
-            'max_consecutive_losses': self._active_limits.max_consecutive_losses,
-            'last_loss_time': self.state.last_loss_time.isoformat() if self.state.last_loss_time else None,
-            'cooldown_remaining_minutes': self._cooldown_remaining_minutes(),
-            'open_risk_by_symbol': dict(self.state.open_risk_by_symbol),
-            'open_risk_by_regime': dict(self.state.open_risk_all_regimes),
-            'kill_switch_engaged': self.state.kill_switch_engaged,
-            'kill_switch_reason': self.state.kill_switch_reason,
-            'kill_switch_time': self.state.kill_switch_time.isoformat() if self.state.kill_switch_time else None,
-            'active_regime': self.state.active_regime,
-            'active_risk_state': self.state.active_risk_state,
-            'active_limits': {
-                'daily_loss_cap': self._active_limits.daily_loss_cap,
-                'max_consecutive_losses': self._active_limits.max_consecutive_losses,
-                'max_open_risk_per_instrument': self._active_limits.max_open_risk_per_instrument,
-                'max_total_open_risk': self._active_limits.max_total_open_risk,
-                'max_exposure_per_regime': self._active_limits.max_exposure_per_regime,
-                'cooldown_after_streak': self._active_limits.cooldown_after_streak,
-                'session_cooldown_minutes': self._active_limits.session_cooldown_minutes,
-                'enforce_session_guard': self._active_limits.enforce_session_guard,
-                'eod_force_close_minutes_before_session_end': self._active_limits.eod_force_close_minutes_before_session_end,
-                'eod_no_new_trades_minutes_before_session_end': self._active_limits.eod_no_new_trades_minutes_before_session_end,
-                'margin_min_confidence': self._active_limits.margin_min_confidence,
-                'var_es_method': self._active_limits.var_es_method,
-                'var_es_window': self._active_limits.var_es_window,
-                'var_es_min_samples': self._active_limits.var_es_min_samples,
-                'var_95_limit_usd': self._active_limits.var_95_limit_usd,
-                'var_99_limit_usd': self._active_limits.var_99_limit_usd,
-                'es_95_limit_usd': self._active_limits.es_95_limit_usd,
-                'es_99_limit_usd': self._active_limits.es_99_limit_usd,
-                'mc_drawdown_paths': self._active_limits.mc_drawdown_paths,
-                'mc_drawdown_horizon_days': self._active_limits.mc_drawdown_horizon_days,
-                'mc_drawdown_threshold_pct': self._active_limits.mc_drawdown_threshold_pct,
-                'var_es_insufficient_data_policy': self._active_limits.var_es_insufficient_data_policy,
-                'enable_var_es_calc': self._active_limits.enable_var_es_calc,
-                'enable_var_es_enforce_sim_real_guard': self._active_limits.enable_var_es_enforce_sim_real_guard,
-                'enable_var_es_enforce_real': self._active_limits.enable_var_es_enforce_real,
-                'enable_mc_drawdown_calc': self._active_limits.enable_mc_drawdown_calc,
-                'enable_mc_drawdown_enforce_sim_real_guard': self._active_limits.enable_mc_drawdown_enforce_sim_real_guard,
-                'enable_mc_drawdown_enforce_real': self._active_limits.enable_mc_drawdown_enforce_real,
-                'mc_drawdown_insufficient_data_policy': self._active_limits.mc_drawdown_insufficient_data_policy,
-                'var_es_high_risk_limit_multiplier': self._active_limits.var_es_high_risk_limit_multiplier,
-                'var_es_normal_risk_limit_multiplier': self._active_limits.var_es_normal_risk_limit_multiplier,
-                'runtime_mode': self._active_limits.runtime_mode,
-                'real_capital_safety_threshold_usd': self._active_limits.real_capital_safety_threshold_usd,
+            "daily_pnl": self.state.daily_pnl,
+            "daily_pnl_cap": self._active_limits.daily_loss_cap,
+            "daily_pnl_remaining": self._active_limits.daily_loss_cap - self.state.daily_pnl,
+            "consecutive_losses": self.state.consecutive_losses,
+            "max_consecutive_losses": self._active_limits.max_consecutive_losses,
+            "last_loss_time": self.state.last_loss_time.isoformat() if self.state.last_loss_time else None,
+            "cooldown_remaining_minutes": self._cooldown_remaining_minutes(),
+            "open_risk_by_symbol": dict(self.state.open_risk_by_symbol),
+            "open_risk_by_regime": dict(self.state.open_risk_all_regimes),
+            "kill_switch_engaged": self.state.kill_switch_engaged,
+            "kill_switch_reason": self.state.kill_switch_reason,
+            "kill_switch_time": self.state.kill_switch_time.isoformat() if self.state.kill_switch_time else None,
+            "active_regime": self.state.active_regime,
+            "active_risk_state": self.state.active_risk_state,
+            "active_limits": {
+                "daily_loss_cap": self._active_limits.daily_loss_cap,
+                "max_consecutive_losses": self._active_limits.max_consecutive_losses,
+                "max_open_risk_per_instrument": self._active_limits.max_open_risk_per_instrument,
+                "max_total_open_risk": self._active_limits.max_total_open_risk,
+                "max_exposure_per_regime": self._active_limits.max_exposure_per_regime,
+                "cooldown_after_streak": self._active_limits.cooldown_after_streak,
+                "session_cooldown_minutes": self._active_limits.session_cooldown_minutes,
+                "enforce_session_guard": self._active_limits.enforce_session_guard,
+                "eod_force_close_minutes_before_session_end": self._active_limits.eod_force_close_minutes_before_session_end,
+                "eod_no_new_trades_minutes_before_session_end": self._active_limits.eod_no_new_trades_minutes_before_session_end,
+                "margin_min_confidence": self._active_limits.margin_min_confidence,
+                "var_es_method": self._active_limits.var_es_method,
+                "var_es_window": self._active_limits.var_es_window,
+                "var_es_min_samples": self._active_limits.var_es_min_samples,
+                "var_95_limit_usd": self._active_limits.var_95_limit_usd,
+                "var_99_limit_usd": self._active_limits.var_99_limit_usd,
+                "es_95_limit_usd": self._active_limits.es_95_limit_usd,
+                "es_99_limit_usd": self._active_limits.es_99_limit_usd,
+                "mc_drawdown_paths": self._active_limits.mc_drawdown_paths,
+                "mc_drawdown_horizon_days": self._active_limits.mc_drawdown_horizon_days,
+                "mc_drawdown_threshold_pct": self._active_limits.mc_drawdown_threshold_pct,
+                "var_es_insufficient_data_policy": self._active_limits.var_es_insufficient_data_policy,
+                "enable_var_es_calc": self._active_limits.enable_var_es_calc,
+                "enable_var_es_enforce_sim_real_guard": self._active_limits.enable_var_es_enforce_sim_real_guard,
+                "enable_var_es_enforce_real": self._active_limits.enable_var_es_enforce_real,
+                "enable_mc_drawdown_calc": self._active_limits.enable_mc_drawdown_calc,
+                "enable_mc_drawdown_enforce_sim_real_guard": self._active_limits.enable_mc_drawdown_enforce_sim_real_guard,
+                "enable_mc_drawdown_enforce_real": self._active_limits.enable_mc_drawdown_enforce_real,
+                "mc_drawdown_insufficient_data_policy": self._active_limits.mc_drawdown_insufficient_data_policy,
+                "var_es_high_risk_limit_multiplier": self._active_limits.var_es_high_risk_limit_multiplier,
+                "var_es_normal_risk_limit_multiplier": self._active_limits.var_es_normal_risk_limit_multiplier,
+                "runtime_mode": self._active_limits.runtime_mode,
+                "real_capital_safety_threshold_usd": self._active_limits.real_capital_safety_threshold_usd,
             },
-            'portfolio_var': {
-                'value_usd': self.state.portfolio_var_usd,
-                'limit_usd': self.state.portfolio_var_limit_usd,
-                'breached': self.state.portfolio_var_breached,
-                'reason': self.state.portfolio_var_reason,
+            "portfolio_var": {
+                "value_usd": self.state.portfolio_var_usd,
+                "limit_usd": self.state.portfolio_var_limit_usd,
+                "breached": self.state.portfolio_var_breached,
+                "reason": self.state.portfolio_var_reason,
             },
-            'var_es': {
-                'var_95_usd': self.state.var_95_usd,
-                'var_99_usd': self.state.var_99_usd,
-                'es_95_usd': self.state.es_95_usd,
-                'es_99_usd': self.state.es_99_usd,
-                'breached': self.state.var_es_breached,
-                'reason': self.state.var_es_reason,
-                'method': self._active_limits.var_es_method,
-                'window': self._active_limits.var_es_window,
+            "var_es": {
+                "var_95_usd": self.state.var_95_usd,
+                "var_99_usd": self.state.var_99_usd,
+                "es_95_usd": self.state.es_95_usd,
+                "es_99_usd": self.state.es_99_usd,
+                "breached": self.state.var_es_breached,
+                "reason": self.state.var_es_reason,
+                "method": self._active_limits.var_es_method,
+                "window": self._active_limits.var_es_window,
             },
-            'monte_carlo_drawdown': {
-                'p50_pct': self.state.mc_drawdown_p50_pct,
-                'p95_pct': self.state.mc_drawdown_p95_pct,
-                'p99_pct': self.state.mc_drawdown_p99_pct,
-                'projected_max_pct': self.state.mc_drawdown_worst_pct,
-                'threshold_pct': self.state.mc_drawdown_threshold_pct,
-                'breached': self.state.mc_drawdown_breached,
-                'reason': self.state.mc_drawdown_reason,
-                'samples': self.state.mc_drawdown_samples,
-                'paths_run': self.state.mc_drawdown_paths_run,
+            "monte_carlo_drawdown": {
+                "p50_pct": self.state.mc_drawdown_p50_pct,
+                "p95_pct": self.state.mc_drawdown_p95_pct,
+                "p99_pct": self.state.mc_drawdown_p99_pct,
+                "projected_max_pct": self.state.mc_drawdown_worst_pct,
+                "threshold_pct": self.state.mc_drawdown_threshold_pct,
+                "breached": self.state.mc_drawdown_breached,
+                "reason": self.state.mc_drawdown_reason,
+                "samples": self.state.mc_drawdown_samples,
+                "paths_run": self.state.mc_drawdown_paths_run,
             },
-            'margin_snapshot': (
-                self.state.margin_tracker.snapshot_status() if self.state.margin_tracker is not None else {
-                    'source': 'unavailable',
-                    'stale': True,
+            "margin_snapshot": (
+                self.state.margin_tracker.snapshot_status()
+                if self.state.margin_tracker is not None
+                else {
+                    "source": "unavailable",
+                    "stale": True,
                 }
             ),
-            'recent_trades': list(self.state.trade_history)[-10:],
+            "recent_trades": list(self.state.trade_history)[-10:],
         }
-    
+
     def _cooldown_remaining_minutes(self) -> float:
         """Calculate remaining cooldown time in minutes."""
         if not self.state.last_loss_time or self.state.consecutive_losses < self._active_limits.max_consecutive_losses:
             return 0.0
-        
+
         elapsed = _utcnow() - self.state.last_loss_time
         cooldown_minutes = max(
             self._active_limits.cooldown_after_streak,
@@ -1297,7 +1342,7 @@ class HardRiskController:
         )
         cooldown_period = timedelta(minutes=cooldown_minutes)
         remaining = cooldown_period - elapsed
-        
+
         return max(0.0, remaining.total_seconds() / 60.0)
 
     def should_force_close_eod(self) -> tuple[bool, str]:
@@ -1322,6 +1367,7 @@ class HardRiskController:
 # Public factory: mode-aware RiskLimits constructor
 # ---------------------------------------------------------------------------
 
+
 def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     """
     Build a RiskLimits from config.yaml honoring the top-level ``mode`` key.
@@ -1345,11 +1391,7 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
         except Exception:
             config = {}
 
-    global_mode = str(
-        os.getenv("LUMINA_MODE")
-        or os.getenv("TRADE_MODE")
-        or config.get("mode", "sim")
-    ).strip().lower()
+    global_mode = str(os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or config.get("mode", "sim")).strip().lower()
     is_sim = global_mode == "sim"
 
     risk_cfg = config.get("risk_controller", {}) if isinstance(config.get("risk_controller"), dict) else {}
@@ -1364,9 +1406,7 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     cooldown_after_streak = int(risk_cfg.get("cooldown_after_streak", 30))
     session_cooldown_minutes = int(risk_cfg.get("session_cooldown_minutes", 15))
     enforce_session_guard = bool(risk_cfg.get("enforce_session_guard", True))
-    eod_force_close_minutes_before_session_end = int(
-        trading_cfg.get("eod_force_close_minutes_before_session_end", 30)
-    )
+    eod_force_close_minutes_before_session_end = int(trading_cfg.get("eod_force_close_minutes_before_session_end", 30))
     eod_no_new_trades_minutes_before_session_end = int(
         trading_cfg.get("eod_no_new_trades_minutes_before_session_end", 60)
     )
@@ -1375,7 +1415,11 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     var_es_window = int(risk_cfg.get("var_es_window", 200) or 200)
     var_es_min_samples = int(risk_cfg.get("var_es_min_samples", 40) or 40)
     var_es_fail_closed_on_insufficient_data = bool(risk_cfg.get("var_es_fail_closed_on_insufficient_data", False))
-    var_es_insufficient_data_policy = str(risk_cfg.get("var_es_insufficient_data_policy", "fail_closed_real_only") or "fail_closed_real_only").strip().lower()
+    var_es_insufficient_data_policy = (
+        str(risk_cfg.get("var_es_insufficient_data_policy", "fail_closed_real_only") or "fail_closed_real_only")
+        .strip()
+        .lower()
+    )
     enable_var_es_calc = bool(risk_cfg.get("enable_var_es_calc", True))
     enable_var_es_enforce_sim_real_guard = bool(risk_cfg.get("enable_var_es_enforce_sim_real_guard", True))
     enable_var_es_enforce_real = bool(risk_cfg.get("enable_var_es_enforce_real", True))
@@ -1390,7 +1434,9 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     mc_drawdown_paths = int(risk_cfg.get("mc_drawdown_paths", 10000) or 10000)
     mc_drawdown_horizon_days = int(risk_cfg.get("mc_drawdown_horizon_days", 252) or 252)
     mc_drawdown_min_samples = int(risk_cfg.get("mc_drawdown_min_samples", 40) or 40)
-    mc_drawdown_insufficient_data_policy = str(risk_cfg.get("mc_drawdown_insufficient_data_policy", "advisory") or "advisory").strip().lower()
+    mc_drawdown_insufficient_data_policy = (
+        str(risk_cfg.get("mc_drawdown_insufficient_data_policy", "advisory") or "advisory").strip().lower()
+    )
     enable_mc_drawdown_enforce_sim_real_guard = bool(risk_cfg.get("enable_mc_drawdown_enforce_sim_real_guard", True))
     enable_mc_drawdown_enforce_real = bool(risk_cfg.get("enable_mc_drawdown_enforce_real", True))
     mc_drawdown_threshold_pct = float(risk_cfg.get("mc_drawdown_threshold_pct", 12.0) or 12.0)
@@ -1426,7 +1472,9 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
         if real_profile.get("eod_force_close_minutes_before_session_end") is not None:
             eod_force_close_minutes_before_session_end = int(real_profile["eod_force_close_minutes_before_session_end"])
         if real_profile.get("eod_no_new_trades_minutes_before_session_end") is not None:
-            eod_no_new_trades_minutes_before_session_end = int(real_profile["eod_no_new_trades_minutes_before_session_end"])
+            eod_no_new_trades_minutes_before_session_end = int(
+                real_profile["eod_no_new_trades_minutes_before_session_end"]
+            )
         if real_profile.get("margin_min_confidence") is not None:
             margin_min_confidence = float(real_profile["margin_min_confidence"])
         if real_profile.get("var_es_method") is not None:
@@ -1468,7 +1516,9 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
         if real_profile.get("mc_drawdown_min_samples") is not None:
             mc_drawdown_min_samples = int(real_profile["mc_drawdown_min_samples"])
         if real_profile.get("mc_drawdown_insufficient_data_policy") is not None:
-            mc_drawdown_insufficient_data_policy = str(real_profile["mc_drawdown_insufficient_data_policy"]).strip().lower()
+            mc_drawdown_insufficient_data_policy = (
+                str(real_profile["mc_drawdown_insufficient_data_policy"]).strip().lower()
+            )
         if real_profile.get("enable_mc_drawdown_enforce_sim_real_guard") is not None:
             enable_mc_drawdown_enforce_sim_real_guard = bool(real_profile["enable_mc_drawdown_enforce_sim_real_guard"])
         if real_profile.get("enable_mc_drawdown_enforce_real") is not None:

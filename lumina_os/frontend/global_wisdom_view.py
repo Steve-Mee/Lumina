@@ -35,6 +35,6 @@ def render_global_wisdom_tab(api_base_url: str) -> None:
     col1.metric("Global Wisdom Score", f"{score:.2f}")
     col2.metric("Tracked Bibles", count)
 
-    st.dataframe(wisdom_df, width='stretch')
+    st.dataframe(wisdom_df, width="stretch")
 
     st.caption("Tip: upload bibles/reflections through backend endpoints to enrich collective intelligence.")

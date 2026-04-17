@@ -110,7 +110,9 @@ def test_websocket_drop_is_handled(market_data_service: MarketDataService, monke
 
 @pytest.mark.chaos_websocket
 @pytest.mark.chaos_websocket_reconnect
-def test_websocket_connect_uses_ping_timeouts(market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_websocket_connect_uses_ping_timeouts(
+    market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch
+) -> None:
     captured: dict[str, object] = {}
 
     def _capture(uri, **kwargs):
@@ -127,7 +129,9 @@ def test_websocket_connect_uses_ping_timeouts(market_data_service: MarketDataSer
 
 @pytest.mark.chaos_api
 @pytest.mark.chaos_api_5xx_storm
-def test_api_5xx_storm_returns_safe_default(market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_5xx_storm_returns_safe_default(
+    market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch
+) -> None:
     response = SimpleNamespace(status_code=503, json=lambda: {"last": 9999, "volume": 1})
     monkeypatch.setattr("lumina_core.engine.market_data_service.requests.get", lambda *_, **__: response)
 
@@ -181,7 +185,9 @@ def test_market_data_latency_recovery_disables_fast_path(market_data_service: Ma
 
 @pytest.mark.chaos_inference
 @pytest.mark.chaos_inference_timeout
-def test_inference_timeout_degrades_to_hold(reasoning_service: ReasoningService, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_inference_timeout_degrades_to_hold(
+    reasoning_service: ReasoningService, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _timeout(*args, **kwargs):
         raise TimeoutError("provider timeout")
 
@@ -482,7 +488,10 @@ def test_regime_flip_tightens_risk_limits(lightweight_engine: SimpleNamespace) -
 
     reasoning = ReasoningService(
         engine=cast(LuminaEngine, lightweight_engine),
-        inference_engine=cast(LocalInferenceEngine, SimpleNamespace(infer_json=lambda *args, **kwargs: {"signal": "BUY", "confidence": 0.8, "reason": "ok"})),
+        inference_engine=cast(
+            LocalInferenceEngine,
+            SimpleNamespace(infer_json=lambda *args, **kwargs: {"signal": "BUY", "confidence": 0.8, "reason": "ok"}),
+        ),
         regime_detector=lightweight_engine.regime_detector,
     )
 

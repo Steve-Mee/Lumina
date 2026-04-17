@@ -43,7 +43,9 @@ class RLGuardrailLayer:
         safe["qty_pct"] = max(self.min_qty_pct, min(qty_cap, qty_pct))
         safe["stop_mult"] = max(self.min_stop_mult, min(stop_cap, stop_mult))
 
-        divergence = bool(rl_signal in {"BUY", "SELL"} and baseline in {"BUY", "SELL", "HOLD"} and rl_signal != baseline)
+        divergence = bool(
+            rl_signal in {"BUY", "SELL"} and baseline in {"BUY", "SELL", "HOLD"} and rl_signal != baseline
+        )
         streak = int(shadow.get("divergence_streak", 0) or 0)
         streak = streak + 1 if divergence else 0
         shadow["divergence_streak"] = streak

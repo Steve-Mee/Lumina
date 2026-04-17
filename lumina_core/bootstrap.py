@@ -37,7 +37,7 @@ def publish_traderleague_trade_close(
 ) -> bool:
     """
     Publish a closed trade to TraderLeague with HMAC signature.
-    
+
     This is intentionally fail-safe: it never raises into the trading loop.
     """
     enabled = os.getenv("TRADERLEAGUE_WEBHOOK_ENABLED", "false").lower() == "true"
@@ -125,7 +125,7 @@ def publish_traderleague_trade_close(
 def run_traderleague_webhook_self_test(container: ApplicationContainer) -> bool:
     """
     Send one synthetic trade-close event on startup in dev mode.
-    
+
     Controlled by env vars and always fail-safe.
     """
     app_env = os.getenv("APP_ENV", "prod").strip().lower()
@@ -175,49 +175,42 @@ def run_traderleague_webhook_self_test(container: ApplicationContainer) -> bool:
 def create_public_api(container: ApplicationContainer) -> dict[str, Callable]:
     """
     Create the public API from the container services.
-    
+
     This exposes all commonly-used functionality without requiring import of individual services.
     """
     return {
         # Analysis and decision-making
         "human_like_main_loop": container.analysis_service.run_main_loop,
         "deep_analysis": container.analysis_service.deep_analysis,
-        
         # Dashboard and visualization
         "update_performance_log": container.dashboard_service.update_performance_log,
         "generate_strategy_heatmap": container.dashboard_service.generate_strategy_heatmap,
         "generate_performance_summary": container.dashboard_service.generate_performance_summary,
         "start_dashboard": container.dashboard_service.start_dashboard,
-        
         # Reporting
         "generate_daily_journal": container.reporting_service.generate_daily_journal,
         "generate_professional_pdf_journal": container.reporting_service.generate_professional_pdf_journal,
         "auto_journal_daemon": container.reporting_service.auto_journal_daemon,
         "run_auto_backtest": container.reporting_service.run_auto_backtest,
         "backtest_reflection": container.reporting_service.backtest_reflection,
-        
         # Market data
         "start_websocket": container.market_data_service.start_websocket,
         "fetch_quote": container.market_data_service.fetch_quote,
         "load_historical_ohlc": container.market_data_service.load_historical_ohlc,
         "gap_recovery_daemon": container.market_data_service.gap_recovery_daemon,
-        
         # Operations
         "thought_logger_thread": container.operations_service.thought_logger_thread,
         "log_thought": container.operations_service.log_thought,
         "place_order": container.operations_service.place_order,
         "emergency_stop": container.operations_service.emergency_stop,
         "run_forever_loop": container.operations_service.run_forever_loop,
-        
         # Memory and reasoning
         "store_experience_to_vector_db": container.memory_service.store_experience_to_vector_db,
         "retrieve_relevant_experiences": container.memory_service.retrieve_relevant_experiences,
         "infer_json": container.reasoning_service.infer_json,
-        
         # Trading and reconciliation
         "start_trade_reconciler": container.trade_reconciler.start,
         "stop_trade_reconciler": container.trade_reconciler.stop,
-        
         # Risk management
         "health_check_market_open": lambda symbol, regime: trade_workers.health_check_market_open(
             container.runtime_context, symbol, regime
@@ -225,23 +218,18 @@ def create_public_api(container: ApplicationContainer) -> dict[str, Callable]:
         "check_pre_trade_risk": lambda symbol, regime, risk: trade_workers.check_pre_trade_risk(
             container.runtime_context, symbol, regime, risk
         ),
-        
         # Agents
         "run_news_cycle": container.news_agent.run_cycle,
         "run_emotional_twin_cycle": container.emotional_twin_agent.run_cycle,
-        
         # Swarm
         "run_swarm_cycle": container.swarm_manager.run_cycle,
         "generate_swarm_dashboard_plot": container.swarm_manager.generate_dashboard_plot,
-        
         # Performance validation
         "run_performance_validation_cycle": container.performance_validator.run_validation_cycle,
         "generate_monthly_performance_report": container.performance_validator.generate_monthly_report_pdf,
-        
         # Inference
         "inference_set_backend": container.local_inference_engine.set_backend,
         "inference_get_backend": container.local_inference_engine.get_backend,
-        
         # Engine operations
         "save_state": container.engine.save_state,
         "load_state": container.engine.load_state,
@@ -249,10 +237,8 @@ def create_public_api(container: ApplicationContainer) -> dict[str, Callable]:
         "get_current_dream_snapshot": container.engine.get_current_dream_snapshot,
         "generate_price_action_summary": container.engine.generate_price_action_summary,
         "is_significant_event": container.engine.is_significant_event,
-        
         # Operations service
         "get_mtf_snapshots": container.operations_service.get_mtf_snapshots,
-        
         # TraderLeague integration
         "publish_traderleague_trade_close": lambda **kwargs: publish_traderleague_trade_close(container, **kwargs),
         "run_traderleague_webhook_self_test": lambda: run_traderleague_webhook_self_test(container),
@@ -262,12 +248,12 @@ def create_public_api(container: ApplicationContainer) -> dict[str, Callable]:
 def bootstrap_runtime(container: ApplicationContainer) -> None:
     """
     Initialize and start all runtime services.
-    
+
     This is called once at application startup to configure market data,
     load history, and start all daemon threads.
     """
     container.logger.info("🚀 Bootstrap runtime services starting...")
-    
+
     # Load historical data and initialize swarm
     container.market_data_service.load_historical_ohlc(days_back=3, limit=5000)
     for symbol in container.swarm_symbols:
@@ -279,17 +265,17 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
                 container.swarm_manager.ingest_historical_rows(symbol=symbol, rows_df=symbol_df)
         except Exception as exc:
             container.logger.error(f"Swarm historical bootstrap error for {symbol}: {exc}")
-    
+
     # Run initial swarm cycle
     _ = container.swarm_manager.run_cycle()
     container.swarm_manager.apply_to_primary_dream()
     dashboard_path = container.swarm_manager.generate_dashboard_plot()
     if dashboard_path:
         container.engine.set_current_dream_value("swarm_dashboard_path", dashboard_path)
-    
+
     # Test TraderLeague webhook if enabled
     run_traderleague_webhook_self_test(container)
-    
+
     # Start all runtime services and daemons
     start_runtime_services(
         start_daemon_fn=start_daemon,
@@ -314,9 +300,9 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
         auto_journal_daemon_fn=container.reporting_service.auto_journal_daemon,
         auto_backtest_daemon_fn=container.reporting_service.auto_backtest_daemon,
     )
-    
+
     # Start performance validator daemon
     start_daemon(container.performance_validator.monthly_validation_daemon, name="performance-validator-daemon")
-    
+
     container.logger.info("🛡️ v50 Stability & Watchdog active - bot is now 24/7 production-ready")
     container.logger.info(f"🕸️ Swarm active on symbols: {', '.join(container.swarm_symbols)}")

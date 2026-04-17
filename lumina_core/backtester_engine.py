@@ -56,7 +56,9 @@ class BacktesterEngine:
             "walk_forward_optimization": walk_forward_opt,
         }
 
-    def generate_full_report(self, snapshot: list[dict[str, Any]], output_dir: str = "journal/backtests") -> dict[str, Any]:
+    def generate_full_report(
+        self, snapshot: list[dict[str, Any]], output_dir: str = "journal/backtests"
+    ) -> dict[str, Any]:
         core = self.run_snapshot_backtest(snapshot)
         out_dir = Path(output_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -123,7 +125,9 @@ class BacktesterEngine:
         dream_snapshot = self.app.get_current_dream_snapshot()
         signal = str(dream_snapshot.get("signal", "HOLD"))
         confluence = float(dream_snapshot.get("confluence_score", 0.0))
-        min_confluence = float(min_confluence_override if min_confluence_override is not None else getattr(self.app, "MIN_CONFLUENCE", 0.8))
+        min_confluence = float(
+            min_confluence_override if min_confluence_override is not None else getattr(self.app, "MIN_CONFLUENCE", 0.8)
+        )
 
         for i in range(60, len(snapshot)):
             row = snapshot[i]
@@ -136,7 +140,7 @@ class BacktesterEngine:
                 price += rng.gauss(0.0, gap_std_points)
                 gap_events += 1
             volume = float(row.get("volume", 0.0))
-            recent = snapshot[max(0, i - 30):i]
+            recent = snapshot[max(0, i - 30) : i]
             avg_volume = self._avg_volume(recent)
             regime = self._regime_from_snapshot(snapshot[: i + 1])
             regime_label = self._normalize_regime(regime)
@@ -164,8 +168,12 @@ class BacktesterEngine:
             if position != 0:
                 stop = float(dream_snapshot.get("stop", 0.0))
                 target = float(dream_snapshot.get("target", 0.0))
-                hit_stop = (position > 0 and stop > 0 and price <= stop) or (position < 0 and stop > 0 and price >= stop)
-                hit_target = (position > 0 and target > 0 and price >= target) or (position < 0 and target > 0 and price <= target)
+                hit_stop = (position > 0 and stop > 0 and price <= stop) or (
+                    position < 0 and stop > 0 and price >= stop
+                )
+                hit_target = (position > 0 and target > 0 and price >= target) or (
+                    position < 0 and target > 0 and price <= target
+                )
 
                 if hit_stop or hit_target:
                     slip_ticks = self._slippage_ticks(volume, avg_volume, regime, slippage_scale=slippage_scale)
@@ -459,7 +467,15 @@ class BacktesterEngine:
                     header={"values": ["Metric", "Value"]},
                     cells={
                         "values": [
-                            ["trades", "net_pnl", "sharpe", "winrate", "maxdd", "avg_slippage_ticks", "commission_paid"],
+                            [
+                                "trades",
+                                "net_pnl",
+                                "sharpe",
+                                "winrate",
+                                "maxdd",
+                                "avg_slippage_ticks",
+                                "commission_paid",
+                            ],
                             [
                                 str(summary.get("trades", 0)),
                                 f"{float(summary.get('net_pnl', 0.0)):.2f}",

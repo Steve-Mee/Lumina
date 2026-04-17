@@ -42,9 +42,7 @@ class PPOTrainer:
 
     def train(self, total_timesteps: int = 100000):
         """Nightly training - run na backtest."""
-        print(
-            f"[{datetime.now().strftime('%H:%M:%S')}] PPO Training started ({total_timesteps} steps)"
-        )
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] PPO Training started ({total_timesteps} steps)")
         self.model.learn(total_timesteps=total_timesteps, progress_bar=True)
         self.model.save("lumina_ppo_model")
         print("PPO model saved - policy updated")

@@ -170,7 +170,9 @@ def enforce_contract(
                         },
                     }
                 )
-                raise AgentContractError(f"Contract validation failed for {type(self).__name__}.{func.__name__}: {exc}") from exc
+                raise AgentContractError(
+                    f"Contract validation failed for {type(self).__name__}.{func.__name__}: {exc}"
+                ) from exc
 
             output_dict = dict(result) if isinstance(result, dict) else validated_output.model_dump(mode="json")
             required_output = validated_output.model_dump(mode="json")
@@ -197,7 +199,9 @@ def enforce_contract(
     return decorator
 
 
-def validate_execution_decision(*, signal: str, confluence_score: float, min_confluence: float, hold_until_ts: float) -> dict[str, Any]:
+def validate_execution_decision(
+    *, signal: str, confluence_score: float, min_confluence: float, hold_until_ts: float
+) -> dict[str, Any]:
     return apply_agent_policy_gateway(
         signal=signal,
         confluence_score=confluence_score,

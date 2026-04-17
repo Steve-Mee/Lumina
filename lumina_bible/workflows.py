@@ -46,11 +46,7 @@ def _infer_json(app: Any, payload: dict[str, Any], timeout: int, context: str) -
 
 def _post_reflection_to_lumina_os(app: Any, ref_json: dict[str, Any], pnl_dollars: float) -> None:
     api_base_url = str(os.getenv("LUMINA_OS_API_URL", "http://localhost:8000")).rstrip("/")
-    trader_name = str(
-        os.getenv("LUMINA_TRADER_NAME")
-        or os.getenv("TRADERLEAGUE_PARTICIPANT_HANDLE")
-        or "LUMINA_Steve"
-    )
+    trader_name = str(os.getenv("LUMINA_TRADER_NAME") or os.getenv("TRADERLEAGUE_PARTICIPANT_HANDLE") or "LUMINA_Steve")
     payload = {
         "trader_name": trader_name,
         "reflection": str(ref_json.get("reflection", "")),
@@ -75,19 +71,25 @@ def reflect_on_trade(app: Any, pnl_dollars: float, entry_price: float, exit_pric
             {
                 "type": "text",
                 "text": f"""Je hebt net een trade gesloten.
-Resultaat: {'WIN' if pnl_dollars > 0 else 'LOSS'} van ${pnl_dollars:.0f}
+Resultaat: {"WIN" if pnl_dollars > 0 else "LOSS"} van ${pnl_dollars:.0f}
 Entry: {entry_price:.2f} | Exit: {exit_price:.2f} | Qty: {position_qty}
 Kijk terug naar de chart image en je eigen vorige narrative_reasoning.
 Schrijf een eerlijke 'lessons learned' in het veld 'reflection'.
 Geef ALLEEN JSON met: reflection (max 400 chars), key_lesson, suggested_bible_update""",
             },
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{chart_base64}" if chart_base64 else ""}},
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{chart_base64}" if chart_base64 else ""},
+            },
         ]
 
         payload = {
             "model": app.engine.config.vision_model,
             "messages": [
-                {"role": "system", "content": "Je bent een eerlijke trading coach. Leer van elke trade en update de bible."},
+                {
+                    "role": "system",
+                    "content": "Je bent een eerlijke trading coach. Leer van elke trade en update de bible.",
+                },
                 {"role": "user", "content": reflection_prompt},
             ],
             "max_tokens": 600,
@@ -117,7 +119,7 @@ Geef ALLEEN JSON met: reflection (max 400 chars), key_lesson, suggested_bible_up
         if ref_json.get("suggested_bible_update"):
             app.engine.evolve_bible(ref_json["suggested_bible_update"])
 
-        app.logger.info(f"REFLECTION_COMPLETE,pnl={pnl_dollars:.0f},lesson={ref_json.get('key_lesson','N/A')[:80]}")
+        app.logger.info(f"REFLECTION_COMPLETE,pnl={pnl_dollars:.0f},lesson={ref_json.get('key_lesson', 'N/A')[:80]}")
 
         reflection_text = ref_json.get("reflection", "No reflection")
         app.speak(f"Trade reflection: {reflection_text}")
@@ -159,7 +161,7 @@ def process_user_feedback(app: Any, feedback_text: str, trade_data: dict | None 
                 "role": "user",
                 "content": f"""User feedback: {feedback_text}
 Laatste trade: {trade_data}
-Huidige evolvable_layer: {json.dumps(app.bible['evolvable_layer'])}
+Huidige evolvable_layer: {json.dumps(app.bible["evolvable_layer"])}
 Stel verbeteringen voor.""",
             },
         ],

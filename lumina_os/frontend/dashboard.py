@@ -204,7 +204,9 @@ def _compute_daily_expectancy(rows: list[dict[str, Any]], summary: dict[str, Any
 
 
 def _proposal_table(rows: list[dict[str, Any]]) -> tuple[int, list[dict[str, Any]]]:
-    proposals = [row for row in rows if str(row.get("status", "")).lower() == "proposed" or isinstance(row.get("proposal"), dict)]
+    proposals = [
+        row for row in rows if str(row.get("status", "")).lower() == "proposed" or isinstance(row.get("proposal"), dict)
+    ]
     latest = list(reversed(proposals))[:5]
     data: list[dict[str, Any]] = []
     for row in latest:
@@ -254,7 +256,9 @@ def _render_sim_evolution_dashboard_tab() -> None:
     failures = report.get("failures", []) if isinstance(report.get("failures"), list) else []
     is_green = bool(report.get("READY_FOR_REAL", False))
     status_label = str(report.get("status", "RED")).strip().upper()
-    sharpe_crit = criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
+    sharpe_crit = (
+        criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
+    )
     latest_sharpe = _safe_float(sharpe_crit.get("latest_sharpe", 0.0))
 
     # ── Stability summary banner ──────────────────────────────────────────────
@@ -325,7 +329,11 @@ def _render_sim_evolution_dashboard_tab() -> None:
     exp = criteria.get("positive_expectancy_5d", {}) if isinstance(criteria.get("positive_expectancy_5d"), dict) else {}
     consistent = criteria.get("consistent_sharpe", {}) if isinstance(criteria.get("consistent_sharpe"), dict) else {}
     risk = criteria.get("zero_risk_and_var", {}) if isinstance(criteria.get("zero_risk_and_var"), dict) else {}
-    trend = criteria.get("evolution_proposals_trend", {}) if isinstance(criteria.get("evolution_proposals_trend"), dict) else {}
+    trend = (
+        criteria.get("evolution_proposals_trend", {})
+        if isinstance(criteria.get("evolution_proposals_trend"), dict)
+        else {}
+    )
 
     sc1, sc2, sc3, sc4, sc5 = st.columns(5)
     sc1.metric(
@@ -371,21 +379,28 @@ def _render_sim_evolution_dashboard_tab() -> None:
         if st.button(
             "🚀 Run Aggressive Overnight SIM",
             type="primary",
-            width='stretch',
+            width="stretch",
             help="Launches: --headless --mode=sim --duration=240 --overnight-sim --stability-check",
         ):
             cmd = [
-                sys.executable, "-m", "lumina_launcher",
-                "--headless", "--mode=sim", "--duration=240",
-                "--overnight-sim", "--stability-check",
+                sys.executable,
+                "-m",
+                "lumina_launcher",
+                "--headless",
+                "--mode=sim",
+                "--duration=240",
+                "--overnight-sim",
+                "--stability-check",
             ]
-            proc = subprocess.Popen(cmd, cwd=str(Path(".").resolve()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            proc = subprocess.Popen(
+                cmd, cwd=str(Path(".").resolve()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             st.success(f"✅ Overnight SIM launched (PID {proc.pid}). Results appear in state/test_runs/ on completion.")
 
     with btn_col2:
         if st.button(
             "🔍 Check Stability Now",
-            width='stretch',
+            width="stretch",
             help="Re-generates the stability report from all available SIM summaries",
         ):
             st.rerun()
@@ -396,12 +411,14 @@ def _render_sim_evolution_dashboard_tab() -> None:
         if st.button(
             "🔴 Switch to REAL Mode",
             type="primary",
-            width='stretch',
+            width="stretch",
             disabled=not go_live_enabled,
             help="Only active when READY_FOR_REAL=True and operator confirmation is ticked above",
         ):
             _append_or_replace_env(ENV_PATH, "LUMINA_MODE", "real")
-            st.success("✅ Stability GREEN + confirmed. LUMINA_MODE=real written to .env. Restart Streamlit to activate.")
+            st.success(
+                "✅ Stability GREEN + confirmed. LUMINA_MODE=real written to .env. Restart Streamlit to activate."
+            )
 
     if not is_green:
         st.info(f"🔒 REAL mode locked until 5 consecutive positive-expectancy days. Progress: {consecutive}/5.")
@@ -544,9 +561,7 @@ def _render_observability_tab(base_url: str) -> None:
 
     headers = {"X-API-Key": api_key}
     try:
-        snap_resp = requests.get(
-            f"{base_url}/api/monitoring/metrics/json", headers=headers, timeout=5
-        )
+        snap_resp = requests.get(f"{base_url}/api/monitoring/metrics/json", headers=headers, timeout=5)
         if not snap_resp.ok:
             st.error(f"Metrics fetch failed: HTTP {snap_resp.status_code}")
             return
@@ -617,21 +632,17 @@ def _render_observability_tab(base_url: str) -> None:
                 ).sort_values("Time (UTC)", ascending=False)
 
                 with st.expander(f"Regime Flip History ({len(flip_df)} events)", expanded=False):
-                    st.dataframe(flip_df, width='stretch')
+                    st.dataframe(flip_df, width="stretch")
     except Exception:
         pass  # history is best-effort; never crash the dashboard
 
     st.markdown("#### Alerts & Chaos Events")
     a1, a2 = st.columns(2)
     alerts_total = sum(
-        float((v or {}).get("value", 0))
-        for k, v in snap.items()
-        if k.startswith("lumina_alerts_sent_total")
+        float((v or {}).get("value", 0)) for k, v in snap.items() if k.startswith("lumina_alerts_sent_total")
     )
     chaos_total = sum(
-        float((v or {}).get("value", 0))
-        for k, v in snap.items()
-        if k.startswith("lumina_chaos_events_total")
+        float((v or {}).get("value", 0)) for k, v in snap.items() if k.startswith("lumina_chaos_events_total")
     )
     a1.metric("Alerts Sent (session)", f"{int(alerts_total)}")
     a2.metric("Chaos Events (session)", f"{int(chaos_total)}")
@@ -694,5 +705,3 @@ if tab5 is not None:
             _render_real_operations_dashboard_tab()
 
 st.info("Upload your trades, Bibles or reflections via the bot webhook -> everything appears here instantly.")
-
-

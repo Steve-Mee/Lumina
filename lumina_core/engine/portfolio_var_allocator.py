@@ -120,10 +120,7 @@ class PortfolioVaRAllocator:
                 effective_max_var_usd=effective_max_var_usd,
                 effective_max_total_open_risk=effective_max_total_open_risk,
                 breached=True,
-                reason=(
-                    f"MAX TOTAL OPEN RISK exceeded: {total_open_risk:.2f} > "
-                    f"{effective_max_total_open_risk:.2f}"
-                ),
+                reason=(f"MAX TOTAL OPEN RISK exceeded: {total_open_risk:.2f} > {effective_max_total_open_risk:.2f}"),
                 symbols=symbols,
                 correlation_matrix={},
                 projected_drawdown_pre_pct=pre_drawdown_pct,
@@ -164,10 +161,7 @@ class PortfolioVaRAllocator:
             return False, reason, snapshot
 
         if returns_df is None or returns_df.empty or data_points < self.config.min_points:
-            reason = (
-                f"Portfolio VaR unavailable: insufficient bar history "
-                f"({data_points} < {self.config.min_points})"
-            )
+            reason = f"Portfolio VaR unavailable: insufficient bar history ({data_points} < {self.config.min_points})"
             pre_drawdown_pct = self._projected_drawdown_pct(pre_trade_total_open_risk, effective_max_total_open_risk)
             post_drawdown_pct = self._projected_drawdown_pct(total_open_risk, effective_max_total_open_risk)
             snapshot = self._snapshot(
@@ -397,7 +391,11 @@ class PortfolioVaRAllocator:
         points = max(0, int(data_points))
         minimum = max(1, int(self.config.min_points))
         # 0..100 score with bonus for deeper history, capped at 100.
-        return max(0.0, min(100.0, (points / float(minimum)) * 50.0 + 50.0)) if points >= minimum else max(0.0, (points / float(minimum)) * 50.0)
+        return (
+            max(0.0, min(100.0, (points / float(minimum)) * 50.0 + 50.0))
+            if points >= minimum
+            else max(0.0, (points / float(minimum)) * 50.0)
+        )
 
     def _quality_band(self, score: float) -> str:
         if score >= float(self.config.quality_green_min):

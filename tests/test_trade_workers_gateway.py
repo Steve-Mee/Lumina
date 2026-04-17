@@ -40,7 +40,9 @@ def test_submit_order_with_risk_check_blocks_when_pre_trade_fails(monkeypatch) -
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=100.0,
-        order=Order(symbol="MES JUN26", side="BUY", quantity=1, order_type="MARKET", stop_loss=4990.0, take_profit=5010.0),
+        order=Order(
+            symbol="MES JUN26", side="BUY", quantity=1, order_type="MARKET", stop_loss=4990.0, take_profit=5010.0
+        ),
     )
 
     assert result is None
@@ -60,7 +62,9 @@ def test_submit_order_with_risk_check_submits_when_allowed(monkeypatch) -> None:
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=100.0,
-        order=Order(symbol="MES JUN26", side="BUY", quantity=1, order_type="MARKET", stop_loss=4990.0, take_profit=5010.0),
+        order=Order(
+            symbol="MES JUN26", side="BUY", quantity=1, order_type="MARKET", stop_loss=4990.0, take_profit=5010.0
+        ),
     )
 
     assert result is not None

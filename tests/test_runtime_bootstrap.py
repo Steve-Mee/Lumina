@@ -28,6 +28,7 @@ def test_start_runtime_services_skips_swarm_when_disabled(monkeypatch):
     def _fn(name):
         def _inner():
             return None
+
         _inner.__name__ = name
         return _inner
 
@@ -68,6 +69,7 @@ def test_start_runtime_services_orchestration():
     def _fn(name):
         def _inner():
             return None
+
         _inner.__name__ = name
         return _inner
 
@@ -125,6 +127,7 @@ def test_start_runtime_services_initializes_swarm_from_bound_supervisor(monkeypa
     def _fn(name):
         def _inner():
             return None
+
         _inner.__name__ = name
         return _inner
 
@@ -183,6 +186,7 @@ def test_start_runtime_services_injects_blackboard_and_meta_orchestrator():
     def _fn(name):
         def _inner():
             return None
+
         _inner.__name__ = name
         return _inner
 

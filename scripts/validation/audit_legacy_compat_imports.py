@@ -52,18 +52,26 @@ def _scan_file(path: Path) -> None:
         if from_mod and from_syms:
             for key in TARGETS:
                 if from_mod == key:
-                    TARGETS[key].append({"file": str(path.relative_to(ROOT)).replace('\\\\', '/'), "line": idx, "import": line.strip()})
+                    TARGETS[key].append(
+                        {"file": str(path.relative_to(ROOT)).replace("\\\\", "/"), "line": idx, "import": line.strip()}
+                    )
         elif import_list:
             chunks = [item.strip() for item in import_list.split(",") if item.strip()]
             for chunk in chunks:
                 for key in TARGETS:
                     if chunk == key:
-                        TARGETS[key].append({"file": str(path.relative_to(ROOT)).replace('\\\\', '/'), "line": idx, "import": line.strip()})
+                        TARGETS[key].append(
+                            {
+                                "file": str(path.relative_to(ROOT)).replace("\\\\", "/"),
+                                "line": idx,
+                                "import": line.strip(),
+                            }
+                        )
 
 
 def main() -> int:
     for path in ROOT.rglob("*.py"):
-        rel = str(path.relative_to(ROOT)).replace('\\\\', '/')
+        rel = str(path.relative_to(ROOT)).replace("\\\\", "/")
         if rel.startswith(".venv/") or rel.startswith("state/"):
             continue
         _scan_file(path)

@@ -115,9 +115,11 @@ def _resolve_summary_path(cfg: dict[str, Any]) -> Path:
         return Path(cfg_path)
     return _SUMMARY_PATH
 
+
 # ---------------------------------------------------------------------------
 # Internal fast-path simulation kernel
 # ---------------------------------------------------------------------------
+
 
 def _generate_synthetic_ticks(n: int, seed: int, start_price: float = 5000.0) -> list[dict[str, Any]]:
     """Generate n synthetic price ticks for a rapid paper simulation."""
@@ -141,12 +143,14 @@ def _generate_synthetic_ticks(n: int, seed: int, start_price: float = 5000.0) ->
         price += drift + rng.gauss(0, 0.4)
         price = max(100.0, price)
 
-        ticks.append({
-            "last": round(price, 2),
-            "volume": rng.uniform(80, 1200),
-            "regime": regime,
-            "imbalance": rng.uniform(0.5, 2.0),
-        })
+        ticks.append(
+            {
+                "last": round(price, 2),
+                "volume": rng.uniform(80, 1200),
+                "regime": regime,
+                "imbalance": rng.uniform(0.5, 2.0),
+            }
+        )
     return ticks
 
 
@@ -269,6 +273,7 @@ def _run_simulation(
 # Broker validation helper
 # ---------------------------------------------------------------------------
 
+
 def _validate_broker(broker_mode: str) -> str:
     """
     Instantiate and connect the appropriate broker bridge.
@@ -285,9 +290,7 @@ def _validate_broker(broker_mode: str) -> str:
             broker_crosstrade_api_key=os.getenv("CROSSTRADE_TOKEN", "headless-validation-stub"),
             crosstrade_token=os.getenv("CROSSTRADE_TOKEN", "headless-validation-stub"),
             crosstrade_account=os.getenv("CROSSTRADE_ACCOUNT", "DEMO5042070"),
-            broker_crosstrade_websocket_url=os.getenv(
-                "CROSSTRADE_WS_URL", "wss://app.crosstrade.io/ws/stream"
-            ),
+            broker_crosstrade_websocket_url=os.getenv("CROSSTRADE_WS_URL", "wss://app.crosstrade.io/ws/stream"),
             broker_crosstrade_base_url="https://app.crosstrade.io",
             crosstrade_fill_poll_url="",
         )
@@ -302,6 +305,7 @@ def _validate_broker(broker_mode: str) -> str:
 # ---------------------------------------------------------------------------
 # Session guard helper
 # ---------------------------------------------------------------------------
+
 
 def _check_session_guard() -> int:
     """Return 1 if the current moment is outside the CME trading session, else 0."""
@@ -318,6 +322,7 @@ def _check_session_guard() -> int:
 # ---------------------------------------------------------------------------
 # Evolution proposal counter
 # ---------------------------------------------------------------------------
+
 
 def _count_evolution_proposals(container: Any | None) -> int:
     if container is None:
@@ -346,6 +351,7 @@ def _count_evolution_proposals(container: Any | None) -> int:
 # Observability alert counter
 # ---------------------------------------------------------------------------
 
+
 def _count_observability_alerts(container: Any | None) -> int:
     if container is None:
         return 0
@@ -366,6 +372,7 @@ def _count_observability_alerts(container: Any | None) -> int:
 # Duration parser
 # ---------------------------------------------------------------------------
 
+
 def parse_duration_minutes(value: str) -> float:
     """
     Parse a duration string like "15m", "5m", "30s", "1h" into minutes.
@@ -385,6 +392,7 @@ def parse_duration_minutes(value: str) -> float:
 # ---------------------------------------------------------------------------
 # HeadlessRuntime
 # ---------------------------------------------------------------------------
+
 
 class HeadlessRuntime:
     """
@@ -553,15 +561,18 @@ class HeadlessRuntime:
                 "realism_label": "Realism Adjusted (wel vergelijkbaar voor live readiness)",
                 "metrics_for_readiness_gate": "realism",
                 "parity_delta_pnl_realized": round(
-                    float(sim_learning.get("pnl_realized", 0.0) or 0.0) - float(sim_realism.get("pnl_realized", 0.0) or 0.0),
+                    float(sim_learning.get("pnl_realized", 0.0) or 0.0)
+                    - float(sim_realism.get("pnl_realized", 0.0) or 0.0),
                     2,
                 ),
                 "parity_delta_max_drawdown": round(
-                    float(sim_learning.get("max_drawdown", 0.0) or 0.0) - float(sim_realism.get("max_drawdown", 0.0) or 0.0),
+                    float(sim_learning.get("max_drawdown", 0.0) or 0.0)
+                    - float(sim_realism.get("max_drawdown", 0.0) or 0.0),
                     2,
                 ),
                 "parity_delta_sharpe_annualized": round(
-                    float(sim_learning.get("sharpe_annualized", 0.0) or 0.0) - float(sim_realism.get("sharpe_annualized", 0.0) or 0.0),
+                    float(sim_learning.get("sharpe_annualized", 0.0) or 0.0)
+                    - float(sim_realism.get("sharpe_annualized", 0.0) or 0.0),
                     4,
                 ),
             },

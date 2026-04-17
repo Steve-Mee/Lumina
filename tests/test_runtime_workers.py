@@ -95,7 +95,11 @@ def test_pre_dream_daemon_applies_emotional_twin_correction(monkeypatch):
             "narrative_reasoning": "hello",
         },
         set_current_dream_fields=lambda *_a, **_k: None,
-        get_current_dream_snapshot=lambda: {"chosen_strategy": "event_driven", "signal": "BUY", "confluence_score": 0.8},
+        get_current_dream_snapshot=lambda: {
+            "chosen_strategy": "event_driven",
+            "signal": "BUY",
+            "confluence_score": 0.8,
+        },
         AI_DRAWN_FIBS={},
         speak=lambda *_a, **_k: None,
         store_experience_to_vector_db=lambda *_a, **_k: None,
@@ -184,7 +188,9 @@ def test_supervisor_loop_real_close_marks_reconciler_pending(monkeypatch):
     reconciler = ReconcilerSpy()
     direct_push_calls: list[dict] = []
 
-    monkeypatch.setattr(runtime_workers, "_push_trader_league_trade", lambda *_a, **kwargs: direct_push_calls.append(dict(kwargs)))
+    monkeypatch.setattr(
+        runtime_workers, "_push_trader_league_trade", lambda *_a, **kwargs: direct_push_calls.append(dict(kwargs))
+    )
     monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(StopIteration()))
 
     app = SimpleNamespace(
@@ -361,7 +367,12 @@ def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
         place_order=lambda *_a, **_k: False,
         pnl_history=[],
         equity_curve=[50000.0],
-        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None, warning=lambda *_a, **_k: None),
+        logger=SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+            debug=lambda *_a, **_k: None,
+            warning=lambda *_a, **_k: None,
+        ),
         engine=SimpleNamespace(
             config=SimpleNamespace(
                 trade_mode="paper",
@@ -419,7 +430,13 @@ def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):
         account_equity=50000.0,
         account_balance=50000.0,
         save_state=lambda: None,
-        get_current_dream_snapshot=lambda: {"signal": "HOLD", "confluence_score": 0.8, "regime": "NEUTRAL", "stop": 4990.0, "target": 5010.0},
+        get_current_dream_snapshot=lambda: {
+            "signal": "HOLD",
+            "confluence_score": 0.8,
+            "regime": "NEUTRAL",
+            "stop": 4990.0,
+            "target": 5010.0,
+        },
         set_current_dream_fields=lambda *_a, **_k: None,
         set_current_dream_value=lambda *_a, **_k: None,
         is_market_open=lambda: False,
@@ -498,7 +515,12 @@ def test_supervisor_loop_real_eod_force_close_flattens_and_holds(monkeypatch):
         place_order=lambda *_a, **_k: place_order_calls.__setitem__("count", place_order_calls["count"] + 1),
         pnl_history=[],
         equity_curve=[50000.0],
-        logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None, debug=lambda *_a, **_k: None, warning=lambda *_a, **_k: None),
+        logger=SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+            debug=lambda *_a, **_k: None,
+            warning=lambda *_a, **_k: None,
+        ),
         container=SimpleNamespace(broker=BrokerSpy()),
         engine=SimpleNamespace(
             config=SimpleNamespace(

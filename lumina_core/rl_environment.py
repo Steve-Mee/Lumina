@@ -48,7 +48,11 @@ class RLTradingEnvironment(gym.Env):
         self.config = config or self._config_from_engine(engine)
         self.valuation_engine = ValuationEngine()
         self.instrument = str(getattr(self.engine.config, "instrument", "MES"))
-        self.trade_mode = str(self.config.trade_mode or getattr(getattr(self.engine, "config", None), "trade_mode", "sim")).strip().lower()
+        self.trade_mode = (
+            str(self.config.trade_mode or getattr(getattr(self.engine, "config", None), "trade_mode", "sim"))
+            .strip()
+            .lower()
+        )
 
         # Action layout: [side, qty_norm, stop_pct, target_pct]
         # side in [0, 2] -> HOLD, BUY, SELL
@@ -97,7 +101,10 @@ class RLTradingEnvironment(gym.Env):
         )
 
     def _recent_volatility_points(self, price: float) -> float:
-        closes = [float(self.data[i].get("close", self.data[i].get("last", 0.0)) or 0.0) for i in range(max(0, self._idx - 30), self._idx + 1)]
+        closes = [
+            float(self.data[i].get("close", self.data[i].get("last", 0.0)) or 0.0)
+            for i in range(max(0, self._idx - 30), self._idx + 1)
+        ]
         closes = [c for c in closes if c > 0.0]
         if len(closes) < 6 or price <= 0.0:
             return max(self.valuation_engine.tick_size(self.instrument), self.config.slippage_points)
@@ -203,7 +210,11 @@ class RLTradingEnvironment(gym.Env):
             flatten = side == 0 and np.random.random() < 0.05
 
             if hit_stop or hit_target or flatten:
-                exit_ticks = max(0.0, float(self._stochastic_slippage_points(price)) / max(self.valuation_engine.tick_size(self.instrument), 1e-9))
+                exit_ticks = max(
+                    0.0,
+                    float(self._stochastic_slippage_points(price))
+                    / max(self.valuation_engine.tick_size(self.instrument), 1e-9),
+                )
                 exit_fill = self.valuation_engine.apply_exit_fill(
                     symbol=self.instrument,
                     price=price,
@@ -242,10 +253,9 @@ class RLTradingEnvironment(gym.Env):
             es_limit = max(float(getattr(limits, "es_95_limit_usd", 1.0) or 1.0), 1.0)
             var_ratio = float(snapshot.get("var_95_usd", 0.0) or 0.0) / var_limit
             es_ratio = float(snapshot.get("es_95_usd", 0.0) or 0.0) / es_limit
-            var_es_penalty = (
-                float(self.config.sim_var_penalty_coeff) * max(0.0, var_ratio)
-                + float(self.config.sim_es_penalty_coeff) * max(0.0, es_ratio)
-            )
+            var_es_penalty = float(self.config.sim_var_penalty_coeff) * max(0.0, var_ratio) + float(
+                self.config.sim_es_penalty_coeff
+            ) * max(0.0, es_ratio)
             reward -= var_es_penalty
 
         if blocked_by_capital_preservation:
@@ -271,8 +281,12 @@ class RLTradingEnvironment(gym.Env):
         row = self.data[min(self._idx, len(self.data) - 1)]
         price = float(row.get("close", row.get("last", 0.0)))
 
-        recent = self.data[max(0, self._idx - 120): self._idx + 1]
-        regime = str(self.engine.detect_market_regime(__import__("pandas").DataFrame(recent))) if len(recent) > 20 else "NEUTRAL"
+        recent = self.data[max(0, self._idx - 120) : self._idx + 1]
+        regime = (
+            str(self.engine.detect_market_regime(__import__("pandas").DataFrame(recent)))
+            if len(recent) > 20
+            else "NEUTRAL"
+        )
         regime_map = {
             "TRENDING": 1.0,
             "BREAKOUT": 0.8,

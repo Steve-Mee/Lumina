@@ -121,7 +121,9 @@ class ValuationEngine:
         regime_key = self.normalize_regime(regime)
         regime_ms = 120.0 if regime_key == "VOLATILE" else -40.0 if regime_key in {"TRENDING", "BREAKOUT"} else 0.0
         age_ms = max(0, int(pending_age)) * 80.0
-        latency_mult = float(self.fill_latency_multiplier.get(regime_key.lower(), self.fill_latency_multiplier.get("default", 1.0)))
+        latency_mult = float(
+            self.fill_latency_multiplier.get(regime_key.lower(), self.fill_latency_multiplier.get("default", 1.0))
+        )
         return float(max(20.0, (base_ms + regime_ms + age_ms) * max(0.5, latency_mult)))
 
     def pnl_dollars(self, *, symbol: str, entry_price: float, exit_price: float, side: int, quantity: int) -> float:
@@ -151,13 +153,9 @@ class ValuationEngine:
                 str(k).strip().upper(): max(0.1, float(v)) for k, v in commission_map.items()
             }
         if isinstance(spread_map, dict):
-            self.symbol_spread_multiplier = {
-                str(k).strip().lower(): max(0.1, float(v)) for k, v in spread_map.items()
-            }
+            self.symbol_spread_multiplier = {str(k).strip().lower(): max(0.1, float(v)) for k, v in spread_map.items()}
         if isinstance(latency_map, dict):
-            self.fill_latency_multiplier = {
-                str(k).strip().lower(): max(0.5, float(v)) for k, v in latency_map.items()
-            }
+            self.fill_latency_multiplier = {str(k).strip().lower(): max(0.5, float(v)) for k, v in latency_map.items()}
 
     def load_calibration_file(self, path: str | Path) -> bool:
         calibration_path = Path(path)

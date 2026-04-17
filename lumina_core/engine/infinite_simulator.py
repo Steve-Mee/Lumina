@@ -99,9 +99,7 @@ class InfiniteSimulator:
     def run_nightly_simulation(self, num_trades_total: int = 1_000_000) -> pd.DataFrame:
         """Hoofdmethode - run dit 's nachts."""
         start_time = datetime.now()
-        print(
-            f"[{start_time.strftime('%H:%M:%S')}] 🌌 INFINITE SIMULATOR STARTED - {num_trades_total:,} trades"
-        )
+        print(f"[{start_time.strftime('%H:%M:%S')}] 🌌 INFINITE SIMULATOR STARTED - {num_trades_total:,} trades")
 
         with self.context.live_data_lock:
             base_df = self.context.ohlc_1min.tail(14400).copy().reset_index()
@@ -119,8 +117,7 @@ class InfiniteSimulator:
         for _, row in df_results.iterrows():
             self.context.store_experience_to_vector_db(
                 context=(
-                    f"Infinite sim trade - Regime {row['regime']} | "
-                    f"Sharpe {row['sharpe']:.2f} | PnL {row['total_pnl']}"
+                    f"Infinite sim trade - Regime {row['regime']} | Sharpe {row['sharpe']:.2f} | PnL {row['total_pnl']}"
                 ),
                 metadata={
                     "type": "infinite_simulation",
@@ -147,7 +144,5 @@ class InfiniteSimulator:
         if not df_results.empty:
             print(f"   Avg Sharpe          : {avg_sharpe:.2f}")
             print(f"   Worst MaxDD         : {df_results['maxdd'].max():.1f}%")
-            print(
-                f"   Best regime         : {df_results.groupby('regime')['sharpe'].mean().idxmax()}"
-            )
+            print(f"   Best regime         : {df_results.groupby('regime')['sharpe'].mean().idxmax()}")
         return df_results

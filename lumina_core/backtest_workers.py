@@ -101,13 +101,15 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                     snapshot, wf, monte, regime_res
                 )
 
-                app.log_thought({
-                    "type": "advanced_backtest",
-                    "base": base_res,
-                    "walk_forward": wf,
-                    "regime_oos": regime_res,
-                    "monte_carlo": monte,
-                })
+                app.log_thought(
+                    {
+                        "type": "advanced_backtest",
+                        "base": base_res,
+                        "walk_forward": wf,
+                        "regime_oos": regime_res,
+                        "monte_carlo": monte,
+                    }
+                )
 
                 worst_regime_dd = max((v["maxdd"] for v in regime_res.values()), default=0.0)
                 print("✅ ADVANCED BACKTEST COMPLETE")
@@ -170,9 +172,15 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                         nightly_report = {
                             "trades": int(_sim_results.get("trades", 0) if isinstance(_sim_results, dict) else 0),
                             "wins": int(_sim_results.get("wins", 0) if isinstance(_sim_results, dict) else 0),
-                            "winrate": float(_sim_results.get("winrate", 0.0) if isinstance(_sim_results, dict) else 0.0),
-                            "net_pnl": float(_sim_results.get("net_pnl", 0.0) if isinstance(_sim_results, dict) else 0.0),
-                            "sharpe": float(_sim_results.get("mean_worker_sharpe", 0.0) if isinstance(_sim_results, dict) else 0.0),
+                            "winrate": float(
+                                _sim_results.get("winrate", 0.0) if isinstance(_sim_results, dict) else 0.0
+                            ),
+                            "net_pnl": float(
+                                _sim_results.get("net_pnl", 0.0) if isinstance(_sim_results, dict) else 0.0
+                            ),
+                            "sharpe": float(
+                                _sim_results.get("mean_worker_sharpe", 0.0) if isinstance(_sim_results, dict) else 0.0
+                            ),
                             "advanced_backtest": {
                                 "base": base_res,
                                 "walk_forward": wf,
@@ -182,7 +190,8 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                         }
                         orchestrator.run_nightly_reflection(
                             nightly_report=nightly_report,
-                            dry_run=str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower() in {"sim", "paper"},
+                            dry_run=str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower()
+                            in {"sim", "paper"},
                         )
                     except Exception as exc:
                         app.logger.error(f"Meta-agent nightly reflection failed: {exc}")
