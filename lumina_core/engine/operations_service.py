@@ -414,18 +414,22 @@ class OperationsService:
             while True:
                 time.sleep(60)
         except KeyboardInterrupt:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message="\n🛑 Graceful shutdown gestart...",
-                context={},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message="\n🛑 Graceful shutdown gestart...",
+                    context={},
+                )
+            )
             self.engine.save_state()
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message="\u2705 Alle data veilig opgeslagen.",
-                context={},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message="\u2705 Alle data veilig opgeslagen.",
+                    context={},
+                )
+            )
         except SystemExit:
             self.engine.save_state()

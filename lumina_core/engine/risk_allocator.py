@@ -73,7 +73,9 @@ class RiskAllocatorMixin:
         return buckets
 
     @staticmethod
-    def _sample_next_regime(current: str, transition_weights: dict[str, dict[str, float]], rng: np.random.Generator) -> str:
+    def _sample_next_regime(
+        current: str, transition_weights: dict[str, dict[str, float]], rng: np.random.Generator
+    ) -> str:
         bucket = transition_weights.get(current, {})
         if not bucket:
             return current
@@ -359,7 +361,9 @@ class RiskAllocatorMixin:
             breached_reasons.append(f"ES99 {self.state.es_99_usd:.2f} > {eff_es99_limit:.2f}")
 
         self.state.var_es_breached = len(breached_reasons) > 0
-        self.state.var_es_reason = "VAR_ES OK" if not breached_reasons else "VAR_ES breached: " + " | ".join(breached_reasons)
+        self.state.var_es_reason = (
+            "VAR_ES OK" if not breached_reasons else "VAR_ES breached: " + " | ".join(breached_reasons)
+        )
         should_block = bool(self.state.var_es_breached and self._var_es_enforcement_enabled())
         payload = {
             "method": str(limits.var_es_method),
@@ -370,7 +374,9 @@ class RiskAllocatorMixin:
             "es_99_usd": float(self.state.es_99_usd),
             "breached": bool(self.state.var_es_breached),
             "decision": "block" if should_block else "allow",
-            "reason_code": ("VAR_ES_LIMIT_BREACH" if self.state.var_es_breached else "VAR_ES_OK") if reason_codes_enabled else "",
+            "reason_code": ("VAR_ES_LIMIT_BREACH" if self.state.var_es_breached else "VAR_ES_OK")
+            if reason_codes_enabled
+            else "",
             "mode": mode,
             "risk_state": risk_state,
             "limit_multiplier": float(limit_multiplier),

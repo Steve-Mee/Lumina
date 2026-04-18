@@ -73,12 +73,14 @@ def _push_trader_league_trade(
     try:
         response = requests.post(TRADER_LEAGUE_WEBHOOK_URL, json=payload, timeout=5)
         response.raise_for_status()
-        log_structured(LuminaError(
-            severity=ErrorSeverity.RECOVERABLE_LEARNING,
-            code="INFO_PRINT_LEGACY",
-            message="📡 Trade gepusht naar Trader League",
-            context={"mode": mode},
-        ))
+        log_structured(
+            LuminaError(
+                severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                code="INFO_PRINT_LEGACY",
+                message="📡 Trade gepusht naar Trader League",
+                context={"mode": mode},
+            )
+        )
     except Exception as exc:
         err = LuminaError(
             severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
@@ -119,12 +121,14 @@ def _enforce_real_eod_force_close(app: RuntimeContext, price: float) -> bool:
             log_structured(err)
 
     app.logger.warning("EOD FORCE-CLOSE active [mode=%s]: %s", mode, reason)
-    log_structured(LuminaError(
-        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-        code="INFO_PRINT_LEGACY",
-        message=f"⚠️ EOD FORCE-CLOSE active [{mode.upper()}]: {reason}",
-        context={"mode": mode},
-    ))
+    log_structured(
+        LuminaError(
+            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+            code="INFO_PRINT_LEGACY",
+            message=f"⚠️ EOD FORCE-CLOSE active [{mode.upper()}]: {reason}",
+            context={"mode": mode},
+        )
+    )
 
     container = getattr(app, "container", None)
     broker = getattr(container, "broker", None) if container is not None else None
@@ -257,12 +261,14 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
             if chart_base64:
                 app.update_live_chart(chart_base64, status_msg="AI Decision & Chart updated")
 
-            log_structured(LuminaError(
-        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-        code="INFO_PRINT_LEGACY",
-        message="🤖 Multi-agent consensus started...",
-        context={},
-    ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message="🤖 Multi-agent consensus started...",
+                    context={},
+                )
+            )
             consensus = asyncio.run(app.multi_agent_consensus(price, mtf_data, pa_summary, structure, fib_levels))
 
             rl_context = (
@@ -276,12 +282,14 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
             query = f"Prijs {price:.2f} | Regime {regime} | {rl_context} | {pa_summary[:100]}"
             past_experiences = app.retrieve_relevant_experiences(query, n_results=4)
 
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message="🧠 Meta-reasoning and counterfactuals started...",
-                context={},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message="🧠 Meta-reasoning and counterfactuals started...",
+                    context={},
+                )
+            )
             meta = asyncio.run(app.meta_reasoning_and_counterfactuals(consensus, price, pa_summary, past_experiences))
 
             app.world_model = app.update_world_model(df, regime, pa_summary)
@@ -474,16 +482,18 @@ Return JSON only with: signal, confidence, stop, target, reason, why_no_trade, c
 
                 _mode_val = getattr(getattr(app, "engine", None), "config", None)
                 _mode_val = getattr(_mode_val, "trade_mode", "paper") if _mode_val else "paper"
-                log_structured(LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                    code="INFO_PRINT_LEGACY",
-                    message=(
-                        f"🌍 v36 WORLD MODEL + META DREAM: "
-                        f"{dream_snapshot.get('chosen_strategy')} → {dream_snapshot.get('signal')} "
-                        f"(conf={dream_snapshot.get('confluence_score', 0):.2f})"
-                    ),
-                    context={"mode": _mode_val},
-                ))
+                log_structured(
+                    LuminaError(
+                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                        code="INFO_PRINT_LEGACY",
+                        message=(
+                            f"🌍 v36 WORLD MODEL + META DREAM: "
+                            f"{dream_snapshot.get('chosen_strategy')} → {dream_snapshot.get('signal')} "
+                            f"(conf={dream_snapshot.get('confluence_score', 0):.2f})"
+                        ),
+                        context={"mode": _mode_val},
+                    )
+                )
 
         except Exception as e:
             err = LuminaError(
@@ -502,12 +512,14 @@ def voice_listener_thread(app: RuntimeContext) -> None:
     if not app.VOICE_INPUT_ENABLED or not app.voice_recognizer:
         return
 
-    log_structured(LuminaError(
-        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-        code="INFO_PRINT_LEGACY",
-        message="🎤 Voice input active - say 'Lumina' + command or feedback",
-        context={},
-    ))
+    log_structured(
+        LuminaError(
+            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+            code="INFO_PRINT_LEGACY",
+            message="🎤 Voice input active - say 'Lumina' + command or feedback",
+            context={},
+        )
+    )
 
     while True:
         try:
@@ -518,12 +530,14 @@ def voice_listener_thread(app: RuntimeContext) -> None:
             text = app.voice_recognizer.recognize_google(audio, language="nl-NL")
             text_lower = text.lower().strip()
 
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message=f"\ud83c\udfa4 YOU: {text}",
-                context={},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message=f"\ud83c\udfa4 YOU: {text}",
+                    context={},
+                )
+            )
 
             if app.engine.config.voice_wake_word in text_lower:
                 command = text_lower.split(app.engine.config.voice_wake_word, 1)[1].strip()
@@ -537,21 +551,25 @@ def voice_listener_thread(app: RuntimeContext) -> None:
                 elif any(x in command for x in ["ga long", "koop", "long"]):
                     app.set_current_dream_fields({"signal": "BUY", "confluence_score": 0.95})
                     app.speak("Okay, I am forcing a long position. Do you want immediate execution?")
-                    log_structured(LuminaError(
-                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                        code="INFO_PRINT_LEGACY",
-                        message="👤 MANUAL OVERRIDE → BUY",
-                        context={},
-                    ))
+                    log_structured(
+                        LuminaError(
+                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                            code="INFO_PRINT_LEGACY",
+                            message="👤 MANUAL OVERRIDE → BUY",
+                            context={},
+                        )
+                    )
                 elif any(x in command for x in ["ga short", "verkoop", "short"]):
                     app.set_current_dream_fields({"signal": "SELL", "confluence_score": 0.95})
                     app.speak("Okay, I am forcing a short position. Please confirm.")
-                    log_structured(LuminaError(
-                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                        code="INFO_PRINT_LEGACY",
-                        message="👤 MANUAL OVERRIDE → SELL",
-                        context={},
-                    ))
+                    log_structured(
+                        LuminaError(
+                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                            code="INFO_PRINT_LEGACY",
+                            message="👤 MANUAL OVERRIDE → SELL",
+                            context={},
+                        )
+                    )
                 elif any(x in command for x in ["hold", "stop", "niet traden"]):
                     app.set_current_dream_value("signal", "HOLD")
                     app.speak("Understood, switching to HOLD mode.")
@@ -599,12 +617,14 @@ def voice_listener_thread(app: RuntimeContext) -> None:
             app.logger.error(f"Voice recognition error: {e}")
         except OSError as e:
             # No audio input device available - log once and exit voice thread cleanly.
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message="🎤 Voice input disabled: no microphone detected.",
-                context={"detail": str(e)},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message="🎤 Voice input disabled: no microphone detected.",
+                    context={"detail": str(e)},
+                )
+            )
             app.logger.warning(f"Voice input unavailable (no microphone): {e}")
             return
         except Exception as e:
@@ -755,12 +775,14 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
         if app.engine.config.trade_mode == "real" and app.account_equity < app.account_balance * (
             1 - app.engine.config.drawdown_kill_percent / 100
         ):
-            log_structured(LuminaError(
-                severity=ErrorSeverity.FATAL_UNRECOVERABLE,
-                code="RUNTIME_DRAWDOWN_KILL",
-                message=f"🚨 REAL DRAWDOWN KILL ({app.engine.config.drawdown_kill_percent}%) - STOPPING",
-                context={"mode": "real"},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.FATAL_UNRECOVERABLE,
+                    code="RUNTIME_DRAWDOWN_KILL",
+                    message=f"🚨 REAL DRAWDOWN KILL ({app.engine.config.drawdown_kill_percent}%) - STOPPING",
+                    context={"mode": "real"},
+                )
+            )
             app.save_state()
             raise SystemExit("Drawdown kill - real money")
 
@@ -843,13 +865,13 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
                 if rl_action.get("stop_mult") is not None:
                     stop_widen_multiplier *= max(0.5, float(rl_action.get("stop_mult", 1.0)))
         except Exception as exc:
-                err = LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                    code="RUNTIME_RL_012",
-                    message=str(exc),
-                    context={"traceback": traceback.format_exc()},
-                )
-                log_structured(err)
+            err = LuminaError(
+                severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                code="RUNTIME_RL_012",
+                message=str(exc),
+                context={"traceback": traceback.format_exc()},
+            )
+            log_structured(err)
 
         if signal == "HOLD":
             arb_signal = str(dream_snapshot.get("swarm_arb_signal", "HOLD")).upper()
@@ -957,22 +979,26 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
                             side=side,
                             slippage_ticks=est_slip_ticks,
                         )
-                        log_structured(LuminaError(
-                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                            code="INFO_PRINT_LEGACY",
-                            message=f"📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (adaptive risk)",
-                            context={"mode": "paper", "signal": signal, "qty": qty},
-                        ))
+                        log_structured(
+                            LuminaError(
+                                severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                                code="INFO_PRINT_LEGACY",
+                                message=f"📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (adaptive risk)",
+                                context={"mode": "paper", "signal": signal, "qty": qty},
+                            )
+                        )
                     else:
                         app.logger.warning("Paper broker rejected simulated order")
             else:
                 if app.place_order(signal, qty):
-                    log_structured(LuminaError(
-                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                        code="INFO_PRINT_LEGACY",
-                        message=f"✅ {app.engine.config.trade_mode.upper()} {signal} {qty}x @ {price:.2f} (regime-adapted)",
-                        context={"mode": app.engine.config.trade_mode, "signal": signal, "qty": qty},
-                    ))
+                    log_structured(
+                        LuminaError(
+                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                            code="INFO_PRINT_LEGACY",
+                            message=f"✅ {app.engine.config.trade_mode.upper()} {signal} {qty}x @ {price:.2f} (regime-adapted)",
+                            context={"mode": app.engine.config.trade_mode, "signal": signal, "qty": qty},
+                        )
+                    )
 
         if app.engine.config.trade_mode == "paper":
             if app.sim_position_qty != 0:
@@ -1092,12 +1118,14 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
 
                 app.sim_position_qty = 0
                 app.sim_entry_price = 0.0
-                log_structured(LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                    code="INFO_PRINT_LEGACY",
-                    message=f"🎯 TRADE CLOSED → {'WIN' if pnl_dollars > 0 else 'LOSS'} ${pnl_dollars:.0f}",
-                    context={"pnl": pnl_dollars, "mode": app.engine.config.trade_mode},
-                ))
+                log_structured(
+                    LuminaError(
+                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                        code="INFO_PRINT_LEGACY",
+                        message=f"🎯 TRADE CLOSED → {'WIN' if pnl_dollars > 0 else 'LOSS'} ${pnl_dollars:.0f}",
+                        context={"pnl": pnl_dollars, "mode": app.engine.config.trade_mode},
+                    )
+                )
 
                 # Immediate post-trade reflection via RealisticBacktesterEngine
                 try:
@@ -1108,16 +1136,18 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
                         app.log_thought(
                             {"type": "trade_reflection_backtest", "pnl": pnl_dollars, "backtest": bt_result}
                         )
-                        log_structured(LuminaError(
-                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                            code="INFO_PRINT_LEGACY",
-                            message=(
-                                f"🔬 POST-TRADE BACKTEST → "
-                                f"Sharpe {bt_result['sharpe']:.2f} | WR {bt_result['winrate']:.1%} | "
-                                f"MaxDD {bt_result['maxdd']:.1f}% | AvgPnL ${bt_result['avg_pnl']:.1f}"
-                            ),
-                            context={"pnl": pnl_dollars, "backtest": bt_result},
-                        ))
+                        log_structured(
+                            LuminaError(
+                                severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                                code="INFO_PRINT_LEGACY",
+                                message=(
+                                    f"🔬 POST-TRADE BACKTEST → "
+                                    f"Sharpe {bt_result['sharpe']:.2f} | WR {bt_result['winrate']:.1%} | "
+                                    f"MaxDD {bt_result['maxdd']:.1f}% | AvgPnL ${bt_result['avg_pnl']:.1f}"
+                                ),
+                                context={"pnl": pnl_dollars, "backtest": bt_result},
+                            )
+                        )
                 except Exception as exc:
                     err = LuminaError(
                         severity=ErrorSeverity.RECOVERABLE_LEARNING,
