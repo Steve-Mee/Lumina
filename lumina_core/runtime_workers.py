@@ -9,6 +9,7 @@ import requests
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
 from lumina_core.engine.broker_bridge import Order
+from lumina_core.engine.decision_graph import DecisionGraph
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
 from lumina_core.engine.rl_guardrails import RLGuardrailLayer
@@ -619,7 +620,7 @@ def voice_listener_thread(app: RuntimeContext) -> None:
         time.sleep(0.4)
 
 
-def supervisor_loop(app: RuntimeContext) -> None:
+def _old_supervisor_loop(app: RuntimeContext) -> None:
     last_oracle = time.time()
     last_save = time.time()
     last_balance_fetch = time.time()
@@ -1195,3 +1196,24 @@ def supervisor_loop(app: RuntimeContext) -> None:
 
 def run_forever_loop(app: RuntimeContext) -> None:
     supervisor_loop(app)
+
+
+def supervisor_loop(app: RuntimeContext) -> None:
+    blackboard = getattr(app, "blackboard", None)
+    current_mode = str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower()
+    legacy_executed = False
+    if blackboard is not None:
+        # Keep legacy execution flow available while DecisionGraph becomes the explicit orchestrator.
+        setattr(blackboard, "_legacy_supervisor_loop_executed", False)
+
+        def _legacy_runner() -> None:
+            nonlocal legacy_executed
+            legacy_executed = True
+            setattr(blackboard, "_legacy_supervisor_loop_executed", True)
+            _old_supervisor_loop(app)
+
+        setattr(blackboard, "_legacy_supervisor_loop", _legacy_runner)
+    graph = DecisionGraph(current_mode)
+    success = graph.execute(blackboard, current_mode)
+    if not success or not legacy_executed:
+        _old_supervisor_loop(app)

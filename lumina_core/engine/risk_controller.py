@@ -22,6 +22,8 @@ import numpy as np
 
 from .errors import ErrorSeverity, LuminaError, log_structured
 from .margin_snapshot_provider import MarginSnapshot, MarginSnapshotProvider
+from .risk_allocator import RiskAllocatorMixin
+from .risk_gates import RiskGatesMixin
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +257,7 @@ class RiskState:
     margin_tracker: Optional[MarginTracker] = field(default_factory=MarginTracker)  # Capital preservation
 
 
-class HardRiskController:
+class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
     """
     Unbreakable safety layer for Lumina trading.
 
@@ -1419,6 +1421,40 @@ class HardRiskController:
             mins = self.session_guard.minutes_to_session_end()
             return True, f"within EOD force-close window ({mins:.1f}m to close)"
         return False, "outside force-close window"
+
+
+# Bind split modules onto canonical controller to keep backward compatibility.
+for _name in (
+    "_mc_enforcement_enabled",
+    "_should_fail_closed_on_mc_data",
+    "_regime_transition_weights",
+    "_regime_return_buckets",
+    "_sample_next_regime",
+    "_simulate_path_drawdown_pct",
+    "check_monte_carlo_drawdown_pre_trade",
+    "get_monte_carlo_snapshot",
+    "_calculate_var_es_pair",
+    "_var_es_enforcement_enabled",
+    "_should_fail_closed_on_var_es_data",
+    "check_var_es_pre_trade",
+    "get_var_es_snapshot",
+    "check_can_trade",
+    "_engage_kill_switch",
+    "reset_kill_switch",
+    "set_enforce_rules",
+    "health_check_market_open",
+    "get_status",
+    "_cooldown_remaining_minutes",
+    "should_force_close_eod",
+):
+    if hasattr(RiskAllocatorMixin, _name):
+        _member = getattr(RiskAllocatorMixin, _name)
+        if _name == "_sample_next_regime":
+            setattr(HardRiskController, _name, staticmethod(_member))
+        else:
+            setattr(HardRiskController, _name, _member)
+    elif hasattr(RiskGatesMixin, _name):
+        setattr(HardRiskController, _name, getattr(RiskGatesMixin, _name))
 
 
 # ---------------------------------------------------------------------------
