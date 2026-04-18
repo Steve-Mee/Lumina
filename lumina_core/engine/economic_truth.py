@@ -6,34 +6,25 @@ from typing import Any
 
 
 @dataclass(slots=True)
-class PnLSourceVersion:
-    version: int
-    source: str
-    value: float
-    timestamp: str
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass(slots=True)
 class EconomicTruth:
     """Versioned economic ledger used as single PnL truth across runtime sources."""
 
     sequence: int = 0
-    versions: list[PnLSourceVersion] = field(default_factory=list)
-    latest_by_source: dict[str, PnLSourceVersion] = field(default_factory=dict)
+    versions: list[dict[str, Any]] = field(default_factory=list)
+    latest_by_source: dict[str, dict[str, Any]] = field(default_factory=dict)
     max_versions: int = 5000
 
-    def record(self, source: str, value: float, metadata: dict[str, Any] | None = None) -> PnLSourceVersion:
+    def record(self, source: str, value: float, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
         self.sequence += 1
-        event = PnLSourceVersion(
-            version=int(self.sequence),
-            source=str(source),
-            value=float(value),
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            metadata=dict(metadata or {}),
-        )
+        event = {
+            "version": int(self.sequence),
+            "source": str(source),
+            "value": float(value),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "metadata": dict(metadata or {}),
+        }
         self.versions.append(event)
-        self.latest_by_source[event.source] = event
+        self.latest_by_source[str(event["source"])] = event
         if len(self.versions) > int(self.max_versions):
             trim = len(self.versions) - int(self.max_versions)
             del self.versions[:trim]
@@ -62,17 +53,17 @@ class EconomicTruth:
         item = self.latest_by_source.get(str(source))
         if item is None:
             return float(default)
-        return float(item.value)
+        return float(item.get("value", default) or default)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "sequence": int(self.sequence),
             "latest": {
                 key: {
-                    "version": int(value.version),
-                    "value": float(value.value),
-                    "timestamp": str(value.timestamp),
-                    "metadata": dict(value.metadata),
+                    "version": int(value.get("version", 0)),
+                    "value": float(value.get("value", 0.0) or 0.0),
+                    "timestamp": str(value.get("timestamp", "")),
+                    "metadata": dict(value.get("metadata", {})),
                 }
                 for key, value in self.latest_by_source.items()
             },
