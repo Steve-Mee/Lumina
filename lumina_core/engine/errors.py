@@ -1,5 +1,61 @@
 from __future__ import annotations
 
+# ── Phase-1 Error Taxonomy ─────────────────────────────────────────────────
+# Structured error types consumed by the meta-agent nightly reflection cycle.
+# All existing exception classes below remain unchanged.
+# ──────────────────────────────────────────────────────────────────────────
+
+import json
+import traceback as _traceback
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum, auto
+from pathlib import Path
+
+
+class ErrorSeverity(Enum):
+    RECOVERABLE_TRANSIENT = auto()   # retry-able: broker/network blip
+    RECOVERABLE_LEARNING = auto()    # informational: meta-agent learning opportunity
+    FATAL_UNRECOVERABLE = auto()     # fail-closed: stop trading
+    FATAL_MODE_VIOLATION = auto()    # mode-capability breach: stop trading
+
+
+@dataclass
+class LuminaError:
+    severity: ErrorSeverity
+    code: str
+    message: str
+    context: dict = field(default_factory=dict)
+    timestamp: datetime = field(default_factory=datetime.utcnow)
+    lineage_hash: str = ""  # blackboard lineage coupling
+
+    def to_jsonl(self) -> str:
+        return json.dumps({
+            "severity": self.severity.name,
+            "code": self.code,
+            "message": self.message,
+            "context": self.context,
+            "timestamp": self.timestamp.isoformat(),
+            "lineage_hash": self.lineage_hash,
+        }) + "\n"
+
+
+def log_structured(error: "LuminaError", blackboard=None) -> None:
+    """Write structured error to JSONL sink and optionally publish to blackboard."""
+    try:
+        Path("logs/structured_errors.jsonl").parent.mkdir(parents=True, exist_ok=True)
+        with open("logs/structured_errors.jsonl", "a", encoding="utf-8") as _f:
+            _f.write(error.to_jsonl())
+    except OSError:
+        pass  # never let the error-logger crash the hot path
+    if blackboard is not None and hasattr(blackboard, "add_entry"):
+        try:
+            blackboard.add_entry("error_event", error.to_jsonl())
+        except Exception:
+            pass
+
+
+# ── Existing engine exception hierarchy (unchanged) ───────────────────────
 
 class LuminaEngineError(RuntimeError):
     """Base class for engine-level operational errors."""
