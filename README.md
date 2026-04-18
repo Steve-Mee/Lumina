@@ -6,7 +6,7 @@ Duidelijke projectstructuur voor de actieve Lumina runtime, deployment en resear
 
 ## Snelle Navigatie
 
-- Runtime entrypoint: lumina_v45.1.1.py
+- Runtime entrypoint: lumina_runtime.py
 - Supervisie en health: watchdog.py
 - Nightly simulator: nightly_infinite_sim.py
 - Runtime core package: lumina_core/
