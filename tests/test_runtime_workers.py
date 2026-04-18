@@ -194,10 +194,10 @@ def test_supervisor_loop_real_close_marks_reconciler_pending(monkeypatch):
     monkeypatch.setattr(
         runtime_workers, "_push_trader_league_trade", lambda *_a, **kwargs: direct_push_calls.append(dict(kwargs))
     )
-    
+
     def _raise_stop(*_a, **_k):
         raise StopIteration()
-    
+
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     app = SimpleNamespace(
@@ -332,10 +332,10 @@ def test_supervisor_loop_runs_swarm_only_on_five_minute_boundary(monkeypatch):
     )
 
     monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
-    
+
     def _raise_stop(*_a, **_k):
         raise StopIteration()
-    
+
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
@@ -404,7 +404,7 @@ def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
 
     def _raise_stop(*_a, **_k):
         raise StopIteration()
-    
+
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
@@ -482,10 +482,10 @@ def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):
     )
 
     monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
-    
+
     def _raise_stop(*_a, **_k):
         raise StopIteration()
-    
+
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
@@ -566,7 +566,7 @@ def test_supervisor_loop_real_eod_force_close_flattens_and_holds(monkeypatch):
 
     def _raise_stop(*_a, **_k):
         raise StopIteration()
-    
+
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
