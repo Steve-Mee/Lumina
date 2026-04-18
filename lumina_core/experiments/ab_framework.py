@@ -30,6 +30,7 @@ class ABExperimentFramework:
         promote_fn: Callable[[dict[str, Any]], None] | None = None,
         seed: int | None = None,
         mode: str = "sim",
+        candidate_pool: list[dict[str, Any]] | None = None,
     ) -> ABExperimentResult:
         mode_key = str(mode or "sim").strip().lower()
         if mode_key != "sim":
@@ -43,8 +44,12 @@ class ABExperimentFramework:
         rng = random.Random(seed)
         min_forks = int(min(self.min_forks, self.max_forks))
         max_forks = int(max(self.min_forks, self.max_forks))
-        fork_count = int(rng.randint(min_forks, max_forks))
-        forks = self._build_forks(base_agent=base_agent, fork_count=fork_count, rng=rng)
+        if candidate_pool:
+            fork_count = min(len(candidate_pool), int(rng.randint(min_forks, max_forks)))
+            forks = [copy.deepcopy(candidate) for candidate in candidate_pool[:fork_count]]
+        else:
+            fork_count = int(rng.randint(min_forks, max_forks))
+            forks = self._build_forks(base_agent=base_agent, fork_count=fork_count, rng=rng)
 
         results: list[dict[str, Any]] = []
         with ThreadPoolExecutor(max_workers=min(self.max_workers, fork_count)) as pool:

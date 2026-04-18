@@ -10,6 +10,7 @@ import pytest
 from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
 from lumina_core.engine.self_evolution_meta_agent import SelfEvolutionMetaAgent
 from lumina_core.engine.valuation_engine import ValuationEngine
+from lumina_core.evolution.dna_registry import DNARegistry
 
 
 class _StubPPOTrainer:
@@ -78,6 +79,10 @@ def test_auto_fine_tune_triggered_by_low_acceptance(tmp_path: Path) -> None:
         drift_threshold=0.25,
         ppo_trainer=trainer,
         rl_environment=SimpleNamespace(name="rl-env"),
+        dna_registry=DNARegistry(
+            jsonl_path=tmp_path / "dna_registry.jsonl",
+            sqlite_path=tmp_path / "dna_registry.sqlite3",
+        ),
     )
 
     result = agent.run_nightly_evolution(
@@ -95,6 +100,9 @@ def test_auto_fine_tune_triggered_by_low_acceptance(tmp_path: Path) -> None:
     assert result["auto_fine_tune"]["executed"] is True
     assert trainer.called is True
     assert "champion_finetuned_" in result["auto_fine_tune"]["champion_candidate"]["name"]
+    assert result["dna"]["active"]["version"] == "active"
+    assert result["dna"]["candidate"]["version"] == "candidate"
+    assert (tmp_path / "dna_registry.jsonl").exists()
 
 
 @pytest.mark.safety_gate
@@ -135,6 +143,7 @@ def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) ->
             "wins": 2,
             "net_pnl": -50.0,
             "sharpe": -0.4,
+            "max_drawdown": 100.0,
             "samples": [{"close": 5000 + i, "reward": -0.2} for i in range(8)],
         },
         dry_run=False,
@@ -146,6 +155,9 @@ def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) ->
     assert result["proposal"]["auto_apply_executed"] is True
     assert result["lifecycle"]["state"] in {"promoted", "rolled_back"}
     assert result["lifecycle"]["version_id"].startswith("evo-")
+    assert result["ab_experiment"]["variant_count"] >= 5
+    assert result["genetic_evolution"]["candidate_count"] >= 5
+    assert result["dna"]["active"]["version"] == "active"
 
 
 @pytest.mark.chaos_risk
@@ -185,6 +197,7 @@ def test_auto_fine_tune_triggered_by_high_drift_chaos(tmp_path: Path) -> None:
             "wins": 52,
             "net_pnl": 200.0,
             "sharpe": 0.4,
+            "max_drawdown": 400.0,
             "samples": [{"close": 5000 + i, "reward": 2.5} for i in range(30)],
         },
         dry_run=False,

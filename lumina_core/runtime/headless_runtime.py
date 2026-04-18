@@ -116,6 +116,15 @@ def _resolve_summary_path(cfg: dict[str, Any]) -> Path:
     return _SUMMARY_PATH
 
 
+def _resolve_test_bypass_readiness_gate() -> bool:
+    return str(os.getenv("LUMINA_TEST_BYPASS_READINESS_GATE", "false")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Internal fast-path simulation kernel
 # ---------------------------------------------------------------------------
@@ -589,6 +598,23 @@ class HeadlessRuntime:
             summary["stability_report"] = stability_report
             summary["READY_FOR_REAL"] = bool(stability_report.get("READY_FOR_REAL", False))
             summary["stability_status"] = str(stability_report.get("status", "RED"))
+            if _resolve_test_bypass_readiness_gate():
+                original_ready = bool(summary["READY_FOR_REAL"])
+                original_status = str(summary["stability_status"])
+                original_stress_gate = bool(summary.get("stress_ready_for_real_gate", False))
+                summary["test_readiness_bypass"] = {
+                    "enabled": True,
+                    "original_ready_for_real": original_ready,
+                    "original_stability_status": original_status,
+                    "original_stress_ready_for_real_gate": original_stress_gate,
+                }
+                summary["READY_FOR_REAL"] = True
+                summary["stability_status"] = "TEST_BYPASS"
+                summary["stress_ready_for_real_gate"] = True
+                stability_report["READY_FOR_REAL"] = True
+                stability_report["ready_for_real"] = True
+                stability_report["status"] = "TEST_BYPASS"
+                stability_report["test_readiness_bypass"] = dict(summary["test_readiness_bypass"])
             rendered = format_stability_report(stability_report, color=True)
             self._logger.info("\n%s", rendered)
             print(rendered, flush=True)

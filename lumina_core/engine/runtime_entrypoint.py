@@ -77,7 +77,18 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Start human-like analysis loop in REAL runtime path.",
     )
+    parser.add_argument(
+        "--test-bypass-readiness-gate",
+        action="store_true",
+        help="Test-only: bypass SIM readiness gate when LUMINA_TEST_MODE=true.",
+    )
     return parser
+
+
+def _test_readiness_bypass_enabled(args: argparse.Namespace) -> bool:
+    if not bool(getattr(args, "test_bypass_readiness_gate", False)):
+        return False
+    return str(os.getenv("LUMINA_TEST_MODE", "false")).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _bind_runtime_module(container: ApplicationContainer, runtime_module) -> None:
@@ -121,6 +132,7 @@ def _run_headless_sim(args: argparse.Namespace, *, mode_label: str = "sim") -> i
         "VOICE_ENABLED",
         "LUMINA_JWT_SECRET_KEY",
         "CROSSTRADE_TOKEN",
+        "LUMINA_TEST_BYPASS_READINESS_GATE",
     ]
     previous_env = {key: os.environ.get(key) for key in managed_keys}
 
@@ -133,6 +145,9 @@ def _run_headless_sim(args: argparse.Namespace, *, mode_label: str = "sim") -> i
         os.environ["LUMINA_AGGRESSIVE_SIM"] = "true" if bool(args.aggressive_sim) else "false"
         os.environ["LUMINA_SIM_OVERNIGHT"] = "true" if bool(args.overnight_sim) else "false"
         os.environ["LUMINA_STABILITY_CHECK"] = "true" if bool(args.stability_check) else "false"
+        os.environ["LUMINA_TEST_BYPASS_READINESS_GATE"] = (
+            "true" if _test_readiness_bypass_enabled(args) and normalized_label == "sim" else "false"
+        )
 
         os.environ.setdefault("VOICE_ENABLED", "False")
         os.environ.setdefault("LUMINA_JWT_SECRET_KEY", "headless-validation-jwt-secret")

@@ -203,6 +203,21 @@ class TestHeadlessRuntime:
         captured = capsys.readouterr()
         assert "SIM LEARNING MODE ACTIVE" in captured.out
 
+    def test_sim_mode_test_bypass_overrides_readiness_only_when_flagged(self, tmp_path, monkeypatch):
+        import lumina_core.runtime.headless_runtime as hr_mod
+
+        monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
+        monkeypatch.setenv("LUMINA_TEST_BYPASS_READINESS_GATE", "true")
+
+        runtime = HeadlessRuntime(container=None)
+        summary = runtime.run(duration_minutes=1, mode="sim", broker_mode="paper")
+
+        assert summary["READY_FOR_REAL"] is True
+        assert summary["stability_status"] == "TEST_BYPASS"
+        assert summary["stress_ready_for_real_gate"] is True
+        assert summary["test_readiness_bypass"]["enabled"] is True
+        assert summary["stability_report"]["status"] == "TEST_BYPASS"
+
     def test_paper_mode_returns_valid_summary(self, tmp_path, monkeypatch):
         """1-minute paper dry-run produces a complete, well-typed JSON summary."""
         # Redirect summary file to tmp_path

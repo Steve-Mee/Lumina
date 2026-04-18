@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from ..evolution.dna_registry import DNARegistry, PolicyDNA
+from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_engine import LuminaEngine
 from .evolution_lifecycle import EvolutionLifecycleManager
 from .risk_controller import HardRiskController
@@ -42,6 +45,7 @@ class SelfEvolutionMetaAgent:
     rl_environment: Any | None = None
     lifecycle_manager: EvolutionLifecycleManager | None = None
     blackboard: Any | None = None
+    dna_registry: DNARegistry | None = None
 
     @classmethod
     def from_container(
@@ -101,6 +105,8 @@ class SelfEvolutionMetaAgent:
             return result
 
         meta_review = self._meta_review(nightly_report)
+        active_dna = self._register_active_dna(nightly_report=nightly_report, meta_review=meta_review)
+        top_dna = self._top_ranked_dna(active_dna=active_dna)
         fine_tune_trigger = self._auto_fine_tuning_trigger(meta_review=meta_review)
         fine_tune_result = (
             self._execute_auto_fine_tune(nightly_report, dry_run=dry_run)
@@ -115,24 +121,33 @@ class SelfEvolutionMetaAgent:
         if fine_tune_result.get("executed") and fine_tune_result.get("champion_candidate"):
             champion = dict(fine_tune_result["champion_candidate"])
         challengers = self._build_challengers(champion, meta_review)
-        scored = [self._score_challenger(champion, c, nightly_report, meta_review) for c in challengers]
+        genetic_candidates, genetic_candidate_map = self._build_genetic_candidates(
+            champion=champion,
+            top_dna=top_dna,
+            nightly_report=nightly_report,
+            meta_review=meta_review,
+        )
+        candidate_pool = challengers + genetic_candidates
+        scored = [self._score_challenger(champion, candidate, nightly_report, meta_review) for candidate in candidate_pool]
 
         ab_result: dict[str, Any] | None = None
-        if self.sim_mode and challengers:
+        if self.sim_mode and candidate_pool:
             try:
-                ab_framework = ABExperimentFramework(min_forks=3, max_forks=5)
-                base_candidate = dict(challengers[0])
+                ab_framework = ABExperimentFramework(min_forks=5, max_forks=10, max_workers=10)
+                base_candidate = dict(candidate_pool[0])
                 experiment = ab_framework.run_auto_forks(
                     base_agent=base_candidate,
                     score_fn=lambda fork: self._score_challenger(champion, fork, nightly_report, meta_review),
                     promote_fn=self._apply_candidate,
                     seed=int(now.timestamp()),
+                    candidate_pool=candidate_pool,
                 )
-                scored.extend(list(experiment.variants))
+                scored = list(experiment.variants)
                 ab_result = {
                     "experiment_id": str(experiment.experiment_id),
                     "selected_variant": dict(experiment.selected_variant),
                     "variant_count": len(experiment.variants),
+                    "genetic_candidates": len(genetic_candidates),
                 }
             except Exception as exc:
                 ab_result = {
@@ -141,6 +156,16 @@ class SelfEvolutionMetaAgent:
                 }
 
         best = max(scored, key=lambda item: float(item.get("score", 0.0))) if scored else None
+        candidate_dna = None
+        if isinstance(best, dict):
+            candidate_dna = genetic_candidate_map.get(str(best.get("dna_hash", "")))
+        if candidate_dna is None:
+            candidate_dna = self._register_candidate_dna(
+                active_dna=active_dna,
+                best=best,
+                nightly_report=nightly_report,
+                meta_review=meta_review,
+            )
 
         confidence = float(best.get("confidence", 0.0)) if best else 0.0
         backtest_green = self._backtest_green(nightly_report)
@@ -164,6 +189,11 @@ class SelfEvolutionMetaAgent:
         forced_sim_apply = bool(self.sim_mode and best is not None)
         should_auto_apply = bool(forced_sim_apply or (confidence > 85.0 and backtest_green and safety_ok))
         approval_blocked = bool(self.approval_required and should_auto_apply)
+        promoted_active_dna = self._promote_winning_dna(
+            active_dna=active_dna,
+            winner_dna=candidate_dna,
+            should_promote=bool(should_auto_apply and not approval_blocked and not dry_run),
+        )
 
         lifecycle = self._build_lifecycle(best=best, gates=gates)
         outcome = {
@@ -191,6 +221,17 @@ class SelfEvolutionMetaAgent:
             },
             "lifecycle": lifecycle,
         }
+        if active_dna is not None or candidate_dna is not None:
+            outcome["dna"] = {
+                "active": self._dna_summary(promoted_active_dna or active_dna),
+                "candidate": self._dna_summary(candidate_dna),
+            }
+        if top_dna or genetic_candidates:
+            outcome["genetic_evolution"] = {
+                "top_dna_count": len(top_dna),
+                "candidate_count": len(genetic_candidates),
+                "promoted_hash": str((promoted_active_dna or active_dna).hash) if (promoted_active_dna or active_dna) else "",
+            }
         if isinstance(ab_result, dict):
             outcome["ab_experiment"] = ab_result
 
@@ -226,6 +267,7 @@ class SelfEvolutionMetaAgent:
                     payload={
                         "status": str(outcome.get("status", "unknown")),
                         "proposal": dict(outcome.get("proposal", {})),
+                        "dna": dict(outcome.get("dna", {})) if isinstance(outcome.get("dna"), dict) else {},
                         "timestamp": now.isoformat(),
                     },
                     confidence=max(
@@ -726,6 +768,307 @@ class SelfEvolutionMetaAgent:
             cfg.max_risk_percent = float(suggestion["max_risk_percent"])
         if "drawdown_kill_percent" in suggestion:
             cfg.drawdown_kill_percent = float(suggestion["drawdown_kill_percent"])
+
+    def _dna_registry(self) -> DNARegistry:
+        registry = self.dna_registry or DNARegistry()
+        self.dna_registry = registry
+        return registry
+
+    def _dna_lineage_hash(self) -> str:
+        if self.blackboard is None or not hasattr(self.blackboard, "latest"):
+            return self._prompt_fingerprint()
+
+        lineage_parts: list[str] = []
+        for topic in ("meta.reflection", "meta.hyperparameters", "agent.meta.proposal", "execution.aggregate"):
+            try:
+                event = self.blackboard.latest(topic)
+            except Exception:
+                event = None
+            if event is None:
+                continue
+            lineage_parts.append(str(getattr(event, "event_hash", "GENESIS") or "GENESIS"))
+
+        if not lineage_parts:
+            return self._prompt_fingerprint()
+        return hashlib.sha256("|".join(lineage_parts).encode("utf-8")).hexdigest()
+
+    def _dna_fitness(self, meta_review: dict[str, Any]) -> float:
+        return round(
+            float(meta_review.get("sharpe", 0.0) or 0.0)
+            + float(meta_review.get("win_rate", 0.0) or 0.0)
+            + float(meta_review.get("emotional_twin_accuracy", 0.0) or 0.0)
+            - float(meta_review.get("regime_drift", 0.0) or 0.0)
+            - float(meta_review.get("rl_drift", 0.0) or 0.0),
+            6,
+        )
+
+    def _top_ranked_dna(self, *, active_dna: PolicyDNA | None) -> list[PolicyDNA]:
+        registry = self._dna_registry()
+        ranked = registry.get_ranked_dna(limit=3, versions=("active", "candidate"))
+        if ranked:
+            return ranked
+        return [active_dna] if active_dna is not None else []
+
+    def _genetic_fitness(self, nightly_report: dict[str, Any]) -> float:
+        fitness = calculate_fitness(
+            float(nightly_report.get("net_pnl", 0.0) or 0.0),
+            float(nightly_report.get("max_drawdown", 0.0) or 0.0),
+            float(nightly_report.get("sharpe", 0.0) or 0.0),
+            capital_preservation_threshold=max(
+                5000.0,
+                float(getattr(self.engine.config, "drawdown_kill_percent", 8.0) or 8.0) * 3000.0,
+            ),
+        )
+        if not math.isfinite(fitness):
+            return -1_000_000_000.0
+        return round(float(fitness), 6)
+
+    def _build_genetic_candidates(
+        self,
+        *,
+        champion: dict[str, Any],
+        top_dna: list[PolicyDNA],
+        nightly_report: dict[str, Any],
+        meta_review: dict[str, Any],
+    ) -> tuple[list[dict[str, Any]], dict[str, PolicyDNA]]:
+        if not top_dna:
+            return [], {}
+
+        registry = self._dna_registry()
+        weakest_regime = self._weakest_regime(meta_review)
+        lineage_hash = self._dna_lineage_hash()
+        fitness_score = self._genetic_fitness(nightly_report)
+        candidates: list[dict[str, Any]] = []
+        candidate_map: dict[str, PolicyDNA] = {}
+        mutation_rates = [0.12, 0.18, 0.24, 0.3, 0.36]
+
+        for index, parent in enumerate(top_dna[:3]):
+            mutation_rate = mutation_rates[index % len(mutation_rates)]
+            mutated_prompt = mutate_prompt(self._prompt_source_from_dna(parent), mutation_rate)
+            draft = registry.mutate(
+                parent=parent,
+                mutation_rate=mutation_rate,
+                content={
+                    "candidate_name": f"genetic_mutant_{index + 1}",
+                    "prompt_tweak": mutated_prompt,
+                    "regime_focus": weakest_regime,
+                    "hyperparam_suggestion": self._mutated_hyperparams(parent=parent, scale=mutation_rate, champion=champion),
+                },
+                fitness_score=fitness_score,
+                version="candidate",
+                lineage_hash=lineage_hash,
+            )
+            draft = registry.register_dna(draft)
+            candidate = self._candidate_from_dna(draft, fallback_name=f"genetic_mutant_{index + 1}")
+            candidates.append(candidate)
+            candidate_map[draft.hash] = draft
+
+        crossover_pairs = [(0, 1), (0, 2), (1, 2)]
+        for left_index, right_index in crossover_pairs:
+            if left_index >= len(top_dna) or right_index >= len(top_dna):
+                continue
+            left_parent = top_dna[left_index]
+            right_parent = top_dna[right_index]
+            crossed_prompt = crossover(left_parent, right_parent)
+            draft = registry.mutate(
+                parent=left_parent,
+                crossover=right_parent,
+                mutation_rate=0.22,
+                content={
+                    "candidate_name": f"genetic_crossover_{left_index + 1}_{right_index + 1}",
+                    "prompt_tweak": crossed_prompt,
+                    "regime_focus": weakest_regime,
+                    "hyperparam_suggestion": self._blended_hyperparams(left_parent=left_parent, right_parent=right_parent, champion=champion),
+                },
+                fitness_score=fitness_score,
+                version="candidate",
+                lineage_hash=lineage_hash,
+            )
+            draft = registry.register_dna(draft)
+            candidate = self._candidate_from_dna(draft, fallback_name=f"genetic_crossover_{left_index + 1}_{right_index + 1}")
+            candidates.append(candidate)
+            candidate_map[draft.hash] = draft
+
+        if len(candidates) < 5 and top_dna:
+            filler_parent = top_dna[0]
+            while len(candidates) < 5:
+                mutation_rate = mutation_rates[len(candidates) % len(mutation_rates)]
+                mutated_prompt = mutate_prompt(self._prompt_source_from_dna(filler_parent), mutation_rate)
+                draft = registry.mutate(
+                    parent=filler_parent,
+                    mutation_rate=mutation_rate,
+                    content={
+                        "candidate_name": f"genetic_filler_{len(candidates) + 1}",
+                        "prompt_tweak": mutated_prompt,
+                        "regime_focus": weakest_regime,
+                        "hyperparam_suggestion": self._mutated_hyperparams(parent=filler_parent, scale=mutation_rate, champion=champion),
+                    },
+                    fitness_score=fitness_score,
+                    version="candidate",
+                    lineage_hash=lineage_hash,
+                )
+                draft = registry.register_dna(draft)
+                candidate = self._candidate_from_dna(draft, fallback_name=f"genetic_filler_{len(candidates) + 1}")
+                candidates.append(candidate)
+                candidate_map[draft.hash] = draft
+
+        return candidates[:10], candidate_map
+
+    def _promote_winning_dna(
+        self,
+        *,
+        active_dna: PolicyDNA | None,
+        winner_dna: PolicyDNA | None,
+        should_promote: bool,
+    ) -> PolicyDNA | None:
+        if not should_promote or winner_dna is None:
+            return active_dna
+        registry = self._dna_registry()
+        promoted = PolicyDNA.create(
+            prompt_id=winner_dna.prompt_id,
+            version="active",
+            content=winner_dna.content,
+            fitness_score=winner_dna.fitness_score,
+            generation=max(int(winner_dna.generation), int(active_dna.generation) + 1 if active_dna else 1),
+            parent_ids=[winner_dna.hash],
+            mutation_rate=0.0,
+            lineage_hash=self._dna_lineage_hash(),
+        )
+        return registry.register_dna(promoted)
+
+    def _content_from_dna(self, dna: PolicyDNA) -> dict[str, Any]:
+        try:
+            payload = json.loads(dna.content)
+        except Exception:
+            payload = {"prompt_tweak": dna.content}
+        return payload if isinstance(payload, dict) else {"prompt_tweak": dna.content}
+
+    def _prompt_source_from_dna(self, dna: PolicyDNA) -> str:
+        payload = self._content_from_dna(dna)
+        for key in ("prompt_tweak", "candidate_name", "prompt_fingerprint"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        return dna.content
+
+    def _normalized_hyperparams(self, dna: PolicyDNA, champion: dict[str, Any]) -> dict[str, float]:
+        payload = self._content_from_dna(dna)
+        source = payload.get("hyperparam_suggestion") or payload.get("hyperparams") or champion.get("hyperparams", {})
+        return {
+            "fast_path_threshold": float(source.get("fast_path_threshold", source.get("rl_confidence_threshold", 0.78)) or 0.78),
+            "max_risk_percent": float(source.get("max_risk_percent", 1.0) or 1.0),
+            "drawdown_kill_percent": float(source.get("drawdown_kill_percent", 8.0) or 8.0),
+        }
+
+    def _mutated_hyperparams(self, *, parent: PolicyDNA, scale: float, champion: dict[str, Any]) -> dict[str, float]:
+        base = self._normalized_hyperparams(parent, champion)
+        return {
+            "fast_path_threshold": round(max(0.45, min(0.95, base["fast_path_threshold"] + (scale / 4.0))), 3),
+            "max_risk_percent": round(max(0.2, min(3.5, base["max_risk_percent"] * (1.0 - (scale / 3.0)))), 3),
+            "drawdown_kill_percent": round(max(2.0, min(20.0, base["drawdown_kill_percent"] * (1.0 - (scale / 5.0)))), 3),
+        }
+
+    def _blended_hyperparams(self, *, left_parent: PolicyDNA, right_parent: PolicyDNA, champion: dict[str, Any]) -> dict[str, float]:
+        left = self._normalized_hyperparams(left_parent, champion)
+        right = self._normalized_hyperparams(right_parent, champion)
+        return {
+            "fast_path_threshold": round((left["fast_path_threshold"] + right["fast_path_threshold"]) / 2.0, 3),
+            "max_risk_percent": round((left["max_risk_percent"] + right["max_risk_percent"]) / 2.0, 3),
+            "drawdown_kill_percent": round((left["drawdown_kill_percent"] + right["drawdown_kill_percent"]) / 2.0, 3),
+        }
+
+    def _candidate_from_dna(self, dna: PolicyDNA, *, fallback_name: str) -> dict[str, Any]:
+        payload = self._content_from_dna(dna)
+        return {
+            "name": str(payload.get("candidate_name", fallback_name)),
+            "prompt_tweak": str(payload.get("prompt_tweak", self._prompt_source_from_dna(dna))),
+            "regime_focus": str(payload.get("regime_focus", "neutral")),
+            "hyperparam_suggestion": dict(payload.get("hyperparam_suggestion", {})),
+            "dna_hash": dna.hash,
+            "dna_generation": dna.generation,
+            "mutation_rate": dna.mutation_rate,
+        }
+
+    def _register_active_dna(self, *, nightly_report: dict[str, Any], meta_review: dict[str, Any]) -> PolicyDNA | None:
+        registry = self._dna_registry()
+        if registry.get_latest_dna("active") is None:
+            registry.load_from_blackboard(self.blackboard, prompt_id="self_evolution_blackboard", version="bootstrap")
+
+        payload = {
+            "prompt_fingerprint": self._prompt_fingerprint(),
+            "agent_styles": dict(getattr(self.engine.config, "agent_styles", {}) or {}),
+            "hyperparams": dict(self._current_champion().get("hyperparams", {})),
+            "nightly_report": {
+                "trades": int(nightly_report.get("trades", 0) or 0),
+                "wins": int(nightly_report.get("wins", 0) or 0),
+                "net_pnl": float(nightly_report.get("net_pnl", 0.0) or 0.0),
+                "sharpe": float(nightly_report.get("sharpe", 0.0) or 0.0),
+            },
+            "meta_review": dict(meta_review),
+        }
+        previous = registry.get_latest_dna("active")
+        generation = 0 if previous is None else int(previous.generation)
+        parent_ids = [] if previous is None else [previous.hash]
+        dna = PolicyDNA.create(
+            prompt_id="self_evolution_policy",
+            version="active",
+            content=payload,
+            fitness_score=self._dna_fitness(meta_review),
+            generation=generation,
+            parent_ids=parent_ids,
+            mutation_rate=0.0,
+            lineage_hash=self._dna_lineage_hash(),
+        )
+        return registry.register_dna(dna)
+
+    def _register_candidate_dna(
+        self,
+        *,
+        active_dna: PolicyDNA | None,
+        best: dict[str, Any] | None,
+        nightly_report: dict[str, Any],
+        meta_review: dict[str, Any],
+    ) -> PolicyDNA | None:
+        if active_dna is None or best is None:
+            return None
+        registry = self._dna_registry()
+        mutation_rate = 0.35 if self.sim_mode else 0.1
+        content = {
+            "candidate_name": str(best.get("name", "candidate")),
+            "prompt_tweak": str(best.get("prompt_tweak", "")),
+            "regime_focus": str(best.get("regime_focus", "neutral")),
+            "hyperparam_suggestion": dict(best.get("hyperparam_suggestion", {})),
+            "score": float(best.get("score", 0.0) or 0.0),
+            "confidence": float(best.get("confidence", 0.0) or 0.0),
+            "nightly_report": {
+                "trades": int(nightly_report.get("trades", 0) or 0),
+                "wins": int(nightly_report.get("wins", 0) or 0),
+                "net_pnl": float(nightly_report.get("net_pnl", 0.0) or 0.0),
+            },
+            "meta_review": dict(meta_review),
+        }
+        dna = registry.mutate(
+            parent=active_dna,
+            mutation_rate=mutation_rate,
+            content=content,
+            fitness_score=self._dna_fitness(meta_review),
+            version="candidate",
+            lineage_hash=self._dna_lineage_hash(),
+        )
+        return registry.register_dna(dna)
+
+    @staticmethod
+    def _dna_summary(dna: PolicyDNA | None) -> dict[str, Any] | None:
+        if dna is None:
+            return None
+        return {
+            "prompt_id": dna.prompt_id,
+            "version": dna.version,
+            "hash": dna.hash,
+            "generation": dna.generation,
+            "fitness_score": dna.fitness_score,
+            "lineage_hash": dna.lineage_hash,
+        }
 
     def _prompt_fingerprint(self) -> str:
         agent_styles = dict(getattr(self.engine.config, "agent_styles", {}) or {})
