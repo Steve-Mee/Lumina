@@ -27,6 +27,17 @@ from .risk_gates import RiskGatesMixin
 
 logger = logging.getLogger(__name__)
 
+_HANDLED_RISK_EXCEPTIONS = (
+    AttributeError,
+    ImportError,
+    IndexError,
+    KeyError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -308,7 +319,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
                 from .session_guard import SessionGuard  # noqa: PLC0415
 
                 self.session_guard = SessionGuard(calendar_name="CME")
-            except Exception as exc:
+            except _HANDLED_RISK_EXCEPTIONS as exc:
                 logger.error("SessionGuard init failed: %s", exc)
                 err = LuminaError(
                     severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
@@ -424,7 +435,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
                     f"Loaded persistent risk state: daily_pnl={self.state.daily_pnl}, "
                     f"kill_switch={self.state.kill_switch_engaged}"
                 )
-        except Exception as e:
+        except _HANDLED_RISK_EXCEPTIONS as e:
             err = LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
                 code="RISK_LOAD_STATE_002",
@@ -452,7 +463,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
                     f,
                     indent=2,
                 )
-        except Exception as e:
+        except _HANDLED_RISK_EXCEPTIONS as e:
             err = LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
                 code="RISK_SAVE_STATE_003",
@@ -566,7 +577,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         required = {"timestamp", "open", "high", "low", "close", "volume"}
         try:
             columns = set(str(col) for col in list(market_df.columns))
-        except Exception as _exc:
+        except _HANDLED_RISK_EXCEPTIONS as _exc:
             log_structured(
                 LuminaError(
                     severity=ErrorSeverity.RECOVERABLE_LEARNING,
@@ -581,7 +592,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
 
         try:
             anchor = str(market_df.iloc[-1].get("timestamp", "") or "")
-        except Exception as _exc:
+        except _HANDLED_RISK_EXCEPTIONS as _exc:
             log_structured(
                 LuminaError(
                     severity=ErrorSeverity.RECOVERABLE_LEARNING,
@@ -600,7 +611,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         tail_size = max(lookback + 2, lookback + (max_windows * stride))
         try:
             rows = market_df.tail(tail_size).reset_index(drop=True)
-        except Exception as _exc:
+        except _HANDLED_RISK_EXCEPTIONS as _exc:
             log_structured(
                 LuminaError(
                     severity=ErrorSeverity.RECOVERABLE_LEARNING,
@@ -617,7 +628,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         if self.state.regime_detector_history:
             try:
                 last_ts = str(self.state.regime_detector_history[-1].get("ts", "") or "")
-            except Exception as _exc:
+            except _HANDLED_RISK_EXCEPTIONS as _exc:
                 log_structured(
                     LuminaError(
                         severity=ErrorSeverity.RECOVERABLE_LEARNING,
@@ -633,7 +644,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
             window = rows.iloc[: end_idx + 1]
             try:
                 snapshot = detector.detect(window, instrument=str(instrument))
-            except Exception as _exc:
+            except _HANDLED_RISK_EXCEPTIONS as _exc:
                 log_structured(
                     LuminaError(
                         severity=ErrorSeverity.RECOVERABLE_LEARNING,
@@ -1492,7 +1503,7 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
             cfg_path = os.getenv("LUMINA_CONFIG", "config.yaml")
             with open(cfg_path, "r", encoding="utf-8") as _fh:
                 config = _yaml.safe_load(_fh) or {}
-        except Exception as _exc:
+        except _HANDLED_RISK_EXCEPTIONS as _exc:
             log_structured(
                 LuminaError(
                     severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
