@@ -157,7 +157,7 @@ class RiskAllocatorMixin:
 
         regime_returns = self._regime_return_buckets()
         transition_weights = self._regime_transition_weights()
-        current_exposure = sum(float(v) for v in self.state.open_risk_by_symbol.values())
+        current_exposure = sum(float(v) for v in self.state.open_risk_by_symbol.values())  # type: ignore[misc]
         total_exposure = max(0.0, current_exposure + float(proposed_risk))
         max_exposure = max(1.0, float(limits.max_total_open_risk))
         exposure_scale = max(0.25, min(2.0, total_exposure / max_exposure))
@@ -305,7 +305,7 @@ class RiskAllocatorMixin:
             }
             return True, reason, payload
 
-        exposure_usd = sum(float(v) for v in self.state.open_risk_by_symbol.values()) + max(0.0, float(proposed_risk))
+        exposure_usd = sum(float(v) for v in self.state.open_risk_by_symbol.values()) + max(0.0, float(proposed_risk))  # type: ignore[misc]
         returns = self._portfolio_return_series()
         min_samples = max(10, int(limits.var_es_min_samples))
 

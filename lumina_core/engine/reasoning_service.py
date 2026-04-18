@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from .broker_bridge import Order, OrderResult
-from .agent_contracts import apply_agent_policy_gateway
 from .errors import BrokerBridgeError, PolicyGateError, format_error_code
 from .local_inference_engine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine

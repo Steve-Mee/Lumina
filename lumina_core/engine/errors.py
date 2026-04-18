@@ -6,7 +6,6 @@ from __future__ import annotations
 # ──────────────────────────────────────────────────────────────────────────
 
 import json
-import traceback as _traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto

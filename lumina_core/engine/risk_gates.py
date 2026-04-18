@@ -64,7 +64,7 @@ class RiskGatesMixin:
                 self._engage_kill_switch("max_consecutive_losses", reason)
                 return False, reason
 
-        total_open_risk = sum(float(v) for v in self.state.open_risk_by_symbol.values()) + float(proposed_risk)
+        total_open_risk = sum(float(v) for v in self.state.open_risk_by_symbol.values()) + float(proposed_risk)  # type: ignore[misc]
         if total_open_risk > limits.max_total_open_risk:
             reason = f"MAX TOTAL OPEN RISK exceeded: {total_open_risk:.2f} > {limits.max_total_open_risk:.2f}"
             self.state.portfolio_var_breached = True

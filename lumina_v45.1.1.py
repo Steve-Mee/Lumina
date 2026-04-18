@@ -15,6 +15,11 @@ from __future__ import annotations
 
 import sys
 import warnings
+from functools import lru_cache
+
+from lumina_core.bootstrap import create_public_api
+from lumina_core.container import ApplicationContainer, create_application_container
+from lumina_core.engine.runtime_entrypoint import run_with_mode
 
 warnings.warn(
     "lumina_v45.1.1 is deprecated and will be removed in a future release. "
@@ -24,12 +29,6 @@ warnings.warn(
     DeprecationWarning,
     stacklevel=2,
 )
-
-from functools import lru_cache
-
-from lumina_core.bootstrap import create_public_api
-from lumina_core.container import ApplicationContainer, create_application_container
-from lumina_core.engine.runtime_entrypoint import run_with_mode
 
 
 @lru_cache(maxsize=1)
