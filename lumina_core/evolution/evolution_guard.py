@@ -45,6 +45,14 @@ class EvolutionGuard:
             and float(candidate_fitness) > float(current_fitness)
         )
 
+    def allows_generation_progress(
+        self,
+        *,
+        candidate_fitness: float,
+        previous_generation_fitness: float,
+    ) -> bool:
+        return float(candidate_fitness) >= float(previous_generation_fitness)
+
     def should_rollback(
         self,
         *,

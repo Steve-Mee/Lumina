@@ -1,6 +1,7 @@
 # CANONICAL IMPLEMENTATION – v50 Living Organism
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Dict
 
 import gymnasium as gym
@@ -26,6 +27,7 @@ class RLTradingEnvironment(gym.Env):
         self.backtester = context.backtester
         self.valuation_engine = ValuationEngine()
         self.instrument = str(getattr(self.context.engine.config, "instrument", "MES"))
+        self._dna_version = str(getattr(self.context.engine, "active_dna_version", "GENESIS") or "GENESIS")
 
         # Observation space (20 features)
         self.observation_space = gym.spaces.Box(low=-10, high=10, shape=(20,), dtype=np.float32)
@@ -42,6 +44,15 @@ class RLTradingEnvironment(gym.Env):
         self.current_episode = 0
         self.equity_curve = [50000.0]
         self.pnl_history = []
+
+    def set_dna_version(self, dna_version: str) -> None:
+        self._dna_version = str(dna_version or "GENESIS")
+
+    def _dna_signal(self) -> float:
+        digest = hashlib.sha256(self._dna_version.encode("utf-8")).hexdigest()
+        bucket = int(digest[:6], 16)
+        # Normalize to [-1, 1] so it can be consumed like any other feature.
+        return float((bucket / 0xFFFFFF) * 2.0 - 1.0)
 
     def _get_observation(self) -> np.ndarray:
         """Volledige state als vector."""
@@ -61,8 +72,8 @@ class RLTradingEnvironment(gym.Env):
                 self.context.account_equity / 50000.0,
                 len(self.pnl_history) / 100.0,
                 np.mean(self.pnl_history[-10:]) if self.pnl_history else 0.0,
+                self._dna_signal(),
                 # extra features: fib distance, MA slope, volume delta, etc.
-                0.0,
                 0.0,
                 0.0,
                 0.0,

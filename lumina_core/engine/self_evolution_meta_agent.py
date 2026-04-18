@@ -307,13 +307,24 @@ class SelfEvolutionMetaAgent:
         if mutation_allowed and not dry_run:
             try:
                 orchestrator = EvolutionOrchestrator()
+                sim_duration_hours = int(nightly_report.get("sim_duration_hours", 24) or 24)
                 orch_result = orchestrator.run_nightly_evolution_cycle(
                     generations=3,
+                    sim_duration_hours=sim_duration_hours,
                     nightly_report=nightly_report,
                     blackboard=self.blackboard,
                     mode=mode_key,
                 )
                 outcome["multi_gen_cycle"] = orch_result
+                if self.obs_service is not None:
+                    try:
+                        self.obs_service.record_evolution_proposal(
+                            status=f"multi_gen:{orch_result.get('status', 'unknown')}",
+                            confidence=float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0),
+                            best_candidate=str(outcome.get("best_candidate", {}).get("name", "unknown")),
+                        )
+                    except Exception:
+                        pass
             except Exception as exc:
                 outcome["multi_gen_cycle"] = {"status": "error", "error": str(exc)}
 
@@ -577,6 +588,12 @@ class SelfEvolutionMetaAgent:
             if self.rl_environment is not None:
                 try:
                     setattr(self.engine, "rl_env", self.rl_environment)
+                except Exception:
+                    pass
+            if hasattr(trainer, "set_dna_version"):
+                try:
+                    active = self._get_or_create_dna_registry().get_latest_dna(version="active")
+                    trainer.set_dna_version(str(active.hash if active is not None else "GENESIS"))
                 except Exception:
                     pass
             policy_path = trainer.train(data, total_timesteps=50_000)

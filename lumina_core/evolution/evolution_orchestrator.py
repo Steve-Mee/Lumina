@@ -17,7 +17,6 @@ import hashlib
 import json
 import random
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +25,8 @@ from typing import Any
 from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
+from .multi_day_sim_runner import MultiDaySimRunner, SimResult
+from lumina_core.experiments.ab_framework import ABExperimentFramework
 
 
 _METRICS_PATH = Path("logs/evolution_metrics.jsonl")
@@ -91,6 +92,7 @@ class EvolutionOrchestrator:
             return
         self._registry = DNARegistry()
         self._guard = EvolutionGuard()
+        self._sim_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
         self._metrics_path = _METRICS_PATH
         self._initialized = True
 
@@ -102,6 +104,7 @@ class EvolutionOrchestrator:
         self,
         *,
         generations: int = 3,
+        sim_duration_hours: int = 24,
         nightly_report: dict[str, Any] | None = None,
         blackboard: Any | None = None,
         mode: str = "sim",
@@ -116,12 +119,24 @@ class EvolutionOrchestrator:
 
         report: dict[str, Any] = dict(nightly_report or {})
         gen_results: list[GenerationResult] = []
+        self._append_metrics(
+            {
+                "event": "evolution_cycle_started",
+                "timestamp": _utcnow(),
+                "generations": max(1, int(generations)),
+                "sim_duration_hours": max(1, int(sim_duration_hours)),
+                "mode": str(mode),
+            }
+        )
+
         all_candidates: list[PolicyDNA] = []
+        sim_days = max(1, int(round(max(1, int(sim_duration_hours)) / 24.0)))
 
         for gen_idx in range(max(1, int(generations))):
             result = self._run_single_generation(
                 generation_offset=gen_idx,
                 base_metrics=report,
+                sim_days=sim_days,
             )
             gen_results.append(result)
             if result.promoted:
@@ -146,6 +161,7 @@ class EvolutionOrchestrator:
         *,
         generation_offset: int,
         base_metrics: dict[str, Any],
+        sim_days: int,
     ) -> GenerationResult:
         top_dna = self._registry.get_ranked_dna(limit=3)
         active_dna = self._registry.get_latest_dna(version="active")
@@ -167,23 +183,42 @@ class EvolutionOrchestrator:
                 promoted=False,
             )
 
-        # Score all candidates in parallel
-        scored: list[tuple[PolicyDNA, float]] = []
-        with ThreadPoolExecutor(max_workers=min(8, len(candidates))) as pool:
-            future_map = {
-                pool.submit(_score_candidate, dna, base_metrics, generation_offset): dna
-                for dna in candidates
-            }
-            for future in as_completed(future_map):
-                dna = future_map[future]
-                try:
-                    fitness = float(future.result())
-                except Exception:
-                    fitness = float("-inf")
-                scored.append((dna, fitness))
+        sim_results = self._sim_runner.evaluate_variants(candidates, days=sim_days, nightly_report=base_metrics)
+        if not sim_results:
+            return GenerationResult(
+                generation=generation_offset,
+                candidate_count=len(candidates),
+                winner_hash="",
+                winner_fitness=float("-inf"),
+                previous_fitness=previous_fitness,
+                promoted=False,
+            )
 
-        scored.sort(key=lambda t: t[1], reverse=True)
-        winner_dna, winner_fitness = scored[0]
+        candidate_pool = [self._candidate_to_ab_variant(item, sim_results=sim_results) for item in candidates]
+        ab_framework = ABExperimentFramework(min_forks=5, max_forks=8, max_workers=8)
+        selected: dict[str, Any] = {}
+
+        def _score_variant(variant: dict[str, Any]) -> dict[str, Any]:
+            payload = dict(variant)
+            dna_hash = str(payload.get("dna_hash", ""))
+            match = next((r for r in sim_results if r.dna_hash == dna_hash), None)
+            payload["score"] = float(match.fitness) if match is not None else float("-inf")
+            payload["confidence"] = 0.9
+            return payload
+
+        experiment = ab_framework.run_auto_forks(
+            base_agent=dict(candidate_pool[0]),
+            score_fn=_score_variant,
+            promote_fn=lambda _: None,
+            seed=_seed_from_hash(f"gen:{generation_offset}"),
+            mode="sim",
+            candidate_pool=candidate_pool,
+        )
+        selected = dict(experiment.selected_variant or {})
+
+        winner_hash = str(selected.get("dna_hash", ""))
+        winner_dna = next((item for item in candidates if item.hash == winner_hash), candidates[0])
+        winner_fitness = float(selected.get("score", float("-inf")))
 
         # Guard: only promote if fitness strictly improves
         signed = self._guard.has_signed_approval(
@@ -191,9 +226,13 @@ class EvolutionOrchestrator:
             candidate_fitness=winner_fitness,
             current_fitness=previous_fitness,
         )
+        generation_ok = self._guard.allows_generation_progress(
+            candidate_fitness=winner_fitness,
+            previous_generation_fitness=previous_fitness,
+        )
 
         promoted = False
-        if signed:
+        if signed and generation_ok:
             promoted_dna = self._registry.mutate(
                 parent=winner_dna,
                 mutation_rate=0.1,
@@ -204,6 +243,21 @@ class EvolutionOrchestrator:
             self._registry.register_dna(promoted_dna)
             promoted = True
 
+        self._append_metrics(
+            {
+                "event": "generation_completed",
+                "timestamp": _utcnow(),
+                "generation": generation_offset,
+                "candidate_count": len(candidates),
+                "winner_hash": winner_dna.hash,
+                "winner_fitness": winner_fitness,
+                "previous_fitness": previous_fitness,
+                "promoted": promoted,
+                "ab_experiment_id": str(experiment.experiment_id),
+                "sim_days": sim_days,
+            }
+        )
+
         return GenerationResult(
             generation=generation_offset,
             candidate_count=len(candidates),
@@ -212,6 +266,16 @@ class EvolutionOrchestrator:
             previous_fitness=previous_fitness,
             promoted=promoted,
         )
+
+    @staticmethod
+    def _candidate_to_ab_variant(candidate: PolicyDNA, *, sim_results: list[SimResult]) -> dict[str, Any]:
+        match = next((item for item in sim_results if item.dna_hash == candidate.hash), None)
+        return {
+            "name": f"dna_{candidate.hash[:8]}",
+            "dna_hash": candidate.hash,
+            "score": float(match.fitness) if match is not None else float("-inf"),
+            "confidence": 0.9,
+        }
 
     def _generate_candidates(
         self,

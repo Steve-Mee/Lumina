@@ -25,8 +25,15 @@ def _load_sb3() -> tuple:
 class PPOTrainer:
     def __init__(self, context: RuntimeContext):
         self.context = context
+        self._dna_version = str(getattr(getattr(context, "engine", None), "active_dna_version", "GENESIS") or "GENESIS")
         ppo_cls, make_vec_env = _load_sb3()
-        self.env = make_vec_env(lambda: RLTradingEnvironment(context), n_envs=4)
+
+        def _build_env() -> RLTradingEnvironment:
+            env = RLTradingEnvironment(context)
+            env.set_dna_version(self._dna_version)
+            return env
+
+        self.env = make_vec_env(_build_env, n_envs=4)
         self.model = ppo_cls(
             "MlpPolicy",
             self.env,
@@ -39,6 +46,9 @@ class PPOTrainer:
             clip_range=0.2,
             tensorboard_log="./lumina_rl_logs/",
         )
+
+    def set_dna_version(self, dna_version: str) -> None:
+        self._dna_version = str(dna_version or "GENESIS")
 
     def train(self, total_timesteps: int = 100000):
         """Nightly training - run na backtest."""
