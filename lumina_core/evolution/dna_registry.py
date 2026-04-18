@@ -326,7 +326,9 @@ class DNARegistry:
             lineage_parts.append(str(getattr(event, "event_hash", "GENESIS") or "GENESIS"))
         if not snapshot:
             return None
-        lineage_hash = hashlib.sha256("|".join(lineage_parts).encode("utf-8")).hexdigest() if lineage_parts else "GENESIS"
+        lineage_hash = (
+            hashlib.sha256("|".join(lineage_parts).encode("utf-8")).hexdigest() if lineage_parts else "GENESIS"
+        )
         dna = PolicyDNA.create(
             prompt_id=prompt_id,
             version=version,

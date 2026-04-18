@@ -16,6 +16,9 @@ def _mutate_with_local_model(base_prompt: str, rate: float) -> str | None:
     model = str(os.getenv("LUMINA_VLLM_MUTATOR_MODEL", "grok-trader-1b")).strip()
     if not endpoint or not model:
         return None
+    # Security: only allow http/https to prevent file:// or custom-scheme injection (B310).
+    if not endpoint.startswith(("http://", "https://")):
+        return None
 
     payload = {
         "model": model,
@@ -45,7 +48,7 @@ def _mutate_with_local_model(base_prompt: str, rate: float) -> str | None:
         )
 
         def _fetch() -> str | None:
-            with urllib.request.urlopen(request, timeout=1.5) as response:
+            with urllib.request.urlopen(request, timeout=1.5) as response:  # nosec B310 – scheme validated above (http/https only)
                 body = response.read().decode("utf-8")
             parsed = json.loads(body)
             choices = parsed.get("choices") if isinstance(parsed, dict) else None
@@ -61,8 +64,7 @@ def _mutate_with_local_model(base_prompt: str, rate: float) -> str | None:
             _future = _pool.submit(_fetch)
             result = _future.result(timeout=2.0)
         return result
-    except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError,
-            concurrent.futures.TimeoutError):
+    except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError, concurrent.futures.TimeoutError):
         return None
     except Exception:
         return None

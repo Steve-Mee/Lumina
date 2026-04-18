@@ -144,7 +144,9 @@ class SelfEvolutionMetaAgent:
             else ([], {})
         )
         candidate_pool = challengers + genetic_candidates
-        scored = [self._score_challenger(champion, candidate, nightly_report, meta_review) for candidate in candidate_pool]
+        scored = [
+            self._score_challenger(champion, candidate, nightly_report, meta_review) for candidate in candidate_pool
+        ]
 
         ab_result: dict[str, Any] | None = None
         if self.sim_mode and mutation_allowed and candidate_pool:
@@ -203,9 +205,7 @@ class SelfEvolutionMetaAgent:
         }
 
         current_guard_fitness = float(active_dna.fitness_score) if active_dna is not None else float("-inf")
-        candidate_guard_fitness = (
-            float(best.get("score", float("-inf"))) if isinstance(best, dict) else float("-inf")
-        )
+        candidate_guard_fitness = float(best.get("score", float("-inf"))) if isinstance(best, dict) else float("-inf")
         signed_approval = guard.has_signed_approval(
             confidence=confidence,
             candidate_fitness=candidate_guard_fitness,
@@ -260,7 +260,9 @@ class SelfEvolutionMetaAgent:
                 "auto_apply_executed": bool(should_auto_apply and not self.approval_required and not dry_run),
                 "signed_approval": bool(signed_approval),
                 "mutation_allowed": bool(mutation_allowed),
-                "candidate_fitness": round(candidate_guard_fitness, 6) if math.isfinite(candidate_guard_fitness) else None,
+                "candidate_fitness": round(candidate_guard_fitness, 6)
+                if math.isfinite(candidate_guard_fitness)
+                else None,
                 "current_fitness": round(current_guard_fitness, 6) if math.isfinite(current_guard_fitness) else None,
                 "external_release_gates": bool(external_release_gates),
                 "shadow_evidence": bool(shadow_evidence),
@@ -283,7 +285,9 @@ class SelfEvolutionMetaAgent:
             outcome["genetic_evolution"] = {
                 "top_dna_count": len(top_dna),
                 "candidate_count": len(genetic_candidates),
-                "promoted_hash": str((promoted_active_dna or active_dna).hash) if (promoted_active_dna or active_dna) else "",
+                "promoted_hash": str((promoted_active_dna or active_dna).hash)
+                if (promoted_active_dna or active_dna)
+                else "",
             }
         if isinstance(ab_result, dict):
             outcome["ab_experiment"] = ab_result
@@ -944,7 +948,9 @@ class SelfEvolutionMetaAgent:
                     "candidate_name": f"genetic_mutant_{index + 1}",
                     "prompt_tweak": mutated_prompt,
                     "regime_focus": weakest_regime,
-                    "hyperparam_suggestion": self._mutated_hyperparams(parent=parent, scale=mutation_rate, champion=champion),
+                    "hyperparam_suggestion": self._mutated_hyperparams(
+                        parent=parent, scale=mutation_rate, champion=champion
+                    ),
                 },
                 fitness_score=fitness_score,
                 version="candidate",
@@ -970,14 +976,18 @@ class SelfEvolutionMetaAgent:
                     "candidate_name": f"genetic_crossover_{left_index + 1}_{right_index + 1}",
                     "prompt_tweak": crossed_prompt,
                     "regime_focus": weakest_regime,
-                    "hyperparam_suggestion": self._blended_hyperparams(left_parent=left_parent, right_parent=right_parent, champion=champion),
+                    "hyperparam_suggestion": self._blended_hyperparams(
+                        left_parent=left_parent, right_parent=right_parent, champion=champion
+                    ),
                 },
                 fitness_score=fitness_score,
                 version="candidate",
                 lineage_hash=lineage_hash,
             )
             draft = registry.register_dna(draft)
-            candidate = self._candidate_from_dna(draft, fallback_name=f"genetic_crossover_{left_index + 1}_{right_index + 1}")
+            candidate = self._candidate_from_dna(
+                draft, fallback_name=f"genetic_crossover_{left_index + 1}_{right_index + 1}"
+            )
             candidates.append(candidate)
             candidate_map[draft.hash] = draft
 
@@ -993,7 +1003,9 @@ class SelfEvolutionMetaAgent:
                         "candidate_name": f"genetic_filler_{len(candidates) + 1}",
                         "prompt_tweak": mutated_prompt,
                         "regime_focus": weakest_regime,
-                        "hyperparam_suggestion": self._mutated_hyperparams(parent=filler_parent, scale=mutation_rate, champion=champion),
+                        "hyperparam_suggestion": self._mutated_hyperparams(
+                            parent=filler_parent, scale=mutation_rate, champion=champion
+                        ),
                     },
                     fitness_score=fitness_score,
                     version="candidate",
@@ -1047,7 +1059,9 @@ class SelfEvolutionMetaAgent:
         payload = self._content_from_dna(dna)
         source = payload.get("hyperparam_suggestion") or payload.get("hyperparams") or champion.get("hyperparams", {})
         return {
-            "fast_path_threshold": float(source.get("fast_path_threshold", source.get("rl_confidence_threshold", 0.78)) or 0.78),
+            "fast_path_threshold": float(
+                source.get("fast_path_threshold", source.get("rl_confidence_threshold", 0.78)) or 0.78
+            ),
             "max_risk_percent": float(source.get("max_risk_percent", 1.0) or 1.0),
             "drawdown_kill_percent": float(source.get("drawdown_kill_percent", 8.0) or 8.0),
         }
@@ -1057,10 +1071,14 @@ class SelfEvolutionMetaAgent:
         return {
             "fast_path_threshold": round(max(0.45, min(0.95, base["fast_path_threshold"] + (scale / 4.0))), 3),
             "max_risk_percent": round(max(0.2, min(3.5, base["max_risk_percent"] * (1.0 - (scale / 3.0)))), 3),
-            "drawdown_kill_percent": round(max(2.0, min(20.0, base["drawdown_kill_percent"] * (1.0 - (scale / 5.0)))), 3),
+            "drawdown_kill_percent": round(
+                max(2.0, min(20.0, base["drawdown_kill_percent"] * (1.0 - (scale / 5.0)))), 3
+            ),
         }
 
-    def _blended_hyperparams(self, *, left_parent: PolicyDNA, right_parent: PolicyDNA, champion: dict[str, Any]) -> dict[str, float]:
+    def _blended_hyperparams(
+        self, *, left_parent: PolicyDNA, right_parent: PolicyDNA, champion: dict[str, Any]
+    ) -> dict[str, float]:
         left = self._normalized_hyperparams(left_parent, champion)
         right = self._normalized_hyperparams(right_parent, champion)
         return {

@@ -26,15 +26,21 @@ def test_rollback_triggers_for_worse_candidate_within_window() -> None:
     now = datetime.now(timezone.utc)
     promoted_at = now - timedelta(minutes=30)
 
-    assert guard.should_rollback(
-        promoted_at=promoted_at,
-        candidate_fitness=0.4,
-        previous_fitness=0.8,
-        now=now,
-    ) is True
-    assert guard.should_rollback(
-        promoted_at=now - timedelta(hours=2),
-        candidate_fitness=0.4,
-        previous_fitness=0.8,
-        now=now,
-    ) is False
+    assert (
+        guard.should_rollback(
+            promoted_at=promoted_at,
+            candidate_fitness=0.4,
+            previous_fitness=0.8,
+            now=now,
+        )
+        is True
+    )
+    assert (
+        guard.should_rollback(
+            promoted_at=now - timedelta(hours=2),
+            candidate_fitness=0.4,
+            previous_fitness=0.8,
+            now=now,
+        )
+        is False
+    )

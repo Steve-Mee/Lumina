@@ -11,6 +11,7 @@ One nightly cycle:
 
 No backward compat, no over-engineering.
 """
+
 from __future__ import annotations
 
 import hashlib

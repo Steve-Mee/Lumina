@@ -155,9 +155,7 @@ def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) ->
     assert result["governance"]["mode"] == "sim"
     assert result["governance"]["mutation_allowed"] is True
     assert result["proposal"]["would_auto_apply"] == result["proposal"]["signed_approval"]
-    assert result["proposal"]["auto_apply_executed"] == (
-        result["status"] == "applied"
-    )
+    assert result["proposal"]["auto_apply_executed"] == (result["status"] == "applied")
     assert result["lifecycle"]["state"] in {"promoted", "rolled_back"}
     assert result["lifecycle"]["version_id"].startswith("evo-")
     assert result["ab_experiment"]["variant_count"] >= 5
