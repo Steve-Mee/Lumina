@@ -3,8 +3,10 @@ from __future__ import annotations
 import importlib.util
 from types import SimpleNamespace
 
+import pytest
 import yaml  # type: ignore[import-not-found]
 
+from lumina_core.engine.errors import LuminaError
 from lumina_core.engine.local_inference_engine import LocalInferenceEngine
 
 
@@ -54,7 +56,7 @@ def _context():
     return SimpleNamespace(logger=_Logger(), cost_tracker={}, config=SimpleNamespace(xai_key="test-key"))
 
 
-def test_local_inference_engine_falls_back_from_ollama_to_vllm(monkeypatch, tmp_path):
+def test_local_inference_engine_fail_hard_when_primary_provider_fails(monkeypatch, tmp_path):
     _write_config(tmp_path, primary_provider="ollama", fallback_order=["vllm", "grok_remote"])
     monkeypatch.chdir(tmp_path)
 
@@ -73,13 +75,12 @@ def test_local_inference_engine_falls_back_from_ollama_to_vllm(monkeypatch, tmp_
     monkeypatch.setattr(engine, "_infer_via_ollama", _ollama)
     monkeypatch.setattr(engine, "_infer_via_vllm", _vllm)
 
-    result = engine.infer("test", model_type="reasoning")
+    with pytest.raises(LuminaError, match="Inference provider execution failed"):
+        engine.infer("test", model_type="reasoning")
 
-    assert calls == ["ollama", "vllm"]
-    assert result["signal"] == "BUY"
+    assert calls == ["ollama"]
     assert engine.get_backend() == "ollama"
     assert engine.cost_tracker["local_inference_provider_stats"]["ollama"]["failures"] == 1
-    assert engine.cost_tracker["local_inference_provider_stats"]["vllm"]["successes"] == 1
 
 
 def test_local_inference_engine_hot_reloads_config_without_restart(monkeypatch, tmp_path):
@@ -156,7 +157,7 @@ def test_local_inference_engine_exposes_metrics_summary(monkeypatch, tmp_path):
     assert summary["avg_latency_ms"] >= 0.0
 
 
-def test_local_inference_engine_skips_unhealthy_vllm(monkeypatch, tmp_path):
+def test_local_inference_engine_unhealthy_vllm_fail_hard(monkeypatch, tmp_path):
     _write_config(tmp_path, primary_provider="vllm", fallback_order=["ollama", "grok_remote"])
     monkeypatch.chdir(tmp_path)
 
@@ -175,11 +176,10 @@ def test_local_inference_engine_skips_unhealthy_vllm(monkeypatch, tmp_path):
     monkeypatch.setattr(engine, "_infer_via_vllm", _vllm)
     monkeypatch.setattr(engine, "_infer_via_ollama", _ollama)
 
-    result = engine.infer("gate-test", model_type="reasoning")
+    with pytest.raises(LuminaError, match="INFERENCE_VLLM_UNHEALTHY"):
+        engine.infer("gate-test", model_type="reasoning")
 
-    assert result["signal"] == "HOLD"
-    assert calls == ["ollama"]
-    assert "fallback providers" in engine.cost_tracker.get("local_inference_warning", "")
+    assert calls == []
 
 
 def test_local_inference_engine_reports_vllm_runtime_reason(monkeypatch, tmp_path):
@@ -244,7 +244,7 @@ def test_local_inference_engine_grok_remote_success_path(monkeypatch, tmp_path):
     assert result["confidence"] == 0.7
 
 
-def test_local_inference_engine_grok_remote_missing_key_sets_reason(monkeypatch, tmp_path):
+def test_local_inference_engine_grok_remote_missing_key_fail_hard(monkeypatch, tmp_path):
     _write_config(tmp_path, primary_provider="grok_remote", fallback_order=[])
     monkeypatch.chdir(tmp_path)
 
@@ -252,8 +252,5 @@ def test_local_inference_engine_grok_remote_missing_key_sets_reason(monkeypatch,
     ctx.config = SimpleNamespace(xai_key="")
     engine = LocalInferenceEngine(context=ctx)
 
-    result = engine.infer("remote-missing-key", model_type="reasoning")
-
-    assert result["signal"] == "HOLD"
-    assert result["reason"] == "All inference providers failed"
-    assert "XAI_KEY_MISSING" in engine.cost_tracker.get("local_inference_warning", "")
+    with pytest.raises(LuminaError, match="XAI_KEY_MISSING"):
+        engine.infer("remote-missing-key", model_type="reasoning")

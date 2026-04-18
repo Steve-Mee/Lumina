@@ -52,6 +52,12 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
             "features": {"realized_vol_ratio": 1.95},
         },
         market_regime="HIGH_VOLATILITY",
+        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {
+            "label": "HIGH_VOLATILITY",
+            "risk_state": "HIGH_RISK",
+            "adaptive_policy": {"risk_multiplier": 0.55, "cooldown_minutes": 45},
+            "features": {"realized_vol_ratio": 1.95},
+        }),
         observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
         audit_log_service=AuditLogService(path=audit_path, enabled=True, fail_closed_real=True),
         blackboard=SimpleNamespace(
@@ -139,8 +145,32 @@ def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Pa
             "features": {"realized_vol_ratio": 1.1},
         },
         market_regime="TRENDING",
+        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {
+            "label": "TRENDING",
+            "risk_state": "NORMAL",
+            "adaptive_policy": {"risk_multiplier": 1.0, "cooldown_minutes": 30},
+            "features": {"realized_vol_ratio": 1.1},
+        }),
         observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
         audit_log_service=AuditLogService(path=audit_path, enabled=True, fail_closed_real=True),
+        blackboard=SimpleNamespace(
+            latest=lambda topic: {
+                "agent.rl.proposal": _bb_event(
+                    topic="agent.rl.proposal",
+                    producer="rl_policy",
+                    payload={"signal": "BUY", "confidence": 0.8, "reason": "steady trend"},
+                    confidence=0.8,
+                    sequence=21,
+                ),
+                "execution.aggregate": _bb_event(
+                    topic="execution.aggregate",
+                    producer="runtime_workers.pre_dream_daemon",
+                    payload={"signal": "BUY", "chosen_strategy": "ppo_live_policy"},
+                    confidence=0.8,
+                    sequence=22,
+                ),
+            }.get(str(topic))
+        ),
         get_current_dream_snapshot=lambda: {
             "chosen_strategy": "ppo_live_policy",
             "confidence": 0.77,

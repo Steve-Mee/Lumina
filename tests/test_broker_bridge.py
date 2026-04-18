@@ -14,6 +14,27 @@ from lumina_core.engine.broker_bridge import (
 from lumina_core.engine.operations_service import OperationsService
 
 
+class _Event:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+        self.producer = "test"
+        self.confidence = float(payload.get("confidence", 0.8) or 0.8)
+        self.timestamp = "2026-04-18T00:00:00+00:00"
+        self.correlation_id = "corr"
+        self.sequence = 1
+        self.event_hash = "hash"
+        self.prev_hash = "prev-hash"
+
+
+class _Blackboard:
+    def latest(self, topic: str):
+        if topic.startswith("agent."):
+            return _Event({"agent_id": "rl", "signal": "BUY", "confidence": 0.81, "reason": "test"})
+        if topic == "execution.aggregate":
+            return _Event({"signal": "BUY", "chosen_strategy": "rl"})
+        return None
+
+
 class _FakeResponse:
     def __init__(self, status_code: int, payload: dict | list | None = None):
         self.status_code = status_code
@@ -115,10 +136,15 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge() -> None:
         ),
         config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
         get_current_dream_snapshot=lambda: {"stop": 4990.0, "target": 5010.0, "regime": "NEUTRAL"},
+        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        blackboard=_Blackboard(),
+        audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         risk_controller=SimpleNamespace(
             _active_limits=SimpleNamespace(enforce_session_guard=True),
             apply_regime_override=lambda *_a, **_k: None,
             check_can_trade=lambda *_a, **_k: (True, "ok"),
+            check_var_es_pre_trade=lambda *_a, **_k: (True, "VAR_ES OK", {}),
+            check_monte_carlo_drawdown_pre_trade=lambda *_a, **_k: (True, "MC drawdown OK", {}),
         ),
         session_guard=SimpleNamespace(
             is_rollover_window=lambda: False,

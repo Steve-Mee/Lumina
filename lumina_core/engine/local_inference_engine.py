@@ -11,11 +11,12 @@ from typing import Any, Dict, Optional
 import ollama
 import requests
 
+from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.xai_client import post_xai_chat
 from .provider_normalization import ProviderNormalizationLayer
 
-_FALLBACK_LOGGER = logging.getLogger("lumina.local_inference")
+_DEFAULT_LOGGER = logging.getLogger("lumina.local_inference")
 
 
 class LocalInferenceEngine:
@@ -31,7 +32,7 @@ class LocalInferenceEngine:
         self.config_path = Path("config.yaml")
         self.config_mtime = 0.0
         self.config = self._load_config()
-        self.logger = getattr(context, "logger", _FALLBACK_LOGGER)
+        self.logger = getattr(context, "logger", _DEFAULT_LOGGER)
         self.profile = self.config["hardware_profile"]
         self.backend_override: str | None = None
         self.active_provider = str(self.config.get("inference", {}).get("primary_provider", "ollama"))
@@ -190,10 +191,12 @@ class LocalInferenceEngine:
             return False
 
     def _try_vllm(self, messages: list, model: str) -> Optional[Dict]:
-        """Probeer vLLM (snelste voor Grok-Trader-1B)"""
+        """Run vLLM provider call without silent fallback behavior."""
+        del model
+        host = str(self.config["vllm"]["host"])
         try:
             resp = requests.post(
-                f"{self.config['vllm']['host']}/v1/chat/completions",
+                f"{host}/v1/chat/completions",
                 json={
                     "model": self.config["vllm"]["model_name"],
                     "messages": messages,
@@ -202,11 +205,19 @@ class LocalInferenceEngine:
                 },
                 timeout=15,
             )
-            if resp.status_code == 200:
-                return resp.json()["choices"][0]["message"]["content"]
-        except Exception:
-            pass
-        return None
+        except requests.RequestException as exc:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="INFERENCE_VLLM_REQUEST_FAILED",
+                message="vLLM request failed.",
+            ) from exc
+        if resp.status_code != 200:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="INFERENCE_VLLM_HTTP_ERROR",
+                message=f"vLLM returned non-200 status: {resp.status_code}",
+            )
+        return resp.json()["choices"][0]["message"]["content"]
 
     def _try_ollama(self, messages: list, model: str) -> Optional[Dict]:
         try:
@@ -219,22 +230,27 @@ class LocalInferenceEngine:
                     "num_gpu": -1,
                 },
             )
-            return resp["message"]["content"]
-        except Exception:
-            return None
+        except Exception as exc:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="INFERENCE_OLLAMA_REQUEST_FAILED",
+                message="Ollama inference call failed.",
+            ) from exc
+        return resp["message"]["content"]
 
     def _try_remote_grok(self, messages: list) -> Optional[Dict]:
-        """Fallback naar echte Grok-4 als alles faalt"""
+        """Run direct xAI inference provider call."""
         xai_key = (
             getattr(self.context, "XAI_KEY", None)
             or getattr(self.context, "xai_key", None)
             or getattr(getattr(self.context, "config", None), "xai_key", None)
         )
         if not xai_key:
-            reason = "XAI_KEY_MISSING"
-            self.cost_tracker["local_inference_warning"] = f"grok_remote unavailable: {reason}"
-            self.logger.warning(f"LOCAL_INFERENCE_PROVIDER_SKIPPED,provider=grok_remote,error_code={reason}")
-            return None
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="XAI_KEY_MISSING",
+                message="xAI key is required for grok_remote provider.",
+            )
 
         inference_cfg = self.config.get("inference", {})
         xai_cfg = self.config.get("xai", {})
@@ -255,26 +271,29 @@ class LocalInferenceEngine:
             max_retries=int(xai_cfg.get("max_retries", 1) or 1),
         )
         if response is None:
-            reason = "XAI_CALL_FAILED"
-            self.cost_tracker["local_inference_warning"] = f"grok_remote failed: {reason}"
-            self.logger.warning(f"LOCAL_INFERENCE_PROVIDER_FAILED,provider=grok_remote,error_code={reason}")
-            return None
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="XAI_CALL_FAILED",
+                message="xAI chat call returned no response.",
+            )
 
         if response.status_code >= 400:
-            reason = f"XAI_HTTP_{response.status_code}"
-            self.cost_tracker["local_inference_warning"] = f"grok_remote failed: {reason}"
-            self.logger.warning(f"LOCAL_INFERENCE_PROVIDER_FAILED,provider=grok_remote,error_code={reason}")
-            return None
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code=f"XAI_HTTP_{response.status_code}",
+                message=f"xAI returned HTTP {response.status_code}.",
+            )
 
         try:
             body = response.json()
             content = body["choices"][0]["message"]["content"]
             return content if isinstance(content, str) else json.dumps(content)
-        except Exception:
-            reason = "XAI_RESPONSE_SCHEMA_INVALID"
-            self.cost_tracker["local_inference_warning"] = f"grok_remote failed: {reason}"
-            self.logger.warning(f"LOCAL_INFERENCE_PROVIDER_FAILED,provider=grok_remote,error_code={reason}")
-            return None
+        except Exception as exc:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="XAI_RESPONSE_SCHEMA_INVALID",
+                message="xAI response schema invalid for chat completion payload.",
+            ) from exc
 
     # Compat met bestaande tests/callers
     def _infer_via_vllm(self, messages: list, model_type: str, **_kwargs: Any) -> Optional[Dict]:
@@ -316,68 +335,74 @@ class LocalInferenceEngine:
             ]
         )
 
-        chain = [self.get_backend(), *self.config.get("inference", {}).get("fallback_order", [])]
-        provider_chain: list[str] = []
-        for provider in chain:
-            normalized = str(provider).strip().lower()
-            if normalized and normalized not in provider_chain:
-                provider_chain.append(normalized)
-
-        # Probeer providers in volgorde
-        for provider in provider_chain:
-            try:
-                if provider == "vllm":
-                    if not self._is_vllm_healthy():
-                        if not self.cost_tracker.get("local_inference_warning"):
-                            self.cost_tracker["local_inference_warning"] = (
-                                "vLLM unavailable - auto-routed to fallback providers"
-                            )
-                        self.logger.warning("LOCAL_INFERENCE_GATE,provider=vllm,action=skip,reason=health_down")
-                        continue
-                    result = self._infer_via_vllm(messages, model_type)
-                elif provider == "ollama":
-                    result = self._infer_via_ollama(messages, model_type)
-                elif provider == "grok_remote":
-                    result = self._infer_via_remote_grok(messages)
-                else:
-                    result = None
-            except Exception as exc:
-                latency_ms = round((time.time() - start) * 1000.0, 2)
-                self._record_metrics(provider, latency_ms, success=False, estimated_cost=0.0)
-                self.logger.warning(f"INFERENCE_PROVIDER_FAILED,{provider},{exc}")
-                continue
-
-            if result:
-                try:
-                    parsed = json.loads(result) if isinstance(result, str) else result
-                except Exception:
-                    parsed = {"signal": "HOLD", "reason": "Parse error", "confidence": 0.5}
-
-                latency_ms = round((time.time() - start) * 1000.0, 2)
-                previous_provider = str(self.active_provider or "")
-                self.active_provider = provider
-                calibration_factor = self._resolve_calibration_factor(provider)
-                parsed = self.normalization_layer.normalize(
-                    provider=provider,
-                    payload=parsed if isinstance(parsed, dict) else {},
-                    provider_chain=provider_chain,
-                    calibration_factor=calibration_factor,
-                )
-                self._record_metrics(provider, latency_ms, success=True, estimated_cost=0.0)
-                if previous_provider and previous_provider != provider:
-                    self.logger.info(
-                        f"LOCAL_INFERENCE_PROVIDER_SWITCH,from={previous_provider},to={provider},model_type={model_type}"
+        provider = self.get_backend()
+        provider_chain = [provider]
+        try:
+            if provider == "vllm":
+                if not self._is_vllm_healthy():
+                    runtime_reason = str(self.cost_tracker.get("local_inference_vllm_runtime_reason", "") or "health_down")
+                    raise LuminaError(
+                        severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                        code="INFERENCE_VLLM_UNHEALTHY",
+                        message=f"vLLM provider unavailable: {runtime_reason}",
                     )
-                self.logger.info(
-                    f"INFERENCE,{provider},{model_type}={model},latency={round(latency_ms / 1000.0, 3)}s,profile={self.profile}"
+                result = self._infer_via_vllm(messages, model_type)
+            elif provider == "ollama":
+                result = self._infer_via_ollama(messages, model_type)
+            elif provider == "grok_remote":
+                result = self._infer_via_remote_grok(messages)
+            else:
+                raise LuminaError(
+                    severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                    code="INFERENCE_PROVIDER_UNSUPPORTED",
+                    message=f"Unsupported inference provider: {provider}",
                 )
-                return parsed
+
+            if not result:
+                raise LuminaError(
+                    severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                    code="INFERENCE_EMPTY_RESPONSE",
+                    message=f"Inference provider returned empty response: {provider}",
+                )
+
+            parsed = json.loads(result) if isinstance(result, str) else result
+            if not isinstance(parsed, dict):
+                raise LuminaError(
+                    severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                    code="INFERENCE_RESPONSE_NOT_OBJECT",
+                    message="Inference provider returned non-object payload.",
+                )
 
             latency_ms = round((time.time() - start) * 1000.0, 2)
+            previous_provider = str(self.active_provider or "")
+            self.active_provider = provider
+            calibration_factor = self._resolve_calibration_factor(provider)
+            parsed = self.normalization_layer.normalize(
+                provider=provider,
+                payload=parsed,
+                provider_chain=provider_chain,
+                calibration_factor=calibration_factor,
+            )
+            self._record_metrics(provider, latency_ms, success=True, estimated_cost=0.0)
+            if previous_provider and previous_provider != provider:
+                self.logger.info(
+                    f"LOCAL_INFERENCE_PROVIDER_SWITCH,from={previous_provider},to={provider},model_type={model_type}"
+                )
+            self.logger.info(
+                f"INFERENCE,{provider},{model_type}={model},latency={round(latency_ms / 1000.0, 3)}s,profile={self.profile}"
+            )
+            return parsed
+        except Exception as exc:
+            latency_ms = round((time.time() - start) * 1000.0, 2)
             self._record_metrics(provider, latency_ms, success=False, estimated_cost=0.0)
-
-        # Ultimate fallback
-        return {"signal": "HOLD", "reason": "All inference providers failed", "confidence": 0.3}
+            self.logger.warning(f"INFERENCE_PROVIDER_FAILED,{provider},{exc}")
+            if isinstance(exc, LuminaError):
+                raise
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="INFERENCE_PROVIDER_EXECUTION_FAILED",
+                message=f"Inference provider execution failed: {provider}",
+            ) from exc
 
     # Convenience wrappers (blijven hetzelfde)
     def vision_infer(self, chart_base64: str, text_prompt: str) -> Dict:

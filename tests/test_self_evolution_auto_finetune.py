@@ -135,6 +135,10 @@ def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) ->
         max_mutation_depth="radical",
         log_path=log_path,
         auto_fine_tuning_enabled=False,
+        dna_registry=DNARegistry(
+            jsonl_path=tmp_path / "dna_registry.jsonl",
+            sqlite_path=tmp_path / "dna_registry.sqlite3",
+        ),
     )
 
     # Deliberately weak report so confidence/backtest thresholds are not required.

@@ -39,9 +39,34 @@ Scope: lumina_core (focus: engine, evolution, rl)
 - Removed safe-default profile fallback logic in `_load_mode_risk_profile`.
 - Enforced strict config schema (`sim`, `real`, `trading` mappings and required keys) with fail-hard `LuminaError` on invalid config.
 
+6. lumina_core/order_gatekeeper.py
+- Removed dream/agent fallback assembly paths and enforced explicit audit dependencies.
+- Removed synthetic regime snapshot fallback object; snapshot provider contract is now explicit.
+- Removed silent exception swallowing in observability/audit/blackboard lineage collection.
+- Enforced strict tuple contracts for VaR/ES and Monte-Carlo gate methods.
+
+7. lumina_core/engine/local_inference_engine.py
+- Removed provider-chain auto-fallback execution (`fallback_order`) at runtime request dispatch.
+- Removed ultimate HOLD fallback response (`All inference providers failed`).
+- Removed parse-error HOLD fallback payload and enforced JSON-object payload contract.
+- Removed silent provider error swallowing in vLLM/Ollama/xAI provider adapters.
+
+8. lumina_core/runtime_context.py
+- Removed implicit app-namespace compatibility path; adapter now delegates only to engine surface.
+- Kept explicit engine delegation for runtime service contract compatibility.
+
 ## Total explicit fallback removals
 
-- 31 fallback/legacy control-flow paths removed or converted to fail-hard behavior.
+- 45+ fallback/legacy control-flow paths removed or converted to fail-hard behavior across core runtime paths.
+
+## Validation snapshot (second strict pass)
+
+- Targeted strict-change suites: passing.
+- Full command validation: `pytest tests/ --cov=lumina_core/evolution --cov-report=term-missing -q --tb=no` => 464 passed, 2 skipped, 89% evolution coverage.
+- Runtime validation executed:
+	- `python lumina_runtime.py --mode=paper --duration=300`
+	- `python lumina_runtime.py --mode=sim --duration=300`
+- `logs/evolution_metrics.jsonl` confirmed active with fresh generation events during runtime validation.
 
 ## Notes
 

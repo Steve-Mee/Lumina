@@ -36,29 +36,24 @@ def _logger_for_engine(engine: Any):
 
 def _safe_log_warning(engine: Any, message: str) -> None:
     logger = _logger_for_engine(engine)
-    try:
-        logger.warning(message)
-    except Exception:
-        _LOG.warning(message)
+    logger.warning(message)
 
 
 def _record_mode_guard_block(engine: Any, *, mode: str, reason: str) -> None:
     obs = getattr(engine, "observability_service", None)
     if obs is not None and hasattr(obs, "record_mode_guard_block"):
-        try:
-            obs.record_mode_guard_block(mode=str(mode), reason=str(reason))
-        except Exception:
-            pass
+        obs.record_mode_guard_block(mode=str(mode), reason=str(reason))
 
 
 def _audit_trade_decision(engine: Any, payload: dict[str, Any], *, mode: str) -> bool:
     service = getattr(engine, "audit_log_service", None)
     if service is None or not hasattr(service, "log_decision"):
-        return True
-    try:
-        return bool(service.log_decision(payload, is_real_mode=str(mode).lower() == "real"))
-    except Exception:
-        return False
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="AUDIT_LOG_SERVICE_MISSING",
+            message="audit_log_service.log_decision is required for pre-trade enforcement.",
+        )
+    return bool(service.log_decision(payload, is_real_mode=str(mode).lower() == "real"))
 
 
 def _resolve_blackboard(engine: Any) -> Any | None:
@@ -83,10 +78,7 @@ def _agents_from_blackboard(engine: Any) -> list[dict[str, Any]]:
     )
     agents: list[dict[str, Any]] = []
     for topic in topics:
-        try:
-            event = board.latest(topic)
-        except Exception:
-            event = None
+        event = board.latest(topic)
         if event is None:
             continue
 
@@ -121,10 +113,7 @@ def _execution_aggregate_lineage(engine: Any) -> dict[str, Any]:
     board = _resolve_blackboard(engine)
     if board is None or not hasattr(board, "latest"):
         return {}
-    try:
-        event = board.latest("execution.aggregate")
-    except Exception:
-        event = None
+    event = board.latest("execution.aggregate")
     if event is None:
         return {}
 
@@ -148,30 +137,13 @@ def _execution_aggregate_lineage(engine: Any) -> dict[str, Any]:
 
 def _agents_from_dream(engine: Any) -> list[dict[str, Any]]:
     blackboard_agents = _agents_from_blackboard(engine)
-    if blackboard_agents:
-        return blackboard_agents
-
-    snapshot = {}
-    if hasattr(engine, "get_current_dream_snapshot"):
-        try:
-            snapshot = engine.get_current_dream_snapshot() or {}
-        except Exception:
-            snapshot = {}
-    if not isinstance(snapshot, dict):
-        return []
-
-    chosen_strategy = str(snapshot.get("chosen_strategy", "unknown") or "unknown")
-    confidence = float(snapshot.get("confidence", snapshot.get("confluence_score", 0.0)) or 0.0)
-    reason = str(snapshot.get("reason", "") or "")
-    return [
-        {
-            "agent_id": chosen_strategy,
-            "topic": "dream.snapshot",
-            "producer": "lumina_engine",
-            "confidence": confidence,
-            "reason": reason,
-        }
-    ]
+    if not blackboard_agents:
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="BLACKBOARD_AGENT_PROPOSALS_MISSING",
+            message="No agent proposals available on blackboard topics.",
+        )
+    return blackboard_agents
 
 
 def _build_audit_payload(
@@ -187,14 +159,19 @@ def _build_audit_payload(
     var_payload: dict[str, Any] | None = None,
     mc_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    snapshot = {}
-    if hasattr(engine, "get_current_dream_snapshot"):
-        try:
-            snapshot = engine.get_current_dream_snapshot() or {}
-        except Exception:
-            snapshot = {}
+    if not hasattr(engine, "get_current_dream_snapshot"):
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="DREAM_SNAPSHOT_PROVIDER_MISSING",
+            message="Engine must expose get_current_dream_snapshot for audit payloads.",
+        )
+    snapshot = engine.get_current_dream_snapshot() or {}
     if not isinstance(snapshot, dict):
-        snapshot = {}
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="DREAM_SNAPSHOT_INVALID",
+            message="get_current_dream_snapshot must return a dict.",
+        )
 
     probability = float(snapshot.get("confidence", snapshot.get("confluence_score", 0.0)) or 0.0)
     expected_value = float(snapshot.get("expected_value", snapshot.get("ev", 0.0)) or 0.0)
@@ -281,13 +258,10 @@ def session_guard_allows_trading(engine: Any) -> tuple[bool, str]:
     if session_guard is None:
         return False, "session_guard_unavailable"
 
-    try:
-        if session_guard.is_rollover_window():
-            return False, "rollover_window"
-        if not session_guard.is_trading_session():
-            return False, "outside_trading_session"
-    except Exception:
-        return False, "session_guard_check_failed"
+    if session_guard.is_rollover_window():
+        return False, "rollover_window"
+    if not session_guard.is_trading_session():
+        return False, "outside_trading_session"
 
     return True, "ok"
 
@@ -304,23 +278,17 @@ def _broker_metadata_contract_allowed(engine: Any, symbol: str) -> tuple[bool, s
 
     # Preferred explicit capability.
     if hasattr(broker, "is_contract_tradeable"):
-        try:
-            ok, reason = broker.is_contract_tradeable(str(symbol))
-            return bool(ok), str(reason or "broker_metadata_gate")
-        except Exception:
-            return False, "broker_metadata_check_failed"
+        ok, reason = broker.is_contract_tradeable(str(symbol))
+        return bool(ok), str(reason or "broker_metadata_gate")
 
     # Optional metadata dictionary capability.
     if hasattr(broker, "get_contract_metadata"):
-        try:
-            meta = broker.get_contract_metadata(str(symbol))
-            if isinstance(meta, dict):
-                if bool(meta.get("expired", False)):
-                    return False, "broker_metadata_expired"
-                if meta.get("tradeable") is False:
-                    return False, "broker_metadata_not_tradeable"
-        except Exception:
-            return False, "broker_metadata_check_failed"
+        meta = broker.get_contract_metadata(str(symbol))
+        if isinstance(meta, dict):
+            if bool(meta.get("expired", False)):
+                return False, "broker_metadata_expired"
+            if meta.get("tradeable") is False:
+                return False, "broker_metadata_not_tradeable"
 
     return True, "ok"
 
@@ -335,26 +303,22 @@ def _audit_stale_override(engine: Any, symbol: str, mode: str) -> None:
 def resolve_regime_snapshot(engine: Any, regime: str | None = None) -> dict[str, Any]:
     """Resolve and refresh the active regime snapshot used by risk/session gates."""
     reasoning_service = getattr(engine, "reasoning_service", None)
-    if reasoning_service is not None and hasattr(reasoning_service, "refresh_regime_snapshot"):
-        snapshot = reasoning_service.refresh_regime_snapshot()
-        return snapshot.to_dict() if hasattr(snapshot, "to_dict") else dict(snapshot)
-
-    existing = getattr(engine, "current_regime_snapshot", {})
-    if isinstance(existing, dict) and existing:
-        return existing
-
-    label = str(regime or getattr(engine, "market_regime", "NEUTRAL") or "NEUTRAL")
-    fallback = {
-        "label": label,
-        "risk_state": "NORMAL",
-        "adaptive_policy": {
-            "risk_multiplier": 1.0,
-            "cooldown_minutes": 30,
-            "high_risk": False,
-        },
-    }
-    engine.current_regime_snapshot = fallback
-    return fallback
+    if reasoning_service is None or not hasattr(reasoning_service, "refresh_regime_snapshot"):
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="REGIME_SNAPSHOT_PROVIDER_MISSING",
+            message="reasoning_service.refresh_regime_snapshot is required.",
+            context={"regime": regime},
+        )
+    snapshot = reasoning_service.refresh_regime_snapshot()
+    payload = snapshot.to_dict() if hasattr(snapshot, "to_dict") else dict(snapshot)
+    if not isinstance(payload, dict) or not payload:
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="REGIME_SNAPSHOT_INVALID",
+            message="refresh_regime_snapshot must return a non-empty mapping.",
+        )
+    return payload
 
 
 def enforce_pre_trade_gate(
@@ -439,51 +403,46 @@ def enforce_pre_trade_gate(
         cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
     )
     if hasattr(risk_controller, "record_regime_snapshot"):
-        try:
-            risk_controller.record_regime_snapshot(snapshot)
-        except Exception:
-            pass
+        risk_controller.record_regime_snapshot(snapshot)
     if hasattr(risk_controller, "record_regime_detector_history"):
-        try:
-            reasoning_service = getattr(engine, "reasoning_service", None)
-            regime_detector = getattr(reasoning_service, "regime_detector", None)
-            market_df = getattr(engine, "ohlc_1min", None)
-            instrument = str(getattr(getattr(engine, "config", None), "instrument", symbol) or symbol)
-            risk_controller.record_regime_detector_history(
-                detector=regime_detector,
-                market_df=market_df,
-                instrument=instrument,
-            )
-        except Exception:
-            pass
+        reasoning_service = getattr(engine, "reasoning_service", None)
+        regime_detector = getattr(reasoning_service, "regime_detector", None)
+        market_df = getattr(engine, "ohlc_1min", None)
+        instrument = str(getattr(getattr(engine, "config", None), "instrument", symbol) or symbol)
+        risk_controller.record_regime_detector_history(
+            detector=regime_detector,
+            market_df=market_df,
+            instrument=instrument,
+        )
 
     # LIVING ORGANISM v51: explicit VaR/ES gate before final order admission.
     if hasattr(risk_controller, "check_var_es_pre_trade"):
         var_result = risk_controller.check_var_es_pre_trade(float(proposed_risk))
-        var_ok = True
-        var_reason = "VAR_ES gate skipped (legacy contract)"
-        var_payload: dict[str, Any] = {}
-        if isinstance(var_result, tuple):
-            if len(var_result) >= 2:
-                var_ok = bool(var_result[0])
-                var_reason = str(var_result[1])
-            if len(var_result) >= 3 and isinstance(var_result[2], dict):
-                var_payload = dict(var_result[2])
-            elif len(var_result) == 1:
-                var_ok = bool(var_result[0])
-                var_reason = "VAR_ES gate result missing reason"
+        if not isinstance(var_result, tuple) or len(var_result) < 2:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="VAR_GATE_RESULT_INVALID",
+                message="check_var_es_pre_trade must return tuple(bool, reason, payload?).",
+            )
+        var_ok = bool(var_result[0])
+        var_reason = str(var_result[1])
+        var_payload: dict[str, Any] = dict(var_result[2]) if len(var_result) >= 3 and isinstance(var_result[2], dict) else {}
 
         mc_ok = True
-        mc_reason = "MC drawdown gate skipped (legacy contract)"
+        mc_reason = "mc_gate_not_configured"
         mc_payload: dict[str, Any] = {}
         if hasattr(risk_controller, "check_monte_carlo_drawdown_pre_trade"):
             mc_result = risk_controller.check_monte_carlo_drawdown_pre_trade(float(proposed_risk))
-            if isinstance(mc_result, tuple):
-                if len(mc_result) >= 2:
-                    mc_ok = bool(mc_result[0])
-                    mc_reason = str(mc_result[1])
-                if len(mc_result) >= 3 and isinstance(mc_result[2], dict):
-                    mc_payload = dict(mc_result[2])
+            if not isinstance(mc_result, tuple) or len(mc_result) < 2:
+                raise LuminaError(
+                    severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                    code="MC_GATE_RESULT_INVALID",
+                    message="check_monte_carlo_drawdown_pre_trade must return tuple(bool, reason, payload?).",
+                )
+            mc_ok = bool(mc_result[0])
+            mc_reason = str(mc_result[1])
+            if len(mc_result) >= 3 and isinstance(mc_result[2], dict):
+                mc_payload = dict(mc_result[2])
 
         audit_ok, audit_reason = _audit_or_fail_closed(
             _build_audit_payload(

@@ -21,6 +21,26 @@ import pandas as pd
 from lumina_core.engine.operations_service import OperationsService
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import check_pre_trade_risk
+class _Event:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+        self.producer = "test"
+        self.confidence = float(payload.get("confidence", 0.8) or 0.8)
+        self.timestamp = "2026-04-18T00:00:00+00:00"
+        self.correlation_id = "corr"
+        self.sequence = 1
+        self.event_hash = "hash"
+        self.prev_hash = "prev-hash"
+
+
+class _Blackboard:
+    def latest(self, topic: str):
+        if topic.startswith("agent."):
+            return _Event({"agent_id": "rl", "signal": "BUY", "confidence": 0.81, "reason": "test"})
+        if topic == "execution.aggregate":
+            return _Event({"signal": "BUY", "chosen_strategy": "rl"})
+        return None
+
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -30,6 +50,8 @@ def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: b
     """Minimal LuminaEngine stand-in."""
     risk_ctrl: Any = MagicMock()
     risk_ctrl.check_can_trade.return_value = (risk_ok, "ok" if risk_ok else "blocked")
+    risk_ctrl.check_var_es_pre_trade.return_value = (True, "VAR_ES OK", {})
+    risk_ctrl.check_monte_carlo_drawdown_pre_trade.return_value = (True, "MC drawdown OK", {})
     risk_ctrl.apply_regime_override.return_value = None
     limits = SimpleNamespace(enforce_session_guard=enforce_session_guard)
     risk_ctrl._active_limits = limits
@@ -58,6 +80,9 @@ def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: b
         risk_controller=risk_ctrl,
         session_guard=session_guard,
         current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
+        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        blackboard=_Blackboard(),
+        audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
     )
     return engine
@@ -211,6 +236,8 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
     """Create a RuntimeContext mock for check_pre_trade_risk tests."""
     risk_ctrl: Any = MagicMock()
     risk_ctrl.check_can_trade.return_value = (True, "ok")
+    risk_ctrl.check_var_es_pre_trade.return_value = (True, "VAR_ES OK", {})
+    risk_ctrl.check_monte_carlo_drawdown_pre_trade.return_value = (True, "MC drawdown OK", {})
     risk_ctrl.apply_regime_override.return_value = None
     limits = SimpleNamespace(enforce_session_guard=True)
     risk_ctrl._active_limits = limits
@@ -224,7 +251,10 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
         risk_controller=risk_ctrl,
         session_guard=session_guard,
         current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
-        reasoning_service=None,
+        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        blackboard=_Blackboard(),
+        audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
+        get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
     )
     # Return as RuntimeContext-compatible object (duck typing)
     return cast(RuntimeContext, SimpleNamespace(engine=engine, logger=MagicMock(), market_regime="NEUTRAL"))

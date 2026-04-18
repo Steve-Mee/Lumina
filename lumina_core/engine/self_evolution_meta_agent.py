@@ -48,9 +48,9 @@ class SelfEvolutionMetaAgent:
     rl_environment: Any | None = None
     lifecycle_manager: EvolutionLifecycleManager | None = None
     blackboard: Any | None = None
-    dna_registry: DNARegistry | None = None
+    dna_registry: DNARegistry = field(default_factory=DNARegistry)
     runtime_mode: str = "real"
-    evolution_guard: EvolutionGuard | None = None
+    evolution_guard: EvolutionGuard = field(default_factory=EvolutionGuard)
 
     @classmethod
     def from_container(
@@ -138,8 +138,7 @@ class SelfEvolutionMetaAgent:
 
         meta_review = self._meta_review(nightly_report)
         mode_key = self._runtime_mode_key()
-        guard = self.evolution_guard or EvolutionGuard()
-        self.evolution_guard = guard
+        guard = self.evolution_guard
         mutation_allowed = guard.can_mutate(mode=mode_key)
 
         active_dna = self._register_active_dna(nightly_report=nightly_report, meta_review=meta_review)
@@ -877,9 +876,7 @@ class SelfEvolutionMetaAgent:
             cfg.drawdown_kill_percent = float(suggestion["drawdown_kill_percent"])
 
     def _dna_registry(self) -> DNARegistry:
-        registry = self.dna_registry or DNARegistry()
-        self.dna_registry = registry
-        return registry
+        return self.dna_registry
 
     def _dna_lineage_hash(self) -> str:
         if self.blackboard is None or not hasattr(self.blackboard, "latest"):
@@ -1052,10 +1049,19 @@ class SelfEvolutionMetaAgent:
     def _content_from_dna(self, dna: PolicyDNA) -> dict[str, Any]:
         try:
             payload = json.loads(dna.content)
-        except Exception:
-            return {"prompt_tweak": dna.content}
+        except json.JSONDecodeError as exc:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="DNA_CONTENT_NOT_JSON_OBJECT",
+                message="DNA content must be valid JSON object payload.",
+                context={"prompt_id": str(dna.prompt_id), "hash": str(dna.hash)},
+            ) from exc
         if not isinstance(payload, dict):
-            return {"prompt_tweak": dna.content}
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="DNA_CONTENT_INVALID",
+                message="DNA content must be a JSON object payload.",
+            )
         return payload
 
     def _prompt_source_from_dna(self, dna: PolicyDNA) -> str:
@@ -1100,11 +1106,18 @@ class SelfEvolutionMetaAgent:
 
     def _candidate_from_dna(self, dna: PolicyDNA) -> dict[str, Any]:
         payload = self._content_from_dna(dna)
+        for required_key in ("candidate_name", "prompt_tweak", "regime_focus", "hyperparam_suggestion"):
+            if required_key not in payload:
+                raise LuminaError(
+                    severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                    code="DNA_CANDIDATE_PAYLOAD_INCOMPLETE",
+                    message=f"Missing required DNA candidate field: {required_key}",
+                )
         return {
-            "name": str(payload.get("candidate_name", "candidate")),
-            "prompt_tweak": str(payload.get("prompt_tweak", self._prompt_source_from_dna(dna))),
-            "regime_focus": str(payload.get("regime_focus", "neutral")),
-            "hyperparam_suggestion": dict(payload.get("hyperparam_suggestion", {})),
+            "name": str(payload["candidate_name"]),
+            "prompt_tweak": str(payload["prompt_tweak"]),
+            "regime_focus": str(payload["regime_focus"]),
+            "hyperparam_suggestion": dict(payload["hyperparam_suggestion"]),
             "dna_hash": dna.hash,
             "dna_generation": dna.generation,
             "mutation_rate": dna.mutation_rate,

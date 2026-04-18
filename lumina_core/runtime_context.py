@@ -19,10 +19,10 @@ class RuntimeContext:
         if self.app is not None:
             self.engine.bind_app(self.app)
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self.engine, name)
 
-    def __setattr__(self, name: str, value):
+    def __setattr__(self, name: str, value: Any) -> None:
         if name in {"engine", "app", "container"}:
             object.__setattr__(self, name, value)
             return

@@ -11,6 +11,7 @@ from lumina_core.engine.regime_detector import RegimeDetector
 from lumina_core.engine.reasoning_service import ReasoningService
 from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
 from lumina_core.engine.self_evolution_meta_agent import SelfEvolutionMetaAgent
+from lumina_core.evolution.dna_registry import DNARegistry
 from lumina_core.trade_workers import check_pre_trade_risk
 
 
@@ -225,7 +226,23 @@ def test_trade_workers_apply_tighter_limits_in_high_risk_regime() -> None:
     engine = SimpleNamespace(
         risk_controller=risk,
         current_regime_snapshot=snapshot,
-        reasoning_service=None,
+        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: snapshot),
+        blackboard=SimpleNamespace(
+            latest=lambda topic: SimpleNamespace(
+                payload={"agent_id": "rl", "confidence": 0.8, "reason": "test", "signal": "BUY"}
+                if str(topic).startswith("agent.")
+                else {"signal": "BUY", "chosen_strategy": "rl"},
+                producer="test",
+                confidence=0.8,
+                timestamp="2026-04-18T00:00:00+00:00",
+                correlation_id="corr",
+                sequence=1,
+                event_hash="hash",
+                prev_hash="prev-hash",
+            )
+        ),
+        audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
+        get_current_dream_snapshot=lambda: {"confidence": 0.7, "expected_value": 1.0},
         swarm=SimpleNamespace(current_symbol="MES JUN26"),
     )
     runtime = SimpleNamespace(engine=engine, logger=app.logger, market_regime="NEUTRAL")
@@ -253,6 +270,10 @@ def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path) -> None
         approval_required=True,
         runtime_mode="paper",
         log_path=tmp_path / "evolution_log.jsonl",
+        dna_registry=DNARegistry(
+            jsonl_path=tmp_path / "dna_registry.jsonl",
+            sqlite_path=tmp_path / "dna_registry.sqlite3",
+        ),
     )
     result = agent.run_nightly_evolution(
         nightly_report={

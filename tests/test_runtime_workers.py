@@ -18,14 +18,13 @@ def test_runtime_workers_exports_expected_callables():
     assert callable(runtime_workers.supervisor_loop)
 
 
-def test_wrapper_style_contract_uses_app_namespace():
-    # Smoke-contract test: workers consume the OOP runtime context wrapper.
+def test_runtime_context_delegates_engine_surface():
+    # RuntimeContext is an engine adapter and should expose engine attributes.
     app = SimpleNamespace(value=1)
     engine = LuminaEngine(config=EngineConfig())
     ctx = RuntimeContext(engine=engine, app=app)
-    assert ctx.value == 1
-    ctx.value = 2
-    assert app.value == 2
+    assert ctx.app is app
+    assert ctx.fast_path is engine.fast_path
 
 
 def test_pre_dream_daemon_applies_emotional_twin_correction(monkeypatch):
