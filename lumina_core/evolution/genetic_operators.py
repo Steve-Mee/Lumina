@@ -2,10 +2,62 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import random
+import urllib.error
+import urllib.request
 from typing import Any
 
 from .dna_registry import PolicyDNA
+
+
+def _mutate_with_local_model(base_prompt: str, rate: float) -> str | None:
+    endpoint = str(os.getenv("LUMINA_VLLM_MUTATOR_URL", "http://localhost:8000/v1/chat/completions")).strip()
+    model = str(os.getenv("LUMINA_VLLM_MUTATOR_MODEL", "grok-trader-1b")).strip()
+    if not endpoint or not model:
+        return None
+
+    payload = {
+        "model": model,
+        "temperature": max(0.05, min(0.9, float(rate))),
+        "max_tokens": 120,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Mutate this trading policy prompt while preserving capital-first behavior. "
+                    "Return only the mutated prompt text."
+                ),
+            },
+            {
+                "role": "user",
+                "content": base_prompt,
+            },
+        ],
+    }
+
+    try:
+        request = urllib.request.Request(
+            endpoint,
+            data=json.dumps(payload, ensure_ascii=True).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=2.0) as response:
+            body = response.read().decode("utf-8")
+        parsed = json.loads(body)
+        choices = parsed.get("choices") if isinstance(parsed, dict) else None
+        if not isinstance(choices, list) or not choices:
+            return None
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+    except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError):
+        return None
+    except Exception:
+        return None
+    return None
 
 
 def _content_text(content: str) -> str:
@@ -25,6 +77,10 @@ def _content_text(content: str) -> str:
 
 def mutate_prompt(prompt: str, rate: float) -> str:
     base_prompt = str(prompt or "Preserve capital and prefer HOLD under uncertainty.").strip()
+    local_model_mutation = _mutate_with_local_model(base_prompt, float(rate or 0.1))
+    if isinstance(local_model_mutation, str) and local_model_mutation:
+        return local_model_mutation
+
     strategies = [
         "Prioritize capital preservation before directional conviction.",
         "Reduce exposure when regime drift spikes or confidence splits.",
