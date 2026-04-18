@@ -84,6 +84,18 @@ class MetaAgentOrchestrator:
             nightly_report=merged_report,
             dry_run=dry_run,
         )
+        dna_payload = evolution_result.get("dna", {}) if isinstance(evolution_result.get("dna"), dict) else {}
+        active_dna = dna_payload.get("active", {}) if isinstance(dna_payload.get("active"), dict) else {}
+        candidate_dna = dna_payload.get("candidate", {}) if isinstance(dna_payload.get("candidate"), dict) else {}
+        dna_lineage_payload = {
+            "active_hash": str(active_dna.get("hash", "")),
+            "active_version": str(active_dna.get("version", "")),
+            "candidate_hash": str(candidate_dna.get("hash", "")),
+            "candidate_version": str(candidate_dna.get("version", "")),
+            "lineage_hash": str(active_dna.get("lineage_hash") or candidate_dna.get("lineage_hash") or ""),
+            "evolution_status": str(evolution_result.get("status", "unknown")),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
         self.blackboard.publish_sync(
             topic="meta.evolution_result",
             producer="meta_agent_orchestrator",
@@ -92,7 +104,16 @@ class MetaAgentOrchestrator:
                 "proposal": dict(evolution_result.get("proposal", {})),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
+            metadata={
+                "dna_lineage": dict(dna_lineage_payload),
+            },
             confidence=0.85,
+        )
+        self.blackboard.publish_sync(
+            topic="meta.dna_lineage",
+            producer="meta_agent_orchestrator",
+            payload=dna_lineage_payload,
+            confidence=0.84,
         )
 
         return {

@@ -51,6 +51,7 @@ DEFAULT_ALLOWED_PRODUCERS: dict[str, set[str]] = {
     "meta.retraining": {"meta_agent_orchestrator", "test"},
     "meta.bible_update": {"meta_agent_orchestrator", "test"},
     "meta.evolution_result": {"meta_agent_orchestrator", "test"},
+    "meta.dna_lineage": {"meta_agent_orchestrator", "test"},
     "agent.meta.proposal": {"self_evolution_meta_agent", "test"},
 }
 
@@ -69,6 +70,7 @@ DEFAULT_TOPIC_POLICIES: dict[str, TopicPolicy] = {
     "meta.retraining": TopicPolicy(critical=False, overflow_strategy="drop"),
     "meta.bible_update": TopicPolicy(critical=False, overflow_strategy="drop"),
     "meta.evolution_result": TopicPolicy(critical=False, overflow_strategy="drop"),
+    "meta.dna_lineage": TopicPolicy(critical=False, overflow_strategy="drop"),
     "agent.meta.proposal": TopicPolicy(critical=False, overflow_strategy="drop"),
 }
 

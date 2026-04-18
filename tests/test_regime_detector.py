@@ -251,6 +251,7 @@ def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path) -> None
         valuation_engine=SimpleNamespace(),
         risk_controller=HardRiskController(RiskLimits(enforce_session_guard=False), enforce_rules=True),
         approval_required=True,
+        runtime_mode="paper",
         log_path=tmp_path / "evolution_log.jsonl",
     )
     result = agent.run_nightly_evolution(

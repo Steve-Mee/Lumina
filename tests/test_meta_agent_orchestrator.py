@@ -16,6 +16,18 @@ class _SelfEvolutionStub:
         return {
             "status": "proposed",
             "proposal": {"confidence": 88.0, "would_auto_apply": False},
+            "dna": {
+                "active": {
+                    "hash": "active_hash_1",
+                    "version": "active",
+                    "lineage_hash": "lineage_hash_1",
+                },
+                "candidate": {
+                    "hash": "candidate_hash_1",
+                    "version": "candidate",
+                    "lineage_hash": "lineage_hash_1",
+                },
+            },
         }
 
 
@@ -69,6 +81,10 @@ def test_meta_orchestrator_runs_reflection_and_evolution(tmp_path: Path) -> None
     assert trainer.train_calls == 50000
     assert len(self_evolution.calls) == 1
     assert len(bible.updates) == 1
+    lineage = bus.latest("meta.dna_lineage")
+    assert lineage is not None
+    assert lineage.payload["active_hash"] == "active_hash_1"
+    assert lineage.payload["lineage_hash"] == "lineage_hash_1"
 
 
 def test_meta_orchestrator_dry_run_skips_training(tmp_path: Path) -> None:

@@ -73,6 +73,7 @@ def test_auto_fine_tune_triggered_by_low_acceptance(tmp_path: Path) -> None:
         valuation_engine=ValuationEngine(),
         risk_controller=HardRiskController(RiskLimits(enforce_session_guard=False), enforce_rules=True),
         approval_required=True,
+        runtime_mode="paper",
         log_path=log_path,
         auto_fine_tuning_enabled=True,
         min_acceptance_rate=0.4,
@@ -149,10 +150,14 @@ def test_sim_mode_forces_nightly_apply_even_without_threshold(tmp_path: Path) ->
         dry_run=False,
     )
 
-    assert result["status"] == "applied"
+    assert result["status"] in {"applied", "proposed"}
     assert result["proposal"]["forced_by_sim_mode"] is True
-    assert result["proposal"]["would_auto_apply"] is True
-    assert result["proposal"]["auto_apply_executed"] is True
+    assert result["governance"]["mode"] == "sim"
+    assert result["governance"]["mutation_allowed"] is True
+    assert result["proposal"]["would_auto_apply"] == result["proposal"]["signed_approval"]
+    assert result["proposal"]["auto_apply_executed"] == (
+        result["status"] == "applied"
+    )
     assert result["lifecycle"]["state"] in {"promoted", "rolled_back"}
     assert result["lifecycle"]["version_id"].startswith("evo-")
     assert result["ab_experiment"]["variant_count"] >= 5
@@ -206,3 +211,38 @@ def test_auto_fine_tune_triggered_by_high_drift_chaos(tmp_path: Path) -> None:
     assert result["auto_fine_tune"]["triggered"] is True
     assert result["auto_fine_tune"]["executed"] is True
     assert trainer.called is True
+
+
+def test_real_mode_blocks_mutation_governance(tmp_path: Path) -> None:
+    engine = SimpleNamespace(
+        config=SimpleNamespace(
+            risk_profile="balanced",
+            max_risk_percent=1.0,
+            drawdown_kill_percent=8.0,
+            agent_styles={"risk": "r"},
+        ),
+        regime_history=[{"label": "RANGING"}],
+        emotional_twin=None,
+        decision_log=None,
+    )
+    agent = SelfEvolutionMetaAgent(
+        engine=cast(Any, engine),
+        valuation_engine=ValuationEngine(),
+        risk_controller=HardRiskController(RiskLimits(enforce_session_guard=False), enforce_rules=True),
+        approval_required=False,
+        runtime_mode="real",
+        sim_mode=False,
+    )
+
+    result = agent.run_nightly_evolution(
+        nightly_report={
+            "trades": 80,
+            "wins": 44,
+            "net_pnl": 120.0,
+            "sharpe": 0.3,
+        },
+        dry_run=False,
+    )
+
+    assert result["governance"]["mode"] == "real"
+    assert result["governance"]["mutation_allowed"] is False

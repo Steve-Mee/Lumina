@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from ..evolution.dna_registry import DNARegistry, PolicyDNA
+from ..evolution.evolution_guard import EvolutionGuard
 from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_engine import LuminaEngine
 from .evolution_lifecycle import EvolutionLifecycleManager
@@ -46,6 +47,8 @@ class SelfEvolutionMetaAgent:
     lifecycle_manager: EvolutionLifecycleManager | None = None
     blackboard: Any | None = None
     dna_registry: DNARegistry | None = None
+    runtime_mode: str = "real"
+    evolution_guard: EvolutionGuard | None = None
 
     @classmethod
     def from_container(
@@ -74,14 +77,16 @@ class SelfEvolutionMetaAgent:
 
         ft_cfg = fine_tuning_cfg if isinstance(fine_tuning_cfg, dict) else {}
 
+        mode_key = str(mode or "real").strip().lower()
+
         return cls(
             engine=engine,
             valuation_engine=valuation_engine,
             risk_controller=risk_controller,
             enabled=enabled,
-            approval_required=bool(False if str(mode).strip().lower() == "sim" else approval_required),
-            sim_mode=bool(str(mode).strip().lower() == "sim"),
-            aggressive_evolution=bool(aggressive_evolution or str(mode).strip().lower() == "sim"),
+            approval_required=bool(False if mode_key == "sim" else approval_required),
+            sim_mode=bool(mode_key == "sim"),
+            aggressive_evolution=bool(aggressive_evolution or mode_key == "sim"),
             max_mutation_depth=str(max_mutation_depth or "conservative").strip().lower(),
             obs_service=obs_service,
             auto_fine_tuning_enabled=bool(ft_cfg.get("auto_trigger", True)),
@@ -90,6 +95,7 @@ class SelfEvolutionMetaAgent:
             ppo_trainer=getattr(container, "ppo_trainer", None),
             rl_environment=getattr(container, "rl_environment", None),
             blackboard=getattr(container, "blackboard", None),
+            runtime_mode=mode_key,
         )
 
     def run_nightly_evolution(self, *, nightly_report: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
@@ -105,6 +111,11 @@ class SelfEvolutionMetaAgent:
             return result
 
         meta_review = self._meta_review(nightly_report)
+        mode_key = self._runtime_mode_key()
+        guard = self.evolution_guard or EvolutionGuard()
+        self.evolution_guard = guard
+        mutation_allowed = guard.can_mutate(mode=mode_key)
+
         active_dna = self._register_active_dna(nightly_report=nightly_report, meta_review=meta_review)
         top_dna = self._top_ranked_dna(active_dna=active_dna)
         fine_tune_trigger = self._auto_fine_tuning_trigger(meta_review=meta_review)
@@ -120,18 +131,22 @@ class SelfEvolutionMetaAgent:
         champion = self._current_champion()
         if fine_tune_result.get("executed") and fine_tune_result.get("champion_candidate"):
             champion = dict(fine_tune_result["champion_candidate"])
-        challengers = self._build_challengers(champion, meta_review)
-        genetic_candidates, genetic_candidate_map = self._build_genetic_candidates(
-            champion=champion,
-            top_dna=top_dna,
-            nightly_report=nightly_report,
-            meta_review=meta_review,
+        challengers = self._build_challengers(champion, meta_review) if mutation_allowed else []
+        genetic_candidates, genetic_candidate_map = (
+            self._build_genetic_candidates(
+                champion=champion,
+                top_dna=top_dna,
+                nightly_report=nightly_report,
+                meta_review=meta_review,
+            )
+            if mutation_allowed
+            else ([], {})
         )
         candidate_pool = challengers + genetic_candidates
         scored = [self._score_challenger(champion, candidate, nightly_report, meta_review) for candidate in candidate_pool]
 
         ab_result: dict[str, Any] | None = None
-        if self.sim_mode and candidate_pool:
+        if self.sim_mode and mutation_allowed and candidate_pool:
             try:
                 ab_framework = ABExperimentFramework(min_forks=5, max_forks=10, max_workers=10)
                 base_candidate = dict(candidate_pool[0])
@@ -159,7 +174,7 @@ class SelfEvolutionMetaAgent:
         candidate_dna = None
         if isinstance(best, dict):
             candidate_dna = genetic_candidate_map.get(str(best.get("dna_hash", "")))
-        if candidate_dna is None:
+        if candidate_dna is None and mutation_allowed:
             candidate_dna = self._register_candidate_dna(
                 active_dna=active_dna,
                 best=best,
@@ -186,14 +201,40 @@ class SelfEvolutionMetaAgent:
             "live_promotion_eligible": bool(not self.sim_mode),
         }
 
+        current_guard_fitness = float(active_dna.fitness_score) if active_dna is not None else float("-inf")
+        candidate_guard_fitness = (
+            float(best.get("score", float("-inf"))) if isinstance(best, dict) else float("-inf")
+        )
+        signed_approval = guard.has_signed_approval(
+            confidence=confidence,
+            candidate_fitness=candidate_guard_fitness,
+            current_fitness=current_guard_fitness,
+        )
+
         forced_sim_apply = bool(self.sim_mode and best is not None)
-        should_auto_apply = bool(forced_sim_apply or (confidence > 85.0 and backtest_green and safety_ok))
+        baseline_auto_apply = bool(forced_sim_apply or (confidence > 85.0 and backtest_green and safety_ok))
+        should_auto_apply = bool(mutation_allowed and baseline_auto_apply and signed_approval)
         approval_blocked = bool(self.approval_required and should_auto_apply)
         promoted_active_dna = self._promote_winning_dna(
             active_dna=active_dna,
             winner_dna=candidate_dna,
             should_promote=bool(should_auto_apply and not approval_blocked and not dry_run),
         )
+
+        promoted_at = now if bool(should_auto_apply and not approval_blocked and not dry_run) else None
+        guard_decision = guard.evaluate(
+            mode=mode_key,
+            confidence=confidence,
+            candidate_fitness=candidate_guard_fitness,
+            previous_fitness=current_guard_fitness,
+            current_hash=active_dna.hash if active_dna is not None else None,
+            promoted_at=promoted_at,
+            now=now,
+        )
+        if guard_decision.rollback_required:
+            promoted_active_dna = active_dna
+            should_auto_apply = False
+            approval_blocked = False
 
         lifecycle = self._build_lifecycle(best=best, gates=gates)
         outcome = {
@@ -216,10 +257,21 @@ class SelfEvolutionMetaAgent:
                 "sim_live_readiness": "not_live_eligible" if self.sim_mode else "eligible_after_gates",
                 "would_auto_apply": should_auto_apply,
                 "auto_apply_executed": bool(should_auto_apply and not self.approval_required and not dry_run),
+                "signed_approval": bool(signed_approval),
+                "mutation_allowed": bool(mutation_allowed),
+                "candidate_fitness": round(candidate_guard_fitness, 6) if math.isfinite(candidate_guard_fitness) else None,
+                "current_fitness": round(current_guard_fitness, 6) if math.isfinite(current_guard_fitness) else None,
                 "external_release_gates": bool(external_release_gates),
                 "shadow_evidence": bool(shadow_evidence),
             },
             "lifecycle": lifecycle,
+            "governance": {
+                "mode": mode_key,
+                "mutation_allowed": bool(guard_decision.mutation_allowed),
+                "signed_approval": bool(guard_decision.signed_approval),
+                "rollback_triggered": bool(guard_decision.rollback_required),
+                "revert_to_hash": guard_decision.revert_to_hash,
+            },
         }
         if active_dna is not None or candidate_dna is not None:
             outcome["dna"] = {
@@ -760,6 +812,14 @@ class SelfEvolutionMetaAgent:
         if not bool(getattr(self.risk_controller, "enforce_rules", False)):
             return False
         return True
+
+    def _runtime_mode_key(self) -> str:
+        if self.sim_mode:
+            return "sim"
+        mode = str(self.runtime_mode or "").strip().lower()
+        if mode in {"sim", "paper", "real"}:
+            return mode
+        return "real"
 
     def _apply_candidate(self, candidate: dict[str, Any]) -> None:
         suggestion = dict(candidate.get("hyperparam_suggestion", {}))
