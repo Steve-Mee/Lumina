@@ -135,12 +135,14 @@ class MarketDataService:
         subscribed_symbols = [s for s in configured_swarm if s]
         try:
             async with websockets.connect(uri, additional_headers=headers, ping_interval=20, ping_timeout=20) as ws:
-                log_structured(LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                    code="INFO_PRINT_LEGACY",
-                    message="WS connected - 1-min candle builder active",
-                    context={},
-                ))
+                log_structured(
+                    LuminaError(
+                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                        code="INFO_PRINT_LEGACY",
+                        message="WS connected - 1-min candle builder active",
+                        context={},
+                    )
+                )
                 await ws.send(json.dumps({"action": "subscribe", "instruments": subscribed_symbols}))
 
                 async for message in ws:
@@ -190,16 +192,18 @@ class MarketDataService:
 
                             if closed_candle is not None:
                                 minute_start = ts.replace(second=0, microsecond=0)
-                                log_structured(LuminaError(
-                                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                                    code="INFO_PRINT_LEGACY",
-                                    message=(
-                                        f"[{minute_start.strftime('%H:%M')}] 1-min candle closed -> "
-                                        f"O={closed_candle['open']:.2f} H={closed_candle['high']:.2f} "
-                                        f"L={closed_candle['low']:.2f} C={closed_candle['close']:.2f} V={closed_candle['volume']}"
-                                    ),
-                                    context={"candle": closed_candle},
-                                ))
+                                log_structured(
+                                    LuminaError(
+                                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                                        code="INFO_PRINT_LEGACY",
+                                        message=(
+                                            f"[{minute_start.strftime('%H:%M')}] 1-min candle closed -> "
+                                            f"O={closed_candle['open']:.2f} H={closed_candle['high']:.2f} "
+                                            f"L={closed_candle['low']:.2f} C={closed_candle['close']:.2f} V={closed_candle['volume']}"
+                                        ),
+                                        context={"candle": closed_candle},
+                                    )
+                                )
 
                             if time.time() - last_tick_print >= float(getattr(app, "TICK_PRINT_INTERVAL_SEC", 2.0)):
                                 tape_txt = (
@@ -207,12 +211,14 @@ class MarketDataService:
                                     f"imb={tape_signal.get('bid_ask_imbalance', 1.0):.2f} "
                                     f"sig={tape_signal.get('signal', 'HOLD')}"
                                 )
-                                log_structured(LuminaError(
-                                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                                    code="INFO_PRINT_LEGACY",
-                                    message=f"LIVE tick -> last={price:.2f} | {tape_txt}",
-                                    context={"price": price, "tape": tape_signal.get("signal", "HOLD")},
-                                ))
+                                log_structured(
+                                    LuminaError(
+                                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                                        code="INFO_PRINT_LEGACY",
+                                        message=f"LIVE tick -> last={price:.2f} | {tape_txt}",
+                                        context={"price": price, "tape": tape_signal.get("signal", "HOLD")},
+                                    )
+                                )
                                 last_tick_print = time.time()
                         elapsed_ms = (time.perf_counter() - tick_start) * 1000.0
                         self._record_latency(elapsed_ms, source="websocket")
@@ -233,12 +239,14 @@ class MarketDataService:
                 context={"traceback": traceback.format_exc()},
             )
             log_structured(err)
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message="WS failed -> REST fallback",
-                context={},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message="WS failed -> REST fallback",
+                    context={},
+                )
+            )
 
     def start_websocket(self) -> None:
         asyncio.run(self.websocket_listener())
@@ -275,24 +283,28 @@ class MarketDataService:
             return False
 
         self.engine.market_data.append_ohlc_rows(rows)
-        log_structured(LuminaError(
-            severity=ErrorSeverity.RECOVERABLE_LEARNING,
-            code="INFO_PRINT_LEGACY",
-            message=f"Loaded {len(rows)} historical 1-min candles -> ohlc_1min now {len(self.engine.ohlc_1min)} rows",
-            context={"rows": len(rows)},
-        ))
+        log_structured(
+            LuminaError(
+                severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                code="INFO_PRINT_LEGACY",
+                message=f"Loaded {len(rows)} historical 1-min candles -> ohlc_1min now {len(self.engine.ohlc_1min)} rows",
+                context={"rows": len(rows)},
+            )
+        )
         return True
 
     def _fetch_historical_bars(self, instrument: str, days_back: int, limit: int) -> list[dict[str, Any]]:
         app = self._app()
         instrument = self._normalize_symbol(instrument)
         token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
-        log_structured(LuminaError(
-            severity=ErrorSeverity.RECOVERABLE_LEARNING,
-            code="INFO_PRINT_LEGACY",
-            message=f"[v21.6] Loading {limit} real 1-min OHLC bars for {instrument} (last {days_back} days)...",
-            context={"instrument": instrument, "limit": limit},
-        ))
+        log_structured(
+            LuminaError(
+                severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                code="INFO_PRINT_LEGACY",
+                message=f"[v21.6] Loading {limit} real 1-min OHLC bars for {instrument} (last {days_back} days)...",
+                context={"instrument": instrument, "limit": limit},
+            )
+        )
         try:
             payload = {
                 "instrument": instrument,
@@ -308,12 +320,14 @@ class MarketDataService:
                 timeout=40,
             )
             if response.status_code != 200:
-                log_structured(LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                    code="MDS_HIST_API_004",
-                    message=f"API error {response.status_code}: {response.text[:400]}",
-                    context={"status_code": response.status_code},
-                ))
+                log_structured(
+                    LuminaError(
+                        severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
+                        code="MDS_HIST_API_004",
+                        message=f"API error {response.status_code}: {response.text[:400]}",
+                        context={"status_code": response.status_code},
+                    )
+                )
                 return []
 
             data = response.json()
@@ -439,12 +453,14 @@ class MarketDataService:
                     deltas = df["timestamp"].diff().dt.total_seconds()
                     max_gap = deltas.max() if len(deltas) > 1 else 0
                 if max_gap > 120:
-                    log_structured(LuminaError(
-                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                        code="INFO_PRINT_LEGACY",
-                        message=f"GAP DETECTED ({max_gap / 60:.1f} min) -> recovery",
-                        context={"max_gap_sec": max_gap},
-                    ))
+                    log_structured(
+                        LuminaError(
+                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                            code="INFO_PRINT_LEGACY",
+                            message=f"GAP DETECTED ({max_gap / 60:.1f} min) -> recovery",
+                            context={"max_gap_sec": max_gap},
+                        )
+                    )
                     self.load_historical_ohlc(days_back=2, limit=2000)
             except Exception as exc:
                 err = LuminaError(

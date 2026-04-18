@@ -567,12 +567,14 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         try:
             columns = set(str(col) for col in list(market_df.columns))
         except Exception as _exc:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="RISK_REGIME_HISTORY_004",
-                message=str(_exc),
-                context={"traceback": traceback.format_exc()},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="RISK_REGIME_HISTORY_004",
+                    message=str(_exc),
+                    context={"traceback": traceback.format_exc()},
+                )
+            )
             return 0
         if not required.issubset(columns):
             return 0
@@ -580,12 +582,14 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         try:
             anchor = str(market_df.iloc[-1].get("timestamp", "") or "")
         except Exception as _exc:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="RISK_REGIME_HISTORY_005",
-                message=str(_exc),
-                context={"traceback": traceback.format_exc()},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="RISK_REGIME_HISTORY_005",
+                    message=str(_exc),
+                    context={"traceback": traceback.format_exc()},
+                )
+            )
             return 0
         if anchor and anchor == self.state.regime_detector_last_anchor:
             return 0
@@ -597,12 +601,14 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         try:
             rows = market_df.tail(tail_size).reset_index(drop=True)
         except Exception as _exc:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="RISK_REGIME_HISTORY_006",
-                message=str(_exc),
-                context={"traceback": traceback.format_exc()},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="RISK_REGIME_HISTORY_006",
+                    message=str(_exc),
+                    context={"traceback": traceback.format_exc()},
+                )
+            )
             return 0
         if len(rows) <= lookback:
             return 0
@@ -612,12 +618,14 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
             try:
                 last_ts = str(self.state.regime_detector_history[-1].get("ts", "") or "")
             except Exception as _exc:
-                log_structured(LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                    code="RISK_REGIME_HISTORY_007",
-                    message=str(_exc),
-                    context={"traceback": traceback.format_exc()},
-                ))
+                log_structured(
+                    LuminaError(
+                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                        code="RISK_REGIME_HISTORY_007",
+                        message=str(_exc),
+                        context={"traceback": traceback.format_exc()},
+                    )
+                )
                 last_ts = ""
 
         appended = 0
@@ -626,12 +634,14 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
             try:
                 snapshot = detector.detect(window, instrument=str(instrument))
             except Exception as _exc:
-                log_structured(LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                    code="RISK_REGIME_DETECT_008",
-                    message=str(_exc),
-                    context={"traceback": traceback.format_exc()},
-                ))
+                log_structured(
+                    LuminaError(
+                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                        code="RISK_REGIME_DETECT_008",
+                        message=str(_exc),
+                        context={"traceback": traceback.format_exc()},
+                    )
+                )
                 continue
             label = str(getattr(snapshot, "label", self.state.active_regime) or self.state.active_regime).upper()
             risk_state = str(getattr(snapshot, "risk_state", "NORMAL") or "NORMAL").upper()
@@ -1483,12 +1493,14 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
             with open(cfg_path, "r", encoding="utf-8") as _fh:
                 config = _yaml.safe_load(_fh) or {}
         except Exception as _exc:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                code="RISK_CONFIG_LOAD_009",
-                message=str(_exc),
-                context={"traceback": traceback.format_exc()},
-            ))
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
+                    code="RISK_CONFIG_LOAD_009",
+                    message=str(_exc),
+                    context={"traceback": traceback.format_exc()},
+                )
+            )
             config = {}
 
     global_mode = str(os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or config.get("mode", "sim")).strip().lower()

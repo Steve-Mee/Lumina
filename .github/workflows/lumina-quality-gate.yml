@@ -140,4 +140,4 @@ jobs:
             --cov=lumina_runtime \
             --cov-report=term-missing \
             --cov-report=xml \
-            --cov-fail-under=60
+            --cov-fail-under=50

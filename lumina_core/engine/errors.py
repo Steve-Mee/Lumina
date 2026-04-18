@@ -13,10 +13,10 @@ from pathlib import Path
 
 
 class ErrorSeverity(Enum):
-    RECOVERABLE_TRANSIENT = auto()   # retry-able: broker/network blip
-    RECOVERABLE_LEARNING = auto()    # informational: meta-agent learning opportunity
-    FATAL_UNRECOVERABLE = auto()     # fail-closed: stop trading
-    FATAL_MODE_VIOLATION = auto()    # mode-capability breach: stop trading
+    RECOVERABLE_TRANSIENT = auto()  # retry-able: broker/network blip
+    RECOVERABLE_LEARNING = auto()  # informational: meta-agent learning opportunity
+    FATAL_UNRECOVERABLE = auto()  # fail-closed: stop trading
+    FATAL_MODE_VIOLATION = auto()  # mode-capability breach: stop trading
 
 
 @dataclass
@@ -32,14 +32,19 @@ class LuminaError(Exception):
         return f"{self.code}: {self.message}"
 
     def to_jsonl(self) -> str:
-        return json.dumps({
-            "severity": self.severity.name,
-            "code": self.code,
-            "message": self.message,
-            "context": self.context,
-            "timestamp": self.timestamp.isoformat(),
-            "lineage_hash": self.lineage_hash,
-        }) + "\n"
+        return (
+            json.dumps(
+                {
+                    "severity": self.severity.name,
+                    "code": self.code,
+                    "message": self.message,
+                    "context": self.context,
+                    "timestamp": self.timestamp.isoformat(),
+                    "lineage_hash": self.lineage_hash,
+                }
+            )
+            + "\n"
+        )
 
 
 def log_structured(error: "LuminaError", blackboard=None) -> None:
@@ -58,6 +63,7 @@ def log_structured(error: "LuminaError", blackboard=None) -> None:
 
 
 # ── Existing engine exception hierarchy (unchanged) ───────────────────────
+
 
 class LuminaEngineError(RuntimeError):
     """Base class for engine-level operational errors."""
