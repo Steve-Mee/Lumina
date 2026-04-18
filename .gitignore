@@ -50,6 +50,7 @@ old/
 
 # Runtime generated data
 logs/*.csv
+logs/structured_errors.jsonl
 logs/trade_fill_audit.jsonl
 logs/security_audit.jsonl
 journal/simulator/*.json
