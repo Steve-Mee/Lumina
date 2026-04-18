@@ -30,6 +30,9 @@ warnings.warn(
     stacklevel=2,
 )
 
+__deprecated__ = True
+__deprecation_target__ = "lumina_runtime"
+
 
 @lru_cache(maxsize=1)
 def _get_container() -> ApplicationContainer:
@@ -68,6 +71,11 @@ def __getattr__(name: str):
 
 def main(argv: list[str] | None = None) -> int:
     # Legacy root command is preserved; centralized launcher owns runtime behavior.
+    warnings.warn(
+        "Executing lumina_v45.1.1 as an entrypoint is deprecated; use lumina_runtime.py instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return run_with_mode("real", argv=argv if argv is not None else sys.argv[1:])
 
 
