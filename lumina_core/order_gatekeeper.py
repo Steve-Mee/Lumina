@@ -375,8 +375,8 @@ def enforce_pre_trade_gate(
     ):
         raise LuminaError(
             severity=ErrorSeverity.FATAL_MODE_VIOLATION,
-            code="GATE_POLICY_APPROVAL_REQUIRED",
-            message="Order blocked: proposal is not approved by policy engine",
+            code="CONTROL_PLANE_VIOLATION",
+            message="Order blocked: proposal is not approved by control plane policy",
             context={"mode": mode, "symbol": symbol},
         )
 
