@@ -1,6 +1,30 @@
 from __future__ import annotations
 
+# =============================================================================
+# DEPRECATED MODULE – lumina_v45.1.1.py
+# -----------------------------------------------------------------------------
+# This file is a compatibility shim preserved for historical import paths only.
+# It will be REMOVED in a future release.
+#
+# Migrate all imports to:  lumina_runtime  (or lumina_core.* sub-packages)
+#
+#   OLD:  from lumina_v45.1.1 import ENGINE
+#   NEW:  from lumina_runtime import get_container; ENGINE = get_container().engine
+#
+# =============================================================================
+
 import sys
+import warnings
+
+warnings.warn(
+    "lumina_v45.1.1 is deprecated and will be removed in a future release. "
+    "Replace all imports with 'lumina_runtime' or the appropriate "
+    "'lumina_core.*' sub-package. "
+    "See lumina_runtime.py for the canonical public API.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 from functools import lru_cache
 
 from lumina_core.bootstrap import create_public_api
