@@ -74,6 +74,7 @@ lumina_os/tests/test_reconciliation_status.json
 # Runtime-generated databases and audit logs
 lumina_vector_db/chroma.sqlite3
 state/metrics.db
+state/*.db-journal
 state/evolution_log.jsonl
 state/evolution_lifecycle.jsonl
 state/last_run_summary_paper_15m.json
