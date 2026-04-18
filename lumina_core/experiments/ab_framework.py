@@ -29,9 +29,21 @@ class ABExperimentFramework:
         score_fn: Callable[[dict[str, Any]], dict[str, Any]],
         promote_fn: Callable[[dict[str, Any]], None] | None = None,
         seed: int | None = None,
+        mode: str = "sim",
     ) -> ABExperimentResult:
-        fork_count = int(max(self.min_forks, min(self.max_forks, self.max_forks)))
+        mode_key = str(mode or "sim").strip().lower()
+        if mode_key != "sim":
+            selected = dict(base_agent)
+            return ABExperimentResult(
+                experiment_id=f"ab-{mode_key}-disabled",
+                selected_variant=selected,
+                variants=[selected],
+            )
+
         rng = random.Random(seed)
+        min_forks = int(min(self.min_forks, self.max_forks))
+        max_forks = int(max(self.min_forks, self.max_forks))
+        fork_count = int(rng.randint(min_forks, max_forks))
         forks = self._build_forks(base_agent=base_agent, fork_count=fork_count, rng=rng)
 
         results: list[dict[str, Any]] = []
