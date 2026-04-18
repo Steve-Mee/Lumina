@@ -17,6 +17,7 @@ import requests
 from .broker_bridge import AccountInfo, Order
 from .errors import BrokerBridgeError, ErrorSeverity, LuminaError, format_error_code, log_structured
 from .lumina_engine import LuminaEngine
+from .policy_engine import PolicyEngine
 from .valuation_engine import ValuationEngine
 from .agent_contracts import apply_agent_policy_gateway
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
@@ -242,7 +243,8 @@ class OperationsService:
         session_allowed = True
         if str(_risk_reason).startswith("Session guard blocked"):
             session_allowed = False
-        gateway_result = apply_agent_policy_gateway(
+        policy_engine = PolicyEngine(engine=self.engine, broker=self.container.broker)
+        gateway_result = policy_engine.evaluate_proposal(
             signal=str(action).upper(),
             confluence_score=float(_dream.get("confluence_score", 1.0) or 1.0),
             min_confluence=float(getattr(self.engine.config, "min_confluence", 0.0) or 0.0),
@@ -275,7 +277,7 @@ class OperationsService:
 
         try:
             dream_snapshot = self.engine.get_current_dream_snapshot()
-            result = self.container.broker.submit_order(
+            result = policy_engine.execute_order(
                 Order(
                     symbol=str(self.engine.config.instrument),
                     side=str(action).upper(),

@@ -191,9 +191,9 @@ class SelfEvolutionMetaAgent:
             decision_context_id="nightly_evolution",
             evolution_log_hash=str(outcome.get("hash", "")) if isinstance(outcome, dict) else None,
         )
-        if self.blackboard is not None and hasattr(self.blackboard, "publish_sync"):
+        if self.blackboard is not None and hasattr(self.blackboard, "add_proposal"):
             try:
-                self.blackboard.publish_sync(
+                self.blackboard.add_proposal(
                     topic="agent.meta.proposal",
                     producer="self_evolution_meta_agent",
                     payload={

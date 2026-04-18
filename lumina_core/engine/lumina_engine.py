@@ -766,8 +766,8 @@ class LuminaEngine:
             "qty": qty,
             "policy_ts": time.time(),
         }
-        if self.blackboard is not None and hasattr(self.blackboard, "publish_sync"):
-            self.blackboard.publish_sync(
+        if self.blackboard is not None and hasattr(self.blackboard, "add_proposal"):
+            self.blackboard.add_proposal(
                 topic="agent.rl.proposal",
                 producer="rl_policy",
                 payload=updates,

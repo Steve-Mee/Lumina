@@ -85,7 +85,7 @@ class MarketDataService:
 
     def _publish_tape_signal(self, tape_signal: dict[str, Any]) -> None:
         blackboard = getattr(self.engine, "blackboard", None)
-        if blackboard is None or not hasattr(blackboard, "publish_sync"):
+        if blackboard is None or not hasattr(blackboard, "add_proposal"):
             return
         tape_payload = {
             "tape_signal": str(tape_signal.get("signal", "HOLD")),
@@ -97,7 +97,7 @@ class MarketDataService:
             "bid_ask_imbalance": float(tape_signal.get("bid_ask_imbalance", 1.0) or 1.0),
         }
         try:
-            blackboard.publish_sync(
+            blackboard.add_proposal(
                 topic="agent.tape.proposal",
                 producer="market_data_service",
                 payload=tape_payload,

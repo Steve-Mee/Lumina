@@ -96,6 +96,9 @@ class AgentBlackboard:
         self._history: dict[str, deque[BlackboardEvent]] = defaultdict(lambda: deque(maxlen=self.max_topic_history))
         self._latest: dict[str, BlackboardEvent] = {}
         self._topic_sequences: dict[str, int] = defaultdict(int)
+        self._last_policy_approval: bool = False
+        self._last_policy_decision_ts: float = 0.0
+        self._last_policy_reason: str = ""
         self._allowed_producers = dict(DEFAULT_ALLOWED_PRODUCERS)
         if allowed_producers:
             for topic, producers in allowed_producers.items():
@@ -185,10 +188,48 @@ class AgentBlackboard:
                 if policy.critical or str(policy.overflow_strategy).strip().lower() == "block_fail":
                     raise RuntimeError(f"critical blackboard topic queue full: {topic_key}")
                 continue
+        if topic_key == "execution.aggregate":
+            approved = bool(event.metadata.get("approved", event.payload.get("approved", False)))
+            self.mark_policy_decision(
+                approved=approved,
+                reason=str(event.metadata.get("reason", event.payload.get("reason", "")) or ""),
+            )
         self._record_publish_latency(
             topic=topic_key, producer=producer, elapsed_ms=(time.perf_counter() - started) * 1000.0
         )
         return event
+
+    def add_proposal(
+        self,
+        *,
+        topic: str,
+        producer: str,
+        payload: dict[str, Any],
+        confidence: float,
+        metadata: dict[str, Any] | None = None,
+        correlation_id: str | None = None,
+    ) -> BlackboardEvent:
+        topic_key = str(topic).strip().lower()
+        if not topic_key.startswith("agent.") or not topic_key.endswith(".proposal"):
+            raise ValueError("add_proposal requires an agent.*.proposal topic")
+        return self.publish_sync(
+            topic=topic_key,
+            producer=producer,
+            payload=payload,
+            confidence=confidence,
+            metadata=metadata,
+            correlation_id=correlation_id,
+        )
+
+    def mark_policy_decision(self, *, approved: bool, reason: str = "") -> None:
+        with self._lock:
+            self._last_policy_approval = bool(approved)
+            self._last_policy_decision_ts = time.time()
+            self._last_policy_reason = str(reason or "")
+
+    def is_proposal_approved_by_policy(self) -> bool:
+        with self._lock:
+            return bool(self._last_policy_approval)
 
     def subscribe(self, topic: str, callback: Callable[[BlackboardEvent], None]) -> str:
         topic_key = str(topic).strip().lower()

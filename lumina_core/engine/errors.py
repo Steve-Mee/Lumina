@@ -21,13 +21,16 @@ class ErrorSeverity(Enum):
 
 
 @dataclass
-class LuminaError:
+class LuminaError(Exception):
     severity: ErrorSeverity
     code: str
     message: str
     context: dict = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.utcnow)
     lineage_hash: str = ""  # blackboard lineage coupling
+
+    def __str__(self) -> str:
+        return f"{self.code}: {self.message}"
 
     def to_jsonl(self) -> str:
         return json.dumps({

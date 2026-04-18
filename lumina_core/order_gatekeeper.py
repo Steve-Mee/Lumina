@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
 
 _MONTHS = {
@@ -366,6 +367,18 @@ def enforce_pre_trade_gate(
     """Single pre-trade gatekeeper for SessionGuard + HardRiskController."""
     mode = str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
     capabilities = resolve_mode_capabilities(mode)
+    blackboard = _resolve_blackboard(engine)
+    if (
+        blackboard is not None
+        and hasattr(blackboard, "is_proposal_approved_by_policy")
+        and not bool(blackboard.is_proposal_approved_by_policy())
+    ):
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="GATE_POLICY_APPROVAL_REQUIRED",
+            message="Order blocked: proposal is not approved by policy engine",
+            context={"mode": mode, "symbol": symbol},
+        )
 
     def _audit_or_fail_closed(payload: dict[str, Any], *, reason_code: str = "audit_fail_closed") -> tuple[bool, str]:
         ok = _audit_trade_decision(engine, payload, mode=mode)

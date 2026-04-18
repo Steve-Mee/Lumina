@@ -309,8 +309,8 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
                                 "why_no_trade": str(news_cycle.get("news_avoidance_reason", "news_avoidance_window")),
                                 "signal": "HOLD",
                             }
-                            if blackboard is not None and hasattr(blackboard, "publish_sync"):
-                                blackboard.publish_sync(
+                            if blackboard is not None and hasattr(blackboard, "add_proposal"):
+                                blackboard.add_proposal(
                                     topic="agent.news.proposal",
                                     producer="runtime_workers.pre_dream_daemon",
                                     payload=news_updates,
@@ -373,8 +373,8 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
 
             news_data = cached_news_data
             news_impact = app.resolve_news_multiplier(news_data, app.engine.config.news_impact_multipliers, default=1.0)
-            if blackboard is not None and hasattr(blackboard, "publish_sync"):
-                blackboard.publish_sync(
+            if blackboard is not None and hasattr(blackboard, "add_proposal"):
+                blackboard.add_proposal(
                     topic="agent.news.proposal",
                     producer="runtime_workers.pre_dream_daemon",
                     payload={"news_impact": float(news_impact)},

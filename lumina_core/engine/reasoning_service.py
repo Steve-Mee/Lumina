@@ -11,6 +11,7 @@ from .agent_contracts import apply_agent_policy_gateway
 from .errors import BrokerBridgeError, PolicyGateError, format_error_code
 from .local_inference_engine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine
+from .policy_engine import PolicyEngine
 from .regime_detector import RegimeDetector, RegimeSnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, session_guard_allows_trading
 
@@ -140,7 +141,8 @@ class ReasoningService:
         )
 
         session_allowed = not str(gate_reason).lower().startswith("session guard blocked")
-        gateway_result = apply_agent_policy_gateway(
+        policy_engine = PolicyEngine(engine=self.engine, broker=self.container.broker)
+        gateway_result = policy_engine.evaluate_proposal(
             signal=str(getattr(order, "side", "HOLD")).upper(),
             confluence_score=float(dream.get("confluence_score", 1.0) or 1.0),
             min_confluence=float(getattr(self.engine.config, "min_confluence", 0.0) or 0.0),
@@ -163,7 +165,7 @@ class ReasoningService:
         }:
             raise PolicyGateError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
 
-        return self.container.broker.submit_order(order)
+        return policy_engine.execute_order(order)
 
     def refresh_regime_snapshot(
         self,

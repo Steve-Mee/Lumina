@@ -432,10 +432,10 @@ class NewsAgent:
         self._last_update_dt = now_utc
         self._cached_result = dict(result)
         blackboard = getattr(self.engine, "blackboard", None)
-        if blackboard is not None and hasattr(blackboard, "publish_sync"):
+        if blackboard is not None and hasattr(blackboard, "add_proposal"):
             try:
                 current_dream = self.engine.get_current_dream_snapshot()
-                blackboard.publish_sync(
+                blackboard.add_proposal(
                     topic="agent.news.proposal",
                     producer="news_agent",
                     payload={
