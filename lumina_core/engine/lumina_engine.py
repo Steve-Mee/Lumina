@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from lumina_bible import BibleEngine
 from .dream_state import DreamState
 from .engine_config import EngineConfig
+from .economic_truth import EconomicTruth
 from .market_data_manager import MarketDataManager
 from .risk_controller import HardRiskController, risk_limits_from_config
 from .session_guard import SessionGuard
@@ -182,6 +183,7 @@ class LuminaEngine:
     reporting_service: Any | None = None
     # Trade reconciler (post-trade settlement)
     trade_reconciler: Any | None = None
+    economic_truth: EconomicTruth = field(default_factory=EconomicTruth)
     mode_risk_profile: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -353,8 +355,10 @@ class LuminaEngine:
                     self.dashboard_last_has_image = bool(value)
                 else:
                     setattr(self, name, value)
+        self.economic_truth.version_all_pnl_sources(self)
 
     def save_state(self) -> None:
+        economic_truth_snapshot = self.economic_truth.version_all_pnl_sources(self)
         state = {
             "sim_position_qty": self.sim_position_qty,
             "sim_entry_price": self.sim_entry_price,
@@ -374,6 +378,8 @@ class LuminaEngine:
             "regime_history": list(self.regime_history),
             "trade_reflection_history": list(self.trade_reflection_history),
             "state_snapshot": self.serialize_state_snapshot(),
+            "economic_truth": self.economic_truth.to_dict(),
+            "economic_truth_snapshot": economic_truth_snapshot,
         }
         try:
             self.config.state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
