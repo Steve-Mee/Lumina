@@ -20,6 +20,12 @@ def get_public_api() -> dict[str, object]:
 
 
 def __getattr__(name: str):
+    # Module introspection (for example by coverage/pytest/importlib) can probe
+    # dunder attributes that are not explicitly defined. Those lookups must not
+    # bootstrap the full runtime container.
+    if name.startswith("__"):
+        raise AttributeError(f"module 'lumina_runtime' has no attribute '{name}'")
+
     container = get_container()
 
     _compat_fn_map = {

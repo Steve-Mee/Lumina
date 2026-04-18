@@ -10,6 +10,7 @@ This catches attribute errors early and prevents them from surfacing in producti
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -29,7 +30,69 @@ def _load_runtime_module():
     return module
 
 
-def test_runtime_module_critical_functions_exposed():
+def _noop(*_args, **_kwargs):
+    return None
+
+
+def _build_runtime_container_stub() -> SimpleNamespace:
+    return SimpleNamespace(
+        analysis_service=SimpleNamespace(run_main_loop=_noop, deep_analysis=_noop),
+        dashboard_service=SimpleNamespace(
+            update_performance_log=_noop,
+            generate_strategy_heatmap=_noop,
+            generate_performance_summary=_noop,
+            start_dashboard=_noop,
+        ),
+        reporting_service=SimpleNamespace(
+            generate_daily_journal=_noop,
+            generate_professional_pdf_journal=_noop,
+            auto_journal_daemon=_noop,
+            run_auto_backtest=_noop,
+            backtest_reflection=_noop,
+        ),
+        market_data_service=SimpleNamespace(
+            start_websocket=_noop,
+            fetch_quote=_noop,
+            load_historical_ohlc=_noop,
+            gap_recovery_daemon=_noop,
+        ),
+        operations_service=SimpleNamespace(
+            thought_logger_thread=_noop,
+            log_thought=_noop,
+            place_order=_noop,
+            emergency_stop=_noop,
+            run_forever_loop=_noop,
+            get_mtf_snapshots=_noop,
+        ),
+        memory_service=SimpleNamespace(
+            store_experience_to_vector_db=_noop,
+            retrieve_relevant_experiences=_noop,
+        ),
+        reasoning_service=SimpleNamespace(infer_json=_noop),
+        trade_reconciler=SimpleNamespace(start=_noop, stop=_noop),
+        news_agent=SimpleNamespace(run_cycle=_noop),
+        emotional_twin_agent=SimpleNamespace(run_cycle=_noop),
+        swarm_manager=SimpleNamespace(run_cycle=_noop, generate_dashboard_plot=_noop),
+        performance_validator=SimpleNamespace(run_validation_cycle=_noop, generate_monthly_report_pdf=_noop),
+        local_inference_engine=SimpleNamespace(set_backend=_noop, get_backend=lambda: "ollama"),
+        engine=SimpleNamespace(
+            save_state=_noop,
+            load_state=_noop,
+            calculate_adaptive_risk_and_qty=_noop,
+            get_current_dream_snapshot=_noop,
+            generate_price_action_summary=_noop,
+            is_significant_event=_noop,
+            detect_market_regime=_noop,
+        ),
+        runtime_context=SimpleNamespace(),
+        logger=SimpleNamespace(info=_noop, warning=_noop, error=_noop),
+        swarm_symbols=["MES JUN26"],
+        primary_instrument="MES JUN26",
+        config=SimpleNamespace(use_human_main_loop=False),
+    )
+
+
+def test_runtime_module_critical_functions_exposed(monkeypatch):
     """
     Test that all critical functions are exposed on the runtime module.
 
@@ -37,6 +100,8 @@ def test_runtime_module_critical_functions_exposed():
     Missing exports cause AttributeError and degrade bot performance.
     """
     runtime_module = _load_runtime_module()
+    container_stub = _build_runtime_container_stub()
+    monkeypatch.setattr(runtime_module, "get_container", lambda: container_stub)
 
     critical_functions = [
         "get_current_dream_snapshot",  # Called by validator, runtime_workers
@@ -56,11 +121,13 @@ def test_runtime_module_critical_functions_exposed():
         assert callable(func), f"Exposed {func_name} is not callable"
 
 
-def test_runtime_module_services_accessible():
+def test_runtime_module_services_accessible(monkeypatch):
     """
     Test that core services are accessible via the runtime module.
     """
     runtime_module = _load_runtime_module()
+    container_stub = _build_runtime_container_stub()
+    monkeypatch.setattr(runtime_module, "get_container", lambda: container_stub)
 
     critical_services = [
         "engine",
@@ -123,9 +190,8 @@ def test_public_api_completeness():
     Test that the bootstrap's public API includes critical engine functions.
     """
     from lumina_core.bootstrap import create_public_api
-    from lumina_core.container import create_application_container
 
-    container = create_application_container()
+    container = _build_runtime_container_stub()
     public_api = create_public_api(container)
 
     critical_exports = [
