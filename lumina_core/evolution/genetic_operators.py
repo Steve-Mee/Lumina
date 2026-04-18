@@ -6,7 +6,6 @@ import os
 import random
 import urllib.error
 import urllib.request
-from typing import Any
 
 from .dna_registry import PolicyDNA
 
