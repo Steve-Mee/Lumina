@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "lumina"
+version = "5.0.0"
+description = "Lumina NinjaTrader AI trading engine"
+requires-python = ">=3.13"
+readme = "README.md"
+
+[tool.ruff]
+# Ruff config lives in ruff.toml; this section is intentionally minimal.
+
+[tool.mypy]
+python_version = "3.13"
+
+[tool.pytest.ini_options]
+# Pytest config lives in pytest.ini; this section is intentionally minimal.

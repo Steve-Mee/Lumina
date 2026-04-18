@@ -6,7 +6,6 @@ import os
 import queue
 import signal
 import time
-import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -15,10 +14,10 @@ import pandas as pd
 import requests
 
 from .broker_bridge import AccountInfo, Order
-from .errors import BrokerBridgeError, ErrorSeverity, LuminaError, format_error_code, log_structured
+from .errors import BrokerBridgeError, format_error_code
 from .lumina_engine import LuminaEngine
-from .policy_engine import PolicyEngine
 from .valuation_engine import ValuationEngine
+from .agent_contracts import apply_agent_policy_gateway
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 from lumina_core.logging_utils import log_event
 
@@ -60,13 +59,6 @@ class OperationsService:
                     handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
                 self.thought_queue.task_done()
             except Exception as exc:
-                err = LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                    code="OPS_THOUGHT_LOG_001",
-                    message=str(exc),
-                    context={"traceback": traceback.format_exc()},
-                )
-                log_structured(err)
                 app.logger.error(f"Thought log error: {exc}")
 
     def log_thought(self, data: dict[str, Any]) -> None:
@@ -169,13 +161,6 @@ class OperationsService:
             app.tts_engine.say(clean_text)
             app.tts_engine.runAndWait()
         except Exception as exc:
-            err = LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="OPS_TTS_002",
-                message=str(exc),
-                context={"traceback": traceback.format_exc()},
-            )
-            log_structured(err)
             app.logger.error(f"TTS_ERROR: {exc}")
 
     def fetch_account_balance(self) -> bool:
@@ -195,13 +180,6 @@ class OperationsService:
             return True
         except Exception as exc:
             code = format_error_code("OPS_BALANCE", exc, fallback="FETCH_FAILED")
-            err = LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                code=code,
-                message=str(exc),
-                context={"traceback": traceback.format_exc()},
-            )
-            log_structured(err)
             app.logger.error(f"Balance fetch error [{code}]: {exc}")
         return False
 
@@ -242,8 +220,7 @@ class OperationsService:
         session_allowed = True
         if str(_risk_reason).startswith("Session guard blocked"):
             session_allowed = False
-        policy_engine = PolicyEngine(engine=self.engine, broker=self.container.broker)
-        gateway_result = policy_engine.evaluate_proposal(
+        gateway_result = apply_agent_policy_gateway(
             signal=str(action).upper(),
             confluence_score=float(_dream.get("confluence_score", 1.0) or 1.0),
             min_confluence=float(getattr(self.engine.config, "min_confluence", 0.0) or 0.0),
@@ -276,7 +253,7 @@ class OperationsService:
 
         try:
             dream_snapshot = self.engine.get_current_dream_snapshot()
-            result = policy_engine.execute_order(
+            result = self.container.broker.submit_order(
                 Order(
                     symbol=str(self.engine.config.instrument),
                     side=str(action).upper(),
@@ -295,14 +272,7 @@ class OperationsService:
                             if self.engine.live_quotes
                             else (self.engine.ohlc_1min["close"].iloc[-1] if len(self.engine.ohlc_1min) else 0.0)
                         )
-                except Exception as _exc:
-                    err = LuminaError(
-                        severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                        code="OPS_PRICE_READ_003",
-                        message=str(_exc),
-                        context={"traceback": traceback.format_exc()},
-                    )
-                    log_structured(err)
+                except Exception:
                     current_price = 0.0
 
                 signed_qty = qty if action.upper() == "BUY" else -qty
@@ -344,13 +314,6 @@ class OperationsService:
             return False
         except Exception as exc:
             code = format_error_code("OPS_PLACE_ORDER", exc, fallback="SUBMIT_FAILED")
-            err = LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                code=code,
-                message=str(exc),
-                context={"traceback": traceback.format_exc(), "mode": str(trade_mode)},
-            )
-            log_structured(err)
             app.logger.error(f"Place order error [{code}]: {exc}")
             return False
 
@@ -363,23 +326,9 @@ class OperationsService:
             if live_chart_window is not None:
                 try:
                     live_chart_window.after(0, live_chart_window.destroy)
-                except Exception as _exc:
-                    err = LuminaError(
-                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                        code="OPS_WINDOW_CLOSE_004",
-                        message=str(_exc),
-                        context={"traceback": traceback.format_exc()},
-                    )
-                    log_structured(err)
+                except Exception:
                     live_chart_window.destroy()
         except Exception as exc:
-            err = LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="OPS_EMERGENCY_STOP_005",
-                message=str(exc),
-                context={"traceback": traceback.format_exc()},
-            )
-            log_structured(err)
             app.logger.warning(f"Emergency stop window close warning: {exc}")
 
         self.engine.save_state()
@@ -396,13 +345,6 @@ class OperationsService:
         try:
             return bool(session_guard.is_trading_session())
         except Exception as exc:
-            err = LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                code="OPS_SESSION_GUARD_006",
-                message=str(exc),
-                context={"traceback": traceback.format_exc()},
-            )
-            log_structured(err)
             self._app().logger.warning(
                 "OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_ERROR,detail=%s",
                 exc,
@@ -414,18 +356,8 @@ class OperationsService:
             while True:
                 time.sleep(60)
         except KeyboardInterrupt:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message="\n🛑 Graceful shutdown gestart...",
-                context={},
-            ))
+            print("\n🛑 Graceful shutdown gestart...")
             self.engine.save_state()
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message="\u2705 Alle data veilig opgeslagen.",
-                context={},
-            ))
+            print("✅ Alle data veilig opgeslagen.")
         except SystemExit:
             self.engine.save_state()

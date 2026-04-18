@@ -10,7 +10,7 @@
   "extraPaths": [
     "lumina_os"
   ],
-  "pythonVersion": "3.11",
+  "pythonVersion": "3.13",
   "typeCheckingMode": "standard",
   "reportMissingImports": false,
   "reportMissingModuleSource": false,

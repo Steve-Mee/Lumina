@@ -12,6 +12,7 @@ from .lumina_engine import LuminaEngine
 from .evolution_lifecycle import EvolutionLifecycleManager
 from .risk_controller import HardRiskController
 from .valuation_engine import ValuationEngine
+from lumina_core.experiments.ab_framework import ABExperimentFramework
 
 
 @dataclass(slots=True)
@@ -115,6 +116,30 @@ class SelfEvolutionMetaAgent:
             champion = dict(fine_tune_result["champion_candidate"])
         challengers = self._build_challengers(champion, meta_review)
         scored = [self._score_challenger(champion, c, nightly_report, meta_review) for c in challengers]
+
+        ab_result: dict[str, Any] | None = None
+        if self.sim_mode and challengers:
+            try:
+                ab_framework = ABExperimentFramework(min_forks=3, max_forks=5)
+                base_candidate = dict(challengers[0])
+                experiment = ab_framework.run_auto_forks(
+                    base_agent=base_candidate,
+                    score_fn=lambda fork: self._score_challenger(champion, fork, nightly_report, meta_review),
+                    promote_fn=self._apply_candidate,
+                    seed=int(now.timestamp()),
+                )
+                scored.extend(list(experiment.variants))
+                ab_result = {
+                    "experiment_id": str(experiment.experiment_id),
+                    "selected_variant": dict(experiment.selected_variant),
+                    "variant_count": len(experiment.variants),
+                }
+            except Exception as exc:
+                ab_result = {
+                    "experiment_id": "ab-sim-failed",
+                    "error": str(exc),
+                }
+
         best = max(scored, key=lambda item: float(item.get("score", 0.0))) if scored else None
 
         confidence = float(best.get("confidence", 0.0)) if best else 0.0
@@ -166,6 +191,8 @@ class SelfEvolutionMetaAgent:
             },
             "lifecycle": lifecycle,
         }
+        if isinstance(ab_result, dict):
+            outcome["ab_experiment"] = ab_result
 
         if should_auto_apply and not self.approval_required and not dry_run and best is not None:
             self._apply_candidate(best)
@@ -191,9 +218,9 @@ class SelfEvolutionMetaAgent:
             decision_context_id="nightly_evolution",
             evolution_log_hash=str(outcome.get("hash", "")) if isinstance(outcome, dict) else None,
         )
-        if self.blackboard is not None and hasattr(self.blackboard, "publish_sync"):
+        if self.blackboard is not None and hasattr(self.blackboard, "add_proposal"):
             try:
-                self.blackboard.publish_sync(
+                self.blackboard.add_proposal(
                     topic="agent.meta.proposal",
                     producer="self_evolution_meta_agent",
                     payload={

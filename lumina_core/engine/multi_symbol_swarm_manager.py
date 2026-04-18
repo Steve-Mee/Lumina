@@ -356,9 +356,9 @@ class MultiSymbolSwarmManager:
                 updates["swarm_arb_reason"] = str(first.get("reason", "inter-symbol spread signal"))
 
         blackboard = getattr(self.engine, "blackboard", None)
-        if blackboard is not None and hasattr(blackboard, "publish_sync"):
+        if blackboard is not None and hasattr(blackboard, "add_proposal"):
             confidence = float(min(1.0, max(0.0, consensus_mult / max(1.0, float(self.trend_consensus_multiplier)))))
-            blackboard.publish_sync(
+            blackboard.add_proposal(
                 topic="agent.swarm.proposal",
                 producer="swarm_manager",
                 payload=updates,

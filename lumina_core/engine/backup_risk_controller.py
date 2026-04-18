@@ -12,7 +12,6 @@ from collections import deque
 import json
 import logging
 import math
-import traceback
 from statistics import NormalDist
 import os
 from pathlib import Path
@@ -20,10 +19,7 @@ from typing import Any, Optional
 
 import numpy as np
 
-from .errors import ErrorSeverity, LuminaError, log_structured
 from .margin_snapshot_provider import MarginSnapshot, MarginSnapshotProvider
-from .risk_allocator import RiskAllocatorMixin
-from .risk_gates import RiskGatesMixin
 
 logger = logging.getLogger(__name__)
 
@@ -257,7 +253,7 @@ class RiskState:
     margin_tracker: Optional[MarginTracker] = field(default_factory=MarginTracker)  # Capital preservation
 
 
-class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
+class HardRiskController:
     """
     Unbreakable safety layer for Lumina trading.
 
@@ -310,13 +306,6 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
                 self.session_guard = SessionGuard(calendar_name="CME")
             except Exception as exc:
                 logger.error("SessionGuard init failed: %s", exc)
-                err = LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                    code="RISK_SESSION_GUARD_001",
-                    message=str(exc),
-                    context={"traceback": traceback.format_exc()},
-                )
-                log_structured(err)
                 self.session_guard = None
 
         mode_str = "ENFORCED" if enforce_rules else "LEARNING/TESTING MODE (rules bypassed)"
@@ -425,13 +414,6 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
                     f"kill_switch={self.state.kill_switch_engaged}"
                 )
         except Exception as e:
-            err = LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                code="RISK_LOAD_STATE_002",
-                message=str(e),
-                context={"traceback": traceback.format_exc()},
-            )
-            log_structured(err)
             logger.error(f"Failed to load risk state: {e}")
 
     def _save_state(self) -> None:
@@ -453,13 +435,6 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
                     indent=2,
                 )
         except Exception as e:
-            err = LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                code="RISK_SAVE_STATE_003",
-                message=str(e),
-                context={"traceback": traceback.format_exc()},
-            )
-            log_structured(err)
             logger.error(f"Failed to save risk state: {e}")
 
     def reset_daily(self) -> None:
@@ -566,26 +541,14 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         required = {"timestamp", "open", "high", "low", "close", "volume"}
         try:
             columns = set(str(col) for col in list(market_df.columns))
-        except Exception as _exc:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="RISK_REGIME_HISTORY_004",
-                message=str(_exc),
-                context={"traceback": traceback.format_exc()},
-            ))
+        except Exception:
             return 0
         if not required.issubset(columns):
             return 0
 
         try:
             anchor = str(market_df.iloc[-1].get("timestamp", "") or "")
-        except Exception as _exc:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="RISK_REGIME_HISTORY_005",
-                message=str(_exc),
-                context={"traceback": traceback.format_exc()},
-            ))
+        except Exception:
             return 0
         if anchor and anchor == self.state.regime_detector_last_anchor:
             return 0
@@ -596,13 +559,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         tail_size = max(lookback + 2, lookback + (max_windows * stride))
         try:
             rows = market_df.tail(tail_size).reset_index(drop=True)
-        except Exception as _exc:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="RISK_REGIME_HISTORY_006",
-                message=str(_exc),
-                context={"traceback": traceback.format_exc()},
-            ))
+        except Exception:
             return 0
         if len(rows) <= lookback:
             return 0
@@ -611,13 +568,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         if self.state.regime_detector_history:
             try:
                 last_ts = str(self.state.regime_detector_history[-1].get("ts", "") or "")
-            except Exception as _exc:
-                log_structured(LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                    code="RISK_REGIME_HISTORY_007",
-                    message=str(_exc),
-                    context={"traceback": traceback.format_exc()},
-                ))
+            except Exception:
                 last_ts = ""
 
         appended = 0
@@ -625,13 +576,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
             window = rows.iloc[: end_idx + 1]
             try:
                 snapshot = detector.detect(window, instrument=str(instrument))
-            except Exception as _exc:
-                log_structured(LuminaError(
-                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                    code="RISK_REGIME_DETECT_008",
-                    message=str(_exc),
-                    context={"traceback": traceback.format_exc()},
-                ))
+            except Exception:
                 continue
             label = str(getattr(snapshot, "label", self.state.active_regime) or self.state.active_regime).upper()
             risk_state = str(getattr(snapshot, "risk_state", "NORMAL") or "NORMAL").upper()
@@ -1423,40 +1368,6 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         return False, "outside force-close window"
 
 
-# Bind split modules onto canonical controller to keep backward compatibility.
-for _name in (
-    "_mc_enforcement_enabled",
-    "_should_fail_closed_on_mc_data",
-    "_regime_transition_weights",
-    "_regime_return_buckets",
-    "_sample_next_regime",
-    "_simulate_path_drawdown_pct",
-    "check_monte_carlo_drawdown_pre_trade",
-    "get_monte_carlo_snapshot",
-    "_calculate_var_es_pair",
-    "_var_es_enforcement_enabled",
-    "_should_fail_closed_on_var_es_data",
-    "check_var_es_pre_trade",
-    "get_var_es_snapshot",
-    "check_can_trade",
-    "_engage_kill_switch",
-    "reset_kill_switch",
-    "set_enforce_rules",
-    "health_check_market_open",
-    "get_status",
-    "_cooldown_remaining_minutes",
-    "should_force_close_eod",
-):
-    if hasattr(RiskAllocatorMixin, _name):
-        _member = getattr(RiskAllocatorMixin, _name)
-        if _name == "_sample_next_regime":
-            setattr(HardRiskController, _name, staticmethod(_member))
-        else:
-            setattr(HardRiskController, _name, _member)
-    elif hasattr(RiskGatesMixin, _name):
-        setattr(HardRiskController, _name, getattr(RiskGatesMixin, _name))
-
-
 # ---------------------------------------------------------------------------
 # Public factory: mode-aware RiskLimits constructor
 # ---------------------------------------------------------------------------
@@ -1482,13 +1393,7 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
             cfg_path = os.getenv("LUMINA_CONFIG", "config.yaml")
             with open(cfg_path, "r", encoding="utf-8") as _fh:
                 config = _yaml.safe_load(_fh) or {}
-        except Exception as _exc:
-            log_structured(LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                code="RISK_CONFIG_LOAD_009",
-                message=str(_exc),
-                context={"traceback": traceback.format_exc()},
-            ))
+        except Exception:
             config = {}
 
     global_mode = str(os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or config.get("mode", "sim")).strip().lower()

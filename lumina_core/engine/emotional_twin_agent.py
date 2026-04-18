@@ -167,8 +167,8 @@ class EmotionalTwinAgent:
         main_dream = self.context.get_current_dream_snapshot()
         corrected = self.apply_correction(main_dream)
         blackboard = getattr(self.context, "blackboard", None)
-        if blackboard is not None and hasattr(blackboard, "publish_sync"):
-            blackboard.publish_sync(
+        if blackboard is not None and hasattr(blackboard, "add_proposal"):
+            blackboard.add_proposal(
                 topic="agent.emotional_twin.proposal",
                 producer="emotional_twin_agent",
                 payload=corrected,
