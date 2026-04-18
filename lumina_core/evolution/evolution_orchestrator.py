@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
@@ -111,6 +112,12 @@ class EvolutionOrchestrator:
         mode: str = "sim",
     ) -> dict[str, Any]:
         """Run ``generations`` rounds of mutation/selection and return summary."""
+        if not isinstance(nightly_report, dict):
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="EVOLUTION_REPORT_REQUIRED",
+                message="run_nightly_evolution_cycle requires nightly_report: dict[str, Any].",
+            )
         if not self._guard.can_mutate(mode=mode):
             return {
                 "status": "blocked",
@@ -118,7 +125,7 @@ class EvolutionOrchestrator:
                 "timestamp": _utcnow(),
             }
 
-        report: dict[str, Any] = dict(nightly_report or {})
+        report: dict[str, Any] = dict(nightly_report)
         gen_results: list[GenerationResult] = []
         self._append_metrics(
             {
@@ -175,24 +182,18 @@ class EvolutionOrchestrator:
         )
 
         if not candidates:
-            return GenerationResult(
-                generation=generation_offset,
-                candidate_count=0,
-                winner_hash="",
-                winner_fitness=float("-inf"),
-                previous_fitness=previous_fitness,
-                promoted=False,
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_UNRECOVERABLE,
+                code="EVOLUTION_CANDIDATE_GENERATION_EMPTY",
+                message=f"No candidates generated for generation {generation_offset}.",
             )
 
         sim_results = self._sim_runner.evaluate_variants(candidates, days=sim_days, nightly_report=base_metrics)
         if not sim_results:
-            return GenerationResult(
-                generation=generation_offset,
-                candidate_count=len(candidates),
-                winner_hash="",
-                winner_fitness=float("-inf"),
-                previous_fitness=previous_fitness,
-                promoted=False,
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_UNRECOVERABLE,
+                code="EVOLUTION_SIM_RESULTS_EMPTY",
+                message=f"Simulation returned no results for generation {generation_offset}.",
             )
 
         candidate_pool = [self._candidate_to_ab_variant(item, sim_results=sim_results) for item in candidates]
@@ -334,7 +335,13 @@ class EvolutionOrchestrator:
     ) -> dict[str, Any]:
         total_candidates = sum(r.candidate_count for r in gen_results)
         promotions = sum(1 for r in gen_results if r.promoted)
-        best_fitness = max((r.winner_fitness for r in gen_results), default=float("-inf"))
+        if not gen_results:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_UNRECOVERABLE,
+                code="EVOLUTION_RESULTS_EMPTY",
+                message="No generation results available to build summary.",
+            )
+        best_fitness = max(r.winner_fitness for r in gen_results)
         return {
             "status": "complete",
             "timestamp": _utcnow(),
@@ -357,27 +364,26 @@ class EvolutionOrchestrator:
         }
 
     def _append_metrics(self, summary: dict[str, Any]) -> None:
-        try:
-            self._metrics_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._metrics_path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(summary, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
+        self._metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._metrics_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(summary, ensure_ascii=False) + "\n")
 
     def _publish_to_blackboard(self, blackboard: Any, summary: dict[str, Any]) -> None:
-        try:
-            if hasattr(blackboard, "publish_sync"):
-                blackboard.publish_sync(
-                    topic="meta.evolution_result",
-                    producer="evolution_orchestrator",
-                    payload={
-                        "status": summary.get("status"),
-                        "generations_run": summary.get("generations_run"),
-                        "promotions": summary.get("promotions"),
-                        "best_fitness": summary.get("best_fitness"),
-                        "timestamp": summary.get("timestamp"),
-                    },
-                    confidence=0.85,
-                )
-        except Exception:
-            pass
+        if not hasattr(blackboard, "publish_sync"):
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="EVOLUTION_BLACKBOARD_PUBLISH_UNAVAILABLE",
+                message="Blackboard does not expose publish_sync for evolution result publishing.",
+            )
+        blackboard.publish_sync(
+            topic="meta.evolution_result",
+            producer="evolution_orchestrator",
+            payload={
+                "status": summary.get("status"),
+                "generations_run": summary.get("generations_run"),
+                "promotions": summary.get("promotions"),
+                "best_fitness": summary.get("best_fitness"),
+                "timestamp": summary.get("timestamp"),
+            },
+            confidence=0.85,
+        )

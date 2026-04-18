@@ -17,6 +17,7 @@ from lumina_bible import BibleEngine
 from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .economic_truth import EconomicTruth
+from .errors import ErrorSeverity, LuminaError
 from .market_data_manager import MarketDataManager
 from .risk_controller import HardRiskController, risk_limits_from_config
 from .session_guard import SessionGuard
@@ -220,11 +221,7 @@ class LuminaEngine:
         # double construction (Fase 3.1 clean-up).
 
         if self.session_guard is None:
-            try:
-                self.session_guard = SessionGuard(calendar_name="CME")
-            except Exception as exc:
-                logging.getLogger(__name__).error("SessionGuard init failed: %s", exc)
-                self.session_guard = None
+            self.session_guard = SessionGuard(calendar_name="CME")
 
         # Hard Risk Controller initialization
         if self.risk_controller is None:
@@ -269,40 +266,25 @@ class LuminaEngine:
         self.mode_risk_profile = self._load_mode_risk_profile()
 
     def _load_mode_risk_profile(self) -> dict[str, float]:
-        """Load Kelly sizing profile from config.yaml with safe defaults."""
-        profile = {
-            "sim_kelly_fraction": 1.0,
-            "real_kelly_fraction": 0.25,
-            "kelly_min_confidence": 0.65,
-            "kelly_baseline": 0.25,
+        """Load Kelly sizing profile from config.yaml."""
+        from lumina_core.config_loader import ConfigLoader  # noqa: PLC0415
+
+        data = ConfigLoader.get()
+        sim_cfg = data.get("sim", {}) if isinstance(data.get("sim"), dict) else {}
+        real_cfg = data.get("real", {}) if isinstance(data.get("real"), dict) else {}
+        trading_cfg = data.get("trading", {}) if isinstance(data.get("trading"), dict) else {}
+
+        sim_kelly = float(sim_cfg.get("kelly_fraction", 1.0) or 1.0)
+        real_kelly = float(real_cfg.get("kelly_fraction", trading_cfg.get("kelly_fraction_max", 0.25)) or 0.25)
+        min_conf = float(trading_cfg.get("kelly_min_confidence", 0.65) or 0.65)
+        baseline = float(trading_cfg.get("kelly_fraction_max", 0.25) or 0.25)
+
+        return {
+            "sim_kelly_fraction": max(0.05, sim_kelly),
+            "real_kelly_fraction": max(0.01, min(1.0, real_kelly)),
+            "kelly_min_confidence": max(0.0, min(1.0, min_conf)),
+            "kelly_baseline": baseline,
         }
-        try:
-            from lumina_core.config_loader import ConfigLoader  # noqa: PLC0415
-
-            data = ConfigLoader.get()
-
-            sim_cfg = data.get("sim", {}) if isinstance(data.get("sim"), dict) else {}
-            real_cfg = data.get("real", {}) if isinstance(data.get("real"), dict) else {}
-            trading_cfg = data.get("trading", {}) if isinstance(data.get("trading"), dict) else {}
-
-            sim_kelly = float(sim_cfg.get("kelly_fraction", 1.0) or 1.0)
-            real_kelly = float(
-                real_cfg.get(
-                    "kelly_fraction",
-                    trading_cfg.get("kelly_fraction_max", 0.25),
-                )
-                or 0.25
-            )
-            min_conf = float(trading_cfg.get("kelly_min_confidence", 0.65) or 0.65)
-
-            profile["sim_kelly_fraction"] = max(0.05, sim_kelly)
-            profile["real_kelly_fraction"] = max(0.01, min(1.0, real_kelly))
-            profile["kelly_min_confidence"] = max(0.0, min(1.0, min_conf))
-        except Exception:
-            # Keep defaults when config parsing fails.
-            pass
-
-        return profile
 
     def hydrate_from_legacy(self, app: ModuleType) -> None:
         """Import legacy runtime state into engine-managed fields."""

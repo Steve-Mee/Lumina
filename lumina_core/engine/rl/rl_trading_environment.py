@@ -8,6 +8,7 @@ import gymnasium as gym
 import numpy as np
 import pandas as pd
 
+from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.runtime_context import RuntimeContext
 
@@ -26,7 +27,7 @@ class RLTradingEnvironment(gym.Env):
         self.fast_path = context.fast_path
         self.backtester = context.backtester
         self.valuation_engine = ValuationEngine()
-        self.instrument = str(getattr(self.context.engine.config, "instrument", "MES"))
+        self.instrument = str(self.context.engine.config.instrument)
         self._dna_version = str(getattr(self.context.engine, "active_dna_version", "GENESIS") or "GENESIS")
 
         # Observation space (20 features)
@@ -46,7 +47,7 @@ class RLTradingEnvironment(gym.Env):
         self.pnl_history = []
 
     def set_dna_version(self, dna_version: str) -> None:
-        self._dna_version = str(dna_version or "GENESIS")
+        self._dna_version = str(dna_version)
 
     def _dna_signal(self) -> float:
         digest = hashlib.sha256(self._dna_version.encode("utf-8")).hexdigest()
@@ -89,20 +90,18 @@ class RLTradingEnvironment(gym.Env):
         )
         return obs
 
-    def step(self, action: np.ndarray | Dict[str, Any]) -> tuple:
-        # Backward-compatible parsing: accepteer legacy dict actions of PPO Box acties.
-        if isinstance(action, dict):
-            raw_signal = action.get("signal", 0)
-            signal_idx = int(raw_signal[0]) if isinstance(raw_signal, np.ndarray) else int(raw_signal)
-            qty_pct = float(action.get("qty_pct", [1.0])[0])
-            stop_mult = float(action.get("stop_mult", [1.0])[0])
-            target_mult = float(action.get("target_mult", [2.0])[0])
-        else:
-            flat = np.asarray(action, dtype=np.float32).reshape(-1)
-            signal_idx = int(np.clip(np.rint(flat[0]), 0, 2))
-            qty_pct = float(np.clip(flat[1], 0.1, 2.0))
-            stop_mult = float(np.clip(flat[2], 0.5, 2.0))
-            target_mult = float(np.clip(flat[3], 1.5, 4.0))
+    def step(self, action: np.ndarray) -> tuple:
+        flat = np.asarray(action, dtype=np.float32).reshape(-1)
+        if flat.shape[0] != 4:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="RL_ACTION_SHAPE_INVALID",
+                message=f"Expected action vector length 4, got {flat.shape[0]}.",
+            )
+        signal_idx = int(np.clip(np.rint(flat[0]), 0, 2))
+        qty_pct = float(np.clip(flat[1], 0.1, 2.0))
+        stop_mult = float(np.clip(flat[2], 0.5, 2.0))
+        target_mult = float(np.clip(flat[3], 1.5, 4.0))
 
         signal = ["HOLD", "BUY", "SELL"][signal_idx]
 

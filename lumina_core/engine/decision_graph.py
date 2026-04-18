@@ -5,6 +5,8 @@ from typing import Callable, Dict
 
 import networkx as nx
 
+from .errors import ErrorSeverity, LuminaError
+
 
 class DecisionNode(Enum):
     MARKET_DATA = "market_data"
@@ -30,25 +32,31 @@ class DecisionGraph:
         self.graph.add_edge(DecisionNode.EXECUTION, DecisionNode.RECONCILIATION)
 
     def execute(self, blackboard, current_mode: str) -> bool:
-        handlers: Dict[DecisionNode | str, Callable[[object, str], bool | None]] = {}
-        if blackboard is not None:
-            handlers_obj = getattr(blackboard, "_decision_graph_handlers", {})
-            if isinstance(handlers_obj, dict):
-                handlers = handlers_obj
+        if blackboard is None:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_UNRECOVERABLE,
+                code="DECISION_GRAPH_BLACKBOARD_MISSING",
+                message="DecisionGraph requires a blackboard instance with registered handlers.",
+            )
+        handlers_obj = getattr(blackboard, "_decision_graph_handlers", None)
+        if not isinstance(handlers_obj, dict):
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_UNRECOVERABLE,
+                code="DECISION_GRAPH_HANDLERS_MISSING",
+                message="Blackboard is missing _decision_graph_handlers mapping.",
+            )
+        handlers: Dict[DecisionNode | str, Callable[[object, str], bool | None]] = handlers_obj
 
         for node in nx.topological_sort(self.graph):
             handler = handlers.get(node) or handlers.get(node.value)
-            if callable(handler):
-                ok = handler(blackboard, current_mode)
-                if ok is False:
-                    return False
-                continue
-
-            # Backward-compatible fallback: run legacy supervisor flow on execution stage.
-            if node == DecisionNode.EXECUTION and blackboard is not None:
-                legacy_flow = getattr(blackboard, "_legacy_supervisor_loop", None)
-                if callable(legacy_flow):
-                    legacy_flow()
-                    return True
+            if not callable(handler):
+                raise LuminaError(
+                    severity=ErrorSeverity.FATAL_UNRECOVERABLE,
+                    code="DECISION_GRAPH_HANDLER_UNDEFINED",
+                    message=f"No callable handler registered for node '{node.value}'.",
+                )
+            ok = handler(blackboard, current_mode)
+            if ok is False:
+                return False
 
         return True

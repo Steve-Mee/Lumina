@@ -15,6 +15,7 @@ from ..evolution.evolution_orchestrator import EvolutionOrchestrator
 from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_engine import LuminaEngine
 from .evolution_lifecycle import EvolutionLifecycleManager
+from .errors import ErrorSeverity, LuminaError
 from .risk_controller import HardRiskController
 from .valuation_engine import ValuationEngine
 from lumina_core.experiments.ab_framework import ABExperimentFramework
@@ -66,19 +67,43 @@ class SelfEvolutionMetaAgent:
     ) -> "SelfEvolutionMetaAgent":
         engine = getattr(container, "engine", None)
         if engine is None:
-            raise ValueError("ApplicationContainer-like object must expose .engine")
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="EVOLUTION_ENGINE_MISSING",
+                message="ApplicationContainer-like object must expose .engine",
+            )
 
         valuation_engine = getattr(container, "valuation_engine", None)
-        if valuation_engine is None:
-            valuation_engine = getattr(engine, "valuation_engine", ValuationEngine())
+        if not isinstance(valuation_engine, ValuationEngine):
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="EVOLUTION_VALUATION_ENGINE_MISSING",
+                message="Container must expose .valuation_engine as ValuationEngine instance.",
+            )
 
         risk_controller = getattr(container, "risk_controller", None)
         if risk_controller is None:
-            risk_controller = getattr(engine, "risk_controller", None)
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="EVOLUTION_RISK_CONTROLLER_MISSING",
+                message="Container must expose .risk_controller.",
+            )
 
-        ft_cfg = fine_tuning_cfg if isinstance(fine_tuning_cfg, dict) else {}
+        if not isinstance(fine_tuning_cfg, dict):
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="EVOLUTION_FINE_TUNING_CONFIG_MISSING",
+                message="fine_tuning_cfg must be an explicit dict in dev-only runtime.",
+            )
+        ft_cfg = fine_tuning_cfg
 
-        mode_key = str(mode or "real").strip().lower()
+        mode_key = str(mode).strip().lower()
+        if mode_key not in {"sim", "paper", "real"}:
+            raise LuminaError(
+                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                code="EVOLUTION_MODE_INVALID",
+                message=f"Unsupported evolution mode: {mode_key}",
+            )
 
         return cls(
             engine=engine,
@@ -88,14 +113,14 @@ class SelfEvolutionMetaAgent:
             approval_required=bool(False if mode_key == "sim" else approval_required),
             sim_mode=bool(mode_key == "sim"),
             aggressive_evolution=bool(aggressive_evolution or mode_key == "sim"),
-            max_mutation_depth=str(max_mutation_depth or "conservative").strip().lower(),
+            max_mutation_depth=str(max_mutation_depth).strip().lower(),
             obs_service=obs_service,
-            auto_fine_tuning_enabled=bool(ft_cfg.get("auto_trigger", True)),
-            min_acceptance_rate=float(ft_cfg.get("min_acceptance", 0.4) or 0.4),
-            drift_threshold=float(ft_cfg.get("drift_threshold", 0.25) or 0.25),
-            ppo_trainer=getattr(container, "ppo_trainer", None),
-            rl_environment=getattr(container, "rl_environment", None),
-            blackboard=getattr(container, "blackboard", None),
+            auto_fine_tuning_enabled=bool(ft_cfg["auto_trigger"]),
+            min_acceptance_rate=float(ft_cfg["min_acceptance"]),
+            drift_threshold=float(ft_cfg["drift_threshold"]),
+            ppo_trainer=getattr(container, "ppo_trainer"),
+            rl_environment=getattr(container, "rl_environment"),
+            blackboard=getattr(container, "blackboard"),
             runtime_mode=mode_key,
         )
 
@@ -150,28 +175,22 @@ class SelfEvolutionMetaAgent:
 
         ab_result: dict[str, Any] | None = None
         if self.sim_mode and mutation_allowed and candidate_pool:
-            try:
-                ab_framework = ABExperimentFramework(min_forks=5, max_forks=10, max_workers=10)
-                base_candidate = dict(candidate_pool[0])
-                experiment = ab_framework.run_auto_forks(
-                    base_agent=base_candidate,
-                    score_fn=lambda fork: self._score_challenger(champion, fork, nightly_report, meta_review),
-                    promote_fn=self._apply_candidate,
-                    seed=int(now.timestamp()),
-                    candidate_pool=candidate_pool,
-                )
-                scored = list(experiment.variants)
-                ab_result = {
-                    "experiment_id": str(experiment.experiment_id),
-                    "selected_variant": dict(experiment.selected_variant),
-                    "variant_count": len(experiment.variants),
-                    "genetic_candidates": len(genetic_candidates),
-                }
-            except Exception as exc:
-                ab_result = {
-                    "experiment_id": "ab-sim-failed",
-                    "error": str(exc),
-                }
+            ab_framework = ABExperimentFramework(min_forks=5, max_forks=10, max_workers=10)
+            base_candidate = dict(candidate_pool[0])
+            experiment = ab_framework.run_auto_forks(
+                base_agent=base_candidate,
+                score_fn=lambda fork: self._score_challenger(champion, fork, nightly_report, meta_review),
+                promote_fn=self._apply_candidate,
+                seed=int(now.timestamp()),
+                candidate_pool=candidate_pool,
+            )
+            scored = list(experiment.variants)
+            ab_result = {
+                "experiment_id": str(experiment.experiment_id),
+                "selected_variant": dict(experiment.selected_variant),
+                "variant_count": len(experiment.variants),
+                "genetic_candidates": len(genetic_candidates),
+            }
 
         best = max(scored, key=lambda item: float(item.get("score", 0.0))) if scored else None
         candidate_dna = None
@@ -297,40 +316,31 @@ class SelfEvolutionMetaAgent:
 
         # Record proposal to observability metrics (no-op when obs_service is None)
         if self.obs_service is not None:
-            try:
-                best_name = str(best.get("name")) if best else None
-                self.obs_service.record_evolution_proposal(
-                    status=str(outcome.get("status", "unknown")),
-                    confidence=confidence,
-                    best_candidate=best_name,
-                )
-            except Exception:
-                pass
+            best_name = str(best.get("name")) if best else None
+            self.obs_service.record_evolution_proposal(
+                status=str(outcome.get("status", "unknown")),
+                confidence=confidence,
+                best_candidate=best_name,
+            )
 
         # Multi-generation orchestrator cycle (runs in sim/paper modes only).
         if mutation_allowed and not dry_run:
-            try:
-                orchestrator = EvolutionOrchestrator()
-                sim_duration_hours = int(nightly_report.get("sim_duration_hours", 24) or 24)
-                orch_result = orchestrator.run_nightly_evolution_cycle(
-                    generations=3,
-                    sim_duration_hours=sim_duration_hours,
-                    nightly_report=nightly_report,
-                    blackboard=self.blackboard,
-                    mode=mode_key,
+            orchestrator = EvolutionOrchestrator()
+            sim_duration_hours = int(nightly_report.get("sim_duration_hours", 24) or 24)
+            orch_result = orchestrator.run_nightly_evolution_cycle(
+                generations=3,
+                sim_duration_hours=sim_duration_hours,
+                nightly_report=nightly_report,
+                blackboard=self.blackboard,
+                mode=mode_key,
+            )
+            outcome["multi_gen_cycle"] = orch_result
+            if self.obs_service is not None:
+                self.obs_service.record_evolution_proposal(
+                    status=f"multi_gen:{orch_result.get('status', 'unknown')}",
+                    confidence=float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0),
+                    best_candidate=str(outcome.get("best_candidate", {}).get("name", "unknown")),
                 )
-                outcome["multi_gen_cycle"] = orch_result
-                if self.obs_service is not None:
-                    try:
-                        self.obs_service.record_evolution_proposal(
-                            status=f"multi_gen:{orch_result.get('status', 'unknown')}",
-                            confidence=float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0),
-                            best_candidate=str(outcome.get("best_candidate", {}).get("name", "unknown")),
-                        )
-                    except Exception:
-                        pass
-            except Exception as exc:
-                outcome["multi_gen_cycle"] = {"status": "error", "error": str(exc)}
 
         self._append_immutable_log(outcome)
         self._log_agent_decision(
@@ -342,22 +352,19 @@ class SelfEvolutionMetaAgent:
             evolution_log_hash=str(outcome.get("hash", "")) if isinstance(outcome, dict) else None,
         )
         if self.blackboard is not None and hasattr(self.blackboard, "add_proposal"):
-            try:
-                self.blackboard.add_proposal(
-                    topic="agent.meta.proposal",
-                    producer="self_evolution_meta_agent",
-                    payload={
-                        "status": str(outcome.get("status", "unknown")),
-                        "proposal": dict(outcome.get("proposal", {})),
-                        "dna": dict(outcome.get("dna", {})) if isinstance(outcome.get("dna"), dict) else {},
-                        "timestamp": now.isoformat(),
-                    },
-                    confidence=max(
-                        0.0, min(1.0, float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0) / 100.0)
-                    ),
-                )
-            except Exception:
-                pass
+            self.blackboard.add_proposal(
+                topic="agent.meta.proposal",
+                producer="self_evolution_meta_agent",
+                payload={
+                    "status": str(outcome.get("status", "unknown")),
+                    "proposal": dict(outcome.get("proposal", {})),
+                    "dna": dict(outcome.get("dna", {})) if isinstance(outcome.get("dna"), dict) else {},
+                    "timestamp": now.isoformat(),
+                },
+                confidence=max(
+                    0.0, min(1.0, float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0) / 100.0)
+                ),
+            )
         return outcome
 
     def _hydrate_report_from_blackboard(self, report: dict[str, Any]) -> dict[str, Any]:
@@ -596,7 +603,7 @@ class SelfEvolutionMetaAgent:
                     pass
             if hasattr(trainer, "set_dna_version"):
                 try:
-                    active = self._get_or_create_dna_registry().get_latest_dna(version="active")
+                    active = self._dna_registry().get_latest_dna(version="active")
                     trainer.set_dna_version(str(active.hash if active is not None else "GENESIS"))
                 except Exception:
                     pass
@@ -852,10 +859,14 @@ class SelfEvolutionMetaAgent:
     def _runtime_mode_key(self) -> str:
         if self.sim_mode:
             return "sim"
-        mode = str(self.runtime_mode or "").strip().lower()
+        mode = str(self.runtime_mode).strip().lower()
         if mode in {"sim", "paper", "real"}:
             return mode
-        return "real"
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="EVOLUTION_RUNTIME_MODE_INVALID",
+            message=f"Unsupported runtime mode: {mode}",
+        )
 
     def _apply_candidate(self, candidate: dict[str, Any]) -> None:
         suggestion = dict(candidate.get("hyperparam_suggestion", {}))
@@ -957,7 +968,7 @@ class SelfEvolutionMetaAgent:
                 lineage_hash=lineage_hash,
             )
             draft = registry.register_dna(draft)
-            candidate = self._candidate_from_dna(draft, fallback_name=f"genetic_mutant_{index + 1}")
+            candidate = self._candidate_from_dna(draft)
             candidates.append(candidate)
             candidate_map[draft.hash] = draft
 
@@ -985,9 +996,7 @@ class SelfEvolutionMetaAgent:
                 lineage_hash=lineage_hash,
             )
             draft = registry.register_dna(draft)
-            candidate = self._candidate_from_dna(
-                draft, fallback_name=f"genetic_crossover_{left_index + 1}_{right_index + 1}"
-            )
+            candidate = self._candidate_from_dna(draft)
             candidates.append(candidate)
             candidate_map[draft.hash] = draft
 
@@ -1012,7 +1021,7 @@ class SelfEvolutionMetaAgent:
                     lineage_hash=lineage_hash,
                 )
                 draft = registry.register_dna(draft)
-                candidate = self._candidate_from_dna(draft, fallback_name=f"genetic_filler_{len(candidates) + 1}")
+                candidate = self._candidate_from_dna(draft)
                 candidates.append(candidate)
                 candidate_map[draft.hash] = draft
 
@@ -1044,8 +1053,10 @@ class SelfEvolutionMetaAgent:
         try:
             payload = json.loads(dna.content)
         except Exception:
-            payload = {"prompt_tweak": dna.content}
-        return payload if isinstance(payload, dict) else {"prompt_tweak": dna.content}
+            return {"prompt_tweak": dna.content}
+        if not isinstance(payload, dict):
+            return {"prompt_tweak": dna.content}
+        return payload
 
     def _prompt_source_from_dna(self, dna: PolicyDNA) -> str:
         payload = self._content_from_dna(dna)
@@ -1087,10 +1098,10 @@ class SelfEvolutionMetaAgent:
             "drawdown_kill_percent": round((left["drawdown_kill_percent"] + right["drawdown_kill_percent"]) / 2.0, 3),
         }
 
-    def _candidate_from_dna(self, dna: PolicyDNA, *, fallback_name: str) -> dict[str, Any]:
+    def _candidate_from_dna(self, dna: PolicyDNA) -> dict[str, Any]:
         payload = self._content_from_dna(dna)
         return {
-            "name": str(payload.get("candidate_name", fallback_name)),
+            "name": str(payload.get("candidate_name", "candidate")),
             "prompt_tweak": str(payload.get("prompt_tweak", self._prompt_source_from_dna(dna))),
             "regime_focus": str(payload.get("regime_focus", "neutral")),
             "hyperparam_suggestion": dict(payload.get("hyperparam_suggestion", {})),
@@ -1275,65 +1286,61 @@ class SelfEvolutionMetaAgent:
 
 
 def load_evolution_config(config_path: str = "config.yaml") -> dict[str, Any]:
-    try:
-        import yaml
+    import yaml
 
-        if not os.path.exists(config_path):
-            return {
-                "enabled": True,
-                "approval_required": True,
-                "mode": "real",
-                "aggressive_evolution": False,
-                "max_mutation_depth": "conservative",
-            }
-        with open(config_path, "r", encoding="utf-8") as handle:
-            data = yaml.safe_load(handle) or {}
-        evo = data.get("evolution", {}) if isinstance(data, dict) else {}
-        fine_tuning = data.get("fine_tuning", {}) if isinstance(data, dict) else {}
-        if not isinstance(evo, dict):
-            evo = {}
-        if not isinstance(fine_tuning, dict):
-            fine_tuning = {}
-
-        mode = (
-            str(os.getenv("LUMINA_MODE") or (data.get("mode", "sim") if isinstance(data, dict) else "sim"))
-            .strip()
-            .lower()
+    if not os.path.exists(config_path):
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="EVOLUTION_CONFIG_FILE_MISSING",
+            message=f"Required evolution config file not found: {config_path}",
         )
-        sim_cfg = data.get("sim", {}) if isinstance(data, dict) and isinstance(data.get("sim"), dict) else {}
-        real_cfg = data.get("real", {}) if isinstance(data, dict) and isinstance(data.get("real"), dict) else {}
 
-        if mode == "sim":
-            approval_required = bool(sim_cfg.get("approval_required", False))
-            aggressive_evolution = bool(sim_cfg.get("aggressive_evolution", True))
-            max_mutation_depth = str(sim_cfg.get("max_mutation_depth", "radical"))
-        else:
-            approval_required = bool(real_cfg.get("approval_required", evo.get("approval_required", True)))
-            aggressive_evolution = bool(real_cfg.get("aggressive_evolution", False))
-            max_mutation_depth = str(real_cfg.get("max_mutation_depth", "conservative"))
+    with open(config_path, "r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle)
 
-        return {
-            "enabled": bool(evo.get("enabled", True)),
-            "approval_required": approval_required,
-            "mode": mode,
-            "aggressive_evolution": aggressive_evolution,
-            "max_mutation_depth": max_mutation_depth,
-            "fine_tuning": {
-                "auto_trigger": bool(fine_tuning.get("auto_trigger", True)),
-                "min_acceptance": float(fine_tuning.get("min_acceptance", 0.4) or 0.4),
-                "drift_threshold": float(fine_tuning.get("drift_threshold", 0.25) or 0.25),
-            },
-        }
-    except Exception:
-        return {
-            "enabled": True,
-            "approval_required": True,
-            "mode": "real",
-            "aggressive_evolution": False,
-            "max_mutation_depth": "conservative",
-            "fine_tuning": {
-                "auto_trigger": True,
-                "min_acceptance": 0.4,
-                "drift_threshold": 0.25,
-            },
-        }
+    if not isinstance(data, dict):
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="EVOLUTION_CONFIG_INVALID",
+            message="Top-level config.yaml payload must be a mapping.",
+        )
+
+    evo = data.get("evolution")
+    fine_tuning = data.get("fine_tuning")
+    sim_cfg = data.get("sim")
+    real_cfg = data.get("real")
+    if not isinstance(evo, dict) or not isinstance(fine_tuning, dict):
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="EVOLUTION_CONFIG_SECTIONS_MISSING",
+            message="Config requires 'evolution' and 'fine_tuning' mapping sections.",
+        )
+    if not isinstance(sim_cfg, dict) or not isinstance(real_cfg, dict):
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="EVOLUTION_MODE_CONFIG_MISSING",
+            message="Config requires both 'sim' and 'real' mapping sections.",
+        )
+
+    mode = str(os.getenv("LUMINA_MODE", data["mode"]))
+    mode = mode.strip().lower()
+    if mode not in {"sim", "paper", "real"}:
+        raise LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="EVOLUTION_MODE_INVALID",
+            message=f"Unsupported mode in evolution config: {mode}",
+        )
+
+    mode_cfg = sim_cfg if mode == "sim" else real_cfg
+    return {
+        "enabled": bool(evo["enabled"]),
+        "approval_required": bool(mode_cfg["approval_required"]),
+        "mode": mode,
+        "aggressive_evolution": bool(mode_cfg["aggressive_evolution"]),
+        "max_mutation_depth": str(mode_cfg["max_mutation_depth"]),
+        "fine_tuning": {
+            "auto_trigger": bool(fine_tuning["auto_trigger"]),
+            "min_acceptance": float(fine_tuning["min_acceptance"]),
+            "drift_threshold": float(fine_tuning["drift_threshold"]),
+        },
+    }
