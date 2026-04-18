@@ -80,6 +80,11 @@ state/last_run_summary_paper_15m.json
 state/sim_stability_history.jsonl
 *_validation.log
 state/test_runs/*.json
+state/dna_registry.jsonl
+state/dna_registry.sqlite3
+state/full_pytest.*.log
+state/phase3_sim300*.log
+state/test_bypass_*_run.*.log
 config.yaml.pre_controlled_live.bak
 lumina_validation_output.log
 test_output.txt
