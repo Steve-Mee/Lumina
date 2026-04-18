@@ -52,7 +52,7 @@ old/
 logs/*.csv
 logs/structured_errors.jsonl
 logs/trade_fill_audit.jsonl
-logs/security_audit.jsonl
+logs/security_audit.jsonl`nlogs/evolution_metrics.jsonl
 journal/simulator/*.json
 state/lumina_thought_log.jsonl
 state/thought_log.jsonl
