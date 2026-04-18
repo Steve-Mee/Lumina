@@ -11,6 +11,7 @@ from typing import Any
 
 from ..evolution.dna_registry import DNARegistry, PolicyDNA
 from ..evolution.evolution_guard import EvolutionGuard
+from ..evolution.evolution_orchestrator import EvolutionOrchestrator
 from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_engine import LuminaEngine
 from .evolution_lifecycle import EvolutionLifecycleManager
@@ -301,6 +302,20 @@ class SelfEvolutionMetaAgent:
                 )
             except Exception:
                 pass
+
+        # Multi-generation orchestrator cycle (runs in sim/paper modes only).
+        if mutation_allowed and not dry_run:
+            try:
+                orchestrator = EvolutionOrchestrator()
+                orch_result = orchestrator.run_nightly_evolution_cycle(
+                    generations=3,
+                    nightly_report=nightly_report,
+                    blackboard=self.blackboard,
+                    mode=mode_key,
+                )
+                outcome["multi_gen_cycle"] = orch_result
+            except Exception as exc:
+                outcome["multi_gen_cycle"] = {"status": "error", "error": str(exc)}
 
         self._append_immutable_log(outcome)
         self._log_agent_decision(

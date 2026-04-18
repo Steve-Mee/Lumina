@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -42,17 +43,26 @@ def _mutate_with_local_model(base_prompt: str, rate: float) -> str | None:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=2.0) as response:
-            body = response.read().decode("utf-8")
-        parsed = json.loads(body)
-        choices = parsed.get("choices") if isinstance(parsed, dict) else None
-        if not isinstance(choices, list) or not choices:
+
+        def _fetch() -> str | None:
+            with urllib.request.urlopen(request, timeout=1.5) as response:
+                body = response.read().decode("utf-8")
+            parsed = json.loads(body)
+            choices = parsed.get("choices") if isinstance(parsed, dict) else None
+            if not isinstance(choices, list) or not choices:
+                return None
+            message = choices[0].get("message") if isinstance(choices[0], dict) else None
+            content = message.get("content") if isinstance(message, dict) else None
+            if isinstance(content, str) and content.strip():
+                return content.strip()
             return None
-        message = choices[0].get("message") if isinstance(choices[0], dict) else None
-        content = message.get("content") if isinstance(message, dict) else None
-        if isinstance(content, str) and content.strip():
-            return content.strip()
-    except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError):
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+            _future = _pool.submit(_fetch)
+            result = _future.result(timeout=2.0)
+        return result
+    except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError,
+            concurrent.futures.TimeoutError):
         return None
     except Exception:
         return None
