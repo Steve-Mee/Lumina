@@ -65,6 +65,20 @@ def test_load_metrics_skips_corrupt_json_lines() -> None:
         path.unlink(missing_ok=True)
 
 
+def test_load_metrics_skips_blank_lines() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
+        fh.write("\n")
+        fh.write("   \n")
+        fh.write(json.dumps({"status": "complete", "generations_run": 1, "generations": []}) + "\n")
+        path = Path(fh.name)
+
+    try:
+        rows = _load_metrics(path)
+        assert len(rows) == 1
+    finally:
+        path.unlink(missing_ok=True)
+
+
 # ── render_evolution_dashboard ───────────────────────────────────────────────
 
 
