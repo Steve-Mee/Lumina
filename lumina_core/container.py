@@ -7,7 +7,7 @@ import logging
 import os
 from pathlib import Path
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from dotenv import load_dotenv
 
@@ -179,7 +179,7 @@ class ApplicationContainer:
         self._init_instruments()
 
         # Initialize core engine
-        self.engine = LuminaEngine(self.config)
+        self.engine = cast(Any, LuminaEngine)(self.config)
         self.engine.observability_service = self.observability_service
         self.decision_log = AgentDecisionLog()
         self.engine.decision_log = self.decision_log
@@ -189,7 +189,7 @@ class ApplicationContainer:
             fail_closed_real=bool(self.config.trade_decision_audit_fail_closed_real),
         )
         self.engine.audit_log_service = self.audit_log_service
-        self.runtime_context = RuntimeContext(engine=self.engine, app=None, container=self)
+        self.runtime_context = cast(Any, RuntimeContext)(engine=self.engine, app=None, container=self)
         self.regime_detector = RegimeDetector(
             config=getattr(self.config, "regime", {}), valuation_engine=self.engine.valuation_engine
         )
