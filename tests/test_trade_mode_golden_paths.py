@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -93,7 +93,7 @@ def test_golden_path_paper_mode_no_broker_call() -> None:
 
 def test_golden_path_sim_mode_session_guard_blocks_outside_hours() -> None:
     svc, broker = _build_service("sim")
-    svc.engine.session_guard.is_trading_session.return_value = False
+    cast(Any, svc.engine).session_guard.is_trading_session.return_value = False
     result = svc.place_order("BUY", 1)
     assert result is False
     assert broker.calls == 0
@@ -110,7 +110,7 @@ def test_golden_path_real_mode_fail_closed_without_risk_controller() -> None:
 
 def test_golden_path_sim_real_guard_mode_session_guard_blocks_outside_hours() -> None:
     svc, broker = _build_service("sim_real_guard")
-    svc.engine.session_guard.is_trading_session.return_value = False
+    cast(Any, svc.engine).session_guard.is_trading_session.return_value = False
     result = svc.place_order("BUY", 1)
     assert result is False
     assert broker.calls == 0
@@ -126,9 +126,9 @@ def test_golden_path_sim_real_guard_mode_blocks_risk_breach() -> None:
 
 def test_is_market_open_uses_session_guard_only() -> None:
     svc, _broker = _build_service("sim")
-    svc.engine.session_guard.is_trading_session.return_value = True
+    cast(Any, svc.engine).session_guard.is_trading_session.return_value = True
     assert svc.is_market_open() is True
-    svc.engine.session_guard.is_trading_session.assert_called_once()
+    cast(Any, svc.engine).session_guard.is_trading_session.assert_called_once()
 
 
 def test_is_market_open_fail_closed_when_session_guard_unavailable() -> None:
@@ -136,15 +136,17 @@ def test_is_market_open_fail_closed_when_session_guard_unavailable() -> None:
     svc.engine.session_guard = None
 
     assert svc.is_market_open() is False
-    svc.engine.app.logger.warning.assert_called_with("OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_UNAVAILABLE")
+    cast(Any, svc.engine).app.logger.warning.assert_called_with(
+        "OPS_MARKET_OPEN_FAIL_CLOSED,error_code=SESSION_GUARD_UNAVAILABLE"
+    )
 
 
 def test_is_market_open_fail_closed_when_session_guard_errors() -> None:
     svc, _broker = _build_service("real")
-    svc.engine.session_guard.is_trading_session.side_effect = RuntimeError("guard down")
+    cast(Any, svc.engine).session_guard.is_trading_session.side_effect = RuntimeError("guard down")
 
     assert svc.is_market_open() is False
-    svc.engine.app.logger.warning.assert_called()
-    logged_message = str(svc.engine.app.logger.warning.call_args[0][0])
+    cast(Any, svc.engine).app.logger.warning.assert_called()
+    logged_message = str(cast(Any, svc.engine).app.logger.warning.call_args[0][0])
     assert "OPS_MARKET_OPEN_FAIL_CLOSED" in logged_message
     assert "SESSION_GUARD_ERROR" in logged_message
