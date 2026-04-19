@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import matplotlib
 
@@ -173,7 +173,11 @@ class PerformanceValidator:
         return row
 
     def _load_swarm_symbol_snapshot(self, symbol: str) -> pd.DataFrame:
-        df = self.market_data_service.load_historical_ohlc_for_symbol(
+        market_data_service = self.market_data_service
+        if market_data_service is None:
+            raise RuntimeError("PerformanceValidator.market_data_service is not configured")
+
+        df = market_data_service.load_historical_ohlc_for_symbol(
             instrument=symbol,
             days_back=365 * 3,
             limit=300000,
@@ -188,8 +192,8 @@ class PerformanceValidator:
         return df
 
     def _validate_symbol_snapshot(self, symbol: str, df: pd.DataFrame) -> dict[str, Any]:
-        bt = BacktesterEngine(app=self._app())
-        snapshot = df.to_dict("records")
+        bt = BacktesterEngine(app=cast(Any, self._app()))
+        snapshot = [{str(k): v for k, v in row.items()} for row in df.to_dict("records")]
         base_report = bt.run_snapshot_backtest(snapshot)
 
         advanced = getattr(self.engine, "advanced_backtester", None)
