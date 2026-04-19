@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_core.engine.lumina_engine import LuminaEngine
@@ -26,7 +27,7 @@ def test_real_fail_closed_on_low_aggregate_confidence(tmp_path: Path) -> None:
 
     cfg = EngineConfig()
     cfg.trade_mode = "real"
-    engine = LuminaEngine(config=cfg)
+    engine = cast(Any, LuminaEngine)(config=cfg)
 
     bus = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
     engine.bind_blackboard(bus)
@@ -45,9 +46,9 @@ def test_real_fail_closed_on_low_aggregate_confidence(tmp_path: Path) -> None:
 
 def test_nightly_integration_emits_meta_topics(tmp_path: Path) -> None:
     bus = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
-    orchestrator = MetaAgentOrchestrator(
+    orchestrator = cast(Any, MetaAgentOrchestrator)(
         blackboard=bus,
-        self_evolution_agent=_NoOpSelfEvolution(),
+        self_evolution_agent=cast(Any, _NoOpSelfEvolution()),
         ppo_trainer=None,
         bible_engine=SimpleNamespace(evolve=lambda *_a, **_k: None),
     )
