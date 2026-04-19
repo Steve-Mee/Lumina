@@ -30,6 +30,9 @@ from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
 from .steve_values_registry import SteveValuesRegistry
+from .veto_registry import VetoRegistry
+from .veto_window import VetoWindow
+from .telegram_notifier import TelegramNotifier
 from lumina_core.experiments.ab_framework import ABExperimentFramework
 
 
@@ -98,6 +101,9 @@ class EvolutionOrchestrator:
         self._guard = EvolutionGuard()
         self._values_registry = SteveValuesRegistry()
         self._approval_twin = ApprovalTwinAgent(registry=self._values_registry)
+        self._veto_registry = VetoRegistry()
+        self._veto_window = VetoWindow(veto_registry=self._veto_registry, window_seconds=1800)
+        self._telegram_notifier = TelegramNotifier(veto_registry=self._veto_registry)
         self._sim_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
         self._metrics_path = _METRICS_PATH
         self._initialized = True
@@ -263,8 +269,12 @@ class EvolutionOrchestrator:
             previous_generation_fitness=previous_fitness,
         )
 
+        # PHASE 3: Check 30-minute veto window (fail-closed: veto blocks promotion).
+        veto_check = self._veto_window.check_with_details(dna_id=winner_dna.hash)
+        veto_blocked = veto_check.get("is_blocked", False)
+
         promoted = False
-        if signed and generation_ok and (mode != "real" or explicit_human_approval):
+        if signed and generation_ok and (mode != "real" or explicit_human_approval) and not veto_blocked:
             promoted_dna = self._registry.mutate(
                 parent=winner_dna,
                 mutation_rate=0.1,
@@ -274,6 +284,9 @@ class EvolutionOrchestrator:
             )
             self._registry.register_dna(promoted_dna)
             promoted = True
+            
+            # Log veto window expiration (veto period passed without veto)
+            self._telegram_notifier.send_veto_window_expired(winner_dna.hash)
 
         self._append_metrics(
             {
@@ -290,6 +303,9 @@ class EvolutionOrchestrator:
                 "approval_twin_recommendation": bool(twin_decision.get("recommendation", False)),
                 "approval_twin_confidence": float(twin_decision.get("confidence", 0.0) or 0.0),
                 "approval_twin_risk_flags": list(twin_decision.get("risk_flags", []) or []),
+                "veto_blocked": veto_blocked,
+                "veto_reason": veto_check.get("reason", ""),
+                "veto_active_records": len(veto_check.get("active_veto_records", [])),
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
             }
