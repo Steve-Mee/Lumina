@@ -4,6 +4,7 @@ import asyncio
 import math
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pandas as pd
 
@@ -164,9 +165,12 @@ def test_reasoning_service_updates_regime_snapshot_and_risk_limits() -> None:
     engine, risk = _build_reasoning_engine(_news_frame())
     detector = RegimeDetector()
     reasoning = ReasoningService(
-        engine=engine,
-        inference_engine=SimpleNamespace(
+        engine=cast(Any, engine),
+        inference_engine=cast(
+            Any,
+            SimpleNamespace(
             infer_json=lambda *args, **kwargs: {"signal": "BUY", "confidence": 0.9, "reason": "ok"}
+            ),
         ),
         regime_detector=detector,
     )
@@ -187,8 +191,8 @@ def test_reasoning_service_routes_agents_by_regime() -> None:
         return {"signal": "BUY", "confidence": 0.8, "reason": "aligned"}
 
     reasoning = ReasoningService(
-        engine=engine,
-        inference_engine=SimpleNamespace(infer_json=_infer_json),
+        engine=cast(Any, engine),
+        inference_engine=cast(Any, SimpleNamespace(infer_json=_infer_json)),
         regime_detector=RegimeDetector(),
     )
 
@@ -247,7 +251,7 @@ def test_trade_workers_apply_tighter_limits_in_high_risk_regime() -> None:
     )
     runtime = SimpleNamespace(engine=engine, logger=app.logger, market_regime="NEUTRAL")
 
-    allowed, reason = check_pre_trade_risk(runtime, "MES JUN26", "NEUTRAL", 250.0)
+    allowed, reason = check_pre_trade_risk(cast(Any, runtime), "MES JUN26", "NEUTRAL", 250.0)
     assert allowed is False
     assert "MAX INSTRUMENT RISK exceeded" in reason
 
@@ -264,8 +268,8 @@ def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path) -> None
         emotional_twin=None,
     )
     agent = SelfEvolutionMetaAgent(
-        engine=engine,
-        valuation_engine=SimpleNamespace(),
+        engine=cast(Any, engine),
+        valuation_engine=cast(Any, SimpleNamespace()),
         risk_controller=HardRiskController(RiskLimits(enforce_session_guard=False), enforce_rules=True),
         approval_required=True,
         runtime_mode="paper",
