@@ -1,23 +1,30 @@
 """Scheduler for periodic DNA approval gymnasium sessions with Telegram integration."""
 
+import json
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo  # type: ignore[no-redef]
+
+_BRUSSELS_TZ = ZoneInfo("Europe/Brussels")
+_WAKING_HOUR_START = 8
+_WAKING_HOUR_END = 22
+_DEFAULT_MORNING_HOUR = 9
 
 logger = logging.getLogger(__name__)
 
 
 class ApprovalGymScheduler:
     """Manages periodic DNA approval gym sessions with optional Telegram notifications.
-    
-    Architecture:
-    - Singleton scheduler (one instance per app lifecycle)
-    - Schedules gym sessions at configurable intervals (default 6 hours)
-    - Optionally sends Telegram notifications before each session
-    - Logs session history to disk for audit trail
-    - Thread-safe with RLock
+
+    Sessions are only scheduled within Brussels waking hours (08:00-22:00).
+    Outside waking hours, the next session is deferred to 09:00 Brussels time.
     """
 
     _instance: Optional["ApprovalGymScheduler"] = None
@@ -38,43 +45,26 @@ class ApprovalGymScheduler:
         interval_hours: int = 6,
         history_path: str = "state/gym_session_history.jsonl",
     ):
-        """Initialize approval gym scheduler.
-        
-        Args:
-            approval_gym: ApprovalGym instance for running sessions
-            telegram_notifier: TelegramNotifier for optional notifications
-            interval_hours: Hours between sessions (default 6)
-            history_path: Path to session history log
-        """
         if getattr(self, "_initialized", False):
             return
-
         self._approval_gym = approval_gym
         self._telegram_notifier = telegram_notifier
-        self._interval_hours = max(1, int(interval_hours))  # Minimum 1 hour
+        self._interval_hours = max(1, int(interval_hours))
         self._history_path = Path(history_path)
         self._history_path.parent.mkdir(parents=True, exist_ok=True)
-
         self._last_session_time: Optional[datetime] = None
         self._scheduler_thread: Optional[threading.Thread] = None
         self._running = False
         self._initialized = True
 
     def start_scheduler(self) -> bool:
-        """Start background scheduler thread (fail-closed: returns False if already running).
-        
-        Returns:
-            True if scheduler started, False if already running or no gym configured
-        """
         with self._lock:
             if self._running:
                 logger.warning("Scheduler already running.")
                 return False
-
             if self._approval_gym is None:
                 logger.error("No ApprovalGym configured. Scheduler cannot start.")
                 return False
-
             self._running = True
             self._scheduler_thread = threading.Thread(
                 target=self._scheduler_loop,
@@ -86,54 +76,75 @@ class ApprovalGymScheduler:
             return True
 
     def stop_scheduler(self) -> bool:
-        """Stop background scheduler thread.
-        
-        Returns:
-            True if stopped, False if not running
-        """
         with self._lock:
             if not self._running:
                 logger.warning("Scheduler not running.")
                 return False
-
             self._running = False
             logger.info("Approval Gym scheduler stopped.")
             return True
 
     def _scheduler_loop(self) -> None:
-        """Background loop: run gym sessions at scheduled intervals."""
+        """Background loop: run gym sessions at configured intervals within Brussels waking hours."""
         logger.info(f"Scheduler loop started (interval: {self._interval_hours}h)")
 
         while self._running:
             try:
-                # Calculate next session time
                 now = datetime.now(timezone.utc)
                 if self._last_session_time is None:
-                    # First run: schedule for next interval
-                    next_session = now + timedelta(hours=self._interval_hours)
+                    next_session = self._next_waking_session_time(now)
                 else:
                     next_session = self._last_session_time + timedelta(hours=self._interval_hours)
+                    if not self._is_in_waking_hours(next_session):
+                        next_session = self._next_waking_session_time(next_session)
+                        logger.info(f"Next gym session pushed to Brussels waking hours: {next_session.isoformat()}")
 
                 wait_seconds = max(0, (next_session - now).total_seconds())
-
                 if wait_seconds > 0:
-                    logger.debug(f"Next gym session scheduled in {wait_seconds:.0f}s")
-                    # Sleep in small chunks to allow quick shutdown
+                    logger.debug(f"Next gym session in {wait_seconds:.0f}s (Brussels waking hours)")
                     remaining = wait_seconds
                     while remaining > 0 and self._running:
-                        sleep_chunk = min(1.0, remaining)
-                        threading.Event().wait(sleep_chunk)
-                        remaining -= sleep_chunk
+                        threading.Event().wait(min(1.0, remaining))
+                        remaining -= 1.0
 
-                # Run session if scheduler still active
                 if self._running:
+                    if not self._is_in_waking_hours(datetime.now(timezone.utc)):
+                        logger.info("Outside Brussels waking hours at session start – rescheduling.")
+                        self._last_session_time = None
+                        continue
                     self._run_scheduled_session()
 
             except Exception as e:
                 logger.error(f"Scheduler loop error: {e}", exc_info=True)
-                # Continue running despite errors
                 if self._running:
-                    threading.Event().wait(5.0)  # Backoff before retry
+                    threading.Event().wait(5.0)
+
+    # ------------------------------------------------------------------
+    # Brussels waking hours helpers
+    # ------------------------------------------------------------------
+
+    def _is_in_waking_hours(self, dt: datetime) -> bool:
+        """Return True if dt falls within Brussels waking hours (08:00-22:00)."""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        brussels_hour = dt.astimezone(_BRUSSELS_TZ).hour
+        return _WAKING_HOUR_START <= brussels_hour < _WAKING_HOUR_END
+
+    def _next_waking_session_time(self, from_dt: datetime) -> datetime:
+        """Return next 09:00 Brussels time on or after from_dt."""
+        if from_dt.tzinfo is None:
+            from_dt = from_dt.replace(tzinfo=timezone.utc)
+        brussels_now = from_dt.astimezone(_BRUSSELS_TZ)
+        candidate = brussels_now.replace(
+            hour=_DEFAULT_MORNING_HOUR, minute=0, second=0, microsecond=0
+        )
+        if brussels_now >= candidate:
+            candidate = candidate + timedelta(days=1)
+        return candidate.astimezone(timezone.utc)
+
+    # ------------------------------------------------------------------
+    # Session execution
+    # ------------------------------------------------------------------
 
     def _run_scheduled_session(self) -> None:
         """Execute a single scheduled approval gym session."""
@@ -141,28 +152,25 @@ class ApprovalGymScheduler:
         session_id = session_time.isoformat()
 
         try:
-            # Notify before session
             if self._telegram_notifier:
                 try:
                     msg = (
-                        f"🏋️ **Approval Gym Session Starting**\n"
-                        f"Session ID: `{session_id}`\n"
+                        f"Approval Gym Session Starting\n"
+                        f"Session ID: {session_id}\n"
                         f"Steve, prepare for DNA promotion evaluation."
                     )
                     self._telegram_notifier._send_telegram_message(msg)
                 except Exception as e:
                     logger.warning(f"Failed to send pre-session notification: {e}")
 
-            # Run session
             logger.info(f"Running scheduled approval gym session {session_id}")
             if self._approval_gym is None:
                 logger.error("No ApprovalGym configured for session run.")
                 return
 
-            records = self._approval_gym.run_session(approval_twin=None)  # No RLHF trigger for scheduled sessions
+            records = self._approval_gym.run_session(approval_twin=None)
             session_count = len(records) if records else 0
 
-            # Log session to history
             self._log_session({
                 "session_id": session_id,
                 "session_time": session_time.isoformat(),
@@ -170,12 +178,11 @@ class ApprovalGymScheduler:
                 "proposal_count": session_count,
             })
 
-            # Notify after session
             if self._telegram_notifier:
                 try:
                     msg = (
-                        f"✅ **Approval Gym Session Complete**\n"
-                        f"Session ID: `{session_id}`\n"
+                        f"Approval Gym Session Complete\n"
+                        f"Session ID: {session_id}\n"
                         f"Proposals Evaluated: {session_count}"
                     )
                     self._telegram_notifier._send_telegram_message(msg)
@@ -194,50 +201,24 @@ class ApprovalGymScheduler:
             })
 
     def _log_session(self, session_record: dict[str, Any]) -> None:
-        """Append session record to history log (audit trail).
-        
-        Args:
-            session_record: Session metadata to log
-        """
         try:
-            import json
             with open(self._history_path, "a") as f:
                 f.write(json.dumps(session_record) + "\n")
         except Exception as e:
             logger.error(f"Failed to log session: {e}")
 
     def get_last_session_time(self) -> Optional[datetime]:
-        """Get timestamp of last completed session.
-        
-        Returns:
-            datetime of last session, or None if no session run yet
-        """
         return self._last_session_time
 
     def get_next_session_time(self) -> Optional[datetime]:
-        """Estimate next scheduled session time.
-        
-        Returns:
-            Estimated datetime of next session, or None if no session run yet
-        """
         if self._last_session_time is None:
             return datetime.now(timezone.utc) + timedelta(hours=self._interval_hours)
         return self._last_session_time + timedelta(hours=self._interval_hours)
 
     def set_interval_hours(self, hours: int) -> None:
-        """Dynamically update session interval.
-        
-        Args:
-            hours: New interval in hours (minimum 1)
-        """
         with self._lock:
             self._interval_hours = max(1, int(hours))
             logger.info(f"Gym scheduler interval updated to {self._interval_hours}h")
 
     def is_running(self) -> bool:
-        """Check if scheduler is currently active.
-        
-        Returns:
-            True if running, False otherwise
-        """
         return self._running

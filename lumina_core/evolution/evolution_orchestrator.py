@@ -288,6 +288,62 @@ class EvolutionOrchestrator:
             # Log veto window expiration (veto period passed without veto)
             self._telegram_notifier.send_veto_window_expired(winner_dna.hash)
 
+            telegram_proposal_sent = False
+            telegram_approved = False
+            if mode == "real":
+                twin_confidence = float(twin_decision.get("confidence", 0.0) or 0.0)
+                risk_flags = list(twin_decision.get("risk_flags", []) or [])
+                # Per spec: twin confidence > 90% AND no risk_flags → send Telegram + fail-closed 30-min window
+                if self._guard.should_trigger_telegram(twin_confidence=twin_confidence, risk_flags=risk_flags):
+                    proposal_summary = str(twin_decision.get("explanation", "DNA promotion candidate"))
+                    sent = self._telegram_notifier.send_proposal_notification(
+                        dna_id=winner_dna.hash,
+                        fitness=winner_fitness,
+                        twin_confidence=twin_confidence,
+                        proposal_summary=proposal_summary,
+                        veto_window_minutes=30,
+                    )
+                    telegram_proposal_sent = sent
+                    if not sent:
+                        # Notification failed → block promotion (fail-closed)
+                        logger.warning(
+                            f"DNA {winner_dna.hash}: Telegram proposal could not be sent → blocking REAL promotion."
+                        )
+
+            # Poll for Steve's reply (only relevant when proposal was just sent or was previously pending)
+            if telegram_proposal_sent or self._telegram_notifier.is_awaiting_approval(winner_dna.hash):
+                self._telegram_notifier.poll_for_replies()
+                telegram_approved = self._telegram_notifier.has_approved(winner_dna.hash)
+                telegram_vetoed = self._telegram_notifier.is_vetoed_or_expired(winner_dna.hash)
+            else:
+                # No proposal sent in this cycle; check if there's an unresolved pending proposal
+                telegram_approved = not self._telegram_notifier.is_awaiting_approval(winner_dna.hash)
+                telegram_vetoed = self._telegram_notifier.is_vetoed_or_expired(winner_dna.hash)
+
+            # PHASE 3: Check 30-minute veto window (fail-closed: veto blocks promotion).
+            veto_check = self._veto_window.check_with_details(dna_id=winner_dna.hash)
+            veto_blocked = veto_check.get("is_blocked", False)
+
+            # Telegram gate: if proposal was sent, Steve must explicitly APPROVE
+            if telegram_proposal_sent and not telegram_approved:
+                veto_blocked = True
+            if telegram_vetoed:
+                veto_blocked = True
+
+            promoted = False
+            if signed and generation_ok and (mode != "real" or explicit_human_approval) and not veto_blocked:
+                promoted_dna = self._registry.mutate(
+                    parent=winner_dna,
+                    mutation_rate=0.1,
+                    fitness_score=winner_fitness,
+                    version="active",
+                    lineage_hash=winner_dna.lineage_hash,
+                )
+                self._registry.register_dna(promoted_dna)
+                promoted = True
+                # Notify Steve that promotion proceeded (only if no veto window was open)
+                if not telegram_proposal_sent:
+                    self._telegram_notifier.send_veto_window_expired(winner_dna.hash)
         self._append_metrics(
             {
                 "event": "generation_completed",

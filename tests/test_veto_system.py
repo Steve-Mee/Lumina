@@ -197,8 +197,8 @@ class TestTelegramNotifier:
             twin_confidence=0.92,
             proposal_summary="Test proposal",
         )
-        # Fail-open: notifications missing creds don't block evolution
-        assert result is True
+        # Fail-closed: missing creds returns False (no Telegram = no approval possible)
+        assert result is False
 
     def test_telegram_notifier_records_veto_in_registry(self):
         """Test that veto recording integrates with VetoRegistry."""
@@ -250,13 +250,16 @@ class TestTelegramNotifier:
             "veto_deadline": (fresh_time + timedelta(minutes=30)).isoformat(),
             "tags": [],
         }
+        # Mark both as pending (new fail-closed model requires status field)
+        notifier._pending_proposals["dna_old"]["status"] = TelegramNotifier.STATUS_PENDING
+        notifier._pending_proposals["dna_fresh"]["status"] = TelegramNotifier.STATUS_PENDING
 
         # Cleanup
         notifier.cleanup_expired_proposals(window_seconds=1800)
 
-        # Old should be removed, fresh should remain
-        assert "dna_old" not in notifier._pending_proposals
-        assert "dna_fresh" in notifier._pending_proposals
+        # Old should be marked expired (fail-closed auto-veto), fresh stays pending
+        assert notifier._pending_proposals["dna_old"]["status"] == TelegramNotifier.STATUS_EXPIRED
+        assert notifier._pending_proposals["dna_fresh"]["status"] == TelegramNotifier.STATUS_PENDING
 
 
 class TestVetoIntegrationWithOrchestrator:
