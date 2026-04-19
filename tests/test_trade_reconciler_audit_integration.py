@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 from lumina_core.engine.audit_log_service import AuditLogService
 from lumina_core.engine.trade_reconciler import TradeReconciler
@@ -27,7 +28,7 @@ def test_reconciler_mirrors_events_to_trade_decision_audit(tmp_path: Path) -> No
         app=SimpleNamespace(logger=SimpleNamespace(info=lambda *_a, **_k: None, error=lambda *_a, **_k: None)),
     )
 
-    reconciler = TradeReconciler(engine=engine)
+    reconciler = TradeReconciler(engine=cast(Any, engine))
     reconciler._append_audit_event(
         {
             "event": "reconciled",
