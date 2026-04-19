@@ -20,9 +20,32 @@ class _BrokerSpy:
         return SimpleNamespace(accepted=True, status="FILLED", message="ok")
 
 
+class _Event:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+        self.producer = "test"
+        self.confidence = float(payload.get("confidence", 0.8) or 0.8)
+        self.timestamp = "2026-04-18T00:00:00+00:00"
+        self.correlation_id = "corr"
+        self.sequence = 1
+        self.event_hash = "hash"
+        self.prev_hash = "prev-hash"
+
+
+class _Blackboard:
+    def latest(self, topic: str):
+        if topic.startswith("agent."):
+            return _Event({"agent_id": "rl", "signal": "BUY", "confidence": 0.81, "reason": "test"})
+        if topic == "execution.aggregate":
+            return _Event({"signal": "BUY", "chosen_strategy": "rl"})
+        return None
+
+
 def _build_service(mode: str) -> tuple[OperationsService, _BrokerSpy]:
     risk_ctrl: Any = MagicMock()
     risk_ctrl.check_can_trade.return_value = (True, "ok")
+    risk_ctrl.check_var_es_pre_trade.return_value = (True, "VAR_ES OK", {})
+    risk_ctrl.check_monte_carlo_drawdown_pre_trade.return_value = (True, "MC drawdown OK", {})
     risk_ctrl.apply_regime_override.return_value = None
     risk_ctrl._active_limits = SimpleNamespace(enforce_session_guard=True)
 
@@ -42,6 +65,9 @@ def _build_service(mode: str) -> tuple[OperationsService, _BrokerSpy]:
         risk_controller=risk_ctrl,
         session_guard=session_guard,
         current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
+        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        blackboard=_Blackboard(),
+        audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
     )
 

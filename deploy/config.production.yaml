@@ -2,7 +2,7 @@ hardware_profile: "beast"
 
 inference:
   primary_provider: "vllm"
-  fallback_order: ["vllm", "ollama", "grok_remote"]
+  provider_order: ["vllm", "ollama", "grok_remote"]
   max_tokens: 1200
   temperature: 0.10
   json_mode: true

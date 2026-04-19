@@ -1,6 +1,6 @@
 # Production Machine Setup
 
-This repository is now prepared for a Linux-based Docker deployment where Lumina uses a dedicated vLLM container when GPU-compatible and falls back to Ollama or remote Grok automatically when vLLM is unavailable.
+This repository is now prepared for a Linux-based Docker deployment where Lumina uses a dedicated vLLM container when GPU-compatible and routes by configured provider order when vLLM is unavailable.
 
 ## Recommended target
 
@@ -14,7 +14,7 @@ This repository is now prepared for a Linux-based Docker deployment where Lumina
 - `vLLM` runs inside Linux where its native extensions are supported.
 - `lumina` stays isolated from the inference server and only talks to `http://vllm:8000` when available.
 - Install/update scripts auto-enable the `vllm` compose profile only for compatible GPUs (`sm_70+`).
-- The app keeps its fallback chain if vLLM is unavailable or unhealthy.
+- The app keeps its provider chain behavior if vLLM is unavailable or unhealthy.
 
 ## Install order on the real machine
 
@@ -48,7 +48,7 @@ docker compose -f docker-compose.prod.yml logs lumina --tail=200
 Expected result:
 
 - On compatible GPUs: `vllm` becomes healthy and serves model endpoints.
-- On incompatible/no NVIDIA GPUs: `vllm` is skipped automatically and `lumina` still runs with fallback providers.
+- On incompatible/no NVIDIA GPUs: `vllm` is skipped automatically and `lumina` still runs with remaining configured providers.
 - `config.production.yaml` points Lumina to `http://vllm:8000`.
 
 ## Automatic updates
@@ -83,9 +83,9 @@ See [release-workflow.md](c:/NinjaTraderAI_Bot/docs/release-workflow.md) for the
 - `deploy/config.production.yaml` is mounted into the app container as `/app/config.yaml`.
 - `deploy/.env.production` is the runtime secret/config file used by both services.
 - `docker-compose.prod.yml` now includes stronger defaults for long-running containers: `init`, log rotation, `tmpfs`, `nofile` ulimits, `pids_limit`, and `no-new-privileges`.
-- If you still want Ollama as secondary local fallback on the production host, keep Ollama installed on the host and exposed on port `11434`.
-- If you prefer pure remote fallback, remove `ollama` from the fallback order in `deploy/config.production.yaml`.
-- Use `bash deploy/smoke_preprod.sh` before first production cutover; it validates the correct path (vLLM or fallback) automatically.
+- If you still want Ollama as secondary local provider on the production host, keep Ollama installed on the host and exposed on port `11434`.
+- If you prefer pure remote routing, remove `ollama` from `inference.provider_order` in `deploy/config.production.yaml`.
+- Use `bash deploy/smoke_preprod.sh` before first production cutover; it validates the correct inference path (vLLM or alternate provider) automatically.
 - If you trigger operations from Windows, `deploy/run_preprod_smoke.ps1` prints the correct Linux command and can invoke WSL when available.
 
 ## Current Windows test machine
