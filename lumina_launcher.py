@@ -14,7 +14,7 @@ import sys
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import requests
@@ -25,7 +25,7 @@ _IS_HEADLESS = "--headless" in sys.argv or "--stability-check" in sys.argv
 if not _IS_HEADLESS:
     import streamlit as st  # type: ignore[import]
 else:
-    st = None  # type: ignore[assignment]  # placeholder; unused in headless path
+    st = cast(Any, None)  # placeholder; unused in headless path
 import yaml
 
 from lumina_core.container import create_application_container
@@ -595,7 +595,8 @@ def _window_metrics(summary: dict[str, Any], rows: list[dict[str, Any]], window_
     risk_events = _safe_int(summary.get("risk_events"))
 
     for row in filtered:
-        meta = row.get("meta_review") if isinstance(row.get("meta_review"), dict) else {}
+        meta_raw = row.get("meta_review")
+        meta = meta_raw if isinstance(meta_raw, dict) else {}
         pnl += _safe_float(meta.get("net_pnl"))
         trades += _safe_int(meta.get("trades"))
         wins += _safe_int(meta.get("wins"))
@@ -623,13 +624,16 @@ def _proposal_snapshot(rows: list[dict[str, Any]]) -> tuple[int, list[dict[str, 
     latest = list(reversed(proposals))[:5]
     rendered: list[dict[str, Any]] = []
     for row in latest:
-        best = row.get("best_candidate") if isinstance(row.get("best_candidate"), dict) else {}
+        best_raw = row.get("best_candidate")
+        best = best_raw if isinstance(best_raw, dict) else {}
+        proposal_raw = row.get("proposal")
+        proposal = proposal_raw if isinstance(proposal_raw, dict) else {}
         rendered.append(
             {
                 "timestamp": row.get("timestamp", "n/a"),
                 "candidate": best.get("name", "n/a"),
                 "score": round(_safe_float(best.get("score")), 4),
-                "confidence": round(_safe_float((row.get("proposal") or {}).get("confidence")), 2),
+                "confidence": round(_safe_float(proposal.get("confidence")), 2),
             }
         )
     return len(proposals), rendered
@@ -643,7 +647,8 @@ def _last_5d_expectancy(rows: list[dict[str, Any]], summary: dict[str, Any]) -> 
             continue
         day_key = ts.date().isoformat()
         slot = buckets.setdefault(day_key, {"pnl": 0.0, "trades": 0.0})
-        meta = row.get("meta_review") if isinstance(row.get("meta_review"), dict) else {}
+        meta_raw = row.get("meta_review")
+        meta = meta_raw if isinstance(meta_raw, dict) else {}
         slot["pnl"] += _safe_float(meta.get("net_pnl"))
         slot["trades"] += float(_safe_int(meta.get("trades")))
 
@@ -698,13 +703,13 @@ def _render_sim_learning_tab() -> None:
     consecutive = int(report.get("consecutive_green_days", 0))
     days_to_green = int(report.get("days_to_green", 5))
     history_count = int(report.get("history_row_count", len(history_rows)))
-    criteria = report.get("criteria") if isinstance(report.get("criteria"), dict) else {}
+    criteria_raw = report.get("criteria")
+    criteria = criteria_raw if isinstance(criteria_raw, dict) else {}
     failures = report.get("failures", []) if isinstance(report.get("failures"), list) else []
     is_green = bool(report.get("READY_FOR_REAL", False))
     status_label = str(report.get("status", "RED")).strip().upper()
-    sharpe_crit = (
-        criteria.get("extended_run_sharpe", {}) if isinstance(criteria.get("extended_run_sharpe"), dict) else {}
-    )
+    sharpe_raw = criteria.get("extended_run_sharpe")
+    sharpe_crit = sharpe_raw if isinstance(sharpe_raw, dict) else {}
     latest_sharpe = _safe_float(sharpe_crit.get("latest_sharpe", 0.0))
 
     summary_color = "#16a34a" if is_green else "#dc2626"
@@ -771,14 +776,14 @@ def _render_sim_learning_tab() -> None:
 
     # ── Criteria scorecard ─────────────────────────────────────────────────────
     st.markdown("#### 🎯 REAL Readiness Criteria")
-    exp = criteria.get("positive_expectancy_5d", {}) if isinstance(criteria.get("positive_expectancy_5d"), dict) else {}
-    consistent = criteria.get("consistent_sharpe", {}) if isinstance(criteria.get("consistent_sharpe"), dict) else {}
-    risk = criteria.get("zero_risk_and_var", {}) if isinstance(criteria.get("zero_risk_and_var"), dict) else {}
-    trend = (
-        criteria.get("evolution_proposals_trend", {})
-        if isinstance(criteria.get("evolution_proposals_trend"), dict)
-        else {}
-    )
+    exp_raw = criteria.get("positive_expectancy_5d")
+    exp = exp_raw if isinstance(exp_raw, dict) else {}
+    consistent_raw = criteria.get("consistent_sharpe")
+    consistent = consistent_raw if isinstance(consistent_raw, dict) else {}
+    risk_raw = criteria.get("zero_risk_and_var")
+    risk = risk_raw if isinstance(risk_raw, dict) else {}
+    trend_raw = criteria.get("evolution_proposals_trend")
+    trend = trend_raw if isinstance(trend_raw, dict) else {}
 
     sc1, sc2, sc3, sc4, sc5 = st.columns(5)
     sc1.metric(
