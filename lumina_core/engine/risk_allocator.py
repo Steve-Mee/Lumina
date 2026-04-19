@@ -3,11 +3,21 @@ from __future__ import annotations
 import math
 import os
 from statistics import NormalDist
+from typing import Any
 
 import numpy as np
 
 
 class RiskAllocatorMixin:
+    # Type stubs for mixin attributes provided by mixing class
+    _active_limits: Any
+    state: Any
+    enforce_rules: bool
+
+    def _portfolio_return_series(self) -> list[float]:
+        """Stub for mixin method provided by mixing class."""
+        raise NotImplementedError
+
     def _mc_enforcement_enabled(self) -> bool:
         mode = str(self._active_limits.runtime_mode or "sim").strip().lower()
         if not self.enforce_rules:
