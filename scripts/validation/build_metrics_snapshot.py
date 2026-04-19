@@ -174,13 +174,13 @@ def main() -> int:
     if isinstance(previous, dict):
         snapshot["delta"] = {
             "order_acceptance_rate": round(
-                snapshot["order_acceptance_rate"] - float(previous.get("order_acceptance_rate", 0.0)), 6
+                float(snapshot["order_acceptance_rate"]) - float(previous.get("order_acceptance_rate", 0.0)), 6
             ),
             "inference_fallback_rate": round(
-                snapshot["inference_fallback_rate"] - float(previous.get("inference_fallback_rate", 0.0)), 6
+                float(snapshot["inference_fallback_rate"]) - float(previous.get("inference_fallback_rate", 0.0)), 6
             ),
             "reconcile_latency_p95_ms": round(
-                snapshot["reconcile_latency_p95_ms"] - float(previous.get("reconcile_latency_p95_ms", 0.0)), 3
+                float(snapshot["reconcile_latency_p95_ms"]) - float(previous.get("reconcile_latency_p95_ms", 0.0)), 3
             ),
         }
     else:

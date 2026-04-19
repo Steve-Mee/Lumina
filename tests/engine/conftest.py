@@ -67,7 +67,7 @@ def real_mes_ohlc(tmp_path_factory: pytest.TempPathFactory) -> pd.DataFrame:
     )
     import lumina_core.engine.rl.ppo_trainer as ppo_trainer_mod
 
-    ppo_trainer_mod.PPOTrainer = _NoOpPPOTrainer
+    ppo_trainer_mod.PPOTrainer = _NoOpPPOTrainer  # type: ignore[misc]
     eng = LuminaEngine(config=cfg)
     app = SimpleNamespace(
         logger=logging.getLogger("lumina-test-real"),

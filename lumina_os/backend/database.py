@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import os
+from typing import Any
 
 from dotenv import load_dotenv
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text, create_engine, inspect, text
@@ -18,7 +19,7 @@ if DATABASE_URL.startswith("sqlite"):
 
 engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(bind=engine)
-Base = declarative_base()
+Base: Any = declarative_base()
 
 
 class Participant(Base):
