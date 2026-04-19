@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,26 @@ def _utcnow() -> datetime:
 
 
 class RiskGatesMixin:
+    # Type stubs for mixin attributes provided by mixing class
+    limits: Any
+    state: Any
+    enforce_rules: bool
+    _active_limits: Any
+    session_guard: Any
+    portfolio_var_allocator: Any
+
+    def check_var_es_pre_trade(self, proposed_risk: float) -> tuple[bool, str, dict[str, Any]]:
+        """Stub for mixin method provided by mixing class."""
+        raise NotImplementedError
+
+    def check_monte_carlo_drawdown_pre_trade(self, proposed_risk: float) -> tuple[bool, str, dict[str, Any]]:
+        """Stub for mixin method provided by mixing class."""
+        raise NotImplementedError
+
+    def _save_state(self) -> None:
+        """Stub for mixin method provided by mixing class."""
+        raise NotImplementedError
+
     def check_can_trade(self, symbol: str, regime: str, proposed_risk: float) -> tuple[bool, str]:
         if self.limits.sim_mode or not self.enforce_rules:
             return True, "OK (SIM learning mode – all caps bypassed)"
