@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from contextlib import nullcontext
 from datetime import datetime
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -21,8 +22,8 @@ def test_runtime_workers_exports_expected_callables():
 def test_runtime_context_delegates_engine_surface():
     # RuntimeContext is an engine adapter and should expose engine attributes.
     app = SimpleNamespace(value=1)
-    engine = LuminaEngine(config=EngineConfig())
-    ctx = RuntimeContext(engine=engine, app=app)
+    engine = cast(Any, LuminaEngine)(config=EngineConfig())
+    ctx = RuntimeContext(engine=engine, app=cast(Any, app))
     assert ctx.app is app
     assert ctx.fast_path is engine.fast_path
 
@@ -108,7 +109,7 @@ def test_pre_dream_daemon_applies_emotional_twin_correction(monkeypatch):
     monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(SystemExit()))
 
     with pytest.raises(SystemExit):
-        runtime_workers.pre_dream_daemon(app)
+        runtime_workers.pre_dream_daemon(cast(Any, app))
 
     assert twin.calls >= 1
 
@@ -173,7 +174,7 @@ def test_supervisor_loop_applies_emotional_twin_correction(monkeypatch):
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
-        runtime_workers.supervisor_loop(app)
+        runtime_workers.supervisor_loop(cast(Any, app))
 
     assert twin.calls >= 1
 
@@ -247,7 +248,7 @@ def test_supervisor_loop_real_close_marks_reconciler_pending(monkeypatch):
     )
 
     with pytest.raises(StopIteration):
-        runtime_workers.supervisor_loop(app)
+        runtime_workers.supervisor_loop(cast(Any, app))
 
     assert len(reconciler.calls) == 1
     call = reconciler.calls[0]
@@ -338,7 +339,7 @@ def test_supervisor_loop_runs_swarm_only_on_five_minute_boundary(monkeypatch):
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
-        runtime_workers.supervisor_loop(app)
+        runtime_workers.supervisor_loop(cast(Any, app))
 
     assert swarm.run_calls == 1
 
@@ -407,7 +408,7 @@ def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
-        runtime_workers.supervisor_loop(app)
+        runtime_workers.supervisor_loop(cast(Any, app))
 
     assert len(broker_calls) == 1
     assert app.sim_position_qty == 2
@@ -488,7 +489,7 @@ def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
-        runtime_workers.supervisor_loop(app)
+        runtime_workers.supervisor_loop(cast(Any, app))
 
     assert swarm.run_calls == 0
 
@@ -569,10 +570,10 @@ def test_supervisor_loop_real_eod_force_close_flattens_and_holds(monkeypatch):
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
-        runtime_workers.supervisor_loop(app)
+        runtime_workers.supervisor_loop(cast(Any, app))
 
     assert len(flatten_orders) == 1
-    flatten = flatten_orders[0]
+    flatten = cast(Any, flatten_orders[0])
     assert flatten.side == "SELL"
     assert flatten.quantity == 2
     assert place_order_calls["count"] == 0
@@ -601,11 +602,11 @@ def test_enforce_real_eod_force_close_applies_to_sim_real_guard():
         logger=SimpleNamespace(warning=lambda *_a, **_k: None, error=lambda *_a, **_k: None),
     )
 
-    activated = runtime_workers._enforce_real_eod_force_close(app, 5000.0)
+    activated = runtime_workers._enforce_real_eod_force_close(cast(Any, app), 5000.0)
 
     assert activated is True
     assert len(flatten_orders) == 1
-    assert flatten_orders[0].metadata["mode"] == "sim_real_guard"
+    assert cast(Any, flatten_orders[0]).metadata["mode"] == "sim_real_guard"
 
 
 def test_enforce_real_eod_force_close_skips_sim_mode():
@@ -625,7 +626,7 @@ def test_enforce_real_eod_force_close_skips_sim_mode():
         logger=SimpleNamespace(warning=lambda *_a, **_k: None, error=lambda *_a, **_k: None),
     )
 
-    activated = runtime_workers._enforce_real_eod_force_close(app, 5000.0)
+    activated = runtime_workers._enforce_real_eod_force_close(cast(Any, app), 5000.0)
 
     assert activated is False
     assert calls["get_positions"] == 0
@@ -724,7 +725,7 @@ def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(mon
     monkeypatch.setattr(runtime_workers.time, "sleep", _sleep)
 
     with pytest.raises(StopIteration):
-        runtime_workers.supervisor_loop(app)
+        runtime_workers.supervisor_loop(cast(Any, app))
 
     assert swarm.run_calls == 2
     assert swarm.apply_calls == 2
