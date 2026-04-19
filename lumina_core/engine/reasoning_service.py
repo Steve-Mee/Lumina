@@ -327,7 +327,11 @@ class ReasoningService:
 
         get_dream = getattr(self.engine, "get_current_dream_snapshot", None)
         if callable(get_dream):
-            current_confluence = float(get_dream().get("confluence_score", 0.0) or 0.0)
+            dream_result = get_dream()
+            if isinstance(dream_result, dict):
+                current_confluence = float(dream_result.get("confluence_score", 0.0) or 0.0)
+            else:
+                current_confluence = 0.0
         else:
             current_confluence = 0.0
         if regime_snapshot.adaptive_policy.high_risk and current_confluence < 0.88:
@@ -408,7 +412,7 @@ Wat is jouw trade-besluit?""",
                 weighted_confidence += 0.3 * weight
                 total_weight += weight
 
-        most_common_signal = max(weighted_signals, key=weighted_signals.get) if weighted_signals else "HOLD"
+        most_common_signal = max(weighted_signals, key=lambda x: weighted_signals[x]) if weighted_signals else "HOLD"
         top_weight = weighted_signals.get(most_common_signal, 0.0)
         consistency = top_weight / max(total_weight, 1e-9)
         avg_confidence = weighted_confidence / max(total_weight, 1e-9)
