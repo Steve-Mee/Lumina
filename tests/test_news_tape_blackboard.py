@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.agent_blackboard import AgentBlackboard
@@ -35,7 +36,7 @@ def test_news_agent_publishes_blackboard_proposal(tmp_path) -> None:
         get_current_dream_snapshot=lambda: {"signal": "BUY"},
     )
 
-    agent = NewsAgent(engine=engine)
+    agent = NewsAgent(engine=cast(Any, engine))
     result = agent.run_news_cycle()
 
     assert isinstance(result, dict)
@@ -48,7 +49,7 @@ def test_news_agent_publishes_blackboard_proposal(tmp_path) -> None:
 def test_market_data_service_publishes_tape_topics(tmp_path) -> None:
     bus = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
     engine = SimpleNamespace(app=SimpleNamespace(), blackboard=bus)
-    service = MarketDataService(engine=engine)
+    service = MarketDataService(engine=cast(Any, engine))
 
     service._publish_tape_signal(
         {
