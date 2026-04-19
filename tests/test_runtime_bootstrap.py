@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from typing import Any, cast
 
 import lumina_core.runtime_bootstrap as runtime_bootstrap
 from lumina_core.runtime_bootstrap import start_runtime_services
@@ -212,4 +213,4 @@ def test_start_runtime_services_injects_blackboard_and_meta_orchestrator():
 
     assert app.engine.bound == 1
     assert app.engine.meta_agent_orchestrator is app.container.meta_agent_orchestrator
-    assert app.blackboard is app.container.blackboard
+    assert cast(Any, app).blackboard is app.container.blackboard
