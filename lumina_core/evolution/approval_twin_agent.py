@@ -135,6 +135,22 @@ class ApprovalTwinAgent:
 
         return "local", LocalHeuristicBackend()
 
+    def evaluate_shadow_promotion(self, *, dna: PolicyDNA, shadow_total_pnl: float, veto_blocked: bool) -> dict[str, Any]:
+        base = self.evaluate_dna_promotion(dna)
+        shadow_positive = float(shadow_total_pnl) > 0.0
+        recommendation = bool(base.get("recommendation", False) and shadow_positive and not bool(veto_blocked))
+        explanation = (
+            f"{base.get('explanation', '')}; shadow_total_pnl={float(shadow_total_pnl):.4f}; "
+            f"veto_blocked={bool(veto_blocked)}"
+        )
+        return {
+            **base,
+            "recommendation": recommendation,
+            "shadow_total_pnl": float(shadow_total_pnl),
+            "veto_blocked": bool(veto_blocked),
+            "explanation": explanation,
+        }
+
     def fine_tune_from_registry(self, *, limit: int = 250) -> dict[str, Any]:
         if self._registry is None:
             return {"updated": False, "reason": "registry_unavailable"}

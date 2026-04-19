@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -81,10 +82,23 @@ class EvolutionGuard:
     ) -> bool:
         """Return True when twin is highly confident with no risk flags.
 
-        Per spec: confidence > 90% AND no risk_flags -> send Telegram proposal +
-        open 30-min fail-closed veto window before REAL promotion.
+        Kept for compatibility: confidence > 90% AND no risk_flags.
         """
         return _normalize_confidence(twin_confidence) > 0.90 and len(list(risk_flags)) == 0
+
+    def resolve_shadow_days(self, *, minimum_days: int = 3, maximum_days: int = 7) -> int:
+        low = max(1, int(minimum_days))
+        high = max(low, int(maximum_days))
+        return int(random.randint(low, high))
+
+    def shadow_validation_passed(
+        self,
+        *,
+        shadow_total_pnl: float,
+        veto_blocked: bool,
+        risk_flags: list[str] | None = None,
+    ) -> bool:
+        return bool(float(shadow_total_pnl) > 0.0 and not veto_blocked and len(list(risk_flags or [])) == 0)
 
     def allows_generation_progress(
         self,

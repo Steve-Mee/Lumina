@@ -49,3 +49,25 @@ def test_multi_day_sim_runner_returns_ranked_results() -> None:
     assert len(results) == 3
     assert results[0].fitness >= results[-1].fitness
     assert all(item.day_count == 2 for item in results)
+
+
+def test_multi_day_sim_runner_shadow_mode_emits_hypothetical_fills() -> None:
+    runner = MultiDaySimRunner(max_workers=2, drawdown_limit_ratio=0.05)
+    results = runner.evaluate_variants(
+        [_dna("shadow")],
+        days=3,
+        nightly_report={
+            "net_pnl": 75.0,
+            "sharpe": 0.6,
+            "max_drawdown": 50.0,
+            "account_equity": 50000.0,
+        },
+        shadow_mode=True,
+    )
+
+    assert len(results) == 1
+    result = results[0]
+    assert result.shadow_mode is True
+    assert result.hypothetical_fills is not None
+    assert len(result.hypothetical_fills) == 3
+    assert all(fill.reason == "shadow_validation_no_order_execution" for fill in result.hypothetical_fills)

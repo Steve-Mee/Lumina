@@ -41,6 +41,7 @@ from lumina_core.experiments.ab_framework import ABExperimentFramework
 
 
 _METRICS_PATH = Path("logs/evolution_metrics.jsonl")
+_SHADOW_STATE_PATH = Path("state/evolution_shadow_runs.json")
 _CAPITAL_GUARD_DD = 25_000.0  # mirrors calculate_fitness hard guard
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,7 @@ class EvolutionOrchestrator:
         self._notification_scheduler = NotificationScheduler()
         self._sim_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
         self._metrics_path = _METRICS_PATH
+        self._shadow_state_path = _SHADOW_STATE_PATH
         self._initialized = True
 
     # ------------------------------------------------------------------
@@ -280,67 +282,33 @@ class EvolutionOrchestrator:
             previous_generation_fitness=previous_fitness,
         )
 
-        # PHASE 3: Check 30-minute veto window (fail-closed: veto blocks promotion).
-        veto_check = self._veto_window.check_with_details(dna_id=winner_dna.hash)
-        veto_blocked = veto_check.get("is_blocked", False)
-
-        telegram_proposal_sent = False
-        telegram_approved = False
-        telegram_vetoed = False
-        if mode == "real":
-            twin_confidence = float(twin_decision.get("confidence", 0.0) or 0.0)
-            risk_flags = list(twin_decision.get("risk_flags", []) or [])
-            should_fast_track = self._guard.should_trigger_telegram(
-                twin_confidence=twin_confidence,
-                risk_flags=risk_flags,
-            )
-            dashboard_url = _resolve_dashboard_url()
-
-            # REAL mode always requires a Telegram proposal and explicit APPROVE.
-            if not self._telegram_notifier.has_approved(winner_dna.hash) and not self._telegram_notifier.is_vetoed_or_expired(
-                winner_dna.hash
-            ):
-                proposal_summary = str(twin_decision.get("explanation", "DNA promotion candidate"))
-                delivery = self._notification_scheduler.schedule_notification(
-                    callback=lambda: self._telegram_notifier.send_proposal_notification(
-                        dna_id=winner_dna.hash,
-                        fitness=winner_fitness,
-                        twin_confidence=twin_confidence,
-                        proposal_summary=proposal_summary,
-                        veto_window_minutes=30,
-                        recommendation=bool(twin_decision.get("recommendation", False)),
-                        dashboard_url=dashboard_url or None,
-                        tags=["high_confidence_no_risk"] if should_fast_track else [*risk_flags] if risk_flags else [],
-                    ),
-                    description=f"REAL DNA proposal {winner_dna.hash}",
-                )
-                telegram_proposal_sent = bool(delivery.get("sent_now", False))
-                if not bool(delivery.get("accepted", False)) or not telegram_proposal_sent:
-                    # Notification failed or was deferred -> promotion remains blocked (fail-closed).
-                    veto_blocked = True
-                    logger.warning(
-                        f"DNA {winner_dna.hash}: Telegram proposal not yet delivered -> blocking REAL promotion."
-                    )
-
-            # Poll when a proposal is open now or was already pending from a prior cycle.
-            if telegram_proposal_sent or self._telegram_notifier.is_awaiting_approval(winner_dna.hash):
-                self._telegram_notifier.poll_for_replies()
-
-            telegram_approved = self._telegram_notifier.has_approved(winner_dna.hash)
-            telegram_vetoed = self._telegram_notifier.is_vetoed_or_expired(winner_dna.hash)
-
-            # Telegram gate: REAL promotion always requires explicit APPROVE.
-            if not telegram_approved:
-                veto_blocked = True
-            if telegram_vetoed:
-                veto_blocked = True
-
-        # Re-check persisted veto registry after Telegram handling.
-        veto_check = self._veto_window.check_with_details(dna_id=winner_dna.hash)
-        veto_blocked = bool(veto_blocked or veto_check.get("is_blocked", False))
-
         promoted = False
-        if signed and generation_ok and not veto_blocked:
+        veto_check: dict[str, Any] = {"is_blocked": False, "reason": "no_veto", "active_veto_records": []}
+        veto_blocked = False
+        shadow_status = "not_required"
+        shadow_days_completed = 0
+        shadow_days_target = 0
+        shadow_total_pnl = 0.0
+
+        if mode == "real":
+            shadow_decision = self._run_shadow_validation_gate(
+                dna=winner_dna,
+                winner_fitness=winner_fitness,
+                nightly_report=base_metrics,
+                signed=signed,
+                generation_ok=generation_ok,
+            )
+            promoted = bool(shadow_decision.get("promote_now", False))
+            veto_check = dict(shadow_decision.get("veto_check", veto_check) or veto_check)
+            veto_blocked = bool(shadow_decision.get("veto_blocked", False))
+            shadow_status = str(shadow_decision.get("shadow_status", shadow_status))
+            shadow_days_completed = int(shadow_decision.get("shadow_days_completed", 0) or 0)
+            shadow_days_target = int(shadow_decision.get("shadow_days_target", 0) or 0)
+            shadow_total_pnl = float(shadow_decision.get("shadow_total_pnl", 0.0) or 0.0)
+        else:
+            promoted = bool(signed and generation_ok)
+
+        if promoted:
             promoted_dna = self._registry.mutate(
                 parent=winner_dna,
                 mutation_rate=0.1,
@@ -349,9 +317,8 @@ class EvolutionOrchestrator:
                 lineage_hash=winner_dna.lineage_hash,
             )
             self._registry.register_dna(promoted_dna)
-            promoted = True
-            if not telegram_proposal_sent:
-                self._telegram_notifier.send_veto_window_expired(winner_dna.hash)
+            if mode == "real":
+                self._mark_shadow_promoted(dna_hash=winner_dna.hash)
         self._append_metrics(
             {
                 "event": "generation_completed",
@@ -370,6 +337,10 @@ class EvolutionOrchestrator:
                 "veto_blocked": veto_blocked,
                 "veto_reason": veto_check.get("reason", ""),
                 "veto_active_records": len(veto_check.get("active_veto_records", [])),
+                "shadow_status": shadow_status,
+                "shadow_days_completed": shadow_days_completed,
+                "shadow_days_target": shadow_days_target,
+                "shadow_total_pnl": shadow_total_pnl,
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
             }
@@ -383,6 +354,198 @@ class EvolutionOrchestrator:
             previous_fitness=previous_fitness,
             promoted=promoted,
         )
+
+    def _run_shadow_validation_gate(
+        self,
+        *,
+        dna: PolicyDNA,
+        winner_fitness: float,
+        nightly_report: dict[str, Any],
+        signed: bool,
+        generation_ok: bool,
+    ) -> dict[str, Any]:
+        if not signed or not generation_ok:
+            return {
+                "promote_now": False,
+                "veto_blocked": False,
+                "veto_check": {"is_blocked": False, "reason": "guard_not_satisfied", "active_veto_records": []},
+                "shadow_status": "guard_blocked",
+                "shadow_days_completed": 0,
+                "shadow_days_target": 0,
+                "shadow_total_pnl": 0.0,
+            }
+
+        shadow_runs = self._load_shadow_runs()
+        record = dict(shadow_runs.get(dna.hash, {}) or {})
+
+        if not record:
+            min_days, max_days = self._resolve_shadow_day_bounds()
+            target_days = self._guard.resolve_shadow_days(minimum_days=min_days, maximum_days=max_days)
+            record = {
+                "dna_hash": dna.hash,
+                "lineage_hash": str(dna.lineage_hash),
+                "started_at": _utcnow(),
+                "updated_at": _utcnow(),
+                "target_days": target_days,
+                "status": "pending",
+                "winner_fitness": float(winner_fitness),
+                "daily_pnl": [],
+                "daily_fill_count": [],
+                "shadow_total_pnl": 0.0,
+            }
+            shadow_runs[dna.hash] = record
+            self._save_shadow_runs(shadow_runs)
+            return {
+                "promote_now": False,
+                "veto_blocked": False,
+                "veto_check": {"is_blocked": False, "reason": "shadow_started", "active_veto_records": []},
+                "shadow_status": "pending",
+                "shadow_days_completed": 0,
+                "shadow_days_target": int(target_days),
+                "shadow_total_pnl": 0.0,
+            }
+
+        status = str(record.get("status", "pending")).strip().lower()
+        if status == "promoted":
+            return {
+                "promote_now": False,
+                "veto_blocked": False,
+                "veto_check": {"is_blocked": False, "reason": "already_promoted", "active_veto_records": []},
+                "shadow_status": "promoted",
+                "shadow_days_completed": len(list(record.get("daily_pnl", []) or [])),
+                "shadow_days_target": int(record.get("target_days", 0) or 0),
+                "shadow_total_pnl": float(record.get("shadow_total_pnl", 0.0) or 0.0),
+            }
+
+        if status in {"failed", "vetoed"}:
+            vetoed = status == "vetoed"
+            return {
+                "promote_now": False,
+                "veto_blocked": vetoed,
+                "veto_check": {
+                    "is_blocked": vetoed,
+                    "reason": "shadow_failed_or_vetoed",
+                    "active_veto_records": [],
+                },
+                "shadow_status": status,
+                "shadow_days_completed": len(list(record.get("daily_pnl", []) or [])),
+                "shadow_days_target": int(record.get("target_days", 0) or 0),
+                "shadow_total_pnl": float(record.get("shadow_total_pnl", 0.0) or 0.0),
+            }
+
+        target_days = max(1, int(record.get("target_days", 3) or 3))
+        daily_pnl = [float(item) for item in list(record.get("daily_pnl", []) or [])]
+        daily_fill_count = [int(item) for item in list(record.get("daily_fill_count", []) or [])]
+
+        if len(daily_pnl) < target_days:
+            shadow_results = self._sim_runner.evaluate_variants(
+                [dna],
+                days=1,
+                nightly_report=nightly_report,
+                shadow_mode=True,
+            )
+            latest = shadow_results[0] if shadow_results else None
+            day_pnl = float(latest.avg_pnl) if latest is not None else 0.0
+            fill_count = len(list(latest.hypothetical_fills or [])) if latest is not None else 0
+            daily_pnl.append(day_pnl)
+            daily_fill_count.append(fill_count)
+            record["daily_pnl"] = daily_pnl
+            record["daily_fill_count"] = daily_fill_count
+            record["shadow_total_pnl"] = float(sum(daily_pnl))
+            record["updated_at"] = _utcnow()
+            shadow_runs[dna.hash] = record
+            self._save_shadow_runs(shadow_runs)
+
+        shadow_total_pnl = float(sum(daily_pnl))
+        veto_check = self._veto_window_for_days(target_days).check_with_details(dna_id=dna.hash)
+        veto_blocked = bool(veto_check.get("is_blocked", False))
+
+        if len(daily_pnl) < target_days:
+            return {
+                "promote_now": False,
+                "veto_blocked": veto_blocked,
+                "veto_check": veto_check,
+                "shadow_status": "pending",
+                "shadow_days_completed": len(daily_pnl),
+                "shadow_days_target": target_days,
+                "shadow_total_pnl": shadow_total_pnl,
+            }
+
+        shadow_twin = self._approval_twin.evaluate_shadow_promotion(
+            dna=dna,
+            shadow_total_pnl=shadow_total_pnl,
+            veto_blocked=veto_blocked,
+        )
+        risk_flags = list(shadow_twin.get("risk_flags", []) or [])
+        shadow_passed = self._guard.shadow_validation_passed(
+            shadow_total_pnl=shadow_total_pnl,
+            veto_blocked=veto_blocked,
+            risk_flags=risk_flags,
+        )
+
+        record["status"] = "passed" if shadow_passed else ("vetoed" if veto_blocked else "failed")
+        record["shadow_total_pnl"] = shadow_total_pnl
+        record["updated_at"] = _utcnow()
+        record["shadow_decision"] = {
+            "recommendation": bool(shadow_twin.get("recommendation", False)),
+            "confidence": float(shadow_twin.get("confidence", 0.0) or 0.0),
+            "risk_flags": risk_flags,
+            "explanation": str(shadow_twin.get("explanation", "")),
+        }
+        shadow_runs[dna.hash] = record
+        self._save_shadow_runs(shadow_runs)
+
+        return {
+            "promote_now": shadow_passed,
+            "veto_blocked": veto_blocked,
+            "veto_check": veto_check,
+            "shadow_status": str(record.get("status", "pending")),
+            "shadow_days_completed": len(daily_pnl),
+            "shadow_days_target": target_days,
+            "shadow_total_pnl": shadow_total_pnl,
+        }
+
+    def _resolve_shadow_day_bounds(self) -> tuple[int, int]:
+        evolution_cfg = ConfigLoader.section("evolution", default={})
+        if not isinstance(evolution_cfg, dict):
+            return 3, 7
+        shadow_cfg = evolution_cfg.get("shadow_validation", {})
+        if not isinstance(shadow_cfg, dict):
+            return 3, 7
+        min_days = max(1, int(shadow_cfg.get("min_days", 3) or 3))
+        max_days = max(min_days, int(shadow_cfg.get("max_days", 7) or 7))
+        return min_days, max_days
+
+    def _veto_window_for_days(self, days: int) -> VetoWindow:
+        return VetoWindow(
+            veto_registry=self._veto_registry,
+            window_seconds=max(1, int(days)) * 24 * 60 * 60,
+        )
+
+    def _load_shadow_runs(self) -> dict[str, Any]:
+        path = self._shadow_state_path
+        if not path.exists():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def _save_shadow_runs(self, payload: dict[str, Any]) -> None:
+        path = self._shadow_state_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _mark_shadow_promoted(self, *, dna_hash: str) -> None:
+        shadow_runs = self._load_shadow_runs()
+        record = dict(shadow_runs.get(dna_hash, {}) or {})
+        if not record:
+            return
+        record["status"] = "promoted"
+        record["updated_at"] = _utcnow()
+        shadow_runs[dna_hash] = record
+        self._save_shadow_runs(shadow_runs)
 
     def _bootstrap_active_dna(self, *, base_metrics: dict[str, Any]) -> PolicyDNA:
         """Create an initial active DNA so generation zero can run on a clean registry."""

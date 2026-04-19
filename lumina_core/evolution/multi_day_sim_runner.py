@@ -16,6 +16,17 @@ def _stable_seed(*parts: str) -> int:
 
 
 @dataclass(slots=True)
+class ShadowFill:
+    day_index: int
+    side: str
+    qty: int
+    entry_price: float
+    exit_price: float
+    pnl: float
+    reason: str
+
+
+@dataclass(slots=True)
 class SimResult:
     dna_hash: str
     day_count: int
@@ -23,6 +34,8 @@ class SimResult:
     max_drawdown_ratio: float
     regime_fit_bonus: float
     fitness: float
+    shadow_mode: bool = False
+    hypothetical_fills: list[ShadowFill] | None = None
 
 
 class MultiDaySimRunner:
@@ -38,6 +51,7 @@ class MultiDaySimRunner:
         *,
         days: int,
         nightly_report: dict[str, Any] | None = None,
+        shadow_mode: bool = False,
     ) -> list[SimResult]:
         if not variants:
             return []
@@ -48,7 +62,8 @@ class MultiDaySimRunner:
 
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(variants))) as pool:
             future_map = {
-                pool.submit(self._evaluate_single_variant, variant, day_count, report): variant for variant in variants
+                pool.submit(self._evaluate_single_variant, variant, day_count, report, bool(shadow_mode)): variant
+                for variant in variants
             }
             for future in as_completed(future_map):
                 variant = future_map[future]
@@ -63,14 +78,27 @@ class MultiDaySimRunner:
                             max_drawdown_ratio=1.0,
                             regime_fit_bonus=0.0,
                             fitness=float("-inf"),
+                            shadow_mode=bool(shadow_mode),
+                            hypothetical_fills=[] if shadow_mode else None,
                         )
                     )
 
         results.sort(key=lambda item: item.fitness, reverse=True)
         return results
 
-    def _evaluate_single_variant(self, variant: PolicyDNA, days: int, report: dict[str, Any]) -> SimResult:
-        seed = _stable_seed(variant.hash, str(days), json.dumps(report, sort_keys=True, ensure_ascii=True))
+    def _evaluate_single_variant(
+        self,
+        variant: PolicyDNA,
+        days: int,
+        report: dict[str, Any],
+        shadow_mode: bool,
+    ) -> SimResult:
+        seed = _stable_seed(
+            variant.hash,
+            str(days),
+            "shadow" if shadow_mode else "regular",
+            json.dumps(report, sort_keys=True, ensure_ascii=True),
+        )
         rng = random.Random(seed)
 
         base_pnl = float(report.get("net_pnl", 0.0) or 0.0)
@@ -80,13 +108,31 @@ class MultiDaySimRunner:
 
         pnl_values: list[float] = []
         max_drawdown_ratio = 0.0
+        hypothetical_fills: list[ShadowFill] = []
 
-        for _ in range(days):
+        for day_index in range(1, days + 1):
             day_pnl = base_pnl * (1.0 + rng.uniform(-0.2, 0.2))
             day_dd_abs = base_drawdown_abs * (1.0 + rng.uniform(-0.15, 0.15))
             day_dd_ratio = max(0.0, day_dd_abs / baseline_equity)
             pnl_values.append(day_pnl)
             max_drawdown_ratio = max(max_drawdown_ratio, day_dd_ratio)
+
+            if shadow_mode:
+                side = "BUY" if day_pnl >= 0.0 else "SELL"
+                qty = max(1, int(abs(day_pnl) // 25) + 1)
+                entry_price = round(100.0 + rng.uniform(-3.0, 3.0), 4)
+                exit_price = round(entry_price + (day_pnl / max(1, qty * 10.0)), 4)
+                hypothetical_fills.append(
+                    ShadowFill(
+                        day_index=day_index,
+                        side=side,
+                        qty=qty,
+                        entry_price=entry_price,
+                        exit_price=exit_price,
+                        pnl=float(day_pnl),
+                        reason="shadow_validation_no_order_execution",
+                    )
+                )
 
         if max_drawdown_ratio > self.drawdown_limit_ratio:
             return SimResult(
@@ -96,6 +142,8 @@ class MultiDaySimRunner:
                 max_drawdown_ratio=max_drawdown_ratio,
                 regime_fit_bonus=0.0,
                 fitness=float("-inf"),
+                shadow_mode=shadow_mode,
+                hypothetical_fills=hypothetical_fills if shadow_mode else None,
             )
 
         avg_pnl = float(sum(pnl_values) / len(pnl_values)) if pnl_values else 0.0
@@ -110,4 +158,6 @@ class MultiDaySimRunner:
             max_drawdown_ratio=max_drawdown_ratio,
             regime_fit_bonus=regime_fit_bonus,
             fitness=fitness,
+            shadow_mode=shadow_mode,
+            hypothetical_fills=hypothetical_fills if shadow_mode else None,
         )

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -52,16 +53,26 @@ class _RegistryStub:
 
 
 class _SimRunnerStub:
-    def evaluate_variants(self, variants: list[PolicyDNA], *, days: int, nightly_report: dict | None = None):
-        del days, nightly_report
+    def evaluate_variants(
+        self,
+        variants: list[PolicyDNA],
+        *,
+        days: int,
+        nightly_report: dict | None = None,
+        shadow_mode: bool = False,
+    ):
+        del days
+        base_pnl = float((nightly_report or {}).get("net_pnl", 25.0) or 25.0)
         return [
             SimResult(
                 dna_hash=variant.hash,
                 day_count=1,
-                avg_pnl=25.0,
+                avg_pnl=base_pnl,
                 max_drawdown_ratio=0.01,
                 regime_fit_bonus=0.1,
                 fitness=42.0,
+                shadow_mode=shadow_mode,
+                hypothetical_fills=[] if shadow_mode else None,
             )
             for variant in variants
         ]
@@ -95,49 +106,24 @@ class _TwinStub:
             "risk_flags": [],
         }
 
-
-class _NotifierStub:
-    def __init__(self, *, approved: bool = False, awaiting: bool = False, vetoed: bool = False) -> None:
-        self.approved = approved
-        self.awaiting = awaiting
-        self.vetoed = vetoed
-        self.sent_calls = 0
-
-    def send_proposal_notification(self, **_kwargs) -> bool:
-        self.sent_calls += 1
-        self.awaiting = not self.approved and not self.vetoed
-        return True
-
-    def has_approved(self, _dna_id: str) -> bool:
-        return self.approved
-
-    def is_awaiting_approval(self, _dna_id: str) -> bool:
-        return self.awaiting
-
-    def is_vetoed_or_expired(self, _dna_id: str) -> bool:
-        return self.vetoed
-
-    def poll_for_replies(self) -> list[dict[str, object]]:
-        return []
-
-    def send_veto_window_expired(self, _dna_id: str) -> bool:
-        return True
+    def evaluate_shadow_promotion(self, *, dna: PolicyDNA, shadow_total_pnl: float, veto_blocked: bool) -> dict[str, object]:
+        base = self.evaluate_dna_promotion(dna)
+        return {
+            **base,
+            "recommendation": bool(base["recommendation"] and shadow_total_pnl > 0.0 and not veto_blocked),
+            "shadow_total_pnl": float(shadow_total_pnl),
+            "veto_blocked": bool(veto_blocked),
+        }
 
 
-class _NotificationSchedulerStub:
-    def schedule_notification(self, *, callback, description: str, now=None):
-        del description, now
-        sent = bool(callback())
-        return {"accepted": True, "sent_now": sent}
-
-
-def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch) -> None:
+def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch, tmp_path: Path) -> None:
     import lumina_core.evolution.evolution_orchestrator as eo
 
     monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
     monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
 
     orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_bootstrap.json"
     registry = _RegistryStub()
     orchestrator._registry = cast(Any, registry)
     orchestrator._sim_runner = cast(Any, _SimRunnerStub())
@@ -155,19 +141,18 @@ def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch) 
     assert registry.get_latest_dna("active") is not None
 
 
-def test_evolution_orchestrator_real_path_blocks_without_telegram_approve(monkeypatch) -> None:
+def test_evolution_orchestrator_real_path_starts_shadow_before_promotion(monkeypatch, tmp_path: Path) -> None:
     import lumina_core.evolution.evolution_orchestrator as eo
 
     monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
     monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
 
     orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_pending.json"
     registry = _RegistryStub()
     orchestrator._registry = cast(Any, registry)
     orchestrator._sim_runner = cast(Any, _SimRunnerStub())
     orchestrator._approval_twin = cast(Any, _TwinStub(recommendation=True))
-    orchestrator._telegram_notifier = cast(Any, _NotifierStub(approved=False, awaiting=True, vetoed=False))
-    orchestrator._notification_scheduler = cast(Any, _NotificationSchedulerStub())
 
     summary = orchestrator.run_nightly_evolution_cycle(
         generations=1,
@@ -184,23 +169,42 @@ def test_evolution_orchestrator_real_path_blocks_without_telegram_approve(monkey
     assert int(active.generation) == 0
 
 
-def test_evolution_orchestrator_real_path_uses_approval_twin(monkeypatch) -> None:
+def test_evolution_orchestrator_real_path_promotes_after_shadow_pass(monkeypatch, tmp_path: Path) -> None:
     import lumina_core.evolution.evolution_orchestrator as eo
 
     monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
     monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
 
     orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_pass.json"
     registry = _RegistryStub()
     twin = _TwinStub(recommendation=True)
+    fixed_candidate = PolicyDNA.create(
+        prompt_id="shadow-fixed",
+        version="candidate",
+        content={"name": "fixed"},
+        fitness_score=42.0,
+        generation=1,
+        lineage_hash="L1",
+    )
+
+    def _fixed_candidates(*, top_dna, active_dna, generation_offset):
+        del top_dna, active_dna, generation_offset
+        return [fixed_candidate]
+
+    monkeypatch.setattr(
+        eo.EvolutionGuard,
+        "resolve_shadow_days",
+        lambda self, minimum_days=3, maximum_days=7: 1,
+    )
+
     orchestrator._registry = cast(Any, registry)
     orchestrator._sim_runner = cast(Any, _SimRunnerStub())
     orchestrator._approval_twin = cast(Any, twin)
-    orchestrator._telegram_notifier = cast(Any, _NotifierStub(approved=True, awaiting=False, vetoed=False))
-    orchestrator._notification_scheduler = cast(Any, _NotificationSchedulerStub())
+    orchestrator._generate_candidates = cast(Any, _fixed_candidates)
 
     summary = orchestrator.run_nightly_evolution_cycle(
-        generations=1,
+        generations=2,
         sim_duration_hours=24,
         nightly_report={"net_pnl": 120.0, "max_drawdown": 40.0, "sharpe": 1.4},
         mode="real",
@@ -208,5 +212,8 @@ def test_evolution_orchestrator_real_path_uses_approval_twin(monkeypatch) -> Non
     )
 
     assert summary["status"] == "complete"
-    assert twin.calls >= 1
-    assert registry.get_latest_dna("active") is not None
+    assert int(summary["promotions"]) >= 1
+    assert twin.calls >= 2
+    active = registry.get_latest_dna("active")
+    assert active is not None
+    assert int(active.generation) >= 1
