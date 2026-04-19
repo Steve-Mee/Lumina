@@ -242,7 +242,8 @@ class OperationsService:
         session_allowed = True
         if str(_risk_reason).startswith("Session guard blocked"):
             session_allowed = False
-        policy_engine = PolicyEngine(engine=self.engine, broker=self.container.broker)
+        broker = getattr(self.container, "broker", None) if self.container is not None else None
+        policy_engine = PolicyEngine(engine=self.engine, broker=broker)
         gateway_result = policy_engine.evaluate_proposal(
             signal=str(action).upper(),
             confluence_score=float(_dream.get("confluence_score", 1.0) or 1.0),
