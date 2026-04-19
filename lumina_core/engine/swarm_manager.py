@@ -36,7 +36,7 @@ class SwarmManager(MultiSymbolSwarmManager):
             for regime in regimes.values():
                 key = str(regime).upper()
                 regime_votes[key] = regime_votes.get(key, 0) + 1
-            global_regime = max(regime_votes, key=regime_votes.get)
+            global_regime = max(regime_votes.items(), key=lambda item: item[1])[0]
             if float(snapshot.get("regime_consensus_multiplier", 1.0) or 1.0) <= 1.0:
                 global_regime = "NEUTRAL"
 
