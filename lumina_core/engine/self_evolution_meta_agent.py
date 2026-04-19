@@ -294,18 +294,17 @@ class SelfEvolutionMetaAgent:
                 "revert_to_hash": guard_decision.revert_to_hash,
             },
         }
+        promoted_or_active_dna = promoted_active_dna if promoted_active_dna is not None else active_dna
         if active_dna is not None or candidate_dna is not None:
             outcome["dna"] = {
-                "active": self._dna_summary(promoted_active_dna or active_dna),
+                "active": self._dna_summary(promoted_or_active_dna),
                 "candidate": self._dna_summary(candidate_dna),
             }
         if top_dna or genetic_candidates:
             outcome["genetic_evolution"] = {
                 "top_dna_count": len(top_dna),
                 "candidate_count": len(genetic_candidates),
-                "promoted_hash": str((promoted_active_dna or active_dna).hash)
-                if (promoted_active_dna or active_dna)
-                else "",
+                "promoted_hash": str(promoted_or_active_dna.hash) if promoted_or_active_dna is not None else "",
             }
         if isinstance(ab_result, dict):
             outcome["ab_experiment"] = ab_result
