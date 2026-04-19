@@ -44,11 +44,15 @@ class ApprovalGymScheduler:
         telegram_notifier: Optional[Any] = None,
         interval_hours: int = 6,
         history_path: str = "state/gym_session_history.jsonl",
+        notification_scheduler: Optional[Any] = None,
     ):
         if getattr(self, "_initialized", False):
             return
         self._approval_gym = approval_gym
         self._telegram_notifier = telegram_notifier
+        self._notification_scheduler = notification_schedul
+        self._telegram_notifier = telegram_notifier
+        self._notification_scheduler = notification_scheduler
         self._interval_hours = max(1, int(interval_hours))
         self._history_path = Path(history_path)
         self._history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -141,6 +145,54 @@ class ApprovalGymScheduler:
         if brussels_now >= candidate:
             candidate = candidate + timedelta(days=1)
         return candidate.astimezone(timezone.utc)
+Brussels-aware Telegram helper
+    # ------------------------------------------------------------------
+
+    def _notify(self, message: str, description: str) -> None:
+        """Send Telegram message, respecting Brussels waking hours via NotificationScheduler."""
+        if not self._telegram_notifier:
+            return
+        notifier = self._telegram_notifier
+        if self._notification_scheduler is not None:
+            try:
+                self._notification_scheduler.schedule_notification(
+                    callback=lambda: notifier._send_telegram_message(message),
+                    description=description,
+                )
+                return
+            except Exception as exc:
+                logger.warning("Failed to schedule notification '%s': %s", description, exc)
+        # Fallback: direct send (no Brussels guard)
+        try:
+            notifier._send_telegram_message(message)
+        except Exception as exc:
+            logger.warning("Direct Telegram send failed for '%s': %s", description, exc)
+
+    # ------------------------------------------------------------------
+    # 
+    # ------------------------------------------------------------------
+    # Brussels-aware Telegram helper
+    # ------------------------------------------------------------------
+
+    def _notify(self, message: str, description: str) -> None:
+        """Send Telegram message, respecting Brussels waking hours via NotificationScheduler."""
+        if not self._telegram_notifier:
+            return
+        notifier = self._telegram_notifier
+        if self._notification_scheduler is not None:
+            try:
+                self._notification_scheduler.schedule_notification(
+                    callback=lambda: notifier._send_telegram_message(message),
+                    description=description,
+                )
+                returnnotify(msg, f"gym_start:{session_id[:20]}"
+            except Exception as exc:
+                logger.warning("Failed to schedule notification '%s': %s", description, exc)
+        # Fallback: direct send (no Brussels guard)
+        try:
+            notifier._send_telegram_message(message)
+        except Exception as exc:
+            logger.warning("Direct Telegram send failed for '%s': %s", description, exc)
 
     # ------------------------------------------------------------------
     # Session execution
@@ -159,7 +211,7 @@ class ApprovalGymScheduler:
                         f"Session ID: {session_id}\n"
                         f"Steve, prepare for DNA promotion evaluation."
                     )
-                    self._telegram_notifier._send_telegram_message(msg)
+                    self._notify(msg, f"gym_done:{session_id[:20]}"
                 except Exception as e:
                     logger.warning(f"Failed to send pre-session notification: {e}")
 
@@ -185,7 +237,7 @@ class ApprovalGymScheduler:
                         f"Session ID: {session_id}\n"
                         f"Proposals Evaluated: {session_count}"
                     )
-                    self._telegram_notifier._send_telegram_message(msg)
+                    self._notify(msg, f"gym_done:{session_id[:20]}")
                 except Exception as e:
                     logger.warning(f"Failed to send post-session notification: {e}")
 

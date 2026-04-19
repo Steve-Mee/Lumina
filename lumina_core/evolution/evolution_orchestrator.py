@@ -29,6 +29,7 @@ from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.notifications.notification_scheduler import NotificationScheduler
 from .approval_twin_agent import ApprovalTwinAgent
+from .approval_gym_scheduler import ApprovalGymScheduler
 from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
@@ -126,6 +127,11 @@ class EvolutionOrchestrator:
         self._sim_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
         self._metrics_path = _METRICS_PATH
         self._shadow_state_path = _SHADOW_STATE_PATH
+        # FASE 3: ApprovalGymScheduler – Telegram-only UI, Brussels waking hours
+        self._approval_gym_scheduler = ApprovalGymScheduler(
+            telegram_notifier=self._telegram_notifier,
+            notification_scheduler=self._notification_scheduler,
+        )
         self._initialized = True
 
     # ------------------------------------------------------------------
@@ -462,6 +468,30 @@ class EvolutionOrchestrator:
         daily_fill_count = [int(item) for item in list(record.get("daily_fill_count", []) or [])]
 
         if len(daily_pnl) < target_days:
+            # FASE 3: Poll Telegram for VETO from Steve before running next shadow day
+            try:
+                self._telegram_notifier.poll_for_replies()
+            except Exception as exc:
+                logger.warning("[SHADOWTWIN] Telegram poll failed: %s", exc)
+            if self._telegram_notifier.is_vetoed_or_expired(dna.hash):
+                record["status"] = "vetoed"
+                record["updated_at"] = _utcnow()
+                shadow_runs[dna.hash] = record
+                self._save_shadow_runs(shadow_runs)
+                self._send_shadow_status_telegram(
+                    f"SHADOWTWIN VETOED by Steve\nDNA: {dna.hash[:12]}\n"
+                    f"Days completed: {len(daily_pnl)}/{target_days}"
+                )
+                return {
+                    "promote_now": False,
+                    "veto_blocked": True,
+                    "veto_check": {"is_blocked": True, "reason": "telegram_veto", "active_veto_records": []},
+                    "shadow_status": "vetoed",
+                    "shadow_days_completed": len(daily_pnl),
+                    "shadow_days_target": target_days,
+                    "shadow_total_pnl": float(sum(daily_pnl)),
+                }
+
             shadow_results = self._sim_runner.evaluate_variants(
                 [dna],
                 days=1,

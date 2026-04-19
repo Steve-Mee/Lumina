@@ -55,16 +55,22 @@ class TelegramNotifier:
 
 	@staticmethod
 	def _resolve_credentials(*, api_token: str | None, chat_id: str | None) -> tuple[str, str]:
+		# Priority: 1) explicit constructor args, 2) top-level telegram: section,
+		# 3) monitoring.webhook section, 4) environment variables.
+		tg_cfg = ConfigLoader.section("telegram", default={})
+		tg_cfg = tg_cfg if isinstance(tg_cfg, dict) else {}
 		webhook_cfg = ConfigLoader.section("monitoring", "webhook", default={})
 		if not isinstance(webhook_cfg, dict):
 			webhook_cfg = {}
 		token = str(
 			api_token
+			or tg_cfg.get("token")
 			or webhook_cfg.get("telegram_bot_token")
 			or os.environ.get("TELEGRAM_BOT_TOKEN", "")
 		).strip()
 		resolved_chat_id = str(
 			chat_id
+			or tg_cfg.get("chat_id")
 			or webhook_cfg.get("telegram_chat_id")
 			or os.environ.get("TELEGRAM_CHAT_ID", "")
 		).strip()

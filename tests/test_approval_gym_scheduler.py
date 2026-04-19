@@ -215,3 +215,71 @@ class TestSchedulerIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+# ---------------------------------------------------------------------------
+# FASE 3: Brussels waking hours + NotificationScheduler routing tests
+# ---------------------------------------------------------------------------
+
+class TestApprovalGymSchedulerFase3:
+    """FASE 3 tests: Telegram notifications route through NotificationScheduler."""
+
+    def teardown_method(self):
+        try:
+            ApprovalGymScheduler()._running = False
+        except Exception:
+            pass
+        ApprovalGymScheduler._instance = None
+
+    def test_notify_uses_notification_scheduler_when_available(self):
+        """_notify() must call notification_scheduler.schedule_notification(), not direct send."""
+        ApprovalGymScheduler._instance = None
+        mock_notifier = MagicMock()
+        mock_scheduler = MagicMock()
+
+        scheduler = ApprovalGymScheduler(
+            telegram_notifier=mock_notifier,
+            notification_scheduler=mock_scheduler,
+        )
+        scheduler._notify("test message", "test:desc")
+
+        mock_scheduler.schedule_notification.assert_called_once()
+        call_kwargs = mock_scheduler.schedule_notification.call_args.kwargs
+        assert call_kwargs["description"] == "test:desc"
+        # Direct send must NOT be called
+        mock_notifier._send_telegram_message.assert_not_called()
+
+    def test_notify_falls_back_to_direct_send_without_scheduler(self):
+        """_notify() falls back to direct send when no NotificationScheduler configured."""
+        ApprovalGymScheduler._instance = None
+        mock_notifier = MagicMock()
+
+        scheduler = ApprovalGymScheduler(
+            telegram_notifier=mock_notifier,
+            notification_scheduler=None,
+        )
+        scheduler._notify("fallback message", "fallback:desc")
+
+        mock_notifier._send_telegram_message.assert_called_once_with("fallback message")
+
+    def test_run_scheduled_session_uses_notify(self, tmp_path):
+        """_run_scheduled_session uses _notify for both start and done messages."""
+        ApprovalGymScheduler._instance = None
+        mock_gym = MagicMock()
+        mock_gym.run_session.return_value = [{"id": "x"}]
+        mock_notifier = MagicMock()
+        mock_scheduler = MagicMock()
+
+        scheduler = ApprovalGymScheduler(
+            approval_gym=mock_gym,
+            telegram_notifier=mock_notifier,
+            notification_scheduler=mock_scheduler,
+            history_path=str(tmp_path / "hist.jsonl"),
+        )
+        scheduler._run_scheduled_session()
+
+        # NotificationScheduler.schedule_notification should be called twice
+        # (session start + session done)
+        assert mock_scheduler.schedule_notification.call_count == 2
+        # Direct send bypassed
+        mock_notifier._send_telegram_message.assert_not_called()

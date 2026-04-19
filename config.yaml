@@ -3,6 +3,16 @@
 # "real" = capital preservation ONLY – every conservative cap enforced
 mode: "sim"
 
+# ── TELEGRAM (enige UI voor Steve) ───────────────────────────────────────────
+# Set via environment variables or fill in directly (NEVER commit real tokens).
+# ApprovalGymScheduler + shadow gate + veto flow all use this single section.
+# Notifications are ONLY sent during Brussels waking hours (08:00–22:00 CET).
+telegram:
+  token: "${TELEGRAM_BOT_TOKEN}"    # Bot token from @BotFather
+  chat_id: "${TELEGRAM_CHAT_ID}"    # Steve's personal chat ID (alleen Steve)
+  waking_hour_start: 8              # Brussels CET start (inclusive)
+  waking_hour_end: 22               # Brussels CET end (exclusive)
+
 # ── TRADER IDENTITY ──────────────────────────────────────────────────────────
 # Overridden by env vars LUMINA_TRADER_NAME or TRADERLEAGUE_PARTICIPANT_HANDLE
 participant_id: "LUMINA_Steve"
