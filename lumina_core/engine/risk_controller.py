@@ -1514,6 +1514,10 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
             )
             config = {}
 
+    # Ensure config is not None after fallback
+    if config is None:
+        config = {}
+
     global_mode = str(os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or config.get("mode", "sim")).strip().lower()
     is_sim = global_mode == "sim"
 
