@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 from .dna_registry import PolicyDNA
 from .steve_values_registry import SteveValueRecord, SteveValuesRegistry
@@ -69,6 +69,7 @@ class ApprovalGym:
         historical_dna: Iterable[PolicyDNA] | None = None,
         ask_fn: Callable[[str], str] | None = None,
         count: int | None = None,
+        approval_twin: Any | None = None,
     ) -> list[SteveValueRecord]:
         proposals = self.generate_proposals(historical_dna=historical_dna, count=count)
         asker = ask_fn or self._console_ask
@@ -87,6 +88,9 @@ class ApprovalGym:
             )
             self._registry.append(record)
             records.append(record)
+
+        if approval_twin is not None and hasattr(approval_twin, "rlhf_light_update"):
+            approval_twin.rlhf_light_update(records=records)
 
         return records
 

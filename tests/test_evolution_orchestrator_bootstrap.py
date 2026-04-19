@@ -81,6 +81,21 @@ class _ABFrameworkStub:
         )
 
 
+class _TwinStub:
+    def __init__(self, recommendation: bool = True) -> None:
+        self.recommendation = recommendation
+        self.calls = 0
+
+    def evaluate_dna_promotion(self, _dna: PolicyDNA) -> dict[str, object]:
+        self.calls += 1
+        return {
+            "recommendation": bool(self.recommendation),
+            "confidence": 0.95,
+            "explanation": "stub",
+            "risk_flags": [],
+        }
+
+
 def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch) -> None:
     import lumina_core.evolution.evolution_orchestrator as eo
 
@@ -102,4 +117,53 @@ def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch) 
     assert summary["status"] == "complete"
     assert int(summary["generations_run"]) == 1
     assert int(summary["total_candidates_evaluated"]) >= 5
+    assert registry.get_latest_dna("active") is not None
+
+
+def test_evolution_orchestrator_blocks_real_without_explicit_human_approval(monkeypatch) -> None:
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._registry = cast(Any, _RegistryStub())
+    orchestrator._sim_runner = cast(Any, _SimRunnerStub())
+    orchestrator._approval_twin = cast(Any, _TwinStub(recommendation=True))
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=1,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": 100.0, "max_drawdown": 50.0, "sharpe": 1.2},
+        mode="real",
+        explicit_human_approval=False,
+    )
+
+    assert summary["status"] == "blocked"
+    assert summary["reason"] == "real_promotion_requires_explicit_human_approval"
+
+
+def test_evolution_orchestrator_real_path_uses_approval_twin(monkeypatch) -> None:
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+
+    orchestrator = EvolutionOrchestrator()
+    registry = _RegistryStub()
+    twin = _TwinStub(recommendation=True)
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerStub())
+    orchestrator._approval_twin = cast(Any, twin)
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=1,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": 120.0, "max_drawdown": 40.0, "sharpe": 1.4},
+        mode="real",
+        explicit_human_approval=True,
+    )
+
+    assert summary["status"] == "complete"
+    assert twin.calls >= 1
     assert registry.get_latest_dna("active") is not None

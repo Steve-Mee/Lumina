@@ -24,10 +24,12 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
+from .approval_twin_agent import ApprovalTwinAgent
 from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
+from .steve_values_registry import SteveValuesRegistry
 from lumina_core.experiments.ab_framework import ABExperimentFramework
 
 
@@ -94,6 +96,8 @@ class EvolutionOrchestrator:
             return
         self._registry = DNARegistry()
         self._guard = EvolutionGuard()
+        self._values_registry = SteveValuesRegistry()
+        self._approval_twin = ApprovalTwinAgent(registry=self._values_registry)
         self._sim_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
         self._metrics_path = _METRICS_PATH
         self._initialized = True
@@ -108,6 +112,7 @@ class EvolutionOrchestrator:
         generations: int = 3,
         sim_duration_hours: int = 24,
         nightly_report: dict[str, Any] | None = None,
+        explicit_human_approval: bool = False,
         blackboard: Any | None = None,
         mode: str = "sim",
     ) -> dict[str, Any]:
@@ -118,10 +123,17 @@ class EvolutionOrchestrator:
                 code="EVOLUTION_REPORT_REQUIRED",
                 message="run_nightly_evolution_cycle requires nightly_report: dict[str, Any].",
             )
-        if not self._guard.can_mutate(mode=mode):
+        normalized_mode = str(mode or "sim").strip().lower()
+        if normalized_mode in {"paper", "sim"} and not self._guard.can_mutate(mode=normalized_mode):
             return {
                 "status": "blocked",
                 "reason": f"mutations_not_allowed_in_mode:{mode}",
+                "timestamp": _utcnow(),
+            }
+        if normalized_mode == "real" and not bool(explicit_human_approval):
+            return {
+                "status": "blocked",
+                "reason": "real_promotion_requires_explicit_human_approval",
                 "timestamp": _utcnow(),
             }
 
@@ -145,6 +157,8 @@ class EvolutionOrchestrator:
                 generation_offset=gen_idx,
                 base_metrics=report,
                 sim_days=sim_days,
+                mode=normalized_mode,
+                explicit_human_approval=bool(explicit_human_approval),
             )
             gen_results.append(result)
             if result.promoted:
@@ -168,6 +182,8 @@ class EvolutionOrchestrator:
         self,
         *,
         generation_offset: int,
+        mode: str,
+        explicit_human_approval: bool,
         base_metrics: dict[str, Any],
         sim_days: int,
     ) -> GenerationResult:
@@ -225,11 +241,22 @@ class EvolutionOrchestrator:
         winner_dna = next((item for item in candidates if item.hash == winner_hash), candidates[0])
         winner_fitness = float(selected.get("score", float("-inf")))
 
-        # Guard: only promote if fitness strictly improves
+        twin_decision: dict[str, Any] = {
+            "recommendation": mode != "real",
+            "confidence": 0.9,
+            "risk_flags": [],
+            "explanation": "sim/paper path uses guard-only approval",
+        }
+        if mode == "real":
+            twin_decision = self._approval_twin.evaluate_dna_promotion(winner_dna)
+
+        # Guard: in REAL mode, signed approval additionally requires twin recommendation.
         signed = self._guard.has_signed_approval(
             confidence=0.9,  # orchestrator always runs with high synthetic confidence
             candidate_fitness=winner_fitness,
             current_fitness=previous_fitness,
+            mode=mode,
+            approval_twin_recommendation=bool(twin_decision.get("recommendation", False)),
         )
         generation_ok = self._guard.allows_generation_progress(
             candidate_fitness=winner_fitness,
@@ -237,7 +264,7 @@ class EvolutionOrchestrator:
         )
 
         promoted = False
-        if signed and generation_ok:
+        if signed and generation_ok and (mode != "real" or explicit_human_approval):
             promoted_dna = self._registry.mutate(
                 parent=winner_dna,
                 mutation_rate=0.1,
@@ -258,6 +285,11 @@ class EvolutionOrchestrator:
                 "winner_fitness": winner_fitness,
                 "previous_fitness": previous_fitness,
                 "promoted": promoted,
+                "mode": mode,
+                "explicit_human_approval": bool(explicit_human_approval),
+                "approval_twin_recommendation": bool(twin_decision.get("recommendation", False)),
+                "approval_twin_confidence": float(twin_decision.get("confidence", 0.0) or 0.0),
+                "approval_twin_risk_flags": list(twin_decision.get("risk_flags", []) or []),
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
             }

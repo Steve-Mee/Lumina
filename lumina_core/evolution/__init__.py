@@ -1,5 +1,6 @@
 from .dna_registry import DNARegistry, PolicyDNA
 from .approval_gym import ApprovalGym, ApprovalProposal
+from .approval_twin_agent import ApprovalTwinAgent
 from .evolution_guard import EvolutionGuard, EvolutionGuardDecision
 from .evolution_orchestrator import EvolutionOrchestrator
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
@@ -13,6 +14,7 @@ __all__ = [
     "SteveValuesRegistry",
     "ApprovalProposal",
     "ApprovalGym",
+    "ApprovalTwinAgent",
     "EvolutionGuard",
     "EvolutionGuardDecision",
     "EvolutionOrchestrator",

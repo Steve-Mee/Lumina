@@ -51,3 +51,32 @@ def test_approval_gym_run_session_stores_answers(tmp_path: Path) -> None:
     assert records[1].steve_antwoord == "VETO"
     recent = registry.list_recent(limit=10)
     assert len(recent) == 3
+
+
+def test_approval_gym_triggers_twin_rlhf_update(tmp_path: Path) -> None:
+    class _Twin:
+        def __init__(self) -> None:
+            self.called = False
+            self.count = 0
+
+        def rlhf_light_update(self, *, records):
+            self.called = True
+            self.count = len(records)
+            return {"updated": True}
+
+    registry = SteveValuesRegistry(
+        sqlite_path=tmp_path / "values.sqlite3",
+        jsonl_path=tmp_path / "values.jsonl",
+    )
+    gym = ApprovalGym(registry=registry, rng_seed=5)
+    twin = _Twin()
+
+    records = gym.run_session(
+        count=3,
+        ask_fn=lambda _vraag: "APPROVE",
+        approval_twin=twin,
+    )
+
+    assert len(records) == 3
+    assert twin.called is True
+    assert twin.count == 3
