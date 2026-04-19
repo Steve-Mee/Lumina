@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import threading
 from functools import lru_cache
+from typing import Mapping
 
 from lumina_core.bootstrap import bootstrap_runtime, create_public_api
 from lumina_core.container import ApplicationContainer, create_application_container
@@ -15,7 +16,7 @@ def get_container() -> ApplicationContainer:
     return create_application_container()
 
 
-def get_public_api() -> dict[str, object]:
+def get_public_api() -> Mapping[str, object]:
     return create_public_api(get_container())
 
 
