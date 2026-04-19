@@ -32,7 +32,10 @@ def integrated_engine():
         current_price=5600.0,
         live_quotes=[{"last": 5600.0}],
         ohlc_1min=pd.DataFrame(
-            {"timestamp": pd.date_range("2026-03-01", periods=100, freq="min"), "close": np.linspace(5550, 5650, 100)}
+            {
+                "timestamp": pd.date_range("2026-03-01", periods=100, freq="min"),
+                "close": np.linspace(start=5550, stop=5650, num=100),
+            }
         ),
         pnl_history=[100, 150, 120],
         trade_log=[{"ts": "2026-04-04T10:00:00"}],
@@ -125,10 +128,10 @@ class TestEmotionalTwinAndSwarmIntegration:
 
         # Populate with price data for each symbol
         symbols_data = {
-            "MES JUN26": list(np.linspace(5600, 5650, 50)),
-            "MNQ JUN26": list(np.linspace(22000, 22300, 50)),
-            "MYM JUN26": list(np.linspace(450, 460, 50)),
-            "ES JUN26": list(np.linspace(5600, 5650, 50)),
+            "MES JUN26": list(np.linspace(start=5600, stop=5650, num=50)),
+            "MNQ JUN26": list(np.linspace(start=22000, stop=22300, num=50)),
+            "MYM JUN26": list(np.linspace(start=450, stop=460, num=50)),
+            "ES JUN26": list(np.linspace(start=5600, stop=5650, num=50)),
         }
 
         for symbol, prices in symbols_data.items():
@@ -202,7 +205,7 @@ class TestEmotionalTwinAndSwarmIntegration:
         swarm = SwarmManager(integrated_engine)  # type: ignore[arg-type]
 
         # Create moderate correlation to find arbitrage
-        base_prices = list(np.linspace(100, 102, 20))
+        base_prices = list(np.linspace(start=100, stop=102, num=20))
         swarm.nodes["MES JUN26"].prices_rolling = __import__("collections").deque(base_prices, maxlen=30)
         swarm.nodes["MNQ JUN26"].prices_rolling = __import__("collections").deque(
             [p * 0.5 for p in base_prices], maxlen=30
