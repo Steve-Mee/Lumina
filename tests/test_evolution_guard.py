@@ -52,6 +52,32 @@ def test_resolve_approval_twin_recommendation_from_agent_dict() -> None:
     assert guard.resolve_approval_twin_recommendation(approval_twin=None, dna={"hash": "abc"}) is False
 
 
+def test_real_mode_signed_approval_consults_twin_when_recommendation_missing() -> None:
+    class _Twin:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def evaluate_dna_promotion(self, _dna):
+            self.calls += 1
+            return {"recommendation": True, "confidence": 0.97}
+
+    guard = EvolutionGuard(confidence_threshold=0.85)
+    twin = _Twin()
+
+    result = guard.has_signed_approval(
+        mode="real",
+        confidence=0.95,
+        candidate_fitness=2.5,
+        current_fitness=1.0,
+        approval_twin_recommendation=None,
+        approval_twin=twin,
+        dna={"hash": "xyz"},
+    )
+
+    assert result is True
+    assert twin.calls == 1
+
+
 def test_rollback_triggers_for_worse_candidate_within_window() -> None:
     guard = EvolutionGuard()
     now = datetime.now(timezone.utc)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 from dataclasses import asdict, dataclass
@@ -61,33 +62,31 @@ class SteveValuesRegistry:
             self._ensure_storage()
             with sqlite3.connect(self.sqlite_path) as connection:
                 connection.execute("PRAGMA journal_mode=WAL")
-                cursor = connection.execute(
-                    """
-                    INSERT INTO steve_values (
-                        vraag,
-                        steve_antwoord,
-                        timestamp,
-                        context_dna_hash,
-                        confidence_score
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        payload["vraag"],
-                        payload["steve_antwoord"],
-                        payload["timestamp"],
-                        payload["context_dna_hash"],
-                        payload["confidence_score"],
-                    ),
-                )
-                row_id = int(cursor.lastrowid or 0)
                 try:
+                    connection.execute("BEGIN IMMEDIATE")
+                    connection.execute(
+                        """
+                        INSERT INTO steve_values (
+                            vraag,
+                            steve_antwoord,
+                            timestamp,
+                            context_dna_hash,
+                            confidence_score
+                        ) VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            payload["vraag"],
+                            payload["steve_antwoord"],
+                            payload["timestamp"],
+                            payload["context_dna_hash"],
+                            payload["confidence_score"],
+                        ),
+                    )
                     self._append_jsonl(payload_json)
-                except OSError:
-                    if row_id > 0:
-                        connection.execute("DELETE FROM steve_values WHERE id = ?", (row_id,))
                     connection.commit()
+                except Exception:
+                    connection.rollback()
                     raise
-                connection.commit()
         return record
 
     def list_recent(self, *, limit: int = 100) -> list[SteveValueRecord]:
@@ -128,6 +127,24 @@ class SteveValuesRegistry:
                 )
                 """
             )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS steve_values_no_update
+                BEFORE UPDATE ON steve_values
+                BEGIN
+                    SELECT RAISE(ABORT, 'steve_values is append-only');
+                END;
+                """
+            )
+            connection.execute(
+                """
+                CREATE TRIGGER IF NOT EXISTS steve_values_no_delete
+                BEFORE DELETE ON steve_values
+                BEGIN
+                    SELECT RAISE(ABORT, 'steve_values is append-only');
+                END;
+                """
+            )
             connection.commit()
 
         if not self.jsonl_path.exists():
@@ -136,3 +153,5 @@ class SteveValuesRegistry:
     def _append_jsonl(self, payload_json: str) -> None:
         with self.jsonl_path.open("a", encoding="utf-8") as handle:
             handle.write(payload_json + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())

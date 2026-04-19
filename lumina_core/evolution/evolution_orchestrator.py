@@ -17,6 +17,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import random
 import threading
 from dataclasses import dataclass, field
@@ -25,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
+from lumina_core.config_loader import ConfigLoader
 from lumina_core.notifications.notification_scheduler import NotificationScheduler
 from .approval_twin_agent import ApprovalTwinAgent
 from .dna_registry import DNARegistry, PolicyDNA
@@ -70,6 +72,18 @@ def _score_candidate(dna: PolicyDNA, base_metrics: dict[str, Any], generation: i
     sharpe = base_sharpe * (1.0 + rng.uniform(-0.15, 0.15))
 
     return calculate_fitness(pnl, dd, sharpe, capital_preservation_threshold=_CAPITAL_GUARD_DD)
+
+
+def _resolve_dashboard_url() -> str:
+    value = str(os.getenv("LUMINA_DASHBOARD_URL", "")).strip()
+    if value:
+        return value
+    monitoring_cfg = ConfigLoader.section("monitoring", default={})
+    if isinstance(monitoring_cfg, dict):
+        value = str(monitoring_cfg.get("dashboard_url", "")).strip()
+        if value:
+            return value
+    return ""
 
 
 @dataclass(slots=True)
@@ -280,7 +294,7 @@ class EvolutionOrchestrator:
                 twin_confidence=twin_confidence,
                 risk_flags=risk_flags,
             )
-            dashboard_url = ""
+            dashboard_url = _resolve_dashboard_url()
 
             # REAL mode always requires a Telegram proposal and explicit APPROVE.
             if not self._telegram_notifier.has_approved(winner_dna.hash) and not self._telegram_notifier.is_vetoed_or_expired(

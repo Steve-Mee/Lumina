@@ -301,6 +301,7 @@ monitoring:
   enabled: true
   db_path: "state/metrics.db"          # SQLite sink for dashboard history queries
   flush_interval_s: 30                  # How often background thread flushes to SQLite
+  dashboard_url: "${LUMINA_DASHBOARD_URL}"  # Optional link included in Telegram approval proposals
 
   alert_thresholds:
     latency_ms: 500                     # Alert if any agent layer latency > 500 ms
@@ -311,7 +312,7 @@ monitoring:
 
   webhook:
     enabled: false                      # Set true + configure url to receive alerts
-    platform: "discord"                 # "discord" | "slack" | "telegram"
+    platform: "telegram"                # "discord" | "slack" | "telegram"
     url: "${LUMINA_ALERT_WEBHOOK_URL}"  # Provide via environment variable
     telegram_bot_token: "${TELEGRAM_BOT_TOKEN}"
     telegram_chat_id: ""               # Required only when platform = "telegram"

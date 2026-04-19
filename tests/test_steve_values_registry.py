@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from lumina_core.evolution.steve_values_registry import SteveValueRecord, SteveValuesRegistry
@@ -38,3 +39,34 @@ def test_steve_values_registry_append_and_list_recent(tmp_path: Path) -> None:
     payloads = [json.loads(line) for line in lines]
     assert payloads[0]["context_dna_hash"] == "aaa"
     assert payloads[1]["context_dna_hash"] == "bbb"
+
+
+def test_steve_values_registry_rejects_update_and_delete(tmp_path: Path) -> None:
+    sqlite_path = tmp_path / "steve_values.sqlite3"
+    registry = SteveValuesRegistry(
+        sqlite_path=sqlite_path,
+        jsonl_path=tmp_path / "steve_values.jsonl",
+    )
+
+    record = SteveValueRecord.create(
+        vraag="Mag deze mutatie live?",
+        steve_antwoord="VETO",
+        context_dna_hash="ccc",
+        confidence_score=0.1,
+    )
+    registry.append(record)
+
+    with sqlite3.connect(sqlite_path) as connection:
+        try:
+            connection.execute("UPDATE steve_values SET steve_antwoord='APPROVE' WHERE id=1")
+            connection.commit()
+            assert False, "UPDATE should be blocked by append-only trigger"
+        except sqlite3.DatabaseError:
+            pass
+
+        try:
+            connection.execute("DELETE FROM steve_values WHERE id=1")
+            connection.commit()
+            assert False, "DELETE should be blocked by append-only trigger"
+        except sqlite3.DatabaseError:
+            pass

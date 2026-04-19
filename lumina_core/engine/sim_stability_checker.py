@@ -58,14 +58,23 @@ def _iter_summary_paths() -> list[Path]:
     if _TEST_RUNS_DIR.exists():
         paths.extend(sorted(_TEST_RUNS_DIR.glob("*.json")))
     # Remove duplicates while preserving order.
-    seen: set[Path] = set()
+    seen: set[str] = set()
     unique: list[Path] = []
     for p in paths:
-        rp = p.resolve()
-        if rp not in seen:
+        key = _dedupe_key(p)
+        if key not in seen:
             unique.append(p)
-            seen.add(rp)
+            seen.add(key)
     return unique
+
+
+def _dedupe_key(path: Path) -> str:
+    """Build a stable dedupe key without forcing expensive/fragile realpath resolution."""
+    try:
+        absolute = path.absolute()
+    except Exception:
+        absolute = path
+    return str(absolute).lower().replace("\\", "/")
 
 
 def _load_summary(path: Path) -> dict[str, Any] | None:

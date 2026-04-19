@@ -41,6 +41,8 @@ class EvolutionGuard:
         current_fitness: float,
         mode: str | None = None,
         approval_twin_recommendation: bool | None = None,
+        approval_twin: Any | None = None,
+        dna: Any | None = None,
     ) -> bool:
         normalized_confidence = _normalize_confidence(confidence)
         local_gate = bool(
@@ -48,16 +50,25 @@ class EvolutionGuard:
             and float(candidate_fitness) > float(current_fitness)
         )
         if mode is not None and _normalize_mode(mode) == "real":
-            return bool(local_gate and approval_twin_recommendation is True)
+            recommendation = approval_twin_recommendation
+            if recommendation is None:
+                recommendation = self.resolve_approval_twin_recommendation(
+                    approval_twin=approval_twin,
+                    dna=dna,
+                )
+            return bool(local_gate and recommendation is True)
         return local_gate
 
     def requires_approval_twin(self, *, mode: str) -> bool:
         return _normalize_mode(mode) == "real"
 
     def resolve_approval_twin_recommendation(self, *, approval_twin: Any | None, dna: Any) -> bool:
-        if approval_twin is None or not hasattr(approval_twin, "evaluate_dna_promotion"):
+        if approval_twin is None or dna is None or not hasattr(approval_twin, "evaluate_dna_promotion"):
             return False
-        result = approval_twin.evaluate_dna_promotion(dna)
+        try:
+            result = approval_twin.evaluate_dna_promotion(dna)
+        except Exception:
+            return False
         if isinstance(result, dict):
             return bool(result.get("recommendation", False))
         return False

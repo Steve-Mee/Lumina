@@ -4,8 +4,9 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
+from lumina_core.config_loader import ConfigLoader
 from .dna_registry import PolicyDNA
 from .steve_values_registry import SteveValueRecord, SteveValuesRegistry
 
@@ -18,6 +19,58 @@ class ApprovalTwinState:
     training_steps: int
 
 
+class ApprovalTwinBackend(Protocol):
+    def score(self, *, dna: PolicyDNA, local_score: float, threshold: float) -> tuple[float | None, str]:
+        ...
+
+
+@dataclass(slots=True)
+class LocalHeuristicBackend:
+    def score(self, *, dna: PolicyDNA, local_score: float, threshold: float) -> tuple[float | None, str]:
+        del dna
+        return local_score, f"local_heuristic(threshold={threshold:.0%})"
+
+
+@dataclass(slots=True)
+class OllamaTwinBackend:
+    model: str = "qwen2.5:3b-instruct"
+
+    def score(self, *, dna: PolicyDNA, local_score: float, threshold: float) -> tuple[float | None, str]:
+        try:
+            import ollama  # type: ignore
+        except Exception:
+            return None, "ollama_unavailable_fallback_local"
+
+        prompt = (
+            "You are an approval gate for REAL DNA promotion. "
+            "Return strict JSON only with keys score (0..1) and explanation. "
+            "Score should represent approval confidence.\n"
+            f"threshold={threshold:.2f}\n"
+            f"local_score={local_score:.4f}\n"
+            f"dna_content={dna.content}\n"
+            f"dna_fitness={float(dna.fitness_score):.6f}\n"
+            f"dna_mutation_rate={float(dna.mutation_rate):.6f}\n"
+            f"dna_generation={int(dna.generation)}"
+        )
+        try:
+            response = ollama.chat(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "Respond with valid compact JSON only."},
+                    {"role": "user", "content": prompt},
+                ],
+                options={"temperature": 0.0},
+            )
+            content = str(response.get("message", {}).get("content", "") or "").strip()
+            payload = json.loads(content)
+            score = float(payload.get("score", local_score))
+            score = max(0.0, min(1.0, score))
+            explanation = str(payload.get("explanation", "ollama_decision")).strip() or "ollama_decision"
+            return score, f"ollama:{self.model}:{explanation}"
+        except Exception:
+            return None, "ollama_error_fallback_local"
+
+
 class ApprovalTwinAgent:
     """Small local approval model trained only on Steve's answers."""
 
@@ -27,20 +80,31 @@ class ApprovalTwinAgent:
         registry: SteveValuesRegistry | None = None,
         model_path: Path | str = Path("state/approval_twin_model.json"),
         learning_rate: float = 0.08,
+        backend: str | None = None,
+        ollama_model: str | None = None,
     ) -> None:
         self._registry = registry
         self._model_path = Path(model_path)
         self._learning_rate = float(learning_rate)
         self._state = self._load_state()
+        self._backend_name, self._backend = self._build_backend(backend=backend, ollama_model=ollama_model)
 
     def evaluate_dna_promotion(self, dna: PolicyDNA) -> dict[str, Any]:
         features = self._features_from_dna(dna)
-        score = self._score(features)
+        local_score = self._score(features)
+        backend_score, backend_explanation = self._backend.score(
+            dna=dna,
+            local_score=local_score,
+            threshold=self._state.threshold,
+        )
+        score = float(backend_score if backend_score is not None else local_score)
+        score = max(0.0, min(1.0, score))
         risk_flags = self._risk_flags(dna)
         recommendation = bool(score >= self._state.threshold and not risk_flags)
         explanation = (
-            f"Twin score={score:.2%}, threshold={self._state.threshold:.0%}, "
-            f"fitness={float(dna.fitness_score):.4f}, mutation_rate={float(dna.mutation_rate):.2f}"
+            f"Twin score={score:.2%}, threshold={self._state.threshold:.0%}, backend={self._backend_name}, "
+            f"fitness={float(dna.fitness_score):.4f}, mutation_rate={float(dna.mutation_rate):.2f}, "
+            f"source={backend_explanation}"
         )
         return {
             "recommendation": recommendation,
@@ -48,6 +112,28 @@ class ApprovalTwinAgent:
             "explanation": explanation,
             "risk_flags": risk_flags,
         }
+
+    def _build_backend(self, *, backend: str | None, ollama_model: str | None) -> tuple[str, ApprovalTwinBackend]:
+        cfg = ConfigLoader.section("evolution", "approval_twin", default={})
+        cfg = cfg if isinstance(cfg, dict) else {}
+
+        resolved_backend = str(
+            backend
+            or cfg.get("backend")
+            or ConfigLoader.section("ai", "approval_twin_backend", default="")
+            or "local"
+        ).strip().lower()
+
+        if resolved_backend == "ollama":
+            model = str(
+                ollama_model
+                or cfg.get("ollama_model")
+                or ConfigLoader.section("ai", "approval_twin_ollama_model", default="")
+                or "qwen2.5:3b-instruct"
+            ).strip()
+            return "ollama", OllamaTwinBackend(model=model)
+
+        return "local", LocalHeuristicBackend()
 
     def fine_tune_from_registry(self, *, limit: int = 250) -> dict[str, Any]:
         if self._registry is None:
