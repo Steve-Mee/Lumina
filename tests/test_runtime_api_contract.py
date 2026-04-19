@@ -11,6 +11,7 @@ import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
@@ -192,7 +193,7 @@ def test_public_api_completeness():
     from lumina_core.bootstrap import create_public_api
 
     container = _build_runtime_container_stub()
-    public_api = create_public_api(container)
+    public_api = create_public_api(cast(Any, container))
 
     critical_exports = [
         "get_current_dream_snapshot",
