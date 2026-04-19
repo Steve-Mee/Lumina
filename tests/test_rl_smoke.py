@@ -16,5 +16,5 @@ def test_rl_trading_layer_smoke_init() -> None:
     obs, _ = env.reset(seed=42)
     action = trainer.predict_action(obs)
 
-    assert obs.shape == (20,)
+    assert obs.shape == (23,)
     assert set(action.keys()) == {"signal", "qty_pct", "stop_mult", "target_mult"}

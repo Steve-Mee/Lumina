@@ -82,6 +82,9 @@ class RLTradingEnvironment(gym.Env):
                 0.0,
                 0.0,
                 0.0,
+                0.0,
+                0.0,
+                0.0,
             ],
             dtype=np.float32,
         )
