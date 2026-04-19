@@ -322,7 +322,7 @@ class AgentBlackboard:
     ) -> BlackboardEvent:
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            prev_hash = self._latest.get(topic).event_hash if topic in self._latest else "GENESIS"
+            prev_hash = self._latest[topic].event_hash if topic in self._latest else "GENESIS"
             self._topic_sequences[topic] += 1
             sequence = self._topic_sequences[topic]
         event = BlackboardEvent(
