@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import logging
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 import pandas_market_calendars as mcal
 
 logger = logging.getLogger(__name__)
+
+
+class _CalendarProtocol(Protocol):
+    def schedule(self, *, start_date: date, end_date: date) -> pd.DataFrame: ...
 
 
 def _utcnow() -> datetime:
@@ -23,7 +28,7 @@ class SessionGuard:
     exchange_tz: str = "America/Chicago"
     rollover_start_local: time = time(16, 55)
     rollover_end_local: time = time(18, 5)
-    _calendar: object | None = field(default=None, init=False, repr=False)
+    _calendar: _CalendarProtocol | None = field(default=None, init=False, repr=False)
     _tz: ZoneInfo | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -55,7 +60,10 @@ class SessionGuard:
     def _schedule(self, ts: datetime, days_before: int = 1, days_after: int = 7) -> pd.DataFrame:
         start = (ts - timedelta(days=days_before)).date()
         end = (ts + timedelta(days=days_after)).date()
-        return self._calendar.schedule(start_date=start, end_date=end)
+        calendar = self._calendar
+        if calendar is None:
+            raise RuntimeError("SessionGuard calendar is not initialized")
+        return calendar.schedule(start_date=start, end_date=end)
 
     def is_market_open(self, ts: datetime | None = None) -> bool:
         """True when CME calendar says instrument is in an open session."""
