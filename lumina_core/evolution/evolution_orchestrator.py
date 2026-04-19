@@ -173,6 +173,9 @@ class EvolutionOrchestrator:
     ) -> GenerationResult:
         top_dna = self._registry.get_ranked_dna(limit=3)
         active_dna = self._registry.get_latest_dna(version="active")
+        if not top_dna and active_dna is None:
+            active_dna = self._bootstrap_active_dna(base_metrics=base_metrics)
+            top_dna = [active_dna]
         previous_fitness = float(active_dna.fitness_score) if active_dna is not None else float("-inf")
 
         candidates = self._generate_candidates(
@@ -268,6 +271,48 @@ class EvolutionOrchestrator:
             previous_fitness=previous_fitness,
             promoted=promoted,
         )
+
+    def _bootstrap_active_dna(self, *, base_metrics: dict[str, Any]) -> PolicyDNA:
+        """Create an initial active DNA so generation zero can run on a clean registry."""
+        fitness = _score_candidate(
+            PolicyDNA.create(
+                prompt_id="bootstrap_seed",
+                version="candidate",
+                content={
+                    "candidate_name": "bootstrap_seed",
+                    "prompt_tweak": "Bootstrap evolution seed policy",
+                    "regime_focus": "neutral",
+                    "hyperparam_suggestion": {
+                        "fast_path_threshold": 0.78,
+                        "max_risk_percent": 1.0,
+                        "drawdown_kill_percent": 8.0,
+                    },
+                },
+                fitness_score=0.0,
+                generation=0,
+                lineage_hash="GENESIS",
+            ),
+            base_metrics=base_metrics,
+            generation=0,
+        )
+        seed = PolicyDNA.create(
+            prompt_id="bootstrap_seed",
+            version="active",
+            content={
+                "candidate_name": "bootstrap_seed",
+                "prompt_tweak": "Bootstrap evolution seed policy",
+                "regime_focus": "neutral",
+                "hyperparam_suggestion": {
+                    "fast_path_threshold": 0.78,
+                    "max_risk_percent": 1.0,
+                    "drawdown_kill_percent": 8.0,
+                },
+            },
+            fitness_score=fitness,
+            generation=0,
+            lineage_hash="GENESIS",
+        )
+        return self._registry.register_dna(seed)
 
     @staticmethod
     def _candidate_to_ab_variant(candidate: PolicyDNA, *, sim_results: list[SimResult]) -> dict[str, Any]:

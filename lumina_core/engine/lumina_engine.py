@@ -17,7 +17,6 @@ from lumina_bible import BibleEngine
 from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .economic_truth import EconomicTruth
-from .errors import ErrorSeverity, LuminaError
 from .market_data_manager import MarketDataManager
 from .risk_controller import HardRiskController, risk_limits_from_config
 from .session_guard import SessionGuard
