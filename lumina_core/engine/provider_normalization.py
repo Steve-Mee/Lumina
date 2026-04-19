@@ -22,6 +22,8 @@ class ProviderNormalizationLayer:
             payload.get("score"),
         ]
         for item in candidates:
+            if item is None:
+                continue
             try:
                 value = float(item)
                 if value > 1.0 and value <= 100.0:
