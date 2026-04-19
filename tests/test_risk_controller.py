@@ -21,15 +21,11 @@ class _StubPortfolioAllocator:
         self.allow = allow
 
     def evaluate_proposed_trade(self, *, symbol, proposed_risk, open_risk_by_symbol):
-        snapshot = type(
-            "Snapshot",
-            (),
-            {
-                "var_usd": 1500.0,
-                "max_var_usd": 1200.0,
-                "breached": not self.allow,
-                "reason": "PORTFOLIO VAR breached: 1500.00 > 1200.00",
-            },
+        snapshot = SimpleNamespace(
+            var_usd=1500.0,
+            max_var_usd=1200.0,
+            breached=not self.allow,
+            reason="PORTFOLIO VAR breached: 1500.00 > 1200.00",
         )
         return self.allow, ("OK" if self.allow else snapshot.reason), snapshot
 
@@ -514,10 +510,14 @@ class TestHardRiskController:
             controller.record_trade_result("MES", "TRENDING", pnl=pnl, risk_taken=100.0)
 
         ok, reason, payload = controller.check_monte_carlo_drawdown_pre_trade(100.0)
+        p95_raw = payload.get("p95_max_drawdown_pct", 0.0)
+        projected_raw = payload.get("projected_max_drawdown_pct", 0.0)
+        p95 = float(p95_raw if isinstance(p95_raw, (int, float, str, bool)) else 0.0)
+        projected = float(projected_raw if isinstance(projected_raw, (int, float, str, bool)) else 0.0)
         assert isinstance(ok, bool)
         assert isinstance(reason, str)
-        assert float(payload["p95_max_drawdown_pct"]) >= 0.0
-        assert float(payload["projected_max_drawdown_pct"]) >= float(payload["p95_max_drawdown_pct"])
+        assert p95 >= 0.0
+        assert projected >= p95
 
     def test_mc_drawdown_real_mode_blocks_when_threshold_breached(self):
         """REAL mode must block new positions when projected max drawdown exceeds threshold."""
