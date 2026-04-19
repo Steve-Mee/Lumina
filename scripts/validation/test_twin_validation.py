@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """Quick validation test for EmotionalTwinAgent"""
 
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.runtime_context import RuntimeContext
 from unittest.mock import MagicMock
 from types import SimpleNamespace
+from typing import Any, cast
 import pandas as pd
 import numpy as np
 
@@ -27,7 +35,7 @@ mock_engine = SimpleNamespace(
 )
 
 # Create context with mock engine
-ctx = RuntimeContext(engine=mock_engine)
+ctx = RuntimeContext(engine=cast(Any, mock_engine))
 twin = EmotionalTwinAgent(ctx)
 print("✅ EmotionalTwinAgent loaded")
 print("FOMO/Tilt/Boredom/Revenge simulation ready")
