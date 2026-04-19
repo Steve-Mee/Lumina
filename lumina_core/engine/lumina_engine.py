@@ -188,7 +188,8 @@ class LuminaEngine:
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:
-            self.bible_engine = BibleEngine(str(self.config.bible_file))
+            from pathlib import Path  # noqa: PLC0415
+            self.bible_engine = BibleEngine(Path(self.config.bible_file))
             if callable(getattr(self.bible_engine, "load", None)):
                 self.bible_engine.bible = self.bible_engine.load()
 
@@ -203,14 +204,14 @@ class LuminaEngine:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
             from .realistic_backtester_engine import RealisticBacktesterEngine  # noqa: PLC0415
 
-            self.backtester = RealisticBacktesterEngine(RuntimeContext(engine=self))
+            self.backtester = RealisticBacktesterEngine(RuntimeContext(self))
 
         # AdvancedBacktesterEngine lazy init
         if self.advanced_backtester is None:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
             from .advanced_backtester_engine import AdvancedBacktesterEngine  # noqa: PLC0415
 
-            self.advanced_backtester = AdvancedBacktesterEngine(RuntimeContext(engine=self))
+            self.advanced_backtester = AdvancedBacktesterEngine(RuntimeContext(self))
 
         # RLTradingEnvironment, PPOTrainer, InfiniteSimulator, EmotionalTwinAgent,
         # SwarmManager and PerformanceValidator are built exclusively by
@@ -400,10 +401,15 @@ class LuminaEngine:
 
     def build_state_contexts(self) -> dict[str, Any]:
         dream = self.get_current_dream_snapshot()
+        candle_ts = self.candle_start_ts
+        if isinstance(candle_ts, datetime):
+            candle_ts = candle_ts.timestamp()
+        else:
+            candle_ts = float(candle_ts or 0.0)
         market = MarketStateContext(
             quote_count=int(len(self.live_quotes) if self.live_quotes is not None else 0),
             has_current_candle=bool(self.current_candle),
-            last_candle_start_ts=float(self.candle_start_ts or 0.0),
+            last_candle_start_ts=candle_ts,
         )
         position = PositionStateContext(
             sim_position_qty=int(self.sim_position_qty),
@@ -506,7 +512,7 @@ class LuminaEngine:
             stop_distance = price * 0.005
 
         instrument = str(getattr(self.config, "instrument", "MES"))
-        point_value = self.valuation_engine.point_value_for(instrument)
+        point_value = getattr(self.valuation_engine, "point_value_for", lambda x: 1.0)(instrument)
         risk_per_contract = max(1e-9, stop_distance * point_value)
         qty = max(1, int(risk_dollars / risk_per_contract))
         if self.app is not None and hasattr(self.app, "logger"):
