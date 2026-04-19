@@ -98,6 +98,8 @@ config.yaml.pre_controlled_live.bak
 lumina_validation_output.log
 test_output.txt
 test_results.txt
+test_launcher_output.txt
+coverage.json
 
 # Launcher/runtime generated UI artifacts
 journal/swarm_dashboard.html

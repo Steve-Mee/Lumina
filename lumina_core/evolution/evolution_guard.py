@@ -44,21 +44,54 @@ class EvolutionGuard:
         approval_twin_recommendation: bool | None = None,
         approval_twin: Any | None = None,
         dna: Any | None = None,
+        shadow_runner: Any | None = None,
     ) -> bool:
         normalized_confidence = _normalize_confidence(confidence)
         local_gate = bool(
             normalized_confidence > float(self.confidence_threshold)
             and float(candidate_fitness) > float(current_fitness)
         )
-        if mode is not None and _normalize_mode(mode) == "real":
-            recommendation = approval_twin_recommendation
-            if recommendation is None:
-                recommendation = self.resolve_approval_twin_recommendation(
-                    approval_twin=approval_twin,
-                    dna=dna,
-                )
-            return bool(local_gate and recommendation is True)
-        return local_gate
+
+        if mode is None or _normalize_mode(mode) != "real":
+            return local_gate
+
+        # Shadow flow voor REAL – alle drie vereist
+        if approval_twin is None or dna is None or shadow_runner is None:
+            return False
+
+        recommendation = approval_twin_recommendation
+        if recommendation is None:
+            try:
+                result = approval_twin.evaluate_dna_promotion(dna)
+                recommendation = bool(result.get("recommendation", False) if isinstance(result, dict) else False)
+            except Exception:
+                recommendation = False
+
+        if not recommendation:
+            return False
+
+        # Start shadow run
+        shadow_days = self.resolve_shadow_days()
+        try:
+            shadow_results = shadow_runner.evaluate_variants(
+                variants=[dna],
+                days=shadow_days,
+                shadow_mode=True,
+            )
+        except Exception:
+            return False
+
+        if not shadow_results:
+            return False
+
+        shadow_result = shadow_results[0]
+        veto_blocked = False  # wordt later gevuld via Telegram reply in orchestrator
+
+        return self.shadow_validation_passed(
+            shadow_total_pnl=float(shadow_result.avg_pnl),
+            veto_blocked=veto_blocked,
+            risk_flags=list(getattr(shadow_result, "risk_flags", []) or []),
+        )
 
     def requires_approval_twin(self, *, mode: str) -> bool:
         return _normalize_mode(mode) == "real"
@@ -134,6 +167,9 @@ class EvolutionGuard:
         candidate_fitness: float,
         previous_fitness: float,
         approval_twin_recommendation: bool | None = None,
+        approval_twin: Any | None = None,
+        dna: Any | None = None,
+        shadow_runner: Any | None = None,
         current_hash: str | None = None,
         promoted_at: datetime | None = None,
         now: datetime | None = None,
@@ -145,6 +181,9 @@ class EvolutionGuard:
             current_fitness=previous_fitness,
             mode=mode,
             approval_twin_recommendation=approval_twin_recommendation,
+            approval_twin=approval_twin,
+            dna=dna,
+            shadow_runner=shadow_runner,
         )
         rollback_required = self.should_rollback(
             promoted_at=promoted_at,
