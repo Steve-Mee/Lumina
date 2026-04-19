@@ -21,14 +21,14 @@ class _Logger:
         return None
 
 
-def _write_config(tmp_path, *, primary_provider="ollama", fallback_order=None):
-    if fallback_order is None:
-        fallback_order = ["vllm", "ollama", "grok_remote"]
+def _write_config(tmp_path, *, primary_provider="ollama", provider_order=None):
+    if provider_order is None:
+        provider_order = ["vllm", "ollama", "grok_remote"]
     config = {
         "hardware_profile": "light",
         "inference": {
             "primary_provider": primary_provider,
-            "fallback_order": fallback_order,
+            "provider_order": provider_order,
             "provider_calibration": {"ollama": 1.1, "vllm": 0.9, "grok_remote": 1.0},
             "provider_calibration_by_regime": {
                 "TRENDING": {"ollama": 1.2, "vllm": 1.0, "DEFAULT": 1.0},
@@ -57,7 +57,7 @@ def _context():
 
 
 def test_local_inference_engine_fail_hard_when_primary_provider_fails(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="ollama", fallback_order=["vllm", "grok_remote"])
+    _write_config(tmp_path, primary_provider="ollama", provider_order=["vllm", "grok_remote"])
     monkeypatch.chdir(tmp_path)
 
     engine = LocalInferenceEngine(context=_context())
@@ -84,13 +84,13 @@ def test_local_inference_engine_fail_hard_when_primary_provider_fails(monkeypatc
 
 
 def test_local_inference_engine_hot_reloads_config_without_restart(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="ollama", fallback_order=["vllm"])
+    _write_config(tmp_path, primary_provider="ollama", provider_order=["vllm"])
     monkeypatch.chdir(tmp_path)
 
     engine = LocalInferenceEngine(context=_context())
     assert engine.get_backend() == "ollama"
 
-    _write_config(tmp_path, primary_provider="vllm", fallback_order=["ollama"])
+    _write_config(tmp_path, primary_provider="vllm", provider_order=["ollama"])
 
     calls: list[str] = []
 
@@ -108,7 +108,7 @@ def test_local_inference_engine_hot_reloads_config_without_restart(monkeypatch, 
 
 
 def test_local_inference_engine_set_backend_overrides_config(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="ollama", fallback_order=["vllm"])
+    _write_config(tmp_path, primary_provider="ollama", provider_order=["vllm"])
     monkeypatch.chdir(tmp_path)
 
     engine = LocalInferenceEngine(context=_context())
@@ -117,7 +117,7 @@ def test_local_inference_engine_set_backend_overrides_config(monkeypatch, tmp_pa
 
 
 def test_local_inference_engine_tracks_latency_and_requests(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="ollama", fallback_order=[])
+    _write_config(tmp_path, primary_provider="ollama", provider_order=[])
     monkeypatch.chdir(tmp_path)
 
     engine = LocalInferenceEngine(context=_context())
@@ -139,7 +139,7 @@ def test_local_inference_engine_tracks_latency_and_requests(monkeypatch, tmp_pat
 
 
 def test_local_inference_engine_exposes_metrics_summary(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="ollama", fallback_order=[])
+    _write_config(tmp_path, primary_provider="ollama", provider_order=[])
     monkeypatch.chdir(tmp_path)
 
     engine = LocalInferenceEngine(context=_context())
@@ -158,7 +158,7 @@ def test_local_inference_engine_exposes_metrics_summary(monkeypatch, tmp_path):
 
 
 def test_local_inference_engine_unhealthy_vllm_fail_hard(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="vllm", fallback_order=["ollama", "grok_remote"])
+    _write_config(tmp_path, primary_provider="vllm", provider_order=["ollama", "grok_remote"])
     monkeypatch.chdir(tmp_path)
 
     engine = LocalInferenceEngine(context=_context())
@@ -183,7 +183,7 @@ def test_local_inference_engine_unhealthy_vllm_fail_hard(monkeypatch, tmp_path):
 
 
 def test_local_inference_engine_reports_vllm_runtime_reason(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="vllm", fallback_order=["ollama"])
+    _write_config(tmp_path, primary_provider="vllm", provider_order=["ollama"])
     monkeypatch.chdir(tmp_path)
 
     engine = LocalInferenceEngine(context=_context())
@@ -203,7 +203,7 @@ def test_local_inference_engine_reports_vllm_runtime_reason(monkeypatch, tmp_pat
 
 
 def test_local_inference_engine_applies_regime_aware_calibration(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="ollama", fallback_order=[])
+    _write_config(tmp_path, primary_provider="ollama", provider_order=[])
     monkeypatch.chdir(tmp_path)
 
     ctx = _context()
@@ -223,7 +223,7 @@ def test_local_inference_engine_applies_regime_aware_calibration(monkeypatch, tm
 
 
 def test_local_inference_engine_grok_remote_success_path(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="grok_remote", fallback_order=[])
+    _write_config(tmp_path, primary_provider="grok_remote", provider_order=[])
     monkeypatch.chdir(tmp_path)
 
     engine = LocalInferenceEngine(context=_context())
@@ -245,7 +245,7 @@ def test_local_inference_engine_grok_remote_success_path(monkeypatch, tmp_path):
 
 
 def test_local_inference_engine_grok_remote_missing_key_fail_hard(monkeypatch, tmp_path):
-    _write_config(tmp_path, primary_provider="grok_remote", fallback_order=[])
+    _write_config(tmp_path, primary_provider="grok_remote", provider_order=[])
     monkeypatch.chdir(tmp_path)
 
     ctx = _context()

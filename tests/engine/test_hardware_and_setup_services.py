@@ -41,7 +41,7 @@ def test_setup_service_applies_recommended_config(tmp_path: Path) -> None:
         yaml.safe_dump(
             {
                 "hardware_profile": "light",
-                "inference": {"primary_provider": "ollama", "fallback_order": ["ollama"]},
+                "inference": {"primary_provider": "ollama", "provider_order": ["ollama"]},
                 "ollama": {"num_ctx": 4096},
                 "models": {"reasoning": "qwen3.5:4b"},
                 "vllm": {"model_name": "qwen3.5-35b"},
@@ -91,7 +91,7 @@ def test_setup_service_upgrade_model_uses_cached_hardware(monkeypatch, tmp_path:
         yaml.safe_dump(
             {
                 "hardware_profile": "light",
-                "inference": {"primary_provider": "ollama", "fallback_order": ["ollama"]},
+                "inference": {"primary_provider": "ollama", "provider_order": ["ollama"]},
                 "ollama": {"num_ctx": 4096},
                 "models": {"reasoning": "qwen3.5:4b"},
                 "vllm": {"model_name": "qwen3.5-35b"},

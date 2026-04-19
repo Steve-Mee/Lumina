@@ -51,6 +51,11 @@ Scope: lumina_core (focus: engine, evolution, rl)
 - Removed parse-error HOLD fallback payload and enforced JSON-object payload contract.
 - Removed silent provider error swallowing in vLLM/Ollama/xAI provider adapters.
 
+9. Provider ordering terminology cleanup
+- Renamed active inference configuration key from `fallback_order` to `provider_order`.
+- Updated setup config writer to emit `provider_order` and renamed helper to `_build_provider_order`.
+- Updated inference/setup tests to use provider-order terminology consistently.
+
 8. lumina_core/runtime_context.py
 - Removed implicit app-namespace compatibility path; adapter now delegates only to engine surface.
 - Kept explicit engine delegation for runtime service contract compatibility.

@@ -114,7 +114,7 @@ class SetupService:
             inference = {}
             payload["inference"] = inference
         inference["primary_provider"] = model.recommended_provider
-        inference["fallback_order"] = self._build_fallback_order(model.recommended_provider)
+        inference["provider_order"] = self._build_provider_order(model.recommended_provider)
         ollama = payload.setdefault("ollama", {})
         if not isinstance(ollama, dict):
             ollama = {}
@@ -152,7 +152,7 @@ class SetupService:
         return ModelCatalog()
 
     @staticmethod
-    def _build_fallback_order(primary: str) -> list[str]:
+    def _build_provider_order(primary: str) -> list[str]:
         order = [primary]
         for provider in ["vllm", "ollama", "grok_remote"]:
             if provider not in order:

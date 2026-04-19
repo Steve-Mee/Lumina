@@ -50,7 +50,7 @@ xai:
 
 inference:
   primary_provider: "ollama"       # "ollama" | "vllm" | "grok_remote"
-  fallback_order: ["vllm", "ollama", "grok_remote"]
+  provider_order: ["vllm", "ollama", "grok_remote"]
   max_tokens: 1200
   temperature: 0.65
   json_mode: true
