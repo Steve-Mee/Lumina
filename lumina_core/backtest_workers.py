@@ -84,20 +84,26 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                 snapshot = app.ohlc_1min.tail(14400).copy()
                 app.logger.info("Starting ADVANCED backtest...")
 
+                backtester = app.engine.backtester
+                advanced_backtester = app.engine.advanced_backtester
+                if backtester is None or advanced_backtester is None:
+                    app.logger.error("Advanced backtest skipped: backtester components unavailable")
+                    continue
+
                 # 1. Realistic base
-                base_res = app.engine.backtester.run_backtest_on_snapshot(snapshot)
+                base_res = backtester.run_backtest_on_snapshot(snapshot)
 
                 # 2. Walk-Forward
-                wf = app.engine.advanced_backtester.walk_forward_test(snapshot)
+                wf = advanced_backtester.walk_forward_test(snapshot)
 
                 # 3. Regime OOS
-                regime_res = app.engine.advanced_backtester.regime_specific_oos(snapshot)
+                regime_res = advanced_backtester.regime_specific_oos(snapshot)
 
                 # 4. Monte Carlo (800 runs voor snelheid op 1080 Ti)
-                monte = app.engine.advanced_backtester.full_monte_carlo(snapshot, runs=800)
+                monte = advanced_backtester.full_monte_carlo(snapshot, runs=800)
 
                 # 5. Dashboard
-                dashboard_path = app.engine.advanced_backtester.generate_regime_dashboard(
+                dashboard_path = advanced_backtester.generate_regime_dashboard(
                     snapshot, wf, monte, regime_res
                 )
 
@@ -120,21 +126,22 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
 
                 # Nightly PPO training alleen bij voldoende basisperformance.
                 base_sharpe = float(base_res.get("sharpe", 0.0)) if isinstance(base_res, dict) else 0.0
-                if base_sharpe > 1.2 and getattr(app.engine, "ppo_trainer", None) is not None:
+                ppo_trainer = getattr(app.engine, "ppo_trainer", None)
+                if base_sharpe > 1.2 and ppo_trainer is not None:
                     print(
                         f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Nightly PPO train trigger "
                         f"(base sharpe {base_sharpe:.2f})"
                     )
-                    app.engine.ppo_trainer.train(total_timesteps=50000)
+                    ppo_trainer.train(total_timesteps=50000)
 
                 # Nightly infinite simulation om 03:00 (1x per kalenderdag).
                 now_dt = datetime.now()
                 today = now_dt.date().isoformat()
                 _sim_results: dict[str, Any] = {}
-                if now_dt.hour == 3 and getattr(app.engine, "infinite_simulator", None) is not None:
+                simulator = getattr(app.engine, "infinite_simulator", None)
+                if now_dt.hour == 3 and simulator is not None:
                     if getattr(app.engine, "infinite_sim_last_run_date", None) != today:
                         print("🌌 Nightly Infinite Simulation started...")
-                        simulator = app.engine.infinite_simulator
                         if hasattr(simulator, "run_nightly_simulation"):
                             _sim_results = simulator.run_nightly_simulation(num_trades_total=1_000_000)
                         else:
@@ -142,12 +149,13 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                         app.engine.infinite_sim_last_run_date = today
 
                 # Nightly EmotionalTwin training om 04:00 (1x per kalenderdag).
-                if now_dt.hour == 4 and getattr(app.engine, "emotional_twin_agent", None) is not None:
+                emotional_twin_agent = getattr(app.engine, "emotional_twin_agent", None)
+                if now_dt.hour == 4 and emotional_twin_agent is not None:
                     if getattr(app.engine, "emotional_twin_last_train_date", None) != today:
                         print("🧠 Nightly EmotionalTwin training started...")
                         reflections = list(getattr(app, "trade_reflection_history", []) or [])
                         feedback = list(getattr(app, "user_feedback_history", []) or [])
-                        app.engine.emotional_twin_agent.nightly_train(reflections, feedback)
+                        emotional_twin_agent.nightly_train(reflections, feedback)
                         app.engine.emotional_twin_last_train_date = today
 
                 # Ultimate validation na nightly cycle (3y swarm + paper vs real).
