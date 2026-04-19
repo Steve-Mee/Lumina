@@ -171,6 +171,13 @@ class EvolutionOrchestrator:
         all_candidates: list[PolicyDNA] = []
         sim_days = max(1, int(round(max(1, int(sim_duration_hours)) / 24.0)))
 
+        # FASE 2 Meta-RL: override sim_days from multiweek_fitness config when enabled
+        evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
+        mw_cfg = evolution_cfg.get("multiweek_fitness", {}) if isinstance(evolution_cfg, dict) else {}
+        if isinstance(mw_cfg, dict) and mw_cfg.get("enabled"):
+            sim_days = max(sim_days, int(mw_cfg.get("days", 14) or 14))
+            logger.info("[META-RL] multiweek_fitness enabled – sim_days=%d", sim_days)
+
         for gen_idx in range(max(1, int(generations))):
             result = self._run_single_generation(
                 generation_offset=gen_idx,
@@ -355,6 +362,18 @@ class EvolutionOrchestrator:
             promoted=promoted,
         )
 
+    def _send_shadow_status_telegram(self, message: str) -> None:
+        """Send shadow-gate status to Steve via Telegram, respecting Brussels waking hours."""
+        def _send() -> bool:
+            return self._telegram_notifier._send_telegram_message(message)
+        try:
+            self._notification_scheduler.schedule_notification(
+                callback=_send,
+                description=f"shadow_status:{message[:50]}",
+            )
+        except Exception as exc:
+            logger.warning("[SHADOWTWIN] Telegram notification failed: %s", exc)
+
     def _run_shadow_validation_gate(
         self,
         *,
@@ -395,6 +414,11 @@ class EvolutionOrchestrator:
             }
             shadow_runs[dna.hash] = record
             self._save_shadow_runs(shadow_runs)
+            # FASE 3: notify Steve that shadow run has started
+            self._send_shadow_status_telegram(
+                f"SHADOWTWIN started\nDNA: {dna.hash[:12]}\nTarget: {target_days} days\n"
+                f"Reply VETO {dna.hash[:12]} to block promotion."
+            )
             return {
                 "promote_now": False,
                 "veto_blocked": False,
@@ -455,6 +479,12 @@ class EvolutionOrchestrator:
             record["updated_at"] = _utcnow()
             shadow_runs[dna.hash] = record
             self._save_shadow_runs(shadow_runs)
+            # FASE 3: daily progress update to Steve
+            self._send_shadow_status_telegram(
+                f"SHADOWTWIN Day {len(daily_pnl)}/{target_days}\n"
+                f"DNA: {dna.hash[:12]}\n"
+                f"Day PnL: ${day_pnl:+.2f} | Total: ${float(sum(daily_pnl)):+.2f}"
+            )
 
         shadow_total_pnl = float(sum(daily_pnl))
         veto_check = self._veto_window_for_days(target_days).check_with_details(dna_id=dna.hash)
@@ -494,6 +524,19 @@ class EvolutionOrchestrator:
         }
         shadow_runs[dna.hash] = record
         self._save_shadow_runs(shadow_runs)
+
+        # FASE 3: final shadow verdict to Steve
+        if shadow_passed:
+            self._send_shadow_status_telegram(
+                f"SHADOWTWIN PASSED – promoting\nDNA: {dna.hash[:12]}\n"
+                f"Total PnL: ${shadow_total_pnl:+.2f} over {len(daily_pnl)} days"
+            )
+        else:
+            reason = "veto" if veto_blocked else "negative PnL"
+            self._send_shadow_status_telegram(
+                f"SHADOWTWIN FAILED ({reason})\nDNA: {dna.hash[:12]}\n"
+                f"Total PnL: ${shadow_total_pnl:+.2f} over {len(daily_pnl)} days"
+            )
 
         return {
             "promote_now": shadow_passed,

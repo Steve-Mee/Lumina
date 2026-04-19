@@ -225,6 +225,12 @@ security:
 evolution:
   enabled: true
   approval_required: true
+  shadow_validation:
+    min_days: 3
+    max_days: 7
+  multiweek_fitness:
+    enabled: false          # set true to use multi-week SIM scoring (Meta-RL phase)
+    days: 14                # number of simulation days for fitness scoring when enabled
 
 fine_tuning:
   auto_trigger: true

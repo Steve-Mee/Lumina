@@ -43,11 +43,14 @@ class PPOTrainer:
         *,
         total_timesteps: int = 200_000,
         policy_path: str | None = None,
+        dna_hash: str | None = None,
     ) -> str:
         from stable_baselines3 import PPO
 
         self.model_dir.mkdir(parents=True, exist_ok=True)
         env = RLTradingEnvironment(self.engine, simulator_data, config=self._build_rl_config())
+        if dna_hash:
+            env.set_dna_hash(dna_hash)
         model = PPO(
             policy="MlpPolicy",
             env=env,
@@ -73,15 +76,24 @@ class PPOTrainer:
         simulator_data: list[dict[str, Any]],
         *,
         timesteps: int = 250_000,
+        dna_hash: str | None = None,
     ) -> str:
         # Infinite Simulator orchestration hook for next step.
-        return self.train(simulator_data, total_timesteps=timesteps)
+        return self.train(simulator_data, total_timesteps=timesteps, dna_hash=dna_hash)
 
     def load_policy(self, policy_path: str) -> None:
         from stable_baselines3 import PPO
 
-        model = PPO.load(policy_path)
-        self.engine.set_rl_policy(model)
+        try:
+            model = PPO.load(policy_path)
+            self.engine.set_rl_policy(model)
+        except Exception as exc:  # obs-space mismatch after Meta-RL expansion or missing file
+            import logging
+            logging.getLogger(__name__).warning(
+                "PPO.load failed (obs-space mismatch after Meta-RL expansion or file missing); "
+                "engine will fall back to HOLD until retrained. Reason: %s",
+                exc,
+            )
 
     def infer_live_action(self, observation: np.ndarray) -> dict[str, Any]:
         model = getattr(self.engine, "rl_policy_model", None)

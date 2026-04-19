@@ -30,8 +30,8 @@ class RLTradingEnvironment(gym.Env):
         self.instrument = str(self.context.engine.config.instrument)
         self._dna_version = str(getattr(self.context.engine, "active_dna_version", "GENESIS") or "GENESIS")
 
-        # Observation space (20 features)
-        self.observation_space = gym.spaces.Box(low=-10, high=10, shape=(20,), dtype=np.float32)
+        # Observation space (23 features: 9 market + 4 DNA-embedding + 10 reserved)
+        self.observation_space = gym.spaces.Box(low=-10, high=10, shape=(23,), dtype=np.float32)
 
         # PPO verwacht een enkelvoudige action space. We encoden:
         # [signal(0..2), qty_pct(0.1..2.0), stop_mult(0.5..2.0), target_mult(1.5..4.0)]
@@ -49,11 +49,10 @@ class RLTradingEnvironment(gym.Env):
     def set_dna_version(self, dna_version: str) -> None:
         self._dna_version = str(dna_version)
 
-    def _dna_signal(self) -> float:
-        digest = hashlib.sha256(self._dna_version.encode("utf-8")).hexdigest()
-        bucket = int(digest[:6], 16)
-        # Normalize to [-1, 1] so it can be consumed like any other feature.
-        return float((bucket / 0xFFFFFF) * 2.0 - 1.0)
+    def _dna_embedding(self) -> list[float]:
+        """4-float DNA embedding: first 4 bytes of SHA-256(dna_version), normalised to [-1, 1]."""
+        digest = hashlib.sha256(self._dna_version.encode("utf-8")).digest()
+        return [(b / 127.5) - 1.0 for b in digest[:4]]
 
     def _get_observation(self) -> np.ndarray:
         """Volledige state als vector."""
@@ -73,11 +72,9 @@ class RLTradingEnvironment(gym.Env):
                 self.context.account_equity / 50000.0,
                 len(self.pnl_history) / 100.0,
                 np.mean(self.pnl_history[-10:]) if self.pnl_history else 0.0,
-                self._dna_signal(),
-                # extra features: fib distance, MA slope, volume delta, etc.
-                0.0,
-                0.0,
-                0.0,
+                # DNA embedding (Meta-RL: 4-byte hash → policy conditions on lineage)
+                *self._dna_embedding(),
+                # reserved future features: fib distance, MA slope, volume delta, etc.
                 0.0,
                 0.0,
                 0.0,

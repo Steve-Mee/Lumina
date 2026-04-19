@@ -2,6 +2,7 @@ from __future__ import annotations
 # pyright: reportMissingImports=false
 
 from dataclasses import dataclass
+import hashlib
 import random
 from typing import Any
 
@@ -62,14 +63,16 @@ class RLTradingEnvironment(gym.Env):
             dtype=np.float32,
         )
 
-        # Observation includes price, regime, tape, dream, fib, and world_model features.
+        # Observation includes price, regime, tape, dream, fib, world_model, and DNA-embedding features.
+        # 24 market/account features + 4 DNA-hash embedding = 28 total (Meta-RL phase)
         self.observation_space = spaces.Box(
             low=-1e6,
             high=1e6,
-            shape=(24,),
+            shape=(28,),
             dtype=np.float32,
         )
 
+        self._dna_hash: str = ""
         self._idx = 0
         self._position = 0
         self._qty = 0
@@ -78,6 +81,17 @@ class RLTradingEnvironment(gym.Env):
         self._initial_equity = 50000.0
         self._equity_curve: list[float] = [50000.0]
         self._returns: list[float] = []
+
+    def set_dna_hash(self, dna_hash: str) -> None:
+        """Inject active PolicyDNA hash so the policy can condition on lineage identity."""
+        self._dna_hash = str(dna_hash or "")
+
+    def _dna_embedding(self) -> list[float]:
+        """4-float DNA embedding: first 4 bytes of SHA-256(dna_hash), normalised to [-1, 1]."""
+        if not self._dna_hash:
+            return [0.0, 0.0, 0.0, 0.0]
+        raw = hashlib.sha256(self._dna_hash.encode("utf-8")).digest()
+        return [(b / 127.5) - 1.0 for b in raw[:4]]
 
     @staticmethod
     def _config_from_engine(engine: Any) -> RLConfig:
@@ -336,6 +350,8 @@ class RLTradingEnvironment(gym.Env):
                 float(self._rolling_sharpe()),
                 float(self._idx),
                 float(len(self.data)),
+                # DNA embedding (Meta-RL: policy conditions on active lineage identity)
+                *self._dna_embedding(),
             ],
             dtype=np.float32,
         )

@@ -137,3 +137,48 @@ def test_sim_step_loop_performance_guard() -> None:
     elapsed = perf_counter() - start
 
     assert elapsed < 8.0
+
+
+# ---------------------------------------------------------------------------
+# FASE 2 Meta-RL: DNA embedding tests
+# ---------------------------------------------------------------------------
+
+def test_observation_space_shape_is_28_with_dna_embedding() -> None:
+    """FASE 2: observation space must be (28,) after Meta-RL expansion."""
+    engine = _EngineStub()
+    env = RLTradingEnvironment(engine, _sim_data(), config=RLConfig())
+    assert env.observation_space.shape == (28,)
+
+
+def test_set_dna_hash_changes_embedding_in_observation() -> None:
+    """FASE 2: set_dna_hash() must be reflected in _get_observation() features 24-27."""
+    engine = _EngineStub()
+    env = RLTradingEnvironment(engine, _sim_data(), config=RLConfig())
+    env.reset()
+
+    env.set_dna_hash("")
+    obs_no_hash, *_ = env.step([0.0, 0.0, 0.01, 0.02])
+    dna_features_none = obs_no_hash[24:28].tolist()
+
+    env.reset()
+    env.set_dna_hash("abc123")
+    obs_with_hash, *_ = env.step([0.0, 0.0, 0.01, 0.02])
+    dna_features_abc = obs_with_hash[24:28].tolist()
+
+    # Empty hash → all zeros embedding
+    assert dna_features_none == [0.0, 0.0, 0.0, 0.0]
+    # Non-empty hash → non-zero embedding bytes
+    assert dna_features_abc != [0.0, 0.0, 0.0, 0.0]
+    # Each byte normalised to [-1, 1]
+    assert all(-1.0 <= v <= 1.0 for v in dna_features_abc)
+
+
+def test_dna_embedding_is_deterministic() -> None:
+    """FASE 2: same DNA hash always produces the same embedding."""
+    engine = _EngineStub()
+    env = RLTradingEnvironment(engine, _sim_data(), config=RLConfig())
+    env.set_dna_hash("deterministic-test-hash")
+    emb1 = env._dna_embedding()
+    emb2 = env._dna_embedding()
+    assert emb1 == emb2
+
