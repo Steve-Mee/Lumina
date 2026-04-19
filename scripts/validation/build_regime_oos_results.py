@@ -70,7 +70,8 @@ def _from_validator_reports() -> dict[str, Any]:
     best: dict[str, Any] = {}
     for path in sorted(reports_dir.glob("validator_3y_swarm_*.json"), reverse=True):
         payload = _load_json(path)
-        aggregate = payload.get("aggregate") if isinstance(payload.get("aggregate"), dict) else {}
+        aggregate_raw = payload.get("aggregate")
+        aggregate = aggregate_raw if isinstance(aggregate_raw, dict) else {}
         trades = int(aggregate.get("trades", 0) or 0)
         if trades <= 0:
             continue
