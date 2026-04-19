@@ -190,7 +190,7 @@ class LocalInferenceEngine:
         except requests.RequestException:
             return False
 
-    def _try_vllm(self, messages: list, model: str) -> Optional[Dict]:
+    def _try_vllm(self, messages: list, model: str) -> str | Dict | None:
         """Run vLLM provider call without silent fallback behavior."""
         del model
         host = str(self.config["vllm"]["host"])
@@ -219,7 +219,7 @@ class LocalInferenceEngine:
             )
         return resp.json()["choices"][0]["message"]["content"]
 
-    def _try_ollama(self, messages: list, model: str) -> Optional[Dict]:
+    def _try_ollama(self, messages: list, model: str) -> str | Dict | None:
         try:
             resp = ollama.chat(
                 model=model,
@@ -238,7 +238,7 @@ class LocalInferenceEngine:
             ) from exc
         return resp["message"]["content"]
 
-    def _try_remote_grok(self, messages: list) -> Optional[Dict]:
+    def _try_remote_grok(self, messages: list) -> str | Dict | None:
         """Run direct xAI inference provider call."""
         xai_key = (
             getattr(self.context, "XAI_KEY", None)
@@ -296,15 +296,15 @@ class LocalInferenceEngine:
             ) from exc
 
     # Compat met bestaande tests/callers
-    def _infer_via_vllm(self, messages: list, model_type: str, **_kwargs: Any) -> Optional[Dict]:
+    def _infer_via_vllm(self, messages: list, model_type: str, **_kwargs: Any) -> str | Dict | None:
         model = self.config["models"].get(model_type, "qwen2.5:7b")
         return self._try_vllm(messages, model)
 
-    def _infer_via_ollama(self, messages: list, model_type: str, **_kwargs: Any) -> Optional[Dict]:
+    def _infer_via_ollama(self, messages: list, model_type: str, **_kwargs: Any) -> str | Dict | None:
         model = self.config["models"].get(model_type, "qwen2.5:7b")
         return self._try_ollama(messages, model)
 
-    def _infer_via_remote_grok(self, messages: list, **_kwargs: Any) -> Optional[Dict]:
+    def _infer_via_remote_grok(self, messages: list, **_kwargs: Any) -> str | Dict | None:
         return self._try_remote_grok(messages)
 
     def set_backend(self, backend: str) -> str:
