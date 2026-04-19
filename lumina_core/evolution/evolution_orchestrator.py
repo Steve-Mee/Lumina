@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
+from lumina_core.notifications.notification_scheduler import NotificationScheduler
 from .approval_twin_agent import ApprovalTwinAgent
 from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
@@ -33,7 +34,7 @@ from .multi_day_sim_runner import MultiDaySimRunner, SimResult
 from .steve_values_registry import SteveValuesRegistry
 from .veto_registry import VetoRegistry
 from .veto_window import VetoWindow
-from .telegram_notifier import TelegramNotifier
+from lumina_core.notifications.telegram_notifier import TelegramNotifier
 from lumina_core.experiments.ab_framework import ABExperimentFramework
 
 
@@ -106,6 +107,7 @@ class EvolutionOrchestrator:
         self._veto_registry = VetoRegistry()
         self._veto_window = VetoWindow(veto_registry=self._veto_registry, window_seconds=1800)
         self._telegram_notifier = TelegramNotifier(veto_registry=self._veto_registry)
+        self._notification_scheduler = NotificationScheduler()
         self._sim_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
         self._metrics_path = _METRICS_PATH
         self._initialized = True
@@ -138,13 +140,6 @@ class EvolutionOrchestrator:
                 "reason": f"mutations_not_allowed_in_mode:{mode}",
                 "timestamp": _utcnow(),
             }
-        if normalized_mode == "real" and not bool(explicit_human_approval):
-            return {
-                "status": "blocked",
-                "reason": "real_promotion_requires_explicit_human_approval",
-                "timestamp": _utcnow(),
-            }
-
         report: dict[str, Any] = dict(nightly_report)
         gen_results: list[GenerationResult] = []
         self._append_metrics(
@@ -281,22 +276,36 @@ class EvolutionOrchestrator:
         if mode == "real":
             twin_confidence = float(twin_decision.get("confidence", 0.0) or 0.0)
             risk_flags = list(twin_decision.get("risk_flags", []) or [])
+            should_fast_track = self._guard.should_trigger_telegram(
+                twin_confidence=twin_confidence,
+                risk_flags=risk_flags,
+            )
+            dashboard_url = ""
 
-            # Per spec: twin confidence > 90% AND no risk_flags → send Telegram + fail-closed 30-min window.
-            if self._guard.should_trigger_telegram(twin_confidence=twin_confidence, risk_flags=risk_flags):
+            # REAL mode always requires a Telegram proposal and explicit APPROVE.
+            if not self._telegram_notifier.has_approved(winner_dna.hash) and not self._telegram_notifier.is_vetoed_or_expired(
+                winner_dna.hash
+            ):
                 proposal_summary = str(twin_decision.get("explanation", "DNA promotion candidate"))
-                telegram_proposal_sent = self._telegram_notifier.send_proposal_notification(
-                    dna_id=winner_dna.hash,
-                    fitness=winner_fitness,
-                    twin_confidence=twin_confidence,
-                    proposal_summary=proposal_summary,
-                    veto_window_minutes=30,
+                delivery = self._notification_scheduler.schedule_notification(
+                    callback=lambda: self._telegram_notifier.send_proposal_notification(
+                        dna_id=winner_dna.hash,
+                        fitness=winner_fitness,
+                        twin_confidence=twin_confidence,
+                        proposal_summary=proposal_summary,
+                        veto_window_minutes=30,
+                        recommendation=bool(twin_decision.get("recommendation", False)),
+                        dashboard_url=dashboard_url or None,
+                        tags=["high_confidence_no_risk"] if should_fast_track else [*risk_flags] if risk_flags else [],
+                    ),
+                    description=f"REAL DNA proposal {winner_dna.hash}",
                 )
-                if not telegram_proposal_sent:
-                    # Notification failed → block promotion (fail-closed).
+                telegram_proposal_sent = bool(delivery.get("sent_now", False))
+                if not bool(delivery.get("accepted", False)) or not telegram_proposal_sent:
+                    # Notification failed or was deferred -> promotion remains blocked (fail-closed).
                     veto_blocked = True
                     logger.warning(
-                        f"DNA {winner_dna.hash}: Telegram proposal could not be sent → blocking REAL promotion."
+                        f"DNA {winner_dna.hash}: Telegram proposal not yet delivered -> blocking REAL promotion."
                     )
 
             # Poll when a proposal is open now or was already pending from a prior cycle.
@@ -306,8 +315,8 @@ class EvolutionOrchestrator:
             telegram_approved = self._telegram_notifier.has_approved(winner_dna.hash)
             telegram_vetoed = self._telegram_notifier.is_vetoed_or_expired(winner_dna.hash)
 
-            # Telegram gate: if a proposal was sent, explicit APPROVE is required.
-            if telegram_proposal_sent and not telegram_approved:
+            # Telegram gate: REAL promotion always requires explicit APPROVE.
+            if not telegram_approved:
                 veto_blocked = True
             if telegram_vetoed:
                 veto_blocked = True
@@ -317,7 +326,7 @@ class EvolutionOrchestrator:
         veto_blocked = bool(veto_blocked or veto_check.get("is_blocked", False))
 
         promoted = False
-        if signed and generation_ok and (mode != "real" or explicit_human_approval) and not veto_blocked:
+        if signed and generation_ok and not veto_blocked:
             promoted_dna = self._registry.mutate(
                 parent=winner_dna,
                 mutation_rate=0.1,

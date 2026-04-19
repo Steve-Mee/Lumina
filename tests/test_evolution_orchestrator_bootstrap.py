@@ -96,6 +96,41 @@ class _TwinStub:
         }
 
 
+class _NotifierStub:
+    def __init__(self, *, approved: bool = False, awaiting: bool = False, vetoed: bool = False) -> None:
+        self.approved = approved
+        self.awaiting = awaiting
+        self.vetoed = vetoed
+        self.sent_calls = 0
+
+    def send_proposal_notification(self, **_kwargs) -> bool:
+        self.sent_calls += 1
+        self.awaiting = not self.approved and not self.vetoed
+        return True
+
+    def has_approved(self, _dna_id: str) -> bool:
+        return self.approved
+
+    def is_awaiting_approval(self, _dna_id: str) -> bool:
+        return self.awaiting
+
+    def is_vetoed_or_expired(self, _dna_id: str) -> bool:
+        return self.vetoed
+
+    def poll_for_replies(self) -> list[dict[str, object]]:
+        return []
+
+    def send_veto_window_expired(self, _dna_id: str) -> bool:
+        return True
+
+
+class _NotificationSchedulerStub:
+    def schedule_notification(self, *, callback, description: str, now=None):
+        del description, now
+        sent = bool(callback())
+        return {"accepted": True, "sent_now": sent}
+
+
 def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch) -> None:
     import lumina_core.evolution.evolution_orchestrator as eo
 
@@ -120,16 +155,19 @@ def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch) 
     assert registry.get_latest_dna("active") is not None
 
 
-def test_evolution_orchestrator_blocks_real_without_explicit_human_approval(monkeypatch) -> None:
+def test_evolution_orchestrator_real_path_blocks_without_telegram_approve(monkeypatch) -> None:
     import lumina_core.evolution.evolution_orchestrator as eo
 
     monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
     monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
 
     orchestrator = EvolutionOrchestrator()
-    orchestrator._registry = cast(Any, _RegistryStub())
+    registry = _RegistryStub()
+    orchestrator._registry = cast(Any, registry)
     orchestrator._sim_runner = cast(Any, _SimRunnerStub())
     orchestrator._approval_twin = cast(Any, _TwinStub(recommendation=True))
+    orchestrator._telegram_notifier = cast(Any, _NotifierStub(approved=False, awaiting=True, vetoed=False))
+    orchestrator._notification_scheduler = cast(Any, _NotificationSchedulerStub())
 
     summary = orchestrator.run_nightly_evolution_cycle(
         generations=1,
@@ -139,8 +177,11 @@ def test_evolution_orchestrator_blocks_real_without_explicit_human_approval(monk
         explicit_human_approval=False,
     )
 
-    assert summary["status"] == "blocked"
-    assert summary["reason"] == "real_promotion_requires_explicit_human_approval"
+    assert summary["status"] == "complete"
+    assert int(summary["promotions"]) == 0
+    active = registry.get_latest_dna("active")
+    assert active is not None
+    assert int(active.generation) == 0
 
 
 def test_evolution_orchestrator_real_path_uses_approval_twin(monkeypatch) -> None:
@@ -155,13 +196,15 @@ def test_evolution_orchestrator_real_path_uses_approval_twin(monkeypatch) -> Non
     orchestrator._registry = cast(Any, registry)
     orchestrator._sim_runner = cast(Any, _SimRunnerStub())
     orchestrator._approval_twin = cast(Any, twin)
+    orchestrator._telegram_notifier = cast(Any, _NotifierStub(approved=True, awaiting=False, vetoed=False))
+    orchestrator._notification_scheduler = cast(Any, _NotificationSchedulerStub())
 
     summary = orchestrator.run_nightly_evolution_cycle(
         generations=1,
         sim_duration_hours=24,
         nightly_report={"net_pnl": 120.0, "max_drawdown": 40.0, "sharpe": 1.4},
         mode="real",
-        explicit_human_approval=True,
+        explicit_human_approval=False,
     )
 
     assert summary["status"] == "complete"

@@ -313,6 +313,7 @@ monitoring:
     enabled: false                      # Set true + configure url to receive alerts
     platform: "discord"                 # "discord" | "slack" | "telegram"
     url: "${LUMINA_ALERT_WEBHOOK_URL}"  # Provide via environment variable
+    telegram_bot_token: "${TELEGRAM_BOT_TOKEN}"
     telegram_chat_id: ""               # Required only when platform = "telegram"
     timeout_s: 5
 
