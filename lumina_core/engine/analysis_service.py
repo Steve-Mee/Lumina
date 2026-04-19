@@ -83,6 +83,9 @@ class HumanAnalysisService:
                 return
             df_snapshot = self.engine.ohlc_1min.copy()
 
+        if self.engine.fast_path is None:
+            app.logger.warning("DEEP_ANALYSIS_SKIPPED,reason=fast_path_unavailable")
+            return
         fast_result = self.engine.fast_path.run(df_snapshot, price, regime)
         swarm_manager = getattr(self.engine, "swarm", None)
         if swarm_manager is not None and hasattr(swarm_manager, "run_swarm_cycle"):
@@ -260,17 +263,16 @@ class HumanAnalysisService:
                     df = self.engine.ohlc_1min.copy()
                     df["timestamp"] = pd.to_datetime(df["timestamp"])
                     df.set_index("timestamp", inplace=True)
+                    agg_spec = {
+                        "open": "first",
+                        "high": "max",
+                        "low": "min",
+                        "close": "last",
+                        "volume": "sum",
+                    }
                     five_min = (
                         df.resample("5min")
-                        .agg(
-                            {
-                                "open": "first",
-                                "high": "max",
-                                "low": "min",
-                                "close": "last",
-                                "volume": "sum",
-                            }
-                        )
+                        .agg(agg_spec)  # type: ignore[arg-type]
                         .dropna()
                     )
                     if len(five_min) == 0:
@@ -315,6 +317,9 @@ class HumanAnalysisService:
                             code = format_error_code("ANALYSIS_RL", exc, fallback="LIVE_DECISION_FAILED")
                             app.logger.error(f"RL live decision error [{code}]: {exc}")
 
+                    if self.engine.fast_path is None:
+                        app.logger.warning("FAST_PATH_UNAVAILABLE,using_default_hold")
+                        continue
                     fast_result = self.engine.fast_path.run(self.engine.ohlc_1min, current_price, regime)
                     if not fast_result["used_llm"]:
                         # Hard Risk Controller — VERY FIRST check before applying fast-path signal
