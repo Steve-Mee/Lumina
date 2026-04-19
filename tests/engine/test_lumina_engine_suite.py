@@ -1,12 +1,40 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Any, cast
 
 import pandas as pd
 import pytest
 
 from lumina_core.engine import DashboardService, EngineConfig, HumanAnalysisService, ReportingService
 from lumina_core.engine.lumina_engine import LuminaEngine
+
+
+def _panel_lines(panel: Any) -> list[str]:
+    children = getattr(panel, "children", None)
+    if children is None:
+        return []
+    if isinstance(children, (list, tuple)):
+        return [str(getattr(child, "children", "")) for child in children]
+    return [str(getattr(children, "children", ""))]
+
+
+def _figure_title_text(fig: Any) -> str | None:
+    return getattr(getattr(getattr(fig, "layout", None), "title", None), "text", None)
+
+
+def _figure_traces(fig: Any) -> list[Any]:
+    traces = getattr(fig, "data", None)
+    if traces is None:
+        return []
+    return list(traces)
+
+
+def _trace_y_values(trace: Any) -> list[Any]:
+    values = getattr(trace, "y", None)
+    if values is None:
+        return []
+    return list(values)
 
 
 def test_candle_building_closes_minute(engine: LuminaEngine) -> None:
@@ -178,9 +206,10 @@ def test_dashboard_service_builds_inference_provider_figure(engine: LuminaEngine
     )
 
     fig = DashboardService._build_inference_provider_figure(engine.cost_tracker)
+    traces = _figure_traces(fig)
 
-    assert fig.layout.title.text == "Inference Provider History"
-    assert len(fig.data) == 2
+    assert _figure_title_text(fig) == "Inference Provider History"
+    assert len(traces) == 2
 
 
 def test_dashboard_service_sums_mode_metric_with_labels() -> None:
@@ -243,7 +272,7 @@ def test_dashboard_service_builds_mode_parity_panel(engine: LuminaEngine) -> Non
     )()
 
     panel = DashboardService(engine=engine)._build_mode_parity_panel()
-    lines = [str(getattr(child, "children", "")) for child in panel.children]
+    lines = _panel_lines(panel)
 
     assert "Gate reject ratio" in lines[0]
     assert "Reconciliation delta (vs real baseline): 0.550" in lines[1]
@@ -298,7 +327,7 @@ def test_dashboard_service_builds_blackboard_health_panel(engine: LuminaEngine) 
     engine.meta_agent_orchestrator = object()
 
     panel = DashboardService(engine=engine)._build_blackboard_health_panel()
-    lines = [str(getattr(child, "children", "")) for child in panel.children]
+    lines = _panel_lines(panel)
 
     assert "Status: RED | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
     assert "Publish latency sum: 24.50 ms | Rejects: 2 | Drops: 1" in lines[1]
@@ -353,7 +382,7 @@ def test_dashboard_service_builds_green_blackboard_health_panel(engine: LuminaEn
     engine.meta_agent_orchestrator = object()
 
     panel = DashboardService(engine=engine)._build_blackboard_health_panel()
-    lines = [str(getattr(child, "children", "")) for child in panel.children]
+    lines = _panel_lines(panel)
 
     assert "Status: GREEN | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
     assert "Reason: blackboard and orchestrator healthy" in lines[3]
@@ -406,7 +435,7 @@ def test_dashboard_service_builds_amber_blackboard_health_panel(engine: LuminaEn
     engine.meta_agent_orchestrator = object()
 
     panel = DashboardService(engine=engine)._build_blackboard_health_panel()
-    lines = [str(getattr(child, "children", "")) for child in panel.children]
+    lines = _panel_lines(panel)
 
     assert "Status: AMBER | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
     assert "Reason: publish latency above 250 ms" in lines[3]
@@ -459,7 +488,7 @@ def test_dashboard_service_builds_red_blackboard_health_panel_for_low_confidence
     engine.meta_agent_orchestrator = object()
 
     panel = DashboardService(engine=engine)._build_blackboard_health_panel()
-    lines = [str(getattr(child, "children", "")) for child in panel.children]
+    lines = _panel_lines(panel)
 
     assert "Status: RED | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
     assert "Reason: latest aggregate confidence below 0.80" in lines[3]
@@ -515,7 +544,7 @@ def test_dashboard_service_uses_configurable_blackboard_thresholds(engine: Lumin
     engine.meta_agent_orchestrator = object()
 
     panel = DashboardService(engine=engine)._build_blackboard_health_panel()
-    lines = [str(getattr(child, "children", "")) for child in panel.children]
+    lines = _panel_lines(panel)
 
     assert "Status: GREEN | Blackboard: enabled | Meta-Orchestrator: enabled" in lines[0]
     assert "Reason: blackboard and orchestrator healthy" in lines[3]
@@ -543,13 +572,14 @@ def test_dashboard_service_builds_blackboard_trend_figure(engine: LuminaEngine) 
     )
 
     fig = service._build_blackboard_health_trend_figure()
+    traces = _figure_traces(fig)
 
-    assert fig.layout.title.text == "Blackboard Health Trend"
-    assert len(fig.data) == 4
-    assert list(fig.data[0].y) == [100.0, 60.0]
-    assert list(fig.data[1].y) == [0.0, 0.0]
-    assert list(fig.data[2].y) == [1.0, 0.0]
-    assert list(fig.data[3].y) == [0.0, 0.0]
+    assert _figure_title_text(fig) == "Blackboard Health Trend"
+    assert len(traces) == 4
+    assert _trace_y_values(traces[0]) == [100.0, 60.0]
+    assert _trace_y_values(traces[1]) == [0.0, 0.0]
+    assert _trace_y_values(traces[2]) == [1.0, 0.0]
+    assert _trace_y_values(traces[3]) == [0.0, 0.0]
 
 
 def test_engine_config_reads_blackboard_health_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -591,7 +621,7 @@ def test_risk_profile_min_confluence(monkeypatch: pytest.MonkeyPatch, profile: s
     ],
 )
 def test_dynamic_confluence_is_bounded(regime: str, winrate: float) -> None:
-    engine = LuminaEngine(config=EngineConfig())
+    engine = cast(Any, LuminaEngine)(config=EngineConfig())
     score = engine.calculate_dynamic_confluence(regime, winrate)
     assert 0.55 <= score <= 0.95
 
