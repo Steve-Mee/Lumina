@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pandas as pd
 
@@ -53,14 +54,15 @@ def test_apply_correction_logs_before_memory_append(monkeypatch) -> None:
     events: list[str] = []
     context = _build_context(events)
     twin = EmotionalTwinAgent(context=context)
-    twin.memory = _MemoryRecorder(events)
+    twin.memory = cast(Any, _MemoryRecorder(events))
 
     monkeypatch.setattr("lumina_core.engine.emotional_twin_components.np.random.normal", lambda _m, _s: 0.0)
 
     result = twin.apply_correction({"signal": "BUY", "confidence": 0.9, "confluence_score": 0.85})
+    memory = cast(Any, twin.memory)
 
     assert events == ["log", "append"]
-    assert twin.memory.items[-1]["final_signal"] == result.get("signal", "HOLD")
+    assert memory.items[-1]["final_signal"] == result.get("signal", "HOLD")
     assert isinstance(getattr(twin, "_last_bias", {}), dict)
 
 
@@ -77,7 +79,7 @@ def test_nightly_train_saves_before_logging() -> None:
         events.append("save")
         saved_payload.update(calibration)
 
-    twin._calibration_store = SimpleNamespace(save=_save)
+    twin._calibration_store = cast(Any, SimpleNamespace(save=_save))
 
     updated = twin.nightly_train(
         trade_reflection_history=[{"pnl": -100.0, "reason": "fomo chase"}],
