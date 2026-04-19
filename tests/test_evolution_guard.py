@@ -21,6 +21,37 @@ def test_signed_approval_requires_confidence_and_better_fitness() -> None:
     assert guard.has_signed_approval(confidence=0.9, candidate_fitness=1.0, current_fitness=1.0) is False
 
 
+def test_real_mode_requires_approval_twin_recommendation() -> None:
+    guard = EvolutionGuard(confidence_threshold=0.85)
+
+    assert guard.requires_approval_twin(mode="real") is True
+    assert guard.has_signed_approval(
+        mode="real",
+        confidence=0.95,
+        candidate_fitness=2.5,
+        current_fitness=1.0,
+        approval_twin_recommendation=None,
+    ) is False
+    assert guard.has_signed_approval(
+        mode="real",
+        confidence=0.95,
+        candidate_fitness=2.5,
+        current_fitness=1.0,
+        approval_twin_recommendation=True,
+    ) is True
+
+
+def test_resolve_approval_twin_recommendation_from_agent_dict() -> None:
+    class _Twin:
+        def evaluate_dna_promotion(self, _dna):
+            return {"recommendation": True, "confidence": 0.93}
+
+    guard = EvolutionGuard()
+
+    assert guard.resolve_approval_twin_recommendation(approval_twin=_Twin(), dna={"hash": "abc"}) is True
+    assert guard.resolve_approval_twin_recommendation(approval_twin=None, dna={"hash": "abc"}) is False
+
+
 def test_rollback_triggers_for_worse_candidate_within_window() -> None:
     guard = EvolutionGuard()
     now = datetime.now(timezone.utc)

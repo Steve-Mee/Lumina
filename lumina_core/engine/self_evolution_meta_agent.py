@@ -224,10 +224,16 @@ class SelfEvolutionMetaAgent:
 
         current_guard_fitness = float(active_dna.fitness_score) if active_dna is not None else float("-inf")
         candidate_guard_fitness = float(best.get("score", float("-inf"))) if isinstance(best, dict) else float("-inf")
+        approval_twin_recommendation = guard.resolve_approval_twin_recommendation(
+            approval_twin=getattr(self, "approval_twin_agent", None),
+            dna=candidate_dna,
+        )
         signed_approval = guard.has_signed_approval(
             confidence=confidence,
             candidate_fitness=candidate_guard_fitness,
             current_fitness=current_guard_fitness,
+            mode=mode_key,
+            approval_twin_recommendation=approval_twin_recommendation,
         )
 
         forced_sim_apply = bool(self.sim_mode and best is not None)
@@ -246,6 +252,7 @@ class SelfEvolutionMetaAgent:
             confidence=confidence,
             candidate_fitness=candidate_guard_fitness,
             previous_fitness=current_guard_fitness,
+            approval_twin_recommendation=approval_twin_recommendation,
             current_hash=active_dna.hash if active_dna is not None else None,
             promoted_at=promoted_at,
             now=now,

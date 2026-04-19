@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 
 def _normalize_mode(mode: str | None) -> str:
@@ -38,12 +39,28 @@ class EvolutionGuard:
         confidence: float,
         candidate_fitness: float,
         current_fitness: float,
+        mode: str | None = None,
+        approval_twin_recommendation: bool | None = None,
     ) -> bool:
         normalized_confidence = _normalize_confidence(confidence)
-        return bool(
+        local_gate = bool(
             normalized_confidence > float(self.confidence_threshold)
             and float(candidate_fitness) > float(current_fitness)
         )
+        if mode is not None and _normalize_mode(mode) == "real":
+            return bool(local_gate and approval_twin_recommendation is True)
+        return local_gate
+
+    def requires_approval_twin(self, *, mode: str) -> bool:
+        return _normalize_mode(mode) == "real"
+
+    def resolve_approval_twin_recommendation(self, *, approval_twin: Any | None, dna: Any) -> bool:
+        if approval_twin is None or not hasattr(approval_twin, "evaluate_dna_promotion"):
+            return False
+        result = approval_twin.evaluate_dna_promotion(dna)
+        if isinstance(result, dict):
+            return bool(result.get("recommendation", False))
+        return False
 
     def allows_generation_progress(
         self,
@@ -78,6 +95,7 @@ class EvolutionGuard:
         confidence: float,
         candidate_fitness: float,
         previous_fitness: float,
+        approval_twin_recommendation: bool | None = None,
         current_hash: str | None = None,
         promoted_at: datetime | None = None,
         now: datetime | None = None,
@@ -87,6 +105,8 @@ class EvolutionGuard:
             confidence=confidence,
             candidate_fitness=candidate_fitness,
             current_fitness=previous_fitness,
+            mode=mode,
+            approval_twin_recommendation=approval_twin_recommendation,
         )
         rollback_required = self.should_rollback(
             promoted_at=promoted_at,
