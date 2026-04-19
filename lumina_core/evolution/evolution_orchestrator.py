@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import random
 import threading
 from dataclasses import dataclass, field
@@ -38,6 +39,7 @@ from lumina_core.experiments.ab_framework import ABExperimentFramework
 
 _METRICS_PATH = Path("logs/evolution_metrics.jsonl")
 _CAPITAL_GUARD_DD = 25_000.0  # mirrors calculate_fitness hard guard
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> str:

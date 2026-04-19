@@ -62,25 +62,18 @@ class EvolutionGuard:
             return bool(result.get("recommendation", False))
         return False
 
-        def should_trigger_telegram(
-            self,
-            *,
-            twin_confidence: float,
-            risk_flags: list,
-        ) -> bool:
-            """Return True when twin is highly confident with no risk flags.
+    def should_trigger_telegram(
+        self,
+        *,
+        twin_confidence: float,
+        risk_flags: list,
+    ) -> bool:
+        """Return True when twin is highly confident with no risk flags.
 
-            Per spec: confidence > 90% AND no risk_flags → send Telegram proposal +
-            open 30-min fail-closed veto window before REAL promotion.
-
-            Args:
-                twin_confidence: Approval twin confidence score [0, 1]
-                risk_flags: List of risk flag strings from twin evaluation
-
-            Returns:
-                True if Telegram notification + veto window should be triggered
-            """
-            return _normalize_confidence(twin_confidence) > 0.90 and len(list(risk_flags)) == 0
+        Per spec: confidence > 90% AND no risk_flags -> send Telegram proposal +
+        open 30-min fail-closed veto window before REAL promotion.
+        """
+        return _normalize_confidence(twin_confidence) > 0.90 and len(list(risk_flags)) == 0
 
     def allows_generation_progress(
         self,
