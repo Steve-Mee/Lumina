@@ -87,6 +87,10 @@ state/sim_stability_history.jsonl
 state/test_runs/*.json
 state/dna_registry.jsonl
 state/dna_registry.sqlite3
+state/steve_values_registry.jsonl
+state/steve_values_registry.sqlite3
+state/veto_registry.db
+state/veto_registry.jsonl
 state/full_pytest.*.log
 state/phase3_sim300*.log
 state/test_bypass_*_run.*.log
