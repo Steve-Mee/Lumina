@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 from lumina_core.engine import EngineConfig, TradeReconciler
 from lumina_core.engine.lumina_engine import LuminaEngine
@@ -25,7 +25,7 @@ def _build_engine(tmp_path: Path, *, trade_mode: str = "real") -> tuple[LuminaEn
         trade_reconciler_audit_log=tmp_path / "trade_reconcile_audit.jsonl",
         trade_reconciler_status_file=tmp_path / "trade_reconcile_status.json",
     )
-    engine = LuminaEngine(cfg)
+    engine = cast(Any, LuminaEngine)(config=cfg)
     pushes: list[dict] = []
     publishes: list[dict] = []
     thoughts: list[dict] = []
