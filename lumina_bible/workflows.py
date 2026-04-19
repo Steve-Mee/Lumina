@@ -36,7 +36,7 @@ def _infer_json(app: Any, payload: dict[str, Any], timeout: int, context: str) -
     if not callable(post_xai_fn):
         return None
     response = post_xai_fn(payload, timeout=timeout, context=context)
-    if not response or response.status_code != 200:
+    if not isinstance(response, requests.Response) or response.status_code != 200:
         return None
 
     content = response.json()["choices"][0]["message"]["content"]
@@ -111,7 +111,7 @@ Geef ALLEEN JSON met: reflection (max 400 chars), key_lesson, suggested_bible_up
         )
 
         bible_engine = getattr(app, "bible_engine", None)
-        if hasattr(bible_engine, "add_community_reflection"):
+        if bible_engine is not None and hasattr(bible_engine, "add_community_reflection"):
             bible_engine.add_community_reflection(ref_json)
 
         _post_reflection_to_lumina_os(app, ref_json, pnl_dollars)
@@ -204,7 +204,7 @@ def dna_rewrite_daemon(app: Any, interval_seconds: int = 900) -> None:
                     app.bible["evolvable_layer"] = new_layer
                     app.engine.bible_engine.save()
                     bible_engine = getattr(app, "bible_engine", None)
-                    if hasattr(bible_engine, "evolve_from_community"):
+                    if bible_engine is not None and hasattr(bible_engine, "evolve_from_community"):
                         bible_engine.evolve_from_community()
                     app.log_thought({"type": "bible_evolution"})
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
