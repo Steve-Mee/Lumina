@@ -60,7 +60,7 @@ Regels (v51 CAPITAL PRESERVATION FIRST):
 
 @dataclass(slots=True)
 class BibleEngine:
-    file_path: Path | str = Path("state/lumina_daytrading_bible.json")
+    file_path: Path = Path("state/lumina_daytrading_bible.json")
     bible: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
