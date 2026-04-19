@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from typing import Any, cast
 
 from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
@@ -88,8 +89,8 @@ def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch) 
 
     orchestrator = EvolutionOrchestrator()
     registry = _RegistryStub()
-    orchestrator._registry = registry
-    orchestrator._sim_runner = _SimRunnerStub()
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerStub())
 
     summary = orchestrator.run_nightly_evolution_cycle(
         generations=1,
