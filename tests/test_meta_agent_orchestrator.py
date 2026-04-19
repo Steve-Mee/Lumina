@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_core.engine.meta_agent_orchestrator import MetaAgentOrchestrator
@@ -65,9 +66,9 @@ def test_meta_orchestrator_runs_reflection_and_evolution(tmp_path: Path) -> None
     self_evolution = _SelfEvolutionStub()
     trainer = _TrainerStub()
     bible = _BibleStub()
-    orchestrator = MetaAgentOrchestrator(
+    orchestrator = cast(Any, MetaAgentOrchestrator)(
         blackboard=bus,
-        self_evolution_agent=self_evolution,
+        self_evolution_agent=cast(Any, self_evolution),
         ppo_trainer=trainer,
         bible_engine=bible,
     )
@@ -91,9 +92,9 @@ def test_meta_orchestrator_dry_run_skips_training(tmp_path: Path) -> None:
     bus = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
     self_evolution = _SelfEvolutionStub()
     trainer = _TrainerStub()
-    orchestrator = MetaAgentOrchestrator(
+    orchestrator = cast(Any, MetaAgentOrchestrator)(
         blackboard=bus,
-        self_evolution_agent=self_evolution,
+        self_evolution_agent=cast(Any, self_evolution),
         ppo_trainer=trainer,
         bible_engine=SimpleNamespace(evolve=lambda *_a, **_k: None),
     )
