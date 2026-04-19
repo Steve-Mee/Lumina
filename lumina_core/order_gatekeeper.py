@@ -426,7 +426,9 @@ def enforce_pre_trade_gate(
             )
         var_ok = bool(var_result[0])
         var_reason = str(var_result[1])
-        var_payload: dict[str, Any] = dict(var_result[2]) if len(var_result) >= 3 and isinstance(var_result[2], dict) else {}
+        var_payload: dict[str, Any] = (
+            dict(var_result[2]) if len(var_result) >= 3 and isinstance(var_result[2], dict) else {}
+        )
 
         mc_ok = True
         mc_reason = "mc_gate_not_configured"

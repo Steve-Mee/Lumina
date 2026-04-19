@@ -136,7 +136,9 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge() -> None:
         ),
         config=SimpleNamespace(trade_mode="real", instrument="MES JUN26"),
         get_current_dream_snapshot=lambda: {"stop": 4990.0, "target": 5010.0, "regime": "NEUTRAL"},
-        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        reasoning_service=SimpleNamespace(
+            refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
+        ),
         blackboard=_Blackboard(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         risk_controller=SimpleNamespace(

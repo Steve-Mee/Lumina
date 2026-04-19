@@ -21,6 +21,8 @@ import pandas as pd
 from lumina_core.engine.operations_service import OperationsService
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import check_pre_trade_risk
+
+
 class _Event:
     def __init__(self, payload: dict[str, Any]) -> None:
         self.payload = payload
@@ -40,7 +42,6 @@ class _Blackboard:
         if topic == "execution.aggregate":
             return _Event({"signal": "BUY", "chosen_strategy": "rl"})
         return None
-
 
 
 # ─── helpers ────────────────────────────────────────────────────────────────
@@ -80,7 +81,9 @@ def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: b
         risk_controller=risk_ctrl,
         session_guard=session_guard,
         current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
-        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        reasoning_service=SimpleNamespace(
+            refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
+        ),
         blackboard=_Blackboard(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
@@ -251,7 +254,9 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
         risk_controller=risk_ctrl,
         session_guard=session_guard,
         current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
-        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        reasoning_service=SimpleNamespace(
+            refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
+        ),
         blackboard=_Blackboard(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},

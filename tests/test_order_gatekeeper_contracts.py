@@ -93,7 +93,9 @@ def _make_engine(
         "session_guard": None,
         "current_regime_snapshot": {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
         "market_regime": "NEUTRAL",
-        "reasoning_service": SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        "reasoning_service": SimpleNamespace(
+            refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
+        ),
         "get_current_dream_snapshot": lambda: {"confidence": 0.7, "expected_value": 1.2},
         "blackboard": _Blackboard(),
         "audit_log_service": SimpleNamespace(log_decision=lambda *_args, **_kwargs: True),
@@ -231,7 +233,10 @@ def test_enforce_pre_trade_gate_real_blocks_on_var_es(monkeypatch) -> None:
 
 
 def test_enforce_pre_trade_gate_sim_var_es_is_advisory(monkeypatch) -> None:
-    engine = _make_engine(trade_mode="sim", risk_controller=_RiskController(var_es_ok=False, var_es_reason="VAR_ES breached: ES95 1600 > 1500"))
+    engine = _make_engine(
+        trade_mode="sim",
+        risk_controller=_RiskController(var_es_ok=False, var_es_reason="VAR_ES breached: ES95 1600 > 1500"),
+    )
 
     monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
 

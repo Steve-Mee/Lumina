@@ -340,7 +340,9 @@ class LocalInferenceEngine:
         try:
             if provider == "vllm":
                 if not self._is_vllm_healthy():
-                    runtime_reason = str(self.cost_tracker.get("local_inference_vllm_runtime_reason", "") or "health_down")
+                    runtime_reason = str(
+                        self.cost_tracker.get("local_inference_vllm_runtime_reason", "") or "health_down"
+                    )
                     raise LuminaError(
                         severity=ErrorSeverity.FATAL_MODE_VIOLATION,
                         code="INFERENCE_VLLM_UNHEALTHY",

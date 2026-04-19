@@ -360,9 +360,7 @@ class SelfEvolutionMetaAgent:
                     "dna": dict(outcome.get("dna", {})) if isinstance(outcome.get("dna"), dict) else {},
                     "timestamp": now.isoformat(),
                 },
-                confidence=max(
-                    0.0, min(1.0, float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0) / 100.0)
-                ),
+                confidence=max(0.0, min(1.0, float(outcome.get("proposal", {}).get("confidence", 0.0) or 0.0) / 100.0)),
             )
         return outcome
 
