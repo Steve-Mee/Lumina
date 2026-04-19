@@ -6,6 +6,8 @@ import importlib.util
 
 # Import the runtime module using importlib
 spec = importlib.util.spec_from_file_location("lumina_runtime", "lumina_runtime.py")
+if spec is None or spec.loader is None:
+    raise RuntimeError("Unable to load lumina_runtime.py")
 runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 
