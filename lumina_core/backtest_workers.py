@@ -103,9 +103,7 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                 monte = advanced_backtester.full_monte_carlo(snapshot, runs=800)
 
                 # 5. Dashboard
-                dashboard_path = advanced_backtester.generate_regime_dashboard(
-                    snapshot, wf, monte, regime_res
-                )
+                dashboard_path = advanced_backtester.generate_regime_dashboard(snapshot, wf, monte, regime_res)
 
                 app.log_thought(
                     {

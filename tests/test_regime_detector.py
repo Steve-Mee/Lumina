@@ -168,9 +168,7 @@ def test_reasoning_service_updates_regime_snapshot_and_risk_limits() -> None:
         engine=cast(Any, engine),
         inference_engine=cast(
             Any,
-            SimpleNamespace(
-            infer_json=lambda *args, **kwargs: {"signal": "BUY", "confidence": 0.9, "reason": "ok"}
-            ),
+            SimpleNamespace(infer_json=lambda *args, **kwargs: {"signal": "BUY", "confidence": 0.9, "reason": "ok"}),
         ),
         regime_detector=detector,
     )

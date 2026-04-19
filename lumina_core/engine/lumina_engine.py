@@ -189,6 +189,7 @@ class LuminaEngine:
     def __post_init__(self) -> None:
         if self.bible_engine is None:
             from pathlib import Path  # noqa: PLC0415
+
             self.bible_engine = BibleEngine(Path(self.config.bible_file))
             if callable(getattr(self.bible_engine, "load", None)):
                 self.bible_engine.bible = self.bible_engine.load()

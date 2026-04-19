@@ -65,7 +65,9 @@ def _build_service(mode: str) -> tuple[OperationsService, _BrokerSpy]:
         risk_controller=risk_ctrl,
         session_guard=session_guard,
         current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
-        reasoning_service=SimpleNamespace(refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}),
+        reasoning_service=SimpleNamespace(
+            refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
+        ),
         blackboard=_Blackboard(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
