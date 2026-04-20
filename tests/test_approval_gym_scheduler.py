@@ -3,11 +3,9 @@
 import json
 import pytest
 import tempfile
-import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from lumina_core.evolution import ApprovalGymScheduler
 

@@ -3,7 +3,7 @@
 import json
 import pytest
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from lumina_core.evolution import VetoRecord, VetoRegistry, VetoWindow, TelegramNotifier

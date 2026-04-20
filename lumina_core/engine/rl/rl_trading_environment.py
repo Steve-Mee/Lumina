@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 from typing import Any
 
 import gymnasium as gym
 import numpy as np
 import pandas as pd
+import requests
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.engine.valuation_engine import ValuationEngine
@@ -29,8 +32,16 @@ class RLTradingEnvironment(gym.Env):
         self.valuation_engine = ValuationEngine()
         self.instrument = str(self.context.engine.config.instrument)
         self._dna_version = str(getattr(self.context.engine, "active_dna_version", "GENESIS") or "GENESIS")
+        self._active_dna_payload: dict[str, Any] = {
+            "hash": self._dna_version,
+            "content": "",
+            "fitness": 0.0,
+            "mutation_rate": 0.0,
+            "regime_focus": "neutral",
+        }
+        self._dna_embedding_dim = 10
 
-        # Observation space (23 features: 9 market + 4 DNA-embedding + 10 reserved)
+        # Observation space (23 features): 9 market + 10 semantic DNA + 4 DNA summary features
         self.observation_space = gym.spaces.Box(low=-10, high=10, shape=(23,), dtype=np.float32)
 
         # PPO verwacht een enkelvoudige action space. We encoden:
@@ -48,11 +59,97 @@ class RLTradingEnvironment(gym.Env):
 
     def set_dna_version(self, dna_version: str) -> None:
         self._dna_version = str(dna_version)
+        self._active_dna_payload["hash"] = self._dna_version
+
+    def set_full_dna_embedding(self, dna_payload: dict[str, Any]) -> None:
+        """Inject full PolicyDNA payload for Meta-RL conditioning."""
+        payload = dna_payload if isinstance(dna_payload, dict) else {}
+        self._dna_version = str(payload.get("hash") or payload.get("lineage_hash") or self._dna_version or "GENESIS")
+        self._active_dna_payload = {
+            "hash": self._dna_version,
+            "content": str(payload.get("content") or ""),
+            "fitness": float(payload.get("fitness", payload.get("fitness_score", 0.0)) or 0.0),
+            "mutation_rate": float(payload.get("mutation_rate", 0.0) or 0.0),
+            "regime_focus": str(payload.get("regime_focus") or self._infer_regime_focus(payload) or "neutral"),
+        }
+
+    def _infer_regime_focus(self, payload: dict[str, Any]) -> str:
+        content = str(payload.get("content") or "").lower()
+        if "trend" in content:
+            return "trending"
+        if "range" in content:
+            return "ranging"
+        if "volatility" in content or "high_vol" in content:
+            return "high_volatility"
+        return "neutral"
+
+    def _canonical_dna_text(self) -> str:
+        return json.dumps(
+            {
+                "hash": self._active_dna_payload.get("hash", self._dna_version),
+                "content": self._active_dna_payload.get("content", ""),
+                "fitness": float(self._active_dna_payload.get("fitness", 0.0) or 0.0),
+                "mutation_rate": float(self._active_dna_payload.get("mutation_rate", 0.0) or 0.0),
+                "regime_focus": str(self._active_dna_payload.get("regime_focus", "neutral") or "neutral"),
+            },
+            sort_keys=True,
+            ensure_ascii=True,
+        )
+
+    def _hash_embedding(self, text: str) -> list[float]:
+        digest = hashlib.sha256(text.encode("utf-8")).digest()
+        return [((digest[idx] / 127.5) - 1.0) for idx in range(self._dna_embedding_dim)]
+
+    def _provider_dna_embedding(self, text: str) -> list[float] | None:
+        provider = str(os.getenv("LUMINA_DNA_EMBED_PROVIDER", "ollama")).strip().lower()
+        model = str(os.getenv("LUMINA_DNA_EMBED_MODEL", "nomic-embed-text")).strip() or "nomic-embed-text"
+
+        try:
+            if provider == "vllm":
+                endpoint = str(os.getenv("LUMINA_VLLM_HOST", "http://localhost:8000")).rstrip("/")
+                response = requests.post(
+                    f"{endpoint}/v1/embeddings",
+                    json={"model": model, "input": text},
+                    timeout=1.8,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                raw = payload.get("data", [{}])[0].get("embedding", [])
+            else:
+                import ollama
+
+                embed_fn = getattr(ollama, "embed", None)
+                if callable(embed_fn):
+                    payload = embed_fn(model=model, input=text)
+                    raw = payload.get("embeddings", [[]])[0]
+                else:
+                    payload = ollama.embeddings(model=model, prompt=text)
+                    raw = payload.get("embedding", [])
+
+            if not isinstance(raw, list) or not raw:
+                return None
+            vector = [float(v) for v in raw[: self._dna_embedding_dim]]
+            if len(vector) < self._dna_embedding_dim:
+                vector.extend([0.0] * (self._dna_embedding_dim - len(vector)))
+            max_abs = max(max(abs(v) for v in vector), 1e-9)
+            return [max(-1.0, min(1.0, v / max_abs)) for v in vector]
+        except Exception:
+            return None
+
+    def _dna_summary_features(self) -> list[float]:
+        regime = str(self._active_dna_payload.get("regime_focus", "neutral") or "neutral").lower()
+        return [
+            max(-1.0, min(1.0, float(self._active_dna_payload.get("fitness", 0.0) or 0.0))),
+            max(0.0, min(1.0, float(self._active_dna_payload.get("mutation_rate", 0.0) or 0.0))),
+            1.0 if "trend" in regime else 0.0,
+            1.0 if "vol" in regime else 0.0,
+        ]
 
     def _dna_embedding(self) -> list[float]:
-        """4-float DNA embedding: first 4 bytes of SHA-256(dna_version), normalised to [-1, 1]."""
-        digest = hashlib.sha256(self._dna_version.encode("utf-8")).digest()
-        return [(b / 127.5) - 1.0 for b in digest[:4]]
+        """Semantic DNA embedding from Ollama/vLLM with deterministic hash fallback."""
+        canonical = self._canonical_dna_text()
+        provider_embedding = self._provider_dna_embedding(canonical)
+        return provider_embedding if provider_embedding is not None else self._hash_embedding(canonical)
 
     def _get_observation(self) -> np.ndarray:
         """Volledige state als vector."""
@@ -63,7 +160,7 @@ class RLTradingEnvironment(gym.Env):
 
         obs = np.array(
             [
-                price / 5000.0,  # normalized price
+                price / 5000.0,
                 dream.get("confidence", 0.5),
                 dream.get("confluence_score", 0.5),
                 1.0 if regime == "TRENDING" else 0.0,
@@ -72,19 +169,8 @@ class RLTradingEnvironment(gym.Env):
                 self.context.account_equity / 50000.0,
                 len(self.pnl_history) / 100.0,
                 np.mean(self.pnl_history[-10:]) if self.pnl_history else 0.0,
-                # DNA embedding (Meta-RL: 4-byte hash → policy conditions on lineage)
                 *self._dna_embedding(),
-                # reserved future features: fib distance, MA slope, volume delta, etc.
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
+                *self._dna_summary_features(),
             ],
             dtype=np.float32,
         )

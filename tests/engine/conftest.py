@@ -15,8 +15,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lumina_core.engine import EngineConfig, MarketDataService
-from lumina_core.engine.lumina_engine import LuminaEngine
+from lumina_core.engine import EngineConfig, MarketDataService  # noqa: E402
+from lumina_core.engine.lumina_engine import LuminaEngine  # noqa: E402
 
 
 class _NoOpPPOTrainer:

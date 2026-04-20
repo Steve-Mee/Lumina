@@ -6,8 +6,9 @@ import logging
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
+
+import pandas as pd
 
 from .dna_registry import PolicyDNA
 
@@ -51,11 +52,13 @@ class MultiDaySimRunner:
         max_workers: int = 8,
         drawdown_limit_ratio: float = 0.02,
         real_market_data: bool = False,
+        true_backtest_mode: bool = False,
         market_data_service: Any | None = None,
     ) -> None:
         self.max_workers = max(1, int(max_workers))
         self.drawdown_limit_ratio = max(0.0, float(drawdown_limit_ratio))
         self.real_market_data = bool(real_market_data)
+        self.true_backtest_mode = bool(true_backtest_mode)
         self.market_data_service = market_data_service
 
     def evaluate_variants(
@@ -66,6 +69,7 @@ class MultiDaySimRunner:
         nightly_report: dict[str, Any] | None = None,
         shadow_mode: bool = False,
         real_market_data: bool = False,
+        true_backtest_mode: bool = False,
     ) -> list[SimResult]:
         if not variants:
             return []
@@ -73,6 +77,7 @@ class MultiDaySimRunner:
         report = dict(nightly_report or {})
         day_count = max(1, int(days))
         use_real_data = bool(real_market_data) and self.real_market_data and self.market_data_service is not None
+        use_true_backtest = bool(true_backtest_mode) and self.true_backtest_mode and use_real_data
         results: list[SimResult] = []
 
         with ThreadPoolExecutor(max_workers=min(self.max_workers, len(variants))) as pool:
@@ -84,6 +89,7 @@ class MultiDaySimRunner:
                     report,
                     bool(shadow_mode),
                     use_real_data,
+                    use_true_backtest,
                 ): variant
                 for variant in variants
             }
@@ -115,12 +121,14 @@ class MultiDaySimRunner:
         report: dict[str, Any],
         shadow_mode: bool,
         real_market_data: bool = False,
+        true_backtest_mode: bool = False,
     ) -> SimResult:
         seed = _stable_seed(
             variant.hash,
             str(days),
             "shadow" if shadow_mode else "regular",
             "real_data" if real_market_data else "simulated",
+            "true_backtest" if true_backtest_mode else "heuristic_backtest",
             json.dumps(report, sort_keys=True, ensure_ascii=True),
         )
         rng = random.Random(seed)
@@ -131,6 +139,7 @@ class MultiDaySimRunner:
         baseline_equity = max(1.0, float(report.get("account_equity", 50000.0) or 50000.0))
 
         pnl_values: list[float] = []
+        regime_fit_bonus = 0.0
         max_drawdown_ratio = 0.0
         hypothetical_fills: list[ShadowFill] = []
 
@@ -151,7 +160,21 @@ class MultiDaySimRunner:
                 logger.warning("[EVOLUTION] Real market data load failed: %s – using simulation", exc)
                 real_market_data = False
 
-        if real_market_data and real_ticks:
+        if true_backtest_mode and real_market_data and real_ticks:
+            backtest = self._run_true_backtest(
+                ticks=real_ticks,
+                target_days=days,
+                baseline_equity=baseline_equity,
+                variant=variant,
+                rng=rng,
+                shadow_mode=shadow_mode,
+            )
+            pnl_values = list(backtest.get("daily_pnl", []) or [])
+            max_drawdown_ratio = float(backtest.get("max_drawdown_ratio", 0.0) or 0.0)
+            regime_fit_bonus = float(backtest.get("regime_fit_bonus", 0.0) or 0.0)
+            if shadow_mode:
+                hypothetical_fills = list(backtest.get("fills", []) or [])
+        elif real_market_data and real_ticks:
             # Use real tick data to calculate PnL
             pnl_values = self._calculate_real_pnl(
                 real_ticks, days, baseline_equity, variant, rng
@@ -215,7 +238,8 @@ class MultiDaySimRunner:
             )
 
         avg_pnl = float(sum(pnl_values) / len(pnl_values)) if pnl_values else 0.0
-        regime_fit_bonus = max(-0.5, min(0.5, base_sharpe * 0.1 + rng.uniform(-0.05, 0.05)))
+        if not true_backtest_mode:
+            regime_fit_bonus = max(-0.5, min(0.5, base_sharpe * 0.1 + rng.uniform(-0.05, 0.05)))
         drawdown_penalty = max_drawdown_ratio * 100.0
         fitness = avg_pnl - drawdown_penalty + regime_fit_bonus
 
@@ -272,7 +296,6 @@ class MultiDaySimRunner:
 
             # Calculate intraday price moves and derive daily PnL
             entry_price = float(day_ticks[0].get("last", 100.0))
-            exit_price = float(day_ticks[-1].get("last", entry_price))
             max_price = max(float(t.get("high", t.get("last", entry_price))) for t in day_ticks)
             min_price = min(float(t.get("low", t.get("last", entry_price))) for t in day_ticks)
 
@@ -290,3 +313,237 @@ class MultiDaySimRunner:
             pnl_values.append(float(daily_pnl))
 
         return pnl_values
+
+    def _run_true_backtest(
+        self,
+        *,
+        ticks: list[dict[str, Any]],
+        target_days: int,
+        baseline_equity: float,
+        variant: PolicyDNA,
+        rng: random.Random,
+        shadow_mode: bool,
+    ) -> dict[str, Any]:
+        daily_bars = self._group_ticks_by_day(ticks=ticks)
+        day_keys = sorted(daily_bars.keys())[-max(1, int(target_days)):]
+
+        equity = float(baseline_equity)
+        peak_equity = float(baseline_equity)
+        max_dd_ratio = 0.0
+        regime_bonus = 0.0
+        fills: list[ShadowFill] = []
+        pnl_values: list[float] = []
+
+        variant_focus = self._variant_regime_focus(variant)
+
+        for idx, day_key in enumerate(day_keys, start=1):
+            day_ticks = daily_bars.get(day_key, [])
+            if len(day_ticks) < 2:
+                pnl_values.append(0.0)
+                continue
+
+            day_df = self._ticks_to_ohlc_frame(day_ticks)
+            day_regime = self._detect_day_regime(day_df=day_df)
+            regime_bonus += self._regime_alignment_score(variant_focus=variant_focus, detected_regime=day_regime)
+
+            trade = self._simulate_day_trade(
+                day_ticks=day_ticks,
+                variant=variant,
+                variant_focus=variant_focus,
+                detected_regime=day_regime,
+                rng=rng,
+            )
+            day_pnl = float(trade.get("pnl", 0.0) or 0.0)
+            pnl_values.append(day_pnl)
+
+            equity += day_pnl
+            peak_equity = max(peak_equity, equity)
+            drawdown = max(0.0, peak_equity - equity)
+            max_dd_ratio = max(max_dd_ratio, drawdown / max(1.0, baseline_equity))
+
+            if shadow_mode:
+                fills.append(
+                    ShadowFill(
+                        day_index=idx,
+                        side=str(trade.get("side", "HOLD")),
+                        qty=int(trade.get("qty", 1) or 1),
+                        entry_price=float(trade.get("entry_price", 0.0) or 0.0),
+                        exit_price=float(trade.get("exit_price", 0.0) or 0.0),
+                        pnl=day_pnl,
+                        reason=f"shadow_true_backtest_{day_regime.lower()}",
+                    )
+                )
+
+        normalized_regime_bonus = max(-0.75, min(0.75, regime_bonus / max(1, len(day_keys))))
+        return {
+            "daily_pnl": pnl_values,
+            "max_drawdown_ratio": max_dd_ratio,
+            "regime_fit_bonus": normalized_regime_bonus,
+            "fills": fills,
+        }
+
+    @staticmethod
+    def _group_ticks_by_day(*, ticks: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for tick in ticks:
+            ts = str(tick.get("timestamp", "") or "")
+            if len(ts) < 10:
+                continue
+            day_key = ts[:10]
+            grouped.setdefault(day_key, []).append(tick)
+        return grouped
+
+    def _variant_regime_focus(self, variant: PolicyDNA) -> str:
+        raw_content = str(getattr(variant, "content", "") or "")
+        payload: dict[str, Any] = {}
+        try:
+            loaded = json.loads(raw_content)
+            if isinstance(loaded, dict):
+                payload = loaded
+        except Exception:
+            payload = {}
+
+        explicit = str(payload.get("regime_focus", "") or "").strip().lower()
+        if explicit:
+            return explicit
+        text = raw_content.lower()
+        if "trend" in text:
+            return "trending"
+        if "range" in text:
+            return "ranging"
+        if "volatility" in text or "volatile" in text:
+            return "high_volatility"
+        return "neutral"
+
+    def _ticks_to_ohlc_frame(self, day_ticks: list[dict[str, Any]]) -> pd.DataFrame:
+        rows: list[dict[str, Any]] = []
+        for tick in day_ticks:
+            px = float(tick.get("last", 0.0) or 0.0)
+            if px <= 0.0:
+                continue
+            rows.append(
+                {
+                    "timestamp": tick.get("timestamp"),
+                    "open": px,
+                    "high": float(tick.get("high", px) or px),
+                    "low": float(tick.get("low", px) or px),
+                    "close": px,
+                    "volume": float(tick.get("volume", 0.0) or 0.0),
+                }
+            )
+        if not rows:
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+        return pd.DataFrame(rows)
+
+    def _detect_day_regime(self, *, day_df: pd.DataFrame) -> str:
+        engine = getattr(self.market_data_service, "engine", None)
+        if engine is not None and hasattr(engine, "detect_market_regime") and len(day_df) > 4:
+            try:
+                regime = engine.detect_market_regime(day_df)
+                return str(regime or "NEUTRAL").upper()
+            except Exception:
+                pass
+        return "NEUTRAL"
+
+    @staticmethod
+    def _regime_alignment_score(*, variant_focus: str, detected_regime: str) -> float:
+        focus = str(variant_focus or "neutral").lower()
+        regime = str(detected_regime or "NEUTRAL").lower()
+        if focus == "neutral":
+            return 0.02
+        if ("trend" in focus and "trend" in regime) or ("range" in focus and "rang" in regime):
+            return 0.12
+        if "vol" in focus and ("vol" in regime or "news" in regime):
+            return 0.12
+        return -0.06
+
+    def _simulate_day_trade(
+        self,
+        *,
+        day_ticks: list[dict[str, Any]],
+        variant: PolicyDNA,
+        variant_focus: str,
+        detected_regime: str,
+        rng: random.Random,
+    ) -> dict[str, Any]:
+        first = day_ticks[0]
+        last = day_ticks[-1]
+        open_px = float(first.get("last", 0.0) or 0.0)
+        close_px = float(last.get("last", open_px) or open_px)
+        highs = [float(t.get("last", open_px) or open_px) for t in day_ticks]
+        day_high = max(highs) if highs else open_px
+        day_low = min(highs) if highs else open_px
+        day_range = max(0.25, day_high - day_low)
+
+        focus = str(variant_focus or "neutral").lower()
+        regime = str(detected_regime or "NEUTRAL").lower()
+        trend_up = close_px >= open_px
+        if "range" in focus:
+            side = -1 if trend_up else 1
+        elif "trend" in focus or "trend" in regime:
+            side = 1 if trend_up else -1
+        elif "vol" in focus:
+            side = 1 if rng.random() >= 0.5 else -1
+        else:
+            side = 1 if trend_up else -1
+
+        qty = max(1, min(3, int(1 + round(float(getattr(variant, "mutation_rate", 0.0) or 0.0) * 4.0))))
+        stop_distance = max(0.25, day_range * 0.35)
+        target_distance = max(0.25, day_range * 0.60)
+
+        entry_price = float(first.get("ask", open_px) if side > 0 else first.get("bid", open_px))
+        stop_price = entry_price - stop_distance if side > 0 else entry_price + stop_distance
+        target_price = entry_price + target_distance if side > 0 else entry_price - target_distance
+
+        exit_price = close_px
+        for tick in day_ticks[1:]:
+            bid = float(tick.get("bid", tick.get("last", close_px)) or close_px)
+            ask = float(tick.get("ask", tick.get("last", close_px)) or close_px)
+            mark = bid if side > 0 else ask
+            if side > 0 and mark <= stop_price:
+                exit_price = stop_price
+                break
+            if side > 0 and mark >= target_price:
+                exit_price = target_price
+                break
+            if side < 0 and mark >= stop_price:
+                exit_price = stop_price
+                break
+            if side < 0 and mark <= target_price:
+                exit_price = target_price
+                break
+
+        point_value = self._point_value()
+        pnl = (exit_price - entry_price) * float(side) * float(qty) * float(point_value)
+        commission = self._commission_cost(qty=qty)
+        net_pnl = float(pnl - commission)
+
+        return {
+            "side": "BUY" if side > 0 else "SELL",
+            "qty": qty,
+            "entry_price": entry_price,
+            "exit_price": exit_price,
+            "pnl": net_pnl,
+        }
+
+    def _point_value(self) -> float:
+        engine = getattr(self.market_data_service, "engine", None)
+        valuation = getattr(engine, "valuation_engine", None)
+        instrument = str(getattr(getattr(engine, "config", None), "instrument", "MES") or "MES")
+        if valuation is not None and hasattr(valuation, "point_value"):
+            try:
+                return float(valuation.point_value(instrument))
+            except Exception:
+                return 5.0
+        return 5.0
+
+    def _commission_cost(self, *, qty: int) -> float:
+        engine = getattr(self.market_data_service, "engine", None)
+        valuation = getattr(engine, "valuation_engine", None)
+        instrument = str(getattr(getattr(engine, "config", None), "instrument", "MES") or "MES")
+        if valuation is not None and hasattr(valuation, "commission_dollars"):
+            try:
+                return float(valuation.commission_dollars(symbol=instrument, quantity=int(qty), sides=2))
+            except Exception:
+                return float(qty) * 2.58
+        return float(qty) * 2.58

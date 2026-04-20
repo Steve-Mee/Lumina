@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import importlib
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 
@@ -26,11 +26,18 @@ class PPOTrainer:
     def __init__(self, context: RuntimeContext):
         self.context = context
         self._dna_version = str(getattr(getattr(context, "engine", None), "active_dna_version", "GENESIS") or "GENESIS")
+        self._full_dna_payload: dict[str, Any] = {
+            "hash": self._dna_version,
+            "content": "",
+            "fitness": 0.0,
+            "mutation_rate": 0.0,
+            "regime_focus": "neutral",
+        }
         ppo_cls, make_vec_env = _load_sb3()
 
         def _build_env() -> RLTradingEnvironment:
             env = RLTradingEnvironment(context)
-            env.set_dna_version(self._dna_version)
+            env.set_full_dna_embedding(self._full_dna_payload)
             return env
 
         self.env = make_vec_env(_build_env, n_envs=4)
@@ -47,8 +54,24 @@ class PPOTrainer:
             tensorboard_log="./lumina_rl_logs/",
         )
 
+    def set_full_dna_embedding(self, dna_payload: dict[str, Any] | Any) -> None:
+        payload = dict(dna_payload) if isinstance(dna_payload, dict) else {}
+        self._dna_version = str(payload.get("hash") or payload.get("lineage_hash") or self._dna_version or "GENESIS")
+        self._full_dna_payload = {
+            "hash": self._dna_version,
+            "content": str(payload.get("content") or ""),
+            "fitness": float(payload.get("fitness", payload.get("fitness_score", 0.0)) or 0.0),
+            "mutation_rate": float(payload.get("mutation_rate", 0.0) or 0.0),
+            "regime_focus": str(payload.get("regime_focus") or "neutral"),
+        }
+        try:
+            self.env.env_method("set_full_dna_embedding", self._full_dna_payload)
+        except Exception:
+            pass
+
     def set_dna_version(self, dna_version: str) -> None:
-        self._dna_version = str(dna_version or "GENESIS")
+        """Backward-compatible alias for callers still setting hash only."""
+        self.set_full_dna_embedding({"hash": str(dna_version or "GENESIS")})
 
     def train(self, total_timesteps: int = 100000):
         """Nightly training - run na backtest."""

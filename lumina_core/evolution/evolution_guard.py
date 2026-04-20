@@ -133,6 +133,30 @@ class EvolutionGuard:
     ) -> bool:
         return bool(float(shadow_total_pnl) > 0.0 and not veto_blocked and len(list(risk_flags or [])) == 0)
 
+    def is_confidence_gated_promotion(
+        self,
+        dna: Any,
+        twin_confidence: float,
+        shadow_passed: bool,
+        backtest_fitness: float,
+        previous_fitness: float | None = None,
+    ) -> bool:
+        """REAL promotion gate: twin >= 0.92 + positive shadow + backtest fitness improvement."""
+        confidence_ok = _normalize_confidence(twin_confidence) >= 0.92
+        if not confidence_ok or not bool(shadow_passed):
+            return False
+
+        baseline_fitness: float
+        if previous_fitness is None:
+            try:
+                baseline_fitness = float(getattr(dna, "fitness_score", 0.0) or 0.0)
+            except Exception:
+                baseline_fitness = 0.0
+        else:
+            baseline_fitness = float(previous_fitness)
+
+        return float(backtest_fitness) > baseline_fitness
+
     def allows_generation_progress(
         self,
         *,
