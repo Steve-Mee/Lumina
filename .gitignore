@@ -106,3 +106,5 @@ journal/swarm_dashboard.html
 journal/reports/LUMINA_Validation_*.pdf
 journal/reports/validator_3y_swarm_*.json
 state/agent_blackboard.jsonl
+state/lumina_sim_state.json
+coverage.xml

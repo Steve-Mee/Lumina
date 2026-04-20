@@ -282,8 +282,11 @@ class EvolutionOrchestrator:
         if mode == "real":
             twin_decision = self._approval_twin.evaluate_dna_promotion(winner_dna)
 
-        # Shadow runner – injected into guard for inline shadow validation in REAL mode.
-        shadow_runner = self._sim_runner
+        # Dedicated shadow runner for REAL promotion validation.
+        shadow_runner: Any = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
+        # Keep compatibility with injected/custom runners in tests and dev overrides.
+        if hasattr(self._sim_runner, "evaluate_variants") and not isinstance(self._sim_runner, MultiDaySimRunner):
+            shadow_runner = self._sim_runner
 
         # Guard: in REAL mode, has_signed_approval now runs shadow inline via shadow_runner.
         signed = self._guard.has_signed_approval(
@@ -310,19 +313,21 @@ class EvolutionOrchestrator:
         shadow_total_pnl = 0.0
 
         if mode == "real":
-            # Shadow validation already ran inside has_signed_approval.
-            promoted = bool(signed and generation_ok)
-            shadow_status = "passed" if promoted else "failed"
-            if promoted:
-                self._send_shadow_status_telegram(
-                    f"SHADOWTWIN PASSED \u2013 promoting\nDNA: {winner_dna.hash[:12]}\n"
-                    f"Fitness: {winner_fitness:.4f}"
-                )
-            else:
-                self._send_shadow_status_telegram(
-                    f"SHADOWTWIN FAILED \u2013 not promoting\nDNA: {winner_dna.hash[:12]}\n"
-                    f"Fitness: {winner_fitness:.4f}"
-                )
+            shadow_decision = self._run_shadow_validation_gate(
+                dna=winner_dna,
+                winner_fitness=winner_fitness,
+                nightly_report=base_metrics,
+                signed=signed,
+                generation_ok=generation_ok,
+                shadow_runner=shadow_runner,
+            )
+            promoted = bool(shadow_decision.get("promote_now", False))
+            veto_check = dict(shadow_decision.get("veto_check", veto_check) or veto_check)
+            veto_blocked = bool(shadow_decision.get("veto_blocked", False))
+            shadow_status = str(shadow_decision.get("shadow_status", shadow_status))
+            shadow_days_completed = int(shadow_decision.get("shadow_days_completed", 0) or 0)
+            shadow_days_target = int(shadow_decision.get("shadow_days_target", 0) or 0)
+            shadow_total_pnl = float(shadow_decision.get("shadow_total_pnl", 0.0) or 0.0)
         else:
             promoted = bool(signed and generation_ok)
 
@@ -393,6 +398,7 @@ class EvolutionOrchestrator:
         nightly_report: dict[str, Any],
         signed: bool,
         generation_ok: bool,
+        shadow_runner: MultiDaySimRunner,
     ) -> dict[str, Any]:
         if not signed or not generation_ok:
             return {
@@ -497,7 +503,7 @@ class EvolutionOrchestrator:
                     "shadow_total_pnl": float(sum(daily_pnl)),
                 }
 
-            shadow_results = self._sim_runner.evaluate_variants(
+            shadow_results = shadow_runner.evaluate_variants(
                 [dna],
                 days=1,
                 nightly_report=nightly_report,
