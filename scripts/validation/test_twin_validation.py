@@ -44,7 +44,7 @@ def main() -> None:
     )
 
     # Create context with mock engine
-    ctx = RuntimeContext(engine=cast(Any, mock_engine))
+    ctx = RuntimeContext(cast(Any, mock_engine))
     twin = EmotionalTwinAgent(ctx)
     print("✅ EmotionalTwinAgent loaded")
     print("FOMO/Tilt/Boredom/Revenge simulation ready")
