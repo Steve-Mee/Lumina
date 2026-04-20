@@ -124,7 +124,8 @@ class EvolutionOrchestrator:
         self._veto_window = VetoWindow(veto_registry=self._veto_registry, window_seconds=1800)
         self._telegram_notifier = TelegramNotifier(veto_registry=self._veto_registry)
         self._notification_scheduler = NotificationScheduler()
-        self._sim_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
+        # FASE 2: Initialize sim_runner with real_market_data support if configured
+        self._sim_runner = self._create_sim_runner()
         self._metrics_path = _METRICS_PATH
         self._shadow_state_path = _SHADOW_STATE_PATH
         # FASE 3: ApprovalGymScheduler – Telegram-only UI, Brussels waking hours
@@ -133,6 +134,32 @@ class EvolutionOrchestrator:
             notification_scheduler=self._notification_scheduler,
         )
         self._initialized = True
+
+    def _create_sim_runner(self) -> MultiDaySimRunner:
+        """Create MultiDaySimRunner with real_market_data support if configured."""
+        evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
+        mw_cfg = evolution_cfg.get("multiweek_fitness", {}) if isinstance(evolution_cfg, dict) else {}
+        use_real_data = bool(mw_cfg.get("use_real_market_data", False)) if isinstance(mw_cfg, dict) else False
+
+        market_data_service = None
+        if use_real_data:
+            try:
+                # Attempt to get market_data_service from runtime
+                from lumina_core.runtime_context import RuntimeContext
+                rt_ctx = getattr(RuntimeContext, "_current_runtime", None)
+                if rt_ctx is not None and hasattr(rt_ctx, "market_data_service"):
+                    market_data_service = rt_ctx.market_data_service
+                if market_data_service is None:
+                    logger.warning("[EVOLUTION] real_market_data enabled but market_data_service unavailable")
+            except Exception as exc:
+                logger.warning("[EVOLUTION] Could not initialize market_data_service: %s", exc)
+
+        return MultiDaySimRunner(
+            max_workers=8,
+            drawdown_limit_ratio=0.02,
+            real_market_data=use_real_data,
+            market_data_service=market_data_service,
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -239,7 +266,14 @@ class EvolutionOrchestrator:
                 message=f"No candidates generated for generation {generation_offset}.",
             )
 
-        sim_results = self._sim_runner.evaluate_variants(candidates, days=sim_days, nightly_report=base_metrics)
+        # FASE 2: Pass real_market_data flag to evaluate_variants
+        use_real_data = bool(getattr(self._sim_runner, "real_market_data", False))
+        sim_results = self._sim_runner.evaluate_variants(
+            candidates,
+            days=sim_days,
+            nightly_report=base_metrics,
+            real_market_data=use_real_data,
+        )
         if not sim_results:
             raise LuminaError(
                 severity=ErrorSeverity.FATAL_UNRECOVERABLE,

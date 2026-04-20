@@ -241,6 +241,7 @@ evolution:
   multiweek_fitness:
     enabled: false          # set true to use multi-week SIM scoring (Meta-RL phase)
     days: 14                # number of simulation days for fitness scoring when enabled
+    use_real_market_data: false  # set true to use real historical market data instead of random perturbations
 
 fine_tuning:
   auto_trigger: true

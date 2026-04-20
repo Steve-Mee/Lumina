@@ -60,8 +60,9 @@ class _SimRunnerStub:
         days: int,
         nightly_report: dict | None = None,
         shadow_mode: bool = False,
+        real_market_data: bool = False,
     ):
-        del days
+        del days, real_market_data  # Not used in stub
         base_pnl = float((nightly_report or {}).get("net_pnl", 25.0) or 25.0)
         return [
             SimResult(
