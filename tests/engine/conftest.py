@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import cast
 
 import pandas as pd
 import pytest
+
+# Ensure repository root is importable when pytest is invoked from nested paths.
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from lumina_core.engine import EngineConfig, MarketDataService
 from lumina_core.engine.lumina_engine import LuminaEngine
