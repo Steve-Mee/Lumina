@@ -205,14 +205,14 @@ class LuminaEngine:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
             from .realistic_backtester_engine import RealisticBacktesterEngine  # noqa: PLC0415
 
-            self.backtester = RealisticBacktesterEngine(RuntimeContext(self))
+            self.backtester = RealisticBacktesterEngine(context=RuntimeContext(engine=self))
 
         # AdvancedBacktesterEngine lazy init
         if self.advanced_backtester is None:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
             from .advanced_backtester_engine import AdvancedBacktesterEngine  # noqa: PLC0415
 
-            self.advanced_backtester = AdvancedBacktesterEngine(RuntimeContext(self))
+            self.advanced_backtester = AdvancedBacktesterEngine(context=RuntimeContext(engine=self))
 
         # RLTradingEnvironment, PPOTrainer, InfiniteSimulator, EmotionalTwinAgent,
         # SwarmManager and PerformanceValidator are built exclusively by
