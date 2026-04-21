@@ -53,6 +53,7 @@ old/
 
 # Runtime generated data
 logs/*.csv
+logs/*.log
 logs/structured_errors.jsonl
 logs/trade_fill_audit.jsonl
 logs/security_audit.jsonl

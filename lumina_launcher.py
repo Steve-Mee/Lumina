@@ -186,14 +186,19 @@ def _pid_is_alive(pid: int) -> bool:
         return False
     try:
         if os.name == "nt":
-            query = f'(Get-CimInstance Win32_Process -Filter "ProcessId = {pid}") -ne $null'
             result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", query],
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id",
+                ],
                 check=False,
                 capture_output=True,
                 text=True,
             )
-            return (result.stdout or "").strip().lower() == "true"
+            output = (result.stdout or "").strip()
+            return output == str(pid)
         os.kill(pid, 0)
         return True
     except Exception:
@@ -239,10 +244,9 @@ def _find_external_runtime_pid() -> int:
     try:
         if os.name == "nt":
             query = (
-                "Get-CimInstance Win32_Process | "
-                "Where-Object { $_.CommandLine -and "
-                "($_.CommandLine -match 'lumina_core\\\\engine\\\\runtime_entrypoint.py' -or "
-                "$_.CommandLine -match 'lumina_runtime.py') } | "
+                "Get-CimInstance Win32_Process -Property ProcessId,Name,CommandLine | "
+                "Where-Object CommandLine -Match 'lumina_runtime.py|lumina_core\\\\engine\\\\runtime_entrypoint.py' | "
+                "Where-Object Name -Match 'python|py' | "
                 "Select-Object -First 1 -ExpandProperty ProcessId"
             )
             result = subprocess.run(
@@ -272,6 +276,48 @@ def _find_external_runtime_pid() -> int:
     except Exception:
         return 0
     return 0
+
+
+def _find_runtime_pids() -> list[int]:
+    pids: list[int] = []
+    try:
+        if os.name == "nt":
+            query = (
+                "Get-CimInstance Win32_Process -Property ProcessId,Name,CommandLine | "
+                "Where-Object CommandLine -Match 'lumina_runtime.py|lumina_core\\\\engine\\\\runtime_entrypoint.py' | "
+                "Where-Object Name -Match 'python|py' | "
+                "Select-Object -ExpandProperty ProcessId"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            for line in (result.stdout or "").splitlines():
+                raw = line.strip()
+                if raw.isdigit():
+                    pids.append(int(raw))
+        else:
+            result = subprocess.run(
+                ["ps", "-eo", "pid=,args="],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            for line in (result.stdout or "").splitlines():
+                text = line.strip()
+                if not text:
+                    continue
+                if "lumina_core/engine/runtime_entrypoint.py" not in text and "lumina_runtime.py" not in text:
+                    continue
+                parts = text.split(maxsplit=1)
+                if parts and parts[0].isdigit():
+                    pids.append(int(parts[0]))
+    except Exception:
+        return []
+    # Preserve order while de-duplicating.
+    return list(dict.fromkeys([pid for pid in pids if pid > 0]))
 
 
 def _process_is_alive() -> bool:
@@ -321,29 +367,45 @@ def _start_bot_process() -> tuple[bool, str]:
 
 
 def _stop_bot_process() -> tuple[bool, str]:
+    target_pids: list[int] = []
     proc = st.session_state.get("bot_process")
-    if proc is not None and proc.poll() is None:
-        try:
-            proc.terminate()
-            proc.wait(timeout=15)
-            st.session_state.bot_process = None
-            _clear_process_state()
-            return True, "Bot stopped"
-        except Exception as exc:
-            return False, f"Failed to stop bot: {exc}"
+    proc_pid = int(getattr(proc, "pid", 0) or 0)
+    if proc_pid > 0:
+        target_pids.append(proc_pid)
 
     state = _load_process_state()
-    pid = int(state.get("pid", 0) or 0)
-    if not _pid_is_alive(pid):
+    state_pid = int(state.get("pid", 0) or 0)
+    if state_pid > 0:
+        target_pids.append(state_pid)
+
+    external_pid = _find_external_runtime_pid()
+    if external_pid > 0:
+        target_pids.append(external_pid)
+
+    target_pids.extend(_find_runtime_pids())
+    target_pids = list(dict.fromkeys([pid for pid in target_pids if pid > 0]))
+
+    if not target_pids:
         st.session_state.bot_process = None
         _clear_process_state()
         return True, "Bot process already stopped"
 
     try:
-        if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, capture_output=True, text=True)
-        else:
-            os.kill(pid, 15)
+        for pid in target_pids:
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/PID", str(pid), "/T", "/F"],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+            else:
+                os.kill(pid, 15)
+
+        remaining = _find_runtime_pids()
+        if remaining:
+            return False, f"Failed to stop bot: runtime process still active (pids={remaining})"
+
         st.session_state.bot_process = None
         _clear_process_state()
         return True, "Bot stopped"
