@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import concurrent.futures
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 import logging
@@ -28,8 +29,11 @@ class SessionGuard:
     exchange_tz: str = "America/Chicago"
     rollover_start_local: time = time(16, 55)
     rollover_end_local: time = time(18, 5)
+    schedule_timeout_seconds: float = 2.0
     _calendar: _CalendarProtocol | None = field(default=None, init=False, repr=False)
     _tz: ZoneInfo | None = field(default=None, init=False, repr=False)
+    _schedule_executor: concurrent.futures.ThreadPoolExecutor | None = field(default=None, init=False, repr=False)
+    _schedule_cache: dict[tuple[date, date], pd.DataFrame] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         try:
@@ -49,6 +53,7 @@ class SessionGuard:
                 raise
             self._calendar = calendar
         self._tz = ZoneInfo(self.exchange_tz)
+        self._schedule_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
     @staticmethod
     def _as_utc(ts: datetime | None) -> datetime:
@@ -60,10 +65,33 @@ class SessionGuard:
     def _schedule(self, ts: datetime, days_before: int = 1, days_after: int = 7) -> pd.DataFrame:
         start = (ts - timedelta(days=days_before)).date()
         end = (ts + timedelta(days=days_after)).date()
+        cache_key = (start, end)
+        cached = self._schedule_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         calendar = self._calendar
         if calendar is None:
             raise RuntimeError("SessionGuard calendar is not initialized")
-        return calendar.schedule(start_date=start, end_date=end)
+
+        executor = self._schedule_executor
+        if executor is None:
+            raise RuntimeError("SessionGuard schedule executor is not initialized")
+
+        def _run_schedule() -> pd.DataFrame:
+            return calendar.schedule(start_date=start, end_date=end)
+
+        future = executor.submit(_run_schedule)
+        try:
+            schedule = future.result(timeout=max(0.1, float(self.schedule_timeout_seconds)))
+        except BaseException as exc:
+            future.cancel()
+            raise RuntimeError(f"SessionGuard schedule call failed: {exc}") from exc
+
+        if len(self._schedule_cache) > 32:
+            self._schedule_cache.clear()
+        self._schedule_cache[cache_key] = schedule
+        return schedule
 
     def is_market_open(self, ts: datetime | None = None) -> bool:
         """True when CME calendar says instrument is in an open session."""

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
+import json
 
 from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
@@ -61,8 +62,9 @@ class _SimRunnerStub:
         nightly_report: dict | None = None,
         shadow_mode: bool = False,
         real_market_data: bool = False,
+        true_backtest_mode: bool = False,
     ):
-        del days, real_market_data  # Not used in stub
+        del days, real_market_data, true_backtest_mode  # Not used in stub
         base_pnl = float((nightly_report or {}).get("net_pnl", 25.0) or 25.0)
         return [
             SimResult(
@@ -77,6 +79,82 @@ class _SimRunnerStub:
             )
             for variant in variants
         ]
+
+
+class _SimRunnerWithGeneratedStub(_SimRunnerStub):
+    def _test_generated_strategy(self, _code_snippet: str) -> float:
+        return 120.0
+
+
+class _SimRunnerWithGeneratedShadowFailStub(_SimRunnerWithGeneratedStub):
+    def evaluate_variants(
+        self,
+        variants: list[PolicyDNA],
+        *,
+        days: int,
+        nightly_report: dict | None = None,
+        shadow_mode: bool = False,
+        real_market_data: bool = False,
+        true_backtest_mode: bool = False,
+    ):
+        del days, real_market_data, true_backtest_mode
+        if shadow_mode:
+            return [
+                SimResult(
+                    dna_hash=variant.hash,
+                    day_count=1,
+                    avg_pnl=0.0,
+                    max_drawdown_ratio=0.01,
+                    regime_fit_bonus=0.0,
+                    fitness=0.0,
+                    shadow_mode=True,
+                    hypothetical_fills=[],
+                )
+                for variant in variants
+            ]
+        base_pnl = float((nightly_report or {}).get("net_pnl", 25.0) or 25.0)
+        return [
+            SimResult(
+                dna_hash=variant.hash,
+                day_count=1,
+                avg_pnl=base_pnl,
+                max_drawdown_ratio=0.01,
+                regime_fit_bonus=0.1,
+                fitness=42.0,
+                shadow_mode=False,
+                hypothetical_fills=None,
+            )
+            for variant in variants
+        ]
+
+
+class _StrategyGeneratorStub:
+    def __init__(self) -> None:
+        self._index = 0
+
+    def generate_new_strategy(self, hypothesis: str) -> str:
+        del hypothesis
+        self._index += 1
+        return (
+            "def generated_strategy(context: dict) -> dict:\n"
+            "    \"\"\"Generated deterministic strategy.\"\"\"\n"
+            "    close = list(context.get('close', []) or [])\n"
+            "    if len(close) < 2:\n"
+            f"        return {{'name': 'g{self._index}', 'regime_focus': 'neutral', 'signal_bias': 'neutral', 'confidence': 0.0, 'rules': ['insufficient_history']}}\n"
+            f"    return {{'name': 'g{self._index}', 'regime_focus': 'trending', 'signal_bias': 'buy', 'confidence': 0.95, 'rules': ['momentum']}}\n"
+        )
+
+    def compile_and_validate(self, code_snippet: str):
+        return SimpleNamespace(
+            code=str(code_snippet),
+            function_name="generated_strategy",
+            metadata={
+                "name": "generated_stub",
+                "regime_focus": "trending",
+                "signal_bias": "buy",
+                "confidence": 0.95,
+            },
+        )
 
 
 class _ABFrameworkStub:
@@ -220,3 +298,66 @@ def test_evolution_orchestrator_real_path_promotes_after_shadow_pass(monkeypatch
     active = registry.get_latest_dna("active")
     assert active is not None
     assert int(active.generation) >= 1
+
+
+def test_evolution_orchestrator_registers_generated_strategy_winners(monkeypatch, tmp_path: Path) -> None:
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_generated.json"
+    orchestrator._lumina_bible.path = tmp_path / "generated_bible.jsonl"
+    orchestrator._generated_bible_path = orchestrator._lumina_bible.path
+    registry = _RegistryStub()
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerWithGeneratedStub())
+    orchestrator._strategy_generator = cast(Any, _StrategyGeneratorStub())
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=1,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": 100.0, "max_drawdown": 50.0, "sharpe": 1.2},
+        mode="sim",
+    )
+
+    ranked = registry.get_ranked_dna(limit=50)
+    generated_winners = [item for item in ranked if item.version == "generated_winner"]
+    assert summary["status"] == "complete"
+    assert generated_winners
+    assert orchestrator._generated_bible_path.exists()
+
+    lines = [line for line in orchestrator._generated_bible_path.read_text(encoding="utf-8").splitlines() if line]
+    assert lines
+    payload = json.loads(lines[-1])
+    assert payload.get("dna_hash")
+
+
+def test_evolution_orchestrator_generated_winner_blocked_without_shadow_pass(monkeypatch, tmp_path: Path) -> None:
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_generated_fail.json"
+    orchestrator._lumina_bible.path = tmp_path / "generated_bible_fail.jsonl"
+    orchestrator._generated_bible_path = orchestrator._lumina_bible.path
+    registry = _RegistryStub()
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerWithGeneratedShadowFailStub())
+    orchestrator._strategy_generator = cast(Any, _StrategyGeneratorStub())
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=1,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": 100.0, "max_drawdown": 50.0, "sharpe": 1.2},
+        mode="sim",
+    )
+
+    ranked = registry.get_ranked_dna(limit=50)
+    generated_winners = [item for item in ranked if item.version == "generated_winner"]
+    assert summary["status"] == "complete"
+    assert generated_winners == []
+    assert not orchestrator._generated_bible_path.exists()

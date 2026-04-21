@@ -10,6 +10,7 @@ import streamlit as st
 
 METRICS_PATH = Path("logs/evolution_metrics.jsonl")
 SHADOW_STATE_PATH = Path("state/evolution_shadow_runs.json")
+GENERATED_BIBLE_PATH = Path("state/lumina_bible_generated_strategies.jsonl")
 
 
 def _load_metrics(path: Path = METRICS_PATH) -> list[dict[str, Any]]:
@@ -40,6 +41,24 @@ def _load_shadow_runs(path: Path = SHADOW_STATE_PATH) -> dict[str, Any]:
             return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _load_generated_strategies(path: Path = GENERATED_BIBLE_PATH) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for raw in handle:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                continue
+            if isinstance(parsed, dict) and parsed.get("entry_type") == "generated_strategy_rule":
+                rows.append(parsed)
+    return rows
 
 
 def render_evolution_dashboard(path: Path = METRICS_PATH) -> None:
@@ -109,3 +128,33 @@ def render_evolution_dashboard(path: Path = METRICS_PATH) -> None:
                 st.bar_chart(pd.Series(pnl_comparison, name="Shadow PnL"), height=200)
     else:
         st.info("No active shadow runs.")
+
+    # FASE 3: Generated Strategies observability
+    st.subheader("Generated Strategies")
+    generated_rows = _load_generated_strategies(GENERATED_BIBLE_PATH)
+    if not generated_rows:
+        st.info("No generated strategy winners recorded yet.")
+        return
+
+    compact_rows: list[dict[str, Any]] = []
+    for item in generated_rows[-20:]:
+        compact_rows.append(
+            {
+                "dna_hash": str(item.get("dna_hash", ""))[:12],
+                "generation": int(item.get("generation", 0) or 0),
+                "fitness": float(item.get("fitness", 0.0) or 0.0),
+                "status": str(item.get("status", "winner") or "winner"),
+                "timestamp": str(item.get("timestamp", ""))[:19],
+            }
+        )
+
+    st.dataframe(pd.DataFrame(compact_rows), use_container_width=True)
+
+    latest = generated_rows[-1]
+    st.caption(
+        f"Latest generated DNA: {str(latest.get('dna_hash', ''))[:16]} | fitness={float(latest.get('fitness', 0.0) or 0.0):.4f} | status={str(latest.get('status', 'winner'))}"
+    )
+
+    latest_code = str(latest.get("code", "") or "").strip()
+    if latest_code:
+        st.code(latest_code[:1800], language="python")

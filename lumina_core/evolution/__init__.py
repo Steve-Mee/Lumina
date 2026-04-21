@@ -10,6 +10,8 @@ from .veto_registry import VetoRecord, VetoRegistry
 from .telegram_notifier import TelegramNotifier
 from .veto_window import VetoWindow
 from .approval_gym_scheduler import ApprovalGymScheduler
+from .lumina_bible import LuminaBible
+from .strategy_generator import StrategyGenerator
 
 __all__ = [
     "DNARegistry",
@@ -22,6 +24,8 @@ __all__ = [
     "ApprovalGym",
     "ApprovalTwinAgent",
     "ApprovalGymScheduler",
+    "LuminaBible",
+    "StrategyGenerator",
     "EvolutionGuard",
     "EvolutionGuardDecision",
     "EvolutionOrchestrator",

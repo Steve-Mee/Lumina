@@ -114,6 +114,51 @@ class MultiDaySimRunner:
         results.sort(key=lambda item: item.fitness, reverse=True)
         return results
 
+    def _test_generated_strategy(self, code_snippet: str) -> float:
+        """Fail-closed helper: validate generated code and score via backtest path."""
+        try:
+            from .strategy_generator import StrategyGenerator
+
+            sandbox = StrategyGenerator().compile_and_validate(code_snippet)
+        except Exception:
+            return float("-inf")
+
+        metadata = dict(sandbox.metadata)
+        content_payload = {
+            "strategy_type": "generated",
+            "generated_entrypoint": sandbox.function_name,
+            "generated_code": sandbox.code,
+            "regime_focus": str(metadata.get("regime_focus", "neutral") or "neutral"),
+            "signal_bias": str(metadata.get("signal_bias", "neutral") or "neutral"),
+            "confidence": float(metadata.get("confidence", 0.0) or 0.0),
+            "name": str(metadata.get("name", "generated_strategy") or "generated_strategy"),
+        }
+        candidate = PolicyDNA.create(
+            prompt_id="self_generated_strategy",
+            version="generated_candidate",
+            content=content_payload,
+            fitness_score=0.0,
+            generation=0,
+            mutation_rate=0.10,
+            lineage_hash="GENERATOR",
+        )
+
+        results = self.evaluate_variants(
+            [candidate],
+            days=7,
+            nightly_report={
+                "net_pnl": 200.0,
+                "sharpe": 0.8,
+                "max_drawdown": 120.0,
+                "account_equity": 50000.0,
+            },
+            real_market_data=True,
+            true_backtest_mode=True,
+        )
+        if not results:
+            return float("-inf")
+        return float(results[0].fitness)
+
     def _evaluate_single_variant(
         self,
         variant: PolicyDNA,

@@ -71,3 +71,29 @@ def test_multi_day_sim_runner_shadow_mode_emits_hypothetical_fills() -> None:
     assert result.hypothetical_fills is not None
     assert len(result.hypothetical_fills) == 3
     assert all(fill.reason == "shadow_validation_no_order_execution" for fill in result.hypothetical_fills)
+
+
+def test_test_generated_strategy_returns_finite_on_safe_snippet() -> None:
+    runner = MultiDaySimRunner(max_workers=2, drawdown_limit_ratio=0.05)
+    code = (
+        "def generated_strategy(context: dict) -> dict:\n"
+        "    \"\"\"Simple deterministic generated strategy.\"\"\"\n"
+        "    close = list(context.get('close', []) or [])\n"
+        "    if len(close) < 3:\n"
+        "        return {'name': 'g1', 'regime_focus': 'neutral', 'signal_bias': 'neutral', 'confidence': 0.0, 'rules': ['insufficient_history']}\n"
+        "    signal_bias = 'buy' if close[-1] >= close[-2] else 'sell'\n"
+        "    return {'name': 'g1', 'regime_focus': 'trending', 'signal_bias': signal_bias, 'confidence': 0.6, 'rules': ['close_momentum']}\n"
+    )
+
+    fitness = runner._test_generated_strategy(code)
+
+    assert fitness != float("-inf")
+
+
+def test_test_generated_strategy_fail_closed_on_unsafe_snippet() -> None:
+    runner = MultiDaySimRunner(max_workers=2, drawdown_limit_ratio=0.05)
+    unsafe = "import os\ndef generated_strategy(context):\n    return {}\n"
+
+    fitness = runner._test_generated_strategy(unsafe)
+
+    assert fitness == float("-inf")

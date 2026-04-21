@@ -165,6 +165,60 @@ class EvolutionGuard:
     ) -> bool:
         return float(candidate_fitness) >= float(previous_generation_fitness)
 
+    def allows_generated_strategy(
+        self,
+        *,
+        candidate_confidence: float,
+        candidate_fitness: float,
+        current_fitness: float,
+        min_backtest_fitness: float = 0.0,
+        min_improvement: float = 0.10,
+    ) -> bool:
+        """Extra gate for self-generated strategies: stricter confidence and backtest lift."""
+        confidence = _normalize_confidence(candidate_confidence)
+        required_confidence = max(float(self.confidence_threshold), 0.90)
+        if confidence < required_confidence:
+            return False
+
+        baseline = float(current_fitness)
+        required_fitness = max(float(min_backtest_fitness), baseline + float(min_improvement))
+        return float(candidate_fitness) >= required_fitness
+
+    def generated_strategy_survives(
+        self,
+        *,
+        mode: str,
+        candidate_confidence: float,
+        candidate_fitness: float,
+        current_fitness: float,
+        shadow_total_pnl: float,
+        shadow_risk_flags: list[str] | None = None,
+        approval_twin_recommendation: bool | None = None,
+        min_backtest_fitness: float = 0.0,
+        min_improvement: float = 0.10,
+    ) -> bool:
+        """Generated strategy survival gate: fitness lift + shadow pass (+ twin in REAL)."""
+        if not self.allows_generated_strategy(
+            candidate_confidence=candidate_confidence,
+            candidate_fitness=candidate_fitness,
+            current_fitness=current_fitness,
+            min_backtest_fitness=min_backtest_fitness,
+            min_improvement=min_improvement,
+        ):
+            return False
+
+        shadow_ok = self.shadow_validation_passed(
+            shadow_total_pnl=float(shadow_total_pnl),
+            veto_blocked=False,
+            risk_flags=list(shadow_risk_flags or []),
+        )
+        if not shadow_ok:
+            return False
+
+        if _normalize_mode(mode) == "real" and not bool(approval_twin_recommendation):
+            return False
+        return True
+
     def should_rollback(
         self,
         *,

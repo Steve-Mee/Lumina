@@ -20,6 +20,7 @@ import logging
 import os
 import random
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,7 +34,9 @@ from .approval_gym_scheduler import ApprovalGymScheduler
 from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
+from .lumina_bible import LuminaBible
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
+from .strategy_generator import StrategyGenerator
 from .steve_values_registry import SteveValuesRegistry
 from .veto_registry import VetoRegistry
 from .veto_window import VetoWindow
@@ -96,6 +99,8 @@ class GenerationResult:
     winner_fitness: float
     previous_fitness: float
     promoted: bool
+    generated_tested: int = 0
+    generated_winners: int = 0
     timestamp: str = field(default_factory=_utcnow)
 
 
@@ -126,8 +131,11 @@ class EvolutionOrchestrator:
         self._notification_scheduler = NotificationScheduler()
         # FASE 2: Initialize sim_runner with real_market_data support if configured
         self._sim_runner = self._create_sim_runner()
+        self._strategy_generator = StrategyGenerator()
+        self._lumina_bible = LuminaBible()
         self._metrics_path = _METRICS_PATH
         self._shadow_state_path = _SHADOW_STATE_PATH
+        self._generated_bible_path = self._lumina_bible.path
         # FASE 3: ApprovalGymScheduler – Telegram-only UI, Brussels waking hours
         self._approval_gym_scheduler = ApprovalGymScheduler(
             telegram_notifier=self._telegram_notifier,
@@ -392,6 +400,14 @@ class EvolutionOrchestrator:
         else:
             promoted = bool(signed and generation_ok)
 
+        generated_summary = self._run_generated_strategy_cycle(
+            generation_offset=generation_offset,
+            mode=mode,
+            base_metrics=base_metrics,
+            baseline_fitness=max(float(previous_fitness), float(winner_fitness)),
+            anchor_dna=winner_dna,
+        )
+
         if promoted:
             promoted_dna = self._registry.mutate(
                 parent=winner_dna,
@@ -425,6 +441,9 @@ class EvolutionOrchestrator:
                 "shadow_days_completed": shadow_days_completed,
                 "shadow_days_target": shadow_days_target,
                 "shadow_total_pnl": shadow_total_pnl,
+                "generated_ideas": int(generated_summary.get("ideas", 0) or 0),
+                "generated_tested": int(generated_summary.get("tested", 0) or 0),
+                "generated_winners": int(generated_summary.get("winners", 0) or 0),
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
             }
@@ -432,11 +451,172 @@ class EvolutionOrchestrator:
 
         return GenerationResult(
             generation=generation_offset,
-            candidate_count=len(candidates),
+            candidate_count=len(candidates) + int(generated_summary.get("tested", 0) or 0),
             winner_hash=winner_dna.hash,
             winner_fitness=winner_fitness,
             previous_fitness=previous_fitness,
             promoted=promoted,
+            generated_tested=int(generated_summary.get("tested", 0) or 0),
+            generated_winners=int(generated_summary.get("winners", 0) or 0),
+        )
+
+    def _run_generated_strategy_cycle(
+        self,
+        *,
+        generation_offset: int,
+        mode: str,
+        base_metrics: dict[str, Any],
+        baseline_fitness: float,
+        anchor_dna: PolicyDNA,
+    ) -> dict[str, Any]:
+        if not hasattr(self._sim_runner, "_test_generated_strategy"):
+            return {"ideas": 0, "tested": 0, "winners": 0}
+
+        cfg = ConfigLoader.section("evolution", "generated_strategies", default={})
+        cfg = cfg if isinstance(cfg, dict) else {}
+        min_ideas = max(3, int(cfg.get("min_ideas", 3) or 3))
+        max_ideas = max(min_ideas, int(cfg.get("max_ideas", 5) or 5))
+        idea_count = random.randint(min_ideas, max_ideas)
+        min_backtest_fitness = float(cfg.get("min_backtest_fitness", 0.25) or 0.25)
+        min_improvement = float(cfg.get("min_improvement", 0.10) or 0.10)
+
+        generated: list[dict[str, Any]] = []
+        for index in range(idea_count):
+            hypothesis = self._build_generated_hypothesis(index=index, generation_offset=generation_offset)
+            try:
+                code = self._strategy_generator.generate_new_strategy(hypothesis)
+                sandbox = self._strategy_generator.compile_and_validate(code)
+            except Exception:
+                continue
+            generated.append(
+                {
+                    "hypothesis": hypothesis,
+                    "code": sandbox.code,
+                    "metadata": dict(sandbox.metadata),
+                }
+            )
+
+        if not generated:
+            return {"ideas": idea_count, "tested": 0, "winners": 0}
+
+        test_fn = getattr(self._sim_runner, "_test_generated_strategy")
+        use_real_data = bool(getattr(self._sim_runner, "real_market_data", False))
+        use_backtest_mode = bool(getattr(self._sim_runner, "true_backtest_mode", False))
+        evaluated: list[dict[str, Any]] = []
+        with ThreadPoolExecutor(max_workers=min(5, len(generated))) as pool:
+            future_map = {pool.submit(test_fn, item["code"]): item for item in generated}
+            for future in as_completed(future_map):
+                item = future_map[future]
+                try:
+                    fitness = float(future.result())
+                except Exception:
+                    fitness = float("-inf")
+                evaluated.append({**item, "fitness": fitness})
+
+        winners: list[dict[str, Any]] = []
+        for item in evaluated:
+            metadata = dict(item.get("metadata", {}) or {})
+            confidence = float(metadata.get("confidence", 0.0) or 0.0)
+            fitness = float(item.get("fitness", float("-inf")) or float("-inf"))
+            payload = {
+                "strategy_type": "generated",
+                "hypothesis": str(item.get("hypothesis", "") or ""),
+                "generated_code": str(item.get("code", "") or ""),
+                "name": str(metadata.get("name", "generated_strategy") or "generated_strategy"),
+                "regime_focus": str(metadata.get("regime_focus", "neutral") or "neutral"),
+                "signal_bias": str(metadata.get("signal_bias", "neutral") or "neutral"),
+                "confidence": confidence,
+            }
+            generated_dna = self._registry.mutate(
+                parent=anchor_dna,
+                mutation_rate=1.0,
+                content=payload,
+                fitness_score=fitness,
+                version="generated_winner",
+                lineage_hash=anchor_dna.lineage_hash,
+            )
+
+            shadow_results = self._sim_runner.evaluate_variants(
+                [generated_dna],
+                days=1,
+                nightly_report=base_metrics,
+                shadow_mode=True,
+                real_market_data=use_real_data,
+                true_backtest_mode=use_backtest_mode,
+            )
+            shadow_total_pnl = float(shadow_results[0].avg_pnl) if shadow_results else 0.0
+
+            twin_recommendation = True
+            twin_risk_flags: list[str] = []
+            if str(mode).strip().lower() == "real":
+                twin_result = self._approval_twin.evaluate_dna_promotion(generated_dna)
+                twin_recommendation = bool(twin_result.get("recommendation", False))
+                twin_risk_flags = [str(flag) for flag in list(twin_result.get("risk_flags", []) or [])]
+
+            if not self._guard.generated_strategy_survives(
+                mode=mode,
+                candidate_confidence=confidence,
+                candidate_fitness=fitness,
+                current_fitness=baseline_fitness,
+                shadow_total_pnl=shadow_total_pnl,
+                shadow_risk_flags=twin_risk_flags,
+                approval_twin_recommendation=twin_recommendation,
+                min_backtest_fitness=min_backtest_fitness,
+                min_improvement=min_improvement,
+            ):
+                continue
+
+            self._registry.register_dna(generated_dna)
+            self._append_generated_bible_entry(
+                dna=generated_dna,
+                hypothesis=payload["hypothesis"],
+                code=payload["generated_code"],
+                fitness=fitness,
+            )
+            winners.append({"hash": generated_dna.hash, "fitness": fitness})
+
+        self._append_metrics(
+            {
+                "event": "generated_strategy_cycle",
+                "timestamp": _utcnow(),
+                "generation": generation_offset,
+                "ideas": idea_count,
+                "tested": len(evaluated),
+                "winners": len(winners),
+                "winner_hashes": [str(item.get("hash", "")) for item in winners],
+            }
+        )
+
+        return {"ideas": idea_count, "tested": len(evaluated), "winners": len(winners)}
+
+    @staticmethod
+    def _build_generated_hypothesis(*, index: int, generation_offset: int) -> str:
+        templates = [
+            "Design a trend-regime detector with volatility confluence and strict drawdown protection.",
+            "Create a mean-reversion entry model with adaptive cooldown in high volatility.",
+            "Build a liquidity-aware breakout filter combining volume pulse and momentum fade protection.",
+            "Generate an entry-exit logic that avoids chop via regime gating and confidence thresholding.",
+            "Invent a confluence rule that combines trend strength, volatility state, and risk-off override.",
+        ]
+        template = templates[index % len(templates)]
+        return f"gen={generation_offset};idea={index};{template}"
+
+    def _append_generated_bible_entry(
+        self,
+        *,
+        dna: PolicyDNA,
+        hypothesis: str,
+        code: str,
+        fitness: float,
+    ) -> None:
+        self._lumina_bible.append_generated_rule(
+            dna_hash=str(dna.hash),
+            lineage_hash=str(dna.lineage_hash),
+            generation=int(dna.generation),
+            fitness=float(fitness),
+            hypothesis=str(hypothesis),
+            code=str(code),
+            status="winner",
         )
 
     def _send_shadow_status_telegram(self, message: str) -> None:
@@ -807,6 +987,8 @@ class EvolutionOrchestrator:
                     "winner_fitness": round(r.winner_fitness, 6) if r.winner_fitness != float("-inf") else None,
                     "previous_fitness": round(r.previous_fitness, 6) if r.previous_fitness != float("-inf") else None,
                     "promoted": r.promoted,
+                    "generated_tested": int(r.generated_tested),
+                    "generated_winners": int(r.generated_winners),
                     "timestamp": r.timestamp,
                 }
                 for r in gen_results

@@ -148,3 +148,44 @@ def test_render_shows_top_dna_hash_caption() -> None:
                 )
     finally:
         path.unlink(missing_ok=True)
+
+
+def test_render_shows_generated_strategies_section() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh_metrics:
+        fh_metrics.write(json.dumps(_complete_cycle(cycle_idx=1)) + "\n")
+        metrics_path = Path(fh_metrics.name)
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh_bible:
+        fh_bible.write(
+            json.dumps(
+                {
+                    "entry_type": "generated_strategy_rule",
+                    "timestamp": "2026-04-21T10:00:00+00:00",
+                    "dna_hash": "abc123def456",
+                    "generation": 2,
+                    "fitness": 1.9,
+                    "status": "winner",
+                    "code": "def generated_strategy(context):\\n    return {'name':'g'}",
+                }
+            )
+            + "\n"
+        )
+        bible_path = Path(fh_bible.name)
+
+    try:
+        with patch("lumina_core.evolution.evolution_dashboard.st") as mock_st:
+            with patch("lumina_core.evolution.evolution_dashboard.pd") as mock_pd:
+                with patch("lumina_core.evolution.evolution_dashboard.GENERATED_BIBLE_PATH", bible_path):
+                    mock_df = MagicMock()
+                    mock_df.pivot_table.return_value = mock_df
+                    mock_df.tail.return_value = mock_df
+                    mock_pd.DataFrame.return_value = mock_df
+
+                    render_evolution_dashboard(metrics_path)
+
+                    subheaders = [str(call.args[0]) for call in mock_st.subheader.call_args_list]
+                    assert "Generated Strategies" in subheaders
+                    assert mock_st.code.called
+    finally:
+        metrics_path.unlink(missing_ok=True)
+        bible_path.unlink(missing_ok=True)

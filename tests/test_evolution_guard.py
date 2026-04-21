@@ -146,3 +146,103 @@ def test_rollback_triggers_for_worse_candidate_within_window() -> None:
         )
         is False
     )
+
+
+def test_generated_strategy_gate_requires_higher_confidence() -> None:
+    guard = EvolutionGuard(confidence_threshold=0.85)
+
+    allowed = guard.allows_generated_strategy(
+        candidate_confidence=0.91,
+        candidate_fitness=1.6,
+        current_fitness=1.0,
+        min_backtest_fitness=1.3,
+        min_improvement=0.2,
+    )
+    blocked = guard.allows_generated_strategy(
+        candidate_confidence=0.89,
+        candidate_fitness=2.0,
+        current_fitness=1.0,
+        min_backtest_fitness=1.3,
+        min_improvement=0.2,
+    )
+
+    assert allowed is True
+    assert blocked is False
+
+
+def test_generated_strategy_gate_requires_backtest_threshold_or_lift() -> None:
+    guard = EvolutionGuard(confidence_threshold=0.80)
+
+    blocked = guard.allows_generated_strategy(
+        candidate_confidence=0.95,
+        candidate_fitness=1.05,
+        current_fitness=1.0,
+        min_backtest_fitness=1.2,
+        min_improvement=0.1,
+    )
+    allowed = guard.allows_generated_strategy(
+        candidate_confidence=0.95,
+        candidate_fitness=1.25,
+        current_fitness=1.0,
+        min_backtest_fitness=1.2,
+        min_improvement=0.1,
+    )
+
+    assert blocked is False
+    assert allowed is True
+
+
+def test_generated_strategy_survival_requires_shadow_pass() -> None:
+    guard = EvolutionGuard(confidence_threshold=0.80)
+
+    blocked = guard.generated_strategy_survives(
+        mode="sim",
+        candidate_confidence=0.95,
+        candidate_fitness=1.3,
+        current_fitness=1.0,
+        shadow_total_pnl=0.0,
+        approval_twin_recommendation=True,
+        min_backtest_fitness=1.2,
+        min_improvement=0.1,
+    )
+    allowed = guard.generated_strategy_survives(
+        mode="sim",
+        candidate_confidence=0.95,
+        candidate_fitness=1.3,
+        current_fitness=1.0,
+        shadow_total_pnl=10.0,
+        approval_twin_recommendation=True,
+        min_backtest_fitness=1.2,
+        min_improvement=0.1,
+    )
+
+    assert blocked is False
+    assert allowed is True
+
+
+def test_generated_strategy_survival_requires_twin_in_real_mode() -> None:
+    guard = EvolutionGuard(confidence_threshold=0.80)
+
+    blocked = guard.generated_strategy_survives(
+        mode="real",
+        candidate_confidence=0.95,
+        candidate_fitness=1.4,
+        current_fitness=1.0,
+        shadow_total_pnl=5.0,
+        approval_twin_recommendation=False,
+        min_backtest_fitness=1.2,
+        min_improvement=0.1,
+    )
+    allowed = guard.generated_strategy_survives(
+        mode="real",
+        candidate_confidence=0.95,
+        candidate_fitness=1.4,
+        current_fitness=1.0,
+        shadow_total_pnl=5.0,
+        approval_twin_recommendation=True,
+        min_backtest_fitness=1.2,
+        min_improvement=0.1,
+    )
+
+    assert blocked is False
+    assert allowed is True
