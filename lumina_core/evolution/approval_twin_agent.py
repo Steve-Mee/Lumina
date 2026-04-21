@@ -20,8 +20,7 @@ class ApprovalTwinState:
 
 
 class ApprovalTwinBackend(Protocol):
-    def score(self, *, dna: PolicyDNA, local_score: float, threshold: float) -> tuple[float | None, str]:
-        ...
+    def score(self, *, dna: PolicyDNA, local_score: float, threshold: float) -> tuple[float | None, str]: ...
 
 
 @dataclass(slots=True)
@@ -117,12 +116,16 @@ class ApprovalTwinAgent:
         cfg = ConfigLoader.section("evolution", "approval_twin", default={})
         cfg = cfg if isinstance(cfg, dict) else {}
 
-        resolved_backend = str(
-            backend
-            or cfg.get("backend")
-            or ConfigLoader.section("ai", "approval_twin_backend", default="")
-            or "local"
-        ).strip().lower()
+        resolved_backend = (
+            str(
+                backend
+                or cfg.get("backend")
+                or ConfigLoader.section("ai", "approval_twin_backend", default="")
+                or "local"
+            )
+            .strip()
+            .lower()
+        )
 
         if resolved_backend == "ollama":
             model = str(
@@ -135,7 +138,9 @@ class ApprovalTwinAgent:
 
         return "local", LocalHeuristicBackend()
 
-    def evaluate_shadow_promotion(self, *, dna: PolicyDNA, shadow_total_pnl: float, veto_blocked: bool) -> dict[str, Any]:
+    def evaluate_shadow_promotion(
+        self, *, dna: PolicyDNA, shadow_total_pnl: float, veto_blocked: bool
+    ) -> dict[str, Any]:
         base = self.evaluate_dna_promotion(dna)
         shadow_positive = float(shadow_total_pnl) > 0.0
         recommendation = bool(base.get("recommendation", False) and shadow_positive and not bool(veto_blocked))
@@ -172,7 +177,9 @@ class ApprovalTwinAgent:
 
             self._state.intercept += self._learning_rate * error
             for key, value in features.items():
-                self._state.weights[key] = float(self._state.weights.get(key, 0.0)) + self._learning_rate * error * value
+                self._state.weights[key] = (
+                    float(self._state.weights.get(key, 0.0)) + self._learning_rate * error * value
+                )
 
             abs_errors.append(abs(error))
             updates += 1
@@ -210,8 +217,12 @@ class ApprovalTwinAgent:
             "fitness": float(dna.fitness_score),
             "mutation_rate": float(dna.mutation_rate),
             "generation": float(dna.generation),
-            "contains_risk_word": 1.0 if any(token in content for token in ("aggressive", "leverage", "martingale")) else 0.0,
-            "contains_safety_word": 1.0 if any(token in content for token in ("risk", "guard", "stop", "cooldown")) else 0.0,
+            "contains_risk_word": 1.0
+            if any(token in content for token in ("aggressive", "leverage", "martingale"))
+            else 0.0,
+            "contains_safety_word": 1.0
+            if any(token in content for token in ("risk", "guard", "stop", "cooldown"))
+            else 0.0,
         }
 
     @staticmethod

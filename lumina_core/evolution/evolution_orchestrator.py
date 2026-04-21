@@ -147,6 +147,7 @@ class EvolutionOrchestrator:
             try:
                 # Attempt to get market_data_service from runtime
                 from lumina_core.runtime_context import RuntimeContext
+
                 rt_ctx = getattr(RuntimeContext, "_current_runtime", None)
                 if rt_ctx is not None and hasattr(rt_ctx, "market_data_service"):
                     market_data_service = rt_ctx.market_data_service
@@ -440,8 +441,10 @@ class EvolutionOrchestrator:
 
     def _send_shadow_status_telegram(self, message: str) -> None:
         """Send shadow-gate status to Steve via Telegram, respecting Brussels waking hours."""
+
         def _send() -> bool:
             return self._telegram_notifier._send_telegram_message(message)
+
         try:
             self._notification_scheduler.schedule_notification(
                 callback=_send,

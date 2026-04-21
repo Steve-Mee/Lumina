@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class VetoWindow:
     """Fail-closed 30-minute veto window for DNA promotions.
-    
+
     Architecture:
     - Wraps VetoRegistry queries
     - Blocks promotion if any veto found within window
@@ -22,7 +22,7 @@ class VetoWindow:
         window_seconds: int = 1800,  # 30 minutes
     ):
         """Initialize veto window.
-        
+
         Args:
             veto_registry: VetoRegistry instance for veto lookups
             window_seconds: Veto window duration in seconds (default 30 min)
@@ -32,11 +32,11 @@ class VetoWindow:
 
     def is_promotion_blocked(self, dna_id: str, reason_callback: Optional[Any] = None) -> bool:
         """Check if DNA promotion is blocked by active veto (fail-closed).
-        
+
         Args:
             dna_id: DNA ID to check
             reason_callback: Optional callable(reason_str) for logging block reason
-            
+
         Returns:
             True if veto found within window (blocks promotion)
             False if no veto (promotion allowed, subject to other gates)
@@ -50,7 +50,7 @@ class VetoWindow:
 
             if blocked:
                 reason = (
-                    f"DNA {dna_id} has active veto within {self._window_seconds//60}-min window. "
+                    f"DNA {dna_id} has active veto within {self._window_seconds // 60}-min window. "
                     f"Promotion blocked (fail-closed)."
                 )
                 logger.info(reason)
@@ -71,10 +71,10 @@ class VetoWindow:
 
     def check_with_details(self, dna_id: str) -> dict[str, Any]:
         """Detailed veto window check with metadata.
-        
+
         Args:
             dna_id: DNA ID to check
-            
+
         Returns:
             Dictionary with keys:
             - is_blocked: bool
@@ -99,11 +99,9 @@ class VetoWindow:
                 all_records = self._veto_registry.list_recent(limit=100, dna_id_filter=dna_id)
                 # Filter to active window
                 from datetime import datetime, timedelta
+
                 cutoff = datetime.utcnow() - timedelta(seconds=self._window_seconds)
-                active_records = [
-                    r for r in all_records
-                    if datetime.fromisoformat(r.veto_timestamp) >= cutoff
-                ]
+                active_records = [r for r in all_records if datetime.fromisoformat(r.veto_timestamp) >= cutoff]
 
             return {
                 "is_blocked": is_blocked,
@@ -128,7 +126,7 @@ class VetoWindow:
 
     def set_window_duration(self, seconds: int) -> None:
         """Update veto window duration.
-        
+
         Args:
             seconds: New window duration in seconds
         """
@@ -137,4 +135,4 @@ class VetoWindow:
             self._window_seconds = 60
         else:
             self._window_seconds = seconds
-            logger.info(f"Veto window updated to {seconds}s ({seconds//60}min {seconds%60}s)")
+            logger.info(f"Veto window updated to {seconds}s ({seconds // 60}min {seconds % 60}s)")

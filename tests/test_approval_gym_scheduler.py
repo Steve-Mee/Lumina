@@ -219,6 +219,7 @@ if __name__ == "__main__":
 # FASE 3: Brussels waking hours + NotificationScheduler routing tests
 # ---------------------------------------------------------------------------
 
+
 class TestApprovalGymSchedulerFase3:
     """FASE 3 tests: Telegram notifications route through NotificationScheduler."""
 

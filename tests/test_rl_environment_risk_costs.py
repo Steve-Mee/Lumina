@@ -143,6 +143,7 @@ def test_sim_step_loop_performance_guard() -> None:
 # FASE 2 Meta-RL: DNA embedding tests
 # ---------------------------------------------------------------------------
 
+
 def test_observation_space_shape_is_28_with_dna_embedding() -> None:
     """FASE 2: observation space must be (28,) after Meta-RL expansion."""
     engine = _EngineStub()
@@ -181,4 +182,3 @@ def test_dna_embedding_is_deterministic() -> None:
     emb1 = env._dna_embedding()
     emb2 = env._dna_embedding()
     assert emb1 == emb2
-

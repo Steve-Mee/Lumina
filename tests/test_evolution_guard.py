@@ -21,12 +21,14 @@ class _MockSimResult:
 
 class _MockShadowRunner:
     """Minimal shadow runner that returns a passing SimResult."""
+
     def evaluate_variants(self, variants: list, *, days: int, shadow_mode: bool = False, **_: Any) -> list:
         return [_MockSimResult(dna_hash=getattr(v, "hash", "test")) for v in variants]
 
 
 class _MockTwin:
     """Minimal approval twin that always approves."""
+
     def evaluate_dna_promotion(self, _dna: Any) -> dict:
         return {"recommendation": True, "confidence": 0.95}
 
@@ -55,24 +57,30 @@ def test_real_mode_requires_approval_twin_recommendation() -> None:
 
     assert guard.requires_approval_twin(mode="real") is True
     # Without shadow_runner, dna, approval_twin – must return False in REAL mode
-    assert guard.has_signed_approval(
-        mode="real",
-        confidence=0.95,
-        candidate_fitness=2.5,
-        current_fitness=1.0,
-        approval_twin_recommendation=None,
-    ) is False
+    assert (
+        guard.has_signed_approval(
+            mode="real",
+            confidence=0.95,
+            candidate_fitness=2.5,
+            current_fitness=1.0,
+            approval_twin_recommendation=None,
+        )
+        is False
+    )
     # With full shadow wiring and recommendation=True – shadow passes, returns True
-    assert guard.has_signed_approval(
-        mode="real",
-        confidence=0.95,
-        candidate_fitness=2.5,
-        current_fitness=1.0,
-        approval_twin_recommendation=True,
-        approval_twin=twin,
-        dna=dna,
-        shadow_runner=shadow_runner,
-    ) is True
+    assert (
+        guard.has_signed_approval(
+            mode="real",
+            confidence=0.95,
+            candidate_fitness=2.5,
+            current_fitness=1.0,
+            approval_twin_recommendation=True,
+            approval_twin=twin,
+            dna=dna,
+            shadow_runner=shadow_runner,
+        )
+        is True
+    )
 
 
 def test_resolve_approval_twin_recommendation_from_agent_dict() -> None:

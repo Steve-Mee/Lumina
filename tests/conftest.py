@@ -8,6 +8,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+
 def pytest_runtest_setup(item):
     """Apply timeout overrides based on test markers."""
     # Disable timeout for subprocess-heavy safety_gate tests

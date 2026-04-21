@@ -89,6 +89,7 @@ class PPOTrainer:
             self.engine.set_rl_policy(model)
         except Exception as exc:  # obs-space mismatch after Meta-RL expansion or missing file
             import logging
+
             logging.getLogger(__name__).warning(
                 "PPO.load failed (obs-space mismatch after Meta-RL expansion or file missing); "
                 "engine will fall back to HOLD until retrained. Reason: %s",

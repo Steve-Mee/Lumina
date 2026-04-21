@@ -102,7 +102,7 @@ def render_evolution_dashboard(path: Path = METRICS_PATH) -> None:
         if shadow_rows:
             shadow_df = pd.DataFrame(shadow_rows).tail(10)
             st.dataframe(shadow_df, use_container_width=True)
-            
+
             # Real vs Shadow comparison
             if len(shadow_rows) >= 2:
                 pnl_comparison = [row["total_pnl"] for row in shadow_rows[-5:]]

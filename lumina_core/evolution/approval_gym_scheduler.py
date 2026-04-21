@@ -137,9 +137,7 @@ class ApprovalGymScheduler:
         if from_dt.tzinfo is None:
             from_dt = from_dt.replace(tzinfo=timezone.utc)
         brussels_now = from_dt.astimezone(_BRUSSELS_TZ)
-        candidate = brussels_now.replace(
-            hour=_DEFAULT_MORNING_HOUR, minute=0, second=0, microsecond=0
-        )
+        candidate = brussels_now.replace(hour=_DEFAULT_MORNING_HOUR, minute=0, second=0, microsecond=0)
         if brussels_now >= candidate:
             candidate = candidate + timedelta(days=1)
         return candidate.astimezone(timezone.utc)
@@ -197,19 +195,19 @@ class ApprovalGymScheduler:
             records = self._approval_gym.run_session(approval_twin=None)
             session_count = len(records) if records else 0
 
-            self._log_session({
-                "session_id": session_id,
-                "session_time": session_time.isoformat(),
-                "status": "completed",
-                "proposal_count": session_count,
-            })
+            self._log_session(
+                {
+                    "session_id": session_id,
+                    "session_time": session_time.isoformat(),
+                    "status": "completed",
+                    "proposal_count": session_count,
+                }
+            )
 
             if self._telegram_notifier:
                 try:
                     msg = (
-                        f"Approval Gym Session Complete\n"
-                        f"Session ID: {session_id}\n"
-                        f"Proposals Evaluated: {session_count}"
+                        f"Approval Gym Session Complete\nSession ID: {session_id}\nProposals Evaluated: {session_count}"
                     )
                     self._notify(msg, f"gym_done:{session_id[:20]}")
                 except Exception as e:
@@ -219,12 +217,14 @@ class ApprovalGymScheduler:
 
         except Exception as e:
             logger.error(f"Scheduled session {session_id} failed: {e}", exc_info=True)
-            self._log_session({
-                "session_id": session_id,
-                "session_time": session_time.isoformat(),
-                "status": "failed",
-                "error": str(e),
-            })
+            self._log_session(
+                {
+                    "session_id": session_id,
+                    "session_time": session_time.isoformat(),
+                    "status": "failed",
+                    "error": str(e),
+                }
+            )
 
     def _log_session(self, session_record: dict[str, Any]) -> None:
         try:

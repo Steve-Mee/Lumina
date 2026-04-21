@@ -176,9 +176,7 @@ class MultiDaySimRunner:
                 hypothetical_fills = list(backtest.get("fills", []) or [])
         elif real_market_data and real_ticks:
             # Use real tick data to calculate PnL
-            pnl_values = self._calculate_real_pnl(
-                real_ticks, days, baseline_equity, variant, rng
-            )
+            pnl_values = self._calculate_real_pnl(real_ticks, days, baseline_equity, variant, rng)
             for day_idx, day_pnl in enumerate(pnl_values):
                 day_dd_ratio = max(0.0, base_drawdown_abs * (1.0 + rng.uniform(-0.1, 0.1)) / baseline_equity)
                 max_drawdown_ratio = max(max_drawdown_ratio, day_dd_ratio)
@@ -325,7 +323,7 @@ class MultiDaySimRunner:
         shadow_mode: bool,
     ) -> dict[str, Any]:
         daily_bars = self._group_ticks_by_day(ticks=ticks)
-        day_keys = sorted(daily_bars.keys())[-max(1, int(target_days)):]
+        day_keys = sorted(daily_bars.keys())[-max(1, int(target_days)) :]
 
         equity = float(baseline_equity)
         peak_equity = float(baseline_equity)

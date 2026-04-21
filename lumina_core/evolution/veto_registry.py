@@ -11,6 +11,7 @@ from pathlib import Path
 @dataclass(frozen=True)
 class VetoRecord:
     """Immutable veto decision record."""
+
     veto_timestamp: str  # ISO format timestamp when veto was issued
     dna_id: str  # Identifier of DNA being vetoed
     dna_fitness: float  # Fitness of vetoed DNA
@@ -21,7 +22,7 @@ class VetoRecord:
 
 class VetoRegistry:
     """Append-only veto registry with dual SQLite+JSONL persistence.
-    
+
     All write operations are fail-closed: if veto record creation fails,
     the registry state is unchanged. Query operations are read-only and
     cannot affect registry state.
@@ -29,7 +30,7 @@ class VetoRegistry:
 
     def __init__(self, db_path: str = "state/veto_registry.db", log_path: str = "state/veto_registry.jsonl"):
         """Initialize veto registry.
-        
+
         Args:
             db_path: Path to SQLite database file
             log_path: Path to JSONL audit log file
@@ -67,10 +68,10 @@ class VetoRegistry:
 
     def append_veto(self, record: VetoRecord) -> None:
         """Append veto record (thread-safe, fail-closed).
-        
+
         Args:
             record: VetoRecord to append
-            
+
         Raises:
             RuntimeError: If append operation fails (veto NOT recorded)
         """
@@ -79,17 +80,20 @@ class VetoRegistry:
                 # Write to SQLite
                 conn = sqlite3.connect(str(self._db_path))
                 conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("""
+                conn.execute(
+                    """
                     INSERT INTO veto_records (veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (
-                    record.veto_timestamp,
-                    record.dna_id,
-                    record.dna_fitness,
-                    record.reason,
-                    record.issuer,
-                    json.dumps(record.metadata),
-                ))
+                """,
+                    (
+                        record.veto_timestamp,
+                        record.dna_id,
+                        record.dna_fitness,
+                        record.reason,
+                        record.issuer,
+                        json.dumps(record.metadata),
+                    ),
+                )
                 conn.commit()
                 conn.close()
 
@@ -102,11 +106,11 @@ class VetoRegistry:
 
     def is_veto_active(self, dna_id: str, window_seconds: int = 1800) -> bool:
         """Check if DNA has active veto within window (fail-closed: True blocks promotion).
-        
+
         Args:
             dna_id: DNA identifier to check
             window_seconds: Veto window duration in seconds (default 30 min = 1800 sec)
-            
+
         Returns:
             True if veto found within window (blocks promotion), False otherwise
         """
@@ -117,11 +121,14 @@ class VetoRegistry:
                 cutoff_iso = cutoff_time.isoformat()
 
                 conn = sqlite3.connect(str(self._db_path))
-                cursor = conn.execute("""
+                cursor = conn.execute(
+                    """
                     SELECT id FROM veto_records
                     WHERE dna_id = ? AND veto_timestamp >= ?
                     LIMIT 1
-                """, (dna_id, cutoff_iso))
+                """,
+                    (dna_id, cutoff_iso),
+                )
                 result = cursor.fetchone()
                 conn.close()
 
@@ -132,11 +139,11 @@ class VetoRegistry:
 
     def list_recent(self, limit: int = 10, dna_id_filter: str | None = None) -> list[VetoRecord]:
         """List recent veto records (read-only query).
-        
+
         Args:
             limit: Maximum number of records to return
             dna_id_filter: Optional DNA ID to filter by
-            
+
         Returns:
             List of VetoRecord objects in reverse chronological order
         """
@@ -144,32 +151,40 @@ class VetoRegistry:
             try:
                 conn = sqlite3.connect(str(self._db_path))
                 if dna_id_filter:
-                    cursor = conn.execute("""
+                    cursor = conn.execute(
+                        """
                         SELECT veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata
                         FROM veto_records
                         WHERE dna_id = ?
                         ORDER BY veto_timestamp DESC
                         LIMIT ?
-                    """, (dna_id_filter, limit))
+                    """,
+                        (dna_id_filter, limit),
+                    )
                 else:
-                    cursor = conn.execute("""
+                    cursor = conn.execute(
+                        """
                         SELECT veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata
                         FROM veto_records
                         ORDER BY veto_timestamp DESC
                         LIMIT ?
-                    """, (limit,))
+                    """,
+                        (limit,),
+                    )
 
                 records = []
                 for row in cursor.fetchall():
                     veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata_str = row
-                    records.append(VetoRecord(
-                        veto_timestamp=veto_timestamp,
-                        dna_id=dna_id,
-                        dna_fitness=dna_fitness,
-                        reason=reason,
-                        issuer=issuer,
-                        metadata=json.loads(metadata_str),
-                    ))
+                    records.append(
+                        VetoRecord(
+                            veto_timestamp=veto_timestamp,
+                            dna_id=dna_id,
+                            dna_fitness=dna_fitness,
+                            reason=reason,
+                            issuer=issuer,
+                            metadata=json.loads(metadata_str),
+                        )
+                    )
                 conn.close()
                 return records
             except Exception:

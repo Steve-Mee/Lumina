@@ -107,7 +107,9 @@ class _TwinStub:
             "risk_flags": [],
         }
 
-    def evaluate_shadow_promotion(self, *, dna: PolicyDNA, shadow_total_pnl: float, veto_blocked: bool) -> dict[str, object]:
+    def evaluate_shadow_promotion(
+        self, *, dna: PolicyDNA, shadow_total_pnl: float, veto_blocked: bool
+    ) -> dict[str, object]:
         base = self.evaluate_dna_promotion(dna)
         return {
             **base,
