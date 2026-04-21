@@ -176,6 +176,15 @@ class _DecisionCorrector:
         """Initialize with context for config and time dependent values."""
         self.context = context
 
+    @staticmethod
+    def _normalize_reason_seed(reason: Any) -> str:
+        """Strip previously appended emotional correction fragments from the seed reason."""
+        seed = str(reason or "").strip()
+        marker = " | EMO_CORRECT:"
+        if marker in seed:
+            seed = seed.split(marker, 1)[0].strip()
+        return seed or "Initial"
+
     def _apply_fomo(self, corrected: Dict[str, Any], bias: Dict[str, float]) -> None:
         """Apply FOMO correction rules in place when threshold is breached."""
         if bias.get("fomo_score", 0.0) <= 0.7:
@@ -216,7 +225,7 @@ class _DecisionCorrector:
     def apply(self, main_dream: Dict[str, Any], bias: Dict[str, float]) -> Dict[str, Any]:
         """Return a corrected copy of the provided dream state."""
         corrected = main_dream.copy()
-        corrected.setdefault("reason", "")
+        corrected["reason"] = self._normalize_reason_seed(corrected.get("reason", ""))
         self._apply_fomo(corrected, bias)
         self._apply_tilt(corrected, bias)
         self._apply_boredom(corrected, bias)
