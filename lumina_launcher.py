@@ -185,9 +185,18 @@ def _pid_is_alive(pid: int) -> bool:
     if pid <= 0:
         return False
     try:
+        if os.name == "nt":
+            query = f'(Get-CimInstance Win32_Process -Filter "ProcessId = {pid}") -ne $null'
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            return (result.stdout or "").strip().lower() == "true"
         os.kill(pid, 0)
         return True
-    except OSError:
+    except Exception:
         return False
 
 
@@ -226,17 +235,64 @@ def _pid_matches_runtime(pid: int, expected_command: list[str]) -> bool:
     return True
 
 
+def _find_external_runtime_pid() -> int:
+    try:
+        if os.name == "nt":
+            query = (
+                "Get-CimInstance Win32_Process | "
+                "Where-Object { $_.CommandLine -and "
+                "($_.CommandLine -match 'lumina_core\\\\engine\\\\runtime_entrypoint.py' -or "
+                "$_.CommandLine -match 'lumina_runtime.py') } | "
+                "Select-Object -First 1 -ExpandProperty ProcessId"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            raw = (result.stdout or "").strip()
+            return int(raw) if raw.isdigit() else 0
+
+        result = subprocess.run(
+            ["ps", "-eo", "pid=,args="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        for line in (result.stdout or "").splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            if "lumina_core/engine/runtime_entrypoint.py" not in text and "lumina_runtime.py" not in text:
+                continue
+            parts = text.split(maxsplit=1)
+            if parts and parts[0].isdigit():
+                return int(parts[0])
+    except Exception:
+        return 0
+    return 0
+
+
 def _process_is_alive() -> bool:
     proc = st.session_state.get("bot_process")
-    if proc is not None and proc.poll() is None:
-        return True
-    st.session_state.bot_process = None
+    if proc is not None:
+        proc_pid = int(getattr(proc, "pid", 0) or 0)
+        if proc.poll() is None and _pid_is_alive(proc_pid) and _pid_matches_runtime(proc_pid, _runtime_command()):
+            return True
+        st.session_state.bot_process = None
+
     state = _load_process_state()
     command = state.get("command", [])
     expected_command = command if isinstance(command, list) else []
     pid = int(state.get("pid", 0) or 0)
     if _pid_is_alive(pid) and _pid_matches_runtime(pid, expected_command):
         return True
+
+    external_pid = _find_external_runtime_pid()
+    if external_pid > 0 and _pid_is_alive(external_pid):
+        return True
+
     _clear_process_state()
     return False
 
@@ -327,6 +383,99 @@ def _format_timestamp(path: Path) -> str:
         return "Not available"
 
 
+def _pid_started_at_text(pid: int) -> str:
+    if pid <= 0:
+        return "Not started"
+    try:
+        if os.name == "nt":
+            query = (
+                f'$p = Get-CimInstance Win32_Process -Filter "ProcessId = {pid}"; '
+                "if ($null -ne $p -and $p.CreationDate) { $p.CreationDate.ToString('yyyy-MM-dd HH:mm:ss') }"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            raw = (result.stdout or "").strip()
+            return raw or "Not started"
+
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "lstart="],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        raw = (result.stdout or "").strip()
+        if not raw:
+            return "Not started"
+        parsed = datetime.strptime(raw, "%a %b %d %H:%M:%S %Y")
+        return parsed.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return "Not started"
+
+
+def _resolve_last_launch_text(*, alive: bool, process_state: dict[str, Any]) -> str:
+    session_value = str(st.session_state.get("last_start_ts", "")).strip()
+    if session_value and session_value.lower() != "not started":
+        return session_value
+
+    persisted = str(process_state.get("started_at", "")).strip()
+    if persisted and persisted.lower() != "not started":
+        try:
+            parsed = datetime.fromisoformat(persisted)
+            return parsed.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return persisted
+
+    if alive:
+        proc = st.session_state.get("bot_process")
+        proc_pid = int(getattr(proc, "pid", 0) or 0)
+        if proc_pid > 0 and _pid_is_alive(proc_pid):
+            return _pid_started_at_text(proc_pid)
+
+        state_pid = int(process_state.get("pid", 0) or 0)
+        if state_pid > 0 and _pid_is_alive(state_pid):
+            return _pid_started_at_text(state_pid)
+
+        external_pid = _find_external_runtime_pid()
+        if external_pid > 0 and _pid_is_alive(external_pid):
+            return _pid_started_at_text(external_pid)
+
+        # Fallback: resolve creation time from external runtime process in one query.
+        try:
+            if os.name == "nt":
+                query = (
+                    "Get-CimInstance Win32_Process | "
+                    "Where-Object { $_.CommandLine -and "
+                    "($_.CommandLine -match 'lumina_core\\\\engine\\\\runtime_entrypoint.py' -or "
+                    "$_.CommandLine -match 'lumina_runtime.py') } | "
+                    "Select-Object -First 1"
+                )
+                cmd = (
+                    f"$p = ({query}); "
+                    "if ($null -ne $p -and $p.CreationDate) { $p.CreationDate.ToString('yyyy-MM-dd HH:mm:ss') }"
+                )
+                result = subprocess.run(
+                    ["powershell", "-NoProfile", "-Command", cmd],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                )
+                raw = (result.stdout or "").strip()
+                if raw:
+                    return raw
+        except Exception:
+            pass
+
+        log_ts = _format_timestamp(LUMINA_LOG_PATH)
+        if log_ts != "Not available":
+            return log_ts
+
+    return "Not started"
+
+
 def _service_age_badge(age_seconds: float | None, healthy_threshold_seconds: float = 90.0) -> str:
     if age_seconds is None:
         return _status_badge("No feed yet", "warning")
@@ -401,7 +550,7 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
                 "</script></body></html>"
             )
             refresh_url = "data:text/html;charset=utf-8," + urllib.parse.quote(refresh_html)
-            st.iframe(refresh_url, height=0, width="content")
+            st.iframe(refresh_url, height=1, width="content")
         st.markdown(
             """
             <style>
@@ -443,8 +592,12 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
     dashboard_age = _file_age_seconds(dashboard_path)
 
     process_state = _load_process_state()
-    persisted_start_ts = str(process_state.get("started_at", "")).strip() or "Not started"
-    _render_live_age_cards(log_age, state_age, st.session_state.get("last_start_ts", persisted_start_ts))
+    last_launch_text = _resolve_last_launch_text(alive=alive, process_state=process_state)
+    if alive and str(last_launch_text).strip().lower() == "not started":
+        fallback_launch = _format_timestamp(LUMINA_LOG_PATH)
+        if fallback_launch != "Not available":
+            last_launch_text = fallback_launch
+    _render_live_age_cards(log_age, state_age, last_launch_text)
 
     left, right = st.columns(2)
     with left:
@@ -1028,13 +1181,50 @@ def _render_backend_unavailable_card(service_label: str, exc: Exception) -> None
     st.caption(f"Technical detail: {type(exc).__name__}")
 
 
+def _format_reason_for_display(raw_reason: Any, *, max_len: int = 320, max_segments: int = 5) -> str:
+    reason = str(raw_reason or "").strip()
+    if not reason:
+        return "N/A"
+
+    parts = [segment.strip() for segment in reason.split("|") if segment.strip()]
+    if not parts:
+        return "N/A"
+
+    base = parts[0]
+    deduped: list[str] = [base]
+    seen_emo: set[str] = set()
+    extra_segments = 0
+
+    for part in parts[1:]:
+        normalized = part
+        if normalized.startswith("EMO_CORRECT:"):
+            if normalized in seen_emo:
+                extra_segments += 1
+                continue
+            seen_emo.add(normalized)
+
+        if len(deduped) < max_segments:
+            deduped.append(normalized)
+        else:
+            extra_segments += 1
+
+    compact = " | ".join(deduped)
+    if extra_segments > 0:
+        compact = f"{compact} | ... (+{extra_segments} more)"
+
+    if len(compact) > max_len:
+        compact = compact[: max_len - 3].rstrip() + "..."
+    return compact
+
+
 def _render_live_runtime_card(current_dream: dict[str, Any]) -> None:
+    reason_display = _format_reason_for_display(current_dream.get("reason", ""))
     rows = [
         ("Signal", current_dream.get("signal", "UNKNOWN")),
         ("Confidence", current_dream.get("confidence", 0)),
         ("Stop", current_dream.get("stop", 0)),
         ("Target", current_dream.get("target", 0)),
-        ("Reason", current_dream.get("reason", "")),
+        ("Reason", reason_display),
         ("Why No Trade", current_dream.get("why_no_trade") or "N/A"),
         ("Confluence Score", current_dream.get("confluence_score", 0)),
         (
@@ -1703,6 +1893,10 @@ if alive:
     bot_proc = st.session_state.get("bot_process")
     persisted = _load_process_state()
     pid = getattr(bot_proc, "pid", None) or persisted.get("pid") or "unknown"
+    if pid == "unknown":
+        external_pid = _find_external_runtime_pid()
+        if external_pid > 0:
+            pid = external_pid
     runtime_value = f"Active bot process (pid={pid})"
 
 st.markdown(f"Runtime Status {_status_badge(runtime_label, runtime_status)}", unsafe_allow_html=True)

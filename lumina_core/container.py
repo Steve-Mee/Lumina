@@ -35,6 +35,7 @@ from lumina_core.engine import (
 from lumina_core.engine.broker_bridge import BrokerBridge, broker_factory
 from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
 from lumina_core.engine.risk_controller import HardRiskController
+from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.engine.lumina_engine import LuminaEngine
@@ -129,6 +130,7 @@ class ApplicationContainer:
     dashboard_service: DashboardService = field(init=False)
     visualization_service: VisualizationService = field(init=False)
     reporting_service: ReportingService = field(init=False)
+    valuation_engine: ValuationEngine = field(init=False)
     risk_controller: HardRiskController = field(init=False)
     portfolio_var_allocator: PortfolioVaRAllocator = field(init=False)
     news_agent: NewsAgent = field(init=False)
@@ -181,6 +183,10 @@ class ApplicationContainer:
         # Initialize core engine
         self.engine = cast(Any, LuminaEngine)(self.config)
         self.engine.observability_service = self.observability_service
+        self.valuation_engine = self.engine.valuation_engine
+        if self.engine.risk_controller is None:
+            raise RuntimeError("Engine risk_controller was not initialized")
+        self.risk_controller = self.engine.risk_controller
         self.decision_log = AgentDecisionLog()
         self.engine.decision_log = self.decision_log
         self.audit_log_service = AuditLogService(

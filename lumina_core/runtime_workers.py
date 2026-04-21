@@ -640,7 +640,26 @@ def voice_listener_thread(app: RuntimeContext) -> None:
 
 
 def _old_supervisor_loop(app: RuntimeContext) -> None:
+    try:
+        _old_supervisor_loop_inner(app)
+    except Exception as exc:
+        err = LuminaError(
+            severity=ErrorSeverity.FATAL_UNRECOVERABLE,
+            code="SUPERVISOR_LOOP_CRASH",
+            message=str(exc),
+            context={"traceback": traceback.format_exc()},
+        )
+        log_structured(err)
+        app.logger.error(f"supervisor_loop CRASHED: {exc}\n{traceback.format_exc()}")
+        raise
+
+
+def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
     last_oracle = time.time()
+    # Initialize last_validation to now so run_3year_validation() is never triggered
+    # on the first iteration (the monthly_validation_daemon thread handles it).
+    if getattr(app.engine, "last_validation", None) is None:
+        app.engine.last_validation = datetime.now()
     last_save = time.time()
     last_balance_fetch = time.time()
     last_status_print = 0.0
@@ -672,7 +691,11 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
         twin_thread = threading.Thread(target=_emotional_twin_worker, name="emotional-twin-worker", daemon=True)
         twin_thread.start()
 
+    _supervisor_loop_started = False
     while True:
+        if not _supervisor_loop_started:
+            app.logger.info("SUPERVISOR_LOOP_ENTER,status=first_iteration")
+            _supervisor_loop_started = True
         with app.live_data_lock:
             price = (
                 app.live_quotes[-1]["last"]
@@ -702,7 +725,9 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
                     app.logger.error(f"Periodic validator run failed: {exc}")
 
         if time.time() - last_balance_fetch > 10:
-            app.fetch_account_balance()
+            _ops = getattr(getattr(app, "container", None), "operations_service", None)
+            if _ops is not None:
+                _ops.fetch_account_balance()
             last_balance_fetch = time.time()
 
         if app.engine.config.trade_mode == "real":
@@ -1217,7 +1242,11 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
             )
 
         if time.time() - last_save > 30:
-            app.save_state()
+            try:
+                app.save_state()
+                app.logger.info("STATE_SAVED,status=ok")
+            except Exception as _save_exc:
+                app.logger.error(f"STATE_SAVE_FAILED: {_save_exc}\n{traceback.format_exc()}")
             last_save = time.time()
 
         time.sleep(1)
@@ -1225,6 +1254,17 @@ def _old_supervisor_loop(app: RuntimeContext) -> None:
 
 def run_forever_loop(app: RuntimeContext) -> None:
     supervisor_loop(app)
+
+
+def state_persist_daemon(app: RuntimeContext, interval_seconds: int = 30) -> None:
+    """Persist runtime state on a fixed cadence, independent from supervisor loop latency."""
+    interval = max(5, int(interval_seconds))
+    while True:
+        try:
+            app.save_state()
+        except Exception as exc:
+            app.logger.error(f"STATE_PERSIST_DAEMON_FAILED: {exc}\n{traceback.format_exc()}")
+        time.sleep(interval)
 
 
 def supervisor_loop(app: RuntimeContext) -> None:

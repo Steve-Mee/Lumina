@@ -290,6 +290,7 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
         start_dashboard_fn=container.dashboard_service.start_dashboard,
         voice_listener_thread_fn=lambda: runtime_workers.voice_listener_thread(container.runtime_context),
         supervisor_loop_fn=lambda: runtime_workers.supervisor_loop(container.runtime_context),
+        state_persist_daemon_fn=lambda: runtime_workers.state_persist_daemon(container.runtime_context, 30),
         dna_rewrite_daemon_fn=lambda: trade_workers.dna_rewrite_daemon(container.runtime_context),
         gap_recovery_daemon_fn=container.market_data_service.gap_recovery_daemon,
         pre_dream_daemon_fn=(

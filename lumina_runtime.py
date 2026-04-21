@@ -5,6 +5,11 @@ import threading
 from functools import lru_cache
 from typing import Mapping
 
+try:
+    import tkinter as tk
+except Exception:
+    tk = None
+
 from lumina_core.bootstrap import bootstrap_runtime, create_public_api
 from lumina_core.container import ApplicationContainer, create_application_container
 from lumina_core.engine.runtime_entrypoint import run_with_mode
@@ -26,6 +31,9 @@ def __getattr__(name: str):
     # bootstrap the full runtime container.
     if name.startswith("__"):
         raise AttributeError(f"module 'lumina_runtime' has no attribute '{name}'")
+
+    if name == "tk" and tk is not None:
+        return tk
 
     container = get_container()
 
@@ -62,6 +70,14 @@ def main(argv: list[str] | None = None) -> int:
         return run_with_mode("real", argv=runtime_argv)
 
     container = get_container()
+    runtime_module = sys.modules.get("__main__")
+    if runtime_module is not None:
+        container.engine.bind_app(runtime_module)
+        container.runtime_context.app = runtime_module
+
+    # Wire back-reference so RuntimeContext.__getattr__ can delegate to services
+    container.runtime_context.container = container
+
     bootstrap_runtime(container)
 
     if bool(getattr(container.config, "use_human_main_loop", False)):

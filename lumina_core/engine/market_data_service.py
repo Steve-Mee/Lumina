@@ -192,6 +192,10 @@ class MarketDataService:
 
                             if closed_candle is not None:
                                 minute_start = ts.replace(second=0, microsecond=0)
+                                safe_candle = {
+                                    key: (value.isoformat() if isinstance(value, datetime) else value)
+                                    for key, value in dict(closed_candle).items()
+                                }
                                 log_structured(
                                     LuminaError(
                                         severity=ErrorSeverity.RECOVERABLE_LEARNING,
@@ -201,7 +205,7 @@ class MarketDataService:
                                             f"O={closed_candle['open']:.2f} H={closed_candle['high']:.2f} "
                                             f"L={closed_candle['low']:.2f} C={closed_candle['close']:.2f} V={closed_candle['volume']}"
                                         ),
-                                        context={"candle": closed_candle},
+                                        context={"candle": safe_candle},
                                     )
                                 )
 

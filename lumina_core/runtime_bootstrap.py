@@ -20,6 +20,7 @@ def start_runtime_services(
     start_dashboard_fn: RuntimeWorker,
     voice_listener_thread_fn: RuntimeWorker,
     supervisor_loop_fn: RuntimeWorker,
+    state_persist_daemon_fn: Optional[RuntimeWorker],
     dna_rewrite_daemon_fn: RuntimeWorker,
     gap_recovery_daemon_fn: RuntimeWorker,
     pre_dream_daemon_fn: Optional[RuntimeWorker],
@@ -64,6 +65,8 @@ def start_runtime_services(
         start_daemon_fn(voice_listener_thread_fn, name="voice-listener")
 
     start_daemon_fn(supervisor_loop_fn, name="supervisor-loop")
+    if state_persist_daemon_fn is not None:
+        start_daemon_fn(state_persist_daemon_fn, name="state-persist-daemon")
     start_daemon_fn(dna_rewrite_daemon_fn, name="dna-rewrite-daemon")
     start_daemon_fn(gap_recovery_daemon_fn, name="gap-recovery-daemon")
     if pre_dream_daemon_fn is not None:
