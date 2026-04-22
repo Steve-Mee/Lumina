@@ -2,7 +2,7 @@
 
 One nightly cycle:
   1. Fetch top-3 ranked DNA from registry.
-  2. Generate 5-8 mutants + crossovers via genetic_operators.
+  2. Dream Engine: thousands of fast what-if equity paths (optional), then mutants + crossovers.
   3. Score every candidate with calculate_fitness (seeded sim).
   4. Guard: never promote if fitness < previous generation.
   5. MetaSwarm (five agents) deliberates and may block promotion after neuro/gen cycles.
@@ -36,6 +36,7 @@ from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_bible import LuminaBible
+from .dream_engine import dream_engine_config, run_dream_batch
 from .meta_swarm import MetaSwarm, SwarmConsensus, meta_swarm_governance_enabled, parallel_realities_from_config
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
 from .neuroevolution import evaluate_weight_population
@@ -224,6 +225,52 @@ class EvolutionOrchestrator:
         }
         return self._meta_swarm.deliberate(ctx)
 
+    def _run_dream_engine_batch(
+        self,
+        *,
+        base_metrics: dict[str, Any],
+        sim_days: int,
+        generation_offset: int,
+    ) -> dict[str, Any]:
+        enabled, count, horizon_cfg, ddr = dream_engine_config()
+        if not enabled:
+            return {
+                "enabled": False,
+                "dream_count": 0,
+                "breach_count": 0,
+                "breach_rate": 0.0,
+                "worst_dd_ratio": 0.0,
+                "median_terminal_equity_delta": 0.0,
+                "rule_hints": [],
+            }
+        horizon = max(1, min(int(horizon_cfg), int(sim_days)))
+        seed = _seed_from_hash(f"dream:{generation_offset}")
+        report = run_dream_batch(
+            base_metrics,
+            dream_count=count,
+            horizon_days=horizon,
+            seed=seed,
+            drawdown_limit_ratio=ddr,
+        )
+        payload = {
+            "enabled": True,
+            "dream_count": report.dream_count,
+            "breach_count": report.breach_count,
+            "breach_rate": round(float(report.breach_rate), 6),
+            "worst_dd_ratio": round(float(report.worst_dd_ratio), 6),
+            "median_terminal_equity_delta": round(float(report.median_terminal_equity_delta), 6),
+            "rule_hints": list(report.rule_hints),
+        }
+        self._append_metrics(
+            {
+                "event": "dream_engine_batch",
+                "timestamp": _utcnow(),
+                "generation": generation_offset,
+                **payload,
+            }
+        )
+        return payload
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -317,10 +364,17 @@ class EvolutionOrchestrator:
             top_dna = [active_dna]
         previous_fitness = float(active_dna.fitness_score) if active_dna is not None else float("-inf")
 
+        dream_summary = self._run_dream_engine_batch(
+            base_metrics=base_metrics,
+            sim_days=sim_days,
+            generation_offset=generation_offset,
+        )
+
         candidates = self._generate_candidates(
             top_dna=top_dna,
             active_dna=active_dna,
             generation_offset=generation_offset,
+            dream_report=dream_summary,
         )
 
         if not candidates:
@@ -537,6 +591,7 @@ class EvolutionOrchestrator:
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
                 "parallel_realities": int(parallel_realities),
+                "dream_engine": dict(dream_summary),
                 "meta_swarm": {
                     "enabled": bool(meta_swarm_governance_enabled()),
                     "allow_promotion": bool(swarm_consensus.allow_promotion),
@@ -1207,6 +1262,7 @@ class EvolutionOrchestrator:
         top_dna: list[PolicyDNA],
         active_dna: PolicyDNA | None,
         generation_offset: int,
+        dream_report: dict[str, Any] | None = None,
     ) -> list[PolicyDNA]:
         """Produce 5-8 mutant/crossover candidates from top ranked DNA."""
         if not top_dna and active_dna is None:
@@ -1216,7 +1272,11 @@ class EvolutionOrchestrator:
         if active_dna is not None and not any(d.hash == active_dna.hash for d in seed_pool):
             seed_pool.insert(0, active_dna)
 
-        target_count = random.randint(5, 8)
+        stress = float((dream_report or {}).get("breach_rate", 0.0) or 0.0)
+        if stress > 0.18:
+            target_count = random.randint(6, 8)
+        else:
+            target_count = random.randint(5, 8)
         candidates: list[PolicyDNA] = []
         base = seed_pool[0]
         for i in range(target_count):

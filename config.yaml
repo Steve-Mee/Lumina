@@ -237,6 +237,11 @@ evolution:
   approval_required: true
   meta_swarm:
     enabled: true          # five-agent council gates DNA promotion inside EvolutionOrchestrator
+  dream_engine:
+    enabled: true           # fast what-if paths before nightly mutations
+    dream_count: 4000      # 200–50k micro-sims per generation
+    horizon_days: 7        # forward days per dream (capped by sim_days)
+    drawdown_limit_ratio: 0.02
   shadow_validation:
     min_days: 3
     max_days: 7
