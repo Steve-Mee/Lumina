@@ -73,6 +73,54 @@ class LuminaBible:
 
         return BibleEntry(**record)
 
+    def append_community_external_rule(
+        self,
+        *,
+        source: str,
+        hypothesis: str,
+        excerpt: str,
+        vetting: str = "shadow_twin_ok",
+        fitness: float = 0.0,
+        generation: int = 0,
+        lineage_hash: str = "COMMUNITY",
+    ) -> BibleEntry:
+        """Append vetted external / community knowledge (post shadow + twin)."""
+        with self._lock:
+            previous_hash = self._get_last_entry_hash()
+            record = {
+                "timestamp": _utcnow(),
+                "entry_type": "community_external_rule",
+                "source": str(source),
+                "hypothesis": str(hypothesis),
+                "code": str(excerpt),
+                "status": str(vetting),
+                "generation": int(generation),
+                "lineage_hash": str(lineage_hash),
+                "fitness": float(fitness),
+                "dna_hash": "community_external",
+                "previous_hash": str(previous_hash),
+            }
+            canonical = json.dumps(record, sort_keys=True, ensure_ascii=True)
+            record["entry_hash"] = _sha256(canonical)
+
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+        return BibleEntry(
+            timestamp=record["timestamp"],
+            entry_type=record["entry_type"],
+            dna_hash=str(record["dna_hash"]),
+            lineage_hash=record["lineage_hash"],
+            generation=record["generation"],
+            fitness=record["fitness"],
+            hypothesis=record["hypothesis"],
+            code=record["code"],
+            status=record["status"],
+            previous_hash=record["previous_hash"],
+            entry_hash=record["entry_hash"],
+        )
+
     def list_recent_generated_rules(self, *, limit: int = 25) -> list[dict[str, Any]]:
         with self._lock:
             if not self.path.exists():

@@ -2,7 +2,7 @@
 
 One nightly cycle:
   1. Fetch top-3 ranked DNA from registry.
-  2. Dream Engine: thousands of fast what-if equity paths (optional), then mutants + crossovers.
+  2. Dream Engine + Community Knowledge (shadow+twin vetted) before mutants + crossovers.
   3. Score every candidate with calculate_fitness (seeded sim).
   4. Guard: never promote if fitness < previous generation; REAL zero-touch needs twin ≥ 0.97, clean flags, shadow + backtest.
   5. MetaSwarm (five agents) deliberates and may block promotion after neuro/gen cycles.
@@ -36,6 +36,7 @@ from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_bible import LuminaBible
+from .community_knowledge import run_community_knowledge_nightly
 from .dream_engine import dream_engine_config, run_dream_batch
 from .meta_swarm import MetaSwarm, SwarmConsensus, meta_swarm_governance_enabled, parallel_realities_from_config
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
@@ -160,10 +161,15 @@ class EvolutionOrchestrator:
             notification_scheduler=self._notification_scheduler,
         )
         self._meta_swarm = MetaSwarm()
+        self._vector_collection: Any | None = None
         self._initialized = True
 
     def bind_ppo_trainer(self, ppo_trainer: Any | None) -> None:
         self._ppo_trainer = ppo_trainer
+
+    def bind_vector_collection(self, collection: Any | None) -> None:
+        """Optional Chroma collection for vetted community knowledge upserts."""
+        self._vector_collection = collection
 
     def _resolve_ppo_trainer(self) -> Any | None:
         return self._ppo_trainer
@@ -271,6 +277,34 @@ class EvolutionOrchestrator:
         )
         return payload
 
+    def _run_community_knowledge_cycle(
+        self,
+        *,
+        base_metrics: dict[str, Any],
+        active_dna: PolicyDNA | None,
+        generation_offset: int,
+    ) -> dict[str, Any]:
+        summary = run_community_knowledge_nightly(
+            bible=self._lumina_bible,
+            sim_runner=self._sim_runner,
+            approval_twin=self._approval_twin,
+            guard=self._guard,
+            active_dna=active_dna,
+            base_metrics=base_metrics,
+            generation_offset=generation_offset,
+            vector_collection=getattr(self, "_vector_collection", None),
+        )
+        if summary.get("enabled") and int(summary.get("examined", 0) or 0) + int(summary.get("committed", 0) or 0) > 0:
+            self._append_metrics(
+                {
+                    "event": "community_knowledge_cycle",
+                    "timestamp": _utcnow(),
+                    "generation": generation_offset,
+                    **summary,
+                }
+            )
+        return summary
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -367,6 +401,12 @@ class EvolutionOrchestrator:
         dream_summary = self._run_dream_engine_batch(
             base_metrics=base_metrics,
             sim_days=sim_days,
+            generation_offset=generation_offset,
+        )
+
+        community_summary = self._run_community_knowledge_cycle(
+            base_metrics=base_metrics,
+            active_dna=active_dna,
             generation_offset=generation_offset,
         )
 
@@ -598,6 +638,7 @@ class EvolutionOrchestrator:
                 "sim_days": sim_days,
                 "parallel_realities": int(parallel_realities),
                 "dream_engine": dict(dream_summary),
+                "community_knowledge": dict(community_summary),
                 "meta_swarm": {
                     "enabled": bool(meta_swarm_governance_enabled()),
                     "allow_promotion": bool(swarm_consensus.allow_promotion),

@@ -237,6 +237,12 @@ evolution:
   approval_required: true
   meta_swarm:
     enabled: true          # five-agent council gates DNA promotion inside EvolutionOrchestrator
+  community_knowledge:
+    enabled: true
+    max_commit_per_generation: 3
+    queue_path: "state/community_knowledge_queue.jsonl"
+    processed_path: "state/community_knowledge_processed.txt"
+    twin_confidence_min: 0.82   # twin bar for external snippets (below REAL zero-touch 0.97)
   dream_engine:
     enabled: true           # fast what-if paths before nightly mutations
     dream_count: 4000      # 200–50k micro-sims per generation
