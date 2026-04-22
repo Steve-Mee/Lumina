@@ -30,6 +30,10 @@ class EvolutionGuardDecision:
 class EvolutionGuard:
     confidence_threshold: float = 0.85
     rollback_window: timedelta = timedelta(hours=1)
+    #: REAL zero-touch autonomous promotion (twin + shadow + backtest) requires this floor or higher.
+    zero_touch_twin_floor: float = 0.97
+    #: Rollback window after a zero-touch REAL promotion (fitness regression guard).
+    autonomous_real_rollback_window: timedelta = timedelta(hours=24)
 
     def can_mutate(self, *, mode: str) -> bool:
         return _normalize_mode(mode) in {"paper", "sim"}
@@ -45,6 +49,7 @@ class EvolutionGuard:
         approval_twin: Any | None = None,
         dna: Any | None = None,
         shadow_runner: Any | None = None,
+        twin_risk_flags: list[str] | None = None,
     ) -> bool:
         normalized_confidence = _normalize_confidence(confidence)
         local_gate = bool(
@@ -68,6 +73,11 @@ class EvolutionGuard:
                 recommendation = False
 
         if not recommendation:
+            return False
+
+        if _normalize_confidence(confidence) < float(self.zero_touch_twin_floor):
+            return False
+        if len(list(twin_risk_flags or [])) > 0:
             return False
 
         # Start shadow run
@@ -140,10 +150,13 @@ class EvolutionGuard:
         shadow_passed: bool,
         backtest_fitness: float,
         previous_fitness: float | None = None,
+        twin_risk_flags: list[str] | None = None,
     ) -> bool:
-        """REAL promotion gate: twin >= 0.92 + positive shadow + backtest fitness improvement."""
-        confidence_ok = _normalize_confidence(twin_confidence) >= 0.92
+        """REAL zero-touch gate: twin >= ``zero_touch_twin_floor``, clean risk flags, shadow + backtest."""
+        confidence_ok = _normalize_confidence(twin_confidence) >= float(self.zero_touch_twin_floor)
         if not confidence_ok or not bool(shadow_passed):
+            return False
+        if len(list(twin_risk_flags or [])) > 0:
             return False
 
         baseline_fitness: float
@@ -241,6 +254,7 @@ class EvolutionGuard:
         candidate_fitness: float,
         previous_fitness: float,
         now: datetime | None = None,
+        window: timedelta | None = None,
     ) -> bool:
         if promoted_at is None:
             return False
@@ -249,7 +263,8 @@ class EvolutionGuard:
             promoted_at = promoted_at.replace(tzinfo=timezone.utc)
         if current_time.tzinfo is None:
             current_time = current_time.replace(tzinfo=timezone.utc)
-        within_window = (current_time - promoted_at) <= self.rollback_window
+        effective = window if window is not None else self.rollback_window
+        within_window = (current_time - promoted_at) <= effective
         return bool(within_window and float(candidate_fitness) < float(previous_fitness))
 
     def evaluate(
@@ -266,6 +281,7 @@ class EvolutionGuard:
         current_hash: str | None = None,
         promoted_at: datetime | None = None,
         now: datetime | None = None,
+        zero_touch_real: bool = False,
     ) -> EvolutionGuardDecision:
         mutation_allowed = self.can_mutate(mode=mode)
         signed_approval = self.has_signed_approval(
@@ -278,11 +294,13 @@ class EvolutionGuard:
             dna=dna,
             shadow_runner=shadow_runner,
         )
+        rollback_window = self.autonomous_real_rollback_window if zero_touch_real else None
         rollback_required = self.should_rollback(
             promoted_at=promoted_at,
             candidate_fitness=candidate_fitness,
             previous_fitness=previous_fitness,
             now=now,
+            window=rollback_window,
         )
         return EvolutionGuardDecision(
             mutation_allowed=mutation_allowed,

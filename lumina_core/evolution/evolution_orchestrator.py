@@ -4,7 +4,7 @@ One nightly cycle:
   1. Fetch top-3 ranked DNA from registry.
   2. Dream Engine: thousands of fast what-if equity paths (optional), then mutants + crossovers.
   3. Score every candidate with calculate_fitness (seeded sim).
-  4. Guard: never promote if fitness < previous generation.
+  4. Guard: never promote if fitness < previous generation; REAL zero-touch needs twin ≥ 0.97, clean flags, shadow + backtest.
   5. MetaSwarm (five agents) deliberates and may block promotion after neuro/gen cycles.
   6. Promote winner to "active" via register_dna.
   7. Append entry to logs/evolution_metrics.jsonl.
@@ -453,9 +453,13 @@ class EvolutionOrchestrator:
         if hasattr(self._sim_runner, "evaluate_variants") and not isinstance(self._sim_runner, MultiDaySimRunner):
             shadow_runner = self._sim_runner
 
-        # Guard: in REAL mode, has_signed_approval now runs shadow inline via shadow_runner.
+        twin_confidence = float(twin_decision.get("confidence", 0.0) or 0.0)
+        twin_risk_flags = [str(x) for x in list(twin_decision.get("risk_flags", []) or [])]
+        signed_confidence = twin_confidence if str(mode).strip().lower() == "real" else 0.9
+
+        # Guard: REAL uses twin confidence (0–1 or 0–100) for ultra zero-touch floor + shadow.
         signed = self._guard.has_signed_approval(
-            confidence=0.9,  # orchestrator always runs with high synthetic confidence
+            confidence=signed_confidence,
             candidate_fitness=winner_fitness,
             current_fitness=previous_fitness,
             mode=mode,
@@ -463,6 +467,7 @@ class EvolutionOrchestrator:
             approval_twin=self._approval_twin,
             dna=winner_dna,
             shadow_runner=shadow_runner,
+            twin_risk_flags=twin_risk_flags,
         )
         generation_ok = self._guard.allows_generation_progress(
             candidate_fitness=winner_fitness,
@@ -498,10 +503,11 @@ class EvolutionOrchestrator:
 
             gated_promotion = self._guard.is_confidence_gated_promotion(
                 winner_dna,
-                float(twin_decision.get("confidence", 0.0) or 0.0),
+                twin_confidence,
                 shadow_passed,
                 winner_fitness,
                 previous_fitness,
+                twin_risk_flags=twin_risk_flags,
             )
             promoted = bool(promoted and gated_promotion)
 

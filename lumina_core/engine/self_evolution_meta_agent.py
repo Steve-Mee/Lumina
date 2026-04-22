@@ -254,6 +254,12 @@ class SelfEvolutionMetaAgent:
         )
 
         promoted_at = now if bool(should_auto_apply and not approval_blocked and not dry_run) else None
+        zero_touch_real = bool(
+            mode_key == "real"
+            and signed_approval
+            and shadow_evidence
+            and float(confidence) >= 97.0
+        )
         guard_decision = guard.evaluate(
             mode=mode_key,
             confidence=confidence,
@@ -263,6 +269,7 @@ class SelfEvolutionMetaAgent:
             current_hash=active_dna.hash if active_dna is not None else None,
             promoted_at=promoted_at,
             now=now,
+            zero_touch_real=zero_touch_real,
         )
         if guard_decision.rollback_required:
             promoted_active_dna = active_dna

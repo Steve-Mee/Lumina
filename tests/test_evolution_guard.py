@@ -71,7 +71,7 @@ def test_real_mode_requires_approval_twin_recommendation() -> None:
     assert (
         guard.has_signed_approval(
             mode="real",
-            confidence=0.95,
+            confidence=0.97,
             candidate_fitness=2.5,
             current_fitness=1.0,
             approval_twin_recommendation=True,
@@ -110,7 +110,7 @@ def test_real_mode_signed_approval_consults_twin_when_recommendation_missing() -
 
     result = guard.has_signed_approval(
         mode="real",
-        confidence=0.95,
+        confidence=0.97,
         candidate_fitness=2.5,
         current_fitness=1.0,
         approval_twin_recommendation=None,
@@ -121,6 +121,114 @@ def test_real_mode_signed_approval_consults_twin_when_recommendation_missing() -
 
     assert result is True
     assert twin.calls == 1
+
+
+def test_real_mode_signed_approval_blocks_below_zero_touch_twin_floor() -> None:
+    guard = EvolutionGuard()
+    twin = _MockTwin()
+    shadow_runner = _MockShadowRunner()
+    dna = type("DNA", (), {"hash": "lowconf"})()
+
+    assert (
+        guard.has_signed_approval(
+            mode="real",
+            confidence=0.96,
+            candidate_fitness=2.5,
+            current_fitness=1.0,
+            approval_twin_recommendation=True,
+            approval_twin=twin,
+            dna=dna,
+            shadow_runner=shadow_runner,
+        )
+        is False
+    )
+
+
+def test_real_mode_signed_approval_blocks_non_empty_twin_risk_flags() -> None:
+    class _TwinFlags:
+        def evaluate_dna_promotion(self, _dna: Any) -> dict:
+            return {"recommendation": True, "confidence": 0.99, "risk_flags": ["SIZE"]}
+
+    guard = EvolutionGuard()
+    twin = _TwinFlags()
+    shadow_runner = _MockShadowRunner()
+    dna = type("DNA", (), {"hash": "flags"})()
+
+    assert (
+        guard.has_signed_approval(
+            mode="real",
+            confidence=0.99,
+            candidate_fitness=2.5,
+            current_fitness=1.0,
+            approval_twin_recommendation=True,
+            approval_twin=twin,
+            dna=dna,
+            shadow_runner=shadow_runner,
+            twin_risk_flags=["SIZE"],
+        )
+        is False
+    )
+
+
+def test_is_confidence_gated_promotion_requires_0_97_and_clean_flags() -> None:
+    guard = EvolutionGuard()
+    dna = type("DNA", (), {"fitness_score": 1.0})()
+
+    ok = guard.is_confidence_gated_promotion(
+        dna,
+        0.97,
+        True,
+        2.0,
+        previous_fitness=1.0,
+        twin_risk_flags=[],
+    )
+    blocked_conf = guard.is_confidence_gated_promotion(
+        dna,
+        0.96,
+        True,
+        2.0,
+        previous_fitness=1.0,
+        twin_risk_flags=[],
+    )
+    blocked_flags = guard.is_confidence_gated_promotion(
+        dna,
+        0.98,
+        True,
+        2.0,
+        previous_fitness=1.0,
+        twin_risk_flags=["X"],
+    )
+
+    assert ok is True
+    assert blocked_conf is False
+    assert blocked_flags is False
+
+
+def test_should_rollback_respects_extended_window() -> None:
+    guard = EvolutionGuard()
+    now = datetime.now(timezone.utc)
+    promoted_at = now - timedelta(hours=12)
+
+    assert (
+        guard.should_rollback(
+            promoted_at=promoted_at,
+            candidate_fitness=0.2,
+            previous_fitness=0.9,
+            now=now,
+            window=timedelta(hours=24),
+        )
+        is True
+    )
+    assert (
+        guard.should_rollback(
+            promoted_at=promoted_at,
+            candidate_fitness=0.2,
+            previous_fitness=0.9,
+            now=now,
+            window=timedelta(hours=1),
+        )
+        is False
+    )
 
 
 def test_allows_neuroevolution_winner_requires_confidence_and_improvement() -> None:

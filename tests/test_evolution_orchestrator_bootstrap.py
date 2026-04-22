@@ -222,7 +222,7 @@ class _TwinStub:
         self.calls += 1
         return {
             "recommendation": bool(self.recommendation),
-            "confidence": 0.95,
+            "confidence": 0.97,
             "explanation": "stub",
             "risk_flags": [],
         }
