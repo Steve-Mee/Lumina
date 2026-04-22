@@ -189,3 +189,27 @@ def test_render_shows_generated_strategies_section() -> None:
     finally:
         metrics_path.unlink(missing_ok=True)
         bible_path.unlink(missing_ok=True)
+
+
+def test_render_shows_neuroevolution_winners_section() -> None:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as fh:
+        payload = _complete_cycle(cycle_idx=1)
+        payload["generations"][1]["neuro_tested"] = 6
+        payload["generations"][1]["neuro_winners"] = 1
+        fh.write(json.dumps(payload) + "\n")
+        metrics_path = Path(fh.name)
+
+    try:
+        with patch("lumina_core.evolution.evolution_dashboard.st") as mock_st:
+            with patch("lumina_core.evolution.evolution_dashboard.pd") as mock_pd:
+                mock_df = MagicMock()
+                mock_df.pivot_table.return_value = mock_df
+                mock_df.tail.return_value = mock_df
+                mock_pd.DataFrame.return_value = mock_df
+
+                render_evolution_dashboard(metrics_path)
+
+                subheaders = [str(call.args[0]) for call in mock_st.subheader.call_args_list]
+                assert "Neuroevolution Winners" in subheaders
+    finally:
+        metrics_path.unlink(missing_ok=True)

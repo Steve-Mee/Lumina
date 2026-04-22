@@ -12,6 +12,7 @@ from .veto_window import VetoWindow
 from .approval_gym_scheduler import ApprovalGymScheduler
 from .lumina_bible import LuminaBible
 from .strategy_generator import StrategyGenerator
+from .neuroevolution import mutate_weights, crossover_weights, evaluate_weight_population
 
 __all__ = [
     "DNARegistry",
@@ -36,4 +37,7 @@ __all__ = [
     "mutate_prompt",
     "crossover",
     "calculate_fitness",
+    "mutate_weights",
+    "crossover_weights",
+    "evaluate_weight_population",
 ]

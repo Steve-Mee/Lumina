@@ -17,6 +17,49 @@ class PPOTrainer:
     engine: Any
     model_dir: Path = Path("lumina_agents/ppo")
 
+    def _resolve_active_model(self) -> Any | None:
+        return getattr(self.engine, "rl_policy_model", None)
+
+    def get_weights(self) -> dict[str, Any] | None:
+        model = self._resolve_active_model()
+        if model is None or not hasattr(model, "policy"):
+            return None
+        return dict(model.policy.state_dict())
+
+    def set_weights(self, weights: dict[str, Any]) -> bool:
+        """Apply a raw policy state_dict to the active PPO model."""
+        model = self._resolve_active_model()
+        if model is None or not hasattr(model, "policy"):
+            return False
+        try:
+            model.policy.load_state_dict(dict(weights), strict=True)
+            self.engine.set_rl_policy(model)
+            return True
+        except Exception:
+            return False
+
+    def save_weights(self, policy_path: str | Path | None = None) -> str:
+        """Persist active PPO model (.zip) and return output path."""
+        model = self._resolve_active_model()
+        if model is None:
+            raise RuntimeError("Cannot save PPO weights: engine has no active rl_policy_model")
+        self.model_dir.mkdir(parents=True, exist_ok=True)
+        target = Path(policy_path) if policy_path is not None else (self.model_dir / "lumina_ppo_policy.zip")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        model.save(str(target))
+        return str(target)
+
+    def load_weights(self, policy_path: str | Path) -> Any | None:
+        """Load PPO model from .zip and install as active policy."""
+        from stable_baselines3 import PPO
+
+        try:
+            model = PPO.load(str(policy_path))
+            self.engine.set_rl_policy(model)
+            return model
+        except Exception:
+            return None
+
     def _build_rl_config(self) -> RLConfig:
         """LIVING ORGANISM v51: Build environment config from risk settings."""
         risk_cfg = getattr(getattr(self.engine, "config", None), "risk_controller", {})
@@ -82,11 +125,11 @@ class PPOTrainer:
         return self.train(simulator_data, total_timesteps=timesteps, dna_hash=dna_hash)
 
     def load_policy(self, policy_path: str) -> None:
-        from stable_baselines3 import PPO
-
         try:
-            model = PPO.load(policy_path)
-            self.engine.set_rl_policy(model)
+            model = self.load_weights(policy_path)
+            if model is not None:
+                return
+            raise RuntimeError("load_weights returned None")
         except Exception as exc:  # obs-space mismatch after Meta-RL expansion or missing file
             import logging
 

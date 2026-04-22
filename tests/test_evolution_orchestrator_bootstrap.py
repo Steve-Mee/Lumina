@@ -171,6 +171,46 @@ class _ABFrameworkStub:
         )
 
 
+class _PolicyWeightsStub:
+    def __init__(self) -> None:
+        import torch
+
+        self._state = {
+            "layer.weight": torch.ones((2, 2), dtype=torch.float32),
+            "layer.bias": torch.zeros((2,), dtype=torch.float32),
+        }
+
+    def state_dict(self):
+        return {k: v.clone() for k, v in self._state.items()}
+
+    def load_state_dict(self, state, strict=True):
+        del strict
+        self._state = {k: v.clone() for k, v in dict(state).items()}
+
+
+class _ModelWeightsStub:
+    def __init__(self) -> None:
+        self.policy = _PolicyWeightsStub()
+
+    def save(self, path: str) -> None:
+        Path(path).write_text("weights-stub", encoding="utf-8")
+
+
+class _PPOTrainerStub:
+    def __init__(self) -> None:
+        self.engine = SimpleNamespace(rl_policy_model=_ModelWeightsStub())
+
+    def save_weights(self, policy_path) -> str:
+        target = Path(policy_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        self.engine.rl_policy_model.save(str(target))
+        return str(target)
+
+    def load_weights(self, _policy_path):
+        # Keep active model stable in tests; emulate successful load.
+        return self.engine.rl_policy_model
+
+
 class _TwinStub:
     def __init__(self, recommendation: bool = True) -> None:
         self.recommendation = recommendation
@@ -361,3 +401,32 @@ def test_evolution_orchestrator_generated_winner_blocked_without_shadow_pass(mon
     assert summary["status"] == "complete"
     assert generated_winners == []
     assert not orchestrator._generated_bible_path.exists()
+
+
+def test_evolution_orchestrator_runs_neuroevolution_when_ppo_trainer_bound(monkeypatch, tmp_path: Path) -> None:
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_neuro.json"
+    orchestrator._neuro_weights_path = tmp_path / "neuro_weights"
+    registry = _RegistryStub()
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerStub())
+    orchestrator.bind_ppo_trainer(_PPOTrainerStub())
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=1,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": 100.0, "max_drawdown": 50.0, "sharpe": 1.2},
+        mode="sim",
+    )
+
+    assert summary["status"] == "complete"
+    generation = summary["generations"][0]
+    assert int(generation.get("neuro_tested", 0) or 0) >= 5
+    assert int(generation.get("neuro_winners", 0) or 0) in {0, 1}
+    zip_files = list((tmp_path / "neuro_weights").glob("*.zip"))
+    assert zip_files

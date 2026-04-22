@@ -331,6 +331,7 @@ class SelfEvolutionMetaAgent:
         # Multi-generation orchestrator cycle (runs in sim/paper modes only).
         if mutation_allowed and not dry_run:
             orchestrator = EvolutionOrchestrator()
+            orchestrator.bind_ppo_trainer(self.ppo_trainer)
             sim_duration_hours = int(nightly_report.get("sim_duration_hours", 24) or 24)
             orch_result = orchestrator.run_nightly_evolution_cycle(
                 generations=3,

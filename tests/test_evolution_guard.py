@@ -123,6 +123,38 @@ def test_real_mode_signed_approval_consults_twin_when_recommendation_missing() -
     assert twin.calls == 1
 
 
+def test_allows_neuroevolution_winner_requires_confidence_and_improvement() -> None:
+    guard = EvolutionGuard(confidence_threshold=0.85)
+
+    assert (
+        guard.allows_neuroevolution_winner(
+            candidate_confidence=0.92,
+            candidate_fitness=1.20,
+            current_fitness=1.10,
+            min_improvement=0.05,
+        )
+        is True
+    )
+    assert (
+        guard.allows_neuroevolution_winner(
+            candidate_confidence=0.80,
+            candidate_fitness=1.25,
+            current_fitness=1.10,
+            min_improvement=0.05,
+        )
+        is False
+    )
+    assert (
+        guard.allows_neuroevolution_winner(
+            candidate_confidence=0.92,
+            candidate_fitness=1.12,
+            current_fitness=1.10,
+            min_improvement=0.05,
+        )
+        is False
+    )
+
+
 def test_rollback_triggers_for_worse_candidate_within_window() -> None:
     guard = EvolutionGuard()
     now = datetime.now(timezone.utc)

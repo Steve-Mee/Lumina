@@ -129,6 +129,36 @@ def render_evolution_dashboard(path: Path = METRICS_PATH) -> None:
     else:
         st.info("No active shadow runs.")
 
+    st.subheader("Neuroevolution Winners")
+    neuro_rows: list[dict[str, Any]] = []
+    for cycle_idx, cycle in enumerate(rows, start=1):
+        for gen in list(cycle.get("generations", []) or []):
+            if not isinstance(gen, dict):
+                continue
+            tested = int(gen.get("neuro_tested", 0) or 0)
+            winners = int(gen.get("neuro_winners", 0) or 0)
+            if tested <= 0 and winners <= 0:
+                continue
+            neuro_rows.append(
+                {
+                    "cycle": cycle_idx,
+                    "generation": int(gen.get("generation", 0) or 0),
+                    "tested": tested,
+                    "winners": winners,
+                    "winner_fitness": float(gen.get("winner_fitness", 0.0) or 0.0),
+                }
+            )
+
+    if neuro_rows:
+        neuro_df = pd.DataFrame(neuro_rows)
+        st.dataframe(neuro_df.tail(20), use_container_width=True)
+        st.caption(
+            f"Total neuro winners: {int(sum(int(item['winners']) for item in neuro_rows))} | "
+            f"total tested: {int(sum(int(item['tested']) for item in neuro_rows))}"
+        )
+    else:
+        st.info("No neuroevolution winners recorded yet.")
+
     # FASE 3: Generated Strategies observability
     st.subheader("Generated Strategies")
     generated_rows = _load_generated_strategies(GENERATED_BIBLE_PATH)

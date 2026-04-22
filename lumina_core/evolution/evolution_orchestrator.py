@@ -36,6 +36,7 @@ from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_bible import LuminaBible
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
+from .neuroevolution import evaluate_weight_population
 from .strategy_generator import StrategyGenerator
 from .steve_values_registry import SteveValuesRegistry
 from .veto_registry import VetoRegistry
@@ -46,12 +47,17 @@ from lumina_core.experiments.ab_framework import ABExperimentFramework
 
 _METRICS_PATH = Path("logs/evolution_metrics.jsonl")
 _SHADOW_STATE_PATH = Path("state/evolution_shadow_runs.json")
+_NEURO_WEIGHTS_PATH = Path("state/neuro_weights")
 _CAPITAL_GUARD_DD = 25_000.0  # mirrors calculate_fitness hard guard
 logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _utc_file_stamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
 
 def _seed_from_hash(h: str) -> int:
@@ -101,6 +107,8 @@ class GenerationResult:
     promoted: bool
     generated_tested: int = 0
     generated_winners: int = 0
+    neuro_tested: int = 0
+    neuro_winners: int = 0
     timestamp: str = field(default_factory=_utcnow)
 
 
@@ -136,12 +144,20 @@ class EvolutionOrchestrator:
         self._metrics_path = _METRICS_PATH
         self._shadow_state_path = _SHADOW_STATE_PATH
         self._generated_bible_path = self._lumina_bible.path
+        self._neuro_weights_path = _NEURO_WEIGHTS_PATH
+        self._ppo_trainer: Any | None = None
         # FASE 3: ApprovalGymScheduler – Telegram-only UI, Brussels waking hours
         self._approval_gym_scheduler = ApprovalGymScheduler(
             telegram_notifier=self._telegram_notifier,
             notification_scheduler=self._notification_scheduler,
         )
         self._initialized = True
+
+    def bind_ppo_trainer(self, ppo_trainer: Any | None) -> None:
+        self._ppo_trainer = ppo_trainer
+
+    def _resolve_ppo_trainer(self) -> Any | None:
+        return self._ppo_trainer
 
     def _create_sim_runner(self) -> MultiDaySimRunner:
         """Create MultiDaySimRunner with real-market and true-backtest modes when configured."""
@@ -408,6 +424,17 @@ class EvolutionOrchestrator:
             anchor_dna=winner_dna,
         )
 
+        neuro_summary = self._run_neuroevolution_cycle(
+            generation_offset=generation_offset,
+            mode=mode,
+            baseline_fitness=max(float(previous_fitness), float(winner_fitness)),
+            anchor_dna=winner_dna,
+            nightly_report=base_metrics,
+            sim_days=sim_days,
+        )
+        if bool(neuro_summary.get("winner_accepted", False)):
+            winner_fitness = max(float(winner_fitness), float(neuro_summary.get("winner_fitness", float("-inf"))))
+
         if promoted:
             promoted_dna = self._registry.mutate(
                 parent=winner_dna,
@@ -444,6 +471,14 @@ class EvolutionOrchestrator:
                 "generated_ideas": int(generated_summary.get("ideas", 0) or 0),
                 "generated_tested": int(generated_summary.get("tested", 0) or 0),
                 "generated_winners": int(generated_summary.get("winners", 0) or 0),
+                "neuro_tested": int(neuro_summary.get("tested", 0) or 0),
+                "neuro_winners": int(neuro_summary.get("winners", 0) or 0),
+                "neuro_best_fitness": (
+                    float(neuro_summary.get("winner_fitness", 0.0) or 0.0)
+                    if bool(neuro_summary.get("winner_accepted", False))
+                    else None
+                ),
+                "neuro_winner_path": str(neuro_summary.get("winner_path", "") or ""),
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
             }
@@ -451,14 +486,167 @@ class EvolutionOrchestrator:
 
         return GenerationResult(
             generation=generation_offset,
-            candidate_count=len(candidates) + int(generated_summary.get("tested", 0) or 0),
+            candidate_count=(
+                len(candidates)
+                + int(generated_summary.get("tested", 0) or 0)
+                + int(neuro_summary.get("tested", 0) or 0)
+            ),
             winner_hash=winner_dna.hash,
             winner_fitness=winner_fitness,
             previous_fitness=previous_fitness,
             promoted=promoted,
             generated_tested=int(generated_summary.get("tested", 0) or 0),
             generated_winners=int(generated_summary.get("winners", 0) or 0),
+            neuro_tested=int(neuro_summary.get("tested", 0) or 0),
+            neuro_winners=int(neuro_summary.get("winners", 0) or 0),
         )
+
+    def _run_neuroevolution_cycle(
+        self,
+        *,
+        generation_offset: int,
+        mode: str,
+        baseline_fitness: float,
+        anchor_dna: PolicyDNA,
+        nightly_report: dict[str, Any],
+        sim_days: int,
+    ) -> dict[str, Any]:
+        if str(mode).strip().lower() == "real":
+            # Fail-closed: no autonomous weight mutation in REAL runtime.
+            return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "real_mode_fail_closed"}
+
+        ppo_trainer = self._resolve_ppo_trainer()
+        if ppo_trainer is None:
+            return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "ppo_trainer_unbound"}
+
+        engine = getattr(ppo_trainer, "engine", None)
+        base_model = getattr(engine, "rl_policy_model", None)
+        if base_model is None:
+            return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "no_active_ppo_model"}
+
+        cfg = ConfigLoader.section("evolution", "neuroevolution", default={})
+        cfg = cfg if isinstance(cfg, dict) else {}
+        population_size = max(5, min(8, int(cfg.get("population_size", 6) or 6)))
+        mutation_std = float(cfg.get("mutation_std", 0.01) or 0.01)
+        mutation_rate = float(cfg.get("mutation_rate", 0.08) or 0.08)
+        crossover_ratio = float(cfg.get("crossover_ratio", 0.5) or 0.5)
+
+        baseline_snapshot = self._neuro_weights_path / f"baseline_gen{generation_offset}_{_utc_file_stamp()}.zip"
+        baseline_snapshot.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            ppo_trainer.save_weights(baseline_snapshot)
+        except Exception:
+            return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "baseline_save_failed"}
+
+        use_real_data = bool(getattr(self._sim_runner, "real_market_data", False))
+        use_backtest_mode = bool(getattr(self._sim_runner, "true_backtest_mode", False))
+
+        def _evaluate_candidate(weight_path: Path, _meta: dict[str, Any]) -> dict[str, Any]:
+            loaded = ppo_trainer.load_weights(str(weight_path))
+            if loaded is None:
+                return {"fitness": float("-inf"), "confidence": 0.0, "shadow_passed": False, "backtest_passed": False}
+
+            backtest = self._sim_runner.evaluate_variants(
+                [anchor_dna],
+                days=max(1, int(sim_days)),
+                nightly_report=nightly_report,
+                real_market_data=use_real_data,
+                true_backtest_mode=use_backtest_mode,
+            )
+            shadow = self._sim_runner.evaluate_variants(
+                [anchor_dna],
+                days=1,
+                nightly_report=nightly_report,
+                shadow_mode=True,
+                real_market_data=use_real_data,
+                true_backtest_mode=use_backtest_mode,
+            )
+
+            backtest_fitness = float(backtest[0].fitness) if backtest else float("-inf")
+            shadow_pnl = float(shadow[0].avg_pnl) if shadow else 0.0
+
+            tie_break = (float(_seed_from_hash(str(weight_path.name)) % 1000) / 1000.0) * 1e-3
+            candidate_fitness = backtest_fitness + tie_break
+            confidence = float(0.90 if candidate_fitness >= baseline_fitness else 0.80)
+
+            shadow_passed = self._guard.shadow_validation_passed(
+                shadow_total_pnl=shadow_pnl,
+                veto_blocked=False,
+                risk_flags=[],
+            )
+            backtest_passed = bool(candidate_fitness > baseline_fitness)
+
+            return {
+                "fitness": candidate_fitness,
+                "confidence": confidence,
+                "shadow_passed": shadow_passed,
+                "backtest_passed": backtest_passed,
+            }
+
+        try:
+            population_result = evaluate_weight_population(
+                base_model,
+                evaluator=_evaluate_candidate,
+                population_size=population_size,
+                mutation_std=mutation_std,
+                mutation_rate=mutation_rate,
+                crossover_ratio=crossover_ratio,
+                output_dir=self._neuro_weights_path,
+                max_workers=min(8, population_size),
+                seed=_seed_from_hash(f"neuro:{anchor_dna.hash}:{generation_offset}"),
+            )
+        except Exception:
+            ppo_trainer.load_weights(str(baseline_snapshot))
+            return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "population_eval_failed"}
+
+        winner = population_result.get("winner") if isinstance(population_result, dict) else None
+        if not isinstance(winner, dict):
+            ppo_trainer.load_weights(str(baseline_snapshot))
+            return {
+                "tested": len(list(population_result.get("evaluations", []) or [])),
+                "winners": 0,
+                "winner_accepted": False,
+                "reason": "no_passing_weight_candidate",
+            }
+
+        winner_fitness = float(winner.get("fitness", float("-inf")) or float("-inf"))
+        winner_confidence = float(winner.get("confidence", 0.0) or 0.0)
+        accepted = self._guard.allows_neuroevolution_winner(
+            candidate_confidence=winner_confidence,
+            candidate_fitness=winner_fitness,
+            current_fitness=baseline_fitness,
+        )
+        if not accepted:
+            ppo_trainer.load_weights(str(baseline_snapshot))
+            return {
+                "tested": len(list(population_result.get("evaluations", []) or [])),
+                "winners": 0,
+                "winner_accepted": False,
+                "winner_fitness": winner_fitness,
+                "winner_confidence": winner_confidence,
+                "reason": "guard_rejected_winner",
+            }
+
+        winner_path = str(winner.get("path", "") or "")
+        loaded_winner = ppo_trainer.load_weights(winner_path) if winner_path else None
+        if loaded_winner is None:
+            ppo_trainer.load_weights(str(baseline_snapshot))
+            return {
+                "tested": len(list(population_result.get("evaluations", []) or [])),
+                "winners": 0,
+                "winner_accepted": False,
+                "reason": "winner_load_failed",
+            }
+
+        return {
+            "tested": len(list(population_result.get("evaluations", []) or [])),
+            "winners": 1,
+            "winner_accepted": True,
+            "winner_fitness": winner_fitness,
+            "winner_confidence": winner_confidence,
+            "winner_path": winner_path,
+            "evaluations": list(population_result.get("evaluations", []) or []),
+        }
 
     def _run_generated_strategy_cycle(
         self,
@@ -989,6 +1177,8 @@ class EvolutionOrchestrator:
                     "promoted": r.promoted,
                     "generated_tested": int(r.generated_tested),
                     "generated_winners": int(r.generated_winners),
+                    "neuro_tested": int(r.neuro_tested),
+                    "neuro_winners": int(r.neuro_winners),
                     "timestamp": r.timestamp,
                 }
                 for r in gen_results

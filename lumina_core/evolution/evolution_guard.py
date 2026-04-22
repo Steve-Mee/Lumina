@@ -219,6 +219,21 @@ class EvolutionGuard:
             return False
         return True
 
+    def allows_neuroevolution_winner(
+        self,
+        *,
+        candidate_confidence: float,
+        candidate_fitness: float,
+        current_fitness: float,
+        min_improvement: float = 0.01,
+    ) -> bool:
+        """Neuroevolution gate: enforce confidence and measurable fitness improvement."""
+        confidence = _normalize_confidence(candidate_confidence)
+        required_confidence = max(float(self.confidence_threshold), 0.88)
+        if confidence < required_confidence:
+            return False
+        return float(candidate_fitness) >= float(current_fitness) + float(min_improvement)
+
     def should_rollback(
         self,
         *,
