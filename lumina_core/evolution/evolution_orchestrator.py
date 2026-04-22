@@ -5,9 +5,10 @@ One nightly cycle:
   2. Generate 5-8 mutants + crossovers via genetic_operators.
   3. Score every candidate with calculate_fitness (seeded sim).
   4. Guard: never promote if fitness < previous generation.
-  5. Promote winner to "active" via register_dna.
-  6. Append entry to logs/evolution_metrics.jsonl.
-  7. Publish summary to blackboard (if provided).
+  5. MetaSwarm (five agents) deliberates and may block promotion after neuro/gen cycles.
+  6. Promote winner to "active" via register_dna.
+  7. Append entry to logs/evolution_metrics.jsonl.
+  8. Publish summary to blackboard (if provided).
 
 No backward compat, no over-engineering.
 """
@@ -35,6 +36,7 @@ from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_bible import LuminaBible
+from .meta_swarm import MetaSwarm, SwarmConsensus
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
 from .neuroevolution import evaluate_weight_population
 from .strategy_generator import StrategyGenerator
@@ -62,6 +64,16 @@ def _utc_file_stamp() -> str:
 
 def _seed_from_hash(h: str) -> int:
     return int(hashlib.sha256(h.encode()).hexdigest()[:8], 16)
+
+
+def _meta_swarm_enabled() -> bool:
+    evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
+    if not isinstance(evolution_cfg, dict):
+        return True
+    ms = evolution_cfg.get("meta_swarm", {})
+    if not isinstance(ms, dict):
+        return True
+    return bool(ms.get("enabled", True))
 
 
 def _resolve_parallel_realities_count() -> int:
@@ -164,6 +176,7 @@ class EvolutionOrchestrator:
             telegram_notifier=self._telegram_notifier,
             notification_scheduler=self._notification_scheduler,
         )
+        self._meta_swarm = MetaSwarm()
         self._initialized = True
 
     def bind_ppo_trainer(self, ppo_trainer: Any | None) -> None:
@@ -200,6 +213,34 @@ class EvolutionOrchestrator:
             true_backtest_mode=use_backtest_mode,
             market_data_service=market_data_service,
         )
+
+    def _run_meta_swarm_deliberation(
+        self,
+        *,
+        winner_dna: PolicyDNA,
+        winner_fitness: float,
+        previous_fitness: float,
+        base_metrics: dict[str, Any],
+        mode: str,
+        generation_offset: int,
+        parallel_realities: int,
+        sim_days: int,
+        neuro_summary: dict[str, Any],
+    ) -> SwarmConsensus:
+        if not _meta_swarm_enabled():
+            return SwarmConsensus(True, 0.9, False)
+        ctx: dict[str, Any] = {
+            "winner_fitness": float(winner_fitness),
+            "previous_fitness": float(previous_fitness),
+            "nightly_report": dict(base_metrics),
+            "mode": str(mode),
+            "sim_days": max(1, int(sim_days)),
+            "parallel_realities": max(1, int(parallel_realities)),
+            "generation": int(generation_offset),
+            "neuro_winner_accepted": bool(neuro_summary.get("winner_accepted", False)),
+            "winner_prompt_id": str(getattr(winner_dna, "prompt_id", "") or ""),
+        }
+        return self._meta_swarm.deliberate(ctx)
 
     # ------------------------------------------------------------------
     # Public API
@@ -433,6 +474,8 @@ class EvolutionOrchestrator:
         else:
             promoted = bool(signed and generation_ok)
 
+        base_promoted = promoted
+
         generated_summary = self._run_generated_strategy_cycle(
             generation_offset=generation_offset,
             mode=mode,
@@ -451,6 +494,19 @@ class EvolutionOrchestrator:
         )
         if bool(neuro_summary.get("winner_accepted", False)):
             winner_fitness = max(float(winner_fitness), float(neuro_summary.get("winner_fitness", float("-inf"))))
+
+        swarm_consensus = self._run_meta_swarm_deliberation(
+            winner_dna=winner_dna,
+            winner_fitness=winner_fitness,
+            previous_fitness=previous_fitness,
+            base_metrics=base_metrics,
+            mode=mode,
+            generation_offset=generation_offset,
+            parallel_realities=parallel_realities,
+            sim_days=sim_days,
+            neuro_summary=neuro_summary,
+        )
+        promoted = bool(base_promoted and swarm_consensus.allow_promotion)
 
         if promoted:
             promoted_dna = self._registry.mutate(
@@ -499,6 +555,21 @@ class EvolutionOrchestrator:
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
                 "parallel_realities": int(parallel_realities),
+                "meta_swarm": {
+                    "enabled": bool(_meta_swarm_enabled()),
+                    "allow_promotion": bool(swarm_consensus.allow_promotion),
+                    "collective_score": round(float(swarm_consensus.collective_score), 6),
+                    "risk_veto": bool(swarm_consensus.risk_veto),
+                    "round_two": [
+                        {
+                            "agent": v.agent_id,
+                            "approve": bool(v.approve),
+                            "score": round(float(v.score), 4),
+                            "veto": bool(v.veto),
+                        }
+                        for v in swarm_consensus.round_two
+                    ],
+                },
             }
         )
 

@@ -235,6 +235,8 @@ security:
 evolution:
   enabled: true
   approval_required: true
+  meta_swarm:
+    enabled: true          # five-agent council gates DNA promotion inside EvolutionOrchestrator
   shadow_validation:
     min_days: 3
     max_days: 7
