@@ -20,7 +20,7 @@ def start_runtime_services(
     start_dashboard_fn: RuntimeWorker,
     voice_listener_thread_fn: RuntimeWorker,
     supervisor_loop_fn: RuntimeWorker,
-    state_persist_daemon_fn: Optional[RuntimeWorker],
+    state_persist_daemon_fn: Optional[RuntimeWorker] = None,
     dna_rewrite_daemon_fn: RuntimeWorker,
     gap_recovery_daemon_fn: RuntimeWorker,
     pre_dream_daemon_fn: Optional[RuntimeWorker],
