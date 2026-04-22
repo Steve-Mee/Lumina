@@ -19,6 +19,7 @@ import requests
 from fpdf import FPDF
 
 from lumina_core.backtester_engine import BacktesterEngine
+from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
 from .lumina_engine import LuminaEngine
 from .market_data_service import MarketDataService
 
@@ -393,8 +394,11 @@ class PerformanceValidator:
             if hasattr(self.ppo_trainer, "train_nightly_on_infinite_simulator"):
                 policy_path = self.ppo_trainer.train_nightly_on_infinite_simulator(simulator_data, timesteps=300_000)
             else:
-                self.ppo_trainer.train(total_timesteps=300_000)
-                policy_path = ""
+                eng = getattr(self.ppo_trainer, "engine", None)
+                if eng is None:
+                    raise RuntimeError("ppo_trainer.engine missing for emergency RL retrain")
+                bars = coerce_rl_training_bars(eng, simulator_data if isinstance(simulator_data, list) else None, nightly_context=None)
+                policy_path = self.ppo_trainer.train(bars, total_timesteps=300_000)
             actions["rl_retrain"] = True
             actions["rl_policy_path"] = str(policy_path)
         except Exception as exc:

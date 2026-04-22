@@ -12,6 +12,8 @@ from typing import Any, Protocol
 
 from lumina_core.config_loader import ConfigLoader
 
+from .parallel_reality_config import resolve_parallel_realities
+
 
 def meta_swarm_governance_enabled() -> bool:
     """Whether five-agent deliberation runs (EvolutionOrchestrator + nightly meta_review)."""
@@ -25,16 +27,8 @@ def meta_swarm_governance_enabled() -> bool:
 
 
 def parallel_realities_from_config() -> int:
-    """Stress-universe count from evolution.multiweek_fitness (1–50)."""
-    evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
-    mw_cfg = evolution_cfg.get("multiweek_fitness", {}) if isinstance(evolution_cfg, dict) else {}
-    if not isinstance(mw_cfg, dict):
-        return 1
-    try:
-        n = int(mw_cfg.get("parallel_realities", 1) or 1)
-    except (TypeError, ValueError):
-        return 1
-    return max(1, min(50, n))
+    """Stress-universa: env ``LUMINA_PARALLEL_REALITIES`` → sessiebestand → yaml (1–50)."""
+    return resolve_parallel_realities()
 
 
 @dataclass(slots=True)
@@ -184,10 +178,21 @@ class DreamAgent:
         pr = int(ctx.get("parallel_realities", 1) or 1)
         wf = float(ctx.get("winner_fitness", float("-inf")))
         bonus = min(0.15, max(0.0, (pr - 1) * 0.004))
+        de = ctx.get("dream_engine")
+        br = 0.0
+        if isinstance(de, dict):
+            br = float(de.get("breach_rate", 0.0) or 0.0)
+        # High dream tail breach: require stronger evidence before full promotion credit.
+        stress_damp = min(0.12, br * 0.35) if br > 0.08 else 0.0
         approve = math.isfinite(wf) and wf > float("-inf")
-        score = 0.52 + bonus + (0.05 if approve else 0.0)
-        ch = ("risk:dream_wants_more_stress",) if pr < 3 else ()
-        return SwarmAgentVote(self.role, approve, min(0.98, score), False, ch, "long-horizon robustness prior")
+        score = 0.52 + bonus + (0.05 if approve else 0.0) - stress_damp
+        ch: list[str] = []
+        if pr < 3:
+            ch.append("risk:dream_wants_more_stress")
+        if br > 0.18 and isinstance(de, dict) and (de.get("rule_hints") or []):
+            for h in (de.get("rule_hints") or [])[:2]:
+                ch.append(f"dream:tail_concern:{str(h)[:60]}")
+        return SwarmAgentVote(self.role, approve, min(0.98, max(0.2, score)), False, tuple(ch), f"dream br={br:.3f} prior")
 
     def challenged_vote(
         self,

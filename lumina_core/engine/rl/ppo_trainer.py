@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import importlib
+from pathlib import Path
 from typing import Any, Dict
 
 import numpy as np
@@ -79,6 +80,36 @@ class PPOTrainer:
         self.model.learn(total_timesteps=total_timesteps, progress_bar=True)
         self.model.save("lumina_ppo_model")
         print("PPO model saved - policy updated")
+
+    def get_weights(self) -> dict[str, Any] | None:
+        if not hasattr(self.model, "policy"):
+            return None
+        return dict(self.model.policy.state_dict())
+
+    def set_weights(self, weights: dict[str, Any]) -> bool:
+        try:
+            self.model.policy.load_state_dict(dict(weights), strict=True)
+            return True
+        except Exception:
+            return False
+
+    def save_weights(self, policy_path: str | Path | None = None) -> str:
+        target = Path(policy_path) if policy_path is not None else Path("lumina_ppo_model.zip")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        self.model.save(str(target))
+        return str(target)
+
+    def load_weights(self, policy_path: str | Path) -> Any | None:
+        ppo_cls, _ = _load_sb3()
+        try:
+            loaded = ppo_cls.load(str(policy_path))
+        except Exception:
+            return None
+        try:
+            self.model.policy.load_state_dict(loaded.policy.state_dict(), strict=True)
+        except Exception:
+            return None
+        return self.model
 
     def predict_action(self, obs: np.ndarray) -> Dict[str, float]:
         """Live policy gebruik."""

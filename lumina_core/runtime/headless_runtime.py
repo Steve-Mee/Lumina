@@ -16,6 +16,12 @@ from typing import Any
 
 import yaml
 
+from lumina_core.config_loader import ConfigLoader
+from lumina_core.evolution.simulator_data_support import (
+    MIN_SIMULATOR_BARS,
+    require_real_simulator_data_strict,
+    validate_simulator_bars,
+)
 from lumina_core.engine.sim_stability_checker import (
     append_history_entry_for_summary,
     format_stability_report,
@@ -84,6 +90,121 @@ def _resolve_ticks_per_minute(cfg: dict[str, Any]) -> int:
     except (TypeError, ValueError):
         value = 200
     return max(1, value)
+
+
+def _resolve_headless_historical_days_back(headless_cfg: dict[str, Any]) -> int:
+    raw = headless_cfg.get("historical_days_back")
+    if raw is not None and str(raw).strip().lower() not in {"", "null", "none"}:
+        try:
+            return max(1, int(raw))
+        except (TypeError, ValueError):
+            pass
+    neuro = ConfigLoader.section("evolution", "neuroevolution", default={}) or {}
+    try:
+        return max(1, int(neuro.get("fetch_days_back", 90) or 90))
+    except (TypeError, ValueError):
+        return 90
+
+
+def _resolve_headless_historical_limit(headless_cfg: dict[str, Any]) -> int:
+    raw = headless_cfg.get("historical_limit")
+    if raw is not None and str(raw).strip().lower() not in {"", "null", "none"}:
+        try:
+            return max(MIN_SIMULATOR_BARS, int(raw))
+        except (TypeError, ValueError):
+            pass
+    neuro = ConfigLoader.section("evolution", "neuroevolution", default={}) or {}
+    try:
+        return max(MIN_SIMULATOR_BARS, int(neuro.get("fetch_limit", 20000) or 20000))
+    except (TypeError, ValueError):
+        return 20000
+
+
+def _get_market_data_service(container: Any | None) -> Any | None:
+    if container is None:
+        return None
+    mds = getattr(container, "market_data_service", None)
+    if mds is not None:
+        return mds
+    eng = getattr(container, "engine", None)
+    if eng is not None:
+        return getattr(eng, "market_data_service", None)
+    return None
+
+
+def _normalize_tick_for_headless(tick: dict[str, Any]) -> dict[str, Any]:
+    last = float(tick.get("last") or tick.get("close") or 0.0)
+    vol = float(tick.get("volume") or 0.0)
+    out = dict(tick)
+    out["last"] = last
+    out["volume"] = vol
+    out.setdefault("regime", "NEUTRAL")
+    out.setdefault("imbalance", 1.0)
+    return out
+
+
+def _build_headless_ticks_from_history(
+    raw: list[dict[str, Any]],
+    n_target: int,
+    seed: int,
+) -> list[dict[str, Any]]:
+    if n_target <= 0:
+        return []
+    rng = random.Random(seed)
+    if len(raw) >= n_target:
+        start = rng.randint(0, len(raw) - n_target)
+        window = raw[start : start + n_target]
+    else:
+        window: list[dict[str, Any]] = []
+        while len(window) < n_target:
+            window.extend(raw)
+        window = window[:n_target]
+    return [_normalize_tick_for_headless(t) for t in window]
+
+
+def _resolve_headless_ticks(
+    *,
+    n_ticks: int,
+    seed: int,
+    container: Any | None,
+    headless_cfg: dict[str, Any],
+) -> tuple[list[dict[str, Any]], str]:
+    """Return (ticks, source) where source is ``historical`` or ``synthetic``."""
+    if require_real_simulator_data_strict():
+        mds = _get_market_data_service(container)
+        if mds is None or not hasattr(mds, "load_historical_ohlc_extended"):
+            raise RuntimeError(
+                "headless historical mode (require_real_simulator_data) requires an ApplicationContainer "
+                "with market_data_service.load_historical_ohlc_extended (Crosstrade historical API)."
+            )
+        days_back = _resolve_headless_historical_days_back(headless_cfg)
+        limit = _resolve_headless_historical_limit(headless_cfg)
+        raw = mds.load_historical_ohlc_extended(days_back=days_back, limit=limit, ticks_per_bar=4)
+        if not isinstance(raw, list) or len(raw) < MIN_SIMULATOR_BARS:
+            raise RuntimeError(
+                f"headless historical fetch returned insufficient ticks "
+                f"({len(raw) if isinstance(raw, list) else 0}); check API credentials and fetch limits."
+            )
+        ok, code = validate_simulator_bars(raw)
+        if not ok:
+            raise RuntimeError(f"headless historical ticks failed validation: {code}")
+        return _build_headless_ticks_from_history(raw, n_target=n_ticks, seed=seed), "historical"
+
+    return _generate_synthetic_ticks(n=n_ticks, seed=seed), "synthetic"
+
+
+def _empty_sim_metrics() -> dict[str, Any]:
+    return {
+        "total_trades": 0,
+        "pnl_realized": 0.0,
+        "max_drawdown": 0.0,
+        "risk_events": 0,
+        "var_breach_count": 0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "mean_pnl_per_trade": 0.0,
+        "sharpe_annualized": 0.0,
+    }
 
 
 def _resolve_sim_learning_duration_minutes(cfg: dict[str, Any]) -> float:
@@ -444,8 +565,10 @@ class HeadlessRuntime:
 
         The simulation is deterministic and fast (sub-second for standard
         durations when no sleep is involved).  ``duration_minutes`` governs
-        how many synthetic ticks are generated (proportional to typical CME
-        session activity), not wall-clock wait time.
+        how many ticks are processed (proportional to typical CME session
+        activity), not wall-clock wait time. When ``require_real_simulator_data``
+        is enabled for neuroevolution, ticks are loaded from historical OHLC
+        via ``MarketDataService`` (Crosstrade) instead of synthetic prices.
 
         Args:
             duration_minutes: Simulated session length in minutes (e.g. 15, 5).
@@ -491,7 +614,7 @@ class HeadlessRuntime:
 
         ticks_per_minute = _resolve_ticks_per_minute(cfg)
 
-        # Number of synthetic ticks proportional to duration.
+        # Number of ticks proportional to duration.
         n_ticks = max(500, int(duration_minutes * ticks_per_minute))
 
         # --- Broker validation --------------------------------------------------
@@ -501,7 +624,62 @@ class HeadlessRuntime:
         session_guard_blocks = _check_session_guard()
 
         # --- Core simulation ----------------------------------------------------
-        ticks = _generate_synthetic_ticks(n=n_ticks, seed=seed)
+        tick_source = "synthetic"
+        try:
+            ticks, tick_source = _resolve_headless_ticks(
+                n_ticks=n_ticks,
+                seed=seed,
+                container=self._container,
+                headless_cfg=cfg,
+            )
+        except RuntimeError as exc:
+            self._logger.error("HeadlessRuntime: %s", exc)
+            finished_at = datetime.now(timezone.utc).isoformat()
+            empty = _empty_sim_metrics()
+            summary_err: dict[str, Any] = {
+                "schema_version": _SUMMARY_SCHEMA_VERSION,
+                "runtime": "headless",
+                "mode": mode,
+                "broker_mode": broker_mode,
+                "aggressive_sim": bool(aggressive_sim),
+                "sim_overnight_mode": bool(overnight_enabled and mode_normalized == "sim"),
+                "broker_status": broker_status,
+                "duration_minutes": duration_minutes,
+                "started_at": started_at,
+                "finished_at": finished_at,
+                "tick_source": "historical",
+                "error": str(exc),
+                **empty,
+                "evolution_proposals": 0,
+                "session_guard_blocks": session_guard_blocks,
+                "observability_alerts": 0,
+                "metrics_learning": dict(empty),
+                "metrics_realism": dict(empty),
+                "metrics_primary": "learning" if mode_normalized == "sim" else "realism",
+                "financial_reporting": {
+                    "learning_label": "Learning Fitness (niet productie-benchmark)",
+                    "realism_label": "Realism Adjusted (wel vergelijkbaar voor live readiness)",
+                    "metrics_for_readiness_gate": "realism",
+                    "parity_delta_pnl_realized": 0.0,
+                    "parity_delta_max_drawdown": 0.0,
+                    "parity_delta_sharpe_annualized": 0.0,
+                },
+            }
+            summary_err["stress_report"] = self._stress_runner.build_report(empty)
+            summary_err["stress_ready_for_real_gate"] = bool(
+                summary_err["stress_report"].get("stress_ready_for_real_gate", False)
+            )
+            summary_path = _resolve_summary_path(cfg)
+            archive_enabled = _resolve_summary_archive_enabled(cfg)
+            archive_dir = _resolve_summary_archive_dir(cfg)
+            self._persist(
+                summary_err,
+                summary_path=summary_path,
+                archive_enabled=archive_enabled,
+                archive_dir=archive_dir,
+            )
+            return summary_err
+
         sim_learning = _run_simulation(
             ticks,
             seed=seed,
@@ -542,6 +720,7 @@ class HeadlessRuntime:
             "aggressive_sim": bool(aggressive_sim),
             "sim_overnight_mode": bool(overnight_enabled and mode_normalized == "sim"),
             "broker_status": broker_status,
+            "tick_source": tick_source,
             "duration_minutes": duration_minutes,
             "started_at": started_at,
             "finished_at": finished_at,

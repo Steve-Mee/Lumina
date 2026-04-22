@@ -21,9 +21,11 @@ def test_main_calls_bootstrap_then_forever_loop(monkeypatch):
 
     dummy_container = SimpleNamespace(
         config=SimpleNamespace(trade_mode="paper", use_human_main_loop=False),
+        engine=SimpleNamespace(bind_app=lambda *_a, **_k: None),
         swarm_symbols=["MNQ"],
         analysis_service=SimpleNamespace(run_main_loop=lambda: None),
         operations_service=SimpleNamespace(run_forever_loop=lambda: calls.append("run_forever_loop")),
+        runtime_context=SimpleNamespace(),
     )
 
     monkeypatch.setattr(module, "get_container", lambda: dummy_container)

@@ -11,8 +11,9 @@ from typing import Any
 
 import pandas as pd
 
+from .bot_stress_choices import resolve_ohlc_reality_stress_enabled
 from .dna_registry import PolicyDNA
-from .reality_generator import build_parallel_reports
+from .reality_generator import build_parallel_reports, stress_simulator_ohlc
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +288,17 @@ class MultiDaySimRunner:
                 logger.warning("[EVOLUTION] Real market data load failed: %s – using simulation", exc)
                 real_market_data = False
 
+        if (
+            resolve_ohlc_reality_stress_enabled()
+            and real_ticks
+            and report.get("_reality_id") is not None
+        ):
+            real_ticks = stress_simulator_ohlc(
+                real_ticks,
+                int(report.get("_reality_id", 0) or 0),
+                stress_seed=str(variant.hash),
+            )
+
         if true_backtest_mode and real_market_data and real_ticks:
             backtest = self._run_true_backtest(
                 ticks=real_ticks,
@@ -367,6 +379,11 @@ class MultiDaySimRunner:
             regime_fit_bonus = max(-0.5, min(0.5, base_sharpe * 0.1 + rng.uniform(-0.05, 0.05)))
         drawdown_penalty = max_drawdown_ratio * 100.0
         fitness = avg_pnl - drawdown_penalty + regime_fit_bonus
+        de = report.get("dream_engine")
+        if isinstance(de, dict) and de:
+            from .dream_engine import dream_policy_alignment_bonus
+
+            fitness += dream_policy_alignment_bonus(variant.content, de)
 
         return SimResult(
             dna_hash=variant.hash,

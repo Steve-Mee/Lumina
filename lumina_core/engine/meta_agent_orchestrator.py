@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+
+from lumina_core.evolution.simulator_data_support import (
+    coerce_rl_training_bars,
+    enrich_nightly_report_simulator_data,
+)
 
 from .agent_blackboard import AgentBlackboard
 from .self_evolution_meta_agent import SelfEvolutionMetaAgent
@@ -40,9 +46,22 @@ class MetaAgentOrchestrator:
             confidence=0.85,
         )
 
+        evolution_engine = getattr(self.self_evolution_agent, "engine", None)
         if should_retrain and not dry_run and self.ppo_trainer is not None and hasattr(self.ppo_trainer, "train"):
             try:
-                self.ppo_trainer.train(total_timesteps=50000)
+                train_report = dict(nightly_report)
+                enrich_nightly_report_simulator_data(train_report, evolution_engine)
+                sig = inspect.signature(self.ppo_trainer.train)
+                params = list(sig.parameters.keys())
+                if params and params[0] == "simulator_data":
+                    bars = coerce_rl_training_bars(
+                        evolution_engine,
+                        train_report.get("simulator_data"),
+                        nightly_context=train_report,
+                    )
+                    self.ppo_trainer.train(bars, total_timesteps=50000)
+                else:
+                    self.ppo_trainer.train(total_timesteps=50000)
                 retrain_result = {"triggered": True, "executed": True, "reason": "nightly_drift_or_underperformance"}
             except Exception as exc:
                 retrain_result = {"triggered": True, "executed": False, "reason": f"train_failed:{exc}"}
@@ -79,6 +98,8 @@ class MetaAgentOrchestrator:
         merged_report["meta_reflection"] = reflection
         merged_report["meta_hyperparameter_updates"] = hyperparameter_updates
         merged_report["meta_retraining"] = retrain_result
+
+        enrich_nightly_report_simulator_data(merged_report, evolution_engine)
 
         evolution_result = self.self_evolution_agent.run_nightly_evolution(
             nightly_report=merged_report,

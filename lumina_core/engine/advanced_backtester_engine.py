@@ -9,7 +9,21 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from lumina_core.engine.realistic_backtester_engine import RealisticBacktesterEngine
+from lumina_core.evolution.simulator_data_support import require_real_simulator_data_strict
 from lumina_core.runtime_context import RuntimeContext
+
+# ``RealisticBacktesterEngine.run_backtest_on_snapshot`` starts its loop at bar index 60.
+_MIN_MONTE_CARLO_ROWS = 120
+
+
+def _monte_carlo_work_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure a ``timestamp`` column exists for ``run_backtest_on_snapshot``."""
+    work = df.copy()
+    if "timestamp" not in work.columns:
+        work = work.reset_index()
+        if "timestamp" not in work.columns and "index" in work.columns:
+            work = work.rename(columns={"index": "timestamp"})
+    return work
 
 
 class AdvancedBacktesterEngine:
@@ -95,29 +109,88 @@ class AdvancedBacktesterEngine:
         return regime_results
 
     def full_monte_carlo(self, df: pd.DataFrame, runs: int = 1000) -> Dict[str, Any]:
-        """Volledige Monte Carlo met gap events en regime switching"""
-        results = []
-        base_df = df.copy()
+        """Monte Carlo over backtest-snapshots.
 
-        for _ in range(runs):
-            noisy = base_df.copy()
-            noise = np.random.normal(0, 0.001, len(noisy)) * noisy["close"]
-            noisy["close"] += noise
-            noisy["high"] += abs(noise) * 1.3
-            noisy["low"] += noise * 0.7
+        Default: prijs-perturbatie + gap-shocks (synthetische stress). When
+        ``require_real_simulator_data`` is true: alleen willekeurige **contigue**
+        vensters uit de aangeleverde historische ``df`` (geen extra ruis op OHLC).
+        """
+        results: list[Dict[str, Any]] = []
+        runs = max(0, int(runs))
+        historical_only = require_real_simulator_data_strict()
 
-            # Random gap events (nieuws)
-            if np.random.rand() < 0.15:
-                gap_idx = int(np.random.randint(100, len(noisy) - 100))
-                gap_size = float(np.random.normal(0, 0.008) * noisy["close"].iloc[gap_idx])
-                noisy.loc[noisy.index[gap_idx:], "open"] = noisy["open"].iloc[gap_idx:] + gap_size
-                noisy.loc[noisy.index[gap_idx:], "close"] = noisy["close"].iloc[gap_idx:] + gap_size
+        if historical_only:
+            work = _monte_carlo_work_frame(df)
+            n = len(work)
+            if n < _MIN_MONTE_CARLO_ROWS:
+                self.logger.warning(
+                    "full_monte_carlo: insufficient rows for historical bootstrap (%s < %s)",
+                    n,
+                    _MIN_MONTE_CARLO_ROWS,
+                )
+                return {
+                    "mean_sharpe": 0.0,
+                    "median_sharpe": 0.0,
+                    "worst_sharpe": 0.0,
+                    "mean_maxdd": 0.0,
+                    "worst_maxdd": 0.0,
+                    "winrate_5pct": 0.0,
+                    "profit_factor_95pct": 0.0,
+                    "num_runs": 0,
+                    "monte_carlo_mode": "historical_bootstrap_insufficient_data",
+                    "_sharpe_samples": [],
+                    "_maxdd_samples": [],
+                }
 
-            res = self.realistic.run_backtest_on_snapshot(noisy)
-            results.append(res)
+            base_df = work.reset_index(drop=True)
+            n = len(base_df)
+            max_win = min(4000, n)
+            min_win = min(_MIN_MONTE_CARLO_ROWS, max_win)
 
-        sharpes = [r["sharpe"] for r in results]
-        maxdds = [r["maxdd"] for r in results]
+            for _ in range(runs):
+                if max_win < min_win:
+                    break
+                win = int(np.random.randint(min_win, max_win + 1))
+                start = int(np.random.randint(0, max(1, n - win + 1)))
+                snapshot = base_df.iloc[start : start + win].copy()
+                res = self.realistic.run_backtest_on_snapshot(snapshot)
+                results.append(res)
+        else:
+            base_df = df.copy()
+
+            for _ in range(runs):
+                noisy = base_df.copy()
+                noise = np.random.normal(0, 0.001, len(noisy)) * noisy["close"]
+                noisy["close"] += noise
+                noisy["high"] += abs(noise) * 1.3
+                noisy["low"] += noise * 0.7
+
+                if np.random.rand() < 0.15 and len(noisy) > 200:
+                    gap_idx = int(np.random.randint(100, len(noisy) - 100))
+                    gap_size = float(np.random.normal(0, 0.008) * noisy["close"].iloc[gap_idx])
+                    noisy.loc[noisy.index[gap_idx:], "open"] = noisy["open"].iloc[gap_idx:] + gap_size
+                    noisy.loc[noisy.index[gap_idx:], "close"] = noisy["close"].iloc[gap_idx:] + gap_size
+
+                res = self.realistic.run_backtest_on_snapshot(noisy)
+                results.append(res)
+
+        if not results:
+            return {
+                "mean_sharpe": 0.0,
+                "median_sharpe": 0.0,
+                "worst_sharpe": 0.0,
+                "mean_maxdd": 0.0,
+                "worst_maxdd": 0.0,
+                "winrate_5pct": 0.0,
+                "profit_factor_95pct": 0.0,
+                "num_runs": 0,
+                "monte_carlo_mode": "historical_bootstrap" if historical_only else "noise_perturbation",
+                "_sharpe_samples": [],
+                "_maxdd_samples": [],
+            }
+
+        sharpes = [float(r["sharpe"]) for r in results]
+        maxdds = [float(r["maxdd"]) for r in results]
 
         return {
             "mean_sharpe": round(float(np.mean(sharpes)), 2),
@@ -126,8 +199,13 @@ class AdvancedBacktesterEngine:
             "mean_maxdd": round(float(np.mean(maxdds)), 1),
             "worst_maxdd": round(float(np.max(maxdds)), 1),
             "winrate_5pct": round(float(np.percentile([r["winrate"] for r in results], 5)), 3),
-            "profit_factor_95pct": round(float(np.percentile([r.get("profit_factor", 1.0) for r in results], 95)), 2),
-            "num_runs": runs,
+            "profit_factor_95pct": round(
+                float(np.percentile([r.get("profit_factor", 1.0) for r in results], 95)), 2
+            ),
+            "num_runs": len(results),
+            "monte_carlo_mode": "historical_bootstrap" if historical_only else "noise_perturbation",
+            "_sharpe_samples": sharpes,
+            "_maxdd_samples": maxdds,
         }
 
     def generate_regime_dashboard(

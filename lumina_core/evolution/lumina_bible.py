@@ -121,6 +121,84 @@ class LuminaBible:
             entry_hash=record["entry_hash"],
         )
 
+    def _dream_hint_fingerprint_recent(self, fingerprint: str) -> bool:
+        if not self.path.exists() or not str(fingerprint).strip():
+            return False
+        try:
+            lines = self.path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return False
+        for raw in lines[-500:]:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                payload = json.loads(raw)
+            except Exception:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            if str(payload.get("entry_type", "")) != "dream_rule_hint":
+                continue
+            if str(payload.get("fingerprint", "")) == str(fingerprint):
+                return True
+        return False
+
+    def append_dream_rule_hint(
+        self,
+        *,
+        hint: str,
+        generation: int,
+        breach_rate: float = 0.0,
+    ) -> BibleEntry | None:
+        """Record a compact proactive rule suggestion from the dream-engine what-if pass.
+
+        Returns None when the same hint was already recorded recently (deduped), so logs stay valuable.
+        """
+        hyp = str(hint).strip()[:2000]
+        if len(hyp) < 4:
+            raise ValueError("dream rule hint is too short")
+        fingerprint = _sha256(hyp)[:32]
+        detail = (
+            f"Dream what-if tail: {hyp}. context breach_rate={float(breach_rate):.4f} gen={int(generation)}"
+        )
+        with self._lock:
+            if self._dream_hint_fingerprint_recent(fingerprint):
+                return None
+            previous_hash = self._get_last_entry_hash()
+            record = {
+                "timestamp": _utcnow(),
+                "entry_type": "dream_rule_hint",
+                "source": "dream_engine",
+                "hypothesis": hyp,
+                "code": detail,
+                "status": "proactive_tail",
+                "generation": int(generation),
+                "lineage_hash": "DREAM",
+                "fitness": 0.0,
+                "dna_hash": "dream_engine",
+                "fingerprint": fingerprint,
+                "previous_hash": str(previous_hash),
+            }
+            canonical = json.dumps(record, sort_keys=True, ensure_ascii=True)
+            record["entry_hash"] = _sha256(canonical)
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return BibleEntry(
+            timestamp=record["timestamp"],
+            entry_type=record["entry_type"],
+            dna_hash=str(record["dna_hash"]),
+            lineage_hash=record["lineage_hash"],
+            generation=record["generation"],
+            fitness=record["fitness"],
+            hypothesis=record["hypothesis"],
+            code=record["code"],
+            status=record["status"],
+            previous_hash=record["previous_hash"],
+            entry_hash=record["entry_hash"],
+        )
+
     def list_recent_generated_rules(self, *, limit: int = 25) -> list[dict[str, Any]]:
         with self._lock:
             if not self.path.exists():

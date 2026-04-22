@@ -12,6 +12,7 @@ from typing import Any
 from ..evolution.dna_registry import DNARegistry, PolicyDNA
 from ..evolution.evolution_guard import EvolutionGuard
 from ..evolution.evolution_orchestrator import EvolutionOrchestrator
+from ..evolution.simulator_data_support import enrich_nightly_report_simulator_data
 from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
 from ..evolution.meta_swarm import MetaSwarm, meta_swarm_governance_enabled, parallel_realities_from_config
 from .lumina_engine import LuminaEngine
@@ -20,6 +21,18 @@ from .errors import ErrorSeverity, LuminaError
 from .risk_controller import HardRiskController
 from .valuation_engine import ValuationEngine
 from lumina_core.experiments.ab_framework import ABExperimentFramework
+
+
+def should_run_multi_gen_nightly(
+    *, mutation_allowed: bool, dry_run: bool, mode_key: str
+) -> bool:
+    """True when the closed-loop multi-gen cycle (incl. dream) should run.
+
+    Nightly sim/paper often pass dry_run True to protect live side-effects; we still
+    run this cycle in those modes so dream/SIM evolution paths execute.
+    """
+    mk = str(mode_key).strip().lower()
+    return bool(mutation_allowed and (not dry_run or mk in ("sim", "paper")))
 
 
 @dataclass(slots=True)
@@ -128,6 +141,7 @@ class SelfEvolutionMetaAgent:
     def run_nightly_evolution(self, *, nightly_report: dict[str, Any], dry_run: bool = False) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
         nightly_report = self._hydrate_report_from_blackboard(dict(nightly_report))
+        enrich_nightly_report_simulator_data(nightly_report, self.engine)
         if not self.enabled:
             result = {
                 "status": "disabled",
@@ -343,8 +357,12 @@ class SelfEvolutionMetaAgent:
                 best_candidate=best_name,
             )
 
-        # Multi-generation orchestrator cycle (runs in sim/paper modes only).
-        if mutation_allowed and not dry_run:
+        # Multi-generation orchestrator (dream + DNA generations). Nightly sim/paper may pass
+        # dry_run=True to avoid live hyperparam side-effects; we still run the cycle so dream/SIM
+        # exercises evolution. dry_run above still blocks _apply_candidate / certain promotions.
+        if should_run_multi_gen_nightly(
+            mutation_allowed=bool(mutation_allowed), dry_run=bool(dry_run), mode_key=str(mode_key)
+        ):
             orchestrator = EvolutionOrchestrator()
             orchestrator.bind_ppo_trainer(self.ppo_trainer)
             sim_duration_hours = int(nightly_report.get("sim_duration_hours", 24) or 24)

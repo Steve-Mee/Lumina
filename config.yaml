@@ -237,6 +237,8 @@ evolution:
   approval_required: true
   meta_swarm:
     enabled: true          # five-agent council gates DNA promotion inside EvolutionOrchestrator
+  # Fase 3: OHLC-pad (DNA); override: LUMINA_OHLC_DNA_STRESS of state/bot_stress_choices.json
+  ohlc_reality_stress_enabled: true
   community_knowledge:
     enabled: true
     max_commit_per_generation: 3
@@ -248,6 +250,10 @@ evolution:
     dream_count: 4000      # 200–50k micro-sims per generation
     horizon_days: 7        # forward days per dream (capped by sim_days)
     drawdown_limit_ratio: 0.02
+    commit_hints_to_bible: true   # append dream rule_hints to lumina_bible (tail suggestions)
+    # Tighten DNA hyperparam_suggestion (max_risk / drawdown_kill) from dream hints; bounded. Not applied in real unless listed under risk_nudge_modes.
+    apply_risk_nudges: true
+    risk_nudge_modes: [sim, paper]
   shadow_validation:
     min_days: 3
     max_days: 7
@@ -255,7 +261,19 @@ evolution:
     enabled: false          # set true to use multi-week SIM scoring (Meta-RL phase)
     days: 14                # number of simulation days for fitness scoring when enabled
     use_real_market_data: false  # set true to use real historical market data instead of random perturbations
-    parallel_realities: 1   # 10–50 nightly stress universes (min fitness across realities); 1 disables
+    # parallel_realities (1–50): | env LUMINA_PARALLEL_REALITIES | state/parallel_realities_session.json
+    # | deze key (laagste prioriteit) |. CLI: --parallel-realities N. Dashboard + CPU-advies in UI.
+    parallel_realities: 1
+  neuroevolution:
+    require_real_simulator_data: true   # true = RL train + neuro only on historical OHLC; no synthetic OHLC fallback
+    fetch_days_back: 90                 # MarketDataService.load_historical_ohlc_for_symbol
+    fetch_limit: 20000
+    max_bars_in_report: 12000           # cap bars passed into RLTradingEnvironment rollouts
+    # Fase 2: zelfde stress-presets als DNA; eff. aantal = min(stress_universa_max, parallel_realities). Geen extra rollouts.
+    stress_universa_enabled: true
+    stress_universa_max: 12
+    # Fase 3: PPO multi-rollout; override: LUMINA_NEURO_OHLC_ROLLOUTS of state/bot_stress_choices.json
+    use_ohlc_stress_rollouts: false
 
 fine_tuning:
   auto_trigger: true
@@ -380,4 +398,9 @@ headless:
 
   # Seed for deterministic tick generation.
   simulation_seed: 51
+
+  # When evolution.neuroevolution.require_real_simulator_data is true, headless loads ticks via
+  # MarketDataService.load_historical_ohlc_extended (Crosstrade). Optional overrides (null = use neuro fetch_*).
+  historical_days_back: null
+  historical_limit: null
 

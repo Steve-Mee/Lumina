@@ -27,6 +27,7 @@ REQUIRED_FIELDS: dict[str, type] = {
     "mode": str,
     "broker_mode": str,
     "broker_status": str,
+    "tick_source": str,
     "duration_minutes": float,
     "started_at": str,
     "finished_at": str,
@@ -217,6 +218,48 @@ class TestHeadlessRuntime:
         assert summary["stress_ready_for_real_gate"] is True
         assert summary["test_readiness_bypass"]["enabled"] is True
         assert summary["stability_report"]["status"] == "TEST_BYPASS"
+
+    def test_tick_source_synthetic_when_config_allows(self, tmp_path, monkeypatch):
+        import lumina_core.runtime.headless_runtime as hr_mod
+
+        monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
+        runtime = HeadlessRuntime(container=None)
+        summary = runtime.run(duration_minutes=1, mode="paper", broker_mode="paper")
+        assert summary.get("tick_source") == "synthetic"
+
+    def test_strict_historical_fails_without_market_data_service(self, tmp_path, monkeypatch):
+        import lumina_core.runtime.headless_runtime as hr_mod
+
+        monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
+        monkeypatch.setattr(hr_mod, "require_real_simulator_data_strict", lambda: True)
+
+        runtime = HeadlessRuntime(container=None)
+        summary = runtime.run(duration_minutes=1, mode="paper", broker_mode="paper")
+
+        assert summary.get("error")
+        assert summary.get("tick_source") == "historical"
+        assert summary.get("total_trades") == 0
+        _assert_summary_structure(summary)
+
+    def test_strict_historical_runs_with_mock_extended_load(self, tmp_path, monkeypatch):
+        import lumina_core.runtime.headless_runtime as hr_mod
+
+        monkeypatch.setattr(hr_mod, "_SUMMARY_PATH", tmp_path / "last_run_summary.json")
+        monkeypatch.setattr(hr_mod, "require_real_simulator_data_strict", lambda: True)
+
+        class FakeMDS:
+            def load_historical_ohlc_extended(self, days_back: int, limit: int, ticks_per_bar: int = 4):
+                return [
+                    {"last": 5000.0 + i * 0.02, "volume": 100 + i, "bid": 4999.5, "ask": 5000.5}
+                    for i in range(200)
+                ]
+
+        runtime = HeadlessRuntime(container=SimpleNamespace(market_data_service=FakeMDS()))
+        summary = runtime.run(duration_minutes=1, mode="paper", broker_mode="paper")
+
+        assert summary.get("tick_source") == "historical"
+        assert not summary.get("error")
+        _assert_summary_structure(summary)
 
     def test_paper_mode_returns_valid_summary(self, tmp_path, monkeypatch):
         """1-minute paper dry-run produces a complete, well-typed JSON summary."""

@@ -13,7 +13,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lumina_core.config_loader import ConfigLoader
 from lumina_core.engine.valuation_engine import ValuationEngine
+from lumina_core.evolution.simulator_data_support import MIN_SIMULATOR_BARS, require_real_simulator_data_strict
 
 
 def _simulate_worker(payload: dict[str, Any]) -> dict[str, Any]:
@@ -152,13 +154,27 @@ class InfiniteSimulator:
     def run_nightly(self) -> dict[str, Any]:
         start = time.time()
         real_ticks = self._load_real_historical_ticks(days_back=45, limit=150000)
-        synthetic_ticks = self._generate_synthetic_ticks(
-            n_ticks=max(250000, len(real_ticks) * 3),
-            seed=int(time.time()) % 1_000_000,
-            start_price=float(real_ticks[-1]["last"]) if real_ticks else 5000.0,
-        )
-
-        ticks = real_ticks + synthetic_ticks
+        historical_only = require_real_simulator_data_strict()
+        if historical_only:
+            synthetic_ticks: list[dict[str, Any]] = []
+            if len(real_ticks) < MIN_SIMULATOR_BARS:
+                return {
+                    "status": "insufficient_historical_data",
+                    "real_ticks": len(real_ticks),
+                    "trades": 0,
+                    "wins": 0,
+                    "net_pnl": 0.0,
+                    "sharpe": 0.0,
+                    "samples": [],
+                }
+            ticks = list(real_ticks)
+        else:
+            synthetic_ticks = self._generate_synthetic_ticks(
+                n_ticks=max(250000, len(real_ticks) * 3),
+                seed=int(time.time()) % 1_000_000,
+                start_price=float(real_ticks[-1]["last"]) if real_ticks else 5000.0,
+            )
+            ticks = real_ticks + synthetic_ticks
         if not ticks:
             return {"status": "no_data", "trades": 0}
 
@@ -185,8 +201,16 @@ class InfiniteSimulator:
         orchestrator = getattr(getattr(self.runtime, "engine", None), "meta_agent_orchestrator", None)
         if orchestrator is not None and hasattr(orchestrator, "run_nightly_reflection"):
             try:
+                reflection_report = dict(report)
+                if len(real_ticks) >= MIN_SIMULATOR_BARS:
+                    cap = 12000
+                    neuro_cfg = ConfigLoader.section("evolution", "neuroevolution", default={}) or {}
+                    if isinstance(neuro_cfg, dict):
+                        cap = max(MIN_SIMULATOR_BARS, int(neuro_cfg.get("max_bars_in_report", cap) or cap))
+                    reflection_report["simulator_data"] = list(real_ticks[-cap:])
+                    reflection_report["neuro_simulator_data_source"] = "simulator_real_ticks"
                 orchestrator.run_nightly_reflection(
-                    nightly_report=report,
+                    nightly_report=reflection_report,
                     dry_run=str(getattr(self.runtime.engine.config, "trade_mode", "paper")).strip().lower()
                     in {"sim", "paper"},
                 )

@@ -82,6 +82,30 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Test-only: bypass SIM readiness gate when LUMINA_TEST_MODE=true.",
     )
+    parser.add_argument(
+        "--parallel-realities",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Multi-reality stress-universa voor evolutie-SIM (1–50; overschrijft config en sessiebestand). "
+            "Zie ook LUMINA_PARALLEL_REALITIES in .env."
+        ),
+    )
+    parser.add_argument(
+        "--set-ohlc-dna-stress",
+        type=int,
+        choices=[0, 1],
+        default=None,
+        help="DNA-evolutie OHLC-stress: 0=uit, 1=aan (LUMINA_OHLC_DNA_STRESS).",
+    )
+    parser.add_argument(
+        "--set-neuro-ohlc-rollouts",
+        type=int,
+        choices=[0, 1],
+        default=None,
+        help="PPO meerdere OHLC-rollouts: 0=uit, 1=aan (LUMINA_NEURO_OHLC_ROLLOUTS; zwaar).",
+    )
     return parser
 
 
@@ -245,6 +269,21 @@ def _run_nightly() -> int:
 def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args, _ = parser.parse_known_args(list(argv or []))
+
+    if getattr(args, "parallel_realities", None) is not None:
+        from lumina_core.evolution.parallel_reality_config import apply_env_parallel_realities
+
+        apply_env_parallel_realities(int(args.parallel_realities))
+
+    if getattr(args, "set_ohlc_dna_stress", None) is not None or getattr(
+        args, "set_neuro_ohlc_rollouts", None
+    ) is not None:
+        from lumina_core.evolution.bot_stress_choices import apply_env_stress_flags
+
+        apply_env_stress_flags(
+            getattr(args, "set_ohlc_dna_stress", None),
+            getattr(args, "set_neuro_ohlc_rollouts", None),
+        )
 
     if bool(args.sim_only) and bool(args.real_safe):
         parser.error("--sim-only and --real-safe cannot be combined")

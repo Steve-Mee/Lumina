@@ -7,7 +7,17 @@ from typing import Any
 
 import numpy as np
 
+from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
 from lumina_core.rl_environment import RLConfig, RLTradingEnvironment
+
+
+def _sb3_ppo_load(path: str | Path) -> Any | None:
+    try:
+        from stable_baselines3 import PPO
+
+        return PPO.load(str(path))
+    except Exception:
+        return None
 
 
 @dataclass(slots=True)
@@ -51,14 +61,70 @@ class PPOTrainer:
 
     def load_weights(self, policy_path: str | Path) -> Any | None:
         """Load PPO model from .zip and install as active policy."""
-        from stable_baselines3 import PPO
-
-        try:
-            model = PPO.load(str(policy_path))
-            self.engine.set_rl_policy(model)
-            return model
-        except Exception:
+        model = _sb3_ppo_load(policy_path)
+        if model is None:
             return None
+        self.engine.set_rl_policy(model)
+        return model
+
+    def evaluate_policy_zip_rollouts(
+        self,
+        policy_path: str | Path,
+        simulator_data: list[dict[str, Any]],
+        *,
+        dna_hash: str | None = None,
+        shadow_max_steps: int = 256,
+        backtest_max_steps: int = 2048,
+    ) -> dict[str, Any]:
+        """Shadow + backtest rollouts on RLTradingEnvironment without swapping the engine's active policy."""
+        bad = {
+            "ok": False,
+            "shadow_equity_delta": 0.0,
+            "backtest_fitness": float("-inf"),
+            "shadow_total_reward": 0.0,
+            "backtest_equity_delta": 0.0,
+        }
+        try:
+            bars = coerce_rl_training_bars(self.engine, simulator_data, nightly_context=None)
+        except RuntimeError:
+            return dict(bad)
+
+        model = _sb3_ppo_load(policy_path)
+        if model is None:
+            return dict(bad)
+
+        cfg = self._build_rl_config()
+
+        def _segment(max_steps: int) -> tuple[float, float]:
+            env = RLTradingEnvironment(self.engine, bars, config=cfg)
+            if dna_hash:
+                env.set_dna_hash(str(dna_hash))
+            obs, _ = env.reset()
+            initial_equity = float(getattr(env, "_initial_equity", 50000.0) or 50000.0)
+            total_reward = 0.0
+            last_equity = initial_equity
+            cap = max(1, min(int(max_steps), int(cfg.max_steps)))
+            for _ in range(cap):
+                action, _ = model.predict(obs, deterministic=True)
+                obs, reward, terminated, truncated, info = env.step(action)
+                total_reward += float(reward)
+                if isinstance(info, dict) and "equity" in info:
+                    last_equity = float(info.get("equity") or last_equity)
+                if terminated or truncated:
+                    break
+            return total_reward, last_equity - initial_equity
+
+        sh_r, sh_eq_delta = _segment(shadow_max_steps)
+        bt_r, bt_eq_delta = _segment(backtest_max_steps)
+        backtest_fitness = float(bt_r) + 1e-6 * float(bt_eq_delta)
+
+        return {
+            "ok": True,
+            "shadow_equity_delta": float(sh_eq_delta),
+            "shadow_total_reward": float(sh_r),
+            "backtest_fitness": float(backtest_fitness),
+            "backtest_equity_delta": float(bt_eq_delta),
+        }
 
     def _build_rl_config(self) -> RLConfig:
         """LIVING ORGANISM v51: Build environment config from risk settings."""
@@ -91,7 +157,8 @@ class PPOTrainer:
         from stable_baselines3 import PPO
 
         self.model_dir.mkdir(parents=True, exist_ok=True)
-        env = RLTradingEnvironment(self.engine, simulator_data, config=self._build_rl_config())
+        bars = coerce_rl_training_bars(self.engine, simulator_data, nightly_context=None)
+        env = RLTradingEnvironment(self.engine, bars, config=self._build_rl_config())
         if dna_hash:
             env.set_dna_hash(dna_hash)
         model = PPO(

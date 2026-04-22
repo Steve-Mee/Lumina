@@ -13,9 +13,22 @@ import plotly.graph_objects as go
 import threading
 import time
 import webbrowser
-from dash import Input, Output, dcc, html
+from dash import Input, Output, State, dcc, html
 
 from .lumina_engine import LuminaEngine
+from lumina_core.evolution.bot_stress_choices import (
+    TOOLTIP_NEURO_OHLC_NL,
+    TOOLTIP_OHLC_DNA_NL,
+    resolve_neuro_ohlc_stress_rollouts,
+    resolve_ohlc_reality_stress_enabled,
+    save_bot_stress_choices,
+)
+from lumina_core.evolution.parallel_reality_config import (
+    format_tooltip_nl,
+    recommend_parallel_realities,
+    resolve_parallel_realities,
+    save_parallel_realities_session,
+)
 
 
 @dataclass(slots=True)
@@ -633,12 +646,187 @@ class DashboardService:
         if not bool(getattr(app, "DASHBOARD_ENABLED", self.engine.config.dashboard_enabled)):
             return
 
+        pr_recommended = int(recommend_parallel_realities())
+        pr_current = int(resolve_parallel_realities())
+        pr_help = format_tooltip_nl()
+        ohlc_dna_on = bool(resolve_ohlc_reality_stress_enabled())
+        neuro_roll_on = bool(resolve_neuro_ohlc_stress_rollouts())
+        stress_check_val: list[str] = []
+        if ohlc_dna_on:
+            stress_check_val.append("dna")
+        if neuro_roll_on:
+            stress_check_val.append("neuro")
         dash_app = dash.Dash(__name__, external_stylesheets=[dbc.themes.DARKLY])
         dash_app.layout = dbc.Container(
             [
                 html.H1(
                     "LUMINA v51 - Live Human Trading Partner",
                     style={"textAlign": "center", "color": "#00ff88", "marginBottom": "20px"},
+                ),
+                dbc.Row(
+                    [
+                        dbc.Col(
+                            [
+                                dbc.Card(
+                                    [
+                                        dbc.CardBody(
+                                            [
+                                                html.H5(
+                                                    "Evolutie — parallelle stress-universa (multi-reality SIM)",
+                                                    className="text-muted",
+                                                ),
+                                                html.P(
+                                                    [
+                                                        f"Actief in dit proces: {pr_current}  ·  "
+                                                        f"Aanbevolen op jouw PC (CPU): {pr_recommended}  (laag houdt "
+                                                        f"de belasting beperkt). ",
+                                                        html.Span(
+                                                            "ⓘ",
+                                                            id="parallel-realities-tooltip-target",
+                                                            style={
+                                                                "cursor": "help",
+                                                                "color": "#7fd4ff",
+                                                                "fontWeight": "800",
+                                                                "marginLeft": "4px",
+                                                            },
+                                                            title=pr_help[:220] + "…",
+                                                        ),
+                                                    ],
+                                                    style={"fontSize": "14px", "color": "#c8d0dc"},
+                                                ),
+                                                dbc.Tooltip(
+                                                    pr_help,
+                                                    target="parallel-realities-tooltip-target",
+                                                    placement="bottom",
+                                                    style={"maxWidth": "520px", "whiteSpace": "pre-line"},
+                                                ),
+                                                dbc.Row(
+                                                    [
+                                                        dbc.Col(
+                                                            [
+                                                                html.Label(
+                                                                    "Aantal (min 1 — max 50):",
+                                                                    style={"color": "#bbbbbb", "fontSize": "13px"},
+                                                                ),
+                                                                dcc.Input(
+                                                                    id="parallel-realities-input",
+                                                                    type="number",
+                                                                    min=1,
+                                                                    max=50,
+                                                                    step=1,
+                                                                    value=pr_current,
+                                                                    debounce=True,
+                                                                    style={
+                                                                        "width": "100px",
+                                                                        "fontSize": "16px",
+                                                                        "padding": "4px 8px",
+                                                                        "borderRadius": "6px",
+                                                                    },
+                                                                ),
+                                                            ],
+                                                            width="auto",
+                                                        ),
+                                                        dbc.Col(
+                                                            [
+                                                                dbc.Button(
+                                                                    "Keuze opslaan",
+                                                                    id="parallel-realities-save",
+                                                                    color="info",
+                                                                    size="sm",
+                                                                    n_clicks=0,
+                                                                    className="mt-3",
+                                                                ),
+                                                            ],
+                                                            width="auto",
+                                                        ),
+                                                    ],
+                                                    className="g-2 align-items-end",
+                                                ),
+                                                html.Div(
+                                                    id="parallel-realities-feedback",
+                                                    style={"minHeight": "24px", "color": "#7fd4ff", "marginTop": "6px"},
+                                                ),
+                                                html.Hr(className="my-2", style={"borderColor": "#333"}),
+                                                html.H5(
+                                                    "Fase 3 — OHLC / PPO-stress (marktdata)",
+                                                    className="text-muted",
+                                                    style={"fontSize": "1rem", "marginTop": "6px"},
+                                                ),
+                                                dbc.Checklist(
+                                                    id="bot-stress-checks",
+                                                    options=[
+                                                        {
+                                                            "label": " OHLC-stress op historische ticks (DNA-evolutie) ",
+                                                            "value": "dna",
+                                                        },
+                                                        {
+                                                            "label": " PPO: meerdere OHLC-rollouts per kandidaat (zwaar) ",
+                                                            "value": "neuro",
+                                                        },
+                                                    ],
+                                                    value=stress_check_val,
+                                                    switch=True,
+                                                    className="mb-1",
+                                                ),
+                                                html.Div(
+                                                    [
+                                                        html.Span(
+                                                            "ⓘ",
+                                                            id="tooltip-ohlc-dna-target",
+                                                            style={
+                                                                "cursor": "help",
+                                                                "color": "#7fd4ff",
+                                                                "fontWeight": "800",
+                                                            },
+                                                        ),
+                                                        dbc.Tooltip(
+                                                            TOOLTIP_OHLC_DNA_NL,
+                                                            target="tooltip-ohlc-dna-target",
+                                                            placement="right",
+                                                            style={"maxWidth": "480px", "whiteSpace": "pre-line"},
+                                                        ),
+                                                        html.Span("  "),
+                                                        html.Span(
+                                                            "ⓘ",
+                                                            id="tooltip-neuro-ohlc-target",
+                                                            style={
+                                                                "cursor": "help",
+                                                                "color": "#ffaa66",
+                                                                "fontWeight": "800",
+                                                            },
+                                                        ),
+                                                        dbc.Tooltip(
+                                                            TOOLTIP_NEURO_OHLC_NL,
+                                                            target="tooltip-neuro-ohlc-target",
+                                                            placement="right",
+                                                            style={"maxWidth": "480px", "whiteSpace": "pre-line"},
+                                                        ),
+                                                    ],
+                                                    style={"marginBottom": "6px", "fontSize": "14px"},
+                                                ),
+                                                dbc.Button(
+                                                    "Stress-keuzes opslaan",
+                                                    id="bot-stress-save",
+                                                    color="secondary",
+                                                    size="sm",
+                                                    n_clicks=0,
+                                                    className="mb-1",
+                                                ),
+                                                html.Div(
+                                                    id="bot-stress-feedback",
+                                                    style={"minHeight": "22px", "color": "#9fd4a8", "fontSize": "13px"},
+                                                ),
+                                            ]
+                                        )
+                                    ],
+                                    color="dark",
+                                    outline=True,
+                                )
+                            ],
+                            width=12,
+                        ),
+                    ],
+                    className="mb-3",
                 ),
                 html.Div(
                     [
@@ -913,6 +1101,43 @@ class DashboardService:
             ],
             fluid=True,
         )
+
+        @dash_app.callback(
+            Output("parallel-realities-feedback", "children"),
+            Input("parallel-realities-save", "n_clicks"),
+            State("parallel-realities-input", "value"),
+            prevent_initial_call=True,
+        )
+        def _save_parallel_realities(n_clicks: int, value: int | float | str | None) -> str:
+            if not n_clicks:
+                return ""
+            try:
+                raw = int(value)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return "Ongeldig getal; kies 1—50."
+            n = save_parallel_realities_session(raw)
+            return f"Opgeslagen: {n} stress-universa (actief in dit Lumina-proces; herstart de bot om overal 100% zeker dezelfde waarde te gebruiken)."
+
+        @dash_app.callback(
+            Output("bot-stress-feedback", "children"),
+            Input("bot-stress-save", "n_clicks"),
+            State("bot-stress-checks", "value"),
+            prevent_initial_call=True,
+        )
+        def _save_bot_stress_choices_dash(n_clicks: int, values: list[str] | None) -> str:
+            if not n_clicks:
+                return ""
+            v = list(values or [])
+            dna = "dna" in v
+            neuro = "neuro" in v
+            save_bot_stress_choices(
+                ohlc_reality_stress_enabled=bool(dna),
+                use_ohlc_stress_rollouts=bool(neuro),
+            )
+            return (
+                f"Opgeslagen: DNA-OHLC={'aan' if dna else 'uit'}, PPO-OHLC-rollouts={'aan' if neuro else 'uit'} "
+                "(actief in dit proces; `state/bot_stress_choices.json`)."
+            )
 
         @dash_app.callback(
             [

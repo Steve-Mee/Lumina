@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
+import hashlib
 import json
+import os
 
 from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
@@ -80,6 +82,35 @@ class _SimRunnerStub:
             )
             for variant in variants
         ]
+
+
+class _SimRunnerParallelCapture(_SimRunnerStub):
+    """Legt ``parallel_realities`` vast (integratietest met :func:`resolve_parallel_realities`)."""
+
+    def __init__(self) -> None:
+        self.last_parallel: int | None = None
+
+    def evaluate_variants(
+        self,
+        variants: list[PolicyDNA],
+        *,
+        days: int,
+        nightly_report: dict | None = None,
+        shadow_mode: bool = False,
+        real_market_data: bool = False,
+        true_backtest_mode: bool = False,
+        parallel_realities: int = 1,
+        **kwargs: Any,
+    ) -> list[SimResult]:
+        self.last_parallel = int(parallel_realities)
+        return super().evaluate_variants(
+            variants,
+            days=days,
+            nightly_report=nightly_report,
+            shadow_mode=shadow_mode,
+            real_market_data=real_market_data,
+            true_backtest_mode=true_backtest_mode,
+        )
 
 
 class _SimRunnerWithGeneratedStub(_SimRunnerStub):
@@ -212,6 +243,26 @@ class _PPOTrainerStub:
         # Keep active model stable in tests; emulate successful load.
         return self.engine.rl_policy_model
 
+    def evaluate_policy_zip_rollouts(self, policy_path, simulator_data, **kwargs):
+        del simulator_data, kwargs
+        name = Path(policy_path).name
+        if name.startswith("baseline_gen"):
+            return {
+                "ok": True,
+                "shadow_equity_delta": 30.0,
+                "shadow_total_reward": 1.0,
+                "backtest_fitness": 100.0,
+                "backtest_equity_delta": 0.0,
+            }
+        h = int(hashlib.sha256(name.encode()).hexdigest()[:8], 16)
+        return {
+            "ok": True,
+            "shadow_equity_delta": 25.0,
+            "shadow_total_reward": 1.0,
+            "backtest_fitness": 100.2 + (h % 100) / 500.0,
+            "backtest_equity_delta": 0.0,
+        }
+
 
 class _TwinStub:
     def __init__(self, recommendation: bool = True) -> None:
@@ -311,8 +362,8 @@ def test_evolution_orchestrator_real_path_promotes_after_shadow_pass(monkeypatch
         lineage_hash="L1",
     )
 
-    def _fixed_candidates(*, top_dna, active_dna, generation_offset):
-        del top_dna, active_dna, generation_offset
+    def _fixed_candidates(*, top_dna, active_dna, generation_offset, dream_report=None, evolution_mode="sim", **kw):
+        del top_dna, active_dna, generation_offset, dream_report, evolution_mode, kw
         return [fixed_candidate]
 
     monkeypatch.setattr(
@@ -432,3 +483,35 @@ def test_evolution_orchestrator_runs_neuroevolution_when_ppo_trainer_bound(monke
     assert int(generation.get("neuro_winners", 0) or 0) in {0, 1}
     zip_files = list((tmp_path / "neuro_weights").glob("*.zip"))
     assert zip_files
+
+
+def test_evolution_orchestrator_forwards_resolved_parallel_realities_to_sim(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Fase 1: ``LUMINA_PARALLEL_REALITIES`` → ``_run_single_generation`` → ``evaluate_variants(..., parallel_realities=…)``."""
+    from lumina_core.evolution.parallel_reality_config import ENV_PARALLEL_REALITIES
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+    monkeypatch.setenv(ENV_PARALLEL_REALITIES, "14")
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_parallel.json"
+    registry = _RegistryStub()
+    orchestrator._registry = cast(Any, registry)
+    cap = _SimRunnerParallelCapture()
+    orchestrator._sim_runner = cast(Any, cap)
+
+    try:
+        summary = orchestrator.run_nightly_evolution_cycle(
+            generations=1,
+            sim_duration_hours=24,
+            nightly_report={"net_pnl": 100.0, "max_drawdown": 50.0, "sharpe": 1.2},
+            mode="sim",
+        )
+        assert summary["status"] == "complete"
+        assert cap.last_parallel == 14
+    finally:
+        monkeypatch.delenv(ENV_PARALLEL_REALITIES, raising=False)
+        os.environ.pop(ENV_PARALLEL_REALITIES, None)

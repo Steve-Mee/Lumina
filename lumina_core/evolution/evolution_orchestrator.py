@@ -37,10 +37,18 @@ from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_bible import LuminaBible
 from .community_knowledge import run_community_knowledge_nightly
-from .dream_engine import dream_engine_config, run_dream_batch
+from .dream_engine import (
+    dream_engine_config,
+    enrich_nightly_report_with_dream,
+    merge_dream_hyperparam_nudges,
+    run_dream_batch,
+)
 from .meta_swarm import MetaSwarm, SwarmConsensus, meta_swarm_governance_enabled, parallel_realities_from_config
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
 from .neuroevolution import evaluate_weight_population
+from .bot_stress_choices import resolve_neuro_ohlc_stress_rollouts
+from .reality_generator import aggregate_ppo_eval_worst_reality, stress_simulator_ohlc
+from .simulator_data_support import resolve_neuro_simulator_rows_for_neuro_cycle
 from .strategy_generator import StrategyGenerator
 from .steve_values_registry import SteveValuesRegistry
 from .veto_registry import VetoRegistry
@@ -66,6 +74,76 @@ def _utc_file_stamp() -> str:
 
 def _seed_from_hash(h: str) -> int:
     return int(hashlib.sha256(h.encode()).hexdigest()[:8], 16)
+
+
+def _apply_dream_learnings_to_dna_content(
+    content: Any,
+    dream_report: dict[str, Any] | None,
+    *,
+    evolution_mode: str = "sim",
+) -> Any:
+    """Fold dream tail stress + hints into candidate DNA so evolution can align with learnings."""
+    if not dream_report or not dream_report.get("enabled", True):
+        return content
+    hints = [str(x) for x in (dream_report.get("rule_hints") or []) if str(x).strip()]
+    br = float(dream_report.get("breach_rate", 0.0) or 0.0)
+    wdd = float(dream_report.get("worst_dd_ratio", 0.0) or 0.0)
+    blurb = (
+        f" [dream_learn: stress_breach={br:.3f} worst_dd~={wdd:.3f}"
+        f"{'; focus: ' + ', '.join(hints) if hints else ''}]"
+    )
+    c = str(content or "").strip()
+    if c.startswith("{") and c.endswith("}"):
+        try:
+            d = json.loads(c)
+        except Exception:
+            return c + blurb
+        if isinstance(d, dict):
+            d2 = dict(d)
+            d2["dream_learnings"] = {
+                "breach_rate": br,
+                "worst_dd_ratio": wdd,
+                "rule_hints": hints,
+            }
+            base_hs: dict[str, float]
+            raw_hs = d2.get("hyperparam_suggestion")
+            if isinstance(raw_hs, dict):
+                base_hs = {
+                    "max_risk_percent": float(raw_hs.get("max_risk_percent", 1.0) or 1.0),
+                    "drawdown_kill_percent": float(raw_hs.get("drawdown_kill_percent", 8.0) or 8.0),
+                }
+            else:
+                base_hs = {
+                    "max_risk_percent": 1.0,
+                    "drawdown_kill_percent": 8.0,
+                }
+            nudged = merge_dream_hyperparam_nudges(
+                base_hs, dream_report, evolution_mode=evolution_mode
+            )
+            d2["hyperparam_suggestion"] = {
+                "max_risk_percent": float(nudged["max_risk_percent"]),
+                "drawdown_kill_percent": float(nudged["drawdown_kill_percent"]),
+            }
+            if nudged.get("_nudged"):
+                d2["dream_risk_nudge"] = {
+                    "applied": True,
+                    "evolution_mode": str(evolution_mode),
+                    "source_hints": list(hints),
+                }
+            base_pt = str(d2.get("prompt_tweak", "") or "")
+            d2["prompt_tweak"] = (base_pt + blurb)[:8000]
+            return json.dumps(d2, sort_keys=True, ensure_ascii=True)
+    return c + blurb
+
+
+def _dream_engine_commit_hints_to_bible() -> bool:
+    evo = ConfigLoader.section("evolution", default={}) or {}
+    if not isinstance(evo, dict):
+        return True
+    de = evo.get("dream_engine", {})
+    if not isinstance(de, dict):
+        return True
+    return bool(de.get("commit_hints_to_bible", True))
 
 
 def _resolve_parallel_realities_count() -> int:
@@ -218,6 +296,8 @@ class EvolutionOrchestrator:
     ) -> SwarmConsensus:
         if not meta_swarm_governance_enabled():
             return SwarmConsensus(True, 0.9, False)
+        br = dict(base_metrics or {})
+        de = br.get("dream_engine") if isinstance(br.get("dream_engine"), dict) else None
         ctx: dict[str, Any] = {
             "winner_fitness": float(winner_fitness),
             "previous_fitness": float(previous_fitness),
@@ -229,6 +309,8 @@ class EvolutionOrchestrator:
             "neuro_winner_accepted": bool(neuro_summary.get("winner_accepted", False)),
             "winner_prompt_id": str(getattr(winner_dna, "prompt_id", "") or ""),
         }
+        if de:
+            ctx["dream_engine"] = dict(de)
         return self._meta_swarm.deliberate(ctx)
 
     def _run_dream_engine_batch(
@@ -258,6 +340,17 @@ class EvolutionOrchestrator:
             seed=seed,
             drawdown_limit_ratio=ddr,
         )
+        if report.rule_hints and _dream_engine_commit_hints_to_bible():
+            br = float(report.breach_rate)
+            for raw_hint in report.rule_hints:
+                try:
+                    self._lumina_bible.append_dream_rule_hint(
+                        hint=str(raw_hint),
+                        generation=int(generation_offset),
+                        breach_rate=br,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("[DREAM_ENGINE] could not append rule hint to bible: %s", exc)
         payload = {
             "enabled": True,
             "dream_count": report.dream_count,
@@ -403,9 +496,10 @@ class EvolutionOrchestrator:
             sim_days=sim_days,
             generation_offset=generation_offset,
         )
+        generation_metrics = enrich_nightly_report_with_dream(base_metrics, dream_summary)
 
         community_summary = self._run_community_knowledge_cycle(
-            base_metrics=base_metrics,
+            base_metrics=generation_metrics,
             active_dna=active_dna,
             generation_offset=generation_offset,
         )
@@ -415,6 +509,7 @@ class EvolutionOrchestrator:
             active_dna=active_dna,
             generation_offset=generation_offset,
             dream_report=dream_summary,
+            evolution_mode=mode,
         )
 
         if not candidates:
@@ -433,7 +528,7 @@ class EvolutionOrchestrator:
             sim_results = self._sim_runner.evaluate_variants(
                 candidates,
                 days=sim_days,
-                nightly_report=base_metrics,
+                nightly_report=generation_metrics,
                 real_market_data=use_real_data,
                 true_backtest_mode=use_backtest_mode,
                 parallel_realities=parallel_realities,
@@ -442,7 +537,7 @@ class EvolutionOrchestrator:
             sim_results = self._sim_runner.evaluate_variants(
                 candidates,
                 days=sim_days,
-                nightly_report=base_metrics,
+                nightly_report=generation_metrics,
                 real_market_data=use_real_data,
             )
         if not sim_results:
@@ -527,7 +622,7 @@ class EvolutionOrchestrator:
             shadow_decision = self._run_shadow_validation_gate(
                 dna=winner_dna,
                 winner_fitness=winner_fitness,
-                nightly_report=base_metrics,
+                nightly_report=generation_metrics,
                 signed=signed,
                 generation_ok=generation_ok,
                 shadow_runner=shadow_runner,
@@ -558,30 +653,30 @@ class EvolutionOrchestrator:
 
         base_promoted = promoted
 
-        generated_summary = self._run_generated_strategy_cycle(
-            generation_offset=generation_offset,
-            mode=mode,
-            base_metrics=base_metrics,
-            baseline_fitness=max(float(previous_fitness), float(winner_fitness)),
-            anchor_dna=winner_dna,
-        )
-
         neuro_summary = self._run_neuroevolution_cycle(
             generation_offset=generation_offset,
             mode=mode,
             baseline_fitness=max(float(previous_fitness), float(winner_fitness)),
             anchor_dna=winner_dna,
-            nightly_report=base_metrics,
+            nightly_report=generation_metrics,
             sim_days=sim_days,
         )
         if bool(neuro_summary.get("winner_accepted", False)):
             winner_fitness = max(float(winner_fitness), float(neuro_summary.get("winner_fitness", float("-inf"))))
 
+        generated_summary = self._run_generated_strategy_cycle(
+            generation_offset=generation_offset,
+            mode=mode,
+            base_metrics=generation_metrics,
+            baseline_fitness=max(float(previous_fitness), float(winner_fitness)),
+            anchor_dna=winner_dna,
+        )
+
         swarm_consensus = self._run_meta_swarm_deliberation(
             winner_dna=winner_dna,
             winner_fitness=winner_fitness,
             previous_fitness=previous_fitness,
-            base_metrics=base_metrics,
+            base_metrics=generation_metrics,
             mode=mode,
             generation_offset=generation_offset,
             parallel_realities=parallel_realities,
@@ -634,6 +729,7 @@ class EvolutionOrchestrator:
                     else None
                 ),
                 "neuro_winner_path": str(neuro_summary.get("winner_path", "") or ""),
+                "neuro_simulator_data_source": str(neuro_summary.get("neuro_simulator_data_source", "") or ""),
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
                 "parallel_realities": int(parallel_realities),
@@ -684,6 +780,7 @@ class EvolutionOrchestrator:
         nightly_report: dict[str, Any],
         sim_days: int,
     ) -> dict[str, Any]:
+        _ = baseline_fitness  # DNA baseline; neuro promotion uses rollout_baseline from RL env only
         if str(mode).strip().lower() == "real":
             # Fail-closed: no autonomous weight mutation in REAL runtime.
             return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "real_mode_fail_closed"}
@@ -692,6 +789,9 @@ class EvolutionOrchestrator:
         if ppo_trainer is None:
             return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "ppo_trainer_unbound"}
 
+        if not hasattr(ppo_trainer, "evaluate_policy_zip_rollouts"):
+            return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "ppo_trainer_missing_rollout_eval"}
+
         engine = getattr(ppo_trainer, "engine", None)
         base_model = getattr(engine, "rl_policy_model", None)
         if base_model is None:
@@ -699,77 +799,145 @@ class EvolutionOrchestrator:
 
         cfg = ConfigLoader.section("evolution", "neuroevolution", default={})
         cfg = cfg if isinstance(cfg, dict) else {}
+        simulator_data, neuro_data_source, strict_skip = resolve_neuro_simulator_rows_for_neuro_cycle(
+            dict(nightly_report),
+            engine=engine,
+            neuro_cfg=cfg,
+        )
+        if strict_skip:
+            logger.warning("[NEURO] skipped weight population: %s (source=%s)", strict_skip, neuro_data_source)
+            return {
+                "tested": 0,
+                "winners": 0,
+                "winner_accepted": False,
+                "reason": strict_skip,
+                "neuro_simulator_data_source": neuro_data_source,
+            }
+        logger.info(
+            "[NEURO] rollout data source=%s bars=%d",
+            neuro_data_source,
+            len(simulator_data),
+        )
+        pr_cfg = int(parallel_realities_from_config())
+        stress_universa_enabled = bool(cfg.get("stress_universa_enabled", True))
+        stress_universa_max = max(1, min(50, int(cfg.get("stress_universa_max", 12) or 12)))
+        if not stress_universa_enabled:
+            eff_neuro_stress = 1
+        else:
+            eff_neuro_stress = max(1, min(stress_universa_max, pr_cfg, 50))
+        neuro_stress_seed = f"neuro:{anchor_dna.hash}:{generation_offset}"
+
+        use_ohlc_stress_rollouts = bool(resolve_neuro_ohlc_stress_rollouts()) and eff_neuro_stress >= 2
+        _neuro_meta = {
+            "neuro_simulator_data_source": neuro_data_source,
+            "neuro_stress_universa": eff_neuro_stress,
+            "neuro_stress_universa_enabled": stress_universa_enabled,
+            "neuro_ohlc_stress_rollouts": use_ohlc_stress_rollouts,
+        }
         population_size = max(5, min(8, int(cfg.get("population_size", 6) or 6)))
         mutation_std = float(cfg.get("mutation_std", 0.01) or 0.01)
         mutation_rate = float(cfg.get("mutation_rate", 0.08) or 0.08)
         crossover_ratio = float(cfg.get("crossover_ratio", 0.5) or 0.5)
+        shadow_max_steps = max(32, int(cfg.get("shadow_max_steps", 256) or 256))
+        backtest_max_steps = max(256, int(cfg.get("backtest_max_steps", 2048) or 2048))
+        backtest_max_steps = min(5000, max(backtest_max_steps, max(256, int(sim_days) * 120)))
 
         baseline_snapshot = self._neuro_weights_path / f"baseline_gen{generation_offset}_{_utc_file_stamp()}.zip"
         baseline_snapshot.parent.mkdir(parents=True, exist_ok=True)
         try:
             ppo_trainer.save_weights(baseline_snapshot)
         except Exception:
-            return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "baseline_save_failed"}
+            return {
+                "tested": 0,
+                "winners": 0,
+                "winner_accepted": False,
+                "reason": "baseline_save_failed",
+                **_neuro_meta,
+            }
 
-        use_real_data = bool(getattr(self._sim_runner, "real_market_data", False))
-        use_backtest_mode = bool(getattr(self._sim_runner, "true_backtest_mode", False))
-        parallel_realities = _resolve_parallel_realities_count()
+        def _ppo_worst_across_ohlc_bars(
+            policy_path: Path,
+            raw_bars: list[dict[str, Any]],
+        ) -> dict[str, Any]:
+            if not use_ohlc_stress_rollouts:
+                raise RuntimeError("ohlc rollouts not active")
+            evals: list[dict[str, Any]] = []
+            for i in range(int(eff_neuro_stress)):
+                bars_i = stress_simulator_ohlc(raw_bars, i, stress_seed=neuro_stress_seed)
+                m = ppo_trainer.evaluate_policy_zip_rollouts(
+                    policy_path,
+                    bars_i,
+                    dna_hash=anchor_dna.hash,
+                    shadow_max_steps=shadow_max_steps,
+                    backtest_max_steps=backtest_max_steps,
+                )
+                if m.get("ok"):
+                    m["_reality_id"] = i
+                    evals.append(m)
+            if not evals:
+                return {"ok": False, "backtest_fitness": float("-inf"), "shadow_equity_delta": 0.0}
+            return min(
+                evals,
+                key=lambda x: float(x.get("backtest_fitness", float("-inf")) or float("-inf")),
+            )
+
+        if use_ohlc_stress_rollouts:
+            base_eval = _ppo_worst_across_ohlc_bars(baseline_snapshot, list(simulator_data))
+        else:
+            base_eval = ppo_trainer.evaluate_policy_zip_rollouts(
+                baseline_snapshot,
+                simulator_data,
+                dna_hash=anchor_dna.hash,
+                shadow_max_steps=shadow_max_steps,
+                backtest_max_steps=backtest_max_steps,
+            )
+        if not base_eval.get("ok"):
+            return {
+                "tested": 0,
+                "winners": 0,
+                "winner_accepted": False,
+                "reason": "baseline_rollout_failed",
+                **_neuro_meta,
+            }
+
+        if not use_ohlc_stress_rollouts:
+            base_eval = aggregate_ppo_eval_worst_reality(
+                base_eval,
+                eff_neuro_stress,
+                stress_seed=neuro_stress_seed,
+            )
+        rollout_baseline = float(base_eval.get("backtest_fitness", float("-inf")))
 
         def _evaluate_candidate(weight_path: Path, _meta: dict[str, Any]) -> dict[str, Any]:
-            loaded = ppo_trainer.load_weights(str(weight_path))
-            if loaded is None:
+            if use_ohlc_stress_rollouts:
+                metrics = _ppo_worst_across_ohlc_bars(weight_path, list(simulator_data))
+            else:
+                metrics = ppo_trainer.evaluate_policy_zip_rollouts(
+                    weight_path,
+                    simulator_data,
+                    dna_hash=anchor_dna.hash,
+                    shadow_max_steps=shadow_max_steps,
+                    backtest_max_steps=backtest_max_steps,
+                )
+            if not metrics.get("ok"):
                 return {"fitness": float("-inf"), "confidence": 0.0, "shadow_passed": False, "backtest_passed": False}
 
-            try:
-                backtest = self._sim_runner.evaluate_variants(
-                    [anchor_dna],
-                    days=max(1, int(sim_days)),
-                    nightly_report=nightly_report,
-                    real_market_data=use_real_data,
-                    true_backtest_mode=use_backtest_mode,
-                    parallel_realities=parallel_realities,
+            if not use_ohlc_stress_rollouts:
+                metrics = aggregate_ppo_eval_worst_reality(
+                    metrics,
+                    eff_neuro_stress,
+                    stress_seed=neuro_stress_seed,
                 )
-            except TypeError:
-                backtest = self._sim_runner.evaluate_variants(
-                    [anchor_dna],
-                    days=max(1, int(sim_days)),
-                    nightly_report=nightly_report,
-                    real_market_data=use_real_data,
-                    true_backtest_mode=use_backtest_mode,
-                )
-            try:
-                shadow = self._sim_runner.evaluate_variants(
-                    [anchor_dna],
-                    days=1,
-                    nightly_report=nightly_report,
-                    shadow_mode=True,
-                    real_market_data=use_real_data,
-                    true_backtest_mode=use_backtest_mode,
-                    parallel_realities=1,
-                )
-            except TypeError:
-                shadow = self._sim_runner.evaluate_variants(
-                    [anchor_dna],
-                    days=1,
-                    nightly_report=nightly_report,
-                    shadow_mode=True,
-                    real_market_data=use_real_data,
-                    true_backtest_mode=use_backtest_mode,
-                )
-
-            backtest_fitness = float(backtest[0].fitness) if backtest else float("-inf")
-            shadow_pnl = float(shadow[0].avg_pnl) if shadow else 0.0
-
-            tie_break = (float(_seed_from_hash(str(weight_path.name)) % 1000) / 1000.0) * 1e-3
-            candidate_fitness = backtest_fitness + tie_break
-            confidence = float(0.90 if candidate_fitness >= baseline_fitness else 0.80)
+            shadow_pnl = float(metrics.get("shadow_equity_delta", 0.0) or 0.0)
+            candidate_fitness = float(metrics.get("backtest_fitness", float("-inf")))
 
             shadow_passed = self._guard.shadow_validation_passed(
                 shadow_total_pnl=shadow_pnl,
                 veto_blocked=False,
                 risk_flags=[],
             )
-            backtest_passed = bool(candidate_fitness > baseline_fitness)
+            backtest_passed = bool(candidate_fitness > rollout_baseline)
+            confidence = float(0.90 if backtest_passed else 0.80)
 
             return {
                 "fitness": candidate_fitness,
@@ -787,12 +955,18 @@ class EvolutionOrchestrator:
                 mutation_rate=mutation_rate,
                 crossover_ratio=crossover_ratio,
                 output_dir=self._neuro_weights_path,
-                max_workers=min(8, population_size),
+                max_workers=1,
                 seed=_seed_from_hash(f"neuro:{anchor_dna.hash}:{generation_offset}"),
             )
         except Exception:
             ppo_trainer.load_weights(str(baseline_snapshot))
-            return {"tested": 0, "winners": 0, "winner_accepted": False, "reason": "population_eval_failed"}
+            return {
+                "tested": 0,
+                "winners": 0,
+                "winner_accepted": False,
+                "reason": "population_eval_failed",
+                **_neuro_meta,
+            }
 
         winner = population_result.get("winner") if isinstance(population_result, dict) else None
         if not isinstance(winner, dict):
@@ -802,6 +976,7 @@ class EvolutionOrchestrator:
                 "winners": 0,
                 "winner_accepted": False,
                 "reason": "no_passing_weight_candidate",
+                **_neuro_meta,
             }
 
         winner_fitness = float(winner.get("fitness", float("-inf")) or float("-inf"))
@@ -809,7 +984,7 @@ class EvolutionOrchestrator:
         accepted = self._guard.allows_neuroevolution_winner(
             candidate_confidence=winner_confidence,
             candidate_fitness=winner_fitness,
-            current_fitness=baseline_fitness,
+            current_fitness=rollout_baseline,
         )
         if not accepted:
             ppo_trainer.load_weights(str(baseline_snapshot))
@@ -820,6 +995,7 @@ class EvolutionOrchestrator:
                 "winner_fitness": winner_fitness,
                 "winner_confidence": winner_confidence,
                 "reason": "guard_rejected_winner",
+                **_neuro_meta,
             }
 
         winner_path = str(winner.get("path", "") or "")
@@ -831,6 +1007,7 @@ class EvolutionOrchestrator:
                 "winners": 0,
                 "winner_accepted": False,
                 "reason": "winner_load_failed",
+                **_neuro_meta,
             }
 
         return {
@@ -841,6 +1018,7 @@ class EvolutionOrchestrator:
             "winner_confidence": winner_confidence,
             "winner_path": winner_path,
             "evaluations": list(population_result.get("evaluations", []) or []),
+            **_neuro_meta,
         }
 
     def _run_generated_strategy_cycle(
@@ -1310,6 +1488,7 @@ class EvolutionOrchestrator:
         active_dna: PolicyDNA | None,
         generation_offset: int,
         dream_report: dict[str, Any] | None = None,
+        evolution_mode: str = "sim",
     ) -> list[PolicyDNA]:
         """Produce 5-8 mutant/crossover candidates from top ranked DNA."""
         if not top_dna and active_dna is None:
@@ -1331,6 +1510,9 @@ class EvolutionOrchestrator:
             if i < 4 or len(seed_pool) < 2:
                 # Pure mutation
                 new_content = mutate_prompt(base.content, rate)
+                new_content = _apply_dream_learnings_to_dna_content(
+                    new_content, dream_report, evolution_mode=evolution_mode
+                )
                 candidate = self._registry.mutate(
                     parent=base,
                     mutation_rate=rate,
@@ -1343,6 +1525,9 @@ class EvolutionOrchestrator:
                 # Crossover between top parents
                 other = seed_pool[i % len(seed_pool)]
                 new_content = crossover(base, other)
+                new_content = _apply_dream_learnings_to_dna_content(
+                    new_content, dream_report, evolution_mode=evolution_mode
+                )
                 candidate = self._registry.mutate(
                     parent=base,
                     mutation_rate=rate,

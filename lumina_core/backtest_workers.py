@@ -130,7 +130,25 @@ def auto_backtester_daemon(app: RuntimeContext) -> None:
                         f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 Nightly PPO train trigger "
                         f"(base sharpe {base_sharpe:.2f})"
                     )
-                    ppo_trainer.train(total_timesteps=50000)
+                    import inspect
+
+                    from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
+
+                    sig = inspect.signature(ppo_trainer.train)
+                    keys = list(sig.parameters.keys())
+                    if keys and keys[0] == "simulator_data":
+                        raw_ticks = None
+                        mds = getattr(app.engine, "market_data_service", None)
+                        if mds is not None and hasattr(mds, "load_historical_ohlc_extended"):
+                            raw_ticks = mds.load_historical_ohlc_extended(
+                                days_back=60,
+                                limit=50000,
+                                ticks_per_bar=4,
+                            )
+                        bars = coerce_rl_training_bars(app.engine, raw_ticks, nightly_context=None)
+                        ppo_trainer.train(bars, total_timesteps=50000)
+                    else:
+                        ppo_trainer.train(total_timesteps=50000)
 
                 # Nightly infinite simulation om 03:00 (1x per kalenderdag).
                 now_dt = datetime.now()
