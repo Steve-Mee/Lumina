@@ -10,6 +10,32 @@ import math
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from lumina_core.config_loader import ConfigLoader
+
+
+def meta_swarm_governance_enabled() -> bool:
+    """Whether five-agent deliberation runs (EvolutionOrchestrator + nightly meta_review)."""
+    evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
+    if not isinstance(evolution_cfg, dict):
+        return True
+    ms = evolution_cfg.get("meta_swarm", {})
+    if not isinstance(ms, dict):
+        return True
+    return bool(ms.get("enabled", True))
+
+
+def parallel_realities_from_config() -> int:
+    """Stress-universe count from evolution.multiweek_fitness (1–50)."""
+    evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
+    mw_cfg = evolution_cfg.get("multiweek_fitness", {}) if isinstance(evolution_cfg, dict) else {}
+    if not isinstance(mw_cfg, dict):
+        return 1
+    try:
+        n = int(mw_cfg.get("parallel_realities", 1) or 1)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(50, n))
+
 
 @dataclass(slots=True)
 class SwarmAgentVote:

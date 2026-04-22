@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lumina_core.evolution.meta_swarm import MetaSwarm
+from lumina_core.evolution.meta_swarm import MetaSwarm, meta_swarm_governance_enabled, parallel_realities_from_config
 
 
 def test_meta_swarm_deliberate_returns_consensus_with_five_votes() -> None:
@@ -27,6 +27,11 @@ def test_meta_swarm_deliberate_returns_consensus_with_five_votes() -> None:
     assert out.collective_score > 0.0
     roles = {v.agent_id for v in out.round_two}
     assert roles == {"creativity", "risk_guardian", "execution", "reflection", "dream"}
+
+
+def test_meta_swarm_config_helpers_are_defined() -> None:
+    assert isinstance(meta_swarm_governance_enabled(), bool)
+    assert 1 <= parallel_realities_from_config() <= 50
 
 
 def test_meta_swarm_risk_veto_blocks_promotion_on_extreme_drawdown() -> None:

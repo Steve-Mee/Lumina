@@ -36,7 +36,7 @@ from .dna_registry import DNARegistry, PolicyDNA
 from .evolution_guard import EvolutionGuard
 from .genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .lumina_bible import LuminaBible
-from .meta_swarm import MetaSwarm, SwarmConsensus
+from .meta_swarm import MetaSwarm, SwarmConsensus, meta_swarm_governance_enabled, parallel_realities_from_config
 from .multi_day_sim_runner import MultiDaySimRunner, SimResult
 from .neuroevolution import evaluate_weight_population
 from .strategy_generator import StrategyGenerator
@@ -66,27 +66,9 @@ def _seed_from_hash(h: str) -> int:
     return int(hashlib.sha256(h.encode()).hexdigest()[:8], 16)
 
 
-def _meta_swarm_enabled() -> bool:
-    evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
-    if not isinstance(evolution_cfg, dict):
-        return True
-    ms = evolution_cfg.get("meta_swarm", {})
-    if not isinstance(ms, dict):
-        return True
-    return bool(ms.get("enabled", True))
-
-
 def _resolve_parallel_realities_count() -> int:
     """SIM stress universes per candidate (1 = disabled, up to 50 for nightly robustness)."""
-    evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
-    mw_cfg = evolution_cfg.get("multiweek_fitness", {}) if isinstance(evolution_cfg, dict) else {}
-    if not isinstance(mw_cfg, dict):
-        return 1
-    try:
-        n = int(mw_cfg.get("parallel_realities", 1) or 1)
-    except (TypeError, ValueError):
-        return 1
-    return max(1, min(50, n))
+    return parallel_realities_from_config()
 
 
 def _score_candidate(dna: PolicyDNA, base_metrics: dict[str, Any], generation: int) -> float:
@@ -227,7 +209,7 @@ class EvolutionOrchestrator:
         sim_days: int,
         neuro_summary: dict[str, Any],
     ) -> SwarmConsensus:
-        if not _meta_swarm_enabled():
+        if not meta_swarm_governance_enabled():
             return SwarmConsensus(True, 0.9, False)
         ctx: dict[str, Any] = {
             "winner_fitness": float(winner_fitness),
@@ -279,7 +261,7 @@ class EvolutionOrchestrator:
                 "generations": max(1, int(generations)),
                 "sim_duration_hours": max(1, int(sim_duration_hours)),
                 "mode": str(mode),
-                "parallel_realities": int(_resolve_parallel_realities_count()),
+                "parallel_realities": int(parallel_realities_from_config()),
             }
         )
 
@@ -556,7 +538,7 @@ class EvolutionOrchestrator:
                 "sim_days": sim_days,
                 "parallel_realities": int(parallel_realities),
                 "meta_swarm": {
-                    "enabled": bool(_meta_swarm_enabled()),
+                    "enabled": bool(meta_swarm_governance_enabled()),
                     "allow_promotion": bool(swarm_consensus.allow_promotion),
                     "collective_score": round(float(swarm_consensus.collective_score), 6),
                     "risk_veto": bool(swarm_consensus.risk_veto),

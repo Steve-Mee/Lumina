@@ -13,6 +13,7 @@ from ..evolution.dna_registry import DNARegistry, PolicyDNA
 from ..evolution.evolution_guard import EvolutionGuard
 from ..evolution.evolution_orchestrator import EvolutionOrchestrator
 from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
+from ..evolution.meta_swarm import MetaSwarm, meta_swarm_governance_enabled, parallel_realities_from_config
 from .lumina_engine import LuminaEngine
 from .evolution_lifecycle import EvolutionLifecycleManager
 from .errors import ErrorSeverity, LuminaError
@@ -206,6 +207,9 @@ class SelfEvolutionMetaAgent:
         confidence = float(best.get("confidence", 0.0)) if best else 0.0
         backtest_green = self._backtest_green(nightly_report)
         safety_ok = self._safety_contract_ok()
+        swarm_payload = meta_review.get("meta_swarm") if isinstance(meta_review.get("meta_swarm"), dict) else {}
+        swarm_ok = bool(swarm_payload.get("allow_promotion", True))
+
         stability_gate = bool(float(meta_review.get("win_rate", 0.0) or 0.0) >= 0.45)
         realism_gate = bool(float(meta_review.get("emotional_twin_accuracy", 0.0) or 0.0) >= 0.4)
         consistency_gate = bool(float(meta_review.get("regime_drift", 1.0) or 1.0) <= 0.75)
@@ -220,6 +224,7 @@ class SelfEvolutionMetaAgent:
             "external_release_gates": bool(external_release_gates),
             "shadow_evidence": bool(shadow_evidence),
             "live_promotion_eligible": bool(not self.sim_mode),
+            "swarm_governance": bool(swarm_ok),
         }
 
         current_guard_fitness = float(active_dna.fitness_score) if active_dna is not None else float("-inf")
@@ -238,7 +243,9 @@ class SelfEvolutionMetaAgent:
 
         forced_sim_apply = bool(self.sim_mode and best is not None)
         baseline_auto_apply = bool(forced_sim_apply or (confidence > 85.0 and backtest_green and safety_ok))
-        should_auto_apply = bool(mutation_allowed and baseline_auto_apply and signed_approval)
+        should_auto_apply = bool(
+            mutation_allowed and baseline_auto_apply and signed_approval and swarm_ok
+        )
         approval_blocked = bool(self.approval_required and should_auto_apply)
         promoted_active_dna = self._promote_winning_dna(
             active_dna=active_dna,
@@ -291,6 +298,7 @@ class SelfEvolutionMetaAgent:
                 "current_fitness": round(current_guard_fitness, 6) if math.isfinite(current_guard_fitness) else None,
                 "external_release_gates": bool(external_release_gates),
                 "shadow_evidence": bool(shadow_evidence),
+                "meta_swarm_allow": bool(swarm_ok),
             },
             "lifecycle": lifecycle,
             "governance": {
@@ -685,7 +693,7 @@ class SelfEvolutionMetaAgent:
             )
         return max_drift
 
-    def _meta_review(self, report: dict[str, Any]) -> dict[str, Any]:
+    def _compute_meta_review_metrics(self, report: dict[str, Any]) -> dict[str, Any]:
         trades = int(report.get("trades", 0) or 0)
         wins = int(report.get("wins", 0) or 0)
         win_rate = float(wins / trades) if trades > 0 else 0.0
@@ -708,6 +716,53 @@ class SelfEvolutionMetaAgent:
             "rl_drift": rl_drift,
             "emotional_twin_accuracy": emotional_twin_accuracy,
         }
+
+    def _meta_swarm_nightly_payload(self, report: dict[str, Any], base: dict[str, Any]) -> dict[str, Any]:
+        """Five-agent council over nightly health metrics (same MetaSwarm as EvolutionOrchestrator)."""
+        if not meta_swarm_governance_enabled():
+            return {
+                "enabled": False,
+                "allow_promotion": True,
+                "collective_score": None,
+                "risk_veto": False,
+                "round_two": [],
+            }
+        health = float(self._dna_fitness(base))
+        hours = int(report.get("sim_duration_hours", 24) or 24)
+        sim_days = max(1, (hours + 23) // 24)
+        ctx: dict[str, Any] = {
+            "winner_fitness": health,
+            "previous_fitness": health,
+            "nightly_report": dict(report),
+            "mode": str(self.runtime_mode),
+            "sim_days": sim_days,
+            "parallel_realities": int(parallel_realities_from_config()),
+            "generation": 0,
+            "neuro_winner_accepted": False,
+            "winner_prompt_id": "nightly_meta_review",
+        }
+        consensus = MetaSwarm().deliberate(ctx)
+        return {
+            "enabled": True,
+            "allow_promotion": bool(consensus.allow_promotion),
+            "collective_score": round(float(consensus.collective_score), 6),
+            "risk_veto": bool(consensus.risk_veto),
+            "challenge_log": list(consensus.challenge_log),
+            "round_two": [
+                {
+                    "agent": v.agent_id,
+                    "approve": bool(v.approve),
+                    "score": round(float(v.score), 4),
+                    "veto": bool(v.veto),
+                }
+                for v in consensus.round_two
+            ],
+        }
+
+    def _meta_review(self, report: dict[str, Any]) -> dict[str, Any]:
+        base = self._compute_meta_review_metrics(report)
+        base["meta_swarm"] = self._meta_swarm_nightly_payload(report, base)
+        return base
 
     def _current_champion(self) -> dict[str, Any]:
         cfg = self.engine.config

@@ -293,3 +293,5 @@ def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path) -> None
 
     assert result["meta_review"]["regime_breakdown"]["NEWS_DRIVEN"]["net_pnl"] == -120.0
     assert result["best_candidate"]["regime_focus"] == "news_driven"
+    assert "meta_swarm" in result["meta_review"]
+    assert "allow_promotion" in result["meta_review"]["meta_swarm"]
