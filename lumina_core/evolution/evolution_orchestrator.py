@@ -64,6 +64,19 @@ def _seed_from_hash(h: str) -> int:
     return int(hashlib.sha256(h.encode()).hexdigest()[:8], 16)
 
 
+def _resolve_parallel_realities_count() -> int:
+    """SIM stress universes per candidate (1 = disabled, up to 50 for nightly robustness)."""
+    evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
+    mw_cfg = evolution_cfg.get("multiweek_fitness", {}) if isinstance(evolution_cfg, dict) else {}
+    if not isinstance(mw_cfg, dict):
+        return 1
+    try:
+        n = int(mw_cfg.get("parallel_realities", 1) or 1)
+    except (TypeError, ValueError):
+        return 1
+    return max(1, min(50, n))
+
+
 def _score_candidate(dna: PolicyDNA, base_metrics: dict[str, Any], generation: int) -> float:
     """Derive a deterministic-seeded fitness score for a DNA candidate.
 
@@ -225,6 +238,7 @@ class EvolutionOrchestrator:
                 "generations": max(1, int(generations)),
                 "sim_duration_hours": max(1, int(sim_duration_hours)),
                 "mode": str(mode),
+                "parallel_realities": int(_resolve_parallel_realities_count()),
             }
         )
 
@@ -293,6 +307,8 @@ class EvolutionOrchestrator:
                 message=f"No candidates generated for generation {generation_offset}.",
             )
 
+        parallel_realities = _resolve_parallel_realities_count()
+
         # FASE 2: Pass real-market and true-backtest flags to evaluate_variants
         use_real_data = bool(getattr(self._sim_runner, "real_market_data", False))
         use_backtest_mode = bool(getattr(self._sim_runner, "true_backtest_mode", False))
@@ -303,6 +319,7 @@ class EvolutionOrchestrator:
                 nightly_report=base_metrics,
                 real_market_data=use_real_data,
                 true_backtest_mode=use_backtest_mode,
+                parallel_realities=parallel_realities,
             )
         except TypeError:
             sim_results = self._sim_runner.evaluate_variants(
@@ -481,6 +498,7 @@ class EvolutionOrchestrator:
                 "neuro_winner_path": str(neuro_summary.get("winner_path", "") or ""),
                 "ab_experiment_id": str(experiment.experiment_id),
                 "sim_days": sim_days,
+                "parallel_realities": int(parallel_realities),
             }
         )
 
@@ -540,27 +558,49 @@ class EvolutionOrchestrator:
 
         use_real_data = bool(getattr(self._sim_runner, "real_market_data", False))
         use_backtest_mode = bool(getattr(self._sim_runner, "true_backtest_mode", False))
+        parallel_realities = _resolve_parallel_realities_count()
 
         def _evaluate_candidate(weight_path: Path, _meta: dict[str, Any]) -> dict[str, Any]:
             loaded = ppo_trainer.load_weights(str(weight_path))
             if loaded is None:
                 return {"fitness": float("-inf"), "confidence": 0.0, "shadow_passed": False, "backtest_passed": False}
 
-            backtest = self._sim_runner.evaluate_variants(
-                [anchor_dna],
-                days=max(1, int(sim_days)),
-                nightly_report=nightly_report,
-                real_market_data=use_real_data,
-                true_backtest_mode=use_backtest_mode,
-            )
-            shadow = self._sim_runner.evaluate_variants(
-                [anchor_dna],
-                days=1,
-                nightly_report=nightly_report,
-                shadow_mode=True,
-                real_market_data=use_real_data,
-                true_backtest_mode=use_backtest_mode,
-            )
+            try:
+                backtest = self._sim_runner.evaluate_variants(
+                    [anchor_dna],
+                    days=max(1, int(sim_days)),
+                    nightly_report=nightly_report,
+                    real_market_data=use_real_data,
+                    true_backtest_mode=use_backtest_mode,
+                    parallel_realities=parallel_realities,
+                )
+            except TypeError:
+                backtest = self._sim_runner.evaluate_variants(
+                    [anchor_dna],
+                    days=max(1, int(sim_days)),
+                    nightly_report=nightly_report,
+                    real_market_data=use_real_data,
+                    true_backtest_mode=use_backtest_mode,
+                )
+            try:
+                shadow = self._sim_runner.evaluate_variants(
+                    [anchor_dna],
+                    days=1,
+                    nightly_report=nightly_report,
+                    shadow_mode=True,
+                    real_market_data=use_real_data,
+                    true_backtest_mode=use_backtest_mode,
+                    parallel_realities=1,
+                )
+            except TypeError:
+                shadow = self._sim_runner.evaluate_variants(
+                    [anchor_dna],
+                    days=1,
+                    nightly_report=nightly_report,
+                    shadow_mode=True,
+                    real_market_data=use_real_data,
+                    true_backtest_mode=use_backtest_mode,
+                )
 
             backtest_fitness = float(backtest[0].fitness) if backtest else float("-inf")
             shadow_pnl = float(shadow[0].avg_pnl) if shadow else 0.0
@@ -724,14 +764,25 @@ class EvolutionOrchestrator:
                 lineage_hash=anchor_dna.lineage_hash,
             )
 
-            shadow_results = self._sim_runner.evaluate_variants(
-                [generated_dna],
-                days=1,
-                nightly_report=base_metrics,
-                shadow_mode=True,
-                real_market_data=use_real_data,
-                true_backtest_mode=use_backtest_mode,
-            )
+            try:
+                shadow_results = self._sim_runner.evaluate_variants(
+                    [generated_dna],
+                    days=1,
+                    nightly_report=base_metrics,
+                    shadow_mode=True,
+                    real_market_data=use_real_data,
+                    true_backtest_mode=use_backtest_mode,
+                    parallel_realities=1,
+                )
+            except TypeError:
+                shadow_results = self._sim_runner.evaluate_variants(
+                    [generated_dna],
+                    days=1,
+                    nightly_report=base_metrics,
+                    shadow_mode=True,
+                    real_market_data=use_real_data,
+                    true_backtest_mode=use_backtest_mode,
+                )
             shadow_total_pnl = float(shadow_results[0].avg_pnl) if shadow_results else 0.0
 
             twin_recommendation = True

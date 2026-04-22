@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import random
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any
@@ -11,6 +12,7 @@ from typing import Any
 import pandas as pd
 
 from .dna_registry import PolicyDNA
+from .reality_generator import build_parallel_reports
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,7 @@ class MultiDaySimRunner:
         shadow_mode: bool = False,
         real_market_data: bool = False,
         true_backtest_mode: bool = False,
+        parallel_realities: int = 1,
     ) -> list[SimResult]:
         if not variants:
             return []
@@ -80,39 +83,118 @@ class MultiDaySimRunner:
         use_true_backtest = bool(true_backtest_mode) and self.true_backtest_mode and use_real_data
         results: list[SimResult] = []
 
-        with ThreadPoolExecutor(max_workers=min(self.max_workers, len(variants))) as pool:
-            future_map = {
-                pool.submit(
-                    self._evaluate_single_variant,
-                    variant,
-                    day_count,
-                    report,
-                    bool(shadow_mode),
-                    use_real_data,
-                    use_true_backtest,
-                ): variant
-                for variant in variants
-            }
-            for future in as_completed(future_map):
-                variant = future_map[future]
-                try:
-                    results.append(future.result())
-                except Exception:
-                    results.append(
-                        SimResult(
-                            dna_hash=variant.hash,
-                            day_count=day_count,
-                            avg_pnl=0.0,
-                            max_drawdown_ratio=1.0,
-                            regime_fit_bonus=0.0,
-                            fitness=float("-inf"),
-                            shadow_mode=bool(shadow_mode),
-                            hypothetical_fills=[] if shadow_mode else None,
+        eff_parallel = 1 if bool(shadow_mode) else max(1, min(50, int(parallel_realities)))
+
+        if eff_parallel < 2:
+            with ThreadPoolExecutor(max_workers=min(self.max_workers, len(variants))) as pool:
+                future_map = {
+                    pool.submit(
+                        self._evaluate_single_variant,
+                        variant,
+                        day_count,
+                        report,
+                        bool(shadow_mode),
+                        use_real_data,
+                        use_true_backtest,
+                    ): variant
+                    for variant in variants
+                }
+                for future in as_completed(future_map):
+                    variant = future_map[future]
+                    try:
+                        results.append(future.result())
+                    except Exception:
+                        results.append(
+                            SimResult(
+                                dna_hash=variant.hash,
+                                day_count=day_count,
+                                avg_pnl=0.0,
+                                max_drawdown_ratio=1.0,
+                                regime_fit_bonus=0.0,
+                                fitness=float("-inf"),
+                                shadow_mode=bool(shadow_mode),
+                                hypothetical_fills=[] if shadow_mode else None,
+                            )
                         )
-                    )
+        else:
+            reports = build_parallel_reports(
+                report,
+                eff_parallel,
+                seed=json.dumps(report, sort_keys=True, ensure_ascii=True),
+            )
+            jobs = [(variant, rep) for variant in variants for rep in reports]
+            max_workers = min(32, max(self.max_workers, len(jobs)))
+            buckets: dict[str, list[SimResult]] = defaultdict(list)
+
+            with ThreadPoolExecutor(max_workers=max_workers) as pool:
+                future_map = {
+                    pool.submit(
+                        self._evaluate_single_variant,
+                        variant,
+                        day_count,
+                        rep,
+                        bool(shadow_mode),
+                        use_real_data,
+                        use_true_backtest,
+                    ): variant
+                    for variant, rep in jobs
+                }
+                for future in as_completed(future_map):
+                    variant = future_map[future]
+                    try:
+                        buckets[variant.hash].append(future.result())
+                    except Exception:
+                        buckets[variant.hash].append(
+                            SimResult(
+                                dna_hash=variant.hash,
+                                day_count=day_count,
+                                avg_pnl=0.0,
+                                max_drawdown_ratio=1.0,
+                                regime_fit_bonus=0.0,
+                                fitness=float("-inf"),
+                                shadow_mode=bool(shadow_mode),
+                                hypothetical_fills=[] if shadow_mode else None,
+                            )
+                        )
+
+            for variant in variants:
+                parts = buckets.get(variant.hash, [])
+                results.append(self._aggregate_multi_reality(parts, variant=variant, day_count=day_count))
 
         results.sort(key=lambda item: item.fitness, reverse=True)
         return results
+
+    @staticmethod
+    def _aggregate_multi_reality(
+        parts: list[SimResult],
+        *,
+        variant: PolicyDNA,
+        day_count: int,
+    ) -> SimResult:
+        """Worst-universe aggregation: min fitness / PnL bonus, max drawdown."""
+        if not parts:
+            return SimResult(
+                dna_hash=variant.hash,
+                day_count=day_count,
+                avg_pnl=0.0,
+                max_drawdown_ratio=1.0,
+                regime_fit_bonus=0.0,
+                fitness=float("-inf"),
+                shadow_mode=False,
+                hypothetical_fills=None,
+            )
+        worst_fitness = min(r.fitness for r in parts)
+        tie = next(r for r in parts if r.fitness == worst_fitness)
+        return SimResult(
+            dna_hash=variant.hash,
+            day_count=day_count,
+            avg_pnl=min(r.avg_pnl for r in parts),
+            max_drawdown_ratio=max(r.max_drawdown_ratio for r in parts),
+            regime_fit_bonus=min(r.regime_fit_bonus for r in parts),
+            fitness=worst_fitness,
+            shadow_mode=tie.shadow_mode,
+            hypothetical_fills=tie.hypothetical_fills,
+        )
 
     def _test_generated_strategy(self, code_snippet: str) -> float:
         """Fail-closed helper: validate generated code and score via backtest path."""

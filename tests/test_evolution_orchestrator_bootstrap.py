@@ -63,6 +63,7 @@ class _SimRunnerStub:
         shadow_mode: bool = False,
         real_market_data: bool = False,
         true_backtest_mode: bool = False,
+        **_: Any,
     ):
         del days, real_market_data, true_backtest_mode  # Not used in stub
         base_pnl = float((nightly_report or {}).get("net_pnl", 25.0) or 25.0)
@@ -96,6 +97,7 @@ class _SimRunnerWithGeneratedShadowFailStub(_SimRunnerWithGeneratedStub):
         shadow_mode: bool = False,
         real_market_data: bool = False,
         true_backtest_mode: bool = False,
+        **_: Any,
     ):
         del days, real_market_data, true_backtest_mode
         if shadow_mode:
