@@ -1825,8 +1825,11 @@ def _render_training_panel(current_model: ModelDescriptor, snapshot: HardwareSna
 
 def _headless_main() -> None:
     """Delegate headless launcher runtime to the central runtime entrypoint."""
+    from dotenv import load_dotenv
+
     from lumina_core.engine.runtime_entrypoint import run_with_mode
 
+    load_dotenv(Path(__file__).resolve().parent / ".env")
     exit_code = run_with_mode("sim", argv=list(sys.argv[1:]))
     if exit_code != 0:
         raise SystemExit(exit_code)

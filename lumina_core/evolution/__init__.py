@@ -10,6 +10,7 @@ from .veto_registry import VetoRecord, VetoRegistry
 from .telegram_notifier import TelegramNotifier
 from .veto_window import VetoWindow
 from .approval_gym_scheduler import ApprovalGymScheduler
+from .community_knowledge import append_community_queue_item, run_community_knowledge_nightly
 from .lumina_bible import LuminaBible
 from .strategy_generator import StrategyGenerator
 from .neuroevolution import mutate_weights, crossover_weights, evaluate_weight_population
@@ -26,6 +27,8 @@ __all__ = [
     "ApprovalTwinAgent",
     "ApprovalGymScheduler",
     "LuminaBible",
+    "append_community_queue_item",
+    "run_community_knowledge_nightly",
     "StrategyGenerator",
     "EvolutionGuard",
     "EvolutionGuardDecision",

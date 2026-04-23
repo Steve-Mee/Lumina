@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from lumina_core.evolution.community_knowledge import run_community_knowledge_nightly
+from lumina_core.evolution.community_knowledge import append_community_queue_item, run_community_knowledge_nightly
 from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.evolution_guard import EvolutionGuard
 from lumina_core.evolution.lumina_bible import LuminaBible
@@ -39,6 +39,25 @@ class _TwinOk:
 class _TwinLowConfidence:
     def evaluate_dna_promotion(self, _dna: PolicyDNA) -> dict[str, Any]:
         return {"recommendation": True, "confidence": 0.5, "risk_flags": []}
+
+
+def test_append_community_queue_item_validates(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    q = tmp_path / "q.jsonl"
+
+    def _cfg() -> dict[str, Any]:
+        return {"queue_path": str(q)}
+
+    monkeypatch.setattr("lumina_core.evolution.community_knowledge._community_knowledge_config", _cfg)
+    assert append_community_queue_item({"hypothesis": "short"}) is False
+    ok = append_community_queue_item(
+        {
+            "hypothesis": "A long enough hypothesis title for the gate",
+            "excerpt": "Sixteen+ chars of excerpt text required here for safe external ingestion validation.",
+            "source": "paper",
+        },
+    )
+    assert ok is True
+    assert q.read_text(encoding="utf-8").strip()
 
 
 def test_run_community_knowledge_nightly_commits_when_vetted(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:

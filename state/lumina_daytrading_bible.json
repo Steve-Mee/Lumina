@@ -15,7 +15,11 @@
       "confluence_bonus": 0.24,
       "risk_penalty": 0.06
     },
-    "last_reflection": "2026-03-27: v21.6 Echte Candle Aggregatie + Robuuste API Parsing",
-    "lessons_learned": []
+    "last_reflection": "2026-04-23 | win_rate=52.00%, net_pnl=150.00, sharpe=1.10",
+    "lessons_learned": [],
+    "meta_learning": {
+      "avg_aggregate_confidence": 0.0,
+      "events_observed": 0
+    }
   }
 }

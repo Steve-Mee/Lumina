@@ -204,6 +204,25 @@ def test_is_confidence_gated_promotion_requires_0_97_and_clean_flags() -> None:
     assert blocked_flags is False
 
 
+def test_evaluate_passes_twin_risk_flags_to_has_signed_approval() -> None:
+    guard = EvolutionGuard()
+    twin = _MockTwin()
+    shadow_runner = _MockShadowRunner()
+    dna = type("DNA", (), {"hash": "e1"})()
+    d = guard.evaluate(
+        mode="real",
+        confidence=0.97,
+        candidate_fitness=2.0,
+        previous_fitness=1.0,
+        approval_twin_recommendation=True,
+        approval_twin=twin,
+        dna=dna,
+        shadow_runner=shadow_runner,
+        twin_risk_flags=["RISK"],
+    )
+    assert d.signed_approval is False
+
+
 def test_should_rollback_respects_extended_window() -> None:
     guard = EvolutionGuard()
     now = datetime.now(timezone.utc)

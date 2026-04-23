@@ -278,6 +278,7 @@ class EvolutionGuard:
         approval_twin: Any | None = None,
         dna: Any | None = None,
         shadow_runner: Any | None = None,
+        twin_risk_flags: list[str] | None = None,
         current_hash: str | None = None,
         promoted_at: datetime | None = None,
         now: datetime | None = None,
@@ -293,6 +294,7 @@ class EvolutionGuard:
             approval_twin=approval_twin,
             dna=dna,
             shadow_runner=shadow_runner,
+            twin_risk_flags=twin_risk_flags,
         )
         rollback_window = self.autonomous_real_rollback_window if zero_touch_real else None
         rollback_required = self.should_rollback(

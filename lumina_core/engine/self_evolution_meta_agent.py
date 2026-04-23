@@ -10,12 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from ..evolution.dna_registry import DNARegistry, PolicyDNA
+from ..evolution.multi_day_sim_runner import MultiDaySimRunner
 from ..evolution.evolution_guard import EvolutionGuard
 from ..evolution.evolution_orchestrator import EvolutionOrchestrator
 from ..evolution.simulator_data_support import enrich_nightly_report_simulator_data
 from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
 from ..evolution.meta_swarm import MetaSwarm, meta_swarm_governance_enabled, parallel_realities_from_config
+from ..config_loader import ConfigLoader
 from .lumina_engine import LuminaEngine
+from lumina_bible.chroma_community import resolve_community_vector_collection
 from .evolution_lifecycle import EvolutionLifecycleManager
 from .errors import ErrorSeverity, LuminaError
 from .risk_controller import HardRiskController
@@ -243,16 +246,36 @@ class SelfEvolutionMetaAgent:
 
         current_guard_fitness = float(active_dna.fitness_score) if active_dna is not None else float("-inf")
         candidate_guard_fitness = float(best.get("score", float("-inf"))) if isinstance(best, dict) else float("-inf")
-        approval_twin_recommendation = guard.resolve_approval_twin_recommendation(
-            approval_twin=getattr(self, "approval_twin_agent", None),
-            dna=candidate_dna,
-        )
+        approval_twin = getattr(self, "approval_twin_agent", None)
+        confidence_for_guard = float(confidence)
+        twin_risk_flags: list[str] = []
+        shadow_runner: Any | None = None
+        if str(mode_key).strip().lower() == "real" and candidate_dna is not None and approval_twin is not None:
+            try:
+                td_raw = approval_twin.evaluate_dna_promotion(candidate_dna)
+            except Exception:
+                td_raw = {}
+            if not isinstance(td_raw, dict):
+                td_raw = {}
+            approval_twin_recommendation = bool(td_raw.get("recommendation", False))
+            confidence_for_guard = float(td_raw.get("confidence", confidence) or 0.0)
+            twin_risk_flags = [str(x) for x in list(td_raw.get("risk_flags", []) or [])]
+            shadow_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
+        else:
+            approval_twin_recommendation = guard.resolve_approval_twin_recommendation(
+                approval_twin=approval_twin,
+                dna=candidate_dna,
+            )
         signed_approval = guard.has_signed_approval(
-            confidence=confidence,
+            confidence=confidence_for_guard,
             candidate_fitness=candidate_guard_fitness,
             current_fitness=current_guard_fitness,
             mode=mode_key,
             approval_twin_recommendation=approval_twin_recommendation,
+            approval_twin=approval_twin,
+            dna=candidate_dna,
+            shadow_runner=shadow_runner,
+            twin_risk_flags=twin_risk_flags,
         )
 
         forced_sim_apply = bool(self.sim_mode and best is not None)
@@ -268,18 +291,30 @@ class SelfEvolutionMetaAgent:
         )
 
         promoted_at = now if bool(should_auto_apply and not approval_blocked and not dry_run) else None
+        mk = str(mode_key).strip().lower()
         zero_touch_real = bool(
-            mode_key == "real"
+            mk == "real"
+            and candidate_dna is not None
             and signed_approval
-            and shadow_evidence
-            and float(confidence) >= 97.0
+            and guard.is_confidence_gated_promotion(
+                candidate_dna,
+                confidence_for_guard,
+                shadow_evidence,
+                candidate_guard_fitness,
+                current_guard_fitness,
+                twin_risk_flags=twin_risk_flags,
+            )
         )
         guard_decision = guard.evaluate(
             mode=mode_key,
-            confidence=confidence,
+            confidence=confidence_for_guard,
             candidate_fitness=candidate_guard_fitness,
             previous_fitness=current_guard_fitness,
             approval_twin_recommendation=approval_twin_recommendation,
+            approval_twin=approval_twin if mk == "real" else None,
+            dna=candidate_dna if mk == "real" else None,
+            shadow_runner=shadow_runner,
+            twin_risk_flags=twin_risk_flags,
             current_hash=active_dna.hash if active_dna is not None else None,
             promoted_at=promoted_at,
             now=now,
@@ -304,6 +339,9 @@ class SelfEvolutionMetaAgent:
             "best_candidate": best,
             "proposal": {
                 "confidence": round(confidence, 2),
+                "guard_confidence": round(float(confidence_for_guard), 4)
+                if math.isfinite(float(confidence_for_guard))
+                else None,
                 "backtest_green": backtest_green,
                 "safety_ok": safety_ok,
                 "approval_required": self.approval_required,
@@ -320,12 +358,14 @@ class SelfEvolutionMetaAgent:
                 "external_release_gates": bool(external_release_gates),
                 "shadow_evidence": bool(shadow_evidence),
                 "meta_swarm_allow": bool(swarm_ok),
+                "zero_touch_real": bool(zero_touch_real),
             },
             "lifecycle": lifecycle,
             "governance": {
                 "mode": mode_key,
                 "mutation_allowed": bool(guard_decision.mutation_allowed),
                 "signed_approval": bool(guard_decision.signed_approval),
+                "zero_touch_real": bool(zero_touch_real),
                 "rollback_triggered": bool(guard_decision.rollback_required),
                 "revert_to_hash": guard_decision.revert_to_hash,
             },
@@ -353,7 +393,7 @@ class SelfEvolutionMetaAgent:
             best_name = str(best.get("name")) if best else None
             self.obs_service.record_evolution_proposal(
                 status=str(outcome.get("status", "unknown")),
-                confidence=confidence,
+                confidence=float(confidence_for_guard),
                 best_candidate=best_name,
             )
 
@@ -365,6 +405,14 @@ class SelfEvolutionMetaAgent:
         ):
             orchestrator = EvolutionOrchestrator()
             orchestrator.bind_ppo_trainer(self.ppo_trainer)
+            _evo_cfg = ConfigLoader.section("evolution", default={}) or {}
+            _ck = _evo_cfg.get("community_knowledge") if isinstance(_evo_cfg, dict) else None
+            orchestrator.bind_vector_collection(
+                resolve_community_vector_collection(
+                    self.engine,
+                    community_cfg=_ck if isinstance(_ck, dict) else None,
+                )
+            )
             sim_duration_hours = int(nightly_report.get("sim_duration_hours", 24) or 24)
             orch_result = orchestrator.run_nightly_evolution_cycle(
                 generations=3,

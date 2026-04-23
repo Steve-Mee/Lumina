@@ -38,6 +38,30 @@ def _normalize_queue_item(raw: dict[str, Any]) -> dict[str, Any] | None:
     return {"id": item_id, "hypothesis": hyp, "excerpt": excerpt, "source": source}
 
 
+def append_community_queue_item(
+    item: dict[str, Any],
+    *,
+    queue_path: Path | None = None,
+) -> bool:
+    """Append one external knowledge item to the JSONL queue (ingestion entry point).
+
+    Items are only promoted into the Lumina Bible and Chroma after shadow sim + approval twin
+    in :func:`run_community_knowledge_nightly`. Returns False if validation fails.
+    """
+    if not isinstance(item, dict) or _normalize_queue_item(item) is None:
+        return False
+    cfg = _community_knowledge_config()
+    path = queue_path if queue_path is not None else Path(str(cfg.get("queue_path", "state/community_knowledge_queue.jsonl")))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+        return True
+    except OSError as exc:
+        logger.warning("[COMMUNITY_KNOWLEDGE] queue append failed: %s", exc)
+        return False
+
+
 def _read_queue(path: Path, *, limit: int) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -204,7 +228,7 @@ def run_community_knowledge_nightly(
             skipped += 1
             continue
 
-        vector_api.upload_community_vetted(
+        vec_ok = vector_api.upload_community_vetted(
             vector_collection,
             document=f"{item['hypothesis']}\n\n{item['excerpt']}",
             source=str(item["source"]),
@@ -214,6 +238,11 @@ def run_community_knowledge_nightly(
                 "document_id": item["id"],
             },
         )
+        if vector_collection is not None and not vec_ok:
+            logger.warning(
+                "[COMMUNITY_KNOWLEDGE] Chroma upsert failed after bible commit; id=%s",
+                str(item["id"])[:40],
+            )
 
         _append_processed(processed_path, item["id"])
         processed.add(item["id"])

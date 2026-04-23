@@ -245,6 +245,9 @@ evolution:
     queue_path: "state/community_knowledge_queue.jsonl"
     processed_path: "state/community_knowledge_processed.txt"
     twin_confidence_min: 0.82   # twin bar for external snippets (below REAL zero-touch 0.97)
+    # Chroma fallback when runtime app has no app.collection (bind via SelfEvolutionMetaAgent)
+    chroma_persist_path: "state/chroma_community"
+    chroma_collection_name: "lumina_community_vetted"
   dream_engine:
     enabled: true           # fast what-if paths before nightly mutations
     dream_count: 4000      # 200–50k micro-sims per generation
