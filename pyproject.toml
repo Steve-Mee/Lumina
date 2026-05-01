@@ -9,6 +9,17 @@ description = "Lumina NinjaTrader AI trading engine"
 requires-python = ">=3.13"
 readme = "README.md"
 
+[tool.lumina.dependencies]
+core = "requirements-core.txt"
+trading = "requirements-trading.txt"
+ml = "requirements-ml.txt"
+dev = "requirements-dev.txt"
+all = "requirements.txt"
+
+[tool.lumina.security]
+sbom_output = "docs/sbom.json"
+audit_commands = ["safety check", "pip-audit"]
+
 [tool.ruff]
 # Ruff config lives in ruff.toml; this section is intentionally minimal.
 

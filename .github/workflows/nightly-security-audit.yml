@@ -1,0 +1,48 @@
+name: Nightly Security Audit
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 03:00 UTC every night
+  workflow_dispatch:
+
+jobs:
+  dependency-audit:
+    name: safety + pip-audit + SBOM
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install audit tooling
+        run: pip install pip-audit==2.9.0 safety==3.7.0 cyclonedx-bom==5.3.0
+
+      - name: pip-audit (core + trading requirements)
+        run: |
+          pip-audit --requirement requirements-core.txt \
+            --format json \
+            --output pip_audit_report.json \
+            --skip-editable || true
+          pip-audit --requirement requirements-core.txt
+          pip-audit --requirement requirements-trading.txt
+
+      - name: safety check (core + trading requirements)
+        run: |
+          safety check -r requirements-core.txt -r requirements-trading.txt --full-report
+
+      - name: Generate SBOM (CycloneDX JSON)
+        run: |
+          pip install -r requirements-core.txt -r requirements-trading.txt --quiet
+          cyclonedx-py environment --output-format json --outfile docs/sbom.json
+
+      - name: Upload audit artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-audit
+          path: |
+            pip_audit_report.json
+            docs/sbom.json
+          retention-days: 30

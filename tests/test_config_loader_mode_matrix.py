@@ -80,8 +80,10 @@ def test_validate_startup_rejects_sim_real_guard_when_feature_flag_disabled(monk
 
 
 def test_validate_startup_warns_placeholder_api_key_in_sim(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from unittest.mock import patch
+
     _set_required_env(monkeypatch)
     monkeypatch.setenv("CROSSTRADE_TOKEN", "unit-test-token")
     cfg = {
@@ -98,8 +100,13 @@ def test_validate_startup_warns_placeholder_api_key_in_sim(
     }
     monkeypatch.setattr(ConfigLoader, "get", classmethod(lambda cls: cfg))
 
-    assert ConfigLoader.validate_startup(raise_on_error=True) is True
-    assert "Placeholder/default API key active" in caplog.text
+    # Patch the module-level logger directly so we're ordering-agnostic.
+    with patch("lumina_core.config_loader._LOG") as mock_log:
+        assert ConfigLoader.validate_startup(raise_on_error=True) is True
+        warning_calls = [str(c) for c in mock_log.warning.call_args_list]
+        assert any("Placeholder/default API key active" in c for c in warning_calls), (
+            f"Expected placeholder warning, got: {warning_calls}"
+        )
 
 
 def test_validate_startup_fails_placeholder_api_key_in_real(monkeypatch: pytest.MonkeyPatch) -> None:

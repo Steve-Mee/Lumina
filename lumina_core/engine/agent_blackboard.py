@@ -78,18 +78,30 @@ DEFAULT_TOPIC_POLICIES: dict[str, TopicPolicy] = {
 class AgentBlackboard:
     """Async-capable blackboard with append-only JSONL persistence and pub/sub."""
 
+    @staticmethod
+    def _default_persistence_path() -> Path:
+        """Return default persistence path, honouring LUMINA_STATE_DIR env var."""
+        state_dir = os.getenv("LUMINA_STATE_DIR", "state")
+        return Path(state_dir) / "agent_blackboard.jsonl"
+
+    @staticmethod
+    def _default_audit_path() -> Path:
+        """Return default audit path, honouring LUMINA_LOGS_DIR env var."""
+        logs_dir = os.getenv("LUMINA_LOGS_DIR", "logs")
+        return Path(logs_dir) / "security_audit.jsonl"
+
     def __init__(
         self,
         *,
-        persistence_path: Path | str = Path("state/agent_blackboard.jsonl"),
+        persistence_path: Path | str | None = None,
         max_topic_history: int = 500,
         obs_service: Any | None = None,
-        audit_path: Path | str = Path("logs/security_audit.jsonl"),
+        audit_path: Path | str | None = None,
         allowed_producers: dict[str, set[str]] | None = None,
         topic_policies: dict[str, TopicPolicy] | None = None,
     ) -> None:
-        self.persistence_path = Path(persistence_path)
-        self.audit_path = Path(audit_path)
+        self.persistence_path = Path(persistence_path) if persistence_path is not None else self._default_persistence_path()
+        self.audit_path = Path(audit_path) if audit_path is not None else self._default_audit_path()
         self.max_topic_history = max(10, int(max_topic_history))
         self.obs_service = obs_service
         self._lock = threading.RLock()
@@ -111,8 +123,10 @@ class AgentBlackboard:
                 self._topic_policies[str(topic).strip().lower()] = policy
 
         self._dual_thought_log = os.getenv("LUMINA_DUAL_THOUGHT_LOG", "true").strip().lower() == "true"
-        self._thought_log_path = Path("state/thought_log.jsonl")
-        self._legacy_thought_log_path = Path("state/lumina_thought_log.jsonl")
+        # Respect LUMINA_STATE_DIR for test isolation (set in conftest.py).
+        _state_dir = Path(os.getenv("LUMINA_STATE_DIR", "state"))
+        self._thought_log_path = _state_dir / "thought_log.jsonl"
+        self._legacy_thought_log_path = _state_dir / "lumina_thought_log.jsonl"
 
     async def publish(
         self,

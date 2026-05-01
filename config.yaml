@@ -147,6 +147,15 @@ risk_controller:
   # After max_consecutive_losses is reached, wait this long before resuming
   cooldown_after_streak: 30
 
+  # LIVING ORGANISM v53 - Order Book Replay (ATR-based spread + market impact)
+  order_book_spread_atr_ratio: 0.10       # Half-spread as fraction of ATR
+  order_book_market_impact_alpha: 0.5     # Almgren-Chriss alpha
+  order_book_market_impact_beta: 0.6      # Almgren-Chriss beta (power law exponent)
+  order_book_spread_multipliers:
+    open: 2.5       # First 30 min: wide spreads
+    midday: 1.0     # Normal liquidity
+    close: 2.0      # Last 30 min: wider again
+
   # LIVING ORGANISM v51 - RL execution costs (SIM fast, REAL realistic)
   slippage_base_points: 0.125
   slippage_sigma: 0.5
@@ -192,6 +201,14 @@ risk_controller:
   sim_var_penalty_coeff: 0.04
   sim_es_penalty_coeff: 0.06
   
+  # LIVING ORGANISM v53 - Dynamic Kelly estimator
+  kelly_rolling_window: 50            # Number of recent trades for rolling Kelly
+  kelly_min_window_trades: 10         # Min trades before dynamic estimates are trusted
+
+  # LIVING ORGANISM v53 - Market impact model (Almgren-Chriss simplified)
+  market_impact_alpha: 0.5            # Impact scale coefficient
+  market_impact_beta: 0.6             # Power-law exponent
+
   # Enable risk controller (set to false only for testing)
   enabled: true
 
@@ -235,6 +252,11 @@ security:
 evolution:
   enabled: true
   approval_required: true
+  # Sandbox mutant scoring in an isolated subprocess before promotion.
+  # Always true in REAL; can be disabled in SIM for speed.
+  sandbox_mutations: true
+  # Penalty applied to fitness when SIM-sharpe diverges from rolling REAL-sharpe.
+  reality_gap_penalty_coeff: 0.15
   meta_swarm:
     enabled: true          # five-agent council gates DNA promotion inside EvolutionOrchestrator
   # Fase 3: OHLC-pad (DNA); override: LUMINA_OHLC_DNA_STRESS of state/bot_stress_choices.json
@@ -260,6 +282,9 @@ evolution:
   shadow_validation:
     min_days: 3
     max_days: 7
+    min_trades: 20              # Minimum trades in shadow before verdict
+    pvalue_threshold: 0.10      # Welch t-test significance level
+    effect_size_threshold: 0.20 # Cohen's d minimum effect size
   multiweek_fitness:
     enabled: false          # set true to use multi-week SIM scoring (Meta-RL phase)
     days: 14                # number of simulation days for fitness scoring when enabled

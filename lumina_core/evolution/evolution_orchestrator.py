@@ -55,6 +55,11 @@ from .veto_registry import VetoRegistry
 from .veto_window import VetoWindow
 from lumina_core.notifications.telegram_notifier import TelegramNotifier
 from lumina_core.experiments.ab_framework import ABExperimentFramework
+from lumina_core.engine.constitutional_principles import ConstitutionalChecker, ConstitutionalViolationError
+from .mutation_sandbox import MutationSandbox, SandboxResult
+# New canonical safety layer — preferred over direct ConstitutionalChecker usage.
+from lumina_core.safety.constitutional_guard import ConstitutionalGuard
+from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 
 
 _METRICS_PATH = Path("logs/evolution_metrics.jsonl")
@@ -240,6 +245,8 @@ class EvolutionOrchestrator:
         )
         self._meta_swarm = MetaSwarm()
         self._vector_collection: Any | None = None
+        # AGI Safety: single guard instance shared across all generation cycles.
+        self._constitutional_guard = ConstitutionalGuard()
         self._initialized = True
 
     def bind_ppo_trainer(self, ppo_trainer: Any | None) -> None:
@@ -650,6 +657,32 @@ class EvolutionOrchestrator:
                 self._send_promotion_status_telegram(dna_hash=winner_dna.hash, promoted=promoted)
         else:
             promoted = bool(signed and generation_ok)
+
+        # ── Constitutional Guard (pre-promotion) ─────────────────────────────
+        # The ConstitutionalGuard is the single authoritative safety gate.
+        # It checks all 15 principles, writes an audit record, and is
+        # fail-closed: any unexpected error blocks promotion.
+        constitutional_violations: list[str] = []
+        if promoted:
+            guard_result = self._constitutional_guard.check_pre_promotion(
+                winner_dna.content, mode=mode, raise_on_fatal=False
+            )
+            if not guard_result.passed:
+                constitutional_violations = guard_result.violation_names
+                logger.error(
+                    "ConstitutionalGuard BLOCKED promotion dna=%s mode=%s violations=%s",
+                    winner_dna.hash[:12],
+                    mode,
+                    constitutional_violations,
+                )
+                promoted = False
+            elif guard_result.warn_violations:
+                logger.warning(
+                    "ConstitutionalGuard WARN dna=%s mode=%s warns=%s",
+                    winner_dna.hash[:12],
+                    mode,
+                    [v.principle_name for v in guard_result.warn_violations],
+                )
 
         base_promoted = promoted
 
@@ -1537,6 +1570,19 @@ class EvolutionOrchestrator:
                     lineage_hash=base.lineage_hash,
                     crossover=other,
                 )
+
+            # Pre-mutation constitutional screening (fast, in-process).
+            pre_check = self._constitutional_guard.check_pre_mutation(
+                candidate.content, mode=evolution_mode
+            )
+            if not pre_check.passed:
+                logger.warning(
+                    "Pre-mutation check blocked candidate %s: %s",
+                    candidate.hash[:12],
+                    pre_check.violation_names,
+                )
+                continue  # Skip this candidate; do not register.
+
             self._registry.register_dna(candidate)
             candidates.append(candidate)
 

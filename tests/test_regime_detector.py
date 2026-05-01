@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pandas as pd
+import pytest
 
 from lumina_core.engine.regime_detector import RegimeDetector
 from lumina_core.engine.reasoning_service import ReasoningService
@@ -254,6 +255,7 @@ def test_trade_workers_apply_tighter_limits_in_high_risk_regime() -> None:
     assert "MAX INSTRUMENT RISK exceeded" in reason
 
 
+@pytest.mark.slow
 def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path) -> None:
     engine = SimpleNamespace(
         config=SimpleNamespace(

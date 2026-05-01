@@ -1,0 +1,11 @@
+# Trading/live execution dependencies — install for broker-facing and market-aware runtime.
+#
+# Install after core: pip install -r requirements-core.txt -r requirements-trading.txt
+
+# -- Trading schedules & market sessions ------------------------------------
+exchange_calendars==4.13.2
+pandas_market_calendars==5.3.2
+APScheduler==3.11.1
+
+# -- Broker/exchange connectivity -------------------------------------------
+python-telegram-bot==22.5

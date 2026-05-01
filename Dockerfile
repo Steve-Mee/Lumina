@@ -13,27 +13,12 @@ RUN apt-get update \
 
 RUN python -m pip install --upgrade pip wheel setuptools
 
+COPY requirements-core.txt requirements-trading.txt /build/
+
 # Build wheels in a dedicated stage for repeatable, smaller runtime installs.
 RUN python -m pip wheel --wheel-dir /wheels \
-    numpy \
-    pandas \
-    pandas_market_calendars \
-    requests \
-    websockets \
-    python-dotenv \
-    pyyaml \
-    psutil \
-    plotly \
-    dash \
-    dash-bootstrap-components \
-    SpeechRecognition \
-    pyttsx3 \
-    Pillow \
-    fpdf2 \
-    chromadb \
-    streamlit \
-    ollama \
-    xai-sdk
+    -r requirements-core.txt \
+    -r requirements-trading.txt
 
 
 FROM python:3.13-slim AS runtime
@@ -59,27 +44,12 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /wheels /wheels
+COPY --from=builder /build/requirements-core.txt /tmp/requirements-core.txt
+COPY --from=builder /build/requirements-trading.txt /tmp/requirements-trading.txt
 RUN python -m pip install --no-index --find-links=/wheels \
-    numpy \
-    pandas \
-    pandas_market_calendars \
-    requests \
-    websockets \
-    python-dotenv \
-    pyyaml \
-    psutil \
-    plotly \
-    dash \
-    dash-bootstrap-components \
-    SpeechRecognition \
-    pyttsx3 \
-    Pillow \
-    fpdf2 \
-    chromadb \
-    streamlit \
-    ollama \
-    xai-sdk \
-    && rm -rf /wheels
+    -r /tmp/requirements-core.txt \
+    -r /tmp/requirements-trading.txt \
+    && rm -rf /wheels /tmp/requirements-core.txt /tmp/requirements-trading.txt
 
 COPY . /app
 

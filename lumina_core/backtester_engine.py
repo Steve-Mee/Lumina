@@ -11,21 +11,41 @@ from typing import Any
 
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.valuation_engine import ValuationEngine
+from lumina_core.engine.backtest.order_book import DynamicSlippageModel
+from lumina_core.engine.backtest.cross_validation import PurgedWalkForwardCV, CombinatorialPurgedCV
+from lumina_core.engine.backtest.reality_gap import RealityGapTracker
 
 
 @dataclass(slots=True)
 class BacktesterEngine:
-    """Realistic execution backtester with Monte Carlo and walk-forward support."""
+    """Realistic execution backtester with Monte Carlo and walk-forward support.
+
+    v2 upgrades:
+      - DynamicSlippageModel (ATR-based, regime-aware, time-of-day-aware)
+      - PurgedWalkForwardCV  (embargo-gap CV with Sharpe consistency metrics)
+      - CombinatorialPurgedCV (PBO + Deflated Sharpe Ratio)
+      - RealityGapTracker    (rolling SIM/REAL divergence with RED/YELLOW/GREEN bands)
+    """
 
     app: RuntimeContext
     point_value: float = 5.0
     commission_per_side_points: float = 0.25
     valuation_engine: ValuationEngine = field(default_factory=ValuationEngine)
+    dynamic_slippage: DynamicSlippageModel = field(default_factory=DynamicSlippageModel)
+    reality_gap_tracker: RealityGapTracker = field(default_factory=RealityGapTracker)
 
     def __post_init__(self) -> None:
         self.valuation_engine = ValuationEngine()
         instrument = str(getattr(self.app.engine.config, "instrument", "MES"))
         self.point_value = self.valuation_engine.point_value(instrument)
+        tick_size = self.valuation_engine.tick_size(instrument) if hasattr(self.valuation_engine, "tick_size") else 0.25
+        self.dynamic_slippage = DynamicSlippageModel(tick_size=tick_size)
+        gap_history_path = Path("state/reality_gap_history.jsonl")
+        self.reality_gap_tracker = RealityGapTracker(
+            penalty_coeff=0.15,
+            window=20,
+            history_path=gap_history_path,
+        )
 
     def run_snapshot_backtest(self, snapshot: list[dict[str, Any]]) -> dict[str, Any]:
         if len(snapshot) < 120:
@@ -48,12 +68,16 @@ class BacktesterEngine:
         monte_carlo = self._run_monte_carlo(snapshot, runs=1000)
         walk_forward = self._run_walk_forward(snapshot)
         walk_forward_opt = self._run_walk_forward_optimization(snapshot)
+        purged_wf = self.run_purged_walk_forward(snapshot)
+        cpcv = self.run_combinatorial_purged_cv(snapshot)
 
         return {
             **base,
             "monte_carlo": monte_carlo,
             "walk_forward": walk_forward,
             "walk_forward_optimization": walk_forward_opt,
+            "purged_walk_forward": purged_wf,
+            "combinatorial_purged_cv": cpcv,
         }
 
     def generate_full_report(
@@ -107,6 +131,7 @@ class BacktesterEngine:
         include_gap_events: bool = False,
         gap_event_prob: float = 0.002,
         gap_std_points: float = 2.0,
+        use_dynamic_slippage: bool = True,
     ) -> dict[str, Any]:
         pnl_values: list[float] = []
         equity: list[float] = [50000.0]
@@ -141,6 +166,7 @@ class BacktesterEngine:
                 gap_events += 1
             volume = float(row.get("volume", 0.0))
             recent = snapshot[max(0, i - 30) : i]
+            bar_history = snapshot[max(0, i - self.dynamic_slippage.atr_window - 1) : i + 1]
             avg_volume = self._avg_volume(recent)
             regime = self._regime_from_snapshot(snapshot[: i + 1])
             regime_label = self._normalize_regime(regime)
@@ -153,7 +179,15 @@ class BacktesterEngine:
             if pending_side != 0:
                 pending_age += 1
                 if self._queue_filled(rng, volume, avg_volume, pending_age, regime):
-                    slip_ticks = self._slippage_ticks(volume, avg_volume, regime, slippage_scale=slippage_scale)
+                    if use_dynamic_slippage:
+                        slip_ticks = self.dynamic_slippage.slippage_for_bar(
+                            row, bar_history,
+                            quantity=1.0,
+                            avg_volume=avg_volume,
+                            regime=regime_label,
+                        ) * slippage_scale
+                    else:
+                        slip_ticks = self._slippage_ticks(volume, avg_volume, regime, slippage_scale=slippage_scale)
                     slippage_ticks.append(slip_ticks)
                     fill_price = self._apply_entry_fill(price, pending_side, slip_ticks)
                     position = pending_side
@@ -176,7 +210,15 @@ class BacktesterEngine:
                 )
 
                 if hit_stop or hit_target:
-                    slip_ticks = self._slippage_ticks(volume, avg_volume, regime, slippage_scale=slippage_scale)
+                    if use_dynamic_slippage:
+                        slip_ticks = self.dynamic_slippage.slippage_for_bar(
+                            row, bar_history,
+                            quantity=1.0,
+                            avg_volume=avg_volume,
+                            regime=regime_label,
+                        ) * slippage_scale
+                    else:
+                        slip_ticks = self._slippage_ticks(volume, avg_volume, regime, slippage_scale=slippage_scale)
                     slippage_ticks.append(slip_ticks)
                     exit_price = self._apply_exit_fill(price, position, slip_ticks)
 
@@ -562,3 +604,231 @@ class BacktesterEngine:
             return float(sorted_values[lo])
         weight = idx - lo
         return float(sorted_values[lo] * (1.0 - weight) + sorted_values[hi] * weight)
+
+    # ------------------------------------------------------------------
+    # Purged Walk-Forward Cross-Validation (delegates to PurgedWalkForwardCV)
+    # ------------------------------------------------------------------
+
+    def run_purged_walk_forward(
+        self,
+        snapshot: list[dict[str, Any]],
+        *,
+        train_days: int = 30,
+        test_days: int = 5,
+        embargo_days: int = 1,
+    ) -> dict[str, Any]:
+        """Walk-forward CV with embargo gap, Sharpe consistency, and degradation stats.
+
+        Delegates to ``PurgedWalkForwardCV`` from
+        ``lumina_core.engine.backtest.cross_validation``.
+
+        New in v2: sharpe_positive_pct, sharpe_p25/p75, worst_pnl, best_pnl.
+        """
+        bars_per_day = self._infer_bars_per_day(snapshot)
+        train_bars = train_days * bars_per_day
+        test_bars = test_days * bars_per_day
+        embargo_bars = max(1, embargo_days * bars_per_day)
+
+        cv = PurgedWalkForwardCV(
+            train_bars=train_bars,
+            test_bars=test_bars,
+            embargo_bars=embargo_bars,
+        )
+
+        def _scorer(chunk: list[dict[str, Any]]) -> dict[str, Any]:
+            return self._run_single(
+                chunk,
+                rng=random.Random(abs(hash(str(len(chunk)))) % (2**31)),
+                noise_std_points=0.05,
+            )
+
+        result = cv.run(snapshot, _scorer)
+        result["train_days"] = train_days
+        result["test_days"] = test_days
+        return result
+
+    # ------------------------------------------------------------------
+    # Combinatorial Purged CV — PBO + Deflated Sharpe Ratio
+    # ------------------------------------------------------------------
+
+    def run_combinatorial_purged_cv(
+        self,
+        snapshot: list[dict[str, Any]],
+        *,
+        n_splits: int = 6,
+        n_test_folds: int = 1,
+        embargo_pct: float = 0.01,
+    ) -> dict[str, Any]:
+        """Combinatorial Purged Cross-Validation.
+
+        Produces Probability of Backtest Overfitting (PBO) and
+        Deflated Sharpe Ratio (DSR) — the two primary anti-overfitting
+        metrics from the AFML framework.
+
+        PBO < 0.25 → low overfitting risk
+        DSR > 0    → strategy survives multiple-testing correction
+
+        Delegates to ``CombinatorialPurgedCV`` from
+        ``lumina_core.engine.backtest.cross_validation``.
+        """
+        cpcv = CombinatorialPurgedCV(
+            n_splits=n_splits,
+            n_test_folds=n_test_folds,
+            embargo_pct=embargo_pct,
+        )
+
+        seed_base = abs(hash(str(len(snapshot)))) % (2**24)
+
+        def _scorer(chunk: list[dict[str, Any]]) -> dict[str, Any]:
+            return self._run_single(
+                chunk,
+                rng=random.Random(seed_base + len(chunk)),
+                noise_std_points=0.05,
+            )
+
+        return cpcv.run(snapshot, _scorer)
+
+    # ------------------------------------------------------------------
+    # Reality Gap Tracking (delegates to RealityGapTracker)
+    # ------------------------------------------------------------------
+
+    def record_reality_gap(
+        self,
+        *,
+        sim_sharpe: float,
+        real_sharpe: float,
+        gap_history_path: Path | None = None,
+    ) -> float:
+        """Observe a SIM vs REAL Sharpe pair and return the instantaneous penalty.
+
+        The penalty = max(0, sim_sharpe - real_sharpe) × coeff.
+
+        Also stores the observation in the rolling tracker so that
+        ``get_reality_gap_penalty()`` returns an EWM-smoothed value.
+        """
+        if gap_history_path is not None:
+            self.reality_gap_tracker.history_path = gap_history_path
+        return self.reality_gap_tracker.observe(sim_sharpe, real_sharpe)
+
+    def get_reality_gap_penalty(self) -> float:
+        """Return the current dynamic penalty from the rolling tracker.
+
+        Uses regime-adaptive coefficient (2× when RED, 1.5× when YELLOW).
+        Suitable for passing to ``calculate_fitness(reality_gap_penalty=...)``.
+        """
+        return self.reality_gap_tracker.dynamic_penalty()
+
+    def compute_rolling_reality_gap(
+        self,
+        *,
+        gap_history_path: Path | None = None,
+        window: int = 20,
+    ) -> dict[str, Any]:
+        """Return rolling reality-gap statistics.
+
+        Loads history from file if needed, then delegates to
+        ``RealityGapTracker.rolling_stats()``.
+        """
+        if gap_history_path is not None:
+            self.reality_gap_tracker.history_path = gap_history_path
+        if gap_history_path is not None and not self.reality_gap_tracker._observations:
+            self.reality_gap_tracker.load_history(gap_history_path)
+        if window != self.reality_gap_tracker.window:
+            self.reality_gap_tracker.window = window
+        return self.reality_gap_tracker.rolling_stats()
+
+
+# ---------------------------------------------------------------------------
+# P3: OrderBookReplay — ATR-based bid/ask spread simulator
+# ---------------------------------------------------------------------------
+
+
+class OrderBookReplay:
+    """Simulates realistic bid-ask spreads and market impact from OHLCV bars.
+
+    Replaces pure-Gaussian slippage with a model that accounts for:
+      - Intraday liquidity patterns (open/midday/close spread multipliers)
+      - ATR-scaled spread width (wider in volatile regimes)
+      - Power-law market impact for position sizing (Almgren-Chriss simplified)
+
+    Designed to be used inside ``BacktesterEngine._run_single()`` as a
+    drop-in replacement for ``ValuationEngine.slippage_ticks()``.
+    """
+
+    def __init__(
+        self,
+        *,
+        spread_atr_ratio: float = 0.10,
+        market_impact_alpha: float = 0.5,
+        market_impact_beta: float = 0.6,
+        time_of_day_multipliers: dict[str, float] | None = None,
+    ) -> None:
+        self.spread_atr_ratio = float(spread_atr_ratio)
+        self.market_impact_alpha = float(market_impact_alpha)
+        self.market_impact_beta = float(market_impact_beta)
+        self.time_of_day_multipliers: dict[str, float] = time_of_day_multipliers or {
+            "open": 2.5,     # First 30 min — wide spreads
+            "midday": 1.0,   # 10:30–14:00 EST — normal liquidity
+            "close": 2.0,    # Last 30 min — wider again
+        }
+
+    def spread_ticks(
+        self,
+        bar: dict[str, Any],
+        atr: float,
+        tick_size: float = 0.25,
+        *,
+        time_period: str = "midday",
+    ) -> float:
+        """Estimate half-spread in ticks for the given bar.
+
+        Args:
+            bar:         OHLCV dict with 'high', 'low', 'close' keys.
+            atr:         Average True Range in price points.
+            tick_size:   Instrument tick size (0.25 for MES).
+            time_period: 'open', 'midday', or 'close'.
+
+        Returns:
+            Half-spread in ticks (add to entry, subtract from exit).
+        """
+        if atr <= 0 or tick_size <= 0:
+            return 1.0
+
+        spread_points = max(tick_size, atr * self.spread_atr_ratio)
+        multiplier = self.time_of_day_multipliers.get(time_period, 1.0)
+        half_spread_ticks = (spread_points * multiplier) / tick_size
+        return max(1.0, float(half_spread_ticks))
+
+    def market_impact_ticks(
+        self,
+        quantity: float,
+        avg_volume: float,
+        tick_size: float = 0.25,
+    ) -> float:
+        """Estimate market-impact cost in ticks using a power-law model.
+
+        Impact = alpha * (qty / avg_volume) ^ beta
+
+        Returns 0.0 when avg_volume <= 0 (e.g., synthetic data).
+        """
+        if avg_volume <= 0 or quantity <= 0:
+            return 0.0
+
+        volume_ratio = float(quantity) / max(float(avg_volume), 1.0)
+        impact_points = self.market_impact_alpha * (volume_ratio ** self.market_impact_beta)
+        return max(0.0, impact_points / tick_size)
+
+    def total_slippage_ticks(
+        self,
+        bar: dict[str, Any],
+        atr: float,
+        quantity: float = 1.0,
+        avg_volume: float = 1000.0,
+        tick_size: float = 0.25,
+        *,
+        time_period: str = "midday",
+    ) -> float:
+        """Combined half-spread + market-impact in ticks."""
+        spread = self.spread_ticks(bar, atr, tick_size, time_period=time_period)
+        impact = self.market_impact_ticks(quantity, avg_volume, tick_size)
+        return spread + impact

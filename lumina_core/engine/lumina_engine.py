@@ -483,15 +483,31 @@ class LuminaEngine:
         baseline_kelly = max(1e-6, float(profile.get("kelly_baseline", 0.25) or 0.25))
         mode = str(getattr(self.config, "trade_mode", "paper") or "paper").strip().lower()
 
+        # -- Dynamic Kelly (v53) --------------------------------------------------
+        # Use rolling performance estimates when enough trades are available;
+        # fall back to static config fractions otherwise.
+        try:
+            from lumina_core.engine.dynamic_kelly import get_global_kelly_estimator  # noqa: PLC0415
+            _kelly_est = get_global_kelly_estimator(
+                fractional_kelly_real=float(profile.get("real_kelly_fraction", 0.25) or 0.25),
+                fractional_kelly_sim=float(profile.get("sim_kelly_fraction", 1.0) or 1.0),
+            )
+            dynamic_fraction = _kelly_est.fractional_kelly(mode)
+        except Exception:
+            dynamic_fraction = None
+
         if mode == "sim":
-            kelly_fraction = float(profile.get("sim_kelly_fraction", 1.0) or 1.0)
+            static_fraction = float(profile.get("sim_kelly_fraction", 1.0) or 1.0)
+            kelly_fraction = dynamic_fraction if dynamic_fraction is not None else static_fraction
             kelly_multiplier = max(1.0, kelly_fraction / baseline_kelly)
         elif mode == "real":
-            kelly_fraction = float(profile.get("real_kelly_fraction", 0.25) or 0.25)
+            static_fraction = float(profile.get("real_kelly_fraction", 0.25) or 0.25)
+            kelly_fraction = dynamic_fraction if dynamic_fraction is not None else static_fraction
             kelly_multiplier = max(0.05, min(1.0, kelly_fraction / baseline_kelly))
         else:
             # Paper defaults to conservative sizing unless explicitly in SIM mode.
-            kelly_fraction = float(profile.get("real_kelly_fraction", 0.25) or 0.25)
+            static_fraction = float(profile.get("real_kelly_fraction", 0.25) or 0.25)
+            kelly_fraction = dynamic_fraction if dynamic_fraction is not None else static_fraction
             kelly_multiplier = max(0.05, min(1.0, kelly_fraction / baseline_kelly))
 
         kelly_min_conf = max(0.0, min(1.0, float(profile.get("kelly_min_confidence", 0.65) or 0.65)))

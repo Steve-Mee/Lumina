@@ -15,6 +15,21 @@ class ABExperimentResult:
 
 
 @dataclass(slots=True)
+class ShadowABResult:
+    """Result of a statistical shadow A/B comparison."""
+
+    verdict: str                 # 'variant_wins' | 'control_wins' | 'inconclusive'
+    n_control: int
+    n_variant: int
+    mean_control_pnl: float
+    mean_variant_pnl: float
+    pvalue: float
+    cohens_d: float
+    significant: bool
+    effect_large_enough: bool
+
+
+@dataclass(slots=True)
 class ABExperimentFramework:
     """SIM-mode A/B framework that forks candidate agents and promotes the strongest."""
 
@@ -73,6 +88,39 @@ class ABExperimentFramework:
             experiment_id=f"ab-sim-{rng.randint(100000, 999999)}",
             selected_variant=selected,
             variants=results,
+        )
+
+    def run_shadow_ab(
+        self,
+        control_pnl: list[float],
+        variant_pnl: list[float],
+        *,
+        n_min: int = 30,
+        pvalue_threshold: float = 0.1,
+        effect_size_threshold: float = 0.2,
+    ) -> ShadowABResult:
+        """Statistical A/B test comparing two PnL histories.
+
+        Delegates to ``ShadowDeploymentTracker.run_shadow_ab`` for the actual
+        statistical computation.  Wraps the result in a typed ``ShadowABResult``.
+        """
+        from lumina_core.evolution.shadow_deployment import ShadowDeploymentTracker
+
+        tracker = ShadowDeploymentTracker(
+            pvalue_threshold=pvalue_threshold,
+            effect_size_threshold=effect_size_threshold,
+        )
+        raw = tracker.run_shadow_ab(control_pnl, variant_pnl, n_min=n_min)
+        return ShadowABResult(
+            verdict=str(raw.get("verdict", "inconclusive")),
+            n_control=int(raw.get("n_control", 0)),
+            n_variant=int(raw.get("n_variant", 0)),
+            mean_control_pnl=float(raw.get("mean_control_pnl", 0.0)),
+            mean_variant_pnl=float(raw.get("mean_variant_pnl", 0.0)),
+            pvalue=float(raw.get("pvalue", 1.0)),
+            cohens_d=float(raw.get("cohens_d", 0.0)),
+            significant=bool(raw.get("significant", False)),
+            effect_large_enough=bool(raw.get("effect_large_enough", False)),
         )
 
     def _build_forks(self, *, base_agent: dict[str, Any], fork_count: int, rng: random.Random) -> list[dict[str, Any]]:

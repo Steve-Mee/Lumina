@@ -1,0 +1,21 @@
+# Optional integrations — only install what you actually use.
+#
+# ChromaDB (community vector knowledge base)
+chromadb==1.5.5
+PyPika==0.51.1
+onnxruntime==1.24.4         # also in ml; repeated for standalone chroma install
+rpds-py==0.30.0
+referencing==0.37.0
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+
+# OpenTelemetry (already in core; listed here for explicit opt-in reminder)
+# opentelemetry-*  →  see requirements-core.txt
+
+# MCP protocol client
+mcp==1.27.0
+
+# Misc format support
+ijson==3.5.0
+docstring_parser==0.17.0
+docutils==0.22.4

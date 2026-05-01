@@ -131,10 +131,54 @@ def calculate_fitness(
     *,
     capital_preservation_threshold: float = 25000.0,
     drawdown_weight: float = 0.0001,
+    reality_gap_penalty: float = 0.0,
+    pbo: float = 0.0,
+    dsr: float | None = None,
+    sharpe_positive_pct: float = 1.0,
 ) -> float:
+    """Compute a fitness score for a DNA candidate.
+
+    Args:
+        pnl:                        Net PnL from the simulation run.
+        max_dd:                     Maximum drawdown (USD or equivalent).
+        sharpe:                     Annualised Sharpe ratio.
+        capital_preservation_threshold: Hard guard — returns -inf if breached.
+        drawdown_weight:            Penalty coefficient per drawdown unit.
+        reality_gap_penalty:        Smoothed penalty when SIM Sharpe >> REAL Sharpe.
+                                    Use BacktesterEngine.get_reality_gap_penalty()
+                                    for the regime-adaptive version.
+        pbo:                        Probability of Backtest Overfitting [0,1].
+                                    High PBO (> 0.5) → heavy penalty (−1.0).
+        dsr:                        Deflated Sharpe Ratio from CPCV.
+                                    Negative DSR caps the base score.
+        sharpe_positive_pct:        Fraction of CV windows with Sharpe > 0 [0,1].
+                                    < 0.5 → −0.5 consistency penalty.
+
+    Returns:
+        Scalar fitness score (higher is better; -inf = hard disqualified).
+    """
     pnl_value = float(pnl or 0.0)
     drawdown_value = float(max_dd or 0.0)
     sharpe_value = float(sharpe or 0.0)
     if drawdown_value > float(capital_preservation_threshold):
         return float("-inf")
-    return sharpe_value + (pnl_value / 10000.0) - (drawdown_value * float(drawdown_weight))
+
+    base = sharpe_value + (pnl_value / 10000.0) - (drawdown_value * float(drawdown_weight))
+
+    # Reality-gap penalty (regime-adaptive; 0 when SIM ≈ REAL).
+    base -= float(reality_gap_penalty or 0.0)
+
+    # PBO penalty: scaled linearly; PBO > 0.5 removes 1.0 from fitness.
+    pbo_value = max(0.0, min(1.0, float(pbo or 0.0)))
+    base -= pbo_value * 2.0  # max −2.0 at PBO=1.0
+
+    # DSR guard: if DSR is explicitly negative, cap fitness at 0.
+    if dsr is not None and float(dsr) < 0.0:
+        base = min(base, 0.0)
+
+    # Sharpe consistency penalty: penalise strategies that only win sometimes.
+    consistency = float(sharpe_positive_pct or 1.0)
+    if consistency < 0.5:
+        base -= 0.5  # flat −0.5 for highly inconsistent strategies
+
+    return base
