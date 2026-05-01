@@ -75,6 +75,7 @@ lumina_analyse.md
 # Local Trader League test artifacts
 lumina_os/tests/test_trader_league.db
 lumina_os/tests/test_reconciliation_status.json
+lumina_os/state/
 
 # Code quality script output (default path for scripts/fix_code_quality.py --report)
 quality_fix_report.md
