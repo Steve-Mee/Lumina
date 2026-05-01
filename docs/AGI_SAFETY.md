@@ -288,10 +288,12 @@ pytest tests/safety/ -v --tb=short
 
 ## ADR Reference
 
-| ADR | Title |
-|-----|-------|
-| [ADR-001](adr/ADR-001-constitutional-principles.md) | Constitutional Trading Principles (v53) |
-| [ADR-004](adr/ADR-004-agi-safety-system.md) | AGI Safety System v54 |
+Architecture decisions live under `docs/adr/`. **Prefer the canonical `000x` series** ([index](adr/README.md)); the `ADR-00x-*` filenames remain for bookmarks and older references.
+
+| Topic | Canonical ADR | Legacy ADR (historical filename) |
+|-------|---------------|----------------------------------|
+| Trading constitution, sandboxed mutation executor, constitutional guardrails | [0003](adr/0003-trading-constitution-sandboxed-mutation-executor.md) | [ADR-001](adr/ADR-001-constitutional-principles.md) · [ADR-004](adr/ADR-004-agi-safety-system.md) |
+| Shadow deployment + mandatory human approval for radical mutations | [0002](adr/0002-shadow-deployment-human-approval.md) | — |
 
 ---
 
