@@ -76,8 +76,12 @@ lumina_analyse.md
 lumina_os/tests/test_trader_league.db
 lumina_os/tests/test_reconciliation_status.json
 
+# Code quality script output (default path for scripts/fix_code_quality.py --report)
+quality_fix_report.md
+
 # Runtime-generated databases and audit logs
 lumina_vector_db/chroma.sqlite3
+state/chroma_community/
 state/metrics.db
 state/*.db-journal
 state/evolution_log.jsonl
