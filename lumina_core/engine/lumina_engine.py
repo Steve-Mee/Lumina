@@ -19,6 +19,7 @@ from .engine_config import EngineConfig
 from .economic_truth import EconomicTruth
 from .market_data_manager import MarketDataManager
 from lumina_core.risk.risk_controller import HardRiskController, risk_limits_from_config
+from lumina_core.risk.dynamic_kelly import DynamicKellyEstimator
 from .session_guard import SessionGuard
 from .valuation_engine import ValuationEngine
 from .analysis_helpers import (
@@ -188,6 +189,7 @@ class LuminaEngine:
     trade_reconciler: Any | None = None
     economic_truth: EconomicTruth = field(default_factory=EconomicTruth)
     mode_risk_profile: dict[str, float] = field(default_factory=dict)
+    dynamic_kelly_estimator: DynamicKellyEstimator | None = None
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:
@@ -268,6 +270,7 @@ class LuminaEngine:
 
         # Mode-aware sizing profile (SIM vs REAL) loaded once at startup.
         self.mode_risk_profile = self._load_mode_risk_profile()
+        self.dynamic_kelly_estimator = self._build_dynamic_kelly_estimator()
 
     def _load_mode_risk_profile(self) -> dict[str, float]:
         """Load Kelly sizing profile from config.yaml."""
@@ -289,6 +292,23 @@ class LuminaEngine:
             "kelly_min_confidence": max(0.0, min(1.0, min_conf)),
             "kelly_baseline": baseline,
         }
+
+    def _build_dynamic_kelly_estimator(self) -> DynamicKellyEstimator:
+        """Build Kelly estimator from risk_controller config (no singleton drift)."""
+        rc = getattr(self.config, "risk_controller", {})
+        rc = rc if isinstance(rc, dict) else {}
+        profile = self.mode_risk_profile if isinstance(self.mode_risk_profile, dict) else {}
+        return DynamicKellyEstimator(
+            window=int(rc.get("kelly_rolling_window", 50) or 50),
+            min_kelly=0.01,
+            fractional_kelly_real=float(profile.get("real_kelly_fraction", 0.25) or 0.25),
+            fractional_kelly_sim=float(profile.get("sim_kelly_fraction", 1.0) or 1.0),
+            config_fallback_real=float(profile.get("real_kelly_fraction", 0.25) or 0.25),
+            config_fallback_sim=float(profile.get("sim_kelly_fraction", 1.0) or 1.0),
+            vol_target_annual=float(rc.get("kelly_vol_target_annual", 0.15) or 0.15),
+            vol_lookback_trades=int(rc.get("kelly_vol_lookback_trades", 20) or 20),
+            vol_scaling_enabled=bool(rc.get("kelly_vol_scaling_enabled", True)),
+        )
 
     def hydrate_from_legacy(self, app: ModuleType) -> None:
         """Import legacy runtime state into engine-managed fields."""
@@ -490,12 +510,11 @@ class LuminaEngine:
         # Use rolling performance estimates when enough trades are available;
         # fall back to static config fractions otherwise.
         try:
-            from lumina_core.engine.dynamic_kelly import get_global_kelly_estimator  # noqa: PLC0415
-            _kelly_est = get_global_kelly_estimator(
-                fractional_kelly_real=float(profile.get("real_kelly_fraction", 0.25) or 0.25),
-                fractional_kelly_sim=float(profile.get("sim_kelly_fraction", 1.0) or 1.0),
+            dynamic_fraction = (
+                self.dynamic_kelly_estimator.fractional_kelly(mode)
+                if self.dynamic_kelly_estimator is not None
+                else None
             )
-            dynamic_fraction = _kelly_est.fractional_kelly(mode)
         except Exception:
             dynamic_fraction = None
 
@@ -534,6 +553,14 @@ class LuminaEngine:
         instrument = str(getattr(self.config, "instrument", "MES"))
         point_value = getattr(self.valuation_engine, "point_value_for", lambda x: 1.0)(instrument)
         risk_per_contract = max(1e-9, stop_distance * point_value)
+        if mode == "real" and (risk_dollars / risk_per_contract) < 1.0:
+            if self.app is not None and hasattr(self.app, "logger"):
+                self.app.logger.warning(
+                    "ADAPTIVE_RISK_REAL_FLOOR,reason=under_one_contract,"
+                    f"risk_dollars={risk_dollars:.2f},risk_per_contract={risk_per_contract:.2f}"
+                )
+            return 0
+
         qty = max(1, int(risk_dollars / risk_per_contract))
         if self.app is not None and hasattr(self.app, "logger"):
             self.app.logger.info(

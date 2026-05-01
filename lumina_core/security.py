@@ -11,10 +11,12 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 import jwt
 from typing_extensions import ParamSpec
+from lumina_core.audit.hash_chain import append_hash_chained_jsonl
 
 logger = logging.getLogger(__name__)
 
@@ -245,8 +247,10 @@ class SecurityAuditLog:
 
         with self.lock:
             try:
-                with open(self.config.audit_log_path, "a", encoding="utf-8") as f:
-                    f.write(json.dumps(entry) + "\n")
+                append_hash_chained_jsonl(
+                    path=Path(self.config.audit_log_path),
+                    entry=entry,
+                )
             except Exception as exc:
                 logger.error(f"Failed to write audit log: {exc}")
 

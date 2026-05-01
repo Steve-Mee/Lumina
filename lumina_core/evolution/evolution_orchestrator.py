@@ -55,8 +55,6 @@ from .veto_registry import VetoRegistry
 from .veto_window import VetoWindow
 from lumina_core.notifications.telegram_notifier import TelegramNotifier
 from lumina_core.experiments.ab_framework import ABExperimentFramework
-from lumina_core.engine.constitutional_principles import ConstitutionalChecker, ConstitutionalViolationError
-from .mutation_sandbox import MutationSandbox, SandboxResult
 from .rollout import EvolutionRolloutFramework
 # New canonical safety layer — preferred over direct ConstitutionalChecker usage.
 from lumina_core.safety.constitutional_guard import ConstitutionalGuard

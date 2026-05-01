@@ -30,6 +30,7 @@ import json
 import logging
 import math
 import threading
+import warnings
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -292,31 +293,39 @@ class DynamicKellyEstimator:
             logger.warning("DynamicKellyEstimator: could not write history: %s", exc)
 
 
-# ---------------------------------------------------------------------------
-# Module-level singleton (shared across the engine process)
-# ---------------------------------------------------------------------------
-
-_GLOBAL_KELLY: DynamicKellyEstimator | None = None
-_GLOBAL_KELLY_LOCK = threading.Lock()
-
-
 def get_global_kelly_estimator(
     *,
     window: int = 50,
+    min_kelly: float = 0.01,
     fractional_kelly_real: float = 0.25,
     fractional_kelly_sim: float = 1.0,
+    config_fallback_real: float = 0.25,
+    config_fallback_sim: float = 1.0,
     vol_target_annual: float = 0.15,
+    vol_lookback_trades: int = 20,
     vol_scaling_enabled: bool = True,
+    history_path: Path | None = None,
 ) -> DynamicKellyEstimator:
-    """Return (or create) the process-level Kelly estimator singleton."""
-    global _GLOBAL_KELLY
-    with _GLOBAL_KELLY_LOCK:
-        if _GLOBAL_KELLY is None:
-            _GLOBAL_KELLY = DynamicKellyEstimator(
-                window=window,
-                fractional_kelly_real=fractional_kelly_real,
-                fractional_kelly_sim=fractional_kelly_sim,
-                vol_target_annual=vol_target_annual,
-                vol_scaling_enabled=vol_scaling_enabled,
-            )
-    return _GLOBAL_KELLY
+    """Deprecated compatibility factory (no singleton state).
+
+    Historically this function returned a process-level singleton. To prevent
+    configuration drift, it now returns a fresh estimator per call.
+    """
+    warnings.warn(
+        "get_global_kelly_estimator no longer returns a singleton; "
+        "prefer constructing DynamicKellyEstimator explicitly.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return DynamicKellyEstimator(
+        window=window,
+        min_kelly=min_kelly,
+        fractional_kelly_real=fractional_kelly_real,
+        fractional_kelly_sim=fractional_kelly_sim,
+        config_fallback_real=config_fallback_real,
+        config_fallback_sim=config_fallback_sim,
+        vol_target_annual=vol_target_annual,
+        vol_lookback_trades=vol_lookback_trades,
+        vol_scaling_enabled=vol_scaling_enabled,
+        history_path=history_path or _DEFAULT_HISTORY_PATH,
+    )

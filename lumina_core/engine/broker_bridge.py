@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
+import random
+import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import requests
+
+from lumina_core.risk.cost_model import TradeExecutionCostModel
 
 
 @dataclass(slots=True)
@@ -102,6 +106,31 @@ class PaperBroker(BrokerBridge):
     _connected: bool = field(default=False, init=False)
     _positions: dict[str, Position] = field(default_factory=dict, init=False)
     _fills: list[Fill] = field(default_factory=list, init=False)
+    _cost_model: TradeExecutionCostModel | None = field(default=None, init=False)
+
+    def _resolve_cost_model(self, symbol: str) -> TradeExecutionCostModel:
+        if self._cost_model is not None:
+            return self._cost_model
+        cfg = getattr(self.engine, "config", None)
+        instrument = str(symbol or getattr(cfg, "instrument", "MES"))
+        self._cost_model = TradeExecutionCostModel.from_config(cfg, instrument=instrument)
+        return self._cost_model
+
+    def _estimate_atr(self, fallback_price: float) -> float:
+        if self.engine is None:
+            return max(0.25, abs(float(fallback_price)) * 0.001)
+        try:
+            with self.engine.live_data_lock:
+                frame = getattr(self.engine, "ohlc_1min", None)
+                if frame is not None and len(frame) > 0:
+                    last = frame.iloc[-1]
+                    high = float(last.get("high", 0.0) or 0.0)
+                    low = float(last.get("low", 0.0) or 0.0)
+                    if high > 0 and low > 0 and high >= low:
+                        return max(0.25, high - low)
+        except Exception:
+            pass
+        return max(0.25, abs(float(fallback_price)) * 0.001)
 
     def connect(self) -> bool:
         self._connected = True
@@ -134,6 +163,28 @@ class PaperBroker(BrokerBridge):
             except Exception:
                 fill_price = 0.0
 
+        fill_price = float(fill_price or 0.0)
+        model = self._resolve_cost_model(order.symbol)
+        atr = self._estimate_atr(fill_price if fill_price > 0 else 1.0)
+        cost = model.cost_for_trade(
+            price=max(fill_price, 1e-9),
+            quantity=max(1, int(order.quantity)),
+            atr=atr,
+            avg_volume=1000.0,
+            time_period="midday",
+        )
+        per_side_slip_ticks = max(0.0, float(cost.total_slippage_ticks))
+        if model.slippage_sigma > 0:
+            per_side_slip_ticks = max(
+                0.0,
+                per_side_slip_ticks + random.gauss(0.0, float(model.slippage_sigma)),
+            )
+        per_side_price_slip = per_side_slip_ticks * float(model.tick_size)
+        if side == "BUY":
+            fill_price = fill_price + per_side_price_slip
+        else:
+            fill_price = fill_price - per_side_price_slip
+
         order_id = f"paper-{uuid.uuid4()}"
         signed_qty = int(order.quantity) if side == "BUY" else -int(order.quantity)
         self._positions[order.symbol] = Position(
@@ -151,7 +202,7 @@ class PaperBroker(BrokerBridge):
             quantity=int(order.quantity),
             price=fill_price,
             timestamp=datetime.now(timezone.utc).isoformat(),
-            commission=0.0,
+            commission=float(cost.total_fees_usd_per_side),
             raw={"broker": "paper"},
         )
         self._fills.append(fill)
@@ -197,6 +248,7 @@ class CrossTradeBroker(BrokerBridge):
     logger: logging.Logger | None = None
     timeout_seconds: float = 10.0
     _session: requests.Session | None = field(default=None, init=False)
+    _last_client_order_id: str = field(default="", init=False)
 
     def connect(self) -> bool:
         if self._session is None:
@@ -218,6 +270,7 @@ class CrossTradeBroker(BrokerBridge):
         return self._session
 
     def submit_order(self, order: Order) -> OrderResult:
+        client_order_id = str(order.metadata.get("clientOrderId") or f"lumina-{uuid.uuid4()}")
         payload = {
             "instrument": order.symbol,
             "action": str(order.side).upper(),
@@ -225,35 +278,48 @@ class CrossTradeBroker(BrokerBridge):
             "quantity": int(order.quantity),
             "stopLoss": float(order.stop_loss),
             "takeProfit": float(order.take_profit),
+            "clientOrderId": client_order_id,
         }
 
-        try:
-            response = self._client().post(
-                f"{self.base_url}/v1/api/accounts/{self.account}/orders/place",
-                headers=self._headers(),
-                json=payload,
-                timeout=self.timeout_seconds,
-            )
-            body = response.json() if response.content else {}
-            accepted = response.status_code in (200, 201)
-            return OrderResult(
-                accepted=accepted,
-                order_id=str(body.get("orderId", "")),
-                status="accepted" if accepted else "rejected",
-                filled_qty=int(body.get("filledQuantity", 0) or 0),
-                fill_price=float(body.get("fillPrice", 0.0) or 0.0),
-                message=str(body.get("message", "")),
-                raw=body if isinstance(body, dict) else {"raw": body},
-            )
-        except Exception as exc:
-            if self.logger is not None:
-                self.logger.error(f"CrossTrade submit_order failed: {exc}")
-            return OrderResult(
-                accepted=False,
-                order_id="",
-                status="error",
-                message=str(exc),
-            )
+        self._last_client_order_id = client_order_id
+        attempts = 3
+        for attempt in range(1, attempts + 1):
+            try:
+                response = self._client().post(
+                    f"{self.base_url}/v1/api/accounts/{self.account}/orders/place",
+                    headers=self._headers(),
+                    json=payload,
+                    timeout=self.timeout_seconds,
+                )
+                body = response.json() if response.content else {}
+                accepted = response.status_code in (200, 201)
+                if accepted or response.status_code < 500 or attempt == attempts:
+                    return OrderResult(
+                        accepted=accepted,
+                        order_id=str(body.get("orderId", "")),
+                        status="accepted" if accepted else "rejected",
+                        filled_qty=int(body.get("filledQuantity", 0) or 0),
+                        fill_price=float(body.get("fillPrice", 0.0) or 0.0),
+                        message=str(body.get("message", "")),
+                        raw=body if isinstance(body, dict) else {"raw": body},
+                    )
+            except Exception as exc:
+                if attempt == attempts:
+                    if self.logger is not None:
+                        self.logger.error(f"CrossTrade submit_order failed after retries: {exc}")
+                    return OrderResult(
+                        accepted=False,
+                        order_id="",
+                        status="error",
+                        message=str(exc),
+                    )
+            time.sleep(min(0.25 * (2 ** (attempt - 1)), 1.0))
+        return OrderResult(
+            accepted=False,
+            order_id="",
+            status="error",
+            message="submit_order retry loop exhausted",
+        )
 
     def get_account_info(self) -> AccountInfo:
         try:
@@ -339,30 +405,40 @@ class CrossTradeBroker(BrokerBridge):
             return []
 
     def subscribe_to_websocket(self) -> None:
-        # Non-blocking probe so startup can validate credentials/endpoint without owning a long-lived loop.
-        try:
-            import websocket  # type: ignore
-
-            ws = websocket.create_connection(
-                self.websocket_url,
-                header=[f"Authorization: Bearer {self.api_key}"],
-                timeout=self.timeout_seconds,
-            )
-            subscribe_payload = {
-                "action": "subscribe",
-                "accounts": [self.account],
-                "channels": ["fills", "executions"],
-            }
-            ws.send(json.dumps(subscribe_payload))
-            ws.settimeout(0.2)
+        for attempt in range(1, 4):
             try:
-                ws.recv()
-            except Exception:
-                pass
-            ws.close()
-        except Exception as exc:
-            if self.logger is not None:
-                self.logger.warning(f"CrossTrade websocket subscribe probe failed: {exc}")
+                import websocket  # type: ignore
+
+                ws = websocket.create_connection(
+                    self.websocket_url,
+                    header=[f"Authorization: Bearer {self.api_key}"],
+                    timeout=self.timeout_seconds,
+                )
+                subscribe_payload = {
+                    "action": "subscribe",
+                    "accounts": [self.account],
+                    "channels": ["fills", "executions"],
+                }
+                ws.send(json.dumps(subscribe_payload))
+                try:
+                    ws.ping("lumina-keepalive")
+                except Exception:
+                    pass
+                ws.settimeout(0.5)
+                try:
+                    ws.recv()
+                except Exception:
+                    pass
+                ws.close()
+                return
+            except Exception as exc:
+                if self.logger is not None:
+                    self.logger.warning(
+                        "CrossTrade websocket subscribe attempt %s failed: %s",
+                        attempt,
+                        exc,
+                    )
+                time.sleep(min(0.5 * attempt, 2.0))
 
 
 def broker_factory(
@@ -375,6 +451,9 @@ def broker_factory(
             backend = "paper"
 
     if backend == "live":
+        trade_mode = str(getattr(config, "trade_mode", "paper") or "paper").strip().lower()
+        if trade_mode != "real":
+            raise ValueError("broker_backend=live requires trade_mode=real (fail-closed)")
         api_key = str(
             getattr(config, "broker_crosstrade_api_key", None) or getattr(config, "crosstrade_token", "") or ""
         ).strip()

@@ -967,6 +967,14 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
                 stop_price,
                 confidence=float(dream_snapshot.get("confluence_score", 0.0) or 0.0),
             )
+            if qty <= 0:
+                app.logger.warning(
+                    "REAL_POSITION_FLOOR_HOLD,reason=insufficient_risk_budget,"
+                    f"signal={signal},regime={regime}"
+                )
+                signal = "HOLD"
+                qty = 0
+                continue
             qty = max(1, int(qty * max(0.1, qty_multiplier)))
             side = 1 if signal == "BUY" else -1
 

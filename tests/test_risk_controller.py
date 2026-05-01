@@ -219,6 +219,21 @@ class TestHardRiskController:
         assert controller.state.consecutive_losses == 3
         assert controller.state.last_loss_time is not None
 
+    def test_set_open_risk_aggregates_by_explicit_symbol_regime_map(self, controller):
+        """Regime exposure must aggregate from explicit symbol→regime mapping."""
+        controller.set_open_risk("MES", "trending_up", 600.0)
+        controller.set_open_risk("NQ", "trending_up", 700.0)
+        controller.set_open_risk("CL", "ranging", 300.0)
+
+        assert controller.state.symbol_regime_map["MES"] == "TRENDING_UP"
+        assert controller.state.symbol_regime_map["NQ"] == "TRENDING_UP"
+        assert controller.state.symbol_regime_map["CL"] == "RANGING"
+        assert controller.state.open_risk_all_regimes["TRENDING_UP"] == pytest.approx(1300.0)
+        assert controller.state.open_risk_all_regimes["RANGING"] == pytest.approx(300.0)
+
+        controller.clear_open_risk("NQ")
+        assert controller.state.open_risk_all_regimes["TRENDING_UP"] == pytest.approx(600.0)
+
     # ===== PER-INSTRUMENT RISK TESTS =====
 
     def test_instrument_risk_allowed_under_limit(self, controller):

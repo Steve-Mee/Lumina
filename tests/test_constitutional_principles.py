@@ -9,10 +9,9 @@ import json
 
 import pytest
 
-from lumina_core.engine.constitutional_principles import (
-    CONSTITUTIONAL_PRINCIPLES,
-    ConstitutionalChecker,
+from lumina_core.safety.trading_constitution import (
     ConstitutionalViolationError,
+    TRADING_CONSTITUTION,
 )
 
 
@@ -32,19 +31,19 @@ def _make_content(**kwargs) -> str:
 @pytest.mark.unit
 class TestConstitutionalPrinciplesRegistry:
     def test_all_principles_have_names_and_descriptions(self):
-        for p in CONSTITUTIONAL_PRINCIPLES:
+        for p in TRADING_CONSTITUTION.principles:
             assert p.name, "Principle has no name"
             assert p.description, f"Principle {p.name!r} has no description"
             assert p.severity in {"fatal", "warn"}
 
     def test_at_least_five_principles_defined(self):
-        assert len(CONSTITUTIONAL_PRINCIPLES) >= 5
+        assert len(TRADING_CONSTITUTION.principles) >= 5
 
 
 @pytest.mark.unit
 class TestConstitutionalChecker:
     def setup_method(self):
-        self.checker = ConstitutionalChecker()
+        self.checker = TRADING_CONSTITUTION
 
     # -- capital preservation ------------------------------------------------
 
@@ -136,47 +135,48 @@ class TestConstitutionalChecker:
 
     # -- non-JSON content is safe (plain prompt string) -----------------------
 
-    def test_plain_text_dna_passes_gracefully(self):
-        """A plain-text prompt (non-JSON) must not crash the checker."""
+    def test_plain_text_dna_is_fatally_blocked(self):
+        """Plain-text payloads are rejected to prevent schema bypasses."""
         content = "Buy MES when RSI < 30 and ATR > baseline. Capital preservation first."
         violations = self.checker.audit(content, mode="real", raise_on_fatal=False)
-        # No FATAL violations expected for a plain-text prompt with no forbidden flags.
         fatals = [v for v in violations if v.severity == "fatal"]
-        assert not fatals
+        assert any(v.principle_name == "dna_must_be_structured_json" for v in fatals)
 
 
 @pytest.mark.unit
-class TestMutationSandbox:
+class TestSandboxedMutationExecutor:
     def test_in_process_clean_dna_passes(self):
-        from lumina_core.evolution.mutation_sandbox import MutationSandbox
+        from lumina_core.safety.sandboxed_executor import SandboxedMutationExecutor
 
-        sandbox = MutationSandbox()
+        sandbox = SandboxedMutationExecutor()
         content = json.dumps(
             {"hyperparam_suggestion": {"max_risk_percent": 1.0, "drawdown_kill_percent": 8.0}}
         )
-        result = sandbox._evaluate_in_process(
+        result = sandbox._run_in_process(
             dna_hash="test_hash_001",
             dna_content=content,
             mode="sim",
             pnl=500.0,
             max_dd=200.0,
             sharpe=1.5,
+            input_hash="test_input_hash_001",
         )
         assert result.passed or result.score >= 0.0
         assert not result.timed_out
 
     def test_in_process_fatal_violation_fails(self):
-        from lumina_core.evolution.mutation_sandbox import MutationSandbox
+        from lumina_core.safety.sandboxed_executor import SandboxedMutationExecutor
 
-        sandbox = MutationSandbox()
+        sandbox = SandboxedMutationExecutor()
         content = json.dumps({"disable_risk_controller": True})
-        result = sandbox._evaluate_in_process(
+        result = sandbox._run_in_process(
             dna_hash="test_hash_002",
             dna_content=content,
             mode="sim",
             pnl=1000.0,
             max_dd=100.0,
             sharpe=2.0,
+            input_hash="test_input_hash_002",
         )
         assert not result.passed
         assert "no_naked_orders" in result.violations

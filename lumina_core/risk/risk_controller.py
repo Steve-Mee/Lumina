@@ -213,6 +213,7 @@ class RiskState:
     consecutive_losses: int = 0
     last_loss_time: Optional[datetime] = None
     open_risk_by_symbol: dict[str, float] = field(default_factory=dict)
+    symbol_regime_map: dict[str, str] = field(default_factory=dict)
     open_risk_all_regimes: dict[str, float] = field(default_factory=dict)
     kill_switch_engaged: bool = False
     kill_switch_reason: str = ""
@@ -430,6 +431,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         self.state.consecutive_losses = 0
         self.state.last_loss_time = None
         self.state.open_risk_by_symbol.clear()
+        self.state.symbol_regime_map.clear()
         self.state.open_risk_all_regimes.clear()
         self._save_state()
 
@@ -455,15 +457,34 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         self._save_state()
 
     def set_open_risk(self, symbol: str, regime: str, risk_amount: float) -> None:
-        self.state.open_risk_by_symbol[symbol] = risk_amount
-        regime_risk = sum(v for k, v in self.state.open_risk_by_symbol.items() if self._get_regime_for_symbol(k) == regime)
-        self.state.open_risk_all_regimes[regime] = regime_risk
+        sym = str(symbol or "").strip()
+        reg = str(regime or "").strip().upper() or "UNKNOWN"
+        self.state.open_risk_by_symbol[sym] = float(risk_amount)
+        self.state.symbol_regime_map[sym] = reg
+        self._recompute_open_risk_by_regime()
 
     def _get_regime_for_symbol(self, symbol: str) -> Optional[str]:
-        for regime, symbols in self.state.open_risk_all_regimes.items():
-            if symbol in str(symbols):
-                return regime
-        return None
+        sym = str(symbol or "").strip()
+        if not sym:
+            return None
+        return self.state.symbol_regime_map.get(sym)
+
+    def clear_open_risk(self, symbol: str) -> None:
+        sym = str(symbol or "").strip()
+        if not sym:
+            return
+        self.state.open_risk_by_symbol.pop(sym, None)
+        self.state.symbol_regime_map.pop(sym, None)
+        self._recompute_open_risk_by_regime()
+
+    def _recompute_open_risk_by_regime(self) -> None:
+        aggregate: dict[str, float] = {}
+        for sym, risk in self.state.open_risk_by_symbol.items():
+            regime = self.state.symbol_regime_map.get(sym)
+            if not regime:
+                continue
+            aggregate[regime] = aggregate.get(regime, 0.0) + float(risk)
+        self.state.open_risk_all_regimes = aggregate
 
     def _portfolio_return_series(self) -> list[float]:
         window = max(20, int(self._active_limits.var_es_window))

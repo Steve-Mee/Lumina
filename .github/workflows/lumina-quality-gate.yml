@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.13"
   # Prevent tests from writing to the real state/ directory.
   LUMINA_STATE_DIR: /tmp/lumina_ci_state
   LUMINA_LOGS_DIR: /tmp/lumina_ci_logs
@@ -47,8 +47,7 @@ jobs:
           mypy lumina_core/ \
             --ignore-missing-imports \
             --no-error-summary \
-            --pretty \
-            || true   # non-blocking until mypy baseline is green
+            --pretty
 
   # ─────────────────────────────────────────────────────────────────────────
   # 2. Fast unit test gate (< 60 s target)
@@ -206,7 +205,7 @@ jobs:
             --cov=lumina_core \
             --cov-report=xml:reports/coverage.xml \
             --cov-report=term-missing \
-            --cov-fail-under=0 \
+            --cov-fail-under=60 \
             --timeout=30 \
             -q
 

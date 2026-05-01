@@ -26,6 +26,8 @@ from typing import Any, Optional
 import yaml
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
+from lumina_core.audit.hash_chain import append_hash_chained_jsonl
+from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 
 router = APIRouter(prefix="/api/evolution", tags=["evolution"])
 
@@ -37,6 +39,7 @@ _EVOLUTION_LOG = Path(os.getenv("EVOLUTION_LOG_PATH", "state/evolution_log.jsonl
 _EVOLUTION_DECISIONS = Path(os.getenv("EVOLUTION_DECISIONS_PATH", "state/evolution_decisions.jsonl"))
 _CONFIG_PATH = Path(os.getenv("LUMINA_CONFIG", "config.yaml"))
 _EVOLUTION_TRIGGER = Path(os.getenv("EVOLUTION_TRIGGER_PATH", "state/evolution_trigger.json"))
+_APPROVED_HYPERPARAMS = Path(os.getenv("APPROVED_HYPERPARAMS_PATH", "state/approved_hyperparams.json"))
 
 # ── API key env var (single shared key for the dashboard) ─────────────────────
 _DASHBOARD_API_KEY = os.getenv("LUMINA_DASHBOARD_API_KEY", "")
@@ -93,14 +96,29 @@ def _load_decisions() -> dict[str, dict[str, Any]]:
 def _append_decision(record: dict[str, Any]) -> None:
     """Append a single decision record to the decisions audit log."""
     _EVOLUTION_DECISIONS.parent.mkdir(parents=True, exist_ok=True)
-    with _EVOLUTION_DECISIONS.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(record) + "\n")
+    append_hash_chained_jsonl(path=_EVOLUTION_DECISIONS, entry=record)
+
+
+def _runtime_mode() -> str:
+    raw = (
+        os.getenv("LUMINA_MODE")
+        or os.getenv("TRADE_MODE")
+        or os.getenv("LUMINA_RUNTIME_MODE")
+        or "sim"
+    )
+    return str(raw).strip().lower() or "sim"
+
+
+def _require_dashboard_key_for_mode() -> bool:
+    return _runtime_mode() in {"real", "paper", "sim_real_guard"}
 
 
 def _verify_api_key(x_api_key: Optional[str]) -> None:
     """Raise 401 unless the provided key matches the configured dashboard key."""
+    if _require_dashboard_key_for_mode() and not _DASHBOARD_API_KEY:
+        raise HTTPException(status_code=503, detail="Dashboard API key missing in protected mode")
     if not _DASHBOARD_API_KEY:
-        return  # key auth disabled – allow all (dev / paper mode)
+        return
     if not x_api_key or x_api_key != _DASHBOARD_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
@@ -126,6 +144,7 @@ async def get_proposals(
     x_api_key: Optional[str] = Header(None),
 ) -> list[dict[str, Any]]:
     """Return all open (undecided) proposals, newest first."""
+    _verify_api_key(x_api_key)
     proposals = _load_proposals()
     decisions = _load_decisions()
     open_proposals = [p for p in proposals if p.get("hash") not in decisions]
@@ -163,15 +182,36 @@ async def approve_proposal(
         )
 
     new_hyperparams: dict[str, Any] = challenger.get("hyperparam_suggestion", {})
+    if not isinstance(new_hyperparams, dict):
+        raise HTTPException(status_code=422, detail="Invalid hyperparam payload")
 
-    # ── 1. Update config.yaml with the promoted hyperparams ──────────────────
-    if new_hyperparams and _CONFIG_PATH.exists():
-        with _CONFIG_PATH.open("r", encoding="utf-8") as fh:
-            cfg: dict[str, Any] = yaml.safe_load(fh) or {}
-        risk_cfg: dict[str, Any] = cfg.setdefault("risk", {})
-        risk_cfg.update(new_hyperparams)
-        with _CONFIG_PATH.open("w", encoding="utf-8") as fh:
-            yaml.dump(cfg, fh, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    # Constitution gate before writing approved payload.
+    candidate = {"hyperparam_suggestion": dict(new_hyperparams)}
+    violations = TRADING_CONSTITUTION.audit(
+        dna_content=json.dumps(candidate, ensure_ascii=True, sort_keys=True),
+        mode=_runtime_mode(),
+        raise_on_fatal=False,
+    )
+    fatals = [v.principle_name for v in violations if v.severity == "fatal"]
+    if fatals:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Constitutional gate blocked approved hyperparams: {fatals}",
+        )
+
+    # Persist approved payload in state; runtime can load this without mutating base config.
+    _APPROVED_HYPERPARAMS.parent.mkdir(parents=True, exist_ok=True)
+    approved_record = {
+        "hash": body.hash,
+        "challenger_name": body.challenger_name,
+        "hyperparams": dict(new_hyperparams),
+        "target_section": "risk_controller",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    _APPROVED_HYPERPARAMS.write_text(
+        json.dumps(approved_record, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
 
     # ── 2. Write decision to audit log ────────────────────────────────────────
     _append_decision(
@@ -193,6 +233,7 @@ async def approve_proposal(
                 "challenger_name": body.challenger_name,
                 "hash": body.hash,
                 "hyperparams": new_hyperparams,
+                "target_section": "risk_controller",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         ),

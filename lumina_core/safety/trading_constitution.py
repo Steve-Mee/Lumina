@@ -33,6 +33,7 @@ _MAX_LEVERAGE_REAL: Final[float] = 2.0
 _MIN_BACKTEST_SHARPE_FOR_REAL: Final[float] = 0.3
 _MAX_CONCENTRATION_PCT: Final[float] = 80.0
 _MAX_DAILY_TRADE_FREQUENCY: Final[int] = 200
+_DNA_INVALID_SENTINEL: Final[str] = "__dna_validation_error__"
 
 
 # ---------------------------------------------------------------------------
@@ -87,22 +88,29 @@ class ConstitutionalViolationError(Exception):
 # ---------------------------------------------------------------------------
 
 def _parse_dna_content(raw: str) -> dict[str, Any]:
-    """Parse raw DNA string to dict; returns empty dict on any failure.
+    """Parse and minimally validate raw DNA content.
 
-    Tolerates plain-text prompts (non-JSON) gracefully.
+    Returns a dict on success. When input is invalid, returns a dict containing
+    ``_DNA_INVALID_SENTINEL`` with a human-readable reason so principle checks
+    can fail closed.
     """
     if not raw or not isinstance(raw, str):
-        return {}
+        return {_DNA_INVALID_SENTINEL: "empty_or_non_string"}
     stripped = raw.strip()
     if not stripped.startswith("{"):
-        # Plain-text prompt — treat as empty dict; principles that need JSON
-        # will see an empty dict and return True (no violation).
-        return {}
+        return {_DNA_INVALID_SENTINEL: "non_json_payload"}
     try:
         parsed = json.loads(stripped)
-        return parsed if isinstance(parsed, dict) else {}
+        if not isinstance(parsed, dict):
+            return {_DNA_INVALID_SENTINEL: "json_not_object"}
+        if not parsed:
+            return {_DNA_INVALID_SENTINEL: "empty_json_object"}
+        hs = parsed.get("hyperparam_suggestion")
+        if hs is not None and not isinstance(hs, dict):
+            return {_DNA_INVALID_SENTINEL: "hyperparam_suggestion_not_dict"}
+        return parsed
     except (json.JSONDecodeError, TypeError, ValueError):
-        return {}
+        return {_DNA_INVALID_SENTINEL: "json_parse_error"}
 
 
 def _mode_is_real(mode: str) -> bool:
@@ -111,6 +119,16 @@ def _mode_is_real(mode: str) -> bool:
 
 def _mode_is_real_or_paper(mode: str) -> bool:
     return str(mode).strip().lower() in {"real", "paper"}
+
+
+# ---------------------------------------------------------------------------
+# Principle 0 — Structured DNA required
+# ---------------------------------------------------------------------------
+
+def _p0_structured_dna_required(content: dict[str, Any], mode: str) -> bool:
+    """Any mode: DNA payload must be valid structured JSON object."""
+    _ = mode
+    return _DNA_INVALID_SENTINEL not in content
 
 
 # ---------------------------------------------------------------------------
@@ -422,6 +440,13 @@ def _p15_trade_frequency_guard(content: dict[str, Any], mode: str) -> bool:
 # ---------------------------------------------------------------------------
 
 _PRINCIPLES: list[ConstitutionalPrinciple] = [
+    ConstitutionalPrinciple(
+        name="dna_must_be_structured_json",
+        description="DNA payload must be valid, non-empty JSON object with supported schema",
+        severity="fatal",
+        rationale="Plain-text or malformed DNA bypasses machine-enforced safety checks and is therefore blocked.",
+        check_fn=_p0_structured_dna_required,
+    ),
     ConstitutionalPrinciple(
         name="capital_preservation_in_real",
         description=f"max_risk_percent must be ≤ {_MAX_RISK_PERCENT_REAL}% in REAL mode",

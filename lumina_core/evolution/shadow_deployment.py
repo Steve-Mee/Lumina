@@ -194,6 +194,22 @@ def _cohens_d(a: list[float], b: list[float]) -> float:
     return (mean_a - mean_b) / pooled_std
 
 
+def _sample_sharpe(series: list[float]) -> float:
+    n = len(series)
+    if n < 5:
+        return 0.0
+    mean = sum(series) / n
+    var = sum((x - mean) ** 2 for x in series) / max(1, n - 1)
+    std = math.sqrt(max(var, 0.0))
+    if std <= 1e-12:
+        if mean > 0:
+            return 10.0
+        if mean < 0:
+            return -10.0
+        return 0.0
+    return float(mean / std)
+
+
 # ---------------------------------------------------------------------------
 # Tracker
 # ---------------------------------------------------------------------------
@@ -333,32 +349,54 @@ class ShadowDeploymentTracker:
         if not self.is_shadow_complete(dna_hash):
             return "pending"
 
-        # Minimum data check
-        sim_pnl = run.sim_pnl_history
-        paper_pnl = run.paper_pnl_history
+        sim_pnl = list(run.sim_pnl_history)
+        paper_pnl = list(run.paper_pnl_history)
 
-        if len(sim_pnl) < 3 and len(paper_pnl) < 3:
+        # Strict path: compare paper variant vs sim control with statistical gate.
+        if len(sim_pnl) >= self._min_trades and len(paper_pnl) >= self._min_trades:
+            ab = self.run_shadow_ab(sim_pnl, paper_pnl, n_min=self._min_trades)
+            verdict = str(ab.get("verdict", "inconclusive"))
+            paper_sharpe = _sample_sharpe(paper_pnl)
+            if verdict == "variant_wins" and paper_sharpe >= 0.3:
+                logger.info(
+                    "Shadow PASS for dna_hash=%s via AB gate: pvalue=%.4f d=%.4f sharpe=%.3f",
+                    dna_hash[:12],
+                    float(ab.get("pvalue", 1.0) or 1.0),
+                    float(ab.get("cohens_d", 0.0) or 0.0),
+                    paper_sharpe,
+                )
+                return "pass"
+            if verdict == "control_wins" or (verdict == "inconclusive" and paper_sharpe < 0.0):
+                logger.info(
+                    "Shadow FAIL for dna_hash=%s via AB gate: verdict=%s sharpe=%.3f",
+                    dna_hash[:12],
+                    verdict,
+                    paper_sharpe,
+                )
+                return "fail"
             return "pending"
 
-        pnl_history = sim_pnl if len(sim_pnl) >= len(paper_pnl) else paper_pnl
-        mean_pnl = sum(pnl_history) / len(pnl_history) if pnl_history else 0.0
-
-        if mean_pnl <= 0.0:
+        # Fallback path when only one stream has enough samples.
+        pnl_history = paper_pnl if len(paper_pnl) >= len(sim_pnl) else sim_pnl
+        if len(pnl_history) < self._min_trades:
+            return "pending"
+        mean_pnl = sum(pnl_history) / len(pnl_history)
+        sharpe_like = _sample_sharpe(pnl_history)
+        if mean_pnl > 0.0 and sharpe_like >= 0.3:
             logger.info(
-                "Shadow FAIL for dna_hash=%s: mean_pnl=%.2f",
+                "Shadow PASS for dna_hash=%s via single-stream gate: mean=%.2f sharpe=%.3f",
                 dna_hash[:12],
                 mean_pnl,
+                sharpe_like,
             )
-            return "fail"
-
+            return "pass"
         logger.info(
-            "Shadow PASS for dna_hash=%s: mean_pnl=%.2f, trades=%d, days=%.1f",
+            "Shadow FAIL for dna_hash=%s via single-stream gate: mean=%.2f sharpe=%.3f",
             dna_hash[:12],
             mean_pnl,
-            run.trade_count,
-            run.days_elapsed,
+            sharpe_like,
         )
-        return "pass"
+        return "fail"
 
     def mark_promoted(self, dna_hash: str) -> None:
         """Mark the shadow run as promoted."""
