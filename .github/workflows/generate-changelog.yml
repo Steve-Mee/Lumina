@@ -1,0 +1,58 @@
+# Optional: when a release tag is pushed, generate CHANGELOG.md and attach as artifact.
+# Maintainers merge/review before committing to main.
+
+name: Generate Changelog on Release Tag
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Resolve version, since-date, release-date
+        id: meta
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          VERSION="${REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          CUR="$REF_NAME"
+          PREV=$(git tag -l --sort=-version:refname 'v*' | grep -vFx "$CUR" | head -1 || true)
+          if [ -z "$PREV" ]; then
+            echo "since=2000-01-01" >> "$GITHUB_OUTPUT"
+          else
+            SINCE=$(git log -1 --format=%cs "$PREV" 2>/dev/null || echo "2000-01-01")
+            echo "since=$SINCE" >> "$GITHUB_OUTPUT"
+          fi
+          REL=$(git log -1 --format=%cs "${{ github.sha }}")
+          echo "release_date=$REL" >> "$GITHUB_OUTPUT"
+
+      - name: Generate CHANGELOG.md
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/generate_changelog.py \
+            --version "${{ steps.meta.outputs.version }}" \
+            --since "${{ steps.meta.outputs.since }}" \
+            --release-date "${{ steps.meta.outputs.release_date }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: changelog-${{ steps.meta.outputs.version }}
+          path: CHANGELOG.md

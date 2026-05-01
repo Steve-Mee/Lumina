@@ -5,6 +5,8 @@ Doel: architectuurbeslissingen expliciet, toetsbaar en mission-aligned vastlegge
 
 ## Canonieke reeks
 
+**Nieuwe ADR:** `python scripts/new_adr.py "Jouw titel"` — zie [CONTRIBUTING.md](../../CONTRIBUTING.md) (sectie *Een nieuwe ADR aanmaken*).
+
 Nieuwe ADR's gebruiken het formaat `000x-title.md`.  
 De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creativiteit) en het Elon Musk Mindset Protocol moeten expliciet worden benoemd in iedere ADR.
 

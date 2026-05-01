@@ -149,12 +149,16 @@ Meer detail: [docs/AGI_SAFETY.md](docs/AGI_SAFETY.md) · [ADR 0003](docs/adr/000
 
 ## 🧪 Development & Quality
 
+**Contributing:** lees [CONTRIBUTING.md](CONTRIBUTING.md) voor branches, ADR’s, tests, self-evolution (shadow / constitution / Approval Gym) en PR-richtlijnen — verplicht leesvoer voordat je substantiële changes pusht.
+
+**Release checklist:** volg [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) voor elke release (pre-release gates, GitHub Release-structuur, post-release). Optioneel: `python scripts/prepare_release.py` voor een draft `CHANGELOG_DRAFT.md` en een korte reminder.
+
 | Onderdeel | Afspraak |
 |-----------|----------|
 | **Python** | 3.13+, type hints (Pydantic + mypy), **ruff** |
 | **Tests** | `tests/`, markers (`unit`, `integration`, `slow`, `nightly`) — zie [ADR 0005](docs/adr/0005-test-suite-overhaul-markers-timeouts-isolated-fixtures.md) |
 | **CI** | Quality gate + safety workflows op GitHub Actions (badges bovenaan) |
-| **ADR’s** | Belangrijke architectuurkeuzes → [docs/adr/](docs/adr/README.md) |
+| **ADR’s** | Belangrijke architectuurkeuzes → [docs/adr/](docs/adr/README.md) · nieuw: `python scripts/new_adr.py "Titel"` ([CONTRIBUTING.md](CONTRIBUTING.md)) |
 | **Gedrag** | Leidend: [`.cursorrules`](.cursorrules) |
 
 **Werkafspraken**
