@@ -5,6 +5,8 @@ import json
 import logging
 import platform
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -75,6 +77,48 @@ class LocalInferenceEngine:
         self.cost_tracker.setdefault("local_inference_provider_stats", {})
         self.cost_tracker.setdefault("local_inference_warning", "")
         self.cost_tracker.setdefault("local_inference_vllm_runtime_reason", "")
+        self.cost_tracker.setdefault("local_inference_consecutive_failures", 0)
+
+    def _http_timeout_sec(self, fallback: float) -> float:
+        inf = self.config.get("inference", {})
+        if not isinstance(inf, dict):
+            return float(fallback)
+        raw = inf.get("request_timeout_sec", fallback)
+        try:
+            t = float(raw)
+        except (TypeError, ValueError):
+            t = float(fallback)
+        return max(3.0, min(180.0, t))
+
+    def _max_consecutive_failures(self) -> int:
+        inf = self.config.get("inference", {})
+        if not isinstance(inf, dict):
+            return 5
+        try:
+            return max(1, int(inf.get("max_consecutive_failures", 5) or 5))
+        except (TypeError, ValueError):
+            return 5
+
+    def _bump_inference_failure_streak(self) -> None:
+        self._ensure_metric_buckets()
+        n = int(self.cost_tracker.get("local_inference_consecutive_failures", 0)) + 1
+        self.cost_tracker["local_inference_consecutive_failures"] = n
+        if n >= self._max_consecutive_failures():
+            self._trip_inference_kill_switch(n)
+
+    def _reset_inference_failure_streak(self) -> None:
+        self._ensure_metric_buckets()
+        self.cost_tracker["local_inference_consecutive_failures"] = 0
+
+    def _trip_inference_kill_switch(self, streak: int) -> None:
+        engine = getattr(self.context, "engine", None)
+        app = getattr(engine, "app", None) if engine is not None else None
+        if app is not None and hasattr(app, "logger"):
+            setattr(app, "FAST_PATH_ONLY", True)
+            app.logger.warning(
+                "FAST_PATH_ONLY enabled (local_inference kill-switch): consecutive_failures=%s",
+                streak,
+            )
 
     def _resolve_regime_label(self) -> str:
         snapshot = getattr(self.context, "current_regime_snapshot", None)
@@ -203,7 +247,7 @@ class LocalInferenceEngine:
                     "temperature": self.config["inference"]["temperature"],
                     "max_tokens": self.config["inference"]["max_tokens"],
                 },
-                timeout=15,
+                timeout=self._http_timeout_sec(15.0),
             )
         except requests.RequestException as exc:
             raise LuminaError(
@@ -393,10 +437,12 @@ class LocalInferenceEngine:
             self.logger.info(
                 f"INFERENCE,{provider},{model_type}={model},latency={round(latency_ms / 1000.0, 3)}s,profile={self.profile}"
             )
+            self._reset_inference_failure_streak()
             return parsed
         except Exception as exc:
             latency_ms = round((time.time() - start) * 1000.0, 2)
             self._record_metrics(provider, latency_ms, success=False, estimated_cost=0.0)
+            self._bump_inference_failure_streak()
             self.logger.warning(f"INFERENCE_PROVIDER_FAILED,{provider},{exc}")
             if isinstance(exc, LuminaError):
                 raise
@@ -425,7 +471,7 @@ class LocalInferenceEngine:
         context: str = "xai_json",
         max_retries: int = 1,
     ) -> dict[str, Any] | None:
-        del timeout, context, max_retries
+        del context, max_retries
 
         messages = payload.get("messages")
         if not isinstance(messages, list):
@@ -433,7 +479,15 @@ class LocalInferenceEngine:
 
         model_name = str(payload.get("model", "")).lower()
         model_type = "vision" if "vision" in model_name or "-vl" in model_name else "reasoning"
-        result = self.infer(messages, model_type=model_type)
+        wall_timeout = self._http_timeout_sec(float(timeout))
+        try:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                fut = pool.submit(self.infer, messages, model_type)
+                result = fut.result(timeout=wall_timeout)
+        except FuturesTimeoutError:
+            self._bump_inference_failure_streak()
+            self.logger.warning("INFERENCE_JSON_TIMEOUT,timeout_sec=%s", wall_timeout)
+            return None
         return result if isinstance(result, dict) else None
 
     def start_vllm_server(self, *args: Any, **kwargs: Any) -> bool:

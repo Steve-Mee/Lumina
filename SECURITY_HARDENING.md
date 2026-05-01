@@ -349,6 +349,15 @@ Before deploying to production:
 
 ---
 
+## Evolution API (`lumina_os`)
+
+- `set_security_module(SECURITY)` (called from `lumina_os/backend/app.py` at startup) binds the evolution router to the same `security.api_keys` registry as the Trader League endpoints.
+- `POST /api/evolution/approve` and `POST /api/evolution/reject` require `role: admin` on the presented `X-API-Key` when `admin_role_required` is true in config.
+- If the security module is not injected (e.g. isolated unit tests), behaviour falls back to `LUMINA_DASHBOARD_API_KEY` for protected modes (`real`, `paper`, `sim_real_guard`).
+- Key rotation: add the new key under `security.api_keys` with the desired role, deploy, validate evolution mutations, then remove the old key after the overlap window.
+
+---
+
 ## Summary
 
 Lumina v50 now includes enterprise-grade security hardening with zero compromise on backward compatibility (existing test suite passes 100%). The architecture is fail-closed: security defaults to denial, requires explicit allowlisting and authentication, and maintains an immutable audit trail.

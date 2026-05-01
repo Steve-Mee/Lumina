@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-from lumina_core.backtester_engine import BacktesterEngine
+from lumina_core.engine.canonical_training import BacktesterEngine
 from lumina_core.runtime_context import RuntimeContext
 
 

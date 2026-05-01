@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import sys
+from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -16,12 +17,20 @@ os.environ["LUMINA_JWT_SECRET_KEY"] = "lumina_test_jwt_secret_key_min_len_32"
 from fastapi.testclient import TestClient  # noqa: E402
 
 from backend.app import app  # noqa: E402
+from backend.app import verify_api_key  # noqa: E402
 
 if _prev_jwt_secret is None:
     os.environ.pop("LUMINA_JWT_SECRET_KEY", None)
 else:
     os.environ["LUMINA_JWT_SECRET_KEY"] = _prev_jwt_secret
 
+
+async def _test_verify_api_key_override() -> dict[str, Any]:
+    """Bypass real ``security.api_keys`` (often empty in dev ``config.yaml``)."""
+    return {"api_key": "pytest", "metadata": {"name": "pytest", "role": "admin"}}
+
+
+app.dependency_overrides[verify_api_key] = _test_verify_api_key_override
 client = TestClient(app)
 
 

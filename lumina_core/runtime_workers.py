@@ -2,7 +2,7 @@ import asyncio
 import threading
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -13,7 +13,9 @@ from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
 from lumina_core.engine.rl_guardrails import RLGuardrailLayer
 from lumina_core.engine.valuation_engine import ValuationEngine
+from lumina_core.logging_utils import log_runtime_trace, runtime_trace_enabled
 from lumina_core.order_gatekeeper import session_guard_allows_trading
+from lumina_core.runtime_trade_gates import apply_hard_risk_controller_to_signal
 
 TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
 _RL_GUARDRAIL = RLGuardrailLayer()
@@ -908,22 +910,18 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
             signal = "HOLD"
 
         # ── Hard Risk Controller ─ VERY FIRST execution gate (fail-closed) ────
-        if signal in ["BUY", "SELL"]:
-            _risk_ctrl = getattr(app.engine, "risk_controller", None)
-            if _risk_ctrl is None:
-                app.logger.warning("HardRiskController unavailable – trade blocked (fail-closed)")
-                signal = "HOLD"
-            else:
-                _raw_stop = float(dream_snapshot.get("stop", price * 0.99 if signal == "BUY" else price * 1.01))
-                _proposed_risk = abs(float(price) - _raw_stop)
-                _risk_ok, _risk_reason = _risk_ctrl.check_can_trade(
-                    str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
-                    str(dream_snapshot.get("regime", "NEUTRAL")),
-                    float(_proposed_risk),
-                )
-                if not _risk_ok:
-                    app.logger.warning(f"HardRiskController blocked trade: {_risk_reason}")
-                    signal = "HOLD"
+        _risk_ctrl = getattr(app.engine, "risk_controller", None)
+        _cfg = getattr(app.engine, "config", None)
+        _inst = getattr(_cfg, "instrument", None) if _cfg is not None else None
+        _instrument = str(getattr(app, "INSTRUMENT", None) or _inst or "MES")
+        signal, _risk_ok, _risk_reason = apply_hard_risk_controller_to_signal(
+            signal=str(signal),
+            price=float(price),
+            dream_snapshot=dream_snapshot,
+            instrument=_instrument,
+            risk_controller=_risk_ctrl,
+            logger=app.logger,
+        )
 
         session_allowed = True
         session_allowed, _session_reason = session_guard_allows_trading(app.engine)
@@ -956,6 +954,37 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
         )
         signal = str(gate_result.get("signal", signal))
 
+        if runtime_trace_enabled():
+            _now_ts = time.time()
+            _hut = float(hold_until_ts or 0.0)
+            _hold_rem = max(0.0, _hut - _now_ts) if _hut > 0.0 else 0.0
+            _hold_iso = ""
+            if _hut > 0.0:
+                try:
+                    _hold_iso = datetime.fromtimestamp(_hut, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except (OSError, ValueError, OverflowError):
+                    _hold_iso = "invalid_timestamp"
+            log_runtime_trace(
+                app.logger,
+                "supervisor.policy_gateway",
+                trade_mode=str(getattr(app.engine.config, "trade_mode", "")),
+                price=round(float(price), 4),
+                signal=str(signal),
+                conf=round(float(dream_snapshot.get("confluence_score", 0) or 0), 4),
+                min_conf=round(float(min_confluence), 4),
+                gateway_reason=str(gate_result.get("reason", "")),
+                gateway_approved=str(bool(gate_result.get("approved", False))),
+                session_allowed=str(bool(session_allowed)),
+                risk_allowed=str(bool(risk_allowed)),
+                sim_qty=int(getattr(app, "sim_position_qty", 0) or 0),
+                regime=str(dream_snapshot.get("regime", "") or ""),
+                market_open=str(bool(app.is_market_open())),
+                hold_until_ts=round(_hut, 3),
+                hold_until_utc=_hold_iso,
+                hold_sec_remaining=round(_hold_rem, 1),
+                hold_window_active=str(bool(_hut > _now_ts)),
+            )
+
         if signal in ["BUY", "SELL"] and dream_snapshot.get("confluence_score", 0) > min_confluence:
             regime = dream_snapshot.get("regime", "NEUTRAL")
             stop_price = float(dream_snapshot.get("stop", price * 0.99 if signal == "BUY" else price * 1.01))
@@ -977,6 +1006,17 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
                 continue
             qty = max(1, int(qty * max(0.1, qty_multiplier)))
             side = 1 if signal == "BUY" else -1
+
+            if runtime_trace_enabled():
+                log_runtime_trace(
+                    app.logger,
+                    "supervisor.execution_armed",
+                    trade_mode=str(app.engine.config.trade_mode),
+                    signal=str(signal),
+                    qty=int(qty),
+                    stop=round(float(stop_price), 4),
+                    conf=round(float(dream_snapshot.get("confluence_score", 0) or 0), 4),
+                )
 
             if app.engine.config.trade_mode == "paper":
                 if app.sim_position_qty == 0:

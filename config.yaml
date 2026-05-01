@@ -1,34 +1,21 @@
-# ── SIM vs REAL MODE TOGGLE ──────────────────────────────────────────────────
-# "sim"  = aggressive learning, full Kelly, no loss caps, auto-apply mutations
-# "real" = capital preservation ONLY – every conservative cap enforced
-mode: "sim"
-
-# ── TELEGRAM (enige UI voor Steve) ───────────────────────────────────────────
-# Set via environment variables or fill in directly (NEVER commit real tokens).
-# ApprovalGymScheduler + shadow gate + veto flow all use this single section.
-# Notifications are ONLY sent during Brussels waking hours (08:00–22:00 CET).
+mode: sim
 telegram:
-  token: "${TELEGRAM_BOT_TOKEN}"    # Bot token from @BotFather
-  chat_id: "${TELEGRAM_CHAT_ID}"    # Steve's personal chat ID (alleen Steve)
-  waking_hour_start: 8              # Brussels CET start (inclusive)
-  waking_hour_end: 22               # Brussels CET end (exclusive)
-
-# ── TRADER IDENTITY ──────────────────────────────────────────────────────────
-# Overridden by env vars LUMINA_TRADER_NAME or TRADERLEAGUE_PARTICIPANT_HANDLE
-participant_id: "LUMINA_Steve"
-
+  token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+  waking_hour_start: 8
+  waking_hour_end: 22
+participant_id: LUMINA_Steve
 sim:
-  aggressive_evolution: true         # SelfEvolutionMetaAgent auto-applies without human approval
-  approval_required: false           # Mutations applied immediately
-  daily_loss_cap: null               # Unlimited P/L (learning, not capital)
-  kelly_fraction: 1.0                # Full Kelly – maximise exploration velocity
-  bible_base_winrate: 0.55           # Realistic baseline; evolution can push higher
-  max_mutation_depth: "radical"      # Allow add/remove indicators, confluence rewrites, prompt rewrites
-
+  aggressive_evolution: true
+  approval_required: false
+  daily_loss_cap: null
+  kelly_fraction: 1.0
+  bible_base_winrate: 0.55
+  max_mutation_depth: radical
 real:
-  aggressive_evolution: false        # Conservative mutations only
-  approval_required: true            # Human must approve every change
-  daily_loss_cap: -150.0             # Ultra-conservative cap (USD)
+  aggressive_evolution: false
+  approval_required: true
+  daily_loss_cap: -150.0
   max_consecutive_losses: 1
   max_open_risk_per_instrument: 75.0
   max_total_open_risk: 150.0
@@ -36,296 +23,199 @@ real:
   cooldown_after_streak: 60
   session_cooldown_minutes: 60
   enforce_session_guard: true
-  kelly_fraction: 0.25               # Fractional Kelly – safety cap
-  bible_base_winrate: 0.55           # Conservative baseline
-  max_mutation_depth: "conservative" # Minor parameter tweaks only
-
-# ─────────────────────────────────────────────────────────────────────────────
-hardware_profile: "light"          # Verander later naar "sweet" of "beast"
+  kelly_fraction: 0.25
+  bible_base_winrate: 0.55
+  max_mutation_depth: conservative
+hardware_profile: light
 reconcile_fills: true
-reconciliation_method: "websocket"
+reconciliation_method: websocket
 reconciliation_timeout_seconds: 15
 use_real_fill_for_pnl: true
-
 broker:
   backend: paper
   crosstrade:
-    api_key: "${CROSSTRADE_TOKEN}"
-    websocket_url: "wss://app.crosstrade.io/ws/stream"
-
+    api_key: ${CROSSTRADE_TOKEN}
+    websocket_url: wss://app.crosstrade.io/ws/stream
 xai:
-  api_key: "${XAI_API_KEY}"
-  model: "grok-4.1-fast"
+  api_key: ${XAI_API_KEY}
+  model: grok-4.1-fast
   update_interval_sec: 60
-
 inference:
-  primary_provider: "ollama"       # "ollama" | "vllm" | "grok_remote"
-  provider_order: ["vllm", "ollama", "grok_remote"]
+  primary_provider: ollama
+  provider_order:
+  - vllm
+  - ollama
+  - grok_remote
   max_tokens: 1200
   temperature: 0.65
   json_mode: true
   fast_path_threshold: 0.75
-
+  request_timeout_sec: 60
+  max_consecutive_failures: 5
 vllm:
-  host: "http://localhost:8000"
-  model_name: "qwen3.5-35b"
-
+  host: http://localhost:8000
+  model_name: qwen3.5-35b
 ollama:
-  base_url: "http://localhost:11434"
-  temperature: 0.65                # Menselijk gevoel + lichte creativiteit
+  base_url: http://localhost:11434
+  temperature: 0.65
   context_length: 16384
-  num_gpu: -1                      # Volledige GPU
+  num_gpu: -1
   num_ctx: 16384
-
 models:
-  vision: "qwen2.5-vl:7b"
-  reasoning: "qwen3.5:4b"
-  reflector: "qwen2.5:3b"
-  meta: "qwen3.5:9b"               # Zwaardere lokale reasoning voor sweet-profiel
-  grok_trader_1b: "qwen3.5-35b"    # High-end provider mapping via vLLM
-
+  vision: qwen2.5-vl:7b
+  reasoning: qwen3.5:4b
+  reflector: qwen2.5:3b
+  meta: qwen3.5:9b
+  grok_trader_1b: qwen3.5-35b
 trading:
-  instrument: "MES JUN26"
-  risk_profile: "Balanced"
-  
-  # NEWS AVOIDANCE - v51 Capital Preservation
-  # Pre-event buffer (default minutes before economic event)
+  instrument: MES JUN26
+  risk_profile: Balanced
   news_avoidance_pre_minutes: 10
-  # Post-event buffer (default minutes after economic event)
   news_avoidance_post_minutes: 5
-  # High-impact events (Federal Reserve, etc.) extend these windows
   news_avoidance_high_impact_pre_minutes: 15
   news_avoidance_high_impact_post_minutes: 10
-  
-  # Kept for compatibility with older configs; prefer news_avoidance_pre_minutes / news_avoidance_post_minutes
   news_avoidance_minutes: 3
-  
   news_impact_multipliers:
     high_bullish: 1.8
     high_bearish: 0.4
     medium_neutral: 1.0
-  
-  # EOD MANAGEMENT - v51 Capital Preservation
-  # Force-close all positions N minutes before session end
   eod_force_close_minutes_before_session_end: 30
-  # Stop opening new trades N minutes before session end
   eod_no_new_trades_minutes_before_session_end: 60
-  # Protect against overnight gap risk
   overnight_gap_protection_enabled: true
-  
-  # KELLY POSITION SIZING - v51 Capital Preservation
-  # Maximum Kelly fraction (25% = fractional Kelly for safety)
   kelly_fraction_max: 0.25
-  # Only apply Kelly when confidence >= this threshold
   kelly_min_confidence: 0.65
-
 risk_controller:
-  # Hard Risk Controller - Unbreakable Safety Layer (fail-closed)
-  # Sensible defaults; adjust based on instrument volatility & account size
-  
-  # Maximum daily loss before hard kill-switch engages (USD)
-  # Negative value: -1000 means stop trading if daily loss reaches -$1000
   daily_loss_cap: -1000.0
-  
-  # Maximum consecutive losing trades before cooldown period
-  # After N consecutive losses, trading pauses for cooldown_after_streak minutes
   max_consecutive_losses: 3
-  
-  # Maximum risk per individual instrument (USD)
-  # Prevents overexposure to single symbol (e.g., MES, NQ, YM)
   max_open_risk_per_instrument: 500.0
-
-  # Maximum aggregate open risk across all instruments (USD)
   max_total_open_risk: 3000.0
-  
-  # Maximum total exposure per market regime (USD)
-  # Protects against correlated losses across all instruments in same regime
-  # E.g., if trending_up regime has MES + NQ, cap combined risk
   max_exposure_per_regime: 2000.0
-  
-  # Cooldown period after loss streak (minutes)
-  # After max_consecutive_losses is reached, wait this long before resuming
   cooldown_after_streak: 30
-
-  # LIVING ORGANISM v53 - Order Book Replay (ATR-based spread + market impact)
-  order_book_spread_atr_ratio: 0.10       # Half-spread as fraction of ATR
-  order_book_market_impact_alpha: 0.5     # Almgren-Chriss alpha
-  order_book_market_impact_beta: 0.6      # Almgren-Chriss beta (power law exponent)
+  order_book_spread_atr_ratio: 0.1
+  order_book_market_impact_alpha: 0.5
+  order_book_market_impact_beta: 0.6
   order_book_spread_multipliers:
-    open: 2.5       # First 30 min: wide spreads
-    midday: 1.0     # Normal liquidity
-    close: 2.0      # Last 30 min: wider again
-
-  # LIVING ORGANISM v51 - RL execution costs (SIM fast, REAL realistic)
+    open: 2.5
+    midday: 1.0
+    close: 2.0
   slippage_base_points: 0.125
   slippage_sigma: 0.5
   slippage_volatility_factor: 1.0
   commission_per_side_usd: 1.29
   exchange_fee_per_side_usd: 0.35
-  clearing_fee_per_side_usd: 0.10
+  clearing_fee_per_side_usd: 0.1
   nfa_fee_per_side_usd: 0.02
-
-  # LIVING ORGANISM v51 - REAL fail-closed capital floor
   real_capital_safety_threshold_usd: 1000.0
-  real_capital_safety_threshold_ratio: 0.90
-
-  # LIVING ORGANISM v51 - VaR/ES risk envelope
-  var_es_method: "historical"               # historical | parametric
+  real_capital_safety_threshold_ratio: 0.9
+  var_es_method: historical
   var_es_window: 200
   var_es_min_samples: 40
   var_es_fail_closed_on_insufficient_data: true
-  var_es_insufficient_data_policy: "fail_closed_real_only"  # advisory | fail_closed_real_only | fail_closed_all_enforced
+  var_es_insufficient_data_policy: fail_closed_real_only
   enable_var_es_calc: true
   enable_var_es_enforce_sim_real_guard: true
   enable_var_es_enforce_real: true
-  var_es_high_risk_limit_multiplier: 0.80
-  var_es_normal_risk_limit_multiplier: 1.00
+  var_es_high_risk_limit_multiplier: 0.8
+  var_es_normal_risk_limit_multiplier: 1.0
   var_es_reason_codes_enabled: true
   var_95_limit_usd: 1200.0
   var_99_limit_usd: 1800.0
   es_95_limit_usd: 1500.0
   es_99_limit_usd: 2200.0
-
-  # LIVING ORGANISM v52 - Regime-aware Monte-Carlo projected max drawdown
   enable_mc_drawdown_calc: true
   mc_drawdown_paths: 10000
   mc_drawdown_horizon_days: 252
   mc_drawdown_min_samples: 40
-  mc_drawdown_insufficient_data_policy: "fail_closed_real_only"  # advisory | fail_closed_real_only | fail_closed_all_enforced
+  mc_drawdown_insufficient_data_policy: fail_closed_real_only
   enable_mc_drawdown_enforce_sim_real_guard: true
   enable_mc_drawdown_enforce_real: true
   mc_drawdown_threshold_pct: 12.0
   mc_drawdown_random_seed: 4242
-
-  # LIVING ORGANISM v51 - SIM reward shaping against tail risk
   sim_var_penalty_coeff: 0.04
   sim_es_penalty_coeff: 0.06
-  
-  # LIVING ORGANISM v53 - Dynamic Kelly estimator (classical)
-  kelly_rolling_window: 50            # Number of recent trades for rolling Kelly
-  kelly_min_window_trades: 10         # Min trades before dynamic estimates are trusted
-
-  # LIVING ORGANISM v54 - Volatility-adjusted Kelly (vol targeting)
-  # Scales Kelly fraction down when realized vol exceeds the annual target.
-  # Formula: f_vol = f_kelly × clamp(σ_target / σ_realized, 0, 1)
+  kelly_rolling_window: 50
+  kelly_min_window_trades: 10
   kelly_vol_scaling_enabled: true
-  kelly_vol_target_annual: 0.15       # Target annualised volatility (15 % ≈ balanced)
-  kelly_vol_lookback_trades: 20       # Trade window for realized vol estimation
-
-  # LIVING ORGANISM v53 - Market impact model (Almgren-Chriss simplified)
-  market_impact_alpha: 0.5            # Impact scale coefficient
-  market_impact_beta: 0.6             # Power-law exponent
-
-  # LIVING ORGANISM v54 - Full cost model (round-trip breakdown)
-  # All values are per contract per side unless noted.
-  # Used by TradeExecutionCostModel in lumina_core.risk.cost_model.
+  kelly_vol_target_annual: 0.15
+  kelly_vol_lookback_trades: 20
+  market_impact_alpha: 0.5
+  market_impact_beta: 0.6
   cost_model_enabled: true
-  # Slippage base floor (ticks) — applied even in best-case conditions
   slippage_base_ticks: 0.5
-
-  # Enable risk controller (set to false only for testing)
   enabled: true
-
 security:
-  # CORS Configuration: Strict allowlist (NO wildcard "*")
-  # Specify only trusted domains that need to access the API
   cors_allowed_origins:
-    - "http://localhost:3000"
-    - "http://127.0.0.1:3000"
-    - "http://localhost:8000"
-  
-  # JWT Configuration
-  jwt_secret_key: "${LUMINA_JWT_SECRET_KEY}"  # Required: provide via environment variable
-  jwt_algorithm: "HS256"
-  jwt_expiration_minutes: 1440                # 24 hours
-  
-  # API Key Configuration
-  api_key_header: "X-API-Key"
-  # Define active keys here via secure provisioning (no placeholders in runtime config).
-  # Generate: python -c "import secrets; print(f'sk_{secrets.token_hex(32)}')"
+  - http://localhost:3000
+  - http://127.0.0.1:3000
+  - http://localhost:8000
+  jwt_secret_key: ${LUMINA_JWT_SECRET_KEY}
+  jwt_algorithm: HS256
+  jwt_expiration_minutes: 1440
+  api_key_header: X-API-Key
   api_keys: {}
-  
-  # Rate Limiting (token bucket algorithm)
   rate_limit_enabled: true
-  rate_limit_requests_per_minute: 60        # 60 req/min = 1 req/sec average
-  rate_limit_burst_size: 10                  # Allow up to 10 concurrent requests
-  
-  # Admin Role Requirements
-  admin_role_required: true                  # Require admin role for destructive endpoints
-  
-  # Security Audit Logging
+  rate_limit_requests_per_minute: 60
+  rate_limit_burst_size: 10
+  admin_role_required: true
   audit_log_enabled: true
-  audit_log_path: "logs/security_audit.jsonl"  # Append-only audit trail
-  
-  # Dangerous Config Validation
-  # At startup, fail if these config values are detected (fail-closed mode)
+  audit_log_path: logs/security_audit.jsonl
   dangerous_configs:
-    "cors_allowed_origins": ["*"]            # CORS wildcard is forbidden
-    "security.debug_mode": [true]            # Debug mode must be explicit false
-
+    cors_allowed_origins:
+    - '*'
+    security.debug_mode:
+    - true
 evolution:
   enabled: true
   approval_required: true
-  # Sandbox mutant scoring in an isolated subprocess before promotion.
-  # Always true in REAL; can be disabled in SIM for speed.
   sandbox_mutations: true
-  # Penalty applied to fitness when SIM-sharpe diverges from rolling REAL-sharpe.
   reality_gap_penalty_coeff: 0.15
   meta_swarm:
-    enabled: true          # five-agent council gates DNA promotion inside EvolutionOrchestrator
-  # Fase 3: OHLC-pad (DNA); override: LUMINA_OHLC_DNA_STRESS of state/bot_stress_choices.json
+    enabled: true
   ohlc_reality_stress_enabled: true
   community_knowledge:
     enabled: true
     max_commit_per_generation: 3
-    queue_path: "state/community_knowledge_queue.jsonl"
-    processed_path: "state/community_knowledge_processed.txt"
-    twin_confidence_min: 0.82   # twin bar for external snippets (below REAL zero-touch 0.97)
-    # Chroma fallback when runtime app has no app.collection (bind via SelfEvolutionMetaAgent)
-    chroma_persist_path: "state/chroma_community"
-    chroma_collection_name: "lumina_community_vetted"
+    queue_path: state/community_knowledge_queue.jsonl
+    processed_path: state/community_knowledge_processed.txt
+    twin_confidence_min: 0.82
+    chroma_persist_path: state/chroma_community
+    chroma_collection_name: lumina_community_vetted
   dream_engine:
-    enabled: true           # fast what-if paths before nightly mutations
-    dream_count: 4000      # 200–50k micro-sims per generation
-    horizon_days: 7        # forward days per dream (capped by sim_days)
+    enabled: true
+    dream_count: 4000
+    horizon_days: 7
     drawdown_limit_ratio: 0.02
-    commit_hints_to_bible: true   # append dream rule_hints to lumina_bible (tail suggestions)
-    # Tighten DNA hyperparam_suggestion (max_risk / drawdown_kill) from dream hints; bounded. Not applied in real unless listed under risk_nudge_modes.
+    commit_hints_to_bible: true
     apply_risk_nudges: true
-    risk_nudge_modes: [sim, paper]
+    risk_nudge_modes:
+    - sim
+    - paper
   shadow_validation:
     min_days: 3
     max_days: 7
-    min_trades: 20              # Minimum trades in shadow before verdict
-    pvalue_threshold: 0.10      # Welch t-test significance level
-    effect_size_threshold: 0.20 # Cohen's d minimum effect size
+    min_trades: 20
+    pvalue_threshold: 0.1
+    effect_size_threshold: 0.2
   multiweek_fitness:
-    enabled: false          # set true to use multi-week SIM scoring (Meta-RL phase)
-    days: 14                # number of simulation days for fitness scoring when enabled
-    use_real_market_data: false  # set true to use real historical market data instead of random perturbations
-    # parallel_realities (1–50): | env LUMINA_PARALLEL_REALITIES | state/parallel_realities_session.json
-    # | deze key (laagste prioriteit) |. CLI: --parallel-realities N. Dashboard + CPU-advies in UI.
+    enabled: false
+    days: 14
+    use_real_market_data: false
     parallel_realities: 1
   neuroevolution:
-    require_real_simulator_data: true   # true = RL train + neuro only on historical OHLC; no synthetic OHLC fallback
-    fetch_days_back: 90                 # MarketDataService.load_historical_ohlc_for_symbol
+    require_real_simulator_data: true
+    fetch_days_back: 90
     fetch_limit: 20000
-    max_bars_in_report: 12000           # cap bars passed into RLTradingEnvironment rollouts
-    # Fase 2: zelfde stress-presets als DNA; eff. aantal = min(stress_universa_max, parallel_realities). Geen extra rollouts.
+    max_bars_in_report: 12000
     stress_universa_enabled: true
     stress_universa_max: 12
-    # Fase 3: PPO multi-rollout; override: LUMINA_NEURO_OHLC_ROLLOUTS of state/bot_stress_choices.json
     use_ohlc_stress_rollouts: false
-
 fine_tuning:
   auto_trigger: true
   min_acceptance: 0.4
   drift_threshold: 0.25
-
 session:
   cooldown_minutes_after_streak: 15
   enforce_calendar: true
-
 portfolio_var:
   confidence: 0.95
   window_days: 30
@@ -333,11 +223,9 @@ portfolio_var:
   max_var_usd: 1200
   max_total_open_risk: 3000
   method: historical
-
 audit:
-  trade_decision_jsonl: "logs/trade_decision_audit.jsonl"
+  trade_decision_jsonl: logs/trade_decision_audit.jsonl
   fail_closed_real: true
-
 regime:
   enabled: true
   lookback_bars: 120
@@ -346,31 +234,35 @@ regime:
   high_vol_atr_ratio: 1.6
   news_volume_ratio: 2.2
   low_liquidity_volume_ratio: 0.55
-  high_risk_regimes: ["HIGH_VOLATILITY", "NEWS_DRIVEN", "ROLLOVER", "LOW_LIQUIDITY"]
+  high_risk_regimes:
+  - HIGH_VOLATILITY
+  - NEWS_DRIVEN
+  - ROLLOVER
+  - LOW_LIQUIDITY
   fast_path_weight_by_regime:
     TRENDING: 0.35
     RANGING: 0.45
     HIGH_VOLATILITY: 0.72
     NEWS_DRIVEN: 0.82
-    ROLLOVER: 0.80
+    ROLLOVER: 0.8
     LOW_LIQUIDITY: 0.88
-    NEUTRAL: 0.50
+    NEUTRAL: 0.5
   risk_multiplier_by_regime:
     TRENDING: 1.15
     RANGING: 0.85
     HIGH_VOLATILITY: 0.55
     NEWS_DRIVEN: 0.45
-    ROLLOVER: 0.50
-    LOW_LIQUIDITY: 0.40
-    NEUTRAL: 1.00
+    ROLLOVER: 0.5
+    LOW_LIQUIDITY: 0.4
+    NEUTRAL: 1.0
   emotional_sensitivity_by_regime:
-    TRENDING: 0.90
+    TRENDING: 0.9
     RANGING: 1.05
-    HIGH_VOLATILITY: 1.20
+    HIGH_VOLATILITY: 1.2
     NEWS_DRIVEN: 1.35
     ROLLOVER: 1.15
     LOW_LIQUIDITY: 1.25
-    NEUTRAL: 1.00
+    NEUTRAL: 1.0
   cooldown_minutes_by_regime:
     TRENDING: 20
     RANGING: 25
@@ -380,69 +272,56 @@ regime:
     LOW_LIQUIDITY: 55
     NEUTRAL: 30
   agent_route_by_regime:
-    TRENDING: ["swing", "scalper", "risk"]
-    RANGING: ["risk", "scalper", "swing"]
-    HIGH_VOLATILITY: ["risk", "scalper"]
-    NEWS_DRIVEN: ["risk", "scalper"]
-    ROLLOVER: ["risk"]
-    LOW_LIQUIDITY: ["risk"]
-    NEUTRAL: ["risk", "scalper", "swing"]
-
+    TRENDING:
+    - swing
+    - scalper
+    - risk
+    RANGING:
+    - risk
+    - scalper
+    - swing
+    HIGH_VOLATILITY:
+    - risk
+    - scalper
+    NEWS_DRIVEN:
+    - risk
+    - scalper
+    ROLLOVER:
+    - risk
+    LOW_LIQUIDITY:
+    - risk
+    NEUTRAL:
+    - risk
+    - scalper
+    - swing
 monitoring:
   enabled: true
-  db_path: "state/metrics.db"          # SQLite sink for dashboard history queries
-  flush_interval_s: 30                  # How often background thread flushes to SQLite
-  dashboard_url: "${LUMINA_DASHBOARD_URL}"  # Optional link included in Telegram approval proposals
-
+  db_path: state/metrics.db
+  flush_interval_s: 30
+  dashboard_url: ${LUMINA_DASHBOARD_URL}
   alert_thresholds:
-    latency_ms: 500                     # Alert if any agent layer latency > 500 ms
-    daily_loss_usd: -800                # Alert if daily PnL drops below -$800
-    websocket_heartbeat_stale_s: 60     # Alert if no WS heartbeat for > 60 s
-    model_confidence_drift: 0.25        # Alert if model confidence drifts > 25%
-    consecutive_losses: 3               # Alert at or above N consecutive losses
-
+    latency_ms: 500
+    daily_loss_usd: -800
+    websocket_heartbeat_stale_s: 60
+    model_confidence_drift: 0.25
+    consecutive_losses: 3
   webhook:
-    enabled: false                      # Set true + configure url to receive alerts
-    platform: "telegram"                # "discord" | "slack" | "telegram"
-    url: "${LUMINA_ALERT_WEBHOOK_URL}"  # Provide via environment variable
-    telegram_bot_token: "${TELEGRAM_BOT_TOKEN}"
-    telegram_chat_id: ""               # Required only when platform = "telegram"
+    enabled: false
+    platform: telegram
+    url: ${LUMINA_ALERT_WEBHOOK_URL}
+    telegram_bot_token: ${TELEGRAM_BOT_TOKEN}
+    telegram_chat_id: ''
     timeout_s: 5
-
-# ── Headless runtime configuration ────────────────────────────────────────────
-# Used by: python -m lumina_launcher --headless --mode=paper --duration=15m --broker=paper
 headless:
-  # Default simulated session duration (minutes) when --duration flag is omitted.
   default_duration_minutes: 15
-
-  # Default aggressive SIM learning session duration (minutes), used with --aggressive-sim.
   sim_learning_duration_minutes: 60
-
-  # Default overnight SIM mode (4-hour equivalent run) when enabled in runtime/CLI.
   sim_overnight_mode: false
-
-  # Default trading mode for headless runs.
-  default_mode: "paper"          # "paper" | "sim" | "real"
-
-  # Default broker backend for headless runs.
-  default_broker: "paper"        # "paper" | "live"
-
-  # Where the JSON summary is persisted after each run.
-  summary_output_path: "state/last_run_summary.json"
-
-  # Archive each run to a unique file for progression tracking.
+  default_mode: paper
+  default_broker: paper
+  summary_output_path: state/last_run_summary.json
   summary_archive_enabled: true
-  summary_archive_dir: "state/test_runs"
-
-  # Synthetic ticks generated per minute of simulated session
-  # (higher = more trades, slower init; lower = fewer trades, faster).
+  summary_archive_dir: state/test_runs
   ticks_per_minute: 200
-
-  # Seed for deterministic tick generation.
   simulation_seed: 51
-
-  # When evolution.neuroevolution.require_real_simulator_data is true, headless loads ticks via
-  # MarketDataService.load_historical_ohlc_extended (Crosstrade). Optional overrides (null = use neuro fetch_*).
   historical_days_back: null
   historical_limit: null
-

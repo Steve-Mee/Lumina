@@ -22,7 +22,11 @@ def main() -> int:
         venv.EnvBuilder(with_pip=True).create(VENV_DIR)
 
     python_bin = _venv_python()
-    subprocess.run([str(python_bin), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], check=True)
+    # setuptools 82+ breaks torch / vllm pins; keep in [77, 82) per vllm's metadata.
+    subprocess.run(
+        [str(python_bin), "-m", "pip", "install", "--upgrade", "pip", "wheel", "setuptools>=77.0.3,<82"],
+        check=True,
+    )
     subprocess.run([str(python_bin), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")], check=True)
     subprocess.run([str(python_bin), "-m", "pip", "install", "streamlit", "pyyaml", "psutil", "ollama"], check=True)
     subprocess.run([str(python_bin), "-m", "streamlit", "run", str(LAUNCHER)], check=True)

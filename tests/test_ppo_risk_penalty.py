@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from lumina_core.ppo_trainer import PPOTrainer
+from lumina_core.engine.canonical_training import PPOTrainer
 
 
 def test_build_rl_config_includes_var_es_penalty_coefficients() -> None:

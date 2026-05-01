@@ -173,9 +173,24 @@ def _resolve_headless_ticks(
     if require_real_simulator_data_strict():
         mds = _get_market_data_service(container)
         if mds is None or not hasattr(mds, "load_historical_ohlc_extended"):
+            fallback = os.getenv("LUMINA_HEADLESS_FALLBACK_SYNTHETIC", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            if fallback:
+                logger.warning(
+                    "require_real_simulator_data is true but historical OHLC service is unavailable; "
+                    "LUMINA_HEADLESS_FALLBACK_SYNTHETIC is set — using synthetic ticks for this headless run."
+                )
+                return _generate_synthetic_ticks(n=n_ticks, seed=seed), "synthetic"
             raise RuntimeError(
-                "headless historical mode (require_real_simulator_data) requires an ApplicationContainer "
-                "with market_data_service.load_historical_ohlc_extended (Crosstrade historical API)."
+                "headless historical mode (evolution.neuroevolution.require_real_simulator_data=true) needs "
+                "MarketDataService.load_historical_ohlc_extended (Crosstrade historical API). "
+                "Fix: set require_real_simulator_data to false in config.yaml for synthetic headless ticks; "
+                "or set CROSSTRADE_TOKEN + broker so the runtime container can fetch history; "
+                "or export LUMINA_HEADLESS_FALLBACK_SYNTHETIC=1 for one-off synthetic fallback (logs a warning)."
             )
         days_back = _resolve_headless_historical_days_back(headless_cfg)
         limit = _resolve_headless_historical_limit(headless_cfg)

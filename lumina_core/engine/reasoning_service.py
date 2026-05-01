@@ -13,6 +13,7 @@ from .lumina_engine import LuminaEngine
 from .policy_engine import PolicyEngine
 from .regime_detector import RegimeDetector, RegimeSnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, session_guard_allows_trading
+from lumina_core.sla_config import reasoning_latency_sla_ms
 
 
 @dataclass(slots=True)
@@ -30,6 +31,7 @@ class ReasoningService:
     def __post_init__(self) -> None:
         if self.engine is None:
             raise ValueError("ReasoningService requires a LuminaEngine")
+        self.latency_sla_ms = float(reasoning_latency_sla_ms())
         if self.inference_engine is None:
             self.inference_engine = LocalInferenceEngine(engine=self.engine)
         if self.regime_detector is None:
@@ -243,12 +245,27 @@ class ReasoningService:
     ) -> dict[str, Any] | None:
         assert self.inference_engine is not None
         started = time.perf_counter()
-        result = self.inference_engine.infer_json(
-            payload,
-            timeout=timeout,
-            context=context,
-            max_retries=max_retries,
-        )
+        model_version = str(payload.get("model", "unknown"))
+        try:
+            result = self.inference_engine.infer_json(
+                payload,
+                timeout=timeout,
+                context=context,
+                max_retries=max_retries,
+            )
+        except Exception as exc:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            self._record_latency(elapsed_ms, source=context)
+            self._log_decision(
+                agent_id="ReasoningService",
+                raw_input=payload,
+                raw_output={"error": str(exc), "type": type(exc).__name__},
+                confidence=0.0,
+                policy_outcome="error",
+                decision_context_id=context,
+                model_version=model_version,
+            )
+            raise
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         self._record_latency(elapsed_ms, source=context)
         self._log_decision(
@@ -258,7 +275,7 @@ class ReasoningService:
             confidence=float((result or {}).get("confidence", 0.0) if isinstance(result, dict) else 0.0),
             policy_outcome="inference_success" if isinstance(result, dict) else "inference_empty",
             decision_context_id=context,
-            model_version=str(payload.get("model", "unknown")),
+            model_version=model_version,
         )
         return result
 

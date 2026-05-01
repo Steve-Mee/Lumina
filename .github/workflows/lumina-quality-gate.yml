@@ -49,6 +49,9 @@ jobs:
             --no-error-summary \
             --pretty
 
+      - name: Pyright on lumina_os backend
+        run: pyright lumina_os/backend
+
   # ─────────────────────────────────────────────────────────────────────────
   # 2. Fast unit test gate (< 60 s target)
   # ─────────────────────────────────────────────────────────────────────────

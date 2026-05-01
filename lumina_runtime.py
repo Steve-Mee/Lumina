@@ -266,8 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     container = get_container()
     runtime_module = sys.modules.get("__main__")
     if runtime_module is not None:
-        container.engine.bind_app(runtime_module)
-        container.runtime_context.app = runtime_module
+        container.bind_runtime_module(runtime_module)
 
     # Wire back-reference so RuntimeContext.__getattr__ can delegate to services
     container.runtime_context.container = container

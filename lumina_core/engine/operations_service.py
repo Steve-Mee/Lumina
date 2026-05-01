@@ -20,7 +20,7 @@ from .lumina_engine import LuminaEngine
 from .policy_engine import PolicyEngine
 from .valuation_engine import ValuationEngine
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
-from lumina_core.logging_utils import log_event
+from lumina_core.logging_utils import log_event, log_runtime_trace, runtime_trace_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +221,14 @@ class OperationsService:
 
         # Paper mode: no broker submission — tracked internally by supervisor_loop.
         if trade_mode == "paper":
+            if runtime_trace_enabled():
+                log_runtime_trace(
+                    app.logger,
+                    "ops.place_order_skipped",
+                    reason="paper_orders_via_supervisor_internal_sim",
+                    action=str(action),
+                    qty=int(qty),
+                )
             return False
 
         _dream = self.engine.get_current_dream_snapshot()

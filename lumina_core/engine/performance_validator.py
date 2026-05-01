@@ -18,7 +18,7 @@ import pandas as pd
 import requests
 from fpdf import FPDF
 
-from lumina_core.backtester_engine import BacktesterEngine
+from lumina_core.engine.canonical_training import BacktesterEngine
 from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
 from .lumina_engine import LuminaEngine
 from .market_data_service import MarketDataService

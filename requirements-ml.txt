@@ -10,7 +10,7 @@ scipy==1.17.1               # already in core
 
 # -- Reinforcement learning ------------------------------------------------
 stable_baselines3==2.8.0
-gymnasium==1.2.7
+gymnasium==1.2.3
 Farama-Notifications==0.0.4
 
 # -- LLM inference & fine-tuning -------------------------------------------

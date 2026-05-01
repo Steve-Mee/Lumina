@@ -8,7 +8,9 @@ from typing import Any
 
 def _normalize_mode(mode: str | None) -> str:
     value = str(mode or "real").strip().lower()
-    return value if value in {"real", "paper", "sim"} else "real"
+    if value in {"real", "paper", "sim", "sim_real_guard"}:
+        return value
+    return "real"
 
 
 def _normalize_confidence(confidence: float) -> float:

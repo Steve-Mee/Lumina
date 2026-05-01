@@ -11,7 +11,7 @@ import pandas as pd
 from .fast_path_engine import FastPathEngine
 from .errors import format_error_code
 from .lumina_engine import LuminaEngine
-from lumina_core.logging_utils import log_event
+from lumina_core.logging_utils import log_event, log_runtime_trace, runtime_trace_enabled
 
 
 @dataclass(slots=True)
@@ -45,7 +45,7 @@ class HumanAnalysisService:
             self.fast_path_engine = FastPathEngine(engine=self.engine)
         if self.ppo_trainer is None:
             try:
-                from lumina_core.ppo_trainer import PPOTrainer
+                from lumina_core.engine.canonical_training import PPOTrainer
 
                 self.ppo_trainer = PPOTrainer(engine=self.engine)
             except Exception:
@@ -321,6 +321,18 @@ class HumanAnalysisService:
                         app.logger.warning("FAST_PATH_UNAVAILABLE,using_default_hold")
                         continue
                     fast_result = self.engine.fast_path.run(self.engine.ohlc_1min, current_price, regime)
+                    if runtime_trace_enabled():
+                        log_runtime_trace(
+                            app.logger,
+                            "analysis.fast_path_raw",
+                            regime=str(regime),
+                            used_llm=str(bool(fast_result.get("used_llm"))),
+                            signal=str(fast_result.get("signal", "")),
+                            confidence=round(float(fast_result.get("confidence", 0) or 0), 4),
+                            latency_ms=round(float(fast_result.get("latency_ms", 0) or 0), 2),
+                            chosen_strategy=str(fast_result.get("chosen_strategy", "")),
+                            trade_mode=str(getattr(self.engine.config, "trade_mode", "")),
+                        )
                     if not fast_result["used_llm"]:
                         # Hard Risk Controller — VERY FIRST check before applying fast-path signal
                         _fp_signal = fast_result.get("signal", "HOLD")

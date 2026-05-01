@@ -709,9 +709,9 @@ class LuminaEngine:
 
     def set_current_dream_fields(self, updates: dict[str, Any]) -> None:
         self.dream_state.update(updates)
-        if self.event_bus is not None and hasattr(self.event_bus, "publish"):
+        if self.event_bus is not None and hasattr(self.event_bus, "publish_validated"):
             try:
-                self.event_bus.publish(
+                self.event_bus.publish_validated(
                     topic="trading_engine.dream_state.updated",
                     producer="lumina_engine",
                     payload=dict(updates),

@@ -38,6 +38,7 @@ from lumina_core.engine.sim_stability_checker import (
     format_stability_report,
     generate_stability_report,
 )
+from lumina_core.config_loader import ConfigLoader
 from lumina_core.runtime_context import RuntimeContext
 
 if not _IS_HEADLESS:
@@ -47,6 +48,7 @@ ENV_PATH = Path(".env")
 CONFIG_PATH = Path("config.yaml")
 RUNTIME_ENTRY = Path("lumina_core/engine/runtime_entrypoint.py")
 LUMINA_LOG_PATH = Path("logs/lumina_full_log.csv")
+THOUGHT_LOG_PATH = Path("state/lumina_thought_log.jsonl")
 STATE_PATH = Path("state/lumina_sim_state.json")
 ADMIN_PASSWORD_HASH_PATH = Path("state/launcher_admin_password.json")
 MODEL_CATALOG_STATE_PATH = Path("state/model_catalog_state.json")
@@ -132,6 +134,66 @@ def _load_yaml_config() -> dict[str, Any]:
         return {}
     payload = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else {}
+
+
+def _read_neuro_require_real_simulator_data() -> bool:
+    """Mirror evolution.neuroevolution.require_real_simulator_data; default True (real historical policy)."""
+    cfg = _load_yaml_config()
+    evo = cfg.get("evolution")
+    if not isinstance(evo, dict):
+        return True
+    neuro = evo.get("neuroevolution")
+    if not isinstance(neuro, dict):
+        return True
+    val = neuro.get("require_real_simulator_data")
+    if val is None:
+        return True
+    return bool(val)
+
+
+def _save_neuro_require_real_simulator_data(value: bool) -> None:
+    """Persist require_real_simulator_data under evolution.neuroevolution and refresh ConfigLoader cache."""
+    cfg = _load_yaml_config()
+    if "evolution" not in cfg or not isinstance(cfg["evolution"], dict):
+        cfg["evolution"] = {}
+    evo = cfg["evolution"]
+    if "neuroevolution" not in evo or not isinstance(evo["neuroevolution"], dict):
+        evo["neuroevolution"] = {}
+    evo["neuroevolution"]["require_real_simulator_data"] = bool(value)
+    CONFIG_PATH.write_text(
+        yaml.safe_dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    ConfigLoader.invalidate()
+
+
+_RUNTIME_TRACE_INTERVAL_OPTIONS = (0.0, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0)
+
+
+def _snap_runtime_trace_interval(raw_sec: float) -> float:
+    return float(min(_RUNTIME_TRACE_INTERVAL_OPTIONS, key=lambda c: abs(c - max(0.0, float(raw_sec)))))
+
+
+def _label_runtime_trace_interval(sec: float) -> str:
+    if sec <= 0:
+        return "0 — geen limiet (alle RUNTIME_TRACE-regels)"
+    return f"{sec:.0f} s — max. frequentie voor noisy supervisor-traces"
+
+
+_LATENCY_SLA_OPTIONS = (250.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 30000.0)
+
+
+def _snap_latency_sla_ms(val: float) -> float:
+    """Snap UI value to nearest preset for sensible defaults."""
+    return float(min(_LATENCY_SLA_OPTIONS, key=lambda c: abs(c - max(50.0, float(val)))))
+
+
+def _label_latency_sla(ms: float) -> str:
+    if ms <= 300:
+        return f"{ms:.0f} ms — standaard / streng"
+    if ms <= 2000:
+        return f"{ms:.0f} ms — relaxed (minder FAST_PATH_ONLY)"
+    return f"{ms:.0f} ms — zeer relaxed (test)"
 
 
 def _sim_real_guard_launch_flags() -> tuple[bool, bool, bool]:
@@ -420,6 +482,20 @@ def _tail_file(path: Path, max_chars: int = 4000) -> str:
     return text[-max_chars:]
 
 
+def _recent_activity_excerpt() -> tuple[str, str]:
+    """Prefer CSV runtime log; fallback to thought JSONL so Paper/SIM activity is visible when CSV is quiet."""
+    csv_tail = _tail_file(LUMINA_LOG_PATH, max_chars=8000).strip()
+    if csv_tail:
+        lines = csv_tail.splitlines()
+        return "\n".join(lines[-24:]), str(LUMINA_LOG_PATH)
+    if THOUGHT_LOG_PATH.exists():
+        raw = THOUGHT_LOG_PATH.read_text(encoding="utf-8", errors="replace")
+        lines = [ln for ln in raw.splitlines() if ln.strip()]
+        if lines:
+            return "\n".join(lines[-16:]), str(THOUGHT_LOG_PATH)
+    return "", ""
+
+
 def _file_age_seconds(path: Path) -> float | None:
     if not path.exists():
         return None
@@ -595,6 +671,118 @@ def _render_live_age_cards(log_age: float | None, state_age: float | None, last_
     st.iframe(data_url, height=105)
 
 
+def _render_live_activity_metrics_and_log(
+    *,
+    alive: bool,
+    screen_share_enabled: bool,
+    dashboard_enabled: bool,
+) -> None:
+    """Heartbeat cards, services row, messages, and recent activity excerpt (refreshed via fragment when enabled)."""
+    _log_fresh_s = 300.0
+    _state_fresh_s = 600.0
+    _summary_fresh_s = 900.0
+    _screen_fresh_s = 180.0
+    _dashboard_fresh_s = 300.0
+
+    log_age = _file_age_seconds(LUMINA_LOG_PATH)
+    state_age = _file_age_seconds(STATE_PATH)
+    summary_age = _file_age_seconds(LAST_RUN_SUMMARY_PATH)
+    summary_payload = _load_last_run_summary()
+    headless_summary = str(summary_payload.get("runtime", "")).strip().lower() == "headless"
+    screen_share_path = Path("state/live_stream.jsonl")
+    dashboard_path = Path("journal/swarm_dashboard.html")
+    screen_share_age = _file_age_seconds(screen_share_path)
+    dashboard_age = _file_age_seconds(dashboard_path)
+
+    process_state = _load_process_state()
+    last_launch_text = _resolve_last_launch_text(alive=alive, process_state=process_state)
+    if alive and str(last_launch_text).strip().lower() == "not started":
+        fallback_launch = _format_timestamp(LUMINA_LOG_PATH)
+        if fallback_launch != "Not available":
+            last_launch_text = fallback_launch
+    _render_live_age_cards(log_age, state_age, last_launch_text)
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Live Chart Screen Share")
+        if screen_share_enabled:
+            st.markdown(_service_age_badge(screen_share_age), unsafe_allow_html=True)
+            if screen_share_age is None:
+                st.info("Screen share is enabled and waiting for the first chart frame feed.")
+            else:
+                st.caption(f"Last chart feed update timestamp: {_format_timestamp(screen_share_path)}")
+        else:
+            st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
+            st.caption("Enable this in the sidebar to publish live chart feed.")
+
+    with right:
+        st.markdown("#### Dashboard")
+        if dashboard_enabled:
+            st.markdown(
+                _service_age_badge(dashboard_age, healthy_threshold_seconds=_dashboard_fresh_s),
+                unsafe_allow_html=True,
+            )
+            if dashboard_age is None:
+                st.info("Dashboard is enabled but no dashboard artifact was found yet.")
+            else:
+                st.caption(f"Last dashboard update timestamp: {_format_timestamp(dashboard_path)}")
+                st.caption("Artifact: journal/swarm_dashboard.html")
+        else:
+            st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
+            st.caption("Enable this in the sidebar to generate dashboard output.")
+
+    if alive:
+        primary_heartbeat_ok = log_age is not None and log_age <= _log_fresh_s
+        state_fresh = state_age is not None and state_age <= _state_fresh_s
+        summary_fresh = summary_age is not None and summary_age <= _summary_fresh_s
+        summary_counts = summary_fresh and headless_summary
+        secondary_heartbeat_ok = (
+            (dashboard_age is not None and dashboard_age <= _dashboard_fresh_s)
+            or (screen_share_age is not None and screen_share_age <= _screen_fresh_s)
+            or state_fresh
+            or summary_counts
+        )
+        if primary_heartbeat_ok:
+            st.success("Bot is alive: log activity was updated in the last 5 minutes.")
+        elif secondary_heartbeat_ok:
+            if summary_fresh and not primary_heartbeat_ok and not state_fresh and headless_summary:
+                st.info(
+                    "Recent **state/last_run_summary.json** van een **`--headless`** run. "
+                    "Volledige Paper/SIM-runtime gebruikt vooral de CSV-log."
+                )
+            elif state_fresh and not primary_heartbeat_ok:
+                st.info(
+                    "Bot process is running; sim state file was updated recently. "
+                    "The CSV log may have no new lines for several minutes during quiet periods — that is often normal."
+                )
+            else:
+                st.info("Bot process is running and secondary services are live; primary log heartbeat is delayed.")
+        else:
+            st.warning("Bot process is running, but heartbeat artifacts look stale. Check runtime diagnostics.")
+
+    st.markdown("#### Recent Bot Activity")
+    excerpt, src = _recent_activity_excerpt()
+    if not excerpt:
+        st.caption(
+            "Nog geen logregels. Start de bot vanuit de **repo-root** (zodat `logs/` en `state/` hier geschreven worden). "
+            "Na bootstrap zouden STATUS/STATE-regels in **lumina_full_log.csv** of thoughts in **lumina_thought_log.jsonl** moeten verschijnen."
+        )
+    else:
+        st.caption(f"Bron: `{src}` — vernieuwt elke 5s met auto-refresh aan.")
+        st.code(excerpt, language="text")
+
+
+if not _IS_HEADLESS:
+
+    @st.fragment(run_every=timedelta(seconds=5))
+    def _lumina_live_activity_autorefresh_fragment() -> None:
+        _render_live_activity_metrics_and_log(
+            alive=bool(st.session_state.get("_lumina_frag_alive", False)),
+            screen_share_enabled=bool(st.session_state.get("_lumina_frag_screen_share", True)),
+            dashboard_enabled=bool(st.session_state.get("_lumina_frag_dashboard", True)),
+        )
+
+
 def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dashboard_enabled: bool) -> None:
     st.markdown("### Live Activity & Services")
     process_badge = _status_badge("Running", "available") if alive else _status_badge("Stopped", "blocked")
@@ -604,15 +792,8 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
             "Auto-refresh live status (5s)",
             value=bool(st.session_state.get("live_status_auto_refresh", True)),
             key="live_status_auto_refresh",
+            help="Gebruikt Streamlit fragments (betrouwbaar); geen volledige pagina-reload via iframe.",
         )
-        if auto_refresh:
-            refresh_html = (
-                "<html><body><script>"
-                "setTimeout(function(){ window.parent.location.reload(); }, 5000);"
-                "</script></body></html>"
-            )
-            refresh_url = "data:text/html;charset=utf-8," + urllib.parse.quote(refresh_html)
-            st.iframe(refresh_url, height=1, width="content")
         st.markdown(
             """
             <style>
@@ -646,67 +827,17 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
     else:
         st.caption("Heartbeat indicator becomes active when the bot is running.")
 
-    log_age = _file_age_seconds(LUMINA_LOG_PATH)
-    state_age = _file_age_seconds(STATE_PATH)
-    screen_share_path = Path("state/live_stream.jsonl")
-    dashboard_path = Path("journal/swarm_dashboard.html")
-    screen_share_age = _file_age_seconds(screen_share_path)
-    dashboard_age = _file_age_seconds(dashboard_path)
-
-    process_state = _load_process_state()
-    last_launch_text = _resolve_last_launch_text(alive=alive, process_state=process_state)
-    if alive and str(last_launch_text).strip().lower() == "not started":
-        fallback_launch = _format_timestamp(LUMINA_LOG_PATH)
-        if fallback_launch != "Not available":
-            last_launch_text = fallback_launch
-    _render_live_age_cards(log_age, state_age, last_launch_text)
-
-    left, right = st.columns(2)
-    with left:
-        st.markdown("#### Live Chart Screen Share")
-        if screen_share_enabled:
-            st.markdown(_service_age_badge(screen_share_age), unsafe_allow_html=True)
-            if screen_share_age is None:
-                st.info("Screen share is enabled and waiting for the first chart frame feed.")
-            else:
-                st.caption(f"Last chart feed update timestamp: {_format_timestamp(screen_share_path)}")
-        else:
-            st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
-            st.caption("Enable this in the sidebar to publish live chart feed.")
-
-    with right:
-        st.markdown("#### Dashboard")
-        if dashboard_enabled:
-            st.markdown(_service_age_badge(dashboard_age, healthy_threshold_seconds=300.0), unsafe_allow_html=True)
-            if dashboard_age is None:
-                st.info("Dashboard is enabled but no dashboard artifact was found yet.")
-            else:
-                st.caption(f"Last dashboard update timestamp: {_format_timestamp(dashboard_path)}")
-                st.caption("Artifact: journal/swarm_dashboard.html")
-        else:
-            st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
-            st.caption("Enable this in the sidebar to generate dashboard output.")
-
-    if alive:
-        primary_heartbeat_ok = log_age is not None and log_age <= 180
-        secondary_heartbeat_ok = (dashboard_age is not None and dashboard_age <= 300) or (
-            screen_share_age is not None and screen_share_age <= 180
-        )
-        if primary_heartbeat_ok:
-            st.success("Bot is alive: log activity was updated in the last 3 minutes.")
-        elif secondary_heartbeat_ok:
-            st.info("Bot process is running and secondary services are live; primary log heartbeat is delayed.")
-        else:
-            st.warning("Bot process is running, but heartbeat artifacts look stale. Check runtime diagnostics.")
-
-    st.markdown("#### Recent Bot Activity")
-    recent_log = _tail_file(LUMINA_LOG_PATH, max_chars=8000).strip()
-    if not recent_log:
-        st.caption("No runtime log output yet.")
+    if alive and bool(st.session_state.get("live_status_auto_refresh", True)) and not _IS_HEADLESS:
+        st.session_state["_lumina_frag_alive"] = alive
+        st.session_state["_lumina_frag_screen_share"] = screen_share_enabled
+        st.session_state["_lumina_frag_dashboard"] = dashboard_enabled
+        _lumina_live_activity_autorefresh_fragment()
     else:
-        lines = recent_log.splitlines()
-        excerpt = "\n".join(lines[-24:])
-        st.code(excerpt, language="text")
+        _render_live_activity_metrics_and_log(
+            alive=alive,
+            screen_share_enabled=screen_share_enabled,
+            dashboard_enabled=dashboard_enabled,
+        )
 
 
 def _load_runtime_state() -> dict[str, Any]:
@@ -1875,11 +2006,83 @@ with st.sidebar:
     )
     risk_profile = st.selectbox("Risk Profile", options=["Conservative", "Balanced", "Aggressive"], index=1)
     instrument = st.selectbox("Instrument", options=["MES JUN26", "MNQ JUN26", "MYM JUN26", "ES JUN26"], index=0)
+    _req_real_key = "lumina_require_real_simulator_data_ui"
+    if _req_real_key not in st.session_state:
+        st.session_state[_req_real_key] = _read_neuro_require_real_simulator_data()
+    st.checkbox(
+        "Echte historische OHLC verplicht (geen synthetische fallback)",
+        key=_req_real_key,
+        help=(
+            "Aan: neuro / RL / headless SIM gebruiken echte marktdata via Crosstrade waar mogelijk "
+            "(zet CROSSTRADE_TOKEN in .env). "
+            "Uit: synthetische ticks zijn toegestaan — de bot start nog steeds, maar data is niet markt-echt "
+            "(alleen aanbevolen voor snelle rooktests)."
+        ),
+    )
+    st.caption(
+        "Als dit uit staat, blijft de runtime bruikbaar; alleen de kwaliteit van sim-/neurodata daalt. "
+        "Voor productie: aan laten staan."
+    )
     voice_enabled = st.checkbox("Voice (TTS + input)", value=True)
     screen_share_enabled = st.checkbox("Live Chart Screen Share", value=True)
     dashboard_enabled = st.checkbox("Dashboard", value=True)
+    _rt_trace_key = "lumina_runtime_trace_ui"
+    _rt_interval_key = "lumina_runtime_trace_interval_ui"
+    if _rt_trace_key not in st.session_state:
+        raw_t = os.getenv("LUMINA_RUNTIME_TRACE")
+        if raw_t is None or str(raw_t).strip() == "":
+            st.session_state[_rt_trace_key] = True
+        else:
+            st.session_state[_rt_trace_key] = str(raw_t).strip().lower() in {"1", "true", "yes", "on"}
+    if _rt_interval_key not in st.session_state:
+        raw_i = os.getenv("LUMINA_RUNTIME_TRACE_INTERVAL_SEC", "0")
+        try:
+            st.session_state[_rt_interval_key] = _snap_runtime_trace_interval(float(raw_i))
+        except ValueError:
+            st.session_state[_rt_interval_key] = 0.0
+    st.checkbox(
+        "Runtime trace (diagnose)",
+        key=_rt_trace_key,
+        help=(
+            "Schrijft LUMINA_RUNTIME_TRACE naar .env en laat de bot RUNTIME_TRACE-regels loggen in "
+            "logs/lumina_full_log.csv (o.a. supervisor policy gateway, execution_armed, fast_path ruw). "
+            "Uit = minder logvolume. De ratelimit hieronder beperkt alleen de meest frequente regel "
+            "(stage supervisor.policy_gateway); overige trace-regels worden niet afgebouwd."
+        ),
+    )
+    st.selectbox(
+        "Runtime trace ratelimit",
+        options=list(_RUNTIME_TRACE_INTERVAL_OPTIONS),
+        key=_rt_interval_key,
+        format_func=_label_runtime_trace_interval,
+        help=(
+            "LUMINA_RUNTIME_TRACE_INTERVAL_SEC: minimum seconden tussen herhaalde supervisor.policy_gateway-traces. "
+            "0 = geen limiet (standaard: alles loggen). Hogere waarde = rustiger log bij ingeschakelde trace. "
+            "Analysis- en order-traces worden door deze limiet niet vertraagd."
+        ),
+    )
+    _sla_key = "lumina_latency_sla_ms_ui"
+    if _sla_key not in st.session_state:
+        raw_s = os.getenv("LUMINA_LATENCY_SLA_MS", "250")
+        try:
+            st.session_state[_sla_key] = _snap_latency_sla_ms(float(raw_s))
+        except ValueError:
+            st.session_state[_sla_key] = 250.0
+    st.selectbox(
+        "Latency SLA (FAST_PATH_ONLY drempel)",
+        options=list(_LATENCY_SLA_OPTIONS),
+        key=_sla_key,
+        format_func=_label_latency_sla,
+        help=(
+            "LUMINA_LATENCY_SLA_MS: websocket- en inferentie-latency boven deze waarde triggert na "
+            "meerdere metingen FAST_PATH_ONLY (minder LLM/consensus). Hoger = rustiger tijdens testen op "
+            "trage verbinding. Productie: ~250 ms. Geavanceerd: zet LUMINA_MARKET_DATA_SLA_MS en "
+            "LUMINA_REASONING_SLA_MS in .env om markt vs reasoning apart te tunen."
+        ),
+    )
     st.divider()
     if st.button("Save Config and Start Bot", type="primary", width="stretch"):
+        _save_neuro_require_real_simulator_data(bool(st.session_state.get(_req_real_key, True)))
         broker_backend = "paper" if trade_mode == "paper" else "live"
         account_mode = {
             "paper": "paper",
@@ -1900,6 +2103,13 @@ with st.sidebar:
             "VOICE_ENABLED": str(voice_enabled).lower(),
             "SCREEN_SHARE_ENABLED": str(screen_share_enabled).lower(),
             "DASHBOARD_ENABLED": str(dashboard_enabled).lower(),
+            "LUMINA_RUNTIME_TRACE": "true" if bool(st.session_state.get("lumina_runtime_trace_ui", True)) else "false",
+            "LUMINA_RUNTIME_TRACE_INTERVAL_SEC": str(
+                float(st.session_state.get("lumina_runtime_trace_interval_ui", 0.0))
+            ),
+            "LUMINA_LATENCY_SLA_MS": str(
+                int(float(st.session_state.get("lumina_latency_sla_ms_ui", 250.0)))
+            ),
         }
         _write_env_file(ENV_PATH, cfg_updates)
         ok, msg = _start_bot_process()

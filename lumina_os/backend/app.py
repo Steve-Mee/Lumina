@@ -14,6 +14,7 @@ from backend.models import BibleUpload, ReflectionUpload, TradeSubmit
 from backend.monitoring_endpoints import router as monitoring_router, set_observability_service
 from backend.evolution_endpoints import router as evolution_router
 from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
+from backend.evolution_endpoints import set_security_module as set_evolution_security_module
 
 # Import security module — lumina_core is installed as a package, no sys.path needed
 from lumina_core.security import get_security_module
@@ -34,6 +35,7 @@ SECURITY_CONFIG = FULL_CONFIG.get("security", {})
 
 # Initialize security module
 SECURITY = get_security_module(SECURITY_CONFIG)
+set_evolution_security_module(SECURITY)
 
 # Validate dangerous configs at startup
 validator = SECURITY["config_validator"]

@@ -1,4 +1,7 @@
 import logging
+import os
+import threading
+import time
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -13,6 +16,59 @@ EVENT_CODES: dict[str, str] = {
     "ops.order_success": "OPS-2003",
     "ops.emergency_stop": "OPS-2004",
 }
+
+
+def runtime_trace_enabled() -> bool:
+    """Verbose runtime tracing for test / verification (supervisor + analysis paths).
+
+    Set ``LUMINA_RUNTIME_TRACE=1`` (or ``true`` / ``yes`` / ``on``). Logs lines prefixed with
+    ``RUNTIME_TRACE`` so they are easy to grep in ``logs/lumina_full_log.csv``.
+    """
+    return os.getenv("LUMINA_RUNTIME_TRACE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+_TRACE_EMIT_LOCK = threading.Lock()
+_TRACE_LAST_EMIT_MONO: dict[str, float] = {}
+# Only throttle stages that fire every supervisor tick; other traces stay unthrottled.
+_RUNTIME_TRACE_THROTTLE_STAGES = frozenset({"supervisor.policy_gateway"})
+
+
+def runtime_trace_interval_sec() -> float:
+    """Minimum seconds between *noisy* trace lines when trace is enabled.
+
+    ``LUMINA_RUNTIME_TRACE_INTERVAL_SEC`` — ``0`` or unset means no limit (log every line).
+    Applies only to stages in ``_RUNTIME_TRACE_THROTTLE_STAGES`` (high-frequency supervisor).
+    """
+    raw = os.getenv("LUMINA_RUNTIME_TRACE_INTERVAL_SEC", "0").strip()
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return 0.0
+
+
+def _fmt_trace_val(value: object) -> str:
+    text = str(value).replace(",", ";")
+    if len(text) > 240:
+        return text[:237] + "..."
+    return text
+
+
+def log_runtime_trace(logger: logging.Logger, stage: str, **fields: object) -> None:
+    """Emit one CSV-safe INFO line when :func:`runtime_trace_enabled` is true."""
+    if not runtime_trace_enabled():
+        return
+    interval = runtime_trace_interval_sec()
+    if interval > 0 and stage in _RUNTIME_TRACE_THROTTLE_STAGES:
+        with _TRACE_EMIT_LOCK:
+            now = time.monotonic()
+            last = _TRACE_LAST_EMIT_MONO.get(stage, 0.0)
+            if now - last < interval:
+                return
+            _TRACE_LAST_EMIT_MONO[stage] = now
+    parts = ["RUNTIME_TRACE", f"stage={stage}"]
+    for key in sorted(fields.keys()):
+        parts.append(f"{key}={_fmt_trace_val(fields[key])}")
+    logger.info(",".join(parts))
 
 
 def log_event(logger: logging.Logger, event_name: str, level: int = logging.INFO, **fields: object) -> None:
@@ -34,6 +90,17 @@ def log_event(logger: logging.Logger, event_name: str, level: int = logging.INFO
         return
     if hasattr(logger, "info"):
         logger.info(message)
+
+
+def flush_logger_handlers(logger: logging.Logger | None) -> None:
+    """Push log lines to attached file/stream handlers (helps diagnose startup stalls)."""
+    if logger is None:
+        return
+    for h in getattr(logger, "handlers", []):
+        try:
+            h.flush()
+        except Exception:
+            pass
 
 
 def build_logger(name: str, log_level: str = "INFO", file_path: str = "logs/lumina_full_log.csv") -> logging.Logger:

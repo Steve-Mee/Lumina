@@ -6,6 +6,7 @@ Fail-closed design: all security failures default to denial of access.
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -21,6 +22,19 @@ from lumina_core.audit.hash_chain import append_hash_chained_jsonl
 logger = logging.getLogger(__name__)
 
 P = ParamSpec("P")
+
+_ENV_PLACEHOLDER = re.compile(r"^\$\{([^}]+)\}$")
+
+
+def _expand_env_placeholder(value: Any) -> str:
+    """If value is ``${VAR_NAME}``, return ``os.environ[VAR_NAME]`` (or '')."""
+    if value is None:
+        return ""
+    s = str(value).strip()
+    m = _ENV_PLACEHOLDER.match(s)
+    if m:
+        return os.getenv(m.group(1).strip(), "")
+    return s
 
 
 class SecurityConfig:
@@ -46,11 +60,12 @@ class SecurityConfig:
         if not self.cors_allowed_origins:
             logger.warning("CORS allowed origins is empty; API will reject all cross-origin requests")
 
-        # JWT settings
+        # JWT settings (config may use ${VAR} — yaml does not expand env vars)
+        key_from_yaml = _expand_env_placeholder(self.config.get("jwt_secret_key"))
         if use_env_fallback:
-            self.jwt_secret_key = os.getenv("LUMINA_JWT_SECRET_KEY") or self.config.get("jwt_secret_key", "")
+            self.jwt_secret_key = os.getenv("LUMINA_JWT_SECRET_KEY") or key_from_yaml
         else:
-            self.jwt_secret_key = self.config.get("jwt_secret_key", "")
+            self.jwt_secret_key = key_from_yaml or os.getenv("LUMINA_JWT_SECRET_KEY", "")
         if not self.jwt_secret_key:
             raise ValueError(
                 "JWT secret key is not set. "

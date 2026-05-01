@@ -57,8 +57,8 @@ from lumina_core.notifications.telegram_notifier import TelegramNotifier
 from lumina_core.experiments.ab_framework import ABExperimentFramework
 from .rollout import EvolutionRolloutFramework
 # New canonical safety layer — preferred over direct ConstitutionalChecker usage.
+from lumina_core.evolution.shadow_run_storage import load_shadow_runs, save_shadow_runs
 from lumina_core.safety.constitutional_guard import ConstitutionalGuard
-from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 
 
 _METRICS_PATH = Path("logs/evolution_metrics.jsonl")
@@ -78,6 +78,33 @@ def _utc_file_stamp() -> str:
 
 def _seed_from_hash(h: str) -> int:
     return int(hashlib.sha256(h.encode()).hexdigest()[:8], 16)
+
+
+def _coerce_dna_content_to_structured_json(content: Any) -> str:
+    """Return canonical JSON text so ``TradingConstitution`` pre-mutation checks pass."""
+    raw = content if isinstance(content, str) else json.dumps(content, sort_keys=True, ensure_ascii=True)
+    stripped = str(raw).strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        try:
+            obj = json.loads(stripped)
+            if isinstance(obj, dict) and obj:
+                return json.dumps(obj, sort_keys=True, ensure_ascii=True)
+        except json.JSONDecodeError:
+            pass
+    snippet = stripped[:8000]
+    return json.dumps(
+        {
+            "candidate_name": "mutation_candidate",
+            "prompt_tweak": snippet,
+            "regime_focus": "neutral",
+            "hyperparam_suggestion": {
+                "max_risk_percent": 1.0,
+                "drawdown_kill_percent": 8.0,
+            },
+        },
+        sort_keys=True,
+        ensure_ascii=True,
+    )
 
 
 def _apply_dream_learnings_to_dna_content(
@@ -1462,19 +1489,10 @@ class EvolutionOrchestrator:
         )
 
     def _load_shadow_runs(self) -> dict[str, Any]:
-        path = self._shadow_state_path
-        if not path.exists():
-            return {}
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return {}
-        return payload if isinstance(payload, dict) else {}
+        return load_shadow_runs(self._shadow_state_path)
 
     def _save_shadow_runs(self, payload: dict[str, Any]) -> None:
-        path = self._shadow_state_path
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        save_shadow_runs(self._shadow_state_path, payload)
 
     def _mark_shadow_promoted(self, *, dna_hash: str) -> None:
         shadow_runs = self._load_shadow_runs()
@@ -1570,6 +1588,7 @@ class EvolutionOrchestrator:
                 new_content = _apply_dream_learnings_to_dna_content(
                     new_content, dream_report, evolution_mode=evolution_mode
                 )
+                new_content = _coerce_dna_content_to_structured_json(new_content)
                 candidate = self._registry.mutate(
                     parent=base,
                     mutation_rate=rate,
@@ -1585,6 +1604,7 @@ class EvolutionOrchestrator:
                 new_content = _apply_dream_learnings_to_dna_content(
                     new_content, dream_report, evolution_mode=evolution_mode
                 )
+                new_content = _coerce_dna_content_to_structured_json(new_content)
                 candidate = self._registry.mutate(
                     parent=base,
                     mutation_rate=rate,

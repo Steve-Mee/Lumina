@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from lumina_core.ppo_trainer import PPOTrainer
+from lumina_core.engine.canonical_training import PPOTrainer
 
 
 class _PolicyStub:

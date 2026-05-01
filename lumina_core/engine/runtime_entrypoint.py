@@ -66,7 +66,11 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["auto", "sim", "real", "nightly", "paper", "sim_real_guard", "live"],
         help="Runtime mode (default: auto).",
     )
-    parser.add_argument("--headless", action="store_true", help="Run non-UI headless runtime path.")
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="SIM only: run one-shot HeadlessRuntime (CI/smoke). Default SIM uses full bootstrap like REAL.",
+    )
     parser.add_argument("--sim-only", action="store_true", help="Force SIM runtime behavior.")
     parser.add_argument("--real-safe", action="store_true", help="Force REAL runtime with safety gates.")
     parser.add_argument("--duration", default="15m", help="Headless simulated duration (e.g. 15m, 1h).")
@@ -118,8 +122,7 @@ def _test_readiness_bypass_enabled(args: argparse.Namespace) -> bool:
 
 
 def _bind_runtime_module(container: ApplicationContainer, runtime_module) -> None:
-    container.engine.bind_app(runtime_module)
-    container.runtime_context.app = runtime_module
+    container.bind_runtime_module(runtime_module)
 
 
 def _bind_headless_runtime_app(container: ApplicationContainer) -> None:
@@ -140,6 +143,15 @@ def _run_real_runtime(*, run_human_loop: bool = False) -> int:
 
     print(f"LUMINA runtime started (Mode: {container.config.trade_mode.upper()})")
     print(f"Swarm active on symbols: {', '.join(container.swarm_symbols)}")
+
+    from lumina_core.logging_utils import flush_logger_handlers
+
+    container.logger.info(
+        f"RUNTIME_PRE_BOOTSTRAP,bound_app={bool(runtime_module is not None)},"
+        f"trade_mode={getattr(container.config, 'trade_mode', '')},"
+        f"broker_backend={getattr(container.config, 'broker_backend', '')}"
+    )
+    flush_logger_handlers(container.logger)
 
     bootstrap_runtime(container)
 
@@ -321,12 +333,16 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
     if resolved_mode == "nightly":
         return _run_nightly()
 
+    # SIM / Paper: full runtime (bootstrap + supervisor + swarm dashboard) — same stack as REAL.
+    # Risk caps come from config.yaml `sim:` vs `real:` via trade_mode in .env (paper/sim/sim_real_guard).
+    # Use `--headless` only for CI/smoke one-shot HeadlessRuntime (no live supervisor loop).
     if resolved_mode == "sim":
-        if not args.headless:
-            args.headless = True
-        requested_mode = str(args.mode).strip().lower()
-        headless_mode_label = "paper" if requested_mode == "paper" else "sim"
-        return _run_headless_sim(args, mode_label=headless_mode_label)
+        if bool(args.headless):
+            requested_mode = str(args.mode).strip().lower()
+            headless_mode_label = "paper" if requested_mode == "paper" else "sim"
+            return _run_headless_sim(args, mode_label=headless_mode_label)
+        os.environ.setdefault("LUMINA_ENFORCE_ENV_RUNTIME_MODE", "true")
+        return _run_real_runtime(run_human_loop=bool(args.run_human_loop))
 
     if bool(args.real_safe):
         os.environ.setdefault("LUMINA_REAL_SAFE", "true")

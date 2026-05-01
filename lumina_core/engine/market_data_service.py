@@ -15,6 +15,8 @@ import websockets
 
 from .errors import ErrorSeverity, LuminaError, log_structured
 from .tape_reading_agent import TapeReadingAgent
+from lumina_core.sla_config import market_data_latency_sla_ms
+
 from .lumina_engine import LuminaEngine
 
 
@@ -32,6 +34,7 @@ class MarketDataService:
     def __post_init__(self) -> None:
         if self.engine is None:
             raise ValueError("MarketDataService requires a LuminaEngine")
+        self.latency_sla_ms = float(market_data_latency_sla_ms())
 
     def _app(self):
         if self.engine.app is None:

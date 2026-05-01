@@ -12,12 +12,15 @@ State files
   state/evolution_decisions.jsonl – Audit log of approve/reject decisions
   state/evolution_trigger.json    – Written on approve to signal the meta-agent
 
-Requires an X-API-Key header for approve/reject mutations.
+Requires ``X-API-Key`` for mutations. When ``set_security_module()`` is wired from
+``app.py``, keys and admin role follow ``config.yaml`` ``security.api_keys``;
+otherwise ``LUMINA_DASHBOARD_API_KEY`` is used (legacy).
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,12 +29,17 @@ from typing import Any, Optional
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from lumina_core.audit.hash_chain import append_hash_chained_jsonl
+from lumina_core.evolution.promotion_readiness import check_promotion_readiness
 from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 
 router = APIRouter(prefix="/api/evolution", tags=["evolution"])
 
+logger = logging.getLogger(__name__)
+
 # ── Service singleton injected at FastAPI startup ─────────────────────────────
 _obs_service: Any = None
+# Same dict as ``lumina_os.backend.app`` ``SECURITY`` from ``get_security_module`` (optional).
+_SECURITY_MODULE: dict[str, Any] | None = None
 
 # ── State file paths (overridable via env vars for testing) ───────────────────
 _EVOLUTION_LOG = Path(os.getenv("EVOLUTION_LOG_PATH", "state/evolution_log.jsonl"))
@@ -47,6 +55,12 @@ def set_observability_service(obs: Any) -> None:
     """Inject the shared ObservabilityService instance at app startup."""
     global _obs_service
     _obs_service = obs
+
+
+def set_security_module(sec: dict[str, Any] | None) -> None:
+    """Inject the shared security module dict from ``app.py`` (API keys, audit, config)."""
+    global _SECURITY_MODULE
+    _SECURITY_MODULE = sec
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -111,14 +125,61 @@ def _require_dashboard_key_for_mode() -> bool:
     return _runtime_mode() in {"real", "paper", "sim_real_guard"}
 
 
-def _verify_api_key(x_api_key: Optional[str]) -> None:
-    """Raise 401 unless the provided key matches the configured dashboard key."""
+def _verify_legacy_dashboard_key(x_api_key: Optional[str]) -> None:
     if _require_dashboard_key_for_mode() and not _DASHBOARD_API_KEY:
         raise HTTPException(status_code=503, detail="Dashboard API key missing in protected mode")
     if not _DASHBOARD_API_KEY:
         return
     if not x_api_key or x_api_key != _DASHBOARD_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+def _verify_with_security_module(
+    x_api_key: Optional[str],
+    *,
+    require_admin: bool,
+) -> dict[str, Any]:
+    sec = _SECURITY_MODULE
+    if sec is None:
+        raise HTTPException(status_code=503, detail="Security module not initialized")
+    audit = sec.get("audit_log")
+    if not x_api_key:
+        if audit is not None and hasattr(audit, "log_auth_attempt"):
+            audit.log_auth_attempt("unknown", False, "api_key")
+        raise HTTPException(status_code=401, detail="API key required")
+    api_key = sec.get("api_key")
+    if api_key is None or not hasattr(api_key, "verify_api_key"):
+        raise HTTPException(status_code=503, detail="API key authenticator unavailable")
+    meta = api_key.verify_api_key(x_api_key)
+    if not meta:
+        if audit is not None and hasattr(audit, "log_auth_attempt"):
+            audit.log_auth_attempt("unknown", False, "api_key")
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    if audit is not None and hasattr(audit, "log_auth_attempt"):
+        audit.log_auth_attempt(meta.get("name", "api_key"), True, "api_key")
+    cfg = sec.get("config")
+    admin_required = bool(getattr(cfg, "admin_role_required", True)) if cfg is not None else True
+    if require_admin and admin_required:
+        role = str(meta.get("role", "user"))
+        if role != "admin":
+            if audit is not None and hasattr(audit, "log_unauthorized_access"):
+                audit.log_unauthorized_access(
+                    meta.get("name", "unknown"),
+                    "evolution_mutation",
+                    f"insufficient_role_{role}",
+                )
+            raise HTTPException(status_code=403, detail="Admin role required for evolution mutations")
+    return {"api_key": x_api_key, "metadata": meta}
+
+
+def _verify_api_key(x_api_key: Optional[str], *, require_admin: bool = False) -> None:
+    """Authenticate evolution routes; uses injected security or legacy dashboard key."""
+    if not _require_dashboard_key_for_mode():
+        return
+    if _SECURITY_MODULE is not None:
+        _verify_with_security_module(x_api_key, require_admin=require_admin)
+        return
+    _verify_legacy_dashboard_key(x_api_key)
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -142,7 +203,7 @@ async def get_proposals(
     x_api_key: Optional[str] = Header(None),
 ) -> list[dict[str, Any]]:
     """Return all open (undecided) proposals, newest first."""
-    _verify_api_key(x_api_key)
+    _verify_api_key(x_api_key, require_admin=False)
     proposals = _load_proposals()
     decisions = _load_decisions()
     open_proposals = [p for p in proposals if p.get("hash") not in decisions]
@@ -157,7 +218,7 @@ async def approve_proposal(
     x_api_key: Optional[str] = Header(None),
 ) -> dict[str, Any]:
     """Approve a challenger, apply its hyperparams to config, and trigger the meta-agent."""
-    _verify_api_key(x_api_key)
+    _verify_api_key(x_api_key, require_admin=True)
 
     proposals = _load_proposals()
     decisions = _load_decisions()
@@ -195,6 +256,17 @@ async def approve_proposal(
         raise HTTPException(
             status_code=422,
             detail=f"Constitutional gate blocked approved hyperparams: {fatals}",
+        )
+
+    readiness = check_promotion_readiness(
+        mode=_runtime_mode(),
+        challenger=dict(challenger),
+        proposal=dict(proposal) if isinstance(proposal, dict) else None,
+    )
+    if not readiness.ok:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Promotion readiness gate blocked approve: {readiness.message()}",
         )
 
     # Persist approved payload in state; runtime can load this without mutating base config.
@@ -272,7 +344,7 @@ async def reject_proposal(
     x_api_key: Optional[str] = Header(None),
 ) -> dict[str, Any]:
     """Reject a proposal and log the reason; fires an observability alert."""
-    _verify_api_key(x_api_key)
+    _verify_api_key(x_api_key, require_admin=True)
 
     proposals = _load_proposals()
     decisions = _load_decisions()

@@ -284,6 +284,11 @@ class SelfEvolutionMetaAgent:
             mutation_allowed and baseline_auto_apply and signed_approval and swarm_ok
         )
         approval_blocked = bool(self.approval_required and should_auto_apply)
+        if should_auto_apply and not approval_blocked and not dry_run and best is not None:
+            from lumina_core.engine.self_evolution_promotion_gates import promotion_readiness_blocks_auto_apply
+
+            if promotion_readiness_blocks_auto_apply(str(mode_key), best):
+                should_auto_apply = False
         promoted_active_dna = self._promote_winning_dna(
             active_dna=active_dna,
             winner_dna=candidate_dna,

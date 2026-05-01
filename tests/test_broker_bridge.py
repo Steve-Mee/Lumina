@@ -72,6 +72,17 @@ def test_broker_factory_selects_paper() -> None:
     assert isinstance(broker, PaperBroker)
 
 
+def test_broker_factory_live_allows_sim() -> None:
+    cfg = SimpleNamespace(
+        broker_backend="live",
+        trade_mode="sim",
+        crosstrade_token="test-token",
+        crosstrade_account="DEMO5042070",
+    )
+    broker = broker_factory(config=cfg, engine=None, logger=None)
+    assert isinstance(broker, CrossTradeBroker)
+
+
 def test_paper_broker_submit_order_and_fill_tracking() -> None:
     engine = SimpleNamespace(
         live_data_lock=nullcontext(),

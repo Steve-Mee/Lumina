@@ -14,6 +14,40 @@ import requests
 
 from lumina_core.risk.cost_model import TradeExecutionCostModel
 
+# One WARNING per account per process when REST returns no parsable balance/equity (avoid log spam).
+_CROSS_TRADE_BALANCE_WARN_ACCOUNTS: set[str] = set()
+
+_ACCOUNT_BALANCE_KEYS = (
+    "balance",
+    "cashBalance",
+    "cash_balance",
+    "availableBalance",
+    "available_balance",
+    "availableFunds",
+    "netCash",
+    "net_cash",
+    "cashValue",
+    "totalCashValue",
+)
+_ACCOUNT_EQUITY_KEYS = (
+    "equity",
+    "totalEquity",
+    "total_equity",
+    "netLiquidation",
+    "net_liquidation",
+    "accountEquity",
+    "account_equity",
+    "netLiquidationValue",
+    "total_account_value",
+)
+_ACCOUNT_PNL_KEYS = (
+    "realizedPnlToday",
+    "realized_pnl_today",
+    "realizedPnl",
+    "dayPnl",
+    "realizedDayPnl",
+)
+
 
 @dataclass(slots=True)
 class Order:
@@ -250,6 +284,44 @@ class CrossTradeBroker(BrokerBridge):
     _session: requests.Session | None = field(default=None, init=False)
     _last_client_order_id: str = field(default="", init=False)
 
+    @staticmethod
+    def _pick_float(payload: dict[str, Any], keys: tuple[str, ...]) -> float:
+        for key in keys:
+            if key not in payload:
+                continue
+            val = payload.get(key)
+            if val is None:
+                continue
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                continue
+        return 0.0
+
+    @staticmethod
+    def _account_payload_layers(root: dict[str, Any]) -> list[dict[str, Any]]:
+        """Crosstrade often wraps balances inside ``item`` / ``data`` / list entries."""
+        layers: list[dict[str, Any]] = []
+        seen: set[int] = set()
+
+        def add(d: dict[str, Any]) -> None:
+            i = id(d)
+            if i in seen:
+                return
+            seen.add(i)
+            layers.append(d)
+
+        add(root)
+        for key in ("item", "data", "account", "result", "payload", "summary", "details"):
+            node = root.get(key)
+            if isinstance(node, dict):
+                add(node)
+            elif isinstance(node, list):
+                for el in node[:8]:
+                    if isinstance(el, dict):
+                        add(el)
+        return layers
+
     def connect(self) -> bool:
         if self._session is None:
             self._session = requests.Session()
@@ -322,6 +394,10 @@ class CrossTradeBroker(BrokerBridge):
         )
 
     def get_account_info(self) -> AccountInfo:
+        """REST snapshot from Crosstrade (not NinjaTrader UI directly).
+
+        Field names vary by API version; we map common aliases so SIM/demo balances surface when present.
+        """
         try:
             response = self._client().get(
                 f"{self.base_url}/v1/api/accounts/{self.account}",
@@ -329,11 +405,58 @@ class CrossTradeBroker(BrokerBridge):
                 timeout=self.timeout_seconds,
             )
             data = response.json() if response.content else {}
+            if not isinstance(data, dict):
+                data = {"raw": data}
+
+            if response.status_code >= 400:
+                if self.logger is not None:
+                    self.logger.warning(
+                        "CrossTrade get_account_info HTTP %s account=%s body=%s",
+                        response.status_code,
+                        self.account,
+                        (response.text or "")[:400],
+                    )
+                return AccountInfo(balance=0.0, equity=0.0, raw=data)
+
+            layers = self._account_payload_layers(data)
+            balance = 0.0
+            equity = 0.0
+            pnl = 0.0
+            for layer in layers:
+                if balance == 0.0:
+                    balance = self._pick_float(layer, _ACCOUNT_BALANCE_KEYS)
+                if equity == 0.0:
+                    equity = self._pick_float(layer, _ACCOUNT_EQUITY_KEYS)
+                if pnl == 0.0:
+                    pnl = self._pick_float(layer, _ACCOUNT_PNL_KEYS)
+            if equity == 0.0 and balance > 0.0:
+                equity = balance
+
+            if balance == 0.0 and equity == 0.0 and self.logger is not None:
+                aid = str(self.account)
+                if aid not in _CROSS_TRADE_BALANCE_WARN_ACCOUNTS:
+                    _CROSS_TRADE_BALANCE_WARN_ACCOUNTS.add(aid)
+                    item_preview = ""
+                    raw_item = data.get("item")
+                    if isinstance(raw_item, dict):
+                        item_preview = str(sorted(raw_item.keys()))[:200]
+                    elif raw_item is not None:
+                        item_preview = str(raw_item)[:220]
+                    self.logger.warning(
+                        "CrossTrade account REST has no parsable balance/equity for account=%s "
+                        "(parsed nested layers: item/data/account/…). top_keys=%s item_keys_or_preview=%s "
+                        "Set CROSSTRADE_ACCOUNT to the ID Crosstrade shows for your NinjaTrader demo. "
+                        "If this endpoint only returns metadata, balances may live on another route in your tenant.",
+                        aid,
+                        sorted(data.keys())[:28],
+                        item_preview or "<none>",
+                    )
+
             return AccountInfo(
-                balance=float(data.get("balance", 0.0) or 0.0),
-                equity=float(data.get("equity", 0.0) or 0.0),
-                realized_pnl_today=float(data.get("realizedPnlToday", 0.0) or 0.0),
-                raw=data if isinstance(data, dict) else {"raw": data},
+                balance=balance,
+                equity=equity,
+                realized_pnl_today=pnl,
+                raw=data,
             )
         except Exception as exc:
             if self.logger is not None:
@@ -452,8 +575,15 @@ def broker_factory(
 
     if backend == "live":
         trade_mode = str(getattr(config, "trade_mode", "paper") or "paper").strip().lower()
-        if trade_mode != "real":
-            raise ValueError("broker_backend=live requires trade_mode=real (fail-closed)")
+        if trade_mode == "paper":
+            raise ValueError(
+                "broker_backend=live is incompatible with trade_mode=paper "
+                "(set broker_backend=paper for paper mode)"
+            )
+        if trade_mode not in {"sim", "sim_real_guard", "real"}:
+            raise ValueError(
+                f"broker_backend=live requires trade_mode in sim/sim_real_guard/real, got {trade_mode!r}"
+            )
         api_key = str(
             getattr(config, "broker_crosstrade_api_key", None) or getattr(config, "crosstrade_token", "") or ""
         ).strip()

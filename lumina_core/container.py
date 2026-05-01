@@ -41,10 +41,9 @@ from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
 from lumina_core.engine.self_evolution_meta_agent import load_evolution_config
-from lumina_core.infinite_simulator import InfiniteSimulator
-from lumina_core.logging_utils import build_logger
+from lumina_core.engine.canonical_training import InfiniteSimulator, PPOTrainer
+from lumina_core.logging_utils import build_logger, flush_logger_handlers
 from lumina_core.monitoring import ObservabilityService
-from lumina_core.ppo_trainer import PPOTrainer
 from lumina_core.rl_environment import RLTradingEnvironment
 from lumina_core.runtime_context import RuntimeContext
 
@@ -226,8 +225,18 @@ class ApplicationContainer:
 
             container = ApplicationContainer().start()
         """
+        _bk = str(getattr(self.config, "broker_backend", "paper") or "paper").strip().lower()
+        _tm = str(getattr(self.config, "trade_mode", "paper") or "paper").strip().lower()
+        _cls = type(self.broker).__name__
+        self.logger.info(
+            f"BROKER_CONNECT_START,backend={_bk},trade_mode={_tm},broker_class={_cls}"
+        )
+        flush_logger_handlers(self.logger)
         self.broker.connect()
+        self.logger.info(f"BROKER_CONNECT_OK,broker_class={_cls}")
+        flush_logger_handlers(self.logger)
         self._register_cleanup()
+        flush_logger_handlers(self.logger)
         return self
 
     def _validate_config(self) -> None:
@@ -406,6 +415,14 @@ class ApplicationContainer:
 
         self.logger.info("All services initialized successfully")
 
+    def bind_runtime_module(self, runtime_module: Any) -> None:
+        """Bind the process entry module (__main__) as engine.app; attach legacy lumina_runtime API."""
+        from lumina_core.bootstrap import attach_runtime_app_to_module
+
+        attach_runtime_app_to_module(self, runtime_module)
+        self.engine.bind_app(runtime_module)
+        self.runtime_context.app = runtime_module
+
     def _validate_engine_attributes(self) -> None:
         """Validate that all required engine attributes exist before assignment."""
         required_attributes = [
@@ -551,6 +568,7 @@ def create_application_container() -> ApplicationContainer:
         container = ApplicationContainer()
         container.start()
         container.logger.info("✅ Application container initialized successfully")
+        flush_logger_handlers(container.logger)
         return container
     except Exception as e:
         logging.error(f"Failed to initialize application container: {e}", exc_info=True)

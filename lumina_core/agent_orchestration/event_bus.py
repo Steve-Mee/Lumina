@@ -8,11 +8,18 @@ The bus is intentionally small and framework-agnostic:
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
+
+from pydantic import ValidationError
+
+from lumina_core.agent_orchestration.event_payloads import validate_event_payload
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> str:
@@ -72,6 +79,28 @@ class EventBus:
         for callback in callbacks:
             callback(event)
         return event
+
+    def publish_validated(
+        self,
+        *,
+        topic: str,
+        producer: str,
+        payload: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> DomainEvent | None:
+        """Like ``publish`` but validates allowlisted topics; returns ``None`` on validation failure (fail-closed)."""
+        topic_key = str(topic).strip().lower()
+        try:
+            safe_payload = validate_event_payload(topic_key, dict(payload))
+        except ValidationError as exc:
+            logger.warning("EventBus publish_validated rejected topic=%s: %s", topic_key, exc)
+            return None
+        return self.publish(
+            topic=topic_key,
+            producer=str(producer),
+            payload=safe_payload,
+            metadata=dict(metadata or {}),
+        )
 
     def subscribe(self, topic: str, callback: Callable[[DomainEvent], None]) -> str:
         topic_key = str(topic).strip().lower()

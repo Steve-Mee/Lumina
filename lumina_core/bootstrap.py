@@ -11,12 +11,87 @@ import time
 import numpy as np
 import requests
 
-from typing import Callable
+from typing import Any, Callable
 
 from lumina_core import backtest_workers, runtime_workers, trade_workers
 from lumina_core.container import ApplicationContainer
+from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
+from lumina_core.logging_utils import flush_logger_handlers
 from lumina_core.runtime_bootstrap import start_runtime_services
 from lumina_core.threading_utils import start_daemon
+
+
+def _validate_bootstrapped_ohlc(container: ApplicationContainer) -> None:
+    """Log structured quality checks on primary ``ohlc_1min`` after historical bootstrap."""
+    import pandas as pd
+
+    logger = container.logger
+    df = getattr(container.engine, "ohlc_1min", None)
+    rows = len(df) if df is not None else 0
+    issues: list[str] = []
+    span_h = 0.0
+    t_first = ""
+    t_last = ""
+
+    if df is None or rows == 0:
+        issues.append("primary_ohlc_empty")
+    else:
+        if rows < 120:
+            issues.append(f"primary_rows_low:{rows}")
+        if "timestamp" in df.columns:
+            ts = pd.to_datetime(df["timestamp"], errors="coerce").dropna()
+            if len(ts) >= 2:
+                span_h = float((ts.max() - ts.min()).total_seconds() / 3600.0)
+                t_first = str(ts.iloc[0])
+                t_last = str(ts.iloc[-1])
+                if span_h < 2.0:
+                    issues.append(f"span_hours_low:{span_h:.2f}")
+                if not bool(ts.is_monotonic_increasing):
+                    issues.append("timestamps_not_sorted")
+                dup = int(ts.duplicated().sum())
+                if dup > 0:
+                    issues.append(f"duplicate_timestamps:{dup}")
+            elif len(ts) < 2:
+                issues.append("timestamps_insufficient")
+        for col in ("open", "high", "low", "close"):
+            if col in df.columns and bool(df[col].isna().any()):
+                issues.append(f"nan_{col}")
+        if "high" in df.columns and "low" in df.columns:
+            try:
+                if bool((df["high"] < df["low"]).any()):
+                    issues.append("high_lt_low_rows")
+            except Exception:
+                issues.append("ohlc_compare_failed")
+        if "volume" in df.columns:
+            try:
+                if bool((df["volume"] < 0).any()):
+                    issues.append("negative_volume")
+            except Exception:
+                pass
+
+    status = "ok"
+    if issues:
+        status = "fail" if "primary_ohlc_empty" in issues else "degraded"
+
+    logger.info(
+        "BOOTSTRAP_OHLC_QUALITY,status=%s,primary_rows=%d,span_hours=%.2f,t_first=%s,t_last=%s,issues=%s",
+        status,
+        rows,
+        span_h,
+        (t_first[:28] if t_first else ""),
+        (t_last[:28] if t_last else ""),
+        ";".join(issues) if issues else "none",
+    )
+    if status == "fail":
+        logger.error(
+            "BOOTSTRAP_OHLC_QUALITY | Geen historische 1m-bars voor primair instrument — "
+            "controleer CROSSTRADE_TOKEN, instrument en netwerk."
+        )
+    elif status == "degraded":
+        logger.warning(
+            "BOOTSTRAP_OHLC_QUALITY | Data geladen maar kwaliteit kan onvoldoende zijn voor RL/neuro (zie issues). "
+            "Overweeg echte simulator-data, meer historie, of symbolavailability."
+        )
 
 
 def publish_traderleague_trade_close(
@@ -245,6 +320,54 @@ def create_public_api(container: ApplicationContainer) -> dict[str, Callable]:
     }
 
 
+def attach_runtime_app_to_module(container: ApplicationContainer, runtime_module: Any) -> None:
+    """Populate bound ``__main__`` with the same API ``lumina_runtime`` exposes via ``__getattr__``.
+
+    ``runtime_entrypoint`` binds ``sys.modules['__main__']`` as ``engine.app``; that module does not
+    define legacy helpers unless we attach them here (see HumanAnalysisService, PerformanceValidator).
+    """
+    if getattr(runtime_module, "logger", None) is None:
+        runtime_module.logger = container.logger
+
+    api = create_public_api(container)
+    for name, fn in api.items():
+        setattr(runtime_module, name, fn)
+
+    runtime_module.detect_market_regime = container.engine.detect_market_regime
+    runtime_module.detect_market_structure = container.engine.detect_market_structure
+    runtime_module.run_async_safely = container.engine.run_async_safely
+
+    runtime_module.multi_agent_consensus = container.reasoning_service.multi_agent_consensus
+    runtime_module.meta_reasoning_and_counterfactuals = container.reasoning_service.meta_reasoning_and_counterfactuals
+    runtime_module.update_world_model = container.memory_service.update_world_model
+    runtime_module.generate_multi_tf_chart = container.visualization_service.generate_multi_tf_chart
+
+    cfg = container.config
+    runtime_module.container = container
+    runtime_module.engine = container.engine
+    runtime_module.config = cfg
+    runtime_module.CONFIG = cfg
+    runtime_module.INSTRUMENT = container.primary_instrument
+    runtime_module.SWARM_SYMBOLS = list(container.swarm_symbols)
+
+    vc = container.voice_config
+    runtime_module.VOICE_ENABLED = bool(vc.output_enabled or vc.input_enabled)
+    runtime_module.tts_engine = container.tts_engine
+    runtime_module.FAST_PATH_ONLY = False
+
+    runtime_module.DASHBOARD_ENABLED = bool(cfg.dashboard_enabled)
+    runtime_module.SCREEN_SHARE_ENABLED = bool(cfg.screen_share_enabled)
+    runtime_module.CROSSTRADE_TOKEN = str(cfg.crosstrade_token or "")
+    runtime_module.CROSSTRADE_ACCOUNT = str(cfg.crosstrade_account or "")
+
+    runtime_module.blackboard = container.blackboard
+    runtime_module.news_agent = container.news_agent
+    runtime_module.emotional_twin_agent = container.emotional_twin_agent
+    runtime_module.swarm_manager = container.swarm_manager
+    runtime_module.trade_reconciler = container.trade_reconciler
+    runtime_module.local_inference_engine = container.local_inference_engine
+
+
 def bootstrap_runtime(container: ApplicationContainer) -> None:
     """
     Initialize and start all runtime services.
@@ -253,11 +376,37 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
     load history, and start all daemon threads.
     """
     container.logger.info("🚀 Bootstrap runtime services starting...")
+    _caps = resolve_mode_capabilities(str(container.config.trade_mode))
+    container.logger.info(
+        "RUNTIME_BOOT,"
+        f"trade_mode={container.config.trade_mode},"
+        f"broker_backend={container.config.broker_backend},"
+        f"risk_enforced={_caps.risk_enforced},"
+        f"session_guard_enforced={_caps.session_guard_enforced},"
+        f"requires_live_broker={_caps.requires_live_broker},"
+        f"reconcile_fills_default={_caps.reconcile_fills_enabled_default},"
+        f"capital_at_risk={_caps.capital_at_risk}"
+    )
+    flush_logger_handlers(container.logger)
+
+    container.logger.info(
+        "BOOTSTRAP_SLA,market_data_ms=%.0f,reasoning_ms=%.0f",
+        float(container.market_data_service.latency_sla_ms),
+        float(container.reasoning_service.latency_sla_ms),
+    )
+    flush_logger_handlers(container.logger)
 
     # Load historical data and initialize swarm
+    _primary = str(getattr(container.config, "instrument", "") or "")
+    container.logger.info(f"BOOTSTRAP_HIST_LOAD_START,primary={_primary},swarm_n={len(container.swarm_symbols)}")
+    flush_logger_handlers(container.logger)
     container.market_data_service.load_historical_ohlc(days_back=3, limit=5000)
+    container.logger.info("BOOTSTRAP_HIST_LOAD_PRIMARY_DONE")
+    flush_logger_handlers(container.logger)
     for symbol in container.swarm_symbols:
         try:
+            container.logger.info(f"BOOTSTRAP_HIST_LOAD_SWARM,symbol={symbol}")
+            flush_logger_handlers(container.logger)
             symbol_df = container.market_data_service.load_historical_ohlc_for_symbol(
                 instrument=symbol, days_back=3, limit=5000
             )
@@ -265,6 +414,11 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
                 container.swarm_manager.ingest_historical_rows(symbol=symbol, rows_df=symbol_df)
         except Exception as exc:
             container.logger.error(f"Swarm historical bootstrap error for {symbol}: {exc}")
+    container.logger.info("BOOTSTRAP_HIST_LOAD_SWARM_DONE")
+    flush_logger_handlers(container.logger)
+
+    _validate_bootstrapped_ohlc(container)
+    flush_logger_handlers(container.logger)
 
     # Run initial swarm cycle
     _ = container.swarm_manager.run_cycle()
