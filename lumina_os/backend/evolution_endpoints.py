@@ -23,7 +23,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-import yaml
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 from lumina_core.audit.hash_chain import append_hash_chained_jsonl
@@ -37,7 +36,6 @@ _obs_service: Any = None
 # ── State file paths (overridable via env vars for testing) ───────────────────
 _EVOLUTION_LOG = Path(os.getenv("EVOLUTION_LOG_PATH", "state/evolution_log.jsonl"))
 _EVOLUTION_DECISIONS = Path(os.getenv("EVOLUTION_DECISIONS_PATH", "state/evolution_decisions.jsonl"))
-_CONFIG_PATH = Path(os.getenv("LUMINA_CONFIG", "config.yaml"))
 _EVOLUTION_TRIGGER = Path(os.getenv("EVOLUTION_TRIGGER_PATH", "state/evolution_trigger.json"))
 _APPROVED_HYPERPARAMS = Path(os.getenv("APPROVED_HYPERPARAMS_PATH", "state/approved_hyperparams.json"))
 

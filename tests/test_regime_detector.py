@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -119,7 +120,7 @@ class TestRegimeDetector:
             _trending_frame(),
             instrument="MES JUN26",
             confluence_score=0.7,
-            now=pd.Timestamp("2026-06-17T14:30:00+00:00").to_pydatetime(),
+            now=datetime.fromisoformat("2026-06-17T14:30:00+00:00"),
         )
         assert snapshot.label == "ROLLOVER"
 
@@ -256,7 +257,16 @@ def test_trade_workers_apply_tighter_limits_in_high_risk_regime() -> None:
 
 
 @pytest.mark.slow
-def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path) -> None:
+def test_self_evolution_meta_agent_uses_regime_breakdown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Regime breakdown lives in the meta-agent meta_review path; avoid full multi-gen
+    # EvolutionOrchestrator (candidate DNA constitution gates) — out of scope for this assertion.
+    monkeypatch.setattr(
+        "lumina_core.engine.self_evolution_meta_agent.should_run_multi_gen_nightly",
+        lambda **_: False,
+    )
+
     engine = SimpleNamespace(
         config=SimpleNamespace(
             risk_profile="balanced",

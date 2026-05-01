@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
 import os
+from datetime import UTC, datetime
+from typing import Any
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import requests
@@ -27,19 +28,28 @@ def render_leaderboard_tab(api_base_url: str) -> None:
     leaderboard_rows = data.get("leaderboard", []) if isinstance(data, dict) else []
     leaderboard_df = pd.DataFrame(leaderboard_rows)
 
+    # Positional index so rank = row position + 1 matches API sort order.
+    lb = leaderboard_df.reset_index(drop=True)
+
     col1, col2, col3 = st.columns(3)
-    participants = int(len(leaderboard_df.index)) if not leaderboard_df.empty else 0
-    trades_total = int(leaderboard_df["trades"].sum()) if "trades" in leaderboard_df.columns else 0
+    participants = int(len(lb.index)) if not lb.empty else 0
+    trades_total = 0
+    if not lb.empty and "trades" in lb.columns:
+        trades_numeric = pd.to_numeric(lb["trades"], errors="coerce")
+        if isinstance(trades_numeric, pd.Series):
+            trades_total = int(float(trades_numeric.fillna(0).sum()))
 
     lumina_rank = "-"
     lumina_pnl = 0.0
-    if not leaderboard_df.empty and "participant" in leaderboard_df.columns:
-        names = leaderboard_df["participant"].astype(str)
-        lumina_rows = leaderboard_df[names.str.contains("LUMINA", case=False, na=False)]
-        if not lumina_rows.empty:
-            first_idx = int(lumina_rows.index[0])
-            lumina_rank = str(first_idx + 1)
-            if "total_pnl" in lumina_rows.columns:
+    if not lb.empty and "participant" in lb.columns:
+        names = lb["participant"].astype(str)
+        mask = names.str.contains("LUMINA", case=False, na=False)
+        lumina_rows = lb.loc[mask]
+        hit = mask.to_numpy(dtype=bool, copy=False)
+        if hit.any():
+            row_ix = int(np.argmax(hit))
+            lumina_rank = str(row_ix + 1)
+            if "total_pnl" in lb.columns and not lumina_rows.empty:
                 lumina_pnl = float(lumina_rows.iloc[0]["total_pnl"] or 0.0)
 
     col1.metric("Participants", participants)
@@ -49,7 +59,7 @@ def render_leaderboard_tab(api_base_url: str) -> None:
     if lumina_rank != "-":
         st.caption(f"LUMINA total PnL: ${lumina_pnl:,.2f}")
 
-    st.dataframe(leaderboard_df, width="stretch")
+    st.dataframe(lb, width="stretch")
 
     st.markdown("---")
     st.subheader("Fill Reconciliation Status")
@@ -61,7 +71,7 @@ def render_leaderboard_tab(api_base_url: str) -> None:
         status_col_2.metric("Pending Closes", int(status_payload.get("pending_count", 0) or 0))
         status_col_3.metric("Method", str(status_payload.get("method", "unknown")).upper())
 
-        st.caption(f"Last update: {status_payload.get('updated_at', datetime.utcnow().isoformat())}")
+        st.caption(f"Last update: {status_payload.get('updated_at', datetime.now(UTC).isoformat())}")
         pending_symbols = status_payload.get("pending_symbols")
         if isinstance(pending_symbols, list) and pending_symbols:
             st.write("Pending symbols:", ", ".join(str(item) for item in pending_symbols))

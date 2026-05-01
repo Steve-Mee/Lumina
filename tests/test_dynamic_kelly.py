@@ -5,7 +5,7 @@ All tests are unit-level: no I/O, no external services.
 
 from __future__ import annotations
 
-import math
+import random
 from pathlib import Path
 
 import pytest
@@ -17,6 +17,7 @@ from lumina_core.engine.financial_contracts import DynamicKellyContract
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_estimator(
     tmp_path: Path,
@@ -55,6 +56,7 @@ def _feed_trades(
 # ---------------------------------------------------------------------------
 # Classical Kelly tests (vol_scaling_enabled=False)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestDynamicKellyEstimator:
@@ -115,6 +117,7 @@ class TestDynamicKellyEstimator:
     def test_log_estimate_includes_vol_fields(self, tmp_path: Path):
         """Log must include vol_scaling_factor and vol_target_annual."""
         import json
+
         est = _make_estimator(tmp_path, vol_scaling_enabled=True)
         _feed_trades(est, wins=20, losses=10)
         est.log_estimate("real")
@@ -143,6 +146,7 @@ class TestDynamicKellyEstimator:
 # Volatility-adjusted Kelly tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestVolatilityAdjustedKelly:
     def test_vol_scalar_is_one_when_disabled(self, tmp_path: Path):
@@ -167,13 +171,14 @@ class TestVolatilityAdjustedKelly:
         - High-CV: wild alternation of 100 and -90 — near-zero net, huge spread,
           CV ≈ 1.0 → scalar = min(1, 0.10/1.0) = 0.10
         """
-        est_lowcv  = _make_estimator(tmp_path / "lowcv",  vol_scaling_enabled=True,
-                                     vol_target_annual=0.10, vol_lookback_trades=20)
-        est_highcv = _make_estimator(tmp_path / "highcv", vol_scaling_enabled=True,
-                                     vol_target_annual=0.10, vol_lookback_trades=20)
+        est_lowcv = _make_estimator(
+            tmp_path / "lowcv", vol_scaling_enabled=True, vol_target_annual=0.10, vol_lookback_trades=20
+        )
+        est_highcv = _make_estimator(
+            tmp_path / "highcv", vol_scaling_enabled=True, vol_target_annual=0.10, vol_lookback_trades=20
+        )
 
         # Low-CV: tight wins around 100 (no losses) — std≈3, mean_abs≈100, CV≈0.03
-        import math, random
         rng = random.Random(42)
         for _ in range(30):
             est_lowcv.record_trade(100.0 + rng.gauss(0, 3.0))
@@ -182,7 +187,7 @@ class TestVolatilityAdjustedKelly:
         for i in range(30):
             est_highcv.record_trade(100.0 if i % 2 == 0 else -90.0)
 
-        scalar_lowcv  = est_lowcv.vol_scaling_factor()
+        scalar_lowcv = est_lowcv.vol_scaling_factor()
         scalar_highcv = est_highcv.vol_scaling_factor()
 
         assert scalar_highcv < scalar_lowcv, (
@@ -218,6 +223,7 @@ class TestVolatilityAdjustedKelly:
 # DynamicKellyContract tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestDynamicKellyContract:
     def test_profit_factor_calculation(self, tmp_path: Path):
@@ -236,6 +242,7 @@ class TestDynamicKellyContract:
 # ---------------------------------------------------------------------------
 # OrderBookReplay tests (cost model integration through backtester)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestOrderBookReplay:

@@ -4,6 +4,13 @@
 
 Gebruik optioneel `python scripts/prepare_release.py` voor een **draft changelog** (ADR-snapshot) en een **printbare reminder** van de kernpunten.
 
+**Codekwaliteit triage (RCA + veilige fixes):** [`scripts/fix_code_quality.py`](../scripts/fix_code_quality.py) verzamelt Ruff (JSON), MyPy (`mypy.ini`, optioneel `--strict-mypy`), optioneel Pyright en falende tests (`pytest --tb=no`), voegt **root-cause-analyse** toe (geen blinde `# noqa` / `type: ignore`), schrijft `quality_fix_report.md`, en kan in `--apply`-modus alleen **veilige Ruff-autofixes** toepassen na bevestiging. Standaard: `--dry-run`.
+
+```bash
+python scripts/fix_code_quality.py --dry-run
+python scripts/fix_code_quality.py --dry-run --category lint
+```
+
 **Volledige changelog (aanbevolen voor releases):** [`scripts/generate_changelog.py`](../scripts/generate_changelog.py) combineert ADR’s sinds een datum met **conventional commits** (`git log`) en schrijft een **Keep a Changelog**-compatibele [`CHANGELOG.md`](../CHANGELOG.md). Voorbeeld:
 
 ```bash

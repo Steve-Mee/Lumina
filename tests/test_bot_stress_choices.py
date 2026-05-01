@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from lumina_core.evolution.bot_stress_choices import (
-    BOT_STRESS_CHOICES_FILE,
     ENV_NEURO_OHLC_ROLLOUTS,
     ENV_OHLC_DNA_STRESS,
     apply_env_stress_flags,

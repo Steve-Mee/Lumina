@@ -14,12 +14,36 @@ import time
 import types
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+class _IntegrationStubApp(types.ModuleType):
+    """Minimal ``ModuleType`` subclass so ``bind_app`` / static checks see a real app surface."""
+
+    logger: Any
+    INSTRUMENT: str
+    FAST_PATH_ONLY: bool
+    world_model: dict[str, Any]
+    get_high_impact_news: Callable[[], dict[str, Any]]
+
+    def __init__(self, name: str, *, logger: Any, instrument: str) -> None:
+        super().__init__(name)
+        self.logger = logger
+        self.INSTRUMENT = instrument
+        self.FAST_PATH_ONLY = False
+        self.world_model = {}
+        self.get_high_impact_news = lambda: {
+            "events": [],
+            "overall_sentiment": "neutral",
+            "impact": "low",
+        }
 
 
 @pytest.fixture
@@ -34,12 +58,11 @@ def container_with_stub_app(monkeypatch):
     from lumina_core.container import create_application_container
 
     container = create_application_container()
-    stub = types.ModuleType("lumina_app_agents_integration_stub")
-    stub.logger = container.logger
-    stub.INSTRUMENT = str(getattr(container.config, "instrument", None) or "MES JUN26")
-    stub.FAST_PATH_ONLY = False
-    stub.world_model = {}
-    stub.get_high_impact_news = lambda: {"events": [], "overall_sentiment": "neutral", "impact": "low"}
+    stub = _IntegrationStubApp(
+        "lumina_app_agents_integration_stub",
+        logger=container.logger,
+        instrument=str(getattr(container.config, "instrument", None) or "MES JUN26"),
+    )
     container.engine.bind_app(stub)
     container.runtime_context.app = stub
     return container

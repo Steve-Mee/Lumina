@@ -9,7 +9,6 @@ import pytest
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.evolution.parallel_reality_config import (
     ENV_PARALLEL_REALITIES,
-    SESSION_FILE,
     apply_env_parallel_realities,
     clamp_parallel,
     recommend_parallel_realities,

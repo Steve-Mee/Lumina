@@ -5,7 +5,7 @@ All tests are unit-level — uses tmp_path for state isolation.
 
 from __future__ import annotations
 
-import json
+import random
 from pathlib import Path
 
 import pytest
@@ -17,6 +17,7 @@ from lumina_core.experiments.ab_framework import ABExperimentFramework
 # ---------------------------------------------------------------------------
 # Statistical helpers
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestStatisticalHelpers:
@@ -30,7 +31,6 @@ class TestStatisticalHelpers:
         assert p >= 0.9
 
     def test_welch_t_pvalue_clearly_different_low_pvalue(self):
-        import random
         rng = random.Random(42)
         a = [rng.gauss(0.0, 1.0) for _ in range(100)]
         b = [rng.gauss(5.0, 1.0) for _ in range(100)]
@@ -43,7 +43,6 @@ class TestStatisticalHelpers:
         assert abs(d) < 1e-9
 
     def test_cohens_d_large_for_very_different(self):
-        import random
         rng = random.Random(7)
         # Means separated by 10 sigma apart — Cohen's d should be large
         a = [rng.gauss(0.0, 1.0) for _ in range(40)]
@@ -55,6 +54,7 @@ class TestStatisticalHelpers:
 # ---------------------------------------------------------------------------
 # ShadowDeploymentTracker
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestShadowDeploymentTracker:
@@ -123,7 +123,6 @@ class TestShadowDeploymentTracker:
         assert result["verdict"] == "inconclusive"
 
     def test_shadow_ab_variant_wins_clear_difference(self, tmp_path: Path):
-        import random
         rng = random.Random(99)
         ctrl = [rng.gauss(0.0, 1.0) for _ in range(60)]
         variant = [rng.gauss(5.0, 1.0) for _ in range(60)]
@@ -136,6 +135,7 @@ class TestShadowDeploymentTracker:
 # ABExperimentFramework.run_shadow_ab
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestABFrameworkShadowAB:
     def test_run_shadow_ab_inconclusive_small_samples(self):
@@ -144,7 +144,6 @@ class TestABFrameworkShadowAB:
         assert result.verdict == "inconclusive"
 
     def test_run_shadow_ab_variant_wins(self):
-        import random
         rng = random.Random(123)
         ctrl = [rng.gauss(1.0, 1.0) for _ in range(60)]
         variant = [rng.gauss(6.0, 1.0) for _ in range(60)]

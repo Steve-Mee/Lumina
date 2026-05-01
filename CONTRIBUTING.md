@@ -59,6 +59,22 @@ mypy .
 pytest -m "not slow"
 ```
 
+### Code quality triage (`scripts/fix_code_quality.py`)
+
+Voor een **gestructureerde** pas over lint, types en (optioneel) falende tests — met **root-cause narrative** (bounded context, ontwerp vs bug) en **extreme intellectual honesty** — gebruik:
+
+```bash
+python scripts/fix_code_quality.py --dry-run
+```
+
+- **Standaard:** analyse-only (`--dry-run`); schrijft `quality_fix_report.md` in de repo-root met samenvatting, RCA en voorstellen.
+- **`--apply`:** past alleen **objectief veilige** Ruff-autofixes toe na bevestiging (`--confirm batch|issue`, of `-y` voor niet-interactief). Het script voegt **geen** `# noqa` of `type: ignore` toe — typefouten en testfails zijn **handmatig** op te lossen volgens het rapport.
+- **`--category`:** `all` | `lint` | `type` | `test` — beperk scope.
+- **`--strict-mypy`:** strengere MyPy-pass (`--strict` op de CLI naast `mypy.ini`); sluit aan bij diepere contractreviews, los van CI die vaak de project-config gebruikt.
+- **`--with-pyright` / `--no-pytest`:** optionele tools volgens je lokale setup.
+
+Na wijzigingen met `--apply` draait het script standaard `pytest -m "not slow"` ter verificatie (uitschakelbaar met `--no-verify-tests`).
+
 - **`ruff`** en **`mypy`** horen groen te zijn voor gewijzigde code.
 - **`pytest -m "not slow"`** sluit de `slow`-marker uit (zware sims, lange runs); die horen in CI/nightly, niet per se op elke laptop-frequentie.
 

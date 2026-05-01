@@ -1,7 +1,8 @@
 """Monte Carlo mode: strict config uses historical sub-windows only (no OHLC noise)."""
 from __future__ import annotations
 
-from types import SimpleNamespace
+from typing import cast
+from unittest.mock import MagicMock
 
 import numpy as np
 import pandas as pd
@@ -10,6 +11,7 @@ import pytest
 from lumina_core.engine.advanced_backtester_engine import AdvancedBacktesterEngine, _monte_carlo_work_frame
 from lumina_core.engine.engine_config import EngineConfig
 from lumina_core.engine.lumina_engine import LuminaEngine
+from lumina_core.engine.realistic_backtester_engine import RealisticBacktesterEngine
 from lumina_core.runtime_context import RuntimeContext
 
 
@@ -47,7 +49,9 @@ def test_full_monte_carlo_historical_bootstrap_subsamples_real_bars(monkeypatch:
         captured.append(snapshot.copy())
         return dict(stub_metrics)
 
-    advanced.realistic = SimpleNamespace(run_backtest_on_snapshot=fake_run)
+    mock_realistic = MagicMock(spec=RealisticBacktesterEngine)
+    mock_realistic.run_backtest_on_snapshot = fake_run
+    advanced.realistic = cast(RealisticBacktesterEngine, mock_realistic)
 
     n = 180
     prices = np.linspace(5000.0, 5010.0, n)
@@ -80,7 +84,9 @@ def test_full_monte_carlo_insufficient_rows_returns_empty_runs(monkeypatch: pyte
     engine = LuminaEngine(config=EngineConfig())
     ctx = RuntimeContext(engine=engine)
     advanced = AdvancedBacktesterEngine(ctx)
-    advanced.realistic = SimpleNamespace(run_backtest_on_snapshot=lambda _s: {})
+    stub = MagicMock(spec=RealisticBacktesterEngine)
+    stub.run_backtest_on_snapshot = lambda _s: {}
+    advanced.realistic = cast(RealisticBacktesterEngine, stub)
 
     df = pd.DataFrame(
         {
