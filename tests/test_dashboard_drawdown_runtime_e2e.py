@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 from lumina_core.engine.dashboard_service import DashboardService
-from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
+from lumina_core.risk.risk_controller import HardRiskController, RiskLimits
 
 
 def _figure_traces(fig: Any) -> list[Any]:

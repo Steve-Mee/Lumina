@@ -11,7 +11,7 @@ import pytest
 
 from lumina_core.engine.regime_detector import RegimeDetector
 from lumina_core.engine.reasoning_service import ReasoningService
-from lumina_core.engine.risk_controller import HardRiskController, RiskLimits
+from lumina_core.risk.risk_controller import HardRiskController, RiskLimits
 from lumina_core.engine.self_evolution_meta_agent import SelfEvolutionMetaAgent
 from lumina_core.evolution.dna_registry import DNARegistry
 from lumina_core.trade_workers import check_pre_trade_risk

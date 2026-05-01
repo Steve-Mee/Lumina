@@ -10,7 +10,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from lumina_core.engine.risk_controller import (
+from lumina_core.risk.risk_controller import (
     HardRiskController,
     RiskLimits,
 )

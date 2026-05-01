@@ -21,7 +21,7 @@ from .lumina_engine import LuminaEngine
 from lumina_bible.chroma_community import resolve_community_vector_collection
 from .evolution_lifecycle import EvolutionLifecycleManager
 from .errors import ErrorSeverity, LuminaError
-from .risk_controller import HardRiskController
+from lumina_core.risk.risk_controller import HardRiskController
 from .valuation_engine import ValuationEngine
 from lumina_core.experiments.ab_framework import ABExperimentFramework
 

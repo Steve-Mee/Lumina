@@ -14,6 +14,7 @@ from .community_knowledge import append_community_queue_item, run_community_know
 from .lumina_bible import LuminaBible
 from .strategy_generator import StrategyGenerator
 from .neuroevolution import mutate_weights, crossover_weights, evaluate_weight_population
+from .rollout import EvolutionRolloutFramework, RolloutDecision
 
 __all__ = [
     "DNARegistry",
@@ -43,4 +44,6 @@ __all__ = [
     "mutate_weights",
     "crossover_weights",
     "evaluate_weight_population",
+    "EvolutionRolloutFramework",
+    "RolloutDecision",
 ]

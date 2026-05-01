@@ -29,9 +29,9 @@ jobs:
           pip-audit --requirement requirements-core.txt
           pip-audit --requirement requirements-trading.txt
 
-      - name: safety check (core + trading requirements)
+      - name: safety audit (scan/check fallback)
         run: |
-          safety check -r requirements-core.txt -r requirements-trading.txt --full-report
+          python scripts/validation/run_safety_audit.py
 
       - name: Generate SBOM (CycloneDX JSON)
         run: |
@@ -45,4 +45,5 @@ jobs:
           path: |
             pip_audit_report.json
             docs/sbom.json
+            state/safety_scan_report.json
           retention-days: 30

@@ -233,6 +233,19 @@ The `ConstitutionalGuard` is wired into `EvolutionOrchestrator` at two points:
 
 2. **`_run_single_generation()`**: `check_pre_promotion()` is called as the final gate before a winner DNA is promoted to `"active"` status. This replaces the previous inline `ConstitutionalChecker()` call.
 
+### Rollout Safety Layer (Shadow + Human Approval)
+
+**Files:** `lumina_core/evolution/rollout.py`, `lumina_core/evolution/evolution_orchestrator.py`
+
+LUMINA voegt een extra promotion gate toe via `EvolutionRolloutFramework`:
+
+1. **Shadow-first in REAL mode**: geen REAL promotie zonder geslaagde shadow-validatie.
+2. **Radicale mutaties**: verplicht expliciete human approval in REAL/PAPER.
+3. **A/B context**: geselecteerde variant wordt vergeleken met de A/B baseline.
+4. **Audit trail**: iedere rollout-beslissing wordt gelogd naar `state/evolution_rollout_history.jsonl`.
+
+Deze laag is fail-closed: als shadow of human approval niet voldoet, wordt promotie geblokkeerd.
+
 ---
 
 ## Red-Team Testing

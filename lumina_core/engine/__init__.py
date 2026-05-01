@@ -40,6 +40,7 @@ from .multi_symbol_swarm_manager import MultiSymbolSwarmManager, SymbolNode
 from .swarm_manager import SwarmManager
 from .trade_reconciler import TradeReconciler
 from .visualization_service import VisualizationService
+from lumina_core.agent_orchestration.event_bus import DomainEvent, EventBus
 
 __all__ = [
     "HumanAnalysisService",
@@ -85,4 +86,6 @@ __all__ = [
     "SwarmManager",
     "TradeReconciler",
     "VisualizationService",
+    "DomainEvent",
+    "EventBus",
 ]

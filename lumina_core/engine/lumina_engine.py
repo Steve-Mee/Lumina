@@ -18,7 +18,7 @@ from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .economic_truth import EconomicTruth
 from .market_data_manager import MarketDataManager
-from .risk_controller import HardRiskController, risk_limits_from_config
+from lumina_core.risk.risk_controller import HardRiskController, risk_limits_from_config
 from .session_guard import SessionGuard
 from .valuation_engine import ValuationEngine
 from .analysis_helpers import (
@@ -33,6 +33,7 @@ from .analysis_helpers import (
     run_async_safely,
     update_cost_tracker_from_usage,
 )
+from lumina_core.agent_orchestration.engine_bindings import bind_engine_blackboard
 
 
 @dataclass(slots=True)
@@ -165,6 +166,8 @@ class LuminaEngine:
     # Central pub/sub bus for all agent communication.
     blackboard: Any | None = None
     blackboard_tokens: list[str] = field(default_factory=list)
+    # Central domain event bus for bounded-context integration.
+    event_bus: Any | None = None
     # Nightly meta orchestrator wrapper around self-evolution.
     meta_agent_orchestrator: Any | None = None
     # Market data service for bar/candle loading
@@ -675,50 +678,19 @@ class LuminaEngine:
     def bind_blackboard(self, blackboard: Any) -> None:
         """Bind engine consumers to blackboard topics and enforce REAL safety gates."""
         self.blackboard = blackboard
-        self.blackboard_tokens = []
-
-        if blackboard is None or not hasattr(blackboard, "subscribe"):
-            return
-
-        def _proposal_handler(event: Any) -> None:
-            payload = getattr(event, "payload", {})
-            if not isinstance(payload, dict):
-                return
-            self.set_current_dream_fields(payload)
-
-        def _execution_handler(event: Any) -> None:
-            payload = getattr(event, "payload", {})
-            confidence = float(getattr(event, "confidence", payload.get("confidence", 0.0)) or 0.0)
-            if not isinstance(payload, dict):
-                return
-
-            mode = str(getattr(self.config, "trade_mode", "paper")).strip().lower()
-            if mode == "real" and confidence < 0.8:
-                safe_payload = dict(payload)
-                safe_payload["signal"] = "HOLD"
-                safe_payload["why_no_trade"] = "fail_closed_low_blackboard_confidence"
-                safe_payload["confidence"] = confidence
-                self.set_current_dream_fields(safe_payload)
-                return
-            self.set_current_dream_fields(payload)
-
-        topic_handlers = {
-            "agent.news.proposal": _proposal_handler,
-            "agent.rl.proposal": _proposal_handler,
-            "agent.emotional_twin.proposal": _proposal_handler,
-            "agent.swarm.proposal": _proposal_handler,
-            "agent.tape.proposal": _proposal_handler,
-            "execution.aggregate": _execution_handler,
-        }
-        for topic, handler in topic_handlers.items():
-            try:
-                token = blackboard.subscribe(topic, handler)
-            except Exception:
-                continue
-            self.blackboard_tokens.append(str(token))
+        self.blackboard_tokens = bind_engine_blackboard(self, blackboard)
 
     def set_current_dream_fields(self, updates: dict[str, Any]) -> None:
         self.dream_state.update(updates)
+        if self.event_bus is not None and hasattr(self.event_bus, "publish"):
+            try:
+                self.event_bus.publish(
+                    topic="trading_engine.dream_state.updated",
+                    producer="lumina_engine",
+                    payload=dict(updates),
+                )
+            except Exception:
+                pass
 
     def set_current_dream_value(self, key: str, value: Any) -> None:
         self.dream_state.set_value(key, value)

@@ -11,6 +11,7 @@ import streamlit as st
 METRICS_PATH = Path("logs/evolution_metrics.jsonl")
 SHADOW_STATE_PATH = Path("state/evolution_shadow_runs.json")
 GENERATED_BIBLE_PATH = Path("state/lumina_bible_generated_strategies.jsonl")
+ROLLOUT_HISTORY_PATH = Path("state/evolution_rollout_history.jsonl")
 
 
 def _load_metrics(path: Path = METRICS_PATH) -> list[dict[str, Any]]:
@@ -57,6 +58,24 @@ def _load_generated_strategies(path: Path = GENERATED_BIBLE_PATH) -> list[dict[s
             except Exception:
                 continue
             if isinstance(parsed, dict) and parsed.get("entry_type") == "generated_strategy_rule":
+                rows.append(parsed)
+    return rows
+
+
+def _load_rollout_history(path: Path = ROLLOUT_HISTORY_PATH) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for raw in handle:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                continue
+            if isinstance(parsed, dict) and parsed.get("event") == "rollout_decision":
                 rows.append(parsed)
     return rows
 
@@ -128,6 +147,28 @@ def render_evolution_dashboard(path: Path = METRICS_PATH) -> None:
                 st.bar_chart(pd.Series(pnl_comparison, name="Shadow PnL"), height=200)
     else:
         st.info("No active shadow runs.")
+
+    st.subheader("Rollout Safety Gate")
+    rollout_rows = _load_rollout_history(ROLLOUT_HISTORY_PATH)
+    if rollout_rows:
+        compact_rollout: list[dict[str, Any]] = []
+        for item in rollout_rows[-20:]:
+            compact_rollout.append(
+                {
+                    "mode": str(item.get("mode", "unknown")),
+                    "stage": str(item.get("stage", "unknown")),
+                    "allow_promotion": bool(item.get("allow_promotion", False)),
+                    "radical_mutation": bool(item.get("radical_mutation", False)),
+                    "human_required": bool(item.get("human_approval_required", False)),
+                    "human_granted": bool(item.get("human_approval_granted", False)),
+                    "ab_verdict": str(item.get("ab_verdict", "unknown")),
+                    "reason": str(item.get("reason", "")),
+                    "timestamp": str(item.get("timestamp", ""))[:19],
+                }
+            )
+        st.dataframe(pd.DataFrame(compact_rollout), use_container_width=True)
+    else:
+        st.info("No rollout decisions recorded yet.")
 
     st.subheader("Neuroevolution Winners")
     neuro_rows: list[dict[str, Any]] = []

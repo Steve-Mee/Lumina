@@ -7,6 +7,8 @@ import hashlib
 import json
 import os
 
+import pytest
+
 from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
 from lumina_core.evolution.multi_day_sim_runner import SimResult
@@ -195,12 +197,14 @@ class _ABFrameworkStub:
         pass
 
     def run_auto_forks(self, *, candidate_pool, **_kwargs):
+        variants = [dict(item) for item in list(candidate_pool or [])]
         return SimpleNamespace(
             selected_variant={
                 "dna_hash": str(candidate_pool[0]["dna_hash"]),
                 "score": float(candidate_pool[0].get("score", 42.0) or 42.0),
             },
             experiment_id="ab-bootstrap-test",
+            variants=variants,
         )
 
 
@@ -382,7 +386,7 @@ def test_evolution_orchestrator_real_path_promotes_after_shadow_pass(monkeypatch
         sim_duration_hours=24,
         nightly_report={"net_pnl": 120.0, "max_drawdown": 40.0, "sharpe": 1.4},
         mode="real",
-        explicit_human_approval=False,
+        explicit_human_approval=True,
     )
 
     assert summary["status"] == "complete"
@@ -515,3 +519,141 @@ def test_evolution_orchestrator_forwards_resolved_parallel_realities_to_sim(
     finally:
         monkeypatch.delenv(ENV_PARALLEL_REALITIES, raising=False)
         os.environ.pop(ENV_PARALLEL_REALITIES, None)
+
+
+@pytest.mark.safety_gate
+def test_real_radical_mutation_requires_explicit_human_approval(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Safety gate: REAL radical winner cannot be promoted without human approval."""
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+    monkeypatch.setattr(
+        eo.EvolutionGuard,
+        "resolve_shadow_days",
+        lambda self, minimum_days=3, maximum_days=7: 1,
+    )
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_human_gate.json"
+    orchestrator._metrics_path = tmp_path / "evolution_metrics.jsonl"
+
+    registry = _RegistryStub()
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerStub())
+    orchestrator._approval_twin = cast(Any, _TwinStub(recommendation=True))
+
+    fixed_candidate = PolicyDNA.create(
+        prompt_id="rollout-human-gate",
+        version="candidate",
+        content={"name": "fixed"},
+        fitness_score=42.0,
+        generation=1,
+        lineage_hash="L1",
+    )
+
+    def _fixed_candidates(*, top_dna, active_dna, generation_offset, dream_report=None, evolution_mode="sim", **kw):
+        del top_dna, active_dna, generation_offset, dream_report, evolution_mode, kw
+        return [fixed_candidate]
+
+    orchestrator._generate_candidates = cast(Any, _fixed_candidates)
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=2,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": 150.0, "max_drawdown": 40.0, "sharpe": 1.5},
+        mode="real",
+        explicit_human_approval=False,
+    )
+
+    assert summary["status"] == "complete"
+    assert int(summary["promotions"]) == 0
+    active = registry.get_latest_dna("active")
+    assert active is not None
+    assert int(active.generation) == 0
+
+    lines = [
+        json.loads(line)
+        for line in orchestrator._metrics_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    generations = [row for row in lines if row.get("event") == "generation_completed"]
+    assert generations
+    assert any(
+        bool(row.get("rollout_human_approval_required"))
+        and not bool(row.get("rollout_human_approval_granted"))
+        and str(row.get("rollout_stage", "")) == "pending_human_approval"
+        and str(row.get("shadow_status", "")) in {"passed", "promoted", "pending"}
+        for row in generations
+    )
+
+
+@pytest.mark.safety_gate
+def test_real_radical_mutation_promotes_with_explicit_human_approval(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Safety gate: REAL radical winner may promote only after explicit human approval."""
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+    monkeypatch.setattr(
+        eo.EvolutionGuard,
+        "resolve_shadow_days",
+        lambda self, minimum_days=3, maximum_days=7: 1,
+    )
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_human_gate_positive.json"
+    orchestrator._metrics_path = tmp_path / "evolution_metrics_positive.jsonl"
+
+    registry = _RegistryStub()
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerStub())
+    orchestrator._approval_twin = cast(Any, _TwinStub(recommendation=True))
+
+    fixed_candidate = PolicyDNA.create(
+        prompt_id="rollout-human-gate-positive",
+        version="candidate",
+        content={"name": "fixed"},
+        fitness_score=42.0,
+        generation=1,
+        lineage_hash="L1",
+    )
+
+    def _fixed_candidates(*, top_dna, active_dna, generation_offset, dream_report=None, evolution_mode="sim", **kw):
+        del top_dna, active_dna, generation_offset, dream_report, evolution_mode, kw
+        return [fixed_candidate]
+
+    orchestrator._generate_candidates = cast(Any, _fixed_candidates)
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=2,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": 150.0, "max_drawdown": 40.0, "sharpe": 1.5},
+        mode="real",
+        explicit_human_approval=True,
+    )
+
+    assert summary["status"] == "complete"
+    assert int(summary["promotions"]) >= 1
+    active = registry.get_latest_dna("active")
+    assert active is not None
+    assert int(active.generation) >= 1
+
+    lines = [
+        json.loads(line)
+        for line in orchestrator._metrics_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    generations = [row for row in lines if row.get("event") == "generation_completed"]
+    assert generations
+    assert any(
+        bool(row.get("rollout_human_approval_required"))
+        and bool(row.get("rollout_human_approval_granted"))
+        and str(row.get("rollout_stage", "")) in {"ready_for_promotion"}
+        and bool(row.get("promoted"))
+        for row in generations
+    )

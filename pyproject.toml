@@ -18,7 +18,7 @@ all = "requirements.txt"
 
 [tool.lumina.security]
 sbom_output = "docs/sbom.json"
-audit_commands = ["safety check", "pip-audit"]
+audit_commands = ["python scripts/validation/run_safety_audit.py", "pip-audit"]
 
 [tool.ruff]
 # Ruff config lives in ruff.toml; this section is intentionally minimal.

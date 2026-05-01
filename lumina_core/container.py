@@ -12,12 +12,10 @@ from typing import Any, Optional, cast
 from dotenv import load_dotenv
 
 from lumina_core.engine import (
-    AgentBlackboard,
     AgentDecisionLog,
     AuditLogService,
     DashboardService,
     EngineConfig,
-    MetaAgentOrchestrator,
     HumanAnalysisService,
     LocalInferenceEngine,
     MarketDataService,
@@ -27,18 +25,21 @@ from lumina_core.engine import (
     ReportingService,
     RegimeDetector,
     ReasoningService,
-    SelfEvolutionMetaAgent,
-    SwarmManager,
-    TradeReconciler,
     VisualizationService,
 )
+from lumina_core.agent_orchestration import (
+    AgentBlackboard,
+    EventBus,
+    MetaAgentOrchestrator,
+    SelfEvolutionMetaAgent,
+    SwarmManager,
+)
 from lumina_core.engine.broker_bridge import BrokerBridge, broker_factory
-from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
-from lumina_core.engine.risk_controller import HardRiskController
+from lumina_core.risk import HardRiskController, PortfolioVaRAllocator
+from lumina_core.trading_engine import LuminaEngine, TradeReconciler
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
-from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.self_evolution_meta_agent import load_evolution_config
 from lumina_core.infinite_simulator import InfiniteSimulator
 from lumina_core.logging_utils import build_logger
@@ -145,6 +146,7 @@ class ApplicationContainer:
     decision_log: AgentDecisionLog = field(init=False)
     audit_log_service: AuditLogService = field(init=False)
     blackboard: AgentBlackboard = field(init=False)
+    event_bus: EventBus = field(init=False)
     self_evolution_meta_agent: SelfEvolutionMetaAgent = field(init=False)
     meta_agent_orchestrator: MetaAgentOrchestrator = field(init=False)
 
@@ -183,6 +185,8 @@ class ApplicationContainer:
         # Initialize core engine
         self.engine = cast(Any, LuminaEngine)(self.config)
         self.engine.observability_service = self.observability_service
+        self.event_bus = EventBus()
+        self.engine.event_bus = self.event_bus
         self.valuation_engine = self.engine.valuation_engine
         if self.engine.risk_controller is None:
             raise RuntimeError("Engine risk_controller was not initialized")

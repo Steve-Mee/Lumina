@@ -57,6 +57,7 @@ from lumina_core.notifications.telegram_notifier import TelegramNotifier
 from lumina_core.experiments.ab_framework import ABExperimentFramework
 from lumina_core.engine.constitutional_principles import ConstitutionalChecker, ConstitutionalViolationError
 from .mutation_sandbox import MutationSandbox, SandboxResult
+from .rollout import EvolutionRolloutFramework
 # New canonical safety layer — preferred over direct ConstitutionalChecker usage.
 from lumina_core.safety.constitutional_guard import ConstitutionalGuard
 from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
@@ -245,6 +246,7 @@ class EvolutionOrchestrator:
         )
         self._meta_swarm = MetaSwarm()
         self._vector_collection: Any | None = None
+        self._rollout_framework = EvolutionRolloutFramework()
         # AGI Safety: single guard instance shared across all generation cycles.
         self._constitutional_guard = ConstitutionalGuard()
         self._initialized = True
@@ -658,6 +660,19 @@ class EvolutionOrchestrator:
         else:
             promoted = bool(signed and generation_ok)
 
+        rollout_decision = self._rollout_framework.evaluate_promotion(
+            mode=mode,
+            previous_fitness=previous_fitness,
+            winner_fitness=winner_fitness,
+            shadow_status=shadow_status,
+            shadow_passed=shadow_passed,
+            explicit_human_approval=explicit_human_approval,
+            twin_risk_flags=twin_risk_flags,
+            selected_variant=selected,
+            all_variants=list(experiment.variants or []),
+        )
+        promoted = bool(promoted and rollout_decision.allow_promotion)
+
         # ── Constitutional Guard (pre-promotion) ─────────────────────────────
         # The ConstitutionalGuard is the single authoritative safety gate.
         # It checks all 15 principles, writes an audit record, and is
@@ -764,6 +779,17 @@ class EvolutionOrchestrator:
                 "neuro_winner_path": str(neuro_summary.get("winner_path", "") or ""),
                 "neuro_simulator_data_source": str(neuro_summary.get("neuro_simulator_data_source", "") or ""),
                 "ab_experiment_id": str(experiment.experiment_id),
+                "ab_variant_count": len(list(experiment.variants or [])),
+                "rollout_stage": rollout_decision.stage,
+                "rollout_reason": rollout_decision.reason,
+                "rollout_shadow_required": bool(rollout_decision.shadow_required),
+                "rollout_shadow_passed": bool(rollout_decision.shadow_passed),
+                "rollout_live_orders_blocked": bool(rollout_decision.live_orders_blocked),
+                "rollout_radical_mutation": bool(rollout_decision.radical_mutation),
+                "rollout_human_approval_required": bool(rollout_decision.human_approval_required),
+                "rollout_human_approval_granted": bool(rollout_decision.human_approval_granted),
+                "rollout_ab_verdict": str(rollout_decision.ab_verdict),
+                "rollout_metrics_delta": dict(rollout_decision.metrics_delta),
                 "sim_days": sim_days,
                 "parallel_realities": int(parallel_realities),
                 "dream_engine": dict(dream_summary),
@@ -1355,7 +1381,7 @@ class EvolutionOrchestrator:
                 [dna],
                 days=1,
                 nightly_report=nightly_report,
-                shadow_mode=True,
+                **EvolutionRolloutFramework.shadow_runtime_flags(),
             )
             latest = shadow_results[0] if shadow_results else None
             day_pnl = float(latest.avg_pnl) if latest is not None else 0.0

@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from lumina_core.engine.audit_log_service import AuditLogService
-from lumina_core.engine.risk_controller import HardRiskController, RiskLimits, risk_limits_from_config
+from lumina_core.risk.risk_controller import HardRiskController, RiskLimits, risk_limits_from_config
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 
 

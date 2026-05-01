@@ -44,9 +44,31 @@ cyclonedx-py environment --output-format json --outfile docs/sbom.json
 Lokale dependency audits:
 
 ```bash
+python scripts/validation/run_safety_audit.py
 pip-audit --requirement requirements-core.txt
 pip-audit --requirement requirements-trading.txt
-safety check -r requirements-core.txt -r requirements-trading.txt --full-report
+```
+
+`run_safety_audit.py` gebruikt `safety scan` zodra `SAFETY_API_KEY` gezet is.
+Zonder API key valt het script gecontroleerd terug op `safety check` om
+interactieve login-prompts in CI te vermijden.
+
+## SAFETY_API_KEY in CI (aanrader)
+
+Voor volledige `safety scan` mode in GitHub Actions:
+
+1. Maak/gebruik een Safety account en genereer een API key.
+2. Voeg in GitHub repository settings een Actions secret toe:
+   - naam: `SAFETY_API_KEY`
+   - waarde: je Safety API key
+3. De bestaande workflows gebruiken automatisch scan-mode zodra de secret
+   beschikbaar is.
+
+Optionele lokale test met API key:
+
+```bash
+set SAFETY_API_KEY=your_key_here
+python scripts/validation/run_safety_audit.py
 ```
 
 CI voert dezelfde checks uit in:
