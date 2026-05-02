@@ -11,6 +11,8 @@ from typing import Any
 
 import yaml
 
+from lumina_core.state.state_manager import safe_with_file_lock
+
 
 @dataclass(slots=True)
 class AgentDecisionLog:
@@ -47,7 +49,6 @@ class AgentDecisionLog:
             prompt_text or json.dumps(raw_input, sort_keys=True, ensure_ascii=True)
         )
         config_fingerprint = str(config_snapshot_hash or self._default_config_snapshot_hash())
-        prev_hash = self._last_hash()
 
         payload = {
             "timestamp": ts,
@@ -71,35 +72,47 @@ class AgentDecisionLog:
                 "calibration_factor": max(0.01, float(calibration_factor or 1.0)),
             },
             "config_snapshot_hash": config_fingerprint,
-            "prev_hash": prev_hash,
+            "prev_hash": "GENESIS",
             "log_version": "v1",
         }
-        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=True)
-        payload["hash"] = self._sha256(canonical)
+        return self._append_with_consistent_prev(payload)
 
+    def _append_with_consistent_prev(self, payload: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
-        return payload
+            def _write_locked(target: Path) -> dict[str, Any]:
+                next_payload = dict(payload)
+                next_payload["prev_hash"] = self._last_hash_unlocked()
+                canonical = json.dumps(next_payload, sort_keys=True, ensure_ascii=True)
+                next_payload["hash"] = self._sha256(canonical)
+                with target.open("a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(next_payload, ensure_ascii=False) + "\n")
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                return next_payload
+
+            return safe_with_file_lock(self.path, _write_locked)
 
     def _last_hash(self) -> str:
+        with self._lock:
+            return self._last_hash_unlocked()
+
+    def _last_hash_unlocked(self) -> str:
         if not self.path.exists():
             return "GENESIS"
-        with self._lock:
-            try:
-                last_line = ""
-                with self.path.open("r", encoding="utf-8") as handle:
-                    for line in handle:
-                        if line.strip():
-                            last_line = line.strip()
-                if not last_line:
-                    return "GENESIS"
-                parsed = json.loads(last_line)
-                return str(parsed.get("hash", "GENESIS"))
-            except Exception:
+        try:
+            last_line = ""
+            with self.path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.strip():
+                        last_line = line.strip()
+            if not last_line:
                 return "GENESIS"
+            parsed = json.loads(last_line)
+            return str(parsed.get("hash", "GENESIS"))
+        except Exception:
+            return "GENESIS"
 
     @staticmethod
     def _sha256(value: str) -> str:

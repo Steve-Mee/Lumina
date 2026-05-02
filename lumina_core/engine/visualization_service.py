@@ -119,7 +119,7 @@ class VisualizationService:
 
             if tf_name in ["1min", "15min"]:
                 for ratio, price in fib_levels.items():
-                    if ratio in ["0.382", "0.618", "0.786"]:
+                    if str(ratio) in {"0.382", "0.618", "0.786"}:
                         fig.add_hline(
                             y=float(price),
                             line_dash="dash",

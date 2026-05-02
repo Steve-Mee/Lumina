@@ -349,4 +349,22 @@ Architecture decisions live under `docs/adr/`. **Prefer the canonical `000x` ser
 
 ---
 
+## LLM Runtime Safeguards (Live Loop)
+
+LUMINA now enforces a dedicated LLM discipline layer for every live-loop reasoning call:
+
+- **Central wrapper**: `lumina_core/inference/llm_client.py` provides one fail-closed gateway around local/remote providers (`ollama`, `vllm`, `grok_remote` and future providers).
+- **Hard latency budget**: each call is capped by `inference.llm_max_latency_ms`. Effective timeout is the strict minimum of request timeout and budget.
+- **Automatic fail-closed fallback**: timeout, provider errors, or empty/malformed LLM responses produce deterministic fallback (`signal=HOLD`) instead of propagating an order-intent.
+- **REAL-mode temperature discipline**: in REAL mode, temperature is clamped to a safe low band (`llm_real_temperature`, bounded to 0.30-0.40) unless explicitly overridden via `LUMINA_FORCE_HIGH_TEMP`.
+- **Path-level audit trail**: `logs/llm_decisions.jsonl` records `path` (`fast_rule` or `llm_reasoning`) plus `decision_context_id`, prompt/response hashes, model version, latency, provider, temperature, and fallback status.
+- **Trade traceability**: every call receives a unique `decision_context_id`, so each trade decision can be traced back to the exact LLM invocation or deterministic fast-rule fallback.
+
+Environment flags:
+
+- `LUMINA_FORCE_HIGH_TEMP=1` allows bypassing REAL-mode temperature clamp (intended for explicit operator override only).
+- `LUMINA_LLM_DECISIONS_LOG=/path/to/file.jsonl` overrides the default LLM decision log location.
+
+---
+
 *Last updated: LUMINA v54 | Maintained by the LUMINA AGI Safety subsystem.*

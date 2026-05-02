@@ -254,3 +254,15 @@ def test_local_inference_engine_grok_remote_missing_key_fail_hard(monkeypatch, t
 
     with pytest.raises(LuminaError, match="XAI_KEY_MISSING"):
         engine.infer("remote-missing-key", model_type="reasoning")
+
+
+def test_http_timeout_sec_respects_fallback_cap_for_llm_budget(monkeypatch, tmp_path):
+    _write_config(tmp_path, primary_provider="ollama", provider_order=[])
+    monkeypatch.chdir(tmp_path)
+    engine = LocalInferenceEngine(context=_context())
+
+    resolved = engine._http_timeout_sec(1.2, min_timeout_sec=0.1, respect_fallback_cap=True)
+    assert resolved == pytest.approx(1.2, rel=0.0, abs=1e-9)
+
+    floored = engine._http_timeout_sec(0.01, min_timeout_sec=0.1, respect_fallback_cap=True)
+    assert floored == pytest.approx(0.1, rel=0.0, abs=1e-9)

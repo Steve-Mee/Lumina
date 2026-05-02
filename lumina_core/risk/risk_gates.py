@@ -149,8 +149,13 @@ class RiskGatesMixin:
 
         current_symbol_risk = self.state.open_risk_by_symbol.get(symbol, 0.0)
         total_symbol_risk = current_symbol_risk + proposed_risk
-        if total_symbol_risk > limits.max_open_risk_per_instrument:
-            reason = f"MAX INSTRUMENT RISK exceeded for {symbol}: {total_symbol_risk:.2f} > {limits.max_open_risk_per_instrument:.2f}"
+        per_symbol_cap = (
+            float(self.resolve_symbol_open_risk_cap(symbol))
+            if callable(getattr(self, "resolve_symbol_open_risk_cap", None))
+            else float(limits.max_open_risk_per_instrument)
+        )
+        if total_symbol_risk > per_symbol_cap:
+            reason = f"MAX INSTRUMENT RISK exceeded for {symbol}: {total_symbol_risk:.2f} > {per_symbol_cap:.2f}"
             return False, reason
 
         current_regime_risk = self.state.open_risk_all_regimes.get(regime, 0.0)

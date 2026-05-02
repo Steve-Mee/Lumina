@@ -286,14 +286,13 @@ class LuminaEngine:
         from lumina_core.config_loader import ConfigLoader  # noqa: PLC0415
 
         data = ConfigLoader.get()
-        sim_cfg = data.get("sim", {}) if isinstance(data.get("sim"), dict) else {}
-        real_cfg = data.get("real", {}) if isinstance(data.get("real"), dict) else {}
-        trading_cfg = data.get("trading", {}) if isinstance(data.get("trading"), dict) else {}
+        sim_policy = RiskPolicy.get_effective_policy(mode="sim", config=data)
+        real_policy = RiskPolicy.get_effective_policy(mode="real", config=data)
 
-        sim_kelly = float(sim_cfg.get("kelly_fraction", 1.0) or 1.0)
-        real_kelly = float(real_cfg.get("kelly_fraction", trading_cfg.get("kelly_fraction_max", 0.25)) or 0.25)
-        min_conf = float(trading_cfg.get("kelly_min_confidence", 0.65) or 0.65)
-        baseline = float(trading_cfg.get("kelly_fraction_max", 0.25) or 0.25)
+        sim_kelly = float(sim_policy.kelly_fraction)
+        real_kelly = float(real_policy.kelly_fraction)
+        min_conf = float(real_policy.kelly_min_confidence)
+        baseline = max(0.01, min(1.0, real_kelly))
 
         return {
             "sim_kelly_fraction": max(0.05, sim_kelly),

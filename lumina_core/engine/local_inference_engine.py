@@ -79,7 +79,13 @@ class LocalInferenceEngine:
         self.cost_tracker.setdefault("local_inference_vllm_runtime_reason", "")
         self.cost_tracker.setdefault("local_inference_consecutive_failures", 0)
 
-    def _http_timeout_sec(self, fallback: float) -> float:
+    def _http_timeout_sec(
+        self,
+        fallback: float,
+        *,
+        min_timeout_sec: float = 3.0,
+        respect_fallback_cap: bool = False,
+    ) -> float:
         inf = self.config.get("inference", {})
         if not isinstance(inf, dict):
             return float(fallback)
@@ -88,7 +94,10 @@ class LocalInferenceEngine:
             t = float(raw)
         except (TypeError, ValueError):
             t = float(fallback)
-        return max(3.0, min(180.0, t))
+        if respect_fallback_cap:
+            t = min(t, float(fallback))
+        bounded_min = max(0.1, float(min_timeout_sec))
+        return max(bounded_min, min(180.0, t))
 
     def _max_consecutive_failures(self) -> int:
         inf = self.config.get("inference", {})
@@ -234,17 +243,20 @@ class LocalInferenceEngine:
         except requests.RequestException:
             return False
 
-    def _try_vllm(self, messages: list, model: str) -> str | Dict | None:
+    def _try_vllm(self, messages: list, model: str, temperature: float | None = None) -> str | Dict | None:
         """Run vLLM provider call without silent fallback behavior."""
         del model
         host = str(self.config["vllm"]["host"])
+        effective_temperature = (
+            float(self.config["inference"]["temperature"]) if temperature is None else float(temperature)
+        )
         try:
             resp = requests.post(
                 f"{host}/v1/chat/completions",
                 json={
                     "model": self.config["vllm"]["model_name"],
                     "messages": messages,
-                    "temperature": self.config["inference"]["temperature"],
+                    "temperature": effective_temperature,
                     "max_tokens": self.config["inference"]["max_tokens"],
                 },
                 timeout=self._http_timeout_sec(15.0),
@@ -263,13 +275,16 @@ class LocalInferenceEngine:
             )
         return resp.json()["choices"][0]["message"]["content"]
 
-    def _try_ollama(self, messages: list, model: str) -> str | Dict | None:
+    def _try_ollama(self, messages: list, model: str, temperature: float | None = None) -> str | Dict | None:
+        effective_temperature = (
+            float(self.config["inference"]["temperature"]) if temperature is None else float(temperature)
+        )
         try:
             resp = ollama.chat(
                 model=model,
                 messages=messages,
                 options={
-                    "temperature": self.config["inference"]["temperature"],
+                    "temperature": effective_temperature,
                     "num_ctx": 16384,
                     "num_gpu": -1,
                 },
@@ -282,7 +297,7 @@ class LocalInferenceEngine:
             ) from exc
         return resp["message"]["content"]
 
-    def _try_remote_grok(self, messages: list) -> str | Dict | None:
+    def _try_remote_grok(self, messages: list, temperature: float | None = None) -> str | Dict | None:
         """Run direct xAI inference provider call."""
         xai_key = (
             getattr(self.context, "XAI_KEY", None)
@@ -301,7 +316,9 @@ class LocalInferenceEngine:
         payload = {
             "model": str(xai_cfg.get("model", "grok-4.1-fast") or "grok-4.1-fast"),
             "messages": messages,
-            "temperature": float(inference_cfg.get("temperature", 0.1) or 0.1),
+            "temperature": (
+                float(inference_cfg.get("temperature", 0.1) or 0.1) if temperature is None else float(temperature)
+            ),
             "max_tokens": int(inference_cfg.get("max_tokens", 1200) or 1200),
             "response_format": {"type": "json_object"},
         }
@@ -340,16 +357,19 @@ class LocalInferenceEngine:
             ) from exc
 
     # Compat met bestaande tests/callers
-    def _infer_via_vllm(self, messages: list, model_type: str, **_kwargs: Any) -> str | Dict | None:
+    def _infer_via_vllm(self, messages: list, model_type: str, **kwargs: Any) -> str | Dict | None:
         model = self.config["models"].get(model_type, "qwen2.5:7b")
-        return self._try_vllm(messages, model)
+        temperature = kwargs.get("temperature")
+        return self._try_vllm(messages, model, temperature=temperature)
 
-    def _infer_via_ollama(self, messages: list, model_type: str, **_kwargs: Any) -> str | Dict | None:
+    def _infer_via_ollama(self, messages: list, model_type: str, **kwargs: Any) -> str | Dict | None:
         model = self.config["models"].get(model_type, "qwen2.5:7b")
-        return self._try_ollama(messages, model)
+        temperature = kwargs.get("temperature")
+        return self._try_ollama(messages, model, temperature=temperature)
 
-    def _infer_via_remote_grok(self, messages: list, **_kwargs: Any) -> str | Dict | None:
-        return self._try_remote_grok(messages)
+    def _infer_via_remote_grok(self, messages: list, **kwargs: Any) -> str | Dict | None:
+        temperature = kwargs.get("temperature")
+        return self._try_remote_grok(messages, temperature=temperature)
 
     def set_backend(self, backend: str) -> str:
         normalized = str(backend).strip().lower()
@@ -364,7 +384,13 @@ class LocalInferenceEngine:
             return self.backend_override
         return str(self.config.get("inference", {}).get("primary_provider", "ollama")).strip().lower()
 
-    def infer(self, prompt: str | list, model_type: str = "reasoning", image_base64: Optional[str] = None) -> Dict:
+    def infer(
+        self,
+        prompt: str | list,
+        model_type: str = "reasoning",
+        image_base64: Optional[str] = None,
+        temperature: float | None = None,
+    ) -> Dict:
         del image_base64
         self._reload_config_if_needed()
 
@@ -392,11 +418,11 @@ class LocalInferenceEngine:
                         code="INFERENCE_VLLM_UNHEALTHY",
                         message=f"vLLM provider unavailable: {runtime_reason}",
                     )
-                result = self._infer_via_vllm(messages, model_type)
+                result = self._infer_via_vllm(messages, model_type, temperature=temperature)
             elif provider == "ollama":
-                result = self._infer_via_ollama(messages, model_type)
+                result = self._infer_via_ollama(messages, model_type, temperature=temperature)
             elif provider == "grok_remote":
-                result = self._infer_via_remote_grok(messages)
+                result = self._infer_via_remote_grok(messages, temperature=temperature)
             else:
                 raise LuminaError(
                     severity=ErrorSeverity.FATAL_MODE_VIOLATION,
@@ -470,6 +496,7 @@ class LocalInferenceEngine:
         timeout: int = 20,
         context: str = "xai_json",
         max_retries: int = 1,
+        temperature_override: float | None = None,
     ) -> dict[str, Any] | None:
         del context, max_retries
 
@@ -479,10 +506,14 @@ class LocalInferenceEngine:
 
         model_name = str(payload.get("model", "")).lower()
         model_type = "vision" if "vision" in model_name or "-vl" in model_name else "reasoning"
-        wall_timeout = self._http_timeout_sec(float(timeout))
+        wall_timeout = self._http_timeout_sec(
+            float(timeout),
+            min_timeout_sec=0.1,
+            respect_fallback_cap=True,
+        )
         try:
             with ThreadPoolExecutor(max_workers=1) as pool:
-                fut = pool.submit(self.infer, messages, model_type)
+                fut = pool.submit(self.infer, messages, model_type, None, temperature_override)
                 result = fut.result(timeout=wall_timeout)
         except FuturesTimeoutError:
             self._bump_inference_failure_streak()

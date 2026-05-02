@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 from typing import Any
+from lumina_core.state.state_manager import safe_with_file_lock
 
 
 def _utcnow() -> str:
@@ -66,10 +68,7 @@ class LuminaBible:
             }
             canonical = json.dumps(record, sort_keys=True, ensure_ascii=True)
             record["entry_hash"] = _sha256(canonical)
-
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            self._append_record(record)
 
         return BibleEntry(**record)
 
@@ -102,10 +101,7 @@ class LuminaBible:
             }
             canonical = json.dumps(record, sort_keys=True, ensure_ascii=True)
             record["entry_hash"] = _sha256(canonical)
-
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            self._append_record(record)
 
         return BibleEntry(
             timestamp=record["timestamp"],
@@ -182,9 +178,7 @@ class LuminaBible:
             }
             canonical = json.dumps(record, sort_keys=True, ensure_ascii=True)
             record["entry_hash"] = _sha256(canonical)
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            with self.path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+            self._append_record(record)
         return BibleEntry(
             timestamp=record["timestamp"],
             entry_type=record["entry_type"],
@@ -198,6 +192,17 @@ class LuminaBible:
             previous_hash=record["previous_hash"],
             entry_hash=record["entry_hash"],
         )
+
+    def _append_record(self, record: dict[str, Any]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+
+        def _write_locked(target: Path) -> None:
+            with target.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+
+        safe_with_file_lock(self.path, _write_locked)
 
     def list_recent_generated_rules(self, *, limit: int = 25) -> list[dict[str, Any]]:
         with self._lock:

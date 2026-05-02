@@ -15,7 +15,6 @@ No backward compat, no over-engineering.
 
 from __future__ import annotations
 
-import json
 import logging
 import random
 import threading
@@ -60,6 +59,7 @@ from .fitness_evaluator import (
 )
 from .mutation_pipeline import MutationPipeline
 from .promotion_policy import PromotionPolicy
+from lumina_core.state.state_manager import safe_append_jsonl
 
 
 _METRICS_PATH = Path("logs/evolution_metrics.jsonl")
@@ -1259,9 +1259,7 @@ class EvolutionOrchestrator:
         }
 
     def _append_metrics(self, summary: dict[str, Any]) -> None:
-        self._metrics_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._metrics_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(summary, ensure_ascii=False) + "\n")
+        safe_append_jsonl(self._metrics_path, summary, hash_chain=False)
 
     def _publish_to_blackboard(self, blackboard: Any, summary: dict[str, Any]) -> None:
         if not hasattr(blackboard, "publish_sync"):

@@ -27,6 +27,7 @@ from lumina_core.experiments.ab_framework import ABExperimentFramework
 from .anomaly_detector import AnomalyDetector
 from .audit_writer import EvolutionAuditWriter
 from .proposal_generator import ProposalGenerator
+from lumina_core.state.state_manager import safe_with_file_lock
 
 
 def should_run_multi_gen_nightly(
@@ -1431,21 +1432,31 @@ class SelfEvolutionMetaAgent:
 
     def _append_immutable_log(self, entry: dict[str, Any]) -> None:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        prev_hash = self._last_log_hash()
-        payload = dict(entry)
-        payload["prev_hash"] = prev_hash
-        payload["log_version"] = "v1"
-        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=True)
-        payload_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-        payload["hash"] = payload_hash
-        with self.log_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+        def _write_locked(target: Path) -> None:
+            prev_hash = self._last_log_hash_for_path(target)
+            payload = dict(entry)
+            payload["prev_hash"] = prev_hash
+            payload["log_version"] = "v1"
+            canonical = json.dumps(payload, sort_keys=True, ensure_ascii=True)
+            payload_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            payload["hash"] = payload_hash
+            with target.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+
+        safe_with_file_lock(self.log_path, _write_locked)
 
     def _last_log_hash(self) -> str:
-        if not self.log_path.exists():
+        return self._last_log_hash_for_path(self.log_path)
+
+    @staticmethod
+    def _last_log_hash_for_path(path: Path) -> str:
+        if not path.exists():
             return "GENESIS"
         try:
-            with self.log_path.open("r", encoding="utf-8") as handle:
+            with path.open("r", encoding="utf-8") as handle:
                 lines = [line.strip() for line in handle if line.strip()]
             if not lines:
                 return "GENESIS"

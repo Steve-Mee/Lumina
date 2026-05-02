@@ -5,6 +5,8 @@ inference:
   provider_order: ["vllm", "ollama", "grok_remote"]
   max_tokens: 1200
   temperature: 0.10
+  llm_real_temperature: 0.35
+  llm_max_latency_ms: 8000
   json_mode: true
   fast_path_threshold: 0.75
 

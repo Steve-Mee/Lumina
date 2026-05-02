@@ -10,6 +10,7 @@ from typing import Any
 from lumina_bible.vector_api import VectorContributionAPI, stable_community_document_id
 
 from lumina_core.config_loader import ConfigLoader
+from lumina_core.state.state_manager import safe_append_jsonl, safe_with_file_lock
 
 from .dna_registry import PolicyDNA
 from .evolution_guard import _normalize_confidence
@@ -54,10 +55,9 @@ def append_community_queue_item(
     path = queue_path if queue_path is not None else Path(str(cfg.get("queue_path", "state/community_knowledge_queue.jsonl")))
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(item, ensure_ascii=False) + "\n")
+        safe_append_jsonl(path, item, hash_chain=False)
         return True
-    except OSError as exc:
+    except Exception as exc:
         logger.warning("[COMMUNITY_KNOWLEDGE] queue append failed: %s", exc)
         return False
 
@@ -91,8 +91,12 @@ def _load_processed(path: Path) -> set[str]:
 
 def _append_processed(path: Path, item_id: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(str(item_id) + "\n")
+
+    def _write_locked(target: Path) -> None:
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(str(item_id) + "\n")
+
+    safe_with_file_lock(path, _write_locked)
 
 
 def _dna_for_community_item(

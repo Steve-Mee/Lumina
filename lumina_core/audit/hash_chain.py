@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from lumina_core.state.state_manager import safe_append_jsonl
+
 
 def _canonical_payload(entry: dict[str, Any]) -> str:
     payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "entry_hash"}}
@@ -33,16 +35,7 @@ def _latest_entry_hash(path: Path) -> str:
 
 def append_hash_chained_jsonl(path: Path, entry: dict[str, Any]) -> dict[str, Any]:
     """Append record with prev_hash + entry_hash to a JSONL file."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    prev_hash = _latest_entry_hash(path)
-    canonical = _canonical_payload(entry)
-    digest = hashlib.sha256(f"{prev_hash}|{canonical}".encode("utf-8")).hexdigest()
-    chained = dict(entry)
-    chained["prev_hash"] = prev_hash
-    chained["entry_hash"] = digest
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(chained, ensure_ascii=True) + "\n")
-    return chained
+    return safe_append_jsonl(path=path, record=entry, hash_chain=True)
 
 
 def validate_hash_chain(path: Path) -> tuple[bool, str]:

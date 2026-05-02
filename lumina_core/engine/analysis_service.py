@@ -164,38 +164,34 @@ class HumanAnalysisService:
                 f"Prijs={price:.2f}, Regime={regime}. Geef compact trading-advies."
             )
             try:
-                local_engine = getattr(app, "local_inference_engine", None)
-                if local_engine is not None and hasattr(local_engine, "vision_infer"):
-                    vision_obj = local_engine.vision_infer(chart_base64, vision_prompt)
-                else:
-                    vision_obj = (
-                        app.infer_json(
-                            {
-                                "model": self.engine.config.vision_model,
-                                "messages": [
-                                    {
-                                        "role": "system",
-                                        "content": "Je bent een professionele chart-analist. Geef ALLEEN JSON met keys: summary (string), ai_fibs (dict met fib-ratio->prijs).",
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": [
-                                            {"type": "text", "text": vision_prompt},
-                                            {
-                                                "type": "image_url",
-                                                "image_url": {"url": f"data:image/png;base64,{chart_base64}"},
-                                            },
-                                        ],
-                                    },
-                                ],
-                                "max_tokens": 220,
-                                "temperature": 0.2,
-                            },
-                            timeout=20,
-                            context="vision_analysis",
-                        )
-                        or {}
+                vision_obj = (
+                    app.infer_json(
+                        {
+                            "model": self.engine.config.vision_model,
+                            "messages": [
+                                {
+                                    "role": "system",
+                                    "content": "Je bent een professionele chart-analist. Geef ALLEEN JSON met keys: summary (string), ai_fibs (dict met fib-ratio->prijs).",
+                                },
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        {"type": "text", "text": vision_prompt},
+                                        {
+                                            "type": "image_url",
+                                            "image_url": {"url": f"data:image/png;base64,{chart_base64}"},
+                                        },
+                                    ],
+                                },
+                            ],
+                            "max_tokens": 220,
+                            "temperature": 0.2,
+                        },
+                        timeout=20,
+                        context="vision_analysis",
                     )
+                    or {}
+                )
 
                 ai_fibs = vision_obj.get("ai_fibs", {}) if isinstance(vision_obj, dict) else {}
                 if isinstance(ai_fibs, dict) and ai_fibs:

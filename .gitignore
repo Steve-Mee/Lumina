@@ -58,6 +58,7 @@ logs/structured_errors.jsonl
 logs/trade_fill_audit.jsonl
 logs/security_audit.jsonl
 logs/evolution_metrics.jsonl
+logs/reality_gap.jsonl
 journal/simulator/*.json
 state/lumina_thought_log.jsonl
 state/thought_log.jsonl
@@ -101,6 +102,8 @@ state/veto_registry.jsonl
 state/full_pytest.*.log
 state/phase3_sim300*.log
 state/test_bypass_*_run.*.log
+state/cost_model_calibration.json
+state/validation/paper_fill_metrics.json
 config.yaml.pre_controlled_live.bak
 lumina_validation_output.log
 test_output.txt
@@ -114,4 +117,5 @@ journal/reports/LUMINA_Validation_*.pdf
 journal/reports/validator_3y_swarm_*.json
 state/agent_blackboard.jsonl
 state/lumina_sim_state.json
+state/.locks/
 coverage.xml

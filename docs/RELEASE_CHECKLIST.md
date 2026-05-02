@@ -30,13 +30,14 @@ Vink af wat waar is. Bij twijfel op een safety-kritiek punt: **geen release**.
 |---|----------|--------|
 | 1 | **Alle tests groen:** `pytest -m "not slow"` | ☐ |
 | 2 | **Ruff + MyPy + Pyright clean** op de release-set (geen nieuwe errors op gewijzigde/gemeteerde paden) | ☐ |
-| 3 | **ADR’s up-to-date** — review minimaal de **laatste 5** canonieke `docs/adr/000x-*.md` entries + README-index ([docs/adr/README.md](adr/README.md)) | ☐ |
-| 4 | **[README.md](../README.md)** en **[docs/architecture.md](architecture.md)** inhoudelijk gecontroleerd (versiebadges, links, architectuurspoor) | ☐ |
-| 5 | **[CONTRIBUTING.md](../CONTRIBUTING.md)** nog aligned met workflow en tooling | ☐ |
-| 6 | **Geen open TODO / FIXME** in **kritieke code** (risk, safety, constitution, shadow, broker/execution-paden) — zoek bv. met je IDE of `rg "TODO|FIXME" lumina_core/safety lumina_core/risk` | ☐ |
-| 7 | **Shadow Deployment + Trading Constitution** handmatig getest op het scenario dat deze release raakt (SIM/REAL-overwegingen gedocumenteerd) | ☐ |
-| 8 | **Version bump** in [`pyproject.toml`](../pyproject.toml) (`[project].version`) | ☐ |
-| 9 | **Changelog gegenereerd of bijgewerkt** — merge draft uit `prepare_release.py` of handmatige entries; niets releasen zonder leesbare release notes | ☐ |
+| 3 | **Cost model calibration check** uitgevoerd: `python scripts/validation/run_cost_model_calibration.py` (geen threshold breach; calibration state + reality gap log gereviewd) | ☐ |
+| 4 | **ADR’s up-to-date** — review minimaal de **laatste 5** canonieke `docs/adr/000x-*.md` entries + README-index ([docs/adr/README.md](adr/README.md)) | ☐ |
+| 5 | **[README.md](../README.md)** en **[docs/architecture.md](architecture.md)** inhoudelijk gecontroleerd (versiebadges, links, architectuurspoor) | ☐ |
+| 6 | **[CONTRIBUTING.md](../CONTRIBUTING.md)** nog aligned met workflow en tooling | ☐ |
+| 7 | **Geen open TODO / FIXME** in **kritieke code** (risk, safety, constitution, shadow, broker/execution-paden) — zoek bv. met je IDE of `rg "TODO|FIXME" lumina_core/safety lumina_core/risk` | ☐ |
+| 8 | **Shadow Deployment + Trading Constitution** handmatig getest op het scenario dat deze release raakt (SIM/REAL-overwegingen gedocumenteerd) | ☐ |
+| 9 | **Version bump** in [`pyproject.toml`](../pyproject.toml) (`[project].version`) | ☐ |
+| 10 | **Changelog gegenereerd of bijgewerkt** — merge draft uit `prepare_release.py` of handmatige entries; niets releasen zonder leesbare release notes | ☐ |
 
 **Minimum mindset:** liever een week uitstellen dan REAL-kapitaal of reputatie riskeren.
 

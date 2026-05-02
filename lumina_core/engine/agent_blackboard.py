@@ -13,6 +13,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from lumina_core.state.state_manager import safe_append_jsonl
+
 
 @dataclass(slots=True)
 class BlackboardEvent:
@@ -368,11 +370,8 @@ class AgentBlackboard:
         event.event_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
         return event
 
-    @staticmethod
-    def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    def _append_jsonl(self, path: Path, payload: dict[str, Any]) -> None:
+        safe_append_jsonl(path, payload, hash_chain=False)
 
     def _append_thought_logs(self, event: BlackboardEvent) -> None:
         thought_payload = {

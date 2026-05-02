@@ -136,6 +136,7 @@ class TradeExecutionCostModel:
     market_impact_alpha: float = 0.5
     market_impact_beta: float = 0.6
     instrument: str = "MES"
+    calibration_bias_ticks: float = 0.0
 
     # ------------------------------------------------------------------
     # Factory
@@ -221,7 +222,26 @@ class TradeExecutionCostModel:
         """Total slippage in ticks (spread + market impact)."""
         spread = self._spread_ticks(atr, time_period)
         impact = self._market_impact_ticks(quantity, avg_volume)
-        return spread + impact
+        return max(0.0, spread + impact + self.calibration_bias_ticks)
+
+    def apply_calibration(
+        self,
+        *,
+        bias_slippage_ticks: float = 0.0,
+        slippage_sigma: float | None = None,
+    ) -> None:
+        """Apply calibration output to the live cost model.
+
+        Parameters
+        ----------
+        bias_slippage_ticks:
+            Mean slippage deviation in ticks added to model slippage.
+        slippage_sigma:
+            Optional dynamic sigma override derived from recent deviation std-dev.
+        """
+        self.calibration_bias_ticks = float(bias_slippage_ticks)
+        if slippage_sigma is not None:
+            self.slippage_sigma = max(0.0, float(slippage_sigma))
 
     def fees_usd_per_side(self) -> float:
         """Total explicit fees (USD) per contract per side."""
@@ -260,7 +280,7 @@ class TradeExecutionCostModel:
         # --- Slippage ---
         spread_ticks = self._spread_ticks(atr, time_period)
         impact_ticks = self._market_impact_ticks(quantity, avg_volume)
-        total_slip_ticks = spread_ticks + impact_ticks
+        total_slip_ticks = max(0.0, spread_ticks + impact_ticks + self.calibration_bias_ticks)
         slip_usd_per_side = total_slip_ticks * self.tick_value * quantity
         slip_usd_rt = slip_usd_per_side * 2.0
 

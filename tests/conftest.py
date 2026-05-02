@@ -296,6 +296,7 @@ _INTEGRATION_FILE_PATTERNS: frozenset[str] = frozenset({
     "test_local_inference_engine",
     "test_simulator_data_support",
     "test_lumina_bible",
+    "test_concurrent_state",
 })
 
 _E2E_FILE_PATTERNS: frozenset[str] = frozenset({

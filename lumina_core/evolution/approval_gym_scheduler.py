@@ -1,11 +1,10 @@
 """Scheduler for periodic DNA approval gymnasium sessions with Telegram integration."""
-
-import json
 import logging
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
+from lumina_core.state.state_manager import safe_append_jsonl
 
 try:
     from zoneinfo import ZoneInfo
@@ -228,8 +227,7 @@ class ApprovalGymScheduler:
 
     def _log_session(self, session_record: dict[str, Any]) -> None:
         try:
-            with open(self._history_path, "a") as f:
-                f.write(json.dumps(session_record) + "\n")
+            safe_append_jsonl(Path(self._history_path), session_record, hash_chain=False)
         except Exception as e:
             logger.error(f"Failed to log session: {e}")
 

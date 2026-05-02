@@ -15,6 +15,11 @@ from lumina_core.risk.final_arbitration import (
 from lumina_core.risk.risk_gates import RiskGatesMixin
 from lumina_core.risk.dynamic_kelly import DynamicKellyEstimator, get_global_kelly_estimator
 from lumina_core.risk.cost_model import CostBreakdown, TradeExecutionCostModel
+from lumina_core.risk.cost_model_calibrator import (
+    CalibrationResult,
+    DailyCalibrationSummary,
+    run_daily_calibration,
+)
 
 __all__ = [
     "HardRiskController",
@@ -35,6 +40,9 @@ __all__ = [
     "get_global_kelly_estimator",
     "CostBreakdown",
     "TradeExecutionCostModel",
+    "CalibrationResult",
+    "DailyCalibrationSummary",
+    "run_daily_calibration",
 ]
 
 

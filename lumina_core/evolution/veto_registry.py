@@ -1,11 +1,12 @@
 """Veto registry: immutable append-only storage for human veto decisions on DNA promotions."""
 
 import json
-import sqlite3
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from lumina_core.state.state_manager import safe_append_jsonl, safe_sqlite_connect
 
 
 @dataclass(frozen=True)
@@ -49,22 +50,20 @@ class VetoRegistry:
 
     def _init_db(self) -> None:
         """Initialize SQLite schema if not present."""
-        conn = sqlite3.connect(str(self._db_path))
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS veto_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                veto_timestamp TEXT NOT NULL,
-                dna_id TEXT NOT NULL,
-                dna_fitness REAL NOT NULL,
-                reason TEXT NOT NULL,
-                issuer TEXT NOT NULL,
-                metadata TEXT NOT NULL DEFAULT '{}',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        conn.commit()
-        conn.close()
+        with safe_sqlite_connect(self._db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS veto_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    veto_timestamp TEXT NOT NULL,
+                    dna_id TEXT NOT NULL,
+                    dna_fitness REAL NOT NULL,
+                    reason TEXT NOT NULL,
+                    issuer TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
 
     def append_veto(self, record: VetoRecord) -> None:
         """Append veto record (thread-safe, fail-closed).
@@ -78,28 +77,25 @@ class VetoRegistry:
         with self._lock:
             try:
                 # Write to SQLite
-                conn = sqlite3.connect(str(self._db_path))
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute(
-                    """
-                    INSERT INTO veto_records (veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                    (
-                        record.veto_timestamp,
-                        record.dna_id,
-                        record.dna_fitness,
-                        record.reason,
-                        record.issuer,
-                        json.dumps(record.metadata),
-                    ),
-                )
-                conn.commit()
-                conn.close()
+                with safe_sqlite_connect(self._db_path) as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO veto_records (veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                        (
+                            record.veto_timestamp,
+                            record.dna_id,
+                            record.dna_fitness,
+                            record.reason,
+                            record.issuer,
+                            json.dumps(record.metadata),
+                        ),
+                    )
+                    conn.commit()
 
                 # Write to JSONL (append-only audit log)
-                with open(self._log_path, "a") as f:
-                    f.write(json.dumps(asdict(record)) + "\n")
+                safe_append_jsonl(self._log_path, asdict(record), hash_chain=False)
 
             except Exception as e:
                 raise RuntimeError(f"Failed to append veto record: {e}")
@@ -120,17 +116,16 @@ class VetoRegistry:
                 cutoff_time = datetime.utcnow() - timedelta(seconds=window_seconds)
                 cutoff_iso = cutoff_time.isoformat()
 
-                conn = sqlite3.connect(str(self._db_path))
-                cursor = conn.execute(
-                    """
-                    SELECT id FROM veto_records
-                    WHERE dna_id = ? AND veto_timestamp >= ?
-                    LIMIT 1
-                """,
-                    (dna_id, cutoff_iso),
-                )
-                result = cursor.fetchone()
-                conn.close()
+                with safe_sqlite_connect(self._db_path) as conn:
+                    cursor = conn.execute(
+                        """
+                        SELECT id FROM veto_records
+                        WHERE dna_id = ? AND veto_timestamp >= ?
+                        LIMIT 1
+                    """,
+                        (dna_id, cutoff_iso),
+                    )
+                    result = cursor.fetchone()
 
                 return result is not None
             except Exception:
@@ -149,43 +144,42 @@ class VetoRegistry:
         """
         with self._lock:
             try:
-                conn = sqlite3.connect(str(self._db_path))
-                if dna_id_filter:
-                    cursor = conn.execute(
-                        """
-                        SELECT veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata
-                        FROM veto_records
-                        WHERE dna_id = ?
-                        ORDER BY veto_timestamp DESC
-                        LIMIT ?
-                    """,
-                        (dna_id_filter, limit),
-                    )
-                else:
-                    cursor = conn.execute(
-                        """
-                        SELECT veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata
-                        FROM veto_records
-                        ORDER BY veto_timestamp DESC
-                        LIMIT ?
-                    """,
-                        (limit,),
-                    )
-
-                records = []
-                for row in cursor.fetchall():
-                    veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata_str = row
-                    records.append(
-                        VetoRecord(
-                            veto_timestamp=veto_timestamp,
-                            dna_id=dna_id,
-                            dna_fitness=dna_fitness,
-                            reason=reason,
-                            issuer=issuer,
-                            metadata=json.loads(metadata_str),
+                with safe_sqlite_connect(self._db_path) as conn:
+                    if dna_id_filter:
+                        cursor = conn.execute(
+                            """
+                            SELECT veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata
+                            FROM veto_records
+                            WHERE dna_id = ?
+                            ORDER BY veto_timestamp DESC
+                            LIMIT ?
+                        """,
+                            (dna_id_filter, limit),
                         )
-                    )
-                conn.close()
-                return records
+                    else:
+                        cursor = conn.execute(
+                            """
+                            SELECT veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata
+                            FROM veto_records
+                            ORDER BY veto_timestamp DESC
+                            LIMIT ?
+                        """,
+                            (limit,),
+                        )
+
+                    records = []
+                    for row in cursor.fetchall():
+                        veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata_str = row
+                        records.append(
+                            VetoRecord(
+                                veto_timestamp=veto_timestamp,
+                                dna_id=dna_id,
+                                dna_fitness=dna_fitness,
+                                reason=reason,
+                                issuer=issuer,
+                                metadata=json.loads(metadata_str),
+                            )
+                        )
+                    return records
             except Exception:
                 return []

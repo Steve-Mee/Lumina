@@ -36,7 +36,6 @@ Usage::
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from dataclasses import dataclass
@@ -44,6 +43,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
 
+from lumina_core.state.state_manager import safe_append_jsonl
 from lumina_core.safety.trading_constitution import (
     ConstitutionalViolation,
     ConstitutionalViolationError,
@@ -316,8 +316,6 @@ class ConstitutionalGuard:
     def _append_audit(self, result: GuardResult) -> None:
         """Append the check result to the audit JSONL file (best-effort)."""
         try:
-            self._audit_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._audit_path.open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(result.to_audit_record()) + "\n")
+            safe_append_jsonl(self._audit_path, result.to_audit_record(), hash_chain=False)
         except Exception as exc:
             logger.warning("ConstitutionalGuard: audit write failed: %s", exc)

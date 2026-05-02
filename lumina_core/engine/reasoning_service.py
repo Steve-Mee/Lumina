@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import hashlib
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from lumina_core.inference import LlmClient
 from .broker_bridge import Order, OrderResult
 from .errors import BrokerBridgeError, PolicyGateError, format_error_code
 from .local_inference_engine import LocalInferenceEngine
@@ -23,6 +25,7 @@ class ReasoningService:
     engine: LuminaEngine
     container: Any | None = None
     inference_engine: LocalInferenceEngine | None = None
+    llm_client: LlmClient | None = None
     regime_detector: RegimeDetector | None = None
     latency_sla_ms: float = 300.0
     _sla_breach_streak: int = 0
@@ -34,6 +37,8 @@ class ReasoningService:
         self.latency_sla_ms = float(reasoning_latency_sla_ms())
         if self.inference_engine is None:
             self.inference_engine = LocalInferenceEngine(engine=self.engine)
+        if self.llm_client is None:
+            self.llm_client = LlmClient(inference_engine=self.inference_engine, engine=self.engine)
         if self.regime_detector is None:
             self.regime_detector = getattr(self.engine, "regime_detector", None)
 
@@ -82,6 +87,23 @@ class ReasoningService:
 
     def _decision_log(self):
         return getattr(self.engine, "decision_log", None)
+
+    @staticmethod
+    def _new_decision_context_id(context: str) -> str:
+        return f"{context}:{uuid.uuid4().hex}"
+
+    def _log_fast_rule_path(self, *, context: str, decision_context_id: str, reason: str) -> None:
+        if self.llm_client is None:
+            return
+        self.llm_client.complete_trading_json(
+            payload={"model": "fast-rule", "messages": [{"role": "system", "content": reason}], "temperature": 0.0},
+            context=context,
+            timeout_seconds=1,
+            max_retries=0,
+            decision_context_id=decision_context_id,
+            forced_path="fast_rule",
+            fallback_reason=reason,
+        )
 
     def _log_decision(
         self,
@@ -242,39 +264,46 @@ class ReasoningService:
         timeout: int = 20,
         context: str = "xai_json",
         max_retries: int = 1,
+        decision_context_id: str | None = None,
     ) -> dict[str, Any] | None:
-        assert self.inference_engine is not None
+        assert self.llm_client is not None
+        resolved_context_id = decision_context_id or self._new_decision_context_id(context)
+        if self._fast_path_only_enabled():
+            llm_result = self.llm_client.complete_trading_json(
+                payload=payload,
+                timeout_seconds=1,
+                context=context,
+                max_retries=0,
+                decision_context_id=resolved_context_id,
+                forced_path="fast_rule",
+                fallback_reason="fast_path_only_enabled",
+            )
+            output = dict(llm_result.payload_out)
+            output.setdefault("decision_context_id", llm_result.decision_context_id)
+            output.setdefault("llm_path", llm_result.path)
+            return output
+
         started = time.perf_counter()
         model_version = str(payload.get("model", "unknown"))
-        try:
-            result = self.inference_engine.infer_json(
-                payload,
-                timeout=timeout,
-                context=context,
-                max_retries=max_retries,
-            )
-        except Exception as exc:
-            elapsed_ms = (time.perf_counter() - started) * 1000.0
-            self._record_latency(elapsed_ms, source=context)
-            self._log_decision(
-                agent_id="ReasoningService",
-                raw_input=payload,
-                raw_output={"error": str(exc), "type": type(exc).__name__},
-                confidence=0.0,
-                policy_outcome="error",
-                decision_context_id=context,
-                model_version=model_version,
-            )
-            raise
-        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        llm_result = self.llm_client.complete_trading_json(
+            payload=payload,
+            timeout_seconds=timeout,
+            context=context,
+            max_retries=max_retries,
+            decision_context_id=resolved_context_id,
+        )
+        elapsed_ms = llm_result.latency_ms if llm_result.latency_ms > 0.0 else (time.perf_counter() - started) * 1000.0
+        result = dict(llm_result.payload_out)
+        result.setdefault("decision_context_id", llm_result.decision_context_id)
+        result.setdefault("llm_path", llm_result.path)
         self._record_latency(elapsed_ms, source=context)
         self._log_decision(
             agent_id="ReasoningService",
             raw_input=payload,
-            raw_output=result if isinstance(result, dict) else {"result": result},
-            confidence=float((result or {}).get("confidence", 0.0) if isinstance(result, dict) else 0.0),
-            policy_outcome="inference_success" if isinstance(result, dict) else "inference_empty",
-            decision_context_id=context,
+            raw_output=result,
+            confidence=float(result.get("confidence", 0.0)),
+            policy_outcome="inference_fallback" if llm_result.fallback else "inference_success",
+            decision_context_id=llm_result.decision_context_id,
             model_version=model_version,
         )
         return result
@@ -288,6 +317,7 @@ class ReasoningService:
         fib_levels: dict[str, Any],
     ) -> dict[str, Any]:
         app = self._app()
+        consensus_context_id = self._new_decision_context_id("multi_agent_consensus")
         session_allowed, session_reason = self._session_trading_allowed()
         if not session_allowed:
             self._set_fast_path_only(True, f"session_guard: {session_reason}")
@@ -297,7 +327,14 @@ class ReasoningService:
                 "reason": f"Fast-path mode active: {session_reason}",
                 "agent_votes": {},
                 "regime": {"label": "SESSION_BLOCKED", "risk_state": "HIGH_RISK"},
+                "decision_context_id": consensus_context_id,
+                "llm_path": "fast_rule",
             }
+            self._log_fast_rule_path(
+                context="multi_agent_consensus",
+                decision_context_id=consensus_context_id,
+                reason=f"session_guard_blocked:{session_reason}",
+            )
             self._log_decision(
                 agent_id="ReasoningService",
                 raw_input={
@@ -310,7 +347,7 @@ class ReasoningService:
                 raw_output=blocked,
                 confidence=float(blocked.get("confidence", 0.0)),
                 policy_outcome="session_blocked",
-                decision_context_id="multi_agent_consensus",
+                decision_context_id=consensus_context_id,
                 model_version="reasoning-consensus-v1",
             )
             return blocked
@@ -324,7 +361,14 @@ class ReasoningService:
                 "reason": "Fast-path mode active due to latency SLA breach",
                 "agent_votes": {},
                 "regime": regime_snapshot.to_dict(),
+                "decision_context_id": consensus_context_id,
+                "llm_path": "fast_rule",
             }
+            self._log_fast_rule_path(
+                context="multi_agent_consensus",
+                decision_context_id=consensus_context_id,
+                reason="fast_path_only_enabled",
+            )
             self._log_decision(
                 agent_id="ReasoningService",
                 raw_input={
@@ -337,7 +381,7 @@ class ReasoningService:
                 raw_output=fast_path,
                 confidence=float(fast_path.get("confidence", 0.0)),
                 policy_outcome="fast_path_only",
-                decision_context_id="multi_agent_consensus",
+                decision_context_id=consensus_context_id,
                 model_version="reasoning-consensus-v1",
             )
             return fast_path
@@ -363,7 +407,14 @@ class ReasoningService:
                 "reason": f"High-risk regime {regime_snapshot.label} forced conservative hold",
                 "agent_votes": {},
                 "regime": regime_snapshot.to_dict(),
+                "decision_context_id": consensus_context_id,
+                "llm_path": "fast_rule",
             }
+            self._log_fast_rule_path(
+                context="multi_agent_consensus",
+                decision_context_id=consensus_context_id,
+                reason=f"high_risk_regime:{regime_snapshot.label}",
+            )
             self._log_decision(
                 agent_id="ReasoningService",
                 raw_input={
@@ -376,7 +427,7 @@ class ReasoningService:
                 raw_output=conservative,
                 confidence=float(conservative.get("confidence", 0.0)),
                 policy_outcome="high_risk_hold",
-                decision_context_id="multi_agent_consensus",
+                decision_context_id=consensus_context_id,
                 model_version="reasoning-consensus-v1",
             )
             return conservative
@@ -411,7 +462,12 @@ Wat is jouw trade-besluit?""",
             }
 
             try:
-                vote = self.infer_json(payload, timeout=12, context=f"multi_agent_{agent_name}")
+                vote = self.infer_json(
+                    payload,
+                    timeout=12,
+                    context=f"multi_agent_{agent_name}",
+                    decision_context_id=f"{consensus_context_id}:{agent_name}",
+                )
                 if vote is not None:
                     agent_votes[agent_name] = vote
                     signal = str(vote.get("signal", "HOLD") or "HOLD").upper()
@@ -439,6 +495,7 @@ Wat is jouw trade-besluit?""",
             "reason": f"Consensus van {list(agent_votes.keys())} | Consistency {consistency:.2f}",
             "agent_votes": agent_votes,
             "regime": regime_snapshot.to_dict(),
+            "decision_context_id": consensus_context_id,
         }
         app.logger.info(
             "MULTI_AGENT_CONSENSUS,signal=%s,consistency=%.2f,regime=%s",
@@ -467,7 +524,7 @@ Wat is jouw trade-besluit?""",
             raw_output=consensus,
             confidence=float(consensus.get("confidence", 0.0)),
             policy_outcome="consensus_generated",
-            decision_context_id="multi_agent_consensus",
+            decision_context_id=consensus_context_id,
             model_version="reasoning-consensus-v1",
         )
         return consensus
@@ -509,9 +566,15 @@ Voer meta-reasoning + counter-factuals uit.""",
             "max_tokens": 400,
             "temperature": 0.1,
         }
+        meta_context_id = self._new_decision_context_id("meta_reasoning")
 
         try:
-            meta = self.infer_json(payload, timeout=15, context="meta_reasoning")
+            meta = self.infer_json(
+                payload,
+                timeout=15,
+                context="meta_reasoning",
+                decision_context_id=meta_context_id,
+            )
             if meta is not None:
                 app.logger.info(f"META_REASONING_COMPLETE,meta_score={meta.get('meta_score', 0.5):.2f}")
                 self._log_decision(
@@ -525,7 +588,7 @@ Voer meta-reasoning + counter-factuals uit.""",
                     raw_output=meta,
                     confidence=float(meta.get("meta_score", 0.0)),
                     policy_outcome="meta_reasoning_success",
-                    decision_context_id="meta_reasoning",
+                    decision_context_id=str(meta.get("decision_context_id", meta_context_id)),
                     model_version="grok-4.20-0309-reasoning",
                 )
                 return meta
@@ -545,7 +608,7 @@ Voer meta-reasoning + counter-factuals uit.""",
             raw_output=fallback,
             confidence=float(fallback.get("meta_score", 0.0)),
             policy_outcome="meta_reasoning_fallback",
-            decision_context_id="meta_reasoning",
+            decision_context_id=meta_context_id,
             model_version="grok-4.20-0309-reasoning",
         )
         return fallback

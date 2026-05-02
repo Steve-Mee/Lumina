@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from lumina_core.state.state_manager import safe_append_jsonl, safe_sqlite_connect
 
 
 def _utcnow() -> str:
@@ -160,11 +161,9 @@ class DNARegistry:
 
     def register_dna(self, dna: PolicyDNA) -> PolicyDNA:
         record = dna.to_record()
-        record_json = json.dumps(record, ensure_ascii=False)
         with self._lock:
             self._ensure_storage()
-            with sqlite3.connect(self.sqlite_path) as connection:
-                connection.execute("PRAGMA journal_mode=WAL")
+            with safe_sqlite_connect(self.sqlite_path) as connection:
                 connection.execute(
                     """
                     INSERT OR IGNORE INTO dna_entries (
@@ -196,8 +195,8 @@ class DNARegistry:
                 inserted = connection.total_changes > 0
                 if inserted:
                     try:
-                        self._append_jsonl(record_json)
-                    except OSError:
+                        self._append_jsonl(record)
+                    except Exception:
                         connection.execute("DELETE FROM dna_entries WHERE hash = ?", (record["hash"],))
                         connection.commit()
                         raise
@@ -218,7 +217,7 @@ class DNARegistry:
         with self._lock:
             if not self.sqlite_path.exists():
                 return None
-            with sqlite3.connect(self.sqlite_path) as connection:
+            with safe_sqlite_connect(self.sqlite_path) as connection:
                 row = connection.execute(query, params).fetchone()
         if row is None:
             return None
@@ -253,7 +252,7 @@ class DNARegistry:
         with self._lock:
             if not self.sqlite_path.exists():
                 return []
-            with sqlite3.connect(self.sqlite_path) as connection:
+            with safe_sqlite_connect(self.sqlite_path) as connection:
                 rows = connection.execute(query, tuple(params)).fetchall()
         return [
             PolicyDNA.from_record(
@@ -343,8 +342,7 @@ class DNARegistry:
     def _ensure_storage(self) -> None:
         self.jsonl_path.parent.mkdir(parents=True, exist_ok=True)
         self.sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.sqlite_path) as connection:
-            connection.execute("PRAGMA journal_mode=WAL")
+        with safe_sqlite_connect(self.sqlite_path) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS dna_entries (
@@ -368,9 +366,8 @@ class DNARegistry:
         if not self.jsonl_path.exists():
             self.jsonl_path.touch()
 
-    def _append_jsonl(self, record_json: str) -> None:
-        with self.jsonl_path.open("a", encoding="utf-8") as handle:
-            handle.write(record_json + "\n")
+    def _append_jsonl(self, record: dict[str, Any]) -> None:
+        safe_append_jsonl(self.jsonl_path, record, hash_chain=False)
 
     @staticmethod
     def _blend_content(left: str, right: str) -> str:

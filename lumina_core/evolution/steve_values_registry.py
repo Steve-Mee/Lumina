@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import os
 import sqlite3
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from lumina_core.state.state_manager import safe_append_jsonl
 
 
 def _utcnow() -> str:
@@ -151,7 +151,6 @@ class SteveValuesRegistry:
             self.jsonl_path.touch()
 
     def _append_jsonl(self, payload_json: str) -> None:
-        with self.jsonl_path.open("a", encoding="utf-8") as handle:
-            handle.write(payload_json + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        payload = json.loads(payload_json)
+        if isinstance(payload, dict):
+            safe_append_jsonl(self.jsonl_path, payload, hash_chain=False)

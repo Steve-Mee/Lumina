@@ -84,6 +84,7 @@ def build_current_state_from_engine(engine: Any) -> dict[str, Any]:
 
 class FinalArbitration:
     def __init__(self, policy: RiskPolicy | None = None) -> None:
+        self._explicit_policy = policy is not None
         self.policy = policy or load_risk_policy()
 
     def check_order_intent(self, order_intent: dict[str, Any], current_state: dict[str, Any]) -> ArbitrationResult:
@@ -136,12 +137,14 @@ class FinalArbitration:
 
     def _check_constitution(self, intent: dict[str, Any], state: dict[str, Any]) -> tuple[bool, str]:
         mode = str(state.get("runtime_mode", self.policy.runtime_mode) or self.policy.runtime_mode).strip().lower()
+        symbol = str(intent.get("symbol", "") or "").strip().upper()
+        resolved_policy = self._resolve_policy_for_intent(state=state, symbol=symbol)
         constitution_payload = {
             "order_intent": intent,
             "hyperparam_suggestion": {
-                "kelly_fraction": float(self.policy.kelly_fraction),
-                "max_risk_percent": float(self.policy.max_total_open_risk / max(float(state.get("account_equity", 1.0) or 1.0), 1.0)) * 100.0,
-                "daily_loss_cap": float(self.policy.daily_loss_cap),
+                "kelly_fraction": float(resolved_policy.kelly_fraction),
+                "max_risk_percent": float(resolved_policy.max_total_open_risk / max(float(state.get("account_equity", 1.0) or 1.0), 1.0)) * 100.0,
+                "daily_loss_cap": float(resolved_policy.daily_loss_cap),
             },
         }
         constitution_payload.update(intent)
@@ -160,39 +163,50 @@ class FinalArbitration:
 
     def _check_policy(self, intent: dict[str, Any], state: dict[str, Any]) -> tuple[bool, str]:
         symbol = str(intent.get("symbol", "") or "").strip().upper()
+        resolved_policy = self._resolve_policy_for_intent(state=state, symbol=symbol)
         projected_risk = float(intent.get("proposed_risk", 0.0) or 0.0)
         if projected_risk <= 0.0:
             reference = float(intent.get("reference_price", 0.0) or 0.0)
             stop = float(intent.get("stop_loss", 0.0) or 0.0)
             if reference > 0.0 and stop > 0.0:
                 projected_risk = abs(reference - stop)
-        if projected_risk > float(self.policy.max_open_risk_per_instrument):
+        if projected_risk > float(resolved_policy.max_open_risk_per_instrument):
             return False, "risk_limit_per_instrument_exceeded"
 
         open_risk_by_symbol = state.get("open_risk_by_symbol", {})
         if isinstance(open_risk_by_symbol, dict):
             sym_open = float(open_risk_by_symbol.get(symbol, 0.0) or 0.0)
-            if sym_open + projected_risk > float(self.policy.max_open_risk_per_instrument):
+            if sym_open + projected_risk > float(resolved_policy.max_open_risk_per_instrument):
                 return False, "risk_limit_per_instrument_exceeded"
 
         total_open_risk = float(state.get("total_open_risk", 0.0) or 0.0)
-        if total_open_risk + projected_risk > float(self.policy.max_total_open_risk):
+        if total_open_risk + projected_risk > float(resolved_policy.max_total_open_risk):
             return False, "risk_limit_total_open_exceeded"
 
         daily_pnl = float(state.get("daily_pnl", 0.0) or 0.0)
-        if daily_pnl <= float(self.policy.daily_loss_cap):
+        if daily_pnl <= float(resolved_policy.daily_loss_cap):
             return False, "daily_loss_cap_breached"
 
-        if float(state.get("var_95_usd", 0.0) or 0.0) > float(self.policy.var_95_limit_usd):
+        if float(state.get("var_95_usd", 0.0) or 0.0) > float(resolved_policy.var_95_limit_usd):
             return False, "var_95_limit_breached"
-        if float(state.get("var_99_usd", 0.0) or 0.0) > float(self.policy.var_99_limit_usd):
+        if float(state.get("var_99_usd", 0.0) or 0.0) > float(resolved_policy.var_99_limit_usd):
             return False, "var_99_limit_breached"
-        if float(state.get("es_95_usd", 0.0) or 0.0) > float(self.policy.es_95_limit_usd):
+        if float(state.get("es_95_usd", 0.0) or 0.0) > float(resolved_policy.es_95_limit_usd):
             return False, "es_95_limit_breached"
-        if float(state.get("es_99_usd", 0.0) or 0.0) > float(self.policy.es_99_limit_usd):
+        if float(state.get("es_99_usd", 0.0) or 0.0) > float(resolved_policy.es_99_limit_usd):
             return False, "es_99_limit_breached"
 
         return True, "ok"
+
+    def _resolve_policy_for_intent(self, *, state: dict[str, Any], symbol: str) -> RiskPolicy:
+        if self._explicit_policy:
+            return self.policy
+        mode = str(state.get("runtime_mode", self.policy.runtime_mode) or self.policy.runtime_mode).strip().lower()
+        normalized_symbol = str(symbol or "").strip().upper() or None
+        try:
+            return load_risk_policy(mode=mode, instrument=normalized_symbol, reload_config=True)
+        except Exception:
+            return self.policy
 
     def _check_account_state(self, state: dict[str, Any]) -> tuple[bool, str]:
         equity = float(state.get("account_equity", 0.0) or 0.0)

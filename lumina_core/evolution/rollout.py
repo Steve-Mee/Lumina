@@ -8,11 +8,12 @@ This module enforces a zero-live-risk policy:
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from lumina_core.state.state_manager import safe_append_jsonl
 
 
 _DEFAULT_ROLLOUT_AUDIT_PATH = Path("state/evolution_rollout_history.jsonl")
@@ -140,9 +141,7 @@ class EvolutionRolloutFramework:
         return decision
 
     def _append_audit(self, payload: dict[str, Any]) -> None:
-        self._audit_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._audit_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        safe_append_jsonl(self._audit_path, payload, hash_chain=False)
 
     @staticmethod
     def _variant_score(variant: dict[str, Any] | None) -> float | None:

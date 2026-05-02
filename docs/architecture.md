@@ -166,6 +166,29 @@ flowchart LR
 - `admin_endpoints.py` bewaart een backward-compatible exportlaag.
 - `admin_endpoints_core.py` bevat Dash-layout, callbacks en dashboard runtime-start.
 
+### 3.4 State manager component
+
+`lumina_core/state/state_manager.py` centraliseert de kritieke evolutie-state writes zodat JSONL en SQLite ook bij multi-process workloads consistent blijven.
+
+```mermaid
+flowchart LR
+    writers[EngineAndEvolutionWriters]
+    manager[state_manager.py]
+    fileLocks[filelockLocks]
+    jsonlStore[stateJsonlFiles]
+    sqliteStore[stateSqliteFiles]
+
+    writers --> manager
+    manager --> fileLocks
+    manager --> jsonlStore
+    manager --> sqliteStore
+```
+
+- `safe_append_jsonl(...)` doet atomische append met lock, retry/backoff en optionele hash-chain (`prev_hash` + `entry_hash`).
+- `safe_sqlite_connect(...)` forceert WAL + busy timeout voor veilige concurrente writes.
+- `safe_with_file_lock(...)` ondersteunt geavanceerde write-transacties (zoals decision-log hash herberekening binnen dezelfde lock scope).
+- Lockbestanden staan onder `state/.locks/` (of `LUMINA_STATE_LOCK_DIR`) en worden niet gecommit.
+
 ---
 
 ## 4. Event Bus & Blackboard Flow
@@ -251,7 +274,9 @@ flowchart TD
 
 Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 
-- `RiskPolicy` laadt mode-aware limieten uit `config.yaml` met prioriteit `mode-overlay -> risk_controller -> defaults`.
+- `RiskPolicy.get_effective_policy(mode, instrument)` is de centrale resolver voor risk-limieten.
+- Overlay-volgorde is nu strikt: `base (risk_controller) -> mode_overlay (sim/real/paper/sim_real_guard) -> instrument_overlay (risk_instrument_overrides)`.
+- Voor config hot-reload zonder procesrestart wordt `ConfigLoader.invalidate()` gebruikt vóór de volgende policy-resolutie.
 - `FinalArbitration` valideert elke orderintentie op constitution + risk policy + live account state.
 - Deze check draait vóór broker submit in zowel engine- als brokerpaden, zodat geen agent-route de risicogrens kan omzeilen.
 
@@ -300,7 +325,37 @@ Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 | Dashboard state visualizer | [`lumina_core/engine/state_visualizer.py`](../lumina_core/engine/state_visualizer.py) |
 | Dashboard admin endpoints (compat) | [`lumina_core/engine/admin_endpoints.py`](../lumina_core/engine/admin_endpoints.py) |
 | Dashboard admin endpoints core | [`lumina_core/engine/admin_endpoints_core.py`](../lumina_core/engine/admin_endpoints_core.py) |
+| State manager | [`lumina_core/state/state_manager.py`](../lumina_core/state/state_manager.py) |
 | Safety | [`lumina_core/safety/`](../lumina_core/safety/) |
+
+### Cost model calibration en reality gap
+
+LUMINA kalibreert execution-cost aannames dagelijks op basis van gereconcilieerde fills. Zo blijven risk-inschattingen aligned met live marktfrictie in plaats van statisch op paper-aannames.
+
+```mermaid
+flowchart LR
+    reconcilerAudit[trade_fill_audit.jsonl]
+    calibrator[CostModelCalibrator]
+    calibrationState[state/cost_model_calibration.json]
+    tradeCostModel[TradeExecutionCostModel]
+    gapTracker[RealityGapTracker]
+    gapLog[logs/reality_gap.jsonl]
+
+    reconcilerAudit --> calibrator
+    calibrator --> calibrationState
+    calibrationState --> tradeCostModel
+    reconcilerAudit --> gapTracker
+    gapTracker --> gapLog
+```
+
+- [`lumina_core/risk/cost_model_calibrator.py`](../lumina_core/risk/cost_model_calibrator.py) vergelijkt per `reconciled` event `model_cost` versus `real_fill_cost` en schrijft running bias-statistiek naar `state/cost_model_calibration.json`.
+- [`lumina_core/risk/cost_model.py`](../lumina_core/risk/cost_model.py) past de bias toe via `apply_calibration()` (ticks-bias + optionele sigma-update).
+- [`lumina_core/monitoring/reality_gap_tracker.py`](../lumina_core/monitoring/reality_gap_tracker.py) meet dagelijks de gap tussen live fills en baseline-metrics, en appendt records naar `logs/reality_gap.jsonl`.
+- [`scripts/validation/run_cost_model_calibration.py`](../scripts/validation/run_cost_model_calibration.py) is de dagelijkse validation-entrypoint voor beide stappen.
+
+**V1-beperkingen (expliciet):**
+- Reconciler-audit bevat nog geen ATR-snapshot of directe `model_cost`; de calibrator gebruikt daarom een expliciete ATR-fallback.
+- De kostenvergelijking is een conservatieve exit-leg proxy (slippage + commissie) en geen volledige trade-TCA.
 
 ---
 
