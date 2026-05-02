@@ -73,6 +73,24 @@ def test_final_arbitration_rejects_risk_limit_overshoot() -> None:
 
 
 @pytest.mark.unit
+def test_final_arbitration_rejects_low_margin_confidence() -> None:
+    arbitration = FinalArbitration(_base_policy())
+    intent = {
+        "symbol": "MES",
+        "side": "BUY",
+        "quantity": 1,
+        "proposed_risk": 20.0,
+        "metadata": {},
+    }
+    state = _base_state()
+    state["used_margin"] = 9_000.0
+    state["free_margin"] = 1_000.0
+    result = arbitration.check_order_intent(intent, state)
+    assert result.status == "REJECTED"
+    assert result.reason == "margin_confidence_below_policy"
+
+
+@pytest.mark.unit
 def test_final_arbitration_approves_valid_order() -> None:
     arbitration = FinalArbitration(_base_policy())
     intent = {

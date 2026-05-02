@@ -226,24 +226,25 @@ No agent proposal can bypass this layer through supervisor flow, operations/reas
 ### Usage
 
 ```python
-from lumina_core.safety.constitutional_guard import ConstitutionalGuard
-
-guard = ConstitutionalGuard()
-
-# Phase 1: before sandbox (cheap, fast).
-pre = guard.check_pre_mutation(dna_content, mode="real")
-if not pre.passed:
-    logger.warning("Pre-mutation blocked: %s", pre.violation_names)
-    continue
-
-# Phase 2: sandboxed scoring.
-scored = guard.evaluate_sandboxed(
-    dna_content=dna_content, mode="real",
-    pnl=pnl, max_dd=max_dd, sharpe=sharpe,
+from lumina_core.risk.final_arbitration import (
+    FinalArbitration,
+    build_current_state_from_engine,
+    build_order_intent_from_order,
 )
+from lumina_core.risk.risk_policy import load_risk_policy
 
-# Phase 3: final gate (raises on FATAL by default).
-guard.check_pre_promotion(dna_content, mode="real")  # raises if violated
+policy = load_risk_policy(mode="real")
+arb = FinalArbitration(policy)
+
+intent = build_order_intent_from_order(order, dream_snapshot=engine.get_current_dream_snapshot())
+state = build_current_state_from_engine(engine)
+result = arb.check_order_intent(intent, state)
+
+if result.status != "APPROVED":
+    logger.warning("FinalArbitration blocked order: %s", result.reason)
+    return
+
+broker.submit_order(order)
 ```
 
 ---

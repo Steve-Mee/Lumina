@@ -71,6 +71,7 @@ state/last_run_summary_live_5m.json
 
 # Local scratch analysis file (official versions are lumina_analyse_v*.md)
 lumina_analyse.md
+lumina_analyse._*
 
 # Local Trader League test artifacts
 lumina_os/tests/test_trader_league.db

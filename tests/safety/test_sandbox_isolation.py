@@ -160,7 +160,7 @@ class TestInProcessEvaluation:
         executor = SandboxedMutationExecutor(always_sandbox=False)
         result = executor._run_in_process(
             dna_hash="t",
-            dna_content="{}",
+            dna_content='{"stub": true}',
             mode="sim",
             pnl=100.0,
             max_dd=10.0,
@@ -173,7 +173,7 @@ class TestInProcessEvaluation:
         executor = SandboxedMutationExecutor(always_sandbox=False)
         result = executor._run_in_process(
             dna_hash="t",
-            dna_content="{}",
+            dna_content='{"stub": true}',
             mode="sim",
             pnl=100.0,
             max_dd=10.0,

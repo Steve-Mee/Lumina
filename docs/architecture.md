@@ -89,6 +89,83 @@ flowchart LR
     safetyCtx -->|"principles"| tradingCtx
 ```
 
+### 3.1 Evolution-laag componenten
+
+`lumina_core/evolution/evolution_orchestrator.py` is nu een dunne compatibiliteitslaag. De implementatie is opgesplitst in losse eenheden met expliciete contracts zodat mutation, fitness en promotion afzonderlijk getest kunnen worden.
+
+```mermaid
+flowchart LR
+    compatLayer[evolution_orchestrator.py]
+    orchestratorComp[orchestrator.py]
+    fitnessComp[fitness_evaluator.py]
+    mutationComp[mutation_pipeline.py]
+    promotionComp[promotion_policy.py]
+
+    compatLayer --> orchestratorComp
+    compatLayer --> fitnessComp
+    compatLayer --> mutationComp
+    orchestratorComp --> fitnessComp
+    orchestratorComp --> mutationComp
+    orchestratorComp --> promotionComp
+```
+
+- `orchestrator.py` bewaart een backward-compatible exportlaag voor bestaande imports.
+- `orchestrator_core.py` bevat `EvolutionOrchestrator` + generation-coordinatie en runtime wiring.
+- `fitness_evaluator.py` bevat deterministische score- en seedlogica voor kandidaten.
+- `mutation_pipeline.py` bevat candidate-generatie + bootstrap via een protocolgestuurde pipeline.
+- `promotion_policy.py` bevat shadow-run policy, veto-window checks en promotion-statusafhandeling.
+- `evolution_orchestrator.py` blijft import-stabiel voor bestaande callers en test monkeypatches.
+
+### 3.2 Self-evolution meta-agent componenten
+
+`lumina_core/engine/self_evolution_meta_agent.py` is nu een dunne compatibiliteitslaag. De implementatie is opgesplitst in losse modules zodat proposal-generatie, anomaliedetectie en auditlogica apart testbaar zijn.
+
+```mermaid
+flowchart LR
+    compatMeta[self_evolution_meta_agent.py]
+    metaCore[meta_agent.py]
+    proposalCore[proposal_generator.py]
+    anomalyCore[anomaly_detector.py]
+    auditCore[audit_writer.py]
+
+    compatMeta --> metaCore
+    metaCore --> proposalCore
+    metaCore --> anomalyCore
+    metaCore --> auditCore
+```
+
+- `meta_agent.py` bewaart een backward-compatible exportlaag voor bestaande imports.
+- `meta_agent_core.py` houdt de `SelfEvolutionMetaAgent` orchestratie en runtime flow.
+- `proposal_generator.py` bevat challenger/genetic candidate-opbouw en DNA-registratie.
+- `anomaly_detector.py` bevat drift/acceptance meta-review en auto-fine-tune triggers.
+- `audit_writer.py` beheert append-only hash-chained evolution logging en decision-log forwarding.
+- `self_evolution_meta_agent.py` bewaart backward-compatible imports voor bestaande callers en tests.
+
+### 3.3 Dashboard componenten
+
+`lumina_core/engine/dashboard_service.py` is nu een dunne compatibiliteitslaag. De implementatie is opgesplitst zodat metrics-verzameling, state-visualisatie en Dash-admin endpoints afzonderlijk testbaar zijn.
+
+```mermaid
+flowchart LR
+    compatDashboard[dashboard_service.py]
+    metricsCore[metrics_collector.py]
+    visualizerCore[state_visualizer.py]
+    adminCore[admin_endpoints.py]
+
+    compatDashboard --> metricsCore
+    compatDashboard --> visualizerCore
+    compatDashboard --> adminCore
+    visualizerCore --> metricsCore
+    adminCore --> visualizerCore
+    adminCore --> metricsCore
+```
+
+- `dashboard_service.py` bewaart de publieke en protected API als delegatie/proxy-laag.
+- `metrics_collector.py` bevat performance-samenvattingen, heatmap-opbouw en blackboard health metingen.
+- `state_visualizer.py` bevat figuur/panel-opbouw voor swarm, inference, parity, blackboard trend en drawdown.
+- `admin_endpoints.py` bewaart een backward-compatible exportlaag.
+- `admin_endpoints_core.py` bevat Dash-layout, callbacks en dashboard runtime-start.
+
 ---
 
 ## 4. Event Bus & Blackboard Flow
@@ -208,6 +285,21 @@ Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 | Centrale engine | [`lumina_core/engine/lumina_engine.py`](../lumina_core/engine/lumina_engine.py) |
 | Risk | [`lumina_core/risk/`](../lumina_core/risk/) |
 | Evolution | [`lumina_core/evolution/`](../lumina_core/evolution/) |
+| Evolution orchestrator (compat) | [`lumina_core/evolution/orchestrator.py`](../lumina_core/evolution/orchestrator.py) |
+| Evolution orchestrator core | [`lumina_core/evolution/orchestrator_core.py`](../lumina_core/evolution/orchestrator_core.py) |
+| Evolution fitness evaluator | [`lumina_core/evolution/fitness_evaluator.py`](../lumina_core/evolution/fitness_evaluator.py) |
+| Evolution mutation pipeline | [`lumina_core/evolution/mutation_pipeline.py`](../lumina_core/evolution/mutation_pipeline.py) |
+| Evolution promotion policy | [`lumina_core/evolution/promotion_policy.py`](../lumina_core/evolution/promotion_policy.py) |
+| Self-evolution meta agent (compat) | [`lumina_core/engine/meta_agent.py`](../lumina_core/engine/meta_agent.py) |
+| Self-evolution meta agent core | [`lumina_core/engine/meta_agent_core.py`](../lumina_core/engine/meta_agent_core.py) |
+| Self-evolution proposal generator | [`lumina_core/engine/proposal_generator.py`](../lumina_core/engine/proposal_generator.py) |
+| Self-evolution anomaly detector | [`lumina_core/engine/anomaly_detector.py`](../lumina_core/engine/anomaly_detector.py) |
+| Self-evolution audit writer | [`lumina_core/engine/audit_writer.py`](../lumina_core/engine/audit_writer.py) |
+| Dashboard service (split) | [`lumina_core/engine/dashboard_service.py`](../lumina_core/engine/dashboard_service.py) |
+| Dashboard metrics collector | [`lumina_core/engine/metrics_collector.py`](../lumina_core/engine/metrics_collector.py) |
+| Dashboard state visualizer | [`lumina_core/engine/state_visualizer.py`](../lumina_core/engine/state_visualizer.py) |
+| Dashboard admin endpoints (compat) | [`lumina_core/engine/admin_endpoints.py`](../lumina_core/engine/admin_endpoints.py) |
+| Dashboard admin endpoints core | [`lumina_core/engine/admin_endpoints_core.py`](../lumina_core/engine/admin_endpoints_core.py) |
 | Safety | [`lumina_core/safety/`](../lumina_core/safety/) |
 
 ---

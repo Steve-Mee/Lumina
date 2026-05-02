@@ -223,14 +223,14 @@ class TestExtremeValueAttacks:
         dna = json.dumps({"leverage_multiplier": 1e6})
         assert _blocked(dna)
 
-    def test_empty_json_object_passes(self) -> None:
-        assert not _blocked("{}", mode="real")
+    def test_empty_json_object_blocked(self) -> None:
+        assert _blocked("{}", mode="real")
 
-    def test_empty_string_passes(self) -> None:
-        assert not _blocked("", mode="real")
+    def test_empty_string_blocked(self) -> None:
+        assert _blocked("", mode="real")
 
-    def test_very_long_plain_text_passes(self) -> None:
-        assert not _blocked("x" * 100_000, mode="real")
+    def test_very_long_plain_text_blocked(self) -> None:
+        assert _blocked("x" * 100_000, mode="real")
 
 
 # ---------------------------------------------------------------------------
@@ -351,7 +351,7 @@ class TestConstitutionalGuardRedTeam:
     def test_guard_exposes_constitution(self) -> None:
         guard = ConstitutionalGuard()
         assert guard.constitution is not None
-        assert len(guard.constitution.principles) == 15
+        assert len(guard.constitution.principles) == 16
 
     def test_probe_attack_via_constitution(self) -> None:
         """probe_attack must correctly report attack outcomes."""

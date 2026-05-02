@@ -38,8 +38,9 @@ class TestSecurityConfig:
             "https://example.com",
         ]
 
-    def test_jwt_secret_key_required(self):
-        """JWT secret key is required."""
+    def test_jwt_secret_key_required(self, monkeypatch):
+        """JWT secret key is required when not provided via env or config."""
+        monkeypatch.delenv("LUMINA_JWT_SECRET_KEY", raising=False)
         config_dict = {"cors_allowed_origins": []}
         with pytest.raises(ValueError, match="JWT secret key"):
             SecurityConfig(config_dict)

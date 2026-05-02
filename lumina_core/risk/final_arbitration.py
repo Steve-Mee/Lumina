@@ -203,6 +203,16 @@ class FinalArbitration:
         used_margin = float(state.get("used_margin", 0.0) or 0.0)
         if free_margin <= 0.0 and used_margin > 0.0:
             return False, "margin_unavailable"
+        margin_confidence = state.get("margin_confidence", None)
+        if margin_confidence is None:
+            total_margin = free_margin + used_margin
+            if total_margin > 0.0:
+                margin_confidence = free_margin / total_margin
+            else:
+                margin_confidence = 1.0
+        margin_confidence_value = float(margin_confidence or 0.0)
+        if margin_confidence_value < float(self.policy.margin_min_confidence):
+            return False, "margin_confidence_below_policy"
 
         drawdown_pct = float(state.get("drawdown_pct", 0.0) or 0.0)
         drawdown_kill_percent = float(state.get("drawdown_kill_percent", 25.0) or 25.0)

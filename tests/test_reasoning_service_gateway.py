@@ -24,7 +24,13 @@ def _service(mode: str = "real") -> tuple[ReasoningService, _BrokerSpy]:
     broker = _BrokerSpy()
     engine = SimpleNamespace(
         config=SimpleNamespace(instrument="MES JUN26", min_confluence=0.5, trade_mode=mode),
-        app=SimpleNamespace(),
+        app=SimpleNamespace(
+            account_equity=100_000.0,
+            available_margin=50_000.0,
+            positions_margin_used=0.0,
+            realized_pnl_today=0.0,
+            sim_position_qty=0,
+        ),
         get_current_dream_snapshot=lambda: {"confluence_score": 0.9, "regime": "NEUTRAL", "hold_until_ts": 0.0},
     )
     inference_engine = SimpleNamespace(active_provider="ollama")

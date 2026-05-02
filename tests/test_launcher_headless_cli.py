@@ -97,7 +97,7 @@ def test_headless_launcher_live_mock_paper_mode_skips_noisy_config_error(tmp_pat
             "--headless",
             "--mode=paper",
             "--duration=1m",
-            "--broker=live",
+            "--broker=paper",
         ],
         cwd=repo_root,
         env=env,
@@ -114,4 +114,4 @@ def test_headless_launcher_live_mock_paper_mode_skips_noisy_config_error(tmp_pat
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
     assert payload["runtime"] == "headless"
     assert payload["mode"] == "paper"
-    assert payload["broker_mode"] == "live"
+    assert payload["broker_mode"] == "paper"

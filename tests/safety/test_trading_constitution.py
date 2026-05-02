@@ -1,4 +1,4 @@
-"""Tests for TradingConstitution — all 15 principles, audit logic, and edge cases.
+"""Tests for TradingConstitution — all principles, audit logic, and edge cases.
 
 Every test here is @unit (no I/O, no subprocess, no external services).
 """
@@ -20,6 +20,10 @@ from lumina_core.safety.trading_constitution import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Minimal non-empty JSON object accepted by _parse_dna_content (empty `{}` is invalid).
+_MINIMAL_VALID_DNA = json.dumps({"stub": True})
+
 
 def _dna(**kwargs: object) -> str:
     return json.dumps(kwargs)
@@ -49,8 +53,8 @@ def _warn_names(dna: str, mode: str = "real") -> list[str]:
 @pytest.mark.unit
 class TestConstitutionStructure:
 
-    def test_has_15_principles(self) -> None:
-        assert len(TRADING_CONSTITUTION.principles) == 15
+    def test_has_16_principles(self) -> None:
+        assert len(TRADING_CONSTITUTION.principles) == 16
 
     def test_at_least_12_fatal_principles(self) -> None:
         assert TRADING_CONSTITUTION.fatal_count >= 12
@@ -77,13 +81,15 @@ class TestConstitutionStructure:
             TRADING_CONSTITUTION.principles[0] = TRADING_CONSTITUTION.principles[1]  # type: ignore[index]
 
     def test_clean_dna_passes_all_principles(self) -> None:
-        violations = _audit("{}", mode="sim")
+        violations = _audit(_MINIMAL_VALID_DNA, mode="sim")
         assert not any(v.severity == "fatal" for v in violations)
 
-    def test_plain_text_prompt_passes_all_principles(self) -> None:
-        """Non-JSON DNA must not trigger false positives."""
+    def test_plain_text_dna_is_fatal_fail_closed(self) -> None:
+        """Plain-text DNA is rejected (structured JSON required)."""
         violations = _audit("Be conservative, use small position sizes.", mode="real")
-        assert not any(v.severity == "fatal" for v in violations)
+        assert any(
+            v.principle_name == "dna_must_be_structured_json" and v.severity == "fatal" for v in violations
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +116,7 @@ class TestCapitalPreservation:
         assert "capital_preservation_in_real" not in _fatal_names(_hs(max_risk_percent=99.0), mode="sim")
 
     def test_missing_max_risk_passes(self) -> None:
-        assert "capital_preservation_in_real" not in _fatal_names("{}")
+        assert "capital_preservation_in_real" not in _fatal_names(_MINIMAL_VALID_DNA)
 
 
 # ---------------------------------------------------------------------------
@@ -139,7 +145,7 @@ class TestNoNakedOrders:
         assert "no_naked_orders" not in _fatal_names(dna)
 
     def test_no_bypass_keys_passes(self) -> None:
-        assert "no_naked_orders" not in _fatal_names("{}")
+        assert "no_naked_orders" not in _fatal_names(_MINIMAL_VALID_DNA)
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +193,7 @@ class TestApprovalRequired:
         assert "approval_required_in_real" not in _fatal_names(_dna(approval_required=True))
 
     def test_no_approval_key_passes(self) -> None:
-        assert "approval_required_in_real" not in _fatal_names("{}")
+        assert "approval_required_in_real" not in _fatal_names(_MINIMAL_VALID_DNA)
 
     def test_approval_bypass_ignored_in_sim(self) -> None:
         assert "approval_required_in_real" not in _fatal_names(
@@ -305,7 +311,7 @@ class TestDailyLossHardStop:
         assert "daily_loss_hard_stop_required" in _fatal_names(dna)
 
     def test_no_daily_loss_key_passes(self) -> None:
-        assert "daily_loss_hard_stop_required" not in _fatal_names("{}")
+        assert "daily_loss_hard_stop_required" not in _fatal_names(_MINIMAL_VALID_DNA)
 
     def test_positive_cap_ok_sim(self) -> None:
         dna = _hs(daily_loss_cap=100.0)
@@ -350,7 +356,7 @@ class TestMinimumBacktestQuality:
 
     def test_missing_sharpe_passes(self) -> None:
         # Absence of backtest data should not block.
-        assert "minimum_backtest_quality_for_real" not in _fatal_names("{}", mode="real")
+        assert "minimum_backtest_quality_for_real" not in _fatal_names(_MINIMAL_VALID_DNA, mode="real")
 
     def test_bad_sharpe_ok_sim(self) -> None:
         assert "minimum_backtest_quality_for_real" not in _fatal_names(
@@ -484,7 +490,7 @@ class TestCombinedAttacks:
         assert not TRADING_CONSTITUTION.is_clean(evil_dna, mode="sim")
 
     def test_is_clean_returns_true_for_clean_dna(self) -> None:
-        assert TRADING_CONSTITUTION.is_clean("{}", mode="sim")
+        assert TRADING_CONSTITUTION.is_clean(_MINIMAL_VALID_DNA, mode="sim")
 
     def test_raise_on_fatal_raises_violation_error(self) -> None:
         evil = _dna(disable_risk_controller=True)
@@ -524,20 +530,20 @@ class TestProbeAttack:
 @pytest.mark.unit
 class TestParseDnaContent:
 
-    def test_empty_string_returns_empty_dict(self) -> None:
-        assert _parse_dna_content("") == {}
+    def test_empty_string_returns_validation_sentinel(self) -> None:
+        assert _parse_dna_content("") == {"__dna_validation_error__": "empty_or_non_string"}
 
-    def test_plain_text_returns_empty_dict(self) -> None:
-        assert _parse_dna_content("be conservative") == {}
+    def test_plain_text_returns_validation_sentinel(self) -> None:
+        assert _parse_dna_content("be conservative") == {"__dna_validation_error__": "non_json_payload"}
 
     def test_valid_json_returns_dict(self) -> None:
         assert _parse_dna_content('{"a": 1}') == {"a": 1}
 
-    def test_invalid_json_returns_empty_dict(self) -> None:
-        assert _parse_dna_content("{broken json") == {}
+    def test_invalid_json_returns_validation_sentinel(self) -> None:
+        assert _parse_dna_content("{broken json") == {"__dna_validation_error__": "json_parse_error"}
 
-    def test_json_list_returns_empty_dict(self) -> None:
-        assert _parse_dna_content("[1,2,3]") == {}
+    def test_json_list_returns_validation_sentinel(self) -> None:
+        assert _parse_dna_content("[1,2,3]") == {"__dna_validation_error__": "non_json_payload"}
 
-    def test_none_returns_empty_dict(self) -> None:
-        assert _parse_dna_content(None) == {}  # type: ignore[arg-type]
+    def test_none_returns_validation_sentinel(self) -> None:
+        assert _parse_dna_content(None) == {"__dna_validation_error__": "empty_or_non_string"}  # type: ignore[arg-type]

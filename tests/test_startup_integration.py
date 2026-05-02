@@ -26,6 +26,7 @@ def test_main_calls_bootstrap_then_forever_loop(monkeypatch):
         analysis_service=SimpleNamespace(run_main_loop=lambda: None),
         operations_service=SimpleNamespace(run_forever_loop=lambda: calls.append("run_forever_loop")),
         runtime_context=SimpleNamespace(),
+        bind_runtime_module=lambda *_a, **_k: None,
     )
 
     monkeypatch.setattr(module, "get_container", lambda: dummy_container)
