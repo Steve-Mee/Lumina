@@ -19,6 +19,7 @@ from .errors import BrokerBridgeError, ErrorSeverity, LuminaError, format_error_
 from .lumina_engine import LuminaEngine
 from .policy_engine import PolicyEngine
 from .valuation_engine import ValuationEngine
+from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 from lumina_core.logging_utils import log_event, log_runtime_trace, runtime_trace_enabled
 
@@ -285,16 +286,35 @@ class OperationsService:
 
         try:
             dream_snapshot = self.engine.get_current_dream_snapshot()
-            result = policy_engine.execute_order(
-                Order(
-                    symbol=str(self.engine.config.instrument),
-                    side=str(action).upper(),
-                    quantity=int(qty),
-                    order_type="MARKET",
-                    stop_loss=float(dream_snapshot.get("stop", 0) or 0),
-                    take_profit=float(dream_snapshot.get("target", 0) or 0),
-                )
+            order = Order(
+                symbol=str(self.engine.config.instrument),
+                side=str(action).upper(),
+                quantity=int(qty),
+                order_type="MARKET",
+                stop_loss=float(dream_snapshot.get("stop", 0) or 0),
+                take_profit=float(dream_snapshot.get("target", 0) or 0),
+                metadata={
+                    "reference_price": float(_price),
+                    "proposed_risk": float(_proposed_risk),
+                    "regime": str(dream_snapshot.get("regime", "NEUTRAL")),
+                    "confluence_score": float(dream_snapshot.get("confluence_score", 0.0) or 0.0),
+                    "reason": str(dream_snapshot.get("reason", "") or ""),
+                },
             )
+            arb = getattr(self.engine, "final_arbitration", None)
+            if arb is not None:
+                arb_result = arb.check_order_intent(
+                    build_order_intent_from_order(order, dream_snapshot=dream_snapshot),
+                    build_current_state_from_engine(self.engine),
+                )
+                if arb_result.status != "APPROVED":
+                    app.logger.warning(
+                        "place_order blocked by FinalArbitration [mode=%s]: %s",
+                        str(trade_mode).upper(),
+                        arb_result.reason,
+                    )
+                    return False
+            result = policy_engine.execute_order(order)
             if result.accepted:
                 current_price = 0.0
                 try:

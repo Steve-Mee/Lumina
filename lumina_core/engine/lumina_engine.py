@@ -18,8 +18,10 @@ from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .economic_truth import EconomicTruth
 from .market_data_manager import MarketDataManager
+from lumina_core.risk.final_arbitration import FinalArbitration
 from lumina_core.risk.risk_controller import HardRiskController, risk_limits_from_config
 from lumina_core.risk.dynamic_kelly import DynamicKellyEstimator
+from lumina_core.risk.risk_policy import RiskPolicy, load_risk_policy
 from .session_guard import SessionGuard
 from .valuation_engine import ValuationEngine
 from .analysis_helpers import (
@@ -140,6 +142,8 @@ class LuminaEngine:
     ppo_trainer: Any | None = None
     # Hard Risk Controller – unbreakable safety layer (fail-closed)
     risk_controller: HardRiskController | None = None
+    risk_policy: RiskPolicy | None = None
+    final_arbitration: FinalArbitration | None = None
     # Infinite simulator (nachtelijke miljoenen-trade simulatie)
     infinite_simulator: Any | None = None
     infinite_sim_last_run_date: str | None = None
@@ -234,6 +238,7 @@ class LuminaEngine:
             session_config = getattr(self.config, "session", {})
             if not isinstance(session_config, dict):
                 session_config = {}
+            self.risk_policy = load_risk_policy(mode=str(getattr(self.config, "trade_mode", "paper")))
             limits = risk_limits_from_config()
 
             # Keep session calendar as source-of-truth for REAL mode behavior.
@@ -259,6 +264,10 @@ class LuminaEngine:
                 enforce_rules=enforce_rules,
                 session_guard=self.session_guard,
             )
+        if self.risk_policy is None:
+            self.risk_policy = load_risk_policy(mode=str(getattr(self.config, "trade_mode", "paper")))
+        if self.final_arbitration is None:
+            self.final_arbitration = FinalArbitration(self.risk_policy)
 
         if self.config.trade_mode not in {"paper", "sim", "sim_real_guard", "real"}:
             raise ValueError("TRADE_MODE must be one of: paper, sim, sim_real_guard, real")

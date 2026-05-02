@@ -921,6 +921,8 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
             instrument=_instrument,
             risk_controller=_risk_ctrl,
             logger=app.logger,
+            mode=str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower(),
+            engine=app.engine,
         )
 
         session_allowed = True

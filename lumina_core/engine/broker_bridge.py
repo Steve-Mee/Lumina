@@ -8,11 +8,14 @@ import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 import requests
 
 from lumina_core.risk.cost_model import TradeExecutionCostModel
+from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
+from lumina_core.risk.final_arbitration import FinalArbitration
+from lumina_core.risk.risk_policy import load_risk_policy
 
 # One WARNING per account per process when REST returns no parsable balance/equity (avoid log spam).
 _CROSS_TRADE_BALANCE_WARN_ACCOUNTS: set[str] = set()
@@ -47,6 +50,28 @@ _ACCOUNT_PNL_KEYS = (
     "dayPnl",
     "realizedDayPnl",
 )
+
+
+def _run_final_arbitration(engine: Any | None, order: "Order") -> tuple[bool, str]:
+    if engine is None:
+        return True, "engine_unavailable"
+    try:
+        arbitration = getattr(engine, "final_arbitration", None)
+        if arbitration is None:
+            arbitration = FinalArbitration(
+                getattr(engine, "risk_policy", None) or load_risk_policy(
+                    mode=str(getattr(getattr(engine, "config", None), "trade_mode", "paper"))
+                )
+            )
+        snapshot_provider = getattr(engine, "get_current_dream_snapshot", None)
+        snapshot = snapshot_provider() if callable(snapshot_provider) else {}
+        result = arbitration.check_order_intent(
+            build_order_intent_from_order(order, dream_snapshot=snapshot if isinstance(snapshot, dict) else {}),
+            build_current_state_from_engine(engine),
+        )
+        return result.status == "APPROVED", result.reason
+    except Exception as exc:
+        return False, f"final_arbitration_error:{exc}"
 
 
 @dataclass(slots=True)
@@ -176,6 +201,14 @@ class PaperBroker(BrokerBridge):
     def submit_order(self, order: Order) -> OrderResult:
         if not self._connected:
             self.connect()
+        allowed, reason = _run_final_arbitration(self.engine, order)
+        if not allowed:
+            return OrderResult(
+                accepted=False,
+                order_id="",
+                status="rejected",
+                message=f"FinalArbitration blocked order: {reason}",
+            )
 
         side = str(order.side).upper()
         if side not in {"BUY", "SELL"}:
@@ -281,6 +314,7 @@ class CrossTradeBroker(BrokerBridge):
     fill_poll_url: str = ""
     logger: logging.Logger | None = None
     timeout_seconds: float = 10.0
+    engine: Any | None = None
     _session: requests.Session | None = field(default=None, init=False)
     _last_client_order_id: str = field(default="", init=False)
 
@@ -342,6 +376,14 @@ class CrossTradeBroker(BrokerBridge):
         return self._session
 
     def submit_order(self, order: Order) -> OrderResult:
+        allowed, reason = _run_final_arbitration(self.engine, order)
+        if not allowed:
+            return OrderResult(
+                accepted=False,
+                order_id="",
+                status="rejected",
+                message=f"FinalArbitration blocked order: {reason}",
+            )
         client_order_id = str(order.metadata.get("clientOrderId") or f"lumina-{uuid.uuid4()}")
         payload = {
             "instrument": order.symbol,
@@ -601,6 +643,7 @@ def broker_factory(
             base_url=base_url,
             fill_poll_url=fill_poll_url,
             logger=logger,
+            engine=engine,
         )
 
     return PaperBroker(engine=engine, logger=logger)

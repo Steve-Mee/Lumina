@@ -25,7 +25,7 @@ from __future__ import annotations
 import itertools
 import math
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 

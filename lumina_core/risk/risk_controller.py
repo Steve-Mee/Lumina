@@ -647,15 +647,18 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
 
     global_mode = str(os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or config.get("mode", "sim")).strip().lower()
     is_sim = global_mode == "sim"
+    from lumina_core.risk.risk_policy import load_risk_policy  # noqa: PLC0415
+
+    resolved_policy = load_risk_policy(config, mode=global_mode)
 
     risk_cfg = config.get("risk_controller", {}) if isinstance(config.get("risk_controller"), dict) else {}
     trading_cfg = config.get("trading", {}) if isinstance(config.get("trading"), dict) else {}
 
-    daily_loss_cap = float(risk_cfg.get("daily_loss_cap", -1000.0) or -1000.0)
+    daily_loss_cap = float(resolved_policy.daily_loss_cap)
     max_consecutive_losses = int(risk_cfg.get("max_consecutive_losses", 3))
-    max_open_risk_per_instrument = float(risk_cfg.get("max_open_risk_per_instrument", 500.0))
-    max_total_open_risk = float(risk_cfg.get("max_total_open_risk", 3000.0))
-    max_exposure_per_regime = float(risk_cfg.get("max_exposure_per_regime", 2000.0))
+    max_open_risk_per_instrument = float(resolved_policy.max_open_risk_per_instrument)
+    max_total_open_risk = float(resolved_policy.max_total_open_risk)
+    max_exposure_per_regime = float(resolved_policy.max_exposure_per_regime)
     cooldown_after_streak = int(risk_cfg.get("cooldown_after_streak", 30))
     session_cooldown_minutes = int(risk_cfg.get("session_cooldown_minutes", 15))
     enforce_session_guard = bool(risk_cfg.get("enforce_session_guard", True))
@@ -663,7 +666,7 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     eod_no_new_trades_minutes_before_session_end = int(
         trading_cfg.get("eod_no_new_trades_minutes_before_session_end", 60)
     )
-    margin_min_confidence = float(risk_cfg.get("margin_min_confidence", 0.6) or 0.6)
+    margin_min_confidence = float(resolved_policy.margin_min_confidence)
     var_es_method = str(risk_cfg.get("var_es_method", "historical") or "historical").strip().lower()
     var_es_window = int(risk_cfg.get("var_es_window", 200) or 200)
     var_es_min_samples = int(risk_cfg.get("var_es_min_samples", 40) or 40)
@@ -679,10 +682,10 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
     var_es_high_risk_limit_multiplier = float(risk_cfg.get("var_es_high_risk_limit_multiplier", 0.8) or 0.8)
     var_es_normal_risk_limit_multiplier = float(risk_cfg.get("var_es_normal_risk_limit_multiplier", 1.0) or 1.0)
     var_es_reason_codes_enabled = bool(risk_cfg.get("var_es_reason_codes_enabled", True))
-    var_95_limit_usd = float(risk_cfg.get("var_95_limit_usd", 1200.0) or 1200.0)
-    var_99_limit_usd = float(risk_cfg.get("var_99_limit_usd", 1800.0) or 1800.0)
-    es_95_limit_usd = float(risk_cfg.get("es_95_limit_usd", 1500.0) or 1500.0)
-    es_99_limit_usd = float(risk_cfg.get("es_99_limit_usd", 2200.0) or 2200.0)
+    var_95_limit_usd = float(resolved_policy.var_95_limit_usd)
+    var_99_limit_usd = float(resolved_policy.var_99_limit_usd)
+    es_95_limit_usd = float(resolved_policy.es_95_limit_usd)
+    es_99_limit_usd = float(resolved_policy.es_99_limit_usd)
     enable_mc_drawdown_calc = bool(risk_cfg.get("enable_mc_drawdown_calc", True))
     mc_drawdown_paths = int(risk_cfg.get("mc_drawdown_paths", 10000) or 10000)
     mc_drawdown_horizon_days = int(risk_cfg.get("mc_drawdown_horizon_days", 252) or 252)

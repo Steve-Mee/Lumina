@@ -121,6 +121,27 @@ sequenceDiagram
 
 > Dit diagram is **conceptueel**: exacte methodenamen en topics staan in code ([`event_bus.py`](../lumina_core/agent_orchestration/event_bus.py), [`engine_bindings.py`](../lumina_core/agent_orchestration/engine_bindings.py)).
 
+### 4.1 Event Bus payload contracts
+
+Om schema-drift te beperken gebruikt de centrale Event Bus typed payload-contracten op geselecteerde kritieke topics. Validatie gebeurt fail-closed op publish-pad voor deze topics.
+
+**Typed topics (Pydantic contracten):**
+- `trading_engine.trade_signal.emitted` -> `TradeSignal`
+- `trading_engine.dream_state.updated` -> `TradeSignal`
+- `risk.policy.decision` -> `RiskDecision`
+- `evolution.proposal.created` -> `EvolutionProposal`
+- `evolution.shadow.verdict` -> `ShadowVerdict`
+- `safety.constitution.violation` -> `ConstitutionViolation`
+- `meta.agent.reflection` -> `AgentReflection`
+
+**Legacy topics (nog zonder hard contract):**
+- Niet-geregistreerde topics blijven legacy dict-payloads accepteren via `EventBus.publish(...)`.
+- Dit houdt migraties backward-compatible voor bestaande producers en subscribers.
+
+**Migratieregel:**
+- Nieuwe safety-, risk- of execution-kritieke topics krijgen direct een Pydantic payload-contract in `event_bus.py`.
+- `publish_validated(...)` blijft het fail-closed compatibiliteitspad voor topic-gebaseerde validatie.
+
 ---
 
 ## 5. Data Flow Example — Volledige trade cyclus
@@ -148,6 +169,14 @@ flowchart TD
 ```
 
 **Interpretatie:** als een stap **faalt**, gaat het organisme **fail-closed** — liever geen trade dan een ongeteste promotie of een risico dat de Noordster schendt.
+
+### 5.1 Final order arbitration
+
+Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
+
+- `RiskPolicy` laadt mode-aware limieten uit `config.yaml` met prioriteit `mode-overlay -> risk_controller -> defaults`.
+- `FinalArbitration` valideert elke orderintentie op constitution + risk policy + live account state.
+- Deze check draait vóór broker submit in zowel engine- als brokerpaden, zodat geen agent-route de risicogrens kan omzeilen.
 
 ---
 

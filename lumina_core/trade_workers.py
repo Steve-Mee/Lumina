@@ -4,6 +4,7 @@ from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
 from lumina_core.engine.broker_bridge import Order, OrderResult
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, resolve_regime_snapshot
+from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
 
 from lumina_bible.workflows import dna_rewrite_daemon as _dna_rewrite_daemon
 from lumina_bible.workflows import process_user_feedback as _process_user_feedback
@@ -157,6 +158,16 @@ def submit_order_with_risk_check(
     container = getattr(app, "container", None)
     if container is None or getattr(container, "broker", None) is None:
         raise RuntimeError("RuntimeContext.container.broker is not configured")
+
+    arbitration = getattr(app.engine, "final_arbitration", None)
+    if arbitration is not None:
+        result = arbitration.check_order_intent(
+            build_order_intent_from_order(order, dream_snapshot=app.engine.get_current_dream_snapshot()),
+            build_current_state_from_engine(app.engine),
+        )
+        if result.status != "APPROVED":
+            app.logger.warning(f"Order blocked by final arbitration: {result.reason}")
+            return None
 
     # Risk check passed; proceed with broker bridge.
     return container.broker.submit_order(order)

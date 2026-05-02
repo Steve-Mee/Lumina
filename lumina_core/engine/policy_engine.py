@@ -5,6 +5,9 @@ from typing import Any
 
 from .agent_contracts import apply_agent_policy_gateway
 from .broker_bridge import Order, OrderResult
+from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
+from lumina_core.risk.risk_policy import load_risk_policy
+from lumina_core.risk.final_arbitration import FinalArbitration
 
 
 @dataclass(slots=True)
@@ -43,4 +46,22 @@ class PolicyEngine:
         return decision
 
     def execute_order(self, order: Order) -> OrderResult:
+        arbitration = getattr(self.engine, "final_arbitration", None)
+        if arbitration is None:
+            arbitration = FinalArbitration(
+                getattr(self.engine, "risk_policy", None) or load_risk_policy(
+                    mode=str(getattr(getattr(self.engine, "config", None), "trade_mode", "paper"))
+                )
+            )
+        result = arbitration.check_order_intent(
+            build_order_intent_from_order(order, dream_snapshot=getattr(self.engine, "get_current_dream_snapshot", lambda: {})()),
+            build_current_state_from_engine(self.engine),
+        )
+        if result.status != "APPROVED":
+            return OrderResult(
+                accepted=False,
+                order_id="",
+                status="rejected",
+                message=f"FinalArbitration blocked order: {result.reason}",
+            )
         return self.broker.submit_order(order)

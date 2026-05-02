@@ -3,7 +3,6 @@ Lumina v50 Security Module - Production-grade authentication, authorization, rat
 Fail-closed design: all security failures default to denial of access.
 """
 
-import json
 import logging
 import os
 import re

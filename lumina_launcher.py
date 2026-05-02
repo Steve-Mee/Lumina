@@ -788,7 +788,7 @@ def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dash
     process_badge = _status_badge("Running", "available") if alive else _status_badge("Stopped", "blocked")
     st.markdown(f"Bot Process {process_badge}", unsafe_allow_html=True)
     if alive:
-        auto_refresh = st.toggle(
+        st.toggle(
             "Auto-refresh live status (5s)",
             value=bool(st.session_state.get("live_status_auto_refresh", True)),
             key="live_status_auto_refresh",

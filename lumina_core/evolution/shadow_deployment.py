@@ -122,7 +122,6 @@ def _welch_t_pvalue(a: list[float], b: list[float]) -> float:
     # Regularized incomplete beta function approximation (Abramowitz & Stegun 26.5)
     # For our purposes, a conservative approximation is sufficient.
     try:
-        import math as _m
         half_p = 0.5 * _regularized_inc_beta(df / 2.0, 0.5, x)
         return float(min(1.0, 2.0 * half_p))
     except Exception:

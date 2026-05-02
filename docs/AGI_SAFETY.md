@@ -200,6 +200,29 @@ Fields: `audit_id`, `check_phase`, `mode`, `dna_hash`, `passed`, `fatal_count`, 
 
 This provides a complete forensic trail of every safety decision made during the organism's lifetime.
 
+---
+
+## Layer 4: FinalArbitration — Runtime Order Enforcement
+
+**Files:** `lumina_core/risk/risk_policy.py`, `lumina_core/risk/final_arbitration.py`
+
+`FinalArbitration` is the final fail-closed runtime gate before broker submission. It evaluates each order intent against:
+
+1. **Input integrity** (symbol, side, quantity, state completeness)
+2. **TradingConstitution** (fatal violations reject immediately)
+3. **RiskPolicy** (daily loss, per-instrument risk, total open risk, Kelly cap, VaR/ES limits)
+4. **Live account state** (equity sanity, margin availability, drawdown kill threshold)
+
+### Hard guarantee
+
+No agent proposal can bypass this layer through supervisor flow, operations/reasoning services, or direct broker submit paths. Any arbitration error is treated as `REJECTED` (fail-closed).
+
+### Mode behavior
+
+- **REAL:** strictest thresholds; capital preservation is sacred.
+- **PAPER:** realistic enforcement close to REAL.
+- **SIM:** learning-friendly but still bounded by physical risk constraints.
+
 ### Usage
 
 ```python

@@ -20,7 +20,6 @@ Design:
 
 from __future__ import annotations
 
-import math
 import statistics
 from dataclasses import dataclass, field
 from typing import Any, Final
@@ -80,7 +79,7 @@ def detect_time_period(bar: dict[str, Any]) -> str:
     if ts_raw is None:
         return "midday"
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
         ts_str = str(ts_raw).replace("Z", "+00:00")
         dt = datetime.fromisoformat(ts_str)
         # Convert to approximate ET offset (UTC-4 / UTC-5; use -4 for simplicity).
