@@ -71,7 +71,7 @@ def test_reality_gap_red_blocks(tmp_path: Path) -> None:
         lines.append(
             json.dumps(
                 {
-                    "ts": f"2026-01-{i+1:02d}T00:00:00Z",
+                    "ts": f"2026-01-{i + 1:02d}T00:00:00Z",
                     "sim_sharpe": 3.0,
                     "real_sharpe": 0.5,
                     "gap": 2.5,

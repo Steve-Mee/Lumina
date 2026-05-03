@@ -105,6 +105,9 @@ class MultiDaySimRunner:
                     try:
                         results.append(future.result())
                     except Exception:
+                        logging.exception(
+                            "Unhandled broad exception fallback in lumina_core/evolution/multi_day_sim_runner.py:107"
+                        )
                         results.append(
                             SimResult(
                                 dna_hash=variant.hash,
@@ -145,6 +148,9 @@ class MultiDaySimRunner:
                     try:
                         buckets[variant.hash].append(future.result())
                     except Exception:
+                        logging.exception(
+                            "Unhandled broad exception fallback in lumina_core/evolution/multi_day_sim_runner.py:147"
+                        )
                         buckets[variant.hash].append(
                             SimResult(
                                 dna_hash=variant.hash,
@@ -204,6 +210,7 @@ class MultiDaySimRunner:
 
             sandbox = StrategyGenerator().compile_and_validate(code_snippet)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/multi_day_sim_runner.py:206")
             return float("-inf")
 
         metadata = dict(sandbox.metadata)
@@ -288,11 +295,7 @@ class MultiDaySimRunner:
                 logger.warning("[EVOLUTION] Real market data load failed: %s – using simulation", exc)
                 real_market_data = False
 
-        if (
-            resolve_ohlc_reality_stress_enabled()
-            and real_ticks
-            and report.get("_reality_id") is not None
-        ):
+        if resolve_ohlc_reality_stress_enabled() and real_ticks and report.get("_reality_id") is not None:
             real_ticks = stress_simulator_ohlc(
                 real_ticks,
                 int(report.get("_reality_id", 0) or 0),
@@ -421,6 +424,9 @@ class MultiDaySimRunner:
                     ticks_by_day[day_key] = []
                 ticks_by_day[day_key].append(tick)
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/evolution/multi_day_sim_runner.py:423"
+                )
                 continue
 
         sorted_days = sorted(ticks_by_day.keys())[-target_days:]
@@ -543,6 +549,7 @@ class MultiDaySimRunner:
             if isinstance(loaded, dict):
                 payload = loaded
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/multi_day_sim_runner.py:545")
             payload = {}
 
         explicit = str(payload.get("regime_focus", "") or "").strip().lower()
@@ -584,7 +591,7 @@ class MultiDaySimRunner:
                 regime = engine.detect_market_regime(day_df)
                 return str(regime or "NEUTRAL").upper()
             except Exception:
-                pass
+                logger.exception("MultiDaySimRunner failed to detect day regime; defaulting to NEUTRAL")
         return "NEUTRAL"
 
     @staticmethod
@@ -676,6 +683,9 @@ class MultiDaySimRunner:
             try:
                 return float(valuation.point_value(instrument))
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/evolution/multi_day_sim_runner.py:678"
+                )
                 return 5.0
         return 5.0
 
@@ -687,5 +697,8 @@ class MultiDaySimRunner:
             try:
                 return float(valuation.commission_dollars(symbol=instrument, quantity=int(qty), sides=2))
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/evolution/multi_day_sim_runner.py:689"
+                )
                 return float(qty) * 2.58
         return float(qty) * 2.58

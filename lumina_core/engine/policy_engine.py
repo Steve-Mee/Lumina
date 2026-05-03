@@ -4,9 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .agent_contracts import apply_agent_policy_gateway
-from .broker_bridge import Order, OrderResult
+from .broker_bridge import Order, OrderResult, audit_final_arbitration_reject
 from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
-from lumina_core.risk.final_arbitration import FinalArbitration
 
 
 @dataclass(slots=True)
@@ -44,20 +43,36 @@ class PolicyEngine:
             )
         return decision
 
-    def execute_order(self, order: Order) -> OrderResult:
-        arbitration = getattr(self.engine, "final_arbitration", None)
-        if arbitration is None:
-            engine_policy = getattr(self.engine, "risk_policy", None)
-            arbitration = FinalArbitration(engine_policy) if engine_policy is not None else FinalArbitration()
-        result = arbitration.check_order_intent(
-            build_order_intent_from_order(order, dream_snapshot=getattr(self.engine, "get_current_dream_snapshot", lambda: {})()),
-            build_current_state_from_engine(self.engine),
-        )
-        if result.status != "APPROVED":
-            return OrderResult(
-                accepted=False,
-                order_id="",
-                status="rejected",
-                message=f"FinalArbitration blocked order: {result.reason}",
+    def execute_order(self, order: Order, *, skip_final_arbitration: bool = False) -> OrderResult:
+        if not bool(skip_final_arbitration):
+            arbitration = getattr(self.engine, "final_arbitration", None)
+            if arbitration is None:
+                reason = "final_arbitration_unavailable"
+                mode = (
+                    str(getattr(getattr(self.engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
+                )
+                audit_final_arbitration_reject(self.engine, mode=mode, reason=reason, order=order)
+                return OrderResult(
+                    accepted=False,
+                    order_id="",
+                    status="rejected",
+                    message=f"FinalArbitration blocked order: {reason}",
+                )
+            result = arbitration.check_order_intent(
+                build_order_intent_from_order(
+                    order, dream_snapshot=getattr(self.engine, "get_current_dream_snapshot", lambda: {})()
+                ),
+                build_current_state_from_engine(self.engine),
             )
+            if result.status != "APPROVED":
+                mode = (
+                    str(getattr(getattr(self.engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
+                )
+                audit_final_arbitration_reject(self.engine, mode=mode, reason=result.reason, order=order)
+                return OrderResult(
+                    accepted=False,
+                    order_id="",
+                    status="rejected",
+                    message=f"FinalArbitration blocked order: {result.reason}",
+                )
         return self.broker.submit_order(order)

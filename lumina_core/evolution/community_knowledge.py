@@ -52,7 +52,11 @@ def append_community_queue_item(
     if not isinstance(item, dict) or _normalize_queue_item(item) is None:
         return False
     cfg = _community_knowledge_config()
-    path = queue_path if queue_path is not None else Path(str(cfg.get("queue_path", "state/community_knowledge_queue.jsonl")))
+    path = (
+        queue_path
+        if queue_path is not None
+        else Path(str(cfg.get("queue_path", "state/community_knowledge_queue.jsonl")))
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         safe_append_jsonl(path, item, hash_chain=False)
@@ -74,6 +78,9 @@ def _read_queue(path: Path, *, limit: int) -> list[dict[str, Any]]:
             try:
                 payload = json.loads(line)
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/evolution/community_knowledge.py:76"
+                )
                 continue
             if isinstance(payload, dict):
                 rows.append(payload)
@@ -86,6 +93,7 @@ def _load_processed(path: Path) -> set[str]:
     try:
         return {ln.strip() for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/community_knowledge.py:88")
         return set()
 
 

@@ -88,7 +88,9 @@ class CreativityAgent:
         v = self.initial_vote(ctx)
         if any("risk" in c for c in peer_challenges):
             score = max(0.2, v.score - 0.2)
-            return SwarmAgentVote(v.agent_id, v.approve and score >= 0.35, score, False, v.challenges, v.note + "; damped by risk")
+            return SwarmAgentVote(
+                v.agent_id, v.approve and score >= 0.35, score, False, v.challenges, v.note + "; damped by risk"
+            )
         return v
 
 
@@ -115,7 +117,9 @@ class RiskGuardianAgent:
     ) -> SwarmAgentVote:
         v = self.initial_vote(ctx)
         if any("dream" in c for c in peer_challenges) and not v.veto:
-            return SwarmAgentVote(v.agent_id, v.approve, min(1.0, v.score + 0.05), False, v.challenges, v.note + "; dream appeal")
+            return SwarmAgentVote(
+                v.agent_id, v.approve, min(1.0, v.score + 0.05), False, v.challenges, v.note + "; dream appeal"
+            )
         return v
 
 
@@ -141,7 +145,9 @@ class ExecutionAgent:
     ) -> SwarmAgentVote:
         v = self.initial_vote(ctx)
         if peer_challenges:
-            return SwarmAgentVote(v.agent_id, v.approve, max(0.15, v.score - 0.05), False, v.challenges, v.note + "; peer review")
+            return SwarmAgentVote(
+                v.agent_id, v.approve, max(0.15, v.score - 0.05), False, v.challenges, v.note + "; peer review"
+            )
         return v
 
 
@@ -166,7 +172,9 @@ class ReflectionAgent:
     ) -> SwarmAgentVote:
         v = self.initial_vote(ctx)
         if any("execution" in c for c in peer_challenges):
-            return SwarmAgentVote(v.agent_id, v.approve, v.score - 0.03, False, v.challenges, v.note + "; execution flagged")
+            return SwarmAgentVote(
+                v.agent_id, v.approve, v.score - 0.03, False, v.challenges, v.note + "; execution flagged"
+            )
         return v
 
 
@@ -192,7 +200,9 @@ class DreamAgent:
         if br > 0.18 and isinstance(de, dict) and (de.get("rule_hints") or []):
             for h in (de.get("rule_hints") or [])[:2]:
                 ch.append(f"dream:tail_concern:{str(h)[:60]}")
-        return SwarmAgentVote(self.role, approve, min(0.98, max(0.2, score)), False, tuple(ch), f"dream br={br:.3f} prior")
+        return SwarmAgentVote(
+            self.role, approve, min(0.98, max(0.2, score)), False, tuple(ch), f"dream br={br:.3f} prior"
+        )
 
     def challenged_vote(
         self,

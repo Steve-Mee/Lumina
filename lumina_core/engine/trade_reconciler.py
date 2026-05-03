@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import random
 import time
 from collections import deque
@@ -13,10 +14,14 @@ from typing import Any
 import requests
 import websockets
 
+from lumina_core.audit import get_audit_logger
+
 from .errors import format_error_code
 from .lumina_engine import LuminaEngine
 from .mode_capabilities import resolve_mode_capabilities
 from .valuation_engine import ValuationEngine
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -87,6 +92,7 @@ class TradeReconciler:
                 try:
                     pending.append(PendingTradeClose.from_dict(item))
                 except Exception:
+                    logging.exception("Unhandled broad exception fallback in lumina_core/engine/trade_reconciler.py:92")
                     continue
         self._set_pending_closes(pending)
         self._update_status(connection_state="idle", status="ready")
@@ -281,7 +287,7 @@ class TradeReconciler:
                         try:
                             await ws.send(json.dumps({"action": "pong", "ts": datetime.now(timezone.utc).isoformat()}))
                         except Exception:
-                            pass
+                            logger.exception("TradeReconciler failed to send websocket pong")
                     self._update_status(last_message_ts=datetime.now(timezone.utc).isoformat(), status="streaming")
                     self._flush_timeouts()
                     continue
@@ -290,7 +296,7 @@ class TradeReconciler:
             try:
                 await ws.close()
             except Exception:
-                pass
+                logger.exception("TradeReconciler failed to close websocket cleanly")
 
     def _run_polling_loop(self) -> None:
         app = self._app()
@@ -545,7 +551,7 @@ class TradeReconciler:
                 regime = str((pending.reflection or {}).get("regime", "NEUTRAL"))
                 obs.record_regime_performance(regime=regime, pnl=float(final_pnl), won=float(final_pnl) > 0.0)
             except Exception:
-                pass
+                logger.exception("TradeReconciler failed to record regime performance metric")
         if (
             str(pending.mode).strip().lower() == "sim_real_guard"
             and obs is not None
@@ -558,7 +564,7 @@ class TradeReconciler:
                     delta=float(abs(slippage_points)),
                 )
             except Exception:
-                pass
+                logger.exception("TradeReconciler failed to record mode parity drift metric")
         log_thought = getattr(app, "log_thought", None)
         if callable(log_thought):
             log_thought(
@@ -612,11 +618,18 @@ class TradeReconciler:
         event.setdefault("mode", mode)
         event.setdefault("account_mode_hint", capabilities.account_mode_hint)
         try:
-            audit_path.parent.mkdir(parents=True, exist_ok=True)
-            with audit_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(event, ensure_ascii=False) + "\n")
+            get_audit_logger().register_stream("trade_reconciler", audit_path)
+            get_audit_logger().append(
+                stream="trade_reconciler",
+                payload=event,
+                path=audit_path,
+                mode=mode,
+                actor_id="trade_reconciler",
+                severity="info",
+                fail_closed_real=mode == "real",
+            )
         except Exception:
-            pass
+            logger.exception("TradeReconciler failed to append reconciliation audit event")
 
         audit_service = getattr(self.engine, "audit_log_service", None)
         if audit_service is not None and hasattr(audit_service, "log_decision"):
@@ -637,7 +650,7 @@ class TradeReconciler:
             try:
                 audit_service.log_decision(decision_payload, is_real_mode=mode == "real")
             except Exception:
-                pass
+                logger.exception("TradeReconciler failed to mirror reconciliation decision to audit log")
 
     def _update_status(self, **updates: Any) -> None:
         status = dict(getattr(self.engine, "trade_reconciler_status", {}) or {})
@@ -660,7 +673,7 @@ class TradeReconciler:
             status_path.parent.mkdir(parents=True, exist_ok=True)
             status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception:
-            pass
+            logger.exception("TradeReconciler failed to persist status file")
 
     @staticmethod
     def _normalize_fill_event(payload: dict[str, Any]) -> FillEvent | None:
@@ -713,6 +726,7 @@ class TradeReconciler:
             try:
                 event_ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/trade_reconciler.py:718")
                 event_ts = datetime.now(timezone.utc)
 
         fill_id = str(_first("fillId", "executionId", "id", "orderId", default="")).strip()

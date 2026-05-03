@@ -26,12 +26,15 @@ Onbekende/lege env-waarde: niet als int parsebaar → volgende laag (sessie, dan
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from lumina_core.config_loader import ConfigLoader
+
+logger = logging.getLogger(__name__)
 
 PARALLEL_REALITIES_MIN = 1
 PARALLEL_REALITIES_MAX = 50
@@ -69,7 +72,7 @@ def _logical_cores() -> int:
         if snap is not None:
             return max(1, int(snap.cpu_cores_logical))
     except Exception:
-        pass
+        logger.exception("parallel_reality_config failed to load cached hardware snapshot")
     return max(1, int(os.cpu_count() or 4))
 
 
@@ -116,6 +119,7 @@ def _load_session_file() -> int | None:
     try:
         data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/parallel_reality_config.py:121")
         return None
     if not isinstance(data, dict):
         return None

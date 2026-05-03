@@ -1,12 +1,15 @@
 """Veto registry: immutable append-only storage for human veto decisions on DNA promotions."""
 
+import logging
 import json
+import os
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from lumina_core.state.state_manager import safe_append_jsonl, safe_sqlite_connect
+from lumina_core.audit import get_audit_logger
+from lumina_core.state.state_manager import safe_sqlite_connect
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,7 @@ class VetoRegistry:
         """
         self._db_path = Path(db_path)
         self._log_path = Path(log_path)
+        self._stream_name = "evolution.veto"
         self._lock = threading.RLock()
 
         # Ensure directories exist
@@ -47,6 +51,7 @@ class VetoRegistry:
         # Initialize database schema
         with self._lock:
             self._init_db()
+        get_audit_logger().register_stream(self._stream_name, self._log_path)
 
     def _init_db(self) -> None:
         """Initialize SQLite schema if not present."""
@@ -94,10 +99,20 @@ class VetoRegistry:
                     )
                     conn.commit()
 
-                # Write to JSONL (append-only audit log)
-                safe_append_jsonl(self._log_path, asdict(record), hash_chain=False)
+                # Write to canonical append-only hash-chained audit stream.
+                mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() or "sim"
+                get_audit_logger().append(
+                    stream=self._stream_name,
+                    payload=asdict(record),
+                    path=self._log_path,
+                    mode=mode,
+                    actor_id="veto_registry",
+                    severity="warning",
+                    include_legacy_hash=True,
+                )
 
             except Exception as e:
+                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/veto_registry.py:100")
                 raise RuntimeError(f"Failed to append veto record: {e}")
 
     def is_veto_active(self, dna_id: str, window_seconds: int = 1800) -> bool:
@@ -130,6 +145,7 @@ class VetoRegistry:
                 return result is not None
             except Exception:
                 # Fail-closed: if query fails, assume veto is active
+                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/veto_registry.py:131")
                 return True
 
     def list_recent(self, limit: int = 10, dna_id_filter: str | None = None) -> list[VetoRecord]:
@@ -182,4 +198,5 @@ class VetoRegistry:
                         )
                     return records
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/veto_registry.py:184")
                 return []

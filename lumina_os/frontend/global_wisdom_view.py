@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from typing import Any
 
@@ -13,6 +14,7 @@ def _get_json(url: str, timeout: float = 5.0) -> dict[str, Any] | list[Any] | No
         response.raise_for_status()
         return response.json()
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_os/frontend/global_wisdom_view.py:15")
         st.warning(f"Data request failed for {url}: {exc}")
         return None
 

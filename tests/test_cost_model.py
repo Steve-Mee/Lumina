@@ -17,6 +17,7 @@ from lumina_core.risk.cost_model import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def mes_model() -> TradeExecutionCostModel:
     """Standard MES cost model with realistic parameters."""
@@ -41,6 +42,7 @@ def mes_model() -> TradeExecutionCostModel:
 # Fee calculation tests
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestFees:
     def test_fees_per_side_sum_is_correct(self, mes_model: TradeExecutionCostModel):
@@ -50,15 +52,11 @@ class TestFees:
     def test_fees_scale_with_quantity(self, mes_model: TradeExecutionCostModel):
         cost_1 = mes_model.cost_for_trade(price=5000.0, quantity=1.0, atr=0.0)
         cost_2 = mes_model.cost_for_trade(price=5000.0, quantity=2.0, atr=0.0)
-        assert cost_2.total_fees_usd_per_side == pytest.approx(
-            cost_1.total_fees_usd_per_side * 2, rel=1e-6
-        )
+        assert cost_2.total_fees_usd_per_side == pytest.approx(cost_1.total_fees_usd_per_side * 2, rel=1e-6)
 
     def test_round_trip_is_twice_per_side(self, mes_model: TradeExecutionCostModel):
         cost = mes_model.cost_for_trade(price=5000.0, quantity=1.0, atr=5.0)
-        assert cost.total_round_trip_usd == pytest.approx(
-            cost.total_per_side_usd * 2, rel=1e-6
-        )
+        assert cost.total_round_trip_usd == pytest.approx(cost.total_per_side_usd * 2, rel=1e-6)
 
     def test_commission_component_correct(self, mes_model: TradeExecutionCostModel):
         cost = mes_model.cost_for_trade(price=5000.0, quantity=1.0, atr=0.0)
@@ -74,6 +72,7 @@ class TestFees:
 # ---------------------------------------------------------------------------
 # Slippage tests
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestSlippage:
@@ -119,6 +118,7 @@ class TestSlippage:
 # Round-trip totals
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestRoundTripCost:
     def test_round_trip_includes_all_components(self, mes_model: TradeExecutionCostModel):
@@ -142,9 +142,7 @@ class TestRoundTripCost:
         assert cost.breakeven_move_ticks > 0.0
 
     def test_cost_breakdown_meta_fields(self, mes_model: TradeExecutionCostModel):
-        cost = mes_model.cost_for_trade(
-            price=5020.0, quantity=2.0, atr=8.0, avg_volume=5000.0, time_period="open"
-        )
+        cost = mes_model.cost_for_trade(price=5020.0, quantity=2.0, atr=8.0, avg_volume=5000.0, time_period="open")
         assert cost.instrument == "MES"
         assert cost.quantity == 2.0
         assert cost.price == 5020.0
@@ -155,6 +153,7 @@ class TestRoundTripCost:
 # ---------------------------------------------------------------------------
 # from_config factory
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestFromConfig:
@@ -190,18 +189,22 @@ class TestFromConfig:
 # Instrument registry
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestInstrumentRegistry:
-    @pytest.mark.parametrize("symbol,tick_size,tick_value", [
-        ("MES", 0.25, 1.25),
-        ("ES", 0.25, 12.50),
-        ("MNQ", 0.25, 0.50),
-        ("NQ", 0.25, 5.00),
-        ("MYM", 1.00, 0.50),
-        ("YM", 1.00, 5.00),
-        ("MCL", 0.01, 1.00),
-        ("GC", 0.10, 10.00),
-    ])
+    @pytest.mark.parametrize(
+        "symbol,tick_size,tick_value",
+        [
+            ("MES", 0.25, 1.25),
+            ("ES", 0.25, 12.50),
+            ("MNQ", 0.25, 0.50),
+            ("NQ", 0.25, 5.00),
+            ("MYM", 1.00, 0.50),
+            ("YM", 1.00, 5.00),
+            ("MCL", 0.01, 1.00),
+            ("GC", 0.10, 10.00),
+        ],
+    )
     def test_instrument_tick_params(self, symbol: str, tick_size: float, tick_value: float):
         ts, tv = _instrument_tick_params(symbol)
         assert ts == pytest.approx(tick_size), f"{symbol}: tick_size mismatch"

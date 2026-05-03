@@ -19,6 +19,7 @@ Design:
 """
 
 from __future__ import annotations
+import logging
 
 import statistics
 from dataclasses import dataclass, field
@@ -53,7 +54,7 @@ def compute_atr(bars: list[dict[str, Any]], window: int = _DEFAULT_ATR_WINDOW) -
     if len(bars) < 2:
         return 1.0
 
-    recent = bars[-window - 1:]
+    recent = bars[-window - 1 :]
     trs: list[float] = []
     for i in range(1, len(recent)):
         prev_close = float(recent[i - 1].get("close", recent[i - 1].get("last", 0.0)))
@@ -80,18 +81,20 @@ def detect_time_period(bar: dict[str, Any]) -> str:
         return "midday"
     try:
         from datetime import datetime
+
         ts_str = str(ts_raw).replace("Z", "+00:00")
         dt = datetime.fromisoformat(ts_str)
         # Convert to approximate ET offset (UTC-4 / UTC-5; use -4 for simplicity).
         hour_et = (dt.hour - 4) % 24
         minute = dt.minute
         time_frac = hour_et + minute / 60.0
-        if 9.5 <= time_frac < 10.0:    # 09:30–10:00 ET
+        if 9.5 <= time_frac < 10.0:  # 09:30–10:00 ET
             return "open"
-        if 15.5 <= time_frac < 16.0:   # 15:30–16:00 ET
+        if 15.5 <= time_frac < 16.0:  # 15:30–16:00 ET
             return "close"
         return "midday"
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/backtest/order_book.py:94")
         return "midday"
 
 
@@ -116,11 +119,13 @@ class OrderBookReplayV2:
     spread_atr_ratio: float = 0.10
     market_impact_alpha: float = 0.50
     market_impact_beta: float = 0.60
-    time_of_day_multipliers: dict[str, float] = field(default_factory=lambda: {
-        "open": 2.5,
-        "midday": 1.0,
-        "close": 2.0,
-    })
+    time_of_day_multipliers: dict[str, float] = field(
+        default_factory=lambda: {
+            "open": 2.5,
+            "midday": 1.0,
+            "close": 2.0,
+        }
+    )
     bid_ask_bounce: bool = True
 
     def half_spread_ticks(
@@ -157,7 +162,7 @@ class OrderBookReplayV2:
         if avg_volume <= 0 or quantity <= 0:
             return 0.0
         volume_ratio = max(float(quantity), 0.0) / max(float(avg_volume), 1.0)
-        impact_points = self.market_impact_alpha * (volume_ratio ** self.market_impact_beta)
+        impact_points = self.market_impact_alpha * (volume_ratio**self.market_impact_beta)
         return max(0.0, impact_points / tick_size)
 
     def total_slippage_ticks(
@@ -183,9 +188,7 @@ class OrderBookReplayV2:
         (we pay spread on entry and again on exit).
         """
         period = time_period or detect_time_period(bar)
-        spread = self.half_spread_ticks(
-            atr, tick_size, time_period=period, regime=regime
-        )
+        spread = self.half_spread_ticks(atr, tick_size, time_period=period, regime=regime)
         impact = self.market_impact_ticks(quantity, avg_volume, tick_size)
         bounce_mult = 2.0 if self.bid_ask_bounce else 1.0
         return max(_MIN_SLIPPAGE_TICKS, spread * bounce_mult + impact)
@@ -250,9 +253,7 @@ class DynamicSlippageModel:
         point_value: float = 5.0,
     ) -> float:
         """Slippage converted to dollars using instrument point_value."""
-        ticks = self.slippage_for_bar(
-            bar, bar_history, quantity=quantity, avg_volume=avg_volume, regime=regime
-        )
+        ticks = self.slippage_for_bar(bar, bar_history, quantity=quantity, avg_volume=avg_volume, regime=regime)
         return ticks * self.tick_size * point_value
 
     def calibrate_from_history(self, real_fills: list[dict[str, Any]]) -> "DynamicSlippageModel":

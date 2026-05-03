@@ -35,6 +35,15 @@ class DecisionReplayValidator:
             expected_prev = str(entry.get("prev_hash", ""))
             if expected_prev != previous:
                 errors.append(f"entry[{idx}] prev_hash mismatch")
+            provided_entry_hash = str(entry.get("entry_hash", ""))
+            if provided_entry_hash:
+                payload = {k: v for k, v in dict(entry).items() if k not in {"prev_hash", "entry_hash", "hash"}}
+                canonical = json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+                computed_hash = hashlib.sha256(f"{expected_prev}|{canonical}".encode("utf-8")).hexdigest()
+                if provided_entry_hash != computed_hash:
+                    errors.append(f"entry[{idx}] entry_hash mismatch")
+                previous = provided_entry_hash or previous
+                continue
 
             provided_hash = str(entry.get("hash", ""))
             payload = dict(entry)

@@ -1,6 +1,7 @@
 """Reality gap tracker between paper/backtest baselines and live fills."""
 
 from __future__ import annotations
+import logging
 
 import json
 from dataclasses import dataclass
@@ -58,6 +59,7 @@ def _read_json(path: Path) -> dict[str, Any] | None:
     try:
         parsed = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/monitoring/reality_gap_tracker.py:60")
         return None
     return parsed if isinstance(parsed, dict) else None
 

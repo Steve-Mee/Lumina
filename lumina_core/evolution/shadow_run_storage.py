@@ -1,6 +1,7 @@
 """Load/save evolution shadow run records (JSON dict keyed by DNA hash)."""
 
 from __future__ import annotations
+import logging
 
 import json
 from pathlib import Path
@@ -13,6 +14,7 @@ def load_shadow_runs(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/shadow_run_storage.py:15")
         return {}
     return payload if isinstance(payload, dict) else {}
 

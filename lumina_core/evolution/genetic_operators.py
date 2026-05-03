@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import concurrent.futures
 import hashlib
@@ -67,6 +68,7 @@ def _mutate_with_local_model(base_prompt: str, rate: float) -> str | None:
     except (urllib.error.URLError, TimeoutError, ValueError, json.JSONDecodeError, concurrent.futures.TimeoutError):
         return None
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/genetic_operators.py:69")
         return None
     return None
 
@@ -75,6 +77,7 @@ def _content_text(content: str) -> str:
     try:
         payload = json.loads(content)
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/genetic_operators.py:77")
         return str(content).strip()
 
     if not isinstance(payload, dict):

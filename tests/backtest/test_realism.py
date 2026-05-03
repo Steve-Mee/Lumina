@@ -41,8 +41,10 @@ from lumina_core.evolution.genetic_operators import calculate_fitness
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
 
-def _bar(close: float = 4500.0, high: float = 4510.0, low: float = 4490.0,
-         volume: float = 1000.0, ts: str | None = None) -> dict[str, Any]:
+
+def _bar(
+    close: float = 4500.0, high: float = 4510.0, low: float = 4490.0, volume: float = 1000.0, ts: str | None = None
+) -> dict[str, Any]:
     bar: dict[str, Any] = {"close": close, "high": high, "low": low, "volume": volume}
     if ts is not None:
         bar["timestamp"] = ts
@@ -64,13 +66,16 @@ def _bars(n: int = 20, base_close: float = 4500.0) -> list[dict[str, Any]]:
 
 def _dummy_scorer(pnls: list[float]) -> Any:
     """Return a scorer that always yields a fixed PnL sequence."""
+
     def scorer(chunk: list[dict[str, Any]]) -> dict[str, Any]:
         from lumina_core.engine.backtest.cross_validation import _safe_sharpe, _safe_winrate
+
         return {
             "net_pnl": sum(pnls),
             "sharpe": _safe_sharpe(pnls),
             "winrate": _safe_winrate(pnls),
         }
+
     return scorer
 
 
@@ -78,10 +83,10 @@ def _dummy_scorer(pnls: list[float]) -> Any:
 # TestOrderBookReplayV2
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.backtest
 @pytest.mark.unit
 class TestOrderBookReplayV2:
-
     def test_spread_ticks_baseline(self) -> None:
         replay = OrderBookReplayV2(spread_atr_ratio=0.10)
         spread = replay.half_spread_ticks(atr=10.0, tick_size=0.25, time_period="midday")
@@ -165,10 +170,10 @@ class TestOrderBookReplayV2:
 # TestDynamicSlippageModel
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.backtest
 @pytest.mark.unit
 class TestDynamicSlippageModel:
-
     def test_slippage_for_bar_returns_positive(self) -> None:
         model = DynamicSlippageModel()
         bars = _bars(20)
@@ -216,10 +221,10 @@ class TestDynamicSlippageModel:
 # TestComputeATR
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.backtest
 @pytest.mark.unit
 class TestComputeATR:
-
     def test_atr_single_bar_returns_one(self) -> None:
         assert compute_atr([_bar()]) == 1.0
 
@@ -241,10 +246,10 @@ class TestComputeATR:
 # TestDetectTimePeriod
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.backtest
 @pytest.mark.unit
 class TestDetectTimePeriod:
-
     def test_open_session(self) -> None:
         bar = _bar(ts="2024-01-15T13:35:00+00:00")  # 09:35 ET (UTC-4)
         assert detect_time_period(bar) == "open"
@@ -268,10 +273,10 @@ class TestDetectTimePeriod:
 # TestPurgedWalkForwardCV
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.backtest
 @pytest.mark.unit
 class TestPurgedWalkForwardCV:
-
     def _make_cv(self) -> PurgedWalkForwardCV:
         return PurgedWalkForwardCV(
             train_bars=200,
@@ -351,10 +356,10 @@ class TestPurgedWalkForwardCV:
 # TestCombinatorialPurgedCV
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.backtest
 @pytest.mark.unit
 class TestCombinatorialPurgedCV:
-
     def _make_cpcv(self) -> CombinatorialPurgedCV:
         return CombinatorialPurgedCV(n_splits=5, n_test_folds=1, embargo_pct=0.01)
 
@@ -432,10 +437,10 @@ class TestCombinatorialPurgedCV:
 # TestRealityGapTracker
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.backtest
 @pytest.mark.unit
 class TestRealityGapTracker:
-
     def test_observe_returns_penalty(self) -> None:
         tracker = RealityGapTracker(penalty_coeff=0.15)
         penalty = tracker.observe(sim_sharpe=1.5, real_sharpe=0.5)
@@ -525,9 +530,9 @@ class TestRealityGapTracker:
 
     def test_penalty_method_uses_rolling_mean(self) -> None:
         tracker = RealityGapTracker(penalty_coeff=0.2, window=3)
-        tracker.observe(1.0, 0.0)   # gap = 1.0
-        tracker.observe(2.0, 0.0)   # gap = 2.0
-        tracker.observe(3.0, 0.0)   # gap = 3.0
+        tracker.observe(1.0, 0.0)  # gap = 1.0
+        tracker.observe(2.0, 0.0)  # gap = 2.0
+        tracker.observe(3.0, 0.0)  # gap = 3.0
         expected = statistics_mean([1.0, 2.0, 3.0]) * 0.2
         assert math.isclose(tracker.penalty(), expected, rel_tol=0.01)
 
@@ -540,10 +545,10 @@ def statistics_mean(vals: list[float]) -> float:
 # TestCalculateFitness — PBO / DSR / reality-gap integration
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.backtest
 @pytest.mark.unit
 class TestCalculateFitness:
-
     def test_base_fitness_positive(self) -> None:
         score = calculate_fitness(pnl=10000.0, max_dd=1000.0, sharpe=1.5)
         assert score > 0.0
@@ -572,9 +577,7 @@ class TestCalculateFitness:
 
     def test_low_sharpe_consistency_penalty(self) -> None:
         base = calculate_fitness(pnl=5000.0, max_dd=500.0, sharpe=1.0, sharpe_positive_pct=1.0)
-        low_consistency = calculate_fitness(
-            pnl=5000.0, max_dd=500.0, sharpe=1.0, sharpe_positive_pct=0.3
-        )
+        low_consistency = calculate_fitness(pnl=5000.0, max_dd=500.0, sharpe=1.0, sharpe_positive_pct=0.3)
         assert low_consistency < base
 
     def test_all_penalties_compound(self) -> None:
@@ -604,6 +607,7 @@ class TestCalculateFitness:
 # TestBacktestGolden — end-to-end golden output contracts
 # ---------------------------------------------------------------------------
 
+
 def _make_golden_snapshot(n: int = 300) -> list[dict[str, Any]]:
     """Deterministic OHLCV snapshot for repeatable golden tests."""
     rng = random.Random(12345)
@@ -614,14 +618,16 @@ def _make_golden_snapshot(n: int = 300) -> list[dict[str, Any]]:
         close = max(1.0, close + change)
         high = close + abs(rng.gauss(0, 1.0))
         low = max(1.0, close - abs(rng.gauss(0, 1.0)))
-        bars.append({
-            "close": close,
-            "high": high,
-            "low": low,
-            "open": close - change * 0.3,
-            "volume": rng.uniform(500, 3000),
-            "timestamp": f"2024-01-{1 + i // 100:02d}T{9 + (i % 60):02d}:00:00+00:00",
-        })
+        bars.append(
+            {
+                "close": close,
+                "high": high,
+                "low": low,
+                "open": close - change * 0.3,
+                "volume": rng.uniform(500, 3000),
+                "timestamp": f"2024-01-{1 + i // 100:02d}T{9 + (i % 60):02d}:00:00+00:00",
+            }
+        )
     return bars
 
 

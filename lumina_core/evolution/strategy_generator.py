@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import ast
 import concurrent.futures
@@ -242,12 +243,14 @@ class StrategyGenerator:
         except (urllib.error.URLError, ValueError, json.JSONDecodeError, concurrent.futures.TimeoutError, TimeoutError):
             return None
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/strategy_generator.py:244")
             return None
 
     def _generate_with_ollama(self, *, prompt: str) -> str | None:
         try:
             import ollama  # type: ignore
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/strategy_generator.py:250")
             return None
 
         try:
@@ -262,6 +265,7 @@ class StrategyGenerator:
             content = str(response.get("message", {}).get("content", "") or "").strip()
             return content if content else None
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/strategy_generator.py:264")
             return None
 
     def _fallback_template(self, hypothesis: str) -> str:

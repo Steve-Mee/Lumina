@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import threading
 import time
@@ -113,6 +114,7 @@ def _enforce_real_eod_force_close(app: RuntimeContext, price: float) -> bool:
         try:
             obs.record_mode_eod_force_close(mode=mode)
         except Exception as _exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/runtime_workers.py:115")
             err = LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_LEARNING,
                 code="RUNTIME_OBS_002",
@@ -891,6 +893,7 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
                 if rl_action.get("stop_mult") is not None:
                     stop_widen_multiplier *= max(0.5, float(rl_action.get("stop_mult", 1.0)))
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/runtime_workers.py:893")
             err = LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_LEARNING,
                 code="RUNTIME_RL_012",
@@ -1000,8 +1003,7 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
             )
             if qty <= 0:
                 app.logger.warning(
-                    "REAL_POSITION_FLOOR_HOLD,reason=insufficient_risk_budget,"
-                    f"signal={signal},regime={regime}"
+                    f"REAL_POSITION_FLOOR_HOLD,reason=insufficient_risk_budget,signal={signal},regime={regime}"
                 )
                 signal = "HOLD"
                 qty = 0

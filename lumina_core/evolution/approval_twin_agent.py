@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import math
@@ -38,6 +39,7 @@ class OllamaTwinBackend:
         try:
             import ollama  # type: ignore
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/approval_twin_agent.py:40")
             return None, "ollama_unavailable_fallback_local"
 
         prompt = (
@@ -67,6 +69,7 @@ class OllamaTwinBackend:
             explanation = str(payload.get("explanation", "ollama_decision")).strip() or "ollama_decision"
             return score, f"ollama:{self.model}:{explanation}"
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/approval_twin_agent.py:69")
             return None, "ollama_error_fallback_local"
 
 
@@ -271,6 +274,7 @@ class ApprovalTwinAgent:
                 training_steps=int(payload.get("training_steps", 0) or 0),
             )
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/approval_twin_agent.py:273")
             return ApprovalTwinState(intercept=0.0, weights={}, threshold=0.6, training_steps=0)
 
     def _save_state(self) -> None:

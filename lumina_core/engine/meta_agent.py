@@ -1,4 +1,4 @@
-﻿"""Backward-compatible export for the split self-evolution meta-agent core."""
+"""Backward-compatible export for the split self-evolution meta-agent core."""
 
 from __future__ import annotations
 

@@ -256,7 +256,11 @@ def resolve_neuro_simulator_rows_for_neuro_cycle(
     ok, code = validate_simulator_bars(nightly_report.get("simulator_data"))
     if ok:
         rows = normalize_simulator_bars(nightly_report["simulator_data"])  # type: ignore[arg-type]
-        label = src_meta if src_meta in {"simulator_data", "samples", "market_historical", "simulator_real_ticks"} else "simulator_data"
+        label = (
+            src_meta
+            if src_meta in {"simulator_data", "samples", "market_historical", "simulator_real_ticks"}
+            else "simulator_data"
+        )
         return rows[-cap:], label, None
 
     ok_s, _ = validate_simulator_bars(nightly_report.get("samples"))

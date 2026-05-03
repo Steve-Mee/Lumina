@@ -78,7 +78,7 @@ def test_test_generated_strategy_returns_finite_on_safe_snippet() -> None:
     runner = MultiDaySimRunner(max_workers=2, drawdown_limit_ratio=0.05)
     code = (
         "def generated_strategy(context: dict) -> dict:\n"
-        "    \"\"\"Simple deterministic generated strategy.\"\"\"\n"
+        '    """Simple deterministic generated strategy."""\n'
         "    close = list(context.get('close', []) or [])\n"
         "    if len(close) < 3:\n"
         "        return {'name': 'g1', 'regime_focus': 'neutral', 'signal_bias': 'neutral', 'confidence': 0.0, 'rules': ['insufficient_history']}\n"

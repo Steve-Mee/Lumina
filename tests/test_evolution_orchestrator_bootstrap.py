@@ -8,10 +8,24 @@ import json
 import os
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
 from lumina_core.evolution.multi_day_sim_runner import SimResult
+from lumina_core.governance import ApprovalChain, ApprovalPolicy
+
+
+def _public_hex(private_key: Ed25519PrivateKey) -> str:
+    return (
+        private_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        .hex()
+    )
 
 
 class _RegistryStub:
@@ -172,7 +186,7 @@ class _StrategyGeneratorStub:
         self._index += 1
         return (
             "def generated_strategy(context: dict) -> dict:\n"
-            "    \"\"\"Generated deterministic strategy.\"\"\"\n"
+            '    """Generated deterministic strategy."""\n'
             "    close = list(context.get('close', []) or [])\n"
             "    if len(close) < 2:\n"
             f"        return {{'name': 'g{self._index}', 'regime_focus': 'neutral', 'signal_bias': 'neutral', 'confidence': 0.0, 'rules': ['insufficient_history']}}\n"
@@ -206,6 +220,25 @@ class _ABFrameworkStub:
             experiment_id="ab-bootstrap-test",
             variants=variants,
         )
+
+
+class _PromotionGatePassStub:
+    def evaluate(self, dna_hash: str, *, evidence: Any) -> Any:
+        del dna_hash, evidence
+        return SimpleNamespace(
+            promoted=True,
+            fail_reasons=(),
+            model_dump=lambda mode="json": {"promoted": True, "fail_reasons": []},
+        )
+
+
+class _ApprovalChainStub:
+    def __init__(self, approved: bool) -> None:
+        self.approved = bool(approved)
+
+    def verify(self, *, payload: Any, signatures: Any) -> tuple[bool, str]:
+        del payload, signatures
+        return self.approved, "approved" if self.approved else "threshold_not_met"
 
 
 class _PolicyWeightsStub:
@@ -380,6 +413,8 @@ def test_evolution_orchestrator_real_path_promotes_after_shadow_pass(monkeypatch
     orchestrator._sim_runner = cast(Any, _SimRunnerStub())
     orchestrator._approval_twin = cast(Any, twin)
     orchestrator._generate_candidates = cast(Any, _fixed_candidates)
+    orchestrator._promotion_gate = cast(Any, _PromotionGatePassStub())
+    orchestrator._approval_chain = cast(Any, _ApprovalChainStub(approved=True))
 
     summary = orchestrator.run_nightly_evolution_cycle(
         generations=2,
@@ -489,9 +524,7 @@ def test_evolution_orchestrator_runs_neuroevolution_when_ppo_trainer_bound(monke
     assert zip_files
 
 
-def test_evolution_orchestrator_forwards_resolved_parallel_realities_to_sim(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_evolution_orchestrator_forwards_resolved_parallel_realities_to_sim(monkeypatch, tmp_path: Path) -> None:
     """Fase 1: ``LUMINA_PARALLEL_REALITIES`` → ``_run_single_generation`` → ``evaluate_variants(..., parallel_realities=…)``."""
     from lumina_core.evolution.parallel_reality_config import ENV_PARALLEL_REALITIES
     import lumina_core.evolution.evolution_orchestrator as eo
@@ -522,9 +555,7 @@ def test_evolution_orchestrator_forwards_resolved_parallel_realities_to_sim(
 
 
 @pytest.mark.safety_gate
-def test_real_radical_mutation_requires_explicit_human_approval(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_real_radical_mutation_requires_explicit_human_approval(monkeypatch, tmp_path: Path) -> None:
     """Safety gate: REAL radical winner cannot be promoted without human approval."""
     import lumina_core.evolution.evolution_orchestrator as eo
 
@@ -544,6 +575,7 @@ def test_real_radical_mutation_requires_explicit_human_approval(
     orchestrator._registry = cast(Any, registry)
     orchestrator._sim_runner = cast(Any, _SimRunnerStub())
     orchestrator._approval_twin = cast(Any, _TwinStub(recommendation=True))
+    orchestrator._promotion_gate = cast(Any, _PromotionGatePassStub())
 
     fixed_candidate = PolicyDNA.create(
         prompt_id="rollout-human-gate",
@@ -575,9 +607,7 @@ def test_real_radical_mutation_requires_explicit_human_approval(
     assert int(active.generation) == 0
 
     lines = [
-        json.loads(line)
-        for line in orchestrator._metrics_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in orchestrator._metrics_path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     generations = [row for row in lines if row.get("event") == "generation_completed"]
     assert generations
@@ -591,9 +621,7 @@ def test_real_radical_mutation_requires_explicit_human_approval(
 
 
 @pytest.mark.safety_gate
-def test_real_radical_mutation_promotes_with_explicit_human_approval(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_real_radical_mutation_promotes_with_explicit_human_approval(monkeypatch, tmp_path: Path) -> None:
     """Safety gate: REAL radical winner may promote only after explicit human approval."""
     import lumina_core.evolution.evolution_orchestrator as eo
 
@@ -613,6 +641,8 @@ def test_real_radical_mutation_promotes_with_explicit_human_approval(
     orchestrator._registry = cast(Any, registry)
     orchestrator._sim_runner = cast(Any, _SimRunnerStub())
     orchestrator._approval_twin = cast(Any, _TwinStub(recommendation=True))
+    orchestrator._promotion_gate = cast(Any, _PromotionGatePassStub())
+    orchestrator._approval_chain = cast(Any, _ApprovalChainStub(approved=True))
 
     fixed_candidate = PolicyDNA.create(
         prompt_id="rollout-human-gate-positive",
@@ -644,9 +674,7 @@ def test_real_radical_mutation_promotes_with_explicit_human_approval(
     assert int(active.generation) >= 1
 
     lines = [
-        json.loads(line)
-        for line in orchestrator._metrics_path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in orchestrator._metrics_path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     generations = [row for row in lines if row.get("event") == "generation_completed"]
     assert generations
@@ -655,5 +683,81 @@ def test_real_radical_mutation_promotes_with_explicit_human_approval(
         and bool(row.get("rollout_human_approval_granted"))
         and str(row.get("rollout_stage", "")) in {"ready_for_promotion"}
         and bool(row.get("promoted"))
+        for row in generations
+    )
+
+
+@pytest.mark.safety_gate
+def test_real_promotion_is_blocked_without_valid_approval_signatures(monkeypatch, tmp_path: Path) -> None:
+    """Safety gate: REAL promotion remains blocked when signatures are missing."""
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+    monkeypatch.setattr(
+        eo.EvolutionGuard,
+        "resolve_shadow_days",
+        lambda self, minimum_days=3, maximum_days=7: 1,
+    )
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_missing_signatures.json"
+    orchestrator._metrics_path = tmp_path / "evolution_metrics_missing_signatures.jsonl"
+
+    registry = _RegistryStub()
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerStub())
+    orchestrator._approval_twin = cast(Any, _TwinStub(recommendation=True))
+    orchestrator._promotion_gate = cast(Any, _PromotionGatePassStub())
+
+    fixed_candidate = PolicyDNA.create(
+        prompt_id="approval-chain-missing-signatures",
+        version="candidate",
+        content={"name": "fixed"},
+        fitness_score=42.0,
+        generation=1,
+        lineage_hash="L1",
+    )
+
+    def _fixed_candidates(*, top_dna, active_dna, generation_offset, dream_report=None, evolution_mode="sim", **kw):
+        del top_dna, active_dna, generation_offset, dream_report, evolution_mode, kw
+        return [fixed_candidate]
+
+    orchestrator._generate_candidates = cast(Any, _fixed_candidates)
+
+    governance_private_key = Ed25519PrivateKey.generate()
+    policy = ApprovalPolicy(
+        threshold=1,
+        signer_public_keys_ed25519=(_public_hex(governance_private_key),),
+    )
+    approval_chain = ApprovalChain(audit_path=tmp_path / "approval_chain_audit.jsonl")
+    monkeypatch.setattr(approval_chain, "load_policy", lambda: policy)
+    orchestrator._approval_chain = cast(Any, approval_chain)
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=2,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": 150.0, "max_drawdown": 40.0, "sharpe": 1.5},
+        mode="real",
+        explicit_human_approval=True,
+        require_human_approval=True,
+        real_promotion_approvals=[],
+    )
+
+    assert summary["status"] == "complete"
+    assert int(summary["promotions"]) == 0
+    active = registry.get_latest_dna("active")
+    assert active is not None
+    assert int(active.generation) == 0
+
+    lines = [
+        json.loads(line) for line in orchestrator._metrics_path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    generations = [row for row in lines if row.get("event") == "generation_completed"]
+    assert generations
+    assert any(
+        not bool(row.get("approval_chain_passed"))
+        and str(row.get("approval_chain_reason", "")) == "threshold_not_met"
+        and not bool(row.get("promoted"))
         for row in generations
     )

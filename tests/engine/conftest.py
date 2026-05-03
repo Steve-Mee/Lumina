@@ -15,7 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from lumina_core.engine import EngineConfig, MarketDataService  # noqa: E402
+from lumina_core.engine import EngineConfig, MarketDataIngestService  # noqa: E402
 from lumina_core.engine.lumina_engine import LuminaEngine  # noqa: E402
 
 
@@ -57,8 +57,8 @@ def engine(tmp_path: Path, runtime_app: SimpleNamespace, monkeypatch: pytest.Mon
 
 
 @pytest.fixture
-def market_data_service(engine: LuminaEngine) -> MarketDataService:
-    return MarketDataService(engine=engine)
+def market_data_service(engine: LuminaEngine) -> MarketDataIngestService:
+    return MarketDataIngestService(engine=engine)
 
 
 @pytest.fixture(scope="session")
@@ -81,7 +81,7 @@ def real_mes_ohlc(tmp_path_factory: pytest.TempPathFactory) -> pd.DataFrame:
         CROSSTRADE_TOKEN=os.getenv("CROSSTRADE_TOKEN", ""),
     )
     eng.bind_app(cast(ModuleType, app))
-    service = MarketDataService(engine=eng)
+    service = MarketDataIngestService(engine=eng)
 
     loaded = service.load_historical_ohlc(days_back=3, limit=5000)
     if not loaded or eng.ohlc_1min.empty:

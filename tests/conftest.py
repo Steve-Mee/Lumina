@@ -40,6 +40,7 @@ if str(REPO_ROOT) not in sys.path:
 # Session-scoped state isolation
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(scope="session", autouse=True)
 def _session_state_isolation(tmp_path_factory: pytest.TempPathFactory) -> Generator[Path, None, None]:
     """Redirect ALL state/ and logs/ writes to a session-scoped temp directory.
@@ -138,6 +139,7 @@ def isolated_state(tmp_path: Path) -> Generator[Path, None, None]:
 # Config loader: synthetic RL fallback (required for unit tests)
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture(autouse=True)
 def _unit_tests_allow_synthetic_rl_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     """Production config sets require_real_simulator_data=true; tests use stubs."""
@@ -164,6 +166,7 @@ def _unit_tests_allow_synthetic_rl_fallback(monkeypatch: pytest.MonkeyPatch) -> 
 # Isolated AgentBlackboard fixture
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def isolated_blackboard(tmp_path: Path):
     """Return an AgentBlackboard wired to a fresh, isolated temp directory.
@@ -187,6 +190,7 @@ def isolated_blackboard(tmp_path: Path):
 # ---------------------------------------------------------------------------
 # Isolated EvolutionOrchestrator stub fixture
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def evolution_stub(tmp_path: Path):
@@ -228,6 +232,7 @@ def evolution_stub(tmp_path: Path):
 # Minimal runtime context stub
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def minimal_runtime_ctx():
     """Return a minimal MagicMock runtime context accepted by most engine methods."""
@@ -247,6 +252,7 @@ def minimal_runtime_ctx():
 # Marker registration (pytest_configure)
 # ---------------------------------------------------------------------------
 
+
 def pytest_configure(config: pytest.Config) -> None:
     """Register custom markers so --strict-markers does not reject them."""
     config.addinivalue_line("markers", "unit: fast isolated unit test (no I/O, <10 s)")
@@ -261,65 +267,75 @@ def pytest_configure(config: pytest.Config) -> None:
 # ---------------------------------------------------------------------------
 
 # Filename patterns → marker.  Order matters: first match wins.
-_SLOW_FILE_PATTERNS: frozenset[str] = frozenset({
-    "test_multi_day_sim_runner",
-    "test_stress_suite_runner",
-    "test_self_evolution_auto_finetune",
-    "test_evolution_orchestrator_bootstrap",
-    "test_reality_ppo_aggregate",
-    "test_reality_ohlc_stress",
-    "test_ppo_trainer_weights",
-    "test_ppo_risk_penalty",
-    "test_rl_smoke",
-    "test_rl_guardrails",
-    "test_rl_environment_risk_costs",
-    "test_headless_runtime",
-    "test_launcher_headless_cli",
-    "test_swarm_context_integration",
-    "test_emotional_twin_and_swarm",
-    "test_backtest_workers",
-    "test_multi_day_sim_runner",
-})
+_SLOW_FILE_PATTERNS: frozenset[str] = frozenset(
+    {
+        "test_multi_day_sim_runner",
+        "test_stress_suite_runner",
+        "test_self_evolution_auto_finetune",
+        "test_evolution_orchestrator_bootstrap",
+        "test_reality_ppo_aggregate",
+        "test_reality_ohlc_stress",
+        "test_ppo_trainer_weights",
+        "test_ppo_risk_penalty",
+        "test_rl_smoke",
+        "test_rl_guardrails",
+        "test_rl_environment_risk_costs",
+        "test_headless_runtime",
+        "test_launcher_headless_cli",
+        "test_swarm_context_integration",
+        "test_emotional_twin_and_swarm",
+        "test_backtest_workers",
+        "test_multi_day_sim_runner",
+    }
+)
 
-_NIGHTLY_FILE_PATTERNS: frozenset[str] = frozenset({
-    "test_blackboard_integration_nightly",
-    "test_sim_stability_checker",
-    "test_phase1_validation",
-})
+_NIGHTLY_FILE_PATTERNS: frozenset[str] = frozenset(
+    {
+        "test_blackboard_integration_nightly",
+        "test_sim_stability_checker",
+        "test_phase1_validation",
+    }
+)
 
-_INTEGRATION_FILE_PATTERNS: frozenset[str] = frozenset({
-    "test_broker_bridge",
-    "test_xai_client",
-    "test_chroma_community",
-    "test_vector_api_community",
-    "test_community_knowledge",
-    "test_local_inference_engine",
-    "test_simulator_data_support",
-    "test_lumina_bible",
-    "test_concurrent_state",
-})
+_INTEGRATION_FILE_PATTERNS: frozenset[str] = frozenset(
+    {
+        "test_broker_bridge",
+        "test_xai_client",
+        "test_chroma_community",
+        "test_vector_api_community",
+        "test_community_knowledge",
+        "test_local_inference_engine",
+        "test_simulator_data_support",
+        "test_lumina_bible",
+        "test_concurrent_state",
+    }
+)
 
-_E2E_FILE_PATTERNS: frozenset[str] = frozenset({
-    "test_startup_integration",
-    "test_dashboard_smoke",
-    "test_dashboard_drawdown_runtime_e2e",
-    "test_risk_transparency_e2e",
-    "test_app_agents_orchestration",
-    "test_trade_mode_golden_paths",
-    "test_runtime_api_contract",
-})
+_E2E_FILE_PATTERNS: frozenset[str] = frozenset(
+    {
+        "test_startup_integration",
+        "test_dashboard_smoke",
+        "test_dashboard_drawdown_runtime_e2e",
+        "test_risk_transparency_e2e",
+        "test_app_agents_orchestration",
+        "test_trade_mode_golden_paths",
+        "test_runtime_api_contract",
+    }
+)
 
-_SAFETY_GATE_FILE_PATTERNS: frozenset[str] = frozenset({
-    "test_phase1_validation",
-    "test_rollout_release_gate",
-    "test_rollout_b_bootstrap",
-    "test_rollout_b_automation",
-    "test_rollout_b_schedule",
-    "test_security",
-    "test_order_path_regression",
-    "test_trade_workers_gateway",
-    "test_order_gatekeeper_contracts",
-})
+_SAFETY_GATE_FILE_PATTERNS: frozenset[str] = frozenset(
+    {
+        "test_phase1_validation",
+        "test_rollout_release_gate",
+        "test_rollout_b_bootstrap",
+        "test_rollout_b_automation",
+        "test_rollout_b_schedule",
+        "test_security",
+        "test_order_path_regression",
+        "test_trade_workers_gateway",
+        "test_order_gatekeeper_contracts",
+    }
+)
 
 # Test name patterns (substring match) → slow
 _SLOW_NAME_PATTERNS: tuple[str, ...] = (
@@ -386,7 +402,7 @@ def pytest_collection_modifyitems(
     has_timeout = config.pluginmanager.hasplugin("timeout")
 
     marker_timeouts: dict[str, int] = {
-        "safety_gate": 0,   # 0 = no limit (subprocess-heavy)
+        "safety_gate": 0,  # 0 = no limit (subprocess-heavy)
         "nightly": 600,
         "slow": 120,
         "e2e": 90,
@@ -407,9 +423,7 @@ def pytest_collection_modifyitems(
         for marker_name, timeout_value in marker_timeouts.items():
             if marker_name in existing_markers:
                 # Remove any previously-set timeout, then apply ours.
-                item.own_markers = [
-                    m for m in item.own_markers if m.name != "timeout"
-                ]
+                item.own_markers = [m for m in item.own_markers if m.name != "timeout"]
                 item.add_marker(pytest.mark.timeout(timeout_value), append=True)
                 break
 
@@ -417,6 +431,7 @@ def pytest_collection_modifyitems(
 # ---------------------------------------------------------------------------
 # Timeout override hook (belt-and-suspenders)
 # ---------------------------------------------------------------------------
+
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
     """Apply timeout overrides from the marker — belt-and-suspenders guard."""

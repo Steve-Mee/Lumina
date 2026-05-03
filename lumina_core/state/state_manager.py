@@ -84,7 +84,7 @@ def _sleep_with_backoff(attempt: int) -> None:
 
 
 def _canonical_hash_payload(entry: dict[str, Any]) -> str:
-    payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "entry_hash"}}
+    payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "entry_hash", "hash"}}
     return json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
 
 
@@ -159,6 +159,9 @@ def safe_append_jsonl(
             ).hexdigest()
             next_payload["prev_hash"] = previous_hash
             next_payload["entry_hash"] = digest
+            if "hash" in next_payload:
+                # Compatibility bridge for legacy readers during migration window.
+                next_payload["hash"] = digest
         _append_jsonl_payload(target, next_payload, ensure_ascii=bool(hash_chain))
         return next_payload
 

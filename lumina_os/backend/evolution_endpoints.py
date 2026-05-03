@@ -27,8 +27,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Header, HTTPException
-from pydantic import BaseModel
-from lumina_core.audit.hash_chain import append_hash_chained_jsonl
+from pydantic import BaseModel, Field
+from lumina_core.audit import get_audit_logger
+from lumina_core.governance import ApprovalChain, RealPromotionPayload, SignedApproval
 from lumina_core.evolution.promotion_readiness import check_promotion_readiness
 from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 
@@ -97,7 +98,7 @@ def _load_decisions() -> dict[str, dict[str, Any]]:
                 continue
             try:
                 entry: dict[str, Any] = json.loads(raw)
-                h = entry.get("hash")
+                h = entry.get("hash") or entry.get("entry_hash")
                 if h:
                     decisions[str(h)] = entry
             except json.JSONDecodeError:
@@ -108,16 +109,20 @@ def _load_decisions() -> dict[str, dict[str, Any]]:
 def _append_decision(record: dict[str, Any]) -> None:
     """Append a single decision record to the decisions audit log."""
     _EVOLUTION_DECISIONS.parent.mkdir(parents=True, exist_ok=True)
-    append_hash_chained_jsonl(path=_EVOLUTION_DECISIONS, entry=record)
+    get_audit_logger().register_stream("evolution.decisions", _EVOLUTION_DECISIONS)
+    get_audit_logger().append(
+        stream="evolution.decisions",
+        payload=record,
+        path=_EVOLUTION_DECISIONS,
+        mode=_runtime_mode(),
+        actor_id="evolution_endpoints",
+        severity="info",
+        include_legacy_hash=True,
+    )
 
 
 def _runtime_mode() -> str:
-    raw = (
-        os.getenv("LUMINA_MODE")
-        or os.getenv("TRADE_MODE")
-        or os.getenv("LUMINA_RUNTIME_MODE")
-        or "sim"
-    )
+    raw = os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or os.getenv("LUMINA_RUNTIME_MODE") or "sim"
     return str(raw).strip().lower() or "sim"
 
 
@@ -188,6 +193,9 @@ def _verify_api_key(x_api_key: Optional[str], *, require_admin: bool = False) ->
 class ApproveRequest(BaseModel):
     hash: str
     challenger_name: str
+    require_human_approval: bool = True
+    promotion_payload: RealPromotionPayload | None = None
+    approvals: list[SignedApproval] = Field(default_factory=list)
 
 
 class RejectRequest(BaseModel):
@@ -268,6 +276,19 @@ async def approve_proposal(
             status_code=422,
             detail=f"Promotion readiness gate blocked approve: {readiness.message()}",
         )
+
+    current_mode = _runtime_mode()
+    if current_mode == "real":
+        if not body.require_human_approval:
+            raise HTTPException(status_code=422, detail="REAL mode requires human approval and cannot be disabled")
+        if body.promotion_payload is None:
+            raise HTTPException(status_code=422, detail="REAL mode requires a signed promotion payload")
+        if body.promotion_payload.dna_hash != body.hash:
+            raise HTTPException(status_code=422, detail="Promotion payload dna_hash does not match proposal hash")
+        chain = ApprovalChain()
+        approved, reason = chain.verify(payload=body.promotion_payload, signatures=body.approvals)
+        if not approved:
+            raise HTTPException(status_code=422, detail=f"Approval chain blocked REAL promotion: {reason}")
 
     # Persist approved payload in state; runtime can load this without mutating base config.
     _APPROVED_HYPERPARAMS.parent.mkdir(parents=True, exist_ok=True)

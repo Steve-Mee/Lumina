@@ -51,14 +51,14 @@ def apply_dream_learnings_to_dna_content(
     br = float(dream_report.get("breach_rate", 0.0) or 0.0)
     wdd = float(dream_report.get("worst_dd_ratio", 0.0) or 0.0)
     blurb = (
-        f" [dream_learn: stress_breach={br:.3f} worst_dd~={wdd:.3f}"
-        f"{'; focus: ' + ', '.join(hints) if hints else ''}]"
+        f" [dream_learn: stress_breach={br:.3f} worst_dd~={wdd:.3f}{'; focus: ' + ', '.join(hints) if hints else ''}]"
     )
     c = str(content or "").strip()
     if c.startswith("{") and c.endswith("}"):
         try:
             d = json.loads(c)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/mutation_pipeline.py:61")
             return c + blurb
         if isinstance(d, dict):
             d2 = dict(d)
@@ -104,11 +104,9 @@ class MutationPipelineProtocol(Protocol):
         generation_offset: int,
         dream_report: dict[str, Any] | None = None,
         evolution_mode: str = "sim",
-    ) -> list[PolicyDNA]:
-        ...
+    ) -> list[PolicyDNA]: ...
 
-    def bootstrap_active_dna(self, *, base_metrics: dict[str, Any]) -> PolicyDNA:
-        ...
+    def bootstrap_active_dna(self, *, base_metrics: dict[str, Any]) -> PolicyDNA: ...
 
 
 class MutationPipeline:

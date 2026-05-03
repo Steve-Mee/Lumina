@@ -33,6 +33,7 @@ from typing import Any, Callable
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _safe_sharpe(pnl_values: list[float]) -> float:
     if len(pnl_values) < 2:
         return 0.0
@@ -63,6 +64,7 @@ def _percentile(sorted_vals: list[float], q: float) -> float:
 # PurgedWalkForwardCV
 # ---------------------------------------------------------------------------
 
+
 @dataclass(slots=True)
 class PurgedWalkForwardCV:
     """Walk-forward CV with configurable embargo gap.
@@ -83,14 +85,12 @@ class PurgedWalkForwardCV:
         How far to advance each fold.  Defaults to test_bars (non-overlapping).
     """
 
-    train_bars: int = 2880   # ~10 trading days of 5-min bars
-    test_bars: int = 576     # ~2 trading days
-    embargo_bars: int = 60   # ~4 hours
+    train_bars: int = 2880  # ~10 trading days of 5-min bars
+    test_bars: int = 576  # ~2 trading days
+    embargo_bars: int = 60  # ~4 hours
     step_bars: int | None = None
 
-    def split(
-        self, n: int
-    ) -> list[tuple[list[int], list[int]]]:
+    def split(self, n: int) -> list[tuple[list[int], list[int]]]:
         """Generate (train_indices, test_indices) pairs for a dataset of length n."""
         step = self.step_bars if self.step_bars is not None else self.test_bars
         splits: list[tuple[list[int], list[int]]] = []
@@ -198,6 +198,7 @@ class PurgedWalkForwardCV:
 # CombinatorialPurgedCV
 # ---------------------------------------------------------------------------
 
+
 @dataclass(slots=True)
 class CombinatorialPurgedCV:
     """Combinatorial Purged Cross-Validation (CPCV).
@@ -262,9 +263,7 @@ class CombinatorialPurgedCV:
                 # Trim bars within *embargo* of any test fold boundary.
                 cleaned: list[int] = []
                 for idx in fold_bars:
-                    too_close = any(
-                        abs(idx - boundary) <= embargo for boundary in test_boundaries
-                    )
+                    too_close = any(abs(idx - boundary) <= embargo for boundary in test_boundaries)
                     if not too_close:
                         cleaned.append(idx)
                 train_idx.extend(cleaned)
@@ -382,16 +381,14 @@ class CombinatorialPurgedCV:
         sr_std = statistics.pstdev(oos_sharpes) if len(oos_sharpes) > 1 else 0.0
 
         # Expected maximum SR under H0 (Gaussian approximation).
-        sr_star = risk_free_rate + sr_std * math.sqrt(
-            max(0.0, 2.0 * math.log(n_combinations))
-        )
+        sr_star = risk_free_rate + sr_std * math.sqrt(max(0.0, 2.0 * math.log(n_combinations)))
 
         # Standard error of SR estimate.
         n = len(oos_sharpes)
         if n <= 1 or sr_std <= 1e-9:
             return sr_mean - sr_star
 
-        se_sr = math.sqrt((1.0 + 0.5 * sr_mean ** 2) / n)
+        se_sr = math.sqrt((1.0 + 0.5 * sr_mean**2) / n)
         dsr = (sr_mean - sr_star) / max(se_sr, 1e-9)
         return float(dsr)
 

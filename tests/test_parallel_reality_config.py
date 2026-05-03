@@ -126,9 +126,7 @@ def test_invalid_env_uses_session_not_yaml(monkeypatch: pytest.MonkeyPatch, tmp_
         ConfigLoader.invalidate()
 
 
-def test_full_priority_chain_env_session_yaml(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_full_priority_chain_env_session_yaml(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     p = tmp_path / "s.json"
     p.write_text(json.dumps({"parallel_realities": 6, "updated_at": "t"}), encoding="utf-8")
     monkeypatch.setattr("lumina_core.evolution.parallel_reality_config.SESSION_FILE", p, raising=False)

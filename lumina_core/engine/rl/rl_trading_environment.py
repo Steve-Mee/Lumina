@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from typing import Any
 
@@ -134,6 +135,9 @@ class RLTradingEnvironment(gym.Env):
             max_abs = max(max(abs(v) for v in vector), 1e-9)
             return [max(-1.0, min(1.0, v / max_abs)) for v in vector]
         except Exception:
+            logging.exception(
+                "Unhandled broad exception fallback in lumina_core/engine/rl/rl_trading_environment.py:136"
+            )
             return None
 
     def _dna_summary_features(self) -> list[float]:

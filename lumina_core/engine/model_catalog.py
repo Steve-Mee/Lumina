@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import shutil
@@ -105,6 +106,7 @@ class ModelCatalog:
                 check=False,
             )
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/model_catalog.py:107")
             return []
         if completed.returncode != 0:
             return []

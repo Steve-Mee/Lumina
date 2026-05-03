@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import importlib
+import logging
 from pathlib import Path
 from typing import Any, Dict
 
@@ -11,6 +12,8 @@ import numpy as np
 from lumina_core.engine.rl.rl_trading_environment import RLTradingEnvironment
 from lumina_core.runtime_context import RuntimeContext
 
+logger = logging.getLogger(__name__)
+
 
 def _load_sb3() -> tuple:
     try:
@@ -18,6 +21,7 @@ def _load_sb3() -> tuple:
         make_vec_env = importlib.import_module("stable_baselines3.common.env_util").make_vec_env
         return ppo_cls, make_vec_env
     except Exception as exc:  # pragma: no cover - depends on optional package install
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/rl/ppo_trainer.py:23")
         raise RuntimeError(
             "stable-baselines3 is required for PPOTrainer. Install with: pip install stable-baselines3"
         ) from exc
@@ -68,7 +72,7 @@ class PPOTrainer:
         try:
             self.env.env_method("set_full_dna_embedding", self._full_dna_payload)
         except Exception:
-            pass
+            logger.exception("PPOTrainer failed to propagate DNA embedding to vectorized env")
 
     def set_dna_version(self, dna_version: str) -> None:
         """Backward-compatible alias for callers still setting hash only."""
@@ -91,6 +95,7 @@ class PPOTrainer:
             self.model.policy.load_state_dict(dict(weights), strict=True)
             return True
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/rl/ppo_trainer.py:96")
             return False
 
     def save_weights(self, policy_path: str | Path | None = None) -> str:
@@ -104,10 +109,12 @@ class PPOTrainer:
         try:
             loaded = ppo_cls.load(str(policy_path))
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/rl/ppo_trainer.py:109")
             return None
         try:
             self.model.policy.load_state_dict(loaded.policy.state_dict(), strict=True)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/rl/ppo_trainer.py:113")
             return None
         return self.model
 

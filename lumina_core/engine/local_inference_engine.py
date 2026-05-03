@@ -290,6 +290,7 @@ class LocalInferenceEngine:
                 },
             )
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/local_inference_engine.py:292")
             raise LuminaError(
                 severity=ErrorSeverity.FATAL_MODE_VIOLATION,
                 code="INFERENCE_OLLAMA_REQUEST_FAILED",
@@ -350,6 +351,7 @@ class LocalInferenceEngine:
             content = body["choices"][0]["message"]["content"]
             return content if isinstance(content, str) else json.dumps(content)
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/local_inference_engine.py:352")
             raise LuminaError(
                 severity=ErrorSeverity.FATAL_MODE_VIOLATION,
                 code="XAI_RESPONSE_SCHEMA_INVALID",

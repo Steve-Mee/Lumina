@@ -48,10 +48,7 @@ def _insert_readme_row(
     date_iso: str,
 ) -> None:
     lines = readme.read_text(encoding="utf-8").splitlines()
-    new_row = (
-        f"| {num:04d} | {title} | Proposed | {date_iso} | "
-        f"[{filename}](./{filename}) |"
-    )
+    new_row = f"| {num:04d} | {title} | Proposed | {date_iso} | [{filename}](./{filename}) |"
     insert_at: int | None = None
     for i, line in enumerate(lines):
         if re.match(r"^\| \d{4} \|", line):

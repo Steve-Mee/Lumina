@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 # pyright: reportMissingImports=false
 
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ try:
     import gymnasium as gym
     from gymnasium import spaces
 except Exception as exc:  # pragma: no cover
+    logging.exception("Unhandled broad exception fallback in lumina_core/rl_environment.py:15")
     raise RuntimeError("gymnasium is required for RLTradingEnvironment") from exc
 
 

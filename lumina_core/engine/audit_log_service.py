@@ -1,12 +1,16 @@
 from __future__ import annotations
 
-import hashlib
 import json
+import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from lumina_core.audit import get_audit_logger
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_iso() -> str:
@@ -26,6 +30,7 @@ class AuditLogService:
     def __post_init__(self) -> None:
         self.path = Path(self.path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        get_audit_logger().register_stream("trade_decision", self.path)
         self._prev_hash = self._load_prev_hash()
 
     def _load_prev_hash(self) -> str:
@@ -36,8 +41,9 @@ class AuditLogService:
             if not tail:
                 return "GENESIS"
             payload = json.loads(tail[0])
-            return str(payload.get("hash") or "GENESIS")
+            return str(payload.get("entry_hash") or payload.get("hash") or "GENESIS")
         except Exception:
+            logger.exception("AuditLogService failed to load previous hash from %s", self.path)
             return "GENESIS"
 
     @staticmethod
@@ -46,11 +52,6 @@ class AuditLogService:
         missing = [k for k in required if k not in payload]
         if missing:
             raise ValueError(f"Audit payload missing fields: {missing}")
-
-    @staticmethod
-    def _canonical_hash(payload: dict[str, Any]) -> str:
-        serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def log_decision(self, payload: dict[str, Any], *, is_real_mode: bool = False) -> bool:
         if not self.enabled:
@@ -63,13 +64,24 @@ class AuditLogService:
         try:
             self._validate_event(event)
             with self._lock:
-                event["prev_hash"] = self._prev_hash
-                event["hash"] = self._canonical_hash(event)
-                with self.path.open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps(event, ensure_ascii=False) + "\n")
-                self._prev_hash = str(event["hash"])
+                appended = get_audit_logger().append(
+                    stream="trade_decision",
+                    payload=event,
+                    path=self.path,
+                    mode="real" if is_real_mode else "sim",
+                    actor_id="audit_log_service",
+                    severity="info",
+                    include_legacy_hash=True,
+                    fail_closed_real=bool(self.fail_closed_real),
+                )
+                self._prev_hash = str(appended.get("entry_hash") or "GENESIS")
             return True
         except Exception:
+            logger.exception(
+                "AuditLogService failed to append decision event at %s (real_mode=%s)",
+                self.path,
+                bool(is_real_mode),
+            )
             if self.fail_closed_real and bool(is_real_mode):
                 return False
             return False

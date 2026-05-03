@@ -5,6 +5,7 @@ import logging
 import random
 import time
 import uuid
+from collections.abc import Mapping
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -12,9 +13,14 @@ from typing import Any
 
 import requests
 
+from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.risk.cost_model import TradeExecutionCostModel
-from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
-from lumina_core.risk.final_arbitration import FinalArbitration
+from lumina_core.risk.final_arbitration import (
+    FinalArbitration,
+    build_current_state_from_engine,
+    build_order_intent_from_order,
+    is_strict_arbitration_mode,
+)
 from lumina_core.risk.risk_policy import load_risk_policy
 
 # One WARNING per account per process when REST returns no parsable balance/equity (avoid log spam).
@@ -50,28 +56,107 @@ _ACCOUNT_PNL_KEYS = (
     "dayPnl",
     "realizedDayPnl",
 )
+_ACCOUNT_AVAILABLE_MARGIN_KEYS = (
+    "availableMargin",
+    "available_margin",
+    "availableFunds",
+    "available_funds",
+    "availableBalance",
+    "available_balance",
+    "buyingPower",
+    "buying_power",
+    "excessLiquidity",
+    "excess_liquidity",
+    "maintenanceExcess",
+)
 
 
-def _run_final_arbitration(engine: Any | None, order: "Order") -> tuple[bool, str]:
+def _resolve_trade_mode(engine: object | None) -> str:
+    mode = str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
+    return mode or "paper"
+
+
+def audit_final_arbitration_reject(
+    engine: object | None,
+    *,
+    mode: str,
+    reason: str,
+    order: "Order" | None = None,
+) -> None:
+    context = {
+        "mode": str(mode),
+        "reason": str(reason),
+        "symbol": str(getattr(order, "symbol", "") or ""),
+        "side": str(getattr(order, "side", "") or ""),
+        "quantity": int(getattr(order, "quantity", 0) or 0),
+    }
+    log_structured(
+        LuminaError(
+            severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+            code="FINAL_ARBITRATION_GATE_REJECT",
+            message=f"FinalArbitration rejected execution order: {reason}",
+            context=context,
+        )
+    )
+    service = getattr(engine, "audit_log_service", None) if engine is not None else None
+    if service is None or not hasattr(service, "log_decision"):
+        return
+    payload = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "decision_id": f"final-arbitration-{uuid.uuid4().hex[:8]}",
+        "stage": "final_arbitration",
+        "mode": str(mode),
+        "symbol": str(getattr(order, "symbol", "") or ""),
+        "proposed_risk": float(
+            getattr(getattr(order, "metadata", {}), "get", lambda *_: 0.0)("proposed_risk", 0.0) or 0.0
+        ),
+        "final_decision": "rejected",
+        "reason": str(reason),
+        "probability": 0.0,
+        "expected_value": 0.0,
+        "agents_involved": [{"agent_id": "final_arbitration_gate", "confidence": 1.0}],
+        "var_impact": {},
+        "monte_carlo": {},
+    }
+    try:
+        service.log_decision(payload, is_real_mode=str(mode).lower() == "real")
+    except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/broker_bridge.py:121")
+        return
+
+
+def _run_final_arbitration(engine: object | None, order: "Order") -> tuple[bool, str]:
+    mode = _resolve_trade_mode(engine)
     if engine is None:
-        return True, "engine_unavailable"
+        reason = "arbitration_engine_required"
+        audit_final_arbitration_reject(engine, mode=mode, reason=reason, order=order)
+        return False, reason
     try:
         arbitration = getattr(engine, "final_arbitration", None)
+        if arbitration is None and is_strict_arbitration_mode(mode):
+            reason = "final_arbitration_unavailable"
+            audit_final_arbitration_reject(engine, mode=mode, reason=reason, order=order)
+            return False, reason
         if arbitration is None:
             arbitration = FinalArbitration(
-                getattr(engine, "risk_policy", None) or load_risk_policy(
-                    mode=str(getattr(getattr(engine, "config", None), "trade_mode", "paper"))
-                )
+                getattr(engine, "risk_policy", None)
+                or load_risk_policy(mode=str(getattr(getattr(engine, "config", None), "trade_mode", "paper")))
             )
         snapshot_provider = getattr(engine, "get_current_dream_snapshot", None)
         snapshot = snapshot_provider() if callable(snapshot_provider) else {}
+        dream_snapshot = snapshot if isinstance(snapshot, Mapping) else {}
         result = arbitration.check_order_intent(
-            build_order_intent_from_order(order, dream_snapshot=snapshot if isinstance(snapshot, dict) else {}),
+            build_order_intent_from_order(order, dream_snapshot=dream_snapshot),
             build_current_state_from_engine(engine),
         )
+        if result.status != "APPROVED":
+            audit_final_arbitration_reject(engine, mode=mode, reason=result.reason, order=order)
         return result.status == "APPROVED", result.reason
     except Exception as exc:
-        return False, f"final_arbitration_error:{exc}"
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/broker_bridge.py:153")
+        reason = f"final_arbitration_error:{exc}"
+        audit_final_arbitration_reject(engine, mode=mode, reason=reason, order=order)
+        return False, reason
 
 
 @dataclass(slots=True)
@@ -82,7 +167,7 @@ class Order:
     order_type: str = "MARKET"
     stop_loss: float = 0.0
     take_profit: float = 0.0
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -100,6 +185,7 @@ class OrderResult:
 class AccountInfo:
     balance: float
     equity: float
+    available_margin: float | None = None
     realized_pnl_today: float = 0.0
     currency: str = "USD"
     raw: dict[str, Any] = field(default_factory=dict)
@@ -188,7 +274,7 @@ class PaperBroker(BrokerBridge):
                     if high > 0 and low > 0 and high >= low:
                         return max(0.25, high - low)
         except Exception:
-            pass
+            logging.exception("BrokerBridge failed to estimate ATR from live OHLC; using fallback")
         return max(0.25, abs(float(fallback_price)) * 0.001)
 
     def connect(self) -> bool:
@@ -228,6 +314,7 @@ class PaperBroker(BrokerBridge):
                     elif len(self.engine.ohlc_1min) > 0:
                         fill_price = float(self.engine.ohlc_1min["close"].iloc[-1])
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/broker_bridge.py:313")
                 fill_price = 0.0
 
         fill_price = float(fill_price or 0.0)
@@ -286,11 +373,18 @@ class PaperBroker(BrokerBridge):
 
     def get_account_info(self) -> AccountInfo:
         if self.engine is None:
-            return AccountInfo(balance=self.starting_balance, equity=self.starting_balance)
+            return AccountInfo(
+                balance=self.starting_balance,
+                equity=self.starting_balance,
+                available_margin=self.starting_balance,
+            )
 
         return AccountInfo(
             balance=float(getattr(self.engine, "account_balance", self.starting_balance)),
             equity=float(getattr(self.engine, "account_equity", self.starting_balance)),
+            available_margin=float(
+                getattr(self.engine, "available_margin", getattr(self.engine, "account_equity", self.starting_balance))
+            ),
             realized_pnl_today=float(getattr(self.engine, "realized_pnl_today", 0.0)),
         )
 
@@ -464,6 +558,7 @@ class CrossTradeBroker(BrokerBridge):
             balance = 0.0
             equity = 0.0
             pnl = 0.0
+            available_margin: float | None = None
             for layer in layers:
                 if balance == 0.0:
                     balance = self._pick_float(layer, _ACCOUNT_BALANCE_KEYS)
@@ -471,6 +566,10 @@ class CrossTradeBroker(BrokerBridge):
                     equity = self._pick_float(layer, _ACCOUNT_EQUITY_KEYS)
                 if pnl == 0.0:
                     pnl = self._pick_float(layer, _ACCOUNT_PNL_KEYS)
+                if available_margin is None:
+                    parsed_margin = self._pick_float(layer, _ACCOUNT_AVAILABLE_MARGIN_KEYS)
+                    if parsed_margin > 0.0:
+                        available_margin = parsed_margin
             if equity == 0.0 and balance > 0.0:
                 equity = balance
 
@@ -497,6 +596,7 @@ class CrossTradeBroker(BrokerBridge):
             return AccountInfo(
                 balance=balance,
                 equity=equity,
+                available_margin=available_margin,
                 realized_pnl_today=pnl,
                 raw=data,
             )
@@ -588,12 +688,12 @@ class CrossTradeBroker(BrokerBridge):
                 try:
                     ws.ping("lumina-keepalive")
                 except Exception:
-                    pass
+                    logging.exception("CrossTrade websocket ping failed during subscribe warmup")
                 ws.settimeout(0.5)
                 try:
                     ws.recv()
                 except Exception:
-                    pass
+                    logging.exception("CrossTrade websocket recv probe failed during subscribe warmup")
                 ws.close()
                 return
             except Exception as exc:
@@ -619,13 +719,10 @@ def broker_factory(
         trade_mode = str(getattr(config, "trade_mode", "paper") or "paper").strip().lower()
         if trade_mode == "paper":
             raise ValueError(
-                "broker_backend=live is incompatible with trade_mode=paper "
-                "(set broker_backend=paper for paper mode)"
+                "broker_backend=live is incompatible with trade_mode=paper (set broker_backend=paper for paper mode)"
             )
         if trade_mode not in {"sim", "sim_real_guard", "real"}:
-            raise ValueError(
-                f"broker_backend=live requires trade_mode in sim/sim_real_guard/real, got {trade_mode!r}"
-            )
+            raise ValueError(f"broker_backend=live requires trade_mode in sim/sim_real_guard/real, got {trade_mode!r}")
         api_key = str(
             getattr(config, "broker_crosstrade_api_key", None) or getattr(config, "crosstrade_token", "") or ""
         ).strip()

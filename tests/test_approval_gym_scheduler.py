@@ -1,6 +1,7 @@
 """Tests for ApprovalGymScheduler – periodic gym session execution."""
 
 import json
+import logging
 import pytest
 import tempfile
 from datetime import datetime, timezone
@@ -8,6 +9,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from lumina_core.evolution import ApprovalGymScheduler
+
+logger = logging.getLogger(__name__)
 
 
 class TestApprovalGymScheduler:
@@ -19,7 +22,7 @@ class TestApprovalGymScheduler:
         try:
             ApprovalGymScheduler()._running = False
         except Exception:
-            pass
+            logger.exception("Test teardown failed to stop ApprovalGymScheduler singleton")
         # Reset singleton
         ApprovalGymScheduler._instance = None
 
@@ -154,7 +157,7 @@ class TestSchedulerIntegration:
         try:
             ApprovalGymScheduler()._running = False
         except Exception:
-            pass
+            logger.exception("Integration test teardown failed to stop ApprovalGymScheduler singleton")
         ApprovalGymScheduler._instance = None
 
     def test_scheduler_runs_session_loop(self):
@@ -227,7 +230,7 @@ class TestApprovalGymSchedulerFase3:
         try:
             ApprovalGymScheduler()._running = False
         except Exception:
-            pass
+            logger.exception("Fase3 test teardown failed to stop ApprovalGymScheduler singleton")
         ApprovalGymScheduler._instance = None
 
     def test_notify_uses_notification_scheduler_when_available(self):

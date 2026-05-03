@@ -1,4 +1,5 @@
 """Monte Carlo mode: strict config uses historical sub-windows only (no OHLC noise)."""
+
 from __future__ import annotations
 
 from typing import cast

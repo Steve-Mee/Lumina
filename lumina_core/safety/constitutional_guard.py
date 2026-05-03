@@ -43,7 +43,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
 
-from lumina_core.state.state_manager import safe_append_jsonl
+from lumina_core.audit import get_audit_logger
 from lumina_core.safety.trading_constitution import (
     ConstitutionalViolation,
     ConstitutionalViolationError,
@@ -60,6 +60,7 @@ _DEFAULT_AUDIT_FILE: Final[str] = "state/constitutional_audit.jsonl"
 # ---------------------------------------------------------------------------
 # Guard result
 # ---------------------------------------------------------------------------
+
 
 @dataclass(slots=True)
 class GuardResult:
@@ -115,6 +116,7 @@ class GuardResult:
 # ConstitutionalGuard
 # ---------------------------------------------------------------------------
 
+
 class ConstitutionalGuard:
     """Top-level AGI safety gate integrating constitution + sandbox evaluation.
 
@@ -146,6 +148,7 @@ class ConstitutionalGuard:
         else:
             state_dir = os.getenv("LUMINA_STATE_DIR", "state")
             self._audit_path = Path(state_dir) / "constitutional_audit.jsonl"
+        get_audit_logger().register_stream("safety.constitution", self._audit_path)
 
         self._check_count = 0
         self._block_count = 0
@@ -257,20 +260,21 @@ class ConstitutionalGuard:
         raise_on_fatal: bool,
     ) -> GuardResult:
         import hashlib
+
         dna_hash = hashlib.sha256(dna_content.encode()).hexdigest()[:16]
         audit_id = f"{phase}_{dna_hash}_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%f')}"
 
         self._check_count += 1
 
         try:
-            violations = self._constitution.audit(
-                dna_content, mode=mode, raise_on_fatal=False
-            )
+            violations = self._constitution.audit(dna_content, mode=mode, raise_on_fatal=False)
         except Exception as exc:
             # Fail-closed: any unexpected error is treated as a FATAL violation.
             logger.error(
                 "ConstitutionalGuard unexpected error in %s [dna=%s]: %s — blocking",
-                phase, dna_hash, exc,
+                phase,
+                dna_hash,
+                exc,
             )
             v = ConstitutionalViolation(
                 principle_name="guard_internal_error",
@@ -288,13 +292,19 @@ class ConstitutionalGuard:
             self._block_count += 1
             logger.error(
                 "ConstitutionalGuard BLOCKED [%s] dna=%s mode=%s fatals=%s",
-                phase, dna_hash, mode, [v.principle_name for v in fatals],
+                phase,
+                dna_hash,
+                mode,
+                [v.principle_name for v in fatals],
             )
         elif violations:
             # Warnings only.
             logger.warning(
                 "ConstitutionalGuard WARN [%s] dna=%s mode=%s warns=%s",
-                phase, dna_hash, mode, [v.principle_name for v in violations],
+                phase,
+                dna_hash,
+                mode,
+                [v.principle_name for v in violations],
             )
 
         result = GuardResult(
@@ -316,6 +326,14 @@ class ConstitutionalGuard:
     def _append_audit(self, result: GuardResult) -> None:
         """Append the check result to the audit JSONL file (best-effort)."""
         try:
-            safe_append_jsonl(self._audit_path, result.to_audit_record(), hash_chain=False)
+            get_audit_logger().append(
+                stream="safety.constitution",
+                payload=result.to_audit_record(),
+                path=self._audit_path,
+                mode=str(result.mode).strip().lower(),
+                actor_id="constitutional_guard",
+                severity="warning" if len(result.warn_violations) > 0 else "info",
+                fail_closed_real=False,
+            )
         except Exception as exc:
             logger.warning("ConstitutionalGuard: audit write failed: %s", exc)

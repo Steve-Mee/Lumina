@@ -254,8 +254,7 @@ def propose_fix(issue: QualityIssue, rca: RootCauseAnalysis) -> tuple[str, bool,
         if fix and applicability == "safe":
             msg = fix.get("message", "Ruff safe autofix")
             return (
-                f"Apply Ruff safe fix: {msg}. Bounded context: {rca.bounded_context}. "
-                f"Kind: {rca.fix_kind.value}.",
+                f"Apply Ruff safe fix: {msg}. Bounded context: {rca.bounded_context}. Kind: {rca.fix_kind.value}.",
                 True,
                 True,
             )
@@ -382,9 +381,7 @@ def collect_mypy(root: Path, *, mode: TypecheckMode) -> list[QualityIssue]:
             raw={"line": line},
         )
         issue.rca = analyze_root_cause(issue, root=root)
-        issue.proposed_fix, issue.autofix_available, issue.fix_safe_for_automation = propose_fix(
-            issue, issue.rca
-        )
+        issue.proposed_fix, issue.autofix_available, issue.fix_safe_for_automation = propose_fix(issue, issue.rca)
         issues.append(issue)
     return issues
 
@@ -427,9 +424,7 @@ def collect_pyright(root: Path) -> list[QualityIssue]:
             raw=diag,
         )
         issue.rca = analyze_root_cause(issue, root=root)
-        issue.proposed_fix, issue.autofix_available, issue.fix_safe_for_automation = propose_fix(
-            issue, issue.rca
-        )
+        issue.proposed_fix, issue.autofix_available, issue.fix_safe_for_automation = propose_fix(issue, issue.rca)
         issues.append(issue)
     return issues
 
@@ -490,9 +485,7 @@ def collect_pytest_failures(root: Path, *, marker: str) -> list[QualityIssue]:
                 raw={"classname": classname, "name": name},
             )
             issue.rca = analyze_root_cause(issue, root=root)
-            issue.proposed_fix, issue.autofix_available, issue.fix_safe_for_automation = propose_fix(
-                issue, issue.rca
-            )
+            issue.proposed_fix, issue.autofix_available, issue.fix_safe_for_automation = propose_fix(issue, issue.rca)
             issues.append(issue)
     except ET.ParseError:
         console.print("[yellow]Could not parse pytest JUnit XML[/yellow]")
@@ -561,7 +554,7 @@ def write_report(
         "## Intellectual honesty",
         "",
         "Automated fixes are limited to **Ruff safe autofixes**. Type errors and failing tests require human judgement, "
-        "bounded-context boundaries, and tests (`pytest -m \"not slow\"`).",
+        'bounded-context boundaries, and tests (`pytest -m "not slow"`).',
         "",
         "---",
         "",
@@ -622,8 +615,7 @@ def apply_ruff_safe_fixes(
     if granularity == "batch":
         console.print(
             Panel.fit(
-                f"[bold]{len(paths)}[/bold] files with autofixes; "
-                f"unsafe_fixes={'on' if unsafe_fixes else 'off'}",
+                f"[bold]{len(paths)}[/bold] files with autofixes; unsafe_fixes={'on' if unsafe_fixes else 'off'}",
                 title="Apply batch",
             )
         )
@@ -686,7 +678,7 @@ def main(
     pytest_marker: str = typer.Option(
         "not slow",
         "--pytest-marker",
-        help='Pytest marker expression (default matches CONTRIBUTING: not slow).',
+        help="Pytest marker expression (default matches CONTRIBUTING: not slow).",
     ),
     typecheck_mode: TypecheckMode = typer.Option(
         "project",
@@ -735,9 +727,7 @@ def main(
 
     mypy_mode: TypecheckMode = "strict" if strict_mypy else typecheck_mode
 
-    console.print(
-        Panel.fit("[bold]LUMINA fix_code_quality[/bold] - dry-run default; --apply for safe Ruff fixes only")
-    )
+    console.print(Panel.fit("[bold]LUMINA fix_code_quality[/bold] - dry-run default; --apply for safe Ruff fixes only"))
 
     all_issues: list[QualityIssue] = []
 

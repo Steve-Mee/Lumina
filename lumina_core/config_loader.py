@@ -106,6 +106,7 @@ class ConfigLoader:
                 cls._cache = _load_yaml_config()
             except Exception:  # pragma: no cover
                 # Fallback if engine_config is unavailable (e.g. isolated test).
+                logging.exception("Unhandled broad exception fallback in lumina_core/config_loader.py:107")
                 import yaml  # noqa: PLC0415
 
                 cfg_path = _resolve_config_path()
@@ -116,6 +117,7 @@ class ConfigLoader:
                         raw = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
                         cls._cache = raw if isinstance(raw, dict) else {}
                     except Exception:
+                        logging.exception("Unhandled broad exception fallback in lumina_core/config_loader.py:118")
                         cls._cache = {}
 
         return cls._cache  # type: ignore[return-value]
@@ -130,6 +132,7 @@ class ConfigLoader:
 
             _load_yaml_config.cache_clear()
         except Exception:  # pragma: no cover
+            logging.exception("Unhandled broad exception fallback in lumina_core/config_loader.py:132")
             pass
 
     @classmethod

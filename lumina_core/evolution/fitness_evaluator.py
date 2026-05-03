@@ -16,8 +16,7 @@ CAPITAL_GUARD_DD: Final[float] = 25_000.0
 
 
 class FitnessEvaluator(Protocol):
-    def score(self, dna: PolicyDNA, base_metrics: dict[str, Any], generation: int) -> float:
-        ...
+    def score(self, dna: PolicyDNA, base_metrics: dict[str, Any], generation: int) -> float: ...
 
 
 def utcnow() -> str:

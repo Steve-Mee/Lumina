@@ -37,21 +37,11 @@ def test_dream_engine_config_bounds() -> None:
 
 
 def test_should_run_multi_gen_nightly_respects_dry_run_and_mode() -> None:
-    assert should_run_multi_gen_nightly(
-        mutation_allowed=True, dry_run=True, mode_key="sim"
-    )
-    assert should_run_multi_gen_nightly(
-        mutation_allowed=True, dry_run=True, mode_key="paper"
-    )
-    assert not should_run_multi_gen_nightly(
-        mutation_allowed=True, dry_run=True, mode_key="real"
-    )
-    assert should_run_multi_gen_nightly(
-        mutation_allowed=True, dry_run=False, mode_key="real"
-    )
-    assert not should_run_multi_gen_nightly(
-        mutation_allowed=False, dry_run=True, mode_key="sim"
-    )
+    assert should_run_multi_gen_nightly(mutation_allowed=True, dry_run=True, mode_key="sim")
+    assert should_run_multi_gen_nightly(mutation_allowed=True, dry_run=True, mode_key="paper")
+    assert not should_run_multi_gen_nightly(mutation_allowed=True, dry_run=True, mode_key="real")
+    assert should_run_multi_gen_nightly(mutation_allowed=True, dry_run=False, mode_key="real")
+    assert not should_run_multi_gen_nightly(mutation_allowed=False, dry_run=True, mode_key="sim")
 
 
 def test_append_dream_rule_hint_writes_entry(tmp_path: Path) -> None:
@@ -67,11 +57,14 @@ def test_append_dream_rule_hint_writes_entry(tmp_path: Path) -> None:
     text = p.read_text(encoding="utf-8")
     assert "strengthen_drawdown_kill" in text
     assert "breach_rate=" in text
-    assert bible.append_dream_rule_hint(
-        hint="strengthen_drawdown_kill_in_whatif_tail",
-        generation=1,
-        breach_rate=0.2,
-    ) is None
+    assert (
+        bible.append_dream_rule_hint(
+            hint="strengthen_drawdown_kill_in_whatif_tail",
+            generation=1,
+            breach_rate=0.2,
+        )
+        is None
+    )
 
 
 def test_enrich_nightly_report_merges_dream() -> None:

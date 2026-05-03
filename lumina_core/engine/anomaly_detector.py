@@ -19,17 +19,13 @@ class _AnomalyOwner(Protocol):
 
 
 class AnomalyDetectorProtocol(Protocol):
-    def meta_review(self, report: dict[str, Any]) -> dict[str, Any]:
-        ...
+    def meta_review(self, report: dict[str, Any]) -> dict[str, Any]: ...
 
-    def auto_fine_tuning_trigger(self, *, meta_review: dict[str, Any]) -> dict[str, Any]:
-        ...
+    def auto_fine_tuning_trigger(self, *, meta_review: dict[str, Any]) -> dict[str, Any]: ...
 
-    def external_release_gates_ok(self) -> bool:
-        ...
+    def external_release_gates_ok(self) -> bool: ...
 
-    def shadow_rollout_evidence_ok(self) -> bool:
-        ...
+    def shadow_rollout_evidence_ok(self) -> bool: ...
 
 
 class AnomalyDetector:
@@ -153,6 +149,7 @@ class AnomalyDetector:
                 "green",
             }
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/anomaly_detector.py:155")
             return False
 
     def shadow_rollout_evidence_ok(self) -> bool:
@@ -163,6 +160,7 @@ class AnomalyDetector:
             payload = json.loads(report.read_text(encoding="utf-8"))
             return bool(payload.get("ready_for_promotion", False))
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/anomaly_detector.py:165")
             return False
 
     def auto_fine_tuning_trigger(self, *, meta_review: dict[str, Any]) -> dict[str, Any]:
@@ -251,7 +249,7 @@ class AnomalyDetector:
             try:
                 return max(0.0, min(1.0, float(getattr(et, "last_accuracy"))))
             except Exception:
-                pass
+                logging.exception("AnomalyDetector failed to read emotional_twin.last_accuracy")
         wins = int(report.get("wins", 0) or 0)
         trades = int(report.get("trades", 0) or 0)
         if trades <= 0:

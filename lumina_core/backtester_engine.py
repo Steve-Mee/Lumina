@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import random
 import statistics
@@ -14,6 +15,8 @@ from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.engine.backtest.order_book import DynamicSlippageModel
 from lumina_core.engine.backtest.cross_validation import PurgedWalkForwardCV, CombinatorialPurgedCV
 from lumina_core.engine.backtest.reality_gap import RealityGapTracker
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -180,12 +183,16 @@ class BacktesterEngine:
                 pending_age += 1
                 if self._queue_filled(rng, volume, avg_volume, pending_age, regime):
                     if use_dynamic_slippage:
-                        slip_ticks = self.dynamic_slippage.slippage_for_bar(
-                            row, bar_history,
-                            quantity=1.0,
-                            avg_volume=avg_volume,
-                            regime=regime_label,
-                        ) * slippage_scale
+                        slip_ticks = (
+                            self.dynamic_slippage.slippage_for_bar(
+                                row,
+                                bar_history,
+                                quantity=1.0,
+                                avg_volume=avg_volume,
+                                regime=regime_label,
+                            )
+                            * slippage_scale
+                        )
                     else:
                         slip_ticks = self._slippage_ticks(volume, avg_volume, regime, slippage_scale=slippage_scale)
                     slippage_ticks.append(slip_ticks)
@@ -211,12 +218,16 @@ class BacktesterEngine:
 
                 if hit_stop or hit_target:
                     if use_dynamic_slippage:
-                        slip_ticks = self.dynamic_slippage.slippage_for_bar(
-                            row, bar_history,
-                            quantity=1.0,
-                            avg_volume=avg_volume,
-                            regime=regime_label,
-                        ) * slippage_scale
+                        slip_ticks = (
+                            self.dynamic_slippage.slippage_for_bar(
+                                row,
+                                bar_history,
+                                quantity=1.0,
+                                avg_volume=avg_volume,
+                                regime=regime_label,
+                            )
+                            * slippage_scale
+                        )
                     else:
                         slip_ticks = self._slippage_ticks(volume, avg_volume, regime, slippage_scale=slippage_scale)
                     slippage_ticks.append(slip_ticks)
@@ -406,7 +417,7 @@ class BacktesterEngine:
                 if not df.empty and {"open", "high", "low", "close", "volume"}.issubset(df.columns):
                     return str(self.app.detect_market_regime(df))
         except Exception:
-            pass
+            logger.exception("BacktesterEngine failed to derive regime from snapshot; defaulting to NEUTRAL")
         return "NEUTRAL"
 
     @staticmethod
@@ -467,6 +478,7 @@ class BacktesterEngine:
                 return 1440
             return max(1, int(round(86400.0 / median_delta)))
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/backtester_engine.py:472")
             return 1440
 
     def _build_dashboard_plot(self, report: dict[str, Any], output_path: Path) -> None:
@@ -537,6 +549,7 @@ class BacktesterEngine:
             fig.update_layout(height=900, width=1400, title="Backtester Engine Report", showlegend=False)
             fig.write_html(str(output_path), include_plotlyjs="cdn")
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/backtester_engine.py:542")
             output_path.write_text(
                 json.dumps({"error": f"plot generation failed: {exc}"}, indent=2),
                 encoding="utf-8",
@@ -767,9 +780,9 @@ class OrderBookReplay:
         self.market_impact_alpha = float(market_impact_alpha)
         self.market_impact_beta = float(market_impact_beta)
         self.time_of_day_multipliers: dict[str, float] = time_of_day_multipliers or {
-            "open": 2.5,     # First 30 min — wide spreads
-            "midday": 1.0,   # 10:30–14:00 EST — normal liquidity
-            "close": 2.0,    # Last 30 min — wider again
+            "open": 2.5,  # First 30 min — wide spreads
+            "midday": 1.0,  # 10:30–14:00 EST — normal liquidity
+            "close": 2.0,  # Last 30 min — wider again
         }
 
     def spread_ticks(
@@ -815,7 +828,7 @@ class OrderBookReplay:
             return 0.0
 
         volume_ratio = float(quantity) / max(float(avg_volume), 1.0)
-        impact_points = self.market_impact_alpha * (volume_ratio ** self.market_impact_beta)
+        impact_points = self.market_impact_alpha * (volume_ratio**self.market_impact_beta)
         return max(0.0, impact_points / tick_size)
 
     def total_slippage_ticks(

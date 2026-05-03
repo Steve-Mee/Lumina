@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import argparse
 import json
@@ -231,6 +232,7 @@ def _run_headless_sim(args: argparse.Namespace, *, mode_label: str = "sim") -> i
                 container = create_application_container()
                 _bind_headless_runtime_app(container)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/runtime_entrypoint.py:233")
                 container = None
 
         runtime = HeadlessRuntime(container=container)
@@ -302,6 +304,7 @@ def _run_nightly() -> int:
     try:
         print(json.dumps(report, indent=2))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/runtime_entrypoint.py:304")
         print(str(report))
     return 0
 
@@ -315,9 +318,10 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
 
         apply_env_parallel_realities(int(args.parallel_realities))
 
-    if getattr(args, "set_ohlc_dna_stress", None) is not None or getattr(
-        args, "set_neuro_ohlc_rollouts", None
-    ) is not None:
+    if (
+        getattr(args, "set_ohlc_dna_stress", None) is not None
+        or getattr(args, "set_neuro_ohlc_rollouts", None) is not None
+    ):
         from lumina_core.evolution.bot_stress_choices import apply_env_stress_flags
 
         apply_env_stress_flags(

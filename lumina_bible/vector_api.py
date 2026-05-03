@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import hashlib
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ class VectorContributionAPI:
             )
             return True
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_bible/vector_api.py:32")
             return False
 
     def upload_community_vetted(
@@ -57,6 +59,7 @@ class VectorContributionAPI:
             collection.add(documents=[text], metadatas=[payload_meta], ids=[doc_id])
             return True
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_bible/vector_api.py:59")
             return False
 
     def query_community_layer(
@@ -76,6 +79,7 @@ class VectorContributionAPI:
                 kwargs["where"] = where
             raw = collection.query(**kwargs)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_bible/vector_api.py:78")
             return []
         out: list[dict[str, Any]] = []
         docs = (raw or {}).get("documents") or []

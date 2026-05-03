@@ -8,6 +8,7 @@ Auto-refreshes every 30 s when enabled.
 """
 
 from __future__ import annotations
+import logging
 
 import time
 from typing import Any
@@ -29,6 +30,7 @@ def _fetch_proposals(base_url: str, api_key: str) -> list[dict[str, Any]]:
         st.warning(f"Proposals fetch failed: HTTP {resp.status_code}")
         return []
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_os/frontend/evolution_approval.py:31")
         st.warning(f"Cannot reach evolution endpoint: {exc}")
         return []
 
@@ -194,6 +196,9 @@ def render_evolution_approval_tab(base_url: str, api_key: str = "") -> None:
                             else:
                                 st.error(f"Approval failed: HTTP {resp.status_code} — {resp.text}")
                         except Exception as exc:
+                            logging.exception(
+                                "Unhandled broad exception fallback in lumina_os/frontend/evolution_approval.py:196"
+                            )
                             st.error(f"Request error: {exc}")
 
                 st.write("")  # spacing between challengers
@@ -232,4 +237,7 @@ def render_evolution_approval_tab(base_url: str, api_key: str = "") -> None:
                         else:
                             st.error(f"Rejection failed: HTTP {resp.status_code} — {resp.text}")
                     except Exception as exc:
+                        logging.exception(
+                            "Unhandled broad exception fallback in lumina_os/frontend/evolution_approval.py:234"
+                        )
                         st.error(f"Request error: {exc}")

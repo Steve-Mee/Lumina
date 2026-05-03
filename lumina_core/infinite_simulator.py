@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import multiprocessing as mp
 import os
@@ -16,6 +17,8 @@ from typing import Any
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.evolution.simulator_data_support import MIN_SIMULATOR_BARS, require_real_simulator_data_strict
+
+logger = logging.getLogger(__name__)
 
 
 def _simulate_worker(payload: dict[str, Any]) -> dict[str, Any]:
@@ -215,7 +218,7 @@ class InfiniteSimulator:
                     in {"sim", "paper"},
                 )
             except Exception:
-                pass
+                logger.exception("InfiniteSimulator failed during nightly reflection handoff")
         return report
 
     def run_nightly_simulation(self, *, num_trades_total: int = 1_000_000) -> dict[str, Any]:
@@ -341,6 +344,7 @@ class InfiniteSimulator:
             results = ray.get(futures)
             ran_with = "ray"
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/infinite_simulator.py:346")
             with mp.Pool(processes=worker_count) as pool:
                 results = pool.map(_simulate_worker, payloads)
 
@@ -382,6 +386,7 @@ class InfiniteSimulator:
             try:
                 store_fn(context, metadata)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/infinite_simulator.py:387")
                 continue
 
     def _evolve_bible(self, summary: dict[str, Any]) -> None:
@@ -410,6 +415,7 @@ class InfiniteSimulator:
         try:
             evolve_fn(updates)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/infinite_simulator.py:415")
             return
 
     def _train_rl(self, ticks: list[dict[str, Any]]) -> None:
@@ -420,4 +426,5 @@ class InfiniteSimulator:
             train_rows = ticks[-200000:]
             self.ppo_trainer.train_nightly_on_infinite_simulator(train_rows, timesteps=300000)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/infinite_simulator.py:425")
             return

@@ -10,6 +10,8 @@ import pytest
 from lumina_core import runtime_workers
 from lumina_core.engine import EngineConfig
 from lumina_core.engine.lumina_engine import LuminaEngine
+from lumina_core.risk.final_arbitration import FinalArbitration
+from lumina_core.risk.risk_policy import RiskPolicy
 from lumina_core.runtime_context import RuntimeContext
 
 
@@ -24,7 +26,7 @@ def test_runtime_context_delegates_engine_surface():
     app = SimpleNamespace(value=1)
     engine = cast(Any, LuminaEngine)(config=EngineConfig())
     ctx = RuntimeContext(engine=engine, app=cast(Any, app))
-    assert ctx.app is app
+    assert cast(Any, ctx.app) is app
     assert ctx.fast_path is engine.fast_path
 
 
@@ -396,7 +398,30 @@ def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
             infinite_simulator=None,
             rl_env=None,
             ppo_trainer=None,
-            risk_controller=SimpleNamespace(check_can_trade=lambda *_a, **_k: (True, "ok")),
+            account_equity=50000.0,
+            realized_pnl_today=0.0,
+            available_margin=42000.0,
+            positions_margin_used=8000.0,
+            live_position_qty=0,
+            get_current_dream_snapshot=lambda: {"regime": "NEUTRAL"},
+            risk_controller=SimpleNamespace(
+                check_can_trade=lambda *_a, **_k: (True, "ok"),
+                state=SimpleNamespace(open_risk_by_symbol={}, margin_tracker=SimpleNamespace(account_equity=50000.0)),
+            ),
+            final_arbitration=FinalArbitration(
+                RiskPolicy(
+                    runtime_mode="paper",
+                    daily_loss_cap=-1000.0,
+                    max_open_risk_per_instrument=500.0,
+                    max_total_open_risk=1200.0,
+                    max_exposure_per_regime=2000.0,
+                    var_95_limit_usd=1200.0,
+                    var_99_limit_usd=1800.0,
+                    es_95_limit_usd=1500.0,
+                    es_99_limit_usd=2200.0,
+                    margin_min_confidence=0.6,
+                )
+            ),
         ),
         container=SimpleNamespace(broker=BrokerSpy()),
         np=np,

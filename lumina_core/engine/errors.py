@@ -6,10 +6,13 @@ from __future__ import annotations
 # ──────────────────────────────────────────────────────────────────────────
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class ErrorSeverity(Enum):
@@ -54,12 +57,12 @@ def log_structured(error: "LuminaError", blackboard=None) -> None:
         with open("logs/structured_errors.jsonl", "a", encoding="utf-8") as _f:
             _f.write(error.to_jsonl())
     except OSError:
-        pass  # never let the error-logger crash the hot path
+        logger.exception("log_structured failed to write structured_errors.jsonl")
     if blackboard is not None and hasattr(blackboard, "add_entry"):
         try:
             blackboard.add_entry("error_event", error.to_jsonl())
         except Exception:
-            pass
+            logger.exception("log_structured failed to publish error event to blackboard")
 
 
 # ── Existing engine exception hierarchy (unchanged) ───────────────────────

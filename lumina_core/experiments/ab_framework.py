@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import copy
 import random
@@ -18,7 +19,7 @@ class ABExperimentResult:
 class ShadowABResult:
     """Result of a statistical shadow A/B comparison."""
 
-    verdict: str                 # 'variant_wins' | 'control_wins' | 'inconclusive'
+    verdict: str  # 'variant_wins' | 'control_wins' | 'inconclusive'
     n_control: int
     n_variant: int
     mean_control_pnl: float
@@ -74,6 +75,9 @@ class ABExperimentFramework:
                 try:
                     scored = dict(future.result() or {})
                 except Exception as exc:
+                    logging.exception(
+                        "Unhandled broad exception fallback in lumina_core/experiments/ab_framework.py:76"
+                    )
                     scored = dict(fork)
                     scored["score"] = 0.0
                     scored["confidence"] = 0.0

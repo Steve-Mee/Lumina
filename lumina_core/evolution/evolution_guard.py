@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import random
 from dataclasses import dataclass
@@ -72,6 +73,7 @@ class EvolutionGuard:
                 result = approval_twin.evaluate_dna_promotion(dna)
                 recommendation = bool(result.get("recommendation", False) if isinstance(result, dict) else False)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_guard.py:74")
                 recommendation = False
 
         if not recommendation:
@@ -91,6 +93,7 @@ class EvolutionGuard:
                 shadow_mode=True,
             )
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_guard.py:93")
             return False
 
         if not shadow_results:
@@ -114,6 +117,7 @@ class EvolutionGuard:
         try:
             result = approval_twin.evaluate_dna_promotion(dna)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_guard.py:116")
             return False
         if isinstance(result, dict):
             return bool(result.get("recommendation", False))
@@ -166,6 +170,7 @@ class EvolutionGuard:
             try:
                 baseline_fitness = float(getattr(dna, "fitness_score", 0.0) or 0.0)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_guard.py:168")
                 baseline_fitness = 0.0
         else:
             baseline_fitness = float(previous_fitness)

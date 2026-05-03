@@ -7,6 +7,7 @@ See ADR-0004 (reality gap) and trade reconciler status for operational alignment
 """
 
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -65,6 +66,7 @@ def _check_reconciler(*, status_path: Path) -> tuple[bool, str | None]:
     try:
         data = json.loads(status_path.read_text(encoding="utf-8"))
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/promotion_readiness.py:67")
         return False, f"reconciler_status_unreadable:{exc}"
     if not isinstance(data, dict):
         return False, "reconciler_status_invalid_shape"
@@ -83,6 +85,7 @@ def _check_reality_gap(*, history_path: Path) -> tuple[bool, str | None]:
     try:
         from lumina_core.engine.backtest.reality_gap import RealityGapTracker
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/promotion_readiness.py:85")
         return False, f"reality_gap_import_failed:{exc}"
     tracker = RealityGapTracker(history_path=history_path)
     n = tracker.load_history(history_path)
@@ -103,6 +106,7 @@ def _check_shadow_for_dna(*, shadow_path: Path, dna_hash: str) -> tuple[bool, st
     try:
         runs = json.loads(shadow_path.read_text(encoding="utf-8"))
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/promotion_readiness.py:105")
         return False, f"shadow_state_unreadable:{exc}"
     if not isinstance(runs, dict):
         return False, "shadow_state_invalid_shape"

@@ -1,4 +1,4 @@
-﻿"""Backward-compatible export for the split evolution orchestrator core."""
+"""Backward-compatible export for the split evolution orchestrator core."""
 
 from __future__ import annotations
 

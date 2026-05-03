@@ -20,7 +20,7 @@ import pandas as pd
 from lumina_core.engine.local_inference_engine import LocalInferenceEngine
 from lumina_core.engine.regime_detector import RegimeDetector
 from lumina_core.engine.lumina_engine import LuminaEngine
-from lumina_core.engine.market_data_service import MarketDataService
+from lumina_core.engine.market_data_service import MarketDataIngestService
 from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
 from lumina_core.engine.reasoning_service import ReasoningService
 from lumina_core.risk.risk_controller import HardRiskController, RiskLimits
@@ -89,8 +89,8 @@ def lightweight_engine(mock_app: SimpleNamespace, tmp_path: Path) -> SimpleNames
 
 
 @pytest.fixture
-def market_data_service(lightweight_engine: SimpleNamespace) -> MarketDataService:
-    return MarketDataService(engine=cast(LuminaEngine, lightweight_engine))
+def market_data_service(lightweight_engine: SimpleNamespace) -> MarketDataIngestService:
+    return MarketDataIngestService(engine=cast(LuminaEngine, lightweight_engine))
 
 
 @pytest.fixture
@@ -100,7 +100,9 @@ def reasoning_service(lightweight_engine: SimpleNamespace) -> ReasoningService:
 
 @pytest.mark.chaos_websocket
 @pytest.mark.chaos_websocket_drop
-def test_websocket_drop_is_handled(market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_websocket_drop_is_handled(
+    market_data_service: MarketDataIngestService, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def _boom(*args, **kwargs):
         raise ConnectionError("simulated websocket drop")
 
@@ -111,7 +113,7 @@ def test_websocket_drop_is_handled(market_data_service: MarketDataService, monke
 @pytest.mark.chaos_websocket
 @pytest.mark.chaos_websocket_reconnect
 def test_websocket_connect_uses_ping_timeouts(
-    market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch
+    market_data_service: MarketDataIngestService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     captured: dict[str, object] = {}
 
@@ -130,7 +132,7 @@ def test_websocket_connect_uses_ping_timeouts(
 @pytest.mark.chaos_api
 @pytest.mark.chaos_api_5xx_storm
 def test_api_5xx_storm_returns_safe_default(
-    market_data_service: MarketDataService, monkeypatch: pytest.MonkeyPatch
+    market_data_service: MarketDataIngestService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     response = SimpleNamespace(status_code=503, json=lambda: {"last": 9999, "volume": 1})
     monkeypatch.setattr("lumina_core.engine.market_data_service.requests.get", lambda *_, **__: response)
@@ -142,7 +144,7 @@ def test_api_5xx_storm_returns_safe_default(
 @pytest.mark.chaos_api
 @pytest.mark.chaos_api_signature_mismatch
 def test_api_signature_mismatch_returns_safe_default(
-    market_data_service: MarketDataService,
+    market_data_service: MarketDataIngestService,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     response = SimpleNamespace(status_code=401, json=lambda: {})
@@ -154,7 +156,7 @@ def test_api_signature_mismatch_returns_safe_default(
 
 @pytest.mark.chaos_degradation
 @pytest.mark.chaos_degrade_high_latency
-def test_market_data_latency_breach_enables_fast_path(market_data_service: MarketDataService) -> None:
+def test_market_data_latency_breach_enables_fast_path(market_data_service: MarketDataIngestService) -> None:
     app = market_data_service.engine.app
     assert app is not None
     assert app.FAST_PATH_ONLY is False
@@ -168,7 +170,7 @@ def test_market_data_latency_breach_enables_fast_path(market_data_service: Marke
 
 @pytest.mark.chaos_degradation
 @pytest.mark.chaos_degrade_recovery
-def test_market_data_latency_recovery_disables_fast_path(market_data_service: MarketDataService) -> None:
+def test_market_data_latency_recovery_disables_fast_path(market_data_service: MarketDataIngestService) -> None:
     app = market_data_service.engine.app
     assert app is not None
 

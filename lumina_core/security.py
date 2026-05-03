@@ -16,7 +16,7 @@ from typing import Any, Callable, Optional
 
 import jwt
 from typing_extensions import ParamSpec
-from lumina_core.audit.hash_chain import append_hash_chained_jsonl
+from lumina_core.audit import get_audit_logger
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +235,7 @@ class SecurityAuditLog:
         self.config = config
         self.lock = threading.Lock()
         os.makedirs(os.path.dirname(self.config.audit_log_path) or ".", exist_ok=True)
+        get_audit_logger().register_stream("security", Path(self.config.audit_log_path))
 
     def log_action(
         self,
@@ -261,9 +262,13 @@ class SecurityAuditLog:
 
         with self.lock:
             try:
-                append_hash_chained_jsonl(
+                get_audit_logger().append(
+                    stream="security",
+                    payload=entry,
                     path=Path(self.config.audit_log_path),
-                    entry=entry,
+                    mode="real" if str(os.getenv("LUMINA_MODE", "sim")).strip().lower() == "real" else "sim",
+                    actor_id=str(username or "security"),
+                    severity="info",
                 )
             except Exception as exc:
                 logger.error(f"Failed to write audit log: {exc}")

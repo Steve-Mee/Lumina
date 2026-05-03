@@ -290,3 +290,43 @@ def test_enforce_pre_trade_gate_real_fail_closed_when_audit_write_fails(monkeypa
 
     assert allowed is False
     assert "audit fail-closed" in reason.lower()
+
+
+def test_enforce_pre_trade_gate_real_blocks_when_final_arbitration_missing(monkeypatch) -> None:
+    snapshot = SimpleNamespace(
+        ok=True,
+        is_fresh=True,
+        source="unit-test-provider",
+        reason_code="ok",
+        equity_usd=50_000.0,
+        available_margin_usd=45_000.0,
+        used_margin_usd=5_000.0,
+    )
+    engine = _make_engine(
+        trade_mode="real",
+        risk_controller=_RiskController(),
+        final_arbitration=None,
+        account_equity=50_000.0,
+        available_margin=45_000.0,
+        positions_margin_used=5_000.0,
+        live_position_qty=0,
+        equity_snapshot_provider=SimpleNamespace(get_snapshot=lambda: snapshot),
+        observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
+    )
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+    monkeypatch.setattr(
+        "lumina_core.order_gatekeeper.evaluate_constitution_for_intent",
+        lambda **_kwargs: (True, "ok"),
+    )
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+        order_side="BUY",
+    )
+
+    assert allowed is False
+    assert "final_arbitration_unavailable" in reason

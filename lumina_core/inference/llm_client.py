@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import hashlib
 import json
@@ -47,13 +48,26 @@ def _effective_trade_mode(engine: Any) -> str:
     return str(getattr(cfg, "trade_mode", "paper") or "paper").strip().lower()
 
 
+def _extract_confidence(payload: dict[str, Any], *, fallback: bool) -> float:
+    for key in ("llm_confidence", "confidence", "meta_score"):
+        if key in payload:
+            try:
+                value = float(payload[key])
+                return max(0.0, min(1.0, value))
+            except (TypeError, ValueError):
+                continue
+    return 0.0 if fallback else 0.5
+
+
 def resolve_effective_temperature(
     *,
     requested_temperature: float,
     is_real_mode: bool,
     real_mode_temperature: float = 0.35,
+    real_temperature_override_audit_id: str | None = None,
 ) -> float:
-    if not is_real_mode or _is_truthy(os.getenv("LUMINA_FORCE_HIGH_TEMP")):
+    has_audited_override = bool(str(real_temperature_override_audit_id or "").strip())
+    if not is_real_mode or _is_truthy(os.getenv("LUMINA_FORCE_HIGH_TEMP")) or has_audited_override:
         return float(requested_temperature)
     bounded_real = max(0.30, min(0.40, float(real_mode_temperature)))
     return min(float(requested_temperature), bounded_real)
@@ -125,11 +139,13 @@ class LlmClient:
         model_version = str(payload.get("model", "unknown-model"))
         requested_temperature = float(payload.get("temperature", inf_cfg.get("temperature", 0.1)))
         real_mode_temperature = float(inf_cfg.get("llm_real_temperature", 0.35))
+        real_temperature_override_audit_id = str(payload.get("real_temperature_override_audit_id", "") or "").strip()
         mode = _effective_trade_mode(self.engine)
         effective_temperature = resolve_effective_temperature(
             requested_temperature=requested_temperature,
             is_real_mode=mode == "real",
             real_mode_temperature=real_mode_temperature,
+            real_temperature_override_audit_id=real_temperature_override_audit_id or None,
         )
         provider = str(getattr(self.inference_engine, "active_provider", "unknown-provider"))
         prompt_hash = _sha256(payload.get("messages", payload))
@@ -170,20 +186,24 @@ class LlmClient:
                     path = "fast_rule"
                     response_payload = self._fallback_payload(fallback_reason, decision_context_id=call_id)
             except Exception as exc:  # fail-closed by design
+                logging.exception("Unhandled broad exception fallback in lumina_core/inference/llm_client.py:187")
                 fallback = True
                 path = "fast_rule"
                 error_text = f"{type(exc).__name__}: {exc}"
                 response_payload = self._fallback_payload(fallback_reason, decision_context_id=call_id)
+        response_payload["llm_confidence"] = _extract_confidence(response_payload, fallback=fallback)
 
         elapsed_ms = round((time.perf_counter() - started) * 1000.0, 2)
         response_hash = _sha256(response_payload)
         timestamp = datetime.now(timezone.utc).isoformat()
+        normalized_routing_path = "llm_reasoning" if path == "llm_reasoning" else "rule_based_fallback"
         self._append_decision_log(
             {
                 "timestamp": timestamp,
                 "decision_context_id": call_id,
                 "context": context,
                 "path": path,
+                "routing_path": normalized_routing_path,
                 "fallback": fallback,
                 "provider": provider,
                 "model_version": model_version,
@@ -193,6 +213,7 @@ class LlmClient:
                 "temperature": round(effective_temperature, 4),
                 "max_latency_ms": self._max_latency_ms(),
                 "error": error_text,
+                "real_temperature_override_audit_id": real_temperature_override_audit_id or None,
             }
         )
         return LLMCallResult(

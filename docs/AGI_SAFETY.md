@@ -34,6 +34,48 @@ All three layers are **fail-closed**: any unexpected error blocks the mutation/p
 
 ---
 
+## Canonical Audit & Hash Chain (lumina_audit_v1)
+
+LUMINA now uses one canonical audit integrity system across safety-critical paths.
+
+- **Facade:** `lumina_core/audit/logger.py` (`AuditLogger`, `StreamRegistry`)
+- **Canonical chain fields:** `chain_version="lumina_audit_v1"`, `prev_hash`, `entry_hash`
+- **Write primitive:** `safe_append_jsonl(..., hash_chain=True)` with cross-process file locks
+- **REAL mode:** fail-closed (`AuditChainError`) on corruption or append failure
+- **SIM/PAPER:** corrupt files rotate to `*.corrupt.*` and a new chain segment starts from `GENESIS`
+
+Canonical streams:
+
+- `trade_decision`
+- `agent_decision`
+- `evolution_meta`
+- `agent_thought`
+- `security`
+- `governance.real_promotion`
+- `evolution.decisions`
+- `safety.constitution`
+- `trade_reconciler`
+
+Legacy `hash` is dual-written temporarily on selected migrated streams for backward compatibility.
+
+---
+
+## LLM As Powerful Advisor, Never Sole Ruler
+
+LUMINA treats the LLM as a high-bandwidth reasoning engine, not as an execution authority:
+
+- The LLM may always generate creative hypotheses, counterfactuals, dreams, and mutation proposals in SIM, PAPER, and REAL.
+- Any capital-relevant output is routed through `LLMDecisionRouter` and only becomes executable after deterministic checks.
+- In REAL mode, no order intent is executable on LLM output alone; it must pass `FinalArbitration`, which already enforces both `RiskPolicy` and `TradingConstitution`.
+- Final Arbitration beschermt het organisme, maar beperkt zijn creatieve ziel niet.
+- Timeout/error paths degrade deterministically to conservative behavior (`HOLD`) and are logged as `rule_based_fallback` for audit transparency.
+- Every routed LLM payload includes `llm_confidence` (0..1). Low confidence increases rule weight and blocks direct order execution in REAL mode.
+- REAL temperature is clamped to 0.30-0.40 by default to reduce stochastic drift; higher temperature requires an explicit audit identifier (`real_temperature_override_audit_id`) so overrides are attributable.
+
+This preserves radical creativity in the advisory layer while making the capital path deterministic, reviewable, and constitutionally constrained.
+
+---
+
 ## Layer 1: TradingConstitution — 15 Hard Principles
 
 **File:** `lumina_core/safety/trading_constitution.py`
@@ -123,6 +165,7 @@ Every evaluation produces a `SandboxedResult` with:
 - `sandbox_used`: `True` when subprocess mode was used
 
 The `to_audit_record()` method produces a dict suitable for appending to `logs/evolution_metrics.jsonl`.
+Safety-critical evolution decisions are additionally persisted through the canonical `lumina_audit_v1` chain.
 
 ### When Is Sandboxing Used?
 
@@ -196,9 +239,18 @@ Every `check_pre_mutation` and `check_pre_promotion` call appends a structured J
 $LUMINA_STATE_DIR/constitutional_audit.jsonl
 ```
 
-Fields: `audit_id`, `check_phase`, `mode`, `dna_hash`, `passed`, `fatal_count`, `warn_count`, `violation_names`, `timestamp`.
+Fields include canonical chain metadata (`chain_version`, `stream`, `prev_hash`, `entry_hash`) plus guard fields (`audit_id`, `check_phase`, `mode`, `dna_hash`, `passed`, `fatal_count`, `warn_count`, `violation_names`, `timestamp`).
 
 This provides a complete forensic trail of every safety decision made during the organism's lifetime.
+
+### Integrity vs Experimentation (SIM/REAL)
+
+LUMINA now enforces a strict rule on decision and audit chains: silent exceptions are forbidden on critical log paths.
+
+- `AgentDecisionLog`, `AuditLogService`, `EvolutionAuditWriter`, and `agent_contracts` now use the canonical `AuditLogger` chain and log write/read failures with stack traces.
+- **SIM/PAPER behavior:** experimental layers remain permissive. Failures are visible in logs, but non-capital simulation workflows continue where safe.
+- **REAL behavior:** fail-closed remains active on capital paths (`order_gatekeeper` blocks when trade-decision audit logging fails), and contract mirror failures in REAL now raise explicitly instead of being silently ignored.
+- Hash-chain read corruption in `AgentDecisionLog` is tolerated in SIM (with error logging) but treated as a hard failure in REAL to protect audit integrity.
 
 ---
 
@@ -215,13 +267,20 @@ This provides a complete forensic trail of every safety decision made during the
 
 ### Hard guarantee
 
-No agent proposal can bypass this layer through supervisor flow, operations/reasoning services, or direct broker submit paths. Any arbitration error is treated as `REJECTED` (fail-closed).
+No agent proposal can bypass this layer through supervisor flow, operations/reasoning services, or direct broker submit paths. Any arbitration error is treated as `REJECTED` (fail-closed). Final runtime decisions are persisted via the canonical `trade_decision` stream.
 
 ### Mode behavior
 
 - **REAL:** strictest thresholds; capital preservation is sacred.
 - **PAPER:** realistic enforcement close to REAL.
 - **SIM:** learning-friendly but still bounded by physical risk constraints.
+
+### REAL equity snapshot gate
+
+- REAL order intents that increase risk now require a **fresh (<= 30s) equity snapshot** from the active broker path.
+- Snapshot data is resolved via `EquitySnapshotProvider` (`lumina_core/risk/equity_snapshot.py`) and consumed by `build_current_state_from_engine`.
+- If broker equity/margin data is missing, stale, or fetch fails, the runtime gate is **fail-closed**: no new risk-increasing trades are allowed.
+- Risk-reducing exits (flatten direction) remain allowed so the system can still de-risk under degraded broker telemetry.
 
 ### Usage
 
@@ -249,6 +308,31 @@ broker.submit_order(order)
 
 ---
 
+## Layer 5: PromotionGate — Non-Negotiable REAL Promotion Gate
+
+**File:** `lumina_core/evolution/promotion_gate.py`
+
+Promotion to REAL is now blocked unless **all** of the following criteria pass in one fail-closed evaluation:
+
+1. **Out-of-sample robustness**: Purged walk-forward + combinatorial purged CV evidence must meet minimum Sharpe consistency and overfitting controls.
+2. **Reality gap**: live/paper execution must stay within allowed gap bands for slippage and fill-rate degradation versus backtest.
+3. **Stress drawdown ceiling**: deterministic stress overlays must remain under the configured maximum drawdown percentage of equity.
+4. **Statistical significance**: minimum trade sample plus Welch p-value (`p < 0.05`) and Cohen's d (`d > 0.3`) thresholds.
+
+### Hard rule
+
+- This gate is **non-negotiable** for REAL promotions.
+- Any missing or invalid evidence is treated as **reject** (fail-closed).
+- `mean_pnl > 0` is no longer sufficient for REAL promotion.
+
+### Integration point
+
+The gate is enforced in `PromotionPolicy.run_shadow_validation_gate()` after shadow validation passes and before the rollout/human approval decision path proceeds.
+
+`ShadowDeploymentTracker.compute_shadow_verdict()` in `lumina_core/evolution/shadow_deployment.py` is a legacy/experiment heuristic and is not used as the REAL promotion authority.
+
+---
+
 ## Evolution Loop Integration
 
 The `ConstitutionalGuard` is wired into `EvolutionOrchestrator` at two points:
@@ -266,7 +350,7 @@ LUMINA voegt een extra promotion gate toe via `EvolutionRolloutFramework`:
 1. **Shadow-first in REAL mode**: geen REAL promotie zonder geslaagde shadow-validatie.
 2. **Radicale mutaties**: verplicht expliciete human approval in REAL/PAPER.
 3. **A/B context**: geselecteerde variant wordt vergeleken met de A/B baseline.
-4. **Audit trail**: iedere rollout-beslissing wordt gelogd naar `state/evolution_rollout_history.jsonl`.
+4. **Audit trail**: iedere rollout-beslissing wordt gelogd naar `state/evolution_rollout_history.jsonl`; governance/security-critical approvals additionally flow through canonical hash-chained streams.
 
 Deze laag is fail-closed: als shadow of human approval niet voldoet, wordt promotie geblokkeerd.
 
@@ -318,6 +402,7 @@ Architecture decisions live under `docs/adr/`. **Prefer the canonical `000x` ser
 |-------|---------------|----------------------------------|
 | Trading constitution, sandboxed mutation executor, constitutional guardrails | [0003](adr/0003-trading-constitution-sandboxed-mutation-executor.md) | [ADR-001](adr/ADR-001-constitutional-principles.md) · [ADR-004](adr/ADR-004-agi-safety-system.md) |
 | Shadow deployment + mandatory human approval for radical mutations | [0002](adr/0002-shadow-deployment-human-approval.md) | — |
+| Canonical audit/hash-chain unification | [ADR-0042](adr/ADR-0042-canonical-audit-logger.md) | — |
 
 ---
 
@@ -367,4 +452,19 @@ Environment flags:
 
 ---
 
-*Last updated: LUMINA v54 | Maintained by the LUMINA AGI Safety subsystem.*
+## ApprovalChain (REAL Promotion)
+
+REAL promotion now has an additional non-bypassable governance gate: `ApprovalChain`.
+
+- **Cryptographic approvals only**: each REAL promotion payload is signed with Ed25519 and verified against an allowlist of public keys (`governance.real_approval_public_keys_hex`).
+- **Multi-party threshold**: promotion is allowed only when a configured threshold (`governance.real_approval_threshold`) is met (e.g., 2-of-3).
+- **Payload binding**: signatures are bound to canonical payload bytes, including DNA hash and DNA content digest, preventing replay on modified DNA.
+- **Fail-closed by design**: missing policy, expired payload, malformed signatures, unauthorized signers, or threshold shortfall block promotion.
+- **Hash-chained audit trail**: every approval event writes timestamp, approver, DNA hash, reason, and verification result to canonical stream `governance.real_promotion` (`state/real_promotion_approval_audit.jsonl`) with `chain_version`, `prev_hash`, `entry_hash`.
+- **No REAL bypass flag**: for `mode=real`, disabling `require_human_approval` is treated as unsafe and promotion is rejected.
+
+This gate complements (not replaces) `PromotionGate`, `EvolutionRolloutFramework`, and `ConstitutionalGuard`. A candidate must pass all layers before becoming active in REAL.
+
+---
+
+*Last updated: LUMINA v55 | Maintained by the LUMINA AGI Safety subsystem.*

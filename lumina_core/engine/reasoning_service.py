@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
+import logging
 import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from lumina_core.inference import LlmClient
+from lumina_core.inference import LLMDecisionRouter, LlmClient
 from .broker_bridge import Order, OrderResult
 from .errors import BrokerBridgeError, PolicyGateError, format_error_code
 from .local_inference_engine import LocalInferenceEngine
@@ -16,6 +17,8 @@ from .policy_engine import PolicyEngine
 from .regime_detector import RegimeDetector, RegimeSnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, session_guard_allows_trading
 from lumina_core.sla_config import reasoning_latency_sla_ms
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -26,6 +29,7 @@ class ReasoningService:
     container: Any | None = None
     inference_engine: LocalInferenceEngine | None = None
     llm_client: LlmClient | None = None
+    llm_router: LLMDecisionRouter | None = None
     regime_detector: RegimeDetector | None = None
     latency_sla_ms: float = 300.0
     _sla_breach_streak: int = 0
@@ -39,6 +43,8 @@ class ReasoningService:
             self.inference_engine = LocalInferenceEngine(engine=self.engine)
         if self.llm_client is None:
             self.llm_client = LlmClient(inference_engine=self.inference_engine, engine=self.engine)
+        if self.llm_router is None:
+            self.llm_router = LLMDecisionRouter()
         if self.regime_detector is None:
             self.regime_detector = getattr(self.engine, "regime_detector", None)
 
@@ -135,11 +141,11 @@ class ReasoningService:
                 policy_version="reasoning-policy-v1",
                 provider_route=[str(getattr(self.inference_engine, "active_provider", "unknown-provider"))],
                 calibration_factor=1.0,
+                is_real_mode=str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower() == "real",
             )
         except Exception as exc:
-            app = self._app()
             code = format_error_code("REASONING_DECISION_LOG", exc, fallback="LOG_WRITE_FAILED")
-            app.logger.debug(f"Decision log write skipped [{code}]: {exc}")
+            logger.exception("ReasoningService failed to write agent decision log [%s]", code)
             return
 
     def submit_order(self, order: Order) -> OrderResult:
@@ -161,6 +167,7 @@ class ReasoningService:
             symbol=str(getattr(order, "symbol", getattr(self.engine.config, "instrument", "UNKNOWN"))),
             regime=str(dream.get("regime", "NEUTRAL")),
             proposed_risk=float(proposed_risk),
+            order_side=str(getattr(order, "side", "HOLD")).upper(),
         )
 
         session_allowed = not str(gate_reason).lower().startswith("session guard blocked")
@@ -188,7 +195,8 @@ class ReasoningService:
         }:
             raise PolicyGateError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
 
-        return policy_engine.execute_order(order)
+        skip_final_arbitration = bool(getattr(self.engine, "admission_chain_final_arbitration_approved", False))
+        return policy_engine.execute_order(order, skip_final_arbitration=skip_final_arbitration)
 
     def refresh_regime_snapshot(
         self,
@@ -244,7 +252,7 @@ class ReasoningService:
                     high_risk_override=bool(snapshot.adaptive_policy.high_risk),
                 )
             except Exception:
-                pass
+                logger.exception("ReasoningService failed to record regime_state metric")
         return snapshot
 
     @staticmethod
@@ -267,6 +275,7 @@ class ReasoningService:
         decision_context_id: str | None = None,
     ) -> dict[str, Any] | None:
         assert self.llm_client is not None
+        assert self.llm_router is not None
         resolved_context_id = decision_context_id or self._new_decision_context_id(context)
         if self._fast_path_only_enabled():
             llm_result = self.llm_client.complete_trading_json(
@@ -278,9 +287,12 @@ class ReasoningService:
                 forced_path="fast_rule",
                 fallback_reason="fast_path_only_enabled",
             )
-            output = dict(llm_result.payload_out)
+            routed = self.llm_router.after_llm_call(llm_result, context=context)
+            output = dict(routed.payload)
             output.setdefault("decision_context_id", llm_result.decision_context_id)
             output.setdefault("llm_path", llm_result.path)
+            output.setdefault("routing_path", routed.routing_path)
+            output.setdefault("llm_confidence", routed.llm_confidence)
             return output
 
         started = time.perf_counter()
@@ -293,9 +305,12 @@ class ReasoningService:
             decision_context_id=resolved_context_id,
         )
         elapsed_ms = llm_result.latency_ms if llm_result.latency_ms > 0.0 else (time.perf_counter() - started) * 1000.0
-        result = dict(llm_result.payload_out)
+        routed = self.llm_router.after_llm_call(llm_result, context=context)
+        result = dict(routed.payload)
         result.setdefault("decision_context_id", llm_result.decision_context_id)
         result.setdefault("llm_path", llm_result.path)
+        result.setdefault("routing_path", routed.routing_path)
+        result.setdefault("llm_confidence", routed.llm_confidence)
         self._record_latency(elapsed_ms, source=context)
         self._log_decision(
             agent_id="ReasoningService",
@@ -511,7 +526,7 @@ Wat is jouw trade-besluit?""",
                     abstained=str(consensus.get("signal", "HOLD")).upper() == "HOLD",
                 )
             except Exception:
-                pass
+                logger.exception("ReasoningService failed to record model decision metric")
         self._log_decision(
             agent_id="ReasoningService",
             raw_input={

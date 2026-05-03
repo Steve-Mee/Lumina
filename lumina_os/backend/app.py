@@ -152,6 +152,7 @@ def _ingest_trade(trade: TradeSubmit) -> dict[str, int | str]:
         db.refresh(entry)
         return {"status": "ok", "trade_id": int(getattr(entry, "id", 0) or 0)}
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_os/backend/app.py:154")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Trade ingest failed: {exc}") from exc
     finally:
@@ -301,6 +302,7 @@ def get_reconciliation_status(
             raise ValueError("Invalid reconciliation status payload")
         return payload
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_os/backend/app.py:303")
         raise HTTPException(status_code=500, detail=f"Reconciliation status unavailable: {exc}") from exc
 
 
@@ -392,6 +394,7 @@ def upload_bible(
         db.commit()
         return {"status": "ok", "message": "Bible added to global wisdom"}
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_os/backend/app.py:394")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Bible upload failed: {exc}") from exc
     finally:
@@ -426,6 +429,7 @@ def upload_reflection(
         db.rollback()
         raise
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_os/backend/app.py:428")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Reflection upload failed: {exc}") from exc
     finally:

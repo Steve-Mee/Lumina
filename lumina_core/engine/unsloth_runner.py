@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import argparse
 import json
@@ -27,6 +28,7 @@ def main() -> int:
     try:
         from unsloth import FastLanguageModel  # pyright: ignore[reportMissingImports]
     except Exception as exc:  # pragma: no cover - environment dependent
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/unsloth_runner.py:29")
         raise SystemExit(
             f"Unsloth is not available in this environment: {exc}. Install requirements_finetune.txt on Linux/WSL2 with CUDA."
         )
@@ -39,6 +41,7 @@ def main() -> int:
         from transformers import TrainingArguments  # pyright: ignore[reportMissingImports]
         from trl import SFTTrainer  # pyright: ignore[reportMissingImports]
     except Exception as exc:  # pragma: no cover - environment dependent
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/unsloth_runner.py:41")
         raise SystemExit(f"Training dependencies missing: {exc}. Install requirements_finetune.txt.")
 
     model, tokenizer = FastLanguageModel.from_pretrained(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import threading
 from dataclasses import dataclass, field
@@ -11,7 +12,13 @@ from typing import Any
 
 import yaml
 
-from lumina_core.state.state_manager import safe_with_file_lock
+from lumina_core.audit import AuditChainError, get_audit_logger
+
+logger = logging.getLogger(__name__)
+
+
+class AgentDecisionLogChainError(RuntimeError):
+    """Raised when the immutable decision hash chain cannot be read in REAL mode."""
 
 
 @dataclass(slots=True)
@@ -23,6 +30,8 @@ class AgentDecisionLog:
 
     def __post_init__(self) -> None:
         self._lock = threading.Lock()
+        self.path = Path(self.path)
+        get_audit_logger().register_stream("agent_decision", self.path)
 
     def log_decision(
         self,
@@ -43,6 +52,7 @@ class AgentDecisionLog:
         provider_route: list[str] | None = None,
         calibration_factor: float = 1.0,
         config_snapshot_hash: str | None = None,
+        is_real_mode: bool = False,
     ) -> dict[str, Any]:
         ts = datetime.now(timezone.utc).isoformat()
         prompt_fingerprint = prompt_hash or self._sha256(
@@ -75,30 +85,31 @@ class AgentDecisionLog:
             "prev_hash": "GENESIS",
             "log_version": "v1",
         }
-        return self._append_with_consistent_prev(payload)
+        return self._append_with_consistent_prev(payload, is_real_mode=bool(is_real_mode))
 
-    def _append_with_consistent_prev(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _append_with_consistent_prev(self, payload: dict[str, Any], *, is_real_mode: bool) -> dict[str, Any]:
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-
-            def _write_locked(target: Path) -> dict[str, Any]:
-                next_payload = dict(payload)
-                next_payload["prev_hash"] = self._last_hash_unlocked()
-                canonical = json.dumps(next_payload, sort_keys=True, ensure_ascii=True)
-                next_payload["hash"] = self._sha256(canonical)
-                with target.open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps(next_payload, ensure_ascii=False) + "\n")
-                    handle.flush()
-                    os.fsync(handle.fileno())
-                return next_payload
-
-            return safe_with_file_lock(self.path, _write_locked)
+            try:
+                return get_audit_logger().append(
+                    stream="agent_decision",
+                    payload=payload,
+                    path=self.path,
+                    mode="real" if is_real_mode else "sim",
+                    actor_id=str(payload.get("agent_id", "agent_decision_log")),
+                    severity="info",
+                    include_legacy_hash=True,
+                    fail_closed_real=bool(is_real_mode),
+                )
+            except AuditChainError as exc:
+                logger.exception("AgentDecisionLog failed to append in REAL mode at %s", self.path)
+                raise AgentDecisionLogChainError(f"Decision log chain unreadable at {self.path}") from exc
 
     def _last_hash(self) -> str:
         with self._lock:
-            return self._last_hash_unlocked()
+            return self._last_hash_unlocked(is_real_mode=False)
 
-    def _last_hash_unlocked(self) -> str:
+    def _last_hash_unlocked(self, *, is_real_mode: bool) -> str:
         if not self.path.exists():
             return "GENESIS"
         try:
@@ -111,7 +122,10 @@ class AgentDecisionLog:
                 return "GENESIS"
             parsed = json.loads(last_line)
             return str(parsed.get("hash", "GENESIS"))
-        except Exception:
+        except Exception as exc:
+            logger.exception("AgentDecisionLog failed to load previous hash from %s", self.path)
+            if is_real_mode:
+                raise AgentDecisionLogChainError(f"Decision log chain unreadable at {self.path}") from exc
             return "GENESIS"
 
     @staticmethod
@@ -127,7 +141,9 @@ class AgentDecisionLog:
             canonical = json.dumps(raw if isinstance(raw, dict) else {"raw": raw}, sort_keys=True, ensure_ascii=True)
             return self._sha256(canonical)
         except Exception:
+            logger.exception("AgentDecisionLog failed to parse config snapshot at %s", config_path)
             try:
                 return self._sha256(config_path.read_text(encoding="utf-8", errors="replace"))
             except Exception:
+                logger.exception("AgentDecisionLog failed to read config snapshot fallback at %s", config_path)
                 return "CONFIG_UNREADABLE"

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import sqlite3
@@ -85,6 +86,9 @@ class SteveValuesRegistry:
                     self._append_jsonl(payload_json)
                     connection.commit()
                 except Exception:
+                    logging.exception(
+                        "Unhandled broad exception fallback in lumina_core/evolution/steve_values_registry.py:87"
+                    )
                     connection.rollback()
                     raise
         return record

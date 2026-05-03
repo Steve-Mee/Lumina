@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+import pytest
 
 from lumina_core.engine.audit_log_service import AuditLogService
 
@@ -34,3 +37,17 @@ def test_audit_log_service_writes_hash_chain(tmp_path: Path) -> None:
     assert lines[0]["hash"]
     assert lines[1]["prev_hash"] == lines[0]["hash"]
     assert lines[1]["hash"]
+
+
+def test_audit_log_service_logs_stacktrace_on_validation_error(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    service = AuditLogService(path=tmp_path / "trade_decision_audit.jsonl", enabled=True, fail_closed_real=True)
+    invalid_payload = {"mode": "real"}
+
+    with caplog.at_level(logging.ERROR):
+        ok = service.log_decision(invalid_payload, is_real_mode=True)
+
+    assert ok is False
+    assert "failed to append decision event" in caplog.text

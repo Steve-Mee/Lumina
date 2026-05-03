@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
+import logging
 from typing import Any
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 _CONTRACT_MONTHS = {
@@ -373,6 +376,7 @@ class RegimeDetector:
             try:
                 tick_size = float(self.valuation_engine.tick_size(instrument))
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/regime_detector.py:378")
                 tick_size = 0.25
 
         last = rows.iloc[-1]
@@ -383,6 +387,7 @@ class RegimeDetector:
                     explicit_spread = float(last.get(key, 0.0) or 0.0)
                     break
                 except Exception:
+                    logging.exception("Unhandled broad exception fallback in lumina_core/engine/regime_detector.py:388")
                     explicit_spread = None
         if explicit_spread is None:
             explicit_spread = float((last.get("high", 0.0) - last.get("low", 0.0)) * 0.18)
@@ -412,7 +417,7 @@ class RegimeDetector:
                 ts = pd.to_datetime(rows["timestamp"].iloc[-1], utc=True)
                 return ts.to_pydatetime()
             except Exception:
-                pass
+                logger.exception("RegimeDetector failed to parse latest timestamp; using current UTC time")
         return datetime.now(timezone.utc)
 
     @staticmethod

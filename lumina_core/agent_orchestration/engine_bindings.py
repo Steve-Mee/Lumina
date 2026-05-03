@@ -1,6 +1,7 @@
 """Engine bindings for event-driven agent orchestration."""
 
 from __future__ import annotations
+import logging
 
 from typing import Any, Callable
 
@@ -44,6 +45,9 @@ def bind_engine_blackboard(engine: Any, blackboard: Any) -> list[str]:
         try:
             token = blackboard.subscribe(topic, handler)
         except Exception:
+            logging.exception(
+                "Unhandled broad exception fallback in lumina_core/agent_orchestration/engine_bindings.py:46"
+            )
             continue
         tokens.append(str(token))
     return tokens

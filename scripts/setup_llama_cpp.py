@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import platform
@@ -24,6 +25,7 @@ def _run(command: list[str], cwd: Path | None = None) -> tuple[bool, str]:
             check=False,
         )
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in scripts/setup_llama_cpp.py:26")
         return False, str(exc)
     output = completed.stdout.strip() or completed.stderr.strip() or f"Exit code {completed.returncode}"
     return completed.returncode == 0, output

@@ -306,7 +306,9 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
                 or getattr(self._active_limits, "runtime_mode", "")
             ).strip()
             base_policy = RiskPolicy.get_effective_policy(mode=runtime_mode, instrument=None, config=config)
-            symbol_policy = RiskPolicy.get_effective_policy(mode=runtime_mode, instrument=normalized_symbol, config=config)
+            symbol_policy = RiskPolicy.get_effective_policy(
+                mode=runtime_mode, instrument=normalized_symbol, config=config
+            )
             if float(symbol_policy.max_open_risk_per_instrument) != float(base_policy.max_open_risk_per_instrument):
                 return float(symbol_policy.max_open_risk_per_instrument)
             return float(self._active_limits.max_open_risk_per_instrument)
@@ -336,7 +338,9 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
             )
         )
         max_open_risk = float(
-            override_cfg.get("max_open_risk_per_instrument", self._base_limits.max_open_risk_per_instrument * multiplier)
+            override_cfg.get(
+                "max_open_risk_per_instrument", self._base_limits.max_open_risk_per_instrument * multiplier
+            )
         )
         max_regime_risk = float(
             override_cfg.get("max_exposure_per_regime", self._base_limits.max_exposure_per_regime * multiplier)
@@ -665,12 +669,14 @@ def risk_limits_from_config(config: dict[str, Any] | None = None) -> RiskLimits:
         try:
             return int(value)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/risk/risk_controller.py:667")
             return int(default)
 
     def _as_float(value: Any, default: float) -> float:
         try:
             return float(value)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/risk/risk_controller.py:673")
             return float(default)
 
     global_mode = str(os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or config.get("mode", "sim")).strip().lower()

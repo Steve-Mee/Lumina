@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -12,6 +13,8 @@ from lumina_core.evolution.simulator_data_support import (
 
 from .agent_blackboard import AgentBlackboard
 from .self_evolution_meta_agent import SelfEvolutionMetaAgent
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -64,6 +67,9 @@ class MetaAgentOrchestrator:
                     self.ppo_trainer.train(total_timesteps=50000)
                 retrain_result = {"triggered": True, "executed": True, "reason": "nightly_drift_or_underperformance"}
             except Exception as exc:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/engine/meta_agent_orchestrator.py:69"
+                )
                 retrain_result = {"triggered": True, "executed": False, "reason": f"train_failed:{exc}"}
         else:
             retrain_result = {
@@ -84,7 +90,7 @@ class MetaAgentOrchestrator:
             try:
                 self.bible_engine.evolve(bible_update)
             except Exception:
-                pass
+                logger.exception("MetaAgentOrchestrator failed to evolve bible update")
 
         if bible_update:
             self.blackboard.publish_sync(

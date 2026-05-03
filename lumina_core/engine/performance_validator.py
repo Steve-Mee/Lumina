@@ -21,7 +21,7 @@ from fpdf import FPDF
 from lumina_core.engine.canonical_training import BacktesterEngine
 from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
 from .lumina_engine import LuminaEngine
-from .market_data_service import MarketDataService
+from .market_data_service import MarketDataIngestService
 
 
 class PerformanceValidatorPDF(FPDF):
@@ -39,7 +39,7 @@ class PerformanceValidatorPDF(FPDF):
 @dataclass(slots=True)
 class PerformanceValidator:
     engine: LuminaEngine
-    market_data_service: MarketDataService | None = None
+    market_data_service: MarketDataIngestService | None = None
     ppo_trainer: Any | None = None
     report_dir: Path = Path("journal/reports")
     side_by_side_log: list[dict[str, Any]] = field(default_factory=list)
@@ -51,7 +51,7 @@ class PerformanceValidator:
         if self.engine is None:
             raise ValueError("PerformanceValidator requires LuminaEngine")
         if self.market_data_service is None:
-            self.market_data_service = MarketDataService(engine=self.engine)
+            self.market_data_service = MarketDataIngestService(engine=self.engine)
         if self.ppo_trainer is None:
             self.ppo_trainer = getattr(self.engine, "ppo_trainer", None)
 
@@ -397,7 +397,9 @@ class PerformanceValidator:
                 eng = getattr(self.ppo_trainer, "engine", None)
                 if eng is None:
                     raise RuntimeError("ppo_trainer.engine missing for emergency RL retrain")
-                bars = coerce_rl_training_bars(eng, simulator_data if isinstance(simulator_data, list) else None, nightly_context=None)
+                bars = coerce_rl_training_bars(
+                    eng, simulator_data if isinstance(simulator_data, list) else None, nightly_context=None
+                )
                 policy_path = self.ppo_trainer.train(bars, total_timesteps=300_000)
             actions["rl_retrain"] = True
             actions["rl_policy_path"] = str(policy_path)

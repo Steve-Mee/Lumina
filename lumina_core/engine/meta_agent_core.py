@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
 from dataclasses import dataclass, field
@@ -29,10 +30,10 @@ from .audit_writer import EvolutionAuditWriter
 from .proposal_generator import ProposalGenerator
 from lumina_core.state.state_manager import safe_with_file_lock
 
+logger = logging.getLogger(__name__)
 
-def should_run_multi_gen_nightly(
-    *, mutation_allowed: bool, dry_run: bool, mode_key: str
-) -> bool:
+
+def should_run_multi_gen_nightly(*, mutation_allowed: bool, dry_run: bool, mode_key: str) -> bool:
     """True when the closed-loop multi-gen cycle (incl. dream) should run.
 
     Nightly sim/paper often pass dry_run True to protect live side-effects; we still
@@ -44,6 +45,7 @@ def should_run_multi_gen_nightly(
 
 def _compat() -> Any:
     from lumina_core.engine import self_evolution_meta_agent as compat_module
+
     return compat_module
 
 
@@ -274,6 +276,7 @@ class SelfEvolutionMetaAgent:
             try:
                 td_raw = approval_twin.evaluate_dna_promotion(candidate_dna)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:279")
                 td_raw = {}
             if not isinstance(td_raw, dict):
                 td_raw = {}
@@ -300,9 +303,7 @@ class SelfEvolutionMetaAgent:
 
         forced_sim_apply = bool(self.sim_mode and best is not None)
         baseline_auto_apply = bool(forced_sim_apply or (confidence > 85.0 and backtest_green and safety_ok))
-        should_auto_apply = bool(
-            mutation_allowed and baseline_auto_apply and signed_approval and swarm_ok
-        )
+        should_auto_apply = bool(mutation_allowed and baseline_auto_apply and signed_approval and swarm_ok)
         approval_blocked = bool(self.approval_required and should_auto_apply)
         if should_auto_apply and not approval_blocked and not dry_run and best is not None:
             from lumina_core.engine.self_evolution_promotion_gates import promotion_readiness_blocks_auto_apply
@@ -486,6 +487,7 @@ class SelfEvolutionMetaAgent:
         try:
             recent = self.blackboard.history("execution.aggregate", limit=2000, within_hours=24)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:491")
             return report
 
         trades = 0
@@ -535,9 +537,13 @@ class SelfEvolutionMetaAgent:
                 policy_version="evolution-lifecycle-v1",
                 provider_route=["self-evolution-engine"],
                 calibration_factor=1.0,
+                is_real_mode=not bool(self.sim_mode),
             )
         except Exception:
-            return
+            logger.exception(
+                "SelfEvolutionMetaAgent failed to write decision log (sim_mode=%s)",
+                self.sim_mode,
+            )
 
     def _build_lifecycle(self, *, best: dict[str, Any] | None, gates: dict[str, bool]) -> dict[str, Any]:
         manager = self.lifecycle_manager or EvolutionLifecycleManager()
@@ -625,6 +631,7 @@ class SelfEvolutionMetaAgent:
                 "green",
             }
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:634")
             return False
 
     def _shadow_rollout_evidence_ok(self) -> bool:
@@ -635,6 +642,7 @@ class SelfEvolutionMetaAgent:
             payload = json.loads(report.read_text(encoding="utf-8"))
             return bool(payload.get("ready_for_promotion", False))
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:644")
             return False
 
     def _auto_fine_tuning_trigger(self, *, meta_review: dict[str, Any]) -> dict[str, Any]:
@@ -710,13 +718,13 @@ class SelfEvolutionMetaAgent:
                 try:
                     setattr(self.engine, "rl_env", self.rl_environment)
                 except Exception:
-                    pass
+                    logger.exception("SelfEvolutionMetaAgent failed to attach rl_env to engine")
             if hasattr(trainer, "set_dna_version"):
                 try:
                     active = self._dna_registry().get_latest_dna(version="active")
                     trainer.set_dna_version(str(active.hash if active is not None else "GENESIS"))
                 except Exception:
-                    pass
+                    logger.exception("SelfEvolutionMetaAgent failed to set trainer DNA version")
             policy_path = trainer.train(data, total_timesteps=50_000)
             champion_candidate = {
                 "name": f"champion_finetuned_{datetime.now(timezone.utc).strftime('%Y%m%d')}",
@@ -733,6 +741,7 @@ class SelfEvolutionMetaAgent:
                 "trigger_details": trigger,
             }
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:742")
             return {
                 "triggered": True,
                 "executed": False,
@@ -762,6 +771,7 @@ class SelfEvolutionMetaAgent:
                     if dt >= cutoff:
                         out.append(parsed)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:771")
             return []
         return out
 
@@ -1045,6 +1055,7 @@ class SelfEvolutionMetaAgent:
             try:
                 event = self.blackboard.latest(topic)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:1054")
                 event = None
             if event is None:
                 continue
@@ -1423,7 +1434,7 @@ class SelfEvolutionMetaAgent:
             try:
                 return max(0.0, min(1.0, float(getattr(et, "last_accuracy"))))
             except Exception:
-                pass
+                logger.exception("SelfEvolutionMetaAgent failed to read emotional_twin.last_accuracy")
         wins = int(report.get("wins", 0) or 0)
         trades = int(report.get("trades", 0) or 0)
         if trades <= 0:
@@ -1463,6 +1474,7 @@ class SelfEvolutionMetaAgent:
             last = json.loads(lines[-1])
             return str(last.get("hash", "GENESIS"))
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:1472")
             return "GENESIS"
 
     # Split-module delegation wrappers (must be defined last).
@@ -1484,6 +1496,7 @@ class SelfEvolutionMetaAgent:
             policy_outcome=policy_outcome,
             decision_context_id=decision_context_id,
             evolution_log_hash=evolution_log_hash,
+            is_real_mode=not bool(self.sim_mode),
         )
 
     def _external_release_gates_ok(self) -> bool:

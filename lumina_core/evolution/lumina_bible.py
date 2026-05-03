@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import hashlib
 import json
@@ -131,6 +132,7 @@ class LuminaBible:
             try:
                 payload = json.loads(raw)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/lumina_bible.py:133")
                 continue
             if not isinstance(payload, dict):
                 continue
@@ -155,9 +157,7 @@ class LuminaBible:
         if len(hyp) < 4:
             raise ValueError("dream rule hint is too short")
         fingerprint = _sha256(hyp)[:32]
-        detail = (
-            f"Dream what-if tail: {hyp}. context breach_rate={float(breach_rate):.4f} gen={int(generation)}"
-        )
+        detail = f"Dream what-if tail: {hyp}. context breach_rate={float(breach_rate):.4f} gen={int(generation)}"
         with self._lock:
             if self._dream_hint_fingerprint_recent(fingerprint):
                 return None
@@ -217,6 +217,9 @@ class LuminaBible:
                     try:
                         payload = json.loads(raw)
                     except Exception:
+                        logging.exception(
+                            "Unhandled broad exception fallback in lumina_core/evolution/lumina_bible.py:219"
+                        )
                         continue
                     if isinstance(payload, dict) and payload.get("entry_type") == "generated_strategy_rule":
                         rows.append(payload)
@@ -234,6 +237,7 @@ class LuminaBible:
                 try:
                     payload = json.loads(raw)
                 except Exception:
+                    logging.exception("Unhandled broad exception fallback in lumina_core/evolution/lumina_bible.py:236")
                     continue
                 if isinstance(payload, dict):
                     last_hash = str(payload.get("entry_hash", last_hash) or last_hash)

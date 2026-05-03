@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from dataclasses import dataclass
 from statistics import NormalDist
@@ -435,4 +436,5 @@ class PortfolioVaRAllocator:
                 symbols=list(snapshot.symbols),
             )
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/portfolio_var_allocator.py:437")
             return

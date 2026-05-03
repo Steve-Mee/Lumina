@@ -6,15 +6,29 @@ Uses lazy attribute resolution to avoid engine bootstrap import cycles.
 
 from lumina_core.risk.risk_allocator import RiskAllocatorMixin
 from lumina_core.risk.risk_policy import RiskPolicy, load_risk_policy
+from lumina_core.risk.admission_chain import (
+    AdmissionChain,
+    AdmissionContext,
+    AdmissionStepResult,
+    AdmissionTrace,
+    default_chain_for_mode,
+)
 from lumina_core.risk.final_arbitration import (
-    ArbitrationResult,
     FinalArbitration,
     build_current_state_from_engine,
     build_order_intent_from_order,
 )
+from lumina_core.risk.schemas import (
+    ArbitrationCheckStep,
+    ArbitrationResult,
+    ArbitrationState,
+    OrderIntent,
+    OrderIntentMetadata,
+)
 from lumina_core.risk.risk_gates import RiskGatesMixin
 from lumina_core.risk.dynamic_kelly import DynamicKellyEstimator, get_global_kelly_estimator
 from lumina_core.risk.cost_model import CostBreakdown, TradeExecutionCostModel
+from lumina_core.risk.orchestration import RiskOrchestrator
 from lumina_core.risk.cost_model_calibrator import (
     CalibrationResult,
     DailyCalibrationSummary,
@@ -30,12 +44,22 @@ __all__ = [
     "PortfolioVaRAllocator",
     "RiskPolicy",
     "load_risk_policy",
+    "AdmissionChain",
+    "AdmissionContext",
+    "AdmissionStepResult",
+    "AdmissionTrace",
+    "default_chain_for_mode",
+    "OrderIntent",
+    "OrderIntentMetadata",
     "ArbitrationResult",
+    "ArbitrationCheckStep",
+    "ArbitrationState",
     "FinalArbitration",
     "build_current_state_from_engine",
     "build_order_intent_from_order",
     "RiskAllocatorMixin",
     "RiskGatesMixin",
+    "RiskOrchestrator",
     "DynamicKellyEstimator",
     "get_global_kelly_estimator",
     "CostBreakdown",

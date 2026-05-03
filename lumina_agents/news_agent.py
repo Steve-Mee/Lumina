@@ -1,9 +1,10 @@
 # CANONICAL IMPLEMENTATION – v50 Living Organism
 from __future__ import annotations
 
-import json
-import os
 import hashlib
+import json
+import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -12,6 +13,8 @@ from xai_sdk import Client
 
 from lumina_core.engine.agent_contracts import NewsInputSchema, NewsOutputSchema, enforce_contract
 from lumina_core.engine.lumina_engine import LuminaEngine
+
+logger = logging.getLogger(__name__)
 
 
 def explain_news_agent_prompt() -> str:
@@ -116,6 +119,7 @@ class NewsAgent:
         try:
             return Client(api_key=api_key)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_agents/news_agent.py:121")
             return None
 
     @staticmethod
@@ -221,6 +225,7 @@ class NewsAgent:
             )
             return self._extract_text_from_xai_response(response)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_agents/news_agent.py:226")
             return ""
 
     @staticmethod
@@ -284,9 +289,10 @@ class NewsAgent:
                 prompt_hash=hashlib.sha256(
                     json.dumps(raw_input, sort_keys=True, ensure_ascii=True).encode("utf-8")
                 ).hexdigest(),
+                is_real_mode=str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower() == "real",
             )
         except Exception:
-            return
+            logger.exception("NewsAgent failed to write decision log")
 
     def _contract_input_payload(self) -> dict[str, Any]:
         app = self._app()
@@ -344,6 +350,7 @@ class NewsAgent:
                 ]
                 summary = str(parsed.get("summary", "")).strip() or "xAI sentiment cycle"
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_agents/news_agent.py:350")
                 fallback_level = 1
                 fallback_reason_code = "xai_parse_failed"
                 summary = "xAI response parse failed; fallback neutral sentiment"
@@ -449,7 +456,7 @@ class NewsAgent:
                     confidence=round(float(confidence), 4),
                 )
             except Exception:
-                pass
+                logger.exception("NewsAgent failed to publish proposal to blackboard")
         self._log_decision(
             raw_input={"prompt": prompt, "events": events, "news_data": news_data},
             raw_output=result,

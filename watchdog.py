@@ -1,6 +1,7 @@
 # CANONICAL IMPLEMENTATION – v50 Living Organism
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import signal
@@ -10,6 +11,8 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # Cross-platform temp directory (Unix: /tmp, Windows: %TEMP%)
 TEMP_DIR = Path(tempfile.gettempdir())
@@ -37,6 +40,7 @@ def _start_watchdog_observability():
         obs.start()
         return obs
     except Exception:
+        logging.exception("Unhandled broad exception fallback in watchdog.py:42")
         return None
 
 
@@ -76,7 +80,7 @@ def _forward_shutdown(child: Optional[subprocess.Popen], signum: int) -> None:
     try:
         child.send_signal(signal.SIGINT)
     except Exception:
-        pass
+        logger.exception("watchdog failed to send SIGINT to child process")
 
     deadline = time.time() + 30
     while time.time() < deadline and child.poll() is None:
@@ -87,7 +91,7 @@ def _forward_shutdown(child: Optional[subprocess.Popen], signum: int) -> None:
         try:
             child.terminate()
         except Exception:
-            pass
+            logger.exception("watchdog failed to terminate child process")
 
     deadline = time.time() + 10
     while time.time() < deadline and child.poll() is None:
@@ -98,7 +102,7 @@ def _forward_shutdown(child: Optional[subprocess.Popen], signum: int) -> None:
         try:
             child.kill()
         except Exception:
-            pass
+            logger.exception("watchdog failed to kill child process")
 
 
 def main() -> int:
@@ -154,7 +158,7 @@ def main() -> int:
             try:
                 obs.record_process_restart()
             except Exception:
-                pass
+                logger.exception("watchdog failed to record process restart metric")
 
         if restart_count > max_restarts:
             print(f"[watchdog] max restarts exceeded ({max_restarts}); last exit={exit_code}", flush=True)

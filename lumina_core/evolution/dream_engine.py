@@ -5,6 +5,7 @@ tail drawdowns and emit compact rule hints for evolution / logging.
 """
 
 from __future__ import annotations
+import logging
 
 import json
 import random
@@ -125,9 +126,7 @@ def enrich_nightly_report_with_dream(
     out["dream_engine"] = {
         "breach_rate": float(dream_summary.get("breach_rate", 0.0) or 0.0),
         "worst_dd_ratio": float(dream_summary.get("worst_dd_ratio", 0.0) or 0.0),
-        "median_terminal_equity_delta": float(
-            dream_summary.get("median_terminal_equity_delta", 0.0) or 0.0
-        ),
+        "median_terminal_equity_delta": float(dream_summary.get("median_terminal_equity_delta", 0.0) or 0.0),
         "rule_hints": [str(x) for x in (dream_summary.get("rule_hints") or []) if str(x).strip()],
         "dream_count": int(dream_summary.get("dream_count", 0) or 0),
     }
@@ -263,6 +262,7 @@ def _policy_text_for_alignment(content: Any) -> str:
     try:
         payload = json.loads(raw)
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/dream_engine.py:265")
         return raw.lower()
     if not isinstance(payload, dict):
         return raw.lower()

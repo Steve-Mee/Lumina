@@ -56,6 +56,7 @@ def _load_headless_config() -> dict[str, Any]:
     try:
         payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/runtime/headless_runtime.py:58")
         return {}
     if not isinstance(payload, dict):
         return {}
@@ -489,6 +490,7 @@ def _count_evolution_proposals(container: Any | None) -> int:
                 pass
         return count
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/runtime/headless_runtime.py:491")
         return 0
 
 
@@ -510,6 +512,7 @@ def _count_observability_alerts(container: Any | None) -> int:
         raw = collector.latest("lumina_alerts_sent_total")
         return int(raw) if raw is not None else 0
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/runtime/headless_runtime.py:512")
         return 0
 
 

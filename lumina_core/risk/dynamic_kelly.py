@@ -110,9 +110,7 @@ class DynamicKellyEstimator:
         Accepts a fill event dict with a ``pnl``, ``net_pnl``, or
         ``realized_pnl`` key.
         """
-        pnl = float(
-            fill_event.get("pnl", fill_event.get("net_pnl", fill_event.get("realized_pnl", 0.0))) or 0.0
-        )
+        pnl = float(fill_event.get("pnl", fill_event.get("net_pnl", fill_event.get("realized_pnl", 0.0))) or 0.0)
         self.record_trade(pnl)
 
     # ------------------------------------------------------------------
@@ -148,11 +146,7 @@ class DynamicKellyEstimator:
             q = 1.0 - p
             raw_kelly = (b * p - q) / b
 
-        profit_factor = (
-            (avg_win * len(wins)) / (avg_loss * len(losses))
-            if losses and avg_loss > 0
-            else math.inf
-        )
+        profit_factor = (avg_win * len(wins)) / (avg_loss * len(losses)) if losses and avg_loss > 0 else math.inf
 
         return {
             "raw_kelly": float(raw_kelly),

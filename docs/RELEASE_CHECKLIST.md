@@ -38,6 +38,7 @@ Vink af wat waar is. Bij twijfel op een safety-kritiek punt: **geen release**.
 | 8 | **Shadow Deployment + Trading Constitution** handmatig getest op het scenario dat deze release raakt (SIM/REAL-overwegingen gedocumenteerd) | ☐ |
 | 9 | **Version bump** in [`pyproject.toml`](../pyproject.toml) (`[project].version`) | ☐ |
 | 10 | **Changelog gegenereerd of bijgewerkt** — merge draft uit `prepare_release.py` of handmatige entries; niets releasen zonder leesbare release notes | ☐ |
+| 11 | **REAL equity snapshot gate gevalideerd** — `tests/risk/test_equity_snapshot.py` groen en bevestigd dat REAL mode nooit op een stille 50k equity fallback draait | ☑ |
 
 **Minimum mindset:** liever een week uitstellen dan REAL-kapitaal of reputatie riskeren.
 

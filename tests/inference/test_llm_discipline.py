@@ -94,9 +94,32 @@ def test_real_mode_temperature_is_clamped_unless_force_override(
 
 
 @pytest.mark.unit
-def test_audit_trail_contains_required_hashes_and_metadata(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_real_mode_temperature_override_requires_audit_id(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LUMINA_LLM_DECISIONS_LOG", str(tmp_path / "llm_temp_override_audit.jsonl"))
+    engine = SimpleNamespace(config=SimpleNamespace(trade_mode="real"))
+    inference = _DummyInferenceEngine(response={"signal": "HOLD", "confidence": 0.3})
+    client = LlmClient(inference_engine=inference, engine=engine)
+
+    client.complete_trading_json(
+        payload={"model": "test-model", "messages": [{"role": "user", "content": "trade"}], "temperature": 0.9},
+        context="real_no_audit_override",
+    )
+    assert inference.last_call["temperature_override"] == pytest.approx(0.35, rel=0.0, abs=1e-9)
+
+    client.complete_trading_json(
+        payload={
+            "model": "test-model",
+            "messages": [{"role": "user", "content": "trade"}],
+            "temperature": 0.9,
+            "real_temperature_override_audit_id": "audit-evt-123",
+        },
+        context="real_with_audit_override",
+    )
+    assert inference.last_call["temperature_override"] == pytest.approx(0.9, rel=0.0, abs=1e-9)
+
+
+@pytest.mark.unit
+def test_audit_trail_contains_required_hashes_and_metadata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     log_path = tmp_path / "llm_audit.jsonl"
     monkeypatch.setenv("LUMINA_LLM_DECISIONS_LOG", str(log_path))
     engine = SimpleNamespace(config=SimpleNamespace(trade_mode="sim"))

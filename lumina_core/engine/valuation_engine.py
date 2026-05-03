@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import random
 from dataclasses import dataclass, field
@@ -167,5 +168,6 @@ class ValuationEngine:
                 self.apply_calibration(payload)
                 return True
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/valuation_engine.py:169")
             return False
         return False

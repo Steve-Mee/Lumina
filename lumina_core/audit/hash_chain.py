@@ -9,7 +9,7 @@ from lumina_core.state.state_manager import safe_append_jsonl
 
 
 def _canonical_payload(entry: dict[str, Any]) -> str:
-    payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "entry_hash"}}
+    payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "entry_hash", "hash"}}
     return json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
 
 

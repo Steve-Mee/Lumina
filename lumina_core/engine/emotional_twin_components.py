@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 from collections import deque
@@ -28,6 +29,9 @@ class _CalibrationStore:
                 if key in loaded:
                     calibration[key] = float(loaded[key])
         except Exception:
+            logging.exception(
+                "Unhandled broad exception fallback in lumina_core/engine/emotional_twin_components.py:30"
+            )
             return
 
     def save(self, calibration: Dict[str, float]) -> None:
@@ -52,6 +56,9 @@ class _ObservationBuilder:
             ts_dt = ts_raw if isinstance(ts_raw, datetime) else datetime.fromisoformat(str(ts_raw))
             return (datetime.now() - ts_dt).total_seconds() / 3600
         except Exception:
+            logging.exception(
+                "Unhandled broad exception fallback in lumina_core/engine/emotional_twin_components.py:54"
+            )
             return 24.0
 
     def _calculate_drawdown(self) -> float:

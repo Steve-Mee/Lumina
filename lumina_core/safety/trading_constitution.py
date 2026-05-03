@@ -40,6 +40,7 @@ _DNA_INVALID_SENTINEL: Final[str] = "__dna_validation_error__"
 # Core data types
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True, slots=True)
 class ConstitutionalPrinciple:
     """A single named, immutable constitutional principle with a runtime check.
@@ -78,14 +79,13 @@ class ConstitutionalViolationError(Exception):
     def __init__(self, violations: list[ConstitutionalViolation]) -> None:
         self.violations = violations
         names = [v.principle_name for v in violations if v.severity == "fatal"]
-        super().__init__(
-            f"FATAL constitutional violation(s) — DNA blocked: {names}"
-        )
+        super().__init__(f"FATAL constitutional violation(s) — DNA blocked: {names}")
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_dna_content(raw: str) -> dict[str, Any]:
     """Parse and minimally validate raw DNA content.
@@ -125,6 +125,7 @@ def _mode_is_real_or_paper(mode: str) -> bool:
 # Principle 0 — Structured DNA required
 # ---------------------------------------------------------------------------
 
+
 def _p0_structured_dna_required(content: dict[str, Any], mode: str) -> bool:
     """Any mode: DNA payload must be valid structured JSON object."""
     _ = mode
@@ -134,6 +135,7 @@ def _p0_structured_dna_required(content: dict[str, Any], mode: str) -> bool:
 # ---------------------------------------------------------------------------
 # Principle 1 — Capital Preservation (max risk per trade)
 # ---------------------------------------------------------------------------
+
 
 def _p1_capital_preservation(content: dict[str, Any], mode: str) -> bool:
     """REAL mode: max_risk_percent must be ≤ 3 % (prevents account blowup)."""
@@ -155,16 +157,18 @@ def _p1_capital_preservation(content: dict[str, Any], mode: str) -> bool:
 # Principle 2 — No Naked Orders (risk controller / gatekeeper must stay on)
 # ---------------------------------------------------------------------------
 
-_GATEKEEPER_BYPASS_KEYS: frozenset[str] = frozenset({
-    "disable_risk_controller",
-    "bypass_order_gatekeeper",
-    "skip_var_check",
-    "no_capital_floor",
-    "disable_hard_risk",
-    "disable_kill_switch",
-    "disable_position_limits",
-    "no_gatekeeper",
-})
+_GATEKEEPER_BYPASS_KEYS: frozenset[str] = frozenset(
+    {
+        "disable_risk_controller",
+        "bypass_order_gatekeeper",
+        "skip_var_check",
+        "no_capital_floor",
+        "disable_hard_risk",
+        "disable_kill_switch",
+        "disable_position_limits",
+        "no_gatekeeper",
+    }
+)
 
 
 def _p2_no_naked_orders(content: dict[str, Any], mode: str) -> bool:
@@ -179,9 +183,15 @@ def _p2_no_naked_orders(content: dict[str, Any], mode: str) -> bool:
 # Principle 3 — Mutation Depth Constraint
 # ---------------------------------------------------------------------------
 
-_RADICAL_MUTATION_DEPTHS: frozenset[str] = frozenset({
-    "radical", "aggressive", "extreme", "unconstrained", "unrestricted",
-})
+_RADICAL_MUTATION_DEPTHS: frozenset[str] = frozenset(
+    {
+        "radical",
+        "aggressive",
+        "extreme",
+        "unconstrained",
+        "unrestricted",
+    }
+)
 
 
 def _p3_mutation_depth(content: dict[str, Any], mode: str) -> bool:
@@ -195,6 +205,7 @@ def _p3_mutation_depth(content: dict[str, Any], mode: str) -> bool:
 # ---------------------------------------------------------------------------
 # Principle 4 — Human Approval Gate
 # ---------------------------------------------------------------------------
+
 
 def _p4_approval_required(content: dict[str, Any], mode: str) -> bool:
     """REAL mode: approval gate cannot be explicitly disabled."""
@@ -213,6 +224,7 @@ def _p4_approval_required(content: dict[str, Any], mode: str) -> bool:
 # Principle 5 — Real Data Required for Neuroevolution
 # ---------------------------------------------------------------------------
 
+
 def _p5_real_data_for_neuro(content: dict[str, Any], mode: str) -> bool:
     """REAL mode: neuroevolution must use real market data, not synthetic OHLC."""
     if not _mode_is_real(mode):
@@ -229,6 +241,7 @@ def _p5_real_data_for_neuro(content: dict[str, Any], mode: str) -> bool:
 # ---------------------------------------------------------------------------
 # Principle 6 — Drawdown Kill Percent Bounded
 # ---------------------------------------------------------------------------
+
 
 def _p6_drawdown_kill_bounded(content: dict[str, Any], mode: str) -> bool:
     """Any mode: drawdown_kill_percent ≤ 25 % to prevent catastrophic losses."""
@@ -256,6 +269,7 @@ def _p6_drawdown_kill_bounded(content: dict[str, Any], mode: str) -> bool:
 # Principle 7 — No Aggressive Evolution in REAL
 # ---------------------------------------------------------------------------
 
+
 def _p7_no_aggressive_evolution_real(content: dict[str, Any], mode: str) -> bool:
     """REAL mode: aggressive_evolution mode is prohibited (too unstable for live capital)."""
     if not _mode_is_real(mode):
@@ -270,6 +284,7 @@ def _p7_no_aggressive_evolution_real(content: dict[str, Any], mode: str) -> bool
 # ---------------------------------------------------------------------------
 # Principle 8 — Kelly Fraction Cap
 # ---------------------------------------------------------------------------
+
 
 def _p8_kelly_fraction_cap(content: dict[str, Any], mode: str) -> bool:
     """REAL mode: kelly_fraction must be ≤ 0.25 (full Kelly is provably ruinous)."""
@@ -292,6 +307,7 @@ def _p8_kelly_fraction_cap(content: dict[str, Any], mode: str) -> bool:
 # ---------------------------------------------------------------------------
 # Principle 9 — Daily Loss Hard Stop Required in REAL
 # ---------------------------------------------------------------------------
+
 
 def _p9_daily_loss_hard_stop(content: dict[str, Any], mode: str) -> bool:
     """REAL mode: daily_loss_cap must NOT be explicitly disabled or set to 0/positive."""
@@ -316,6 +332,7 @@ def _p9_daily_loss_hard_stop(content: dict[str, Any], mode: str) -> bool:
 # Principle 10 — Leverage Explosion Prevention
 # ---------------------------------------------------------------------------
 
+
 def _p10_no_leverage_explosion(content: dict[str, Any], mode: str) -> bool:
     """REAL mode: leverage multiplier ≤ 2× — prevents catastrophic margin calls."""
     if not _mode_is_real(mode):
@@ -338,6 +355,7 @@ def _p10_no_leverage_explosion(content: dict[str, Any], mode: str) -> bool:
 # Principle 11 — Minimum Backtest Quality Gate for REAL Promotion
 # ---------------------------------------------------------------------------
 
+
 def _p11_minimum_backtest_quality(content: dict[str, Any], mode: str) -> bool:
     """REAL mode: backtest_sharpe_ratio must be ≥ 0.3 — rejects untested DNA."""
     if not _mode_is_real(mode):
@@ -358,13 +376,15 @@ def _p11_minimum_backtest_quality(content: dict[str, Any], mode: str) -> bool:
 # Principle 12 — No Circuit Breaker Disable
 # ---------------------------------------------------------------------------
 
-_CIRCUIT_BREAKER_BYPASS_KEYS: frozenset[str] = frozenset({
-    "disable_circuit_breaker",
-    "bypass_circuit_breaker",
-    "no_circuit_breaker",
-    "disable_emergency_halt",
-    "skip_halt_check",
-})
+_CIRCUIT_BREAKER_BYPASS_KEYS: frozenset[str] = frozenset(
+    {
+        "disable_circuit_breaker",
+        "bypass_circuit_breaker",
+        "no_circuit_breaker",
+        "disable_emergency_halt",
+        "skip_halt_check",
+    }
+)
 
 
 def _p12_no_circuit_breaker_disable(content: dict[str, Any], mode: str) -> bool:
@@ -379,13 +399,15 @@ def _p12_no_circuit_breaker_disable(content: dict[str, Any], mode: str) -> bool:
 # Principle 13 — No Session Guard Bypass in REAL
 # ---------------------------------------------------------------------------
 
-_SESSION_GUARD_BYPASS_KEYS: frozenset[str] = frozenset({
-    "bypass_session_guard",
-    "disable_session_guard",
-    "trade_outside_session",
-    "ignore_session_window",
-    "force_trade_closed",
-})
+_SESSION_GUARD_BYPASS_KEYS: frozenset[str] = frozenset(
+    {
+        "bypass_session_guard",
+        "disable_session_guard",
+        "trade_outside_session",
+        "ignore_session_window",
+        "force_trade_closed",
+    }
+)
 
 
 def _p13_no_session_guard_bypass(content: dict[str, Any], mode: str) -> bool:
@@ -401,6 +423,7 @@ def _p13_no_session_guard_bypass(content: dict[str, Any], mode: str) -> bool:
 # ---------------------------------------------------------------------------
 # Principle 14 — Concentration Risk Limit (WARN)
 # ---------------------------------------------------------------------------
+
 
 def _p14_concentration_risk(content: dict[str, Any], mode: str) -> bool:
     """REAL/PAPER mode: single-instrument exposure ≤ 80 % of allocated capital (WARN)."""
@@ -419,6 +442,7 @@ def _p14_concentration_risk(content: dict[str, Any], mode: str) -> bool:
 # ---------------------------------------------------------------------------
 # Principle 15 — Excessive Trade Frequency Guard (WARN)
 # ---------------------------------------------------------------------------
+
 
 def _p15_trade_frequency_guard(content: dict[str, Any], mode: str) -> bool:
     """Any mode: daily_trade_frequency_limit > 200 triggers a warning.

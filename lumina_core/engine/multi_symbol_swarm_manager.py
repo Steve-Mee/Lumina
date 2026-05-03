@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import itertools
 import json
@@ -106,6 +107,9 @@ class MultiSymbolSwarmManager:
             try:
                 regime = self.engine.detect_market_regime(ohlc)
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/engine/multi_symbol_swarm_manager.py:108"
+                )
                 regime = "NEUTRAL"
         else:
             regime = "NEUTRAL"
@@ -136,6 +140,9 @@ class MultiSymbolSwarmManager:
             try:
                 regime = self.engine.detect_market_regime(node.market_data.copy_ohlc())
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/engine/multi_symbol_swarm_manager.py:138"
+                )
                 regime = "NEUTRAL"
             node.regimes_rolling.append(str(regime).upper())
 
@@ -324,6 +331,9 @@ class MultiSymbolSwarmManager:
                 },
             )
         except Exception:
+            logging.exception(
+                "Unhandled broad exception fallback in lumina_core/engine/multi_symbol_swarm_manager.py:326"
+            )
             return
 
     def apply_to_primary_dream(self) -> dict[str, Any]:
@@ -384,6 +394,9 @@ class MultiSymbolSwarmManager:
         try:
             from plotly import graph_objects as go
         except Exception:
+            logging.exception(
+                "Unhandled broad exception fallback in lumina_core/engine/multi_symbol_swarm_manager.py:386"
+            )
             return None
 
         fig = go.Figure()

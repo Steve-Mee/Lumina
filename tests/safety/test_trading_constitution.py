@@ -50,9 +50,9 @@ def _warn_names(dna: str, mode: str = "real") -> list[str]:
 # Meta: constitution structure
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestConstitutionStructure:
-
     def test_has_16_principles(self) -> None:
         assert len(TRADING_CONSTITUTION.principles) == 16
 
@@ -72,8 +72,7 @@ class TestConstitutionStructure:
 
     def test_all_principles_have_valid_severity(self) -> None:
         for p in TRADING_CONSTITUTION.principles:
-            assert p.severity in {"fatal", "warn"}, \
-                f"Principle {p.name!r} has invalid severity {p.severity!r}"
+            assert p.severity in {"fatal", "warn"}, f"Principle {p.name!r} has invalid severity {p.severity!r}"
 
     def test_constitution_is_immutable(self) -> None:
         """Principles tuple must be truly immutable."""
@@ -87,18 +86,16 @@ class TestConstitutionStructure:
     def test_plain_text_dna_is_fatal_fail_closed(self) -> None:
         """Plain-text DNA is rejected (structured JSON required)."""
         violations = _audit("Be conservative, use small position sizes.", mode="real")
-        assert any(
-            v.principle_name == "dna_must_be_structured_json" and v.severity == "fatal" for v in violations
-        )
+        assert any(v.principle_name == "dna_must_be_structured_json" and v.severity == "fatal" for v in violations)
 
 
 # ---------------------------------------------------------------------------
 # Principle 1 — capital_preservation_in_real
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestCapitalPreservation:
-
     def test_max_risk_3_percent_ok(self) -> None:
         dna = _hs(max_risk_percent=3.0)
         assert "capital_preservation_in_real" not in _fatal_names(dna)
@@ -123,19 +120,22 @@ class TestCapitalPreservation:
 # Principle 2 — no_naked_orders
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestNoNakedOrders:
-
-    @pytest.mark.parametrize("key", [
-        "disable_risk_controller",
-        "bypass_order_gatekeeper",
-        "skip_var_check",
-        "no_capital_floor",
-        "disable_hard_risk",
-        "disable_kill_switch",
-        "disable_position_limits",
-        "no_gatekeeper",
-    ])
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "disable_risk_controller",
+            "bypass_order_gatekeeper",
+            "skip_var_check",
+            "no_capital_floor",
+            "disable_hard_risk",
+            "disable_kill_switch",
+            "disable_position_limits",
+            "no_gatekeeper",
+        ],
+    )
     def test_bypass_key_triggers_fatal(self, key: str) -> None:
         dna = json.dumps({key: True})
         assert "no_naked_orders" in _fatal_names(dna, mode="sim")
@@ -152,9 +152,9 @@ class TestNoNakedOrders:
 # Principle 3 — max_mutation_depth_enforced
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestMutationDepth:
-
     @pytest.mark.parametrize("depth", ["radical", "aggressive", "extreme", "unconstrained"])
     def test_radical_depth_fatal_real(self, depth: str) -> None:
         dna = _dna(mutation_depth=depth)
@@ -177,9 +177,9 @@ class TestMutationDepth:
 # Principle 4 — approval_required_in_real
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestApprovalRequired:
-
     def test_approval_required_false_fatal_real(self) -> None:
         assert "approval_required_in_real" in _fatal_names(_dna(approval_required=False))
 
@@ -196,18 +196,16 @@ class TestApprovalRequired:
         assert "approval_required_in_real" not in _fatal_names(_MINIMAL_VALID_DNA)
 
     def test_approval_bypass_ignored_in_sim(self) -> None:
-        assert "approval_required_in_real" not in _fatal_names(
-            _dna(approval_required=False), mode="sim"
-        )
+        assert "approval_required_in_real" not in _fatal_names(_dna(approval_required=False), mode="sim")
 
 
 # ---------------------------------------------------------------------------
 # Principle 5 — no_synthetic_data_in_real_neuro
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestNoSyntheticDataNeuro:
-
     def test_require_real_false_fatal_real(self) -> None:
         dna = _dna(neuroevolution={"require_real_simulator_data": False})
         assert "no_synthetic_data_in_real_neuro" in _fatal_names(dna)
@@ -229,9 +227,9 @@ class TestNoSyntheticDataNeuro:
 # Principle 6 — drawdown_kill_percent_bounded
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestDrawdownKillBounded:
-
     def test_25_percent_ok_any_mode(self) -> None:
         for mode in ("real", "sim", "paper"):
             assert "drawdown_kill_percent_bounded" not in _fatal_names(_hs(drawdown_kill_percent=25.0), mode=mode)
@@ -249,9 +247,9 @@ class TestDrawdownKillBounded:
 # Principle 7 — no_aggressive_evolution_in_real
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestNoAggressiveEvolution:
-
     def test_aggressive_evolution_true_fatal_real(self) -> None:
         assert "no_aggressive_evolution_in_real" in _fatal_names(_dna(aggressive_evolution=True))
 
@@ -259,18 +257,16 @@ class TestNoAggressiveEvolution:
         assert "no_aggressive_evolution_in_real" in _fatal_names(_dna(evolution_mode="radical"))
 
     def test_aggressive_evolution_true_ok_sim(self) -> None:
-        assert "no_aggressive_evolution_in_real" not in _fatal_names(
-            _dna(aggressive_evolution=True), mode="sim"
-        )
+        assert "no_aggressive_evolution_in_real" not in _fatal_names(_dna(aggressive_evolution=True), mode="sim")
 
 
 # ---------------------------------------------------------------------------
 # Principle 8 — kelly_fraction_cap
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestKellyFractionCap:
-
     def test_kelly_025_ok_real(self) -> None:
         assert "kelly_fraction_cap" not in _fatal_names(_dna(kelly_fraction=0.25))
 
@@ -291,9 +287,9 @@ class TestKellyFractionCap:
 # Principle 9 — daily_loss_hard_stop_required
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestDailyLossHardStop:
-
     def test_negative_loss_cap_ok_real(self) -> None:
         dna = _hs(daily_loss_cap=-500.0)
         assert "daily_loss_hard_stop_required" not in _fatal_names(dna)
@@ -322,9 +318,9 @@ class TestDailyLossHardStop:
 # Principle 10 — no_leverage_explosion
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestNoLeverageExplosion:
-
     def test_leverage_2x_ok_real(self) -> None:
         assert "no_leverage_explosion" not in _fatal_names(_dna(leverage_multiplier=2.0))
 
@@ -342,9 +338,9 @@ class TestNoLeverageExplosion:
 # Principle 11 — minimum_backtest_quality_for_real
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestMinimumBacktestQuality:
-
     def test_sharpe_0_3_ok_real(self) -> None:
         assert "minimum_backtest_quality_for_real" not in _fatal_names(_dna(backtest_sharpe_ratio=0.3))
 
@@ -359,50 +355,54 @@ class TestMinimumBacktestQuality:
         assert "minimum_backtest_quality_for_real" not in _fatal_names(_MINIMAL_VALID_DNA, mode="real")
 
     def test_bad_sharpe_ok_sim(self) -> None:
-        assert "minimum_backtest_quality_for_real" not in _fatal_names(
-            _dna(backtest_sharpe_ratio=-5.0), mode="sim"
-        )
+        assert "minimum_backtest_quality_for_real" not in _fatal_names(_dna(backtest_sharpe_ratio=-5.0), mode="sim")
 
 
 # ---------------------------------------------------------------------------
 # Principle 12 — no_circuit_breaker_disable
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestNoCircuitBreakerDisable:
-
-    @pytest.mark.parametrize("key", [
-        "disable_circuit_breaker",
-        "bypass_circuit_breaker",
-        "no_circuit_breaker",
-        "disable_emergency_halt",
-        "skip_halt_check",
-    ])
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "disable_circuit_breaker",
+            "bypass_circuit_breaker",
+            "no_circuit_breaker",
+            "disable_emergency_halt",
+            "skip_halt_check",
+        ],
+    )
     def test_circuit_breaker_bypass_fatal_any_mode(self, key: str) -> None:
         dna = json.dumps({key: True})
         for mode in ("real", "sim", "paper"):
-            assert "no_circuit_breaker_disable" in _fatal_names(dna, mode=mode), \
+            assert "no_circuit_breaker_disable" in _fatal_names(dna, mode=mode), (
                 f"Expected fatal for {key!r} in {mode!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
 # Principle 13 — no_session_guard_bypass
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestNoSessionGuardBypass:
-
-    @pytest.mark.parametrize("key", [
-        "bypass_session_guard",
-        "disable_session_guard",
-        "trade_outside_session",
-        "ignore_session_window",
-        "force_trade_closed",
-    ])
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "bypass_session_guard",
+            "disable_session_guard",
+            "trade_outside_session",
+            "ignore_session_window",
+            "force_trade_closed",
+        ],
+    )
     def test_session_bypass_fatal_real(self, key: str) -> None:
         dna = json.dumps({key: True})
-        assert "no_session_guard_bypass" in _fatal_names(dna, mode="real"), \
-            f"Expected fatal for {key!r}"
+        assert "no_session_guard_bypass" in _fatal_names(dna, mode="real"), f"Expected fatal for {key!r}"
 
     def test_session_bypass_ok_sim(self) -> None:
         dna = _dna(bypass_session_guard=True)
@@ -413,9 +413,9 @@ class TestNoSessionGuardBypass:
 # Principle 14 — concentration_risk_limit (WARN)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestConcentrationRisk:
-
     def test_80_percent_ok_real(self) -> None:
         assert "concentration_risk_limit" not in _warn_names(_dna(single_instrument_exposure_pct=80.0))
 
@@ -438,9 +438,9 @@ class TestConcentrationRisk:
 # Principle 15 — trade_frequency_guard (WARN)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestTradeFrequencyGuard:
-
     def test_200_trades_ok(self) -> None:
         assert "trade_frequency_guard" not in _warn_names(_dna(daily_trade_frequency_limit=200))
 
@@ -459,29 +459,31 @@ class TestTradeFrequencyGuard:
 # Cross-principle: combined attack
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestCombinedAttacks:
-
     def test_max_harm_dna_triggers_many_fatals(self) -> None:
         """A DNA crafted for maximum harm must trigger ≥ 8 fatal violations."""
-        evil_dna = json.dumps({
-            "hyperparam_suggestion": {
-                "max_risk_percent": 50.0,
-                "drawdown_kill_percent": 100.0,
-                "kelly_fraction": 1.0,
-                "daily_loss_cap": 99999.0,
-                "leverage_multiplier": 20.0,
-            },
-            "disable_risk_controller": True,
-            "bypass_order_gatekeeper": True,
-            "mutation_depth": "radical",
-            "approval_required": False,
-            "skip_human_approval": True,
-            "aggressive_evolution": True,
-            "disable_circuit_breaker": True,
-            "bypass_session_guard": True,
-            "neuroevolution": {"require_real_simulator_data": False},
-        })
+        evil_dna = json.dumps(
+            {
+                "hyperparam_suggestion": {
+                    "max_risk_percent": 50.0,
+                    "drawdown_kill_percent": 100.0,
+                    "kelly_fraction": 1.0,
+                    "daily_loss_cap": 99999.0,
+                    "leverage_multiplier": 20.0,
+                },
+                "disable_risk_controller": True,
+                "bypass_order_gatekeeper": True,
+                "mutation_depth": "radical",
+                "approval_required": False,
+                "skip_human_approval": True,
+                "aggressive_evolution": True,
+                "disable_circuit_breaker": True,
+                "bypass_session_guard": True,
+                "neuroevolution": {"require_real_simulator_data": False},
+            }
+        )
         fatals = _fatal_names(evil_dna, mode="real")
         assert len(fatals) >= 8, f"Expected ≥ 8 fatals, got: {fatals}"
 
@@ -503,14 +505,12 @@ class TestCombinedAttacks:
 # probe_attack helper
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestProbeAttack:
-
     def test_probe_attack_detects_expected_violation(self) -> None:
         dna = _dna(disable_risk_controller=True)
-        result = TRADING_CONSTITUTION.probe_attack(
-            dna, mode="sim", expected_violations=["no_naked_orders"]
-        )
+        result = TRADING_CONSTITUTION.probe_attack(dna, mode="sim", expected_violations=["no_naked_orders"])
         assert result["blocked"] is True
         assert result["expected_hit"] is True
         assert result["missed_violations"] == []
@@ -527,9 +527,9 @@ class TestProbeAttack:
 # _parse_dna_content edge cases
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestParseDnaContent:
-
     def test_empty_string_returns_validation_sentinel(self) -> None:
         assert _parse_dna_content("") == {"__dna_validation_error__": "empty_or_non_string"}
 

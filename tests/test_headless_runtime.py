@@ -250,8 +250,7 @@ class TestHeadlessRuntime:
         class FakeMDS:
             def load_historical_ohlc_extended(self, days_back: int, limit: int, ticks_per_bar: int = 4):
                 return [
-                    {"last": 5000.0 + i * 0.02, "volume": 100 + i, "bid": 4999.5, "ask": 5000.5}
-                    for i in range(200)
+                    {"last": 5000.0 + i * 0.02, "volume": 100 + i, "bid": 4999.5, "ask": 5000.5} for i in range(200)
                 ]
 
         runtime = HeadlessRuntime(container=SimpleNamespace(market_data_service=FakeMDS()))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -9,6 +10,7 @@ from lumina_core.engine.broker_bridge import Order
 from lumina_core.engine.local_inference_engine import LocalInferenceEngine
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.reasoning_service import ReasoningService
+from lumina_core.risk.equity_snapshot import EquitySnapshot
 
 
 class _BrokerSpy:
@@ -22,6 +24,20 @@ class _BrokerSpy:
 
 def _service(mode: str = "real") -> tuple[ReasoningService, _BrokerSpy]:
     broker = _BrokerSpy()
+
+    class _SnapshotProvider:
+        def get_snapshot(self) -> EquitySnapshot:
+            return EquitySnapshot(
+                equity_usd=100_000.0,
+                available_margin_usd=60_000.0,
+                used_margin_usd=40_000.0,
+                as_of_utc=datetime.now(timezone.utc),
+                source="test",
+                ok=True,
+                reason_code="ok_live",
+                ttl_seconds=30.0,
+            )
+
     engine = SimpleNamespace(
         config=SimpleNamespace(instrument="MES JUN26", min_confluence=0.5, trade_mode=mode),
         app=SimpleNamespace(
@@ -32,6 +48,14 @@ def _service(mode: str = "real") -> tuple[ReasoningService, _BrokerSpy]:
             sim_position_qty=0,
         ),
         get_current_dream_snapshot=lambda: {"confluence_score": 0.9, "regime": "NEUTRAL", "hold_until_ts": 0.0},
+        equity_snapshot_provider=_SnapshotProvider(),
+        risk_controller=None,
+        realized_pnl_today=0.0,
+        account_equity=100_000.0,
+        available_margin=50_000.0,
+        positions_margin_used=0.0,
+        drawdown_pct=0.0,
+        live_position_qty=0,
     )
     inference_engine = SimpleNamespace(active_provider="ollama")
     service = ReasoningService(

@@ -100,7 +100,7 @@ def flush_logger_handlers(logger: logging.Logger | None) -> None:
         try:
             h.flush()
         except Exception:
-            pass
+            logging.exception("flush_logger_handlers failed to flush a logger handler")
 
 
 def build_logger(name: str, log_level: str = "INFO", file_path: str = "logs/lumina_full_log.csv") -> logging.Logger:

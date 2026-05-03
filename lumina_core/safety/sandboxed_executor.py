@@ -76,6 +76,7 @@ def _strip_secrets(env: dict[str, str]) -> dict[str, str]:
 # Result
 # ---------------------------------------------------------------------------
 
+
 @dataclass(slots=True)
 class SandboxedResult:
     """Result of a sandboxed DNA evaluation.
@@ -105,12 +106,7 @@ class SandboxedResult:
     @property
     def passed(self) -> bool:
         """True when the mutant is safe to promote (score > 0, no violations, no error)."""
-        return (
-            not self.timed_out
-            and not self.error
-            and not self.violations
-            and self.score > 0.0
-        )
+        return not self.timed_out and not self.error and not self.violations and self.score > 0.0
 
     @property
     def is_constitutional(self) -> bool:
@@ -161,7 +157,7 @@ try:
     import socket as _socket
     _socket.setdefaulttimeout(0.001)  # effectively blocks network calls
 except Exception:
-    pass
+    logger.exception("Sandboxed executor failed to apply socket timeout hardening")
 
 # 4. Disable dual thought-log to avoid I/O during scoring.
 os.environ["LUMINA_DUAL_THOUGHT_LOG"] = "false"
@@ -216,6 +212,7 @@ def _build_sandbox_env() -> dict[str, str]:
 # SandboxedMutationExecutor
 # ---------------------------------------------------------------------------
 
+
 class SandboxedMutationExecutor:
     """Evaluates a DNA mutant in a fully isolated subprocess.
 
@@ -251,9 +248,11 @@ class SandboxedMutationExecutor:
         # Check config; default to True for safety.
         try:
             from lumina_core.config_loader import ConfigLoader
+
             evo = ConfigLoader.section("evolution", default={}) or {}
             return bool(evo.get("sandbox_mutations", True))
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/safety/sandboxed_executor.py:256")
             return True
 
     def evaluate(
@@ -337,7 +336,9 @@ class SandboxedMutationExecutor:
             except subprocess.TimeoutExpired:
                 logger.warning(
                     "SandboxedMutationExecutor TIMEOUT (dna=%s, mode=%s, limit=%ds)",
-                    dna_hash, mode, self._timeout_s,
+                    dna_hash,
+                    mode,
+                    self._timeout_s,
                 )
                 return SandboxedResult(
                     dna_hash=dna_hash,
@@ -369,7 +370,9 @@ class SandboxedMutationExecutor:
         if proc.returncode != 0:
             logger.warning(
                 "Sandbox non-zero exit %d (dna=%s): stderr=%s",
-                proc.returncode, dna_hash, proc.stderr[:300],
+                proc.returncode,
+                dna_hash,
+                proc.stderr[:300],
             )
             return SandboxedResult(
                 dna_hash=dna_hash,
@@ -399,7 +402,10 @@ class SandboxedMutationExecutor:
 
         logger.debug(
             "Sandbox result: dna=%s mode=%s score=%.4f violations=%s",
-            dna_hash, mode, result.get("score", 0.0), result.get("violations", []),
+            dna_hash,
+            mode,
+            result.get("score", 0.0),
+            result.get("violations", []),
         )
         return SandboxedResult(
             dna_hash=dna_hash,
@@ -433,12 +439,14 @@ class SandboxedMutationExecutor:
             found = TRADING_CONSTITUTION.audit(dna_content, mode=mode, raise_on_fatal=False)
             violations = [v.principle_name for v in found if v.severity == "fatal"]
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/safety/sandboxed_executor.py:435")
             violations = [f"constitution_error:{exc}"]
 
         if not violations:
             try:
                 score = float(calculate_fitness(pnl, max_dd, sharpe))
             except Exception as exc:
+                logging.exception("Unhandled broad exception fallback in lumina_core/safety/sandboxed_executor.py:441")
                 violations.append(f"fitness_error:{exc}")
 
         out_data = json.dumps({"score": score, "violations": violations})

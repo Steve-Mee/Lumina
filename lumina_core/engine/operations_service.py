@@ -19,7 +19,6 @@ from .errors import BrokerBridgeError, ErrorSeverity, LuminaError, format_error_
 from .lumina_engine import LuminaEngine
 from .policy_engine import PolicyEngine
 from .valuation_engine import ValuationEngine
-from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 from lumina_core.logging_utils import log_event, log_runtime_trace, runtime_trace_enabled
 
@@ -246,6 +245,7 @@ class OperationsService:
             symbol=str(self.engine.config.instrument),
             regime=str(_dream.get("regime", "NEUTRAL")),
             proposed_risk=float(_proposed_risk),
+            order_side=str(action).upper(),
         )
 
         session_allowed = True
@@ -301,20 +301,8 @@ class OperationsService:
                     "reason": str(dream_snapshot.get("reason", "") or ""),
                 },
             )
-            arb = getattr(self.engine, "final_arbitration", None)
-            if arb is not None:
-                arb_result = arb.check_order_intent(
-                    build_order_intent_from_order(order, dream_snapshot=dream_snapshot),
-                    build_current_state_from_engine(self.engine),
-                )
-                if arb_result.status != "APPROVED":
-                    app.logger.warning(
-                        "place_order blocked by FinalArbitration [mode=%s]: %s",
-                        str(trade_mode).upper(),
-                        arb_result.reason,
-                    )
-                    return False
-            result = policy_engine.execute_order(order)
+            skip_final_arbitration = bool(getattr(self.engine, "admission_chain_final_arbitration_approved", False))
+            result = policy_engine.execute_order(order, skip_final_arbitration=skip_final_arbitration)
             if result.accepted:
                 current_price = 0.0
                 try:
@@ -325,6 +313,9 @@ class OperationsService:
                             else (self.engine.ohlc_1min["close"].iloc[-1] if len(self.engine.ohlc_1min) else 0.0)
                         )
                 except Exception as _exc:
+                    logging.exception(
+                        "Unhandled broad exception fallback in lumina_core/engine/operations_service.py:315"
+                    )
                     err = LuminaError(
                         severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
                         code="OPS_PRICE_READ_003",
@@ -393,6 +384,9 @@ class OperationsService:
                 try:
                     live_chart_window.after(0, live_chart_window.destroy)
                 except Exception as _exc:
+                    logging.exception(
+                        "Unhandled broad exception fallback in lumina_core/engine/operations_service.py:383"
+                    )
                     err = LuminaError(
                         severity=ErrorSeverity.RECOVERABLE_LEARNING,
                         code="OPS_WINDOW_CLOSE_004",

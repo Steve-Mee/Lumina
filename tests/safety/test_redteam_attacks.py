@@ -32,6 +32,7 @@ from lumina_core.safety.trading_constitution import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _blocked(dna: str | dict, mode: str = "real") -> bool:
     """Return True when the DNA triggers at least one FATAL violation."""
     content = json.dumps(dna) if isinstance(dna, dict) else dna
@@ -48,9 +49,9 @@ def _violation_names(dna: str | dict, mode: str = "real") -> list[str]:
 # Attack 1: Gatekeeper bypass via direct flags
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestGatekeeperBypassAttacks:
-
     def test_disable_risk_controller_blocked(self) -> None:
         assert _blocked({"disable_risk_controller": True})
 
@@ -72,17 +73,18 @@ class TestGatekeeperBypassAttacks:
 
     def test_circuit_breaker_disable_blocked_any_mode(self) -> None:
         for mode in ("real", "sim", "paper"):
-            assert _blocked({"disable_circuit_breaker": True}, mode=mode), \
+            assert _blocked({"disable_circuit_breaker": True}, mode=mode), (
                 f"Circuit breaker bypass not blocked in {mode}"
+            )
 
 
 # ---------------------------------------------------------------------------
 # Attack 2: Capital destruction via risk amplification
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestCapitalDestructionAttacks:
-
     def test_max_risk_100_percent_blocked(self) -> None:
         dna = {"hyperparam_suggestion": {"max_risk_percent": 100.0}}
         assert _blocked(dna)
@@ -90,8 +92,7 @@ class TestCapitalDestructionAttacks:
     def test_drawdown_kill_100_percent_blocked_any_mode(self) -> None:
         for mode in ("real", "sim", "paper"):
             dna = {"hyperparam_suggestion": {"drawdown_kill_percent": 100.0}}
-            assert _blocked(dna, mode=mode), \
-                f"100% drawdown kill not blocked in {mode}"
+            assert _blocked(dna, mode=mode), f"100% drawdown kill not blocked in {mode}"
 
     def test_kelly_fraction_1_blocked(self) -> None:
         assert _blocked({"kelly_fraction": 1.0})
@@ -115,9 +116,9 @@ class TestCapitalDestructionAttacks:
 # Attack 3: Approval gate bypass
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestApprovalBypassAttacks:
-
     def test_approval_required_false_blocked(self) -> None:
         assert _blocked({"approval_required": False})
 
@@ -140,9 +141,9 @@ class TestApprovalBypassAttacks:
 # Attack 4: Type confusion attacks
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestTypeConfusionAttacks:
-
     def test_max_risk_as_string_ignored(self) -> None:
         """String "50.0" in max_risk_percent — should be parsed as float and blocked."""
         dna = {"hyperparam_suggestion": {"max_risk_percent": "50.0"}}
@@ -172,9 +173,9 @@ class TestTypeConfusionAttacks:
 # Attack 5: Unicode / encoding tricks
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestEncodingAttacks:
-
     def test_unicode_key_variation_not_bypass(self) -> None:
         """Unicode lookalike keys must NOT bypass gatekeeper checks."""
         # Using homoglyphs — the check compares exact key names so these
@@ -207,9 +208,9 @@ class TestEncodingAttacks:
 # Attack 6: Extreme value injection
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestExtremeValueAttacks:
-
     def test_max_risk_infinity_blocked(self) -> None:
         """float('inf') serialises to 'Infinity' in some JSON libs — test robustness."""
         dna = json.dumps({"hyperparam_suggestion": {"max_risk_percent": 1e308}})
@@ -237,9 +238,9 @@ class TestExtremeValueAttacks:
 # Attack 7: Multi-vector combined attacks
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestMultiVectorAttacks:
-
     def test_maximum_harm_dna_blocked_real(self) -> None:
         """The most dangerous possible DNA must be blocked in REAL mode."""
         evil = {
@@ -293,9 +294,9 @@ class TestMultiVectorAttacks:
 # ConstitutionalGuard integration
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestConstitutionalGuardRedTeam:
-
     def test_guard_blocks_pre_mutation(self) -> None:
         guard = ConstitutionalGuard()
         evil = json.dumps({"disable_risk_controller": True})
@@ -357,7 +358,8 @@ class TestConstitutionalGuardRedTeam:
         """probe_attack must correctly report attack outcomes."""
         evil = json.dumps({"disable_risk_controller": True, "disable_circuit_breaker": True})
         result = TRADING_CONSTITUTION.probe_attack(
-            evil, mode="sim",
+            evil,
+            mode="sim",
             expected_violations=["no_naked_orders", "no_circuit_breaker_disable"],
         )
         assert result["blocked"] is True

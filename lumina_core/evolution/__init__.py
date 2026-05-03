@@ -15,6 +15,13 @@ from .lumina_bible import LuminaBible
 from .strategy_generator import StrategyGenerator
 from .neuroevolution import mutate_weights, crossover_weights, evaluate_weight_population
 from .rollout import EvolutionRolloutFramework, RolloutDecision
+from .promotion_gate import (
+    PromotionGate,
+    PromotionGateEvidence,
+    PromotionGateDecision,
+    PromotionCriterion,
+    PromotionCriterionResult,
+)
 
 __all__ = [
     "DNARegistry",
@@ -46,4 +53,9 @@ __all__ = [
     "evaluate_weight_population",
     "EvolutionRolloutFramework",
     "RolloutDecision",
+    "PromotionGate",
+    "PromotionGateEvidence",
+    "PromotionGateDecision",
+    "PromotionCriterion",
+    "PromotionCriterionResult",
 ]

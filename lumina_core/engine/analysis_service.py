@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import threading
 import time
@@ -49,6 +50,7 @@ class HumanAnalysisService:
 
                 self.ppo_trainer = PPOTrainer(engine=self.engine)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/analysis_service.py:51")
                 self.ppo_trainer = None
 
     def _app(self):

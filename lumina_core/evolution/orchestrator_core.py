@@ -20,10 +20,12 @@ import random
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
+from lumina_core.agent_orchestration import EventBus
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.notifications.notification_scheduler import NotificationScheduler
 from .approval_twin_agent import ApprovalTwinAgent
@@ -48,6 +50,7 @@ from .veto_registry import VetoRegistry
 from .veto_window import VetoWindow
 from lumina_core.notifications.telegram_notifier import TelegramNotifier
 from .rollout import EvolutionRolloutFramework
+
 # New canonical safety layer — preferred over direct ConstitutionalChecker usage.
 from lumina_core.safety.constitutional_guard import ConstitutionalGuard
 from .fitness_evaluator import (
@@ -58,7 +61,9 @@ from .fitness_evaluator import (
     dream_engine_commit_hints_enabled as _dream_engine_commit_hints_to_bible,
 )
 from .mutation_pipeline import MutationPipeline
+from .promotion_gate import PromotionGate
 from .promotion_policy import PromotionPolicy
+from lumina_core.governance import ApprovalChain, RealPromotionPayload, SignedApproval
 from lumina_core.state.state_manager import safe_append_jsonl
 
 
@@ -70,6 +75,7 @@ logger = logging.getLogger(__name__)
 
 def _compat() -> Any:
     from lumina_core.evolution import evolution_orchestrator as compat_module
+
     return compat_module
 
 
@@ -137,8 +143,13 @@ class EvolutionOrchestrator:
             constitutional_guard=self._constitutional_guard,
             logger=logger,
         )
-        self._promotion_policy = PromotionPolicy(owner=self, logger=logger)
+        self._promotion_gate = PromotionGate()
+        self._promotion_policy = PromotionPolicy(owner=self, logger=logger, event_bus=None)
+        self._approval_chain = ApprovalChain()
         self._initialized = True
+
+    def bind_promotion_event_bus(self, event_bus: EventBus | None) -> None:
+        self._promotion_policy = PromotionPolicy(owner=self, logger=logger, event_bus=event_bus)
 
     def bind_ppo_trainer(self, ppo_trainer: Any | None) -> None:
         self._ppo_trainer = ppo_trainer
@@ -307,6 +318,8 @@ class EvolutionOrchestrator:
         sim_duration_hours: int = 24,
         nightly_report: dict[str, Any] | None = None,
         explicit_human_approval: bool = False,
+        require_human_approval: bool | None = None,
+        real_promotion_approvals: Sequence[SignedApproval] | None = None,
         blackboard: Any | None = None,
         mode: str = "sim",
     ) -> dict[str, Any]:
@@ -324,6 +337,9 @@ class EvolutionOrchestrator:
                 "reason": f"mutations_not_allowed_in_mode:{mode}",
                 "timestamp": _utcnow(),
             }
+        require_human_approval_effective = (
+            bool(require_human_approval) if require_human_approval is not None else normalized_mode == "real"
+        )
         report: dict[str, Any] = dict(nightly_report)
         gen_results: list[GenerationResult] = []
         self._append_metrics(
@@ -334,6 +350,7 @@ class EvolutionOrchestrator:
                 "sim_duration_hours": max(1, int(sim_duration_hours)),
                 "mode": str(mode),
                 "parallel_realities": int(parallel_realities_from_config()),
+                "require_human_approval": bool(require_human_approval_effective),
             }
         )
 
@@ -354,6 +371,8 @@ class EvolutionOrchestrator:
                 sim_days=sim_days,
                 mode=normalized_mode,
                 explicit_human_approval=bool(explicit_human_approval),
+                require_human_approval=bool(require_human_approval_effective),
+                real_promotion_approvals=real_promotion_approvals,
             )
             gen_results.append(result)
             if result.promoted:
@@ -379,6 +398,8 @@ class EvolutionOrchestrator:
         generation_offset: int,
         mode: str,
         explicit_human_approval: bool,
+        require_human_approval: bool,
+        real_promotion_approvals: Sequence[SignedApproval] | None,
         base_metrics: dict[str, Any],
         sim_days: int,
     ) -> GenerationResult:
@@ -515,6 +536,7 @@ class EvolutionOrchestrator:
         shadow_days_completed = 0
         shadow_days_target = 0
         shadow_total_pnl = 0.0
+        promotion_gate: dict[str, Any] = {}
 
         if mode == "real":
             shadow_decision = self._run_shadow_validation_gate(
@@ -533,6 +555,7 @@ class EvolutionOrchestrator:
             shadow_days_completed = int(shadow_decision.get("shadow_days_completed", 0) or 0)
             shadow_days_target = int(shadow_decision.get("shadow_days_target", 0) or 0)
             shadow_total_pnl = float(shadow_decision.get("shadow_total_pnl", 0.0) or 0.0)
+            promotion_gate = dict(shadow_decision.get("promotion_gate", {}) or {})
 
             gated_promotion = self._guard.is_confidence_gated_promotion(
                 winner_dna,
@@ -545,7 +568,13 @@ class EvolutionOrchestrator:
             promoted = bool(promoted and gated_promotion)
 
             if shadow_status in {"passed", "failed", "vetoed"}:
-                self._send_promotion_status_telegram(dna_hash=winner_dna.hash, promoted=promoted)
+                fail_reasons = list(promotion_gate.get("fail_reasons", []) or [])
+                gate_reason = str(fail_reasons[0]) if fail_reasons else ""
+                self._send_promotion_status_telegram(
+                    dna_hash=winner_dna.hash,
+                    promoted=promoted,
+                    reason=gate_reason,
+                )
         else:
             promoted = bool(signed and generation_ok)
 
@@ -621,6 +650,26 @@ class EvolutionOrchestrator:
             neuro_summary=neuro_summary,
         )
         promoted = bool(base_promoted and swarm_consensus.allow_promotion)
+        approval_chain_passed = mode != "real"
+        approval_chain_reason = "not_required"
+
+        if mode == "real":
+            approval_chain_passed = False
+            if not require_human_approval:
+                promoted = False
+                approval_chain_reason = "real_human_approval_mandatory"
+            elif promoted:
+                approval_payload = self._build_real_promotion_payload(
+                    dna=winner_dna,
+                    generation_offset=generation_offset,
+                )
+                approval_chain_passed, approval_chain_reason = self._approval_chain.verify(
+                    payload=approval_payload,
+                    signatures=real_promotion_approvals,
+                )
+                promoted = bool(promoted and approval_chain_passed)
+            else:
+                approval_chain_reason = "promotion_not_eligible_before_approval"
 
         if promoted:
             promoted_dna = self._registry.mutate(
@@ -645,6 +694,9 @@ class EvolutionOrchestrator:
                 "promoted": promoted,
                 "mode": mode,
                 "explicit_human_approval": bool(explicit_human_approval),
+                "require_human_approval": bool(require_human_approval),
+                "approval_chain_passed": bool(approval_chain_passed),
+                "approval_chain_reason": str(approval_chain_reason),
                 "approval_twin_recommendation": bool(twin_decision.get("recommendation", False)),
                 "approval_twin_confidence": float(twin_decision.get("confidence", 0.0) or 0.0),
                 "approval_twin_risk_flags": list(twin_decision.get("risk_flags", []) or []),
@@ -655,6 +707,9 @@ class EvolutionOrchestrator:
                 "shadow_days_completed": shadow_days_completed,
                 "shadow_days_target": shadow_days_target,
                 "shadow_total_pnl": shadow_total_pnl,
+                "promotion_gate_passed": bool(promotion_gate.get("promoted", False)),
+                "promotion_gate_fail_reasons": list(promotion_gate.get("fail_reasons", []) or []),
+                "promotion_gate": promotion_gate,
                 "generated_ideas": int(generated_summary.get("ideas", 0) or 0),
                 "generated_tested": int(generated_summary.get("tested", 0) or 0),
                 "generated_winners": int(generated_summary.get("winners", 0) or 0),
@@ -716,6 +771,19 @@ class EvolutionOrchestrator:
             generated_winners=int(generated_summary.get("winners", 0) or 0),
             neuro_tested=int(neuro_summary.get("tested", 0) or 0),
             neuro_winners=int(neuro_summary.get("winners", 0) or 0),
+        )
+
+    def _build_real_promotion_payload(self, *, dna: PolicyDNA, generation_offset: int) -> RealPromotionPayload:
+        now = datetime.now(timezone.utc)
+        dna_content = dna.content if isinstance(dna.content, dict) else {"raw_content": str(dna.content)}
+        return RealPromotionPayload(
+            dna_hash=str(dna.hash),
+            target_mode="real",
+            dna_content_digest=ApprovalChain.dna_content_digest(dna_content),
+            promotion_epoch=f"generation:{generation_offset}:{dna.hash}",
+            reason_context="evolution_orchestrator_real_promotion",
+            created_at=now,
+            expires_at=now + timedelta(minutes=30),
         )
 
     def _run_neuroevolution_cycle(
@@ -795,6 +863,7 @@ class EvolutionOrchestrator:
         try:
             ppo_trainer.save_weights(baseline_snapshot)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/orchestrator_core.py:859")
             return {
                 "tested": 0,
                 "winners": 0,
@@ -907,6 +976,7 @@ class EvolutionOrchestrator:
                 seed=_seed_from_hash(f"neuro:{anchor_dna.hash}:{generation_offset}"),
             )
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/orchestrator_core.py:971")
             ppo_trainer.load_weights(str(baseline_snapshot))
             return {
                 "tested": 0,
@@ -996,6 +1066,9 @@ class EvolutionOrchestrator:
                 code = self._strategy_generator.generate_new_strategy(hypothesis)
                 sandbox = self._strategy_generator.compile_and_validate(code)
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/evolution/orchestrator_core.py:1060"
+                )
                 continue
             generated.append(
                 {
@@ -1019,6 +1092,9 @@ class EvolutionOrchestrator:
                 try:
                     fitness = float(future.result())
                 except Exception:
+                    logging.exception(
+                        "Unhandled broad exception fallback in lumina_core/evolution/orchestrator_core.py:1083"
+                    )
                     fitness = float("-inf")
                 evaluated.append({**item, "fitness": fitness})
 
@@ -1142,8 +1218,12 @@ class EvolutionOrchestrator:
     def _send_shadow_status_telegram(self, message: str) -> None:
         self._promotion_policy.send_shadow_status_telegram(message)
 
-    def _send_promotion_status_telegram(self, *, dna_hash: str, promoted: bool) -> None:
-        self._promotion_policy.send_promotion_status_telegram(dna_hash=dna_hash, promoted=promoted)
+    def _send_promotion_status_telegram(self, *, dna_hash: str, promoted: bool, reason: str = "") -> None:
+        self._promotion_policy.send_promotion_status_telegram(
+            dna_hash=dna_hash,
+            promoted=promoted,
+            reason=reason,
+        )
 
     def _run_shadow_validation_gate(
         self,

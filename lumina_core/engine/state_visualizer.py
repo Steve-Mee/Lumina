@@ -23,7 +23,7 @@ class StateVisualizerProtocol(Protocol):
     def build_drawdown_distribution_figure(self) -> go.Figure: ...
 
     @staticmethod
-    def build_empty_figure(title: str, template: str = 'plotly_dark') -> go.Figure: ...
+    def build_empty_figure(title: str, template: str = "plotly_dark") -> go.Figure: ...
 
     @staticmethod
     def build_inference_status_lines(tracker: dict[str, Any]) -> list[str]: ...
@@ -76,7 +76,6 @@ class StateVisualizer:
         fig = go.Figure()
         fig.update_layout(title=title, template=template, height=320)
         return fig
-
 
     def _build_swarm_figures(self) -> tuple[go.Figure, go.Figure, html.Div]:
         app = self.engine.app
@@ -168,7 +167,6 @@ class StateVisualizer:
         )
 
         return corr_fig, alloc_fig, regime_panel
-
 
     def _build_swarm_spread_drilldown(self, click_data: dict[str, Any] | None) -> tuple[go.Figure, html.Div]:
         app = self.engine.app
@@ -264,7 +262,6 @@ class StateVisualizer:
         )
         return fig, details
 
-
     @staticmethod
     def _build_inference_status_lines(tracker: dict[str, Any]) -> list[str]:
         requests = int(tracker.get("local_inference_requests", 0))
@@ -284,7 +281,6 @@ class StateVisualizer:
         if warning:
             lines.append(f"Warning: {warning}")
         return lines
-
 
     @staticmethod
     def _build_inference_provider_figure(tracker: dict[str, Any]) -> go.Figure:
@@ -307,7 +303,6 @@ class StateVisualizer:
             legend={"orientation": "h", "y": 1.1},
         )
         return fig
-
 
     def _build_mode_parity_panel(self) -> html.Div:
         mode = str(getattr(self.engine.config, "trade_mode", "paper") or "paper").strip().lower()
@@ -360,7 +355,6 @@ class StateVisualizer:
             ],
             style={"fontSize": "15px", "color": "#ddd"},
         )
-
 
     def _build_blackboard_health_trend_figure(self) -> go.Figure:
         fig = self._build_empty_figure("Blackboard Health Trend")
@@ -435,7 +429,6 @@ class StateVisualizer:
         )
         return fig
 
-
     def _build_blackboard_health_panel(self, health: dict[str, Any] | None = None) -> html.Div:
         health_data = health or self._collect_blackboard_health_state()
         blackboard_enabled = bool(health_data.get("blackboard_enabled", False))
@@ -468,7 +461,6 @@ class StateVisualizer:
             ],
             style={"fontSize": "15px", "color": "#ddd"},
         )
-
 
     def _build_drawdown_distribution_figure(self) -> go.Figure:
         fig = self._build_empty_figure("Projected Max Drawdown Distribution")
@@ -514,9 +506,8 @@ class StateVisualizer:
         )
         return fig
 
-
     @staticmethod
-    def build_empty_figure(title: str, template: str = 'plotly_dark') -> go.Figure:
+    def build_empty_figure(title: str, template: str = "plotly_dark") -> go.Figure:
         return StateVisualizer._build_empty_figure(title, template)
 
     def build_swarm_figures(self) -> tuple[go.Figure, go.Figure, html.Div]:

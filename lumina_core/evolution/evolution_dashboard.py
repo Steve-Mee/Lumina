@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 from pathlib import Path
@@ -26,6 +27,9 @@ def _load_metrics(path: Path = METRICS_PATH) -> list[dict[str, Any]]:
             try:
                 parsed = json.loads(raw)
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/evolution/evolution_dashboard.py:28"
+                )
                 continue
             if isinstance(parsed, dict) and parsed.get("status") == "complete":
                 rows.append(parsed)
@@ -41,6 +45,7 @@ def _load_shadow_runs(path: Path = SHADOW_STATE_PATH) -> dict[str, Any]:
             data = json.load(handle)
             return data if isinstance(data, dict) else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_dashboard.py:43")
         return {}
 
 
@@ -56,6 +61,9 @@ def _load_generated_strategies(path: Path = GENERATED_BIBLE_PATH) -> list[dict[s
             try:
                 parsed = json.loads(raw)
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/evolution/evolution_dashboard.py:58"
+                )
                 continue
             if isinstance(parsed, dict) and parsed.get("entry_type") == "generated_strategy_rule":
                 rows.append(parsed)
@@ -74,6 +82,9 @@ def _load_rollout_history(path: Path = ROLLOUT_HISTORY_PATH) -> list[dict[str, A
             try:
                 parsed = json.loads(raw)
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/evolution/evolution_dashboard.py:76"
+                )
                 continue
             if isinstance(parsed, dict) and parsed.get("event") == "rollout_decision":
                 rows.append(parsed)

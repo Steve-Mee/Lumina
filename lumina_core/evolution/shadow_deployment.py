@@ -8,9 +8,14 @@ significance criteria is the candidate eligible for promotion.
 State is persisted in ``state/evolution_shadow_runs.json`` (append-safe JSON).
 
 Promotion criteria by mode:
-  - REAL:   shadow PASS + twin_confidence >= 0.97 + Telegram approval
+  - REAL:   enforced via PromotionPolicy + PromotionGate (non-negotiable gate)
   - PAPER:  shadow PASS + twin_confidence >= 0.82
   - SIM:    no shadow gate (aggressive_evolution allowed)
+
+Note:
+  `compute_shadow_verdict()` is a local tracker heuristic used by legacy and
+  experiment flows. REAL promotion authority lives in
+  `PromotionPolicy.run_shadow_validation_gate()` and `PromotionGate.evaluate()`.
 """
 
 from __future__ import annotations
@@ -53,6 +58,7 @@ def _days_elapsed(start_ts: str) -> float:
 # Data model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ShadowRun:
     dna_hash: str
@@ -94,6 +100,7 @@ class ShadowRun:
 # Statistical helpers
 # ---------------------------------------------------------------------------
 
+
 def _welch_t_pvalue(a: list[float], b: list[float]) -> float:
     """Two-sample Welch t-test p-value.  Returns 1.0 (not significant) for tiny samples."""
     na, nb = len(a), len(b)
@@ -112,19 +119,20 @@ def _welch_t_pvalue(a: list[float], b: list[float]) -> float:
     t_stat = (mean_a - mean_b) / math.sqrt(se2)
 
     # Welch-Satterthwaite degrees of freedom (approximation)
-    df_num = se2 ** 2
+    df_num = se2**2
     df_den = (var_a / na) ** 2 / max(na - 1, 1) + (var_b / nb) ** 2 / max(nb - 1, 1)
     df = df_num / df_den if df_den > 0 else 1.0
 
     # Two-tailed p-value approximation via survival function of t-distribution
     # Uses a simple numerical approximation for df > 3.
-    x = df / (df + t_stat ** 2)
+    x = df / (df + t_stat**2)
     # Regularized incomplete beta function approximation (Abramowitz & Stegun 26.5)
     # For our purposes, a conservative approximation is sufficient.
     try:
         half_p = 0.5 * _regularized_inc_beta(df / 2.0, 0.5, x)
         return float(min(1.0, 2.0 * half_p))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/shadow_deployment.py:132")
         return 1.0
 
 
@@ -139,9 +147,7 @@ def _regularized_inc_beta(a: float, b: float, x: float) -> float:
     if x > (a + 1.0) / (a + b + 2.0):
         return 1.0 - _regularized_inc_beta(b, a, 1.0 - x)
 
-    lbeta = (
-        math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
-    )
+    lbeta = math.lgamma(a) + math.lgamma(b) - math.lgamma(a + b)
     front = math.exp(math.log(x) * a + math.log(1.0 - x) * b - lbeta) / a
 
     # Lentz's continued fraction
@@ -212,6 +218,7 @@ def _sample_sharpe(series: list[float]) -> float:
 # ---------------------------------------------------------------------------
 # Tracker
 # ---------------------------------------------------------------------------
+
 
 class ShadowDeploymentTracker:
     """Tracks shadow runs for DNA candidates and computes promotion verdicts.
@@ -325,10 +332,7 @@ class ShadowDeploymentTracker:
             run = runs.get(dna_hash)
         if run is None:
             return False
-        return (
-            run.days_elapsed >= self._min_days
-            and run.trade_count >= self._min_trades
-        )
+        return run.days_elapsed >= self._min_days and run.trade_count >= self._min_trades
 
     def compute_shadow_verdict(self, dna_hash: str) -> ShadowVerdict:
         """Return 'pass', 'fail', or 'pending' for the shadow run.
@@ -337,6 +341,9 @@ class ShadowDeploymentTracker:
           - pending:  not enough data (days or trades below minimum)
           - pass:     SIM PnL > 0 OR paper t-test shows significant improvement
           - fail:     candidate underperforms (negative expected PnL)
+
+        This method is not the authoritative REAL promotion gate. REAL promotion
+        is fail-closed through PromotionPolicy + PromotionGate before approval.
         """
         with self._lock:
             runs = self._load()

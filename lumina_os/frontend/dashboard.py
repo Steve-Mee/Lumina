@@ -2,6 +2,7 @@ import subprocess
 import sys
 import time
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -25,6 +26,7 @@ EVOLUTION_LOG_PATH = STATE_DIR / "evolution_log.jsonl"
 RUNTIME_STATE_PATH = STATE_DIR / "lumina_sim_state.json"
 HISTORY_PATH = STATE_DIR / "sim_stability_history.jsonl"
 ENV_PATH = Path(".env")
+logger = logging.getLogger(__name__)
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -65,6 +67,7 @@ def _load_json_dict(path: Path) -> dict[str, Any]:
         payload = json.loads(path.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_os/frontend/dashboard.py:69")
         return {}
 
 
@@ -75,6 +78,7 @@ def _load_yaml_dict(path: Path) -> dict[str, Any]:
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_os/frontend/dashboard.py:79")
         return {}
 
 
@@ -523,6 +527,7 @@ def _render_observability_tab(base_url: str) -> None:
         health_resp = requests.get(f"{base_url}/api/monitoring/health", timeout=3)
         health = health_resp.json() if health_resp.ok else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_os/frontend/dashboard.py:527")
         health = {}
 
     status = health.get("status", "unknown")
@@ -570,6 +575,7 @@ def _render_observability_tab(base_url: str) -> None:
             return
         snap: dict = snap_resp.json()
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_os/frontend/dashboard.py:574")
         st.error(f"Cannot reach observability endpoint: {exc}")
         return
 
@@ -637,7 +643,7 @@ def _render_observability_tab(base_url: str) -> None:
                 with st.expander(f"Regime Flip History ({len(flip_df)} events)", expanded=False):
                     st.dataframe(flip_df, width="stretch")
     except Exception:
-        pass  # history is best-effort; never crash the dashboard
+        logger.exception("Dashboard failed to render regime flip history")
 
     st.markdown("#### Alerts & Chaos Events")
     a1, a2 = st.columns(2)
@@ -658,6 +664,7 @@ def _render_observability_tab(base_url: str) -> None:
             else:
                 st.warning(f"HTTP {prom_resp.status_code}")
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_os/frontend/dashboard.py:662")
             st.warning(str(exc))
 
 

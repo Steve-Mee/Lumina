@@ -78,6 +78,9 @@ def main() -> None:
             result = asyncio.run(_capture_live_sample(reconciler, args.live_window_seconds))
             print(json.dumps(result, ensure_ascii=False, indent=2))
         except Exception as exc:
+            logging.exception(
+                "Unhandled broad exception fallback in scripts/validation/trade_reconciler_self_test.py:80"
+            )
             print(json.dumps({"status": "live_sample_failed", "error": str(exc)}, ensure_ascii=False, indent=2))
 
 

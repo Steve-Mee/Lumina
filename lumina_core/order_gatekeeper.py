@@ -8,6 +8,22 @@ from typing import Any
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
+from lumina_core.risk.admission_chain import (
+    ADMISSION_STEP_CONSTITUTION,
+    ADMISSION_STEP_EQUITY_SNAPSHOT,
+    ADMISSION_STEP_FINAL_ARBITRATION,
+    ADMISSION_STEP_RISK_POLICY,
+    ADMISSION_STEP_SESSION_GUARD,
+    AdmissionContext,
+    default_chain_for_mode,
+)
+from lumina_core.risk.final_arbitration import (
+    build_current_state_from_engine,
+    evaluate_constitution_for_intent,
+    is_strict_arbitration_mode,
+)
+from lumina_core.risk.risk_policy import load_risk_policy
+from lumina_core.risk.schemas import OrderIntent, OrderIntentMetadata
 
 _MONTHS = {
     "JAN": 1,
@@ -321,14 +337,23 @@ def resolve_regime_snapshot(engine: Any, regime: str | None = None) -> dict[str,
     return payload
 
 
+def _is_risk_reducing_side(*, engine: Any, order_side: str | None) -> bool:
+    side = str(order_side or "").strip().upper()
+    if side not in {"BUY", "SELL"}:
+        return False
+    live_qty = int(getattr(engine, "live_position_qty", 0) or 0)
+    return (live_qty > 0 and side == "SELL") or (live_qty < 0 and side == "BUY")
+
+
 def enforce_pre_trade_gate(
     engine: Any,
     *,
     symbol: str,
     regime: str,
     proposed_risk: float,
+    order_side: str | None = None,
 ) -> tuple[bool, str]:
-    """Single pre-trade gatekeeper for SessionGuard + HardRiskController."""
+    """Canonical pre-trade admission chain for risk-bearing order intents."""
     mode = str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
     capabilities = resolve_mode_capabilities(mode)
     blackboard = _resolve_blackboard(engine)
@@ -385,108 +410,163 @@ def enforce_pre_trade_gate(
     if not risk_controller:
         return _deny("risk_controller_unavailable", "Risk controller not available")
 
-    session_ok, session_reason = session_guard_allows_trading(engine)
-    if not session_ok:
-        session_guard = getattr(engine, "session_guard", None)
-        next_open = (
-            session_guard.next_open() if (session_guard is not None and hasattr(session_guard, "next_open")) else None
-        )
-        suffix = f" | next_open={next_open.isoformat()}" if next_open is not None else ""
-        return _deny(f"session_{session_reason}", f"Session guard blocked order: {session_reason}{suffix}")
-
-    snapshot = resolve_regime_snapshot(engine, regime)
-    adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
-    risk_controller.apply_regime_override(
-        regime=str(snapshot.get("label", regime or "NEUTRAL")),
-        risk_state=str(snapshot.get("risk_state", "NORMAL")),
-        risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
-        cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
-    )
-    if hasattr(risk_controller, "record_regime_snapshot"):
-        risk_controller.record_regime_snapshot(snapshot)
-    if hasattr(risk_controller, "record_regime_detector_history"):
-        reasoning_service = getattr(engine, "reasoning_service", None)
-        regime_detector = getattr(reasoning_service, "regime_detector", None)
-        market_df = getattr(engine, "ohlc_1min", None)
-        instrument = str(getattr(getattr(engine, "config", None), "instrument", symbol) or symbol)
-        risk_controller.record_regime_detector_history(
-            detector=regime_detector,
-            market_df=market_df,
-            instrument=instrument,
+    def _build_admission_intent() -> tuple[OrderIntent | None, str]:
+        side = str(order_side or "").strip().upper()
+        if side not in {"BUY", "SELL"}:
+            return None, "order_side_not_provided"
+        return (
+            OrderIntent(
+                instrument=str(symbol),
+                side=side,
+                quantity=1,
+                reference_price=0.0,
+                proposed_risk=float(abs(float(proposed_risk))),
+                stop=0.0,
+                target=0.0,
+                regime=str(regime or "NEUTRAL"),
+                confluence_score=0.0,
+                confidence=0.0,
+                source_agent="admission_chain",
+                metadata=OrderIntentMetadata(reason="admission_chain"),
+            ),
+            "ok",
         )
 
-    # LIVING ORGANISM v51: explicit VaR/ES gate before final order admission.
-    if hasattr(risk_controller, "check_var_es_pre_trade"):
-        var_result = risk_controller.check_var_es_pre_trade(float(proposed_risk))
-        if not isinstance(var_result, tuple) or len(var_result) < 2:
-            raise LuminaError(
-                severity=ErrorSeverity.FATAL_MODE_VIOLATION,
-                code="VAR_GATE_RESULT_INVALID",
-                message="check_var_es_pre_trade must return tuple(bool, reason, payload?).",
+    def _constitution_step(_ctx: AdmissionContext) -> tuple[bool, str]:
+        intent, intent_reason = _build_admission_intent()
+        if intent is None:
+            _ctx.metadata["constitution_skipped"] = True
+            return True, intent_reason
+        state = build_current_state_from_engine(engine)
+        try:
+            resolved_policy = load_risk_policy(
+                mode=mode, instrument=str(symbol).strip().upper() or None, reload_config=True
             )
-        var_ok = bool(var_result[0])
-        var_reason = str(var_result[1])
-        var_payload: dict[str, Any] = (
-            dict(var_result[2]) if len(var_result) >= 3 and isinstance(var_result[2], dict) else {}
-        )
+        except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/order_gatekeeper.py:443")
+            resolved_policy = load_risk_policy(mode=mode)
+        return evaluate_constitution_for_intent(intent=intent, state=state, resolved_policy=resolved_policy)
 
-        mc_ok = True
-        mc_reason = "mc_gate_not_configured"
-        mc_payload: dict[str, Any] = {}
-        if hasattr(risk_controller, "check_monte_carlo_drawdown_pre_trade"):
-            mc_result = risk_controller.check_monte_carlo_drawdown_pre_trade(float(proposed_risk))
-            if not isinstance(mc_result, tuple) or len(mc_result) < 2:
+    def _risk_policy_step(_ctx: AdmissionContext) -> tuple[bool, str]:
+        snapshot = resolve_regime_snapshot(engine, regime)
+        adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
+        resolved_regime = str(snapshot.get("label", regime or "NEUTRAL"))
+        _ctx.metadata["resolved_regime"] = resolved_regime
+        risk_controller.apply_regime_override(
+            regime=resolved_regime,
+            risk_state=str(snapshot.get("risk_state", "NORMAL")),
+            risk_multiplier=float(adaptive.get("risk_multiplier", 1.0) or 1.0),
+            cooldown_after_streak=int(adaptive.get("cooldown_minutes", 30) or 30),
+        )
+        if hasattr(risk_controller, "record_regime_snapshot"):
+            risk_controller.record_regime_snapshot(snapshot)
+        if hasattr(risk_controller, "record_regime_detector_history"):
+            reasoning_service = getattr(engine, "reasoning_service", None)
+            regime_detector = getattr(reasoning_service, "regime_detector", None)
+            market_df = getattr(engine, "ohlc_1min", None)
+            instrument = str(getattr(getattr(engine, "config", None), "instrument", symbol) or symbol)
+            risk_controller.record_regime_detector_history(
+                detector=regime_detector,
+                market_df=market_df,
+                instrument=instrument,
+            )
+
+        if hasattr(risk_controller, "check_var_es_pre_trade"):
+            var_result = risk_controller.check_var_es_pre_trade(float(proposed_risk))
+            if not isinstance(var_result, tuple) or len(var_result) < 2:
                 raise LuminaError(
                     severity=ErrorSeverity.FATAL_MODE_VIOLATION,
-                    code="MC_GATE_RESULT_INVALID",
-                    message="check_monte_carlo_drawdown_pre_trade must return tuple(bool, reason, payload?).",
+                    code="VAR_GATE_RESULT_INVALID",
+                    message="check_var_es_pre_trade must return tuple(bool, reason, payload?).",
                 )
-            mc_ok = bool(mc_result[0])
-            mc_reason = str(mc_result[1])
-            if len(mc_result) >= 3 and isinstance(mc_result[2], dict):
-                mc_payload = dict(mc_result[2])
-
-        audit_ok, audit_reason = _audit_or_fail_closed(
-            _build_audit_payload(
-                engine,
-                symbol=symbol,
-                regime=str(snapshot.get("label", regime)),
-                proposed_risk=float(proposed_risk),
-                mode=mode,
-                stage="risk_gate",
-                final_decision="allow" if (var_ok and mc_ok) else "block",
-                reason=(str(var_reason) if not var_ok else str(mc_reason)),
-                var_payload=var_payload,
-                mc_payload=mc_payload,
-            ),
-        )
-        if not audit_ok:
-            return False, audit_reason
-
-        if capabilities.risk_enforced and not bool(var_ok):
-            return _deny("risk_var_es", str(var_reason))
-        if capabilities.risk_enforced and not bool(mc_ok):
-            return _deny("risk_mc_drawdown", str(mc_reason))
-        if not capabilities.risk_enforced and not bool(var_ok):
-            _safe_log_warning(
-                engine,
-                f"RISK_VAR_ES_ADVISORY,mode={mode},symbol={symbol},reason={var_reason}",
-            )
-        if not capabilities.risk_enforced and not bool(mc_ok):
-            _safe_log_warning(
-                engine,
-                f"RISK_MC_DRAWDOWN_ADVISORY,mode={mode},symbol={symbol},reason={mc_reason}",
+            var_ok = bool(var_result[0])
+            var_reason = str(var_result[1])
+            var_payload: dict[str, Any] = (
+                dict(var_result[2]) if len(var_result) >= 3 and isinstance(var_result[2], dict) else {}
             )
 
-    risk_ok, risk_reason = risk_controller.check_can_trade(symbol, str(snapshot.get("label", regime)), proposed_risk)
-    if capabilities.risk_enforced:
+            mc_ok = True
+            mc_reason = "mc_gate_not_configured"
+            mc_payload: dict[str, Any] = {}
+            if hasattr(risk_controller, "check_monte_carlo_drawdown_pre_trade"):
+                mc_result = risk_controller.check_monte_carlo_drawdown_pre_trade(float(proposed_risk))
+                if not isinstance(mc_result, tuple) or len(mc_result) < 2:
+                    raise LuminaError(
+                        severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                        code="MC_GATE_RESULT_INVALID",
+                        message="check_monte_carlo_drawdown_pre_trade must return tuple(bool, reason, payload?).",
+                    )
+                mc_ok = bool(mc_result[0])
+                mc_reason = str(mc_result[1])
+                if len(mc_result) >= 3 and isinstance(mc_result[2], dict):
+                    mc_payload = dict(mc_result[2])
+
+            audit_ok, audit_reason = _audit_or_fail_closed(
+                _build_audit_payload(
+                    engine,
+                    symbol=symbol,
+                    regime=resolved_regime,
+                    proposed_risk=float(proposed_risk),
+                    mode=mode,
+                    stage="risk_gate",
+                    final_decision="allow" if (var_ok and mc_ok) else "block",
+                    reason=(str(var_reason) if not var_ok else str(mc_reason)),
+                    var_payload=var_payload,
+                    mc_payload=mc_payload,
+                ),
+            )
+            if not audit_ok:
+                return False, str(audit_reason)
+
+            if capabilities.risk_enforced and not bool(var_ok):
+                _ctx.metadata["deny_reason_code"] = "risk_var_es"
+                return False, str(var_reason)
+            if capabilities.risk_enforced and not bool(mc_ok):
+                _ctx.metadata["deny_reason_code"] = "risk_mc_drawdown"
+                return False, str(mc_reason)
+            if not capabilities.risk_enforced and not bool(var_ok):
+                _safe_log_warning(
+                    engine,
+                    f"RISK_VAR_ES_ADVISORY,mode={mode},symbol={symbol},reason={var_reason}",
+                )
+            if not capabilities.risk_enforced and not bool(mc_ok):
+                _safe_log_warning(
+                    engine,
+                    f"RISK_MC_DRAWDOWN_ADVISORY,mode={mode},symbol={symbol},reason={mc_reason}",
+                )
+
+        risk_ok, risk_reason = risk_controller.check_can_trade(symbol, resolved_regime, proposed_risk)
+        _ctx.metadata["risk_reason"] = str(risk_reason)
+        if capabilities.risk_enforced:
+            if not bool(risk_ok):
+                _ctx.metadata["deny_reason_code"] = f"risk_{risk_reason}"
+                return False, str(risk_reason)
+            audit_ok, audit_reason = _audit_or_fail_closed(
+                _build_audit_payload(
+                    engine,
+                    symbol=symbol,
+                    regime=resolved_regime,
+                    proposed_risk=float(proposed_risk),
+                    mode=mode,
+                    stage="policy_gate",
+                    final_decision="allow",
+                    reason=str(risk_reason),
+                ),
+            )
+            if not audit_ok:
+                return False, str(audit_reason)
+            return True, str(risk_reason)
+
         if not bool(risk_ok):
-            return _deny(f"risk_{risk_reason}", str(risk_reason))
-        audit_ok, audit_reason = _audit_or_fail_closed(
+            _safe_log_warning(
+                engine,
+                f"RISK_ADVISORY,mode={mode},symbol={symbol},reason={risk_reason}",
+            )
+        _audit_or_fail_closed(
             _build_audit_payload(
                 engine,
                 symbol=symbol,
-                regime=str(snapshot.get("label", regime)),
+                regime=resolved_regime,
                 proposed_risk=float(proposed_risk),
                 mode=mode,
                 stage="policy_gate",
@@ -494,26 +574,138 @@ def enforce_pre_trade_gate(
                 reason=str(risk_reason),
             ),
         )
-        if not audit_ok:
-            return False, audit_reason
         return True, str(risk_reason)
 
-    # Advisory mode (SIM): keep learning path unconstrained while retaining diagnostics.
-    if not bool(risk_ok):
-        _safe_log_warning(
-            engine,
-            f"RISK_ADVISORY,mode={mode},symbol={symbol},reason={risk_reason}",
+    def _equity_snapshot_step(_ctx: AdmissionContext) -> tuple[bool, str]:
+        if mode != "real":
+            setattr(engine, "equity_snapshot_ok", True)
+            setattr(engine, "equity_snapshot_reason", "not_required_non_real")
+            return True, "not_required_non_real"
+
+        if str(order_side or "").strip().upper() not in {"BUY", "SELL"}:
+            setattr(engine, "equity_snapshot_ok", False)
+            setattr(engine, "equity_snapshot_reason", "deferred_no_order_side")
+            return True, "deferred_no_order_side"
+
+        snapshot_ok = False
+        snapshot_reason = "real_equity_snapshot_required"
+        snapshot_source = ""
+        provider = getattr(engine, "equity_snapshot_provider", None)
+        if provider is not None and callable(getattr(provider, "get_snapshot", None)):
+            try:
+                snapshot = provider.get_snapshot()
+                snapshot_source = str(getattr(snapshot, "source", "") or "")
+                snapshot_fresh = bool(getattr(snapshot, "is_fresh", False))
+                snapshot_ok = bool(getattr(snapshot, "ok", False)) and snapshot_fresh
+                snapshot_reason = str(getattr(snapshot, "reason_code", "real_equity_snapshot_required"))
+                if bool(getattr(snapshot, "ok", False)) and not snapshot_fresh:
+                    snapshot_reason = "equity_snapshot_stale"
+                if snapshot_ok:
+                    engine.account_equity = float(
+                        getattr(snapshot, "equity_usd", engine.account_equity) or engine.account_equity
+                    )
+                    engine.available_margin = float(getattr(snapshot, "available_margin_usd", 0.0) or 0.0)
+                    engine.positions_margin_used = float(getattr(snapshot, "used_margin_usd", 0.0) or 0.0)
+                    margin_tracker = getattr(getattr(risk_controller, "state", None), "margin_tracker", None)
+                    if margin_tracker is not None:
+                        margin_tracker.account_equity = float(engine.account_equity)
+                setattr(engine, "equity_snapshot_ok", bool(snapshot_ok))
+                setattr(engine, "equity_snapshot_reason", snapshot_reason)
+            except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/order_gatekeeper.py:609")
+                snapshot_ok = False
+                snapshot_reason = "equity_snapshot_provider_error"
+                setattr(engine, "equity_snapshot_ok", False)
+                setattr(engine, "equity_snapshot_reason", snapshot_reason)
+        if snapshot_ok:
+            return True, str(snapshot_reason)
+        if _is_risk_reducing_side(engine=engine, order_side=order_side):
+            return True, "real_snapshot_bypassed_for_risk_reducing_exit"
+        return (
+            False,
+            f"REAL mode requires fresh equity snapshot ({snapshot_reason}, source={snapshot_source or 'unknown'})",
         )
-    _audit_or_fail_closed(
-        _build_audit_payload(
-            engine,
-            symbol=symbol,
-            regime=str(snapshot.get("label", regime)),
-            proposed_risk=float(proposed_risk),
-            mode=mode,
-            stage="policy_gate",
-            final_decision="allow",
-            reason=str(risk_reason),
-        ),
+
+    def _final_arbitration_step(_ctx: AdmissionContext) -> tuple[bool, str]:
+        intent, intent_reason = _build_admission_intent()
+        if intent is None:
+            _ctx.metadata["final_arbitration_skipped"] = True
+            _ctx.metadata["final_arbitration_approved"] = False
+            return True, intent_reason
+
+        state = build_current_state_from_engine(engine)
+        arbitration = getattr(engine, "final_arbitration", None)
+        if arbitration is None and is_strict_arbitration_mode(mode):
+            _ctx.metadata["final_arbitration_approved"] = False
+            return _deny(
+                "final_arbitration_unavailable",
+                f"FinalArbitration blocked order: final_arbitration_unavailable [mode={str(mode).upper()}]",
+            )
+        if arbitration is None:
+            _ctx.metadata["final_arbitration_approved"] = False
+            return False, "final_arbitration_unavailable"
+        result = arbitration.check_order_intent(
+            intent,
+            state,
+            skip_internal_steps=frozenset(
+                {
+                    "constitution",
+                    "risk_policy",
+                    "real_equity_snapshot",
+                }
+            ),
+        )
+        _ctx.metadata["final_arbitration_approved"] = bool(result.status == "APPROVED")
+        if result.status != "APPROVED":
+            return False, str(result.reason)
+        return True, str(result.reason)
+
+    def _session_guard_step(_ctx: AdmissionContext) -> tuple[bool, str]:
+        session_ok, session_reason = session_guard_allows_trading(engine)
+        if session_ok:
+            return True, str(session_reason)
+        session_guard = getattr(engine, "session_guard", None)
+        next_open = (
+            session_guard.next_open() if (session_guard is not None and hasattr(session_guard, "next_open")) else None
+        )
+        suffix = f" | next_open={next_open.isoformat()}" if next_open is not None else ""
+        return False, f"Session guard blocked order: {session_reason}{suffix}"
+
+    admission_context = AdmissionContext(
+        engine=engine,
+        mode=mode,
+        symbol=str(symbol),
+        regime=str(regime),
+        proposed_risk=float(proposed_risk),
+        order_side=order_side,
+        step_handlers={
+            ADMISSION_STEP_CONSTITUTION: _constitution_step,
+            ADMISSION_STEP_RISK_POLICY: _risk_policy_step,
+            ADMISSION_STEP_EQUITY_SNAPSHOT: _equity_snapshot_step,
+            ADMISSION_STEP_FINAL_ARBITRATION: _final_arbitration_step,
+            ADMISSION_STEP_SESSION_GUARD: _session_guard_step,
+        },
     )
-    return True, str(risk_reason)
+    allowed, reason, trace = default_chain_for_mode(mode).run(admission_context)
+    setattr(
+        engine,
+        "admission_chain_trace",
+        [
+            {
+                "step_id": item.step_id,
+                "ok": item.ok,
+                "reason": item.reason,
+                "bypassed": item.bypassed,
+            }
+            for item in trace.results
+        ],
+    )
+    setattr(
+        engine,
+        "admission_chain_final_arbitration_approved",
+        bool(admission_context.metadata.get("final_arbitration_approved", False)),
+    )
+    if not allowed:
+        reason_code = str(admission_context.metadata.get("deny_reason_code", f"admission_{trace.last_step_id}"))
+        return _deny(reason_code, str(reason))
+    return True, str(admission_context.metadata.get("risk_reason", reason or "OK"))

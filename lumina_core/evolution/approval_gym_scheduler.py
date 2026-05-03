@@ -1,4 +1,5 @@
 """Scheduler for periodic DNA approval gymnasium sessions with Telegram integration."""
+
 import logging
 import threading
 from datetime import datetime, timedelta, timezone

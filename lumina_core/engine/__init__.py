@@ -21,9 +21,13 @@ from .engine_config import EngineConfig
 from .lumina_engine import LuminaEngine
 from .local_inference_engine import LocalInferenceEngine
 from .market_data_manager import MarketDataManager
-from .market_data_service import MarketDataService
+from .market_data_domain_service import MarketDataDomainService, MarketDataService
+from .market_data_service import MarketDataIngestService
 from .memory_service import MemoryService
 from .operations_service import OperationsService
+from .dream_state_manager import DreamStateManager
+from .execution_service import ExecutionService
+from .technical_analysis_service import TechnicalAnalysisService
 from .performance_validator import PerformanceValidator
 from .portfolio_var_allocator import PortfolioVaRAllocator
 from .provider_normalization import ProviderNormalizationLayer
@@ -41,6 +45,7 @@ from .swarm_manager import SwarmManager
 from .trade_reconciler import TradeReconciler
 from .visualization_service import VisualizationService
 from lumina_core.agent_orchestration.event_bus import DomainEvent, EventBus
+from lumina_core.risk.orchestration import RiskOrchestrator
 
 __all__ = [
     "HumanAnalysisService",
@@ -63,7 +68,13 @@ __all__ = [
     "DreamState",
     "BibleEngine",
     "MarketDataManager",
+    "MarketDataDomainService",
     "MarketDataService",
+    "MarketDataIngestService",
+    "DreamStateManager",
+    "ExecutionService",
+    "RiskOrchestrator",
+    "TechnicalAnalysisService",
     "MemoryService",
     "OperationsService",
     "PerformanceValidator",

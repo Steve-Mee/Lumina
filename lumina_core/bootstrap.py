@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 import numpy as np
@@ -19,6 +20,8 @@ from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
 from lumina_core.logging_utils import flush_logger_handlers
 from lumina_core.runtime_bootstrap import start_runtime_services
 from lumina_core.threading_utils import start_daemon
+
+logger = logging.getLogger(__name__)
 
 
 def _validate_bootstrapped_ohlc(container: ApplicationContainer) -> None:
@@ -61,13 +64,14 @@ def _validate_bootstrapped_ohlc(container: ApplicationContainer) -> None:
                 if bool((df["high"] < df["low"]).any()):
                     issues.append("high_lt_low_rows")
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/bootstrap.py:66")
                 issues.append("ohlc_compare_failed")
         if "volume" in df.columns:
             try:
                 if bool((df["volume"] < 0).any()):
                     issues.append("negative_volume")
             except Exception:
-                pass
+                logger.exception("Bootstrap OHLC quality check failed during negative volume validation")
 
     status = "ok"
     if issues:

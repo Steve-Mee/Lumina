@@ -9,7 +9,7 @@ def test_strategy_generator_compile_and_validate_accepts_safe_code() -> None:
     generator = StrategyGenerator()
     code = (
         "def generated_strategy(context: dict) -> dict:\n"
-        "    \"\"\"Safe strategy function.\"\"\"\n"
+        '    """Safe strategy function."""\n'
         "    close = list(context.get('close', []) or [])\n"
         "    if len(close) < 2:\n"
         "        return {'name': 'safe', 'regime_focus': 'neutral', 'signal_bias': 'neutral', 'confidence': 0.0, 'rules': ['insufficient_history']}\n"

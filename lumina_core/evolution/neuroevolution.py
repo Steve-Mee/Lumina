@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import copy
 import hashlib
@@ -17,7 +18,9 @@ def _utc_stamp() -> str:
 
 
 def _clone_state_dict(state_dict: dict[str, Any]) -> dict[str, Any]:
-    return {name: value.clone() if hasattr(value, "clone") else copy.deepcopy(value) for name, value in state_dict.items()}
+    return {
+        name: value.clone() if hasattr(value, "clone") else copy.deepcopy(value) for name, value in state_dict.items()
+    }
 
 
 def _try_import_torch() -> Any | None:
@@ -26,6 +29,7 @@ def _try_import_torch() -> Any | None:
 
         return torch
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/neuroevolution.py:28")
         return None
 
 
@@ -214,6 +218,7 @@ def evaluate_weight_population(
             try:
                 evaluations.append(future.result())
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/neuroevolution.py:216")
                 evaluations.append(
                     {
                         "candidate_id": str(item["candidate_id"]),
@@ -239,7 +244,11 @@ def evaluate_weight_population(
     winner_state: dict[str, Any] | None = None
     if winner is not None:
         winner_state = next(
-            (item["state_dict"] for item in candidates if str(item["candidate_id"]) == str(winner.get("candidate_id", ""))),
+            (
+                item["state_dict"]
+                for item in candidates
+                if str(item["candidate_id"]) == str(winner.get("candidate_id", ""))
+            ),
             None,
         )
 

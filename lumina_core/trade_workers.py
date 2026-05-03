@@ -2,7 +2,7 @@
 
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
-from lumina_core.engine.broker_bridge import Order, OrderResult
+from lumina_core.engine.broker_bridge import Order, OrderResult, audit_final_arbitration_reject
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, resolve_regime_snapshot
 from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
 
@@ -50,6 +50,7 @@ def check_pre_trade_risk(
     symbol: str,
     regime: str,
     proposed_risk: float,
+    order_side: str | None = None,
 ) -> tuple[bool, str]:
     """
     Hard Risk Controller: LAST pre-trade check (fail-closed).
@@ -95,6 +96,7 @@ def check_pre_trade_risk(
         symbol=symbol,
         regime=regime,
         proposed_risk=proposed_risk,
+        order_side=order_side,
     )
 
 
@@ -120,7 +122,7 @@ def submit_order_with_risk_check(
     Returns:
         OrderResult if check passes, None if blocked
     """
-    allowed, reason = check_pre_trade_risk(app, symbol, regime, proposed_risk)
+    allowed, reason = check_pre_trade_risk(app, symbol, regime, proposed_risk, order_side=str(order.side).upper())
 
     if not allowed:
         app.logger.warning(f"Order blocked by risk controller: {reason}")
@@ -160,14 +162,20 @@ def submit_order_with_risk_check(
         raise RuntimeError("RuntimeContext.container.broker is not configured")
 
     arbitration = getattr(app.engine, "final_arbitration", None)
-    if arbitration is not None:
-        result = arbitration.check_order_intent(
-            build_order_intent_from_order(order, dream_snapshot=app.engine.get_current_dream_snapshot()),
-            build_current_state_from_engine(app.engine),
-        )
-        if result.status != "APPROVED":
-            app.logger.warning(f"Order blocked by final arbitration: {result.reason}")
-            return None
+    mode = str(getattr(getattr(app.engine, "config", None), "trade_mode", "paper")).strip().lower()
+    if arbitration is None:
+        reason = "final_arbitration_unavailable"
+        audit_final_arbitration_reject(app.engine, mode=mode, reason=reason, order=order)
+        app.logger.warning(f"Order blocked by final arbitration: {reason}")
+        return None
+    result = arbitration.check_order_intent(
+        build_order_intent_from_order(order, dream_snapshot=app.engine.get_current_dream_snapshot()),
+        build_current_state_from_engine(app.engine),
+    )
+    if result.status != "APPROVED":
+        audit_final_arbitration_reject(app.engine, mode=mode, reason=result.reason, order=order)
+        app.logger.warning(f"Order blocked by final arbitration: {result.reason}")
+        return None
 
     # Risk check passed; proceed with broker bridge.
     return container.broker.submit_order(order)

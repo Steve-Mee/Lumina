@@ -57,6 +57,7 @@ Onderstaande bundelt de **opgeleverde prompt-lijn (1–13)** — van architectuu
 |------------|-----------|--------|---------------|---------------|-------|
 | **P0** | Migratie resterende `engine/`-oppervlak naar bounded contexts | 🔄 | v5.2.0 | [0001](adr/0001-bounded-contexts-central-event-bus.md), [ADR-005](adr/ADR-005-bounded-contexts-event-bus.md) | LUMINA Core |
 | **P0** | REAL: broker-connectiviteit, reconciliatie, production-runbooks | 🔜 | v5.2.0 | *ADR gepland* | LUMINA Core |
+| **P0** | PromotionGate REAL: purged/cpcv + reality gap + stress DD + significantie (non-negotiable) | ✅ | v5.2.0 | [0007](adr/0007-promotion-gate-real-mode.md) | LUMINA Core |
 | **P1** | Test suite: markers, timeouts, isolated fixtures consequent | 🔄 | v5.2.0 | [0005](adr/0005-test-suite-overhaul-markers-timeouts-isolated-fixtures.md) | LUMINA Core |
 | **P1** | Event Bus: strikte payload-validatie (Pydantic) op kritieke topics | 🔄 | v5.2.0 | [0001](adr/0001-bounded-contexts-central-event-bus.md), [ADR-003](adr/ADR-003-event-bus-contract.md) | LUMINA Core |
 | **P2** | CI/nightly: backtest-realism stack als gate (purged CV, replay, gap) | 🔄 | v5.3.0 | [0004](adr/0004-backtest-realism-purged-cv-orderbook-replay-reality-gap.md) | LUMINA Core |

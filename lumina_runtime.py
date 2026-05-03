@@ -1,5 +1,7 @@
 from __future__ import annotations
+# ruff: noqa: E402
 
+import logging
 import sys
 import threading
 from functools import lru_cache
@@ -8,9 +10,12 @@ from typing import Mapping
 
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 try:
     import tkinter as tk
 except Exception:
+    logging.exception("Unhandled broad exception fallback in lumina_runtime.py:17")
     tk = None
 
 from lumina_core.bootstrap import bootstrap_runtime, create_public_api
@@ -120,7 +125,7 @@ def _run_evolution_startup_prompt() -> None:
             if s is not None:
                 default_v = int(s)
         except Exception:
-            pass
+            logger.exception("lumina_runtime failed to load session parallel realities")
 
     ohlc_default = bool(resolve_ohlc_reality_stress_enabled())
     neuro_default = bool(resolve_neuro_ohlc_stress_rollouts())
@@ -163,7 +168,9 @@ def _run_evolution_startup_prompt() -> None:
             font=("Consolas", 11),
         )
         sp.pack(side="left")
-        tk.Label(row, text=f"  (advise: {rec} op basis van je CPU)", fg="#7fbf7f", bg="#121212").pack(side="left", padx=8)
+        tk.Label(row, text=f"  (advise: {rec} op basis van je CPU)", fg="#7fbf7f", bg="#121212").pack(
+            side="left", padx=8
+        )
 
         var_ohlc = tk.IntVar(value=1 if ohlc_default else 0)
         var_neuro = tk.IntVar(value=1 if neuro_default else 0)

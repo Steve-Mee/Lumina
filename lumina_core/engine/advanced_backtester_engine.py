@@ -199,9 +199,7 @@ class AdvancedBacktesterEngine:
             "mean_maxdd": round(float(np.mean(maxdds)), 1),
             "worst_maxdd": round(float(np.max(maxdds)), 1),
             "winrate_5pct": round(float(np.percentile([r["winrate"] for r in results], 5)), 3),
-            "profit_factor_95pct": round(
-                float(np.percentile([r.get("profit_factor", 1.0) for r in results], 95)), 2
-            ),
+            "profit_factor_95pct": round(float(np.percentile([r.get("profit_factor", 1.0) for r in results], 95)), 2),
             "num_runs": len(results),
             "monte_carlo_mode": "historical_bootstrap" if historical_only else "noise_perturbation",
             "_sharpe_samples": sharpes,

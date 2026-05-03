@@ -71,8 +71,8 @@ class RealityGapContract:
     """Tracks divergence between SIM Sharpe and rolling REAL Sharpe."""
 
     window_observations: int
-    mean_sim_real_gap: float    # positive = SIM is better than REAL (optimism bias)
-    penalty_score: float        # 0.0 = no penalty, higher = more overfit
+    mean_sim_real_gap: float  # positive = SIM is better than REAL (optimism bias)
+    penalty_score: float  # 0.0 = no penalty, higher = more overfit
     max_gap: float
 
     @property
@@ -104,10 +104,10 @@ class OrderBookContract:
 class DynamicKellyContract:
     """Snapshot of the dynamic Kelly estimator state."""
 
-    estimated_kelly: float          # Raw Kelly fraction (before clipping)
-    fractional_kelly: float         # After safety cap (e.g., 0.25 × raw_kelly)
+    estimated_kelly: float  # Raw Kelly fraction (before clipping)
+    fractional_kelly: float  # After safety cap (e.g., 0.25 × raw_kelly)
     rolling_win_rate: float
     rolling_avg_win: float
     rolling_avg_loss: float
-    rolling_profit_factor: float    # avg_win / avg_loss (or inf)
-    window_trades: int              # Number of trades in the rolling window
+    rolling_profit_factor: float  # avg_win / avg_loss (or inf)
+    window_trades: int  # Number of trades in the rolling window

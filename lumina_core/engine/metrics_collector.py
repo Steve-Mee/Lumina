@@ -51,10 +51,8 @@ class MetricsCollector:
         history_points = max(5, int(getattr(self.engine.config, "blackboard_health_trend_points", 30) or 30))
         self.blackboard_health_history = deque(maxlen=history_points)
 
-
     def update_performance_log(self, trade_data: dict[str, Any]) -> None:
         self.engine.update_performance_log(trade_data)
-
 
     def generate_strategy_heatmap(self) -> Any:
         performance_log = self.engine.performance_log
@@ -88,7 +86,6 @@ class MetricsCollector:
         fig.update_layout(title="Strategy Heatmap – Winrate per Regime", template="plotly_dark")
         return fig
 
-
     def generate_performance_summary(self) -> dict[str, Any]:
         performance_log = self.engine.performance_log
         if not performance_log:
@@ -107,7 +104,6 @@ class MetricsCollector:
             "avg_pnl": round(float(np.mean(pnls)), 1),
         }
 
-
     @staticmethod
     def _sum_metric(snapshot: dict[str, Any], metric_name: str, *, labels: dict[str, str] | None = None) -> float:
         total = 0.0
@@ -122,7 +118,6 @@ class MetricsCollector:
                 continue
             total += float(payload.get("value", 0.0) or 0.0)
         return total
-
 
     def _classify_blackboard_health(
         self,
@@ -158,7 +153,6 @@ class MetricsCollector:
         if not has_execution_event:
             return ("AMBER", "#ffc857", "no execution aggregate observed yet")
         return ("GREEN", "#00ff88", "blackboard and orchestrator healthy")
-
 
     def _collect_blackboard_health_state(self) -> dict[str, Any]:
         obs = getattr(self.engine, "observability_service", None)
@@ -203,7 +197,6 @@ class MetricsCollector:
             "reason": reason,
         }
 
-
     def _record_blackboard_health_sample(self, health: dict[str, Any]) -> None:
         self.blackboard_health_history.append(
             {
@@ -216,7 +209,6 @@ class MetricsCollector:
                 "status_color": str(health.get("status_color", "#ffc857") or "#ffc857"),
             }
         )
-
 
     @staticmethod
     def sum_metric(snapshot: dict[str, Any], metric_name: str, *, labels: dict[str, str] | None = None) -> float:

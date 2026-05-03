@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ def _load_yaml_config() -> dict:
     try:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/engine_config.py:20")
         return {}
     return raw if isinstance(raw, dict) else {}
 
@@ -90,6 +92,7 @@ def _parse_swarm_symbols() -> list[str]:
             parsed = json.loads(raw)
             symbols = [str(s).strip().upper() for s in parsed if str(s).strip()]
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/engine_config.py:92")
             symbols = []
     else:
         symbols = [part.strip().upper() for part in raw.split(",") if part.strip()]
@@ -122,12 +125,20 @@ class EngineConfig(BaseModel):
         )
     )
     trade_decision_audit_fail_closed_real: bool = Field(
-        default_factory=lambda: str(
-            os.getenv("TRADE_DECISION_AUDIT_FAIL_CLOSED_REAL") or _config_yaml_nested(True, "audit", "fail_closed_real")
+        default_factory=lambda: (
+            str(
+                os.getenv("TRADE_DECISION_AUDIT_FAIL_CLOSED_REAL")
+                or _config_yaml_nested(True, "audit", "fail_closed_real")
+            )
+            .strip()
+            .lower()
+            == "true"
         )
-        .strip()
-        .lower()
-        == "true"
+    )
+    audit_streams_root: Path = Field(
+        default_factory=lambda: Path(
+            str(os.getenv("LUMINA_AUDIT_ROOT") or _config_yaml_nested("state", "audit", "root") or "state")
+        )
     )
 
     instrument: str = Field(default_factory=lambda: os.getenv("INSTRUMENT", "MES JUN26"))
@@ -135,34 +146,36 @@ class EngineConfig(BaseModel):
     swarm_enabled: bool = Field(default_factory=lambda: os.getenv("SWARM_ENABLED", "True").lower() == "true")
     supported_swarm_roots: list[str] = Field(default_factory=lambda: ["MES", "MNQ", "MYM", "ES"])
     xai_key: str | None = Field(
-        default_factory=lambda: str(
-            os.getenv("XAI_API_KEY") or _config_yaml_section_value("xai", "api_key", "")
-        ).strip()
-        or None
+        default_factory=lambda: (
+            str(os.getenv("XAI_API_KEY") or _config_yaml_section_value("xai", "api_key", "")).strip() or None
+        )
     )
     xai_model: str = Field(
-        default_factory=lambda: str(_config_yaml_section_value("xai", "model", "grok-4.1-fast")).strip()
-        or "grok-4.1-fast"
+        default_factory=lambda: (
+            str(_config_yaml_section_value("xai", "model", "grok-4.1-fast")).strip() or "grok-4.1-fast"
+        )
     )
     xai_update_interval_sec: int = Field(
         default_factory=lambda: int(_config_yaml_section_value("xai", "update_interval_sec", 60) or 60)
     )
     finnhub_api_key: str | None = Field(default_factory=lambda: os.getenv("FINNHUB_API_KEY"))
     broker_backend: str = Field(
-        default_factory=lambda: str(
-            os.getenv("BROKER_BACKEND") or _config_yaml_nested("paper", "broker", "backend") or "paper"
+        default_factory=lambda: (
+            str(os.getenv("BROKER_BACKEND") or _config_yaml_nested("paper", "broker", "backend") or "paper")
+            .strip()
+            .lower()
         )
-        .strip()
-        .lower()
     )
     broker_crosstrade_api_key: str | None = Field(
-        default_factory=lambda: str(
-            os.getenv("BROKER_CROSSTRADE_API_KEY")
-            or os.getenv("CROSSTRADE_TOKEN")
-            or _config_yaml_nested("", "broker", "crosstrade", "api_key")
-            or ""
-        ).strip()
-        or None
+        default_factory=lambda: (
+            str(
+                os.getenv("BROKER_CROSSTRADE_API_KEY")
+                or os.getenv("CROSSTRADE_TOKEN")
+                or _config_yaml_nested("", "broker", "crosstrade", "api_key")
+                or ""
+            ).strip()
+            or None
+        )
     )
     broker_crosstrade_websocket_url: str = Field(
         default_factory=lambda: str(
@@ -180,17 +193,16 @@ class EngineConfig(BaseModel):
         ).strip()
     )
     crosstrade_token: str | None = Field(
-        default_factory=lambda: str(
-            os.getenv("CROSSTRADE_TOKEN") or os.getenv("BROKER_CROSSTRADE_API_KEY") or ""
-        ).strip()
-        or None
+        default_factory=lambda: (
+            str(os.getenv("CROSSTRADE_TOKEN") or os.getenv("BROKER_CROSSTRADE_API_KEY") or "").strip() or None
+        )
     )
     crosstrade_account: str = Field(default_factory=lambda: os.getenv("CROSSTRADE_ACCOUNT", "DEMO5042070"))
     reconcile_fills: bool = Field(default_factory=lambda: _env_or_yaml_bool("RECONCILE_FILLS", "reconcile_fills", True))
     reconciliation_method: str = Field(
-        default_factory=lambda: str(_env_or_yaml("RECONCILIATION_METHOD", "reconciliation_method", "websocket"))
-        .strip()
-        .lower()
+        default_factory=lambda: (
+            str(_env_or_yaml("RECONCILIATION_METHOD", "reconciliation_method", "websocket")).strip().lower()
+        )
     )
     reconciliation_timeout_seconds: float = Field(
         default_factory=lambda: _env_or_yaml_float(
@@ -212,21 +224,23 @@ class EngineConfig(BaseModel):
     )
 
     trade_mode: str = Field(
-        default_factory=lambda: str(
-            os.getenv("LUMINA_MODE")
-            or os.getenv("TRADE_MODE")
-            or _config_yaml_value("mode", "")
-            or (
-                "real"
-                if str(os.getenv("BROKER_BACKEND") or _config_yaml_nested("paper", "broker", "backend") or "paper")
-                .strip()
-                .lower()
-                == "live"
-                else "paper"
+        default_factory=lambda: (
+            str(
+                os.getenv("LUMINA_MODE")
+                or os.getenv("TRADE_MODE")
+                or _config_yaml_value("mode", "")
+                or (
+                    "real"
+                    if str(os.getenv("BROKER_BACKEND") or _config_yaml_nested("paper", "broker", "backend") or "paper")
+                    .strip()
+                    .lower()
+                    == "live"
+                    else "paper"
+                )
             )
+            .strip()
+            .lower()
         )
-        .strip()
-        .lower()
     )
 
     @field_validator("trade_mode")

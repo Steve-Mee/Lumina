@@ -23,66 +23,92 @@ from lumina_core.safety.sandboxed_executor import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _clean_dna() -> str:
-    return json.dumps({
-        "mutation_depth": "conservative",
-        "hyperparam_suggestion": {"max_risk_percent": 1.0, "drawdown_kill_percent": 10.0},
-    })
+    return json.dumps(
+        {
+            "mutation_depth": "conservative",
+            "hyperparam_suggestion": {"max_risk_percent": 1.0, "drawdown_kill_percent": 10.0},
+        }
+    )
 
 
 def _evil_dna() -> str:
-    return json.dumps({
-        "disable_risk_controller": True,
-        "bypass_order_gatekeeper": True,
-    })
+    return json.dumps(
+        {
+            "disable_risk_controller": True,
+            "bypass_order_gatekeeper": True,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # SandboxedResult data type
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestSandboxedResult:
-
     def test_passed_true_when_no_violations_and_positive_score(self) -> None:
         r = SandboxedResult(
-            dna_hash="abc", score=1.0, violations=[],
-            input_hash="x", output_hash="y", mode="sim",
+            dna_hash="abc",
+            score=1.0,
+            violations=[],
+            input_hash="x",
+            output_hash="y",
+            mode="sim",
         )
         assert r.passed is True
 
     def test_passed_false_when_violations_present(self) -> None:
         r = SandboxedResult(
-            dna_hash="abc", score=1.0, violations=["no_naked_orders"],
-            input_hash="x", output_hash="y",
+            dna_hash="abc",
+            score=1.0,
+            violations=["no_naked_orders"],
+            input_hash="x",
+            output_hash="y",
         )
         assert r.passed is False
 
     def test_passed_false_when_score_zero(self) -> None:
         r = SandboxedResult(
-            dna_hash="abc", score=0.0, violations=[],
-            input_hash="x", output_hash="y",
+            dna_hash="abc",
+            score=0.0,
+            violations=[],
+            input_hash="x",
+            output_hash="y",
         )
         assert r.passed is False
 
     def test_passed_false_when_timed_out(self) -> None:
         r = SandboxedResult(
-            dna_hash="abc", score=5.0, violations=[],
-            input_hash="x", output_hash="y", timed_out=True,
+            dna_hash="abc",
+            score=5.0,
+            violations=[],
+            input_hash="x",
+            output_hash="y",
+            timed_out=True,
         )
         assert r.passed is False
 
     def test_is_constitutional_true_when_no_violations(self) -> None:
         r = SandboxedResult(
-            dna_hash="a", score=1.0, violations=[],
-            input_hash="i", output_hash="o",
+            dna_hash="a",
+            score=1.0,
+            violations=[],
+            input_hash="i",
+            output_hash="o",
         )
         assert r.is_constitutional is True
 
     def test_to_audit_record_has_required_fields(self) -> None:
         r = SandboxedResult(
-            dna_hash="abc", score=1.5, violations=["foo"],
-            input_hash="ih", output_hash="oh", mode="real",
+            dna_hash="abc",
+            score=1.5,
+            violations=["foo"],
+            input_hash="ih",
+            output_hash="oh",
+            mode="real",
         )
         rec = r.to_audit_record()
         for field in ("dna_hash", "score", "violations", "input_hash", "output_hash", "passed", "mode"):
@@ -93,9 +119,9 @@ class TestSandboxedResult:
 # Secret stripping
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestStripSecrets:
-
     def test_api_key_stripped(self) -> None:
         env = {"XAI_API_KEY": "secret", "PATH": "/usr/bin", "API_KEY": "also_secret"}
         clean = _strip_secrets(env)
@@ -122,6 +148,7 @@ class TestStripSecrets:
 # ---------------------------------------------------------------------------
 # In-process path (unit — no subprocess)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.unit
 class TestInProcessEvaluation:
@@ -187,9 +214,9 @@ class TestInProcessEvaluation:
 # Input hash is deterministic
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.unit
 class TestInputHashDeterminism:
-
     def test_same_input_produces_same_hash(self) -> None:
         dna = '{"a": 1}'
         payload = json.dumps(
@@ -209,6 +236,7 @@ class TestInputHashDeterminism:
 # ---------------------------------------------------------------------------
 # Subprocess sandbox — clean DNA passes
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.slow
 class TestSubprocessSandbox:
@@ -260,24 +288,16 @@ class TestSubprocessSandbox:
         )
 
         size_after = real_state.stat().st_size if real_state.exists() else 0
-        assert size_before == size_after, (
-            "Sandbox must not write to the real state/ directory"
-        )
+        assert size_before == size_after, "Sandbox must not write to the real state/ directory"
 
     def test_subprocess_input_hash_is_deterministic(self) -> None:
         executor = SandboxedMutationExecutor(always_sandbox=True, timeout_s=30)
-        r1 = executor.evaluate(
-            dna_content=_clean_dna(), mode="sim", pnl=100.0, max_dd=10.0, sharpe=1.0
-        )
-        r2 = executor.evaluate(
-            dna_content=_clean_dna(), mode="sim", pnl=100.0, max_dd=10.0, sharpe=1.0
-        )
+        r1 = executor.evaluate(dna_content=_clean_dna(), mode="sim", pnl=100.0, max_dd=10.0, sharpe=1.0)
+        r2 = executor.evaluate(dna_content=_clean_dna(), mode="sim", pnl=100.0, max_dd=10.0, sharpe=1.0)
         assert r1.input_hash == r2.input_hash
 
     def test_subprocess_audit_record_serialisable(self) -> None:
         executor = SandboxedMutationExecutor(always_sandbox=True, timeout_s=30)
-        result = executor.evaluate(
-            dna_content=_clean_dna(), mode="sim", pnl=100.0, max_dd=10.0, sharpe=0.5
-        )
+        result = executor.evaluate(dna_content=_clean_dna(), mode="sim", pnl=100.0, max_dd=10.0, sharpe=0.5)
         rec = result.to_audit_record()
         assert json.dumps(rec)  # must be JSON-serialisable

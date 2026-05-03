@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import argparse
 import json
@@ -91,6 +92,7 @@ def contract_check(expected_broker_status: str) -> int:
     try:
         payload = json.loads(found.read_text(encoding="utf-8"))
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in scripts/controlled_live_helper.py:93")
         print(f"[ERROR] Failed to parse {found}: {exc}")
         return 2
 
@@ -128,6 +130,7 @@ def stability_check() -> int:
     try:
         payload = json.loads(summary_path.read_text(encoding="utf-8"))
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in scripts/controlled_live_helper.py:130")
         print(f"[ERROR] Failed to parse {summary_path}: {exc}")
         return 2
 

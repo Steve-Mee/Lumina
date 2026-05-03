@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,8 +11,12 @@ from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
+from lumina_core.audit import get_audit_logger
+
 from .agent_decision_log import AgentDecisionLog
 from .agent_policy_gateway import AgentPolicyGateway, default_lineage
+
+logger = logging.getLogger(__name__)
 
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -19,6 +25,7 @@ _DECISION_LOG_PATH = Path("state/thought_log.jsonl")
 _DECISION_LOG_LOCK = threading.Lock()
 _LAST_ENTRY_HASH = ""
 _AGENT_DECISION_LOG = AgentDecisionLog(path=Path("state/agent_decision_log.jsonl"))
+get_audit_logger().register_stream("agent_thought", _DECISION_LOG_PATH)
 
 
 class AgentContractError(RuntimeError):
@@ -94,31 +101,18 @@ class ExecutionDecisionOutputSchema(ContractOutputBase):
 def _append_immutable_decision_log(payload: dict[str, Any]) -> None:
     global _LAST_ENTRY_HASH
     with _DECISION_LOG_LOCK:
-        _DECISION_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        if not _LAST_ENTRY_HASH and _DECISION_LOG_PATH.exists():
-            try:
-                last_line = ""
-                with _DECISION_LOG_PATH.open("r", encoding="utf-8") as handle:
-                    for line in handle:
-                        if line.strip():
-                            last_line = line
-                if last_line:
-                    parsed = json.loads(last_line)
-                    if isinstance(parsed, dict):
-                        _LAST_ENTRY_HASH = str(parsed.get("entry_hash", ""))
-            except Exception:
-                _LAST_ENTRY_HASH = ""
-
-        entry = dict(payload)
-        entry["prev_hash"] = _LAST_ENTRY_HASH
-        encoded = json.dumps(entry, sort_keys=True, ensure_ascii=False).encode("utf-8")
-        entry_hash = hashlib.sha256(encoded).hexdigest()
-        entry["entry_hash"] = entry_hash
-        with _DECISION_LOG_PATH.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        _LAST_ENTRY_HASH = entry_hash
+        appended = get_audit_logger().append(
+            stream="agent_thought",
+            payload=payload,
+            path=_DECISION_LOG_PATH,
+            mode=str(os.getenv("LUMINA_MODE", "sim")).strip().lower(),
+            actor_id=str(payload.get("agent", "unknown")),
+            severity="info",
+        )
+        _LAST_ENTRY_HASH = str(appended.get("entry_hash", ""))
 
     # Mirror every contract decision into the immutable agent decision log.
+    is_real_mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() == "real"
     try:
         full_context = payload.get("full_context", {}) if isinstance(payload.get("full_context"), dict) else {}
         raw_input = full_context.get("input", {}) if isinstance(full_context.get("input"), dict) else {}
@@ -133,9 +127,15 @@ def _append_immutable_decision_log(payload: dict[str, Any]) -> None:
             decision_context_id=str(payload.get("method", "unknown_method")),
             model_version=str(payload.get("model_hash", "unknown_model")),
             prompt_hash=hashlib.sha256(prompt_seed.encode("utf-8")).hexdigest(),
+            is_real_mode=is_real_mode,
         )
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception(
+            "AgentContracts failed to mirror contract decision into AgentDecisionLog (real_mode=%s)",
+            is_real_mode,
+        )
+        if is_real_mode:
+            raise AgentContractError("Decision mirror write failed in REAL mode") from exc
 
 
 def enforce_contract(

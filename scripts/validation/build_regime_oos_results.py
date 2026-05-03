@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 from pathlib import Path
@@ -18,6 +19,7 @@ def _load_json(path: Path) -> dict[str, Any]:
         payload = json.loads(path.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in scripts/validation/build_regime_oos_results.py:20")
         return {}
 
 

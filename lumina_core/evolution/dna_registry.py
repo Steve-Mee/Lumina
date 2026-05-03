@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import hashlib
 import json
@@ -197,6 +198,9 @@ class DNARegistry:
                     try:
                         self._append_jsonl(record)
                     except Exception:
+                        logging.exception(
+                            "Unhandled broad exception fallback in lumina_core/evolution/dna_registry.py:199"
+                        )
                         connection.execute("DELETE FROM dna_entries WHERE hash = ?", (record["hash"],))
                         connection.commit()
                         raise
@@ -317,6 +321,7 @@ class DNARegistry:
             try:
                 event = blackboard.latest(topic)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/dna_registry.py:319")
                 event = None
             if event is None:
                 continue

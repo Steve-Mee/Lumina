@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -236,6 +237,7 @@ class ModelTrainer:
             try:
                 status_payload = json.loads(self.LLAMA_CPP_STATUS_FILE.read_text(encoding="utf-8"))
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/model_trainer.py:238")
                 status_payload = {}
         return {
             "converter_exists": converter.exists(),
@@ -258,6 +260,7 @@ class ModelTrainer:
                 check=False,
             )
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/model_trainer.py:260")
             return False, str(exc)
         output = completed.stdout.strip() or completed.stderr.strip() or f"Exit code {completed.returncode}"
         return completed.returncode == 0, output
@@ -292,6 +295,7 @@ class ModelTrainer:
             __import__(module_name)
             return True
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/model_trainer.py:294")
             return False
 
     @staticmethod
@@ -301,4 +305,5 @@ class ModelTrainer:
 
             return bool(torch.cuda.is_available())
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/model_trainer.py:303")
             return False

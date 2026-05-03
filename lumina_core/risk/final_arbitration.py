@@ -1,48 +1,108 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from typing import Any, Literal
+import logging
+from collections.abc import Mapping
+from typing import FrozenSet
 
+from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.risk.risk_policy import RiskPolicy, load_risk_policy
+from lumina_core.risk.schemas import (
+    ArbitrationState,
+    ArbitrationCheckStep,
+    ArbitrationResult,
+    ArbitrationStatus,
+    OrderIntent,
+    OrderIntentMetadata,
+)
 from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 
-ArbitrationStatus = Literal["APPROVED", "REJECTED"]
+logger = logging.getLogger(__name__)
+STRICT_ARBITRATION_MODES = frozenset({"real", "paper", "sim_real_guard"})
+_SKIPPABLE_INTERNAL_STEPS = frozenset({"real_equity_snapshot", "constitution", "risk_policy"})
 
 
-@dataclass(slots=True)
-class ArbitrationResult:
-    status: ArbitrationStatus
-    reason: str
-    checks: list[dict[str, Any]] = field(default_factory=list)
-    metadata: dict[str, Any] = field(default_factory=dict)
+def is_strict_arbitration_mode(mode: str) -> bool:
+    return str(mode or "").strip().lower() in STRICT_ARBITRATION_MODES
 
 
-def build_order_intent_from_order(order: Any, *, dream_snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_constitution_payload(
+    *,
+    intent: OrderIntent,
+    state: ArbitrationState,
+    resolved_policy: RiskPolicy,
+) -> dict[str, object]:
+    intent_payload = intent.model_dump(mode="json", by_alias=True)
+    constitution_payload: dict[str, object] = {
+        "order_intent": intent_payload,
+        "hyperparam_suggestion": {
+            "kelly_fraction": float(resolved_policy.kelly_fraction),
+            "max_risk_percent": float(
+                resolved_policy.max_total_open_risk / max(float(state.account_equity or 1.0), 1.0)
+            )
+            * 100.0,
+            "daily_loss_cap": float(resolved_policy.daily_loss_cap),
+        },
+    }
+    constitution_payload.update(intent_payload)
+    return constitution_payload
+
+
+def evaluate_constitution_for_intent(
+    *,
+    intent: OrderIntent,
+    state: ArbitrationState,
+    resolved_policy: RiskPolicy,
+) -> tuple[bool, str]:
+    mode = str(state.runtime_mode or resolved_policy.runtime_mode).strip().lower()
+    try:
+        violations = TRADING_CONSTITUTION.audit(
+            json.dumps(
+                build_constitution_payload(intent=intent, state=state, resolved_policy=resolved_policy),
+                ensure_ascii=True,
+                sort_keys=True,
+            ),
+            mode=mode,
+            raise_on_fatal=False,
+        )
+    except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/risk/final_arbitration.py:62")
+        return False, "constitution_check_error"
+    fatals = [v for v in violations if str(getattr(v, "severity", "")).lower() == "fatal"]
+    if fatals:
+        return False, f"constitution_violation:{fatals[0].principle_name}"
+    return True, "ok"
+
+
+def build_order_intent_from_order(order: object, *, dream_snapshot: Mapping[str, object] | None = None) -> OrderIntent:
     snapshot = dict(dream_snapshot or {})
     metadata = getattr(order, "metadata", {})
     metadata = metadata if isinstance(metadata, dict) else {}
     reference_price = float(metadata.get("reference_price", 0.0) or 0.0)
-    stop_loss = float(getattr(order, "stop_loss", 0.0) or 0.0)
+    stop = float(getattr(order, "stop_loss", 0.0) or 0.0)
     side = str(getattr(order, "side", "HOLD") or "HOLD").upper()
-    proposed_risk = abs(reference_price - stop_loss) if reference_price > 0.0 and stop_loss > 0.0 else 0.0
-    return {
-        "symbol": str(getattr(order, "symbol", "") or ""),
-        "side": side,
-        "quantity": int(getattr(order, "quantity", 0) or 0),
-        "order_type": str(getattr(order, "order_type", "MARKET") or "MARKET"),
-        "stop_loss": stop_loss,
-        "take_profit": float(getattr(order, "take_profit", 0.0) or 0.0),
-        "reference_price": reference_price,
-        "proposed_risk": float(metadata.get("proposed_risk", proposed_risk) or proposed_risk),
-        "regime": str(snapshot.get("regime", metadata.get("regime", "NEUTRAL")) or "NEUTRAL"),
-        "confluence_score": float(snapshot.get("confluence_score", metadata.get("confluence_score", 0.0)) or 0.0),
-        "metadata": metadata,
-    }
+    proposed_risk = abs(reference_price - stop) if reference_price > 0.0 and stop > 0.0 else 0.0
+    return OrderIntent(
+        instrument=str(getattr(order, "symbol", "") or ""),
+        side=side,
+        quantity=int(getattr(order, "quantity", 0) or 0),
+        order_type=str(getattr(order, "order_type", "MARKET") or "MARKET"),
+        stop=stop,
+        target=float(getattr(order, "take_profit", 0.0) or 0.0),
+        reference_price=reference_price,
+        proposed_risk=float(metadata.get("proposed_risk", proposed_risk) or proposed_risk),
+        regime=str(snapshot.get("regime", metadata.get("regime", "NEUTRAL")) or "NEUTRAL"),
+        confluence_score=float(snapshot.get("confluence_score", metadata.get("confluence_score", 0.0)) or 0.0),
+        confidence=float(snapshot.get("confidence", metadata.get("confidence", 0.0)) or 0.0),
+        source_agent=str(snapshot.get("source_agent", metadata.get("source_agent", "unknown")) or "unknown"),
+        disable_risk_controller=bool(metadata.get("disable_risk_controller", False)),
+        metadata=OrderIntentMetadata(reason=str(metadata.get("reason", "") or "")),
+    )
 
 
-def build_current_state_from_engine(engine: Any) -> dict[str, Any]:
+def build_current_state_from_engine(engine: object) -> ArbitrationState:
     app = getattr(engine, "app", None)
+    runtime_mode = str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
     risk_controller = getattr(engine, "risk_controller", None)
     risk_state = getattr(risk_controller, "state", None)
     open_risk_by_symbol = getattr(risk_state, "open_risk_by_symbol", {}) if risk_state is not None else {}
@@ -54,7 +114,10 @@ def build_current_state_from_engine(engine: Any) -> dict[str, Any]:
     if account_equity is None and app is not None:
         account_equity = getattr(app, "account_equity", 0.0)
     if account_equity is None:
-        account_equity = 50_000.0
+        if is_strict_arbitration_mode(runtime_mode):
+            account_equity = 0.0
+        else:
+            account_equity = 50_000.0
     free_margin = getattr(engine, "available_margin", None)
     if free_margin is None and app is not None:
         free_margin = getattr(app, "available_margin", 0.0)
@@ -64,22 +127,81 @@ def build_current_state_from_engine(engine: Any) -> dict[str, Any]:
     live_position_qty = getattr(engine, "live_position_qty", None)
     if live_position_qty is None and app is not None:
         live_position_qty = getattr(app, "sim_position_qty", 0)
-    return {
-        "runtime_mode": str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper"),
-        "daily_pnl": float(realized_pnl or 0.0),
-        "account_equity": float(account_equity or 0.0),
-        "drawdown_pct": float(getattr(engine, "drawdown_pct", 0.0) or 0.0),
-        "drawdown_kill_percent": float(getattr(getattr(engine, "config", None), "drawdown_kill_percent", 25.0) or 25.0),
-        "used_margin": float(used_margin or 0.0),
-        "free_margin": float(free_margin or 0.0),
-        "open_risk_by_symbol": dict(open_risk_by_symbol) if isinstance(open_risk_by_symbol, dict) else {},
-        "total_open_risk": total_open_risk,
-        "var_95_usd": float(getattr(risk_state, "var_95_usd", 0.0) or 0.0) if risk_state is not None else 0.0,
-        "var_99_usd": float(getattr(risk_state, "var_99_usd", 0.0) or 0.0) if risk_state is not None else 0.0,
-        "es_95_usd": float(getattr(risk_state, "es_95_usd", 0.0) or 0.0) if risk_state is not None else 0.0,
-        "es_99_usd": float(getattr(risk_state, "es_99_usd", 0.0) or 0.0) if risk_state is not None else 0.0,
-        "live_position_qty": int(live_position_qty or 0),
-    }
+    equity_snapshot_ok = True
+    equity_snapshot_reason = "not_required_non_real"
+    equity_snapshot_source = ""
+    equity_snapshot_age_sec = 0.0
+    if runtime_mode == "real":
+        equity_snapshot_ok = False
+        equity_snapshot_reason = "provider_unavailable"
+        provider = getattr(engine, "equity_snapshot_provider", None)
+        if provider is not None and callable(getattr(provider, "get_snapshot", None)):
+            try:
+                snapshot = provider.get_snapshot()
+                equity_snapshot_source = str(getattr(snapshot, "source", "") or "")
+                equity_snapshot_age_sec = float(getattr(snapshot, "age_seconds", 0.0) or 0.0)
+                snapshot_fresh = bool(getattr(snapshot, "is_fresh", False))
+                snapshot_ok = bool(getattr(snapshot, "ok", False))
+                snapshot_reason = str(
+                    getattr(snapshot, "reason_code", "snapshot_unavailable") or "snapshot_unavailable"
+                )
+                if snapshot_ok and snapshot_fresh:
+                    account_equity = float(getattr(snapshot, "equity_usd", 0.0) or 0.0)
+                    free_margin = float(getattr(snapshot, "available_margin_usd", 0.0) or 0.0)
+                    used_margin = float(getattr(snapshot, "used_margin_usd", 0.0) or 0.0)
+                    equity_snapshot_ok = True
+                    equity_snapshot_reason = "ok"
+                    margin_tracker = getattr(risk_state, "margin_tracker", None)
+                    if margin_tracker is not None:
+                        margin_tracker.account_equity = float(account_equity)
+                else:
+                    account_equity = 0.0
+                    free_margin = 0.0
+                    used_margin = 0.0
+                    equity_snapshot_reason = (
+                        "equity_snapshot_stale" if snapshot_ok and not snapshot_fresh else snapshot_reason
+                    )
+            except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/risk/final_arbitration.py:153")
+                account_equity = 0.0
+                free_margin = 0.0
+                used_margin = 0.0
+                equity_snapshot_reason = "provider_error"
+        if not equity_snapshot_ok:
+            reason_text = f"REAL_EQUITY_SNAPSHOT_FAIL: {equity_snapshot_reason}"
+            logger.critical(reason_text)
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                    code="REAL_EQUITY_SNAPSHOT_FAIL",
+                    message=reason_text,
+                    context={"source": equity_snapshot_source, "age_seconds": round(equity_snapshot_age_sec, 3)},
+                )
+            )
+    elif is_strict_arbitration_mode(runtime_mode) and float(account_equity or 0.0) <= 0.0:
+        equity_snapshot_ok = False
+        equity_snapshot_reason = f"{runtime_mode}_account_context_missing"
+    open_risk = dict(open_risk_by_symbol) if isinstance(open_risk_by_symbol, dict) else {}
+    return ArbitrationState(
+        runtime_mode=runtime_mode,
+        daily_pnl=float(realized_pnl or 0.0),
+        account_equity=float(account_equity or 0.0),
+        drawdown_pct=float(getattr(engine, "drawdown_pct", 0.0) or 0.0),
+        drawdown_kill_percent=float(getattr(getattr(engine, "config", None), "drawdown_kill_percent", 25.0) or 25.0),
+        used_margin=float(used_margin or 0.0),
+        free_margin=float(free_margin or 0.0),
+        equity_snapshot_ok=bool(equity_snapshot_ok),
+        equity_snapshot_reason=equity_snapshot_reason,
+        equity_snapshot_source=equity_snapshot_source,
+        equity_snapshot_age_sec=float(equity_snapshot_age_sec),
+        open_risk_by_symbol={str(symbol): float(value or 0.0) for symbol, value in open_risk.items()},
+        total_open_risk=total_open_risk,
+        var_95_usd=float(getattr(risk_state, "var_95_usd", 0.0) or 0.0) if risk_state is not None else 0.0,
+        var_99_usd=float(getattr(risk_state, "var_99_usd", 0.0) or 0.0) if risk_state is not None else 0.0,
+        es_95_usd=float(getattr(risk_state, "es_95_usd", 0.0) or 0.0) if risk_state is not None else 0.0,
+        es_99_usd=float(getattr(risk_state, "es_99_usd", 0.0) or 0.0) if risk_state is not None else 0.0,
+        live_position_qty=int(live_position_qty or 0),
+    )
 
 
 class FinalArbitration:
@@ -87,137 +209,166 @@ class FinalArbitration:
         self._explicit_policy = policy is not None
         self.policy = policy or load_risk_policy()
 
-    def check_order_intent(self, order_intent: dict[str, Any], current_state: dict[str, Any]) -> ArbitrationResult:
-        checks: list[dict[str, Any]] = []
-        try:
-            intent = dict(order_intent or {})
-            state = dict(current_state or {})
-        except Exception:
-            return ArbitrationResult(status="REJECTED", reason="arbitration_invalid_payload", checks=checks)
+    def check(
+        self,
+        order_intent: OrderIntent,
+        current_state: ArbitrationState,
+        *,
+        skip_internal_steps: FrozenSet[str] | None = None,
+    ) -> ArbitrationResult:
+        checks: list[ArbitrationCheckStep] = []
+        if not isinstance(order_intent, OrderIntent) or not isinstance(current_state, ArbitrationState):
+            return self._build_result(status="REJECTED", reason="arbitration_invalid_payload", checks=checks)
+        state = current_state
+        skipped = frozenset(skip_internal_steps or frozenset()).intersection(_SKIPPABLE_INTERNAL_STEPS)
 
-        valid, reason = self._validate_shape(intent, state)
-        checks.append({"check": "shape", "ok": valid, "reason": reason})
+        valid, reason = self._validate_shape(order_intent, state)
+        checks.append(ArbitrationCheckStep(name="shape", ok=valid, reason=reason))
         if not valid:
-            return ArbitrationResult(status="REJECTED", reason=reason, checks=checks)
+            return self._build_result(status="REJECTED", reason=reason, checks=checks)
 
-        if self._is_eod_risk_reducing_exit(intent, state):
-            checks.append({"check": "eod_force_close_exit", "ok": True, "reason": "risk_reducing_exit"})
-            return ArbitrationResult(status="APPROVED", reason="approved_eod_force_close_exit", checks=checks)
+        if self._is_eod_risk_reducing_exit(order_intent, state):
+            checks.append(ArbitrationCheckStep(name="eod_force_close_exit", ok=True, reason="risk_reducing_exit"))
+            return self._build_result(status="APPROVED", reason="approved_eod_force_close_exit", checks=checks)
 
-        c_ok, c_reason = self._check_constitution(intent, state)
-        checks.append({"check": "constitution", "ok": c_ok, "reason": c_reason})
-        if not c_ok:
-            return ArbitrationResult(status="REJECTED", reason=c_reason, checks=checks)
+        if "real_equity_snapshot" in skipped:
+            checks.append(
+                ArbitrationCheckStep(name="real_equity_snapshot", ok=True, reason="skipped_by_admission_chain")
+            )
+        else:
+            snapshot_ok, snapshot_reason = self._check_equity_snapshot_requirements(order_intent, state)
+            checks.append(ArbitrationCheckStep(name="real_equity_snapshot", ok=snapshot_ok, reason=snapshot_reason))
+            if not snapshot_ok:
+                return self._build_result(status="REJECTED", reason=snapshot_reason, checks=checks)
 
-        p_ok, p_reason = self._check_policy(intent, state)
-        checks.append({"check": "risk_policy", "ok": p_ok, "reason": p_reason})
-        if not p_ok:
-            return ArbitrationResult(status="REJECTED", reason=p_reason, checks=checks)
+        if "constitution" in skipped:
+            checks.append(ArbitrationCheckStep(name="constitution", ok=True, reason="skipped_by_admission_chain"))
+        else:
+            c_ok, c_reason = self._check_constitution(order_intent, state)
+            checks.append(ArbitrationCheckStep(name="constitution", ok=c_ok, reason=c_reason))
+            if not c_ok:
+                return self._build_result(status="REJECTED", reason=c_reason, checks=checks)
+
+        if "risk_policy" in skipped:
+            checks.append(ArbitrationCheckStep(name="risk_policy", ok=True, reason="skipped_by_admission_chain"))
+        else:
+            p_ok, p_reason = self._check_policy(order_intent, state)
+            checks.append(ArbitrationCheckStep(name="risk_policy", ok=p_ok, reason=p_reason))
+            if not p_ok:
+                return self._build_result(status="REJECTED", reason=p_reason, checks=checks)
 
         a_ok, a_reason = self._check_account_state(state)
-        checks.append({"check": "account_state", "ok": a_ok, "reason": a_reason})
+        checks.append(ArbitrationCheckStep(name="account_state", ok=a_ok, reason=a_reason))
         if not a_ok:
-            return ArbitrationResult(status="REJECTED", reason=a_reason, checks=checks)
+            return self._build_result(status="REJECTED", reason=a_reason, checks=checks)
 
-        return ArbitrationResult(status="APPROVED", reason="approved", checks=checks)
+        return self._build_result(status="APPROVED", reason="approved", checks=checks)
 
-    def _validate_shape(self, intent: dict[str, Any], state: dict[str, Any]) -> tuple[bool, str]:
-        symbol = str(intent.get("symbol", "") or "").strip()
+    def check_order_intent(
+        self,
+        order_intent: OrderIntent,
+        current_state: ArbitrationState,
+        *,
+        skip_internal_steps: FrozenSet[str] | None = None,
+    ) -> ArbitrationResult:
+        return self.check(
+            order_intent=order_intent,
+            current_state=current_state,
+            skip_internal_steps=skip_internal_steps,
+        )
+
+    def _build_result(
+        self,
+        *,
+        status: ArbitrationStatus,
+        reason: str,
+        checks: list[ArbitrationCheckStep],
+    ) -> ArbitrationResult:
+        violated_principle: str | None = None
+        if reason.startswith("constitution_violation:"):
+            violated_principle = reason.split(":", 1)[1] or None
+        return ArbitrationResult(status=status, reason=reason, violated_principle=violated_principle, checks=checks)
+
+    def _validate_shape(self, intent: OrderIntent, state: ArbitrationState) -> tuple[bool, str]:
+        symbol = str(intent.instrument or "").strip()
         if not symbol:
             return False, "invalid_order_symbol"
-        side = str(intent.get("side", "HOLD") or "HOLD").upper()
+        side = str(intent.side or "HOLD").upper()
         if side not in {"BUY", "SELL"}:
             return False, "invalid_order_side"
-        qty = int(intent.get("quantity", 0) or 0)
+        qty = int(intent.quantity or 0)
         if qty <= 0:
             return False, "invalid_order_quantity"
-        if not isinstance(state, dict):
+        if not isinstance(state, ArbitrationState):
             return False, "invalid_current_state"
         return True, "ok"
 
-    def _check_constitution(self, intent: dict[str, Any], state: dict[str, Any]) -> tuple[bool, str]:
-        mode = str(state.get("runtime_mode", self.policy.runtime_mode) or self.policy.runtime_mode).strip().lower()
-        symbol = str(intent.get("symbol", "") or "").strip().upper()
+    def _check_constitution(self, intent: OrderIntent, state: ArbitrationState) -> tuple[bool, str]:
+        symbol = str(intent.instrument or "").strip().upper()
         resolved_policy = self._resolve_policy_for_intent(state=state, symbol=symbol)
-        constitution_payload = {
-            "order_intent": intent,
-            "hyperparam_suggestion": {
-                "kelly_fraction": float(resolved_policy.kelly_fraction),
-                "max_risk_percent": float(resolved_policy.max_total_open_risk / max(float(state.get("account_equity", 1.0) or 1.0), 1.0)) * 100.0,
-                "daily_loss_cap": float(resolved_policy.daily_loss_cap),
-            },
-        }
-        constitution_payload.update(intent)
-        try:
-            violations = TRADING_CONSTITUTION.audit(
-                json.dumps(constitution_payload, ensure_ascii=True, sort_keys=True),
-                mode=mode,
-                raise_on_fatal=False,
-            )
-        except Exception:
-            return False, "constitution_check_error"
-        fatals = [v for v in violations if str(getattr(v, "severity", "")).lower() == "fatal"]
-        if fatals:
-            return False, f"constitution_violation:{fatals[0].principle_name}"
-        return True, "ok"
+        return evaluate_constitution_for_intent(intent=intent, state=state, resolved_policy=resolved_policy)
 
-    def _check_policy(self, intent: dict[str, Any], state: dict[str, Any]) -> tuple[bool, str]:
-        symbol = str(intent.get("symbol", "") or "").strip().upper()
+    def _check_policy(self, intent: OrderIntent, state: ArbitrationState) -> tuple[bool, str]:
+        symbol = str(intent.instrument or "").strip().upper()
         resolved_policy = self._resolve_policy_for_intent(state=state, symbol=symbol)
-        projected_risk = float(intent.get("proposed_risk", 0.0) or 0.0)
+        projected_risk = float(intent.proposed_risk or 0.0)
         if projected_risk <= 0.0:
-            reference = float(intent.get("reference_price", 0.0) or 0.0)
-            stop = float(intent.get("stop_loss", 0.0) or 0.0)
+            reference = float(intent.reference_price or 0.0)
+            stop = float(intent.stop or 0.0)
             if reference > 0.0 and stop > 0.0:
                 projected_risk = abs(reference - stop)
         if projected_risk > float(resolved_policy.max_open_risk_per_instrument):
             return False, "risk_limit_per_instrument_exceeded"
 
-        open_risk_by_symbol = state.get("open_risk_by_symbol", {})
-        if isinstance(open_risk_by_symbol, dict):
-            sym_open = float(open_risk_by_symbol.get(symbol, 0.0) or 0.0)
-            if sym_open + projected_risk > float(resolved_policy.max_open_risk_per_instrument):
-                return False, "risk_limit_per_instrument_exceeded"
+        sym_open = float(state.open_risk_by_symbol.get(symbol, 0.0) or 0.0)
+        if sym_open + projected_risk > float(resolved_policy.max_open_risk_per_instrument):
+            return False, "risk_limit_per_instrument_exceeded"
 
-        total_open_risk = float(state.get("total_open_risk", 0.0) or 0.0)
+        total_open_risk = float(state.total_open_risk or 0.0)
         if total_open_risk + projected_risk > float(resolved_policy.max_total_open_risk):
             return False, "risk_limit_total_open_exceeded"
 
-        daily_pnl = float(state.get("daily_pnl", 0.0) or 0.0)
+        daily_pnl = float(state.daily_pnl or 0.0)
         if daily_pnl <= float(resolved_policy.daily_loss_cap):
             return False, "daily_loss_cap_breached"
 
-        if float(state.get("var_95_usd", 0.0) or 0.0) > float(resolved_policy.var_95_limit_usd):
+        if float(state.var_95_usd or 0.0) > float(resolved_policy.var_95_limit_usd):
             return False, "var_95_limit_breached"
-        if float(state.get("var_99_usd", 0.0) or 0.0) > float(resolved_policy.var_99_limit_usd):
+        if float(state.var_99_usd or 0.0) > float(resolved_policy.var_99_limit_usd):
             return False, "var_99_limit_breached"
-        if float(state.get("es_95_usd", 0.0) or 0.0) > float(resolved_policy.es_95_limit_usd):
+        if float(state.es_95_usd or 0.0) > float(resolved_policy.es_95_limit_usd):
             return False, "es_95_limit_breached"
-        if float(state.get("es_99_usd", 0.0) or 0.0) > float(resolved_policy.es_99_limit_usd):
+        if float(state.es_99_usd or 0.0) > float(resolved_policy.es_99_limit_usd):
             return False, "es_99_limit_breached"
 
         return True, "ok"
 
-    def _resolve_policy_for_intent(self, *, state: dict[str, Any], symbol: str) -> RiskPolicy:
+    def _resolve_policy_for_intent(self, *, state: ArbitrationState, symbol: str) -> RiskPolicy:
         if self._explicit_policy:
             return self.policy
-        mode = str(state.get("runtime_mode", self.policy.runtime_mode) or self.policy.runtime_mode).strip().lower()
+        mode = str(state.runtime_mode or self.policy.runtime_mode).strip().lower()
         normalized_symbol = str(symbol or "").strip().upper() or None
         try:
             return load_risk_policy(mode=mode, instrument=normalized_symbol, reload_config=True)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/risk/final_arbitration.py:339")
             return self.policy
 
-    def _check_account_state(self, state: dict[str, Any]) -> tuple[bool, str]:
-        equity = float(state.get("account_equity", 0.0) or 0.0)
+    def _check_account_state(self, state: ArbitrationState) -> tuple[bool, str]:
+        mode = str(state.runtime_mode or self.policy.runtime_mode).strip().lower()
+        if mode == "real" and not bool(state.equity_snapshot_ok):
+            return False, str(state.equity_snapshot_reason or "real_equity_snapshot_required")
+        equity = float(state.account_equity or 0.0)
         if equity <= 0.0:
+            if is_strict_arbitration_mode(mode):
+                return False, str(state.equity_snapshot_reason or "account_context_missing")
             return False, "account_equity_invalid"
 
-        free_margin = float(state.get("free_margin", 0.0) or 0.0)
-        used_margin = float(state.get("used_margin", 0.0) or 0.0)
+        free_margin = float(state.free_margin or 0.0)
+        used_margin = float(state.used_margin or 0.0)
         if free_margin <= 0.0 and used_margin > 0.0:
             return False, "margin_unavailable"
-        margin_confidence = state.get("margin_confidence", None)
+        margin_confidence = state.margin_confidence
         if margin_confidence is None:
             total_margin = free_margin + used_margin
             if total_margin > 0.0:
@@ -228,19 +379,30 @@ class FinalArbitration:
         if margin_confidence_value < float(self.policy.margin_min_confidence):
             return False, "margin_confidence_below_policy"
 
-        drawdown_pct = float(state.get("drawdown_pct", 0.0) or 0.0)
-        drawdown_kill_percent = float(state.get("drawdown_kill_percent", 25.0) or 25.0)
+        drawdown_pct = float(state.drawdown_pct or 0.0)
+        drawdown_kill_percent = float(state.drawdown_kill_percent or 25.0)
         if drawdown_pct >= drawdown_kill_percent:
             return False, "drawdown_kill_threshold_breached"
         return True, "ok"
 
-    @staticmethod
-    def _is_eod_risk_reducing_exit(intent: dict[str, Any], state: dict[str, Any]) -> bool:
-        metadata = intent.get("metadata", {})
-        metadata = metadata if isinstance(metadata, dict) else {}
-        if str(metadata.get("reason", "")).strip().lower() == "eod_force_close":
-            return True
-        live_qty = int(state.get("live_position_qty", 0) or 0)
-        side = str(intent.get("side", "")).upper()
-        return (live_qty > 0 and side == "SELL") or (live_qty < 0 and side == "BUY")
+    def _check_equity_snapshot_requirements(self, intent: OrderIntent, state: ArbitrationState) -> tuple[bool, str]:
+        mode = str(state.runtime_mode or self.policy.runtime_mode).strip().lower()
+        if mode != "real":
+            return True, "ok_non_real"
+        if self._is_risk_reducing_exit(intent=intent, state=state):
+            return True, "ok_risk_reducing_exit"
+        if bool(state.equity_snapshot_ok):
+            return True, "ok"
+        return False, str(state.equity_snapshot_reason or "real_equity_snapshot_required")
 
+    @staticmethod
+    def _is_eod_risk_reducing_exit(intent: OrderIntent, state: ArbitrationState) -> bool:
+        if str(intent.metadata.reason or "").strip().lower() == "eod_force_close":
+            return True
+        return FinalArbitration._is_risk_reducing_exit(intent=intent, state=state)
+
+    @staticmethod
+    def _is_risk_reducing_exit(intent: OrderIntent, state: ArbitrationState) -> bool:
+        live_qty = int(state.live_position_qty or 0)
+        side = str(intent.side or "").upper()
+        return (live_qty > 0 and side == "SELL") or (live_qty < 0 and side == "BUY")

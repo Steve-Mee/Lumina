@@ -15,6 +15,7 @@ monitoring.enabled = false in config.yaml.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 import time
@@ -23,6 +24,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class MetricType(str, Enum):
@@ -265,7 +268,7 @@ class MetricsCollector:
             con.commit()
             con.close()
         except Exception:
-            pass  # SQLite errors must never crash the trading system
+            logger.exception("MetricsCollector failed to persist metrics batch to SQLite")
 
     def query_history(
         self,
@@ -294,6 +297,7 @@ class MetricsCollector:
                 for r in rows
             ]
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/monitoring/metrics_collector.py:299")
             return []
 
 

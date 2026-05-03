@@ -2,6 +2,7 @@ from __future__ import annotations
 # pyright: reportMissingImports=false
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ def _sb3_ppo_load(path: str | Path) -> Any | None:
 
         return PPO.load(str(path))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:19")
         return None
 
 
@@ -46,6 +48,7 @@ class PPOTrainer:
             self.engine.set_rl_policy(model)
             return True
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:48")
             return False
 
     def save_weights(self, policy_path: str | Path | None = None) -> str:
@@ -198,8 +201,7 @@ class PPOTrainer:
                 return
             raise RuntimeError("load_weights returned None")
         except Exception as exc:  # obs-space mismatch after Meta-RL expansion or missing file
-            import logging
-
+            logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:200")
             logging.getLogger(__name__).warning(
                 "PPO.load failed (obs-space mismatch after Meta-RL expansion or file missing); "
                 "engine will fall back to HOLD until retrained. Reason: %s",

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 from dataclasses import dataclass
@@ -73,6 +74,7 @@ def _dedupe_key(path: Path) -> str:
     try:
         absolute = path.absolute()
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/sim_stability_checker.py:75")
         absolute = path
     return str(absolute).lower().replace("\\", "/")
 
@@ -81,6 +83,7 @@ def _load_summary(path: Path) -> dict[str, Any] | None:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/sim_stability_checker.py:83")
         return None
     if not isinstance(payload, dict):
         return None

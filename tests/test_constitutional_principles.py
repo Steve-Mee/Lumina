@@ -19,6 +19,7 @@ from lumina_core.safety.trading_constitution import (
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_content(**kwargs) -> str:
     return json.dumps(kwargs)
 
@@ -49,26 +50,20 @@ class TestConstitutionalChecker:
 
     def test_capital_preservation_passes_sim_mode(self):
         """High risk is allowed in SIM — no violation."""
-        content = _make_content(
-            hyperparam_suggestion={"max_risk_percent": 10.0, "drawdown_kill_percent": 20.0}
-        )
+        content = _make_content(hyperparam_suggestion={"max_risk_percent": 10.0, "drawdown_kill_percent": 20.0})
         violations = self.checker.audit(content, mode="sim", raise_on_fatal=False)
         cp_violations = [v for v in violations if v.principle_name == "capital_preservation_in_real"]
         assert not cp_violations
 
     def test_capital_preservation_blocks_real_with_high_risk(self):
         """max_risk_percent > 3.0 is a FATAL violation in REAL mode."""
-        content = _make_content(
-            hyperparam_suggestion={"max_risk_percent": 5.0, "drawdown_kill_percent": 20.0}
-        )
+        content = _make_content(hyperparam_suggestion={"max_risk_percent": 5.0, "drawdown_kill_percent": 20.0})
         with pytest.raises(ConstitutionalViolationError) as exc_info:
             self.checker.audit(content, mode="real", raise_on_fatal=True)
         assert "capital_preservation_in_real" in exc_info.value.violations[0].principle_name
 
     def test_capital_preservation_passes_real_with_safe_risk(self):
-        content = _make_content(
-            hyperparam_suggestion={"max_risk_percent": 1.5, "drawdown_kill_percent": 10.0}
-        )
+        content = _make_content(hyperparam_suggestion={"max_risk_percent": 1.5, "drawdown_kill_percent": 10.0})
         violations = self.checker.audit(content, mode="real", raise_on_fatal=False)
         cp_violations = [v for v in violations if v.principle_name == "capital_preservation_in_real"]
         assert not cp_violations
@@ -109,26 +104,20 @@ class TestConstitutionalChecker:
     # -- drawdown kill percent ------------------------------------------------
 
     def test_extreme_drawdown_threshold_blocked_any_mode(self):
-        content = _make_content(
-            hyperparam_suggestion={"max_risk_percent": 1.0, "drawdown_kill_percent": 30.0}
-        )
+        content = _make_content(hyperparam_suggestion={"max_risk_percent": 1.0, "drawdown_kill_percent": 30.0})
         violations = self.checker.audit(content, mode="sim", raise_on_fatal=False)
         assert any(v.principle_name == "drawdown_kill_percent_bounded" for v in violations)
 
     # -- clean DNA passes all --------------------------------------------------
 
     def test_clean_dna_passes_all_principles_in_sim(self):
-        content = _make_content(
-            hyperparam_suggestion={"max_risk_percent": 2.0, "drawdown_kill_percent": 12.0}
-        )
+        content = _make_content(hyperparam_suggestion={"max_risk_percent": 2.0, "drawdown_kill_percent": 12.0})
         violations = self.checker.audit(content, mode="sim", raise_on_fatal=False)
         fatals = [v for v in violations if v.severity == "fatal"]
         assert not fatals
 
     def test_clean_dna_passes_all_principles_in_real(self):
-        content = _make_content(
-            hyperparam_suggestion={"max_risk_percent": 1.0, "drawdown_kill_percent": 8.0}
-        )
+        content = _make_content(hyperparam_suggestion={"max_risk_percent": 1.0, "drawdown_kill_percent": 8.0})
         violations = self.checker.audit(content, mode="real", raise_on_fatal=False)
         fatals = [v for v in violations if v.severity == "fatal"]
         assert not fatals
@@ -149,9 +138,7 @@ class TestSandboxedMutationExecutor:
         from lumina_core.safety.sandboxed_executor import SandboxedMutationExecutor
 
         sandbox = SandboxedMutationExecutor()
-        content = json.dumps(
-            {"hyperparam_suggestion": {"max_risk_percent": 1.0, "drawdown_kill_percent": 8.0}}
-        )
+        content = json.dumps({"hyperparam_suggestion": {"max_risk_percent": 1.0, "drawdown_kill_percent": 8.0}})
         result = sandbox._run_in_process(
             dna_hash="test_hash_001",
             dna_content=content,

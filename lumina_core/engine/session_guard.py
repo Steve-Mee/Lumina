@@ -48,6 +48,7 @@ class SessionGuard:
                     logger.info("SessionGuard fallback calendar selected: %s", name)
                     break
                 except Exception:
+                    logging.exception("Unhandled broad exception fallback in lumina_core/engine/session_guard.py:50")
                     continue
             if calendar is None:
                 raise

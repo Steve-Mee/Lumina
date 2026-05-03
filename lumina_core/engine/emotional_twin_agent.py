@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +22,8 @@ from lumina_core.engine.emotional_twin_components import (
     _DecisionCorrector,
     _ObservationBuilder,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class EmotionalTwinAgent:
@@ -81,9 +84,11 @@ class EmotionalTwinAgent:
                 prompt_hash=hashlib.sha256(
                     json.dumps(raw_input, sort_keys=True, ensure_ascii=True).encode("utf-8")
                 ).hexdigest(),
+                is_real_mode=str(getattr(getattr(self.context, "config", None), "trade_mode", "paper")).strip().lower()
+                == "real",
             )
         except Exception:
-            return
+            logger.exception("EmotionalTwinAgent failed to write decision log")
 
     def _contract_input_payload(self) -> Dict[str, Any]:
         dream = self.context.get_current_dream_snapshot()

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import asyncio
 import json
@@ -21,7 +22,7 @@ from .lumina_engine import LuminaEngine
 
 
 @dataclass(slots=True)
-class MarketDataService:
+class MarketDataIngestService:
     """Websocket and historical market-data ingestion backed by MarketDataManager."""
 
     engine: LuminaEngine
@@ -33,7 +34,7 @@ class MarketDataService:
 
     def __post_init__(self) -> None:
         if self.engine is None:
-            raise ValueError("MarketDataService requires a LuminaEngine")
+            raise ValueError("MarketDataIngestService requires a LuminaEngine")
         self.latency_sla_ms = float(market_data_latency_sla_ms())
 
     def _app(self):
@@ -113,6 +114,7 @@ class MarketDataService:
                 confidence=float(tape_signal.get("confidence", 0.0) or 0.0),
             )
         except Exception as _exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/market_data_service.py:115")
             err = LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_LEARNING,
                 code="MDS_TAPE_PUBLISH_001",
@@ -239,6 +241,7 @@ class MarketDataService:
                         log_structured(err)
                         app.logger.error(f"WS parse error: {exc}")
         except Exception as _exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/market_data_service.py:241")
             err = LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
                 code="MDS_WS_CONNECT_003",

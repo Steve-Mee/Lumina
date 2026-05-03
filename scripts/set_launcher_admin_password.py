@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import base64
 import getpass
@@ -25,6 +26,7 @@ def _load_record() -> dict | None:
             return None
         return payload
     except Exception:
+        logging.exception("Unhandled broad exception fallback in scripts/set_launcher_admin_password.py:27")
         return None
 
 
@@ -34,6 +36,7 @@ def _verify_password(candidate: str, record: dict) -> bool:
         expected_hash = base64.b64decode(str(record.get("hash_b64", "")))
         iterations = int(record.get("iterations", 0))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in scripts/set_launcher_admin_password.py:36")
         return False
 
     if iterations < 100_000 or not salt_bytes or not expected_hash:

@@ -13,10 +13,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from lumina_core.state.state_manager import safe_append_jsonl
+from lumina_core.audit import get_audit_logger
 
 
 _DEFAULT_ROLLOUT_AUDIT_PATH = Path("state/evolution_rollout_history.jsonl")
+_STREAM_NAME = "evolution.rollout"
 
 
 def _utcnow() -> str:
@@ -55,6 +56,7 @@ class EvolutionRolloutFramework:
         self._audit_path = audit_path or _DEFAULT_ROLLOUT_AUDIT_PATH
         self._radical_delta_abs = float(radical_delta_abs)
         self._radical_delta_ratio = float(radical_delta_ratio)
+        get_audit_logger().register_stream(_STREAM_NAME, self._audit_path)
 
     @staticmethod
     def shadow_runtime_flags() -> dict[str, Any]:
@@ -85,11 +87,7 @@ class EvolutionRolloutFramework:
             ratio = delta / max(abs(float(previous_fitness)), 1e-9)
         ratio = float(ratio)
 
-        radical = bool(
-            risk_flags
-            or abs(delta) >= self._radical_delta_abs
-            or abs(ratio) >= self._radical_delta_ratio
-        )
+        radical = bool(risk_flags or abs(delta) >= self._radical_delta_abs or abs(ratio) >= self._radical_delta_ratio)
 
         human_required = bool(normalized_mode in {"real", "paper"} and radical)
         human_granted = bool((not human_required) or explicit_human_approval)
@@ -141,7 +139,16 @@ class EvolutionRolloutFramework:
         return decision
 
     def _append_audit(self, payload: dict[str, Any]) -> None:
-        safe_append_jsonl(self._audit_path, payload, hash_chain=False)
+        mode = str(payload.get("mode", "sim")).strip().lower() or "sim"
+        get_audit_logger().append(
+            stream=_STREAM_NAME,
+            payload=payload,
+            path=self._audit_path,
+            mode=mode,
+            actor_id="evolution_rollout_framework",
+            severity="info",
+            include_legacy_hash=True,
+        )
 
     @staticmethod
     def _variant_score(variant: dict[str, Any] | None) -> float | None:

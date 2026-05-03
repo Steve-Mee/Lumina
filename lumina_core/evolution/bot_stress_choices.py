@@ -4,6 +4,7 @@ Leesvolgorde per instelling: omgeving → ``state/bot_stress_choices.json`` → 
 """
 
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -52,6 +53,7 @@ def _load_file() -> dict[str, Any]:
     try:
         data = json.loads(BOT_STRESS_CHOICES_FILE.read_text(encoding="utf-8"))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/evolution/bot_stress_choices.py:54")
         return {}
     return data if isinstance(data, dict) else {}
 

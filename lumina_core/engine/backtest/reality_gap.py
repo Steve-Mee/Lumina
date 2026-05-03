@@ -28,7 +28,7 @@ from typing import Any
 
 
 # Band thresholds for gap size (mean_gap).
-_BAND_GREEN: float = 0.30   # gap ≤ 0.30 → GREEN
+_BAND_GREEN: float = 0.30  # gap ≤ 0.30 → GREEN
 _BAND_YELLOW: float = 0.70  # 0.30 < gap ≤ 0.70 → YELLOW
 # gap > 0.70 → RED
 
@@ -36,11 +36,12 @@ _BAND_YELLOW: float = 0.70  # 0.30 < gap ≤ 0.70 → YELLOW
 @dataclass(slots=True)
 class RealityGapObservation:
     """Single SIM/REAL Sharpe observation."""
+
     ts: str
     sim_sharpe: float
     real_sharpe: float
-    gap: float          # sim_sharpe - real_sharpe
-    penalty: float      # gap × coeff
+    gap: float  # sim_sharpe - real_sharpe
+    penalty: float  # gap × coeff
 
 
 @dataclass
@@ -108,7 +109,7 @@ class RealityGapTracker:
 
     def rolling_stats(self) -> dict[str, Any]:
         """Compute rolling statistics over the last *window* observations."""
-        recent = self._observations[-self.window:]
+        recent = self._observations[-self.window :]
         if not recent:
             return {
                 "window": 0,
@@ -133,9 +134,11 @@ class RealityGapTracker:
         p95_idx = (len(sorted_gaps) - 1) * 0.95
         lo = int(math.floor(p95_idx))
         hi = int(math.ceil(p95_idx))
-        p95_gap = float(
-            sorted_gaps[lo] * (1.0 - (p95_idx - lo)) + sorted_gaps[hi] * (p95_idx - lo)
-        ) if lo != hi else float(sorted_gaps[lo])
+        p95_gap = (
+            float(sorted_gaps[lo] * (1.0 - (p95_idx - lo)) + sorted_gaps[hi] * (p95_idx - lo))
+            if lo != hi
+            else float(sorted_gaps[lo])
+        )
 
         return {
             "window": len(recent),
@@ -245,7 +248,7 @@ class RealityGapTracker:
         if len(gaps) < 4:
             return "STABLE"
         first_half = statistics.mean(gaps[: len(gaps) // 2])
-        second_half = statistics.mean(gaps[len(gaps) // 2:])
+        second_half = statistics.mean(gaps[len(gaps) // 2 :])
         delta = second_half - first_half
         if delta > 0.10:
             return "WIDENING"

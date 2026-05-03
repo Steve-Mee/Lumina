@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import platform
@@ -95,10 +96,12 @@ class HardwareInspector:
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/hardware_inspector.py:97")
             return None
         try:
             return HardwareSnapshot(**payload)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/hardware_inspector.py:101")
             return None
 
     @staticmethod
@@ -135,6 +138,7 @@ class HardwareInspector:
             count = psutil.cpu_count(logical=logical)
             return int(count or 0)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/hardware_inspector.py:137")
             return 0
 
     @staticmethod
@@ -144,6 +148,7 @@ class HardwareInspector:
 
             return round(psutil.virtual_memory().total / (1024**3), 1)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/hardware_inspector.py:146")
             return 0.0
 
     @staticmethod
@@ -160,6 +165,7 @@ class HardwareInspector:
             )
             return completed.returncode == 0
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/hardware_inspector.py:162")
             return False
 
     @staticmethod
@@ -192,6 +198,7 @@ class HardwareInspector:
             compute_capability = float(parts[2]) if parts[2] else 0.0
             return name, round(memory_mib / 1024.0, 1), compute_capability, True
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/hardware_inspector.py:194")
             return None, 0.0, 0.0, True
 
     @classmethod

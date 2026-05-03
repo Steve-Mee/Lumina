@@ -65,7 +65,7 @@ LUMINA gebruikt **bounded contexts** als domeingrenzen onder `lumina_core/` (zie
 |---------|---------------------|----------------|-----------|
 | **Safety** | Constitutionele principes, sandboxed uitvoering, promotion gates | [`lumina_core/safety/`](../lumina_core/safety/) | Fail-closed; REAL strengst |
 | **Evolution** | DNA, orchestratie, shadow runs, fitness | [`lumina_core/evolution/`](../lumina_core/evolution/) | SIM kan agressiever; REAL vereist shadow + approval waar van toepassing |
-| **Trading Engine** | Kern trading: engine, marktdata, operaties, valuation | [`lumina_core/trading_engine/`](../lumina_core/trading_engine/), [`lumina_core/engine/`](../lumina_core/engine/) | `engine/` bevat nog veel legacy surface; migratie is geleidelijk |
+| **Trading Engine** | Kern trading: engine, marktdata, operaties, valuation | [`lumina_core/trading_engine/`](../lumina_core/trading_engine/), [`lumina_core/engine/`](../lumina_core/engine/) | `engine/` is composition root + compat-laag; nieuwe domeinlogica gaat naar bounded contexts |
 | **Risk Management** | Risk gates, allocatie, Kelly-achtige begrenzing | [`lumina_core/risk/`](../lumina_core/risk/) | Via mixins/engine geïntegreerd; canoniek onder `risk/` |
 | **Agent Orchestration** | Event bus, engine↔blackboard bindingen | [`lumina_core/agent_orchestration/`](../lumina_core/agent_orchestration/) | Pub/sub en bindings centraliseren |
 
@@ -166,7 +166,69 @@ flowchart LR
 - `admin_endpoints.py` bewaart een backward-compatible exportlaag.
 - `admin_endpoints_core.py` bevat Dash-layout, callbacks en dashboard runtime-start.
 
-### 3.4 State manager component
+### 3.4 Trading engine service split
+
+`lumina_core/engine/lumina_engine.py` is verder opgesplitst naar een dunnere orchestrator. De engine beheert nu vooral service-compositie en delegatie; state-serialisatie, runtime-counters en snapshot-opbouw zijn uit de kernklasse gehaald.
+
+```mermaid
+flowchart LR
+    luminaEngine[LuminaEngine]
+    dreamMgr[DreamStateManager]
+    marketDomain[MarketDataDomainService]
+    taService[TechnicalAnalysisService]
+    riskOrchestrator[RiskOrchestrator]
+    executionService[ExecutionService]
+    engineServices[EngineServices]
+    snapshotService[EngineSnapshotService]
+    persistenceService[EngineStatePersistenceService]
+    runtimeCounters[RuntimeCounters]
+
+    luminaEngine --> dreamMgr
+    luminaEngine --> marketDomain
+    luminaEngine --> taService
+    luminaEngine --> riskOrchestrator
+    luminaEngine --> executionService
+    luminaEngine --> engineServices
+    luminaEngine --> snapshotService
+    luminaEngine --> persistenceService
+    luminaEngine --> runtimeCounters
+```
+
+- `DreamStateManager` beheert dream snapshots + event-bus publicatie.
+- `MarketDataDomainService` biedt price-action/candle helpers op `MarketDataManager` (optioneel alias `MarketDataService` in `market_data_domain_service.py` voor oude imports).
+- `TechnicalAnalysisService` bevat regime/structure/confluence/significance logica.
+- `RiskOrchestrator` beheert risk-policy, hard controller, final arbitration en Kelly sizing, met canonieke owner in `lumina_core/risk/orchestration.py` en een compatibele re-export in `lumina_core/engine/risk_orchestrator.py`.
+- `ExecutionService` routeert RL-signalen naar blackboard of dream state fallback.
+- `EngineSnapshotService` bouwt deterministische state-snapshots (`build_state_contexts` + `serialize_state_snapshot`).
+- `EngineStatePersistenceService` beheert `hydrate_from_legacy`, `save_state`, `load_state`.
+- `RuntimeCounters` is de owner van operationele counters (`cost_tracker`, rate-limit backoff, dashboard throttling).
+- `EngineServices` is een typed registry voor optionele runtime-handles die door de container worden ingespoten.
+- `engine_state_facade.py` installeert compacte property-proxies op `LuminaEngine` voor state/service compatibiliteit, zodat de engine dun blijft zonder brede API-breaks.
+- `LuminaEngine` blijft nu onder de 350 regels en fungeert als orchestrator in plaats van god-object.
+- Legacy app-delegatie via `LuminaEngine.__getattr__/__setattr__` is verwijderd; callsites gebruiken nu expliciete engine-velden of `engine.app`.
+- Websocket/historische ingest blijft `MarketDataIngestService` in `market_data_service.py`; domeinhelpers blijven `MarketDataDomainService` in `market_data_domain_service.py`.
+
+**Importrichtlijn (nieuwe code)**
+
+1. Live feeds, REST bars, gap recovery of tape → importeer `MarketDataIngestService` uit `lumina_core.engine.market_data_service`.
+2. PA-summary en candle-pattern helpers op engine-marktdata → importeer `MarketDataDomainService` uit `lumina_core.engine.market_data_domain_service` (niet de ingest-service).
+3. Alleen als je een brede engine-export nodig hebt → `from lumina_core.engine import MarketDataIngestService, MarketDataDomainService` en kies expliciet; vermijd verwarrende korte namen tenzij je `MarketDataService` als alias voor de domain-laag gebruikt (legacy-compat).
+
+### 3.4.1 Resterende overlap en ownership-plan
+
+De overlap tussen `engine/` en bounded contexts wordt bewust afgebouwd zonder de experimentele kern te blokkeren. Ownership per capability is nu:
+
+- **Risk ownership**: `lumina_core/risk/` is canoniek voor riskbeslissingen, policy, arbitratie en sizing (`RiskOrchestrator`, `FinalArbitration`, `HardRiskController`); `engine/` exporteert alleen compat-shims waar nodig.
+- **Safety ownership**: constitutionele veto/promotion-gates blijven in `lumina_core/safety/`; `engine/` mag safety alleen aanroepen, niet dupliceren.
+- **Evolution ownership**: mutatie-, fitness- en promotion-policy blijven in `lumina_core/evolution/`; `engine/` bewaart enkel runtime wiring.
+- **Orchestration ownership**: typed event contracts en pub/sub-flow blijven in `lumina_core/agent_orchestration/`; engine-blackboard bindingen zijn adapters, niet domeinlogica.
+
+Open resterende overlap (volgende iteraties):
+
+1. Compat API's onder `engine/` die nog direct domeinstate exposen i.p.v. via services/contracts.
+2. Legacy imports in oudere callsites die nog `engine/` direct aanspreken voor contextspecifieke logica.
+
+### 3.5 State manager component
 
 `lumina_core/state/state_manager.py` centraliseert de kritieke evolutie-state writes zodat JSONL en SQLite ook bij multi-process workloads consistent blijven.
 
@@ -221,26 +283,44 @@ sequenceDiagram
 
 > Dit diagram is **conceptueel**: exacte methodenamen en topics staan in code ([`event_bus.py`](../lumina_core/agent_orchestration/event_bus.py), [`engine_bindings.py`](../lumina_core/agent_orchestration/engine_bindings.py)).
 
-### 4.1 Event Bus payload contracts
+### 4.1 Typed topics (Event Bus & Blackboard)
 
-Om schema-drift te beperken gebruikt de centrale Event Bus typed payload-contracten op geselecteerde kritieke topics. Validatie gebeurt fail-closed op publish-pad voor deze topics.
+Om schema-drift te beperken gebruiken Event Bus en Blackboard Pydantic contracten uit [`schemas.py`](../lumina_core/agent_orchestration/schemas.py).
 
-**Typed topics (Pydantic contracten):**
-- `trading_engine.trade_signal.emitted` -> `TradeSignal`
-- `trading_engine.dream_state.updated` -> `TradeSignal`
-- `risk.policy.decision` -> `RiskDecision`
+**Event Bus topics:**
+- `trading_engine.trade_signal.emitted` -> `TradeIntent`
+- `trading_engine.dream_state.updated` -> `DreamStateEventPayload`
+- `risk.policy.decision` -> `RiskVerdict`
 - `evolution.proposal.created` -> `EvolutionProposal`
-- `evolution.shadow.verdict` -> `ShadowVerdict`
+- `evolution.shadow.verdict` -> `ShadowResult`
 - `safety.constitution.violation` -> `ConstitutionViolation`
+- `safety.constitution.audit` -> `ConstitutionAudit`
 - `meta.agent.reflection` -> `AgentReflection`
 
-**Legacy topics (nog zonder hard contract):**
-- Niet-geregistreerde topics blijven legacy dict-payloads accepteren via `EventBus.publish(...)`.
-- Dit houdt migraties backward-compatible voor bestaande producers en subscribers.
+**Blackboard topics:**
+- `agent.rl.proposal`, `agent.news.proposal`, `agent.emotional_twin.proposal`, `agent.swarm.proposal`, `agent.tape.proposal`, `agent.swarm.snapshot` -> `AgentProposalPayload`
+- `market.tape` -> `MarketTapePayload`
+- `execution.aggregate` -> `ExecutionAggregatePayload`
+- `meta.reflection` -> `AgentReflection`
+- `meta.hyperparameters` -> `MetaHyperparametersPayload`
+- `meta.retraining` -> `MetaRetrainingPayload`
+- `meta.bible_update` -> `MetaBibleUpdatePayload`
+- `meta.evolution_result` -> `MetaEvolutionResultPayload`
+- `meta.dna_lineage` -> `MetaDnaLineagePayload`
+- `agent.meta.proposal` -> `AgentMetaProposalPayload`
 
-**Migratieregel:**
-- Nieuwe safety-, risk- of execution-kritieke topics krijgen direct een Pydantic payload-contract in `event_bus.py`.
-- `publish_validated(...)` blijft het fail-closed compatibiliteitspad voor topic-gebaseerde validatie.
+**Validatiegedrag en migratiepad:**
+- Voor geregistreerde Event Bus- en Blackboard-topics wordt validatie nu altijd afgedwongen via het topic-registry, ook zonder expliciete `payload_model`.
+- Kritieke Event Bus-contracten (`TradeIntent`, `RiskVerdict`, `EvolutionProposal`, `ShadowResult`, `ConstitutionAudit`) gebruiken `extra="forbid"`; onbekende top-level velden worden fail-closed geweigerd.
+- Experimentele topics blijven tijdelijk ruim: `DreamStateEventPayload` en meta/blackboard-contracten gebruiken `extra="allow"` zodat agents en LLM-routines nieuwe signalen kunnen uitproberen zonder kernintegriteit te verliezen.
+- `publish_validated(...)` op Event Bus blijft fail-closed en retourneert `None` bij schemafouten.
+- Niet-geregistreerde topics blijven backward-compatible als legacy dict payloads.
+
+**Roadmap contractstriktheid vs. experimenteerruimte:**
+- Fase 1 (huidig): kritieke topics strict + automatische registry-validatie, experimentele topics tijdelijk flexibel.
+- Fase 2: blackboard/meta payloads incrementeel aanscherpen met expliciete veldinventarisatie per topic.
+- Fase 3: `ConstitutionViolation` uitbreiden met first-class velden (zoals `dna_hash`) en daarna naar striktere contractmodus.
+- Fase 4: dream-state keys stapsgewijs expliciet modelleren; daarna beslissing via ADR over `extra="forbid"` op dream-topic.
 
 ---
 
@@ -278,7 +358,33 @@ Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 - Overlay-volgorde is nu strikt: `base (risk_controller) -> mode_overlay (sim/real/paper/sim_real_guard) -> instrument_overlay (risk_instrument_overrides)`.
 - Voor config hot-reload zonder procesrestart wordt `ConfigLoader.invalidate()` gebruikt vóór de volgende policy-resolutie.
 - `FinalArbitration` valideert elke orderintentie op constitution + risk policy + live account state.
+- In REAL mode wordt live account state gevoed via `EquitySnapshotProvider` (`lumina_core/risk/equity_snapshot.py`) met een harde max-cache van 30 seconden.
+- Zonder verse broker-equity/margin snapshot draait de gate fail-closed: geen risk-increasing orderintenties richting broker.
 - Deze check draait vóór broker submit in zowel engine- als brokerpaden, zodat geen agent-route de risicogrens kan omzeilen.
+
+### 5.2 AdmissionChain — beschermer van het organisme
+
+Pre-trade toelating loopt nu canoniek via [`lumina_core/risk/admission_chain.py`](../lumina_core/risk/admission_chain.py), aangeroepen vanuit [`lumina_core/order_gatekeeper.py`](../lumina_core/order_gatekeeper.py).
+
+- De keten blijft modulair (`AdmissionChain(steps=...)`), zodat nieuwe experimentele lagen als extra stap kunnen worden ingeplugd zonder de kernchecks te herschrijven.
+- De canonieke volgorde is: `Constitution -> RiskPolicy -> EquitySnapshot -> FinalArbitration -> SessionGuard`.
+- In **REAL** is de dependency expliciet: **eerst EquitySnapshot sync/validate, daarna FinalArbitration**. Dit voorkomt arbitrage op stale account-context.
+- In **SIM/PAPER** zijn experimentele bypasses toegestaan via expliciete stapconfiguratie; elke bypass wordt gelogd met mode/step/symbol voor transparantie.
+- In **REAL** zijn experimentele bypasses fail-closed verboden.
+
+```mermaid
+flowchart LR
+  constitution[Constitution]
+  riskPolicy[RiskPolicy]
+  equitySnapshot[EquitySnapshot]
+  finalArbitration[FinalArbitration]
+  sessionGuard[SessionGuard]
+
+  constitution --> riskPolicy
+  riskPolicy --> equitySnapshot
+  equitySnapshot --> finalArbitration
+  finalArbitration --> sessionGuard
+```
 
 ---
 
@@ -286,7 +392,7 @@ Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 
 - **Fail-closed design** — Onzekerheid, exceptions of ontbrekende checks leiden tot **blokkeren** en audit, niet tot stille acceptatie (zie ook [AGI_SAFETY.md](AGI_SAFETY.md)).
 - **Event-driven communicatie** — Domeinen publiceren en subscriben via [`EventBus` / `DomainEvent`](../lumina_core/agent_orchestration/event_bus.py); zo blijven grenzen scherp en uitbreidingen testbaar.
-- **Dependency Injection via ApplicationContainer** — [`ApplicationContainer`](../lumina_core/container.py) is het bootstrap-object: services en wiring zijn expliciet i.p.v. verborgen global state.
+- **Dependency Injection via ApplicationContainer** — [`ApplicationContainer`](../lumina_core/container.py) is het bootstrap-object: services en wiring zijn expliciet i.p.v. verborgen global state. In de promotion flow bindt de container expliciet de canonieke `EventBus` naar `EvolutionOrchestrator` (`bind_promotion_event_bus`), zodat `PromotionPolicy` constitution-violation events betrouwbaar publiceert zonder impliciete runtime lookups.
 - **ADR-gedreven ontwikkeling** — Belangrijke keuzes staan in [`docs/adr/`](adr/README.md); wijzigingen aan grenzen of contracts gaan samen met een ADR.
 
 ---
@@ -308,6 +414,10 @@ Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 | Engine bindings | [`lumina_core/agent_orchestration/engine_bindings.py`](../lumina_core/agent_orchestration/engine_bindings.py) |
 | Trading context | [`lumina_core/trading_engine/`](../lumina_core/trading_engine/) |
 | Centrale engine | [`lumina_core/engine/lumina_engine.py`](../lumina_core/engine/lumina_engine.py) |
+| Engine services registry | [`lumina_core/trading_engine/engine_services.py`](../lumina_core/trading_engine/engine_services.py) |
+| Engine state facade | [`lumina_core/trading_engine/engine_state_facade.py`](../lumina_core/trading_engine/engine_state_facade.py) |
+| Engine snapshot service | [`lumina_core/trading_engine/engine_snapshot.py`](../lumina_core/trading_engine/engine_snapshot.py) |
+| Engine persistence service | [`lumina_core/trading_engine/engine_state_persistence.py`](../lumina_core/trading_engine/engine_state_persistence.py) |
 | Risk | [`lumina_core/risk/`](../lumina_core/risk/) |
 | Evolution | [`lumina_core/evolution/`](../lumina_core/evolution/) |
 | Evolution orchestrator (compat) | [`lumina_core/evolution/orchestrator.py`](../lumina_core/evolution/orchestrator.py) |
@@ -325,6 +435,7 @@ Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 | Dashboard state visualizer | [`lumina_core/engine/state_visualizer.py`](../lumina_core/engine/state_visualizer.py) |
 | Dashboard admin endpoints (compat) | [`lumina_core/engine/admin_endpoints.py`](../lumina_core/engine/admin_endpoints.py) |
 | Dashboard admin endpoints core | [`lumina_core/engine/admin_endpoints_core.py`](../lumina_core/engine/admin_endpoints_core.py) |
+| Runtime counters | [`lumina_core/monitoring/runtime_counters.py`](../lumina_core/monitoring/runtime_counters.py) |
 | State manager | [`lumina_core/state/state_manager.py`](../lumina_core/state/state_manager.py) |
 | Safety | [`lumina_core/safety/`](../lumina_core/safety/) |
 

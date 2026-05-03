@@ -1,5 +1,5 @@
 from __future__ import annotations
-# mypy: disable-error-code=untyped-decorator
+import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 import dash
@@ -24,44 +24,63 @@ from lumina_core.evolution.parallel_reality_config import (
 )
 from .metrics_collector import MetricsCollectorProtocol
 from .state_visualizer import StateVisualizer, StateVisualizerProtocol
+
+
 class AdminEndpointsProtocol(Protocol):
     visualization_service: Any | None
+
     def start_dashboard(self) -> None: ...
+
+
 @dataclass
 class AdminEndpoints:
     engine: Any
     metrics: MetricsCollectorProtocol
     visualizer: StateVisualizerProtocol
     visualization_service: Any | None = None
+
     def generate_strategy_heatmap(self) -> Any:
         return self.metrics.generate_strategy_heatmap()
+
     def generate_performance_summary(self) -> dict[str, Any]:
         return self.metrics.generate_performance_summary()
+
     @staticmethod
-    def _build_empty_figure(title: str, template: str = 'plotly_dark') -> go.Figure:
+    def _build_empty_figure(title: str, template: str = "plotly_dark") -> go.Figure:
         return StateVisualizer.build_empty_figure(title, template)
+
     @staticmethod
     def _build_inference_status_lines(tracker: dict[str, Any]) -> list[str]:
         return StateVisualizer.build_inference_status_lines(tracker)
+
     @staticmethod
     def _build_inference_provider_figure(tracker: dict[str, Any]) -> go.Figure:
         return StateVisualizer.build_inference_provider_figure(tracker)
+
     def _build_swarm_figures(self) -> tuple[go.Figure, go.Figure, html.Div]:
         return self.visualizer.build_swarm_figures()
+
     def _build_swarm_spread_drilldown(self, click_data: dict[str, Any] | None) -> tuple[go.Figure, html.Div]:
         return self.visualizer.build_swarm_spread_drilldown(click_data)
+
     def _build_mode_parity_panel(self) -> html.Div:
         return self.visualizer.build_mode_parity_panel()
+
     def _collect_blackboard_health_state(self) -> dict[str, Any]:
         return self.metrics.collect_blackboard_health_state()
+
     def _record_blackboard_health_sample(self, health: dict[str, Any]) -> None:
         self.metrics.record_blackboard_health_sample(health)
+
     def _build_blackboard_health_panel(self, health: dict[str, Any] | None = None) -> html.Div:
         return self.visualizer.build_blackboard_health_panel(health)
+
     def _build_blackboard_health_trend_figure(self) -> go.Figure:
         return self.visualizer.build_blackboard_health_trend_figure()
+
     def _build_drawdown_distribution_figure(self) -> go.Figure:
         return self.visualizer.build_drawdown_distribution_figure()
+
     def start_dashboard(self) -> None:
         app = self.engine.app
         if app is None:
@@ -523,6 +542,7 @@ class AdminEndpoints:
             ],
             fluid=True,
         )
+
         @dash_app.callback(
             Output("parallel-realities-feedback", "children"),
             Input("parallel-realities-save", "n_clicks"),
@@ -538,6 +558,7 @@ class AdminEndpoints:
                 return "Ongeldig getal; kies 1—50."
             n = save_parallel_realities_session(raw)
             return f"Opgeslagen: {n} stress-universa (actief in dit Lumina-proces; herstart de bot om overal 100% zeker dezelfde waarde te gebruiken)."
+
         @dash_app.callback(
             Output("bot-stress-feedback", "children"),
             Input("bot-stress-save", "n_clicks"),
@@ -558,6 +579,7 @@ class AdminEndpoints:
                 f"Opgeslagen: DNA-OHLC={'aan' if dna else 'uit'}, PPO-OHLC-rollouts={'aan' if neuro else 'uit'} "
                 "(actief in dit proces; `state/bot_stress_choices.json`)."
             )
+
         @dash_app.callback(
             [
                 Output("live-chart", "figure"),
@@ -590,7 +612,9 @@ class AdminEndpoints:
             ],
             Input("interval", "n_intervals"),
         )
-        def update_dashboard(_: int) -> tuple[
+        def update_dashboard(
+            _: int,
+        ) -> tuple[
             go.Figure,
             go.Figure,
             html.Div,
@@ -726,6 +750,7 @@ class AdminEndpoints:
                 blackboard_health_trend,
                 drawdown_distribution_fig,
             )
+
         @dash_app.callback(
             [
                 Output("swarm-spread-drilldown", "figure"),
@@ -738,6 +763,7 @@ class AdminEndpoints:
         )
         def update_spread_drilldown(click_data: dict[str, Any] | None, _: int) -> tuple[go.Figure, html.Div]:  # type: ignore[untyped-decorator]
             return self._build_swarm_spread_drilldown(click_data)
+
         @dash_app.callback(
             Output("shutdown-modal", "is_open"),
             Input("shutdown-btn", "n_clicks"),
@@ -751,6 +777,7 @@ class AdminEndpoints:
             if open_clicks > 0:
                 return True
             return False
+
         @dash_app.callback(
             Output("shutdown-feedback", "children"),
             Input("shutdown-confirm-btn", "n_clicks"),
@@ -762,10 +789,12 @@ class AdminEndpoints:
                 threading.Thread(target=app.emergency_stop, daemon=False).start()
                 return "App wordt afgesloten..."
             return ""
+
         setattr(app, "dash_app", dash_app)
         print("🌐 Dashboard gestart -> http://127.0.0.1:8050  (met kosten, resultaat en procentuele vergelijking)")
         webbrowser.open("http://127.0.0.1:8050")
         try:
             dash_app.run(debug=False, port=8050, use_reloader=False)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/admin_endpoints_core.py:769")
             dash_app.run_server(debug=False, port=8050, use_reloader=False)

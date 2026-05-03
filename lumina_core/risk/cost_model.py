@@ -34,6 +34,7 @@ from typing import Any
 # Result contract
 # ---------------------------------------------------------------------------
 
+
 @dataclass(slots=True)
 class CostBreakdown:
     """Detailed round-trip cost for a single trade.
@@ -42,10 +43,10 @@ class CostBreakdown:
     """
 
     # --- Slippage ---
-    half_spread_ticks: float        # ATR-based half bid-ask spread (ticks)
-    market_impact_ticks: float      # Almgren-Chriss market impact (ticks)
-    total_slippage_ticks: float     # half_spread + market_impact
-    slippage_usd_per_side: float    # ticks × tick_value
+    half_spread_ticks: float  # ATR-based half bid-ask spread (ticks)
+    market_impact_ticks: float  # Almgren-Chriss market impact (ticks)
+    total_slippage_ticks: float  # half_spread + market_impact
+    slippage_usd_per_side: float  # ticks × tick_value
     slippage_usd_round_trip: float  # 2 × per-side
 
     # --- Fees (per side) ---
@@ -56,8 +57,8 @@ class CostBreakdown:
     total_fees_usd_per_side: float
 
     # --- Totals ---
-    total_per_side_usd: float       # slippage + fees (one leg)
-    total_round_trip_usd: float     # full round-trip cost
+    total_per_side_usd: float  # slippage + fees (one leg)
+    total_round_trip_usd: float  # full round-trip cost
 
     # --- Meta ---
     quantity: float
@@ -85,6 +86,7 @@ class CostBreakdown:
 # ---------------------------------------------------------------------------
 # Main model
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class TradeExecutionCostModel:
@@ -122,17 +124,15 @@ class TradeExecutionCostModel:
     """
 
     tick_size: float = 0.25
-    tick_value: float = 1.25                    # MES: $1.25/tick
+    tick_value: float = 1.25  # MES: $1.25/tick
     commission_per_side_usd: float = 1.29
     exchange_fee_per_side_usd: float = 0.35
     clearing_fee_per_side_usd: float = 0.10
     nfa_fee_per_side_usd: float = 0.02
-    slippage_base_ticks: float = 0.5            # floor: half a tick
-    slippage_atr_ratio: float = 0.10            # 10 % of ATR as half-spread
-    slippage_sigma: float = 0.0                 # deterministic by default
-    spread_multipliers: dict[str, float] = field(
-        default_factory=lambda: {"open": 2.5, "midday": 1.0, "close": 2.0}
-    )
+    slippage_base_ticks: float = 0.5  # floor: half a tick
+    slippage_atr_ratio: float = 0.10  # 10 % of ATR as half-spread
+    slippage_sigma: float = 0.0  # deterministic by default
+    spread_multipliers: dict[str, float] = field(default_factory=lambda: {"open": 2.5, "midday": 1.0, "close": 2.0})
     market_impact_alpha: float = 0.5
     market_impact_beta: float = 0.6
     instrument: str = "MES"
@@ -149,6 +149,7 @@ class TradeExecutionCostModel:
         Reads ``risk_controller`` section for fee/slippage params.
         Falls back to dataclass defaults for any missing key.
         """
+
         def _get(section: Any, key: str, default: Any) -> Any:
             if isinstance(section, dict):
                 return section.get(key, default)
@@ -206,7 +207,7 @@ class TradeExecutionCostModel:
         if avg_volume <= 0.0 or quantity <= 0.0:
             return 0.0
         ratio = quantity / avg_volume
-        return float(self.market_impact_alpha * (ratio ** self.market_impact_beta))
+        return float(self.market_impact_alpha * (ratio**self.market_impact_beta))
 
     # ------------------------------------------------------------------
     # Public API
@@ -288,7 +289,7 @@ class TradeExecutionCostModel:
         comm = self.commission_per_side_usd * quantity
         exch = self.exchange_fee_per_side_usd * quantity
         clea = self.clearing_fee_per_side_usd * quantity
-        nfa  = self.nfa_fee_per_side_usd * quantity
+        nfa = self.nfa_fee_per_side_usd * quantity
         total_fees_per_side = comm + exch + clea + nfa
 
         # --- Totals ---
@@ -327,18 +328,18 @@ class TradeExecutionCostModel:
 
 _INSTRUMENT_TICK_PARAMS: dict[str, tuple[float, float]] = {
     # (tick_size, tick_value_usd)
-    "MES":  (0.25, 1.25),
-    "ES":   (0.25, 12.50),
-    "MNQ":  (0.25, 0.50),
-    "NQ":   (0.25, 5.00),
-    "MYM":  (1.00, 0.50),
-    "YM":   (1.00, 5.00),
-    "M2K":  (0.10, 0.50),
-    "RTY":  (0.10, 5.00),
-    "MCL":  (0.01, 1.00),
-    "CL":   (0.01, 10.00),
-    "MGC":  (0.10, 1.00),
-    "GC":   (0.10, 10.00),
+    "MES": (0.25, 1.25),
+    "ES": (0.25, 12.50),
+    "MNQ": (0.25, 0.50),
+    "NQ": (0.25, 5.00),
+    "MYM": (1.00, 0.50),
+    "YM": (1.00, 5.00),
+    "M2K": (0.10, 0.50),
+    "RTY": (0.10, 5.00),
+    "MCL": (0.01, 1.00),
+    "CL": (0.01, 10.00),
+    "MGC": (0.10, 1.00),
+    "GC": (0.10, 10.00),
 }
 
 

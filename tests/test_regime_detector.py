@@ -257,9 +257,7 @@ def test_trade_workers_apply_tighter_limits_in_high_risk_regime() -> None:
 
 
 @pytest.mark.slow
-def test_self_evolution_meta_agent_uses_regime_breakdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # Regime breakdown lives in the meta-agent meta_review path; avoid full multi-gen
     # EvolutionOrchestrator (candidate DNA constitution gates) — out of scope for this assertion.
     monkeypatch.setattr(

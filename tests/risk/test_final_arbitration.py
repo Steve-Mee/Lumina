@@ -4,6 +4,7 @@ import pytest
 
 from lumina_core.risk.final_arbitration import FinalArbitration
 from lumina_core.risk.risk_policy import RiskPolicy
+from lumina_core.risk.schemas import ArbitrationState, OrderIntent, OrderIntentMetadata
 
 
 def _base_policy() -> RiskPolicy:
@@ -22,69 +23,77 @@ def _base_policy() -> RiskPolicy:
     )
 
 
-def _base_state() -> dict[str, float | str | dict[str, float]]:
-    return {
-        "runtime_mode": "real",
-        "daily_pnl": 120.0,
-        "account_equity": 25_000.0,
-        "drawdown_pct": 4.0,
-        "drawdown_kill_percent": 20.0,
-        "used_margin": 1_000.0,
-        "free_margin": 8_000.0,
-        "open_risk_by_symbol": {"MES": 20.0},
-        "total_open_risk": 40.0,
-        "var_95_usd": 120.0,
-        "var_99_usd": 180.0,
-        "es_95_usd": 180.0,
-        "es_99_usd": 220.0,
-        "live_position_qty": 0,
-    }
+def _base_state() -> ArbitrationState:
+    return ArbitrationState(
+        runtime_mode="real",
+        equity_snapshot_ok=True,
+        equity_snapshot_reason="ok",
+        daily_pnl=120.0,
+        account_equity=25_000.0,
+        drawdown_pct=4.0,
+        drawdown_kill_percent=20.0,
+        used_margin=1_000.0,
+        free_margin=8_000.0,
+        open_risk_by_symbol={"MES": 20.0},
+        total_open_risk=40.0,
+        var_95_usd=120.0,
+        var_99_usd=180.0,
+        es_95_usd=180.0,
+        es_99_usd=220.0,
+        live_position_qty=0,
+    )
 
 
 @pytest.mark.unit
 def test_final_arbitration_rejects_constitution_violation() -> None:
     arbitration = FinalArbitration(_base_policy())
-    intent = {
-        "symbol": "MES",
-        "side": "BUY",
-        "quantity": 1,
-        "proposed_risk": 10.0,
-        "disable_risk_controller": True,
-        "metadata": {},
-    }
+    intent = OrderIntent(
+        instrument="MES",
+        side="BUY",
+        quantity=1,
+        proposed_risk=10.0,
+        disable_risk_controller=True,
+        confidence=0.8,
+        source_agent="test-agent",
+        metadata=OrderIntentMetadata(reason="entry_signal"),
+    )
     result = arbitration.check_order_intent(intent, _base_state())
     assert result.status == "REJECTED"
     assert result.reason.startswith("constitution_violation:")
+    assert result.violated_principle is not None
 
 
 @pytest.mark.unit
 def test_final_arbitration_rejects_risk_limit_overshoot() -> None:
     arbitration = FinalArbitration(_base_policy())
-    intent = {
-        "symbol": "MES",
-        "side": "BUY",
-        "quantity": 1,
-        "proposed_risk": 150.0,
-        "metadata": {},
-    }
+    intent = OrderIntent(
+        instrument="MES",
+        side="BUY",
+        quantity=1,
+        proposed_risk=150.0,
+        confidence=0.9,
+        source_agent="test-agent",
+        metadata=OrderIntentMetadata(reason="entry_signal"),
+    )
     result = arbitration.check_order_intent(intent, _base_state())
     assert result.status == "REJECTED"
     assert result.reason == "risk_limit_per_instrument_exceeded"
+    assert result.violated_principle is None
 
 
 @pytest.mark.unit
 def test_final_arbitration_rejects_low_margin_confidence() -> None:
     arbitration = FinalArbitration(_base_policy())
-    intent = {
-        "symbol": "MES",
-        "side": "BUY",
-        "quantity": 1,
-        "proposed_risk": 20.0,
-        "metadata": {},
-    }
-    state = _base_state()
-    state["used_margin"] = 9_000.0
-    state["free_margin"] = 1_000.0
+    intent = OrderIntent(
+        instrument="MES",
+        side="BUY",
+        quantity=1,
+        proposed_risk=20.0,
+        confidence=0.7,
+        source_agent="test-agent",
+        metadata=OrderIntentMetadata(reason="entry_signal"),
+    )
+    state = _base_state().model_copy(update={"used_margin": 9_000.0, "free_margin": 1_000.0})
     result = arbitration.check_order_intent(intent, state)
     assert result.status == "REJECTED"
     assert result.reason == "margin_confidence_below_policy"
@@ -93,15 +102,19 @@ def test_final_arbitration_rejects_low_margin_confidence() -> None:
 @pytest.mark.unit
 def test_final_arbitration_approves_valid_order() -> None:
     arbitration = FinalArbitration(_base_policy())
-    intent = {
-        "symbol": "MES",
-        "side": "BUY",
-        "quantity": 1,
-        "proposed_risk": 25.0,
-        "reference_price": 5100.0,
-        "stop_loss": 5075.0,
-        "metadata": {"reason": "entry_signal"},
-    }
+    intent = OrderIntent(
+        instrument="MES",
+        side="BUY",
+        quantity=1,
+        proposed_risk=25.0,
+        reference_price=5100.0,
+        stop=5075.0,
+        target=5150.0,
+        confidence=0.95,
+        source_agent="test-agent",
+        metadata=OrderIntentMetadata(reason="entry_signal"),
+    )
     result = arbitration.check_order_intent(intent, _base_state())
     assert result.status == "APPROVED"
     assert result.reason == "approved"
+    assert result.violated_principle is None

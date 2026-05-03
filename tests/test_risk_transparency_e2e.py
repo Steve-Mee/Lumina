@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from types import SimpleNamespace
 
 from lumina_core.engine.audit_log_service import AuditLogService
 from lumina_core.risk.risk_controller import HardRiskController, RiskLimits, risk_limits_from_config
+from lumina_core.risk.equity_snapshot import EquitySnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 
 
@@ -21,6 +23,23 @@ def _bb_event(*, topic: str, producer: str, payload: dict, confidence: float, se
         event_hash=f"hash-{sequence}",
         prev_hash=f"hash-{sequence - 1}",
     )
+
+
+def _fresh_snapshot_provider(*, equity: float = 100_000.0, free_margin: float = 60_000.0):
+    class _SnapshotProvider:
+        def get_snapshot(self) -> EquitySnapshot:
+            return EquitySnapshot(
+                equity_usd=equity,
+                available_margin_usd=free_margin,
+                used_margin_usd=max(0.0, equity - free_margin),
+                as_of_utc=datetime.now(timezone.utc),
+                source="test",
+                ok=True,
+                reason_code="ok_live",
+                ttl_seconds=30.0,
+            )
+
+    return _SnapshotProvider()
 
 
 def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -> None:
@@ -93,6 +112,11 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
             "expected_value": -22.0,
             "reason": "high volatility pressure",
         },
+        equity_snapshot_provider=_fresh_snapshot_provider(),
+        account_equity=100_000.0,
+        available_margin=60_000.0,
+        positions_margin_used=40_000.0,
+        live_position_qty=0,
     )
 
     allowed, reason = enforce_pre_trade_gate(
@@ -181,6 +205,11 @@ def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Pa
             "expected_value": 6.0,
             "reason": "default config validation",
         },
+        equity_snapshot_provider=_fresh_snapshot_provider(),
+        account_equity=100_000.0,
+        available_margin=60_000.0,
+        positions_margin_used=40_000.0,
+        live_position_qty=0,
     )
 
     allowed, reason = enforce_pre_trade_gate(

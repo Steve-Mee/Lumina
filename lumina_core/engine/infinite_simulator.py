@@ -163,8 +163,7 @@ class InfiniteSimulator:
         else:
             self.logger.warning("Ray not installed or disabled; infinite simulator runs chunks sequentially.")
             all_results = [
-                _simulate_chunk_impl(i, base_df, chunk_size, self.context, historical_only, rng_seed)
-                for i in range(32)
+                _simulate_chunk_impl(i, base_df, chunk_size, self.context, historical_only, rng_seed) for i in range(32)
             ]
         flat_results = [item for sublist in all_results for item in sublist]
 
@@ -265,8 +264,6 @@ class InfiniteSimulator:
                 if params and params[0] == "simulator_data":
                     trainer.train(bars, total_timesteps=100_000)
                 else:
-                    self.logger.warning(
-                        "PPO retrain skipped in strict mode: trainer lacks simulator_data train() API."
-                    )
+                    self.logger.warning("PPO retrain skipped in strict mode: trainer lacks simulator_data train() API.")
         except Exception as exc:
             self.logger.warning("PPO retrain on historical bars failed: %s", exc)

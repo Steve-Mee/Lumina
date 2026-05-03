@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import json
 import platform
@@ -49,6 +50,7 @@ class SetupService:
             payload = json.loads(self.STATUS_FILE.read_text(encoding="utf-8"))
             return payload if isinstance(payload, dict) else {}
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/setup_service.py:51")
             return {}
 
     def save_status(self, payload: dict[str, Any]) -> None:
@@ -169,6 +171,7 @@ class SetupService:
                 check=False,
             )
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/setup_service.py:171")
             return SetupStepResult(name, False, str(exc), " ".join(command))
 
         stdout = completed.stdout.strip()

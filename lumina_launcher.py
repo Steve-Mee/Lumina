@@ -6,6 +6,7 @@ import html
 import hashlib
 import hmac
 import json
+import logging
 import mimetypes
 import os
 import secrets
@@ -41,6 +42,8 @@ from lumina_core.engine.sim_stability_checker import (
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.runtime_context import RuntimeContext
 
+logger = logging.getLogger(__name__)
+
 if not _IS_HEADLESS:
     st.set_page_config(page_title="LUMINA OS Launcher", layout="wide")
 
@@ -72,6 +75,7 @@ def _load_admin_password_record() -> dict[str, Any] | None:
             return None
         return payload
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:77")
         return None
 
 
@@ -88,6 +92,7 @@ def _verify_admin_password(candidate: str) -> bool:
         expected_hash = base64.b64decode(str(record.get("hash_b64", "")))
         iterations = int(record.get("iterations", 0))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:93")
         return False
     if iterations < 100_000 or not salt_bytes or not expected_hash:
         return False
@@ -223,6 +228,7 @@ def _load_process_state() -> dict[str, Any]:
         payload = json.loads(PROCESS_STATE_PATH.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:228")
         return {}
 
 
@@ -240,7 +246,7 @@ def _clear_process_state() -> None:
     try:
         PROCESS_STATE_PATH.unlink(missing_ok=True)
     except Exception:
-        pass
+        logger.exception("lumina_launcher failed to clear process state file")
 
 
 def _pid_is_alive(pid: int) -> bool:
@@ -264,6 +270,7 @@ def _pid_is_alive(pid: int) -> bool:
         os.kill(pid, 0)
         return True
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:269")
         return False
 
 
@@ -286,6 +293,7 @@ def _pid_command_line(pid: int) -> str:
         raw = proc_cmdline.read_text(encoding="utf-8", errors="replace")
         return raw.replace("\x00", " ").strip()
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:291")
         return ""
 
 
@@ -336,6 +344,7 @@ def _find_external_runtime_pid() -> int:
             if parts and parts[0].isdigit():
                 return int(parts[0])
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:341")
         return 0
     return 0
 
@@ -377,6 +386,7 @@ def _find_runtime_pids() -> list[int]:
                 if parts and parts[0].isdigit():
                     pids.append(int(parts[0]))
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:382")
         return []
     # Preserve order while de-duplicating.
     return list(dict.fromkeys([pid for pid in pids if pid > 0]))
@@ -425,6 +435,7 @@ def _start_bot_process() -> tuple[bool, str]:
         _save_process_state(pid=proc.pid, command=command)
         return True, f"Bot started (pid={proc.pid})"
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:430")
         return False, f"Failed to start bot: {exc}"
 
 
@@ -472,6 +483,7 @@ def _stop_bot_process() -> tuple[bool, str]:
         _clear_process_state()
         return True, "Bot stopped"
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:477")
         return False, f"Failed to stop bot: {exc}"
 
 
@@ -518,6 +530,7 @@ def _format_timestamp(path: Path) -> str:
     try:
         return datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:523")
         return "Not available"
 
 
@@ -551,6 +564,7 @@ def _pid_started_at_text(pid: int) -> str:
         parsed = datetime.strptime(raw, "%a %b %d %H:%M:%S %Y")
         return parsed.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:556")
         return "Not started"
 
 
@@ -565,6 +579,7 @@ def _resolve_last_launch_text(*, alive: bool, process_state: dict[str, Any]) -> 
             parsed = datetime.fromisoformat(persisted)
             return parsed.strftime("%Y-%m-%d %H:%M:%S")
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_launcher.py:570")
             return persisted
 
     if alive:
@@ -605,7 +620,7 @@ def _resolve_last_launch_text(*, alive: bool, process_state: dict[str, Any]) -> 
                 if raw:
                     return raw
         except Exception:
-            pass
+            logger.exception("lumina_launcher failed to resolve process start timestamp")
 
         log_ts = _format_timestamp(LUMINA_LOG_PATH)
         if log_ts != "Not available":
@@ -847,6 +862,7 @@ def _load_runtime_state() -> dict[str, Any]:
         payload = json.loads(STATE_PATH.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:852")
         return {}
 
 
@@ -905,6 +921,7 @@ def _load_last_run_summary() -> dict[str, Any]:
         payload = json.loads(LAST_RUN_SUMMARY_PATH.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:910")
         return {}
 
 
@@ -1317,6 +1334,7 @@ def _load_catalog_state() -> dict[str, Any]:
         payload = json.loads(MODEL_CATALOG_STATE_PATH.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:1322")
         return {}
 
 
@@ -2107,9 +2125,7 @@ with st.sidebar:
             "LUMINA_RUNTIME_TRACE_INTERVAL_SEC": str(
                 float(st.session_state.get("lumina_runtime_trace_interval_ui", 0.0))
             ),
-            "LUMINA_LATENCY_SLA_MS": str(
-                int(float(st.session_state.get("lumina_latency_sla_ms_ui", 250.0)))
-            ),
+            "LUMINA_LATENCY_SLA_MS": str(int(float(st.session_state.get("lumina_latency_sla_ms_ui", 250.0)))),
         }
         _write_env_file(ENV_PATH, cfg_updates)
         ok, msg = _start_bot_process()
@@ -2256,6 +2272,7 @@ with tab4:
         else:
             st.info("Leaderboard is leeg")
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:2261")
         _render_backend_unavailable_card("Trader League", exc)
 
 with tab5:
@@ -2268,6 +2285,7 @@ with tab5:
         else:
             st.info("Nog geen community bible data")
     except Exception as exc:
+        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:2273")
         _render_backend_unavailable_card("Community Bibles", exc)
 
 with tab6:
@@ -2279,6 +2297,7 @@ with tab6:
             report = validator.run_3year_validation()
             st.json(report)
         except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_launcher.py:2284")
             st.error(f"Validation failed: {exc}")
     reports_dir = Path("journal/reports")
     if reports_dir.exists():

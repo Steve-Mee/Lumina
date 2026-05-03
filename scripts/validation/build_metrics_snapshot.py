@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from collections import Counter
@@ -8,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,6 +33,7 @@ def _read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8", errors="replace")
     except Exception:
+        logging.exception("Unhandled broad exception fallback in scripts/validation/build_metrics_snapshot.py:35")
         return ""
 
 
@@ -108,6 +112,7 @@ def _load_previous() -> dict[str, Any] | None:
         data = json.loads(LATEST_OUT.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else None
     except Exception:
+        logging.exception("Unhandled broad exception fallback in scripts/validation/build_metrics_snapshot.py:113")
         return None
 
 
@@ -122,7 +127,7 @@ def _thresholds() -> dict[str, float]:
                     merged[str(k)] = float(v)
                 return merged
         except Exception:
-            pass
+            logger.exception("build_metrics_snapshot failed to load custom thresholds; using defaults")
     return dict(DEFAULT_THRESHOLDS)
 
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 from dataclasses import dataclass
 from typing import Any
@@ -30,6 +31,9 @@ class ProviderNormalizationLayer:
                     value /= 100.0
                 return max(0.0, min(1.0, value))
             except Exception:
+                logging.exception(
+                    "Unhandled broad exception fallback in lumina_core/engine/provider_normalization.py:32"
+                )
                 continue
         return max(0.0, min(1.0, float(default_confidence)))
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import os
 from dataclasses import asdict, dataclass, fields, replace
@@ -14,11 +15,14 @@ def _safe_float(value: Any, default: float) -> float:
     try:
         return float(value)
     except Exception:
+        logging.exception("Unhandled broad exception fallback in lumina_core/risk/risk_policy.py:16")
         return float(default)
 
 
 def _safe_mode(mode: str | None, config: dict[str, Any]) -> str:
-    candidate = str(mode or os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or config.get("mode", "sim")).strip().lower()
+    candidate = (
+        str(mode or os.getenv("LUMINA_MODE") or os.getenv("TRADE_MODE") or config.get("mode", "sim")).strip().lower()
+    )
     return candidate if candidate in _VALID_MODES else "sim"
 
 
@@ -203,4 +207,3 @@ def load_risk_policy(
         config=cfg,
         reload_config=reload_config,
     )
-

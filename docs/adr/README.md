@@ -20,6 +20,10 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0003 | Trading Constitution en Sandboxed Mutation Executor | Accepted | 2026-05-01 | [0003-trading-constitution-sandboxed-mutation-executor.md](./0003-trading-constitution-sandboxed-mutation-executor.md) |
 | 0004 | Purged Cross-Validation, Order Book Replay en Reality Gap Penalty | Accepted | 2026-05-01 | [0004-backtest-realism-purged-cv-orderbook-replay-reality-gap.md](./0004-backtest-realism-purged-cv-orderbook-replay-reality-gap.md) |
 | 0005 | Test Suite Overhaul met Markers, Timeouts en Isolated Fixtures | Proposed | 2026-05-01 | [0005-test-suite-overhaul-markers-timeouts-isolated-fixtures.md](./0005-test-suite-overhaul-markers-timeouts-isolated-fixtures.md) |
+| 0006 | State Manager Cross-Process Locks en Busy Timeout | Accepted | 2026-05-02 | [0006-state-manager-cross-process-locks-and-busy-timeout.md](./0006-state-manager-cross-process-locks-and-busy-timeout.md) |
+| 0007 | Promotion Gate voor REAL mode | Accepted | 2026-05-02 | [0007-promotion-gate-real-mode.md](./0007-promotion-gate-real-mode.md) |
+| 0008 | LuminaEngine service decomposition | Accepted | 2026-05-02 | [0008-lumina-engine-service-decomposition.md](./0008-lumina-engine-service-decomposition.md) |
+| 0009 | Thin Engine orchestrator en verwijdering van app-shim | Accepted | 2026-05-03 | [0009-thin-engine-orchestrator-and-app-shim-removal.md](./0009-thin-engine-orchestrator-and-app-shim-removal.md) |
 
 ## Legacy notitie
 

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import hashlib
 import json
@@ -20,11 +21,9 @@ class _ProposalOwner(Protocol):
 
 
 class ProposalGeneratorProtocol(Protocol):
-    def current_champion(self) -> dict[str, Any]:
-        ...
+    def current_champion(self) -> dict[str, Any]: ...
 
-    def build_challengers(self, champion: dict[str, Any], meta_review: dict[str, Any]) -> list[dict[str, Any]]:
-        ...
+    def build_challengers(self, champion: dict[str, Any], meta_review: dict[str, Any]) -> list[dict[str, Any]]: ...
 
 
 class ProposalGenerator:
@@ -146,7 +145,9 @@ class ProposalGenerator:
         )
         suggestion = challenger.get("hyperparam_suggestion", {})
         risk_penalty = 0.0
-        if float(suggestion.get("max_risk_percent", 1.0)) > float(getattr(self._owner.engine.config, "max_risk_percent", 1.0)):
+        if float(suggestion.get("max_risk_percent", 1.0)) > float(
+            getattr(self._owner.engine.config, "max_risk_percent", 1.0)
+        ):
             risk_penalty += 2.5
         if float(suggestion.get("drawdown_kill_percent", 8.0)) > float(
             getattr(self._owner.engine.config, "drawdown_kill_percent", 8.0)
@@ -295,7 +296,9 @@ class ProposalGenerator:
     ) -> PolicyDNA | None:
         registry = self.dna_registry()
         if registry.get_latest_dna("active") is None:
-            registry.load_from_blackboard(self._owner.blackboard, prompt_id="self_evolution_blackboard", version="bootstrap")
+            registry.load_from_blackboard(
+                self._owner.blackboard, prompt_id="self_evolution_blackboard", version="bootstrap"
+            )
         payload = {
             "prompt_fingerprint": self.prompt_fingerprint(),
             "agent_styles": dict(getattr(self._owner.engine.config, "agent_styles", {}) or {}),
@@ -368,6 +371,7 @@ class ProposalGenerator:
             try:
                 event = self._owner.blackboard.latest(topic)
             except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/proposal_generator.py:370")
                 event = None
             if event is None:
                 continue
@@ -427,7 +431,9 @@ class ProposalGenerator:
         payload = cls.content_from_dna(dna)
         source = payload.get("hyperparam_suggestion") or payload.get("hyperparams") or champion.get("hyperparams", {})
         return {
-            "fast_path_threshold": float(source.get("fast_path_threshold", source.get("rl_confidence_threshold", 0.78)) or 0.78),
+            "fast_path_threshold": float(
+                source.get("fast_path_threshold", source.get("rl_confidence_threshold", 0.78)) or 0.78
+            ),
             "max_risk_percent": float(source.get("max_risk_percent", 1.0) or 1.0),
             "drawdown_kill_percent": float(source.get("drawdown_kill_percent", 8.0) or 8.0),
         }

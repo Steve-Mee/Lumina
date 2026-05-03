@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
@@ -13,7 +14,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from pydantic import BaseModel, ValidationError
+
+from lumina_core.agent_orchestration.schemas import BLACKBOARD_TOPIC_MODELS, validate_payload_with_model
 from lumina_core.state.state_manager import safe_append_jsonl
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -102,7 +108,9 @@ class AgentBlackboard:
         allowed_producers: dict[str, set[str]] | None = None,
         topic_policies: dict[str, TopicPolicy] | None = None,
     ) -> None:
-        self.persistence_path = Path(persistence_path) if persistence_path is not None else self._default_persistence_path()
+        self.persistence_path = (
+            Path(persistence_path) if persistence_path is not None else self._default_persistence_path()
+        )
         self.audit_path = Path(audit_path) if audit_path is not None else self._default_audit_path()
         self.max_topic_history = max(10, int(max_topic_history))
         self.obs_service = obs_service
@@ -139,6 +147,7 @@ class AgentBlackboard:
         confidence: float,
         metadata: dict[str, Any] | None = None,
         correlation_id: str | None = None,
+        payload_model: type[BaseModel] | None = None,
     ) -> BlackboardEvent:
         return self.publish_sync(
             topic=topic,
@@ -147,6 +156,7 @@ class AgentBlackboard:
             confidence=confidence,
             metadata=metadata,
             correlation_id=correlation_id,
+            payload_model=payload_model,
         )
 
     def publish_sync(
@@ -158,6 +168,7 @@ class AgentBlackboard:
         confidence: float,
         metadata: dict[str, Any] | None = None,
         correlation_id: str | None = None,
+        payload_model: type[BaseModel] | None = None,
     ) -> BlackboardEvent:
         started = time.perf_counter()
         topic_key = str(topic).strip().lower()
@@ -172,11 +183,26 @@ class AgentBlackboard:
             self._record_reject(topic=topic_key, producer=producer, reason="payload_not_dict")
             raise TypeError("payload must be a dict")
         self._validate_producer(topic=topic_key, producer=producer)
+        safe_payload = dict(payload)
+        selected_payload_model = payload_model or BLACKBOARD_TOPIC_MODELS.get(topic_key)
+        if selected_payload_model is not None:
+            try:
+                safe_payload = validate_payload_with_model(payload=safe_payload, payload_model=selected_payload_model)
+            except ValidationError as exc:
+                self._record_reject(topic=topic_key, producer=producer, reason="schema_violation")
+                logger.warning(
+                    "AgentBlackboard schema violation topic=%s producer=%s model=%s errors=%s",
+                    topic_key,
+                    producer,
+                    selected_payload_model.__name__,
+                    exc.errors(),
+                )
+                raise
 
         event = self._build_event(
             topic=topic_key,
             producer=producer,
-            payload=dict(payload),
+            payload=safe_payload,
             confidence=conf,
             metadata=dict(metadata or {}),
             correlation_id=correlation_id,
@@ -194,6 +220,7 @@ class AgentBlackboard:
             try:
                 callback(event)
             except Exception as exc:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/agent_blackboard.py:225")
                 self._record_subscription_error(topic=topic_key, producer=producer, error=str(exc))
                 continue
 
@@ -295,6 +322,9 @@ class AgentBlackboard:
                 try:
                     ts = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00"))
                 except Exception:
+                    logging.exception(
+                        "Unhandled broad exception fallback in lumina_core/engine/agent_blackboard.py:326"
+                    )
                     continue
                 if ts >= cutoff:
                     filtered.append(event)
@@ -317,6 +347,7 @@ class AgentBlackboard:
                     event = BlackboardEvent(**parsed)
                     topic_buckets[event.topic].append(event)
         except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/engine/agent_blackboard.py:348")
             return
 
         with self._lock:
@@ -407,14 +438,14 @@ class AgentBlackboard:
             try:
                 self.obs_service.record_blackboard_publish(topic=topic, producer=producer, elapsed_ms=elapsed_ms)
             except Exception:
-                pass
+                logger.exception("AgentBlackboard failed to record publish latency")
 
     def _record_reject(self, *, topic: str, producer: str, reason: str) -> None:
         if self.obs_service is not None and hasattr(self.obs_service, "record_blackboard_reject"):
             try:
                 self.obs_service.record_blackboard_reject(topic=topic, producer=producer, reason=reason)
             except Exception:
-                pass
+                logger.exception("AgentBlackboard failed to record reject metric")
         self._append_audit_entry(action="blackboard_reject", topic=topic, producer=producer, details={"reason": reason})
 
     def _record_drop(self, *, topic: str, producer: str, reason: str, critical: bool) -> None:
@@ -424,7 +455,7 @@ class AgentBlackboard:
                     topic=topic, producer=producer, reason=reason, critical=critical
                 )
             except Exception:
-                pass
+                logger.exception("AgentBlackboard failed to record drop metric")
         self._append_audit_entry(
             action="blackboard_drop", topic=topic, producer=producer, details={"reason": reason, "critical": critical}
         )
@@ -434,7 +465,7 @@ class AgentBlackboard:
             try:
                 self.obs_service.record_blackboard_subscription_error(topic=topic, producer=producer)
             except Exception:
-                pass
+                logger.exception("AgentBlackboard failed to record subscription error metric")
         self._append_audit_entry(
             action="blackboard_subscription_error", topic=topic, producer=producer, details={"error": error}
         )

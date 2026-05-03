@@ -19,6 +19,8 @@ from unittest.mock import MagicMock
 import pandas as pd
 
 from lumina_core.engine.operations_service import OperationsService
+from lumina_core.risk.final_arbitration import FinalArbitration
+from lumina_core.risk.risk_policy import RiskPolicy
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import check_pre_trade_risk
 
@@ -44,6 +46,22 @@ class _Blackboard:
         return None
 
 
+class _FreshEquitySnapshotProvider:
+    """Test double that satisfies REAL-mode fresh equity snapshot gate."""
+
+    def get_snapshot(self):
+        return SimpleNamespace(
+            ok=True,
+            is_fresh=True,
+            reason_code="ok",
+            source="test_provider",
+            equity_usd=50_000.0,
+            available_margin_usd=40_000.0,
+            used_margin_usd=10_000.0,
+            age_seconds=0.2,
+        )
+
+
 # ─── helpers ────────────────────────────────────────────────────────────────
 
 
@@ -56,11 +74,20 @@ def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: b
     risk_ctrl.apply_regime_override.return_value = None
     limits = SimpleNamespace(enforce_session_guard=enforce_session_guard)
     risk_ctrl._active_limits = limits
+    risk_ctrl.state = SimpleNamespace(
+        open_risk_by_symbol={},
+        margin_tracker=SimpleNamespace(account_equity=50_000.0),
+        var_95_usd=0.0,
+        var_99_usd=0.0,
+        es_95_usd=0.0,
+        es_99_usd=0.0,
+    )
 
     session_guard: Any = MagicMock()
     session_guard.is_rollover_window.return_value = False
     session_guard.is_trading_session.return_value = True
 
+    max_total_open_risk = 1200.0 if str(trade_mode).lower() == "real" else 3000.0
     engine = SimpleNamespace(
         config=SimpleNamespace(
             trade_mode=trade_mode,
@@ -87,6 +114,21 @@ def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: b
         blackboard=_Blackboard(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
+        equity_snapshot_provider=_FreshEquitySnapshotProvider(),
+        final_arbitration=FinalArbitration(
+            RiskPolicy(
+                runtime_mode=trade_mode,
+                daily_loss_cap=-1000.0,
+                max_open_risk_per_instrument=500.0,
+                max_total_open_risk=max_total_open_risk,
+                max_exposure_per_regime=2000.0,
+                var_95_limit_usd=1200.0,
+                var_99_limit_usd=1800.0,
+                es_95_limit_usd=1500.0,
+                es_99_limit_usd=2200.0,
+                margin_min_confidence=0.6,
+            )
+        ),
     )
     return engine
 
@@ -253,6 +295,11 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
         config=SimpleNamespace(trade_mode=trade_mode),
         risk_controller=risk_ctrl,
         session_guard=session_guard,
+        account_balance=50_000.0,
+        account_equity=50_000.0,
+        available_margin=40_000.0,
+        positions_margin_used=10_000.0,
+        live_position_qty=0,
         current_regime_snapshot={"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}},
         reasoning_service=SimpleNamespace(
             refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
@@ -260,6 +307,7 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
         blackboard=_Blackboard(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
+        equity_snapshot_provider=_FreshEquitySnapshotProvider(),
     )
     # Return as RuntimeContext-compatible object (duck typing)
     return cast(RuntimeContext, SimpleNamespace(engine=engine, logger=MagicMock(), market_regime="NEUTRAL"))
