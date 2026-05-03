@@ -81,6 +81,23 @@ class _Blackboard:
         return None
 
 
+class _AlwaysApproveArbitration:
+    def check_order_intent(self, *_args, **_kwargs):
+        return SimpleNamespace(status="APPROVED", reason="approved")
+
+
+def _fresh_snapshot():
+    return SimpleNamespace(
+        ok=True,
+        is_fresh=True,
+        source="unit-test-provider",
+        reason_code="ok_live",
+        equity_usd=50_000.0,
+        available_margin_usd=45_000.0,
+        used_margin_usd=5_000.0,
+    )
+
+
 def _make_engine(
     *,
     trade_mode: str,
@@ -100,6 +117,12 @@ def _make_engine(
         "blackboard": _Blackboard(),
         "audit_log_service": SimpleNamespace(log_decision=lambda *_args, **_kwargs: True),
         "app": SimpleNamespace(logger=SimpleNamespace(warning=lambda *_a, **_k: None)),
+        "equity_snapshot_provider": SimpleNamespace(get_snapshot=lambda: _fresh_snapshot()),
+        "account_equity": 50_000.0,
+        "available_margin": 45_000.0,
+        "positions_margin_used": 5_000.0,
+        "live_position_qty": 0,
+        "final_arbitration": _AlwaysApproveArbitration(),
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -125,6 +148,7 @@ def test_enforce_pre_trade_gate_blocks_stale_contract_in_sim_mode(monkeypatch) -
         symbol="MES JAN24",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is False
@@ -142,6 +166,7 @@ def test_enforce_pre_trade_gate_allows_override_for_stale_contract(monkeypatch) 
         symbol="MES JAN24",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is True
@@ -163,6 +188,7 @@ def test_enforce_pre_trade_gate_blocks_when_broker_metadata_rejects_symbol(monke
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is False
@@ -180,6 +206,7 @@ def test_enforce_pre_trade_gate_sim_mode_risk_is_advisory(monkeypatch) -> None:
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is True
@@ -205,6 +232,7 @@ def test_enforce_pre_trade_gate_sim_real_guard_blocks_on_risk(monkeypatch) -> No
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is False
@@ -226,6 +254,7 @@ def test_enforce_pre_trade_gate_real_blocks_on_var_es(monkeypatch) -> None:
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is False
@@ -245,6 +274,7 @@ def test_enforce_pre_trade_gate_sim_var_es_is_advisory(monkeypatch) -> None:
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is True
@@ -265,6 +295,7 @@ def test_enforce_pre_trade_gate_real_blocks_on_mc_drawdown(monkeypatch) -> None:
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is False
@@ -286,6 +317,7 @@ def test_enforce_pre_trade_gate_real_fail_closed_when_audit_write_fails(monkeypa
         symbol="MES JUN26",
         regime="NEUTRAL",
         proposed_risk=50.0,
+        order_side="BUY",
     )
 
     assert allowed is False

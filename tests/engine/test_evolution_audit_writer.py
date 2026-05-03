@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from lumina_core.engine.audit_writer import EvolutionAuditWriter, EvolutionAuditWriterError
+from lumina_core.evolution.audit_writer import EvolutionAuditWriter, EvolutionAuditWriterError
 
 
 class _FailingDecisionLog:

@@ -28,8 +28,6 @@ import pytest
 # ---------------------------------------------------------------------------
 
 os.environ.setdefault("LUMINA_SKIP_STARTUP_DIALOG", "1")
-# Disable dual thought-log writes during tests (avoid race conditions)
-os.environ.setdefault("LUMINA_DUAL_THOUGHT_LOG", "false")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -63,7 +61,6 @@ def _session_state_isolation(tmp_path_factory: pytest.TempPathFactory) -> Genera
     for fname in (
         "agent_blackboard.jsonl",
         "thought_log.jsonl",
-        "lumina_thought_log.jsonl",
         "evolution_log.jsonl",
         "dna_registry.jsonl",
         "veto_registry.jsonl",

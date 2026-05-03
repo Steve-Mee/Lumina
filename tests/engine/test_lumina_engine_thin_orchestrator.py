@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from lumina_core.engine.engine_config import EngineConfig
 from lumina_core.engine.lumina_engine import LuminaEngine
+from lumina_core.ports import EngineServicePorts, RiskPort
 
 
 def _build_config(tmp_path) -> EngineConfig:
@@ -47,7 +48,7 @@ def test_lumina_engine_orchestrates_injected_execution_service(tmp_path) -> None
     # gegeven
     cfg = _build_config(tmp_path)
     execution = _FakeExecutionService()
-    engine = LuminaEngine(config=cfg, execution_service=execution)
+    engine = LuminaEngine(config=cfg, execution_service=cast(Any, execution))
 
     # wanneer
     approved = engine.apply_rl_live_decision({"signal": "BUY"}, current_price=5000.0, regime="TRENDING")
@@ -96,7 +97,7 @@ def test_lumina_engine_orchestrates_injected_risk_orchestrator(tmp_path) -> None
     # gegeven
     cfg = _build_config(tmp_path)
     risk_orchestrator = _FakeRiskOrchestrator()
-    engine = LuminaEngine(config=cfg, risk_orchestrator=risk_orchestrator)
+    engine = LuminaEngine(config=cfg, risk_orchestrator=cast(Any, risk_orchestrator))
 
     # wanneer
     qty = engine.calculate_adaptive_risk_and_qty(
@@ -111,6 +112,40 @@ def test_lumina_engine_orchestrates_injected_risk_orchestrator(tmp_path) -> None
     assert qty == 3
     assert len(risk_orchestrator.calls) == 1
     assert risk_orchestrator.calls[0]["regime"] == "TRENDING"
+    engine.services_ports = EngineServicePorts(
+        risk=risk_orchestrator,
+        audit=cast(Any, SimpleNamespace(log_decision=lambda payload, is_real_mode=False: True)),
+        orchestration=cast(
+            Any,
+            SimpleNamespace(
+            publish=lambda **kwargs: kwargs,
+            subscribe=lambda topic, callback: "token",
+            ),
+        ),
+        broker=cast(
+            Any,
+            SimpleNamespace(
+            submit_order=lambda order: None,
+            get_account_info=lambda: None,
+            get_positions=lambda: [],
+            get_fills=lambda: [],
+            connect=lambda: True,
+            disconnect=lambda: None,
+            ),
+        ),
+        market_data=cast(Any, SimpleNamespace(load_historical_ohlc=lambda days_back=3, limit=5000: True)),
+        execution=cast(
+            Any,
+            SimpleNamespace(
+            apply_rl_live_decision=lambda **kwargs: True,
+            update_performance_log=lambda performance_log, trade_data: None,
+            ),
+        ),
+        dream=engine,
+        reasoning=None,
+        evolution=None,
+    )
+    assert isinstance(engine.services_ports.risk, RiskPort)
 
 
 @pytest.mark.unit
@@ -123,7 +158,7 @@ def test_lumina_engine_orchestrates_injected_dream_state_manager(tmp_path) -> No
         set_value=lambda key, value: updates.append({key: value}),
         snapshot=lambda: {"signal": "BUY"},
     )
-    engine = LuminaEngine(config=cfg, dream_state_manager=fake_manager)
+    engine = LuminaEngine(config=cfg, dream_state_manager=cast(Any, fake_manager))
 
     # wanneer
     engine.set_current_dream_fields({"signal": "SELL"})

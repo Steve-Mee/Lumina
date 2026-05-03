@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 from lumina_core.bootstrap import bootstrap_runtime
 from lumina_core.container import ApplicationContainer, create_application_container
 from lumina_core.evolution.simulator_data_support import require_real_simulator_data_strict
-from lumina_core.engine.session_guard import SessionGuard
+from lumina_core.risk.session_guard import SessionGuard
 from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
 from lumina_core.runtime.headless_runtime import HeadlessRuntime, parse_duration_minutes
 

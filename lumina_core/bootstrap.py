@@ -16,7 +16,7 @@ from typing import Any, Callable
 
 from lumina_core import backtest_workers, runtime_workers, trade_workers
 from lumina_core.container import ApplicationContainer
-from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
+from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.logging_utils import flush_logger_handlers
 from lumina_core.runtime_bootstrap import start_runtime_services
 from lumina_core.threading_utils import start_daemon

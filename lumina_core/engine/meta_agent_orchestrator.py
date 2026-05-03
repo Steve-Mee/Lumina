@@ -12,7 +12,7 @@ from lumina_core.evolution.simulator_data_support import (
 )
 
 from .agent_blackboard import AgentBlackboard
-from .self_evolution_meta_agent import SelfEvolutionMetaAgent
+from lumina_core.evolution.self_evolution_meta_agent import SelfEvolutionMetaAgent
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pandas as pd
 import pytest
 
-from lumina_core.engine.session_guard import SessionGuard
+from lumina_core.risk.session_guard import SessionGuard
 
 
 class _CalendarOk:

@@ -1,8 +1,0 @@
-{
-  "status": "amber",
-  "ready_for_promotion": false,
-  "proposals_seen": 14,
-  "promotions_seen": 0,
-  "rollbacks_seen": 19,
-  "notes": "Shadow rollout requires at least one promoted lifecycle without rollback in current evidence set."
-}

@@ -10,10 +10,10 @@ from typing import Any, cast
 import pandas as pd
 import pytest
 
-from lumina_core.engine.regime_detector import RegimeDetector
-from lumina_core.engine.reasoning_service import ReasoningService
+from lumina_core.risk.regime_detector import RegimeDetector
+from lumina_core.reasoning.reasoning_service import ReasoningService
 from lumina_core.risk.risk_controller import HardRiskController, RiskLimits
-from lumina_core.engine.self_evolution_meta_agent import SelfEvolutionMetaAgent
+from lumina_core.evolution.self_evolution_meta_agent import SelfEvolutionMetaAgent
 from lumina_core.evolution.dna_registry import DNARegistry
 from lumina_core.trade_workers import check_pre_trade_risk
 
@@ -261,7 +261,7 @@ def test_self_evolution_meta_agent_uses_regime_breakdown(tmp_path: Path, monkeyp
     # Regime breakdown lives in the meta-agent meta_review path; avoid full multi-gen
     # EvolutionOrchestrator (candidate DNA constitution gates) — out of scope for this assertion.
     monkeypatch.setattr(
-        "lumina_core.engine.self_evolution_meta_agent.should_run_multi_gen_nightly",
+        "lumina_core.evolution.self_evolution_meta_agent.should_run_multi_gen_nightly",
         lambda **_: False,
     )
 

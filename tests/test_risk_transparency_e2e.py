@@ -5,10 +5,15 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
-from lumina_core.engine.audit_log_service import AuditLogService
+from lumina_core.audit.audit_log_service import AuditLogService
 from lumina_core.risk.risk_controller import HardRiskController, RiskLimits, risk_limits_from_config
 from lumina_core.risk.equity_snapshot import EquitySnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+
+
+class _AlwaysApproveArbitration:
+    def check_order_intent(self, *_args, **_kwargs):
+        return SimpleNamespace(status="APPROVED", reason="approved")
 
 
 def _bb_event(*, topic: str, producer: str, payload: dict, confidence: float, sequence: int):
@@ -117,6 +122,7 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
         available_margin=60_000.0,
         positions_margin_used=40_000.0,
         live_position_qty=0,
+        final_arbitration=_AlwaysApproveArbitration(),
     )
 
     allowed, reason = enforce_pre_trade_gate(
@@ -124,6 +130,7 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
         symbol="MES JUN26",
         regime="HIGH_VOLATILITY",
         proposed_risk=250.0,
+        order_side="BUY",
     )
 
     assert allowed is False
@@ -131,8 +138,8 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
 
     lines = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert lines, "Expected at least one trade decision audit event"
-    risk_gate_events = [row for row in lines if str(row.get("stage")) == "risk_gate"]
-    assert risk_gate_events, "Expected a risk_gate audit entry"
+    risk_gate_events = [row for row in lines if str(row.get("stage")) == "policy_gate"]
+    assert risk_gate_events, "Expected a policy_gate audit entry"
     risk_gate = risk_gate_events[-1]
     assert risk_gate["final_decision"] == "block"
     assert "monte_carlo" in risk_gate
@@ -210,6 +217,7 @@ def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Pa
         available_margin=60_000.0,
         positions_margin_used=40_000.0,
         live_position_qty=0,
+        final_arbitration=_AlwaysApproveArbitration(),
     )
 
     allowed, reason = enforce_pre_trade_gate(
@@ -217,14 +225,15 @@ def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Pa
         symbol="MES JUN26",
         regime="TRENDING",
         proposed_risk=100.0,
+        order_side="BUY",
     )
 
     assert allowed is True
     assert reason == "OK"
 
     lines = [json.loads(line) for line in audit_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    risk_gate_events = [row for row in lines if str(row.get("stage")) == "risk_gate"]
-    assert risk_gate_events, "Expected risk_gate audit event for active pre-trade path"
+    risk_gate_events = [row for row in lines if str(row.get("stage")) == "admission_chain"]
+    assert risk_gate_events, "Expected admission_chain audit event for active pre-trade path"
     risk_gate = risk_gate_events[-1]
     mc = risk_gate.get("monte_carlo", {}) if isinstance(risk_gate.get("monte_carlo", {}), dict) else {}
     assert int(float(mc.get("paths", 0.0) or 0.0)) == 10000

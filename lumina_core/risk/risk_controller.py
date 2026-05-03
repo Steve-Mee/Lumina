@@ -272,7 +272,7 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         self.portfolio_var_allocator = portfolio_var_allocator
         if self.session_guard is None and self._base_limits.enforce_session_guard:
             try:
-                from lumina_core.engine.session_guard import SessionGuard  # noqa: PLC0415
+                from lumina_core.risk.session_guard import SessionGuard  # noqa: PLC0415
 
                 self.session_guard = SessionGuard(calendar_name="CME")
             except _HANDLED_RISK_EXCEPTIONS as exc:

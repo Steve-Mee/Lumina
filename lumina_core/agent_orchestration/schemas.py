@@ -13,6 +13,13 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from lumina_core.risk.schemas import ArbitrationResult
+
+
+#
+# Tier A: Critical execution and risk contracts (REAL integrity boundary).
+# These contracts are strict by design: unknown fields are rejected.
+#
 
 
 class TradeIntent(BaseModel):
@@ -47,18 +54,21 @@ class RiskVerdict(BaseModel):
     rl_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
-class EvolutionProposal(BaseModel):
-    """Contract for evolution proposal and status payloads."""
+class FinalArbitrationResult(ArbitrationResult):
+    """Event-bus alias for canonical risk arbitration result contract."""
+
+
+class EvolutionPromotionDecision(BaseModel):
+    """Contract for REAL-facing promotion gate decisions."""
 
     model_config = ConfigDict(extra="forbid")
 
-    status: str | None = None
-    proposal: dict[str, Any] | None = None
-    dna: dict[str, Any] | None = None
-    generations_run: int | None = Field(default=None, ge=0)
-    promotions: int | None = Field(default=None, ge=0)
-    best_fitness: float | None = None
-    timestamp: str | None = None
+    dna_hash: str = Field(min_length=1)
+    allowed: bool
+    reason: str = Field(min_length=1)
+    stage: Literal["shadow", "promotion_gate", "human_approval", "final"]
+    mode: Literal["SIM", "PAPER", "REAL"] | None = None
+    evidence_ref: str | None = None
 
 
 class ShadowResult(BaseModel):
@@ -70,6 +80,28 @@ class ShadowResult(BaseModel):
     dna_hash: str | None = None
     sample_size: int | None = Field(default=None, ge=0)
     pnl: float | None = None
+
+
+#
+# Tier B: Experimental and agent-cognition contracts (emergent space).
+# These remain intentionally flexible with extra="allow" while fields stabilize.
+# Migration path: inventory frequently used dynamic fields and promote them into
+# explicit contracts before moving a topic to strict mode.
+#
+
+
+class EvolutionProposal(BaseModel):
+    """Contract for evolution proposal and status payloads."""
+
+    model_config = ConfigDict(extra="allow")
+
+    status: str | None = None
+    proposal: dict[str, Any] | None = None
+    dna: dict[str, Any] | None = None
+    generations_run: int | None = Field(default=None, ge=0)
+    promotions: int | None = Field(default=None, ge=0)
+    best_fitness: float | None = None
+    timestamp: str | None = None
 
 
 class ConstitutionViolation(BaseModel):
@@ -120,6 +152,50 @@ class DreamStateEventPayload(TradeIntent):
     """
 
     model_config = ConfigDict(extra="allow")
+
+
+DreamState = DreamStateEventPayload
+
+
+class MetaAgentThought(BaseModel):
+    """Flexible thought payload emitted by meta-agent cognition loops."""
+
+    model_config = ConfigDict(extra="allow")
+
+    thought_id: str | None = None
+    source: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    summary: str | None = None
+    context: dict[str, Any] | None = None
+    timestamp: str | None = None
+
+
+class CommunityKnowledgeSnippet(BaseModel):
+    """Flexible community knowledge snippet payload."""
+
+    model_config = ConfigDict(extra="allow")
+
+    snippet_id: str | None = None
+    source: str | None = None
+    title: str | None = None
+    content: str | None = None
+    tags: list[str] | None = None
+    metadata: dict[str, Any] | None = None
+    timestamp: str | None = None
+
+
+class LLMDecisionContext(BaseModel):
+    """Flexible context envelope for LLM advisory decision traces."""
+
+    model_config = ConfigDict(extra="allow")
+
+    model_name: str | None = None
+    prompt_id: str | None = None
+    llm_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    recommendation: str | None = None
+    rationale: str | None = None
+    context: dict[str, Any] | None = None
+    timestamp: str | None = None
 
 
 class AgentProposalPayload(BaseModel):
@@ -223,20 +299,20 @@ class AgentMetaProposalPayload(BaseModel):
     timestamp: str | None = None
 
 
-# Backward-compatible aliases used by existing imports.
-TradeSignal = TradeIntent
-RiskDecision = RiskVerdict
-ShadowVerdict = ShadowResult
-
 EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "trading_engine.trade_signal.emitted": TradeIntent,
     "trading_engine.dream_state.updated": DreamStateEventPayload,
     "risk.policy.decision": RiskVerdict,
+    "risk.final_arbitration.result": FinalArbitrationResult,
     "evolution.proposal.created": EvolutionProposal,
     "evolution.shadow.verdict": ShadowResult,
+    "evolution.promotion.decision": EvolutionPromotionDecision,
     "safety.constitution.violation": ConstitutionViolation,
     "safety.constitution.audit": ConstitutionAudit,
     "meta.agent.reflection": AgentReflection,
+    "meta.agent.thought": MetaAgentThought,
+    "meta.community.knowledge": CommunityKnowledgeSnippet,
+    "inference.llm.decision_context": LLMDecisionContext,
 }
 
 BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {

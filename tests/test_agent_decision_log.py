@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lumina_core.engine.agent_decision_log import AgentDecisionLog, AgentDecisionLogChainError
+from lumina_core.audit.agent_decision_log import AgentDecisionLog, AgentDecisionLogChainError
 
 
 def test_agent_decision_log_appends_hash_chain(tmp_path: Path) -> None:
@@ -35,9 +35,9 @@ def test_agent_decision_log_appends_hash_chain(tmp_path: Path) -> None:
     lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 2
     assert lines[0]["prev_hash"] == "GENESIS"
-    assert lines[1]["prev_hash"] == lines[0]["hash"]
-    assert lines[0]["hash"] == first["hash"]
-    assert lines[1]["hash"] == second["hash"]
+    assert lines[1]["prev_hash"] == lines[0]["entry_hash"]
+    assert lines[0]["entry_hash"] == first["entry_hash"]
+    assert lines[1]["entry_hash"] == second["entry_hash"]
     assert isinstance(lines[0].get("config_snapshot_hash"), str)
     assert len(lines[0].get("config_snapshot_hash")) > 0
     assert lines[0]["lineage"]["config_snapshot_hash"] == lines[0]["config_snapshot_hash"]

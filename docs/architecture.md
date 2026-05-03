@@ -216,17 +216,52 @@ flowchart LR
 
 ### 3.4.1 Resterende overlap en ownership-plan
 
-De overlap tussen `engine/` en bounded contexts wordt bewust afgebouwd zonder de experimentele kern te blokkeren. Ownership per capability is nu:
+De overlap tussen `engine/` en bounded contexts is nu via typed ports afgebakend. Ownership per capability is:
 
-- **Risk ownership**: `lumina_core/risk/` is canoniek voor riskbeslissingen, policy, arbitratie en sizing (`RiskOrchestrator`, `FinalArbitration`, `HardRiskController`); `engine/` exporteert alleen compat-shims waar nodig.
+- **Risk ownership**: `lumina_core/risk/` is canoniek voor riskbeslissingen, policy, arbitratie en sizing (`RiskOrchestrator`, `FinalArbitration`, `HardRiskController`, `SessionGuard`, `RegimeDetector`, mode capabilities).
 - **Safety ownership**: constitutionele veto/promotion-gates blijven in `lumina_core/safety/`; `engine/` mag safety alleen aanroepen, niet dupliceren.
-- **Evolution ownership**: mutatie-, fitness- en promotion-policy blijven in `lumina_core/evolution/`; `engine/` bewaart enkel runtime wiring.
+- **Evolution ownership**: mutatie-, fitness- en promotion-policy en meta-agent lifecycle blijven in `lumina_core/evolution/`.
+- **Audit ownership**: decision/audit logging, replay-validatie en hash-chain transparantie blijven in `lumina_core/audit/`.
+- **Broker ownership**: broker bridge contracten en order-submit backends blijven in `lumina_core/broker/`.
+- **Reasoning ownership**: LLM reasoning, policy gateway en contracthandhaving blijven in `lumina_core/reasoning/`.
 - **Orchestration ownership**: typed event contracts en pub/sub-flow blijven in `lumina_core/agent_orchestration/`; engine-blackboard bindingen zijn adapters, niet domeinlogica.
 
-Open resterende overlap (volgende iteraties):
+### 3.4.2 EngineServicePorts (hexagonal ownership registry)
 
-1. Compat API's onder `engine/` die nog direct domeinstate exposen i.p.v. via services/contracts.
-2. Legacy imports in oudere callsites die nog `engine/` direct aanspreken voor contextspecifieke logica.
+`LuminaEngine` krijgt een typed service registry (`services_ports`) als canonical ownership-map:
+
+```mermaid
+flowchart LR
+    luminaEngine[LuminaEngine]
+    engineServicePorts[EngineServicePorts]
+    riskPort[RiskPort]
+    auditPort[AuditPort]
+    evolutionPort[EvolutionPort]
+    orchestrationPort[OrchestrationPort]
+    brokerPort[BrokerPort]
+    marketDataPort[MarketDataPort]
+    executionPort[ExecutionPort]
+    dreamPort[DreamStatePort]
+    reasoningPort[ReasoningPort]
+    experimentalPort["experimental: dict[str, Any]"]
+
+    luminaEngine --> engineServicePorts
+    engineServicePorts --> riskPort
+    engineServicePorts --> auditPort
+    engineServicePorts --> evolutionPort
+    engineServicePorts --> orchestrationPort
+    engineServicePorts --> brokerPort
+    engineServicePorts --> marketDataPort
+    engineServicePorts --> executionPort
+    engineServicePorts --> dreamPort
+    engineServicePorts --> reasoningPort
+    engineServicePorts --> experimentalPort
+```
+
+- `EngineServicePorts` gebruikt Pydantic v2 met `extra="forbid"` zodat onbekende servicevelden fail-closed worden geweigerd.
+- Iedere port is `@runtime_checkable`, zodat runtime `isinstance` contractvalidatie mogelijk is voor container-wiring.
+- `experimental` bewaart expliciete ruimte voor emergent lagen zonder `LuminaEngine` API-expansie.
+- De legacy service-facade blijft tijdelijk aanwezig voor migratie, maar nieuwe code gebruikt primair `engine.services_ports`.
 
 ### 3.5 State manager component
 
@@ -291,11 +326,16 @@ Om schema-drift te beperken gebruiken Event Bus en Blackboard Pydantic contracte
 - `trading_engine.trade_signal.emitted` -> `TradeIntent`
 - `trading_engine.dream_state.updated` -> `DreamStateEventPayload`
 - `risk.policy.decision` -> `RiskVerdict`
+- `risk.final_arbitration.result` -> `FinalArbitrationResult`
 - `evolution.proposal.created` -> `EvolutionProposal`
 - `evolution.shadow.verdict` -> `ShadowResult`
+- `evolution.promotion.decision` -> `EvolutionPromotionDecision`
 - `safety.constitution.violation` -> `ConstitutionViolation`
 - `safety.constitution.audit` -> `ConstitutionAudit`
 - `meta.agent.reflection` -> `AgentReflection`
+- `meta.agent.thought` -> `MetaAgentThought`
+- `meta.community.knowledge` -> `CommunityKnowledgeSnippet`
+- `inference.llm.decision_context` -> `LLMDecisionContext`
 
 **Blackboard topics:**
 - `agent.rl.proposal`, `agent.news.proposal`, `agent.emotional_twin.proposal`, `agent.swarm.proposal`, `agent.tape.proposal`, `agent.swarm.snapshot` -> `AgentProposalPayload`
@@ -311,13 +351,13 @@ Om schema-drift te beperken gebruiken Event Bus en Blackboard Pydantic contracte
 
 **Validatiegedrag en migratiepad:**
 - Voor geregistreerde Event Bus- en Blackboard-topics wordt validatie nu altijd afgedwongen via het topic-registry, ook zonder expliciete `payload_model`.
-- Kritieke Event Bus-contracten (`TradeIntent`, `RiskVerdict`, `EvolutionProposal`, `ShadowResult`, `ConstitutionAudit`) gebruiken `extra="forbid"`; onbekende top-level velden worden fail-closed geweigerd.
-- Experimentele topics blijven tijdelijk ruim: `DreamStateEventPayload` en meta/blackboard-contracten gebruiken `extra="allow"` zodat agents en LLM-routines nieuwe signalen kunnen uitproberen zonder kernintegriteit te verliezen.
+- Tier A (strict, `extra="forbid"`): `TradeIntent`, `RiskVerdict`, `FinalArbitrationResult`, `ConstitutionAudit`, `ShadowResult`, `EvolutionPromotionDecision`. Deze vormen de execution/risk-integriteitsrand; onbekende top-level velden worden fail-closed geweigerd.
+- Tier B (flexibel, `extra="allow"`): `EvolutionProposal`, `AgentReflection`, `DreamState`, `MetaAgentThought`, `CommunityKnowledgeSnippet`, `LLMDecisionContext` plus blackboard/meta-contracten die nog in veldinventarisatie zitten.
 - `publish_validated(...)` op Event Bus blijft fail-closed en retourneert `None` bij schemafouten.
 - Niet-geregistreerde topics blijven backward-compatible als legacy dict payloads.
 
 **Roadmap contractstriktheid vs. experimenteerruimte:**
-- Fase 1 (huidig): kritieke topics strict + automatische registry-validatie, experimentele topics tijdelijk flexibel.
+- Fase 1 (huidig): Tier A strict voor REAL-veiligheid; Tier B flexibel zodat emergent agent- en LLM-gedrag kan blijven ontstaan zonder execution-rand te versoepelen.
 - Fase 2: blackboard/meta payloads incrementeel aanscherpen met expliciete veldinventarisatie per topic.
 - Fase 3: `ConstitutionViolation` uitbreiden met first-class velden (zoals `dna_hash`) en daarna naar striktere contractmodus.
 - Fase 4: dream-state keys stapsgewijs expliciet modelleren; daarna beslissing via ADR over `extra="forbid"` op dream-topic.
@@ -367,23 +407,24 @@ Voor orderuitvoering gebruikt Lumina nu een expliciete **laatste gate**:
 Pre-trade toelating loopt nu canoniek via [`lumina_core/risk/admission_chain.py`](../lumina_core/risk/admission_chain.py), aangeroepen vanuit [`lumina_core/order_gatekeeper.py`](../lumina_core/order_gatekeeper.py).
 
 - De keten blijft modulair (`AdmissionChain(steps=...)`), zodat nieuwe experimentele lagen als extra stap kunnen worden ingeplugd zonder de kernchecks te herschrijven.
-- De canonieke volgorde is: `Constitution -> RiskPolicy -> EquitySnapshot -> FinalArbitration -> SessionGuard`.
-- In **REAL** is de dependency expliciet: **eerst EquitySnapshot sync/validate, daarna FinalArbitration**. Dit voorkomt arbitrage op stale account-context.
+- De canonieke volgorde is: `SessionGuard+EquitySnapshot(sync) -> RiskPolicy+VaR/ES/MC -> FinalArbitration -> Constitution -> AuditWrite`.
+- Deze keten beschermt het levende organisme met een vaste volgorde: eerst markttoegang en account-context syncen, dan risicodruk meten, dan arbitreren, daarna constitutioneel toetsen, en pas als laatste audit-write committen.
+- Pre-chain hygiene (stale contract + broker metadata/control-plane checks) blijft in de gatekeeper-entrypoint, zodat contractvalidatie nooit kan wegvallen bij experimentele stapvarianten.
 - In **SIM/PAPER** zijn experimentele bypasses toegestaan via expliciete stapconfiguratie; elke bypass wordt gelogd met mode/step/symbol voor transparantie.
 - In **REAL** zijn experimentele bypasses fail-closed verboden.
 
 ```mermaid
 flowchart LR
-  constitution[Constitution]
-  riskPolicy[RiskPolicy]
-  equitySnapshot[EquitySnapshot]
+  sessionEquitySync[SessionGuardPlusEquitySnapshot]
+  riskPolicy[RiskPolicyPlusVaR_ES_MC]
   finalArbitration[FinalArbitration]
-  sessionGuard[SessionGuard]
+  constitution[Constitution]
+  auditWrite[AuditWrite]
 
-  constitution --> riskPolicy
-  riskPolicy --> equitySnapshot
-  equitySnapshot --> finalArbitration
-  finalArbitration --> sessionGuard
+  sessionEquitySync --> riskPolicy
+  riskPolicy --> finalArbitration
+  finalArbitration --> constitution
+  constitution --> auditWrite
 ```
 
 ---
@@ -392,7 +433,7 @@ flowchart LR
 
 - **Fail-closed design** — Onzekerheid, exceptions of ontbrekende checks leiden tot **blokkeren** en audit, niet tot stille acceptatie (zie ook [AGI_SAFETY.md](AGI_SAFETY.md)).
 - **Event-driven communicatie** — Domeinen publiceren en subscriben via [`EventBus` / `DomainEvent`](../lumina_core/agent_orchestration/event_bus.py); zo blijven grenzen scherp en uitbreidingen testbaar.
-- **Dependency Injection via ApplicationContainer** — [`ApplicationContainer`](../lumina_core/container.py) is het bootstrap-object: services en wiring zijn expliciet i.p.v. verborgen global state. In de promotion flow bindt de container expliciet de canonieke `EventBus` naar `EvolutionOrchestrator` (`bind_promotion_event_bus`), zodat `PromotionPolicy` constitution-violation events betrouwbaar publiceert zonder impliciete runtime lookups.
+- **Dependency Injection via ApplicationContainer** — [`ApplicationContainer`](../lumina_core/container.py) is het bootstrap-object: services en wiring zijn expliciet i.p.v. verborgen global state. In de promotion flow wiret de container de canonieke `EventBus` **en** `market_data_service` naar `EvolutionOrchestrator` (`bind_promotion_event_bus`, `bind_market_data_service`), en [`SelfEvolutionMetaAgent`](../lumina_core/engine/meta_agent_core.py) herbindt die dependencies expliciet vóór iedere multi-generation cycle. Hierdoor publiceert `PromotionPolicy` constitution-violation events deterministisch zonder impliciete runtime lookups.
 - **ADR-gedreven ontwikkeling** — Belangrijke keuzes staan in [`docs/adr/`](adr/README.md); wijzigingen aan grenzen of contracts gaan samen met een ADR.
 
 ---

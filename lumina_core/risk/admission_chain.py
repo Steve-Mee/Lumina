@@ -6,18 +6,22 @@ from typing import Any, Callable, Sequence
 
 ADMISSION_STEP_CONSTITUTION = "constitution"
 ADMISSION_STEP_RISK_POLICY = "risk_policy"
-ADMISSION_STEP_EQUITY_SNAPSHOT = "equity_snapshot"
+ADMISSION_STEP_SESSION_EQUITY_SYNC = "session_equity_sync"
 ADMISSION_STEP_FINAL_ARBITRATION = "final_arbitration"
-ADMISSION_STEP_SESSION_GUARD = "session_guard"
+ADMISSION_STEP_AUDIT_WRITE = "audit_write"
+
+# Backward-compatible aliases for legacy imports/tests.
+ADMISSION_STEP_EQUITY_SNAPSHOT = ADMISSION_STEP_SESSION_EQUITY_SYNC
+ADMISSION_STEP_SESSION_GUARD = ADMISSION_STEP_SESSION_EQUITY_SYNC
 
 _EXPERIMENTAL_BYPASS_ENV = "LUMINA_ADMISSION_BYPASS_STEPS"
 _REAL_MODE = "real"
-_DEFAULT_ADMISSION_STEPS = (
-    ADMISSION_STEP_CONSTITUTION,
+CANONICAL_ADMISSION_STEPS = (
+    ADMISSION_STEP_SESSION_EQUITY_SYNC,
     ADMISSION_STEP_RISK_POLICY,
-    ADMISSION_STEP_EQUITY_SNAPSHOT,
     ADMISSION_STEP_FINAL_ARBITRATION,
-    ADMISSION_STEP_SESSION_GUARD,
+    ADMISSION_STEP_CONSTITUTION,
+    ADMISSION_STEP_AUDIT_WRITE,
 )
 
 AdmissionStepHandler = Callable[["AdmissionContext"], tuple[bool, str]]
@@ -146,6 +150,7 @@ class AdmissionChain:
 
 
 def default_chain_for_mode(mode: str) -> AdmissionChain:
-    # Canonical sequence for all modes: keep trusted equity context before arbitration.
-    # Experiments can still swap in a custom AdmissionChain(steps=...) per runtime.
-    return AdmissionChain(steps=_DEFAULT_ADMISSION_STEPS)
+    # Canonical sequence for all modes.
+    # Experiments can append extra layers without breaking defaults, e.g.:
+    # AdmissionChain(steps=(*CANONICAL_ADMISSION_STEPS, "experimental_layer")).
+    return AdmissionChain(steps=CANONICAL_ADMISSION_STEPS)

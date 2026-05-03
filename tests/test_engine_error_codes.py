@@ -7,10 +7,10 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from lumina_core.engine.errors import BrokerBridgeError, PolicyGateError, format_error_code
-from lumina_core.engine.local_inference_engine import LocalInferenceEngine
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.operations_service import OperationsService
-from lumina_core.engine.reasoning_service import ReasoningService
+from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
+from lumina_core.reasoning.reasoning_service import ReasoningService
 
 
 def test_format_error_code_maps_typed_exceptions() -> None:

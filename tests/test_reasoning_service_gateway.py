@@ -6,10 +6,10 @@ from typing import Any, cast
 
 import pytest
 
-from lumina_core.engine.broker_bridge import Order
-from lumina_core.engine.local_inference_engine import LocalInferenceEngine
+from lumina_core.broker.broker_bridge import Order
 from lumina_core.engine.lumina_engine import LuminaEngine
-from lumina_core.engine.reasoning_service import ReasoningService
+from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
+from lumina_core.reasoning.reasoning_service import ReasoningDecisionLogError, ReasoningService
 from lumina_core.risk.equity_snapshot import EquitySnapshot
 
 
@@ -20,6 +20,11 @@ class _BrokerSpy:
     def submit_order(self, order: Order):
         self.calls += 1
         return SimpleNamespace(accepted=True, status="FILLED", message="ok", order=order)
+
+
+class _FailingDecisionLog:
+    def log_decision(self, **_: Any) -> None:
+        raise RuntimeError("decision log down")
 
 
 def _service(mode: str = "real") -> tuple[ReasoningService, _BrokerSpy]:
@@ -90,6 +95,10 @@ def test_reasoning_submit_order_passes_when_gate_allows(monkeypatch) -> None:
         "lumina_core.engine.reasoning_service.enforce_pre_trade_gate",
         lambda *_a, **_k: (True, "ok"),
     )
+    monkeypatch.setattr(
+        "lumina_core.engine.policy_engine.enforce_pre_trade_gate",
+        lambda *_a, **_k: (True, "ok"),
+    )
 
     result = service.submit_order(
         Order(symbol="MES JUN26", side="BUY", quantity=1, order_type="MARKET", stop_loss=4990.0, take_profit=5010.0)
@@ -97,3 +106,19 @@ def test_reasoning_submit_order_passes_when_gate_allows(monkeypatch) -> None:
 
     assert result.accepted is True
     assert broker.calls == 1
+
+
+def test_reasoning_decision_log_fail_closed_in_real_mode() -> None:
+    service, _broker = _service(mode="real")
+    service.engine.decision_log = _FailingDecisionLog()
+
+    with pytest.raises(ReasoningDecisionLogError):
+        service._log_decision(
+            agent_id="ReasoningService",
+            raw_input={"signal": "BUY"},
+            raw_output={"signal": "BUY", "approved": True},
+            confidence=0.8,
+            policy_outcome="accepted",
+            decision_context_id="ctx-real-fail",
+            model_version="test-model",
+        )

@@ -9,10 +9,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from lumina_core.audit import get_audit_logger
 from lumina_core.config_loader import ConfigLoader
+from lumina_core.fault import FaultDomain, FaultPolicy
 
 from .shadow_deployment import _cohens_d, _welch_t_pvalue
 
@@ -196,15 +197,26 @@ class PromotionGate:
             },
         }
         runtime_mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() or "sim"
-        get_audit_logger().append(
-            stream=_STREAM_NAME,
-            payload=payload,
-            path=self._audit_path,
-            mode=runtime_mode,
-            actor_id="promotion_gate",
-            severity="info",
-            include_legacy_hash=True,
-        )
+        try:
+            get_audit_logger().append(
+                stream=_STREAM_NAME,
+                payload=payload,
+                path=self._audit_path,
+                mode=runtime_mode,
+                actor_id="promotion_gate",
+                severity="info",
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            FaultPolicy.handle(
+                domain=FaultDomain.EVOLUTION_AUDIT,
+                operation="append_promotion_gate_audit",
+                exc=exc,
+                is_real_mode=(runtime_mode == "real"),
+                fault_cls=RuntimeError,
+                message="PromotionGate failed to append audit event",
+                context={"path": str(self._audit_path), "mode": runtime_mode, "stream": _STREAM_NAME},
+                logger_obj=logger,
+            )
 
     def _evaluate_out_of_sample(self, evidence: PromotionGateEvidence) -> PromotionCriterionResult:
         cpcv = dict(evidence.cv_combinatorial or {})
@@ -362,5 +374,5 @@ def load_promotion_gate_evidence(path: Path, *, dna_hash: str) -> PromotionGateE
     payload.setdefault("dna_hash", dna_hash)
     try:
         return PromotionGateEvidence.model_validate(payload)
-    except Exception:
+    except ValidationError:
         return None

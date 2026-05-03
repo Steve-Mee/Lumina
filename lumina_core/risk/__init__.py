@@ -4,6 +4,8 @@ This package is the canonical import surface for risk-domain APIs.
 Uses lazy attribute resolution to avoid engine bootstrap import cycles.
 """
 
+from typing import TYPE_CHECKING
+
 from lumina_core.risk.risk_allocator import RiskAllocatorMixin
 from lumina_core.risk.risk_policy import RiskPolicy, load_risk_policy
 from lumina_core.risk.admission_chain import (
@@ -35,6 +37,15 @@ from lumina_core.risk.cost_model_calibrator import (
     run_daily_calibration,
 )
 
+if TYPE_CHECKING:
+    from lumina_core.risk.mode_capabilities import ModeCapabilities, resolve_mode_capabilities
+    from lumina_core.risk.policy_engine import PolicyEngine
+    from lumina_core.risk.regime_detector import RegimeDetector, RegimeSnapshot
+    from lumina_core.risk.risk_controller import HardRiskController, RiskLimits, RiskState, risk_limits_from_config
+    from lumina_core.risk.session_guard import SessionGuard
+    from lumina_core.engine.margin_snapshot_provider import MarginSnapshotProvider
+    from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
+
 __all__ = [
     "HardRiskController",
     "RiskLimits",
@@ -60,6 +71,12 @@ __all__ = [
     "RiskAllocatorMixin",
     "RiskGatesMixin",
     "RiskOrchestrator",
+    "ModeCapabilities",
+    "resolve_mode_capabilities",
+    "RegimeDetector",
+    "RegimeSnapshot",
+    "SessionGuard",
+    "PolicyEngine",
     "DynamicKellyEstimator",
     "get_global_kelly_estimator",
     "CostBreakdown",
@@ -93,4 +110,26 @@ def __getattr__(name: str):
         from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
 
         return PortfolioVaRAllocator
+    if name in {"ModeCapabilities", "resolve_mode_capabilities"}:
+        from lumina_core.risk.mode_capabilities import ModeCapabilities, resolve_mode_capabilities
+
+        return {
+            "ModeCapabilities": ModeCapabilities,
+            "resolve_mode_capabilities": resolve_mode_capabilities,
+        }[name]
+    if name in {"RegimeDetector", "RegimeSnapshot"}:
+        from lumina_core.risk.regime_detector import RegimeDetector, RegimeSnapshot
+
+        return {
+            "RegimeDetector": RegimeDetector,
+            "RegimeSnapshot": RegimeSnapshot,
+        }[name]
+    if name == "SessionGuard":
+        from lumina_core.risk.session_guard import SessionGuard
+
+        return SessionGuard
+    if name == "PolicyEngine":
+        from lumina_core.risk.policy_engine import PolicyEngine
+
+        return PolicyEngine
     raise AttributeError(name)

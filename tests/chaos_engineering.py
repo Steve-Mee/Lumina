@@ -17,14 +17,14 @@ from unittest.mock import MagicMock
 import pytest
 import pandas as pd
 
-from lumina_core.engine.local_inference_engine import LocalInferenceEngine
-from lumina_core.engine.regime_detector import RegimeDetector
+from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
+from lumina_core.risk.regime_detector import RegimeDetector
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.market_data_service import MarketDataIngestService
 from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
-from lumina_core.engine.reasoning_service import ReasoningService
+from lumina_core.reasoning.reasoning_service import ReasoningService
 from lumina_core.risk.risk_controller import HardRiskController, RiskLimits
-from lumina_core.engine.session_guard import SessionGuard
+from lumina_core.risk.session_guard import SessionGuard
 from lumina_core.engine.trade_reconciler import TradeReconciler
 from lumina_core.engine.valuation_engine import ValuationEngine
 

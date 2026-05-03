@@ -8,17 +8,22 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from lumina_core.fault import FaultDomain, FaultPolicy
 from lumina_core.inference import LLMDecisionRouter, LlmClient
-from .broker_bridge import Order, OrderResult
+from lumina_core.broker.broker_bridge import Order, OrderResult
 from .errors import BrokerBridgeError, PolicyGateError, format_error_code
-from .local_inference_engine import LocalInferenceEngine
+from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
 from .lumina_engine import LuminaEngine
-from .policy_engine import PolicyEngine
-from .regime_detector import RegimeDetector, RegimeSnapshot
+from lumina_core.risk.policy_engine import PolicyEngine
+from lumina_core.risk.regime_detector import RegimeDetector, RegimeSnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, session_guard_allows_trading
 from lumina_core.sla_config import reasoning_latency_sla_ms
 
 logger = logging.getLogger(__name__)
+
+
+class ReasoningDecisionLogError(RuntimeError):
+    """Raised when reasoning decision logging fails in REAL mode."""
 
 
 @dataclass(slots=True)
@@ -125,6 +130,7 @@ class ReasoningService:
         decision_log = self._decision_log()
         if decision_log is None or not hasattr(decision_log, "log_decision"):
             return
+        is_real_mode = str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower() == "real"
         try:
             decision_log.log_decision(
                 agent_id=agent_id,
@@ -141,11 +147,20 @@ class ReasoningService:
                 policy_version="reasoning-policy-v1",
                 provider_route=[str(getattr(self.inference_engine, "active_provider", "unknown-provider"))],
                 calibration_factor=1.0,
-                is_real_mode=str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower() == "real",
+                is_real_mode=is_real_mode,
             )
-        except Exception as exc:
+        except (RuntimeError, ValueError, TypeError, OSError) as exc:
             code = format_error_code("REASONING_DECISION_LOG", exc, fallback="LOG_WRITE_FAILED")
-            logger.exception("ReasoningService failed to write agent decision log [%s]", code)
+            FaultPolicy.handle(
+                domain=FaultDomain.REASONING_DECISION_LOG,
+                operation="write_agent_decision_log",
+                exc=exc,
+                is_real_mode=is_real_mode,
+                fault_cls=ReasoningDecisionLogError,
+                message=f"ReasoningService failed to write agent decision log [{code}]",
+                context={"agent_id": agent_id, "decision_context_id": decision_context_id},
+                logger_obj=logger,
+            )
             return
 
     def submit_order(self, order: Order) -> OrderResult:

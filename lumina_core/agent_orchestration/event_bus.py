@@ -19,16 +19,19 @@ from pydantic import BaseModel, ValidationError
 
 from lumina_core.agent_orchestration.schemas import (
     AgentReflection,
+    CommunityKnowledgeSnippet,
     ConstitutionAudit,
     ConstitutionViolation,
+    DreamState,
     EVENT_BUS_TOPIC_MODELS,
+    EvolutionPromotionDecision,
     EvolutionProposal,
-    RiskDecision,
+    FinalArbitrationResult,
+    LLMDecisionContext,
+    MetaAgentThought,
     RiskVerdict,
     ShadowResult,
-    ShadowVerdict,
     TradeIntent,
-    TradeSignal,
     validate_payload_with_model,
 )
 
@@ -36,17 +39,20 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "AgentReflection",
+    "CommunityKnowledgeSnippet",
     "ConstitutionAudit",
     "ConstitutionViolation",
+    "DreamState",
     "DomainEvent",
     "EventBus",
+    "EvolutionPromotionDecision",
     "EvolutionProposal",
-    "RiskDecision",
+    "FinalArbitrationResult",
+    "LLMDecisionContext",
+    "MetaAgentThought",
     "RiskVerdict",
     "ShadowResult",
-    "ShadowVerdict",
     "TradeIntent",
-    "TradeSignal",
 ]
 
 

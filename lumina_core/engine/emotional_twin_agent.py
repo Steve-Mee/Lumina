@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from lumina_core.runtime_context import RuntimeContext
-from lumina_core.engine.agent_contracts import (
+from lumina_core.reasoning.agent_contracts import (
     EmotionalTwinInputSchema,
     EmotionalTwinOutputSchema,
     enforce_contract,

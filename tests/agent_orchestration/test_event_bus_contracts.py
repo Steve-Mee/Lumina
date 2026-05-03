@@ -5,8 +5,14 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from lumina_core.agent_orchestration.event_bus import EventBus, TradeSignal
-from lumina_core.agent_orchestration.schemas import AgentProposalPayload
+from lumina_core.agent_orchestration.event_bus import EventBus, TradeIntent
+from lumina_core.agent_orchestration.schemas import (
+    AgentProposalPayload,
+    EvolutionProposal,
+    EvolutionPromotionDecision,
+    MetaAgentThought,
+    RiskVerdict,
+)
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 
 
@@ -74,8 +80,12 @@ def test_publish_typed_topic_without_payload_model_still_validates_and_coerces()
     [
         ("trading_engine.trade_signal.emitted", {"signal": "BUY", "confidence": 0.84}),
         ("risk.policy.decision", {"approved": True, "reason": "within_limits"}),
-        ("evolution.proposal.created", {"status": "candidate"}),
+        ("risk.final_arbitration.result", {"status": "APPROVED", "reason": "approved"}),
         ("evolution.shadow.verdict", {"verdict": "pass", "sample_size": 5}),
+        (
+            "evolution.promotion.decision",
+            {"dna_hash": "dna_abc", "allowed": False, "reason": "gate_block", "stage": "promotion_gate"},
+        ),
         ("safety.constitution.audit", {"phase": "promotion", "passed": True, "mode": "REAL"}),
     ],
 )
@@ -126,6 +136,51 @@ def test_publish_meta_reflection_topic_keeps_experimental_space() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ("topic", "payload"),
+    [
+        ("evolution.proposal.created", {"status": "candidate", "novel_gene": {"weight": 0.42}}),
+        ("meta.agent.thought", {"summary": "new regime hypothesis", "fresh_signal": "volatility_cluster"}),
+        ("inference.llm.decision_context", {"recommendation": "HOLD", "novel_trace_dim": 0.99}),
+        ("meta.community.knowledge", {"title": "note", "novel_field": {"nested": True}}),
+    ],
+)
+def test_publish_experimental_topics_allow_unexpected_fields(topic: str, payload: dict[str, object]) -> None:
+    # Flexible topics remain expressive, but execution still depends on fail-closed risk/order gates.
+    bus = EventBus()
+    event = bus.publish(
+        topic=topic,
+        producer="meta_agent_orchestrator",
+        payload=payload,
+    )
+
+    for key, value in payload.items():
+        assert event.payload[key] == value
+
+
+@pytest.mark.unit
+def test_strict_model_rejects_unknown_fields_and_flexible_model_allows_them() -> None:
+    with pytest.raises(ValidationError):
+        RiskVerdict.model_validate({"approved": True, "unknown_field": "blocked"})
+
+    strict_promotion = EvolutionPromotionDecision.model_validate(
+        {
+            "dna_hash": "dna_01",
+            "allowed": True,
+            "reason": "all_gates_passed",
+            "stage": "final",
+        }
+    )
+    assert strict_promotion.allowed is True
+
+    flexible_proposal = EvolutionProposal.model_validate({"status": "candidate", "unknown_field": "accepted"})
+    assert flexible_proposal.model_dump()["unknown_field"] == "accepted"
+
+    flexible_thought = MetaAgentThought.model_validate({"summary": "edge idea", "unknown_field": "kept"})
+    assert flexible_thought.model_dump()["unknown_field"] == "kept"
+
+
+@pytest.mark.unit
 def test_publish_with_payload_model_validates_and_forwards_typed_payload() -> None:
     bus = EventBus()
     received_payloads: list[dict[str, object]] = []
@@ -140,7 +195,7 @@ def test_publish_with_payload_model_validates_and_forwards_typed_payload() -> No
         topic="trading_engine.trade_signal.emitted",
         producer="strategy_engine",
         payload={"signal": "BUY", "confidence": "0.84"},
-        payload_model=TradeSignal,
+        payload_model=TradeIntent,
     )
 
     assert isinstance(event.payload["confidence"], float)
@@ -164,7 +219,7 @@ def test_publish_with_payload_model_raises_validation_error_fail_closed() -> Non
             topic="trading_engine.trade_signal.emitted",
             producer="strategy_engine",
             payload={"signal": "BUY", "position_size_multiplier": -1.0},
-            payload_model=TradeSignal,
+            payload_model=TradeIntent,
         )
 
     assert received == []

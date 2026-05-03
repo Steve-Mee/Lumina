@@ -4,7 +4,7 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any, cast
 
-from lumina_core.engine.broker_bridge import (
+from lumina_core.broker.broker_bridge import (
     CrossTradeBroker,
     Order,
     OrderResult,
@@ -135,6 +135,7 @@ def test_paper_broker_submit_order_and_fill_tracking() -> None:
             state=SimpleNamespace(open_risk_by_symbol={}, margin_tracker=SimpleNamespace(account_equity=50000.0))
         ),
         get_current_dream_snapshot=lambda: {"regime": "NEUTRAL"},
+        equity_snapshot_provider=_FreshEquitySnapshotProvider(),
         final_arbitration=FinalArbitration(
             RiskPolicy(
                 runtime_mode="paper",
@@ -153,7 +154,14 @@ def test_paper_broker_submit_order_and_fill_tracking() -> None:
     broker = PaperBroker(engine=engine)
 
     result = broker.submit_order(
-        Order(symbol="MES JUN26", side="BUY", quantity=2, stop_loss=4995.0, take_profit=5010.0)
+        Order(
+            symbol="MES JUN26",
+            side="BUY",
+            quantity=2,
+            stop_loss=4995.0,
+            take_profit=5010.0,
+            metadata={"skip_admission_chain_recheck": True},
+        )
     )
 
     assert result.accepted is True
@@ -198,7 +206,14 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge() -> None:
     broker._session = cast(Any, fake_session)  # test seam
 
     direct = broker.submit_order(
-        Order(symbol="MES JUN26", side="SELL", quantity=1, stop_loss=5010.0, take_profit=4990.0)
+        Order(
+            symbol="MES JUN26",
+            side="SELL",
+            quantity=1,
+            stop_loss=5010.0,
+            take_profit=4990.0,
+            metadata={"skip_admission_chain_recheck": True},
+        )
     )
     assert direct.accepted is True
     assert direct.order_id == "order-123"
@@ -273,7 +288,7 @@ def test_paper_broker_rejects_when_engine_missing() -> None:
     result = broker.submit_order(Order(symbol="MES JUN26", side="BUY", quantity=1))
     assert result.accepted is False
     assert result.status == "rejected"
-    assert "arbitration_engine_required" in result.message
+    assert "admission_engine_required" in result.message
 
 
 def test_operations_service_blocks_real_without_final_arbitration() -> None:

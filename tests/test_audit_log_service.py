@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from lumina_core.engine.audit_log_service import AuditLogService
+from lumina_core.audit import AuditChainError
+from lumina_core.audit.audit_log_service import AuditLogService
 
 
 def test_audit_log_service_writes_hash_chain(tmp_path: Path) -> None:
@@ -34,12 +35,12 @@ def test_audit_log_service_writes_hash_chain(tmp_path: Path) -> None:
     lines = [json.loads(line) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(lines) == 2
     assert lines[0]["prev_hash"] == "GENESIS"
-    assert lines[0]["hash"]
-    assert lines[1]["prev_hash"] == lines[0]["hash"]
-    assert lines[1]["hash"]
+    assert lines[0]["entry_hash"]
+    assert lines[1]["prev_hash"] == lines[0]["entry_hash"]
+    assert lines[1]["entry_hash"]
 
 
-def test_audit_log_service_logs_stacktrace_on_validation_error(
+def test_audit_log_service_real_fail_closed_on_validation_error(
     tmp_path: Path,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -47,7 +48,7 @@ def test_audit_log_service_logs_stacktrace_on_validation_error(
     invalid_payload = {"mode": "real"}
 
     with caplog.at_level(logging.ERROR):
-        ok = service.log_decision(invalid_payload, is_real_mode=True)
+        with pytest.raises(AuditChainError):
+            service.log_decision(invalid_payload, is_real_mode=True)
 
-    assert ok is False
     assert "failed to append decision event" in caplog.text

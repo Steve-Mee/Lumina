@@ -51,7 +51,7 @@ def test_lumina_engine_does_not_initialize_swarm_when_disabled(monkeypatch):
         _StubPPOTrainer,
     )
     monkeypatch.setattr(
-        "lumina_core.engine.infinite_simulator.InfiniteSimulator",
+        "lumina_core.infinite_simulator.InfiniteSimulator",
         _StubInfiniteSimulator,
     )
     monkeypatch.setattr(

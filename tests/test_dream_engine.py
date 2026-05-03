@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lumina_core.engine.self_evolution_meta_agent import should_run_multi_gen_nightly
+from lumina_core.evolution.self_evolution_meta_agent import should_run_multi_gen_nightly
 from lumina_core.evolution.dream_engine import (
     DreamReport,
     dream_engine_config,

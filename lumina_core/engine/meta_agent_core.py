@@ -26,9 +26,8 @@ from lumina_core.risk.risk_controller import HardRiskController
 from .valuation_engine import ValuationEngine
 from lumina_core.experiments.ab_framework import ABExperimentFramework
 from .anomaly_detector import AnomalyDetector
-from .audit_writer import EvolutionAuditWriter
+from lumina_core.evolution.audit_writer import EvolutionAuditWriter
 from .proposal_generator import ProposalGenerator
-from lumina_core.state.state_manager import safe_with_file_lock
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +40,6 @@ def should_run_multi_gen_nightly(*, mutation_allowed: bool, dry_run: bool, mode_
     """
     mk = str(mode_key).strip().lower()
     return bool(mutation_allowed and (not dry_run or mk in ("sim", "paper")))
-
-
-def _compat() -> Any:
-    from lumina_core.engine import self_evolution_meta_agent as compat_module
-
-    return compat_module
 
 
 @dataclass(slots=True)
@@ -426,10 +419,12 @@ class SelfEvolutionMetaAgent:
         # Multi-generation orchestrator (dream + DNA generations). Nightly sim/paper may pass
         # dry_run=True to avoid live hyperparam side-effects; we still run the cycle so dream/SIM
         # exercises evolution. dry_run above still blocks _apply_candidate / certain promotions.
-        if _compat().should_run_multi_gen_nightly(
+        if should_run_multi_gen_nightly(
             mutation_allowed=bool(mutation_allowed), dry_run=bool(dry_run), mode_key=str(mode_key)
         ):
             orchestrator = EvolutionOrchestrator()
+            orchestrator.bind_promotion_event_bus(getattr(self.engine, "event_bus", None))
+            orchestrator.bind_market_data_service(getattr(self.engine, "market_data_service", None))
             orchestrator.bind_ppo_trainer(self.ppo_trainer)
             _evo_cfg = ConfigLoader.section("evolution", default={}) or {}
             _ck = _evo_cfg.get("community_knowledge") if isinstance(_evo_cfg, dict) else None
@@ -1440,42 +1435,6 @@ class SelfEvolutionMetaAgent:
         if trades <= 0:
             return 0.5
         return max(0.0, min(1.0, wins / trades))
-
-    def _append_immutable_log(self, entry: dict[str, Any]) -> None:
-        self.log_path.parent.mkdir(parents=True, exist_ok=True)
-
-        def _write_locked(target: Path) -> None:
-            prev_hash = self._last_log_hash_for_path(target)
-            payload = dict(entry)
-            payload["prev_hash"] = prev_hash
-            payload["log_version"] = "v1"
-            canonical = json.dumps(payload, sort_keys=True, ensure_ascii=True)
-            payload_hash = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-            payload["hash"] = payload_hash
-            with target.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-
-        safe_with_file_lock(self.log_path, _write_locked)
-
-    def _last_log_hash(self) -> str:
-        return self._last_log_hash_for_path(self.log_path)
-
-    @staticmethod
-    def _last_log_hash_for_path(path: Path) -> str:
-        if not path.exists():
-            return "GENESIS"
-        try:
-            with path.open("r", encoding="utf-8") as handle:
-                lines = [line.strip() for line in handle if line.strip()]
-            if not lines:
-                return "GENESIS"
-            last = json.loads(lines[-1])
-            return str(last.get("hash", "GENESIS"))
-        except Exception:
-            logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:1472")
-            return "GENESIS"
 
     # Split-module delegation wrappers (must be defined last).
     def _log_agent_decision(

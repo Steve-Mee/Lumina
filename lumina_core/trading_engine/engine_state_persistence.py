@@ -54,7 +54,7 @@ class SupportsEnginePersistence(Protocol):
 class EngineStatePersistenceService:
     """Persist and restore mutable runtime state for LuminaEngine."""
 
-    def hydrate_from_legacy(self, engine: SupportsEnginePersistence, app: ModuleType) -> None:
+    def hydrate_from_app(self, engine: SupportsEnginePersistence, app: ModuleType) -> None:
         engine.bind_app(app)
         attrs = [
             "regime_history",
@@ -132,6 +132,7 @@ class EngineStatePersistenceService:
             "economic_truth_snapshot": economic_truth_snapshot,
         }
         try:
+            engine.config.state_file.parent.mkdir(parents=True, exist_ok=True)
             engine.config.state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as exc:
             if engine.app is not None and hasattr(engine.app, "logger"):

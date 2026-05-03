@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
 
-from .agent_contracts import (
+from lumina_core.reasoning.agent_contracts import (
     TapeReadingInputSchema,
     TapeReadingOutputSchema,
     enforce_contract,

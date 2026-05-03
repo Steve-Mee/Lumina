@@ -11,7 +11,7 @@ from typing import Any
 
 from xai_sdk import Client
 
-from lumina_core.engine.agent_contracts import NewsInputSchema, NewsOutputSchema, enforce_contract
+from lumina_core.reasoning.agent_contracts import NewsInputSchema, NewsOutputSchema, enforce_contract
 from lumina_core.engine.lumina_engine import LuminaEngine
 
 logger = logging.getLogger(__name__)

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from lumina_core.engine.engine_ports import SupportsRisk
-from lumina_core.engine.session_guard import SessionGuard
+from lumina_core.risk.session_guard import SessionGuard
 from lumina_core.risk.dynamic_kelly import DynamicKellyEstimator
 from lumina_core.risk.final_arbitration import FinalArbitration
 from lumina_core.risk.risk_controller import HardRiskController, risk_limits_from_config

@@ -15,10 +15,10 @@ from lumina_core.agent_orchestration.event_bus import DomainEvent, EventBus
 if TYPE_CHECKING:
     # Static-only imports: satisfies Pyright/__all__ without eager runtime imports (cycles).
     from lumina_core.engine.agent_blackboard import AgentBlackboard, BlackboardEvent
-    from lumina_core.engine.agent_policy_gateway import AgentPolicyGateway
+    from lumina_core.reasoning.agent_policy_gateway import AgentPolicyGateway
     from lumina_core.engine.meta_agent_orchestrator import MetaAgentOrchestrator
-    from lumina_core.engine.reasoning_service import ReasoningService
-    from lumina_core.engine.self_evolution_meta_agent import SelfEvolutionMetaAgent
+    from lumina_core.reasoning.reasoning_service import ReasoningService
+    from lumina_core.evolution.self_evolution_meta_agent import SelfEvolutionMetaAgent
     from lumina_core.engine.swarm_manager import SwarmManager
 
 __all__ = [
@@ -37,10 +37,10 @@ __all__ = [
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "AgentBlackboard": ("lumina_core.engine.agent_blackboard", "AgentBlackboard"),
     "BlackboardEvent": ("lumina_core.engine.agent_blackboard", "BlackboardEvent"),
-    "AgentPolicyGateway": ("lumina_core.engine.agent_policy_gateway", "AgentPolicyGateway"),
+    "AgentPolicyGateway": ("lumina_core.reasoning.agent_policy_gateway", "AgentPolicyGateway"),
     "MetaAgentOrchestrator": ("lumina_core.engine.meta_agent_orchestrator", "MetaAgentOrchestrator"),
-    "ReasoningService": ("lumina_core.engine.reasoning_service", "ReasoningService"),
-    "SelfEvolutionMetaAgent": ("lumina_core.engine.self_evolution_meta_agent", "SelfEvolutionMetaAgent"),
+    "ReasoningService": ("lumina_core.reasoning.reasoning_service", "ReasoningService"),
+    "SelfEvolutionMetaAgent": ("lumina_core.evolution.self_evolution_meta_agent", "SelfEvolutionMetaAgent"),
     "SwarmManager": ("lumina_core.engine.swarm_manager", "SwarmManager"),
 }
 

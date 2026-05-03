@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
-from lumina_core.engine.broker_bridge import Order
+from lumina_core.broker.broker_bridge import Order
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import submit_order_with_risk_check
 

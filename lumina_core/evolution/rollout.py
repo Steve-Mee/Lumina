@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.audit import get_audit_logger
+from lumina_core.fault import FaultDomain, FaultPolicy
 
 
 _DEFAULT_ROLLOUT_AUDIT_PATH = Path("state/evolution_rollout_history.jsonl")
@@ -140,15 +141,25 @@ class EvolutionRolloutFramework:
 
     def _append_audit(self, payload: dict[str, Any]) -> None:
         mode = str(payload.get("mode", "sim")).strip().lower() or "sim"
-        get_audit_logger().append(
-            stream=_STREAM_NAME,
-            payload=payload,
-            path=self._audit_path,
-            mode=mode,
-            actor_id="evolution_rollout_framework",
-            severity="info",
-            include_legacy_hash=True,
-        )
+        try:
+            get_audit_logger().append(
+                stream=_STREAM_NAME,
+                payload=payload,
+                path=self._audit_path,
+                mode=mode,
+                actor_id="evolution_rollout_framework",
+                severity="info",
+            )
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            FaultPolicy.handle(
+                domain=FaultDomain.EVOLUTION_AUDIT,
+                operation="append_rollout_audit",
+                exc=exc,
+                is_real_mode=(mode == "real"),
+                fault_cls=RuntimeError,
+                message="Evolution rollout audit append failed",
+                context={"path": str(self._audit_path), "mode": mode, "stream": _STREAM_NAME},
+            )
 
     @staticmethod
     def _variant_score(variant: dict[str, Any] | None) -> float | None:

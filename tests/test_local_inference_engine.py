@@ -7,7 +7,7 @@ import pytest
 import yaml  # type: ignore[import-not-found]
 
 from lumina_core.engine.errors import LuminaError
-from lumina_core.engine.local_inference_engine import LocalInferenceEngine
+from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
 
 
 class _Logger:

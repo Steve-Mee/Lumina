@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from lumina_core.engine.agent_decision_log import AgentDecisionLog
-from lumina_core.engine.replay_validator import DecisionReplayValidator
+from lumina_core.audit.agent_decision_log import AgentDecisionLog
+from lumina_core.audit.replay_validator import DecisionReplayValidator
 
 
 def test_replay_validator_accepts_valid_chain(tmp_path: Path) -> None:

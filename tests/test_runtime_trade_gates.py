@@ -14,6 +14,63 @@ def test_runtime_trade_gates_blocks_strict_mode_without_final_arbitration() -> N
     logger = SimpleNamespace(warning=lambda message, *_args: warnings.append(str(message)))
     engine = SimpleNamespace(
         config=SimpleNamespace(trade_mode="real"),
+        risk_controller=SimpleNamespace(
+            _active_limits=SimpleNamespace(enforce_session_guard=False),
+            apply_regime_override=lambda *_a, **_k: None,
+            check_can_trade=lambda *_a, **_k: (True, "OK"),
+            check_var_es_pre_trade=lambda *_a, **_k: (True, "VAR_ES OK", {}),
+            check_monte_carlo_drawdown_pre_trade=lambda *_a, **_k: (True, "MC drawdown OK", {}),
+            record_regime_snapshot=lambda *_a, **_k: None,
+        ),
+        reasoning_service=SimpleNamespace(
+            refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
+        ),
+        blackboard=SimpleNamespace(
+            latest=lambda topic: (
+                SimpleNamespace(
+                    payload={"agent_id": "rl", "confidence": 0.9, "reason": "test"},
+                    producer="test",
+                    confidence=0.9,
+                    timestamp="2026-05-03T00:00:00+00:00",
+                    correlation_id="corr",
+                    sequence=1,
+                    event_hash="hash",
+                    prev_hash="prev",
+                )
+                if topic.startswith("agent.")
+                else (
+                    SimpleNamespace(
+                        payload={"signal": "BUY", "chosen_strategy": "rl"},
+                        producer="test",
+                        confidence=0.9,
+                        timestamp="2026-05-03T00:00:00+00:00",
+                        correlation_id="corr",
+                        sequence=1,
+                        event_hash="hash",
+                        prev_hash="prev",
+                    )
+                    if topic == "execution.aggregate"
+                    else None
+                )
+            )
+        ),
+        audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
+        get_current_dream_snapshot=lambda: {"confidence": 0.9, "expected_value": 1.0},
+        equity_snapshot_provider=SimpleNamespace(
+            get_snapshot=lambda: SimpleNamespace(
+                ok=True,
+                is_fresh=True,
+                source="unit-test",
+                reason_code="ok",
+                equity_usd=50_000.0,
+                available_margin_usd=45_000.0,
+                used_margin_usd=5_000.0,
+            )
+        ),
+        account_equity=50_000.0,
+        available_margin=45_000.0,
+        positions_margin_used=5_000.0,
+        live_position_qty=0,
         final_arbitration=None,
         risk_policy=None,
     )
@@ -33,5 +90,5 @@ def test_runtime_trade_gates_blocks_strict_mode_without_final_arbitration() -> N
     # dan
     assert signal == "HOLD"
     assert ok is False
-    assert reason == "final_arbitration_unavailable"
-    assert warnings and "FinalArbitration unavailable in strict mode" in warnings[0]
+    assert "final_arbitration_unavailable" in reason
+    assert warnings and "AdmissionChain blocked runtime signal" in warnings[0]

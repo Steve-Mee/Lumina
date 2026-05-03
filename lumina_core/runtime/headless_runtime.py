@@ -429,7 +429,7 @@ def _validate_broker(broker_mode: str) -> str:
         return "paper_ok"
 
     try:
-        from lumina_core.engine.broker_bridge import broker_factory
+        from lumina_core.broker.broker_bridge import broker_factory
 
         config = SimpleNamespace(
             broker_backend="live",
@@ -456,7 +456,7 @@ def _validate_broker(broker_mode: str) -> str:
 def _check_session_guard() -> int:
     """Return 1 if the current moment is outside the CME trading session, else 0."""
     try:
-        from lumina_core.engine.session_guard import SessionGuard
+        from lumina_core.risk.session_guard import SessionGuard
 
         guard = SessionGuard()
         return 0 if guard.is_trading_session() else 1

@@ -15,6 +15,9 @@ from .lumina_bible import LuminaBible
 from .strategy_generator import StrategyGenerator
 from .neuroevolution import mutate_weights, crossover_weights, evaluate_weight_population
 from .rollout import EvolutionRolloutFramework, RolloutDecision
+from .meta_agent_core import SelfEvolutionMetaAgent, load_evolution_config, should_run_multi_gen_nightly
+from .audit_writer import EvolutionAuditWriter, EvolutionAuditWriterError
+from .anomaly_detector import AnomalyDetector
 from .promotion_gate import (
     PromotionGate,
     PromotionGateEvidence,
@@ -53,6 +56,12 @@ __all__ = [
     "evaluate_weight_population",
     "EvolutionRolloutFramework",
     "RolloutDecision",
+    "SelfEvolutionMetaAgent",
+    "load_evolution_config",
+    "should_run_multi_gen_nightly",
+    "EvolutionAuditWriter",
+    "EvolutionAuditWriterError",
+    "AnomalyDetector",
     "PromotionGate",
     "PromotionGateEvidence",
     "PromotionGateDecision",

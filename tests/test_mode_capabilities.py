@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
+from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 
 
 def test_mode_capabilities_include_sim_real_guard_with_real_like_guards() -> None:

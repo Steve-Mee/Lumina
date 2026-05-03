@@ -3,12 +3,14 @@
 import logging
 import json
 import os
+import sqlite3
 import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from lumina_core.audit import get_audit_logger
+from lumina_core.fault import FaultDomain, FaultPolicy
 from lumina_core.state.state_manager import safe_sqlite_connect
 
 
@@ -108,12 +110,21 @@ class VetoRegistry:
                     mode=mode,
                     actor_id="veto_registry",
                     severity="warning",
-                    include_legacy_hash=True,
                 )
 
-            except Exception as e:
-                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/veto_registry.py:100")
-                raise RuntimeError(f"Failed to append veto record: {e}")
+            except (sqlite3.Error, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() or "sim"
+                FaultPolicy.handle(
+                    domain=FaultDomain.EVOLUTION_VETO,
+                    operation="append_veto_record",
+                    exc=exc,
+                    is_real_mode=(mode == "real"),
+                    fault_cls=RuntimeError,
+                    message="VetoRegistry failed to append veto record",
+                    context={"db_path": str(self._db_path), "log_path": str(self._log_path), "mode": mode},
+                    logger_obj=logging.getLogger(__name__),
+                )
+                raise RuntimeError(f"Failed to append veto record: {exc}") from exc
 
     def is_veto_active(self, dna_id: str, window_seconds: int = 1800) -> bool:
         """Check if DNA has active veto within window (fail-closed: True blocks promotion).
@@ -143,9 +154,16 @@ class VetoRegistry:
                     result = cursor.fetchone()
 
                 return result is not None
-            except Exception:
-                # Fail-closed: if query fails, assume veto is active
-                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/veto_registry.py:131")
+            except (sqlite3.Error, OSError, RuntimeError, ValueError, TypeError) as exc:
+                FaultPolicy.handle(
+                    domain=FaultDomain.EVOLUTION_VETO,
+                    operation="check_veto_active",
+                    exc=exc,
+                    is_real_mode=False,
+                    message="VetoRegistry failed to query veto activity",
+                    context={"db_path": str(self._db_path), "dna_id": str(dna_id)},
+                    logger_obj=logging.getLogger(__name__),
+                )
                 return True
 
     def list_recent(self, limit: int = 10, dna_id_filter: str | None = None) -> list[VetoRecord]:
@@ -197,6 +215,20 @@ class VetoRegistry:
                             )
                         )
                     return records
-            except Exception:
-                logging.exception("Unhandled broad exception fallback in lumina_core/evolution/veto_registry.py:184")
+            except (sqlite3.Error, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() or "sim"
+                FaultPolicy.handle(
+                    domain=FaultDomain.EVOLUTION_VETO,
+                    operation="list_recent_vetoes",
+                    exc=exc,
+                    is_real_mode=(mode == "real"),
+                    fault_cls=RuntimeError,
+                    message="VetoRegistry failed to list recent veto records",
+                    context={
+                        "db_path": str(self._db_path),
+                        "dna_id_filter": str(dna_id_filter or ""),
+                        "mode": mode,
+                    },
+                    logger_obj=logging.getLogger(__name__),
+                )
                 return []

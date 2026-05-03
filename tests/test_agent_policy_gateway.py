@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
+from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
 
 
 def _lineage() -> dict[str, object]:

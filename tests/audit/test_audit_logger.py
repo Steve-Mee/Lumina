@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from lumina_core.audit import AuditLogger
-from lumina_core.engine.replay_validator import DecisionReplayValidator
+from lumina_core.audit.replay_validator import DecisionReplayValidator
 
 
 def _process_writer(path: str, worker_id: int, per_writer: int) -> int:
@@ -34,7 +34,7 @@ def test_envelope_contains_required_fields(tmp_path: Path) -> None:
         payload={"stage": "risk_gate", "final_decision": "allow", "reason": "ok", "mode": "sim"},
         mode="sim",
     )
-    assert row["chain_version"] == "lumina_audit_v1"
+    assert row["schema_version"] == "lumina_audit_v1"
     assert row["stream"] == "trade_decision"
     assert row["timestamp"]
     assert row["prev_hash"] == "GENESIS"
@@ -150,22 +150,8 @@ def test_experimental_payload_freeform(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_dual_write_during_deprecation_window(tmp_path: Path) -> None:
-    path = tmp_path / "dual_write.jsonl"
-    logger = AuditLogger()
-    row = logger.append(
-        stream="trade_decision",
-        path=path,
-        payload={"stage": "risk_gate", "final_decision": "allow", "reason": "ok", "mode": "sim"},
-        mode="sim",
-        include_legacy_hash=True,
-    )
-    assert row["hash"] == row["entry_hash"]
-
-
-@pytest.mark.unit
-def test_legacy_hash_field_still_validates_during_window(tmp_path: Path) -> None:
-    path = tmp_path / "legacy_hash.jsonl"
+def test_chain_hash_field_still_validates(tmp_path: Path) -> None:
+    path = tmp_path / "chain_hash.jsonl"
     logger = AuditLogger()
     logger.append(
         stream="agent_decision",
@@ -187,7 +173,6 @@ def test_legacy_hash_field_still_validates_during_window(tmp_path: Path) -> None
             },
         },
         mode="sim",
-        include_legacy_hash=True,
     )
     result = DecisionReplayValidator(path=path).verify_hash_chain()
     assert result["valid"] is True
@@ -211,7 +196,6 @@ def test_existing_audit_files_remain_readable(tmp_path: Path) -> None:
             }
         },
         mode="sim",
-        include_legacy_hash=True,
     )
     validator = DecisionReplayValidator(path=path)
     assert validator.verify_hash_chain()["valid"] is True

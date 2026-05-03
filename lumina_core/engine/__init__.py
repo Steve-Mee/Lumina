@@ -1,10 +1,10 @@
 from .analysis_service import HumanAnalysisService
-from .audit_log_service import AuditLogService
+from lumina_core.audit.audit_log_service import AuditLogService
 from .agent_blackboard import AgentBlackboard, BlackboardEvent
-from .agent_decision_log import AgentDecisionLog
-from .agent_policy_gateway import AgentPolicyGateway
+from lumina_core.audit.agent_decision_log import AgentDecisionLog
+from lumina_core.reasoning.agent_policy_gateway import AgentPolicyGateway
 from .bible_engine import BibleEngine
-from .broker_bridge import (
+from lumina_core.broker.broker_bridge import (
     AccountInfo,
     BrokerBridge,
     CrossTradeBroker,
@@ -19,7 +19,7 @@ from .dashboard_service import DashboardService
 from .dream_state import DreamState
 from .engine_config import EngineConfig
 from .lumina_engine import LuminaEngine
-from .local_inference_engine import LocalInferenceEngine
+from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
 from .market_data_manager import MarketDataManager
 from .market_data_domain_service import MarketDataDomainService, MarketDataService
 from .market_data_service import MarketDataIngestService
@@ -31,12 +31,12 @@ from .technical_analysis_service import TechnicalAnalysisService
 from .performance_validator import PerformanceValidator
 from .portfolio_var_allocator import PortfolioVaRAllocator
 from .provider_normalization import ProviderNormalizationLayer
-from .replay_validator import DecisionReplayValidator
+from lumina_core.audit.replay_validator import DecisionReplayValidator
 from .reporting_service import ReportingService
-from .regime_detector import RegimeDetector, RegimeSnapshot
-from .reasoning_service import ReasoningService
-from .session_guard import SessionGuard
-from .self_evolution_meta_agent import SelfEvolutionMetaAgent
+from lumina_core.risk.regime_detector import RegimeDetector, RegimeSnapshot
+from lumina_core.reasoning.reasoning_service import ReasoningService
+from lumina_core.risk.session_guard import SessionGuard
+from lumina_core.evolution.self_evolution_meta_agent import SelfEvolutionMetaAgent
 from .meta_agent_orchestrator import MetaAgentOrchestrator
 from .rl_guardrails import RLGuardrailLayer
 from .evolution_lifecycle import EvolutionLifecycleManager

@@ -98,7 +98,7 @@ def _load_decisions() -> dict[str, dict[str, Any]]:
                 continue
             try:
                 entry: dict[str, Any] = json.loads(raw)
-                h = entry.get("hash") or entry.get("entry_hash")
+                h = entry.get("entry_hash")
                 if h:
                     decisions[str(h)] = entry
             except json.JSONDecodeError:
@@ -117,7 +117,6 @@ def _append_decision(record: dict[str, Any]) -> None:
         mode=_runtime_mode(),
         actor_id="evolution_endpoints",
         severity="info",
-        include_legacy_hash=True,
     )
 
 

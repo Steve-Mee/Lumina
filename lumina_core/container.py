@@ -12,20 +12,17 @@ from typing import Any, Optional, cast
 from dotenv import load_dotenv
 
 from lumina_core.audit import register_default_streams
+from lumina_core.audit.agent_decision_log import AgentDecisionLog
+from lumina_core.audit.audit_log_service import AuditLogService
 from lumina_core.engine import (
-    AgentDecisionLog,
-    AuditLogService,
     DashboardService,
     EngineConfig,
     HumanAnalysisService,
-    LocalInferenceEngine,
     MarketDataIngestService,
     MemoryService,
     OperationsService,
     PerformanceValidator,
     ReportingService,
-    RegimeDetector,
-    ReasoningService,
     VisualizationService,
 )
 from lumina_core.agent_orchestration import (
@@ -35,14 +32,20 @@ from lumina_core.agent_orchestration import (
     SelfEvolutionMetaAgent,
     SwarmManager,
 )
-from lumina_core.engine.broker_bridge import BrokerBridge, broker_factory
+from lumina_core.broker.broker_bridge import BrokerBridge, broker_factory
+from lumina_core.ports import EngineServicePorts
 from lumina_core.risk.equity_snapshot import EquitySnapshotProvider
-from lumina_core.risk import HardRiskController, PortfolioVaRAllocator
-from lumina_core.trading_engine import LuminaEngine, TradeReconciler
+from lumina_core.risk.regime_detector import RegimeDetector
+from lumina_core.risk import HardRiskController
+from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
+from lumina_core.reasoning.reasoning_service import ReasoningService
+from lumina_core.trading_engine import LuminaEngine
+from lumina_core.engine.trade_reconciler import TradeReconciler
+from lumina_core.engine.portfolio_var_allocator import PortfolioVaRAllocator
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_agents.news_agent import NewsAgent
 from lumina_core.engine.emotional_twin_agent import EmotionalTwinAgent
-from lumina_core.engine.self_evolution_meta_agent import load_evolution_config
+from lumina_core.evolution.self_evolution_meta_agent import load_evolution_config
 from lumina_core.engine.canonical_training import InfiniteSimulator, PPOTrainer
 from lumina_core.logging_utils import build_logger, flush_logger_handlers
 from lumina_core.monitoring import ObservabilityService
@@ -163,6 +166,7 @@ class ApplicationContainer:
         """Initialize all services with explicit dependency ordering."""
         # Load config first so all dependent defaults read finalized env/yaml values.
         self.config = self.config_service.load()
+        self._ensure_runtime_paths()
         self._configure_audit_streams()
 
         # Initialize logger first (needed by all other services)
@@ -217,7 +221,40 @@ class ApplicationContainer:
         # Build broker (no network I/O yet — call start() to connect).
         self.broker = broker_factory(config=self.config, engine=self.engine, logger=self.logger)
         self.engine.equity_snapshot_provider = EquitySnapshotProvider(get_broker=lambda: self.broker, ttl_seconds=30.0)
+        self.engine.services_ports = EngineServicePorts(
+            risk=cast(Any, self.engine.risk_orchestrator),
+            audit=self.audit_log_service,
+            orchestration=self.event_bus,
+            broker=self.broker,
+            market_data=self.market_data_service,
+            execution=cast(Any, self.engine.execution_service),
+            dream=self.engine,
+            evolution=None,
+            reasoning=self.reasoning_service,
+        )
         self.engine._sync_services_registry()
+
+    def _ensure_runtime_paths(self) -> None:
+        file_paths = [
+            Path(self.config.state_file),
+            Path(self.config.thought_log),
+            Path(self.config.bible_file),
+            Path(self.config.live_jsonl),
+            Path(self.config.trade_reconciler_status_file),
+            Path(self.config.trade_reconciler_audit_log),
+            Path(self.config.trade_decision_audit_log),
+        ]
+        dir_paths = [
+            Path(self.config.audit_streams_root),
+            Path(self.config.journal_dir),
+            Path(self.config.journal_pdf_dir),
+            Path("state"),
+            Path("logs"),
+        ]
+        for file_path in file_paths:
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+        for dir_path in dir_paths:
+            dir_path.mkdir(parents=True, exist_ok=True)
 
     def _configure_audit_streams(self) -> None:
         audit_root = Path(self.config.audit_streams_root)
@@ -231,6 +268,7 @@ class ApplicationContainer:
             agent_thought=audit_root / "thought_log.jsonl",
             safety_constitution=audit_root / "constitutional_audit.jsonl",
             trade_reconciler=self.config.trade_reconciler_audit_log,
+            lumina_bible=Path("state/lumina_bible_generated_strategies.jsonl"),
         )
 
     def start(self) -> "ApplicationContainer":
@@ -298,8 +336,9 @@ class ApplicationContainer:
                 import pyttsx3  # noqa: PLC0415
 
                 self.tts_engine = pyttsx3.init()
-                self.tts_engine.setProperty("rate", self.voice_config.tts_config.rate)
-                self.tts_engine.setProperty("volume", self.voice_config.tts_config.volume)
+                if self.tts_engine is not None:
+                    self.tts_engine.setProperty("rate", self.voice_config.tts_config.rate)
+                    self.tts_engine.setProperty("volume", self.voice_config.tts_config.volume)
                 self.logger.info("TTS engine initialized")
             except ImportError:
                 self.logger.warning("pyttsx3 library not available; voice output disabled (headless mode OK)")
@@ -443,7 +482,9 @@ class ApplicationContainer:
     def _bind_evolution_promotion_event_bus(self) -> None:
         from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
 
-        EvolutionOrchestrator().bind_promotion_event_bus(self.event_bus)
+        orchestrator = EvolutionOrchestrator()
+        orchestrator.bind_promotion_event_bus(self.event_bus)
+        orchestrator.bind_market_data_service(self.market_data_service)
 
     def bind_runtime_module(self, runtime_module: Any) -> None:
         """Bind the process entry module (__main__) as engine.app; attach legacy lumina_runtime API."""

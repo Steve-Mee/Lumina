@@ -2,6 +2,16 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from lumina_core.ports.audit import AuditPort
+from lumina_core.ports.broker import BrokerPort
+from lumina_core.ports.dream import DreamStatePort
+from lumina_core.ports.evolution import EvolutionPort
+from lumina_core.ports.execution import ExecutionPort
+from lumina_core.ports.market_data import MarketDataPort
+from lumina_core.ports.orchestration import OrchestrationPort
+from lumina_core.ports.reasoning import ReasoningPort
+from lumina_core.ports.risk import RiskPort
+
 
 class SupportsMarketData(Protocol):
     market_data: Any
@@ -32,3 +42,21 @@ class SupportsExecution(Protocol):
     blackboard: Any
 
     def set_current_dream_fields(self, updates: dict[str, Any]) -> None: ...
+
+
+__all__ = [
+    "AuditPort",
+    "BrokerPort",
+    "DreamStatePort",
+    "EvolutionPort",
+    "ExecutionPort",
+    "MarketDataPort",
+    "OrchestrationPort",
+    "ReasoningPort",
+    "RiskPort",
+    "SupportsAnalysis",
+    "SupportsDreamState",
+    "SupportsExecution",
+    "SupportsMarketData",
+    "SupportsRisk",
+]

@@ -119,6 +119,7 @@ class EvolutionOrchestrator:
         self._veto_window = VetoWindow(veto_registry=self._veto_registry, window_seconds=1800)
         self._telegram_notifier = TelegramNotifier(veto_registry=self._veto_registry)
         self._notification_scheduler = NotificationScheduler()
+        self._market_data_service: Any | None = None
         # FASE 2: Initialize sim_runner with real_market_data support if configured
         self._sim_runner = self._create_sim_runner()
         self._strategy_generator = StrategyGenerator()
@@ -151,6 +152,10 @@ class EvolutionOrchestrator:
     def bind_promotion_event_bus(self, event_bus: EventBus | None) -> None:
         self._promotion_policy = PromotionPolicy(owner=self, logger=logger, event_bus=event_bus)
 
+    def bind_market_data_service(self, market_data_service: Any | None) -> None:
+        self._market_data_service = market_data_service
+        self._sim_runner = self._create_sim_runner()
+
     def bind_ppo_trainer(self, ppo_trainer: Any | None) -> None:
         self._ppo_trainer = ppo_trainer
 
@@ -168,19 +173,9 @@ class EvolutionOrchestrator:
         use_real_data = bool(mw_cfg.get("use_real_market_data", False)) if isinstance(mw_cfg, dict) else False
         use_backtest_mode = bool(mw_cfg.get("backtest_mode", False)) if isinstance(mw_cfg, dict) else False
 
-        market_data_service = None
-        if use_real_data:
-            try:
-                # Attempt to get market_data_service from runtime
-                from lumina_core.runtime_context import RuntimeContext
-
-                rt_ctx = getattr(RuntimeContext, "_current_runtime", None)
-                if rt_ctx is not None and hasattr(rt_ctx, "market_data_service"):
-                    market_data_service = rt_ctx.market_data_service
-                if market_data_service is None:
-                    logger.warning("[EVOLUTION] real_market_data enabled but market_data_service unavailable")
-            except Exception as exc:
-                logger.warning("[EVOLUTION] Could not initialize market_data_service: %s", exc)
+        market_data_service = self._market_data_service if use_real_data else None
+        if use_real_data and market_data_service is None:
+            logger.warning("[EVOLUTION] real_market_data enabled but market_data_service unavailable")
 
         return MultiDaySimRunner(
             max_workers=8,

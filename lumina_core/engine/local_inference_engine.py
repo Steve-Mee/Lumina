@@ -542,7 +542,7 @@ class LocalInferenceEngine:
 Subject: Request for Grok-Trader-1B Fine-Tune (1B parameters)
 
 We request a distilled Grok-Trader-1B model based on the following dataset:
-- All lumina_thought_log.jsonl
+- All thought_log.jsonl
 - trade_reflection_history + user_feedback
 - 1.000.000+ trades from Infinite Simulator
 - Full Bible + evolvable_layer + HUMAN PLAYBOOK

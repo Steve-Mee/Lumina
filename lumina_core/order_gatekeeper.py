@@ -4,20 +4,21 @@ import logging
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal, cast
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
-from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
+from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.risk.admission_chain import (
+    ADMISSION_STEP_AUDIT_WRITE,
     ADMISSION_STEP_CONSTITUTION,
-    ADMISSION_STEP_EQUITY_SNAPSHOT,
     ADMISSION_STEP_FINAL_ARBITRATION,
     ADMISSION_STEP_RISK_POLICY,
-    ADMISSION_STEP_SESSION_GUARD,
+    ADMISSION_STEP_SESSION_EQUITY_SYNC,
     AdmissionContext,
     default_chain_for_mode,
 )
 from lumina_core.risk.final_arbitration import (
+    FinalArbitration,
     build_current_state_from_engine,
     evaluate_constitution_for_intent,
     is_strict_arbitration_mode,
@@ -42,6 +43,7 @@ _MONTHS = {
 
 
 _LOG = logging.getLogger(__name__)
+_MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard"})
 
 
 def _logger_for_engine(engine: Any):
@@ -376,7 +378,13 @@ def enforce_pre_trade_gate(
             return False, "AUDIT FAIL-CLOSED: trade decision log write failed"
         return True, ""
 
-    def _deny(reason_code: str, user_reason: str) -> tuple[bool, str]:
+    def _deny(
+        reason_code: str,
+        user_reason: str,
+        *,
+        var_payload: dict[str, Any] | None = None,
+        mc_payload: dict[str, Any] | None = None,
+    ) -> tuple[bool, str]:
         _record_mode_guard_block(engine, mode=mode, reason=reason_code)
         audit_ok, audit_reason = _audit_or_fail_closed(
             _build_audit_payload(
@@ -388,6 +396,8 @@ def enforce_pre_trade_gate(
                 stage="policy_gate",
                 final_decision="block",
                 reason=str(user_reason),
+                var_payload=var_payload,
+                mc_payload=mc_payload,
             ),
         )
         if not audit_ok:
@@ -410,14 +420,15 @@ def enforce_pre_trade_gate(
     if not risk_controller:
         return _deny("risk_controller_unavailable", "Risk controller not available")
 
+    normalized_order_side = str(order_side or "").strip().upper()
+    if normalized_order_side not in {"BUY", "SELL"}:
+        return _deny("order_side_required", "Order side required for admission chain")
+
     def _build_admission_intent() -> tuple[OrderIntent | None, str]:
-        side = str(order_side or "").strip().upper()
-        if side not in {"BUY", "SELL"}:
-            return None, "order_side_not_provided"
         return (
             OrderIntent(
                 instrument=str(symbol),
-                side=side,
+                side=cast(Literal["BUY", "SELL"], normalized_order_side),
                 quantity=1,
                 reference_price=0.0,
                 proposed_risk=float(abs(float(proposed_risk))),
@@ -435,8 +446,8 @@ def enforce_pre_trade_gate(
     def _constitution_step(_ctx: AdmissionContext) -> tuple[bool, str]:
         intent, intent_reason = _build_admission_intent()
         if intent is None:
-            _ctx.metadata["constitution_skipped"] = True
-            return True, intent_reason
+            _ctx.metadata["deny_reason_code"] = "admission_intent_missing"
+            return False, str(intent_reason)
         state = build_current_state_from_engine(engine)
         try:
             resolved_policy = load_risk_policy(
@@ -500,23 +511,8 @@ def enforce_pre_trade_gate(
                 mc_reason = str(mc_result[1])
                 if len(mc_result) >= 3 and isinstance(mc_result[2], dict):
                     mc_payload = dict(mc_result[2])
-
-            audit_ok, audit_reason = _audit_or_fail_closed(
-                _build_audit_payload(
-                    engine,
-                    symbol=symbol,
-                    regime=resolved_regime,
-                    proposed_risk=float(proposed_risk),
-                    mode=mode,
-                    stage="risk_gate",
-                    final_decision="allow" if (var_ok and mc_ok) else "block",
-                    reason=(str(var_reason) if not var_ok else str(mc_reason)),
-                    var_payload=var_payload,
-                    mc_payload=mc_payload,
-                ),
-            )
-            if not audit_ok:
-                return False, str(audit_reason)
+            _ctx.metadata["var_payload"] = var_payload
+            _ctx.metadata["mc_payload"] = mc_payload
 
             if capabilities.risk_enforced and not bool(var_ok):
                 _ctx.metadata["deny_reason_code"] = "risk_var_es"
@@ -541,20 +537,6 @@ def enforce_pre_trade_gate(
             if not bool(risk_ok):
                 _ctx.metadata["deny_reason_code"] = f"risk_{risk_reason}"
                 return False, str(risk_reason)
-            audit_ok, audit_reason = _audit_or_fail_closed(
-                _build_audit_payload(
-                    engine,
-                    symbol=symbol,
-                    regime=resolved_regime,
-                    proposed_risk=float(proposed_risk),
-                    mode=mode,
-                    stage="policy_gate",
-                    final_decision="allow",
-                    reason=str(risk_reason),
-                ),
-            )
-            if not audit_ok:
-                return False, str(audit_reason)
             return True, str(risk_reason)
 
         if not bool(risk_ok):
@@ -562,33 +544,16 @@ def enforce_pre_trade_gate(
                 engine,
                 f"RISK_ADVISORY,mode={mode},symbol={symbol},reason={risk_reason}",
             )
-        _audit_or_fail_closed(
-            _build_audit_payload(
-                engine,
-                symbol=symbol,
-                regime=resolved_regime,
-                proposed_risk=float(proposed_risk),
-                mode=mode,
-                stage="policy_gate",
-                final_decision="allow",
-                reason=str(risk_reason),
-            ),
-        )
         return True, str(risk_reason)
 
     def _equity_snapshot_step(_ctx: AdmissionContext) -> tuple[bool, str]:
-        if mode != "real":
+        if mode not in _MODES_REQUIRING_EQUITY_SNAPSHOT:
             setattr(engine, "equity_snapshot_ok", True)
             setattr(engine, "equity_snapshot_reason", "not_required_non_real")
             return True, "not_required_non_real"
 
-        if str(order_side or "").strip().upper() not in {"BUY", "SELL"}:
-            setattr(engine, "equity_snapshot_ok", False)
-            setattr(engine, "equity_snapshot_reason", "deferred_no_order_side")
-            return True, "deferred_no_order_side"
-
         snapshot_ok = False
-        snapshot_reason = "real_equity_snapshot_required"
+        snapshot_reason = f"{mode}_equity_snapshot_required"
         snapshot_source = ""
         provider = getattr(engine, "equity_snapshot_provider", None)
         if provider is not None and callable(getattr(provider, "get_snapshot", None)):
@@ -617,59 +582,91 @@ def enforce_pre_trade_gate(
                 snapshot_reason = "equity_snapshot_provider_error"
                 setattr(engine, "equity_snapshot_ok", False)
                 setattr(engine, "equity_snapshot_reason", snapshot_reason)
+        if mode == "real" and not snapshot_ok:
+            snapshot_reason = "real_equity_snapshot_required"
+            setattr(engine, "equity_snapshot_reason", snapshot_reason)
         if snapshot_ok:
             return True, str(snapshot_reason)
-        if _is_risk_reducing_side(engine=engine, order_side=order_side):
+        if mode == "real" and _is_risk_reducing_side(engine=engine, order_side=order_side):
             return True, "real_snapshot_bypassed_for_risk_reducing_exit"
         return (
             False,
-            f"REAL mode requires fresh equity snapshot ({snapshot_reason}, source={snapshot_source or 'unknown'})",
+            (
+                "REAL mode requires fresh equity snapshot "
+                f"({snapshot_reason}, source={snapshot_source or 'unknown'})"
+                if mode == "real"
+                else (
+                    f"{mode.upper()} mode requires fresh equity snapshot "
+                    f"({snapshot_reason}, source={snapshot_source or 'unknown'})"
+                )
+            ),
         )
 
     def _final_arbitration_step(_ctx: AdmissionContext) -> tuple[bool, str]:
         intent, intent_reason = _build_admission_intent()
         if intent is None:
-            _ctx.metadata["final_arbitration_skipped"] = True
+            _ctx.metadata["deny_reason_code"] = "admission_intent_missing"
             _ctx.metadata["final_arbitration_approved"] = False
-            return True, intent_reason
+            return False, str(intent_reason)
 
         state = build_current_state_from_engine(engine)
         arbitration = getattr(engine, "final_arbitration", None)
         if arbitration is None and is_strict_arbitration_mode(mode):
             _ctx.metadata["final_arbitration_approved"] = False
-            return _deny(
-                "final_arbitration_unavailable",
-                f"FinalArbitration blocked order: final_arbitration_unavailable [mode={str(mode).upper()}]",
-            )
+            _ctx.metadata["deny_reason_code"] = "final_arbitration_unavailable"
+            return False, f"FinalArbitration blocked order: final_arbitration_unavailable [mode={str(mode).upper()}]"
         if arbitration is None:
-            _ctx.metadata["final_arbitration_approved"] = False
-            return False, "final_arbitration_unavailable"
+            arbitration = FinalArbitration(load_risk_policy(mode=mode))
         result = arbitration.check_order_intent(
             intent,
             state,
             skip_internal_steps=frozenset(
                 {
+                    "real_equity_snapshot",
                     "constitution",
                     "risk_policy",
-                    "real_equity_snapshot",
                 }
             ),
         )
         _ctx.metadata["final_arbitration_approved"] = bool(result.status == "APPROVED")
         if result.status != "APPROVED":
+            _ctx.metadata["deny_reason_code"] = "final_arbitration_reject"
             return False, str(result.reason)
         return True, str(result.reason)
 
-    def _session_guard_step(_ctx: AdmissionContext) -> tuple[bool, str]:
+    def _session_equity_sync_step(_ctx: AdmissionContext) -> tuple[bool, str]:
         session_ok, session_reason = session_guard_allows_trading(engine)
-        if session_ok:
-            return True, str(session_reason)
-        session_guard = getattr(engine, "session_guard", None)
-        next_open = (
-            session_guard.next_open() if (session_guard is not None and hasattr(session_guard, "next_open")) else None
+        if not session_ok:
+            session_guard = getattr(engine, "session_guard", None)
+            next_open = (
+                session_guard.next_open()
+                if (session_guard is not None and hasattr(session_guard, "next_open"))
+                else None
+            )
+            suffix = f" | next_open={next_open.isoformat()}" if next_open is not None else ""
+            return False, f"Session guard blocked order: {session_reason}{suffix}"
+        return _equity_snapshot_step(_ctx)
+
+    def _audit_write_step(_ctx: AdmissionContext) -> tuple[bool, str]:
+        resolved_regime = str(_ctx.metadata.get("resolved_regime", regime or "NEUTRAL"))
+        audit_ok, audit_reason = _audit_or_fail_closed(
+            _build_audit_payload(
+                engine,
+                symbol=symbol,
+                regime=resolved_regime,
+                proposed_risk=float(proposed_risk),
+                mode=mode,
+                stage="admission_chain",
+                final_decision="allow",
+                reason=str(_ctx.metadata.get("risk_reason", "approved")),
+                var_payload=cast(dict[str, Any], _ctx.metadata.get("var_payload", {})),
+                mc_payload=cast(dict[str, Any], _ctx.metadata.get("mc_payload", {})),
+            ),
         )
-        suffix = f" | next_open={next_open.isoformat()}" if next_open is not None else ""
-        return False, f"Session guard blocked order: {session_reason}{suffix}"
+        if not audit_ok:
+            _ctx.metadata["deny_reason_code"] = "audit_fail_closed"
+            return False, str(audit_reason)
+        return True, str(_ctx.metadata.get("risk_reason", "OK"))
 
     admission_context = AdmissionContext(
         engine=engine,
@@ -679,11 +676,11 @@ def enforce_pre_trade_gate(
         proposed_risk=float(proposed_risk),
         order_side=order_side,
         step_handlers={
-            ADMISSION_STEP_CONSTITUTION: _constitution_step,
+            ADMISSION_STEP_SESSION_EQUITY_SYNC: _session_equity_sync_step,
             ADMISSION_STEP_RISK_POLICY: _risk_policy_step,
-            ADMISSION_STEP_EQUITY_SNAPSHOT: _equity_snapshot_step,
             ADMISSION_STEP_FINAL_ARBITRATION: _final_arbitration_step,
-            ADMISSION_STEP_SESSION_GUARD: _session_guard_step,
+            ADMISSION_STEP_CONSTITUTION: _constitution_step,
+            ADMISSION_STEP_AUDIT_WRITE: _audit_write_step,
         },
     )
     allowed, reason, trace = default_chain_for_mode(mode).run(admission_context)
@@ -707,5 +704,10 @@ def enforce_pre_trade_gate(
     )
     if not allowed:
         reason_code = str(admission_context.metadata.get("deny_reason_code", f"admission_{trace.last_step_id}"))
-        return _deny(reason_code, str(reason))
+        return _deny(
+            reason_code,
+            str(reason),
+            var_payload=cast(dict[str, Any], admission_context.metadata.get("var_payload", {})),
+            mc_payload=cast(dict[str, Any], admission_context.metadata.get("mc_payload", {})),
+        )
     return True, str(admission_context.metadata.get("risk_reason", reason or "OK"))

@@ -51,7 +51,7 @@ ENV_PATH = Path(".env")
 CONFIG_PATH = Path("config.yaml")
 RUNTIME_ENTRY = Path("lumina_core/engine/runtime_entrypoint.py")
 LUMINA_LOG_PATH = Path("logs/lumina_full_log.csv")
-THOUGHT_LOG_PATH = Path("state/lumina_thought_log.jsonl")
+THOUGHT_LOG_PATH = Path("state/thought_log.jsonl")
 STATE_PATH = Path("state/lumina_sim_state.json")
 ADMIN_PASSWORD_HASH_PATH = Path("state/launcher_admin_password.json")
 MODEL_CATALOG_STATE_PATH = Path("state/model_catalog_state.json")
@@ -780,7 +780,7 @@ def _render_live_activity_metrics_and_log(
     if not excerpt:
         st.caption(
             "Nog geen logregels. Start de bot vanuit de **repo-root** (zodat `logs/` en `state/` hier geschreven worden). "
-            "Na bootstrap zouden STATUS/STATE-regels in **lumina_full_log.csv** of thoughts in **lumina_thought_log.jsonl** moeten verschijnen."
+            "Na bootstrap zouden STATUS/STATE-regels in **lumina_full_log.csv** of thoughts in **thought_log.jsonl** moeten verschijnen."
         )
     else:
         st.caption(f"Bron: `{src}` — vernieuwt elke 5s met auto-refresh aan.")

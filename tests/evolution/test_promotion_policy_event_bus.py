@@ -161,20 +161,77 @@ def test_run_shadow_validation_gate_publishes_violation_when_gate_raises(monkeyp
 @pytest.mark.unit
 def test_container_binding_wires_orchestrator_promotion_policy_event_bus(monkeypatch: pytest.MonkeyPatch) -> None:
     # gegeven
-    captured: dict[str, EventBus | None] = {"bus": None}
+    captured: dict[str, object | None] = {"bus": None, "market_data_service": None}
 
     class _StubOrchestrator:
         def bind_promotion_event_bus(self, event_bus: EventBus | None) -> None:
             captured["bus"] = event_bus
+
+        def bind_market_data_service(self, market_data_service: object | None) -> None:
+            captured["market_data_service"] = market_data_service
 
     import lumina_core.evolution.evolution_orchestrator as evolution_orchestrator_module
 
     monkeypatch.setattr(evolution_orchestrator_module, "EvolutionOrchestrator", _StubOrchestrator)
     container = object.__new__(ApplicationContainer)
     container.event_bus = EventBus()
+    container.market_data_service = object()
 
     # wanneer
     container._bind_evolution_promotion_event_bus()
 
     # dan
     assert captured["bus"] is container.event_bus
+    assert captured["market_data_service"] is container.market_data_service
+
+
+@pytest.mark.unit
+def test_orchestrator_bind_market_data_service_rebuilds_sim_runner(monkeypatch: pytest.MonkeyPatch) -> None:
+    # gegeven
+    orchestrator = object.__new__(EvolutionOrchestrator)
+    orchestrator._market_data_service = None
+    calls: list[object | None] = []
+
+    def _stub_create() -> str:
+        calls.append(orchestrator._market_data_service)
+        return "stub-sim-runner"
+
+    monkeypatch.setattr(orchestrator, "_create_sim_runner", _stub_create)
+    market_data_service = object()
+
+    # wanneer
+    orchestrator.bind_market_data_service(market_data_service)
+
+    # dan
+    assert orchestrator._market_data_service is market_data_service
+    assert getattr(orchestrator, "_sim_runner") == "stub-sim-runner"
+    assert calls == [market_data_service]
+
+
+@pytest.mark.unit
+def test_promotion_gate_violation_publication_is_deterministic() -> None:
+    # gegeven
+    event_bus = EventBus()
+    policy = PromotionPolicy(owner=SimpleNamespace(), event_bus=event_bus)
+    gate = PromotionGate()
+    decision = gate.evaluate(
+        "dna_1234567890",
+        evidence=_base_evidence().model_copy(
+            update={
+                "reality_gap_stats": {"band_status": "RED", "gap_trend": "WIDENING", "mean_gap": 1.25},
+                "live_fill_rate": 0.45,
+            }
+        ),
+    )
+
+    # wanneer
+    policy._publish_promotion_gate_violation(dna_hash="dna_1234567890", decision=decision)
+    policy._publish_promotion_gate_violation(dna_hash="dna_1234567890", decision=decision)
+
+    # dan
+    events = event_bus.history("safety.constitution.violation", limit=10)
+    assert len(events) == 2
+    assert events[0].payload == events[1].payload
+    assert events[0].metadata["dna_hash"] == events[1].metadata["dna_hash"]
+    assert events[0].metadata["gate"] == events[1].metadata["gate"]
+    assert int(events[0].metadata["sequence"]) + 1 == int(events[1].metadata["sequence"])

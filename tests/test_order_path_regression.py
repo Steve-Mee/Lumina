@@ -308,6 +308,20 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
         equity_snapshot_provider=_FreshEquitySnapshotProvider(),
+        final_arbitration=FinalArbitration(
+            RiskPolicy(
+                runtime_mode=trade_mode,
+                daily_loss_cap=-1_000.0,
+                max_open_risk_per_instrument=500.0,
+                max_total_open_risk=2_000.0,
+                max_exposure_per_regime=2_000.0,
+                var_95_limit_usd=2_500.0,
+                var_99_limit_usd=3_000.0,
+                es_95_limit_usd=2_800.0,
+                es_99_limit_usd=3_200.0,
+                margin_min_confidence=0.5,
+            )
+        ),
     )
     # Return as RuntimeContext-compatible object (duck typing)
     return cast(RuntimeContext, SimpleNamespace(engine=engine, logger=MagicMock(), market_regime="NEUTRAL"))
@@ -316,7 +330,7 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
 def test_check_pre_trade_risk_sim_respects_session_guard():
     """check_pre_trade_risk in SIM blokkert ook tijdens rollover window (live orders!)."""
     app = _make_runtime_ctx("sim")
-    ok, reason = check_pre_trade_risk(app, "MES", "NEUTRAL", 10.0)
+    ok, reason = check_pre_trade_risk(app, "MES", "NEUTRAL", 10.0, order_side="BUY")
     assert ok is False
     assert "rollover" in reason.lower()
     cast(Any, app.engine.session_guard).is_rollover_window.assert_called()
@@ -325,6 +339,6 @@ def test_check_pre_trade_risk_sim_respects_session_guard():
 def test_check_pre_trade_risk_real_respects_session_guard():
     """check_pre_trade_risk in REAL blokkeert tijdens rollover window."""
     app = _make_runtime_ctx("real")
-    ok, reason = check_pre_trade_risk(app, "MES", "NEUTRAL", 10.0)
+    ok, reason = check_pre_trade_risk(app, "MES", "NEUTRAL", 10.0, order_side="BUY")
     assert ok is False
     assert "rollover" in reason.lower()

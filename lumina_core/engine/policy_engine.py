@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .agent_contracts import apply_agent_policy_gateway
-from .broker_bridge import Order, OrderResult, audit_final_arbitration_reject
-from lumina_core.risk.final_arbitration import build_current_state_from_engine, build_order_intent_from_order
+from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
+from lumina_core.broker.broker_bridge import Order, OrderResult
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 
 
 @dataclass(slots=True)
@@ -45,34 +45,25 @@ class PolicyEngine:
 
     def execute_order(self, order: Order, *, skip_final_arbitration: bool = False) -> OrderResult:
         if not bool(skip_final_arbitration):
-            arbitration = getattr(self.engine, "final_arbitration", None)
-            if arbitration is None:
-                reason = "final_arbitration_unavailable"
-                mode = (
-                    str(getattr(getattr(self.engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
-                )
-                audit_final_arbitration_reject(self.engine, mode=mode, reason=reason, order=order)
-                return OrderResult(
-                    accepted=False,
-                    order_id="",
-                    status="rejected",
-                    message=f"FinalArbitration blocked order: {reason}",
-                )
-            result = arbitration.check_order_intent(
-                build_order_intent_from_order(
-                    order, dream_snapshot=getattr(self.engine, "get_current_dream_snapshot", lambda: {})()
-                ),
-                build_current_state_from_engine(self.engine),
+            metadata = order.metadata if isinstance(order.metadata, dict) else {}
+            reference_price = float(metadata.get("reference_price", 0.0) or 0.0)
+            stop_loss = float(order.stop_loss or 0.0)
+            fallback_risk = abs(reference_price - stop_loss) if reference_price > 0 and stop_loss > 0 else 0.0
+            proposed_risk = float(metadata.get("proposed_risk", fallback_risk) or fallback_risk)
+            allowed, reason = enforce_pre_trade_gate(
+                self.engine,
+                symbol=str(order.symbol),
+                regime=str(metadata.get("regime", "NEUTRAL") or "NEUTRAL"),
+                proposed_risk=float(proposed_risk),
+                order_side=str(order.side).upper(),
             )
-            if result.status != "APPROVED":
-                mode = (
-                    str(getattr(getattr(self.engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
-                )
-                audit_final_arbitration_reject(self.engine, mode=mode, reason=result.reason, order=order)
+            if not allowed:
                 return OrderResult(
                     accepted=False,
                     order_id="",
                     status="rejected",
-                    message=f"FinalArbitration blocked order: {result.reason}",
+                    message=f"AdmissionChain blocked order: {reason}",
                 )
+        if isinstance(order.metadata, dict):
+            order.metadata["skip_admission_chain_recheck"] = True
         return self.broker.submit_order(order)

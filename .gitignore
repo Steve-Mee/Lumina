@@ -94,6 +94,10 @@ state/metrics.db
 state/*.db-journal
 state/evolution_log.jsonl
 state/evolution_lifecycle.jsonl
+state/evolution_rollout_history.jsonl
+state/regime_oos_results.json
+state/legacy_import_audit.json
+state/unsloth-output/
 state/last_run_summary_paper_15m.json
 state/sim_stability_history.jsonl
 *_validation.log
@@ -109,6 +113,10 @@ state/phase3_sim300*.log
 state/test_bypass_*_run.*.log
 state/cost_model_calibration.json
 state/validation/paper_fill_metrics.json
+state/validation/fill_calibration.json
+state/validation/fill_calibration_report.json
+state/validation/regime_scorecard.json
+state/validation/shadow_rollout_report.json
 config.yaml.pre_controlled_live.bak
 lumina_validation_output.log
 test_output.txt

@@ -18,7 +18,7 @@ from lumina_core.audit import get_audit_logger
 
 from .errors import format_error_code
 from .lumina_engine import LuminaEngine
-from .mode_capabilities import resolve_mode_capabilities
+from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from .valuation_engine import ValuationEngine
 
 logger = logging.getLogger(__name__)

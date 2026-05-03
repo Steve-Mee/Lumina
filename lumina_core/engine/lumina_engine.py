@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import ModuleType
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     pass
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from lumina_bible import BibleEngine
 from lumina_core.agent_orchestration.engine_bindings import bind_engine_blackboard
 from lumina_core.monitoring.runtime_counters import RuntimeCounters
+from lumina_core.ports.engine_service_ports import EngineServicePorts
 from lumina_core.risk.final_arbitration import is_strict_arbitration_mode
 from lumina_core.trading_engine.engine_services import EngineServices
 from lumina_core.trading_engine.engine_snapshot import (
@@ -45,6 +46,16 @@ __all__ = [
     "RiskStateContext",
 ]
 
+MIGRATED_SERVICE_PROXY_FIELDS: frozenset[str] = frozenset(
+    {
+        "audit_log_service",
+        "decision_log",
+        "reasoning_service",
+        "session_guard",
+        "regime_detector",
+    }
+)
+
 
 @dataclass(slots=True)
 class LuminaEngine:
@@ -67,6 +78,7 @@ class LuminaEngine:
     snapshot_service: EngineSnapshotService = field(default_factory=EngineSnapshotService)
     persistence_service: EngineStatePersistenceService = field(default_factory=EngineStatePersistenceService)
     services: EngineServices = field(default_factory=EngineServices)
+    services_ports: EngineServicePorts | None = None
 
     world_model: dict[str, Any] = field(default_factory=dict)
     AI_DRAWN_FIBS: dict[str, Any] = field(default_factory=dict)
@@ -108,21 +120,21 @@ class LuminaEngine:
         if self.fast_path is None:
             from .fast_path_engine import FastPathEngine  # noqa: PLC0415
 
-            self.fast_path = FastPathEngine(engine=self)
+            self.fast_path = FastPathEngine(engine=cast(Any, self))
 
         # RealisticBacktesterEngine lazy init
         if self.backtester is None:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
             from .realistic_backtester_engine import RealisticBacktesterEngine  # noqa: PLC0415
 
-            self.backtester = RealisticBacktesterEngine(context=RuntimeContext(engine=self))
+            self.backtester = RealisticBacktesterEngine(context=RuntimeContext(engine=cast(Any, self)))
 
         # AdvancedBacktesterEngine lazy init
         if self.advanced_backtester is None:
             from lumina_core.runtime_context import RuntimeContext  # noqa: PLC0415
             from .advanced_backtester_engine import AdvancedBacktesterEngine  # noqa: PLC0415
 
-            self.advanced_backtester = AdvancedBacktesterEngine(context=RuntimeContext(engine=self))
+            self.advanced_backtester = AdvancedBacktesterEngine(context=RuntimeContext(engine=cast(Any, self)))
 
         # RLTradingEnvironment, PPOTrainer, InfiniteSimulator, EmotionalTwinAgent,
         # SwarmManager and PerformanceValidator are built exclusively by
@@ -141,14 +153,14 @@ class LuminaEngine:
 
         # Compose engine responsibilities into narrow services.
         if self.dream_state_manager is None:
-            self.dream_state_manager = DreamStateManager(engine=self, dream_state=self.dream_state)
+            self.dream_state_manager = DreamStateManager(engine=cast(Any, self), dream_state=self.dream_state)
         if self.market_domain_service is None:
-            self.market_domain_service = MarketDataDomainService(engine=self)
+            self.market_domain_service = MarketDataDomainService(engine=cast(Any, self))
         if self.technical_analysis_service is None:
-            self.technical_analysis_service = TechnicalAnalysisService(engine=self)
+            self.technical_analysis_service = TechnicalAnalysisService(engine=cast(Any, self))
         if self.risk_orchestrator is None:
             self.risk_orchestrator = RiskOrchestrator(
-                engine=self,
+                engine=cast(Any, self),
                 session_guard=self.session_guard,
                 risk_controller=self.risk_controller,
                 risk_policy=self.risk_policy,
@@ -174,6 +186,8 @@ class LuminaEngine:
 
     def _sync_services_registry(self) -> None:
         for field_name in SERVICE_PROXY_FIELDS:
+            if field_name in MIGRATED_SERVICE_PROXY_FIELDS and self.services_ports is not None:
+                continue
             setattr(self.services, field_name, getattr(self, field_name))
 
     def _load_mode_risk_profile(self) -> dict[str, float]:
@@ -186,21 +200,21 @@ class LuminaEngine:
             return None
         return self.risk_orchestrator._build_dynamic_kelly_estimator()
 
-    def hydrate_from_legacy(self, app: ModuleType) -> None:
-        """Import legacy runtime state into engine-managed fields."""
-        self.persistence_service.hydrate_from_legacy(self, app)
+    def hydrate_from_app(self, app: ModuleType) -> None:
+        """Import runtime module state into engine-managed fields."""
+        self.persistence_service.hydrate_from_app(cast(Any, self), app)
 
     def save_state(self) -> None:
-        self.persistence_service.save_state(self)
+        self.persistence_service.save_state(cast(Any, self))
 
     def load_state(self) -> None:
-        self.persistence_service.load_state(self)
+        self.persistence_service.load_state(cast(Any, self))
 
     def build_state_contexts(self) -> dict[str, Any]:
-        return self.snapshot_service.build_state_contexts(self)
+        return self.snapshot_service.build_state_contexts(cast(Any, self))
 
     def serialize_state_snapshot(self) -> dict[str, Any]:
-        return self.snapshot_service.serialize_state_snapshot(self)
+        return self.snapshot_service.serialize_state_snapshot(cast(Any, self))
 
     def evolve_bible(self, updates: dict[str, Any]) -> None:
         assert self.bible_engine is not None
@@ -220,7 +234,10 @@ class LuminaEngine:
     def update_performance_log(self, trade_data: dict[str, Any]) -> None:
         if self.execution_service is None:
             return
-        self.execution_service.update_performance_log(self.performance_log, trade_data)
+        self.execution_service.update_performance_log(
+            cast(list[dict[str, Any]], getattr(self, "performance_log", [])),
+            trade_data,
+        )
 
     def detect_candle_patterns(self, df, tf: str = "1min") -> dict[str, str]:
         if self.market_domain_service is None:

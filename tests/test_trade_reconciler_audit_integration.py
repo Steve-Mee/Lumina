@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from lumina_core.engine.audit_log_service import AuditLogService
+from lumina_core.audit.audit_log_service import AuditLogService
 from lumina_core.engine.trade_reconciler import TradeReconciler
 
 

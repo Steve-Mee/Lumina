@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from lumina_core.engine.broker_bridge import AccountInfo, PaperBroker, Position
+from lumina_core.broker.broker_bridge import AccountInfo, PaperBroker, Position
 from lumina_core.risk.equity_snapshot import EquitySnapshot, EquitySnapshotProvider
 from lumina_core.risk.final_arbitration import FinalArbitration, build_current_state_from_engine
 from lumina_core.risk.risk_policy import RiskPolicy

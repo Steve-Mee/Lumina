@@ -12,8 +12,9 @@ from typing import Any, Callable, TypeVar
 from pydantic import BaseModel, Field, ValidationError
 
 from lumina_core.audit import get_audit_logger
+from lumina_core.fault import FaultDomain, FaultPolicy
 
-from .agent_decision_log import AgentDecisionLog
+from lumina_core.audit.agent_decision_log import AgentDecisionLog
 from .agent_policy_gateway import AgentPolicyGateway, default_lineage
 
 logger = logging.getLogger(__name__)
@@ -129,13 +130,17 @@ def _append_immutable_decision_log(payload: dict[str, Any]) -> None:
             prompt_hash=hashlib.sha256(prompt_seed.encode("utf-8")).hexdigest(),
             is_real_mode=is_real_mode,
         )
-    except Exception as exc:
-        logger.exception(
-            "AgentContracts failed to mirror contract decision into AgentDecisionLog (real_mode=%s)",
-            is_real_mode,
+    except (RuntimeError, ValueError, TypeError, OSError) as exc:
+        FaultPolicy.handle(
+            domain=FaultDomain.AGENT_CONTRACT_MIRROR,
+            operation="mirror_contract_decision",
+            exc=exc,
+            is_real_mode=is_real_mode,
+            fault_cls=AgentContractError,
+            message="AgentContracts failed to mirror contract decision into AgentDecisionLog",
+            context={"agent": str(payload.get("agent", "unknown"))},
+            logger_obj=logger,
         )
-        if is_real_mode:
-            raise AgentContractError("Decision mirror write failed in REAL mode") from exc
 
 
 def enforce_contract(

@@ -10,7 +10,7 @@ def test_model_trainer_builds_dataset_preview_from_thought_log(monkeypatch, tmp_
     monkeypatch.chdir(tmp_path)
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    state_dir.joinpath("lumina_thought_log.jsonl").write_text(
+    state_dir.joinpath("thought_log.jsonl").write_text(
         '{"thought": "buy the dip"}\n{"thought": "manage risk"}\n',
         encoding="utf-8",
     )
@@ -30,7 +30,7 @@ def test_model_trainer_builds_full_pipeline_commands(monkeypatch, tmp_path: Path
     monkeypatch.chdir(tmp_path)
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    state_dir.joinpath("lumina_thought_log.jsonl").write_text('{"thought": "x"}\n', encoding="utf-8")
+    state_dir.joinpath("thought_log.jsonl").write_text('{"thought": "x"}\n', encoding="utf-8")
     tools_dir = tmp_path / "tools" / "llama.cpp"
     tools_dir.mkdir(parents=True)
     converter = tools_dir / "convert_hf_to_gguf.py"
@@ -55,7 +55,7 @@ def test_model_trainer_create_export_instructions_include_export_and_register(mo
     monkeypatch.chdir(tmp_path)
     state_dir = tmp_path / "state"
     state_dir.mkdir()
-    state_dir.joinpath("lumina_thought_log.jsonl").write_text('{"thought": "x"}\n', encoding="utf-8")
+    state_dir.joinpath("thought_log.jsonl").write_text('{"thought": "x"}\n', encoding="utf-8")
 
     trainer = ModelTrainer()
     instructions = trainer.create_export_instructions(base_model="qwen3.5:9b", output_dir=tmp_path / "state" / "out")

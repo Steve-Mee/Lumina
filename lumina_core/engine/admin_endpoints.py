@@ -1,4 +1,4 @@
-"""Backward-compatible export for split dashboard admin endpoint core."""
+"""Admin endpoints export surface."""
 
 from __future__ import annotations
 

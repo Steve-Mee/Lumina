@@ -7,8 +7,9 @@ from typing import Any, cast
 
 import pytest
 
+from lumina_core.agent_orchestration import EventBus
 from lumina_core.risk.risk_controller import HardRiskController, RiskLimits
-from lumina_core.engine.self_evolution_meta_agent import SelfEvolutionMetaAgent
+from lumina_core.evolution.self_evolution_meta_agent import SelfEvolutionMetaAgent
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.evolution.dna_registry import DNARegistry
 
@@ -248,3 +249,74 @@ def test_real_mode_blocks_mutation_governance(tmp_path: Path) -> None:
 
     assert result["governance"]["mode"] == "real"
     assert result["governance"]["mutation_allowed"] is False
+
+
+@pytest.mark.unit
+def test_multi_gen_cycle_explicitly_rebinds_event_bus_and_market_data(monkeypatch: pytest.MonkeyPatch) -> None:
+    # gegeven
+    captured: dict[str, object | None] = {
+        "event_bus": None,
+        "market_data_service": None,
+    }
+
+    class _OrchestratorStub:
+        def bind_promotion_event_bus(self, event_bus: EventBus | None) -> None:
+            captured["event_bus"] = event_bus
+
+        def bind_market_data_service(self, market_data_service: object | None) -> None:
+            captured["market_data_service"] = market_data_service
+
+        def bind_ppo_trainer(self, _ppo_trainer: object | None) -> None:
+            return None
+
+        def bind_vector_collection(self, _collection: object | None) -> None:
+            return None
+
+        def run_nightly_evolution_cycle(self, **_kwargs: object) -> dict[str, object]:
+            return {"status": "ok"}
+
+    import lumina_core.engine.meta_agent_core as meta_agent_core_module
+
+    monkeypatch.setattr(meta_agent_core_module, "EvolutionOrchestrator", _OrchestratorStub)
+    monkeypatch.setattr(meta_agent_core_module, "resolve_community_vector_collection", lambda *_a, **_k: None)
+    monkeypatch.setattr(meta_agent_core_module, "should_run_multi_gen_nightly", lambda **_kwargs: True)
+
+    event_bus = EventBus()
+    market_data_service = object()
+    engine = SimpleNamespace(
+        config=SimpleNamespace(
+            risk_profile="balanced",
+            max_risk_percent=1.0,
+            drawdown_kill_percent=8.0,
+            agent_styles={"risk": "r"},
+        ),
+        event_bus=event_bus,
+        market_data_service=market_data_service,
+        regime_history=[{"label": "RANGING"}],
+        emotional_twin=None,
+        decision_log=None,
+    )
+    agent = SelfEvolutionMetaAgent(
+        engine=cast(Any, engine),
+        valuation_engine=ValuationEngine(),
+        risk_controller=HardRiskController(RiskLimits(enforce_session_guard=False), enforce_rules=False),
+        approval_required=False,
+        runtime_mode="paper",
+        auto_fine_tuning_enabled=False,
+    )
+    monkeypatch.setattr(type(agent.evolution_guard), "can_mutate", lambda _self, mode: False)
+
+    # wanneer
+    agent.run_nightly_evolution(
+        nightly_report={
+            "trades": 0,
+            "wins": 0,
+            "net_pnl": 0.0,
+            "sharpe": 0.0,
+        },
+        dry_run=True,
+    )
+
+    # dan
+    assert captured["event_bus"] is event_bus
+    assert captured["market_data_service"] is market_data_service

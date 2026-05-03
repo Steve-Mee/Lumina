@@ -5,11 +5,10 @@ from types import SimpleNamespace
 import pytest
 
 from lumina_core.risk.admission_chain import (
+    ADMISSION_STEP_AUDIT_WRITE,
     ADMISSION_STEP_CONSTITUTION,
-    ADMISSION_STEP_EQUITY_SNAPSHOT,
-    ADMISSION_STEP_FINAL_ARBITRATION,
     ADMISSION_STEP_RISK_POLICY,
-    ADMISSION_STEP_SESSION_GUARD,
+    CANONICAL_ADMISSION_STEPS,
     AdmissionChain,
     AdmissionContext,
     default_chain_for_mode,
@@ -38,13 +37,7 @@ def test_default_chain_for_real_mode_keeps_equity_before_final_arbitration() -> 
     steps = tuple(chain.steps)
 
     # dan
-    assert steps == (
-        ADMISSION_STEP_CONSTITUTION,
-        ADMISSION_STEP_RISK_POLICY,
-        ADMISSION_STEP_EQUITY_SNAPSHOT,
-        ADMISSION_STEP_FINAL_ARBITRATION,
-        ADMISSION_STEP_SESSION_GUARD,
-    )
+    assert steps == CANONICAL_ADMISSION_STEPS
 
 
 @pytest.mark.unit
@@ -153,7 +146,7 @@ def test_admission_chain_is_modular_for_custom_experimental_steps() -> None:
     # gegeven
     execution_order: list[str] = []
     custom_step = "agent_experiment"
-    chain = AdmissionChain(steps=(ADMISSION_STEP_CONSTITUTION, custom_step, ADMISSION_STEP_SESSION_GUARD))
+    chain = AdmissionChain(steps=(ADMISSION_STEP_CONSTITUTION, custom_step, ADMISSION_STEP_AUDIT_WRITE))
 
     def _constitution_step(_ctx: AdmissionContext) -> tuple[bool, str]:
         execution_order.append(ADMISSION_STEP_CONSTITUTION)
@@ -163,9 +156,9 @@ def test_admission_chain_is_modular_for_custom_experimental_steps() -> None:
         execution_order.append(custom_step)
         return True, "experiment_ok"
 
-    def _session_step(_ctx: AdmissionContext) -> tuple[bool, str]:
-        execution_order.append(ADMISSION_STEP_SESSION_GUARD)
-        return True, "session_ok"
+    def _audit_step(_ctx: AdmissionContext) -> tuple[bool, str]:
+        execution_order.append(ADMISSION_STEP_AUDIT_WRITE)
+        return True, "audit_ok"
 
     context = AdmissionContext(
         engine=_engine_with_logger([]),
@@ -176,7 +169,7 @@ def test_admission_chain_is_modular_for_custom_experimental_steps() -> None:
         step_handlers={
             ADMISSION_STEP_CONSTITUTION: _constitution_step,
             custom_step: _custom_step,
-            ADMISSION_STEP_SESSION_GUARD: _session_step,
+            ADMISSION_STEP_AUDIT_WRITE: _audit_step,
         },
     )
 
@@ -185,12 +178,12 @@ def test_admission_chain_is_modular_for_custom_experimental_steps() -> None:
 
     # dan
     assert allowed is True
-    assert execution_order == [ADMISSION_STEP_CONSTITUTION, custom_step, ADMISSION_STEP_SESSION_GUARD]
+    assert execution_order == [ADMISSION_STEP_CONSTITUTION, custom_step, ADMISSION_STEP_AUDIT_WRITE]
     assert [result.step_id for result in trace.results] == execution_order
 
 
 @pytest.mark.unit
-def test_final_arbitration_skip_internal_steps_prevents_duplicate_checks() -> None:
+def test_final_arbitration_keeps_equity_snapshot_check_even_when_other_checks_skip() -> None:
     # gegeven
     arbitration = FinalArbitration(
         RiskPolicy(
@@ -242,4 +235,4 @@ def test_final_arbitration_skip_internal_steps_prevents_duplicate_checks() -> No
     check_reasons = {check.name: check.reason for check in result.checks}
     assert check_reasons["constitution"] == "skipped_by_admission_chain"
     assert check_reasons["risk_policy"] == "skipped_by_admission_chain"
-    assert check_reasons["real_equity_snapshot"] == "skipped_by_admission_chain"
+    assert check_reasons["real_equity_snapshot"] == "ok"

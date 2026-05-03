@@ -114,6 +114,19 @@ class TestVetoRegistry:
                 # Restore original path for cleanup
                 registry._db_path = Path(db_path)
 
+    def test_veto_registry_list_recent_raises_in_real_mode(self, monkeypatch: pytest.MonkeyPatch):
+        """In REAL mode list_recent surfaces typed failures instead of silent empty lists."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "test_veto.db")
+            log_path = str(Path(tmpdir) / "test_veto.jsonl")
+            registry = VetoRegistry(db_path=db_path, log_path=log_path)
+
+            monkeypatch.setenv("LUMINA_MODE", "real")
+            registry._db_path = Path(tmpdir) / "missing_dir" / "veto.db"
+
+            with pytest.raises(RuntimeError):
+                registry.list_recent(limit=5)
+
 
 class TestVetoWindow:
     """Tests for veto window promotion blocking logic."""

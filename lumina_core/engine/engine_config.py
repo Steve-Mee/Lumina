@@ -106,7 +106,7 @@ class EngineConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     state_file: Path = Field(default_factory=lambda: Path("state/lumina_sim_state.json"))
-    thought_log: Path = Field(default_factory=lambda: Path("state/lumina_thought_log.jsonl"))
+    thought_log: Path = Field(default_factory=lambda: Path("state/thought_log.jsonl"))
     bible_file: Path = Field(default_factory=lambda: Path("state/lumina_daytrading_bible.json"))
     live_jsonl: Path = Field(default_factory=lambda: Path("state/live_stream.jsonl"))
     trade_reconciler_status_file: Path = Field(

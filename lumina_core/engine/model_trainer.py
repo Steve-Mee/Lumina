@@ -103,7 +103,7 @@ class ModelTrainer:
 
     def build_training_dataset(self) -> Path:
         output_path = Path("state/finetune_dataset_preview.jsonl")
-        thought_log = Path("state/lumina_thought_log.jsonl")
+        thought_log = Path("state/thought_log.jsonl")
         log_csv = Path("logs/lumina_full_log.csv")
         examples: list[str] = []
         if thought_log.exists():

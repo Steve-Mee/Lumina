@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from ..evolution.meta_swarm import MetaSwarm, meta_swarm_governance_enabled, parallel_realities_from_config
 
-from .audit_writer import AuditWriterProtocol
+from lumina_core.evolution.audit_writer import AuditWriterProtocol
 
 
 class _AnomalyOwner(Protocol):

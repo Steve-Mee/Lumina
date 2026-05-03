@@ -38,8 +38,8 @@ All three layers are **fail-closed**: any unexpected error blocks the mutation/p
 
 LUMINA now uses one canonical audit integrity system across safety-critical paths.
 
-- **Facade:** `lumina_core/audit/logger.py` (`AuditLogger`, `StreamRegistry`)
-- **Canonical chain fields:** `chain_version="lumina_audit_v1"`, `prev_hash`, `entry_hash`
+- **Facade:** `lumina_core/audit/audit_logger.py` (`AuditLogger`, `StreamRegistry`)
+- **Canonical chain fields:** `schema_version="lumina_audit_v1"`, `prev_hash`, `entry_hash`
 - **Write primitive:** `safe_append_jsonl(..., hash_chain=True)` with cross-process file locks
 - **REAL mode:** fail-closed (`AuditChainError`) on corruption or append failure
 - **SIM/PAPER:** corrupt files rotate to `*.corrupt.*` and a new chain segment starts from `GENESIS`
@@ -55,8 +55,23 @@ Canonical streams:
 - `evolution.decisions`
 - `safety.constitution`
 - `trade_reconciler`
+- `lumina_bible`
 
 Legacy `hash` is dual-written temporarily on selected migrated streams for backward compatibility.
+Historical `lumina_bible` entries written before this migration use a different legacy formula and are not
+guaranteed to validate under `validate_hash_chain`; all new writes use the canonical chain.
+
+## Typed FaultPolicy (decision & audit paths)
+
+LUMINA now enforces one explicit fault policy for decision/audit integrity paths:
+
+- **Module:** `lumina_core/fault/fault_policy.py` (`FaultDomain`, `FaultPolicy`, `LuminaFault`)
+- **Coverage:** agent contract decision mirroring, agent decision log, audit logger/service, evolution audit writers, veto read/write paths, and reasoning decision-log writes
+- **Alarming:** every handled fault writes a structured entry to `logs/structured_errors.jsonl` with `fault_id`, `domain`, `operation`, and `cause_*` fields
+- **REAL mode:** fail-closed by default for critical writes; faults raise typed exceptions immediately after structured logging
+- **SIM/PAPER mode:** tolerant where exploration requires continuity, but faults remain visible and traceable via structured logs and stack traces
+
+This removes silent broad-exception behavior from decision/audit write paths and keeps every integrity fault attributable.
 
 ---
 
@@ -73,6 +88,21 @@ LUMINA treats the LLM as a high-bandwidth reasoning engine, not as an execution 
 - REAL temperature is clamped to 0.30-0.40 by default to reduce stochastic drift; higher temperature requires an explicit audit identifier (`real_temperature_override_audit_id`) so overrides are attributable.
 
 This preserves radical creativity in the advisory layer while making the capital path deterministic, reviewable, and constitutionally constrained.
+
+## Typed Event Contract Balance: Safety and Emergence
+
+LUMINA keeps a deliberate two-tier contract strategy in `lumina_core/agent_orchestration/schemas.py`:
+
+- **Tier A (strict, `extra="forbid"`):** `TradeIntent`, `RiskVerdict`, `FinalArbitrationResult`, `ConstitutionAudit`, `ShadowResult`, `EvolutionPromotionDecision`.
+- **Tier B (flexible, `extra="allow"`):** `EvolutionProposal`, `AgentReflection`, `DreamState`, `MetaAgentThought`, `CommunityKnowledgeSnippet`, `LLMDecisionContext`.
+
+Why this split is safety-aligned:
+
+- Tier A protects REAL execution and governance boundaries against schema drift; unknown fields are hard-rejected so critical decisions remain deterministic and auditable.
+- Tier B preserves Lumina's experimental soul: agents and LLM layers can surface novel features and emergent structure while contracts are still being discovered.
+- Flexible Tier B payloads never bypass deterministic execution gates; REAL capital paths still require admission-chain checks, constitution checks, and `FinalArbitration`.
+
+This gives Lumina a controlled organism pattern: strict where capital is exposed, flexible where learning happens.
 
 ---
 
@@ -239,7 +269,7 @@ Every `check_pre_mutation` and `check_pre_promotion` call appends a structured J
 $LUMINA_STATE_DIR/constitutional_audit.jsonl
 ```
 
-Fields include canonical chain metadata (`chain_version`, `stream`, `prev_hash`, `entry_hash`) plus guard fields (`audit_id`, `check_phase`, `mode`, `dna_hash`, `passed`, `fatal_count`, `warn_count`, `violation_names`, `timestamp`).
+Fields include canonical chain metadata (`schema_version`, `stream`, `prev_hash`, `entry_hash`) plus guard fields (`audit_id`, `check_phase`, `mode`, `dna_hash`, `passed`, `fatal_count`, `warn_count`, `violation_names`, `timestamp`).
 
 This provides a complete forensic trail of every safety decision made during the organism's lifetime.
 
@@ -281,6 +311,8 @@ No agent proposal can bypass this layer through supervisor flow, operations/reas
 - Snapshot data is resolved via `EquitySnapshotProvider` (`lumina_core/risk/equity_snapshot.py`) and consumed by `build_current_state_from_engine`.
 - If broker equity/margin data is missing, stale, or fetch fails, the runtime gate is **fail-closed**: no new risk-increasing trades are allowed.
 - Risk-reducing exits (flatten direction) remain allowed so the system can still de-risk under degraded broker telemetry.
+- Final Arbitration is de ultieme, niet-omzeilbare poort in REAL. EquitySnapshot is een harde pre-conditie.
+- EquitySnapshot staat vóór Final Arbitration in de admission chain om kapitaalbehoud af te dwingen: zonder verse account-equity en margin-context kan het systeem geen betrouwbare risico-inschatting doen, dus wordt de order fail-closed afgewezen.
 
 ### Usage
 
@@ -460,7 +492,7 @@ REAL promotion now has an additional non-bypassable governance gate: `ApprovalCh
 - **Multi-party threshold**: promotion is allowed only when a configured threshold (`governance.real_approval_threshold`) is met (e.g., 2-of-3).
 - **Payload binding**: signatures are bound to canonical payload bytes, including DNA hash and DNA content digest, preventing replay on modified DNA.
 - **Fail-closed by design**: missing policy, expired payload, malformed signatures, unauthorized signers, or threshold shortfall block promotion.
-- **Hash-chained audit trail**: every approval event writes timestamp, approver, DNA hash, reason, and verification result to canonical stream `governance.real_promotion` (`state/real_promotion_approval_audit.jsonl`) with `chain_version`, `prev_hash`, `entry_hash`.
+- **Hash-chained audit trail**: every approval event writes timestamp, approver, DNA hash, reason, and verification result to canonical stream `governance.real_promotion` (`state/real_promotion_approval_audit.jsonl`) with `schema_version`, `prev_hash`, `entry_hash`.
 - **No REAL bypass flag**: for `mode=real`, disabling `require_human_approval` is treated as unsafe and promotion is rejected.
 
 This gate complements (not replaces) `PromotionGate`, `EvolutionRolloutFramework`, and `ConstitutionalGuard`. A candidate must pass all layers before becoming active in REAL.

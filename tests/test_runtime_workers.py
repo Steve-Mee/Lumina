@@ -430,6 +430,16 @@ def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
     def _raise_stop(*_a, **_k):
         raise StopIteration()
 
+    monkeypatch.setattr(
+        runtime_workers,
+        "apply_hard_risk_controller_to_signal",
+        lambda **kwargs: (str(kwargs.get("signal", "HOLD")), True, "ok"),
+    )
+    monkeypatch.setattr(
+        runtime_workers,
+        "apply_agent_policy_gateway",
+        lambda **kwargs: {"signal": str(kwargs.get("signal", "HOLD")), "approved": True, "reason": "ok"},
+    )
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):

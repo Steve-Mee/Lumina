@@ -10,7 +10,7 @@ Current members:
 from __future__ import annotations
 
 from lumina_core.engine.analysis_service import AnalysisService
-from lumina_core.engine.regime_detector import RegimeDetector
+from lumina_core.risk.regime_detector import RegimeDetector
 
 __all__ = [
     "AnalysisService",

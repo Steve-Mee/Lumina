@@ -132,11 +132,9 @@ class AgentBlackboard:
             for topic, policy in topic_policies.items():
                 self._topic_policies[str(topic).strip().lower()] = policy
 
-        self._dual_thought_log = os.getenv("LUMINA_DUAL_THOUGHT_LOG", "true").strip().lower() == "true"
         # Respect LUMINA_STATE_DIR for test isolation (set in conftest.py).
         _state_dir = Path(os.getenv("LUMINA_STATE_DIR", "state"))
         self._thought_log_path = _state_dir / "thought_log.jsonl"
-        self._legacy_thought_log_path = _state_dir / "lumina_thought_log.jsonl"
 
     async def publish(
         self,
@@ -417,8 +415,6 @@ class AgentBlackboard:
             "payload": event.payload,
         }
         self._append_jsonl(self._thought_log_path, thought_payload)
-        if self._dual_thought_log:
-            self._append_jsonl(self._legacy_thought_log_path, thought_payload)
 
     def _policy_for_topic(self, topic: str) -> TopicPolicy:
         return self._topic_policies.get(str(topic).strip().lower(), TopicPolicy())

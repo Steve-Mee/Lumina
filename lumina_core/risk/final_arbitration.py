@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
-from typing import FrozenSet
+from typing import FrozenSet, Literal, cast
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.risk.risk_policy import RiskPolicy, load_risk_policy
@@ -19,11 +19,28 @@ from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
 
 logger = logging.getLogger(__name__)
 STRICT_ARBITRATION_MODES = frozenset({"real", "paper", "sim_real_guard"})
-_SKIPPABLE_INTERNAL_STEPS = frozenset({"real_equity_snapshot", "constitution", "risk_policy"})
+_MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard"})
+_SKIPPABLE_INTERNAL_STEPS = frozenset({"constitution", "risk_policy"})
 
 
 def is_strict_arbitration_mode(mode: str) -> bool:
     return str(mode or "").strip().lower() in STRICT_ARBITRATION_MODES
+
+
+def _to_float(value: object, default: float = 0.0) -> float:
+    if value is None:
+        return float(default)
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return float(default)
+    try:
+        return float(cast(float, value))
+    except (TypeError, ValueError):
+        return float(default)
 
 
 def build_constitution_payload(
@@ -80,7 +97,8 @@ def build_order_intent_from_order(order: object, *, dream_snapshot: Mapping[str,
     metadata = metadata if isinstance(metadata, dict) else {}
     reference_price = float(metadata.get("reference_price", 0.0) or 0.0)
     stop = float(getattr(order, "stop_loss", 0.0) or 0.0)
-    side = str(getattr(order, "side", "HOLD") or "HOLD").upper()
+    side_text = str(getattr(order, "side", "HOLD") or "HOLD").upper()
+    side = cast(Literal["BUY", "SELL"], side_text)
     proposed_risk = abs(reference_price - stop) if reference_price > 0.0 and stop > 0.0 else 0.0
     return OrderIntent(
         instrument=str(getattr(order, "symbol", "") or ""),
@@ -92,8 +110,8 @@ def build_order_intent_from_order(order: object, *, dream_snapshot: Mapping[str,
         reference_price=reference_price,
         proposed_risk=float(metadata.get("proposed_risk", proposed_risk) or proposed_risk),
         regime=str(snapshot.get("regime", metadata.get("regime", "NEUTRAL")) or "NEUTRAL"),
-        confluence_score=float(snapshot.get("confluence_score", metadata.get("confluence_score", 0.0)) or 0.0),
-        confidence=float(snapshot.get("confidence", metadata.get("confidence", 0.0)) or 0.0),
+        confluence_score=_to_float(snapshot.get("confluence_score", metadata.get("confluence_score", 0.0))),
+        confidence=_to_float(snapshot.get("confidence", metadata.get("confidence", 0.0))),
         source_agent=str(snapshot.get("source_agent", metadata.get("source_agent", "unknown")) or "unknown"),
         disable_risk_controller=bool(metadata.get("disable_risk_controller", False)),
         metadata=OrderIntentMetadata(reason=str(metadata.get("reason", "") or "")),
@@ -131,7 +149,7 @@ def build_current_state_from_engine(engine: object) -> ArbitrationState:
     equity_snapshot_reason = "not_required_non_real"
     equity_snapshot_source = ""
     equity_snapshot_age_sec = 0.0
-    if runtime_mode == "real":
+    if runtime_mode in _MODES_REQUIRING_EQUITY_SNAPSHOT:
         equity_snapshot_ok = False
         equity_snapshot_reason = "provider_unavailable"
         provider = getattr(engine, "equity_snapshot_provider", None)
@@ -168,16 +186,19 @@ def build_current_state_from_engine(engine: object) -> ArbitrationState:
                 used_margin = 0.0
                 equity_snapshot_reason = "provider_error"
         if not equity_snapshot_ok:
-            reason_text = f"REAL_EQUITY_SNAPSHOT_FAIL: {equity_snapshot_reason}"
-            logger.critical(reason_text)
-            log_structured(
-                LuminaError(
-                    severity=ErrorSeverity.FATAL_MODE_VIOLATION,
-                    code="REAL_EQUITY_SNAPSHOT_FAIL",
-                    message=reason_text,
-                    context={"source": equity_snapshot_source, "age_seconds": round(equity_snapshot_age_sec, 3)},
+            reason_text = f"{runtime_mode.upper()}_EQUITY_SNAPSHOT_FAIL: {equity_snapshot_reason}"
+            if runtime_mode == "real":
+                logger.critical(reason_text)
+                log_structured(
+                    LuminaError(
+                        severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                        code="REAL_EQUITY_SNAPSHOT_FAIL",
+                        message=reason_text,
+                        context={"source": equity_snapshot_source, "age_seconds": round(equity_snapshot_age_sec, 3)},
+                    )
                 )
-            )
+            else:
+                logger.error(reason_text)
     elif is_strict_arbitration_mode(runtime_mode) and float(account_equity or 0.0) <= 0.0:
         equity_snapshot_ok = False
         equity_snapshot_reason = f"{runtime_mode}_account_context_missing"
@@ -257,7 +278,7 @@ class FinalArbitration:
             if not p_ok:
                 return self._build_result(status="REJECTED", reason=p_reason, checks=checks)
 
-        a_ok, a_reason = self._check_account_state(state)
+        a_ok, a_reason = self._check_account_state(state, order_intent)
         checks.append(ArbitrationCheckStep(name="account_state", ok=a_ok, reason=a_reason))
         if not a_ok:
             return self._build_result(status="REJECTED", reason=a_reason, checks=checks)
@@ -354,10 +375,12 @@ class FinalArbitration:
             logging.exception("Unhandled broad exception fallback in lumina_core/risk/final_arbitration.py:339")
             return self.policy
 
-    def _check_account_state(self, state: ArbitrationState) -> tuple[bool, str]:
+    def _check_account_state(self, state: ArbitrationState, intent: OrderIntent) -> tuple[bool, str]:
         mode = str(state.runtime_mode or self.policy.runtime_mode).strip().lower()
-        if mode == "real" and not bool(state.equity_snapshot_ok):
-            return False, str(state.equity_snapshot_reason or "real_equity_snapshot_required")
+        if mode in _MODES_REQUIRING_EQUITY_SNAPSHOT and not bool(state.equity_snapshot_ok):
+            if mode == "real" and self._is_risk_reducing_exit(intent=intent, state=state):
+                return True, "ok_risk_reducing_exit"
+            return False, str(state.equity_snapshot_reason or f"{mode}_equity_snapshot_required")
         equity = float(state.account_equity or 0.0)
         if equity <= 0.0:
             if is_strict_arbitration_mode(mode):
@@ -387,13 +410,15 @@ class FinalArbitration:
 
     def _check_equity_snapshot_requirements(self, intent: OrderIntent, state: ArbitrationState) -> tuple[bool, str]:
         mode = str(state.runtime_mode or self.policy.runtime_mode).strip().lower()
-        if mode != "real":
+        if mode not in _MODES_REQUIRING_EQUITY_SNAPSHOT:
             return True, "ok_non_real"
-        if self._is_risk_reducing_exit(intent=intent, state=state):
+        if mode == "real" and self._is_risk_reducing_exit(intent=intent, state=state):
             return True, "ok_risk_reducing_exit"
         if bool(state.equity_snapshot_ok):
             return True, "ok"
-        return False, str(state.equity_snapshot_reason or "real_equity_snapshot_required")
+        if mode == "real":
+            return False, "real_equity_snapshot_required"
+        return False, str(state.equity_snapshot_reason or f"{mode}_equity_snapshot_required")
 
     @staticmethod
     def _is_eod_risk_reducing_exit(intent: OrderIntent, state: ArbitrationState) -> bool:

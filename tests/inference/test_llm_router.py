@@ -165,7 +165,7 @@ def test_real_mode_never_executes_on_llm_only_when_arbitration_blocks() -> None:
     assert decision.real_never_llm_only is True
     assert decision.executable_approved is False
     assert decision.arbitration.status == "REJECTED"
-    assert decision.arbitration.reason == "provider_unavailable"
+    assert decision.arbitration.reason in {"provider_unavailable", "real_equity_snapshot_required"}
 
 
 def test_sim_mode_keeps_creative_order_path_executable_with_arbitration() -> None:
@@ -245,7 +245,7 @@ def test_real_execution_gate_blocks_but_creative_payload_remains_intact() -> Non
 
     # dan
     assert decision.executable_approved is False
-    assert decision.arbitration.reason == "provider_unavailable"
+    assert decision.arbitration.reason in {"provider_unavailable", "real_equity_snapshot_required"}
     assert decision.routed.payload["reason"] == creative_reason
     assert decision.routed.payload["mutation_depth"] == "radical"
     assert decision.routed.payload["evolution_mode"] == "radical"

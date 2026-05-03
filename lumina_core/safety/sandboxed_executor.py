@@ -159,8 +159,7 @@ try:
 except Exception:
     logger.exception("Sandboxed executor failed to apply socket timeout hardening")
 
-# 4. Disable dual thought-log to avoid I/O during scoring.
-os.environ["LUMINA_DUAL_THOUGHT_LOG"] = "false"
+# 4. Keep startup side-effects disabled during sandbox scoring.
 os.environ["LUMINA_SKIP_STARTUP_DIALOG"] = "1"
 
 # 5. Read input payload from stdin.
@@ -204,7 +203,6 @@ def _build_sandbox_env() -> dict[str, str]:
     """Build a sanitised environment for the subprocess."""
     clean = _strip_secrets(dict(os.environ))
     clean["LUMINA_SKIP_STARTUP_DIALOG"] = "1"
-    clean["LUMINA_DUAL_THOUGHT_LOG"] = "false"
     return clean
 
 

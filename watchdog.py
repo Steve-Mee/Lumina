@@ -56,8 +56,8 @@ def _prepare_persistent_links() -> None:
         Path("/app/lumina_daytrading_bible.json"): Path(
             os.getenv("LUMINA_BIBLE_FILE", "/app/state/lumina_daytrading_bible.json")
         ),
-        Path("/app/lumina_thought_log.jsonl"): Path(
-            os.getenv("LUMINA_THOUGHT_LOG", "/app/state/lumina_thought_log.jsonl")
+        Path("/app/thought_log.jsonl"): Path(
+            os.getenv("LUMINA_THOUGHT_LOG", "/app/state/thought_log.jsonl")
         ),
         Path("/app/lumina_full_log.csv"): Path(os.getenv("LUMINA_LOG_FILE", "/app/logs/lumina_full_log.csv")),
     }

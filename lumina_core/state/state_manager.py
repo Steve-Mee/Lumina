@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import random
@@ -13,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, TypeVar
 
 from filelock import FileLock, Timeout
+from lumina_core.audit.canonical_hash import GENESIS_HASH, compute_entry_hash
 
 _T = TypeVar("_T")
 
@@ -83,14 +83,9 @@ def _sleep_with_backoff(attempt: int) -> None:
     time.sleep(sleep_s)
 
 
-def _canonical_hash_payload(entry: dict[str, Any]) -> str:
-    payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "entry_hash", "hash"}}
-    return json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
-
-
 def _latest_entry_hash(path: Path) -> str:
     if not path.exists():
-        return "GENESIS"
+        return GENESIS_HASH
     last_line = ""
     with path.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -98,13 +93,13 @@ def _latest_entry_hash(path: Path) -> str:
             if stripped:
                 last_line = stripped
     if not last_line:
-        return "GENESIS"
+        return GENESIS_HASH
     try:
         payload = json.loads(last_line)
     except json.JSONDecodeError:
-        return "GENESIS"
+        return GENESIS_HASH
     latest = payload.get("entry_hash")
-    return str(latest) if latest else "GENESIS"
+    return str(latest) if latest else GENESIS_HASH
 
 
 def _append_jsonl_payload(path: Path, payload: dict[str, Any], *, ensure_ascii: bool) -> None:
@@ -154,9 +149,7 @@ def safe_append_jsonl(
         next_payload = dict(payload)
         if hash_chain:
             previous_hash = _latest_entry_hash(target)
-            digest = hashlib.sha256(
-                f"{previous_hash}|{_canonical_hash_payload(next_payload)}".encode("utf-8")
-            ).hexdigest()
+            digest = compute_entry_hash(previous_hash, next_payload)
             next_payload["prev_hash"] = previous_hash
             next_payload["entry_hash"] = digest
             if "hash" in next_payload:

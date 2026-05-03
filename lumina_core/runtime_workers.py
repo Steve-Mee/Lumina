@@ -8,14 +8,13 @@ from datetime import datetime, timezone
 import requests
 
 from lumina_core.runtime_context import RuntimeContext
-from lumina_core.engine.agent_contracts import apply_agent_policy_gateway
-from lumina_core.engine.broker_bridge import Order
+from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
+from lumina_core.broker.broker_bridge import Order
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
-from lumina_core.engine.mode_capabilities import resolve_mode_capabilities
+from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.engine.rl_guardrails import RLGuardrailLayer
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.logging_utils import log_runtime_trace, runtime_trace_enabled
-from lumina_core.order_gatekeeper import session_guard_allows_trading
 from lumina_core.runtime_trade_gates import apply_hard_risk_controller_to_signal
 
 TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
@@ -929,7 +928,8 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
         )
 
         session_allowed = True
-        session_allowed, _session_reason = session_guard_allows_trading(app.engine)
+        if signal in {"BUY", "SELL"} and not _risk_ok:
+            session_allowed = not str(_risk_reason).startswith("Session guard blocked")
 
         risk_allowed = bool(signal == "HOLD")
         if signal in ["BUY", "SELL"]:
