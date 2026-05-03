@@ -21,7 +21,6 @@ def _build_engine(tmp_path: Path, *, trade_mode: str = "real") -> tuple[LuminaEn
         reconcile_fills=True,
         reconciliation_method="websocket",
         reconciliation_timeout_seconds=15.0,
-        use_real_fill_for_pnl=True,
         trade_reconciler_audit_log=tmp_path / "trade_reconcile_audit.jsonl",
         trade_reconciler_status_file=tmp_path / "trade_reconcile_status.json",
     )
@@ -136,9 +135,8 @@ def test_trade_reconciler_aggregates_partial_fills(tmp_path: Path) -> None:
     assert round(float(pushed["commission"]), 2) == 1.25
 
 
-def test_trade_reconciler_timeout_uses_snapshot_when_no_fill(tmp_path: Path) -> None:
+def test_trade_reconciler_timeout_no_economic_ledger_without_broker_fill(tmp_path: Path) -> None:
     engine, app = _build_engine(tmp_path)
-    engine.config.use_real_fill_for_pnl = False
     engine.config.reconciliation_timeout_seconds = 0.0
     reconciler = TradeReconciler(engine)
 
@@ -154,10 +152,9 @@ def test_trade_reconciler_timeout_uses_snapshot_when_no_fill(tmp_path: Path) -> 
     reconciler._flush_timeouts()
 
     assert engine.pending_trade_reconciliations == []
-    assert len(app.pushes) == 1
-    pushed = app.pushes[0]
-    assert pushed["exit_price"] == 4997.5
-    assert pushed["reflection"]["reconciliation"]["status"] == "timeout_snapshot"
+    assert len(app.pushes) == 0
+    assert len(app.publishes) == 0
+    assert engine.trade_reconciler_status.get("last_reconciled_trade", {}).get("economic_ledger_applied") is False
 
 
 def test_trade_reconciler_handles_out_of_order_partial_fills(tmp_path: Path) -> None:

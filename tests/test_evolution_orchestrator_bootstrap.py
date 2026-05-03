@@ -287,7 +287,7 @@ class _PPOTrainerStub:
             return {
                 "ok": True,
                 "shadow_equity_delta": 30.0,
-                "shadow_total_reward": 1.0,
+                "shadow_total_training_reward": 1.0,
                 "backtest_fitness": 100.0,
                 "backtest_equity_delta": 0.0,
             }
@@ -295,7 +295,7 @@ class _PPOTrainerStub:
         return {
             "ok": True,
             "shadow_equity_delta": 25.0,
-            "shadow_total_reward": 1.0,
+            "shadow_total_training_reward": 1.0,
             "backtest_fitness": 100.2 + (h % 100) / 500.0,
             "backtest_equity_delta": 0.0,
         }

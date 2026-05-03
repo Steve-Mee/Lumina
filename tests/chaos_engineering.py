@@ -54,7 +54,6 @@ def lightweight_engine(mock_app: SimpleNamespace, tmp_path: Path) -> SimpleNames
         crosstrade_token="test-token",
         reconciliation_method="websocket",
         reconcile_fills=True,
-        use_real_fill_for_pnl=True,
         crosstrade_fill_ws_url="wss://example.invalid/ws",
         crosstrade_fill_poll_url="https://example.invalid/fills",
         trade_mode="real",

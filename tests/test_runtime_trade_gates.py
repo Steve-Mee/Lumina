@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from lumina_core.runtime_trade_gates import apply_hard_risk_controller_to_signal
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 
 @pytest.mark.unit
@@ -38,20 +39,20 @@ def test_runtime_trade_gates_blocks_strict_mode_without_final_arbitration() -> N
                     prev_hash="prev",
                 )
                 if topic.startswith("agent.")
-                else (
-                    SimpleNamespace(
-                        payload={"signal": "BUY", "chosen_strategy": "rl"},
-                        producer="test",
-                        confidence=0.9,
-                        timestamp="2026-05-03T00:00:00+00:00",
-                        correlation_id="corr",
-                        sequence=1,
-                        event_hash="hash",
-                        prev_hash="prev",
-                    )
-                    if topic == "execution.aggregate"
-                    else None
+                else None
+            )
+        ),
+        event_bus=SimpleNamespace(
+            latest=lambda topic: (
+                SimpleNamespace(
+                    payload={"signal": "BUY", "chosen_strategy": "rl", "confidence": 0.9},
+                    producer="test",
+                    timestamp="2026-05-03T00:00:00+00:00",
+                    metadata={"sequence": 1, "correlation_id": "corr"},
+                    to_dict=lambda: {},
                 )
+                if topic == TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+                else None
             )
         ),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),

@@ -8,6 +8,7 @@ from .broker_bridge import (
     PaperBroker,
     Position,
     broker_factory,
+    paper_position_from_fills,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "PaperBroker",
     "Position",
     "broker_factory",
+    "paper_position_from_fills",
 ]

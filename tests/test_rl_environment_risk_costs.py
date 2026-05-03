@@ -4,7 +4,7 @@ from time import perf_counter
 from types import SimpleNamespace
 
 
-from lumina_core.rl_environment import RLConfig, RLTradingEnvironment
+from lumina_core.rl import RLConfig, RLTradingEnvironment
 
 
 class _MarketDataStub:
@@ -75,7 +75,7 @@ def test_step_applies_stochastic_slippage_and_fees(monkeypatch) -> None:
     env = RLTradingEnvironment(engine, _sim_data(), config=cfg)
     env.reset()
 
-    monkeypatch.setattr("lumina_core.rl_environment.random.gauss", lambda _mu, _sigma: 0.3)
+    monkeypatch.setattr("lumina_core.rl.gym_environment.random.gauss", lambda _mu, _sigma: 0.3)
     _obs, _reward, _done, _truncated, info = env.step([1.0, 0.4, 0.01, 0.02])
 
     assert float(info["slippage_cost"]) >= 0.0
@@ -99,7 +99,7 @@ def test_real_mode_fail_closed_blocks_entry_on_safety_breach(monkeypatch) -> Non
     env = RLTradingEnvironment(engine, _sim_data(), config=cfg)
     env.reset()
 
-    monkeypatch.setattr("lumina_core.rl_environment.random.gauss", lambda _mu, _sigma: 3.0)
+    monkeypatch.setattr("lumina_core.rl.gym_environment.random.gauss", lambda _mu, _sigma: 3.0)
     _obs, _reward, _done, _truncated, info = env.step([1.0, 1.0, 0.01, 0.02])
 
     assert bool(info["blocked_by_capital_preservation"]) is True

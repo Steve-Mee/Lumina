@@ -28,6 +28,7 @@ from lumina_core.experiments.ab_framework import ABExperimentFramework
 from .anomaly_detector import AnomalyDetector
 from lumina_core.evolution.audit_writer import EvolutionAuditWriter
 from .proposal_generator import ProposalGenerator
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 logger = logging.getLogger(__name__)
 
@@ -474,15 +475,22 @@ class SelfEvolutionMetaAgent:
         return outcome
 
     def _hydrate_report_from_blackboard(self, report: dict[str, Any]) -> dict[str, Any]:
-        if self.blackboard is None or not hasattr(self.blackboard, "history"):
-            return report
         if int(report.get("trades", 0) or 0) > 0:
             return report
 
-        try:
-            recent = self.blackboard.history("execution.aggregate", limit=2000, within_hours=24)
-        except Exception:
-            logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:491")
+        recent: list[Any] = []
+        event_bus = getattr(self.engine, "event_bus", None)
+        if event_bus is not None and hasattr(event_bus, "history_within_hours"):
+            try:
+                recent = event_bus.history_within_hours(
+                    TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+                    within_hours=24,
+                    limit=2000,
+                )
+            except Exception:
+                logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:491")
+                return report
+        else:
             return report
 
         trades = 0
@@ -1046,15 +1054,27 @@ class SelfEvolutionMetaAgent:
             return self._prompt_fingerprint()
 
         lineage_parts: list[str] = []
-        for topic in ("meta.reflection", "meta.hyperparameters", "agent.meta.proposal", "execution.aggregate"):
+        exec_topic = TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+        for topic in ("meta.reflection", "meta.hyperparameters", "agent.meta.proposal", exec_topic):
+            event = None
             try:
-                event = self.blackboard.latest(topic)
+                if topic == exec_topic:
+                    eb = getattr(self.engine, "event_bus", None)
+                    if eb is not None and hasattr(eb, "latest"):
+                        event = eb.latest(exec_topic)
+                else:
+                    event = self.blackboard.latest(topic)
             except Exception:
                 logging.exception("Unhandled broad exception fallback in lumina_core/engine/meta_agent_core.py:1054")
                 event = None
             if event is None:
                 continue
-            lineage_parts.append(str(getattr(event, "event_hash", "GENESIS") or "GENESIS"))
+            ev_hash = getattr(event, "event_hash", None)
+            if not ev_hash and hasattr(event, "to_dict"):
+                ev_hash = hashlib.sha256(
+                    json.dumps(event.to_dict(), sort_keys=True, default=str).encode("utf-8")
+                ).hexdigest()
+            lineage_parts.append(str(ev_hash or "GENESIS"))
 
         if not lineage_parts:
             return self._prompt_fingerprint()
@@ -1290,7 +1310,12 @@ class SelfEvolutionMetaAgent:
     def _register_active_dna(self, *, nightly_report: dict[str, Any], meta_review: dict[str, Any]) -> PolicyDNA | None:
         registry = self._dna_registry()
         if registry.get_latest_dna("active") is None:
-            registry.load_from_blackboard(self.blackboard, prompt_id="self_evolution_blackboard", version="bootstrap")
+            registry.load_from_blackboard(
+                self.blackboard,
+                event_bus=getattr(self.engine, "event_bus", None),
+                prompt_id="self_evolution_blackboard",
+                version="bootstrap",
+            )
 
         payload = {
             "prompt_fingerprint": self._prompt_fingerprint(),

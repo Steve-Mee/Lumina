@@ -143,12 +143,14 @@ def aggregate_ppo_eval_worst_reality(
         jitter = 1.0 + rng.uniform(-0.02, 0.02)
         e = dict(base_eval)
         bt = float(base_eval.get("backtest_fitness", 0.0) or 0.0) * pm * sm * jitter
-        sr = float(base_eval.get("shadow_total_reward", 0.0) or 0.0) * pm * sm * jitter
+        sr = float(
+            base_eval.get("shadow_total_training_reward", base_eval.get("shadow_total_reward", 0.0)) or 0.0
+        ) * pm * sm * jitter
         inv_dd = 1.0 / max(float(dm), 0.25)
         se = float(base_eval.get("shadow_equity_delta", 0.0) or 0.0) * inv_dd * jitter
         bte = float(base_eval.get("backtest_equity_delta", 0.0) or 0.0) * inv_dd * jitter
         e["backtest_fitness"] = float(bt)
-        e["shadow_total_reward"] = float(sr)
+        e["shadow_total_training_reward"] = float(sr)
         e["shadow_equity_delta"] = float(se)
         e["backtest_equity_delta"] = float(bte)
         e["_reality_id"] = i

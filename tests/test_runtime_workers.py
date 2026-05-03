@@ -350,9 +350,35 @@ def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
     broker_calls: list[object] = []
 
     class BrokerSpy:
+        def __init__(self) -> None:
+            self._last_fill: SimpleNamespace | None = None
+
         def submit_order(self, order):
             broker_calls.append(order)
-            return SimpleNamespace(accepted=True)
+            self._last_fill = SimpleNamespace(
+                symbol=str(order.symbol),
+                price=5000.0,
+                quantity=int(order.quantity),
+                side=str(order.side).upper(),
+                commission=0.25,
+                timestamp="2026-01-01T00:00:00+00:00",
+            )
+            return SimpleNamespace(
+                accepted=True, fill_price=5000.0, filled_qty=int(order.quantity), order_id="spy-1"
+            )
+
+        def get_positions(self):
+            if not broker_calls:
+                return []
+            o = broker_calls[-1]
+            qty = int(o.quantity) if str(o.side).upper() == "BUY" else -int(o.quantity)
+            side = "BUY" if qty > 0 else "SELL"
+            return [SimpleNamespace(symbol=o.symbol, quantity=qty, avg_price=5000.0, side=side)]
+
+        def last_fill_for_symbol(self, symbol: str):
+            if self._last_fill is not None and str(self._last_fill.symbol) == str(symbol):
+                return self._last_fill
+            return None
 
     app = SimpleNamespace(
         live_data_lock=nullcontext(),

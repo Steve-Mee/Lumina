@@ -34,7 +34,6 @@ hardware_profile: light
 reconcile_fills: true
 reconciliation_method: websocket
 reconciliation_timeout_seconds: 15
-use_real_fill_for_pnl: true
 broker:
   backend: paper
   crosstrade:

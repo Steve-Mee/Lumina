@@ -1,7 +1,7 @@
 """RL / neuroevolution simulator bar contract, validation, and real-data hydration.
 
 ``RLTradingEnvironment`` expects a list of dict rows with ``close`` or ``last`` (see
-``lumina_core.rl_environment``). Nightly reports should carry ``simulator_data`` when possible;
+``lumina_core.rl``). Nightly reports should carry ``simulator_data`` when possible;
 this module fetches OHLC from ``MarketDataService`` when missing.
 """
 

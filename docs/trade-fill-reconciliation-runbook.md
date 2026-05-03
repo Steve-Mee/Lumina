@@ -11,7 +11,7 @@ Belangrijkste flags (config.yaml of env override):
 - reconcile_fills: true/false
 - reconciliation_method: websocket (default) of polling
 - reconciliation_timeout_seconds: 15
-- use_real_fill_for_pnl: true
+- Economische PnL komt **alleen** uit broker-bevestigde fills (geen snapshot-`expected_pnl` meer als ledger-bron).
 - TRADE_RECONCILER_STATUS_FILE (optional)
 - TRADE_RECONCILER_AUDIT_LOG (optional)
 
@@ -47,7 +47,7 @@ python scripts/validation/trade_reconciler_self_test.py --live-window-seconds 20
 
 ## Live dry-run checklist (pre-live / post-deploy)
 
-1. Zet TRADE_MODE op real en controleer dat reconcile_fills=true, reconciliation_method=websocket, use_real_fill_for_pnl=true.
+1. Zet TRADE_MODE op real en controleer dat reconcile_fills=true, reconciliation_method=websocket, en dat timeouts zonder fill **geen** economische league-push doen (alleen observability-audit).
 2. Start Lumina en verifieer in statusbestand: method=websocket, connection_state=connected, status=streaming.
 3. Trigger een kleine close en controleer direct een pending event in auditlog:
 

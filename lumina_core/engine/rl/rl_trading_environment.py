@@ -19,10 +19,9 @@ from lumina_core.runtime_context import RuntimeContext
 
 class RLTradingEnvironment(gym.Env):
     """
-    Gymnasium-compatible RL environment voor LUMINA.
-    Observation = volledige marktstaat (price, regime, tape, fibs, dream, equity, etc.)
-    Action = BUY/SELL/HOLD + qty + stop/target
-    Reward = real PnL - slippage - drawdown penalty + Sharpe bonus
+    Gymnasium-compatible RL training environment (Meta-RL path).
+    Observation = market state + DNA features.
+    Gym ``reward`` = shaped training signal (not broker ``economic_pnl``).
     """
 
     def __init__(self, context: RuntimeContext):
@@ -201,6 +200,8 @@ class RLTradingEnvironment(gym.Env):
 
         # Gebruik FastPath + RL action
         _fast = self.fast_path.run(self.context.ohlc_1min.tail(60), price, regime)
+        rl_close_accounting_net_usd = 0.0
+        training_reward = 0.0
         if signal != "HOLD":
             qty = int(self.context.calculate_adaptive_risk_and_qty(price, regime, 0) * qty_pct)
             pnl = self._simulate_single_trade(price, signal, qty, stop_mult, target_mult)
@@ -208,15 +209,20 @@ class RLTradingEnvironment(gym.Env):
             self.pnl_history.append(pnl)
             self.equity_curve.append(self.equity_curve[-1] + pnl)
 
-            reward = pnl - abs(pnl) * 0.1  # slippage/drawdown penalty
-            reward += (pnl / 1000.0) * 5  # Sharpe bonus
+            rl_close_accounting_net_usd = float(pnl)
+            training_reward = float(pnl - abs(pnl) * 0.1 + (pnl / 1000.0) * 5)
+            reward = training_reward
         else:
             reward = 0.0
 
         done = len(self.pnl_history) > 200
         truncated = False
 
-        return self._get_observation(), reward, done, truncated, {}
+        info = {
+            "rl_close_accounting_net_usd": rl_close_accounting_net_usd,
+            "training_reward": training_reward,
+        }
+        return self._get_observation(), reward, done, truncated, info
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)

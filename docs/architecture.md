@@ -318,12 +318,22 @@ sequenceDiagram
 
 > Dit diagram is **conceptueel**: exacte methodenamen en topics staan in code ([`event_bus.py`](../lumina_core/agent_orchestration/event_bus.py), [`engine_bindings.py`](../lumina_core/agent_orchestration/engine_bindings.py)).
 
+### 4.0 Channel ownership (Blackboard versus EventBus)
+
+| Stroom | Kanaal | Contract |
+|--------|--------|----------|
+| Trade intent, **execution aggregate** (pre-dream consensus), risk verdict, final arbitration result, constitution audit (samenvatting), shadow verdict, promotion decision | **EventBus** | `CRITICAL_EVENT_BUS_TOPICS` in [`schemas.py`](../lumina_core/agent_orchestration/schemas.py): strikt `extra="forbid"`; registry-model is leidend (geen zwakkere `payload_model`-override); op kritieke topics gooit `publish_validated` bij validatiefout **`ValidationError` door** (fail-closed, REAL-veilig). |
+| Agent proposals, market/tape context voor agents, meta-reflectie en overige meta-blackboard topics | **Blackboard** | Flexibele Pydantic-modellen (`extra="allow"` waar gedocumenteerd) zodat agent- en meta-lagen emergent kunnen blijven. |
+
+Het canonieke execution-snapshot-topic is **`trading_engine.execution.aggregate`** (`TradingEngineExecutionAggregate`). Het vroegere blackboard-topic **`execution.aggregate` is verwijderd** als primair pad (één dominante bron per onderwerp).
+
 ### 4.1 Typed topics (Event Bus & Blackboard)
 
 Om schema-drift te beperken gebruiken Event Bus en Blackboard Pydantic contracten uit [`schemas.py`](../lumina_core/agent_orchestration/schemas.py).
 
 **Event Bus topics:**
 - `trading_engine.trade_signal.emitted` -> `TradeIntent`
+- `trading_engine.execution.aggregate` -> `TradingEngineExecutionAggregate`
 - `trading_engine.dream_state.updated` -> `DreamStateEventPayload`
 - `risk.policy.decision` -> `RiskVerdict`
 - `risk.final_arbitration.result` -> `FinalArbitrationResult`
@@ -340,7 +350,6 @@ Om schema-drift te beperken gebruiken Event Bus en Blackboard Pydantic contracte
 **Blackboard topics:**
 - `agent.rl.proposal`, `agent.news.proposal`, `agent.emotional_twin.proposal`, `agent.swarm.proposal`, `agent.tape.proposal`, `agent.swarm.snapshot` -> `AgentProposalPayload`
 - `market.tape` -> `MarketTapePayload`
-- `execution.aggregate` -> `ExecutionAggregatePayload`
 - `meta.reflection` -> `AgentReflection`
 - `meta.hyperparameters` -> `MetaHyperparametersPayload`
 - `meta.retraining` -> `MetaRetrainingPayload`
@@ -350,11 +359,11 @@ Om schema-drift te beperken gebruiken Event Bus en Blackboard Pydantic contracte
 - `agent.meta.proposal` -> `AgentMetaProposalPayload`
 
 **Validatiegedrag en migratiepad:**
-- Voor geregistreerde Event Bus- en Blackboard-topics wordt validatie nu altijd afgedwongen via het topic-registry, ook zonder expliciete `payload_model`.
-- Tier A (strict, `extra="forbid"`): `TradeIntent`, `RiskVerdict`, `FinalArbitrationResult`, `ConstitutionAudit`, `ShadowResult`, `EvolutionPromotionDecision`. Deze vormen de execution/risk-integriteitsrand; onbekende top-level velden worden fail-closed geweigerd.
-- Tier B (flexibel, `extra="allow"`): `EvolutionProposal`, `AgentReflection`, `DreamState`, `MetaAgentThought`, `CommunityKnowledgeSnippet`, `LLMDecisionContext` plus blackboard/meta-contracten die nog in veldinventarisatie zitten.
-- `publish_validated(...)` op Event Bus blijft fail-closed en retourneert `None` bij schemafouten.
-- Niet-geregistreerde topics blijven backward-compatible als legacy dict payloads.
+- Voor geregistreerde Event Bus- en Blackboard-topics wordt validatie afgedwongen via het topic-registry, ook zonder expliciete `payload_model`.
+- **Kritieke EventBus-topics** (`CRITICAL_EVENT_BUS_TOPICS`): `TradeIntent`, `TradingEngineExecutionAggregate`, `RiskVerdict`, `FinalArbitrationResult`, `ConstitutionAudit`, `ShadowResult`, `EvolutionPromotionDecision` — strikt `extra="forbid"`; `publish` gebruikt altijd het registry-model; `publish_validated` **re-raised** `ValidationError` (geen stille `None`).
+- Tier B (flexibel, `extra="allow"`): o.a. `EvolutionProposal`, `DreamState`, `MetaAgentThought`, `CommunityKnowledgeSnippet`, `LLMDecisionContext`, `ConstitutionViolation`, plus blackboard/meta-contracten.
+- `publish_validated(...)` op **niet-kritieke** geregistreerde topics: bij schemafout nog steeds `None` (legacy soft pad voor experimentele topics).
+- Niet-geregistreerde EventBus-topics: backward-compatible legacy dict payloads.
 
 **Roadmap contractstriktheid vs. experimenteerruimte:**
 - Fase 1 (huidig): Tier A strict voor REAL-veiligheid; Tier B flexibel zodat emergent agent- en LLM-gedrag kan blijven ontstaan zonder execution-rand te versoepelen.
@@ -508,6 +517,18 @@ flowchart LR
 **V1-beperkingen (expliciet):**
 - Reconciler-audit bevat nog geen ATR-snapshot of directe `model_cost`; de calibrator gebruikt daarom een expliciete ATR-fallback.
 - De kostenvergelijking is een conservatieve exit-leg proxy (slippage + commissie) en geen volledige trade-TCA.
+
+---
+
+## Golden Ledger Path + Broker-Confirmed Fills as Single Source of Truth
+
+**Financiële waarheid** (positie, gerealiseerde PnL, risk-state die daarop leunt) komt **uitsluitend** uit **broker-bevestigde fills** (REST/WS fills live, `PaperBroker`-fills in paper, synthetische fill-records in sim/backtest die door dezelfde ledger-functie lopen). Geen `expected_pnl`, chart-snapshot exits of latency-modellen in dat pad.
+
+- **Canonieke formule + façade**: [`lumina_core/engine/golden_ledger.py`](../lumina_core/engine/golden_ledger.py) — `fills → commissies (fill-velden) → realized PnL`. [`EconomicPnLService`](../lumina_core/engine/economic_pnl_service.py) delegeert hiernaartoe en weigert RL-keys (`training_reward`) op economische payloads. [`ValuationEngine`](../lumina_core/engine/valuation_engine.py) blijft de rekenmachine (ticks, point value, `pnl_dollars`) zodra **prijzen commissies uit fills** komen.
+- **Trade reconciler**: [`TradeReconciler`](../lumina_core/engine/trade_reconciler.py) finaliseert economische events **alleen** bij een gematchte broker-fill; timeouts zonder fill → **observability-only** audit (`reconciliation_no_broker_fill`), geen league-push met snapshot-PnL.
+- **Paper / runtime supervisor**: [`runtime_workers`](../lumina_core/runtime_workers.py) synct `sim_position_qty` / entry uit [`PaperBroker`](../lumina_core/broker/broker_bridge.py) (`get_positions`, `last_fill_for_symbol`); sluiten gebeurt met **close-orders** + `EconomicPnLService.round_turn_realized_usd_from_broker_fills`. [`OperationsService`](../lumina_core/engine/operations_service.py) zet `live_position_qty` / `last_entry_price` van **order-/fill-resultaat**, niet van geschatte entry. [`trade_workers.reflect_on_trade`](../lumina_core/trade_workers.py) geeft `PnlProvenance` door naar de risk-controller (REAL: alleen `broker_reconciled`).
+- **Pending state**: `pending_trade_reconciliations` en snapshot-velden blijven beschikbaar voor **observability** en promotie-gates; [`EconomicTruth`](../lumina_core/engine/economic_truth.py) versioneert gemengde bronnen met expliciete namen (`runtime_pnl_history_close_sum_usd`, `reconciliation_pending_expected_pnl_observability`, enz.) — geen claim dat die keys broker-economische waarheid zijn.
+- **RL (training-laag)**: canoniek [`lumina_core/rl/`](../lumina_core/rl/); Meta-RL variant [`engine/rl/rl_trading_environment.py`](../lumina_core/engine/rl/rl_trading_environment.py). `info` bevat `rl_close_accounting_net_usd` (model/sim sluiting, **geen** broker `economic_pnl`) en `training_reward` (shaping); de Gym-`reward` is uitsluitend train-signaal. [`ppo_trainer.evaluate_policy_zip_rollouts`](../lumina_core/ppo_trainer.py) rapporteert `shadow_total_training_reward` (som van Gym-stappen), expliciet **geen** broker-PnL.
 
 ---
 

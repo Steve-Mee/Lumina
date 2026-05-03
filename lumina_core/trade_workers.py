@@ -4,6 +4,7 @@ from lumina_core.runtime_context import RuntimeContext
 from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
 from lumina_core.broker.broker_bridge import Order, OrderResult
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, resolve_regime_snapshot
+from lumina_core.risk.pnl_provenance import PnlProvenance
 
 from lumina_bible.workflows import dna_rewrite_daemon as _dna_rewrite_daemon
 from lumina_bible.workflows import process_user_feedback as _process_user_feedback
@@ -168,17 +169,30 @@ def submit_order_with_risk_check(
 
 
 def reflect_on_trade(
-    app: RuntimeContext, pnl_dollars: float, entry_price: float, exit_price: float, position_qty: int
+    app: RuntimeContext,
+    pnl_dollars: float,
+    entry_price: float,
+    exit_price: float,
+    position_qty: int,
+    *,
+    pnl_provenance: PnlProvenance | None = None,
 ) -> None:
     _reflect_on_trade(app, pnl_dollars, entry_price, exit_price, position_qty)
 
-    # Record trade in risk controller
     if app.engine.risk_controller:
         symbol = getattr(app.engine.swarm, "current_symbol", "UNKNOWN")
         snapshot = _refresh_regime_snapshot(app, getattr(app, "market_regime", "NEUTRAL"))
         regime = str(snapshot.get("label", getattr(app, "market_regime", "NEUTRAL")))
         risk_taken = abs(position_qty * (exit_price - entry_price))
-        app.engine.risk_controller.record_trade_result(symbol, regime, pnl_dollars, risk_taken)
+        trade_mode = str(getattr(app.engine.config, "trade_mode", "paper") or "paper").strip().lower()
+        app.engine.risk_controller.record_trade_result(
+            symbol,
+            regime,
+            pnl_dollars,
+            risk_taken,
+            trade_mode=trade_mode,
+            pnl_provenance=pnl_provenance,
+        )
 
 
 def process_user_feedback(app: RuntimeContext, feedback_text: str, trade_data: dict | None = None) -> None:

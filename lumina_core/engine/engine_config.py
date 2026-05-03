@@ -209,9 +209,6 @@ class EngineConfig(BaseModel):
             "RECONCILIATION_TIMEOUT_SECONDS", "reconciliation_timeout_seconds", 15.0
         )
     )
-    use_real_fill_for_pnl: bool = Field(
-        default_factory=lambda: _env_or_yaml_bool("USE_REAL_FILL_FOR_PNL", "use_real_fill_for_pnl", True)
-    )
     crosstrade_fill_ws_url: str = Field(
         default_factory=lambda: str(
             os.getenv("CROSSTRADE_FILL_WS_URL")

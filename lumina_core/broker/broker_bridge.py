@@ -203,6 +203,44 @@ class Fill:
     raw: dict[str, Any] = field(default_factory=dict)
 
 
+def paper_position_from_fills(fills: list[Fill], symbol: str) -> Position | None:
+    """Net position for ``symbol`` from chronological broker-confirmed fills (paper ledger)."""
+    sym = str(symbol).strip()
+    rows = [f for f in fills if str(f.symbol).strip() == sym]
+    if not rows:
+        return None
+    rows_sorted = sorted(rows, key=lambda f: f.timestamp)
+    net = 0
+    avg = 0.0
+    for f in rows_sorted:
+        q = max(0, int(f.quantity))
+        p = float(f.price)
+        d = q if str(f.side).upper() == "BUY" else -q
+        if net == 0:
+            net = d
+            avg = p if d != 0 else 0.0
+            continue
+        new_net = net + d
+        if net * d > 0:
+            abs_new = abs(new_net)
+            avg = (abs(net) * avg + abs(d) * p) / max(abs_new, 1e-9)
+            net = new_net
+            continue
+        if net * new_net > 0:
+            net = new_net
+            continue
+        if new_net == 0:
+            net = 0
+            avg = 0.0
+            continue
+        net = new_net
+        avg = p
+    if net == 0:
+        return None
+    side = "BUY" if net > 0 else "SELL"
+    return Position(symbol=sym, quantity=int(net), avg_price=float(avg), side=side, raw={})
+
+
 class BrokerBridge(ABC):
     @abstractmethod
     def connect(self) -> bool:
@@ -330,13 +368,6 @@ class PaperBroker(BrokerBridge):
             fill_price = fill_price - per_side_price_slip
 
         order_id = f"paper-{uuid.uuid4()}"
-        signed_qty = int(order.quantity) if side == "BUY" else -int(order.quantity)
-        self._positions[order.symbol] = Position(
-            symbol=order.symbol,
-            quantity=signed_qty,
-            avg_price=fill_price,
-            side=side,
-        )
 
         fill = Fill(
             fill_id=f"fill-{uuid.uuid4()}",
@@ -350,6 +381,7 @@ class PaperBroker(BrokerBridge):
             raw={"broker": "paper"},
         )
         self._fills.append(fill)
+        self._sync_positions_from_fills()
 
         return OrderResult(
             accepted=True,
@@ -378,11 +410,26 @@ class PaperBroker(BrokerBridge):
             realized_pnl_today=float(getattr(self.engine, "realized_pnl_today", 0.0)),
         )
 
+    def _sync_positions_from_fills(self) -> None:
+        self._positions.clear()
+        symbols = {str(f.symbol).strip() for f in self._fills}
+        for sym in symbols:
+            pos = paper_position_from_fills(self._fills, sym)
+            if pos is not None:
+                self._positions[sym] = pos
+
     def get_positions(self) -> list[Position]:
         return list(self._positions.values())
 
     def get_fills(self) -> list[Fill]:
         return list(self._fills)
+
+    def last_fill_for_symbol(self, symbol: str) -> Fill | None:
+        sym = str(symbol).strip()
+        matches = [f for f in self._fills if str(f.symbol).strip() == sym]
+        if not matches:
+            return None
+        return max(matches, key=lambda f: f.timestamp)
 
     def subscribe_to_websocket(self) -> None:
         # Paper mode has no external websocket stream.

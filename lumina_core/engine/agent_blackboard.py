@@ -53,7 +53,6 @@ DEFAULT_ALLOWED_PRODUCERS: dict[str, set[str]] = {
     "agent.swarm.snapshot": {"swarm_manager", "test"},
     "agent.tape.proposal": {"market_data_service", "tape_reading_agent", "test"},
     "market.tape": {"market_data_service", "tape_reading_agent", "test"},
-    "execution.aggregate": {"runtime_workers.pre_dream_daemon", "runtime", "test"},
     "meta.reflection": {"meta_agent_orchestrator", "test"},
     "meta.hyperparameters": {"meta_agent_orchestrator", "test"},
     "meta.retraining": {"meta_agent_orchestrator", "test"},
@@ -65,7 +64,6 @@ DEFAULT_ALLOWED_PRODUCERS: dict[str, set[str]] = {
 
 
 DEFAULT_TOPIC_POLICIES: dict[str, TopicPolicy] = {
-    "execution.aggregate": TopicPolicy(critical=True, overflow_strategy="block_fail"),
     "agent.rl.proposal": TopicPolicy(critical=True, overflow_strategy="block_fail"),
     "agent.news.proposal": TopicPolicy(critical=True, overflow_strategy="block_fail"),
     "agent.emotional_twin.proposal": TopicPolicy(critical=True, overflow_strategy="block_fail"),
@@ -231,12 +229,6 @@ class AgentBlackboard:
                 if policy.critical or str(policy.overflow_strategy).strip().lower() == "block_fail":
                     raise RuntimeError(f"critical blackboard topic queue full: {topic_key}")
                 continue
-        if topic_key == "execution.aggregate":
-            approved = bool(event.metadata.get("approved", event.payload.get("approved", False)))
-            self.mark_policy_decision(
-                approved=approved,
-                reason=str(event.metadata.get("reason", event.payload.get("reason", "")) or ""),
-            )
         self._record_publish_latency(
             topic=topic_key, producer=producer, elapsed_ms=(time.perf_counter() - started) * 1000.0
         )

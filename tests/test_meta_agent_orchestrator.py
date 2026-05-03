@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+from lumina_core.agent_orchestration.event_bus import EventBus
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_core.engine.meta_agent_orchestrator import MetaAgentOrchestrator
 
@@ -50,18 +52,19 @@ class _BibleStub:
 
 def test_meta_orchestrator_runs_reflection_and_evolution(tmp_path: Path) -> None:
     bus = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
-    bus.publish_sync(
-        topic="execution.aggregate",
-        producer="runtime",
-        payload={"executed": True, "pnl": -10.0},
-        confidence=0.62,
-    )
-    bus.publish_sync(
-        topic="execution.aggregate",
-        producer="runtime",
-        payload={"executed": True, "pnl": 5.0},
-        confidence=0.64,
-    )
+    eb = EventBus()
+    for pnl, conf in ((-10.0, 0.62), (5.0, 0.64)):
+        eb.publish(
+            topic=TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+            producer="runtime",
+            payload={
+                "executed": True,
+                "pnl": pnl,
+                "confidence": conf,
+                "confluence_score": conf,
+                "signal": "BUY",
+            },
+        )
 
     self_evolution = _SelfEvolutionStub()
     trainer = _TrainerStub()
@@ -69,6 +72,7 @@ def test_meta_orchestrator_runs_reflection_and_evolution(tmp_path: Path) -> None
     orchestrator = cast(Any, MetaAgentOrchestrator)(
         blackboard=bus,
         self_evolution_agent=cast(Any, self_evolution),
+        event_bus=eb,
         ppo_trainer=trainer,
         bible_engine=bible,
     )
@@ -95,6 +99,7 @@ def test_meta_orchestrator_dry_run_skips_training(tmp_path: Path) -> None:
     orchestrator = cast(Any, MetaAgentOrchestrator)(
         blackboard=bus,
         self_evolution_agent=cast(Any, self_evolution),
+        event_bus=EventBus(),
         ppo_trainer=trainer,
         bible_engine=SimpleNamespace(evolve=lambda *_a, **_k: None),
     )

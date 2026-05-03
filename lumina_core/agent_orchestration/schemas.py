@@ -82,6 +82,48 @@ class ShadowResult(BaseModel):
     pnl: float | None = None
 
 
+TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC = "trading_engine.execution.aggregate"
+
+
+class TradingEngineExecutionAggregate(BaseModel):
+    """Strict EventBus contract for pre-trade execution consensus snapshots.
+
+    Published only via EventBus (canonical). Unknown top-level keys are rejected;
+    callers should pass payloads already filtered to known fields or use
+    ``filter_payload_for_execution_aggregate``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    signal: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    confluence_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    stop: float | None = None
+    target: float | None = None
+    reason: str | None = None
+    why_no_trade: str | None = None
+    chosen_strategy: str | None = None
+    narrative_reasoning: str | None = None
+    fib_levels_drawn: dict[str, Any] | None = None
+    executed: bool | None = None
+    pnl: float | None = None
+    approved: bool | None = None
+    hold_until_ts: float | None = None
+    regime: str | None = None
+    expected_value: float | None = None
+    position_size_multiplier: float | None = Field(default=None, ge=0.0)
+    min_confluence: float | None = None
+    meta_score: float | None = None
+    agent_id: str | None = None
+    sentiment_signal: str | None = None
+
+
+def filter_payload_for_execution_aggregate(payload: dict[str, Any]) -> dict[str, Any]:
+    """Drop unknown keys so LLM/dream JSON can be validated against strict aggregate schema."""
+    allowed = TradingEngineExecutionAggregate.model_fields.keys()
+    return {k: v for k, v in payload.items() if k in allowed}
+
+
 #
 # Tier B: Experimental and agent-cognition contracts (emergent space).
 # These remain intentionally flexible with extra="allow" while fields stabilize.
@@ -301,6 +343,7 @@ class AgentMetaProposalPayload(BaseModel):
 
 EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "trading_engine.trade_signal.emitted": TradeIntent,
+    "trading_engine.execution.aggregate": TradingEngineExecutionAggregate,
     "trading_engine.dream_state.updated": DreamStateEventPayload,
     "risk.policy.decision": RiskVerdict,
     "risk.final_arbitration.result": FinalArbitrationResult,
@@ -315,6 +358,20 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "inference.llm.decision_context": LLMDecisionContext,
 }
 
+# Topics that must use registry models only, hard validation on publish_validated,
+# and no silent validation failure (see EventBus).
+CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
+    {
+        "trading_engine.trade_signal.emitted",
+        "trading_engine.execution.aggregate",
+        "risk.policy.decision",
+        "risk.final_arbitration.result",
+        "evolution.shadow.verdict",
+        "evolution.promotion.decision",
+        "safety.constitution.audit",
+    }
+)
+
 BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "agent.rl.proposal": AgentProposalPayload,
     "agent.news.proposal": AgentProposalPayload,
@@ -323,7 +380,6 @@ BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "agent.tape.proposal": AgentProposalPayload,
     "agent.swarm.snapshot": AgentProposalPayload,
     "market.tape": MarketTapePayload,
-    "execution.aggregate": ExecutionAggregatePayload,
     "meta.reflection": AgentReflection,
     "meta.hyperparameters": MetaHyperparametersPayload,
     "meta.retraining": MetaRetrainingPayload,
@@ -346,8 +402,12 @@ def validate_payload_with_model(
 
 def validate_registered_event_payload(topic: str, payload: dict[str, Any]) -> dict[str, Any]:
     """Validate payload using event-topic registry when a model is configured."""
-    model_cls = EVENT_BUS_TOPIC_MODELS.get(str(topic).strip().lower())
+    topic_key = str(topic).strip().lower()
+    model_cls = EVENT_BUS_TOPIC_MODELS.get(topic_key)
     if model_cls is None:
+        if topic_key in CRITICAL_EVENT_BUS_TOPICS:
+            msg = f"Critical event topic {topic_key!r} is missing from EVENT_BUS_TOPIC_MODELS"
+            raise ValueError(msg)
         return dict(payload)
     return validate_payload_with_model(payload=payload, payload_model=model_cls)
 

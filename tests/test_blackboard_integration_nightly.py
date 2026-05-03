@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+from lumina_core.agent_orchestration.event_bus import EventBus
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_core.engine.lumina_engine import LuminaEngine
 from lumina_core.engine.meta_agent_orchestrator import MetaAgentOrchestrator
@@ -30,18 +32,20 @@ def test_real_fail_closed_on_low_aggregate_confidence(tmp_path: Path) -> None:
     engine = cast(Any, LuminaEngine)(config=cfg)
 
     bus = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
+    eb = EventBus()
+    engine.event_bus = eb
+    engine.bind_event_bus(eb)
     engine.bind_blackboard(bus)
 
-    bus.publish_sync(
-        topic="execution.aggregate",
+    eb.publish(
+        topic=TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
         producer="test",
-        payload={"signal": "BUY", "confluence_score": 0.55},
-        confidence=0.55,
+        payload={"signal": "BUY", "confluence_score": 0.55, "confidence": 0.55},
     )
 
     snapshot = engine.get_current_dream_snapshot()
     assert snapshot.get("signal") == "HOLD"
-    assert snapshot.get("why_no_trade") == "fail_closed_low_blackboard_confidence"
+    assert snapshot.get("why_no_trade") == "fail_closed_low_aggregate_confidence"
 
 
 def test_nightly_integration_emits_meta_topics(tmp_path: Path) -> None:
@@ -49,6 +53,7 @@ def test_nightly_integration_emits_meta_topics(tmp_path: Path) -> None:
     orchestrator = cast(Any, MetaAgentOrchestrator)(
         blackboard=bus,
         self_evolution_agent=cast(Any, _NoOpSelfEvolution()),
+        event_bus=EventBus(),
         ppo_trainer=None,
         bible_engine=SimpleNamespace(evolve=lambda *_a, **_k: None),
     )

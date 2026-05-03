@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
 import uuid
@@ -127,26 +129,42 @@ def _agents_from_blackboard(engine: Any) -> list[dict[str, Any]]:
     return agents
 
 
+def _domain_event_fingerprint(event: Any) -> str:
+    raw = event.to_dict() if hasattr(event, "to_dict") else {}
+    body = json.dumps(raw, sort_keys=True, default=str)
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _resolve_event_bus(engine: Any) -> Any | None:
+    return getattr(engine, "event_bus", None)
+
+
 def _execution_aggregate_lineage(engine: Any) -> dict[str, Any]:
-    board = _resolve_blackboard(engine)
-    if board is None or not hasattr(board, "latest"):
+    from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+
+    bus = _resolve_event_bus(engine)
+    if bus is None or not hasattr(bus, "latest"):
         return {}
-    event = board.latest("execution.aggregate")
+    event = bus.latest(TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC)
     if event is None:
         return {}
 
     payload = getattr(event, "payload", {}) if hasattr(event, "payload") else {}
     payload = payload if isinstance(payload, dict) else {}
+    meta = getattr(event, "metadata", {}) or {}
+    conf = float(payload.get("confidence", payload.get("confluence_score", 0.0)) or 0.0)
+    seq = int(meta.get("sequence", 0) or 0)
+    fingerprint = _domain_event_fingerprint(event)
     return {
-        "topic": "execution.aggregate",
+        "topic": TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
         "producer": str(getattr(event, "producer", "") or ""),
-        "confidence": float(getattr(event, "confidence", 0.0) or 0.0),
+        "confidence": conf,
         "timestamp": str(getattr(event, "timestamp", "") or ""),
-        "correlation_id": str(getattr(event, "correlation_id", "") or ""),
-        "sequence": int(getattr(event, "sequence", 0) or 0),
+        "correlation_id": str(meta.get("correlation_id", "") or ""),
+        "sequence": seq,
         "lineage": {
-            "event_hash": str(getattr(event, "event_hash", "") or ""),
-            "prev_hash": str(getattr(event, "prev_hash", "") or ""),
+            "event_hash": fingerprint,
+            "prev_hash": "",
         },
         "signal": str(payload.get("signal", "") or ""),
         "chosen_strategy": str(payload.get("chosen_strategy", "") or ""),

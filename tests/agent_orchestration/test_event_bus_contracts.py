@@ -8,10 +8,12 @@ from pydantic import ValidationError
 from lumina_core.agent_orchestration.event_bus import EventBus, TradeIntent
 from lumina_core.agent_orchestration.schemas import (
     AgentProposalPayload,
+    DreamState,
     EvolutionProposal,
     EvolutionPromotionDecision,
     MetaAgentThought,
     RiskVerdict,
+    TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
 )
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 
@@ -26,15 +28,14 @@ def test_publish_validated_rejects_invalid_typed_payload_and_logs(caplog: pytest
 
     bus.subscribe("risk.policy.decision", _handler)
 
-    out = bus.publish_validated(
-        topic="risk.policy.decision",
-        producer="risk_controller",
-        payload={"max_risk_percent_multiplier": -0.1},
-    )
+    with pytest.raises(ValidationError):
+        bus.publish_validated(
+            topic="risk.policy.decision",
+            producer="risk_controller",
+            payload={"max_risk_percent_multiplier": -0.1},
+        )
 
-    assert out is None
     assert received == []
-    assert "schema violation" in caplog.text
     assert "risk.policy.decision" in caplog.text
 
 
@@ -87,6 +88,10 @@ def test_publish_typed_topic_without_payload_model_still_validates_and_coerces()
             {"dna_hash": "dna_abc", "allowed": False, "reason": "gate_block", "stage": "promotion_gate"},
         ),
         ("safety.constitution.audit", {"phase": "promotion", "passed": True, "mode": "REAL"}),
+        (
+            TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+            {"signal": "BUY", "confidence": 0.8, "confluence_score": 0.7},
+        ),
     ],
 )
 def test_publish_critical_topic_rejects_unknown_top_level_fields_fail_closed(
@@ -178,6 +183,33 @@ def test_strict_model_rejects_unknown_fields_and_flexible_model_allows_them() ->
 
     flexible_thought = MetaAgentThought.model_validate({"summary": "edge idea", "unknown_field": "kept"})
     assert flexible_thought.model_dump()["unknown_field"] == "kept"
+
+
+@pytest.mark.unit
+def test_publish_critical_topic_ignores_looser_payload_model_override() -> None:
+    bus = EventBus()
+    with pytest.raises(ValidationError):
+        bus.publish(
+            topic="trading_engine.trade_signal.emitted",
+            producer="strategy_engine",
+            payload={"signal": "BUY", "confidence": 0.5, "shadow_extra": 1},
+            payload_model=DreamState,
+        )
+
+
+@pytest.mark.unit
+def test_event_bus_latest_and_history_within_hours() -> None:
+    bus = EventBus()
+    bus.publish(
+        topic=TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+        producer="test",
+        payload={"signal": "HOLD", "confidence": 0.5, "confluence_score": 0.5},
+    )
+    latest = bus.latest(TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC)
+    assert latest is not None
+    assert latest.payload["signal"] == "HOLD"
+    recent = bus.history_within_hours(TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC, within_hours=24, limit=10)
+    assert len(recent) == 1
 
 
 @pytest.mark.unit

@@ -144,7 +144,7 @@ def render_evolution_dashboard(path: Path = METRICS_PATH) -> None:
                         "status": str(record.get("status", "unknown")),
                         "target_days": int(record.get("target_days", 0) or 0),
                         "completed_days": len(daily_pnl),
-                        "total_pnl": float(record.get("shadow_total_pnl", 0.0) or 0.0),
+                        "shadow_total_pnl_sim": float(record.get("shadow_total_pnl", 0.0) or 0.0),
                         "started": str(record.get("started_at", ""))[:10],
                     }
                 )
@@ -152,10 +152,9 @@ def render_evolution_dashboard(path: Path = METRICS_PATH) -> None:
             shadow_df = pd.DataFrame(shadow_rows).tail(10)
             st.dataframe(shadow_df, use_container_width=True)
 
-            # Real vs Shadow comparison
             if len(shadow_rows) >= 2:
-                pnl_comparison = [row["total_pnl"] for row in shadow_rows[-5:]]
-                st.bar_chart(pd.Series(pnl_comparison, name="Shadow PnL"), height=200)
+                pnl_comparison = [row["shadow_total_pnl_sim"] for row in shadow_rows[-5:]]
+                st.bar_chart(pd.Series(pnl_comparison, name="Shadow sim PnL (not broker economic)"), height=200)
     else:
         st.info("No active shadow runs.")
 

@@ -23,6 +23,7 @@ from lumina_core.risk.final_arbitration import FinalArbitration
 from lumina_core.risk.risk_policy import RiskPolicy
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.trade_workers import check_pre_trade_risk
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 
 class _Event:
@@ -41,8 +42,30 @@ class _Blackboard:
     def latest(self, topic: str):
         if topic.startswith("agent."):
             return _Event({"agent_id": "rl", "signal": "BUY", "confidence": 0.81, "reason": "test"})
-        if topic == "execution.aggregate":
-            return _Event({"signal": "BUY", "chosen_strategy": "rl"})
+        return None
+
+
+class _EbExec:
+    def __init__(self) -> None:
+        self.payload = {"signal": "BUY", "chosen_strategy": "rl", "confidence": 0.8}
+        self.producer = "test"
+        self.timestamp = "2026-04-18T00:00:00+00:00"
+        self.metadata = {"sequence": 1}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "topic": TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+            "producer": self.producer,
+            "payload": self.payload,
+            "timestamp": self.timestamp,
+            "metadata": self.metadata,
+        }
+
+
+class _EventBus:
+    def latest(self, topic: str):
+        if topic == TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC:
+            return _EbExec()
         return None
 
 
@@ -112,6 +135,7 @@ def _make_engine(trade_mode: str, risk_ok: bool = True, enforce_session_guard: b
             refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
         ),
         blackboard=_Blackboard(),
+        event_bus=_EventBus(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
         equity_snapshot_provider=_FreshEquitySnapshotProvider(),
@@ -305,6 +329,7 @@ def _make_runtime_ctx(trade_mode: str) -> RuntimeContext:
             refresh_regime_snapshot=lambda: {"label": "NEUTRAL", "risk_state": "NORMAL", "adaptive_policy": {}}
         ),
         blackboard=_Blackboard(),
+        event_bus=_EventBus(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_a, **_k: True),
         get_current_dream_snapshot=lambda: {"signal": "BUY", "regime": "NEUTRAL", "stop": 4990.0, "target": 5020.0},
         equity_snapshot_provider=_FreshEquitySnapshotProvider(),

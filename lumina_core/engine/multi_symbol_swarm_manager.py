@@ -379,6 +379,11 @@ class MultiSymbolSwarmManager:
         return updates
 
     def register_trade_result(self, symbol: str, pnl: float) -> None:
+        """Append per-symbol realized trade PnL for Kelly-style heuristics.
+
+        In REAL mode the caller should pass **broker-reconciled** realized PnL only
+        (same provenance as ``EconomicPnLService``); never RL-only shaped Gym rewards.
+        """
         symbol_key = str(symbol).strip().upper()
         if symbol_key not in self.nodes:
             return

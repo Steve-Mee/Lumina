@@ -1,26 +1,28 @@
-from __future__ import annotations
-import logging
-# pyright: reportMissingImports=false
+"""RL training-layer Gymnasium environment: model fills, shaping; ``training_reward`` in ``info`` (not broker PnL)."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 import hashlib
+import logging
 import random
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+
 from lumina_core.engine.valuation_engine import ValuationEngine
 
 try:
     import gymnasium as gym
     from gymnasium import spaces
 except Exception as exc:  # pragma: no cover
-    logging.exception("Unhandled broad exception fallback in lumina_core/rl_environment.py:15")
+    logging.exception("Unhandled broad exception fallback in lumina_core/rl/gym_environment.py")
     raise RuntimeError("gymnasium is required for RLTradingEnvironment") from exc
 
 
 @dataclass(slots=True)
 class RLConfig:
-    """LIVING ORGANISM v51: RL execution-cost and reward controls."""
+    """RL execution-cost and reward controls (training layer only — not broker economic PnL)."""
 
     max_steps: int = 5000
     slippage_points: float = 0.125
@@ -40,7 +42,7 @@ class RLConfig:
 
 
 class RLTradingEnvironment(gym.Env):
-    """LIVING ORGANISM v51: Gymnasium-compatible environment with safety-first costs."""
+    """Gymnasium-compatible training environment: Gym ``reward`` is a shaped training signal only."""
 
     metadata = {"render_modes": ["human"]}
 
@@ -57,16 +59,12 @@ class RLTradingEnvironment(gym.Env):
             .lower()
         )
 
-        # Action layout: [side, qty_norm, stop_pct, target_pct]
-        # side in [0, 2] -> HOLD, BUY, SELL
         self.action_space = spaces.Box(
             low=np.array([0.0, 0.0, 0.001, 0.001], dtype=np.float32),
             high=np.array([2.0, 1.0, 0.02, 0.05], dtype=np.float32),
             dtype=np.float32,
         )
 
-        # Observation includes price, regime, tape, dream, fib, world_model, and DNA-embedding features.
-        # 24 market/account features + 4 DNA-hash embedding = 28 total (Meta-RL phase)
         self.observation_space = spaces.Box(
             low=-1e6,
             high=1e6,
@@ -89,7 +87,6 @@ class RLTradingEnvironment(gym.Env):
         self._dna_hash = str(dna_hash or "")
 
     def _dna_embedding(self) -> list[float]:
-        """4-float DNA embedding: first 4 bytes of SHA-256(dna_hash), normalised to [-1, 1]."""
         if not self._dna_hash:
             return [0.0, 0.0, 0.0, 0.0]
         raw = hashlib.sha256(self._dna_hash.encode("utf-8")).digest()
@@ -97,7 +94,6 @@ class RLTradingEnvironment(gym.Env):
 
     @staticmethod
     def _config_from_engine(engine: Any) -> RLConfig:
-        """LIVING ORGANISM v51: Build RLConfig from runtime risk config with safe defaults."""
         risk_cfg = getattr(getattr(engine, "config", None), "risk_controller", {})
         risk_cfg = risk_cfg if isinstance(risk_cfg, dict) else {}
         trade_mode = str(getattr(getattr(engine, "config", None), "trade_mode", "sim") or "sim").strip().lower()
@@ -130,7 +126,6 @@ class RLTradingEnvironment(gym.Env):
         return max(self.valuation_engine.tick_size(self.instrument), abs(vol * price))
 
     def _stochastic_slippage_points(self, price: float) -> float:
-        """LIVING ORGANISM v51: stochastic slippage = base + volatility_factor * gauss(0, sigma)."""
         base = float(self.config.slippage_points)
         volatility_factor = float(self.config.slippage_volatility_factor) * self._recent_volatility_points(price)
         shock = random.gauss(0.0, float(self.config.slippage_sigma))
@@ -280,8 +275,13 @@ class RLTradingEnvironment(gym.Env):
         self._idx += 1
         terminated = self._idx >= min(len(self.data) - 1, self.config.max_steps)
 
+        # Model/sim close accounting only — not broker-confirmed economic_pnl.
+        rl_close_accounting_net_usd = float(realized_pnl - slippage_cost - fees_cost)
+        training_reward = float(reward)
         info = {
-            "realized_pnl": realized_pnl,
+            "model_close_gross_pnl_usd": realized_pnl,
+            "rl_close_accounting_net_usd": rl_close_accounting_net_usd,
+            "training_reward": training_reward,
             "slippage_cost": slippage_cost,
             "fees_cost": fees_cost,
             "equity": self._equity,
@@ -352,7 +352,6 @@ class RLTradingEnvironment(gym.Env):
                 float(self._rolling_sharpe()),
                 float(self._idx),
                 float(len(self.data)),
-                # DNA embedding (Meta-RL: policy conditions on active lineage identity)
                 *self._dna_embedding(),
             ],
             dtype=np.float32,

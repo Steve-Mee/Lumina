@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from ..evolution.dna_registry import DNARegistry, PolicyDNA
 from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .errors import ErrorSeverity, LuminaError
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 
 class _ProposalOwner(Protocol):
@@ -297,7 +298,10 @@ class ProposalGenerator:
         registry = self.dna_registry()
         if registry.get_latest_dna("active") is None:
             registry.load_from_blackboard(
-                self._owner.blackboard, prompt_id="self_evolution_blackboard", version="bootstrap"
+                self._owner.blackboard,
+                event_bus=getattr(self._owner.engine, "event_bus", None),
+                prompt_id="self_evolution_blackboard",
+                version="bootstrap",
             )
         payload = {
             "prompt_fingerprint": self.prompt_fingerprint(),
@@ -364,18 +368,31 @@ class ProposalGenerator:
         return registry.register_dna(dna)
 
     def dna_lineage_hash(self) -> str:
-        if self._owner.blackboard is None or not hasattr(self._owner.blackboard, "latest"):
+        bb = self._owner.blackboard
+        eb = getattr(self._owner.engine, "event_bus", None)
+        if (bb is None or not hasattr(bb, "latest")) and (eb is None or not hasattr(eb, "latest")):
             return self.prompt_fingerprint()
         lineage_parts: list[str] = []
-        for topic in ("meta.reflection", "meta.hyperparameters", "agent.meta.proposal", "execution.aggregate"):
+        exec_topic = TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+        for topic in ("meta.reflection", "meta.hyperparameters", "agent.meta.proposal", exec_topic):
+            event = None
             try:
-                event = self._owner.blackboard.latest(topic)
+                if topic == exec_topic:
+                    if eb is not None and hasattr(eb, "latest"):
+                        event = eb.latest(exec_topic)
+                elif bb is not None and hasattr(bb, "latest"):
+                    event = bb.latest(topic)
             except Exception:
                 logging.exception("Unhandled broad exception fallback in lumina_core/engine/proposal_generator.py:370")
                 event = None
             if event is None:
                 continue
-            lineage_parts.append(str(getattr(event, "event_hash", "GENESIS") or "GENESIS"))
+            ev_hash = getattr(event, "event_hash", None)
+            if not ev_hash and hasattr(event, "to_dict"):
+                ev_hash = hashlib.sha256(
+                    json.dumps(event.to_dict(), sort_keys=True, default=str).encode("utf-8")
+                ).hexdigest()
+            lineage_parts.append(str(ev_hash or "GENESIS"))
         if not lineage_parts:
             return self.prompt_fingerprint()
         return hashlib.sha256("|".join(lineage_parts).encode("utf-8")).hexdigest()

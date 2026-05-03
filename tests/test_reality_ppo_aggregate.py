@@ -10,7 +10,7 @@ def test_aggregate_ppo_single_reality_returns_unchanged_ok() -> None:
         "ok": True,
         "backtest_fitness": 10.0,
         "shadow_equity_delta": 1.0,
-        "shadow_total_reward": 2.0,
+        "shadow_total_training_reward": 2.0,
         "backtest_equity_delta": 0.5,
     }
     out = aggregate_ppo_eval_worst_reality(base, 1, stress_seed="t")
@@ -29,7 +29,7 @@ def test_aggregate_ppo_multireality_picks_worst_fitness() -> None:
         "ok": True,
         "backtest_fitness": 100.0,
         "shadow_equity_delta": 10.0,
-        "shadow_total_reward": 50.0,
+        "shadow_total_training_reward": 50.0,
         "backtest_equity_delta": 2.0,
     }
     out = aggregate_ppo_eval_worst_reality(base, 8, stress_seed="deterministic_test_seed")

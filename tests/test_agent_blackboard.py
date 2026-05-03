@@ -43,19 +43,19 @@ def test_blackboard_history_filtering(tmp_path: Path) -> None:
     bus = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
 
     bus.publish_sync(
-        topic="execution.aggregate",
-        producer="runtime",
-        payload={"signal": "BUY", "executed": True, "pnl": 10.0},
+        topic="agent.rl.proposal",
+        producer="rl_policy",
+        payload={"signal": "BUY", "qty": 1.0},
         confidence=0.85,
     )
     bus.publish_sync(
-        topic="execution.aggregate",
-        producer="runtime",
-        payload={"signal": "HOLD", "executed": False, "pnl": 0.0},
+        topic="agent.rl.proposal",
+        producer="rl_policy",
+        payload={"signal": "HOLD", "qty": 1.0},
         confidence=0.75,
     )
 
-    hist = bus.history("execution.aggregate", limit=10, within_hours=24)
+    hist = bus.history("agent.rl.proposal", limit=10, within_hours=24)
     assert len(hist) == 2
     assert hist[-1].payload["signal"] == "HOLD"
 
@@ -96,18 +96,18 @@ def test_blackboard_noncritical_topic_drops_on_full_queue(tmp_path: Path) -> Non
 
 def test_blackboard_critical_topic_fails_on_full_queue(tmp_path: Path) -> None:
     bus = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
-    _token, _queue = bus.subscribe_async("execution.aggregate", maxsize=1)
+    _token, _queue = bus.subscribe_async("agent.rl.proposal", maxsize=1)
 
     bus.publish_sync(
-        topic="execution.aggregate",
-        producer="runtime",
-        payload={"signal": "BUY"},
+        topic="agent.rl.proposal",
+        producer="rl_policy",
+        payload={"signal": "BUY", "qty": 1.0},
         confidence=0.9,
     )
     with pytest.raises(RuntimeError):
         bus.publish_sync(
-            topic="execution.aggregate",
-            producer="runtime",
-            payload={"signal": "SELL"},
+            topic="agent.rl.proposal",
+            producer="rl_policy",
+            payload={"signal": "SELL", "qty": 1.0},
             confidence=0.92,
         )

@@ -7,7 +7,12 @@ from typing import Any
 
 @dataclass(slots=True)
 class EconomicTruth:
-    """Versioned economic ledger used as single PnL truth across runtime sources."""
+    """Versioned observability ledger for PnL-related engine fields.
+
+    Broker-confirmed **economic_pnl** for REAL reporting flows through
+    `EconomicPnLService` / reconciler — not through this snapshot alone.
+    Keys below mix account/broker fields with **internal runtime** sums; read names literally.
+    """
 
     sequence: int = 0
     versions: list[dict[str, Any]] = field(default_factory=list)
@@ -36,10 +41,12 @@ class EconomicTruth:
             "realized_pnl_today": float(getattr(engine, "realized_pnl_today", 0.0) or 0.0),
             "sim_unrealized": float(getattr(engine, "sim_unrealized", 0.0) or 0.0),
             "last_realized_pnl_snapshot": float(getattr(engine, "last_realized_pnl_snapshot", 0.0) or 0.0),
-            "equity_delta": self._equity_delta(engine),
-            "trade_log_sum": self._trade_log_sum(engine),
-            "pnl_history_sum": self._pnl_history_sum(engine),
-            "reconciliation_expected_pnl": self._reconciliation_expected_pnl(engine),
+            "equity_delta_observability": self._equity_delta(engine),
+            "runtime_trade_log_pnl_sum_usd": self._trade_log_sum(engine),
+            "runtime_pnl_history_close_sum_usd": self._pnl_history_sum(engine),
+            "reconciliation_pending_expected_pnl_observability": self._reconciliation_pending_expected_pnl_observability(
+                engine
+            ),
         }
         metadata = {
             "trade_mode": str(getattr(getattr(engine, "config", None), "trade_mode", "unknown")),
@@ -90,7 +97,8 @@ class EconomicTruth:
         return float(sum(float(x or 0.0) for x in history))
 
     @staticmethod
-    def _reconciliation_expected_pnl(engine: Any) -> float:
+    def _reconciliation_pending_expected_pnl_observability(engine: Any) -> float:
+        """Sum of ``expected_pnl`` on pending reconciliations — **not** economic truth (chart/snapshot hints)."""
         pending = list(getattr(engine, "pending_trade_reconciliations", []) or [])
         total = 0.0
         for item in pending:

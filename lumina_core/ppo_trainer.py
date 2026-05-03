@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
-from lumina_core.rl_environment import RLConfig, RLTradingEnvironment
+from lumina_core.rl import RLConfig, RLTradingEnvironment
 
 
 def _sb3_ppo_load(path: str | Path) -> Any | None:
@@ -79,12 +79,16 @@ class PPOTrainer:
         shadow_max_steps: int = 256,
         backtest_max_steps: int = 2048,
     ) -> dict[str, Any]:
-        """Shadow + backtest rollouts on RLTradingEnvironment without swapping the engine's active policy."""
+        """Shadow + backtest rollouts on RLTradingEnvironment without swapping the engine's active policy.
+
+        Returned Gym reward sums and equity deltas are RL-environment signals only,
+        not broker ``economic_pnl``.
+        """
         bad = {
             "ok": False,
             "shadow_equity_delta": 0.0,
             "backtest_fitness": float("-inf"),
-            "shadow_total_reward": 0.0,
+            "shadow_total_training_reward": 0.0,
             "backtest_equity_delta": 0.0,
         }
         try:
@@ -124,7 +128,7 @@ class PPOTrainer:
         return {
             "ok": True,
             "shadow_equity_delta": float(sh_eq_delta),
-            "shadow_total_reward": float(sh_r),
+            "shadow_total_training_reward": float(sh_r),
             "backtest_fitness": float(backtest_fitness),
             "backtest_equity_delta": float(bt_eq_delta),
         }

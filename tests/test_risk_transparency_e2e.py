@@ -9,6 +9,7 @@ from lumina_core.audit.audit_log_service import AuditLogService
 from lumina_core.risk.risk_controller import HardRiskController, RiskLimits, risk_limits_from_config
 from lumina_core.risk.equity_snapshot import EquitySnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 
 class _AlwaysApproveArbitration:
@@ -102,14 +103,26 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
                     confidence=0.74,
                     sequence=12,
                 ),
-                "execution.aggregate": _bb_event(
-                    topic="execution.aggregate",
-                    producer="runtime_workers.pre_dream_daemon",
-                    payload={"signal": "BUY", "chosen_strategy": "ppo_live_policy"},
-                    confidence=0.86,
-                    sequence=13,
-                ),
             }.get(str(topic))
+        ),
+        event_bus=SimpleNamespace(
+            latest=lambda topic: (
+                SimpleNamespace(
+                    producer="runtime_workers.pre_dream_daemon",
+                    payload={"signal": "BUY", "chosen_strategy": "ppo_live_policy", "confidence": 0.86},
+                    timestamp="2026-04-16T10:30:00+00:00",
+                    metadata={"sequence": 13, "correlation_id": "corr-13"},
+                    to_dict=lambda: {
+                        "topic": TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+                        "producer": "runtime_workers.pre_dream_daemon",
+                        "payload": {"signal": "BUY", "chosen_strategy": "ppo_live_policy", "confidence": 0.86},
+                        "timestamp": "2026-04-16T10:30:00+00:00",
+                        "metadata": {"sequence": 13, "correlation_id": "corr-13"},
+                    },
+                )
+                if topic == TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+                else None
+            )
         ),
         get_current_dream_snapshot=lambda: {
             "chosen_strategy": "ppo_live_policy",
@@ -148,7 +161,7 @@ def test_e2e_real_mode_blocks_on_mc_drawdown_and_logs_decision(tmp_path: Path) -
     assert len(risk_gate["agents_involved"]) >= 2
     assert risk_gate["agents_involved"][0].get("topic", "").startswith("agent.")
     assert "lineage" in risk_gate["agents_involved"][0]
-    assert risk_gate.get("execution_aggregate_lineage", {}).get("topic") == "execution.aggregate"
+    assert risk_gate.get("execution_aggregate_lineage", {}).get("topic") == TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 
 def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Path) -> None:
@@ -197,14 +210,26 @@ def test_e2e_pretrade_uses_default_mc_paths_and_horizon_from_config(tmp_path: Pa
                     confidence=0.8,
                     sequence=21,
                 ),
-                "execution.aggregate": _bb_event(
-                    topic="execution.aggregate",
-                    producer="runtime_workers.pre_dream_daemon",
-                    payload={"signal": "BUY", "chosen_strategy": "ppo_live_policy"},
-                    confidence=0.8,
-                    sequence=22,
-                ),
             }.get(str(topic))
+        ),
+        event_bus=SimpleNamespace(
+            latest=lambda topic: (
+                SimpleNamespace(
+                    producer="runtime_workers.pre_dream_daemon",
+                    payload={"signal": "BUY", "chosen_strategy": "ppo_live_policy", "confidence": 0.8},
+                    timestamp="2026-04-16T10:30:00+00:00",
+                    metadata={"sequence": 22, "correlation_id": "corr-22"},
+                    to_dict=lambda: {
+                        "topic": TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+                        "producer": "runtime_workers.pre_dream_daemon",
+                        "payload": {"signal": "BUY", "chosen_strategy": "ppo_live_policy", "confidence": 0.8},
+                        "timestamp": "2026-04-16T10:30:00+00:00",
+                        "metadata": {"sequence": 22, "correlation_id": "corr-22"},
+                    },
+                )
+                if topic == TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+                else None
+            )
         ),
         get_current_dream_snapshot=lambda: {
             "chosen_strategy": "ppo_live_policy",

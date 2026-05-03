@@ -7,6 +7,7 @@ from typing import Any, Callable
 import pytest
 
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 from lumina_core.risk.admission_chain import (
     ADMISSION_STEP_AUDIT_WRITE,
     ADMISSION_STEP_CONSTITUTION,
@@ -40,8 +41,30 @@ class _Blackboard:
             "agent.tape.proposal",
         }:
             return _Event({"agent_id": "rl", "confidence": 0.81, "reason": "test"})
-        if topic == "execution.aggregate":
-            return _Event({"signal": "BUY", "chosen_strategy": "rl"})
+        return None
+
+
+class _EbExec:
+    def __init__(self) -> None:
+        self.payload: dict[str, object] = {"signal": "BUY", "chosen_strategy": "rl", "confidence": 0.81}
+        self.producer = "test-agent"
+        self.timestamp = datetime.now(timezone.utc).isoformat()
+        self.metadata = {"sequence": 1, "correlation_id": "corr-1"}
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "topic": TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+            "producer": self.producer,
+            "payload": self.payload,
+            "timestamp": self.timestamp,
+            "metadata": self.metadata,
+        }
+
+
+class _EventBus:
+    def latest(self, topic: str) -> _EbExec | None:
+        if topic == TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC:
+            return _EbExec()
         return None
 
 
@@ -113,6 +136,7 @@ def _make_engine(*, trade_mode: str = "real") -> SimpleNamespace:
         ),
         get_current_dream_snapshot=lambda: {"confidence": 0.8, "expected_value": 1.2, "regime": "NEUTRAL"},
         blackboard=_Blackboard(),
+        event_bus=_EventBus(),
         audit_log_service=SimpleNamespace(log_decision=lambda *_args, **_kwargs: True),
         app=SimpleNamespace(logger=SimpleNamespace(warning=lambda *_a, **_k: None)),
         equity_snapshot_provider=SimpleNamespace(get_snapshot=lambda: _fresh_snapshot()),

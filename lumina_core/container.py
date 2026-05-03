@@ -49,7 +49,7 @@ from lumina_core.evolution.self_evolution_meta_agent import load_evolution_confi
 from lumina_core.engine.canonical_training import InfiniteSimulator, PPOTrainer
 from lumina_core.logging_utils import build_logger, flush_logger_handlers
 from lumina_core.monitoring import ObservabilityService
-from lumina_core.rl_environment import RLTradingEnvironment
+from lumina_core.rl import RLTradingEnvironment
 from lumina_core.runtime_context import RuntimeContext
 
 
@@ -193,6 +193,7 @@ class ApplicationContainer:
         self.engine.observability_service = self.observability_service
         self.event_bus = EventBus()
         self.engine.event_bus = self.event_bus
+        self.engine.bind_event_bus(self.event_bus)
         self.valuation_engine = self.engine.valuation_engine
         if self.engine.risk_controller is None:
             raise RuntimeError("Engine risk_controller was not initialized")
@@ -424,6 +425,7 @@ class ApplicationContainer:
             self.meta_agent_orchestrator = MetaAgentOrchestrator(
                 blackboard=self.blackboard,
                 self_evolution_agent=self.self_evolution_meta_agent,
+                event_bus=self.event_bus,
                 ppo_trainer=self.ppo_trainer,
                 bible_engine=self.engine.bible_engine,
             )

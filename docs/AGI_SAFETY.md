@@ -75,6 +75,15 @@ This removes silent broad-exception behavior from decision/audit write paths and
 
 ---
 
+## Economic PnL vs training reward (capital path)
+
+- **`economic_pnl`** (broker-confirmed fills → commissions → realized net) is the **only** input for REAL capital reporting, risk accumulation (`HardRiskController.record_trade_result` in REAL accepts `PnlProvenance.BROKER_RECONCILED` only), and governance metrics that claim economic truth.
+- **`training_reward`** and Gym **`reward`** exist **only** in RL training modules: [`lumina_core/rl/`](../lumina_core/rl/) (canonical Gym env) and [`lumina_core/engine/rl/`](../lumina_core/engine/rl/) (Meta-RL / engine-attached env). They may include reward shaping, heuristic VaR penalties, and other **non-broker** terms. They must **never** be labeled as economic PnL or fed into REAL risk totals.
+- **RL rollout metrics:** keys such as `shadow_total_training_reward` (Gym reward sums from [`ppo_trainer`](../lumina_core/ppo_trainer.py)) are training signals only, not broker `economic_pnl`.
+- **Central enforcement:** [`EconomicPnLService`](../lumina_core/engine/economic_pnl_service.py) wraps the golden ledger formulas and **rejects** payloads that carry RL-only keys (e.g. `training_reward`). SIM and evolution layers may experiment freely; REAL stays fail-closed on provenance.
+
+---
+
 ## LLM As Powerful Advisor, Never Sole Ruler
 
 LUMINA treats the LLM as a high-bandwidth reasoning engine, not as an execution authority:

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contract_symbol
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 
 class _RiskController:
@@ -66,6 +67,30 @@ class _Event:
         self.prev_hash = "prev-hash"
 
 
+class _EbExec:
+    def __init__(self) -> None:
+        self.payload: dict[str, object] = {"signal": "BUY", "chosen_strategy": "rl", "confidence": 0.8}
+        self.producer = "test-agent"
+        self.timestamp = datetime.now(timezone.utc).isoformat()
+        self.metadata = {"sequence": 1, "correlation_id": "corr-1"}
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "topic": TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+            "producer": self.producer,
+            "payload": self.payload,
+            "timestamp": self.timestamp,
+            "metadata": self.metadata,
+        }
+
+
+class _EventBus:
+    def latest(self, topic: str):
+        if topic == TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC:
+            return _EbExec()
+        return None
+
+
 class _Blackboard:
     def latest(self, topic: str):
         if topic in {
@@ -76,8 +101,6 @@ class _Blackboard:
             "agent.tape.proposal",
         }:
             return _Event({"agent_id": "rl", "confidence": 0.81, "reason": "test"})
-        if topic == "execution.aggregate":
-            return _Event({"signal": "BUY", "chosen_strategy": "rl"})
         return None
 
 
@@ -115,6 +138,7 @@ def _make_engine(
         ),
         "get_current_dream_snapshot": lambda: {"confidence": 0.7, "expected_value": 1.2},
         "blackboard": _Blackboard(),
+        "event_bus": _EventBus(),
         "audit_log_service": SimpleNamespace(log_decision=lambda *_args, **_kwargs: True),
         "app": SimpleNamespace(logger=SimpleNamespace(warning=lambda *_a, **_k: None)),
         "equity_snapshot_provider": SimpleNamespace(get_snapshot=lambda: _fresh_snapshot()),

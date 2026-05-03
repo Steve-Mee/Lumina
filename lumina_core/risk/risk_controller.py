@@ -15,6 +15,7 @@ import numpy as np
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.engine.margin_snapshot_provider import MarginSnapshot, MarginSnapshotProvider
+from lumina_core.risk.pnl_provenance import PnlProvenance
 from lumina_core.risk.risk_allocator import RiskAllocatorMixin
 from lumina_core.risk.risk_gates import RiskGatesMixin
 from lumina_core.risk.risk_policy import RiskPolicy, get_effective_risk_overlay, load_risk_policy
@@ -461,7 +462,25 @@ class HardRiskController(RiskAllocatorMixin, RiskGatesMixin):
         self.state.open_risk_all_regimes.clear()
         self._save_state()
 
-    def record_trade_result(self, symbol: str, regime: str, pnl: float, risk_taken: float) -> None:
+    def record_trade_result(
+        self,
+        symbol: str,
+        regime: str,
+        pnl: float,
+        risk_taken: float,
+        *,
+        trade_mode: str | None = None,
+        pnl_provenance: PnlProvenance | None = None,
+    ) -> None:
+        """Accumulate daily PnL for risk gates. REAL ignores non-broker-reconciled PnL (fail-closed)."""
+        tm = str(trade_mode or "").strip().lower()
+        if tm == "real" and pnl_provenance != PnlProvenance.BROKER_RECONCILED:
+            logger.error(
+                "REAL mode: skipping record_trade_result — PnL must be %s (got %r)",
+                PnlProvenance.BROKER_RECONCILED,
+                pnl_provenance,
+            )
+            return
         self.state.daily_pnl += pnl
         self.state.trade_history.append(
             {

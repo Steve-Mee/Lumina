@@ -163,15 +163,22 @@ class MetricsCollector:
         sub_error_total = self._sum_metric(snapshot, "lumina_blackboard_subscription_error_total")
 
         blackboard = getattr(self.engine, "blackboard", None)
+        event_bus = getattr(self.engine, "event_bus", None)
         meta_agent = getattr(self.engine, "meta_agent_orchestrator", None)
-        execution_event = (
-            blackboard.latest("execution.aggregate")
-            if (blackboard is not None and hasattr(blackboard, "latest"))
-            else None
-        )
+        from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+
+        execution_event = None
+        if event_bus is not None and hasattr(event_bus, "latest"):
+            execution_event = event_bus.latest(TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC)
         has_execution_event = execution_event is not None
-        latest_conf = float(getattr(execution_event, "confidence", 0.0) or 0.0) if execution_event is not None else 0.0
-        latest_seq = int(getattr(execution_event, "sequence", 0) or 0) if execution_event is not None else 0
+        payload = (
+            execution_event.payload
+            if execution_event is not None and isinstance(getattr(execution_event, "payload", None), dict)
+            else {}
+        )
+        latest_conf = float(payload.get("confidence", payload.get("confluence_score", 0.0)) or 0.0)
+        meta = getattr(execution_event, "metadata", {}) or {} if execution_event is not None else {}
+        latest_seq = int(meta.get("sequence", 0) or 0) if execution_event is not None else 0
         status, status_color, reason = self._classify_blackboard_health(
             blackboard_enabled=blackboard is not None,
             meta_enabled=meta_agent is not None,

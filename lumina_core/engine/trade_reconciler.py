@@ -19,6 +19,8 @@ from lumina_core.audit import get_audit_logger
 from .errors import format_error_code
 from .lumina_engine import LuminaEngine
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
+
+from lumina_core.engine.economic_pnl_service import EconomicPnLService
 from .valuation_engine import ValuationEngine
 
 logger = logging.getLogger(__name__)
@@ -372,7 +374,7 @@ class TradeReconciler:
                 continue
             age = (now - pending.detected_ts).total_seconds()
             if age >= timeout_seconds:
-                self._finalize_pending_close(pending, fill=None, status="timeout_snapshot")
+                self._finalize_pending_close(pending, fill=None, status="timeout_no_broker_fill")
             else:
                 kept.append(pending)
         self._set_pending_closes(kept)
@@ -449,27 +451,58 @@ class TradeReconciler:
             raw_payload={"fill_parts": [item.raw_payload for item in fill_bundle], "fill_ids": fill_ids},
         )
 
-    def _finalize_pending_close(self, pending: PendingTradeClose, fill: FillEvent | None, status: str) -> None:
+    def _finalize_pending_close_observability_only(self, pending: PendingTradeClose, *, status: str) -> None:
+        """Timeout or other path with no broker fill: audit only — no economic PnL or external trade publish."""
         app = self._app()
-        use_real_fill = bool(self.engine.config.use_real_fill_for_pnl)
-        final_exit = float(fill.price) if fill is not None and use_real_fill else float(pending.detected_exit_price)
-        quantity = int(fill.quantity) if fill is not None and fill.quantity else int(pending.quantity)
-        commission = float(fill.commission) if fill is not None else 0.0
+        app.logger.warning(
+            "FILL_RECONCILE_OBSERVABILITY,"
+            f"id={pending.reconciliation_id},symbol={pending.symbol},status={status},"
+            "reason=no_broker_confirmed_fill_economic_ledger_not_updated"
+        )
+        self._append_audit_event(
+            {
+                "event": "reconciliation_no_broker_fill",
+                "reconciliation_id": pending.reconciliation_id,
+                "symbol": pending.symbol,
+                "status": status,
+                "expected_pnl_non_authoritative": float(pending.expected_pnl),
+                "detected_exit_price": float(pending.detected_exit_price),
+                "entry_price": float(pending.entry_price),
+                "quantity": int(pending.quantity),
+                "note": "Pending snapshot fields are observability only; no league push without fill.",
+            }
+        )
+        self._update_status(
+            status="timeout_awaiting_broker_fill",
+            last_reconciled_trade={
+                "symbol": pending.symbol,
+                "status": status,
+                "economic_ledger_applied": False,
+            },
+        )
+
+    def _finalize_pending_close(self, pending: PendingTradeClose, fill: FillEvent | None, status: str) -> None:
+        if fill is None:
+            self._finalize_pending_close_observability_only(pending, status=status)
+            return
+
+        app = self._app()
+        final_exit = float(fill.price)
+        fill_qty = int(getattr(fill, "quantity", 0) or 0)
+        quantity = fill_qty if fill_qty > 0 else int(pending.quantity)
+        commission = float(fill.commission)
         symbol = str(pending.symbol or self.engine.config.instrument)
-        if use_real_fill:
-            signed_side = 1 if pending.signal == "BUY" else -1
-            gross = self.valuation_engine.pnl_dollars(
-                symbol=symbol,
-                entry_price=float(pending.entry_price),
-                exit_price=float(final_exit),
-                side=signed_side,
-                quantity=quantity,
-            )
-            final_pnl = gross - commission
-        else:
-            final_pnl = float(pending.expected_pnl)
-        tick_size = self.valuation_engine.tick_size(symbol)
-        slippage_points = float((final_exit - pending.detected_exit_price) / max(tick_size, 1e-9))
+        ledger = EconomicPnLService(self.valuation_engine).realized_close_from_broker_fill(
+            symbol=symbol,
+            entry_price=float(pending.entry_price),
+            exit_fill_price=final_exit,
+            position_signal=str(pending.signal),
+            quantity=quantity,
+            exit_commission=commission,
+            reference_price_for_slippage_ticks=float(pending.detected_exit_price),
+        )
+        final_pnl = float(ledger.realized_net)
+        slippage_points = float(ledger.slippage_points_vs_reference)
         observed_latency_ms = max(0.0, (datetime.now(timezone.utc) - pending.detected_ts).total_seconds() * 1000.0)
         est_latency_ms = self.valuation_engine.estimate_fill_latency_ms(
             volume=max(1.0, float(quantity)),
@@ -483,11 +516,11 @@ class TradeReconciler:
 
         reconciliation_meta = {
             "status": status,
-            "broker_fill_id": fill.fill_id if fill is not None else pending.reconciliation_id,
+            "broker_fill_id": fill.fill_id,
             "commission": round(commission, 4),
             "slippage_points": round(slippage_points, 4),
             "fill_latency_ms": round(fill_latency_ms, 2),
-            "use_real_fill_for_pnl": use_real_fill,
+            "economic_ledger_source": "broker_confirmed_fill",
             "detected_exit_price": round(float(pending.detected_exit_price), 4),
             "final_exit_price": round(float(final_exit), 4),
         }

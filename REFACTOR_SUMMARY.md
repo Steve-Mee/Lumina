@@ -104,7 +104,7 @@ Status: COMPLETE
 Scope: stochastic execution costs, VaR/ES tail-risk controls, fail-closed REAL guardrails
 
 ### Files Updated
-- `lumina_core/rl_environment.py`
+- `lumina_core/rl/` (Gym RL environment; was `rl_environment.py`)
 - `lumina_core/ppo_trainer.py`
 - `lumina_core/engine/risk_controller.py`
 - `lumina_core/order_gatekeeper.py`

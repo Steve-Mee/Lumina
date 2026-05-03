@@ -317,8 +317,8 @@ class MultiDaySimRunner:
             if shadow_mode:
                 hypothetical_fills = list(backtest.get("fills", []) or [])
         elif real_market_data and real_ticks:
-            # Use real tick data to calculate PnL
-            pnl_values = self._calculate_real_pnl(real_ticks, days, baseline_equity, variant, rng)
+            # Tick-bar proxy daily PnL (not broker economic_pnl)
+            pnl_values = self._calculate_tick_proxy_daily_pnl(real_ticks, days, baseline_equity, variant, rng)
             for day_idx, day_pnl in enumerate(pnl_values):
                 day_dd_ratio = max(0.0, base_drawdown_abs * (1.0 + rng.uniform(-0.1, 0.1)) / baseline_equity)
                 max_drawdown_ratio = max(max_drawdown_ratio, day_dd_ratio)
@@ -399,7 +399,7 @@ class MultiDaySimRunner:
             hypothetical_fills=hypothetical_fills if shadow_mode else None,
         )
 
-    def _calculate_real_pnl(
+    def _calculate_tick_proxy_daily_pnl(
         self,
         ticks: list[dict[str, Any]],
         target_days: int,
@@ -407,7 +407,10 @@ class MultiDaySimRunner:
         variant: PolicyDNA,
         rng: random.Random,
     ) -> list[float]:
-        """Calculate daily PnL from real tick data with variant-specific win rate."""
+        """Heuristic daily PnL from historical tick bars (evolution / shadow SIM).
+
+        Not broker-confirmed ``economic_pnl``; uses intraday range heuristics only.
+        """
         pnl_values: list[float] = []
         if not ticks:
             return pnl_values

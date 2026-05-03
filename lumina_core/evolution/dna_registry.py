@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.state.state_manager import safe_append_jsonl, safe_sqlite_connect
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 
 def _utcnow() -> str:
@@ -309,17 +310,26 @@ class DNARegistry:
         self,
         blackboard: Any,
         *,
+        event_bus: Any | None = None,
         prompt_id: str = "blackboard_snapshot",
         version: str = "blackboard_bootstrap",
         fitness_score: float = 0.0,
     ) -> PolicyDNA | None:
-        if blackboard is None or not hasattr(blackboard, "latest"):
+        bb_ok = blackboard is not None and hasattr(blackboard, "latest")
+        eb_ok = event_bus is not None and hasattr(event_bus, "latest")
+        if not bb_ok and not eb_ok:
             return None
         snapshot: dict[str, Any] = {}
         lineage_parts: list[str] = []
-        for topic in ("meta.reflection", "meta.hyperparameters", "agent.meta.proposal", "execution.aggregate"):
+        exec_topic = TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+        for topic in ("meta.reflection", "meta.hyperparameters", "agent.meta.proposal", exec_topic):
+            event = None
             try:
-                event = blackboard.latest(topic)
+                if topic == exec_topic:
+                    if eb_ok:
+                        event = event_bus.latest(exec_topic)
+                elif bb_ok:
+                    event = blackboard.latest(topic)
             except Exception:
                 logging.exception("Unhandled broad exception fallback in lumina_core/evolution/dna_registry.py:319")
                 event = None
@@ -327,7 +337,12 @@ class DNARegistry:
                 continue
             payload = getattr(event, "payload", {}) if isinstance(getattr(event, "payload", {}), dict) else {}
             snapshot[topic] = payload
-            lineage_parts.append(str(getattr(event, "event_hash", "GENESIS") or "GENESIS"))
+            ev_hash = getattr(event, "event_hash", None)
+            if not ev_hash and hasattr(event, "to_dict"):
+                ev_hash = hashlib.sha256(
+                    json.dumps(event.to_dict(), sort_keys=True, default=str).encode("utf-8")
+                ).hexdigest()
+            lineage_parts.append(str(ev_hash or "GENESIS"))
         if not snapshot:
             return None
         lineage_hash = (

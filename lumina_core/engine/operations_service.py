@@ -333,7 +333,7 @@ class OperationsService:
                     regime=str(self.engine.get_current_dream_snapshot().get("regime", "NEUTRAL")),
                     slippage_scale=1.0,
                 )
-                expected_fill = self.valuation_engine.apply_entry_fill(
+                hypothetical_fill_obs = self.valuation_engine.apply_entry_fill(
                     symbol=self.engine.config.instrument,
                     price=float(current_price),
                     side=side,
@@ -345,8 +345,17 @@ class OperationsService:
                     pending_age=1,
                     regime=str(self.engine.get_current_dream_snapshot().get("regime", "NEUTRAL")),
                 )
+                fill_px = float(getattr(result, "fill_price", 0.0) or 0.0)
+                fill_qty = int(getattr(result, "filled_qty", 0) or 0)
+                brk = broker
+                if fill_px <= 0.0:
+                    lf_fn = getattr(brk, "last_fill_for_symbol", None)
+                    lf = lf_fn(str(self.engine.config.instrument)) if callable(lf_fn) else None
+                    if lf is not None:
+                        fill_px = float(lf.price)
+                        fill_qty = max(fill_qty, int(lf.quantity))
                 self.engine.live_position_qty = int(signed_qty)
-                self.engine.last_entry_price = float(expected_fill)
+                self.engine.last_entry_price = float(fill_px) if fill_px > 0.0 else 0.0
                 self.engine.live_trade_signal = action.upper()
                 self.engine.last_realized_pnl_snapshot = float(self.engine.realized_pnl_today)
 
@@ -356,7 +365,9 @@ class OperationsService:
                     mode=trade_mode.upper(),
                     action=str(action).upper(),
                     qty=int(qty),
-                    expected_fill=round(expected_fill, 4),
+                    broker_fill_price=round(fill_px, 4) if fill_px > 0.0 else None,
+                    filled_qty_reported=int(fill_qty),
+                    hypothetical_fill_observability=round(float(hypothetical_fill_obs), 4),
                     est_latency_ms=round(est_latency_ms, 1),
                 )
                 return True

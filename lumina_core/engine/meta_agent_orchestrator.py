@@ -12,6 +12,7 @@ from lumina_core.evolution.simulator_data_support import (
 )
 
 from .agent_blackboard import AgentBlackboard
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 from lumina_core.evolution.self_evolution_meta_agent import SelfEvolutionMetaAgent
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class MetaAgentOrchestrator:
 
     blackboard: AgentBlackboard
     self_evolution_agent: SelfEvolutionMetaAgent
+    event_bus: Any | None = None
     ppo_trainer: Any | None = None
     bible_engine: Any | None = None
 
@@ -152,8 +154,18 @@ class MetaAgentOrchestrator:
         }
 
     def _build_24h_reflection(self, *, nightly_report: dict[str, Any]) -> dict[str, Any]:
-        events = self.blackboard.history("execution.aggregate", limit=2000, within_hours=24)
-        confidences = [float(e.confidence) for e in events]
+        if self.event_bus is not None and hasattr(self.event_bus, "history_within_hours"):
+            events = self.event_bus.history_within_hours(
+                TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+                within_hours=24,
+                limit=2000,
+            )
+        else:
+            events = []
+        confidences: list[float] = []
+        for e in events:
+            payload = e.payload if isinstance(getattr(e, "payload", None), dict) else {}
+            confidences.append(float(payload.get("confidence", payload.get("confluence_score", 0.0)) or 0.0))
         aggregate_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
         wins = 0

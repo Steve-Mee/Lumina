@@ -290,7 +290,7 @@ class HumanAnalysisService:
                         and getattr(self.engine, "rl_policy_model", None) is not None
                     ):
                         try:
-                            from lumina_core.rl_environment import RLTradingEnvironment
+                            from lumina_core.rl import RLTradingEnvironment
 
                             raw_records = self.engine.ohlc_1min.tail(2500).to_dict("records")
                             records = cast(list[dict[str, Any]], raw_records)

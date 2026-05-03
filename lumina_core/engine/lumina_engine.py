@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     pass
 
 from lumina_bible import BibleEngine
-from lumina_core.agent_orchestration.engine_bindings import bind_engine_blackboard
+from lumina_core.agent_orchestration.engine_bindings import bind_engine_blackboard, bind_engine_event_bus
 from lumina_core.monitoring.runtime_counters import RuntimeCounters
 from lumina_core.ports.engine_service_ports import EngineServicePorts
 from lumina_core.risk.final_arbitration import is_strict_arbitration_mode
@@ -96,10 +96,12 @@ class LuminaEngine:
     final_arbitration: Any | None = None
     dynamic_kelly_estimator: Any | None = None
     blackboard: Any | None = None
+    event_bus: Any | None = None
     infinite_sim_last_run_date: str | None = None
     emotional_twin_last_train_date: str | None = None
     last_validation: datetime | None = None
     blackboard_tokens: list[str] = field(default_factory=list)
+    event_bus_tokens: list[str] = field(default_factory=list)
     economic_truth: EconomicTruth = field(default_factory=EconomicTruth)
     mode_risk_profile: dict[str, float] = field(default_factory=dict)
     dream_state_manager: DreamStateManager | None = None
@@ -304,6 +306,11 @@ class LuminaEngine:
         if self.dream_state_manager is None:
             return self.dream_state.snapshot()
         return self.dream_state_manager.snapshot()
+
+    def bind_event_bus(self, event_bus: Any) -> None:
+        """Subscribe engine to typed EventBus topics (execution aggregate, etc.)."""
+        self.event_bus = event_bus
+        self.event_bus_tokens = bind_engine_event_bus(self, event_bus)
 
     def bind_blackboard(self, blackboard: Any) -> None:
         """Bind engine consumers to blackboard topics and enforce REAL safety gates."""

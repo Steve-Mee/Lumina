@@ -96,15 +96,16 @@ class PromotionPolicy:
                 }
             stress_report = StressSuiteRunner().build_report(metrics_realism)
 
-        live_pnl_samples = self._as_float_list(record.get("daily_pnl", []))
-        if not live_pnl_samples:
-            live_pnl_samples = [float(record.get("shadow_total_pnl", 0.0) or 0.0)]
+        # Shadow / sim promotion evidence — not broker-confirmed economic_pnl.
+        shadow_daily_pnl_samples = self._as_float_list(record.get("daily_pnl", []))
+        if not shadow_daily_pnl_samples:
+            shadow_daily_pnl_samples = [float(record.get("shadow_total_pnl", 0.0) or 0.0)]
 
         backtest_pnl_samples = self._as_float_list(report.get("backtest_pnl_samples", []))
         if not backtest_pnl_samples:
             baseline = float(report.get("net_pnl", 0.0) or 0.0)
             # Fail-closed behavior remains in PromotionGate (insufficient samples fail).
-            backtest_pnl_samples = [baseline] * max(1, len(live_pnl_samples))
+            backtest_pnl_samples = [baseline] * max(1, len(shadow_daily_pnl_samples))
 
         cv_combinatorial = dict(report.get("combinatorial_purged_cv", {}) or {})
         cv_walk_forward = dict(report.get("purged_walk_forward", {}) or {})
@@ -115,7 +116,7 @@ class PromotionPolicy:
             cv_walk_forward=cv_walk_forward,
             reality_gap_stats=reality_gap_stats,
             stress_report=stress_report,
-            live_pnl_samples=live_pnl_samples,
+            live_pnl_samples=shadow_daily_pnl_samples,
             backtest_pnl_samples=backtest_pnl_samples,
             min_sample_trades=int(report.get("min_sample_trades", 30) or 30),
             starting_equity=float(report.get("account_equity", 50_000.0) or 50_000.0),

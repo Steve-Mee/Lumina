@@ -11,14 +11,62 @@ from lumina_core.runtime_context import RuntimeContext
 from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
 from lumina_core.broker.broker_bridge import Order
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
+from lumina_core import trade_workers
+from lumina_core.engine.economic_pnl_service import EconomicPnLService
+from lumina_core.risk.pnl_provenance import PnlProvenance
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.engine.rl_guardrails import RLGuardrailLayer
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.logging_utils import log_runtime_trace, runtime_trace_enabled
 from lumina_core.runtime_trade_gates import apply_hard_risk_controller_to_signal
+from lumina_core.agent_orchestration.schemas import (
+    TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+    TradingEngineExecutionAggregate,
+    filter_payload_for_execution_aggregate,
+)
 
 TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
 _RL_GUARDRAIL = RLGuardrailLayer()
+
+
+def _paper_instrument(app: RuntimeContext) -> str:
+    return str(getattr(app, "INSTRUMENT", app.engine.config.instrument))
+
+
+def _paper_sync_sim_from_broker(app: RuntimeContext, broker: object, instrument: str) -> None:
+    """Position and entry avg from broker-confirmed state (paper ledger)."""
+    get_positions = getattr(broker, "get_positions", None)
+    if not callable(get_positions):
+        return
+    inst = str(instrument).strip()
+    positions = get_positions()
+    pos = next((p for p in positions if str(getattr(p, "symbol", "")).strip() == inst), None)
+    if pos is None or int(getattr(pos, "quantity", 0) or 0) == 0:
+        app.sim_position_qty = 0
+        app.sim_entry_price = 0.0
+        app.engine.live_position_qty = 0
+        app.engine.last_entry_price = 0.0
+        return
+    app.sim_position_qty = int(pos.quantity)
+    app.sim_entry_price = float(pos.avg_price)
+    app.engine.live_position_qty = int(pos.quantity)
+    app.engine.last_entry_price = float(pos.avg_price)
+
+
+def _paper_store_round_ledger_from_last_fill(app: RuntimeContext, broker: object, instrument: str, open_signal: str) -> None:
+    fn = getattr(broker, "last_fill_for_symbol", None)
+    lf = fn(instrument) if callable(fn) else None
+    if lf is None:
+        return
+    setattr(app.engine, "paper_ledger_open_side", str(open_signal).upper())
+    setattr(app.engine, "paper_ledger_entry_fill_price", float(lf.price))
+    setattr(app.engine, "paper_ledger_entry_commission", float(lf.commission))
+
+
+def _paper_clear_round_ledger(app: RuntimeContext) -> None:
+    for key in ("paper_ledger_open_side", "paper_ledger_entry_fill_price", "paper_ledger_entry_commission"):
+        if hasattr(app.engine, key):
+            delattr(app.engine, key)
 
 
 def _push_trader_league_trade(
@@ -456,14 +504,18 @@ Return JSON only with: signal, confidence, stop, target, reason, why_no_trade, c
                 if twin is not None and hasattr(twin, "apply_correction"):
                     dream_json = twin.apply_correction(dream_json)
 
-                blackboard = getattr(app, "blackboard", None)
                 aggregate_confidence = float(max(min(dream_json.get("confluence_score", 0.0) or 0.0, 1.0), 0.0))
-                if blackboard is not None and hasattr(blackboard, "publish_sync"):
-                    blackboard.publish_sync(
-                        topic="execution.aggregate",
+                dream_json["confluence_score"] = aggregate_confidence
+                if dream_json.get("confidence") is None:
+                    dream_json["confidence"] = aggregate_confidence
+                event_bus = getattr(getattr(app, "engine", None), "event_bus", None)
+                if event_bus is not None and hasattr(event_bus, "publish"):
+                    filtered = filter_payload_for_execution_aggregate(dict(dream_json))
+                    TradingEngineExecutionAggregate.model_validate(filtered)
+                    event_bus.publish(
+                        topic=TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
                         producer="runtime_workers.pre_dream_daemon",
-                        payload=dict(dream_json),
-                        confidence=aggregate_confidence,
+                        payload=filtered,
                     )
                 else:
                     app.set_current_dream_fields(dream_json)
@@ -1009,7 +1061,6 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
                 qty = 0
                 continue
             qty = max(1, int(qty * max(0.1, qty_multiplier)))
-            side = 1 if signal == "BUY" else -1
 
             if runtime_trace_enabled():
                 log_runtime_trace(
@@ -1027,10 +1078,11 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
                     container = getattr(app, "container", None)
                     broker = getattr(container, "broker", None) if container is not None else None
                     submit_ok = True
+                    inst = _paper_instrument(app)
                     if broker is not None:
                         submit_result = broker.submit_order(
                             Order(
-                                symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                                symbol=inst,
                                 side=str(signal).upper(),
                                 quantity=int(qty),
                                 order_type="MARKET",
@@ -1041,29 +1093,18 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
                         )
                         submit_ok = bool(getattr(submit_result, "accepted", False))
 
-                    if submit_ok:
-                        app.sim_position_qty = qty if signal == "BUY" else -qty
-                        est_slip_ticks = valuation_engine.slippage_ticks(
-                            volume=1.0,
-                            avg_volume=1.0,
-                            regime=str(regime),
-                            slippage_scale=1.0,
-                        )
-                        app.sim_entry_price = valuation_engine.apply_entry_fill(
-                            symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
-                            price=float(price),
-                            side=side,
-                            slippage_ticks=est_slip_ticks,
-                        )
+                    if submit_ok and broker is not None:
+                        _paper_sync_sim_from_broker(app, broker, inst)
+                        _paper_store_round_ledger_from_last_fill(app, broker, inst, str(signal))
                         log_structured(
                             LuminaError(
                                 severity=ErrorSeverity.RECOVERABLE_LEARNING,
                                 code="INFO_PRINT_LEGACY",
-                                message=f"📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (adaptive risk)",
+                                message=f"📍 PAPER {signal} {qty}x @ {app.sim_entry_price:.2f} (broker fill / golden ledger)",
                                 context={"mode": "paper", "signal": signal, "qty": qty},
                             )
                         )
-                    else:
+                    elif not submit_ok:
                         app.logger.warning("Paper broker rejected simulated order")
             else:
                 if app.place_order(signal, qty):
@@ -1099,140 +1140,210 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
             )
 
             if hit_stop or hit_target:
-                pnl_dollars = valuation_engine.pnl_dollars(
-                    symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
-                    entry_price=float(app.sim_entry_price),
-                    exit_price=float(price),
-                    side=1 if app.sim_position_qty > 0 else -1,
-                    quantity=abs(int(app.sim_position_qty)),
-                )
-                app.pnl_history.append(pnl_dollars)
-                app.equity_curve.append(app.equity_curve[-1] + pnl_dollars)
-                if app.equity_curve[-1] > app.sim_peak:
-                    app.sim_peak = app.equity_curve[-1]
-
-                app.trade_log.append(
-                    {
-                        "ts": now.isoformat(),
-                        "signal": dream_snapshot.get("signal"),
-                        "entry": app.sim_entry_price,
-                        "exit": price,
-                        "qty": app.sim_position_qty,
-                        "pnl": pnl_dollars,
-                        "confluence": dream_snapshot.get("confluence_score", 0),
-                    }
-                )
-
-                app.reflect_on_trade(pnl_dollars, app.sim_entry_price, price, abs(app.sim_position_qty))
-
-                regime = dream_snapshot.get("regime", "NEUTRAL")
-                app.update_performance_log(
-                    {
-                        "signal": dream_snapshot.get("signal"),
-                        "chosen_strategy": dream_snapshot.get("chosen_strategy"),
-                        "regime": regime,
-                        "confluence": dream_snapshot.get("confluence_score", 0),
-                        "pnl": pnl_dollars,
-                        "drawdown": (app.sim_peak - app.equity_curve[-1]) / app.sim_peak if app.sim_peak else 0,
-                    }
-                )
-
-                publish_fn = getattr(app, "publish_traderleague_trade_close", None)
-                if callable(publish_fn):
-                    try:
-                        latest_reflection = ""
-                        if getattr(app, "trade_reflection_history", None):
-                            latest_reflection = str(app.trade_reflection_history[-1].get("reflection", ""))
-                        publish_fn(
-                            symbol=str(getattr(app, "INSTRUMENT", getattr(app.engine.config, "instrument", "MES"))),
-                            entry_price=float(app.sim_entry_price),
-                            exit_price=float(price),
-                            quantity=int(abs(app.sim_position_qty)),
-                            pnl=float(pnl_dollars),
-                            reflection=latest_reflection,
-                            chart_snapshot_url=str(getattr(app, "current_live_chart_file", "") or ""),
-                        )
-                    except Exception as exc:
-                        err = LuminaError(
-                            severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                            code="RUNTIME_LEAGUE_014",
-                            message=str(exc),
-                            context={"traceback": traceback.format_exc()},
-                        )
-                        log_structured(err)
-                        app.logger.error(f"TraderLeague publish error: {exc}")
-
-                if swarm_manager is not None and hasattr(swarm_manager, "register_trade_result"):
-                    try:
-                        symbol = getattr(app, "INSTRUMENT", app.engine.config.instrument)
-                        swarm_manager.register_trade_result(symbol, pnl_dollars)
-                    except Exception as exc:
-                        err = LuminaError(
-                            severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
-                            code="RUNTIME_SWARM_015",
-                            message=str(exc),
-                            context={"traceback": traceback.format_exc()},
-                        )
-                        log_structured(err)
-                        app.logger.error(f"Swarm trade register error: {exc}")
-
+                inst = _paper_instrument(app)
+                sym_ve = str(inst)
+                exit_fill_price = float(price)
+                pnl_dollars = 0.0
+                close_handled = False
+                pnl_provenance_for_risk = PnlProvenance.SIM_INTERNAL
+                closed_qty = abs(int(app.sim_position_qty))
+                signed_qty_snap = int(app.sim_position_qty)
+                entry_snap = float(app.sim_entry_price)
                 if app.engine.config.trade_mode == "paper":
-                    reflection_payload = {}
-                    chart_payload = None
-                    _push_trader_league_trade(
-                        app,
-                        mode=app.engine.config.trade_mode,
-                        symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
-                        signal=str(dream_snapshot.get("signal")),
-                        entry_price=float(app.sim_entry_price),
-                        exit_price=float(price),
-                        qty=int(abs(app.sim_position_qty)),
-                        pnl_dollars=float(pnl_dollars),
-                        reflection=reflection_payload,
-                        chart_base64=chart_payload,
-                    )
-
-                app.sim_position_qty = 0
-                app.sim_entry_price = 0.0
-                log_structured(
-                    LuminaError(
-                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                        code="INFO_PRINT_LEGACY",
-                        message=f"🎯 TRADE CLOSED → {'WIN' if pnl_dollars > 0 else 'LOSS'} ${pnl_dollars:.0f}",
-                        context={"pnl": pnl_dollars, "mode": app.engine.config.trade_mode},
-                    )
-                )
-
-                # Immediate post-trade reflection via RealisticBacktesterEngine
-                try:
-                    with app.live_data_lock:
-                        bt_snapshot = app.ohlc_1min.tail(500).copy()
-                    if len(bt_snapshot) >= 60:
-                        bt_result = app.engine.backtester.run_backtest_on_snapshot(bt_snapshot)
-                        app.log_thought(
-                            {"type": "trade_reflection_backtest", "pnl": pnl_dollars, "backtest": bt_result}
-                        )
-                        log_structured(
-                            LuminaError(
-                                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                                code="INFO_PRINT_LEGACY",
-                                message=(
-                                    f"🔬 POST-TRADE BACKTEST → "
-                                    f"Sharpe {bt_result['sharpe']:.2f} | WR {bt_result['winrate']:.1%} | "
-                                    f"MaxDD {bt_result['maxdd']:.1f}% | AvgPnL ${bt_result['avg_pnl']:.1f}"
-                                ),
-                                context={"pnl": pnl_dollars, "backtest": bt_result},
+                    container = getattr(app, "container", None)
+                    broker = getattr(container, "broker", None) if container is not None else None
+                    if broker is not None:
+                        close_side = "SELL" if app.sim_position_qty > 0 else "BUY"
+                        absq = closed_qty
+                        cr = broker.submit_order(
+                            Order(
+                                symbol=inst,
+                                side=close_side,
+                                quantity=int(absq),
+                                order_type="MARKET",
+                                stop_loss=float(dream_snapshot.get("stop", 0.0) or 0.0),
+                                take_profit=float(dream_snapshot.get("target", 0.0) or 0.0),
+                                metadata={"regime": str(dream_snapshot.get("regime", "NEUTRAL"))},
                             )
                         )
-                except Exception as exc:
-                    err = LuminaError(
-                        severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                        code="RUNTIME_BACKTEST_016",
-                        message=str(exc),
-                        context={"traceback": traceback.format_exc()},
+                        if cr.accepted:
+                            fn = getattr(broker, "last_fill_for_symbol", None)
+                            exit_lf = fn(inst) if callable(fn) else None
+                            entry_px = float(
+                                getattr(app.engine, "paper_ledger_entry_fill_price", app.sim_entry_price) or 0.0
+                            )
+                            entry_comm = float(getattr(app.engine, "paper_ledger_entry_commission", 0.0) or 0.0)
+                            open_side = str(
+                                getattr(
+                                    app.engine,
+                                    "paper_ledger_open_side",
+                                    "BUY" if signed_qty_snap > 0 else "SELL",
+                                )
+                            )
+                            if exit_lf is not None and absq > 0 and entry_px > 0:
+                                pnl_dollars = EconomicPnLService(valuation_engine).round_turn_realized_usd_from_broker_fills(
+                                    symbol=sym_ve,
+                                    entry_fill_price=entry_px,
+                                    exit_fill_price=float(exit_lf.price),
+                                    open_side=open_side,
+                                    quantity=int(absq),
+                                    entry_commission=entry_comm,
+                                    exit_commission=float(exit_lf.commission),
+                                )
+                                pnl_provenance_for_risk = PnlProvenance.BROKER_RECONCILED
+                                exit_fill_price = float(exit_lf.price)
+                            _paper_sync_sim_from_broker(app, broker, inst)
+                            _paper_clear_round_ledger(app)
+                            close_handled = True
+                        else:
+                            app.logger.warning("Paper broker rejected closing order; no synthetic PnL applied")
+                else:
+                    pnl_dollars = valuation_engine.pnl_dollars(
+                        symbol=sym_ve,
+                        entry_price=float(app.sim_entry_price),
+                        exit_price=float(price),
+                        side=1 if app.sim_position_qty > 0 else -1,
+                        quantity=abs(int(app.sim_position_qty)),
                     )
-                    log_structured(err)
-                    app.logger.error(f"Post-trade backtest error: {exc}")
+                    close_handled = True
+
+                if close_handled:
+                    app.pnl_history.append(pnl_dollars)
+                    app.equity_curve.append(app.equity_curve[-1] + pnl_dollars)
+                    if app.equity_curve[-1] > app.sim_peak:
+                        app.sim_peak = app.equity_curve[-1]
+
+                    app.trade_log.append(
+                        {
+                            "ts": now.isoformat(),
+                            "signal": dream_snapshot.get("signal"),
+                            "entry": entry_snap,
+                            "exit": exit_fill_price,
+                            "qty": signed_qty_snap,
+                            "pnl": pnl_dollars,
+                            "confluence": dream_snapshot.get("confluence_score", 0),
+                        }
+                    )
+
+                    trade_workers.reflect_on_trade(
+                        app,
+                        pnl_dollars,
+                        entry_snap,
+                        exit_fill_price,
+                        closed_qty,
+                        pnl_provenance=pnl_provenance_for_risk,
+                    )
+
+                    regime = dream_snapshot.get("regime", "NEUTRAL")
+                    app.update_performance_log(
+                        {
+                            "signal": dream_snapshot.get("signal"),
+                            "chosen_strategy": dream_snapshot.get("chosen_strategy"),
+                            "regime": regime,
+                            "confluence": dream_snapshot.get("confluence_score", 0),
+                            "pnl": pnl_dollars,
+                            "drawdown": (app.sim_peak - app.equity_curve[-1]) / app.sim_peak if app.sim_peak else 0,
+                        }
+                    )
+
+                    publish_fn = getattr(app, "publish_traderleague_trade_close", None)
+                    if callable(publish_fn):
+                        try:
+                            latest_reflection = ""
+                            if getattr(app, "trade_reflection_history", None):
+                                latest_reflection = str(app.trade_reflection_history[-1].get("reflection", ""))
+                            publish_fn(
+                                symbol=str(
+                                    getattr(app, "INSTRUMENT", getattr(app.engine.config, "instrument", "MES"))
+                                ),
+                                entry_price=float(entry_snap),
+                                exit_price=float(exit_fill_price),
+                                quantity=int(closed_qty),
+                                pnl=float(pnl_dollars),
+                                reflection=latest_reflection,
+                                chart_snapshot_url=str(getattr(app, "current_live_chart_file", "") or ""),
+                            )
+                        except Exception as exc:
+                            err = LuminaError(
+                                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
+                                code="RUNTIME_LEAGUE_014",
+                                message=str(exc),
+                                context={"traceback": traceback.format_exc()},
+                            )
+                            log_structured(err)
+                            app.logger.error(f"TraderLeague publish error: {exc}")
+
+                    if swarm_manager is not None and hasattr(swarm_manager, "register_trade_result"):
+                        try:
+                            symbol = getattr(app, "INSTRUMENT", app.engine.config.instrument)
+                            swarm_manager.register_trade_result(symbol, pnl_dollars)
+                        except Exception as exc:
+                            err = LuminaError(
+                                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
+                                code="RUNTIME_SWARM_015",
+                                message=str(exc),
+                                context={"traceback": traceback.format_exc()},
+                            )
+                            log_structured(err)
+                            app.logger.error(f"Swarm trade register error: {exc}")
+
+                    if app.engine.config.trade_mode == "paper":
+                        reflection_payload = {}
+                        chart_payload = None
+                        _push_trader_league_trade(
+                            app,
+                            mode=app.engine.config.trade_mode,
+                            symbol=str(getattr(app, "INSTRUMENT", app.engine.config.instrument)),
+                            signal=str(dream_snapshot.get("signal")),
+                            entry_price=float(entry_snap),
+                            exit_price=float(exit_fill_price),
+                            qty=int(closed_qty),
+                            pnl_dollars=float(pnl_dollars),
+                            reflection=reflection_payload,
+                            chart_base64=chart_payload,
+                        )
+
+                    if app.engine.config.trade_mode != "paper":
+                        app.sim_position_qty = 0
+                        app.sim_entry_price = 0.0
+                    log_structured(
+                        LuminaError(
+                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                            code="INFO_PRINT_LEGACY",
+                            message=f"🎯 TRADE CLOSED → {'WIN' if pnl_dollars > 0 else 'LOSS'} ${pnl_dollars:.0f}",
+                            context={"pnl": pnl_dollars, "mode": app.engine.config.trade_mode},
+                        )
+                    )
+
+                    try:
+                        with app.live_data_lock:
+                            bt_snapshot = app.ohlc_1min.tail(500).copy()
+                        if len(bt_snapshot) >= 60:
+                            bt_result = app.engine.backtester.run_backtest_on_snapshot(bt_snapshot)
+                            app.log_thought(
+                                {"type": "trade_reflection_backtest", "pnl": pnl_dollars, "backtest": bt_result}
+                            )
+                            log_structured(
+                                LuminaError(
+                                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                                    code="INFO_PRINT_LEGACY",
+                                    message=(
+                                        f"🔬 POST-TRADE BACKTEST → "
+                                        f"Sharpe {bt_result['sharpe']:.2f} | WR {bt_result['winrate']:.1%} | "
+                                        f"MaxDD {bt_result['maxdd']:.1f}% | AvgPnL ${bt_result['avg_pnl']:.1f}"
+                                    ),
+                                    context={"pnl": pnl_dollars, "backtest": bt_result},
+                                )
+                            )
+                    except Exception as exc:
+                        err = LuminaError(
+                            severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                            code="RUNTIME_BACKTEST_016",
+                            message=str(exc),
+                            context={"traceback": traceback.format_exc()},
+                        )
+                        log_structured(err)
+                        app.logger.error(f"Post-trade backtest error: {exc}")
 
         if swarm_manager is not None and time.time() - swarm_last_dashboard >= 60:
             try:
