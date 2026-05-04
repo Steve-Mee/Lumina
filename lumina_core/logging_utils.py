@@ -54,7 +54,12 @@ def _fmt_trace_val(value: object) -> str:
 
 
 def log_runtime_trace(logger: logging.Logger, stage: str, **fields: object) -> None:
-    """Emit one CSV-safe INFO line when :func:`runtime_trace_enabled` is true."""
+    """Emit one CSV-safe INFO line when :func:`runtime_trace_enabled` is true.
+
+    Time contract: supervisor gates (hold, session) compare **Unix epoch seconds** (UTC
+    instant). ``hold_until_ts`` and ``now_epoch_s`` (when present) are directly comparable.
+    The host log ``asctime`` is local wall clock — use ``now_utc_iso`` for unambiguous correlation.
+    """
     if not runtime_trace_enabled():
         return
     interval = runtime_trace_interval_sec()

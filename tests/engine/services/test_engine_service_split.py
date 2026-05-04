@@ -9,6 +9,7 @@ from lumina_core.engine.dream_state import DreamState
 from lumina_core.engine.dream_state_manager import DreamStateManager
 from lumina_core.engine.execution_service import ExecutionService
 from lumina_core.engine.market_data_domain_service import MarketDataDomainService
+from lumina_core.engine.regime_detector import RegimeDetector as EngineRegimeDetector
 from lumina_core.engine.technical_analysis_service import TechnicalAnalysisService
 from lumina_core.risk.orchestration import RiskOrchestrator
 
@@ -99,6 +100,42 @@ def test_technical_analysis_service_fallback_regime_sets_snapshot() -> None:
     assert isinstance(regime, str)
     assert "label" in engine.current_regime_snapshot
     assert "adaptive_policy" in engine.current_regime_snapshot
+
+
+@pytest.mark.unit
+def test_technical_analysis_service_handles_nullable_ohlcv_with_engine_detector() -> None:
+    # gegeven
+    rows: list[dict[str, object]] = []
+    base = pd.Timestamp("2026-05-04 19:30:00+00:00")
+    for idx in range(90):
+        close = 5000.0 + idx * 0.12
+        rows.append(
+            {
+                "timestamp": (base + pd.Timedelta(minutes=idx)).isoformat(),
+                "open": close - 0.1 if idx % 8 else pd.NA,
+                "high": close + 0.3 if idx % 11 else pd.NA,
+                "low": close - 0.3 if idx % 13 else pd.NA,
+                "close": close if idx % 7 else pd.NA,
+                "volume": 1000.0 + idx if idx % 9 else pd.NA,
+            }
+        )
+    df = pd.DataFrame(rows, dtype="object")
+    engine = SimpleNamespace(
+        config=SimpleNamespace(instrument="MES JUN26", event_threshold=0.0025),
+        regime_detector=EngineRegimeDetector(),
+        current_regime_snapshot={},
+        cost_tracker={},
+        get_current_dream_snapshot=lambda: {"confluence_score": 0.7},
+    )
+    service = TechnicalAnalysisService(engine=engine)
+
+    # wanneer
+    regime = service.detect_market_regime(df)
+
+    # dan
+    assert isinstance(regime, str) and regime
+    assert engine.current_regime_snapshot.get("label") == regime
+    assert "adx" in dict(engine.current_regime_snapshot.get("features", {}))
 
 
 @pytest.mark.unit

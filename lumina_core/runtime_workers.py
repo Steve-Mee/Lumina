@@ -1013,6 +1013,7 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
 
         if runtime_trace_enabled():
             _now_ts = time.time()
+            _now_utc_iso = datetime.fromtimestamp(_now_ts, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
             _hut = float(hold_until_ts or 0.0)
             _hold_rem = max(0.0, _hut - _now_ts) if _hut > 0.0 else 0.0
             _hold_iso = ""
@@ -1040,6 +1041,8 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
                 hold_until_utc=_hold_iso,
                 hold_sec_remaining=round(_hold_rem, 1),
                 hold_window_active=str(bool(_hut > _now_ts)),
+                now_epoch_s=round(_now_ts, 3),
+                now_utc_iso=_now_utc_iso,
             )
 
         if signal in ["BUY", "SELL"] and dream_snapshot.get("confluence_score", 0) > min_confluence:

@@ -33,29 +33,44 @@ class SetupStepResult:
 
 
 class SetupService:
-    STATE_FILE = Path("state/lumina_setup_complete.json")
-    STATUS_FILE = Path("state/lumina_setup_status.json")
+    def __init__(
+        self,
+        *,
+        workspace_root: Path | None = None,
+        config_path: Path | None = None,
+        env_path: Path | None = None,
+    ) -> None:
+        raw_cfg = Path("config.yaml") if config_path is None else Path(config_path)
+        raw_env = Path(".env") if env_path is None else Path(env_path)
 
-    def __init__(self, *, config_path: Path | None = None, env_path: Path | None = None):
-        self.config_path = config_path or Path("config.yaml")
-        self.env_path = env_path or Path(".env")
+        if workspace_root is not None:
+            self.workspace_root = workspace_root.expanduser().resolve()
+        elif raw_cfg.is_absolute():
+            self.workspace_root = raw_cfg.parent.resolve()
+        else:
+            self.workspace_root = Path.cwd().resolve()
+
+        self.config_path = raw_cfg if raw_cfg.is_absolute() else (self.workspace_root / raw_cfg).resolve()
+        self.env_path = raw_env if raw_env.is_absolute() else (self.workspace_root / raw_env).resolve()
+        self._setup_complete_path = self.workspace_root / "state" / "lumina_setup_complete.json"
+        self._setup_status_path = self.workspace_root / "state" / "lumina_setup_status.json"
 
     def is_first_run(self) -> bool:
-        return not self.STATE_FILE.exists()
+        return not self._setup_complete_path.exists()
 
     def load_status(self) -> dict[str, Any]:
-        if not self.STATUS_FILE.exists():
+        if not self._setup_status_path.exists():
             return {}
         try:
-            payload = json.loads(self.STATUS_FILE.read_text(encoding="utf-8"))
+            payload = json.loads(self._setup_status_path.read_text(encoding="utf-8"))
             return payload if isinstance(payload, dict) else {}
         except Exception:
             logging.exception("Unhandled broad exception fallback in lumina_core/engine/setup_service.py:51")
             return {}
 
     def save_status(self, payload: dict[str, Any]) -> None:
-        self.STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        self.STATUS_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self._setup_status_path.parent.mkdir(parents=True, exist_ok=True)
+        self._setup_status_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def mark_complete(self, *, hardware: HardwareSnapshot, model: ModelDescriptor) -> None:
         payload = {
@@ -66,8 +81,8 @@ class SetupService:
             "recommended_model": model.key,
             "provider": model.recommended_provider,
         }
-        self.STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-        self.STATE_FILE.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self._setup_complete_path.parent.mkdir(parents=True, exist_ok=True)
+        self._setup_complete_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def install_runtime_dependencies(self) -> SetupStepResult:
         command = [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"]
@@ -140,9 +155,10 @@ class SetupService:
     def upgrade_model(self, descriptor: ModelDescriptor) -> list[SetupStepResult]:
         results = [self.pull_model(descriptor)]
         if results[-1].success:
+            snapshot_path = self.workspace_root / "state" / "hardware_snapshot.json"
             cached_hardware = (
-                HardwareSnapshot(**json.loads(Path("state/hardware_snapshot.json").read_text(encoding="utf-8")))
-                if Path("state/hardware_snapshot.json").exists()
+                HardwareSnapshot(**json.loads(snapshot_path.read_text(encoding="utf-8")))
+                if snapshot_path.exists()
                 else None
             )
             if cached_hardware is not None:
@@ -169,6 +185,7 @@ class SetupService:
                 text=True,
                 timeout=1800,
                 check=False,
+                cwd=str(self.workspace_root),
             )
         except Exception as exc:
             logging.exception("Unhandled broad exception fallback in lumina_core/engine/setup_service.py:171")

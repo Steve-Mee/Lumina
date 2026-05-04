@@ -219,20 +219,25 @@ class RegimeDetector:
         structure: dict[str, Any] | None,
         now: datetime,
     ) -> dict[str, float]:
-        close = rows["close"].astype(float)
-        high = rows["high"].astype(float)
-        low = rows["low"].astype(float)
-        volume = rows["volume"].astype(float)
+        close = self._numeric_series(rows, "close")
+        high = self._numeric_series(rows, "high")
+        low = self._numeric_series(rows, "low")
+        volume = self._numeric_series(rows, "volume")
 
         tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
         atr_fast = float(tr.rolling(14).mean().iloc[-1] or 0.0)
         atr_slow = float(tr.rolling(50).mean().iloc[-1] or atr_fast or 1e-9)
         up = (high - high.shift()).clip(lower=0)
         down = (low.shift() - low).clip(lower=0)
-        plus_di = 100.0 * (up.ewm(alpha=1 / 14).mean() / atr_fast) if atr_fast > 0 else pd.Series([0.0])
-        minus_di = 100.0 * (down.ewm(alpha=1 / 14).mean() / atr_fast) if atr_fast > 0 else pd.Series([0.0])
-        dx = 100.0 * (plus_di - minus_di).abs() / (plus_di + minus_di).replace(0, pd.NA)
-        adx = float(dx.rolling(14).mean().fillna(0.0).iloc[-1])
+        if atr_fast > 0:
+            plus_di = 100.0 * (up.ewm(alpha=1 / 14).mean() / atr_fast)
+            minus_di = 100.0 * (down.ewm(alpha=1 / 14).mean() / atr_fast)
+        else:
+            plus_di = pd.Series(0.0, index=rows.index, dtype=float)
+            minus_di = pd.Series(0.0, index=rows.index, dtype=float)
+        dx_den = (plus_di + minus_di).astype(float)
+        dx = 100.0 * (plus_di - minus_di).abs().div(dx_den.where(dx_den > 0.0))
+        adx = float(dx.fillna(0.0).rolling(14).mean().fillna(0.0).iloc[-1] or 0.0)
 
         returns = close.pct_change().fillna(0.0)
         realized_fast = float(returns.tail(12).std() or 0.0)
@@ -276,6 +281,11 @@ class RegimeDetector:
             "session_liquidity": max(0.0, session_liquidity),
             "rollover_score": max(0.0, min(1.0, rollover_score)),
         }
+
+    @staticmethod
+    def _numeric_series(rows: pd.DataFrame, column: str) -> pd.Series:
+        # Runtime feeds may provide nullable/object columns with pd.NA; normalize early for rolling math.
+        return pd.to_numeric(rows[column], errors="coerce").ffill().fillna(0.0).astype(float)
 
     def _classify(self, features: dict[str, float]) -> tuple[str, list[str]]:
         evidence: list[str] = []

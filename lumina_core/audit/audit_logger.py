@@ -216,6 +216,10 @@ class AuditLogger:
             report = self._quick_tail_health(path)
         if report.valid:
             return
+        if (not strict_validation) and report.message == "tail_missing_hash":
+            # Compatibility mode: mixed/non-hash historical thought logs may exist in SIM/PAPER.
+            # Keep running fail-open instead of repeatedly rotating the same file.
+            return
         if fail_closed_real and mode == "real":
             raise AuditChainError(f"Audit chain invalid at {path}: {report.message}")
         logger.warning("AuditLogger recovering corrupt chain at %s: %s", path, report.message)

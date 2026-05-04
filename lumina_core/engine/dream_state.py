@@ -5,6 +5,8 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any
 
+from .trade_signal_normalize import canonicalize_trade_signal
+
 
 DEFAULT_DREAM: dict[str, Any] = {
     "signal": "HOLD",
@@ -50,10 +52,15 @@ class DreamState:
 
     def update(self, updates: dict[str, Any]) -> None:
         with self.lock:
+            if "signal" in updates:
+                updates = dict(updates)
+                updates["signal"] = canonicalize_trade_signal(updates.get("signal"))
             self.data.update(updates)
 
     def set_value(self, key: str, value: Any) -> None:
         with self.lock:
+            if key == "signal":
+                value = canonicalize_trade_signal(value)
             self.data[key] = value
 
     def apply_emotional_correction(

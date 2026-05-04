@@ -206,7 +206,10 @@ class VisualizationService:
         app.logger.info(
             f"CHART_GEN_COMPLETE,duration_ms={duration_ms:.0f},base64_kb={len(base64_img) // 1000},screen_share_updated=YES"
         )
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🖼️ v28 Chart gegenereerd + screen-share geupdatet")
+        app.logger.info(
+            "[%s] v28 Chart generated + screen-share updated",
+            datetime.now().strftime("%H:%M:%S"),
+        )
         return base64_img
 
     def start_screen_share_window(self) -> None:
@@ -215,13 +218,19 @@ class VisualizationService:
             return
 
         def create_window() -> None:
-            root = app.tk.Tk()
+            try:
+                import tkinter as tk
+            except Exception as exc:
+                app.logger.warning("Screen-share window disabled: tkinter unavailable (%s)", exc)
+                return
+
+            root = tk.Tk()
             root.title("LUMINA Live Trader Screen Share – Clean Professional View")
             root.attributes("-topmost", True)
             root.geometry("1480x920")
             root.configure(bg="#0a0a0a")
 
-            title = app.tk.Label(
+            title = tk.Label(
                 root,
                 text="LUMINA Live Trader Screen Share",
                 font=("Consolas", 18, "bold"),
@@ -230,19 +239,19 @@ class VisualizationService:
             )
             title.pack(pady=8)
 
-            chart_label = app.tk.Label(root, bg="#0a0a0a")
+            chart_label = tk.Label(root, bg="#0a0a0a")
             chart_label.pack(padx=20, pady=10, fill="both", expand=True)
             root_any: Any = root
             root_any.chart_label = chart_label
 
-            status_frame = app.tk.Frame(root, bg="#0a0a0a")
+            status_frame = tk.Frame(root, bg="#0a0a0a")
             status_frame.pack(fill="x", padx=20, pady=10)
 
-            status_dot = app.tk.Label(status_frame, text="●", font=("Consolas", 22), fg="#00ff88", bg="#0a0a0a")
+            status_dot = tk.Label(status_frame, text="●", font=("Consolas", 22), fg="#00ff88", bg="#0a0a0a")
             status_dot.pack(side="left")
             root_any.status_dot = status_dot
 
-            status_text = app.tk.Label(
+            status_text = tk.Label(
                 status_frame,
                 text="AI Decision & Chart updated",
                 font=("Consolas", 14),
@@ -252,7 +261,7 @@ class VisualizationService:
             status_text.pack(side="left", padx=12)
             root_any.status_text = status_text
 
-            last_update = app.tk.Label(
+            last_update = tk.Label(
                 status_frame,
                 text="Laatste update: —",
                 font=("Consolas", 11),
@@ -264,7 +273,10 @@ class VisualizationService:
 
             self.live_chart_window = root
             setattr(app, "live_chart_window", root)
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] 🖥️ Schone & goed leesbare screen-share geopend")
+            app.logger.info(
+                "[%s] Clean readable screen-share opened",
+                datetime.now().strftime("%H:%M:%S"),
+            )
             root.mainloop()
 
         threading.Thread(target=create_window, daemon=True).start()

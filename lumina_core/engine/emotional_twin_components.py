@@ -3,11 +3,21 @@ import logging
 
 import json
 from collections import deque
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    """Dream/JSON payloads may bind keys to null; dict.get still returns None and breaks float(None)."""
+    if value is None:
+        return float(default)
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
 
 
 class _CalibrationStore:
@@ -27,7 +37,7 @@ class _CalibrationStore:
                 return
             for key in calibration:
                 if key in loaded:
-                    calibration[key] = float(loaded[key])
+                    calibration[key] = _safe_float(loaded.get(key), calibration[key])
         except Exception:
             logging.exception(
                 "Unhandled broad exception fallback in lumina_core/engine/emotional_twin_components.py:30"
@@ -75,23 +85,31 @@ class _ObservationBuilder:
     def build(self) -> Dict[str, Any]:
         """Build and return the observation consumed by emotional bias logic."""
         dream = self.context.get_current_dream_snapshot()
-        price = self.context.live_quotes[-1]["last"] if self.context.live_quotes else 5000.0
+        if self.context.live_quotes:
+            last_raw = self.context.live_quotes[-1].get("last")
+            price = _safe_float(last_raw, 5000.0)
+        else:
+            price = 5000.0
         regime = self.context.detect_market_regime(self.context.ohlc_1min.tail(60))
         recent_pnl = self.context.pnl_history[-15:] if hasattr(self.context, "pnl_history") else []
         drawdown = self._calculate_drawdown()
         last_trade_hours = self._extract_last_trade_hours()
-        tape_delta = float(getattr(getattr(self.context, "market_data", None), "cumulative_delta_10", 0.0) or 0.0)
+        tape_delta = _safe_float(getattr(getattr(self.context, "market_data", None), "cumulative_delta_10", 0.0), 0.0)
+
+        last_pnl_val = (
+            self.context.pnl_history[-1] if self.context.pnl_history else None
+        )
 
         return {
-            "price": float(price),
+            "price": price,
             "regime": regime,
-            "confidence": float(dream.get("confidence", 0.5)),
-            "confluence": float(dream.get("confluence_score", 0.5)),
+            "confidence": _safe_float(dream.get("confidence"), 0.5),
+            "confluence": _safe_float(dream.get("confluence_score"), 0.5),
             "recent_pnl_mean": float(np.mean(recent_pnl)) if recent_pnl else 0.0,
             "recent_pnl_std": float(np.std(recent_pnl)) if len(recent_pnl) > 1 else 0.0,
             "equity_drawdown": float(drawdown),
             "time_since_last_trade": float(last_trade_hours),
-            "last_pnl": float(self.context.pnl_history[-1]) if self.context.pnl_history else 0.0,
+            "last_pnl": _safe_float(last_pnl_val, 0.0),
             "tape_delta": tape_delta,
         }
 
@@ -196,14 +214,15 @@ class _DecisionCorrector:
         """Apply FOMO correction rules in place when threshold is breached."""
         if bias.get("fomo_score", 0.0) <= 0.7:
             return
-        corrected["confluence_score"] = max(corrected.get("confluence_score", 0.0), 0.88)
-        min_conf = float(getattr(getattr(self.context, "config", None), "min_confluence", 0.7))
+        corrected["confluence_score"] = max(_safe_float(corrected.get("confluence_score"), 0.0), 0.88)
+        min_conf = _safe_float(getattr(getattr(self.context, "config", None), "min_confluence", 0.7), 0.7)
         corrected["min_confluence_override"] = max(
-            float(corrected.get("min_confluence_override", 0.0)), min_conf + 0.08
+            _safe_float(corrected.get("min_confluence_override"), 0.0),
+            min_conf + 0.08,
         )
         corrected["reason"] += " | EMO_CORRECT: FOMO -> higher confluence"
         if corrected.get("signal") == "BUY" and "target" in corrected:
-            corrected["target"] = float(corrected["target"]) * 0.85
+            corrected["target"] = _safe_float(corrected.get("target"), 0.0) * 0.85
 
     def _apply_tilt(self, corrected: Dict[str, Any], bias: Dict[str, float]) -> None:
         """Apply tilt correction rules in place when threshold is breached."""
@@ -212,21 +231,21 @@ class _DecisionCorrector:
         corrected["position_size_multiplier"] = 0.5
         corrected["stop_widen_multiplier"] = 1.3
         corrected["reason"] += " | EMO_CORRECT: Tilt -> halved size, wider stop"
-        corrected["qty"] = float(corrected.get("qty", 1)) * 0.4
+        corrected["qty"] = _safe_float(corrected.get("qty"), 1.0) * 0.4
 
     def _apply_boredom(self, corrected: Dict[str, Any], bias: Dict[str, float]) -> None:
         """Apply boredom correction rules in place when threshold is breached."""
         if bias.get("boredom_score", 0.0) <= 0.8:
             return
         corrected["signal"] = "HOLD"
-        corrected["hold_until_ts"] = (datetime.now() + timedelta(minutes=15)).timestamp()
+        corrected["hold_until_ts"] = (datetime.now(timezone.utc) + timedelta(minutes=15)).timestamp()
         corrected["reason"] += " | EMO_CORRECT: Boredom -> no trade"
 
     def _apply_revenge(self, corrected: Dict[str, Any], bias: Dict[str, float]) -> None:
         """Apply revenge correction rules in place when threshold is breached."""
         if bias.get("revenge_risk", 0.0) <= 0.7:
             return
-        corrected["confluence_score"] = max(corrected.get("confluence_score", 0.0), 0.92)
+        corrected["confluence_score"] = max(_safe_float(corrected.get("confluence_score"), 0.0), 0.92)
         corrected["reason"] += " | EMO_CORRECT: Revenge -> strict rules"
 
     def apply(self, main_dream: Dict[str, Any], bias: Dict[str, float]) -> Dict[str, Any]:
@@ -253,20 +272,20 @@ class _CalibrationTrainer:
         }
         for item in list(memory):
             bias = item.get("bias", {}) if isinstance(item, dict) else {}
-            if float(bias.get("tilt_score", 0.0)) > 0.6:
+            if _safe_float(bias.get("tilt_score"), 0.0) > 0.6:
                 counts["neg_reflections"] += 1
-            if float(bias.get("revenge_risk", 0.0)) > 0.7:
+            if _safe_float(bias.get("revenge_risk"), 0.0) > 0.7:
                 counts["revenge_mentions"] += 1
-            if float(bias.get("fomo_score", 0.0)) > 0.7:
+            if _safe_float(bias.get("fomo_score"), 0.0) > 0.7:
                 counts["fomo_mentions"] += 1
-            if float(bias.get("boredom_score", 0.0)) > 0.8:
+            if _safe_float(bias.get("boredom_score"), 0.0) > 0.8:
                 counts["boredom_mentions"] += 1
         return counts
 
     def _count_from_reflections(self, reflections: List[Dict[str, Any]], counts: Dict[str, int]) -> None:
         """Update event counts using historical trade reflections."""
         for item in reflections[-500:]:
-            pnl = float(item.get("pnl", 0.0)) if isinstance(item, dict) else 0.0
+            pnl = _safe_float(item.get("pnl"), 0.0) if isinstance(item, dict) else 0.0
             if pnl < 0:
                 counts["neg_reflections"] += 1
             txt = str(item).lower()

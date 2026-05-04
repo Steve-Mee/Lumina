@@ -12,6 +12,7 @@ import os
 import secrets
 import subprocess
 import sys
+import time
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -40,7 +41,18 @@ from lumina_core.engine.sim_stability_checker import (
     generate_stability_report,
 )
 from lumina_core.config_loader import ConfigLoader
+from lumina_core.engine.dream_state import DEFAULT_DREAM
 from lumina_core.runtime_context import RuntimeContext
+
+_LAUNCHER_ROOT = Path(__file__).resolve().parent
+try:
+    os.chdir(_LAUNCHER_ROOT)
+except OSError as exc:
+    logging.getLogger(__name__).warning(
+        "Launcher could not change working directory to %s (%s); relative paths may fail.",
+        _LAUNCHER_ROOT,
+        exc,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +233,41 @@ def _runtime_command() -> list[str]:
     return [python_cmd, str(RUNTIME_ENTRY), "--mode", "auto"]
 
 
+def _normalize_process_cmdline(text: str) -> str:
+    """Normalize Windows/Linux paths for tolerant substring checks."""
+    return text.lower().replace("\\\\", "/").replace("\\", "/")
+
+
+def _command_line_matches_lumina_runtime(cmdline_raw: str) -> bool:
+    if not cmdline_raw:
+        return False
+    norm = _normalize_process_cmdline(cmdline_raw)
+    if "lumina_runtime.py" in norm:
+        return True
+    marker_abs = (_LAUNCHER_ROOT / RUNTIME_ENTRY).resolve().as_posix().lower()
+    marker_abs = marker_abs.replace("\\", "/")
+    marker_rel = _normalize_process_cmdline(Path(RUNTIME_ENTRY).as_posix())
+    return marker_abs in norm or marker_rel in norm or (
+        "runtime_entrypoint.py" in norm and "lumina_core" in norm
+    )
+
+
+def _interpreter_seen_in_command_line(norm_cmdline: str, expected_command: list[str]) -> bool:
+    """Python may appear as python.exe / py launcher / conda – avoid false negatives vs saved argv0."""
+    if not expected_command:
+        return True
+    raw0 = str(expected_command[0]).strip()
+    if not raw0:
+        return True
+    name = Path(raw0).name.lower()
+    if name and name in norm_cmdline:
+        return True
+    for token in ("python.exe", "python3.exe", "python3", "python", "pythonw.exe", "py.exe", "pyw.exe"):
+        if token in norm_cmdline:
+            return True
+    return False
+
+
 def _load_process_state() -> dict[str, Any]:
     if not PROCESS_STATE_PATH.exists():
         return {}
@@ -266,7 +313,9 @@ def _pid_is_alive(pid: int) -> bool:
                 text=True,
             )
             output = (result.stdout or "").strip()
-            return output == str(pid)
+            if output == str(pid):
+                return True
+            return any(line.strip() == str(pid) for line in output.splitlines())
         os.kill(pid, 0)
         return True
     except Exception:
@@ -274,9 +323,112 @@ def _pid_is_alive(pid: int) -> bool:
         return False
 
 
+def _enumerate_lumina_runtime_pids() -> list[int]:
+    """PIDs whose command line looks like Lumina runtime (psutil-first; WMI -like fallback on Windows)."""
+    collected: list[int] = []
+    try:
+        import psutil
+
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            try:
+                raw_cmd = proc.info.get("cmdline") or ()
+                blob = " ".join(str(arg) for arg in raw_cmd)
+                if not _command_line_matches_lumina_runtime(blob):
+                    continue
+                pid_val = proc.info.get("pid")
+                if pid_val:
+                    collected.append(int(pid_val))
+            except Exception:
+                continue
+    except ImportError:
+        collected = []
+
+    if collected:
+        return list(dict.fromkeys(p for p in collected if p > 0))
+
+    if os.name == "nt":
+        try:
+            query = (
+                "Get-CimInstance Win32_Process -Property ProcessId,CommandLine | "
+                "Where-Object { "
+                "$_.CommandLine -and "
+                "($_.CommandLine -like '*runtime_entrypoint*' -or $_.CommandLine -like '*lumina_runtime*') "
+                "} | Select-Object -ExpandProperty ProcessId"
+            )
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            for line in (result.stdout or "").splitlines():
+                raw = line.strip()
+                if raw.isdigit():
+                    collected.append(int(raw))
+            return list(dict.fromkeys(p for p in collected if p > 0))
+        except Exception:
+            logging.exception("lumina_launcher WMI fallback enumeration failed")
+
+    try:
+        result = subprocess.run(
+            ["ps", "-eo", "pid=,args="],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        for line in (result.stdout or "").splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            if "lumina_core/engine/runtime_entrypoint.py" not in text and "lumina_runtime.py" not in text:
+                continue
+            parts = text.split(maxsplit=1)
+            if parts and parts[0].isdigit():
+                collected.append(int(parts[0]))
+    except Exception:
+        logging.exception("lumina_launcher posix ps enumeration failed")
+
+    return list(dict.fromkeys(p for p in collected if p > 0))
+
+
+_RUNTIME_PID_SNAPSHOT_AT: float = 0.0
+_RUNTIME_PID_SNAPSHOT: frozenset[int] = frozenset()
+
+
+def _runtime_candidate_pids_ttl(ttl_seconds: float = 0.75) -> frozenset[int]:
+    """Short-lived snapshot: Streamlit rerun + fragments may call lifecycle checks repeatedly."""
+    global _RUNTIME_PID_SNAPSHOT_AT, _RUNTIME_PID_SNAPSHOT
+    now = time.monotonic()
+    if _RUNTIME_PID_SNAPSHOT_AT > 0 and (now - _RUNTIME_PID_SNAPSHOT_AT) < ttl_seconds:
+        return _RUNTIME_PID_SNAPSHOT
+    _RUNTIME_PID_SNAPSHOT_AT = now
+    _RUNTIME_PID_SNAPSHOT = frozenset(_enumerate_lumina_runtime_pids())
+    return _RUNTIME_PID_SNAPSHOT
+
+
+def _launcher_prepend_pythonpath(env: dict[str, str]) -> None:
+    """Ensure `python path/to/runtime_entrypoint.py` can resolve `lumina_core` without editable installs."""
+    root = str(_LAUNCHER_ROOT)
+    cur = env.get("PYTHONPATH", "").strip()
+    parts = [p for p in cur.split(os.pathsep) if p] if cur else []
+    if root in parts:
+        return
+    env["PYTHONPATH"] = os.pathsep.join([root, *parts]) if parts else root
+
+
 def _pid_command_line(pid: int) -> str:
     if pid <= 0:
         return ""
+    try:
+        import psutil
+
+        return " ".join(psutil.Process(pid).cmdline() or []).strip()
+    except ImportError:
+        pass
+    except Exception:
+        pass
     try:
         if os.name == "nt":
             query = f'(Get-CimInstance Win32_Process -Filter "ProcessId = {pid}").CommandLine'
@@ -298,120 +450,171 @@ def _pid_command_line(pid: int) -> str:
 
 
 def _pid_matches_runtime(pid: int, expected_command: list[str]) -> bool:
-    cmdline = _pid_command_line(pid).lower()
-    if not cmdline:
+    cmdline_raw = _pid_command_line(pid).strip()
+    if not cmdline_raw:
         return False
-    runtime_token = str(RUNTIME_ENTRY).lower()
-    if runtime_token not in cmdline:
+    if not _command_line_matches_lumina_runtime(cmdline_raw):
         return False
-    expected_python = str(expected_command[0]).lower() if expected_command else ""
-    if expected_python and Path(expected_python).name.lower() not in cmdline:
-        return False
-    return True
+    norm = _normalize_process_cmdline(cmdline_raw)
+    return _interpreter_seen_in_command_line(norm, expected_command)
 
 
-def _find_external_runtime_pid() -> int:
-    try:
-        if os.name == "nt":
-            query = (
-                "Get-CimInstance Win32_Process -Property ProcessId,Name,CommandLine | "
-                "Where-Object CommandLine -Match 'lumina_runtime.py|lumina_core\\\\engine\\\\runtime_entrypoint.py' | "
-                "Where-Object Name -Match 'python|py' | "
-                "Select-Object -First 1 -ExpandProperty ProcessId"
-            )
-            result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", query],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            raw = (result.stdout or "").strip()
-            return int(raw) if raw.isdigit() else 0
-
-        result = subprocess.run(
-            ["ps", "-eo", "pid=,args="],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        for line in (result.stdout or "").splitlines():
-            text = line.strip()
-            if not text:
-                continue
-            if "lumina_core/engine/runtime_entrypoint.py" not in text and "lumina_runtime.py" not in text:
-                continue
-            parts = text.split(maxsplit=1)
-            if parts and parts[0].isdigit():
-                return int(parts[0])
-    except Exception:
-        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:341")
+def _find_external_runtime_pid(preferred: int = 0) -> int:
+    seq = _enumerate_lumina_runtime_pids()
+    if not seq:
         return 0
-    return 0
+    pref = int(preferred or 0)
+    if pref > 0 and pref in seq:
+        return pref
+    return seq[0]
+
+
+def _invalidate_runtime_pid_snapshot() -> None:
+    global _RUNTIME_PID_SNAPSHOT_AT, _RUNTIME_PID_SNAPSHOT
+    _RUNTIME_PID_SNAPSHOT_AT = 0.0
+    _RUNTIME_PID_SNAPSHOT = frozenset()
+
+
+def _psutil_windows_kill_process_tree(pid: int) -> None:
+    """Best-effort subtree kill via psutil (works when taskkill misses reparented / stale parents)."""
+    try:
+        import psutil
+    except ImportError:
+        return
+    try:
+        if not psutil.pid_exists(pid):
+            return
+        parent = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return
+    try:
+        descendants = parent.children(recursive=True)
+    except psutil.NoSuchProcess:
+        return
+    victims = list(descendants) + [parent]
+    for p in victims:
+        try:
+            p.terminate()
+        except psutil.NoSuchProcess:
+            pass
+        except psutil.AccessDenied as exc:
+            logger.warning("AccessDenied terminate pid=%s: %s", getattr(p, "pid", "?"), exc)
+        except Exception as exc:
+            logger.warning("Terminate failed pid=%s: %s", getattr(p, "pid", "?"), exc)
+    try:
+        _gone, alive1 = psutil.wait_procs(victims, timeout=2.5)
+    except Exception:
+        logger.exception("wait_procs after terminate pid=%s", pid)
+        alive1 = victims
+    for p in alive1:
+        try:
+            p.kill()
+        except psutil.NoSuchProcess:
+            pass
+        except psutil.AccessDenied as exc:
+            logger.warning("AccessDenied killing subprocess pid=%s: %s", getattr(p, "pid", "?"), exc)
+        except Exception as exc:
+            logger.warning("Kill failed pid=%s: %s", getattr(p, "pid", "?"), exc)
+    try:
+        alive2 = psutil.wait_procs(alive1, timeout=5)[1]
+        for p in alive2:
+            try:
+                p.kill()
+            except Exception:
+                pass
+    except Exception:
+        logger.exception("wait_procs after kill-tree pid=%s", pid)
+
+
+def _windows_kill_pid_tree(pid: int) -> None:
+    """Windows: psutil tree first, then taskkill /T; psutil sweep again if anything remains."""
+    if pid <= 0:
+        return
+    _psutil_windows_kill_process_tree(pid)
+    result = subprocess.run(
+        ["taskkill", "/PID", str(pid), "/T", "/F"],
+        capture_output=True,
+        text=True,
+        timeout=45,
+        check=False,
+    )
+    combined = f"{result.stderr or ''}\n{result.stdout or ''}".strip().lower()
+    if result.returncode != 0:
+        benign = (
+            "not running" in combined
+            or "cannot find" in combined
+            or "could not find" in combined
+            or "not found" in combined
+            or "no tasks" in combined
+            or "no process" in combined
+        )
+        if not benign:
+            logger.warning(
+                "taskkill exit=%s pid=%s: %s",
+                result.returncode,
+                pid,
+                (result.stderr or result.stdout or "").strip(),
+            )
+    _psutil_windows_kill_process_tree(pid)
+
+
+def _posix_kill_runtime_pids() -> None:
+    """POSIX: stop lumina-runtime PIDs (SIGTERM then SIGKILL retries)."""
+    for _ in range(4):
+        _invalidate_runtime_pid_snapshot()
+        remaining = _enumerate_lumina_runtime_pids()
+        if not remaining:
+            break
+        for pid in remaining:
+            try:
+                os.kill(pid, 15)
+            except ProcessLookupError:
+                pass
+            except Exception as exc:
+                logger.warning("SIGTERM pid=%s: %s", pid, exc)
+        time.sleep(0.35)
+        stubborn = _enumerate_lumina_runtime_pids()
+        for pid in stubborn:
+            try:
+                os.kill(pid, 9)
+            except ProcessLookupError:
+                pass
+            except Exception as exc:
+                logger.warning("SIGKILL pid=%s: %s", pid, exc)
+        time.sleep(0.25)
 
 
 def _find_runtime_pids() -> list[int]:
-    pids: list[int] = []
-    try:
-        if os.name == "nt":
-            query = (
-                "Get-CimInstance Win32_Process -Property ProcessId,Name,CommandLine | "
-                "Where-Object CommandLine -Match 'lumina_runtime.py|lumina_core\\\\engine\\\\runtime_entrypoint.py' | "
-                "Where-Object Name -Match 'python|py' | "
-                "Select-Object -ExpandProperty ProcessId"
-            )
-            result = subprocess.run(
-                ["powershell", "-NoProfile", "-Command", query],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            for line in (result.stdout or "").splitlines():
-                raw = line.strip()
-                if raw.isdigit():
-                    pids.append(int(raw))
-        else:
-            result = subprocess.run(
-                ["ps", "-eo", "pid=,args="],
-                check=False,
-                capture_output=True,
-                text=True,
-            )
-            for line in (result.stdout or "").splitlines():
-                text = line.strip()
-                if not text:
-                    continue
-                if "lumina_core/engine/runtime_entrypoint.py" not in text and "lumina_runtime.py" not in text:
-                    continue
-                parts = text.split(maxsplit=1)
-                if parts and parts[0].isdigit():
-                    pids.append(int(parts[0]))
-    except Exception:
-        logging.exception("Unhandled broad exception fallback in lumina_launcher.py:382")
-        return []
-    # Preserve order while de-duplicating.
-    return list(dict.fromkeys([pid for pid in pids if pid > 0]))
+    return list(_enumerate_lumina_runtime_pids())
 
 
 def _process_is_alive() -> bool:
+    candidates = _runtime_candidate_pids_ttl()
+    rcmd = _runtime_command()
+
     proc = st.session_state.get("bot_process")
     if proc is not None:
         proc_pid = int(getattr(proc, "pid", 0) or 0)
-        if proc.poll() is None and _pid_is_alive(proc_pid) and _pid_matches_runtime(proc_pid, _runtime_command()):
-            return True
+        if proc.poll() is None and _pid_is_alive(proc_pid):
+            if proc_pid in candidates or _pid_matches_runtime(proc_pid, rcmd):
+                return True
         st.session_state.bot_process = None
 
     state = _load_process_state()
     command = state.get("command", [])
     expected_command = command if isinstance(command, list) else []
     pid = int(state.get("pid", 0) or 0)
-    if _pid_is_alive(pid) and _pid_matches_runtime(pid, expected_command):
-        return True
+    if pid > 0 and _pid_is_alive(pid):
+        if pid in candidates or _pid_matches_runtime(pid, expected_command):
+            return True
 
-    external_pid = _find_external_runtime_pid()
+    external_pid = _find_external_runtime_pid(preferred=pid)
     if external_pid > 0 and _pid_is_alive(external_pid):
-        return True
+        if external_pid in candidates or _pid_matches_runtime(external_pid, rcmd):
+            return True
 
-    _clear_process_state()
+    if pid > 0 and not _pid_is_alive(pid):
+        _clear_process_state()
     return False
 
 
@@ -423,18 +626,26 @@ def _start_bot_process() -> tuple[bool, str]:
     command = _runtime_command()
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
+    _launcher_prepend_pythonpath(env)
+    err_log = _LAUNCHER_ROOT / "logs" / "launcher_runtime_stderr.log"
+    err_log.parent.mkdir(parents=True, exist_ok=True)
+    err_sink = None
     try:
+        err_sink = err_log.open("a", encoding="utf-8", errors="replace")
         proc = subprocess.Popen(
             command,
-            cwd=str(Path.cwd()),
+            cwd=str(_LAUNCHER_ROOT),
             env=env,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=err_sink,
         )
         st.session_state.bot_process = proc
         _save_process_state(pid=proc.pid, command=command)
-        return True, f"Bot started (pid={proc.pid})"
+        _invalidate_runtime_pid_snapshot()
+        return True, f"Bot started (pid={proc.pid}); stderr appended to logs/launcher_runtime_stderr.log"
     except Exception as exc:
+        if err_sink is not None:
+            err_sink.close()
         logging.exception("Unhandled broad exception fallback in lumina_launcher.py:430")
         return False, f"Failed to start bot: {exc}"
 
@@ -451,7 +662,7 @@ def _stop_bot_process() -> tuple[bool, str]:
     if state_pid > 0:
         target_pids.append(state_pid)
 
-    external_pid = _find_external_runtime_pid()
+    external_pid = _find_external_runtime_pid(preferred=state_pid)
     if external_pid > 0:
         target_pids.append(external_pid)
 
@@ -461,26 +672,43 @@ def _stop_bot_process() -> tuple[bool, str]:
     if not target_pids:
         st.session_state.bot_process = None
         _clear_process_state()
+        _invalidate_runtime_pid_snapshot()
         return True, "Bot process already stopped"
 
     try:
-        for pid in target_pids:
-            if os.name == "nt":
-                subprocess.run(
-                    ["taskkill", "/PID", str(pid), "/T", "/F"],
-                    check=False,
-                    capture_output=True,
-                    text=True,
+        if os.name == "nt":
+            _invalidate_runtime_pid_snapshot()
+            for round_idx in range(12):
+                live = list(
+                    dict.fromkeys([p for p in target_pids if p > 0] + _enumerate_lumina_runtime_pids())
                 )
-            else:
-                os.kill(pid, 15)
+                if not live:
+                    break
+                for pid in live:
+                    _windows_kill_pid_tree(pid)
+                time.sleep(0.22 + min(1.4, 0.12 * round_idx))
+                _invalidate_runtime_pid_snapshot()
+                if not _enumerate_lumina_runtime_pids():
+                    break
+        else:
+            for pid in target_pids:
+                try:
+                    os.kill(pid, 15)
+                except ProcessLookupError:
+                    pass
+                except Exception as exc:
+                    logger.warning("SIGTERM pid=%s: %s", pid, exc)
+            _posix_kill_runtime_pids()
 
+        _invalidate_runtime_pid_snapshot()
+        time.sleep(0.2)
         remaining = _find_runtime_pids()
         if remaining:
             return False, f"Failed to stop bot: runtime process still active (pids={remaining})"
 
         st.session_state.bot_process = None
         _clear_process_state()
+        _invalidate_runtime_pid_snapshot()
         return True, "Bot stopped"
     except Exception as exc:
         logging.exception("Unhandled broad exception fallback in lumina_launcher.py:477")
@@ -592,7 +820,7 @@ def _resolve_last_launch_text(*, alive: bool, process_state: dict[str, Any]) -> 
         if state_pid > 0 and _pid_is_alive(state_pid):
             return _pid_started_at_text(state_pid)
 
-        external_pid = _find_external_runtime_pid()
+        external_pid = _find_external_runtime_pid(preferred=state_pid)
         if external_pid > 0 and _pid_is_alive(external_pid):
             return _pid_started_at_text(external_pid)
 
@@ -601,10 +829,10 @@ def _resolve_last_launch_text(*, alive: bool, process_state: dict[str, Any]) -> 
             if os.name == "nt":
                 query = (
                     "Get-CimInstance Win32_Process | "
-                    "Where-Object { $_.CommandLine -and "
-                    "($_.CommandLine -match 'lumina_core\\\\engine\\\\runtime_entrypoint.py' -or "
-                    "$_.CommandLine -match 'lumina_runtime.py') } | "
-                    "Select-Object -First 1"
+                    "Where-Object { "
+                    "$_.CommandLine -and "
+                    "($_.CommandLine -like '*runtime_entrypoint*' -or $_.CommandLine -like '*lumina_runtime*') "
+                    "} | Select-Object -First 1"
                 )
                 cmd = (
                     f"$p = ({query}); "
@@ -1429,23 +1657,25 @@ def _format_reason_for_display(raw_reason: Any, *, max_len: int = 320, max_segme
 
 
 def _render_live_runtime_card(current_dream: dict[str, Any]) -> None:
-    reason_display = _format_reason_for_display(current_dream.get("reason", ""))
+    # Merge so an empty/partial persisted snapshot still shows readable defaults (HOLD, Initial, …).
+    dream: dict[str, Any] = {**DEFAULT_DREAM, **current_dream}
+    reason_display = _format_reason_for_display(dream.get("reason", ""))
     rows = [
-        ("Signal", current_dream.get("signal", "UNKNOWN")),
-        ("Confidence", current_dream.get("confidence", 0)),
-        ("Stop", current_dream.get("stop", 0)),
-        ("Target", current_dream.get("target", 0)),
+        ("Signal", dream.get("signal", "UNKNOWN")),
+        ("Confidence", dream.get("confidence", 0)),
+        ("Stop", dream.get("stop", 0)),
+        ("Target", dream.get("target", 0)),
         ("Reason", reason_display),
-        ("Why No Trade", current_dream.get("why_no_trade") or "N/A"),
-        ("Confluence Score", current_dream.get("confluence_score", 0)),
+        ("Why No Trade", dream.get("why_no_trade") or "N/A"),
+        ("Confluence Score", dream.get("confluence_score", 0)),
         (
             "Fib Levels",
-            "Set" if isinstance(current_dream.get("fib_levels"), dict) and current_dream.get("fib_levels") else "N/A",
+            "Set" if isinstance(dream.get("fib_levels"), dict) and dream.get("fib_levels") else "N/A",
         ),
-        ("Swing High", current_dream.get("swing_high", 0)),
-        ("Swing Low", current_dream.get("swing_low", 0)),
-        ("A-B-EEN Direction", current_dream.get("a_been_direction", "NEUTRAL")),
-        ("Chosen Strategy", current_dream.get("chosen_strategy", "None")),
+        ("Swing High", dream.get("swing_high", 0)),
+        ("Swing Low", dream.get("swing_low", 0)),
+        ("A-B-EEN Direction", dream.get("a_been_direction", "NEUTRAL")),
+        ("Chosen Strategy", dream.get("chosen_strategy", "None")),
     ]
     _render_kv_section(
         "Current Dream Decision",
@@ -1726,7 +1956,32 @@ def _render_setup_wizard(setup_service: SetupService, catalog: ModelCatalog) -> 
         type="password",
         help="Optional but strongly recommended during first setup.",
     )
-    if st.button("Run Guided Installation", type="primary", width="stretch"):
+    col_guide, col_skip = st.columns(2)
+    with col_guide:
+        run_guided = st.button("Run Guided Installation", type="primary", use_container_width=True)
+    with col_skip:
+        skip_wizard = st.button(
+            "I already installed everything — open launcher",
+            type="secondary",
+            use_container_width=True,
+            help=(
+                "Use this after bootstrap/manual pip install when you cannot or do not want to rerun the guided steps. "
+                "Ollama and models still need to be available for inference separately."
+            ),
+        )
+
+    if skip_wizard:
+        if not setup_service.config_path.exists():
+            st.error(f"`config.yaml` not found next to the launcher ({setup_service.workspace_root}).")
+        else:
+            setup_service.mark_complete(hardware=snapshot, model=recommended_model)
+            setup_service.save_status(
+                {"steps": [{"name": "skip_wizard", "success": True, "message": "User skipped guided install"}]}
+            )
+            st.success("Setup marked complete — loading launcher…")
+            st.rerun()
+
+    if run_guided:
         results = _run_guided_setup(
             setup_service=setup_service,
             snapshot=snapshot,
@@ -1736,10 +1991,15 @@ def _render_setup_wizard(setup_service: SetupService, catalog: ModelCatalog) -> 
         )
         for result in results:
             _render_step_result(result)
-        if all(result.success for result in results if result.name != "unsloth_dependencies"):
-            st.success(
-                "Guided setup completed. Rerun the launcher if newly installed packages were added to the environment."
+        blocked = setup_service.is_first_run()
+        if blocked and not all(result.success for result in results if result.name != "unsloth_dependencies"):
+            st.warning(
+                "Guided setup did not finish fully (often Ollama or model pull on Windows). Fix the failing steps "
+                "or use **I already installed everything** if you installed dependencies manually."
             )
+        if not blocked:
+            st.success("Setup complete — loading launcher…")
+            st.rerun()
     previous_status = setup_service.load_status()
     if previous_status:
         st.subheader("Last setup run")
@@ -1989,8 +2249,12 @@ if _IS_HEADLESS:
     _headless_main()
     sys.exit(0)
 
-setup_service = SetupService(config_path=CONFIG_PATH, env_path=ENV_PATH)
-catalog = ModelCatalog()
+setup_service = SetupService(
+    workspace_root=_LAUNCHER_ROOT,
+    config_path=_LAUNCHER_ROOT / "config.yaml",
+    env_path=_LAUNCHER_ROOT / ".env",
+)
+catalog = ModelCatalog(_LAUNCHER_ROOT / "lumina_model_catalog.json")
 if setup_service.is_first_run():
     _render_setup_wizard(setup_service, catalog)
 
@@ -2185,7 +2449,8 @@ if alive:
     persisted = _load_process_state()
     pid = getattr(bot_proc, "pid", None) or persisted.get("pid") or "unknown"
     if pid == "unknown":
-        external_pid = _find_external_runtime_pid()
+        persisted_pid = int(persisted.get("pid", 0) or 0)
+        external_pid = _find_external_runtime_pid(preferred=persisted_pid)
         if external_pid > 0:
             pid = external_pid
     runtime_value = f"Active bot process (pid={pid})"
@@ -2212,6 +2477,8 @@ _render_live_activity_panel(alive=alive, screen_share_enabled=screen_share_activ
 
 state = _load_runtime_state()
 current_dream = state.get("current_dream", {}) if isinstance(state.get("current_dream"), dict) else {}
+# Empty {} is falsy: still show the panel when any runtime snapshot exists on disk or in memory.
+_has_runtime_snapshot = bool(state) or STATE_PATH.exists()
 active_mode = _current_launcher_mode()
 tab_labels = [
     "Live Trader View",
@@ -2245,7 +2512,7 @@ if admin_mode and len(tabs) > next_optional_idx:
 
 with tab1:
     st.subheader("Live Dream + Runtime State")
-    if current_dream:
+    if _has_runtime_snapshot:
         _render_live_runtime_card(current_dream)
     else:
         st.info("Nog geen runtime state gevonden in state/lumina_sim_state.json")

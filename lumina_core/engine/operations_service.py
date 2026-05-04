@@ -8,7 +8,7 @@ import signal
 import time
 import traceback
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pandas as pd
@@ -388,7 +388,12 @@ class OperationsService:
     def emergency_stop(self) -> None:
         """Gracefully stop the bot with proper cleanup."""
         app = self._app()
-        log_event(app.logger, "ops.emergency_stop", ts=datetime.now().strftime("%H:%M:%S"))
+        log_event(
+            app.logger,
+            "ops.emergency_stop",
+            ts=datetime.now().strftime("%H:%M:%S"),
+            ts_utc=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
         try:
             live_chart_window = getattr(app, "live_chart_window", None)
             if live_chart_window is not None:

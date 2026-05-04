@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+from lumina_core.engine.trade_signal_normalize import canonicalize_trade_signal
 
 
 def apply_hard_risk_controller_to_signal(
@@ -19,6 +20,7 @@ def apply_hard_risk_controller_to_signal(
     engine: Any | None = None,
 ) -> tuple[str, bool, str]:
     """If ``signal`` is BUY/SELL, run canonical admission chain. Returns (signal, ok, reason)."""
+    signal = canonicalize_trade_signal(signal)
     if signal not in {"BUY", "SELL"}:
         return signal, True, ""
     raw_stop = float(dream_snapshot.get("stop", price * 0.99 if signal == "BUY" else price * 1.01))

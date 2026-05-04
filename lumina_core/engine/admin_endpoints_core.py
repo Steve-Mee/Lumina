@@ -785,13 +785,13 @@ class AdminEndpoints:
         )
         def execute_shutdown(confirm_clicks: int) -> str:  # type: ignore[untyped-decorator]
             if confirm_clicks > 0:
-                print(f"[{time.strftime('%H:%M:%S')}] 🛑 Shutdown button confirmed from dashboard")
+                print(f"[{time.strftime('%H:%M:%S')}] Shutdown button confirmed from dashboard")
                 threading.Thread(target=app.emergency_stop, daemon=False).start()
                 return "App wordt afgesloten..."
             return ""
 
         setattr(app, "dash_app", dash_app)
-        print("🌐 Dashboard gestart -> http://127.0.0.1:8050  (met kosten, resultaat en procentuele vergelijking)")
+        print("Dashboard gestart -> http://127.0.0.1:8050  (met kosten, resultaat en procentuele vergelijking)")
         webbrowser.open("http://127.0.0.1:8050")
         try:
             dash_app.run(debug=False, port=8050, use_reloader=False)

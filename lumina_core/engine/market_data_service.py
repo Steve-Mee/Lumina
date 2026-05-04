@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 import requests
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 from .errors import ErrorSeverity, LuminaError, log_structured
 from .tape_reading_agent import TapeReadingAgent
@@ -240,6 +241,27 @@ class MarketDataIngestService:
                         )
                         log_structured(err)
                         app.logger.error(f"WS parse error: {exc}")
+        except ConnectionClosed as closed_exc:
+            # Peer idle timeout, TCP reset, or missing close frame — expected in long-lived feeds.
+            app.logger.warning("WebSocket closed (%s); using REST fallback", closed_exc)
+            err = LuminaError(
+                severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
+                code="MDS_WS_CLOSED_008",
+                message=str(closed_exc),
+                context={
+                    "code": getattr(closed_exc, "code", None),
+                    "reason": getattr(closed_exc, "reason", None),
+                },
+            )
+            log_structured(err)
+            log_structured(
+                LuminaError(
+                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                    code="INFO_PRINT_LEGACY",
+                    message="WS failed -> REST fallback",
+                    context={},
+                )
+            )
         except Exception as _exc:
             logging.exception("Unhandled broad exception fallback in lumina_core/engine/market_data_service.py:241")
             err = LuminaError(

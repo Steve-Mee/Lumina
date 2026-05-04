@@ -9,13 +9,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TypeVar
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from lumina_core.audit import get_audit_logger
 from lumina_core.fault import FaultDomain, FaultPolicy
 
 from lumina_core.audit.agent_decision_log import AgentDecisionLog
 from .agent_policy_gateway import AgentPolicyGateway, default_lineage
+from .trade_signal_normalize import canonicalize_trade_signal
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,11 @@ class ExecutionDecisionInputSchema(BaseModel):
     min_confluence: float = Field(ge=0.0, le=1.0)
     hold_until_ts: float
     timestamp: str
+
+    @field_validator("signal", mode="before")
+    @classmethod
+    def _canonicalize_signal(cls, v: Any) -> str:
+        return canonicalize_trade_signal(v)
 
 
 class ExecutionDecisionOutputSchema(ContractOutputBase):
