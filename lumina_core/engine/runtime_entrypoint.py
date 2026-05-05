@@ -14,6 +14,13 @@ from typing import Sequence
 from dotenv import load_dotenv
 
 from lumina_core.bootstrap import bootstrap_runtime
+from lumina_core.config_loader import ConfigLoader
+from lumina_core.first_boot_ui import (
+    FIRST_BOOT_DEFAULT_MAX_REAL_DAYS,
+    FIRST_BOOT_DEFAULT_TRADES,
+    estimate_first_boot_real_days,
+    normalize_first_boot_training_trades,
+)
 from lumina_core.container import ApplicationContainer, create_application_container
 from lumina_core.evolution.simulator_data_support import require_real_simulator_data_strict
 from lumina_core.risk.session_guard import SessionGuard
@@ -22,6 +29,23 @@ from lumina_core.runtime.headless_runtime import HeadlessRuntime, parse_duration
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
+FIRST_BOOT_FLAG_PATH = ROOT_DIR / "state" / "first_boot_completed.flag"
+FIRST_BOOT_POLICY_PATH = ROOT_DIR / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
+FIRST_BOOT_PROGRESS_PATH = ROOT_DIR / "state" / "first_boot_progress.json"
+
+
+def _write_first_boot_progress(stage: str, message: str, **extra: object) -> None:
+    payload: dict[str, object] = {
+        "timestamp": datetime.now().isoformat(),
+        "stage": str(stage).strip().lower(),
+        "message": str(message),
+    }
+    payload.update(extra)
+    try:
+        FIRST_BOOT_PROGRESS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        FIRST_BOOT_PROGRESS_PATH.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+    except Exception:
+        logging.exception("first_boot.progress_write_failed")
 
 
 def _normalize_runtime_mode(raw_mode: str | None) -> str:
@@ -309,6 +333,110 @@ def _run_nightly() -> int:
     return 0
 
 
+def _load_first_boot_config() -> dict[str, int | bool]:
+    raw = ConfigLoader.section("first_boot", default={}) or {}
+    cfg = raw if isinstance(raw, dict) else {}
+    training_trades = normalize_first_boot_training_trades(cfg.get("training_trades", FIRST_BOOT_DEFAULT_TRADES))
+    prefer_real_data_only = bool(cfg.get("prefer_real_data_only", True))
+    max_real_days = int(cfg.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS)
+    allow_minimal_synth = bool(cfg.get("allow_minimal_synthetic_fallback", False))
+    force_training = bool(cfg.get("force_training", True))
+    return {
+        "training_trades": training_trades,
+        "prefer_real_data_only": prefer_real_data_only,
+        "max_real_days": max(30, min(3_650, max_real_days)),
+        "allow_minimal_synthetic_fallback": allow_minimal_synth,
+        "force_training": force_training,
+    }
+
+
+def _first_boot_needed() -> bool:
+    cfg = _load_first_boot_config()
+    force_training = bool(cfg.get("force_training", True))
+    missing_flag = not FIRST_BOOT_FLAG_PATH.exists()
+    missing_policy = not FIRST_BOOT_POLICY_PATH.exists()
+    missing_artifacts = missing_flag or missing_policy
+    logging.info(
+        "first_boot.check force_training=%s missing_flag=%s missing_policy=%s",
+        force_training,
+        missing_flag,
+        missing_policy,
+    )
+    if missing_artifacts and not force_training:
+        logging.warning(
+            "First boot artifacts ontbreken, maar first_boot.force_training=false; runtime gaat door zonder verplichte initiële training."
+        )
+        return False
+    return missing_artifacts and force_training
+
+
+def _run_first_boot_training() -> int:
+    cfg = _load_first_boot_config()
+    target = int(cfg["training_trades"])
+    prefer_real = bool(cfg["prefer_real_data_only"])
+    max_days = int(cfg["max_real_days"])
+    allow_synth = bool(cfg["allow_minimal_synthetic_fallback"])
+    estimated_days = estimate_first_boot_real_days(target)
+
+    start_message = "Eerste keer starten gedetecteerd. Lumina voert nu haar initiële leer-cyclus uit..."
+    _write_first_boot_progress("detected", start_message, target_trades=target, max_real_days=max_days)
+    print(start_message, flush=True)
+    print(
+        f"Laden van ongeveer {min(max_days, estimated_days)} dagen echte historische data "
+        f"(max_real_days={max_days}, target_trades={target})...",
+        flush=True,
+    )
+    _write_first_boot_progress(
+        "loading_data",
+        "Laden van historische data voor first-boot training.",
+        target_trades=target,
+        estimated_real_days=estimated_days,
+    )
+
+    container = ApplicationContainer()
+    _write_first_boot_progress(
+        "training_running",
+        "Initiale first-boot training draait momenteel.",
+        target_trades=target,
+    )
+    report = container.infinite_simulator.run_first_boot_training(
+        target_trades=target,
+        prefer_real_data_only=prefer_real,
+        max_real_days=max_days,
+        allow_minimal_synthetic_fallback=allow_synth,
+    )
+    status = str(report.get("status", "error"))
+    trades = int(report.get("trades", 0) or 0)
+    if status.startswith("ok") and trades > 0:
+        FIRST_BOOT_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        FIRST_BOOT_FLAG_PATH.write_text(datetime.now().isoformat(), encoding="utf-8")
+        synthetic_ticks = int(report.get("synthetic_ticks", 0) or 0)
+        if synthetic_ticks > 0:
+            done_message = (
+                f"Eerste training voltooid met {trades} trades op basis van echte data "
+                f"met minimale synthetische aanvulling ({synthetic_ticks} ticks). Policy opgeslagen."
+            )
+        else:
+            done_message = f"Eerste training voltooid met {trades} trades op basis van echte data. Policy opgeslagen."
+        print(
+            done_message,
+            flush=True,
+        )
+        _write_first_boot_progress("completed", done_message, status=status, trades=trades)
+        return 0
+    print(
+        f"First boot training is niet geslaagd (status={status}, trades={trades}). Runtime wordt fail-closed gestopt.",
+        flush=True,
+    )
+    _write_first_boot_progress(
+        "failed",
+        "First boot training is niet geslaagd en runtime is fail-closed gestopt.",
+        status=status,
+        trades=trades,
+    )
+    return 1
+
+
 def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args, _ = parser.parse_known_args(list(argv or []))
@@ -333,6 +461,19 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
         parser.error("--sim-only and --real-safe cannot be combined")
 
     resolved_mode = _resolve_mode(str(args.mode), bool(args.sim_only), bool(args.real_safe), mode_hint)
+
+    should_check_first_boot = (
+        resolved_mode in {"sim", "real"}
+        and not bool(args.headless)
+        and not bool(args.stability_check)
+    )
+    if should_check_first_boot:
+        if _first_boot_needed():
+            first_boot_rc = _run_first_boot_training()
+            if first_boot_rc != 0:
+                return first_boot_rc
+        else:
+            logging.info("first_boot.check runtime gate open; normale runtime start zonder verplichte first-boot training.")
 
     if resolved_mode == "nightly":
         return _run_nightly()

@@ -37,6 +37,7 @@ from .runtime_state import EngineAccountState, EngineMemoryState, EnginePerforma
 from .technical_analysis_service import TechnicalAnalysisService
 from .valuation_engine import ValuationEngine
 from lumina_core.risk.orchestration import RiskOrchestrator
+from lumina_core.logging_utils import get_logger
 
 __all__ = [
     "AgentStateContext",
@@ -45,6 +46,7 @@ __all__ = [
     "PositionStateContext",
     "RiskStateContext",
 ]
+logger = get_logger("lumina.system.bootstrap")
 
 MIGRATED_SERVICE_PROXY_FIELDS: frozenset[str] = frozenset(
     {
@@ -117,6 +119,7 @@ class LuminaEngine:
             self.bible_engine = BibleEngine(Path(self.config.bible_file))
             if callable(getattr(self.bible_engine, "load", None)):
                 self.bible_engine.bible = self.bible_engine.load()
+                logger.info("bootstrap.bible_loaded", extra={"event_data": {"event": "bootstrap.bible_loaded"}})
 
         # FastPathEngine wordt hier lazy geladen om circulaire imports te vermijden
         if self.fast_path is None:
@@ -185,6 +188,17 @@ class LuminaEngine:
         if self.execution_service is None:
             self.execution_service = ExecutionService(engine=self)
         self._sync_services_registry()
+        logger.info(
+            "bootstrap.engine_ready",
+            extra={
+                "event_data": {
+                    "event": "bootstrap.engine_ready",
+                    "trade_mode": str(getattr(self.config, "trade_mode", "paper")),
+                    "final_arbitration_loaded": self.final_arbitration is not None,
+                    "risk_controller_loaded": self.risk_controller is not None,
+                }
+            },
+        )
 
     def _sync_services_registry(self) -> None:
         for field_name in SERVICE_PROXY_FIELDS:

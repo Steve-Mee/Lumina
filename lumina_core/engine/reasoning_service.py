@@ -18,8 +18,9 @@ from lumina_core.risk.policy_engine import PolicyEngine
 from lumina_core.risk.regime_detector import RegimeDetector, RegimeSnapshot
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, session_guard_allows_trading
 from lumina_core.sla_config import reasoning_latency_sla_ms
+from lumina_core.logging_utils import correlation_id, get_logger, log_decision_flow, record_reasoning_latency_monitoring
 
-logger = logging.getLogger(__name__)
+logger = get_logger("lumina.reasoning.service")
 
 
 class ReasoningDecisionLogError(RuntimeError):
@@ -66,6 +67,13 @@ class ReasoningService:
         setattr(app, "FAST_PATH_ONLY", enabled)
         state = "enabled" if enabled else "disabled"
         app.logger.warning(f"FAST_PATH_ONLY {state} (reasoning): {reason}")
+        try:
+            logger.info(
+                "reasoning.fast_path_toggle",
+                extra={"event_data": {"event": "reasoning.fast_path_toggle", "enabled": enabled, "reason": reason}},
+            )
+        except Exception:
+            pass
 
     def _record_latency(self, elapsed_ms: float, source: str) -> None:
         app = self._app()
@@ -73,6 +81,21 @@ class ReasoningService:
             self._sla_breach_streak += 1
             self._sla_recovery_streak = 0
             if self._sla_breach_streak >= 2:
+                try:
+                    logger.warning(
+                        "reasoning.sla_breach",
+                        extra={
+                            "event_data": {
+                                "event": "reasoning.sla_breach",
+                                "source": source,
+                                "elapsed_ms": elapsed_ms,
+                                "sla_ms": self.latency_sla_ms,
+                                "streak": self._sla_breach_streak,
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
                 self._set_fast_path_only(
                     True,
                     f"{source} latency {elapsed_ms:.1f}ms above SLA {self.latency_sla_ms:.1f}ms",
@@ -84,6 +107,17 @@ class ReasoningService:
                 self._set_fast_path_only(False, f"{source} latency recovered ({elapsed_ms:.1f}ms)")
 
         setattr(app, "REASONING_LATENCY_MS", round(float(elapsed_ms), 2))
+        try:
+            record_reasoning_latency_monitoring(
+                source=source,
+                elapsed_ms=float(elapsed_ms),
+                sla_ms=float(self.latency_sla_ms),
+                breach_streak=int(self._sla_breach_streak),
+                fast_path_only=bool(getattr(app, "FAST_PATH_ONLY", False)),
+                daily_pnl=float(getattr(self.engine, "realized_pnl_today", 0.0) or 0.0),
+            )
+        except Exception:
+            pass
 
     def _fast_path_only_enabled(self) -> bool:
         app = self._app()
@@ -98,6 +132,13 @@ class ReasoningService:
 
     def _decision_log(self):
         return getattr(self.engine, "decision_log", None)
+
+    @staticmethod
+    def _safe_structured_log(logger_obj: logging.Logger, level: int, event: str, **fields: Any) -> None:
+        try:
+            logger_obj.log(level, event, extra={"event_data": {"event": event, **fields}})
+        except Exception:
+            return
 
     @staticmethod
     def _new_decision_context_id(context: str) -> str:
@@ -169,49 +210,69 @@ class ReasoningService:
 
         mode = str(getattr(self.engine.config, "trade_mode", "paper")).strip().lower()
         dream = self.engine.get_current_dream_snapshot()
-        price = float(
-            getattr(order, "metadata", {}).get("reference_price", 0.0)
-            if isinstance(getattr(order, "metadata", {}), dict)
-            else 0.0
-        )
-        stop = float(getattr(order, "stop_loss", 0.0) or 0.0)
-        proposed_risk = abs(price - stop) if price > 0.0 and stop > 0.0 else 0.0
+        decision_context_id = self._new_decision_context_id("submit_order")
+        with correlation_id(decision_context_id):
+            try:
+                log_decision_flow(logger, decision_context_id, "submit_order.start", mode=mode)
+            except Exception:
+                pass
+            price = float(
+                getattr(order, "metadata", {}).get("reference_price", 0.0)
+                if isinstance(getattr(order, "metadata", {}), dict)
+                else 0.0
+            )
+            stop = float(getattr(order, "stop_loss", 0.0) or 0.0)
+            proposed_risk = abs(price - stop) if price > 0.0 and stop > 0.0 else 0.0
 
-        gate_allowed, gate_reason = enforce_pre_trade_gate(
-            self.engine,
-            symbol=str(getattr(order, "symbol", getattr(self.engine.config, "instrument", "UNKNOWN"))),
-            regime=str(dream.get("regime", "NEUTRAL")),
-            proposed_risk=float(proposed_risk),
-            order_side=str(getattr(order, "side", "HOLD")).upper(),
-        )
+            gate_allowed, gate_reason = enforce_pre_trade_gate(
+                self.engine,
+                symbol=str(getattr(order, "symbol", getattr(self.engine.config, "instrument", "UNKNOWN"))),
+                regime=str(dream.get("regime", "NEUTRAL")),
+                proposed_risk=float(proposed_risk),
+                order_side=str(getattr(order, "side", "HOLD")).upper(),
+            )
 
-        session_allowed = not str(gate_reason).lower().startswith("session guard blocked")
-        policy_engine = PolicyEngine(engine=self.engine, broker=self.container.broker)
-        gateway_result = policy_engine.evaluate_proposal(
-            signal=str(getattr(order, "side", "HOLD")).upper(),
-            confluence_score=float(dream.get("confluence_score", 1.0) or 1.0),
-            min_confluence=float(getattr(self.engine.config, "min_confluence", 0.0) or 0.0),
-            hold_until_ts=float(dream.get("hold_until_ts", 0.0) or 0.0),
-            mode=mode,
-            session_allowed=bool(session_allowed),
-            risk_allowed=bool(gate_allowed),
-            lineage={
-                "model_identifier": "reasoning-service-submit-order",
-                "prompt_version": "reasoning-service-v1",
-                "prompt_hash": "reasoning-service-submit-order",
-                "policy_version": "agent-policy-gateway-v1",
-                "provider_route": [str(getattr(self.inference_engine, "active_provider", "unknown-provider"))],
-                "calibration_factor": 1.0,
-            },
-        )
-        if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {
-            "BUY",
-            "SELL",
-        }:
-            raise PolicyGateError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
+            session_allowed = not str(gate_reason).lower().startswith("session guard blocked")
+            policy_engine = PolicyEngine(engine=self.engine, broker=self.container.broker)
+            gateway_result = policy_engine.evaluate_proposal(
+                signal=str(getattr(order, "side", "HOLD")).upper(),
+                confluence_score=float(dream.get("confluence_score", 1.0) or 1.0),
+                min_confluence=float(getattr(self.engine.config, "min_confluence", 0.0) or 0.0),
+                hold_until_ts=float(dream.get("hold_until_ts", 0.0) or 0.0),
+                mode=mode,
+                session_allowed=bool(session_allowed),
+                risk_allowed=bool(gate_allowed),
+                lineage={
+                    "decision_context_id": decision_context_id,
+                    "model_identifier": "reasoning-service-submit-order",
+                    "prompt_version": "reasoning-service-v1",
+                    "prompt_hash": "reasoning-service-submit-order",
+                    "policy_version": "agent-policy-gateway-v1",
+                    "provider_route": [str(getattr(self.inference_engine, "active_provider", "unknown-provider"))],
+                    "calibration_factor": 1.0,
+                },
+            )
+            if str(gateway_result.get("signal", "HOLD")) == "HOLD" and str(getattr(order, "side", "HOLD")).upper() in {
+                "BUY",
+                "SELL",
+            }:
+                raise PolicyGateError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
 
-        skip_final_arbitration = bool(getattr(self.engine, "admission_chain_final_arbitration_approved", False))
-        return policy_engine.execute_order(order, skip_final_arbitration=skip_final_arbitration)
+            skip_final_arbitration = bool(getattr(self.engine, "admission_chain_final_arbitration_approved", False))
+            self._safe_structured_log(
+                logger,
+                logging.INFO,
+                "reasoning.submit_order.final_decision",
+                decision_context_id=decision_context_id,
+                signal=str(getattr(order, "side", "HOLD")).upper(),
+                confidence=float(dream.get("confidence", dream.get("confluence_score", 0.0)) or 0.0),
+                chosen_strategy=str(dream.get("chosen_strategy", "unknown")),
+                stop=float(getattr(order, "stop_loss", 0.0) or 0.0),
+                target=float(getattr(order, "take_profit", 0.0) or 0.0),
+                explanation=str(gateway_result.get("reason", "")),
+                model_used=str(getattr(self.inference_engine, "active_provider", "local")),
+            )
+            return policy_engine.execute_order(order, skip_final_arbitration=skip_final_arbitration)
 
     def refresh_regime_snapshot(
         self,
@@ -292,51 +353,73 @@ class ReasoningService:
         assert self.llm_client is not None
         assert self.llm_router is not None
         resolved_context_id = decision_context_id or self._new_decision_context_id(context)
-        if self._fast_path_only_enabled():
+        with correlation_id(resolved_context_id):
+            if self._fast_path_only_enabled():
+                llm_result = self.llm_client.complete_trading_json(
+                    payload=payload,
+                    timeout_seconds=1,
+                    context=context,
+                    max_retries=0,
+                    decision_context_id=resolved_context_id,
+                    forced_path="fast_rule",
+                    fallback_reason="fast_path_only_enabled",
+                )
+                routed = self.llm_router.after_llm_call(llm_result, context=context)
+                output = dict(routed.payload)
+                output.setdefault("decision_context_id", llm_result.decision_context_id)
+                output.setdefault("llm_path", llm_result.path)
+                output.setdefault("routing_path", routed.routing_path)
+                output.setdefault("llm_confidence", routed.llm_confidence)
+                self._safe_structured_log(
+                    logger,
+                    logging.WARNING,
+                    "reasoning.fast_path_fallback",
+                    decision_context_id=resolved_context_id,
+                    context=context,
+                    reason="fast_path_only_enabled",
+                )
+                return output
+
+            started = time.perf_counter()
+            model_version = str(payload.get("model", "unknown"))
             llm_result = self.llm_client.complete_trading_json(
                 payload=payload,
-                timeout_seconds=1,
+                timeout_seconds=timeout,
                 context=context,
-                max_retries=0,
+                max_retries=max_retries,
                 decision_context_id=resolved_context_id,
-                forced_path="fast_rule",
-                fallback_reason="fast_path_only_enabled",
+            )
+            elapsed_ms = (
+                llm_result.latency_ms if llm_result.latency_ms > 0.0 else (time.perf_counter() - started) * 1000.0
             )
             routed = self.llm_router.after_llm_call(llm_result, context=context)
-            output = dict(routed.payload)
-            output.setdefault("decision_context_id", llm_result.decision_context_id)
-            output.setdefault("llm_path", llm_result.path)
-            output.setdefault("routing_path", routed.routing_path)
-            output.setdefault("llm_confidence", routed.llm_confidence)
-            return output
-
-        started = time.perf_counter()
-        model_version = str(payload.get("model", "unknown"))
-        llm_result = self.llm_client.complete_trading_json(
-            payload=payload,
-            timeout_seconds=timeout,
-            context=context,
-            max_retries=max_retries,
-            decision_context_id=resolved_context_id,
-        )
-        elapsed_ms = llm_result.latency_ms if llm_result.latency_ms > 0.0 else (time.perf_counter() - started) * 1000.0
-        routed = self.llm_router.after_llm_call(llm_result, context=context)
-        result = dict(routed.payload)
-        result.setdefault("decision_context_id", llm_result.decision_context_id)
-        result.setdefault("llm_path", llm_result.path)
-        result.setdefault("routing_path", routed.routing_path)
-        result.setdefault("llm_confidence", routed.llm_confidence)
-        self._record_latency(elapsed_ms, source=context)
-        self._log_decision(
-            agent_id="ReasoningService",
-            raw_input=payload,
-            raw_output=result,
-            confidence=float(result.get("confidence", 0.0)),
-            policy_outcome="inference_fallback" if llm_result.fallback else "inference_success",
-            decision_context_id=llm_result.decision_context_id,
-            model_version=model_version,
-        )
-        return result
+            result = dict(routed.payload)
+            result.setdefault("decision_context_id", llm_result.decision_context_id)
+            result.setdefault("llm_path", llm_result.path)
+            result.setdefault("routing_path", routed.routing_path)
+            result.setdefault("llm_confidence", routed.llm_confidence)
+            self._record_latency(elapsed_ms, source=context)
+            if logger.isEnabledFor(logging.DEBUG):
+                self._safe_structured_log(
+                    logger,
+                    logging.DEBUG,
+                    "reasoning.infer_json.latency",
+                    decision_context_id=resolved_context_id,
+                    context=context,
+                    elapsed_ms=elapsed_ms,
+                    prompt_preview=str(payload)[:300],
+                    response_preview=str(result)[:300],
+                )
+            self._log_decision(
+                agent_id="ReasoningService",
+                raw_input=payload,
+                raw_output=result,
+                confidence=float(result.get("confidence", 0.0)),
+                policy_outcome="inference_fallback" if llm_result.fallback else "inference_success",
+                decision_context_id=llm_result.decision_context_id,
+                model_version=model_version,
+            )
+            return result
 
     async def multi_agent_consensus(
         self,
@@ -348,6 +431,30 @@ class ReasoningService:
     ) -> dict[str, Any]:
         app = self._app()
         consensus_context_id = self._new_decision_context_id("multi_agent_consensus")
+        blackboard = getattr(self.engine, "blackboard", None)
+        if blackboard is not None and hasattr(blackboard, "latest"):
+            topics = (
+                "agent.news.proposal",
+                "agent.tape.proposal",
+                "agent.emotional_twin.proposal",
+                "agent.rl.proposal",
+                "agent.meta.proposal",
+            )
+            proposals: dict[str, Any] = {}
+            for topic in topics:
+                evt = blackboard.latest(topic)
+                if evt is None:
+                    continue
+                payload = getattr(evt, "payload", {}) if hasattr(evt, "payload") else {}
+                proposals[topic] = payload if isinstance(payload, dict) else {"raw": str(payload)}
+            if proposals:
+                self._safe_structured_log(
+                    logger,
+                    logging.DEBUG,
+                    "reasoning.blackboard_proposals",
+                    decision_context_id=consensus_context_id,
+                    proposals=proposals,
+                )
         session_allowed, session_reason = self._session_trading_allowed()
         if not session_allowed:
             self._set_fast_path_only(True, f"session_guard: {session_reason}")

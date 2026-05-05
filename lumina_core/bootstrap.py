@@ -8,6 +8,7 @@ import hmac
 import json
 import logging
 import os
+import sys
 import time
 import numpy as np
 import requests
@@ -18,10 +19,12 @@ from lumina_core import backtest_workers, runtime_workers, trade_workers
 from lumina_core.container import ApplicationContainer
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.logging_utils import flush_logger_handlers
+from lumina_core.logging_utils import get_logger
 from lumina_core.runtime_bootstrap import start_runtime_services
 from lumina_core.threading_utils import start_daemon
 
 logger = logging.getLogger(__name__)
+bootstrap_logger = get_logger("lumina.system.bootstrap")
 
 
 def _validate_bootstrapped_ohlc(container: ApplicationContainer) -> None:
@@ -380,6 +383,19 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
     load history, and start all daemon threads.
     """
     container.logger.info("🚀 Bootstrap runtime services starting...")
+    bootstrap_logger.info("bootstrap.runtime.start", extra={"event_data": {"event": "bootstrap.runtime.start"}})
+    previous_hook = sys.excepthook
+
+    def _global_exception_logger(exc_type, exc_value, exc_traceback):
+        bootstrap_logger.error(
+            "bootstrap.unhandled_exception",
+            exc_info=(exc_type, exc_value, exc_traceback),
+            extra={"event_data": {"event": "bootstrap.unhandled_exception"}},
+        )
+        if callable(previous_hook):
+            previous_hook(exc_type, exc_value, exc_traceback)
+
+    sys.excepthook = _global_exception_logger
     _caps = resolve_mode_capabilities(str(container.config.trade_mode))
     container.logger.info(
         "RUNTIME_BOOT,"
@@ -405,6 +421,10 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
     container.logger.info(f"BOOTSTRAP_HIST_LOAD_START,primary={_primary},swarm_n={len(container.swarm_symbols)}")
     flush_logger_handlers(container.logger)
     container.market_data_service.load_historical_ohlc(days_back=3, limit=5000)
+    bootstrap_logger.info(
+        "bootstrap.component_loaded",
+        extra={"event_data": {"event": "bootstrap.component_loaded", "component": "market_data_history"}},
+    )
     container.logger.info("BOOTSTRAP_HIST_LOAD_PRIMARY_DONE")
     flush_logger_handlers(container.logger)
     for symbol in container.swarm_symbols:
@@ -418,6 +438,10 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
                 container.swarm_manager.ingest_historical_rows(symbol=symbol, rows_df=symbol_df)
         except Exception as exc:
             container.logger.error(f"Swarm historical bootstrap error for {symbol}: {exc}")
+            bootstrap_logger.error(
+                "bootstrap.component_load_error",
+                extra={"event_data": {"event": "bootstrap.component_load_error", "component": f"swarm:{symbol}"}},
+            )
     container.logger.info("BOOTSTRAP_HIST_LOAD_SWARM_DONE")
     flush_logger_handlers(container.logger)
 
@@ -433,6 +457,15 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
 
     # Test TraderLeague webhook if enabled
     run_traderleague_webhook_self_test(container)
+
+    # LIVE_FEED_* chart/daemon traces go to lumina CSV (INFO), not launcher_runtime_stderr (Streamlit).
+    container.logger.info(
+        "LIVE_FEED_CONFIG,log_target=logs/lumina_full_log.csv,start_pre_dream_backup=%s,"
+        "screen_share_enabled=%s,note=daemon_LIVE_FEED_only_when_start_pre_dream_backup_true",
+        str(bool(container.config.start_pre_dream_backup)).lower(),
+        str(bool(container.config.screen_share_enabled)).lower(),
+    )
+    flush_logger_handlers(container.logger)
 
     # Start all runtime services and daemons
     start_runtime_services(
@@ -459,9 +492,17 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
         auto_journal_daemon_fn=container.reporting_service.auto_journal_daemon,
         auto_backtest_daemon_fn=container.reporting_service.auto_backtest_daemon,
     )
+    bootstrap_logger.info(
+        "bootstrap.component_loaded",
+        extra={"event_data": {"event": "bootstrap.component_loaded", "component": "runtime_services"}},
+    )
 
     # Start performance validator daemon
     start_daemon(container.performance_validator.monthly_validation_daemon, name="performance-validator-daemon")
+    bootstrap_logger.info(
+        "bootstrap.component_loaded",
+        extra={"event_data": {"event": "bootstrap.component_loaded", "component": "performance_validator"}},
+    )
 
     container.logger.info("🛡️ v50 Stability & Watchdog active - bot is now 24/7 production-ready")
     container.logger.info(f"🕸️ Swarm active on symbols: {', '.join(container.swarm_symbols)}")

@@ -11,7 +11,10 @@ from pathlib import Path
 
 from lumina_core.audit import get_audit_logger
 from lumina_core.fault import FaultDomain, FaultPolicy
+from lumina_core.logging_utils import correlation_id, get_logger
 from lumina_core.state.state_manager import safe_sqlite_connect
+
+logger = get_logger("lumina.evolution.veto")
 
 
 @dataclass(frozen=True)
@@ -81,50 +84,63 @@ class VetoRegistry:
         Raises:
             RuntimeError: If append operation fails (veto NOT recorded)
         """
-        with self._lock:
-            try:
-                # Write to SQLite
-                with safe_sqlite_connect(self._db_path) as conn:
-                    conn.execute(
-                        """
-                        INSERT INTO veto_records (veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                        (
-                            record.veto_timestamp,
-                            record.dna_id,
-                            record.dna_fitness,
-                            record.reason,
-                            record.issuer,
-                            json.dumps(record.metadata),
-                        ),
+        with correlation_id(str(record.dna_id)):
+            with self._lock:
+                try:
+                    # Write to SQLite
+                    with safe_sqlite_connect(self._db_path) as conn:
+                        conn.execute(
+                            """
+                            INSERT INTO veto_records (veto_timestamp, dna_id, dna_fitness, reason, issuer, metadata)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                            (
+                                record.veto_timestamp,
+                                record.dna_id,
+                                record.dna_fitness,
+                                record.reason,
+                                record.issuer,
+                                json.dumps(record.metadata),
+                            ),
+                        )
+                        conn.commit()
+
+                    # Write to canonical append-only hash-chained audit stream.
+                    mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() or "sim"
+                    get_audit_logger().append(
+                        stream=self._stream_name,
+                        payload=asdict(record),
+                        path=self._log_path,
+                        mode=mode,
+                        actor_id="veto_registry",
+                        severity="warning",
                     )
-                    conn.commit()
+                    logger.warning(
+                        "veto.append_veto",
+                        extra={
+                            "event_data": {
+                                "event": "veto.append_veto",
+                                "dna_id": str(record.dna_id),
+                                "issuer": str(record.issuer),
+                                "reason": str(record.reason),
+                                "timestamp": str(record.veto_timestamp),
+                            }
+                        },
+                    )
 
-                # Write to canonical append-only hash-chained audit stream.
-                mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() or "sim"
-                get_audit_logger().append(
-                    stream=self._stream_name,
-                    payload=asdict(record),
-                    path=self._log_path,
-                    mode=mode,
-                    actor_id="veto_registry",
-                    severity="warning",
-                )
-
-            except (sqlite3.Error, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError) as exc:
-                mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() or "sim"
-                FaultPolicy.handle(
-                    domain=FaultDomain.EVOLUTION_VETO,
-                    operation="append_veto_record",
-                    exc=exc,
-                    is_real_mode=(mode == "real"),
-                    fault_cls=RuntimeError,
-                    message="VetoRegistry failed to append veto record",
-                    context={"db_path": str(self._db_path), "log_path": str(self._log_path), "mode": mode},
-                    logger_obj=logging.getLogger(__name__),
-                )
-                raise RuntimeError(f"Failed to append veto record: {exc}") from exc
+                except (sqlite3.Error, OSError, RuntimeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                    mode = str(os.getenv("LUMINA_MODE", "sim")).strip().lower() or "sim"
+                    FaultPolicy.handle(
+                        domain=FaultDomain.EVOLUTION_VETO,
+                        operation="append_veto_record",
+                        exc=exc,
+                        is_real_mode=(mode == "real"),
+                        fault_cls=RuntimeError,
+                        message="VetoRegistry failed to append veto record",
+                        context={"db_path": str(self._db_path), "log_path": str(self._log_path), "mode": mode},
+                        logger_obj=logging.getLogger(__name__),
+                    )
+                    raise RuntimeError(f"Failed to append veto record: {exc}") from exc
 
     def is_veto_active(self, dna_id: str, window_seconds: int = 1800) -> bool:
         """Check if DNA has active veto within window (fail-closed: True blocks promotion).
@@ -153,7 +169,19 @@ class VetoRegistry:
                     )
                     result = cursor.fetchone()
 
-                return result is not None
+                active = result is not None
+                logger.info(
+                    "veto.is_veto_active",
+                    extra={
+                        "event_data": {
+                            "event": "veto.is_veto_active",
+                            "dna_id": str(dna_id),
+                            "window_seconds": int(window_seconds),
+                            "active": bool(active),
+                        }
+                    },
+                )
+                return active
             except (sqlite3.Error, OSError, RuntimeError, ValueError, TypeError) as exc:
                 FaultPolicy.handle(
                     domain=FaultDomain.EVOLUTION_VETO,

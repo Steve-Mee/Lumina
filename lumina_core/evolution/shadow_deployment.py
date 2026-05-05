@@ -30,8 +30,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 from lumina_core.config_loader import ConfigLoader
+from lumina_core.logging_utils import correlation_id, get_logger, log_shadow_verdict
 
-logger = logging.getLogger(__name__)
+logger = get_logger("lumina.evolution.shadow")
 
 ShadowStatus = Literal["running", "passed", "failed", "promoted", "expired"]
 ShadowVerdict = Literal["pass", "fail", "pending"]
@@ -285,23 +286,39 @@ class ShadowDeploymentTracker:
         Idempotent — if the hash is already tracked and still running,
         the existing run is returned.
         """
-        with self._lock:
-            runs = self._load()
-            existing = runs.get(dna_hash)
-            if existing and existing.status == "running":
-                logger.info("Shadow run already active for dna_hash=%s", dna_hash[:12])
-                return existing
+        with correlation_id(str(dna_hash)):
+            with self._lock:
+                runs = self._load()
+                existing = runs.get(dna_hash)
+                if existing and existing.status == "running":
+                    try:
+                        logger.info(
+                            "shadow.start_shadow.active",
+                            extra={"event_data": {"event": "shadow.start_shadow.active", "dna_hash": dna_hash[:12]}},
+                        )
+                    except Exception:
+                        pass
+                    return existing
 
-            run = ShadowRun(dna_hash=dna_hash)
-            runs[dna_hash] = run
-            self._save(runs)
-            logger.info(
-                "Shadow run started for dna_hash=%s (min_days=%.1f, min_trades=%d)",
-                dna_hash[:12],
-                self._min_days,
-                self._min_trades,
-            )
-            return run
+                run = ShadowRun(dna_hash=dna_hash)
+                runs[dna_hash] = run
+                self._save(runs)
+                try:
+                    logger.info(
+                        "shadow.start_shadow",
+                        extra={
+                            "event_data": {
+                                "event": "shadow.start_shadow",
+                                "dna_hash": dna_hash[:12],
+                                "shadow_run_id": dna_hash[:12],
+                                "min_days": self._min_days,
+                                "min_trades": self._min_trades,
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
+                return run
 
     def record_pnl(
         self,
@@ -311,19 +328,37 @@ class ShadowDeploymentTracker:
         paper_pnl: float | None = None,
     ) -> None:
         """Append a PnL observation to the shadow run."""
-        with self._lock:
-            runs = self._load()
-            run = runs.get(dna_hash)
-            if run is None or run.status != "running":
-                return
-            if sim_pnl is not None:
-                run.sim_pnl_history.append(float(sim_pnl))
-                run.total_sim_pnl += float(sim_pnl)
-            if paper_pnl is not None:
-                run.paper_pnl_history.append(float(paper_pnl))
-                run.total_paper_pnl += float(paper_pnl)
-            run.trade_count += 1
-            self._save(runs)
+        with correlation_id(str(dna_hash)):
+            with self._lock:
+                runs = self._load()
+                run = runs.get(dna_hash)
+                if run is None or run.status != "running":
+                    return
+                if sim_pnl is not None:
+                    run.sim_pnl_history.append(float(sim_pnl))
+                    run.total_sim_pnl += float(sim_pnl)
+                if paper_pnl is not None:
+                    run.paper_pnl_history.append(float(paper_pnl))
+                    run.total_paper_pnl += float(paper_pnl)
+                run.trade_count += 1
+                self._save(runs)
+                if run.trade_count % 5 == 0:
+                    try:
+                        logger.info(
+                            "shadow.record_pnl",
+                            extra={
+                                "event_data": {
+                                    "event": "shadow.record_pnl",
+                                    "dna_hash": dna_hash[:12],
+                                    "shadow_run_id": dna_hash[:12],
+                                    "trade_count": run.trade_count,
+                                    "sim_pnl": run.total_sim_pnl,
+                                    "paper_pnl": run.total_paper_pnl,
+                                }
+                            },
+                        )
+                    except Exception:
+                        pass
 
     def is_shadow_complete(self, dna_hash: str) -> bool:
         """True when the minimum duration and trade count have been reached."""
@@ -332,7 +367,24 @@ class ShadowDeploymentTracker:
             run = runs.get(dna_hash)
         if run is None:
             return False
-        return run.days_elapsed >= self._min_days and run.trade_count >= self._min_trades
+        is_complete = run.days_elapsed >= self._min_days and run.trade_count >= self._min_trades
+        try:
+            logger.info(
+                "shadow.is_complete",
+                extra={
+                    "event_data": {
+                        "event": "shadow.is_complete",
+                        "dna_hash": dna_hash[:12],
+                        "shadow_run_id": dna_hash[:12],
+                        "days_elapsed": run.days_elapsed,
+                        "trade_count": run.trade_count,
+                        "is_complete": is_complete,
+                    }
+                },
+            )
+        except Exception:
+            pass
+        return is_complete
 
     def compute_shadow_verdict(self, dna_hash: str) -> ShadowVerdict:
         """Return 'pass', 'fail', or 'pending' for the shadow run.
@@ -353,6 +405,23 @@ class ShadowDeploymentTracker:
             return "pending"
 
         if not self.is_shadow_complete(dna_hash):
+            if run.days_elapsed >= self._min_days and run.trade_count < self._min_trades:
+                try:
+                    logger.warning(
+                        "shadow.expired_insufficient_trades",
+                        extra={
+                            "event_data": {
+                                "event": "shadow.expired_insufficient_trades",
+                                "dna_hash": dna_hash[:12],
+                                "shadow_run_id": dna_hash[:12],
+                                "days_elapsed": run.days_elapsed,
+                                "trade_count": run.trade_count,
+                                "min_trades": self._min_trades,
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
             return "pending"
 
         sim_pnl = list(run.sim_pnl_history)
@@ -364,21 +433,38 @@ class ShadowDeploymentTracker:
             verdict = str(ab.get("verdict", "inconclusive"))
             paper_sharpe = _sample_sharpe(paper_pnl)
             if verdict == "variant_wins" and paper_sharpe >= 0.3:
-                logger.info(
-                    "Shadow PASS for dna_hash=%s via AB gate: pvalue=%.4f d=%.4f sharpe=%.3f",
-                    dna_hash[:12],
-                    float(ab.get("pvalue", 1.0) or 1.0),
-                    float(ab.get("cohens_d", 0.0) or 0.0),
-                    paper_sharpe,
-                )
+                try:
+                    log_shadow_verdict(
+                        logger,
+                        dna_hash[:12],
+                        {
+                            "decision": "pass",
+                            "pvalue": float(ab.get("pvalue", 1.0) or 1.0),
+                            "cohen_d": float(ab.get("cohens_d", 0.0) or 0.0),
+                            "sharpe": paper_sharpe,
+                        },
+                    )
+                except Exception:
+                    pass
                 return "pass"
             if verdict == "control_wins" or (verdict == "inconclusive" and paper_sharpe < 0.0):
-                logger.info(
-                    "Shadow FAIL for dna_hash=%s via AB gate: verdict=%s sharpe=%.3f",
-                    dna_hash[:12],
-                    verdict,
-                    paper_sharpe,
-                )
+                try:
+                    logger.warning(
+                        "shadow.verdict.fail",
+                        extra={
+                            "event_data": {
+                                "event": "shadow.verdict.fail",
+                                "dna_hash": dna_hash[:12],
+                                "shadow_run_id": dna_hash[:12],
+                                "verdict": verdict,
+                                "sharpe": paper_sharpe,
+                                "pvalue": float(ab.get("pvalue", 1.0) or 1.0),
+                                "cohen_d": float(ab.get("cohens_d", 0.0) or 0.0),
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
                 return "fail"
             return "pending"
 
@@ -389,19 +475,30 @@ class ShadowDeploymentTracker:
         mean_pnl = sum(pnl_history) / len(pnl_history)
         sharpe_like = _sample_sharpe(pnl_history)
         if mean_pnl > 0.0 and sharpe_like >= 0.3:
-            logger.info(
-                "Shadow PASS for dna_hash=%s via single-stream gate: mean=%.2f sharpe=%.3f",
-                dna_hash[:12],
-                mean_pnl,
-                sharpe_like,
-            )
+            try:
+                log_shadow_verdict(
+                    logger,
+                    dna_hash[:12],
+                    {"decision": "pass", "mean_pnl": mean_pnl, "sharpe": sharpe_like},
+                )
+            except Exception:
+                pass
             return "pass"
-        logger.info(
-            "Shadow FAIL for dna_hash=%s via single-stream gate: mean=%.2f sharpe=%.3f",
-            dna_hash[:12],
-            mean_pnl,
-            sharpe_like,
-        )
+        try:
+            logger.warning(
+                "shadow.verdict.fail",
+                extra={
+                    "event_data": {
+                        "event": "shadow.verdict.fail",
+                        "dna_hash": dna_hash[:12],
+                        "shadow_run_id": dna_hash[:12],
+                        "mean_pnl": mean_pnl,
+                        "sharpe": sharpe_like,
+                    }
+                },
+            )
+        except Exception:
+            pass
         return "fail"
 
     def mark_promoted(self, dna_hash: str) -> None:
@@ -412,6 +509,22 @@ class ShadowDeploymentTracker:
                 runs[dna_hash].status = "promoted"
                 runs[dna_hash].end_ts = _utcnow()
                 self._save(runs)
+                try:
+                    logger.info(
+                        "shadow.mark_promoted",
+                        extra={
+                            "event_data": {
+                                "event": "shadow.mark_promoted",
+                                "dna_hash": dna_hash[:12],
+                                "shadow_run_id": dna_hash[:12],
+                                "total_sim_pnl": runs[dna_hash].total_sim_pnl,
+                                "total_paper_pnl": runs[dna_hash].total_paper_pnl,
+                                "trade_count": runs[dna_hash].trade_count,
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
 
     def run_shadow_ab(
         self,
@@ -446,6 +559,23 @@ class ShadowDeploymentTracker:
         mean_var = sum(variant_pnl) / n_var
         pvalue = _welch_t_pvalue(variant_pnl, control_pnl)
         d = _cohens_d(variant_pnl, control_pnl)
+        try:
+            logger.debug(
+                "shadow.ab_test",
+                extra={
+                    "event_data": {
+                        "event": "shadow.ab_test",
+                        "n_control": n_ctrl,
+                        "n_variant": n_var,
+                        "mean_control": mean_ctrl,
+                        "mean_variant": mean_var,
+                        "pvalue": pvalue,
+                        "cohens_d": d,
+                    }
+                },
+            )
+        except Exception:
+            pass
 
         significant = pvalue < self._pvalue_threshold
         large_enough = d > self._effect_size_threshold

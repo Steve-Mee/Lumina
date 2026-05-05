@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import base64
+import json
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Any, Callable
+
+_live_stream_feed_lock = threading.Lock()
+_live_feed_log_ts: dict[str, float] = {}
+_LIVE_FEED_LOG_THROTTLE_SEC = 45.0
 
 from PIL import Image
 import pandas as pd
@@ -14,6 +20,16 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from .lumina_engine import LuminaEngine
+
+
+def _live_feed_throttled(logger: Any, key: str, msg: str) -> None:
+    """Emit LIVE_FEED_* at most once per key per interval (avoids log storms on tight loops)."""
+    now = time.monotonic()
+    last = _live_feed_log_ts.get(key, 0.0)
+    if now - last < _LIVE_FEED_LOG_THROTTLE_SEC:
+        return
+    _live_feed_log_ts[key] = now
+    logger.info(msg)
 
 
 @dataclass(slots=True)
@@ -46,12 +62,46 @@ class VisualizationService:
 
         return ImageTk.PhotoImage(pil_img)
 
+    def _record_live_stream_chart_frame(self, *, base64_char_len: int) -> None:
+        """Append a JSONL heartbeat so the Streamlit launcher can detect chart frames (state/live_stream.jsonl)."""
+        path = Path(self.engine.config.live_jsonl)
+        line = json.dumps(
+            {
+                "ts": datetime.now().isoformat(timespec="seconds"),
+                "event": "chart_frame",
+                "b64_chars": int(base64_char_len),
+            },
+            ensure_ascii=False,
+        )
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with _live_stream_feed_lock:
+                with path.open("a", encoding="utf-8") as fh:
+                    fh.write(line + "\n")
+            self.engine.logger.info(
+                "LIVE_FEED_JSONL_OK,path=%s,b64_chars=%s",
+                path.as_posix(),
+                int(base64_char_len),
+            )
+        except OSError as exc:
+            self.engine.logger.warning(
+                "LIVE_FEED_JSONL_ABORT,path=%s,reason=os_error,detail=%s",
+                path.as_posix(),
+                exc,
+            )
+
     def generate_multi_tf_chart(self, ai_fibs: dict | None = None) -> str | None:
         app = self._app()
         start_time = time.perf_counter()
+        bars = len(self.engine.ohlc_1min)
+        app.logger.info("LIVE_FEED_CHART_GEN_ENTER,ohlc_bars=%s", bars)
 
         with self.engine.live_data_lock:
             if len(self.engine.ohlc_1min) < 200:
+                app.logger.info(
+                    "LIVE_FEED_CHART_GEN_ABORT,stage=ohlc_gate,reason=insufficient_data,bars=%s,min_required=200",
+                    len(self.engine.ohlc_1min),
+                )
                 app.logger.info("CHART_GEN_SKIPPED,reason=insufficient_data")
                 return None
             df = self.engine.ohlc_1min.copy()
@@ -191,23 +241,44 @@ class VisualizationService:
         )
 
         img_bytes = BytesIO()
+        app.logger.info("LIVE_FEED_CHART_GEN_STEP,stage=plotly_write_image,format=png,scale=2")
         try:
             fig.write_image(img_bytes, format="png", scale=2)
         except Exception as exc:
-            app.logger.warning(f"CHART_GEN_EXPORT_SKIPPED,reason={exc}")
+            app.logger.warning("CHART_GEN_EXPORT_SKIPPED,reason=%s", exc)
+            app.logger.warning(
+                "LIVE_FEED_CHART_GEN_ABORT,stage=export_png,reason=kaleido_or_static_image_failed,detail=%s",
+                exc,
+            )
             return None
         img_bytes.seek(0)
         base64_img = base64.b64encode(img_bytes.read()).decode("utf-8")
+        app.logger.info(
+            "LIVE_FEED_CHART_GEN_STEP,stage=base64_ready,b64_chars=%s",
+            len(base64_img),
+        )
 
-        if bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled)):
+        screen_on = bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled))
+        if screen_on:
+            app.logger.info("LIVE_FEED_PUBLISH_ENTER,screen_share_enabled=true,targets=tk_window,live_stream_jsonl")
             self.update_live_chart(base64_img)
+            self._record_live_stream_chart_frame(base64_char_len=len(base64_img))
+        else:
+            app.logger.info(
+                "LIVE_FEED_PUBLISH_SKIP,reason=screen_share_disabled,b64_chars=%s "
+                "(no Tk update, no state/live_stream.jsonl heartbeat)",
+                len(base64_img),
+            )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         app.logger.info(
-            f"CHART_GEN_COMPLETE,duration_ms={duration_ms:.0f},base64_kb={len(base64_img) // 1000},screen_share_updated=YES"
+            "CHART_GEN_COMPLETE,duration_ms=%.0f,base64_kb=%s,screen_share_enabled=%s",
+            duration_ms,
+            len(base64_img) // 1000,
+            str(screen_on).lower(),
         )
         app.logger.info(
-            "[%s] v28 Chart generated + screen-share updated",
+            "[%s] v28 Chart generated (LIVE_FEED publish path executed per flags above)",
             datetime.now().strftime("%H:%M:%S"),
         )
         return base64_img
@@ -215,12 +286,19 @@ class VisualizationService:
     def start_screen_share_window(self) -> None:
         app = self._app()
         if not bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled)):
+            app.logger.info("LIVE_FEED_BOOT_SKIP,component=tk_screen_share,reason=screen_share_disabled_in_config")
             return
+
+        app.logger.info("LIVE_FEED_BOOT_STEP,component=tk_screen_share,action=spawn_daemon_thread")
 
         def create_window() -> None:
             try:
                 import tkinter as tk
             except Exception as exc:
+                app.logger.warning(
+                    "LIVE_FEED_BOOT_ABORT,component=tk_screen_share,reason=tkinter_import_failed,detail=%s",
+                    exc,
+                )
                 app.logger.warning("Screen-share window disabled: tkinter unavailable (%s)", exc)
                 return
 
@@ -274,6 +352,10 @@ class VisualizationService:
             self.live_chart_window = root
             setattr(app, "live_chart_window", root)
             app.logger.info(
+                "LIVE_FEED_BOOT_OK,component=tk_screen_share,stage=window_ready,title=%s",
+                root.title(),
+            )
+            app.logger.info(
                 "[%s] Clean readable screen-share opened",
                 datetime.now().strftime("%H:%M:%S"),
             )
@@ -283,13 +365,28 @@ class VisualizationService:
 
     def update_live_chart(self, chart_base64: str, status_msg: str = "AI Decision & Chart updated") -> None:
         app = self._app()
-        if (
-            not bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled))
-            or not self.live_chart_window
-        ):
+        screen_on = bool(getattr(app, "SCREEN_SHARE_ENABLED", self.engine.config.screen_share_enabled))
+        if not screen_on:
+            _live_feed_throttled(
+                app.logger,
+                "tk_skip_disabled",
+                "LIVE_FEED_TK_SKIP,reason=screen_share_disabled",
+            )
+            return
+        if not self.live_chart_window:
+            _live_feed_throttled(
+                app.logger,
+                "tk_skip_no_window",
+                "LIVE_FEED_TK_SKIP,reason=no_tk_window_yet "
+                "(charts may arrive before Tk mainloop sets live_chart_window; wait or check LIVE_FEED_BOOT_OK)",
+            )
             return
 
         try:
+            app.logger.info(
+                "LIVE_FEED_TK_STEP,stage=decode_resize_apply,b64_chars=%s",
+                len(chart_base64),
+            )
             img_data = base64.b64decode(chart_base64)
             pil_img = Image.open(BytesIO(img_data)).resize((1400, 800), Image.Resampling.LANCZOS)
             with self.chart_update_lock:
@@ -301,7 +398,9 @@ class VisualizationService:
                 win.status_dot.config(fg="#00ff88")
                 win.status_text.config(text=status_msg, fg="#00ff88")
                 win.last_update.config(text=f"Laatste update: {datetime.now().strftime('%H:%M:%S')}")
+            app.logger.info("LIVE_FEED_TK_OK,stage=label_updated")
         except Exception as exc:
+            app.logger.error("LIVE_FEED_TK_ABORT,stage=apply_image,reason=%s", exc)
             app.logger.error(f"Screen-share update error: {exc}")
             if self.live_chart_window:
                 win = self.live_chart_window

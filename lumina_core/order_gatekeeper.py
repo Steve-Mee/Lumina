@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
+from lumina_core.logging_utils import correlation_id, get_logger, log_gate_rejection, record_gate_rejection_monitoring
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.risk.admission_chain import (
     ADMISSION_STEP_AUDIT_WRITE,
@@ -44,7 +45,7 @@ _MONTHS = {
 }
 
 
-_LOG = logging.getLogger(__name__)
+_LOG = get_logger("lumina.trading.gate")
 _MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard"})
 
 
@@ -375,6 +376,7 @@ def enforce_pre_trade_gate(
 ) -> tuple[bool, str]:
     """Canonical pre-trade admission chain for risk-bearing order intents."""
     mode = str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
+    decision_context_id = f"gate:{uuid.uuid4().hex[:12]}"
     capabilities = resolve_mode_capabilities(mode)
     blackboard = _resolve_blackboard(engine)
     if (
@@ -403,6 +405,29 @@ def enforce_pre_trade_gate(
         var_payload: dict[str, Any] | None = None,
         mc_payload: dict[str, Any] | None = None,
     ) -> tuple[bool, str]:
+        try:
+            log_gate_rejection(
+                _LOG,
+                gate_name=reason_code,
+                reason=user_reason,
+                current_value=proposed_risk,
+                limit=None,
+                symbol=str(symbol),
+                side=normalized_order_side if "normalized_order_side" in locals() else str(order_side or ""),
+                mode=mode,
+                decision_context_id=decision_context_id,
+                context={"var_payload": dict(var_payload or {}), "mc_payload": dict(mc_payload or {})},
+            )
+            record_gate_rejection_monitoring(
+                gate_name=str(reason_code),
+                reason=str(user_reason),
+                mode=str(mode),
+                symbol=str(symbol),
+                side=str(normalized_order_side if "normalized_order_side" in locals() else str(order_side or "")),
+                decision_context_id=str(decision_context_id),
+            )
+        except Exception:
+            pass
         _record_mode_guard_block(engine, mode=mode, reason=reason_code)
         audit_ok, audit_reason = _audit_or_fail_closed(
             _build_audit_payload(
@@ -728,4 +753,21 @@ def enforce_pre_trade_gate(
             var_payload=cast(dict[str, Any], admission_context.metadata.get("var_payload", {})),
             mc_payload=cast(dict[str, Any], admission_context.metadata.get("mc_payload", {})),
         )
+    try:
+        _LOG.info(
+            "gate.passed",
+            extra={
+                "event_data": {
+                    "event": "gate.passed",
+                    "symbol": str(symbol),
+                    "side": normalized_order_side,
+                    "mode": mode,
+                    "proposed_risk": float(proposed_risk),
+                    "decision_context_id": decision_context_id,
+                    "risk_reason": str(admission_context.metadata.get("risk_reason", reason or "OK")),
+                }
+            },
+        )
+    except Exception:
+        pass
     return True, str(admission_context.metadata.get("risk_reason", reason or "OK"))

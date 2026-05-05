@@ -4,12 +4,22 @@ import logging
 import json
 import math
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
 
 from lumina_core.config_loader import ConfigLoader
+from lumina_core.logging_utils import (
+    correlation_id,
+    get_logger,
+    log_twin_decision,
+    record_twin_decision_monitoring,
+    record_twin_training_metrics_monitoring,
+)
 from .dna_registry import PolicyDNA
 from .steve_values_registry import SteveValueRecord, SteveValuesRegistry
+
+logger = get_logger("lumina.evolution.twin")
 
 
 @dataclass(slots=True)
@@ -92,28 +102,71 @@ class ApprovalTwinAgent:
         self._backend_name, self._backend = self._build_backend(backend=backend, ollama_model=ollama_model)
 
     def evaluate_dna_promotion(self, dna: PolicyDNA) -> dict[str, Any]:
-        features = self._features_from_dna(dna)
-        local_score = self._score(features)
-        backend_score, backend_explanation = self._backend.score(
-            dna=dna,
-            local_score=local_score,
-            threshold=self._state.threshold,
-        )
-        score = float(backend_score if backend_score is not None else local_score)
-        score = max(0.0, min(1.0, score))
-        risk_flags = self._risk_flags(dna)
-        recommendation = bool(score >= self._state.threshold and not risk_flags)
-        explanation = (
-            f"Twin score={score:.2%}, threshold={self._state.threshold:.0%}, backend={self._backend_name}, "
-            f"fitness={float(dna.fitness_score):.4f}, mutation_rate={float(dna.mutation_rate):.2f}, "
-            f"source={backend_explanation}"
-        )
-        return {
-            "recommendation": recommendation,
-            "confidence": round(score, 6),
-            "explanation": explanation,
-            "risk_flags": risk_flags,
-        }
+        dna_hash = str(getattr(dna, "hash", ""))
+        with correlation_id(dna_hash):
+            features = self._features_from_dna(dna)
+            local_score = self._score(features)
+            backend_score, backend_explanation = self._backend.score(
+                dna=dna,
+                local_score=local_score,
+                threshold=self._state.threshold,
+            )
+            score = float(backend_score if backend_score is not None else local_score)
+            score = max(0.0, min(1.0, score))
+            risk_flags = self._risk_flags(dna)
+            recommendation = bool(score >= self._state.threshold and not risk_flags)
+            explanation = (
+                f"Twin score={score:.2%}, threshold={self._state.threshold:.0%}, backend={self._backend_name}, "
+                f"fitness={float(dna.fitness_score):.4f}, mutation_rate={float(dna.mutation_rate):.2f}, "
+                f"source={backend_explanation}"
+            )
+            try:
+                logger.info(
+                    "twin.evaluate_promotion",
+                    extra={
+                        "event_data": {
+                            "event": "twin.evaluate_promotion",
+                            "dna_hash": dna_hash,
+                            "features": features,
+                            "local_score": local_score,
+                            "backend_score": backend_score,
+                            "final_score": score,
+                            "threshold": self._state.threshold,
+                            "risk_flags": risk_flags,
+                            "recommendation": recommendation,
+                            "explanation": explanation,
+                        }
+                    },
+                )
+                log_twin_decision(logger, dna_hash, score, recommendation, risk_flags, explanation)
+                record_twin_decision_monitoring(
+                    dna_hash=dna_hash,
+                    score=score,
+                    recommendation=recommendation,
+                    risk_flags=risk_flags,
+                    explanation=explanation,
+                )
+                if not recommendation:
+                    logger.warning(
+                        "twin.evaluate_rejection",
+                        extra={
+                            "event_data": {
+                                "event": "twin.evaluate_rejection",
+                                "dna_hash": dna_hash,
+                                "final_score": score,
+                                "threshold": self._state.threshold,
+                                "risk_flags": risk_flags,
+                            }
+                        },
+                    )
+            except Exception:
+                pass
+            return {
+                "recommendation": recommendation,
+                "confidence": round(score, 6),
+                "explanation": explanation,
+                "risk_flags": risk_flags,
+            }
 
     def _build_backend(self, *, backend: str | None, ollama_model: str | None) -> tuple[str, ApprovalTwinBackend]:
         cfg = ConfigLoader.section("evolution", "approval_twin", default={})
@@ -144,20 +197,51 @@ class ApprovalTwinAgent:
     def evaluate_shadow_promotion(
         self, *, dna: PolicyDNA, shadow_total_pnl: float, veto_blocked: bool
     ) -> dict[str, Any]:
-        base = self.evaluate_dna_promotion(dna)
-        shadow_positive = float(shadow_total_pnl) > 0.0
-        recommendation = bool(base.get("recommendation", False) and shadow_positive and not bool(veto_blocked))
-        explanation = (
-            f"{base.get('explanation', '')}; shadow_total_pnl={float(shadow_total_pnl):.4f}; "
-            f"veto_blocked={bool(veto_blocked)}"
-        )
-        return {
-            **base,
-            "recommendation": recommendation,
-            "shadow_total_pnl": float(shadow_total_pnl),
-            "veto_blocked": bool(veto_blocked),
-            "explanation": explanation,
-        }
+        dna_hash = str(getattr(dna, "hash", ""))
+        with correlation_id(dna_hash):
+            base = self.evaluate_dna_promotion(dna)
+            shadow_positive = float(shadow_total_pnl) > 0.0
+            recommendation = bool(base.get("recommendation", False) and shadow_positive and not bool(veto_blocked))
+            explanation = (
+                f"{base.get('explanation', '')}; shadow_total_pnl={float(shadow_total_pnl):.4f}; "
+                f"veto_blocked={bool(veto_blocked)}"
+            )
+            try:
+                logger.info(
+                    "twin.evaluate_shadow_promotion",
+                    extra={
+                        "event_data": {
+                            "event": "twin.evaluate_shadow_promotion",
+                            "dna_hash": dna_hash,
+                            "shadow_total_pnl": float(shadow_total_pnl),
+                            "veto_blocked": bool(veto_blocked),
+                            "recommendation": recommendation,
+                            "risk_flags": list(base.get("risk_flags", [])),
+                            "explanation": explanation,
+                        }
+                    },
+                )
+                if not recommendation:
+                    logger.warning(
+                        "twin.shadow_rejection",
+                        extra={
+                            "event_data": {
+                                "event": "twin.shadow_rejection",
+                                "dna_hash": dna_hash,
+                                "shadow_total_pnl": float(shadow_total_pnl),
+                                "veto_blocked": bool(veto_blocked),
+                            }
+                        },
+                    )
+            except Exception:
+                pass
+            return {
+                **base,
+                "recommendation": recommendation,
+                "shadow_total_pnl": float(shadow_total_pnl),
+                "veto_blocked": bool(veto_blocked),
+                "explanation": explanation,
+            }
 
     def fine_tune_from_registry(self, *, limit: int = 250) -> dict[str, Any]:
         if self._registry is None:
@@ -193,13 +277,35 @@ class ApprovalTwinAgent:
 
         avg_error = sum(abs_errors) / len(abs_errors) if abs_errors else 1.0
         reward = max(0.0, min(1.0, 1.0 - avg_error))
-        return {
+        result = {
             "updated": updates > 0,
             "updates": updates,
             "avg_prediction_error": round(avg_error, 6),
             "reward": round(reward, 6),
             "training_steps": int(self._state.training_steps),
         }
+        try:
+            logger.info(
+                "twin.rlhf_update",
+                extra={
+                    "event_data": {
+                        "event": "twin.rlhf_update",
+                        "records_processed": len(records),
+                        "updates": updates,
+                        "avg_prediction_error": result["avg_prediction_error"],
+                        "reward": result["reward"],
+                        "training_steps": result["training_steps"],
+                    }
+                },
+            )
+            record_twin_training_metrics_monitoring(
+                avg_prediction_error=float(result["avg_prediction_error"]),
+                reward=float(result["reward"]),
+                training_steps=int(result["training_steps"]),
+            )
+        except Exception:
+            pass
+        return result
 
     def _score(self, features: dict[str, float]) -> float:
         logit = float(self._state.intercept)
@@ -208,9 +314,25 @@ class ApprovalTwinAgent:
         # Stable sigmoid for confidence in [0,1].
         if logit >= 0.0:
             z = math.exp(-logit)
-            return 1.0 / (1.0 + z)
+            out = 1.0 / (1.0 + z)
+            try:
+                logger.debug(
+                    "twin.score_internal",
+                    extra={"event_data": {"event": "twin.score_internal", "features": features, "score": out}},
+                )
+            except Exception:
+                pass
+            return out
         z = math.exp(logit)
-        return z / (1.0 + z)
+        out = z / (1.0 + z)
+        try:
+            logger.debug(
+                "twin.score_internal",
+                extra={"event_data": {"event": "twin.score_internal", "features": features, "score": out}},
+            )
+        except Exception:
+            pass
+        return out
 
     @staticmethod
     def _features_from_dna(dna: PolicyDNA) -> dict[str, float]:
@@ -284,5 +406,6 @@ class ApprovalTwinAgent:
             "weights": dict(self._state.weights),
             "threshold": float(self._state.threshold),
             "training_steps": int(self._state.training_steps),
+            "last_updated": datetime.now().isoformat(),
         }
         self._model_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

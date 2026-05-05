@@ -4,6 +4,7 @@ import time
 import json
 import logging
 import os
+import importlib.util
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,26 @@ RUNTIME_STATE_PATH = STATE_DIR / "lumina_sim_state.json"
 HISTORY_PATH = STATE_DIR / "sim_stability_history.jsonl"
 ENV_PATH = Path(".env")
 logger = logging.getLogger(__name__)
+
+
+def _render_shared_monitoring_dashboard(base_url: str) -> None:
+    try:
+        from monitoring_dashboard import render_monitoring_dashboard_tab
+    except ModuleNotFoundError:
+        module_path = Path(__file__).with_name("monitoring_dashboard.py")
+        spec = importlib.util.spec_from_file_location("__lumina_monitoring_dashboard__", module_path)
+        if spec is None or spec.loader is None:
+            st.error("Monitoring dashboard module kon niet geladen worden.")
+            return
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        render_monitoring_dashboard_tab = getattr(mod, "render_monitoring_dashboard_tab", None)
+        if not callable(render_monitoring_dashboard_tab):
+            st.error("Monitoring dashboard module mist render functie.")
+            return
+    render_monitoring_dashboard_tab(base_url, title="Monitoring Dashboard")
+
+
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -680,7 +701,7 @@ runtime_mode = _resolve_mode()
 tab_labels = [
     "🏆 Live Leaderboard",
     "📚 Global Community Bibles",
-    "📊 Observability",
+    "📡 Monitoring Dashboard",
     "🔄 Evolution Approvals",
 ]
 if runtime_mode == "sim":
@@ -702,7 +723,7 @@ with tab2:
     render_global_wisdom_tab(api_base_url)
 
 with tab3:
-    _render_observability_tab(api_base_url)
+    _render_shared_monitoring_dashboard(api_base_url)
 
 with tab4:
     render_evolution_approval_tab(api_base_url)

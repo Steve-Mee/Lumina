@@ -105,7 +105,11 @@ def test_pre_dream_daemon_applies_emotional_twin_correction(monkeypatch):
         AI_DRAWN_FIBS={},
         speak=lambda *_a, **_k: None,
         store_experience_to_vector_db=lambda *_a, **_k: None,
-        logger=SimpleNamespace(debug=lambda *_a, **_k: None, error=lambda *_a, **_k: None),
+        logger=SimpleNamespace(
+            info=lambda *_a, **_k: None,
+            debug=lambda *_a, **_k: None,
+            error=lambda *_a, **_k: None,
+        ),
     )
 
     monkeypatch.setattr(runtime_workers.time, "sleep", lambda *_a, **_k: (_ for _ in ()).throw(SystemExit()))

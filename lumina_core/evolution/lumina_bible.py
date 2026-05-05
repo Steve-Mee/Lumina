@@ -10,8 +10,10 @@ from threading import RLock
 from typing import Any
 
 from lumina_core.audit import get_audit_logger
+from lumina_core.logging_utils import get_logger
 
 logger = logging.getLogger(__name__)
+event_logger = get_logger("lumina.simulation.nightly")
 
 
 def _utcnow() -> str:
@@ -80,6 +82,20 @@ class LuminaBible:
                 actor_id="lumina_bible",
                 severity="info",
             )
+            try:
+                event_logger.info(
+                    "bible.rule_appended",
+                    extra={
+                        "event_data": {
+                            "event": "bible.rule_appended",
+                            "entry_type": "generated_strategy_rule",
+                            "count": 1,
+                            "top_fitness": float(fitness),
+                        }
+                    },
+                )
+            except Exception:
+                pass
         return BibleEntry(
             timestamp=record["timestamp"],
             entry_type=record["entry_type"],
@@ -127,6 +143,20 @@ class LuminaBible:
                 actor_id="lumina_bible",
                 severity="info",
             )
+            try:
+                event_logger.info(
+                    "bible.rule_appended",
+                    extra={
+                        "event_data": {
+                            "event": "bible.rule_appended",
+                            "entry_type": "community_external_rule",
+                            "count": 1,
+                            "top_fitness": float(fitness),
+                        }
+                    },
+                )
+            except Exception:
+                pass
 
         return BibleEntry(
             timestamp=record["timestamp"],
@@ -206,6 +236,20 @@ class LuminaBible:
                 actor_id="lumina_bible",
                 severity="info",
             )
+            try:
+                event_logger.info(
+                    "bible.rule_appended",
+                    extra={
+                        "event_data": {
+                            "event": "bible.rule_appended",
+                            "entry_type": "dream_rule_hint",
+                            "count": 1,
+                            "top_fitness": 0.0,
+                        }
+                    },
+                )
+            except Exception:
+                pass
         return BibleEntry(
             timestamp=record["timestamp"],
             entry_type=record["entry_type"],

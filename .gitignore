@@ -67,6 +67,9 @@ logs/llm_decisions.jsonl
 state/agent_decision_log.jsonl
 state/live_stream.jsonl
 state/trade_reconciler_status.json
+state/bot_stress_choices.json
+state/monitoring_debug_training_process.json
+state/parallel_realities_session.json
 state/headless_paper_15m.out
 state/last_run_summary.json
 state/last_run_summary_live_30m_paper.json

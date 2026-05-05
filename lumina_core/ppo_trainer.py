@@ -9,7 +9,15 @@ from typing import Any
 import numpy as np
 
 from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
+from lumina_core.logging_utils import (
+    correlation_id,
+    get_logger,
+    record_model_load_time_monitoring,
+    write_ppo_policy_metadata,
+)
 from lumina_core.rl import RLConfig, RLTradingEnvironment
+
+logger = get_logger("lumina.rl.ppo")
 
 
 def _sb3_ppo_load(path: str | Path) -> Any | None:
@@ -60,14 +68,52 @@ class PPOTrainer:
         target = Path(policy_path) if policy_path is not None else (self.model_dir / "lumina_ppo_policy.zip")
         target.parent.mkdir(parents=True, exist_ok=True)
         model.save(str(target))
+        try:
+            stat = target.stat()
+            policy_version = f"ppo-{int(stat.st_mtime)}-{int(stat.st_size)}"
+            write_ppo_policy_metadata(
+                policy_path=str(target),
+                policy_version=policy_version,
+                total_training_steps=int(getattr(model, "num_timesteps", 0) or 0),
+                status="saved",
+            )
+        except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:save_weights_metadata")
         return str(target)
 
     def load_weights(self, policy_path: str | Path) -> Any | None:
         """Load PPO model from .zip and install as active policy."""
+        start = __import__("time").perf_counter()
         model = _sb3_ppo_load(policy_path)
         if model is None:
+            record_model_load_time_monitoring(
+                model_type="ppo",
+                model_path=str(policy_path),
+                load_time_sec=__import__("time").perf_counter() - start,
+                status="failed",
+            )
             return None
         self.engine.set_rl_policy(model)
+        elapsed = __import__("time").perf_counter() - start
+        record_model_load_time_monitoring(
+            model_type="ppo",
+            model_path=str(policy_path),
+            load_time_sec=elapsed,
+            status="loaded",
+        )
+        try:
+            path = Path(policy_path)
+            stat = path.stat()
+            policy_version = f"ppo-{int(stat.st_mtime)}-{int(stat.st_size)}"
+            write_ppo_policy_metadata(
+                policy_path=str(path),
+                policy_version=policy_version,
+                total_training_steps=int(getattr(model, "num_timesteps", 0) or 0),
+                last_load_time_sec=float(elapsed),
+                status="loaded",
+            )
+        except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:load_weights_metadata")
         return model
 
     def evaluate_policy_zip_rollouts(
@@ -163,8 +209,31 @@ class PPOTrainer:
     ) -> str:
         from stable_baselines3 import PPO
 
+        train_id = f"ppo:{dna_hash or 'nightly'}"
+        with correlation_id(train_id):
+            logger.info(
+                "ppo.train.start",
+                extra={
+                    "event_data": {
+                        "event": "ppo.train.start",
+                        "total_timesteps": int(total_timesteps),
+                        "dna_hash": str(dna_hash or ""),
+                    }
+                },
+            )
+        started = __import__("time").time()
         self.model_dir.mkdir(parents=True, exist_ok=True)
         bars = coerce_rl_training_bars(self.engine, simulator_data, nightly_context=None)
+        logger.debug(
+            "ppo.train.config",
+            extra={
+                "event_data": {
+                    "event": "ppo.train.config",
+                    "bars": len(bars),
+                    "env_config": self._build_rl_config().__dict__,
+                }
+            },
+        )
         env = RLTradingEnvironment(self.engine, bars, config=self._build_rl_config())
         if dna_hash:
             env.set_dna_hash(dna_hash)
@@ -186,6 +255,29 @@ class PPOTrainer:
             policy_path = str(self.model_dir / "lumina_ppo_policy.zip")
         model.save(policy_path)
         self.engine.set_rl_policy(model)
+        logger.info(
+            "ppo.train.complete",
+            extra={
+                "event_data": {
+                    "event": "ppo.train.complete",
+                    "model_path": str(policy_path),
+                    "training_time_sec": round(__import__("time").time() - started, 2),
+                }
+            },
+        )
+        try:
+            target = Path(policy_path)
+            stat = target.stat()
+            policy_version = f"ppo-{int(stat.st_mtime)}-{int(stat.st_size)}"
+            write_ppo_policy_metadata(
+                policy_path=str(policy_path),
+                policy_version=policy_version,
+                total_training_steps=int(total_timesteps),
+                training_time_sec=round(__import__("time").time() - started, 2),
+                status="trained",
+            )
+        except Exception:
+            logging.exception("Unhandled broad exception fallback in lumina_core/ppo_trainer.py:train_metadata")
         return policy_path
 
     def train_nightly_on_infinite_simulator(

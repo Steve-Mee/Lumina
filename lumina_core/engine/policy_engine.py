@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import Any
 
+from lumina_core.logging_utils import correlation_id, get_logger
 from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
 from lumina_core.broker.broker_bridge import Order, OrderResult
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
+
+logger = get_logger("lumina.risk.gatekeeper")
 
 
 @dataclass(slots=True)
@@ -25,16 +29,36 @@ class PolicyEngine:
         risk_allowed: bool,
         lineage: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        decision = apply_agent_policy_gateway(
-            signal=signal,
-            confluence_score=float(confluence_score),
-            min_confluence=float(min_confluence),
-            hold_until_ts=float(hold_until_ts),
-            mode=str(mode).strip().lower(),
-            session_allowed=bool(session_allowed),
-            risk_allowed=bool(risk_allowed),
-            lineage=lineage,
-        )
+        decision_context_id = str((lineage or {}).get("decision_context_id", "")) or "policy_engine_evaluate"
+        with correlation_id(decision_context_id):
+            decision = apply_agent_policy_gateway(
+                signal=signal,
+                confluence_score=float(confluence_score),
+                min_confluence=float(min_confluence),
+                hold_until_ts=float(hold_until_ts),
+                mode=str(mode).strip().lower(),
+                session_allowed=bool(session_allowed),
+                risk_allowed=bool(risk_allowed),
+                lineage=lineage,
+            )
+            try:
+                level = logging.INFO if bool(decision.get("approved", False)) else logging.WARNING
+                logger.log(
+                    level,
+                    "policy.evaluate_proposal",
+                    extra={
+                        "event_data": {
+                            "event": "policy.evaluate_proposal",
+                            "approved": bool(decision.get("approved", False)),
+                            "signal": str(signal),
+                            "reason": str(decision.get("reason", "")),
+                            "mode": str(mode),
+                            "decision_context_id": decision_context_id,
+                        }
+                    },
+                )
+            except Exception:
+                pass
         blackboard = getattr(self.engine, "blackboard", None)
         if blackboard is not None and hasattr(blackboard, "mark_policy_decision"):
             blackboard.mark_policy_decision(
@@ -58,6 +82,20 @@ class PolicyEngine:
                 order_side=str(order.side).upper(),
             )
             if not allowed:
+                try:
+                    logger.warning(
+                        "policy.execute_order.rejected",
+                        extra={
+                            "event_data": {
+                                "event": "policy.execute_order.rejected",
+                                "symbol": str(order.symbol),
+                                "side": str(order.side).upper(),
+                                "reason": str(reason),
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
                 return OrderResult(
                     accepted=False,
                     order_id="",
@@ -66,4 +104,18 @@ class PolicyEngine:
                 )
         if isinstance(order.metadata, dict):
             order.metadata["skip_admission_chain_recheck"] = True
+        try:
+            logger.info(
+                "policy.execute_order.submit",
+                extra={
+                    "event_data": {
+                        "event": "policy.execute_order.submit",
+                        "symbol": str(order.symbol),
+                        "side": str(order.side).upper(),
+                        "skip_final_arbitration": bool(skip_final_arbitration),
+                    }
+                },
+            )
+        except Exception:
+            pass
         return self.broker.submit_order(order)

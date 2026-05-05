@@ -17,7 +17,7 @@ from lumina_core.risk.pnl_provenance import PnlProvenance
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.engine.rl_guardrails import RLGuardrailLayer
 from lumina_core.engine.valuation_engine import ValuationEngine
-from lumina_core.logging_utils import log_runtime_trace, runtime_trace_enabled
+from lumina_core.logging_utils import log_runtime_trace, runtime_trace_enabled, write_runtime_monitoring_snapshot
 from lumina_core.runtime_trade_gates import apply_hard_risk_controller_to_signal
 from lumina_core.agent_orchestration.schemas import (
     TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
@@ -27,6 +27,8 @@ from lumina_core.agent_orchestration.schemas import (
 
 TRADER_LEAGUE_WEBHOOK_URL = "http://localhost:8000/webhook/trade"
 _RL_GUARDRAIL = RLGuardrailLayer()
+_LIVE_FEED_FASTPATH_LOG_INTERVAL_S = 90.0
+_live_feed_fastpath_last_mono = 0.0
 
 
 def _paper_instrument(app: RuntimeContext) -> str:
@@ -67,6 +69,22 @@ def _paper_clear_round_ledger(app: RuntimeContext) -> None:
     for key in ("paper_ledger_open_side", "paper_ledger_entry_fill_price", "paper_ledger_entry_commission"):
         if hasattr(app.engine, key):
             delattr(app.engine, key)
+
+
+def _publish_runtime_monitoring_snapshot(app: RuntimeContext) -> None:
+    risk_controller = getattr(app.engine, "risk_controller", None)
+    consecutive_losses = int(getattr(risk_controller, "consecutive_losses", 0) or 0)
+    payload = {
+        "mode": str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower(),
+        "live_position_qty": int(getattr(app.engine, "live_position_qty", 0) or 0),
+        "daily_pnl": float(getattr(app, "realized_pnl_today", 0.0) or 0.0),
+        "open_pnl": float(getattr(app, "open_pnl", 0.0) or 0.0),
+        "account_equity": float(getattr(app, "account_equity", 0.0) or 0.0),
+        "consecutive_losses": consecutive_losses,
+        "pending_reconciliations": len(getattr(app, "pending_trade_reconciliations", []) or []),
+        "last_trades": list(getattr(app, "trade_log", []) or [])[-10:],
+    }
+    write_runtime_monitoring_snapshot(payload)
 
 
 def _push_trader_league_trade(
@@ -248,6 +266,7 @@ def _enforce_real_eod_force_close(app: RuntimeContext, price: float) -> bool:
 
 
 def pre_dream_daemon(app: RuntimeContext) -> None:
+    global _live_feed_fastpath_last_mono
     last_news_update_ts = 0.0
     cached_news_data = {"events": [], "overall_sentiment": "neutral", "impact": "medium"}
 
@@ -292,7 +311,20 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
                 fast_result["used_llm"] = True
                 fast_result["pass_to_llm"] = True
             if not fast_result["used_llm"]:
+                now_mono = time.monotonic()
+                if now_mono - _live_feed_fastpath_last_mono >= _LIVE_FEED_FASTPATH_LOG_INTERVAL_S:
+                    _live_feed_fastpath_last_mono = now_mono
+                    app.logger.info(
+                        "LIVE_FEED_DAEMON_IDLE,worker=pre_dream,reason=fast_path_no_llm_branch,"
+                        "ohlc_bars=%s,note=no_chart_until_used_llm_true",
+                        len(df),
+                    )
                 continue  # Fast path heeft al beslist
+
+            app.logger.info(
+                "LIVE_FEED_DAEMON_STEP,worker=pre_dream,stage=llm_branch_entered,used_llm=true,ohlc_bars=%s",
+                len(df),
+            )
 
             recent_winrate = (
                 float(app.np.mean(app.np.array(app.pnl_history[-15:]) > 0)) if len(app.pnl_history) > 10 else 0.5
@@ -305,8 +337,17 @@ def pre_dream_daemon(app: RuntimeContext) -> None:
 
             chart_base64 = app.generate_multi_tf_chart()
             if not chart_base64:
+                app.logger.info(
+                    "LIVE_FEED_DAEMON_ABORT,worker=pre_dream,stage=after_chart_gen,result=null,sleep_s=12,"
+                    "hint=inspect_prior_LIVE_FEED_CHART_GEN_ABORT_or_ABORT_log_lines",
+                )
                 time.sleep(12)
                 continue
+
+            app.logger.info(
+                "LIVE_FEED_DAEMON_STEP,worker=pre_dream,stage=after_chart_gen,result=ok,b64_chars=%s",
+                len(chart_base64),
+            )
 
             if chart_base64:
                 app.update_live_chart(chart_base64, status_msg="AI Decision & Chart updated")
@@ -718,6 +759,7 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
     last_save = time.time()
     last_balance_fetch = time.time()
     last_status_print = 0.0
+    last_monitoring_snapshot = 0.0
     last_infinite_sim_status = 0.0
     twin_thread: threading.Thread | None = None
     swarm_last_cycle = 0.0
@@ -1414,6 +1456,13 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
             except Exception as _save_exc:
                 app.logger.error(f"STATE_SAVE_FAILED: {_save_exc}\n{traceback.format_exc()}")
             last_save = time.time()
+
+        if time.time() - last_monitoring_snapshot > 15:
+            try:
+                _publish_runtime_monitoring_snapshot(app)
+            except Exception as exc:
+                app.logger.warning(f"MONITORING_SNAPSHOT_WRITE_FAILED: {exc}")
+            last_monitoring_snapshot = time.time()
 
         time.sleep(1)
 

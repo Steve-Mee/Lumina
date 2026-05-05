@@ -215,6 +215,12 @@ fine_tuning:
   auto_trigger: true
   min_acceptance: 0.4
   drift_threshold: 0.25
+first_boot:
+  training_trades: 500000
+  prefer_real_data_only: true
+  max_real_days: 90
+  allow_minimal_synthetic_fallback: false
+  force_training: true
 session:
   cooldown_minutes_after_streak: 15
   enforce_calendar: true

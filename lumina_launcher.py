@@ -42,6 +42,17 @@ from lumina_core.engine.sim_stability_checker import (
 )
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.engine.dream_state import DEFAULT_DREAM
+from lumina_core.first_boot_ui import (
+    FIRST_BOOT_DEFAULT_MAX_REAL_DAYS,
+    FIRST_BOOT_DEFAULT_TRADES,
+    FIRST_BOOT_TRADE_MAX,
+    FIRST_BOOT_TRADE_MIN,
+    FIRST_BOOT_TRADE_STEP,
+    estimate_first_boot_real_days,
+    exceeds_max_real_days_window,
+    is_high_load_estimate,
+    normalize_first_boot_training_trades,
+)
 from lumina_core.runtime_context import RuntimeContext
 
 _LAUNCHER_ROOT = Path(__file__).resolve().parent
@@ -73,6 +84,9 @@ BACKEND_BASE_URL = os.getenv("LUMINA_BACKEND_URL", "http://localhost:8000").rstr
 LAST_RUN_SUMMARY_PATH = Path("state/last_run_summary.json")
 EVOLUTION_LOG_PATH = Path("state/evolution_log.jsonl")
 SIM_HISTORY_PATH = Path("state/sim_stability_history.jsonl")
+FIRST_BOOT_FLAG_PATH = Path("state/first_boot_completed.flag")
+FIRST_BOOT_POLICY_PATH = Path("lumina_agents/ppo/lumina_ppo_policy.zip")
+FIRST_BOOT_PROGRESS_PATH = Path("state/first_boot_progress.json")
 
 
 def _load_admin_password_record() -> dict[str, Any] | None:
@@ -182,6 +196,78 @@ def _save_neuro_require_real_simulator_data(value: bool) -> None:
         encoding="utf-8",
     )
     ConfigLoader.invalidate()
+
+
+def _clamp_first_boot_trades(raw_value: Any) -> int:
+    return normalize_first_boot_training_trades(raw_value)
+
+
+def _read_first_boot_settings() -> dict[str, Any]:
+    cfg = _load_yaml_config()
+    section = cfg.get("first_boot")
+    if not isinstance(section, dict):
+        section = {}
+    return {
+        "training_trades": _clamp_first_boot_trades(section.get("training_trades", _FIRST_BOOT_DEFAULT_TRADES)),
+        "prefer_real_data_only": bool(section.get("prefer_real_data_only", True)),
+        "max_real_days": max(
+            30,
+            int(section.get("max_real_days", _FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or _FIRST_BOOT_DEFAULT_MAX_REAL_DAYS),
+        ),
+        "allow_minimal_synthetic_fallback": bool(section.get("allow_minimal_synthetic_fallback", False)),
+        "force_training": bool(section.get("force_training", True)),
+    }
+
+
+def _save_first_boot_settings(training_trades: int, *, force_training: bool) -> None:
+    cfg = _load_yaml_config()
+    first_boot = cfg.get("first_boot")
+    if not isinstance(first_boot, dict):
+        first_boot = {}
+        cfg["first_boot"] = first_boot
+    first_boot["training_trades"] = _clamp_first_boot_trades(training_trades)
+    first_boot.setdefault("prefer_real_data_only", True)
+    first_boot["max_real_days"] = max(
+        30,
+        int(first_boot.get("max_real_days", _FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or _FIRST_BOOT_DEFAULT_MAX_REAL_DAYS),
+    )
+    first_boot["allow_minimal_synthetic_fallback"] = bool(first_boot.get("allow_minimal_synthetic_fallback", False))
+    first_boot["force_training"] = bool(force_training)
+    CONFIG_PATH.write_text(
+        yaml.safe_dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    ConfigLoader.invalidate()
+
+
+def _estimate_first_boot_real_days(training_trades: int) -> int:
+    return estimate_first_boot_real_days(training_trades)
+
+
+def _read_first_boot_progress() -> dict[str, Any]:
+    if not FIRST_BOOT_PROGRESS_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(FIRST_BOOT_PROGRESS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        logging.exception("Failed to read first boot progress file")
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _first_boot_artifacts_missing() -> bool:
+    return (not FIRST_BOOT_FLAG_PATH.exists()) or (not FIRST_BOOT_POLICY_PATH.exists())
+
+
+def _first_boot_stage_progress(stage: str) -> float:
+    stage_map = {
+        "detected": 0.2,
+        "loading_data": 0.45,
+        "training_running": 0.75,
+        "completed": 1.0,
+        "failed": 1.0,
+    }
+    return float(stage_map.get(str(stage).strip().lower(), 0.1))
 
 
 _RUNTIME_TRACE_INTERVAL_OPTIONS = (0.0, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0)
@@ -326,9 +412,11 @@ def _pid_is_alive(pid: int) -> bool:
 def _enumerate_lumina_runtime_pids() -> list[int]:
     """PIDs whose command line looks like Lumina runtime (psutil-first; WMI -like fallback on Windows)."""
     collected: list[int] = []
+    psutil_scanned = False
     try:
         import psutil
 
+        psutil_scanned = True
         for proc in psutil.process_iter(["pid", "cmdline"]):
             try:
                 raw_cmd = proc.info.get("cmdline") or ()
@@ -346,6 +434,11 @@ def _enumerate_lumina_runtime_pids() -> list[int]:
     if collected:
         return list(dict.fromkeys(p for p in collected if p > 0))
 
+    # Windows only: psutil ran and found nothing — skip WMI text search; the helper PowerShell
+    # process embeds 'runtime_entrypoint' in its own -Command line and matches the WMI filter.
+    if psutil_scanned and os.name == "nt":
+        return []
+
     if os.name == "nt":
         try:
             query = (
@@ -362,11 +455,17 @@ def _enumerate_lumina_runtime_pids() -> list[int]:
                 text=True,
                 timeout=60,
             )
+            rough: list[int] = []
             for line in (result.stdout or "").splitlines():
                 raw = line.strip()
                 if raw.isdigit():
-                    collected.append(int(raw))
-            return list(dict.fromkeys(p for p in collected if p > 0))
+                    rough.append(int(raw))
+            filtered: list[int] = []
+            for pid in dict.fromkeys(p for p in rough if p > 0):
+                cmd = _pid_command_line(pid)
+                if cmd and _command_line_matches_lumina_runtime(cmd):
+                    filtered.append(pid)
+            return list(dict.fromkeys(filtered))
         except Exception:
             logging.exception("lumina_launcher WMI fallback enumeration failed")
 
@@ -951,9 +1050,28 @@ def _render_live_activity_metrics_and_log(
         if screen_share_enabled:
             st.markdown(_service_age_badge(screen_share_age), unsafe_allow_html=True)
             if screen_share_age is None:
-                st.info("Screen share is enabled and waiting for the first chart frame feed.")
+                st.info(
+                    "**Wachten op eerste chart-frame (heartbeat)**\n\n"
+                    "Dit paneel volgt het bestand **`state/live_stream.jsonl`**: zodra de runtime een chart "
+                    "naar PNG exporteert (Plotly + **Kaleido**), wordt daar een compacte regel aan toegevoegd.\n\n"
+                    "- **Los van het Tkinter-venster** (“LUMINA Live Trader Screen Share”): dat venster krijgt "
+                    "de afbeelding direct; dit blok meet alleen het JSONL-bestand.\n"
+                    "- **Geen feed** zolang er geen geslaagde export is: vaak omdat de loop lang in de "
+                    "**fast path** blijft zonder LLM-chart, of door **Kaleido/export-fouten** "
+                    "(zoek in de runtime-log op `CHART_GEN_EXPORT_SKIPPED`), of te weinig OHLC-data "
+                    "(`CHART_GEN_SKIPPED,reason=insufficient_data`).\n"
+                    "- **Diagnose**: filter **`LIVE_FEED_`** in **`logs/lumina_full_log.csv`** (INFO gaat daarheen; "
+                    "**`launcher_runtime_stderr.log`** is de Streamlit-launcher, niet de trading-runtime).\n"
+                    "- **Pre-dream daemon** staat standaard **uit** (`START_PRE_DREAM_BACKUP` / `start_pre_dream_backup`); "
+                    "zonder daemon geen `LIVE_FEED_DAEMON_*` of chart-loop — zet op `true` voor die traces. "
+                    "Bij elke start verschijnt voortaan minstens **`LIVE_FEED_CONFIG`** in de CSV."
+                )
             else:
                 st.caption(f"Last chart feed update timestamp: {_format_timestamp(screen_share_path)}")
+                st.caption(
+                    "Bron: `state/live_stream.jsonl` — append-only heartbeat bij elke geslaagde chart-export "
+                    "(geen volledige afbeelding in dit bestand)."
+                )
         else:
             st.markdown(_status_badge("Disabled", "neutral"), unsafe_allow_html=True)
             st.caption("Enable this in the sidebar to publish live chart feed.")
@@ -2305,6 +2423,84 @@ with st.sidebar:
         "Als dit uit staat, blijft de runtime bruikbaar; alleen de kwaliteit van sim-/neurodata daalt. "
         "Voor productie: aan laten staan."
     )
+    _first_boot_cfg = _read_first_boot_settings()
+    _first_boot_trades_key = "lumina_first_boot_training_trades_ui"
+    _first_boot_force_key = "lumina_first_boot_force_training_ui"
+    if _first_boot_trades_key not in st.session_state:
+        st.session_state[_first_boot_trades_key] = int(_first_boot_cfg["training_trades"])
+    if _first_boot_force_key not in st.session_state:
+        st.session_state[_first_boot_force_key] = bool(_first_boot_cfg["force_training"])
+    st.slider(
+        "Aantal trades bij eerste training",
+        min_value=_FIRST_BOOT_TRADE_MIN,
+        max_value=_FIRST_BOOT_TRADE_MAX,
+        step=_FIRST_BOOT_TRADE_STEP,
+        key=_first_boot_trades_key,
+        help=(
+            "Bij de allereerste start heeft Lumina nog geen ervaring.\n"
+            "Hoe meer trades je kiest, hoe sterker haar initiële PPO-policy en kennisbasis wordt.\n\n"
+            "- 200.000 trades  -> Snelle start (± 5-10 min), redelijke basis\n"
+            "- 500.000 trades  -> Goede balans (aanbevolen)\n"
+            "- 1.000.000+ trades -> Zeer sterke start, maar duurt langer (± 20-40 min)\n\n"
+            "Na deze eerste training draait Lumina veel effectiever en met hogere confidence."
+        ),
+    )
+    st.checkbox(
+        "Force eerste training verplicht",
+        key=_first_boot_force_key,
+        help=(
+            "Aanbevolen: aan. Bij ontbrekende first-boot artifacts blokkeert runtime dan fail-closed "
+            "tot de initiële training succesvol afgerond is."
+        ),
+    )
+    _selected_trades = _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, _FIRST_BOOT_DEFAULT_TRADES))
+    _estimated_days = _estimate_first_boot_real_days(_selected_trades)
+    st.caption(
+        (
+            f"Bij deze instelling heeft Lumina ongeveer {_estimated_days} dagen echte historische data nodig.\n\n"
+            "- Hoe lager het aantal, hoe sneller de eerste training klaar is.\n"
+            "- Hoe hoger het aantal, hoe sterker de initiële policy, maar hoe langer het duurt en hoe meer "
+            "historische data er geladen moet worden.\n\n"
+            "Bij voorkeur gebruikt Lumina enkel echte data. Als je een zeer hoog aantal kiest, kan er toch "
+            "wat synthetische data nodig zijn (tenzij je max_real_days extreem hoog zet)."
+        )
+    )
+    if exceeds_max_real_days_window(_estimated_days, int(_first_boot_cfg["max_real_days"])):
+        st.warning(
+            "De gekozen trade count vraagt vermoedelijk meer dagen aan echte historische data dan "
+            "first_boot.max_real_days in config.yaml. "
+            "First boot zal trades cappen of minimale synthetische aanvulling toepassen op basis van config."
+        )
+    if is_high_load_estimate(_estimated_days):
+        st.warning(
+            "Sterke waarschuwing: dit aantal trades impliceert typisch meer dan ~700 dagen aan echte data. "
+            "Verwacht langere first boot en waarschijnlijk synthetische aanvulling tenzij max_real_days zeer hoog staat."
+        )
+    _first_boot_progress = _read_first_boot_progress()
+    _first_boot_stage = str(_first_boot_progress.get("stage", "")).strip().lower()
+    _first_boot_message = str(_first_boot_progress.get("message", "")).strip()
+    _first_boot_trades_done = _first_boot_progress.get("trades")
+    if _first_boot_artifacts_missing():
+        if _first_boot_stage in {"detected", "loading_data", "training_running"}:
+            st.info("Eerste keer starten gedetecteerd. Lumina voert nu haar initiële leer-cyclus uit...")
+            st.progress(_first_boot_stage_progress(_first_boot_stage))
+            if _first_boot_message:
+                st.caption(_first_boot_message)
+        elif _first_boot_stage == "failed":
+            st.error(
+                "First-boot training is niet geslaagd. Runtime blijft fail-closed totdat de initiële training succesvol is."
+            )
+            if _first_boot_message:
+                st.caption(_first_boot_message)
+        else:
+            st.info(
+                "First-boot artifacts ontbreken nog. Bij de eerstvolgende runtime-start wordt initiële training automatisch uitgevoerd."
+            )
+    elif _first_boot_stage == "completed":
+        if isinstance(_first_boot_trades_done, (int, float)):
+            st.success(f"Eerste training voltooid. {int(_first_boot_trades_done)} trades uitgevoerd. Policy opgeslagen.")
+        elif _first_boot_message:
+            st.success(_first_boot_message)
     voice_enabled = st.checkbox("Voice (TTS + input)", value=True)
     screen_share_enabled = st.checkbox("Live Chart Screen Share", value=True)
     dashboard_enabled = st.checkbox("Dashboard", value=True)
@@ -2364,7 +2560,15 @@ with st.sidebar:
     )
     st.divider()
     if st.button("Save Config and Start Bot", type="primary", width="stretch"):
+        _save_first_boot_settings(
+            _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, _FIRST_BOOT_DEFAULT_TRADES)),
+            force_training=bool(st.session_state.get(_first_boot_force_key, True)),
+        )
         _save_neuro_require_real_simulator_data(bool(st.session_state.get(_req_real_key, True)))
+        st.info(
+            "Launcher bevestiging: bij eerste start detecteert runtime automatisch first boot, "
+            "start de initiële training en toont voortgang/afsluitende samenvatting in de console-output."
+        )
         broker_backend = "paper" if trade_mode == "paper" else "live"
         account_mode = {
             "paper": "paper",
@@ -2487,6 +2691,7 @@ tab_labels = [
     "Trader League",
     "Community Bibles",
     "Performance Reports",
+    "📡 Monitoring Dashboard",
 ]
 if active_mode == "sim":
     tab_labels.append("🚀 SIM Evolution Dashboard")
@@ -2501,14 +2706,15 @@ tab3 = tabs[2]
 tab4 = tabs[3]
 tab5 = tabs[4]
 tab6 = tabs[5]
-tab7 = None
+tab7 = tabs[6]
 tab8 = None
-next_optional_idx = 6
+tab9 = None
+next_optional_idx = 7
 if active_mode in {"sim", "real"} and len(tabs) > next_optional_idx:
-    tab7 = tabs[next_optional_idx]
+    tab8 = tabs[next_optional_idx]
     next_optional_idx += 1
 if admin_mode and len(tabs) > next_optional_idx:
-    tab8 = tabs[next_optional_idx]
+    tab9 = tabs[next_optional_idx]
 
 with tab1:
     st.subheader("Live Dream + Runtime State")
@@ -2573,13 +2779,23 @@ with tab6:
 
 if tab7 is not None:
     with tab7:
+        try:
+            from lumina_os.frontend.monitoring_dashboard import render_monitoring_dashboard_tab
+
+            render_monitoring_dashboard_tab(BACKEND_BASE_URL, title="Monitoring Dashboard")
+        except Exception as exc:
+            logging.exception("Unhandled broad exception fallback in lumina_launcher.py:monitoring_tab")
+            st.error(f"Monitoring dashboard could not be loaded: {exc}")
+
+if tab8 is not None:
+    with tab8:
         if active_mode == "sim":
             _render_sim_learning_tab()
         elif active_mode == "real":
             _render_real_operations_tab(state)
 
-if tab8 is not None:
-    with tab8:
+if tab9 is not None:
+    with tab9:
         st.subheader("Admin Backend")
         st.write("Runtime entry:")
         st.code(str(RUNTIME_ENTRY))

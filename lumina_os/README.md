@@ -61,6 +61,23 @@ Zet in de sidebar van Streamlit de backend URL op:
 
 http://localhost:8000
 
+## Monitoring Dashboard
+
+Het gedeelde Monitoring Dashboard is nu in beide Streamlit-apps beschikbaar:
+
+- `lumina_os/frontend/dashboard.py` -> tab `📡 Monitoring Dashboard`
+- `lumina_launcher.py` -> tab `📡 Monitoring Dashboard`
+
+Belangrijkste bronnen voor monitoring:
+
+- `state/monitoring_runtime_metrics.json`
+- `state/monitoring_daily_pnl.jsonl` (trend uit runtime snapshots)
+- `state/monitoring_twin_decisions.jsonl`
+- `state/monitoring_gate_rejections.jsonl`
+- `state/monitoring_reasoning_latency.jsonl`
+- `state/monitoring_model_load_times.jsonl`
+- `state/ppo_policy_metadata.json`
+
 ## Demo Data Seeden en Verwijderen
 
 Run vanuit de map lumina_os:

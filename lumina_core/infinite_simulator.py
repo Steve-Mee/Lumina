@@ -17,8 +17,14 @@ from typing import Any
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.evolution.simulator_data_support import MIN_SIMULATOR_BARS, require_real_simulator_data_strict
+from lumina_core.first_boot_ui import (
+    FIRST_BOOT_EST_TRADES_PER_REAL_DAY as _FIRST_BOOT_TRADES_PER_REAL_DAY,
+    normalize_first_boot_training_trades,
+)
+from lumina_core.logging_utils import correlation_id, get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger("lumina.simulation.nightly")
+_FIRST_BOOT_TICKS_PER_REAL_DAY = 1560
 
 
 def _simulate_worker(payload: dict[str, Any]) -> dict[str, Any]:
@@ -154,8 +160,174 @@ class InfiniteSimulator:
     target_trades_per_night: int = 1_000_000
     point_value: float = 5.0
 
+    def run_first_boot_training(
+        self,
+        *,
+        target_trades: int,
+        prefer_real_data_only: bool,
+        max_real_days: int,
+        allow_minimal_synthetic_fallback: bool = False,
+    ) -> dict[str, Any]:
+        start = time.time()
+        run_id = datetime.now(timezone.utc).strftime("fb-%Y%m%d%H%M%S")
+        requested_trades = normalize_first_boot_training_trades(target_trades)
+        max_days = max(30, min(3_650, int(max_real_days)))
+        estimated_real_days = int(math.ceil(float(requested_trades) / float(_FIRST_BOOT_TRADES_PER_REAL_DAY)))
+        logger.info(
+            "simulation.first_boot.start",
+            extra={
+                "event_data": {
+                    "event": "simulation.first_boot.start",
+                    "run_id": run_id,
+                    "target_trades": requested_trades,
+                    "prefer_real_data_only": bool(prefer_real_data_only),
+                    "max_real_days": max_days,
+                    "estimated_real_days": estimated_real_days,
+                }
+            },
+        )
+        logger.info("Laden van %s dagen echte historische data...", max_days)
+        real_ticks = self._load_real_historical_ticks(days_back=max_days, limit=max(150000, max_days * 2000))
+        if not real_ticks:
+            return {
+                "status": "blocked_no_real_data",
+                "requested_trades": requested_trades,
+                "target_trades": 0,
+                "trades": 0,
+                "executed_trades": 0,
+                "real_ticks": 0,
+                "synthetic_ticks": 0,
+                "estimated_real_days": estimated_real_days,
+                "actual_real_days_loaded": 0,
+                "real_days_loaded": 0,
+                "synthetic_pct": 0.0,
+                "synthetic_ratio": 0.0,
+            }
+
+        actual_real_days = max(1, int(math.ceil(len(real_ticks) / float(_FIRST_BOOT_TICKS_PER_REAL_DAY))))
+        configured_real_trade_capacity = int(max_days * _FIRST_BOOT_TRADES_PER_REAL_DAY)
+        actual_real_trade_capacity = int(actual_real_days * _FIRST_BOOT_TRADES_PER_REAL_DAY)
+        target_effective = requested_trades
+        synthetic_ticks: list[dict[str, Any]] = []
+        status = "ok_real_only" if prefer_real_data_only else "ok_flexible_data_policy"
+        if not prefer_real_data_only:
+            logger.info(
+                "simulation.first_boot.flexible_data_policy",
+                extra={
+                    "event_data": {
+                        "event": "simulation.first_boot.flexible_data_policy",
+                        "run_id": run_id,
+                        "reason": "prefer_real_data_only_disabled",
+                    }
+                },
+            )
+
+        if prefer_real_data_only and requested_trades > actual_real_trade_capacity:
+            if allow_minimal_synthetic_fallback:
+                missing_trades = requested_trades - actual_real_trade_capacity
+                synth_needed = max(5000, int(missing_trades * 4))
+                synthetic_ticks = self._generate_synthetic_ticks(
+                    n_ticks=synth_needed,
+                    seed=int(time.time()) % 1_000_000,
+                    start_price=float(real_ticks[-1]["last"]) if real_ticks else 5000.0,
+                )
+                status = "ok_minimal_synthetic_fallback"
+                logger.warning(
+                    "simulation.first_boot.synthetic_fallback",
+                    extra={
+                        "event_data": {
+                            "event": "simulation.first_boot.synthetic_fallback",
+                            "run_id": run_id,
+                            "missing_trades": missing_trades,
+                            "synthetic_ticks": len(synthetic_ticks),
+                        }
+                    },
+                )
+            else:
+                target_effective = max(1000, actual_real_trade_capacity)
+                status = "ok_capped_real_only"
+                logger.warning(
+                    "simulation.first_boot.target_capped_to_real_capacity",
+                    extra={
+                        "event_data": {
+                            "event": "simulation.first_boot.target_capped_to_real_capacity",
+                            "run_id": run_id,
+                            "requested_trades": requested_trades,
+                            "capped_trades": target_effective,
+                            "configured_real_trade_capacity": configured_real_trade_capacity,
+                            "actual_real_trade_capacity": actual_real_trade_capacity,
+                        }
+                    },
+                )
+
+        ticks = list(real_ticks) + list(synthetic_ticks)
+        summary = self._run_parallel_simulation(ticks, target_effective)
+        self._train_rl(ticks)
+
+        synthetic_pct = float(len(synthetic_ticks) / max(1, len(ticks)))
+        report = {
+            "timestamp": datetime.now().isoformat(),
+            "status": status,
+            "requested_trades": requested_trades,
+            "target_trades": target_effective,
+            "trades": int(summary.get("trades", 0)),
+            "executed_trades": int(summary.get("trades", 0)),
+            "wins": int(round(float(summary.get("winrate", 0.0)) * max(1, int(summary.get("trades", 0))))),
+            "net_pnl": float(summary.get("net_pnl", 0.0)),
+            "mean_worker_sharpe": float(summary.get("mean_worker_sharpe", 0.0)),
+            "estimated_real_days": estimated_real_days,
+            "actual_real_days_loaded": actual_real_days,
+            "real_days_loaded": actual_real_days,
+            "max_real_days": max_days,
+            "configured_real_trade_capacity": configured_real_trade_capacity,
+            "actual_real_trade_capacity": actual_real_trade_capacity,
+            "real_ticks": len(real_ticks),
+            "synthetic_ticks": len(synthetic_ticks),
+            "synthetic_pct": round(synthetic_pct * 100.0, 3),
+            "synthetic_ratio": round(synthetic_pct, 6),
+            "elapsed_sec": round(time.time() - start, 2),
+        }
+        out_dir = Path("journal/simulator")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        report_path = out_dir / f"first_boot_training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+        report["report_path"] = str(report_path)
+        logger.info(
+            "simulation.first_boot.complete",
+            extra={
+                "event_data": {
+                    "event": "simulation.first_boot.complete",
+                    "run_id": run_id,
+                    "status": status,
+                    "target_trades": target_effective,
+                    "trades": int(report.get("trades", 0)),
+                    "estimated_real_days": estimated_real_days,
+                    "actual_real_days_loaded": actual_real_days,
+                    "real_ticks": len(real_ticks),
+                    "synthetic_ticks": len(synthetic_ticks),
+                    "synthetic_pct": float(report["synthetic_pct"]),
+                }
+            },
+        )
+        return report
+
     def run_nightly(self) -> dict[str, Any]:
         start = time.time()
+        run_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        with correlation_id(run_id):
+            try:
+                logger.info(
+                    "simulation.nightly.start",
+                    extra={
+                        "event_data": {
+                            "event": "simulation.nightly.start",
+                            "run_id": run_id,
+                            "target_trades": int(self.target_trades_per_night),
+                        }
+                    },
+                )
+            except Exception:
+                pass
         real_ticks = self._load_real_historical_ticks(days_back=45, limit=150000)
         historical_only = require_real_simulator_data_strict()
         if historical_only:
@@ -182,6 +354,21 @@ class InfiniteSimulator:
             return {"status": "no_data", "trades": 0}
 
         summary = self._run_parallel_simulation(ticks, self.target_trades_per_night)
+        try:
+            logger.info(
+                "simulation.nightly.worker_summary",
+                extra={
+                    "event_data": {
+                        "event": "simulation.nightly.worker_summary",
+                        "run_id": run_id,
+                        "trades": int(summary.get("trades", 0)),
+                        "net_pnl": float(summary.get("net_pnl", 0.0)),
+                        "sharpe": float(summary.get("mean_worker_sharpe", 0.0)),
+                    }
+                },
+            )
+        except Exception:
+            pass
         self._feed_vector_db(summary)
         self._evolve_bible(summary)
         self._train_rl(ticks)
@@ -200,6 +387,22 @@ class InfiniteSimulator:
         report_path = out_dir / f"nightly_sim_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         report["report_path"] = str(report_path)
+        try:
+            logger.info(
+                "simulation.nightly.complete",
+                extra={
+                    "event_data": {
+                        "event": "simulation.nightly.complete",
+                        "run_id": run_id,
+                        "real_ticks": len(real_ticks),
+                        "synthetic_ticks": len(synthetic_ticks),
+                        "total_trades": int(report.get("trades", 0)),
+                        "overall_sharpe": float(report.get("mean_worker_sharpe", 0.0)),
+                    }
+                },
+            )
+        except Exception:
+            pass
 
         orchestrator = getattr(getattr(self.runtime, "engine", None), "meta_agent_orchestrator", None)
         if orchestrator is not None and hasattr(orchestrator, "run_nightly_reflection"):
@@ -414,6 +617,19 @@ class InfiniteSimulator:
         }
         try:
             evolve_fn(updates)
+            try:
+                logger.info(
+                    "simulation.bible_rules_appended",
+                    extra={
+                        "event_data": {
+                            "event": "simulation.bible_rules_appended",
+                            "count": len(list(updates.get("filters", []))),
+                            "top_fitness": float(summary.get("winrate", 0.0)),
+                        }
+                    },
+                )
+            except Exception:
+                pass
         except Exception:
             logging.exception("Unhandled broad exception fallback in lumina_core/infinite_simulator.py:415")
             return

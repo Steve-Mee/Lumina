@@ -1,6 +1,9 @@
+import logging
 from typing import Callable, Optional
 
 from lumina_core.engine.swarm_manager import SwarmManager
+
+_log = logging.getLogger("lumina")
 
 
 RuntimeWorker = Callable[[], None]
@@ -52,7 +55,12 @@ def start_runtime_services(
             setattr(app, "swarm_manager", engine.swarm)
 
     if screen_share_enabled:
+        _log.info("LIVE_FEED_BOOT_STEP,runtime_bootstrap,screen_share_enabled=true,action=start_tk_window_fn")
         start_screen_share_window_fn()
+    else:
+        _log.info(
+            "LIVE_FEED_BOOT_SKIP,runtime_bootstrap,screen_share_enabled=false,note=no_tk_thread_no_launcher_jsonl_from_runtime_bootstrap",
+        )
 
     start_daemon_fn(thought_logger_thread_fn, name="thought-logger")
     start_daemon_fn(start_websocket_fn, name="websocket-listener")

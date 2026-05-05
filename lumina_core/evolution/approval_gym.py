@@ -5,8 +5,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
+from lumina_core.logging_utils import correlation_id, get_logger
 from .dna_registry import PolicyDNA
 from .steve_values_registry import SteveValueRecord, SteveValuesRegistry
+
+logger = get_logger("lumina.evolution.twin")
 
 
 def _utcnow() -> str:
@@ -74,24 +77,81 @@ class ApprovalGym:
         proposals = self.generate_proposals(historical_dna=historical_dna, count=count)
         asker = ask_fn or self._console_ask
         records: list[SteveValueRecord] = []
+        synthetic_count = sum(1 for proposal in proposals if str(proposal.dna_hash).startswith("sim_"))
+        historical_count = max(0, len(proposals) - synthetic_count)
+        try:
+            logger.info(
+                "gym.run_session.start",
+                extra={
+                    "event_data": {
+                        "event": "gym.run_session.start",
+                        "proposal_count": len(proposals),
+                        "historical_count": historical_count,
+                        "synthetic_count": synthetic_count,
+                    }
+                },
+            )
+        except Exception:
+            pass
 
         for proposal in proposals:
+            try:
+                logger.debug(
+                    "gym.proposal_shown",
+                    extra={
+                        "event_data": {
+                            "event": "gym.proposal_shown",
+                            "dna_hash": proposal.dna_hash,
+                            "summary": proposal.summary,
+                        }
+                    },
+                )
+            except Exception:
+                pass
             vraag = self._build_question(proposal)
-            antwoord = str(asker(vraag)).strip()
-            confidence_score = self._extract_confidence(antwoord, fallback=proposal.estimated_confidence)
-            record = SteveValueRecord.create(
-                vraag=vraag,
-                steve_antwoord=antwoord,
-                timestamp=_utcnow(),
-                context_dna_hash=proposal.dna_hash,
-                confidence_score=confidence_score,
-            )
-            self._registry.append(record)
-            records.append(record)
+            with correlation_id(proposal.dna_hash):
+                antwoord = str(asker(vraag)).strip()
+                confidence_score = self._extract_confidence(antwoord, fallback=proposal.estimated_confidence)
+                record = SteveValueRecord.create(
+                    vraag=vraag,
+                    steve_antwoord=antwoord,
+                    timestamp=_utcnow(),
+                    context_dna_hash=proposal.dna_hash,
+                    confidence_score=confidence_score,
+                )
+                self._registry.append(record)
+                records.append(record)
+                try:
+                    logger.info(
+                        "gym.user_response_recorded",
+                        extra={
+                            "event_data": {
+                                "event": "gym.user_response_recorded",
+                                "dna_hash": proposal.dna_hash,
+                                "confidence_score": confidence_score,
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
 
         if approval_twin is not None and hasattr(approval_twin, "rlhf_light_update"):
             approval_twin.rlhf_light_update(records=records)
+            try:
+                logger.info(
+                    "gym.twin_updated",
+                    extra={"event_data": {"event": "gym.twin_updated", "records_processed": len(records)}},
+                )
+            except Exception:
+                pass
 
+        try:
+            logger.info(
+                "gym.run_session.end",
+                extra={"event_data": {"event": "gym.run_session.end", "records_created": len(records)}},
+            )
+        except Exception:
+            pass
         return records
 
     @staticmethod
