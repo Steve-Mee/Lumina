@@ -70,7 +70,11 @@ _PROM_ETA = ("lumina_training_eta_minutes", "lumina_eta_minutes_remaining")
 
 
 def extend_cors_origins_with_local_vite_dev(existing: Iterable[str]) -> list[str]:
-    """Voeg lokale Vite-/React-origin(s) toe indien nog niet aanwezig (duplicate-safe)."""
+    """Voeg lokale Vite-/React-origin(s) toe indien nog niet aanwezig (duplicate-safe).
+
+    Extra origins kunnen optioneel gezet worden via:
+    ``LUMINA_EXTRA_CORS_ORIGINS="http://localhost:4173,http://devbox:5173"``.
+    """
 
     def norm_key(origin: str) -> str:
         return origin.strip().rstrip("/").lower()
@@ -86,7 +90,10 @@ def extend_cors_origins_with_local_vite_dev(existing: Iterable[str]) -> list[str
             keys.add(k)
             merged.append(o)
 
-    for o in REACT_LOCAL_DEV_ORIGINS:
+    configured_extra = os.environ.get("LUMINA_EXTRA_CORS_ORIGINS", "")
+    extra_origins = tuple(item.strip() for item in configured_extra.split(",") if item.strip())
+
+    for o in (*REACT_LOCAL_DEV_ORIGINS, *extra_origins):
         k = norm_key(o)
         if k not in keys:
             keys.add(k)

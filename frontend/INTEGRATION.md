@@ -1,31 +1,17 @@
-# React monitoring dashboard × Lumina launcher
+# React monitoring dashboard x Lumina launcher
 
-Het Vite-dashboard in `frontend/` is een **losstaande SPA** naast de bestaande **Streamlit launcher** (`lumina_launcher.py`). De launcher-tab **„Monitoring Dashboard“** blijft de Python/Streamlit-versie gebruiken (`lumina_os/frontend/monitoring_dashboard.py`). De React-app is de nieuwe cockpit op **poort 5173**.
+De React cockpit in `frontend/` draait naast de bestaande Streamlit launcher (`lumina_launcher.py`).
+Je gebruikt ze parallel:
 
-## Architectuur
+- **FastAPI backend** op `http://localhost:8000`
+- **Streamlit launcher** op `http://localhost:8501` (of jouw ingestelde poort)
+- **React dashboard (Vite)** op `http://localhost:5173`
 
-| Onderdeel | URL / entry | Rol |
-|-----------|-------------|-----|
-| React dashboard | `http://localhost:5173` | Vite SPA, proxy `/api` → backend |
-| FastAPI (Trader League backend) | Standaard `http://localhost:8000` | Metrics + `_lumina_ui` blok (`/api/monitoring/metrics/json`) |
-| Streamlit launcher | meestal `http://localhost:8501` (of jouw preset) | `lumina_launcher.py` inclusief Monitoring-tab |
+De backend exposeert `GET /api/monitoring/metrics/json` met zowel ruwe observability-data als canonical dashboardvelden in `_lumina_ui` / `lumina_ui`.
 
-Je draait dus **parallel**: backend (:8000) + optioneel launcher (:8501) + **React** (:5173).
+## Snelle start (Windows / PowerShell)
 
-## Vereisten kort
-
-- **Node.js 20+**, **npm**.
-- **`lumina_os` backend actief op :8000** (of pas proxy aan, zie onder).
-- Geldige **API key** in `config.yaml` onder `security.api_keys` voor `X-API-Key`; de frontend gebruikt **`localStorage` key `lumina_api_key`** of `VITE_LUMINA_API_KEY` in `.env.local` voor dev-bootstrap (zie [README](./README.md)).
-- **CORS**: `lumina_os` voegt `http://localhost:5173` toe (zie `lumina_os/api/monitoring.py` + `config.yaml`).
-
----
-
-## Stap 1 — Backend starten (:8000)
-
-Vanaf repo-root (dit project gebruikt ook `lumina_core` op `PYTHONPATH`):
-
-### PowerShell
+### 1) Start backend (`:8000`)
 
 ```powershell
 cd lumina_os
@@ -34,83 +20,86 @@ $env:LUMINA_CONFIG = "..\config.yaml"
 ..\.venv\Scripts\python.exe -m uvicorn backend.app:app --reload --host 127.0.0.1 --port 8000
 ```
 
-Of gebruik [`lumina_os/scripts/dev.ps1`](../lumina_os/scripts/dev.ps1) met `-Action backend` (zet `PYTHONPATH` en port al).
-
-Controle:
+Sanity check:
 
 ```powershell
 curl http://127.0.0.1:8000/api/monitoring/metrics
 ```
 
-(Optioneel authenticated JSON: kopieer `X-API-Key` naar de frontend.)
+### 2) Start Streamlit launcher (`:8501`)
 
----
-
-## Stap 2 — Streamlit launcher (bestaande flow)
-
-Niets aan de React-app verbindt automatisch naar de launcher. Zoals elders:
+Vanaf repo-root:
 
 ```powershell
-# vanaf repo-root, met geactiveerde venv
 python -m streamlit run .\lumina_launcher.py
 ```
 
-Monitoring-tab (`render_monitoring_dashboard_tab`) praat tegen `BACKEND_BASE_URL` (= `LUMINA_BACKEND_URL` env of default `http://localhost:8000`), **los** van de SPA.
+In de Monitoring-tab staat nu een knop **Open React Dashboard**.
+Optioneel kun je de URL overriden met:
 
----
+```powershell
+$env:LUMINA_REACT_DASHBOARD_URL = "http://localhost:5173"
+```
 
-## Stap 3 — React dashboard (:5173)
+### 3) Start React dashboard (`:5173`)
 
-```bash
+```powershell
 cd frontend
 npm ci
 npm run dev
 ```
 
-Open **http://localhost:5173**. De Vite-proxy stuurt browser-requests naar **`/api/...`** door naar **`VITE_API_PROXY_TARGET`** (default `http://localhost:8000`).
+Open [http://localhost:5173](http://localhost:5173).
 
----
+## API key voor metrics/json
 
-## Stap 4 — Optioneel launcher-integratie (link in Streamlit)
+`/api/monitoring/metrics/json` vereist `X-API-Key`.
 
-Je kunt in de launcher-tab voor operators een harde link tonen naar de SPA (pas tab **„Monitoring Dashboard“** aan als je dat wilt coden):
+Frontend opties:
 
-```python
-import streamlit as st
+- in browser console:
+  `localStorage.setItem("lumina_api_key", "<JOUW_API_KEY>")`
+- of in `frontend/.env.local`:
+  `VITE_LUMINA_API_KEY=<JOUW_API_KEY>`
 
-st.markdown("### React monitoring cockpit (Vite)")
-st.link_button("Open in browser", "http://localhost:5173", help="Draai tegelijk: npm run dev in frontend/")
-st.caption("Zorg dat uvicorn op :8000 draait en dat `lumina_api_key` gezet is in de browser voor metrics/json.")
+## CORS en localhost:5173
+
+Backend CORS voegt standaard deze React dev-origins toe:
+
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+
+Implementatie: `lumina_os/api/monitoring.py` via `extend_cors_origins_with_local_vite_dev(...)`.
+Optioneel extra origins:
+
+```powershell
+$env:LUMINA_EXTRA_CORS_ORIGINS = "http://localhost:4173,http://devbox:5173"
 ```
 
-**Let op**: Streamlit blokkeert geen SPA; twee tabbladen in de browser (launcher + localhost:5173) is de meest voorspelbare workflow.
+## Payload contract `/api/monitoring/metrics/json`
 
----
+Response bevat:
 
-## Backend & contract
+- volledige Prometheus snapshot entries
+- `_lumina_ui` (canonical velden voor React hook)
+- `lumina_ui` (alias, zelfde data)
 
-- **Endpoint**: `GET /api/monitoring/metrics/json` + header `X-API-Key`.
-- **Payload**: volledige observability-snapshot **plus** plat blok **`_lumina_ui`** met o.a. `trades_completed`, `ppo_steps`, `phase`, … (zie `lumina_os/api/monitoring.py`).
-- **Andere host/poort backend**: zet `VITE_API_PROXY_TARGET` in `frontend/.env.local` (dev) of pas `vite.config.ts` proxy aan.
+Canonical velden:
 
----
-
-## Docker (optioneel)
-
-Zie **[`docker-compose.dev-example.yml`](./docker-compose.dev-example.yml)** voor een minimaal voorbeeld: Vite in een Node-container met proxy naar de API op de host (`host.docker.internal`). Start (naast draaiende backend op de host):
-
-```bash
-cd frontend
-docker compose -f docker-compose.dev-example.yml --profile vite up vite-dev
-```
-
----
+- `trades_completed`
+- `ppo_steps`
+- `approval_twin_reward`
+- `cpu`
+- `gpu`
+- `ram`
+- `velocity`
+- `phase`
+- `historical_days`
+- `synthetic_percent`
+- `eta_minutes`
 
 ## Troubleshooting
 
-| Symptoom | Actie |
-|----------|--------|
-| 401 op metrics/json | Zet API key: `localStorage.setItem('lumina_api_key','…')` of `VITE_LUMINA_API_KEY` in `.env.local` + herlaad. |
-| CORS-fout | Controleer dat backend draait met uitgebreide origins (5173) en dat je geen verkeerde URL gebruikt. |
-| Lege metrics | Controleer `state/first_boot_progress.json` en Prometheus; `_lumina_ui` vult aan vanuit bestanden + metrics. |
-| Proxy faalt in Docker | Zet `VITE_API_PROXY_TARGET=http://host.docker.internal:8000` in env voor de Vite-service. |
+- **401 op `/metrics/json`**: controleer API key in `localStorage` of `.env.local`.
+- **CORS-error in browser**: controleer backend draait op juiste config en origin is `localhost:5173`.
+- **Lege dashboardwaarden**: controleer `state/first_boot_progress.json`, `state/ppo_policy_metadata.json` en observability collector.

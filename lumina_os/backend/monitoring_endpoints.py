@@ -26,8 +26,22 @@ from fastapi import APIRouter, HTTPException, Header, Query
 from fastapi.responses import PlainTextResponse
 
 try:
-    from api.monitoring import enrich_observability_snapshot_for_react_dashboard
+    from api.monitoring import LUMINA_UI_FIELDS, enrich_observability_snapshot_for_react_dashboard
 except ImportError:  # pragma: no cover - fallback when PYTHONPATH excludes lumina_os root
+
+    LUMINA_UI_FIELDS = (
+        "trades_completed",
+        "ppo_steps",
+        "approval_twin_reward",
+        "cpu",
+        "gpu",
+        "ram",
+        "velocity",
+        "phase",
+        "historical_days",
+        "synthetic_percent",
+        "eta_minutes",
+    )
 
     def enrich_observability_snapshot_for_react_dashboard(snapshot: dict[str, Any]) -> dict[str, Any]:
         return dict(snapshot)
@@ -151,9 +165,19 @@ async def get_metrics_json(
 ) -> dict[str, Any]:
     _check_api_key(x_api_key)
     obs = _require_service()
-    # Volledige collector snapshot + ``_lumina_ui`` blok voor de React monitoring SPA
-    # (zie ``lumina_os/api/monitoring.py`` voor trainings/PPO injection docs).
-    return enrich_observability_snapshot_for_react_dashboard(obs.snapshot())
+    # Return full collector snapshot + canonical UI fields expected by the React dashboard.
+    # Keep both `_lumina_ui` and `lumina_ui` aliases for compatibility.
+    enriched = enrich_observability_snapshot_for_react_dashboard(obs.snapshot())
+    ui_raw = enriched.get("_lumina_ui")
+    ui = ui_raw if isinstance(ui_raw, dict) else {}
+
+    canonical_ui: dict[str, Any] = {}
+    for key in LUMINA_UI_FIELDS:
+        canonical_ui[key] = ui.get(key)
+
+    enriched["_lumina_ui"] = canonical_ui
+    enriched["lumina_ui"] = canonical_ui
+    return enriched
 
 
 @router.get(

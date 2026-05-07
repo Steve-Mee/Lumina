@@ -20,7 +20,7 @@ import {
   UserRound,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   type LuminaMetrics,
   LuminaMetricsFetchError,
@@ -103,20 +103,20 @@ function FieldTip({
   tip: string;
   label?: string;
 }): JSX.Element {
-  const idRef = useRef(`tip-${Math.random().toString(36).slice(2, 9)}`);
+  const tipId = useId();
 
   return (
     <span className="group/tip relative ml-1.5 inline-flex align-middle">
       <button
         type="button"
         className="-m-1 rounded-full p-1 text-[#00f0ff]/55 outline-none transition hover:text-[#00f0ff] focus-visible:ring-2 focus-visible:ring-[#00f0ff]/55"
-        aria-describedby={idRef.current}
+        aria-describedby={tipId}
         aria-label={label ?? "Metric uitleg"}
       >
         <HelpCircle className="h-3.5 w-3.5" strokeWidth={1.75} />
       </button>
       <span
-        id={idRef.current}
+        id={tipId}
         role="tooltip"
         className="pointer-events-none invisible absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[min(280px,calc(100vw-24px))] -translate-x-1/2 translate-y-1 rounded-xl border border-white/10 bg-zinc-950/98 px-3 py-2 text-left text-[11px] leading-snug text-zinc-300 opacity-0 shadow-2xl shadow-black/70 backdrop-blur-md transition-opacity duration-150 group-focus-within/tip:visible group-focus-within/tip:opacity-100 group-hover/tip:visible group-hover/tip:opacity-100"
       >
@@ -391,7 +391,7 @@ function useActivityJournal(
       `Tick ${new Date(lastUpdatedAt).toLocaleTimeString()}`,
       `trades ${formatCompact(t)}${deltaFrag ? ` • ${deltaFrag}` : ""}`,
       `velocity ${velFrag} evt/s`,
-      `phase „${metrics.phase || "UNKNOWN"}„`,
+      `phase "${metrics.phase || "UNKNOWN"}"`,
       `Twin reward ${metrics.approval_twin_reward.toFixed(2)}`,
     ].join(" · ");
 
@@ -655,7 +655,7 @@ export default function MonitoringDashboard(): JSX.Element {
                 <MetricGlassCard
                   reduceMotion={reduceMotion}
                   delay={0.22}
-                  tip={`Operationele mode afgeleid uit fase/synthetic/heuristic. Ruwe phase: „${phaseLabel}“.`}
+                  tip={`Operationele mode afgeleid uit fase/synthetic/heuristic. Ruwe phase: "${phaseLabel}".`}
                   tipAriaLabel="Uitleg mode & phase"
                 >
                   <div className="flex items-start justify-between gap-2 pr-8">
@@ -713,43 +713,50 @@ export default function MonitoringDashboard(): JSX.Element {
                   Live activity stream
                 </h3>
                 <p className="mt-1 text-[12px] text-zinc-500">
-                  Gekleurde kern events — PROGRESS (profit groen), INFO (neon cyan).
+                  Gekleurde kern events - PROGRESS (neon groen), INFO (neon cyan), WARN (amber).
                 </p>
               </div>
               <div
                 ref={streamRef}
+                aria-live="polite"
                 className="h-[min(520px,calc(100vh-260px))] space-y-2 overflow-y-auto overscroll-contain px-4 py-4 font-mono text-[11px] leading-relaxed sm:px-5"
               >
-                {stream.map((row) => (
-                  <motion.div
-                    key={row.id}
-                    layout={!reduceMotion}
-                    initial={{ opacity: 0, x: reduceMotion ? 0 : 6 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: reduceMotion ? 0 : 0.22 }}
-                    className={`flex gap-3 rounded-xl border px-3 py-2 backdrop-blur-sm ${
-                      row.level === "INFO"
-                        ? "border-[#00f0ff]/22 bg-[#00f0ff]/[0.045]"
-                        : row.level === "PROGRESS"
-                          ? "border-[#00ff9f]/22 bg-[#00ff9f]/[0.06]"
-                          : "border-amber-500/30 bg-amber-500/[0.07]"
-                    }`}
-                  >
-                    <span className="shrink-0 text-zinc-600">{new Date(row.ts).toLocaleTimeString()}</span>
-                    <span
-                      className={`shrink-0 font-bold uppercase tracking-[0.12em] ${
+                {stream.length === 0 ? (
+                  <div className="rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-zinc-500">
+                    Wachten op eerste telemetry event...
+                  </div>
+                ) : (
+                  stream.map((row) => (
+                    <motion.div
+                      key={row.id}
+                      layout={!reduceMotion}
+                      initial={{ opacity: 0, x: reduceMotion ? 0 : 6 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: reduceMotion ? 0 : 0.22 }}
+                      className={`flex gap-3 rounded-xl border px-3 py-2 backdrop-blur-sm ${
                         row.level === "INFO"
-                          ? "text-[#00f0ff]"
+                          ? "border-[#00f0ff]/22 bg-[#00f0ff]/[0.045]"
                           : row.level === "PROGRESS"
-                            ? "text-[#00ff9f]"
-                            : "text-amber-400"
+                            ? "border-[#00ff9f]/22 bg-[#00ff9f]/[0.06]"
+                            : "border-amber-500/30 bg-amber-500/[0.07]"
                       }`}
                     >
-                      [{row.level}]
-                    </span>
-                    <span className="break-words text-zinc-300">{row.message}</span>
-                  </motion.div>
-                ))}
+                      <span className="shrink-0 text-zinc-600">{new Date(row.ts).toLocaleTimeString()}</span>
+                      <span
+                        className={`shrink-0 font-bold uppercase tracking-[0.12em] ${
+                          row.level === "INFO"
+                            ? "text-[#00f0ff]"
+                            : row.level === "PROGRESS"
+                              ? "text-[#00ff9f]"
+                              : "text-amber-400"
+                        }`}
+                      >
+                        [{row.level}]
+                      </span>
+                      <span className="break-words text-zinc-300">{row.message}</span>
+                    </motion.div>
+                  ))
+                )}
               </div>
             </motion.div>
           </aside>

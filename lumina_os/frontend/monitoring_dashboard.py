@@ -436,6 +436,17 @@ def _stop_debug_training_process() -> str:
 
 def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring Dashboard") -> None:
     st.subheader(title)
+    react_dashboard_url = os.getenv("LUMINA_REACT_DASHBOARD_URL", "http://localhost:5173").strip()
+
+    top_a, top_b = st.columns([3, 2])
+    with top_a:
+        st.caption(
+            "High-fidelity React cockpit beschikbaar op localhost:5173. "
+            "Gebruik deze tab voor klassieke Streamlit monitoring."
+        )
+    with top_b:
+        if react_dashboard_url:
+            st.link_button("Open React Dashboard", react_dashboard_url, use_container_width=True)
 
     col_a, col_b, col_c = st.columns([2, 2, 1])
     with col_a:
