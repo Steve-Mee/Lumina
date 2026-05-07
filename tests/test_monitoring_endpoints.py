@@ -248,6 +248,21 @@ def test_json_metrics_returns_snapshot_with_key() -> None:
     body = resp.json()
     assert 'lumina_regime_current{regime="RANGING",risk_state="NORMAL"}' in body
     assert abs(body['lumina_regime_confidence{regime="RANGING"}']["value"] - 0.55) < 0.001
+    assert "_lumina_ui" in body and isinstance(body["_lumina_ui"], dict)
+    for ui_key in (
+        "trades_completed",
+        "ppo_steps",
+        "approval_twin_reward",
+        "cpu",
+        "gpu",
+        "ram",
+        "velocity",
+        "phase",
+        "historical_days",
+        "synthetic_percent",
+        "eta_minutes",
+    ):
+        assert ui_key in body["_lumina_ui"], f"missing _lumina_ui.{ui_key}"
 
 
 # ── GET /api/monitoring/regime/history ────────────────────────────────────────

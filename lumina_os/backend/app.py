@@ -54,16 +54,26 @@ set_evolution_obs_service(_obs)
 app.include_router(monitoring_router)
 app.include_router(evolution_router)
 
-# Apply strict CORS middleware (no wildcard)
-if SECURITY["config"].cors_allowed_origins:
+# Apply strict CORS middleware (no wildcard) + lokale Vite dev (:5173) origins
+try:
+    from api.monitoring import extend_cors_origins_with_local_vite_dev
+
+    cors_origins = extend_cors_origins_with_local_vite_dev(SECURITY["config"].cors_allowed_origins)
+except ImportError:  # pragma: no cover
+    cors_origins = list(SECURITY["config"].cors_allowed_origins)
+
+if cors_origins:
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=SECURITY["config"].cors_allowed_origins,
+        allow_origins=cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"],
         allow_headers=["*"],
     )
-    logger.info(f"CORS configured for {len(SECURITY['config'].cors_allowed_origins)} origins")
+    logger.info(
+        "CORS configured for %s origins (Vite :5173 merged via api.monitoring when available)",
+        len(cors_origins),
+    )
 else:
     logger.warning("CORS is disabled (allow_origins is empty)")
 

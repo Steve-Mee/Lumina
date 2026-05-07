@@ -35,11 +35,18 @@ FIRST_BOOT_PROGRESS_PATH = ROOT_DIR / "state" / "first_boot_progress.json"
 
 
 def _write_first_boot_progress(stage: str, message: str, **extra: object) -> None:
-    payload: dict[str, object] = {
-        "timestamp": datetime.now().isoformat(),
-        "stage": str(stage).strip().lower(),
-        "message": str(message),
-    }
+    prev: dict[str, object] = {}
+    if FIRST_BOOT_PROGRESS_PATH.exists():
+        try:
+            prev = json.loads(FIRST_BOOT_PROGRESS_PATH.read_text(encoding="utf-8"))
+            if not isinstance(prev, dict):
+                prev = {}
+        except Exception:
+            prev = {}
+    payload: dict[str, object] = dict(prev)
+    payload["timestamp"] = datetime.now().isoformat()
+    payload["stage"] = str(stage).strip().lower()
+    payload["message"] = str(message)
     payload.update(extra)
     try:
         FIRST_BOOT_PROGRESS_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -151,10 +158,32 @@ def _bind_runtime_module(container: ApplicationContainer, runtime_module) -> Non
 
 
 def _bind_headless_runtime_app(container: ApplicationContainer) -> None:
-    """Headless historical fetch uses MarketDataService, which expects a bound runtime app."""
+    """Headless / first-boot historical fetch: MarketDataIngestService._app() requires a bound module.
+
+    Crosstrade bar requests use ``CROSSTRADE_TOKEN`` and ``INSTRUMENT`` from the runtime app; without
+    these, ``load_historical_ohlc_extended`` raises when resolving the app.
+    """
     stub = types.ModuleType("lumina_headless_runtime_app")
-    stub.logger = container.logger
-    stub.INSTRUMENT = str(getattr(container.config, "instrument", None) or "MES")
+    cfg = getattr(container, "config", None)
+    stub.logger = getattr(container, "logger", logging.getLogger("lumina.stub_runtime"))
+    if cfg is None:
+        inst = str(os.getenv("LUMINA_INSTRUMENT", "") or "MES").strip() or "MES"
+        stub.INSTRUMENT = inst
+        stub.CROSSTRADE_TOKEN = str(os.getenv("CROSSTRADE_TOKEN", ""))
+        stub.CROSSTRADE_ACCOUNT = str(os.getenv("CROSSTRADE_ACCOUNT", ""))
+        stub.SWARM_SYMBOLS = [inst]
+    else:
+        inst = str(getattr(cfg, "instrument", None) or "MES")
+        stub.INSTRUMENT = inst
+        stub.CROSSTRADE_TOKEN = str(os.getenv("CROSSTRADE_TOKEN", "") or getattr(cfg, "crosstrade_token", "") or "")
+        stub.CROSSTRADE_ACCOUNT = str(
+            os.getenv("CROSSTRADE_ACCOUNT", "") or getattr(cfg, "crosstrade_account", "") or ""
+        )
+        swarm = getattr(cfg, "swarm_symbols", None)
+        if swarm:
+            stub.SWARM_SYMBOLS = [str(s).strip() for s in swarm]
+        else:
+            stub.SWARM_SYMBOLS = [inst]
     stub.FAST_PATH_ONLY = False
     container.engine.bind_app(stub)
     container.runtime_context.app = stub
@@ -370,6 +399,25 @@ def _first_boot_needed() -> bool:
     return missing_artifacts and force_training
 
 
+def _defer_first_boot_for_closed_calendar() -> bool:
+    """Skip mandatory first-boot training outside CME session when calendar enforcement is on.
+
+    Mirrors nightly SIM behaviour: when the session calendar says closed, the stack should stay
+    idle instead of starting a long CPU/network-heavy first-boot run.
+    """
+    try:
+        raw = ConfigLoader.section("session", default={}) or {}
+        if not isinstance(raw, dict):
+            return False
+        if not bool(raw.get("enforce_calendar", True)):
+            return False
+        guard = SessionGuard(calendar_name="CME")
+        return not guard.is_trading_session()
+    except Exception:
+        logging.exception("first_boot.calendar_defer_check_failed")
+        return False
+
+
 def _run_first_boot_training() -> int:
     cfg = _load_first_boot_config()
     target = int(cfg["training_trades"])
@@ -378,7 +426,11 @@ def _run_first_boot_training() -> int:
     allow_synth = bool(cfg["allow_minimal_synthetic_fallback"])
     estimated_days = estimate_first_boot_real_days(target)
 
-    start_message = "Eerste keer starten gedetecteerd. Lumina voert nu haar initiële leer-cyclus uit..."
+    start_message = (
+        "Eerste keer starten gedetecteerd. Lumina voert initiële training uit. "
+        "Trading is tijdelijk geblokkeerd..."
+    )
+    logging.info("First boot detected - blocking trading until training complete")
     _write_first_boot_progress("detected", start_message, target_trades=target, max_real_days=max_days)
     print(start_message, flush=True)
     print(
@@ -388,16 +440,24 @@ def _run_first_boot_training() -> int:
     )
     _write_first_boot_progress(
         "loading_data",
-        "Laden van historische data voor first-boot training.",
+        "Laden van historische data voor first-boot training (CrossTrade / NT-historie).",
         target_trades=target,
         estimated_real_days=estimated_days,
+        max_real_days=max_days,
+        progress_pct=18,
+        phase="loading_history",
     )
 
     container = ApplicationContainer()
+    _bind_headless_runtime_app(container)
     _write_first_boot_progress(
         "training_running",
-        "Initiale first-boot training draait momenteel.",
+        "First-boot pipeline gestart: data laden → parallel SIM → PPO.",
         target_trades=target,
+        estimated_real_days=estimated_days,
+        max_real_days=max_days,
+        progress_pct=26,
+        phase="pipeline_boot",
     )
     report = container.infinite_simulator.run_first_boot_training(
         target_trades=target,
@@ -423,6 +483,7 @@ def _run_first_boot_training() -> int:
             flush=True,
         )
         _write_first_boot_progress("completed", done_message, status=status, trades=trades)
+        logging.info("First boot training finished - starting normal runtime mode")
         return 0
     print(
         f"First boot training is niet geslaagd (status={status}, trades={trades}). Runtime wordt fail-closed gestopt.",
@@ -469,9 +530,20 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
     )
     if should_check_first_boot:
         if _first_boot_needed():
-            first_boot_rc = _run_first_boot_training()
-            if first_boot_rc != 0:
-                return first_boot_rc
+            if _defer_first_boot_for_closed_calendar():
+                logging.info(
+                    "first_boot deferred: geen actieve CME-handelssessie (enforce_calendar); "
+                    "initiële training start niet tot RTH of na het uitschakelen van deze check."
+                )
+                _write_first_boot_progress(
+                    "deferred_calendar",
+                    "First-boot training uitgesteld: kalender staat op gesloten sessie. "
+                    "Start tijdens reguliere handelsuren of zet session.enforce_calendar op false.",
+                )
+            else:
+                first_boot_rc = _run_first_boot_training()
+                if first_boot_rc != 0:
+                    return first_boot_rc
         else:
             logging.info("first_boot.check runtime gate open; normale runtime start zonder verplichte first-boot training.")
 

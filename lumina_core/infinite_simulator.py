@@ -27,6 +27,16 @@ logger = get_logger("lumina.simulation.nightly")
 _FIRST_BOOT_TICKS_PER_REAL_DAY = 1560
 
 
+def _notify_first_boot_training_progress(stage: str, message: str, **extra: object) -> None:
+    """Update ``state/first_boot_progress.json`` during long first-boot phases (lazy-import avoids cycles)."""
+    try:
+        from lumina_core.engine.runtime_entrypoint import _write_first_boot_progress
+
+        _write_first_boot_progress(stage, message, **extra)
+    except Exception:
+        logger.debug("first_boot.training_progress.notify_failed", exc_info=True)
+
+
 def _simulate_worker(payload: dict[str, Any]) -> dict[str, Any]:
     ticks: list[dict[str, Any]] = payload["ticks"]
     target_trades = int(payload["target_trades"])
@@ -205,6 +215,17 @@ class InfiniteSimulator:
             }
 
         actual_real_days = max(1, int(math.ceil(len(real_ticks) / float(_FIRST_BOOT_TICKS_PER_REAL_DAY))))
+        _notify_first_boot_training_progress(
+            "training_running",
+            f"Historische data geladen: {len(real_ticks)} ticks (~{actual_real_days} dagen-equivalent), "
+            f"tot {max_days} dagen opgevraagd.",
+            actual_real_days_loaded=actual_real_days,
+            estimated_real_days=estimated_real_days,
+            max_real_days=max_days,
+            real_ticks=len(real_ticks),
+            progress_pct=40,
+            phase="historical_loaded",
+        )
         configured_real_trade_capacity = int(max_days * _FIRST_BOOT_TRADES_PER_REAL_DAY)
         actual_real_trade_capacity = int(actual_real_days * _FIRST_BOOT_TRADES_PER_REAL_DAY)
         target_effective = requested_trades
@@ -261,7 +282,22 @@ class InfiniteSimulator:
                 )
 
         ticks = list(real_ticks) + list(synthetic_ticks)
+        _notify_first_boot_training_progress(
+            "training_running",
+            f"Parallel SIM ({target_effective} trades-doel, {self.workers} workers; kan minuten duren).",
+            target_trades_effective=target_effective,
+            workers=int(self.workers),
+            progress_pct=52,
+            phase="parallel_simulation",
+        )
         summary = self._run_parallel_simulation(ticks, target_effective)
+        _notify_first_boot_training_progress(
+            "training_running",
+            "PPO policy-training (Stable-Baselines3); SIM-deel afgerond, neural net trainen…",
+            sim_trades=int(summary.get("trades", 0)),
+            progress_pct=68,
+            phase="ppo_training",
+        )
         self._train_rl(ticks)
 
         synthetic_pct = float(len(synthetic_ticks) / max(1, len(ticks)))
@@ -352,6 +388,23 @@ class InfiniteSimulator:
             ticks = real_ticks + synthetic_ticks
         if not ticks:
             return {"status": "no_data", "trades": 0}
+
+        try:
+            logger.info(
+                "simulation.nightly.ticks_ready",
+                extra={
+                    "event_data": {
+                        "event": "simulation.nightly.ticks_ready",
+                        "run_id": run_id,
+                        "real_ticks": len(real_ticks),
+                        "total_ticks": len(ticks),
+                        "synthetic_ticks": len(synthetic_ticks),
+                        "target_trades": int(self.target_trades_per_night),
+                    }
+                },
+            )
+        except Exception:
+            pass
 
         summary = self._run_parallel_simulation(ticks, self.target_trades_per_night)
         try:
@@ -521,6 +574,27 @@ class InfiniteSimulator:
     def _run_parallel_simulation(self, ticks: list[dict[str, Any]], total_target: int) -> dict[str, Any]:
         worker_count = max(1, self.workers)
         per_worker = math.ceil(total_target / worker_count)
+        try:
+            est_mb = round(len(ticks) * 200 / (1024 * 1024), 1)
+            logger.info(
+                "simulation.parallel_sim.begin",
+                extra={
+                    "event_data": {
+                        "event": "simulation.parallel_sim.begin",
+                        "total_target_trades": int(total_target),
+                        "workers": int(worker_count),
+                        "per_worker_target_trades": int(per_worker),
+                        "tick_count": len(ticks),
+                        "approx_tick_payload_mb_per_worker": est_mb,
+                        "note": (
+                            "CPU-bound tick replay; op Windows kan multiprocessing-pickle lang duren "
+                            "voordat workers starten — geen deadlock."
+                        ),
+                    }
+                },
+            )
+        except Exception:
+            pass
         payloads = [
             {
                 "ticks": ticks,
@@ -546,6 +620,19 @@ class InfiniteSimulator:
             futures = [remote_fn.remote(p) for p in payloads]
             results = ray.get(futures)
             ran_with = "ray"
+        except ModuleNotFoundError:
+            logger.info(
+                "simulation.parallel_ray_unavailable",
+                extra={
+                    "event_data": {
+                        "event": "simulation.parallel_ray_unavailable",
+                        "fallback": "multiprocessing",
+                        "reason": "ray_not_installed",
+                    }
+                },
+            )
+            with mp.Pool(processes=worker_count) as pool:
+                results = pool.map(_simulate_worker, payloads)
         except Exception:
             logging.exception("Unhandled broad exception fallback in lumina_core/infinite_simulator.py:346")
             with mp.Pool(processes=worker_count) as pool:
@@ -558,6 +645,21 @@ class InfiniteSimulator:
         samples: list[dict[str, Any]] = []
         for r in results:
             samples.extend(list(r.get("samples", [])))
+
+        try:
+            logger.info(
+                "simulation.parallel_sim.complete",
+                extra={
+                    "event_data": {
+                        "event": "simulation.parallel_sim.complete",
+                        "executor": ran_with,
+                        "aggregate_trades": total_trades,
+                        "workers": int(worker_count),
+                    }
+                },
+            )
+        except Exception:
+            pass
 
         return {
             "executor": ran_with,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 # pyright: reportMissingImports=false
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 import logging
 from pathlib import Path
 from typing import Any
@@ -18,6 +18,43 @@ from lumina_core.logging_utils import (
 from lumina_core.rl import RLConfig, RLTradingEnvironment
 
 logger = get_logger("lumina.rl.ppo")
+
+
+def _ppo_heartbeat_callbacks(*, log_every_timesteps: int = 25_000) -> list[Any]:
+    """Periodic INFO logs during ``model.learn`` (SB3 uses ``verbose=0`` otherwise — looks hung)."""
+    try:
+        from stable_baselines3.common.callbacks import BaseCallback
+    except ImportError:
+        return []
+
+    interval = max(5000, int(log_every_timesteps))
+
+    class _PPOTrainHeartbeat(BaseCallback):
+        def __init__(self) -> None:
+            super().__init__(verbose=0)
+            self._next_log_at = interval
+            self._t0 = __import__("time").time()
+
+        def _on_step(self) -> bool:
+            ts = int(getattr(self, "num_timesteps", 0) or 0)
+            if ts >= self._next_log_at:
+                elapsed = __import__("time").time() - self._t0
+                logger.info(
+                    "ppo.train.progress",
+                    extra={
+                        "event_data": {
+                            "event": "ppo.train.progress",
+                            "timesteps": ts,
+                            "elapsed_sec": round(elapsed, 1),
+                            "next_milestone": self._next_log_at,
+                        }
+                    },
+                )
+                while self._next_log_at <= ts:
+                    self._next_log_at += interval
+            return True
+
+    return [_PPOTrainHeartbeat()]
 
 
 def _sb3_ppo_load(path: str | Path) -> Any | None:
@@ -224,17 +261,18 @@ class PPOTrainer:
         started = __import__("time").time()
         self.model_dir.mkdir(parents=True, exist_ok=True)
         bars = coerce_rl_training_bars(self.engine, simulator_data, nightly_context=None)
+        rl_cfg = self._build_rl_config()
         logger.debug(
             "ppo.train.config",
             extra={
                 "event_data": {
                     "event": "ppo.train.config",
                     "bars": len(bars),
-                    "env_config": self._build_rl_config().__dict__,
+                    "env_config": asdict(rl_cfg),
                 }
             },
         )
-        env = RLTradingEnvironment(self.engine, bars, config=self._build_rl_config())
+        env = RLTradingEnvironment(self.engine, bars, config=rl_cfg)
         if dna_hash:
             env.set_dna_hash(dna_hash)
         model = PPO(
@@ -249,7 +287,11 @@ class PPOTrainer:
             clip_range=0.2,
             ent_coef=0.005,
         )
-        model.learn(total_timesteps=total_timesteps)
+        heartbeat = _ppo_heartbeat_callbacks()
+        learn_kw: dict[str, Any] = {}
+        if heartbeat:
+            learn_kw["callback"] = heartbeat
+        model.learn(total_timesteps=total_timesteps, **learn_kw)
 
         if not policy_path:
             policy_path = str(self.model_dir / "lumina_ppo_policy.zip")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -24,6 +25,7 @@ def _mk_tick(price: float = 5000.0) -> dict[str, Any]:
 @pytest.mark.unit
 def test_runtime_first_boot_failure_blocks_start(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runtime_entrypoint, "_first_boot_needed", lambda: True)
+    monkeypatch.setattr(runtime_entrypoint, "_defer_first_boot_for_closed_calendar", lambda: False)
     monkeypatch.setattr(runtime_entrypoint, "_run_first_boot_training", lambda: 1)
     called: list[bool] = []
     monkeypatch.setattr(runtime_entrypoint, "_run_real_runtime", lambda **_kwargs: called.append(True) or 0)
@@ -35,6 +37,7 @@ def test_runtime_first_boot_failure_blocks_start(monkeypatch: pytest.MonkeyPatch
 @pytest.mark.unit
 def test_runtime_first_boot_success_continues_to_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runtime_entrypoint, "_first_boot_needed", lambda: True)
+    monkeypatch.setattr(runtime_entrypoint, "_defer_first_boot_for_closed_calendar", lambda: False)
     monkeypatch.setattr(runtime_entrypoint, "_run_first_boot_training", lambda: 0)
     called: list[bool] = []
     monkeypatch.setattr(runtime_entrypoint, "_run_real_runtime", lambda **_kwargs: called.append(True) or 0)
@@ -56,6 +59,20 @@ def test_runtime_skips_first_boot_when_artifacts_exist(monkeypatch: pytest.Monke
     rc = runtime_entrypoint.run_with_mode("auto", argv=["--mode", "real"])
     assert rc == 0
     assert called_first_boot == []
+
+
+@pytest.mark.unit
+def test_runtime_defers_first_boot_when_calendar_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(runtime_entrypoint, "_first_boot_needed", lambda: True)
+    monkeypatch.setattr(runtime_entrypoint, "_defer_first_boot_for_closed_calendar", lambda: True)
+    called_fb: list[bool] = []
+    monkeypatch.setattr(runtime_entrypoint, "_run_first_boot_training", lambda: called_fb.append(True) or 0)
+    called_rt: list[bool] = []
+    monkeypatch.setattr(runtime_entrypoint, "_run_real_runtime", lambda **_kwargs: called_rt.append(True) or 0)
+    rc = runtime_entrypoint.run_with_mode("auto", argv=["--mode", "real"])
+    assert rc == 0
+    assert called_fb == []
+    assert called_rt == [True]
 
 
 @pytest.mark.unit
@@ -136,8 +153,15 @@ def test_runtime_first_boot_writes_flag_on_success(monkeypatch: pytest.MonkeyPat
         },
     )
 
+    class _FakeEngine:
+        def bind_app(self, _app: object) -> None:
+            self.app = _app
+
     class _FakeContainer:
         def __init__(self) -> None:
+            self.engine = _FakeEngine()
+            self.logger = logging.getLogger("test_fake_container")
+            self.runtime_context = SimpleNamespace(app=None)
             self.infinite_simulator = SimpleNamespace(
                 run_first_boot_training=lambda **_kwargs: {"status": "ok_real_only", "trades": 100_000}
             )
@@ -171,8 +195,15 @@ def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
         },
     )
 
+    class _FakeEngine:
+        def bind_app(self, _app: object) -> None:
+            self.app = _app
+
     class _FakeContainer:
         def __init__(self) -> None:
+            self.engine = _FakeEngine()
+            self.logger = logging.getLogger("test_fake_container")
+            self.runtime_context = SimpleNamespace(app=None)
             self.infinite_simulator = SimpleNamespace(
                 run_first_boot_training=lambda **_kwargs: {
                     "status": "ok_minimal_synthetic_fallback",
@@ -185,7 +216,10 @@ def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
     rc = runtime_entrypoint._run_first_boot_training()
     out = capsys.readouterr().out
     assert rc == 0
-    assert "Eerste keer starten gedetecteerd. Lumina voert nu haar initiële leer-cyclus uit..." in out
+    assert (
+        "Eerste keer starten gedetecteerd. Lumina voert initiële training uit. Trading is tijdelijk geblokkeerd..."
+        in out
+    )
     assert "synthetische aanvulling" in out
 
 

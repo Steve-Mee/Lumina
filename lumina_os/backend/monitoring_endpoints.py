@@ -25,6 +25,14 @@ from typing import Any, Optional
 from fastapi import APIRouter, HTTPException, Header, Query
 from fastapi.responses import PlainTextResponse
 
+try:
+    from api.monitoring import enrich_observability_snapshot_for_react_dashboard
+except ImportError:  # pragma: no cover - fallback when PYTHONPATH excludes lumina_os root
+
+    def enrich_observability_snapshot_for_react_dashboard(snapshot: dict[str, Any]) -> dict[str, Any]:
+        return dict(snapshot)
+
+
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 
 # ── Service singleton injected at FastAPI startup ─────────────────────────────
@@ -143,7 +151,9 @@ async def get_metrics_json(
 ) -> dict[str, Any]:
     _check_api_key(x_api_key)
     obs = _require_service()
-    return obs.snapshot()
+    # Volledige collector snapshot + ``_lumina_ui`` blok voor de React monitoring SPA
+    # (zie ``lumina_os/api/monitoring.py`` voor trainings/PPO injection docs).
+    return enrich_observability_snapshot_for_react_dashboard(obs.snapshot())
 
 
 @router.get(

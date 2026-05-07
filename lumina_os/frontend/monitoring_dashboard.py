@@ -24,6 +24,7 @@ _JOURNAL_SIM_DIR = Path("journal/simulator")
 
 _FIRST_BOOT_PROGRESS_PATH = _STATE_DIR / "first_boot_progress.json"
 _FIRST_BOOT_FLAG_PATH = _STATE_DIR / "first_boot_completed.flag"
+_FIRST_BOOT_POLICY_ZIP_PATH = Path("lumina_agents/ppo/lumina_ppo_policy.zip")
 _PPO_POLICY_METADATA_PATH = _STATE_DIR / "ppo_policy_metadata.json"
 _APPROVAL_TWIN_MODEL_PATH = _STATE_DIR / "approval_twin_model.json"
 _APPROVAL_TWIN_DECISIONS_PATH = _STATE_DIR / "monitoring_twin_decisions.jsonl"
@@ -40,6 +41,55 @@ _VETO_REGISTRY_DB = _STATE_DIR / "veto_registry.db"
 _STRUCTURED_ERRORS_PATH = _LOGS_DIR / "structured_errors.jsonl"
 _FULL_LOG_PATH = _LOGS_DIR / "lumina_full_log.csv"
 _LUMINA_SIM_STATE_PATH = _STATE_DIR / "lumina_sim_state.json"
+
+
+def _first_boot_completion_display(progress: dict[str, Any]) -> tuple[str, str]:
+    """Show Yes only when first boot truly finished; In progress while training runs.
+
+    ``first_boot_progress.json`` ``stage`` wins over a stale ``first_boot_completed.flag`` file
+    so the dashboard does not show Yes during detected/loading/training.
+    """
+    stage = str(progress.get("stage", "")).strip().lower()
+    if stage in {"detected", "loading_data", "training_running"}:
+        return "In progress", "n/a"
+    if stage == "completed":
+        ts = (
+            _FIRST_BOOT_FLAG_PATH.read_text(encoding="utf-8").strip()
+            if _FIRST_BOOT_FLAG_PATH.exists()
+            else str(progress.get("timestamp", "n/a"))
+        )
+        return "Yes", ts
+    if stage == "failed":
+        return "Failed", "n/a"
+    if stage == "deferred_calendar":
+        return "Deferred", "n/a"
+    # Idle / normale herstart: alleen Yes als zowel vlag als policy er zijn.
+    if _FIRST_BOOT_FLAG_PATH.exists() and _FIRST_BOOT_POLICY_ZIP_PATH.exists():
+        return "Yes", _FIRST_BOOT_FLAG_PATH.read_text(encoding="utf-8").strip()
+    return "No", "n/a"
+
+
+def _first_boot_progress_fraction(progress: dict[str, Any]) -> float:
+    """Prefer simulator-supplied ``progress_pct`` (40–68 during SIM/PPO); else coarse stage."""
+    raw = progress.get("progress_pct")
+    if raw is not None:
+        try:
+            pct = float(raw)
+            if 0.0 <= pct <= 100.0:
+                return pct / 100.0
+        except (TypeError, ValueError):
+            pass
+    stage = str(progress.get("stage", "unknown"))
+    stage_to_progress = {"detected": 10, "loading_data": 35, "training_running": 70, "completed": 100, "failed": 100}
+    return stage_to_progress.get(stage, 0) / 100.0
+
+
+def _first_boot_historical_days_display(progress: dict[str, Any]) -> int:
+    """Prefer measured ``actual_real_days_loaded`` when historical load finished."""
+    for key in ("actual_real_days_loaded", "estimated_real_days"):
+        if progress.get(key) is not None:
+            return _safe_int(progress.get(key))
+    return 0
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -477,14 +527,13 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
     if _show("A. System Overview"):
         st.markdown("### A. System Overview")
     mode = str(runtime_snapshot.get("mode") or fallback_runtime_state.get("mode") or "SIM").upper()
-    first_boot_completed = _FIRST_BOOT_FLAG_PATH.exists()
-    first_boot_ts = _FIRST_BOOT_FLAG_PATH.read_text(encoding="utf-8").strip() if first_boot_completed else "n/a"
+    first_boot_label, first_boot_ts = _first_boot_completion_display(first_boot_progress)
     last_training = training_reports[0] if training_reports else {}
     twin_avg_error = _safe_float((twin_training[-1] if twin_training else {}).get("avg_prediction_error"))
     twin_reward = _safe_float((twin_training[-1] if twin_training else {}).get("reward"))
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Current mode", mode)
-    c2.metric("First boot completed", "Yes" if first_boot_completed else "No")
+    c2.metric("First boot completed", first_boot_label)
     c3.metric("PPO policy version", str(ppo_meta.get("policy_version", "unknown")))
     c4.metric("PPO total training steps", _safe_int(ppo_meta.get("total_training_steps")))
     d1, d2, d3 = st.columns(3)
@@ -501,14 +550,19 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
     if _show("B. First Boot Training Status"):
         st.markdown("### B. First Boot Training Status")
     stage = str(first_boot_progress.get("stage", "unknown"))
-    stage_to_progress = {"detected": 10, "loading_data": 35, "training_running": 70, "completed": 100, "failed": 100}
-    st.progress(stage_to_progress.get(stage, 0) / 100.0)
+    st.progress(_first_boot_progress_fraction(first_boot_progress))
     b1, b2, b3, b4 = st.columns(4)
     b1.metric("Stage", stage)
-    b2.metric("Historical days loaded", _safe_int(first_boot_progress.get("estimated_real_days")))
+    b2.metric("Historical days (loaded / est.)", _first_boot_historical_days_display(first_boot_progress))
     b3.metric("Real vs synthetic %", f"{_safe_float(last_training.get('synthetic_pct', 0.0)):.2f}% synthetic")
     b4.metric("Trades completed", _safe_int(last_training.get("trades")))
-    st.caption(str(first_boot_progress.get("message", "No first boot message available.")))
+    phase = str(first_boot_progress.get("phase") or "").strip() or "n/a"
+    pct_raw = first_boot_progress.get("progress_pct")
+    pct_note = f"{pct_raw}%" if pct_raw is not None else "—"
+    st.caption(
+        f"Phase: {phase} · detail progress: {pct_note} · "
+        f"{first_boot_progress.get('message', 'No first boot message available.')}"
+    )
 
     # C. Training History
     if _show("C. Training History"):

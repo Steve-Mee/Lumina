@@ -80,6 +80,16 @@ lumina_analyse.md
 lumina_analyse._*
 /lumina_analyse_*.md
 
+# First-boot / monitoring runtime snapshots (regenerated locally)
+state/first_boot_completed.flag
+state/first_boot_progress.json
+state/monitoring_daily_pnl.jsonl
+state/monitoring_runtime_metrics.json
+state/ppo_policy_metadata.json
+
+# Trained PPO policy checkpoints (regenerate via training)
+lumina_agents/ppo/*.zip
+
 # Validation / shim audit artifacts (local runs)
 state/engine_shim_audit.json
 state/promotion_gate_audit.jsonl

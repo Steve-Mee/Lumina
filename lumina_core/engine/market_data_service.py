@@ -7,7 +7,7 @@ import time
 import traceback
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
@@ -325,31 +325,37 @@ class MarketDataIngestService:
         )
         return True
 
-    def _fetch_historical_bars(self, instrument: str, days_back: int, limit: int) -> list[dict[str, Any]]:
-        app = self._app()
-        instrument = self._normalize_symbol(instrument)
-        token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
-        log_structured(
-            LuminaError(
-                severity=ErrorSeverity.RECOVERABLE_LEARNING,
-                code="INFO_PRINT_LEGACY",
-                message=f"[v21.6] Loading {limit} real 1-min OHLC bars for {instrument} (last {days_back} days)...",
-                context={"instrument": instrument, "limit": limit},
-            )
+    @staticmethod
+    def _bars_response_to_list(data: Any) -> list[dict[str, Any]]:
+        bars = (
+            data
+            if isinstance(data, list)
+            else data.get("bars") or data.get("data") or data.get("result") or data.get("ohlc") or []
         )
+        return bars if isinstance(bars, list) else []
+
+    @staticmethod
+    def _utc_iso_z(dt: datetime) -> str:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def _post_historical_bars(
+        self,
+        *,
+        instrument: str,
+        token: str,
+        payload: dict[str, Any],
+        app: Any,
+    ) -> list[dict[str, Any]]:
         try:
-            payload = {
-                "instrument": instrument,
-                "periodType": "minute",
-                "period": 1,
-                "daysBack": days_back,
-                "limit": limit,
-            }
             response = requests.post(
                 "https://app.crosstrade.io/v1/api/market/bars",
                 headers={"Authorization": f"Bearer {token}"},
                 json=payload,
-                timeout=40,
+                timeout=(10, 45),
             )
             if response.status_code != 200:
                 log_structured(
@@ -361,17 +367,7 @@ class MarketDataIngestService:
                     )
                 )
                 return []
-
-            data = response.json()
-            bars = (
-                data
-                if isinstance(data, list)
-                else data.get("bars") or data.get("data") or data.get("result") or data.get("ohlc") or []
-            )
-
-            if not isinstance(bars, list):
-                return []
-            return bars
+            return self._bars_response_to_list(response.json())
         except Exception as exc:
             err = LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
@@ -382,6 +378,122 @@ class MarketDataIngestService:
             log_structured(err)
             app.logger.error(f"Historical load error: {exc}")
             return []
+
+    def _fetch_historical_bars(self, instrument: str, days_back: int, limit: int) -> list[dict[str, Any]]:
+        """Load 1-min bars from CrossTrade, paginating with ``from``/``to`` windows.
+
+        A single huge ``daysBack`` + ``limit`` request can stall or hit provider timeouts
+        (CrossTrade recommends smaller ranges). We step forward in UTC windows and cap
+        each request's ``limit``.
+        """
+        app = self._app()
+        instrument = self._normalize_symbol(instrument)
+        token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
+        target_cap = max(1, min(int(limit), 500_000))
+        days_back_i = max(1, int(days_back))
+
+        log_structured(
+            LuminaError(
+                severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                code="INFO_PRINT_LEGACY",
+                message=(
+                    f"[v21.6] Loading up to {target_cap} real 1-min OHLC bars for {instrument} "
+                    f"(last {days_back_i} days, paginated)..."
+                ),
+                context={"instrument": instrument, "limit": target_cap, "days_back": days_back_i},
+            )
+        )
+
+        utc_now = datetime.now(timezone.utc)
+        range_start = utc_now - timedelta(days=days_back_i)
+        # ~4 calendar days of 1-min bars stays under common per-request caps; RTH-only is lower.
+        chunk_days = 4
+        per_chunk_limit = 8_000
+        max_chunks = max(1, min(256, (days_back_i // chunk_days) + 48))
+
+        windows: list[tuple[datetime, datetime]] = []
+        cursor = range_start
+        while cursor < utc_now and len(windows) < max_chunks:
+            nxt = min(cursor + timedelta(days=chunk_days), utc_now)
+            if nxt <= cursor:
+                break
+            windows.append((cursor, nxt))
+            cursor = nxt
+
+        merged: list[dict[str, Any]] = []
+        seen_epoch: set[int] = set()
+        seen_time: set[str] = set()
+
+        for idx, (win_from, win_to) in enumerate(windows):
+            if len(merged) >= target_cap:
+                break
+            chunk_limit = min(per_chunk_limit, target_cap - len(merged))
+            payload = {
+                "instrument": instrument,
+                "periodType": "minute",
+                "period": 1,
+                "from": self._utc_iso_z(win_from),
+                "to": self._utc_iso_z(win_to),
+                "limit": max(100, chunk_limit),
+            }
+            app.logger.info(
+                "Historical bars chunk %s/%s from=%s to=%s limit=%s",
+                idx + 1,
+                len(windows),
+                payload["from"],
+                payload["to"],
+                chunk_limit,
+            )
+            bars = self._post_historical_bars(instrument=instrument, token=token, payload=payload, app=app)
+            for bar in bars:
+                ep = bar.get("epoch")
+                ts_raw = bar.get("timestamp") or bar.get("time")
+                if isinstance(ep, (int, float)):
+                    ek = int(ep)
+                    if ek in seen_epoch:
+                        continue
+                    seen_epoch.add(ek)
+                elif ts_raw is not None:
+                    tk = str(ts_raw)
+                    if tk in seen_time:
+                        continue
+                    seen_time.add(tk)
+                merged.append(bar)
+                if len(merged) >= target_cap:
+                    break
+
+        if merged:
+
+            def _bar_sort_key(b: dict[str, Any]) -> tuple[int, float, str]:
+                ep = b.get("epoch")
+                if isinstance(ep, (int, float)):
+                    return (0, float(ep), "")
+                ts_raw = b.get("timestamp") or b.get("time")
+                if ts_raw is not None:
+                    try:
+                        return (1, float(pd.to_datetime(ts_raw).value), "")
+                    except Exception:
+                        return (2, 0.0, str(ts_raw))
+                return (3, 0.0, "")
+
+            merged.sort(key=_bar_sort_key)
+            return merged[:target_cap]
+
+        # Fallback: single bounded request (legacy path) for providers that ignore from/to.
+        fallback_limit = min(8_000, target_cap)
+        payload_fb = {
+            "instrument": instrument,
+            "periodType": "minute",
+            "period": 1,
+            "daysBack": days_back_i,
+            "limit": fallback_limit,
+        }
+        app.logger.warning(
+            "Paginated historical load returned no bars; retrying single request limit=%s daysBack=%s",
+            fallback_limit,
+            days_back_i,
+        )
+        return self._post_historical_bars(instrument=instrument, token=token, payload=payload_fb, app=app)
 
     def load_historical_ohlc_for_symbol(self, instrument: str, days_back: int = 3, limit: int = 5000) -> pd.DataFrame:
         bars = self._fetch_historical_bars(instrument=instrument, days_back=days_back, limit=limit)

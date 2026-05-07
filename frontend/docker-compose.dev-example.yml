@@ -1,0 +1,33 @@
+# OPTIONEEL — voorbeeld: Vite-devserver in Docker, FastAPI op de host op :8000.
+# Host start backend zoals beschreven in INTEGRATION.md (uvicorn :8000).
+#
+# Starten (vanuit frontend/):
+#   docker compose -f docker-compose.dev-example.yml --profile vite up vite-dev
+#
+# Open: http://localhost:5173
+#
+# Vereist op Windows/macOS/Linux (Docker Desktop): host.docker.internal.
+
+version: "3.9"
+
+services:
+  vite-dev:
+    image: node:20-bookworm-slim
+    profiles: ["vite"]
+    working_dir: /app
+    volumes:
+      - ./:/app
+      - vite_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      # Backend op je machine (Windows/macOS/Linux host)
+      VITE_API_PROXY_TARGET: http://host.docker.internal:8000
+      VITE_DASHBOARD_OPERATOR: ${VITE_DASHBOARD_OPERATOR:-Operator}
+      # Alleen voor lokaal; key belandt in de JS-bundle — niet voor productie-secrets:
+      # VITE_LUMINA_API_KEY: ${VITE_LUMINA_API_KEY:-}
+    command: >
+      sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+
+volumes:
+  vite_node_modules:

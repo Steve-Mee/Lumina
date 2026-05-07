@@ -13,7 +13,6 @@ import secrets
 import subprocess
 import sys
 import time
-import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -208,11 +207,11 @@ def _read_first_boot_settings() -> dict[str, Any]:
     if not isinstance(section, dict):
         section = {}
     return {
-        "training_trades": _clamp_first_boot_trades(section.get("training_trades", _FIRST_BOOT_DEFAULT_TRADES)),
+        "training_trades": _clamp_first_boot_trades(section.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)),
         "prefer_real_data_only": bool(section.get("prefer_real_data_only", True)),
         "max_real_days": max(
             30,
-            int(section.get("max_real_days", _FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or _FIRST_BOOT_DEFAULT_MAX_REAL_DAYS),
+            int(section.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS),
         ),
         "allow_minimal_synthetic_fallback": bool(section.get("allow_minimal_synthetic_fallback", False)),
         "force_training": bool(section.get("force_training", True)),
@@ -229,7 +228,7 @@ def _save_first_boot_settings(training_trades: int, *, force_training: bool) -> 
     first_boot.setdefault("prefer_real_data_only", True)
     first_boot["max_real_days"] = max(
         30,
-        int(first_boot.get("max_real_days", _FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or _FIRST_BOOT_DEFAULT_MAX_REAL_DAYS),
+        int(first_boot.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS),
     )
     first_boot["allow_minimal_synthetic_fallback"] = bool(first_boot.get("allow_minimal_synthetic_fallback", False))
     first_boot["force_training"] = bool(force_training)
@@ -1009,8 +1008,9 @@ def _render_live_age_cards(log_age: float | None, state_age: float | None, last_
     setInterval(tick, 1000);
 </script>
 """
-    data_url = "data:text/html;charset=utf-8," + urllib.parse.quote(card_html)
-    st.iframe(data_url, height=105)
+    from streamlit.components.v1 import html as st_html
+
+    st_html(card_html, height=110, scrolling=False)
 
 
 def _render_live_activity_metrics_and_log(
@@ -2432,9 +2432,9 @@ with st.sidebar:
         st.session_state[_first_boot_force_key] = bool(_first_boot_cfg["force_training"])
     st.slider(
         "Aantal trades bij eerste training",
-        min_value=_FIRST_BOOT_TRADE_MIN,
-        max_value=_FIRST_BOOT_TRADE_MAX,
-        step=_FIRST_BOOT_TRADE_STEP,
+        min_value=FIRST_BOOT_TRADE_MIN,
+        max_value=FIRST_BOOT_TRADE_MAX,
+        step=FIRST_BOOT_TRADE_STEP,
         key=_first_boot_trades_key,
         help=(
             "Bij de allereerste start heeft Lumina nog geen ervaring.\n"
@@ -2453,7 +2453,7 @@ with st.sidebar:
             "tot de initiële training succesvol afgerond is."
         ),
     )
-    _selected_trades = _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, _FIRST_BOOT_DEFAULT_TRADES))
+    _selected_trades = _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, FIRST_BOOT_DEFAULT_TRADES))
     _estimated_days = _estimate_first_boot_real_days(_selected_trades)
     st.caption(
         (
@@ -2561,13 +2561,13 @@ with st.sidebar:
     st.divider()
     if st.button("Save Config and Start Bot", type="primary", width="stretch"):
         _save_first_boot_settings(
-            _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, _FIRST_BOOT_DEFAULT_TRADES)),
+            _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, FIRST_BOOT_DEFAULT_TRADES)),
             force_training=bool(st.session_state.get(_first_boot_force_key, True)),
         )
         _save_neuro_require_real_simulator_data(bool(st.session_state.get(_req_real_key, True)))
         st.info(
-            "Launcher bevestiging: bij eerste start detecteert runtime automatisch first boot, "
-            "start de initiële training en toont voortgang/afsluitende samenvatting in de console-output."
+            "Eerste keer starten gedetecteerd: Lumina voert initiële training uit. "
+            "Trading is tijdelijk geblokkeerd tot de training klaar is. Voortgang staat in de console/logs."
         )
         broker_backend = "paper" if trade_mode == "paper" else "live"
         account_mode = {

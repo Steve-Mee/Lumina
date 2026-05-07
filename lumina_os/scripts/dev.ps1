@@ -8,6 +8,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
+# Monorepo root (parent of lumina_os): lumina_core + config.yaml live here.
+$repoRoot = Split-Path -Parent $root
 
 function Get-PythonCommand {
     $candidates = @(
@@ -33,7 +35,9 @@ Set-Location $root
 
 switch ($Action) {
     "backend" {
-        & $python -m uvicorn backend.app:app --reload --port 8000
+        $env:PYTHONPATH = $repoRoot
+        $env:LUMINA_CONFIG = Join-Path $repoRoot "config.yaml"
+        & $python -m uvicorn backend.app:app --reload --host 127.0.0.1 --port 8000
         break
     }
     "dashboard" {
