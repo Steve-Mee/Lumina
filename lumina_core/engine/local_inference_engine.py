@@ -14,6 +14,7 @@ import ollama
 import requests
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
+from lumina_core.engine.ollama_model_resolve import list_installed_ollama_models, resolve_ollama_model_tag
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.xai_client import post_xai_chat
 from .provider_normalization import ProviderNormalizationLayer
@@ -49,6 +50,32 @@ class LocalInferenceEngine:
             setattr(context, "cost_tracker", tracker)
         self.cost_tracker = tracker
         self._ensure_metric_buckets()
+        self._ollama_install_cache_ts: float = 0.0
+        self._ollama_install_cache_host: str | None = None
+        self._ollama_install_cache_names: list[str] | None = None
+
+    def _ollama_base_url(self) -> str | None:
+        oc = self.config.get("ollama")
+        if not isinstance(oc, dict):
+            return None
+        u = str(oc.get("base_url") or "").strip()
+        return u or None
+
+    def _cached_installed_ollama_models(self) -> list[str]:
+        """Short TTL cache so hot inference paths do not call ollama.list every request."""
+        host = self._ollama_base_url()
+        now = time.monotonic()
+        if (
+            self._ollama_install_cache_names is not None
+            and self._ollama_install_cache_host == host
+            and now - self._ollama_install_cache_ts < 45.0
+        ):
+            return self._ollama_install_cache_names
+        names = list_installed_ollama_models(host=host)
+        self._ollama_install_cache_ts = now
+        self._ollama_install_cache_host = host
+        self._ollama_install_cache_names = names
+        return names
 
     def _load_config(self) -> Dict:
         from lumina_core.config_loader import ConfigLoader  # noqa: PLC0415
@@ -64,6 +91,9 @@ class LocalInferenceEngine:
             return
         if current_mtime > self.config_mtime:
             self.config = self._load_config()
+            self._ollama_install_cache_ts = 0.0
+            self._ollama_install_cache_host = None
+            self._ollama_install_cache_names = None
             if self.backend_override is None:
                 self.active_provider = str(self.config.get("inference", {}).get("primary_provider", "ollama"))
 
@@ -279,17 +309,43 @@ class LocalInferenceEngine:
         effective_temperature = (
             float(self.config["inference"]["temperature"]) if temperature is None else float(temperature)
         )
+        oc = self.config.get("ollama") if isinstance(self.config.get("ollama"), dict) else {}
+        num_ctx = int(oc.get("num_ctx", 16384) or 16384)
+        installed = self._cached_installed_ollama_models()
+        resolved_model = resolve_ollama_model_tag(model, installed)
+        host = self._ollama_base_url()
+        client = ollama.Client(host=host) if host else ollama.Client()
         try:
-            resp = ollama.chat(
-                model=model,
+            resp = client.chat(
+                model=resolved_model,
                 messages=messages,
                 options={
                     "temperature": effective_temperature,
-                    "num_ctx": 16384,
+                    "num_ctx": num_ctx,
                     "num_gpu": -1,
                 },
             )
         except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            detail = str(exc).lower()
+            if status == 404 or ("not found" in detail and "model" in detail):
+                logging.warning(
+                    "Ollama model unavailable for chat (configured=%s resolved=%s status=%s): %s",
+                    model,
+                    resolved_model,
+                    status,
+                    exc,
+                )
+                raise LuminaError(
+                    severity=ErrorSeverity.FATAL_MODE_VIOLATION,
+                    code="INFERENCE_OLLAMA_MODEL_NOT_FOUND",
+                    message=(
+                        f"Ollama model not usable (configured '{model}', attempted '{resolved_model}'). "
+                        "Run `ollama list` / `ollama pull <tag>` or point config `ollama.base_url` at your daemon; "
+                        "optional: set models.* to a tag you have, or `LUMINA_OLLAMA_STRICT_MODEL=1` to disable "
+                        "automatic substitution from installed models."
+                    ),
+                ) from exc
             logging.exception("Unhandled broad exception fallback in lumina_core/engine/local_inference_engine.py:292")
             raise LuminaError(
                 severity=ErrorSeverity.FATAL_MODE_VIOLATION,

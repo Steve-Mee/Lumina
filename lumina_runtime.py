@@ -274,20 +274,9 @@ def main(argv: list[str] | None = None) -> int:
     from lumina_core.engine import runtime_entrypoint as _runtime_ep
 
     if _runtime_ep._first_boot_needed():
-        if _runtime_ep._defer_first_boot_for_closed_calendar():
-            logging.info(
-                "first_boot deferred: geen actieve CME-handelssessie (enforce_calendar); "
-                "initiële training start niet tot RTH of na het uitschakelen van deze check."
-            )
-            _runtime_ep._write_first_boot_progress(
-                "deferred_calendar",
-                "First-boot training uitgesteld: kalender staat op gesloten sessie. "
-                "Start tijdens reguliere handelsuren of zet session.enforce_calendar op false.",
-            )
-        else:
-            fb_rc = _runtime_ep._run_first_boot_training()
-            if fb_rc != 0:
-                return fb_rc
+        fb_rc = _runtime_ep._run_first_boot_training()
+        if fb_rc != 0:
+            return fb_rc
 
     container = get_container()
     runtime_module = sys.modules.get("__main__")

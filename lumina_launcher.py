@@ -1,6 +1,15 @@
 from __future__ import annotations
 # ruff: noqa: E402
 
+import warnings
+
+# Third-party (e.g. authlib) emits this at import time when Streamlit/deps load.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*authlib\.jose module is deprecated.*",
+    category=DeprecationWarning,
+)
+
 import base64
 import html
 import hashlib
@@ -16,6 +25,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import pandas as pd
 import requests
@@ -80,12 +90,67 @@ MODEL_CATALOG_STATE_PATH = Path("state/model_catalog_state.json")
 SUPPORT_EVENTS_PATH = Path("state/launcher_support_events.jsonl")
 PROCESS_STATE_PATH = Path("state/launcher_bot_process.json")
 BACKEND_BASE_URL = os.getenv("LUMINA_BACKEND_URL", "http://localhost:8000").rstrip("/")
+BACKEND_UVICORN_LOG_PATH = Path("logs/launcher_backend_uvicorn.log")
 LAST_RUN_SUMMARY_PATH = Path("state/last_run_summary.json")
 EVOLUTION_LOG_PATH = Path("state/evolution_log.jsonl")
 SIM_HISTORY_PATH = Path("state/sim_stability_history.jsonl")
 FIRST_BOOT_FLAG_PATH = Path("state/first_boot_completed.flag")
 FIRST_BOOT_POLICY_PATH = Path("lumina_agents/ppo/lumina_ppo_policy.zip")
 FIRST_BOOT_PROGRESS_PATH = Path("state/first_boot_progress.json")
+FIRST_BOOT_PAUSE_FLAG_PATH = Path("state/first_boot_pause_requested")
+FIRST_BOOT_CHECKPOINT_PATH = Path("state/first_boot_checkpoint.json")
+MONITORING_RUNTIME_METRICS_PATH = Path("state/monitoring_runtime_metrics.json")
+_EMBEDDED_REACT_INDEX = _LAUNCHER_ROOT / "frontend" / "dist" / "index.html"
+
+_LAUNCHER_HOME_CSS = """
+<style>
+.lumina-luxe-hero {
+  border-radius: 20px;
+  padding: 28px 32px 32px;
+  margin-bottom: 18px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.97) 0%, rgba(49, 46, 129, 0.92) 42%, rgba(15, 23, 42, 0.97) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+}
+.lumina-luxe-title {
+  margin: 0;
+  font-size: 2.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  background: linear-gradient(92deg, #38bdf8 0%, #c4b5fd 42%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.lumina-luxe-sub {
+  margin: 12px 0 0;
+  font-size: 1.15rem;
+  color: #94a3b8;
+  letter-spacing: 0.04em;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.lumina-card-title) {
+  background: linear-gradient(160deg, rgba(30, 41, 59, 0.85) 0%, rgba(15, 23, 42, 0.92) 100%) !important;
+  border: 1px solid rgba(148, 163, 184, 0.22) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+.lumina-card-title {
+  margin: 0 0 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #cbd5e1;
+}
+.lumina-card-metric {
+  margin: 6px 0 10px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+</style>
+"""
 
 
 def _load_admin_password_record() -> dict[str, Any] | None:
@@ -214,11 +279,10 @@ def _read_first_boot_settings() -> dict[str, Any]:
             int(section.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS),
         ),
         "allow_minimal_synthetic_fallback": bool(section.get("allow_minimal_synthetic_fallback", False)),
-        "force_training": bool(section.get("force_training", True)),
     }
 
 
-def _save_first_boot_settings(training_trades: int, *, force_training: bool) -> None:
+def _save_first_boot_settings(training_trades: int) -> None:
     cfg = _load_yaml_config()
     first_boot = cfg.get("first_boot")
     if not isinstance(first_boot, dict):
@@ -231,7 +295,7 @@ def _save_first_boot_settings(training_trades: int, *, force_training: bool) -> 
         int(first_boot.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS),
     )
     first_boot["allow_minimal_synthetic_fallback"] = bool(first_boot.get("allow_minimal_synthetic_fallback", False))
-    first_boot["force_training"] = bool(force_training)
+    first_boot["force_training"] = True
     CONFIG_PATH.write_text(
         yaml.safe_dump(cfg, default_flow_style=False, allow_unicode=True, sort_keys=False),
         encoding="utf-8",
@@ -254,6 +318,30 @@ def _read_first_boot_progress() -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _read_first_boot_checkpoint() -> dict[str, Any]:
+    if not FIRST_BOOT_CHECKPOINT_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(FIRST_BOOT_CHECKPOINT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        logging.exception("Failed to read first boot checkpoint file")
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _request_first_boot_pause() -> None:
+    FIRST_BOOT_PAUSE_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    FIRST_BOOT_PAUSE_FLAG_PATH.write_text(datetime.now().isoformat(), encoding="utf-8")
+
+
+def _clear_first_boot_pause_request() -> None:
+    try:
+        if FIRST_BOOT_PAUSE_FLAG_PATH.exists():
+            FIRST_BOOT_PAUSE_FLAG_PATH.unlink()
+    except Exception:
+        logging.exception("Failed to clear first boot pause request")
+
+
 def _first_boot_artifacts_missing() -> bool:
     return (not FIRST_BOOT_FLAG_PATH.exists()) or (not FIRST_BOOT_POLICY_PATH.exists())
 
@@ -263,6 +351,7 @@ def _first_boot_stage_progress(stage: str) -> float:
         "detected": 0.2,
         "loading_data": 0.45,
         "training_running": 0.75,
+        "paused": 0.75,
         "completed": 1.0,
         "failed": 1.0,
     }
@@ -822,15 +911,15 @@ def _tail_file(path: Path, max_chars: int = 4000) -> str:
 
 def _recent_activity_excerpt() -> tuple[str, str]:
     """Prefer CSV runtime log; fallback to thought JSONL so Paper/SIM activity is visible when CSV is quiet."""
-    csv_tail = _tail_file(LUMINA_LOG_PATH, max_chars=8000).strip()
+    csv_tail = _tail_file(LUMINA_LOG_PATH, max_chars=14000).strip()
     if csv_tail:
         lines = csv_tail.splitlines()
-        return "\n".join(lines[-24:]), str(LUMINA_LOG_PATH)
+        return "\n".join(lines[-48:]), str(LUMINA_LOG_PATH)
     if THOUGHT_LOG_PATH.exists():
         raw = THOUGHT_LOG_PATH.read_text(encoding="utf-8", errors="replace")
         lines = [ln for ln in raw.splitlines() if ln.strip()]
         if lines:
-            return "\n".join(lines[-16:]), str(THOUGHT_LOG_PATH)
+            return "\n".join(lines[-32:]), str(THOUGHT_LOG_PATH)
     return "", ""
 
 
@@ -1008,9 +1097,7 @@ def _render_live_age_cards(log_age: float | None, state_age: float | None, last_
     setInterval(tick, 1000);
 </script>
 """
-    from streamlit.components.v1 import html as st_html
-
-    st_html(card_html, height=110, scrolling=False)
+    st.iframe(src=card_html, height=110)
 
 
 def _render_live_activity_metrics_and_log(
@@ -1020,6 +1107,12 @@ def _render_live_activity_metrics_and_log(
     dashboard_enabled: bool,
 ) -> None:
     """Heartbeat cards, services row, messages, and recent activity excerpt (refreshed via fragment when enabled)."""
+    bundle = _build_live_signals_bundle()
+    sig1, sig2, sig3 = st.columns(3)
+    sig1.markdown(f"**{bundle['last_activity_verbose']}**")
+    sig2.markdown(f"**Training velocity:** {bundle['tpm_label']}")
+    sig3.caption("Updates every 5s when auto-refresh is enabled.")
+
     _log_fresh_s = 300.0
     _state_fresh_s = 600.0
     _summary_fresh_s = 900.0
@@ -1121,19 +1214,29 @@ def _render_live_activity_metrics_and_log(
         else:
             st.warning("Bot process is running, but heartbeat artifacts look stale. Check runtime diagnostics.")
 
-    st.markdown("#### Recent Bot Activity")
+    st.markdown("## Recent Bot Activity")
     excerpt, src = _recent_activity_excerpt()
     if not excerpt:
-        st.caption(
-            "Nog geen logregels. Start de bot vanuit de **repo-root** (zodat `logs/` en `state/` hier geschreven worden). "
-            "Na bootstrap zouden STATUS/STATE-regels in **lumina_full_log.csv** of thoughts in **thought_log.jsonl** moeten verschijnen."
-        )
+        with st.container(border=True):
+            st.caption(
+                "Nog geen logregels. Start de bot vanuit de **repo-root** (zodat `logs/` en `state/` hier geschreven worden). "
+                "Na bootstrap zouden STATUS/STATE-regels in **lumina_full_log.csv** of thoughts in **thought_log.jsonl** moeten verschijnen."
+            )
     else:
-        st.caption(f"Bron: `{src}` — vernieuwt elke 5s met auto-refresh aan.")
-        st.code(excerpt, language="text")
+        with st.container(border=True):
+            st.caption(
+                f"**Live tail** · `{src}` · auto-refresh elke **5s** wanneer auto-refresh aan staat · "
+                f"{bundle['last_activity_verbose']}"
+            )
+            st.code(excerpt, language="text")
 
 
 if not _IS_HEADLESS:
+
+    @st.fragment(run_every=timedelta(seconds=5))
+    def _lumina_presence_strip_fragment() -> None:
+        _invalidate_live_signals_bundle()
+        _render_presence_strip_ui(_build_live_signals_bundle())
 
     @st.fragment(run_every=timedelta(seconds=5))
     def _lumina_live_activity_autorefresh_fragment() -> None:
@@ -1145,7 +1248,8 @@ if not _IS_HEADLESS:
 
 
 def _render_live_activity_panel(*, alive: bool, screen_share_enabled: bool, dashboard_enabled: bool) -> None:
-    st.markdown("### Live Activity & Services")
+    st.markdown("## Live Activity & Services")
+    st.caption("Heartbeats, service freshness, and the bot log tail refresh every **5 seconds** when auto-refresh is on.")
     process_badge = _status_badge("Running", "available") if alive else _status_badge("Stopped", "blocked")
     st.markdown(f"Bot Process {process_badge}", unsafe_allow_html=True)
     if alive:
@@ -1271,6 +1375,166 @@ def _load_last_run_summary() -> dict[str, Any]:
         return {}
 
 
+def _newest_activity_utc() -> datetime | None:
+    """Newest timestamp among runtime JSON artifacts, log/state mtimes, and swarm heartbeat."""
+    candidates: list[datetime] = []
+    if MONITORING_RUNTIME_METRICS_PATH.exists():
+        try:
+            raw_m = json.loads(MONITORING_RUNTIME_METRICS_PATH.read_text(encoding="utf-8"))
+            meta_payload = raw_m if isinstance(raw_m, dict) else {}
+        except Exception:
+            meta_payload = {}
+        ts_m = _parse_iso_ts(meta_payload.get("timestamp"))
+        if ts_m is not None:
+            candidates.append(ts_m)
+    fb_pr = _read_first_boot_progress()
+    ts_fb = _parse_iso_ts(fb_pr.get("timestamp"))
+    if ts_fb is not None:
+        candidates.append(ts_fb)
+    summary = _load_last_run_summary()
+    for ky in ("finished_at", "started_at"):
+        ts_s = _parse_iso_ts(summary.get(ky))
+        if ts_s is not None:
+            candidates.append(ts_s)
+    state = _load_runtime_state()
+    dream = state.get("current_dream") if isinstance(state.get("current_dream"), dict) else {}
+    ts_sw = _parse_iso_ts(dream.get("swarm_ts"))
+    if ts_sw is not None:
+        candidates.append(ts_sw)
+    if LUMINA_LOG_PATH.exists():
+        try:
+            candidates.append(datetime.fromtimestamp(LUMINA_LOG_PATH.stat().st_mtime, tz=timezone.utc))
+        except Exception:
+            pass
+    if STATE_PATH.exists():
+        try:
+            candidates.append(datetime.fromtimestamp(STATE_PATH.stat().st_mtime, tz=timezone.utc))
+        except Exception:
+            pass
+    if not candidates:
+        return None
+    return max(candidates)
+
+
+def _last_activity_seconds() -> float | None:
+    newest = _newest_activity_utc()
+    if newest is None:
+        return None
+    return max(0.0, (datetime.now(timezone.utc) - newest).total_seconds())
+
+
+def _format_last_activity_verbose(seconds: float | None) -> str:
+    if seconds is None:
+        return "Last activity: no signal yet"
+    if seconds < 90:
+        return f"Last activity: {seconds:.0f} seconds ago"
+    if seconds < 3600:
+        return f"Last activity: {int(seconds // 60)} minute(s) ago"
+    return f"Last activity: {int(seconds // 3600)} hour(s) ago"
+
+
+def _build_live_signals_bundle() -> dict[str, Any]:
+    """Once per script invocation; refreshed when callers invalidate `_lumina_live_signals_bundle`."""
+    bkey = "_lumina_live_signals_bundle"
+    if bkey in st.session_state:
+        return st.session_state[bkey]
+    secs = _last_activity_seconds()
+    fb = _read_first_boot_progress()
+    trades = _safe_int(fb.get("trades"))
+    now_m = time.monotonic()
+    snap_key = "lumina_tpm_monotonic_snap"
+    prev = st.session_state.get(snap_key)
+    tpm: float | None = None
+    tpm_label = "Calibrating…"
+    if isinstance(prev, dict) and prev.get("mono") is not None and prev.get("trades") is not None:
+        dt = now_m - float(prev["mono"])
+        d_trades = trades - int(prev["trades"])
+        if dt >= 0.75:
+            if d_trades > 0:
+                tpm = (d_trades / dt) * 60.0
+                tpm_label = f"{tpm:,.1f} trades/min"
+            else:
+                tpm = 0.0
+                tpm_label = "0 trades/min (quiet)"
+    st.session_state[snap_key] = {"mono": now_m, "trades": trades}
+    alive_ui = bool(st.session_state.get("_lumina_presence_alive", False))
+    fresh = secs is not None and secs <= 120.0
+    pulse = alive_ui and (fresh or (tpm is not None and tpm > 0))
+    bundle = {
+        "last_activity_s": secs,
+        "last_activity_verbose": _format_last_activity_verbose(secs),
+        "tpm": tpm,
+        "tpm_label": tpm_label,
+        "pulse_live": pulse,
+    }
+    st.session_state[bkey] = bundle
+    return bundle
+
+
+def _invalidate_live_signals_bundle() -> None:
+    st.session_state.pop("_lumina_live_signals_bundle", None)
+
+
+def _launcher_tab_activity_hint() -> None:
+    """Echo last-activity line at top of each tab (full rerun + aligned with Live Activity panel)."""
+    if st is None:
+        return
+    la = _format_last_activity_verbose(_last_activity_seconds())
+    st.caption(f"{la} · Presence strip & bot activity feed refresh every 5s when auto-refresh is on.")
+
+
+def _render_presence_strip_ui(bundle: dict[str, Any]) -> None:
+    """Single-row heartbeat strip: pulse label, verbose last activity, training velocity."""
+    if st is None:
+        return
+    dot_cls = "lumina-presence-dot-live" if bundle.get("pulse_live") else "lumina-presence-dot-idle"
+    label_txt = "LUMINA LIVE" if bundle.get("pulse_live") else "STANDBY"
+    mid = html.escape(str(bundle.get("last_activity_verbose", "")))
+    tpm = html.escape(str(bundle.get("tpm_label", "—")))
+    safe_label = html.escape(label_txt)
+    st.markdown(
+        """
+<style>
+@keyframes luminaPresencePulse {
+  0%, 100% { opacity: 0.82; transform: scale(0.94); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+  50% { opacity: 1; transform: scale(1); box-shadow: 0 0 0 10px rgba(52, 211, 153, 0); }
+}
+.lumina-presence-dot-live {
+  display: inline-block; width: 11px; height: 11px; border-radius: 999px;
+  margin-right: 10px; vertical-align: middle;
+  background: #34d399; animation: luminaPresencePulse 2.1s ease-in-out infinite;
+}
+.lumina-presence-dot-idle {
+  display: inline-block; width: 11px; height: 11px; border-radius: 999px;
+  margin-right: 10px; vertical-align: middle;
+  background: #64748b; opacity: 0.9;
+}
+.lumina-presence-strip-wrap {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 14px 22px;
+  border-radius: 16px;
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  background: linear-gradient(118deg, rgba(15,23,42,0.96), rgba(30,27,75,0.9));
+  border: 1px solid rgba(56,189,248,0.32);
+  box-shadow: 0 14px 38px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+</style>
+"""
+        + f"""
+<div class="lumina-presence-strip-wrap">
+  <div style="min-width:160px;"><span class="{dot_cls}"></span><strong style="color:#f8fafc;font-size:1.05rem;">{safe_label}</strong></div>
+  <div style="flex:1;min-width:220px;color:#cbd5e1;font-size:0.95rem;">{mid}</div>
+  <div style="min-width:190px;text-align:right;">
+    <div style="color:#94a3b8;font-size:0.78rem;text-transform:uppercase;letter-spacing:0.06em;">Training velocity</div>
+    <div style="color:#e2e8f0;font-weight:700;font-size:1rem;">{tpm}</div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
 def _load_evolution_rows() -> list[dict[str, Any]]:
     if not EVOLUTION_LOG_PATH.exists():
         return []
@@ -1384,6 +1648,253 @@ def _current_launcher_mode() -> str:
     return config_mode if config_mode in {"sim", "paper", "real"} else "sim"
 
 
+def _react_dashboard_url_launcher(api_base: str) -> str:
+    """Aligned with lumina_os/frontend/monitoring_dashboard embedded/Vite URL resolution."""
+    try:
+        from lumina_os.frontend import monitoring_dashboard as _md
+
+        return _md._react_dashboard_link(api_base)
+    except Exception:
+        explicit = (os.getenv("LUMINA_REACT_DASHBOARD_URL") or "").strip()
+        if explicit:
+            return explicit
+        base = api_base.rstrip("/")
+        if _EMBEDDED_REACT_INDEX.is_file():
+            return f"{base}/ui/"
+        port = (os.getenv("LUMINA_REACT_DASHBOARD_PORT") or "5173").strip() or "5173"
+        return f"http://localhost:{port}"
+
+
+def _live_resource_metrics() -> dict[str, float | None]:
+    """Live CPU/RAM % and optional GPU utilization % (NVIDIA)."""
+    cpu_pct: float | None = None
+    ram_pct: float | None = None
+    gpu_pct: float | None = None
+    try:
+        import psutil
+
+        cpu_pct = float(psutil.cpu_percent(interval=0.12))
+        ram_pct = float(psutil.virtual_memory().percent)
+    except Exception:
+        pass
+    creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=2.5,
+            creationflags=creation_flags,
+            check=False,
+        )
+        if out.returncode == 0 and (out.stdout or "").strip():
+            line = out.stdout.strip().splitlines()[0].strip()
+            if line:
+                gpu_pct = float(line)
+    except Exception:
+        pass
+    return {"cpu": cpu_pct, "ram": ram_pct, "gpu": gpu_pct}
+
+
+def _heartbeat_age_display_launcher() -> str:
+    """Compact heartbeat age for tight layouts (cards); prefers unified activity timestamps + log mtimes."""
+    newest = _newest_activity_utc()
+    if newest is None:
+        return "no signal"
+    delta = max(0.0, (datetime.now(timezone.utc) - newest).total_seconds())
+    if delta < 120.0:
+        return f"{delta:.1f}s ago"
+    if delta < 3600.0:
+        return f"{delta / 60.0:.1f}m ago"
+    return f"{delta / 3600.0:.1f}h ago"
+
+
+def _format_training_eta(first_boot: dict[str, Any]) -> str:
+    stage = str(first_boot.get("stage", "")).strip().lower()
+    if stage == "paused":
+        return "Paused"
+    if stage not in {"detected", "loading_data", "training_running"}:
+        return "— (no active first-boot run)"
+    pct = _safe_float(first_boot.get("progress_pct"))
+    if pct <= 0:
+        return "Calibrating…"
+    if pct >= 100:
+        return "Finalizing…"
+    key = "lumina_launcher_fb_eta_track"
+    prev = st.session_state.get(key)
+    now_ts = time.time()
+    st.session_state[key] = {"pct": pct, "t": now_ts}
+    if isinstance(prev, dict) and prev.get("pct") is not None and prev.get("t"):
+        dp = pct - float(prev["pct"])
+        dt = now_ts - float(prev["t"])
+        if dp > 0.08 and dt > 4.0:
+            rate = dp / dt
+            if rate > 0:
+                remain_sec = (100.0 - pct) / rate
+                m, s = divmod(int(remain_sec), 60)
+                return f"~{m}m {s}s (estimate)"
+    return "Calibrating pace…"
+
+
+def _render_luxe_start_screen(snapshot: HardwareSnapshot) -> None:
+    """Premium hero, three insight cards, and primary launcher actions."""
+    st.markdown(_LAUNCHER_HOME_CSS, unsafe_allow_html=True)
+
+    fb = _read_first_boot_progress()
+    fb_cfg = _read_first_boot_settings()
+    target_trades = _safe_int(fb.get("target_trades") or fb.get("target_trades_effective"))
+    if target_trades <= 0:
+        target_trades = int(fb_cfg.get("training_trades", FIRST_BOOT_DEFAULT_TRADES))
+    done_trades = _safe_int(fb.get("trades"))
+    pct_fb = fb.get("progress_pct")
+    if pct_fb is not None:
+        bar_v = min(max(_safe_float(pct_fb) / 100.0, 0.0), 1.0)
+    else:
+        bar_v = min(max(done_trades / float(target_trades), 0.0), 1.0) if target_trades > 0 else 0.0
+
+    report = generate_stability_report()
+    consecutive = int(report.get("consecutive_green_days", 0))
+    days_to_green = int(report.get("days_to_green", 5))
+    is_ready = bool(report.get("READY_FOR_REAL", False))
+    criteria_raw = report.get("criteria")
+    criteria = criteria_raw if isinstance(criteria_raw, dict) else {}
+    sharpe_raw = criteria.get("extended_run_sharpe")
+    sharpe_crit = sharpe_raw if isinstance(sharpe_raw, dict) else {}
+    latest_sharpe = _safe_float(sharpe_crit.get("latest_sharpe", 0.0))
+    status_label = str(report.get("status", "RED")).strip().upper()
+
+    live = _live_resource_metrics()
+    hb = _heartbeat_age_display_launcher()
+    eta_txt = _format_training_eta(fb)
+    msg_fb = str(fb.get("message", "")).strip()
+
+    st.markdown(
+        '<div class="lumina-luxe-hero"><div class="lumina-luxe-hero-inner">'
+        '<h1 class="lumina-luxe-title">LUMINA OS</h1>'
+        '<p class="lumina-luxe-sub">Self-evolving AI Daytrading Organism</p>'
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    card_a, card_b, card_c = st.columns(3)
+    with card_a:
+        with st.container(border=True):
+            st.markdown('<p class="lumina-card-title">Training Progress</p>', unsafe_allow_html=True)
+            st.progress(bar_v)
+            st.markdown(
+                f'<p class="lumina-card-metric">{done_trades:,} / {target_trades:,} trades</p>',
+                unsafe_allow_html=True,
+            )
+            st.caption(f"ETA · {eta_txt}")
+            _lv_bundle = _build_live_signals_bundle()
+            st.caption(f"Training velocity · {_lv_bundle['tpm_label']}")
+            if msg_fb:
+                st.caption(msg_fb[:160] + ("…" if len(msg_fb) > 160 else ""))
+
+    with card_b:
+        with st.container(border=True):
+            st.markdown('<p class="lumina-card-title">Evolution Status</p>', unsafe_allow_html=True)
+            st.markdown(
+                f'<p class="lumina-card-metric">{consecutive} / 5 consecutive positive expectancy days</p>',
+                unsafe_allow_html=True,
+            )
+            st.progress(min(max(consecutive / 5.0, 0.0), 1.0))
+            ev1, ev2 = st.columns(2)
+            ev1.metric("Sharpe (latest)", f"{latest_sharpe:.3f}")
+            ev2.metric("Readiness", "GREEN" if is_ready else status_label)
+            st.caption(
+                "Promotion-ready" if is_ready else f"{days_to_green} day(s) to go at current streak pace"
+            )
+
+    with card_c:
+        with st.container(border=True):
+            st.markdown('<p class="lumina-card-title">System Health</p>', unsafe_allow_html=True)
+            cpu_v, ram_v, gpu_v = live.get("cpu"), live.get("ram"), live.get("gpu")
+            st.caption("CPU load")
+            st.progress(min(max((cpu_v or 0.0) / 100.0, 0.0), 1.0) if cpu_v is not None else 0.0)
+            st.caption(f"{cpu_v:.0f}%" if cpu_v is not None else "—")
+            st.caption("System RAM")
+            st.progress(min(max((ram_v or 0.0) / 100.0, 0.0), 1.0) if ram_v is not None else 0.0)
+            st.caption(f"{ram_v:.0f}%" if ram_v is not None else "—")
+            st.caption("GPU utilization")
+            if gpu_v is not None:
+                st.progress(min(max(gpu_v / 100.0, 0.0), 1.0))
+                st.caption(f"{gpu_v:.0f}%")
+            else:
+                st.caption(f"No NVIDIA probe — envelope {snapshot.gpu_vram_gb:.1f} GB VRAM tier")
+
+            st.divider()
+            st.caption(f"Heartbeat · {hb}")
+            st.caption(f"Hardware tier · {snapshot.profile_tier.upper()}")
+
+    act1, act2, act3, act4 = st.columns(4)
+    react_url = _react_dashboard_url_launcher(BACKEND_BASE_URL)
+
+    with act1:
+        if st.button("Continue First Boot Training", type="primary", width="stretch", help="Save first-boot prefs and start / resume the runtime process"):
+            cfg_t = _read_first_boot_settings()
+            trades_ui = _clamp_first_boot_trades(
+                st.session_state.get("lumina_first_boot_training_trades_ui", cfg_t["training_trades"])
+            )
+            _save_first_boot_settings(trades_ui)
+            ok_go, msg_go = _start_bot_process()
+            if ok_go:
+                st.success(msg_go)
+            else:
+                st.error(msg_go)
+
+    with act2:
+        if react_url:
+            st.link_button(
+                "Open Luxe React Monitoring Dashboard",
+                react_url,
+                type="primary",
+                use_container_width=True,
+                help="Embedded FastAPI /ui/ when built, else Vite dev server",
+            )
+        else:
+            st.caption("React dashboard URL unavailable")
+
+    with act3:
+        if st.button(
+            "Run Aggressive Overnight SIM",
+            type="primary",
+            width="stretch",
+            help="Launches headless overnight SIM with stability check",
+        ):
+            cmd_on = [
+                sys.executable,
+                "-m",
+                "lumina_launcher",
+                "--headless",
+                "--mode=sim",
+                "--duration=240",
+                "--overnight-sim",
+                "--stability-check",
+            ]
+            proc_on = subprocess.Popen(
+                cmd_on,
+                cwd=str(Path(".").resolve()),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            st.success(f"Overnight SIM started (PID {proc_on.pid}). Watch logs and state/test_runs/.")
+
+    with act4:
+        if st.button("View SIM Evolution Dashboard", type="primary", width="stretch"):
+            st.session_state["lumina_home_evolution_open"] = True
+
+    if st.session_state.get("lumina_home_evolution_open"):
+        ev_head, ev_x = st.columns([5, 1])
+        with ev_x:
+            if st.button("Dismiss", key="lumina_dismiss_evolution_home"):
+                st.session_state["lumina_home_evolution_open"] = False
+                st.rerun()
+        with ev_head:
+            st.markdown("##### SIM Evolution Dashboard")
+        _render_sim_learning_tab(widget_key_prefix="sim_ev_home")
+
+
 def _load_stability_history() -> list[dict[str, Any]]:
     """Load state/sim_stability_history.jsonl; rows sorted ascending by day."""
     if not SIM_HISTORY_PATH.exists():
@@ -1403,7 +1914,8 @@ def _load_stability_history() -> list[dict[str, Any]]:
     return rows
 
 
-def _render_sim_learning_tab() -> None:
+def _render_sim_learning_tab(*, widget_key_prefix: str = "sim_ev_tab") -> None:
+    """SIM evolution UI; may render twice (home overlay + tab) — widgets must use ``widget_key_prefix``."""
     st.subheader("🚀 SIM Evolution Dashboard")
 
     # ── Load data ──────────────────────────────────────────────────────────────
@@ -1527,7 +2039,7 @@ def _render_sim_learning_tab() -> None:
     if missing_days:
         st.caption("📅 Missing days in rolling 7d window: " + ", ".join(str(d) for d in missing_days))
 
-    with st.expander("📋 Full Stability Report", expanded=False):
+    with st.expander("📋 Full Stability Report", expanded=False, key=f"{widget_key_prefix}_exp_full_report"):
         st.code(format_stability_report(report), language="text")
 
     # ── Action buttons ─────────────────────────────────────────────────────────
@@ -1539,6 +2051,7 @@ def _render_sim_learning_tab() -> None:
             "🚀 Run Aggressive Overnight SIM",
             type="primary",
             width="stretch",
+            key=f"{widget_key_prefix}_btn_overnight_sim",
             help="Launches: --headless --mode=sim --duration=240 --overnight-sim --stability-check",
         ):
             cmd = [
@@ -1560,17 +2073,22 @@ def _render_sim_learning_tab() -> None:
         if st.button(
             "🔍 Check Stability Now",
             width="stretch",
+            key=f"{widget_key_prefix}_btn_check_stability",
             help="Re-generates the stability report from all available SIM summaries",
         ):
             st.rerun()
 
     with btn_col3:
-        confirm = st.checkbox("✅ Confirm switch to REAL mode", key="confirm_real_switch_lnch")
+        confirm = st.checkbox(
+            "✅ Confirm switch to REAL mode",
+            key=f"{widget_key_prefix}_confirm_real_switch",
+        )
         go_live_enabled = is_green and confirm
         if st.button(
             "🔴 Switch to REAL Mode",
             type="primary",
             width="stretch",
+            key=f"{widget_key_prefix}_btn_switch_real",
             disabled=not go_live_enabled,
             help="Only active when READY_FOR_REAL=True and operator confirmation is ticked above",
         ):
@@ -1590,7 +2108,7 @@ def _render_sim_learning_tab() -> None:
         st.info(f"🔒 REAL mode locked until 5 consecutive positive-expectancy days. Progress: {consecutive}/5.")
 
     # ── Latest run summary ─────────────────────────────────────────────────────
-    with st.expander("📄 Latest SIM Run Summary", expanded=False):
+    with st.expander("📄 Latest SIM Run Summary", expanded=False, key=f"{widget_key_prefix}_exp_latest_summary"):
         summary = _load_last_run_summary()
         if summary:
             s1, s2, s3, s4 = st.columns(4)
@@ -1657,6 +2175,98 @@ def _render_real_operations_tab(state: dict[str, Any]) -> None:
         st.success("REAL protocol GREEN: system is within capital-preservation bounds.")
     else:
         st.error("REAL protocol RED: immediate operator review required.")
+
+
+def _backend_url_is_local_api() -> bool:
+    raw = BACKEND_BASE_URL if "://" in BACKEND_BASE_URL else f"http://{BACKEND_BASE_URL}"
+    host = (urlparse(raw).hostname or "").lower()
+    return host in ("localhost", "127.0.0.1", "::1", "")
+
+
+def _backend_url_port() -> int:
+    raw = BACKEND_BASE_URL if "://" in BACKEND_BASE_URL else f"http://{BACKEND_BASE_URL}"
+    return urlparse(raw).port or 8000
+
+
+def _ensure_trader_league_backend() -> None:
+    """Start FastAPI (Trader League + monitoring API) locally when it is not yet reachable."""
+    if _IS_HEADLESS:
+        return
+    if str(os.getenv("LUMINA_DISABLE_AUTO_BACKEND", "")).strip().lower() in {"1", "true", "yes", "on"}:
+        return
+    if not _backend_url_is_local_api():
+        return
+
+    health_url = f"{BACKEND_BASE_URL}/api/monitoring/health"
+    try:
+        if requests.get(health_url, timeout=1.5).ok:
+            return
+    except Exception:
+        pass
+
+    if st.session_state.get("_lumina_backend_autostart_done"):
+        return
+
+    lumina_os_dir = _LAUNCHER_ROOT / "lumina_os"
+    if not (lumina_os_dir / "backend" / "app.py").exists():
+        logger.warning("lumina_os/backend/app.py ontbreekt; FastAPI auto-start overgeslagen.")
+        st.session_state["_lumina_backend_autostart_done"] = True
+        return
+
+    st.session_state["_lumina_backend_autostart_done"] = True
+
+    bind_host = str(os.getenv("LUMINA_BACKEND_BIND", "127.0.0.1")).strip() or "127.0.0.1"
+    port = _backend_url_port()
+    BACKEND_UVICORN_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(_LAUNCHER_ROOT.resolve())
+    env["LUMINA_CONFIG"] = str((_LAUNCHER_ROOT / "config.yaml").resolve())
+    log_f = open(BACKEND_UVICORN_LOG_PATH, "a", encoding="utf-8", buffering=1)
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "backend.app:app",
+        "--host",
+        bind_host,
+        "--port",
+        str(port),
+    ]
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(lumina_os_dir.resolve()),
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+    except Exception:
+        logger.exception("FastAPI (uvicorn) auto-start mislukt")
+        return
+
+    time.sleep(0.8)
+    if proc.poll() is not None:
+        logger.error(
+            "uvicorn stopte direct (exit %s). Mogelijk draait de poort al; zie %s",
+            proc.returncode,
+            BACKEND_UVICORN_LOG_PATH,
+        )
+        try:
+            if requests.get(health_url, timeout=2.0).ok:
+                return
+        except Exception:
+            pass
+        return
+
+    for _ in range(60):
+        time.sleep(0.25)
+        try:
+            if requests.get(health_url, timeout=1.0).ok:
+                logger.info("FastAPI backend bereikbaar na auto-start (pid=%s)", proc.pid)
+                return
+        except Exception:
+            continue
+    logger.warning("FastAPI nog na 15s niet healthy; zie %s", BACKEND_UVICORN_LOG_PATH)
 
 
 def _backend_get(path: str, timeout: float = 3.0) -> dict[str, Any]:
@@ -2384,10 +2994,8 @@ catalog_state = _load_catalog_state()
 if catalog_state.get("catalog_version") != catalog.version():
     _save_catalog_state(catalog, current_model.key)
 
-st.title("LUMINA OS - Start Screen")
-st.markdown(
-    "**Trading runtime, hardware-aware model selection, and controlled launch operations in one control plane.**"
-)
+_invalidate_live_signals_bundle()
+_render_luxe_start_screen(snapshot)
 
 recommended_start_model = catalog.recommended_for(
     ram_gb=snapshot.ram_gb,
@@ -2425,11 +3033,8 @@ with st.sidebar:
     )
     _first_boot_cfg = _read_first_boot_settings()
     _first_boot_trades_key = "lumina_first_boot_training_trades_ui"
-    _first_boot_force_key = "lumina_first_boot_force_training_ui"
     if _first_boot_trades_key not in st.session_state:
         st.session_state[_first_boot_trades_key] = int(_first_boot_cfg["training_trades"])
-    if _first_boot_force_key not in st.session_state:
-        st.session_state[_first_boot_force_key] = bool(_first_boot_cfg["force_training"])
     st.slider(
         "Aantal trades bij eerste training",
         min_value=FIRST_BOOT_TRADE_MIN,
@@ -2445,13 +3050,9 @@ with st.sidebar:
             "Na deze eerste training draait Lumina veel effectiever en met hogere confidence."
         ),
     )
-    st.checkbox(
-        "Force eerste training verplicht",
-        key=_first_boot_force_key,
-        help=(
-            "Aanbevolen: aan. Bij ontbrekende first-boot artifacts blokkeert runtime dan fail-closed "
-            "tot de initiële training succesvol afgerond is."
-        ),
+    st.caption(
+        "First-boot training is verplicht zolang `state/first_boot_completed.flag` of "
+        "`lumina_agents/ppo/lumina_ppo_policy.zip` ontbreekt."
     )
     _selected_trades = _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, FIRST_BOOT_DEFAULT_TRADES))
     _estimated_days = _estimate_first_boot_real_days(_selected_trades)
@@ -2477,6 +3078,7 @@ with st.sidebar:
             "Verwacht langere first boot en waarschijnlijk synthetische aanvulling tenzij max_real_days zeer hoog staat."
         )
     _first_boot_progress = _read_first_boot_progress()
+    _first_boot_checkpoint = _read_first_boot_checkpoint()
     _first_boot_stage = str(_first_boot_progress.get("stage", "")).strip().lower()
     _first_boot_message = str(_first_boot_progress.get("message", "")).strip()
     _first_boot_trades_done = _first_boot_progress.get("trades")
@@ -2486,6 +3088,14 @@ with st.sidebar:
             st.progress(_first_boot_stage_progress(_first_boot_stage))
             if _first_boot_message:
                 st.caption(_first_boot_message)
+        elif _first_boot_stage == "paused":
+            st.warning("First-boot training is gepauzeerd. Runtime blijft geblokkeerd totdat je hervat.")
+            if _first_boot_message:
+                st.caption(_first_boot_message)
+            chk_trades = int(_first_boot_checkpoint.get("cumulative_trades", 0) or 0)
+            chk_target = int(_first_boot_checkpoint.get("requested_trades", 0) or 0)
+            if chk_target > 0:
+                st.caption(f"Checkpoint: {chk_trades:,}/{chk_target:,} trades")
         elif _first_boot_stage == "failed":
             st.error(
                 "First-boot training is niet geslaagd. Runtime blijft fail-closed totdat de initiële training succesvol is."
@@ -2496,6 +3106,23 @@ with st.sidebar:
             st.info(
                 "First-boot artifacts ontbreken nog. Bij de eerstvolgende runtime-start wordt initiële training automatisch uitgevoerd."
             )
+        col_pause, col_resume = st.columns(2)
+        with col_pause:
+            if st.button(
+                "Pauzeer eerste training",
+                width="stretch",
+                help="Vraagt een cooperatieve pauze aan. Huidige SIM-chunk wordt nog afgerond.",
+            ):
+                _request_first_boot_pause()
+                st.info("Pauzeverzoek geplaatst. De huidige chunk wordt eerst afgemaakt.")
+        with col_resume:
+            if st.button(
+                "Hervat eerste training",
+                width="stretch",
+                help="Verwijdert het pauzeverzoek. Start de bot daarna opnieuw om training te hervatten.",
+            ):
+                _clear_first_boot_pause_request()
+                st.success("Pauzeverzoek verwijderd. Start de bot om first-boot training te hervatten.")
     elif _first_boot_stage == "completed":
         if isinstance(_first_boot_trades_done, (int, float)):
             st.success(f"Eerste training voltooid. {int(_first_boot_trades_done)} trades uitgevoerd. Policy opgeslagen.")
@@ -2561,14 +3188,14 @@ with st.sidebar:
     st.divider()
     if st.button("Save Config and Start Bot", type="primary", width="stretch"):
         _save_first_boot_settings(
-            _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, FIRST_BOOT_DEFAULT_TRADES)),
-            force_training=bool(st.session_state.get(_first_boot_force_key, True)),
+            _clamp_first_boot_trades(st.session_state.get(_first_boot_trades_key, FIRST_BOOT_DEFAULT_TRADES))
         )
         _save_neuro_require_real_simulator_data(bool(st.session_state.get(_req_real_key, True)))
-        st.info(
-            "Eerste keer starten gedetecteerd: Lumina voert initiële training uit. "
-            "Trading is tijdelijk geblokkeerd tot de training klaar is. Voortgang staat in de console/logs."
-        )
+        if _first_boot_artifacts_missing():
+            st.info(
+                "Eerste keer starten gedetecteerd: Lumina voert initiële training uit. "
+                "Trading is tijdelijk geblokkeerd tot de training klaar is. Voortgang staat in de console/logs."
+            )
         broker_backend = "paper" if trade_mode == "paper" else "live"
         account_mode = {
             "paper": "paper",
@@ -2660,6 +3287,19 @@ if alive:
     runtime_value = f"Active bot process (pid={pid})"
 
 st.markdown(f"Runtime Status {_status_badge(runtime_label, runtime_status)}", unsafe_allow_html=True)
+
+env_flags = _parse_env_file(ENV_PATH)
+screen_share_flag = str(env_flags.get("SCREEN_SHARE_ENABLED", "true")).strip().lower() == "true"
+dashboard_flag = str(env_flags.get("DASHBOARD_ENABLED", "true")).strip().lower() == "true"
+screen_share_active = bool(st.session_state.get("screen_share_enabled", screen_share_flag))
+dashboard_active = bool(st.session_state.get("dashboard_enabled", dashboard_flag))
+
+_invalidate_live_signals_bundle()
+st.session_state["_lumina_presence_alive"] = alive
+_lumina_presence_strip_fragment()
+
+_render_live_activity_panel(alive=alive, screen_share_enabled=screen_share_active, dashboard_enabled=dashboard_active)
+
 _render_kv_section(
     "Operations Overview",
     [
@@ -2671,13 +3311,6 @@ _render_kv_section(
     ],
 )
 st.caption("Beast profile requires 64 GB RAM, 20 GB VRAM, and Linux/WSL2 CUDA support for vLLM and Unsloth operations.")
-
-env_flags = _parse_env_file(ENV_PATH)
-screen_share_flag = str(env_flags.get("SCREEN_SHARE_ENABLED", "true")).strip().lower() == "true"
-dashboard_flag = str(env_flags.get("DASHBOARD_ENABLED", "true")).strip().lower() == "true"
-screen_share_active = bool(st.session_state.get("screen_share_enabled", screen_share_flag))
-dashboard_active = bool(st.session_state.get("dashboard_enabled", dashboard_flag))
-_render_live_activity_panel(alive=alive, screen_share_enabled=screen_share_active, dashboard_enabled=dashboard_active)
 
 state = _load_runtime_state()
 current_dream = state.get("current_dream", {}) if isinstance(state.get("current_dream"), dict) else {}
@@ -2699,6 +3332,7 @@ if active_mode == "real":
     tab_labels.append("🛡️ REAL Operations Dashboard")
 if admin_mode:
     tab_labels.append("Admin / Backend")
+_ensure_trader_league_backend()
 tabs = st.tabs(tab_labels)
 tab1 = tabs[0]
 tab2 = tabs[1]
@@ -2717,6 +3351,7 @@ if admin_mode and len(tabs) > next_optional_idx:
     tab9 = tabs[next_optional_idx]
 
 with tab1:
+    _launcher_tab_activity_hint()
     st.subheader("Live Dream + Runtime State")
     if _has_runtime_snapshot:
         _render_live_runtime_card(current_dream)
@@ -2728,14 +3363,17 @@ with tab1:
     col3.metric("Pending Reconciliations", value=len(state.get("pending_trade_reconciliations", []) or []))
 
 with tab2:
+    _launcher_tab_activity_hint()
     _render_hardware_tab(snapshot, catalog, current_model)
 
 with tab3:
+    _launcher_tab_activity_hint()
     _render_model_management_tab(
         setup_service=setup_service, catalog=catalog, snapshot=snapshot, current_model=current_model
     )
 
 with tab4:
+    _launcher_tab_activity_hint()
     st.subheader("Trader League Leaderboard")
     try:
         leaderboard_payload = _backend_get("/leaderboard")
@@ -2749,6 +3387,7 @@ with tab4:
         _render_backend_unavailable_card("Trader League", exc)
 
 with tab5:
+    _launcher_tab_activity_hint()
     st.subheader("Global Community Bibles")
     try:
         wisdom_payload = _backend_get("/global_wisdom")
@@ -2762,6 +3401,7 @@ with tab5:
         _render_backend_unavailable_card("Community Bibles", exc)
 
 with tab6:
+    _launcher_tab_activity_hint()
     st.subheader("Ultimate Performance Validation")
     if st.button("Run 3-Year Validation Now"):
         try:
@@ -2779,6 +3419,7 @@ with tab6:
 
 if tab7 is not None:
     with tab7:
+        _launcher_tab_activity_hint()
         try:
             from lumina_os.frontend.monitoring_dashboard import render_monitoring_dashboard_tab
 
@@ -2789,6 +3430,7 @@ if tab7 is not None:
 
 if tab8 is not None:
     with tab8:
+        _launcher_tab_activity_hint()
         if active_mode == "sim":
             _render_sim_learning_tab()
         elif active_mode == "real":
@@ -2796,6 +3438,7 @@ if tab8 is not None:
 
 if tab9 is not None:
     with tab9:
+        _launcher_tab_activity_hint()
         st.subheader("Admin Backend")
         st.write("Runtime entry:")
         st.code(str(RUNTIME_ENTRY))

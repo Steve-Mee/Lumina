@@ -2,12 +2,17 @@ from datetime import datetime, timezone
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any, Optional, cast
 
 import yaml
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import FileResponse, JSONResponse
+from starlette.types import ASGIApp
 
 from backend.database import CommunityBible, CommunityReflection, Participant, SessionLocal, TradeEntry
 from backend.models import BibleUpload, ReflectionUpload, TradeSubmit
@@ -21,6 +26,67 @@ from lumina_core.security import get_security_module
 from lumina_core.monitoring import ObservabilityService
 
 logger = logging.getLogger(__name__)
+
+_LUMINA_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _embedded_ui_dist_dir() -> Path:
+    override = os.getenv("LUMINA_EMBEDDED_UI_DIST", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return (_LUMINA_REPO_ROOT / "frontend" / "dist").resolve()
+
+
+_UI_DIST = _embedded_ui_dist_dir()
+
+
+class LuminaEmbeddedUIMiddleware(BaseHTTPMiddleware):
+    """Serve `frontend/dist` under `/ui` on every request (no import-time gate).
+
+    Avoids 404 after `npm run build:embedded` when the backend was started before `dist/` existed.
+    """
+
+    def __init__(self, app: ASGIApp, *, dist_dir: Path):
+        super().__init__(app)
+        self._dist = dist_dir.resolve()
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        if request.scope["type"] != "http":
+            return await call_next(request)
+        if request.method not in ("GET", "HEAD"):
+            return await call_next(request)
+        path = request.url.path
+        if path != "/ui" and not path.startswith("/ui/"):
+            return await call_next(request)
+
+        idx = self._dist / "index.html"
+        if not idx.is_file():
+            return JSONResponse(
+                {
+                    "detail": "Embedded React UI not built",
+                    "hint": (
+                        "Run from repo root: cd frontend && npm ci && npm run build:embedded "
+                        "(or scripts/build_embedded_ui.ps1). Reload this URL after the build."
+                    ),
+                },
+                status_code=503,
+            )
+
+        tail = path[len("/ui") :].lstrip("/")
+        if not tail:
+            return FileResponse(idx)
+
+        target = (self._dist / tail).resolve()
+        root = self._dist.resolve()
+        try:
+            target.relative_to(root)
+        except ValueError:
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+        if target.is_file():
+            return FileResponse(target)
+        return FileResponse(idx)
+
 
 RECONCILIATION_STATUS_FILE = os.getenv(
     "TRADER_LEAGUE_RECONCILIATION_STATUS_FILE",
@@ -53,6 +119,16 @@ set_observability_service(_obs)
 set_evolution_obs_service(_obs)
 app.include_router(monitoring_router)
 app.include_router(evolution_router)
+
+app.add_middleware(LuminaEmbeddedUIMiddleware, dist_dir=_UI_DIST)
+if (_UI_DIST / "index.html").is_file():
+    logger.info("Embedded React monitoring UI served under /ui from %s", _UI_DIST)
+else:
+    logger.info(
+        "Embedded React UI not present at %s; GET /ui returns 503 until built "
+        "(cd frontend && npm ci && npm run build:embedded)",
+        _UI_DIST,
+    )
 
 # Apply strict CORS middleware (no wildcard) + lokale Vite dev (:5173) origins
 try:

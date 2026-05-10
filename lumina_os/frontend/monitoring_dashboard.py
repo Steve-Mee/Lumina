@@ -21,6 +21,8 @@ _LOG = logging.getLogger(__name__)
 _STATE_DIR = Path("state")
 _LOGS_DIR = Path("logs")
 _JOURNAL_SIM_DIR = Path("journal/simulator")
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+_EMBEDDED_UI_INDEX = _REPO_ROOT / "frontend" / "dist" / "index.html"
 
 _FIRST_BOOT_PROGRESS_PATH = _STATE_DIR / "first_boot_progress.json"
 _FIRST_BOOT_FLAG_PATH = _STATE_DIR / "first_boot_completed.flag"
@@ -434,16 +436,66 @@ def _stop_debug_training_process() -> str:
     return f"Gestopt: pid={pid}"
 
 
+def _host_only_from_request_host(header_val: str) -> str:
+    """Strip poort uit HTTP Host-header; ondersteun bracketed IPv6."""
+    h = header_val.strip()
+    if not h:
+        return "localhost"
+    if h.startswith("["):
+        bracket_end = h.find("]:")
+        if bracket_end != -1:
+            return h[: bracket_end + 1]
+        return h
+    if ":" in h:
+        return h.rsplit(":", 1)[0]
+    return h
+
+
+def _react_dashboard_url_default() -> str:
+    """Zelfde host als de browser gebruikt voor Streamlit (LAN/remote); anders localhost."""
+    port = (os.getenv("LUMINA_REACT_DASHBOARD_PORT") or "5173").strip() or "5173"
+    host = "localhost"
+    try:
+        hdrs = st.context.headers
+        raw = hdrs.get("Host") if hdrs is not None else None
+        if raw is None and hdrs is not None:
+            raw = hdrs.get("host")
+        if isinstance(raw, str) and raw.strip():
+            host = _host_only_from_request_host(raw)
+    except Exception:
+        pass
+    return f"http://{host}:{port}"
+
+
+def _react_dashboard_link(api_base: str) -> str:
+    """Voorkeur: gebouwde SPA onder FastAPI /ui/; anders Vite-dev URL; override via env."""
+    explicit = (os.getenv("LUMINA_REACT_DASHBOARD_URL") or "").strip()
+    if explicit:
+        return explicit
+    base = api_base.rstrip("/")
+    if _EMBEDDED_UI_INDEX.is_file():
+        return f"{base}/ui/"
+    return _react_dashboard_url_default()
+
+
 def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring Dashboard") -> None:
     st.subheader(title)
-    react_dashboard_url = os.getenv("LUMINA_REACT_DASHBOARD_URL", "http://localhost:5173").strip()
+    react_dashboard_url = _react_dashboard_link(base_url)
 
     top_a, top_b = st.columns([3, 2])
     with top_a:
-        st.caption(
-            "High-fidelity React cockpit beschikbaar op localhost:5173. "
-            "Gebruik deze tab voor klassieke Streamlit monitoring."
-        )
+        if _EMBEDDED_UI_INDEX.is_file():
+            st.caption(
+                "React-dashboard wordt meegeleverd via de FastAPI-backend (geen aparte terminal). "
+                "Open de knop rechts. Ontbreekt `frontend/dist`, bouw eenmalig: `cd frontend && npm ci && npm run build:embedded` "
+                "of voer `scripts/build_embedded_ui.ps1` uit."
+            )
+        else:
+            st.caption(
+                "Geen productie-build van het React-dashboard aangetroffen (`frontend/dist`). "
+                "Eenmalig bouwen met `npm run build:embedded` in map `frontend`, of tijdelijk: `npm run dev` (poort 5173). "
+                "Zet anders `LUMINA_REACT_DASHBOARD_URL`."
+            )
     with top_b:
         if react_dashboard_url:
             st.link_button("Open React Dashboard", react_dashboard_url, use_container_width=True)

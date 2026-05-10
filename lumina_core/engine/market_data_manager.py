@@ -42,10 +42,16 @@ class MarketDataManager:
                 self.live_quotes.pop(0)
 
     def append_ohlc_rows(self, rows: pd.DataFrame) -> None:
+        if rows is None or rows.empty:
+            return
         with self.live_data_lock:
+            left = self.ohlc_1min
+            parts: list[pd.DataFrame] = [df for df in (left, rows) if df is not None and not df.empty]
+            if not parts:
+                return
+            merged = parts[0] if len(parts) == 1 else pd.concat(parts, sort=False)
             self.ohlc_1min = (
-                pd.concat([self.ohlc_1min, rows])
-                .drop_duplicates("timestamp")
+                merged.drop_duplicates("timestamp")
                 .sort_values("timestamp")
                 .tail(20000)
                 .reset_index(drop=True)

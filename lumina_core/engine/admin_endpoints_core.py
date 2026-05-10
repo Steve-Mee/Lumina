@@ -792,6 +792,9 @@ class AdminEndpoints:
 
         setattr(app, "dash_app", dash_app)
         print("Dashboard gestart -> http://127.0.0.1:8050  (met kosten, resultaat en procentuele vergelijking)")
+        logging.getLogger("werkzeug").setLevel(logging.ERROR)
+        logging.getLogger("werkzeug.serving").setLevel(logging.ERROR)
+        logging.getLogger("dash.dash").setLevel(logging.WARNING)
         webbrowser.open("http://127.0.0.1:8050")
         try:
             dash_app.run(debug=False, port=8050, use_reloader=False)

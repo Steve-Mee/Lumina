@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:embedded": "tsc -b && vite build --base /ui/",
     "preview": "vite preview"
   },
   "dependencies": {

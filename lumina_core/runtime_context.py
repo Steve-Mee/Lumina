@@ -26,7 +26,12 @@ class RuntimeContext:
             pass
         # Fall through to service delegates for backwards-compat with supervisor_loop
         if self.container is not None:
-            for svc_name in ("operations_service", "visualization_service"):
+            for svc_name in (
+                "operations_service",
+                "visualization_service",
+                "reasoning_service",
+                "memory_service",
+            ):
                 svc = getattr(self.container, svc_name, None)
                 if svc is not None and hasattr(svc, name):
                     return getattr(svc, name)

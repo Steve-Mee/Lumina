@@ -32,6 +32,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 FIRST_BOOT_FLAG_PATH = ROOT_DIR / "state" / "first_boot_completed.flag"
 FIRST_BOOT_POLICY_PATH = ROOT_DIR / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
 FIRST_BOOT_PROGRESS_PATH = ROOT_DIR / "state" / "first_boot_progress.json"
+FIRST_BOOT_EXIT_PAUSED = 2
 
 
 def _write_first_boot_progress(stage: str, message: str, **extra: object) -> None:
@@ -380,42 +381,22 @@ def _load_first_boot_config() -> dict[str, int | bool]:
 
 
 def _first_boot_needed() -> bool:
-    cfg = _load_first_boot_config()
-    force_training = bool(cfg.get("force_training", True))
     missing_flag = not FIRST_BOOT_FLAG_PATH.exists()
     missing_policy = not FIRST_BOOT_POLICY_PATH.exists()
     missing_artifacts = missing_flag or missing_policy
+    cfg = _load_first_boot_config()
+    force_training = bool(cfg.get("force_training", True))
     logging.info(
-        "first_boot.check force_training=%s missing_flag=%s missing_policy=%s",
+        "first_boot.check mandatory=true force_training_legacy=%s missing_flag=%s missing_policy=%s",
         force_training,
         missing_flag,
         missing_policy,
     )
     if missing_artifacts and not force_training:
         logging.warning(
-            "First boot artifacts ontbreken, maar first_boot.force_training=false; runtime gaat door zonder verplichte initiële training."
+            "first_boot.force_training=false is legacy en wordt genegeerd: initiële training blijft verplicht zolang artifacts ontbreken."
         )
-        return False
-    return missing_artifacts and force_training
-
-
-def _defer_first_boot_for_closed_calendar() -> bool:
-    """Skip mandatory first-boot training outside CME session when calendar enforcement is on.
-
-    Mirrors nightly SIM behaviour: when the session calendar says closed, the stack should stay
-    idle instead of starting a long CPU/network-heavy first-boot run.
-    """
-    try:
-        raw = ConfigLoader.section("session", default={}) or {}
-        if not isinstance(raw, dict):
-            return False
-        if not bool(raw.get("enforce_calendar", True)):
-            return False
-        guard = SessionGuard(calendar_name="CME")
-        return not guard.is_trading_session()
-    except Exception:
-        logging.exception("first_boot.calendar_defer_check_failed")
-        return False
+    return missing_artifacts
 
 
 def _run_first_boot_training() -> int:
@@ -467,7 +448,28 @@ def _run_first_boot_training() -> int:
     )
     status = str(report.get("status", "error"))
     trades = int(report.get("trades", 0) or 0)
-    if status.startswith("ok") and trades > 0:
+    requested_norm = normalize_first_boot_training_trades(target)
+    volume_met = trades >= requested_norm
+
+    if status == "paused":
+        pause_msg = (
+            f"First-boot training gepauzeerd op {trades:,}/{requested_norm:,} trades. "
+            "Runtime blijft geblokkeerd totdat training wordt hervat en voltooid."
+        )
+        print(pause_msg, flush=True)
+        _write_first_boot_progress(
+            "paused",
+            pause_msg,
+            status=status,
+            trades=trades,
+            requested_trades=requested_norm,
+            progress_pct=min(99.0, (100.0 * float(trades) / float(max(1, requested_norm)))),
+        )
+        return FIRST_BOOT_EXIT_PAUSED
+
+    # Must reach the configured (snapped) trade volume — not only "ok" + some trades.
+    # Otherwise ok_capped_real_only (~real-data cap) incorrectly completed first boot at ~67k vs 500k.
+    if status.startswith("ok") and trades > 0 and volume_met:
         FIRST_BOOT_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
         FIRST_BOOT_FLAG_PATH.write_text(datetime.now().isoformat(), encoding="utf-8")
         synthetic_ticks = int(report.get("synthetic_ticks", 0) or 0)
@@ -482,9 +484,39 @@ def _run_first_boot_training() -> int:
             done_message,
             flush=True,
         )
-        _write_first_boot_progress("completed", done_message, status=status, trades=trades)
+        _write_first_boot_progress(
+            "completed",
+            done_message,
+            status=status,
+            trades=trades,
+            requested_trades=requested_norm,
+        )
         logging.info("First boot training finished - starting normal runtime mode")
         return 0
+
+    if status.startswith("ok") and trades > 0 and not volume_met:
+        msg = (
+            f"First-boot pipeline stopte na {trades:,} trades; geconfigureerd zijn minimaal {requested_norm:,} trades "
+            "nodig voordat live/paper-runtime mag starten. "
+            "Runtime blijft fail-closed; hervat first-boot training totdat het doel volledig gehaald is."
+        )
+        print(msg, flush=True)
+        _write_first_boot_progress(
+            "failed_incomplete_volume",
+            msg,
+            status=status,
+            trades=trades,
+            requested_trades=requested_norm,
+            progress_pct=min(99.0, (100.0 * float(trades) / float(max(1, requested_norm)))),
+        )
+        logging.warning(
+            "first_boot.incomplete_volume trades=%s requested=%s status=%s",
+            trades,
+            requested_norm,
+            status,
+        )
+        return 1
+
     print(
         f"First boot training is niet geslaagd (status={status}, trades={trades}). Runtime wordt fail-closed gestopt.",
         flush=True,
@@ -494,6 +526,7 @@ def _run_first_boot_training() -> int:
         "First boot training is niet geslaagd en runtime is fail-closed gestopt.",
         status=status,
         trades=trades,
+        requested_trades=requested_norm,
     )
     return 1
 
@@ -530,20 +563,9 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
     )
     if should_check_first_boot:
         if _first_boot_needed():
-            if _defer_first_boot_for_closed_calendar():
-                logging.info(
-                    "first_boot deferred: geen actieve CME-handelssessie (enforce_calendar); "
-                    "initiële training start niet tot RTH of na het uitschakelen van deze check."
-                )
-                _write_first_boot_progress(
-                    "deferred_calendar",
-                    "First-boot training uitgesteld: kalender staat op gesloten sessie. "
-                    "Start tijdens reguliere handelsuren of zet session.enforce_calendar op false.",
-                )
-            else:
-                first_boot_rc = _run_first_boot_training()
-                if first_boot_rc != 0:
-                    return first_boot_rc
+            first_boot_rc = _run_first_boot_training()
+            if first_boot_rc != 0:
+                return first_boot_rc
         else:
             logging.info("first_boot.check runtime gate open; normale runtime start zonder verplichte first-boot training.")
 

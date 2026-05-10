@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -12,6 +13,10 @@ from lumina_core.fault import FaultDomain, FaultPolicy
 from lumina_core.state.state_manager import safe_append_jsonl
 
 logger = logging.getLogger(__name__)
+
+# Per-path de-dupe: corrupt-chain warning + single rotate attempt (hot append path).
+_corrupt_chain_warned: set[str] = set()
+_corrupt_chain_rotate_attempted: set[str] = set()
 
 
 class AuditChainError(RuntimeError):
@@ -222,13 +227,30 @@ class AuditLogger:
             return
         if fail_closed_real and mode == "real":
             raise AuditChainError(f"Audit chain invalid at {path}: {report.message}")
-        logger.warning("AuditLogger recovering corrupt chain at %s: %s", path, report.message)
+        key = str(path.resolve())
+        if key in _corrupt_chain_rotate_attempted:
+            return
+        if key not in _corrupt_chain_warned:
+            _corrupt_chain_warned.add(key)
+            logger.warning("AuditLogger recovering corrupt chain at %s: %s", path, report.message)
+        _corrupt_chain_rotate_attempted.add(key)
         suffix = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         backup = path.with_suffix(f"{path.suffix}.corrupt.{suffix}")
         try:
             path.rename(backup)
-        except OSError:
-            logger.exception("AuditLogger failed to move corrupt chain file %s", path)
+        except OSError as rename_exc:
+            try:
+                shutil.copy2(path, backup)
+                path.unlink(missing_ok=True)
+            except OSError as copy_exc:
+                logger.warning(
+                    "AuditLogger could not rotate corrupt chain %s (rename=%s; copy/unlink=%s). "
+                    "Another process may hold the file open — stop it or rename/delete %s manually.",
+                    path,
+                    rename_exc,
+                    copy_exc,
+                    path.name,
+                )
 
     def _quick_tail_health(self, path: Path) -> ChainValidationReport:
         try:

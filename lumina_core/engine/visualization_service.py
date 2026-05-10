@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import queue
 import threading
 import time
 from dataclasses import dataclass, field
@@ -10,16 +11,16 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Callable
 
-_live_stream_feed_lock = threading.Lock()
-_live_feed_log_ts: dict[str, float] = {}
-_LIVE_FEED_LOG_THROTTLE_SEC = 45.0
-
 from PIL import Image
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 from .lumina_engine import LuminaEngine
+
+_live_stream_feed_lock = threading.Lock()
+_live_feed_log_ts: dict[str, float] = {}
+_LIVE_FEED_LOG_THROTTLE_SEC = 45.0
 
 
 def _live_feed_throttled(logger: Any, key: str, msg: str) -> None:
@@ -41,6 +42,7 @@ class VisualizationService:
     live_chart_window: Any = None
     latest_chart_image: Any = None
     chart_update_lock: threading.RLock = field(default_factory=threading.RLock)
+    _tk_chart_queue: queue.Queue[tuple[Any, ...]] = field(default_factory=lambda: queue.Queue(maxsize=64))
 
     def __post_init__(self) -> None:
         if self.engine is None:
@@ -349,6 +351,53 @@ class VisualizationService:
             last_update.pack(side="right")
             root_any.last_update = last_update
 
+            def pump_chart_updates() -> None:
+                had_work = False
+                try:
+                    while True:
+                        try:
+                            item = self._tk_chart_queue.get_nowait()
+                        except queue.Empty:
+                            break
+                        had_work = True
+                        if not item or item[0] != "frame" or len(item) < 3:
+                            continue
+                        _, chart_b64, smsg = item[0], item[1], item[2]
+                        try:
+                            app.logger.info(
+                                "LIVE_FEED_TK_STEP,stage=decode_resize_apply,b64_chars=%s",
+                                len(chart_b64),
+                            )
+                            img_data = base64.b64decode(chart_b64)
+                            pil_img = Image.open(BytesIO(img_data)).resize(
+                                (1400, 800), Image.Resampling.LANCZOS
+                            )
+                            with self.chart_update_lock:
+                                photo = self._create_photo_image(pil_img)
+                                self.latest_chart_image = photo
+                                setattr(app, "latest_chart_image", photo)
+                                chart_label.config(image=photo)
+                                chart_label.image = photo
+                                status_dot.config(fg="#00ff88")
+                                status_text.config(text=smsg, fg="#00ff88")
+                                last_update.config(
+                                    text=f"Laatste update: {datetime.now().strftime('%H:%M:%S')}"
+                                )
+                            app.logger.info("LIVE_FEED_TK_OK,stage=label_updated")
+                        except Exception as exc:
+                            app.logger.error("LIVE_FEED_TK_ABORT,stage=apply_image,reason=%s", exc)
+                            app.logger.error("Screen-share update error: %s", exc)
+                            try:
+                                status_dot.config(fg="#ff4444")
+                                status_text.config(text="ERROR – zie log", fg="#ff4444")
+                            except Exception:
+                                pass
+                finally:
+                    try:
+                        root.after(50 if had_work else 150, pump_chart_updates)
+                    except Exception:
+                        pass
+
             self.live_chart_window = root
             setattr(app, "live_chart_window", root)
             app.logger.info(
@@ -359,6 +408,7 @@ class VisualizationService:
                 "[%s] Clean readable screen-share opened",
                 datetime.now().strftime("%H:%M:%S"),
             )
+            root.after(50, pump_chart_updates)
             root.mainloop()
 
         threading.Thread(target=create_window, daemon=True).start()
@@ -373,36 +423,12 @@ class VisualizationService:
                 "LIVE_FEED_TK_SKIP,reason=screen_share_disabled",
             )
             return
-        if not self.live_chart_window:
-            _live_feed_throttled(
-                app.logger,
-                "tk_skip_no_window",
-                "LIVE_FEED_TK_SKIP,reason=no_tk_window_yet "
-                "(charts may arrive before Tk mainloop sets live_chart_window; wait or check LIVE_FEED_BOOT_OK)",
-            )
-            return
 
         try:
-            app.logger.info(
-                "LIVE_FEED_TK_STEP,stage=decode_resize_apply,b64_chars=%s",
-                len(chart_base64),
+            self._tk_chart_queue.put_nowait(("frame", chart_base64, status_msg))
+        except queue.Full:
+            _live_feed_throttled(
+                app.logger,
+                "tk_queue_full",
+                "LIVE_FEED_TK_QUEUE_FULL,dropped_frame",
             )
-            img_data = base64.b64decode(chart_base64)
-            pil_img = Image.open(BytesIO(img_data)).resize((1400, 800), Image.Resampling.LANCZOS)
-            with self.chart_update_lock:
-                win: Any = self.live_chart_window
-                self.latest_chart_image = self._create_photo_image(pil_img)
-                setattr(app, "latest_chart_image", self.latest_chart_image)
-                win.chart_label.config(image=self.latest_chart_image)
-                win.chart_label.image = self.latest_chart_image
-                win.status_dot.config(fg="#00ff88")
-                win.status_text.config(text=status_msg, fg="#00ff88")
-                win.last_update.config(text=f"Laatste update: {datetime.now().strftime('%H:%M:%S')}")
-            app.logger.info("LIVE_FEED_TK_OK,stage=label_updated")
-        except Exception as exc:
-            app.logger.error("LIVE_FEED_TK_ABORT,stage=apply_image,reason=%s", exc)
-            app.logger.error(f"Screen-share update error: {exc}")
-            if self.live_chart_window:
-                win = self.live_chart_window
-                win.status_dot.config(fg="#ff4444")
-                win.status_text.config(text="ERROR – zie log", fg="#ff4444")

@@ -23,6 +23,7 @@ htmlcov/
 # IDE
 .vscode/
 .idea/
+.cursor/settings.json
 
 # Secrets / env
 .env
@@ -83,7 +84,7 @@ lumina_analyse._*
 # First-boot / monitoring runtime snapshots (regenerated locally)
 state/first_boot_completed.flag
 state/first_boot_progress.json
-state/monitoring_daily_pnl.jsonl
+state/monitoring_*.jsonl
 state/monitoring_runtime_metrics.json
 state/ppo_policy_metadata.json
 

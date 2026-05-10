@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
 import pandas as pd
+
+_logger = logging.getLogger(__name__)
 
 from .lumina_engine import LuminaEngine
 
@@ -84,7 +87,14 @@ class MemoryService:
             context=f"World Model Update: Regime {regime} | VIX {world_model['macro']['vix']:.1f} | DXY {world_model['macro']['dxy']:.1f}",
             metadata={"type": "world_model", "date": datetime.now().isoformat()},
         )
-        print(
-            f"[{datetime.now().strftime('%H:%M:%S')}] 🌍 World Model geüpdatet -> Regime: {regime} | VIX: {world_model['macro']['vix']:.1f}"
+        # Avoid emoji/console UnicodeEncodeError on Windows (cp1252) when stderr is not UTF-8.
+        msg = (
+            f"[{datetime.now().strftime('%H:%M:%S')}] World model updated -> regime={regime} "
+            f"| VIX={world_model['macro']['vix']:.1f}"
         )
+        lg = getattr(self.engine, "logger", None)
+        if lg is not None:
+            lg.info(msg)
+        else:
+            _logger.info(msg)
         return world_model

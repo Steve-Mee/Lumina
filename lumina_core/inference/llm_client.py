@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
+from lumina_core.engine.errors import LuminaError
 from lumina_core.state.state_manager import safe_append_jsonl
 
 LLMCallPath = Literal["fast_rule", "llm_reasoning"]
@@ -185,6 +186,15 @@ class LlmClient:
                     fallback = True
                     path = "fast_rule"
                     response_payload = self._fallback_payload(fallback_reason, decision_context_id=call_id)
+            except LuminaError as exc:
+                fallback = True
+                path = "fast_rule"
+                error_text = str(exc)
+                logging.warning(
+                    "LLM inference failed (fail-open fallback): %s",
+                    error_text,
+                )
+                response_payload = self._fallback_payload(fallback_reason, decision_context_id=call_id)
             except Exception as exc:  # fail-closed by design
                 logging.exception("Unhandled broad exception fallback in lumina_core/inference/llm_client.py:187")
                 fallback = True

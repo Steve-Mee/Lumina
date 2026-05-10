@@ -25,6 +25,9 @@ from lumina_core.logging_utils import correlation_id, get_logger
 
 logger = get_logger("lumina.simulation.nightly")
 _FIRST_BOOT_TICKS_PER_REAL_DAY = 1560
+_FIRST_BOOT_PAUSE_FLAG_PATH = Path("state/first_boot_pause_requested")
+_FIRST_BOOT_CHECKPOINT_PATH = Path("state/first_boot_checkpoint.json")
+_FIRST_BOOT_CHUNK_DEFAULT_TRADES = 100_000
 
 
 def _notify_first_boot_training_progress(stage: str, message: str, **extra: object) -> None:
@@ -35,6 +38,44 @@ def _notify_first_boot_training_progress(stage: str, message: str, **extra: obje
         _write_first_boot_progress(stage, message, **extra)
     except Exception:
         logger.debug("first_boot.training_progress.notify_failed", exc_info=True)
+
+
+def _is_first_boot_pause_requested() -> bool:
+    return _FIRST_BOOT_PAUSE_FLAG_PATH.exists()
+
+
+def _load_first_boot_checkpoint(requested_trades: int) -> dict[str, Any]:
+    if not _FIRST_BOOT_CHECKPOINT_PATH.exists():
+        return {}
+    try:
+        payload = json.loads(_FIRST_BOOT_CHECKPOINT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        logger.warning("first_boot.checkpoint.read_failed", exc_info=True)
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    if int(payload.get("requested_trades", 0) or 0) != int(requested_trades):
+        return {}
+    return payload
+
+
+def _write_first_boot_checkpoint(payload: dict[str, Any]) -> None:
+    try:
+        _FIRST_BOOT_CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _FIRST_BOOT_CHECKPOINT_PATH.write_text(
+            json.dumps(payload, ensure_ascii=True, indent=2),
+            encoding="utf-8",
+        )
+    except Exception:
+        logger.warning("first_boot.checkpoint.write_failed", exc_info=True)
+
+
+def _clear_first_boot_checkpoint() -> None:
+    try:
+        if _FIRST_BOOT_CHECKPOINT_PATH.exists():
+            _FIRST_BOOT_CHECKPOINT_PATH.unlink()
+    except Exception:
+        logger.warning("first_boot.checkpoint.clear_failed", exc_info=True)
 
 
 def _simulate_worker(payload: dict[str, Any]) -> dict[str, Any]:
@@ -183,6 +224,14 @@ class InfiniteSimulator:
         requested_trades = normalize_first_boot_training_trades(target_trades)
         max_days = max(30, min(3_650, int(max_real_days)))
         estimated_real_days = int(math.ceil(float(requested_trades) / float(_FIRST_BOOT_TRADES_PER_REAL_DAY)))
+        chunk_cfg = ConfigLoader.section("first_boot", default={}) or {}
+        chunk_trades = _FIRST_BOOT_CHUNK_DEFAULT_TRADES
+        if isinstance(chunk_cfg, dict):
+            try:
+                chunk_trades = int(chunk_cfg.get("chunk_trades", _FIRST_BOOT_CHUNK_DEFAULT_TRADES) or _FIRST_BOOT_CHUNK_DEFAULT_TRADES)
+            except Exception:
+                chunk_trades = _FIRST_BOOT_CHUNK_DEFAULT_TRADES
+        chunk_trades = max(10_000, min(1_000_000, chunk_trades))
         logger.info(
             "simulation.first_boot.start",
             extra={
@@ -193,6 +242,7 @@ class InfiniteSimulator:
                     "prefer_real_data_only": bool(prefer_real_data_only),
                     "max_real_days": max_days,
                     "estimated_real_days": estimated_real_days,
+                    "chunk_trades": chunk_trades,
                 }
             },
         )
@@ -244,57 +294,146 @@ class InfiniteSimulator:
             )
 
         if prefer_real_data_only and requested_trades > actual_real_trade_capacity:
-            if allow_minimal_synthetic_fallback:
-                missing_trades = requested_trades - actual_real_trade_capacity
-                synth_needed = max(5000, int(missing_trades * 4))
-                synthetic_ticks = self._generate_synthetic_ticks(
-                    n_ticks=synth_needed,
-                    seed=int(time.time()) % 1_000_000,
-                    start_price=float(real_ticks[-1]["last"]) if real_ticks else 5000.0,
-                )
-                status = "ok_minimal_synthetic_fallback"
-                logger.warning(
-                    "simulation.first_boot.synthetic_fallback",
-                    extra={
-                        "event_data": {
-                            "event": "simulation.first_boot.synthetic_fallback",
-                            "run_id": run_id,
-                            "missing_trades": missing_trades,
-                            "synthetic_ticks": len(synthetic_ticks),
-                        }
-                    },
-                )
-            else:
-                target_effective = max(1000, actual_real_trade_capacity)
-                status = "ok_capped_real_only"
-                logger.warning(
-                    "simulation.first_boot.target_capped_to_real_capacity",
-                    extra={
-                        "event_data": {
-                            "event": "simulation.first_boot.target_capped_to_real_capacity",
-                            "run_id": run_id,
-                            "requested_trades": requested_trades,
-                            "capped_trades": target_effective,
-                            "configured_real_trade_capacity": configured_real_trade_capacity,
-                            "actual_real_trade_capacity": actual_real_trade_capacity,
-                        }
-                    },
-                )
+            missing_trades = requested_trades - actual_real_trade_capacity
+            synth_needed = max(5000, int(missing_trades * 4))
+            synthetic_ticks = self._generate_synthetic_ticks(
+                n_ticks=synth_needed,
+                seed=int(time.time()) % 1_000_000,
+                start_price=float(real_ticks[-1]["last"]) if real_ticks else 5000.0,
+            )
+            status = "ok_minimal_synthetic_fallback"
+            _notify_first_boot_training_progress(
+                "training_running",
+                "First-boot target overschrijdt real-data capaciteit; minimale synthetische top-up wordt toegevoegd.",
+                requested_trades=requested_trades,
+                actual_real_trade_capacity=actual_real_trade_capacity,
+                synthetic_ticks=len(synthetic_ticks),
+                progress_pct=50,
+                phase="synthetic_top_up",
+            )
+            logger.warning(
+                "simulation.first_boot.synthetic_fallback",
+                extra={
+                    "event_data": {
+                        "event": "simulation.first_boot.synthetic_fallback",
+                        "run_id": run_id,
+                        "missing_trades": missing_trades,
+                        "synthetic_ticks": len(synthetic_ticks),
+                        "requested_trades": requested_trades,
+                        "actual_real_trade_capacity": actual_real_trade_capacity,
+                        "allow_minimal_synthetic_fallback_requested": bool(allow_minimal_synthetic_fallback),
+                        "forced_for_target_completion": True,
+                    }
+                },
+            )
 
         ticks = list(real_ticks) + list(synthetic_ticks)
+        checkpoint = _load_first_boot_checkpoint(requested_trades)
+        cumulative_trades = max(0, int(checkpoint.get("cumulative_trades", 0) or 0))
+        chunk_index = max(0, int(checkpoint.get("chunk_index", 0) or 0))
+        total_wins = max(0, int(checkpoint.get("wins", 0) or 0))
+        total_net_pnl = float(checkpoint.get("net_pnl", 0.0) or 0.0)
+        chunk_sharpes_raw = checkpoint.get("chunk_sharpes", [])
+        chunk_sharpes = [float(x) for x in chunk_sharpes_raw] if isinstance(chunk_sharpes_raw, list) else []
+        if cumulative_trades > requested_trades:
+            cumulative_trades = requested_trades
         _notify_first_boot_training_progress(
             "training_running",
-            f"Parallel SIM ({target_effective} trades-doel, {self.workers} workers; kan minuten duren).",
+            f"Parallel SIM wordt uitgevoerd in chunks (doel {target_effective} trades, chunk {chunk_trades} trades).",
             target_trades_effective=target_effective,
             workers=int(self.workers),
+            cumulative_trades=cumulative_trades,
+            requested_trades=requested_trades,
             progress_pct=52,
             phase="parallel_simulation",
         )
-        summary = self._run_parallel_simulation(ticks, target_effective)
+        while cumulative_trades < requested_trades:
+            if _is_first_boot_pause_requested():
+                pause_msg = (
+                    f"Pauzeverzoek ontvangen. First-boot training pauzeert op {cumulative_trades:,}/{requested_trades:,} trades."
+                )
+                _notify_first_boot_training_progress(
+                    "paused",
+                    pause_msg,
+                    cumulative_trades=cumulative_trades,
+                    remaining_trades=max(0, requested_trades - cumulative_trades),
+                    requested_trades=requested_trades,
+                    progress_pct=min(99.0, (100.0 * float(cumulative_trades) / float(max(1, requested_trades)))),
+                    phase="paused",
+                )
+                _write_first_boot_checkpoint(
+                    {
+                        "timestamp": datetime.now().isoformat(),
+                        "run_id": run_id,
+                        "requested_trades": requested_trades,
+                        "cumulative_trades": cumulative_trades,
+                        "chunk_index": chunk_index,
+                        "wins": total_wins,
+                        "net_pnl": total_net_pnl,
+                        "chunk_sharpes": chunk_sharpes,
+                    }
+                )
+                return {
+                    "timestamp": datetime.now().isoformat(),
+                    "status": "paused",
+                    "requested_trades": requested_trades,
+                    "target_trades": requested_trades,
+                    "trades": cumulative_trades,
+                    "executed_trades": cumulative_trades,
+                    "wins": total_wins,
+                    "net_pnl": total_net_pnl,
+                    "mean_worker_sharpe": float(statistics.mean(chunk_sharpes) if chunk_sharpes else 0.0),
+                    "estimated_real_days": estimated_real_days,
+                    "actual_real_days_loaded": actual_real_days,
+                    "real_days_loaded": actual_real_days,
+                    "max_real_days": max_days,
+                    "configured_real_trade_capacity": configured_real_trade_capacity,
+                    "actual_real_trade_capacity": actual_real_trade_capacity,
+                    "real_ticks": len(real_ticks),
+                    "synthetic_ticks": len(synthetic_ticks),
+                    "synthetic_pct": round((float(len(synthetic_ticks)) / float(max(1, len(ticks)))) * 100.0, 3),
+                    "synthetic_ratio": round(float(len(synthetic_ticks)) / float(max(1, len(ticks))), 6),
+                    "elapsed_sec": round(time.time() - start, 2),
+                }
+            chunk_target = min(chunk_trades, requested_trades - cumulative_trades)
+            summary = self._run_parallel_simulation(ticks, chunk_target)
+            chunk_done = int(summary.get("trades", 0) or 0)
+            chunk_done = max(0, min(chunk_target, chunk_done))
+            cumulative_trades += chunk_done
+            chunk_wins = int(round(float(summary.get("winrate", 0.0)) * float(chunk_done)))
+            total_wins += max(0, chunk_wins)
+            total_net_pnl += float(summary.get("net_pnl", 0.0) or 0.0)
+            chunk_sharpes.append(float(summary.get("mean_worker_sharpe", 0.0) or 0.0))
+            chunk_index += 1
+            _write_first_boot_checkpoint(
+                {
+                    "timestamp": datetime.now().isoformat(),
+                    "run_id": run_id,
+                    "requested_trades": requested_trades,
+                    "cumulative_trades": cumulative_trades,
+                    "chunk_index": chunk_index,
+                    "wins": total_wins,
+                    "net_pnl": total_net_pnl,
+                    "chunk_sharpes": chunk_sharpes,
+                }
+            )
+            _notify_first_boot_training_progress(
+                "training_running",
+                f"Parallel SIM chunk {chunk_index} voltooid ({cumulative_trades:,}/{requested_trades:,} trades).",
+                chunk_index=chunk_index,
+                chunk_trades=chunk_done,
+                cumulative_trades=cumulative_trades,
+                requested_trades=requested_trades,
+                remaining_trades=max(0, requested_trades - cumulative_trades),
+                progress_pct=min(67.0, 52.0 + (15.0 * float(cumulative_trades) / float(max(1, requested_trades)))),
+                phase="parallel_simulation",
+            )
+            if chunk_done <= 0:
+                break
         _notify_first_boot_training_progress(
             "training_running",
             "PPO policy-training (Stable-Baselines3); SIM-deel afgerond, neural net trainen…",
-            sim_trades=int(summary.get("trades", 0)),
+            sim_trades=int(cumulative_trades),
             progress_pct=68,
             phase="ppo_training",
         )
@@ -305,12 +444,12 @@ class InfiniteSimulator:
             "timestamp": datetime.now().isoformat(),
             "status": status,
             "requested_trades": requested_trades,
-            "target_trades": target_effective,
-            "trades": int(summary.get("trades", 0)),
-            "executed_trades": int(summary.get("trades", 0)),
-            "wins": int(round(float(summary.get("winrate", 0.0)) * max(1, int(summary.get("trades", 0))))),
-            "net_pnl": float(summary.get("net_pnl", 0.0)),
-            "mean_worker_sharpe": float(summary.get("mean_worker_sharpe", 0.0)),
+            "target_trades": requested_trades,
+            "trades": int(cumulative_trades),
+            "executed_trades": int(cumulative_trades),
+            "wins": int(total_wins),
+            "net_pnl": float(total_net_pnl),
+            "mean_worker_sharpe": float(statistics.mean(chunk_sharpes) if chunk_sharpes else 0.0),
             "estimated_real_days": estimated_real_days,
             "actual_real_days_loaded": actual_real_days,
             "real_days_loaded": actual_real_days,
@@ -321,6 +460,8 @@ class InfiniteSimulator:
             "synthetic_ticks": len(synthetic_ticks),
             "synthetic_pct": round(synthetic_pct * 100.0, 3),
             "synthetic_ratio": round(synthetic_pct, 6),
+            "chunk_trades": chunk_trades,
+            "chunk_count": chunk_index,
             "elapsed_sec": round(time.time() - start, 2),
         }
         out_dir = Path("journal/simulator")
@@ -328,6 +469,12 @@ class InfiniteSimulator:
         report_path = out_dir / f"first_boot_training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         report["report_path"] = str(report_path)
+        _clear_first_boot_checkpoint()
+        if _FIRST_BOOT_PAUSE_FLAG_PATH.exists():
+            try:
+                _FIRST_BOOT_PAUSE_FLAG_PATH.unlink()
+            except Exception:
+                logger.warning("first_boot.pause_flag.clear_failed", exc_info=True)
         logger.info(
             "simulation.first_boot.complete",
             extra={
@@ -335,7 +482,7 @@ class InfiniteSimulator:
                     "event": "simulation.first_boot.complete",
                     "run_id": run_id,
                     "status": status,
-                    "target_trades": target_effective,
+                    "target_trades": requested_trades,
                     "trades": int(report.get("trades", 0)),
                     "estimated_real_days": estimated_real_days,
                     "actual_real_days_loaded": actual_real_days,
