@@ -20,11 +20,24 @@ all = "requirements.txt"
 sbom_output = "docs/sbom.json"
 audit_commands = ["python scripts/validation/run_safety_audit.py", "pip-audit"]
 
-[tool.ruff]
-# Ruff config lives in ruff.toml; this section is intentionally minimal.
-
 [tool.mypy]
 python_version = "3.13"
 
 [tool.pytest.ini_options]
-# Pytest config lives in pytest.ini; this section is intentionally minimal.
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-ra -q --strict-markers"
+asyncio_mode = "auto"
+
+[project.optional-dependencies]
+test = ["pytest-asyncio>=0.23.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]

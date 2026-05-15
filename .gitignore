@@ -51,6 +51,7 @@ Thumbs.db
 
 # Archive / legacy
 old/
+lumina_launcher.py.old
 
 # Runtime generated data
 logs/*.csv

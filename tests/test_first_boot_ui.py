@@ -12,6 +12,8 @@ from lumina_core.first_boot_ui import (
     FIRST_BOOT_TRADE_MAX,
     FIRST_BOOT_TRADE_MIN,
     FIRST_BOOT_TRADE_STEP,
+    FIRST_BOOT_TRAINING_TRADES_MAX,
+    FIRST_BOOT_TRAINING_TRADES_MIN,
     estimate_first_boot_real_days,
     exceeds_max_real_days_window,
     is_high_load_estimate,
@@ -48,12 +50,17 @@ def test_is_high_load_estimate_threshold_700() -> None:
 
 
 @pytest.mark.unit
-def test_normalize_first_boot_training_trades_uses_shared_bounds_and_step() -> None:
-    assert FIRST_BOOT_DEFAULT_TRADES == 500_000
-    assert FIRST_BOOT_TRADE_MIN == 100_000
-    assert FIRST_BOOT_TRADE_MAX == 2_000_000
-    assert FIRST_BOOT_TRADE_STEP == 100_000
-    assert normalize_first_boot_training_trades(None) == 500_000
-    assert normalize_first_boot_training_trades(49_999) == 100_000
-    assert normalize_first_boot_training_trades(155_000) == 200_000
-    assert normalize_first_boot_training_trades(2_500_000) == 2_000_000
+def test_normalize_first_boot_training_trades_clamps_to_bounds_without_coarse_snapping() -> None:
+    """User-chosen trade counts must round-trip (within min/max); no 100k-floor override."""
+    assert FIRST_BOOT_DEFAULT_TRADES == 5_000
+    assert FIRST_BOOT_TRAINING_TRADES_MIN == 500
+    assert FIRST_BOOT_TRAINING_TRADES_MAX == 2_000_000
+    assert FIRST_BOOT_TRADE_MIN == FIRST_BOOT_TRAINING_TRADES_MIN
+    assert FIRST_BOOT_TRADE_MAX == FIRST_BOOT_TRAINING_TRADES_MAX
+    assert FIRST_BOOT_TRADE_STEP == 500
+
+    assert normalize_first_boot_training_trades(None) == 5_000
+    assert normalize_first_boot_training_trades(499) == FIRST_BOOT_TRAINING_TRADES_MIN
+    assert normalize_first_boot_training_trades(5_000) == 5_000
+    assert normalize_first_boot_training_trades(155_000) == 155_000
+    assert normalize_first_boot_training_trades(2_500_000) == FIRST_BOOT_TRAINING_TRADES_MAX

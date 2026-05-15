@@ -8,6 +8,8 @@
 - Maak alles **fail-safe** en backwards compatible.
 - Gebruik de bestaande `InfiniteSimulator` class.
 
+**Huidige implementatie (repo-sync):** `training_trades` is **door de gebruiker** te zetten (Launcher-tab + YAML). Canonical bounds en fallback staan in `lumina_core/first_boot_ui.py`: **clamp 500 … 2.000.000**, geen verplichte grove snap of 100k-vloer; ontbrekende waarde ⇒ default **5.000** (expliciete config wint altijd).
+
 ---
 
 ## Cursor Prompt (kopieer dit volledig)
@@ -36,10 +38,10 @@ Critical observation:
    Add to `config.yaml` (under a new section or under `training`):
    ```yaml
    first_boot:
-     training_trades: 500000          # Default for first boot
+     training_trades: 500000          # Example deployment volume; adjustable by user via launcher/YAML (see bounds)
      max_real_days: 90                # How many days of history to load on first boot
    ```
-   Also add a sensible default in code if config is missing.
+   Add a sensible default **in code only when missing** (`FIRST_BOOT_DEFAULT_TRADES` = 5000 — not a clamp that wipes user input).
 
 2. **First boot detection**
    Detect the very first start (e.g. absence of `lumina_agents/ppo/lumina_ppo_policy.zip` or a dedicated `state/first_boot_completed.flag`).
@@ -49,7 +51,7 @@ Critical observation:
    - If first boot is detected:
      - Show clear user feedback (in launcher + console):
        "Eerste keer starten gedetecteerd. Lumina voert nu haar initiële leer-cyclus uit..."
-     - Run `InfiniteSimulator` with the configured `training_trades` (from config).
+     - Run `InfiniteSimulator` with the **user-normalized** `training_trades` (from launcher + YAML; use `normalize_first_boot_training_trades` — clamp only `[500, 2_000_000]`).
      - Use the new `max_real_days` parameter to load more historical data on first boot (e.g. 90 days instead of 45).
      - After training completes successfully, create the `first_boot_completed.flag`.
    - Then continue to normal runtime mode.
@@ -57,8 +59,8 @@ Critical observation:
 4. **Configurable trade volume + Tooltip (in launcher)**
    In `lumina_launcher.py` (Streamlit UI), add a new setting under the evolution/startup section:
    - Slider or number input: "Aantal trades bij eerste training"
-   - Range: 100.000 – 2.000.000 (in stappen van 100.000)
-   - Default: 500.000
+   - Range: **500 – 2_000_000**, UI step **500** (align with launcher + `lumina_core/first_boot_ui`)
+   - **Do not snap** stored values onto 100k multiples or raise every small input to a high minimum — preserve user intent within `[min,max]`.
 
    **Tooltip text (must be added next to the setting):**
    ```
@@ -100,8 +102,8 @@ Critical observation:
 **Kritische review van de huidige training (samengevat):**
 
 - **Data volume:** 45 dagen (~150k ticks) is aan de lage kant voor 1M trades. Het systeem compenseert met synthetische data en cycling, maar meer echte historische data (90–180 dagen) zou de kwaliteit significant verbeteren.
-- **Voorstel:** In de first-boot optie standaard **500.000 trades** met **90 dagen** geschiedenis laden. Dit geeft een sterke maar niet té lange eerste training.
-- **Gebruikerscontrole:** Door de slider + tooltip geef je de gebruiker volledige controle + educatie over de trade-off tussen snelheid en kwaliteit.
+- **Voorstel (productie):** vaak wordt in `config.yaml` een hoger volume gekozen (bijv. **500k** trades met **90** dagen) voor een krachtige eerste training; dit is géén verplichte default — gebruikers/Launcher zetten **`training_trades`** zelf, binnen **500 … 2.000.000** (zie `lumina_core/first_boot_ui.py`).
+- **Gebruikerscontrole:** Tooltip + Launcher laten voorkeuren zien zonder ze te overschrijven door een extra vaste vloer in code.
 
 Dit maakt de eerste ervaring veel professioneler en voorkomt de "wit blad" frustratie die je terecht signaleerde.
 

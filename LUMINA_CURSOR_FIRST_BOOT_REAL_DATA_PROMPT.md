@@ -2,6 +2,8 @@
 
 **Doel:** Implementeer First Boot Training met **voorkeur voor echte historische data** (zo min mogelijk synthetisch). De tooltip moet **dynamisch** tonen hoeveel dagen historische data nodig zijn bij de gekozen trade count.
 
+**Huidige implementatie (repo-sync):** Het aantal `first_boot.training_trades` bepaalt **de gebruiker** via Launcher (`lumina_launcher/ui/tabs/first_boot`) en/of `config.yaml`. Normalisatie staat centraal in `lumina_core/first_boot_ui.py`: alleen clamp naar **`FIRST_BOOT_TRAINING_TRADES_MIN` (500)** … **`MAX` (2.000.000)**; het opgeslagen getal wordt **niet** overschreven door een grove vloer (zoals ±100k) of snap-stappen. Als de sleutel ontbreekt, geldt **`FIRST_BOOT_DEFAULT_TRADES` (5.000)** als fallback (expliciete YAML heeft altijd voorrang).
+
 ---
 
 ## Cursor Prompt (kopieer dit volledig)
@@ -16,7 +18,7 @@ Your ONLY task is to add this feature without changing any existing trading, evo
 1. **New config parameters** (add to config.yaml)
    ```yaml
    first_boot:
-     training_trades: 300000          # Default for first boot
+     training_trades: 300000          # Example volume; user may set launcher or YAML freely (see bounds below)
      prefer_real_data_only: true      # If true, avoid or minimize synthetic data
      max_real_days: 365               # Maximum days of history to load
    ```
@@ -25,7 +27,7 @@ Your ONLY task is to add this feature without changing any existing trading, evo
    - Detect first start (no PPO policy file or missing first_boot_completed.flag).
    - If first boot:
      - Show clear message: "Eerste keer starten gedetecteerd. Lumina laadt echte historische data en voert initiële training uit..."
-     - Run InfiniteSimulator with the configured `training_trades`.
+     - Run InfiniteSimulator with the **user-configured** `training_trades` (launcher + YAML), after normalizing/clamping only within safe bounds (`lumina_core/first_boot_ui.normalize_first_boot_training_trades`).
      - Respect `prefer_real_data_only`: load as much real data as possible (up to `max_real_days`).
      - Only generate synthetic data if absolutely necessary (and log a warning).
      - After completion, create the flag and continue to normal mode.
@@ -33,8 +35,9 @@ Your ONLY task is to add this feature without changing any existing trading, evo
 3. **Dynamic Slider + Tooltip in lumina_launcher.py**
    Add a slider in the first-boot / evolution section:
    - Label: "Aantal trades bij eerste training"
-   - Range: 50.000 – 2.000.000 (steps of 50.000)
-   - Default: 300.000
+   - Range must match normalization: **500 – 2.000.000** (UI step suggestion: **500**)
+   - **Do not coerce** saved values onto a large minimum or 100k steps; stored value equals user intent within `[min,max]`.
+   - Default when reading config: explicit YAML value first; code fallback **5.000** only if unset.
 
    **The tooltip must be dynamic** and update live when the user moves the slider.
 
@@ -92,7 +95,7 @@ Your ONLY task is to add this feature without changing any existing trading, evo
 
 ## Waarom deze aanpak goed is
 
-- De gebruiker krijgt **volledige controle** en ziet direct de consequenties (via de dynamische tooltip).
+- De gebruiker krijgt **volledige controle** en ziet direct de consequenties (via de dynamische tooltip); opgeslagen volumes volgen de keuze (**500–2M**), niet een verborgen minimum in normalisatie.
 - Lumina respecteert de voorkeur voor **echte data** zoveel mogelijk.
 - Bij hoge trade counts wordt de gebruiker gewaarschuwd dat synthetische data waarschijnlijk toch nodig zal zijn.
 - Het blijft flexibel: gevorderde gebruikers kunnen nog steeds kiezen voor maximale training met wat synthetische data.

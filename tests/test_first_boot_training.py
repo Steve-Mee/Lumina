@@ -120,14 +120,16 @@ def test_first_boot_needed_is_mandatory_when_artifacts_missing(
 
 
 @pytest.mark.unit
-def test_runtime_load_first_boot_config_snaps_to_shared_step(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_runtime_load_first_boot_config_preserves_requested_trades_within_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         runtime_entrypoint.ConfigLoader,
         "section",
         staticmethod(lambda *args, **kwargs: {"training_trades": 155_000, "max_real_days": 5}),
     )
     cfg = runtime_entrypoint._load_first_boot_config()
-    assert cfg["training_trades"] == normalize_first_boot_training_trades(155_000) == 200_000
+    assert cfg["training_trades"] == normalize_first_boot_training_trades(155_000) == 155_000
     assert cfg["max_real_days"] == 30
     assert cfg["force_training"] is True
 

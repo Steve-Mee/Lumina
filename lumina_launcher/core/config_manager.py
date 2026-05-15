@@ -1,0 +1,47 @@
+"""
+LUMINA Core - Config Manager
+Handles .env and config.yaml loading/saving.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+class ConfigManager:
+    def __init__(self, env_path: Path, config_path: Path):
+        self.env_path = env_path
+        self.config_path = config_path
+
+    def parse_env_file(self) -> dict[str, str]:
+        if not self.env_path.exists():
+            return {}
+        values: dict[str, str] = {}
+        for raw_line in self.env_path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+        return values
+
+    def write_env_file(self, updates: dict[str, str]) -> None:
+        merged = self.parse_env_file()
+        merged.update({k: str(v) for k, v in updates.items()})
+        content = "\n".join(f"{k}={v}" for k, v in sorted(merged.items())) + "\n"
+        self.env_path.write_text(content, encoding="utf-8")
+
+    def load_yaml_config(self) -> dict[str, Any]:
+        if not self.config_path.exists():
+            return {}
+        payload = yaml.safe_load(self.config_path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+
+    def save_yaml_config(self, data: dict[str, Any]) -> None:
+        self.config_path.write_text(
+            yaml.safe_dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )

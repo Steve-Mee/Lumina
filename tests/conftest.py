@@ -30,8 +30,13 @@ import pytest
 os.environ.setdefault("LUMINA_SKIP_STARTUP_DIALOG", "1")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+LAUNCHER_ROOT = REPO_ROOT / "lumina_launcher"
+
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+# Launcher unit tests import `core`, `services`, `ui` as top-level packages.
+if LAUNCHER_ROOT.is_dir() and str(LAUNCHER_ROOT) not in sys.path:
+    sys.path.insert(0, str(LAUNCHER_ROOT))
 
 
 # ---------------------------------------------------------------------------
