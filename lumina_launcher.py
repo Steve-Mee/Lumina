@@ -7,14 +7,6 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-
-# Package lives under lumina_launcher/; ensure imports resolve when Streamlit runs this file from repo root.
-_LAUNCHER_PACKAGE_DIR = Path(__file__).resolve().parent / "lumina_launcher"
-if _LAUNCHER_PACKAGE_DIR.is_dir():
-    _pkg = str(_LAUNCHER_PACKAGE_DIR)
-    if _pkg not in sys.path:
-        sys.path.insert(0, _pkg)
-
 from core.process_manager import ProcessManager
 from core.config_manager import ConfigManager
 from core.admin_auth import AdminAuth
@@ -25,6 +17,15 @@ from services.backend_client import BackendClient
 from ui.tabs.live_activity import render_live_activity_tab
 from ui.tabs.first_boot import render_first_boot_tab
 from ui.tabs.community_bibles import render_community_bibles_tab
+
+
+# Package lives under lumina_launcher/; ensure imports resolve when Streamlit runs this file from repo root.
+_LAUNCHER_PACKAGE_DIR = Path(__file__).resolve().parent / "lumina_launcher"
+if _LAUNCHER_PACKAGE_DIR.is_dir():
+    _pkg = str(_LAUNCHER_PACKAGE_DIR)
+    if _pkg not in sys.path:
+        sys.path.insert(0, _pkg)
+
 
 # ── Headless detection (must be first) ───────────────────────────────────────
 _IS_HEADLESS = "--headless" in sys.argv or "--stability-check" in sys.argv
