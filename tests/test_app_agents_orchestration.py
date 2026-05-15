@@ -180,7 +180,7 @@ def test_streamlit_launcher_http_boot() -> None:
         "-m",
         "streamlit",
         "run",
-        str(REPO_ROOT / "lumina_launcher.py"),
+        str(REPO_ROOT / "streamlit_launcher.py"),
         "--server.headless",
         "true",
         "--server.port",

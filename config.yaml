@@ -222,7 +222,6 @@ first_boot:
   prefer_real_data_only: true
   max_real_days: 90
   allow_minimal_synthetic_fallback: false
-  force_training: true
 session:
   cooldown_minutes_after_streak: 15
   enforce_calendar: true

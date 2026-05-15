@@ -1,7 +1,7 @@
 """
 LUMINA Core - Process Manager
 Handles starting, stopping, and monitoring the Lumina runtime process.
-Extracted from the original God file (lumina_launcher.py).
+Extracted from the original monolithic launcher (now `lumina_launcher/` + `streamlit_launcher.py`).
 """
 
 from __future__ import annotations

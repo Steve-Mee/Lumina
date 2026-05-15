@@ -21,7 +21,7 @@ $configYaml = Join-Path $repoRoot "config.yaml"
 $launcherCmd = "`$env:PYTHONPATH='$repoRoot'; " +
     "`$env:LUMINA_CONFIG='$configYaml'; " +
     "Set-Location -LiteralPath '$repoRoot'; " +
-    "& '$py' -m streamlit run lumina_launcher.py --server.port $LauncherPort"
+    "& '$py' -m streamlit run streamlit_launcher.py --server.port $LauncherPort"
 
 $dashboardCmd = "`$env:PYTHONPATH='$repoRoot'; " +
     "`$env:LUMINA_CONFIG='$configYaml'; " +

@@ -5,7 +5,7 @@ Improved and restored version for Fase 2.
 
 import streamlit as st
 
-from core.first_boot import FirstBootManager
+from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_core.first_boot_ui import (
     FIRST_BOOT_DEFAULT_TRADES,
     FIRST_BOOT_LAUNCHER_TRADE_STEP,

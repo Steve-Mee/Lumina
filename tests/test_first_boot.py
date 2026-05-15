@@ -5,7 +5,7 @@ High-quality unit tests for FirstBootManager.
 import tempfile
 from pathlib import Path
 
-from core.first_boot import FirstBootManager
+from lumina_launcher.core.first_boot import FirstBootManager
 
 
 def test_first_boot_manager_initialization():

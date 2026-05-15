@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from core.process_manager import ProcessManager
+from lumina_launcher.core.process_manager import ProcessManager
 
 
 @pytest.fixture
@@ -33,7 +33,7 @@ def test_pid_is_alive_false_for_zero():
     assert pm._pid_is_alive(-5) is False
 
 
-@patch("core.process_manager.subprocess.run")
+@patch("lumina_launcher.core.process_manager.subprocess.run")
 def test_pid_is_alive_windows(mock_run, temp_dirs):
     root, runtime = temp_dirs
     pm = ProcessManager(root, runtime)

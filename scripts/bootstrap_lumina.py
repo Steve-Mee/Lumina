@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 VENV_DIR = ROOT / ".venv"
-LAUNCHER = ROOT / "lumina_launcher.py"
+LAUNCHER = ROOT / "streamlit_launcher.py"
 
 
 def _venv_python() -> Path:

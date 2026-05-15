@@ -6,7 +6,7 @@ Volledig functionele admin interface met backend integratie.
 import asyncio
 import streamlit as st
 
-from services.backend_client import BackendClient
+from lumina_launcher.services.backend_client import BackendClient
 
 
 def render_admin_tab(backend_client: BackendClient | None = None) -> None:

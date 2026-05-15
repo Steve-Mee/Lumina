@@ -4,8 +4,8 @@ UI Tabs - Hardware & Install
 
 import streamlit as st
 
-from services.hardware_service import HardwareService
-from services.model_service import ModelService
+from lumina_launcher.services.hardware_service import HardwareService
+from lumina_launcher.services.model_service import ModelService
 
 
 def render_hardware_tab(hardware_service: HardwareService, model_service: ModelService, snapshot) -> None:
