@@ -289,6 +289,12 @@ def test_supervisor_loop_runs_swarm_only_on_five_minute_boundary(monkeypatch):
         def now(cls):
             return datetime(2026, 4, 4, 12, 10, 5)
 
+        @staticmethod
+        def fromtimestamp(timestamp, tz=None):
+            from datetime import datetime as _dt
+
+            return _dt.fromtimestamp(timestamp, tz)
+
     swarm = SwarmSpy()
     recorded_updates = []
 
@@ -498,6 +504,12 @@ def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):
         @classmethod
         def now(cls):
             return datetime(2026, 4, 4, 12, 11, 5)
+
+        @staticmethod
+        def fromtimestamp(timestamp, tz=None):
+            from datetime import datetime as _dt
+
+            return _dt.fromtimestamp(timestamp, tz)
 
     swarm = SwarmSpy()
 
@@ -731,6 +743,12 @@ def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(mon
             except StopIteration:
                 pass
             return cls.last_value
+
+        @staticmethod
+        def fromtimestamp(timestamp, tz=None):
+            from datetime import datetime as _dt
+
+            return _dt.fromtimestamp(timestamp, tz)
 
     swarm = SwarmSpy()
     recorded_updates = []

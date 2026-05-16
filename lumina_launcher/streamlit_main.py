@@ -8,15 +8,19 @@ from pathlib import Path
 
 import streamlit as st
 
+from lumina_core.engine.setup_service import SetupService
+from lumina_launcher.core.config_manager import ConfigManager
 from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_launcher.core.process_manager import ProcessManager
 from lumina_launcher.services.backend_client import BackendClient
 from lumina_launcher.services.hardware_service import HardwareService
 from lumina_launcher.services.model_service import ModelService
 from lumina_launcher.ui.components.presence_strip import render_presence_strip
+from lumina_launcher.ui.setup_wizard import render_setup_wizard
 from lumina_launcher.ui.tabs.community_bibles import render_community_bibles_tab
 from lumina_launcher.ui.tabs.first_boot import render_first_boot_tab
 from lumina_launcher.ui.tabs.live_activity import render_live_activity_tab
+from lumina_launcher.ui.tabs.training_dashboard import render_training_dashboard_tab
 
 
 _LAUNCHER_ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +34,8 @@ def ensure_backend_running() -> bool:
     except (socket.timeout, ConnectionRefusedError, OSError):
         st.info(
             "ℹ️ Backend (FastAPI) lijkt niet te draaien op poort 8000. "
-            "Start hem met: `cd lumina_os && uvicorn backend.app:app --port 8000`"
+            "Start hem met: `powershell -ExecutionPolicy Bypass -File .\\lumina_os\\run_backend.ps1` "
+            "(zet automatisch `PYTHONPATH`)."
         )
         return False
 
@@ -44,11 +49,28 @@ def render_streamlit_app() -> None:
     st.set_page_config(page_title="LUMINA OS Launcher", layout="wide")
     ensure_backend_running()
 
+    setup_service = SetupService(
+        workspace_root=_LAUNCHER_ROOT,
+        config_path=_LAUNCHER_ROOT / "config.yaml",
+        env_path=_LAUNCHER_ROOT / ".env",
+    )
+    config_manager = ConfigManager(_LAUNCHER_ROOT / ".env", _LAUNCHER_ROOT / "config.yaml")
     process_manager = ProcessManager(_LAUNCHER_ROOT, RUNTIME_ENTRY)
     first_boot_manager = FirstBootManager(_LAUNCHER_ROOT)
     hardware_service = HardwareService(_LAUNCHER_ROOT)
     model_service = ModelService(_LAUNCHER_ROOT / "lumina_model_catalog.json")
     backend_client = BackendClient()
+
+    if setup_service.is_first_run():
+        render_setup_wizard(
+            workspace_root=_LAUNCHER_ROOT,
+            setup_service=setup_service,
+            config_manager=config_manager,
+            first_boot_manager=first_boot_manager,
+            hardware_service=hardware_service,
+            model_service=model_service,
+        )
+        return
 
     st.title("LUMINA OS - Refactored Launcher (v1)")
 
@@ -108,6 +130,7 @@ def render_streamlit_app() -> None:
         "Model Mgmt",
         "Trader League",
         "SIM Evolution",
+        "📊 LUMINA OS Dashboard",
         "📖 Community Bibles",
         "🛠️ Admin",
     ]
@@ -160,9 +183,18 @@ def render_streamlit_app() -> None:
         render_sim_evolution_tab()
 
     with tabs[7]:
-        render_community_bibles_tab(backend_client)
+        render_training_dashboard_tab(
+            _LAUNCHER_ROOT,
+            first_boot_manager=first_boot_manager,
+            hardware_service=hardware_service,
+            process_manager=process_manager,
+            backend_base_url=backend_client.base_url,
+        )
 
     with tabs[8]:
+        render_community_bibles_tab(backend_client)
+
+    with tabs[9]:
         from lumina_launcher.ui.tabs.admin import render_admin_tab
 
         render_admin_tab(backend_client)

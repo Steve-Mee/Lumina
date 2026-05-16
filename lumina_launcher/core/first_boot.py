@@ -47,6 +47,15 @@ class FirstBootManager:
             encoding="utf-8",
         )
 
+    @staticmethod
+    def _ensure_mapping(root: dict[str, Any], key: str) -> dict[str, Any]:
+        section = root.get(key)
+        if isinstance(section, dict):
+            return section
+        section = {}
+        root[key] = section
+        return section
+
     def read_settings(self) -> dict[str, Any]:
         cfg = self._load_yaml_config()
         section = cfg.get("first_boot", {}) if isinstance(cfg.get("first_boot"), dict) else {}
@@ -62,13 +71,36 @@ class FirstBootManager:
         }
 
     def save_settings(self, training_trades: int) -> None:
+        current = self.read_settings()
+        self.save_full_settings(
+            training_trades=training_trades,
+            prefer_real_data_only=bool(current.get("prefer_real_data_only", True)),
+            max_real_days=int(current.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS)),
+            allow_minimal_synthetic_fallback=bool(current.get("allow_minimal_synthetic_fallback", False)),
+        )
+
+    def save_full_settings(
+        self,
+        *,
+        training_trades: int,
+        prefer_real_data_only: bool,
+        max_real_days: int,
+        allow_minimal_synthetic_fallback: bool,
+    ) -> None:
         cfg = self._load_yaml_config()
-        first_boot = cfg.setdefault("first_boot", {})
+        first_boot = self._ensure_mapping(cfg, "first_boot")
         first_boot["training_trades"] = normalize_first_boot_training_trades(training_trades)
-        first_boot.setdefault("prefer_real_data_only", True)
-        first_boot["max_real_days"] = max(30, int(first_boot.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS))
-        first_boot["allow_minimal_synthetic_fallback"] = bool(first_boot.get("allow_minimal_synthetic_fallback", False))
+        first_boot["prefer_real_data_only"] = bool(prefer_real_data_only)
+        first_boot["max_real_days"] = max(30, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS))
+        first_boot["allow_minimal_synthetic_fallback"] = bool(allow_minimal_synthetic_fallback)
         first_boot["force_training"] = True
+        self._save_yaml_config(cfg)
+
+    def save_neuro_require_real_simulator_data(self, value: bool) -> None:
+        cfg = self._load_yaml_config()
+        evolution = self._ensure_mapping(cfg, "evolution")
+        neuro = self._ensure_mapping(evolution, "neuroevolution")
+        neuro["require_real_simulator_data"] = bool(value)
         self._save_yaml_config(cfg)
 
     def read_progress(self) -> dict[str, Any]:

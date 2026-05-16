@@ -27,9 +27,12 @@ pip install -r requirements.txt
 
 ## Backend starten
 
-```bash
-uvicorn backend.app:app --reload --port 8000
+```powershell
+powershell -ExecutionPolicy Bypass -File .\run_backend.ps1
 ```
+
+Dit script zet automatisch `PYTHONPATH` naar de repo-root en voorkomt de
+`ModuleNotFoundError: No module named 'lumina_core'` valkuil.
 
 Belangrijke endpoints:
 

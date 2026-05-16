@@ -122,6 +122,7 @@ def test_real_mode_temperature_override_requires_audit_id(monkeypatch: pytest.Mo
 def test_audit_trail_contains_required_hashes_and_metadata(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     log_path = tmp_path / "llm_audit.jsonl"
     monkeypatch.setenv("LUMINA_LLM_DECISIONS_LOG", str(log_path))
+    monkeypatch.delenv("LUMINA_MODE", raising=False)
     engine = SimpleNamespace(config=SimpleNamespace(trade_mode="sim"))
     inference = _DummyInferenceEngine(response={"signal": "BUY", "confidence": 0.81, "reason": "edge"})
     client = LlmClient(inference_engine=inference, engine=engine)

@@ -169,16 +169,34 @@ class MetricsCollector:
 
         execution_event = None
         if event_bus is not None and hasattr(event_bus, "latest"):
-            execution_event = event_bus.latest(TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC)
+            try:
+                execution_event = event_bus.latest(TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC)
+            except Exception:
+                execution_event = None
+        if execution_event is None and blackboard is not None and hasattr(blackboard, "latest"):
+            try:
+                execution_event = blackboard.latest(TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC)
+            except Exception:
+                execution_event = None
         has_execution_event = execution_event is not None
-        payload = (
-            execution_event.payload
-            if execution_event is not None and isinstance(getattr(execution_event, "payload", None), dict)
-            else {}
-        )
-        latest_conf = float(payload.get("confidence", payload.get("confluence_score", 0.0)) or 0.0)
-        meta = getattr(execution_event, "metadata", {}) or {} if execution_event is not None else {}
-        latest_seq = int(meta.get("sequence", 0) or 0) if execution_event is not None else 0
+        latest_conf = 0.0
+        latest_seq = 0
+        if execution_event is not None:
+            raw_payload = getattr(execution_event, "payload", None)
+            if isinstance(raw_payload, dict):
+                latest_conf = float(
+                    raw_payload.get("confidence", raw_payload.get("confluence_score", 0.0)) or 0.0
+                )
+                meta = getattr(execution_event, "metadata", None)
+                meta_dict = meta if isinstance(meta, dict) else {}
+                latest_seq = int(meta_dict.get("sequence", 0) or 0)
+            else:
+                latest_conf = float(getattr(execution_event, "confidence", 0.0) or 0.0)
+                meta = getattr(execution_event, "metadata", None)
+                if isinstance(meta, dict):
+                    latest_seq = int(meta.get("sequence", 0) or 0)
+                else:
+                    latest_seq = int(getattr(execution_event, "sequence", 0) or 0)
         status, status_color, reason = self._classify_blackboard_health(
             blackboard_enabled=blackboard is not None,
             meta_enabled=meta_agent is not None,

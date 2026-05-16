@@ -1,8 +1,8 @@
 # CANONICAL IMPLEMENTATION – v50 Living Organism
-"""Smoke tests for the Lumina OS Streamlit dashboard regime rendering.
+"""Smoke tests for observability tab in ``dashboard_views`` (refactored from legacy dashboard).
 
 Strategy: mock the entire `streamlit` module plus external HTTP deps so
-`_render_observability_tab` can be imported and called in a plain pytest
+`render_observability_tab` can be imported and called in a plain pytest
 run without a running Streamlit server.
 
 Coverage:
@@ -123,38 +123,27 @@ def _build_st_mock() -> MagicMock:
 
 
 def _load_render_fn(st_mock: MagicMock) -> Any:
-    """Load dashboard._render_observability_tab with all Streamlit/HTTP deps mocked.
-
-    dashboard.py runs _render_observability_tab once at module level (inside
-    ``with tab3:``).  We execute that call with no API key and a benign health
-    response so it returns early, then hand back the function for the
-    test-specific call.
-    """
+    """Load ``dashboard_views.render_observability_tab`` with Streamlit/HTTP mocked."""
     sys.modules.pop(_MOD_KEY, None)
 
-    # Force no API key during module-level execution so the function returns
-    # early, avoiding the need to stage all JSON/history mock responses twice.
     _saved_rv = st_mock.text_input.return_value
     st_mock.text_input.return_value = ""
 
+    spec = importlib.util.spec_from_file_location(_MOD_KEY, _FRONTEND_PATH / "dashboard_views.py")
+    mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    sys.modules[_MOD_KEY] = mod
+
     extra_mocks: dict[str, Any] = {
         "streamlit": st_mock,
-        "global_wisdom_view": MagicMock(),
-        "leaderboard_view": MagicMock(),
-        "evolution_approval": MagicMock(),
     }
-
-    spec = importlib.util.spec_from_file_location(_MOD_KEY, _FRONTEND_PATH / "dashboard.py")
-    mod = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
 
     with patch.dict(sys.modules, extra_mocks):
         with patch("requests.get", return_value=_mock_resp(_HEALTH_NORMAL)):
             spec.loader.exec_module(mod)  # type: ignore[union-attr]
 
-    # Restore the caller's API-key setting for the actual test call.
     st_mock.text_input.return_value = _saved_rv
-    sys.modules.pop(_MOD_KEY, None)
-    return mod._render_observability_tab
+    del sys.modules[_MOD_KEY]
+    return mod.render_observability_tab
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
