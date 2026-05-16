@@ -21,12 +21,12 @@ $configYaml = Join-Path $repoRoot "config.yaml"
 $launcherCmd = "`$env:PYTHONPATH='$repoRoot'; " +
     "`$env:LUMINA_CONFIG='$configYaml'; " +
     "Set-Location -LiteralPath '$repoRoot'; " +
-    "& '$py' run_launcher.py --server.port $LauncherPort"
+    "& '$py' run_launcher.py --server.port $LauncherPort --server.fileWatcherType none"
 
 $dashboardCmd = "`$env:PYTHONPATH='$repoRoot'; " +
     "`$env:LUMINA_CONFIG='$configYaml'; " +
     "Set-Location -LiteralPath '$luminaOs'; " +
-    "& '$py' -m streamlit run frontend/dashboard.py --server.port $DashboardPort"
+    "& '$py' -m streamlit run frontend/dashboard.py --server.port $DashboardPort --server.fileWatcherType none"
 
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $launcherCmd
 Start-Sleep -Milliseconds 350

@@ -1,0 +1,4 @@
+[server]
+# Repo root has lumina_core/watchdog.py-style shadowing via PYTHONPATH + local watchdog.py.
+# When Streamlit runs from lumina_os/, it must not use the default file watcher (imports PyPI watchdog).
+fileWatcherType = "none"

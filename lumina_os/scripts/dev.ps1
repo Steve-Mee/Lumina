@@ -41,7 +41,9 @@ switch ($Action) {
         break
     }
     "dashboard" {
-        & $python -m streamlit run frontend/dashboard.py
+        $env:PYTHONPATH = $repoRoot
+        $env:LUMINA_CONFIG = Join-Path $repoRoot "config.yaml"
+        & $python -m streamlit run frontend/dashboard.py --server.fileWatcherType none
         break
     }
     "seed" {
