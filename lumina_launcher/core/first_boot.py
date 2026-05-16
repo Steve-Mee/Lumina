@@ -59,6 +59,8 @@ class FirstBootManager:
     def read_settings(self) -> dict[str, Any]:
         cfg = self._load_yaml_config()
         section = cfg.get("first_boot", {}) if isinstance(cfg.get("first_boot"), dict) else {}
+        evolution = cfg.get("evolution", {}) if isinstance(cfg.get("evolution"), dict) else {}
+        neuro = evolution.get("neuroevolution", {}) if isinstance(evolution.get("neuroevolution"), dict) else {}
         return {
             "training_trades": normalize_first_boot_training_trades(
                 section.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
@@ -68,6 +70,7 @@ class FirstBootManager:
                 30, int(section.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS)
             ),
             "allow_minimal_synthetic_fallback": bool(section.get("allow_minimal_synthetic_fallback", False)),
+            "require_real_simulator_data": bool(neuro.get("require_real_simulator_data", True)),
         }
 
     def save_settings(self, training_trades: int) -> None:
@@ -86,6 +89,7 @@ class FirstBootManager:
         prefer_real_data_only: bool,
         max_real_days: int,
         allow_minimal_synthetic_fallback: bool,
+        require_real_simulator_data: bool | None = None,
     ) -> None:
         cfg = self._load_yaml_config()
         first_boot = self._ensure_mapping(cfg, "first_boot")
@@ -94,6 +98,10 @@ class FirstBootManager:
         first_boot["max_real_days"] = max(30, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS))
         first_boot["allow_minimal_synthetic_fallback"] = bool(allow_minimal_synthetic_fallback)
         first_boot["force_training"] = True
+        if require_real_simulator_data is not None:
+            evolution = self._ensure_mapping(cfg, "evolution")
+            neuro = self._ensure_mapping(evolution, "neuroevolution")
+            neuro["require_real_simulator_data"] = bool(require_real_simulator_data)
         self._save_yaml_config(cfg)
 
     def save_neuro_require_real_simulator_data(self, value: bool) -> None:

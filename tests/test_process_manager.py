@@ -68,3 +68,17 @@ def test_stop_bot_no_process(temp_dirs):
     success, msg = pm.stop_bot()
     assert success is True
     assert "already stopped" in msg.lower() or "stopped" in msg.lower()
+
+
+@patch("lumina_launcher.core.process_manager.subprocess.Popen")
+def test_start_bot_uses_passed_mode(mock_popen, temp_dirs):
+    root, runtime = temp_dirs
+    pm = ProcessManager(root, runtime)
+    mock_popen.return_value = MagicMock(pid=4242)
+    with patch.object(pm, "is_process_alive", return_value=False):
+        success, _ = pm.start_bot(mode="sim_real_guard")
+    assert success is True
+    args, kwargs = mock_popen.call_args
+    assert "--mode" in args[0]
+    assert "sim_real_guard" in args[0]
+    assert kwargs["cwd"] == str(root)

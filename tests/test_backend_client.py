@@ -39,18 +39,18 @@ async def test_cached_leaderboard() -> None:
 @pytest.mark.unit
 def test_get_leaderboard_sync_delegates_to_sync_request() -> None:
     client = BackendClient(base_url="http://stub")
-    with patch.object(client, "_sync_request", return_value={"leaderboard": [{"x": 1}]}) as m:
+    with patch.object(client, "_cached_sync_get", return_value={"leaderboard": [{"x": 1}]}) as m:
         out = client.get_leaderboard_sync()
-    m.assert_called_once_with("GET", "/leaderboard")
+    m.assert_called_once_with("leaderboard_sync", "/leaderboard", ttl_seconds=10)
     assert out["leaderboard"][0]["x"] == 1
 
 
 @pytest.mark.unit
 def test_get_global_wisdom_sync_delegates() -> None:
     client = BackendClient(base_url="http://stub")
-    with patch.object(client, "_sync_request", return_value={"top_bibles": []}) as m:
+    with patch.object(client, "_cached_sync_get", return_value={"top_bibles": []}) as m:
         out = client.get_global_wisdom_sync()
-    m.assert_called_once_with("GET", "/global_wisdom")
+    m.assert_called_once_with("global_wisdom_sync", "/global_wisdom", ttl_seconds=15)
     assert out["top_bibles"] == []
 
 

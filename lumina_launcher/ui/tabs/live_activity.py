@@ -5,14 +5,19 @@ Restored and improved version of the original live heartbeat + log tail.
 
 import streamlit as st
 from pathlib import Path
+from collections import deque
 
 
-def _tail_file(path: Path, max_chars: int = 6000) -> str:
+def _tail_file(path: Path, max_chars: int = 6000, max_lines: int = 220) -> str:
     if not path.exists():
         return ""
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        return text[-max_chars:]
+        lines: deque[str] = deque(maxlen=max_lines)
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                lines.append(line.rstrip("\n"))
+        text = "\n".join(lines)
+        return text[-max_chars:] if len(text) > max_chars else text
     except Exception:
         return ""
 

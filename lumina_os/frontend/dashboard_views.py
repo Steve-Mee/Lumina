@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import time
+from collections import deque
 from contextlib import chdir
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -25,6 +26,7 @@ import streamlit as st
 import yaml
 
 from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
+from lumina_os.frontend.http_utils import is_backend_unreachable, log_fetch_failure
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +308,18 @@ def load_evolution_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def read_tail_lines(path: Path, limit: int) -> list[str]:
+    if not path.exists():
+        return []
+    bucket: deque[str] = deque(maxlen=max(1, limit))
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            text = line.strip()
+            if text:
+                bucket.append(text)
+    return list(bucket)
+
+
 def resolve_mode(p: DashboardPaths) -> str:
     env_mode = str(os.getenv("LUMINA_MODE", "")).strip().lower()
     if env_mode in {"sim", "paper", "real"}:
@@ -552,13 +566,9 @@ def window_metrics(
 
 
 def load_stability_history(p: DashboardPaths) -> list[dict[str, Any]]:
-    if not p.history_path.exists():
-        return []
+    rows_raw = read_tail_lines(p.history_path, 1200)
     rows: list[dict[str, Any]] = []
-    for raw in p.history_path.read_text(encoding="utf-8", errors="replace").splitlines():
-        raw = raw.strip()
-        if not raw:
-            continue
+    for raw in rows_raw:
         try:
             obj = json.loads(raw)
         except json.JSONDecodeError:
@@ -569,9 +579,15 @@ def load_stability_history(p: DashboardPaths) -> list[dict[str, Any]]:
     return rows
 
 
-def stability_report(p: DashboardPaths) -> dict[str, Any]:
-    with chdir(p.workspace_root):
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_stability_report(workspace_root_str: str) -> dict[str, Any]:
+    root = Path(workspace_root_str)
+    with chdir(root):
         return generate_stability_report()
+
+
+def stability_report(p: DashboardPaths) -> dict[str, Any]:
+    return _cached_stability_report(str(p.workspace_root))
 
 
 def render_sim_evolution_dashboard_tab(p: DashboardPaths) -> None:
@@ -851,8 +867,8 @@ def render_observability_tab(base_url: str) -> None:
     try:
         health_resp = requests.get(f"{base_url}/api/monitoring/health", timeout=3)
         health = health_resp.json() if health_resp.ok else {}
-    except Exception:
-        logger.exception("Health fetch failed")
+    except Exception as exc:
+        log_fetch_failure(logger, "Health fetch failed", exc)
         health = {}
 
     status = health.get("status", "unknown")
@@ -898,8 +914,11 @@ def render_observability_tab(base_url: str) -> None:
             return
         snap: dict = snap_resp.json()
     except Exception as exc:
-        logger.exception("Metrics fetch failed")
-        st.error(f"Cannot reach observability endpoint: {exc}")
+        log_fetch_failure(logger, "Metrics fetch failed", exc)
+        if is_backend_unreachable(exc):
+            st.info("Backend niet bereikbaar — start `lumina_os\\run_backend.ps1` voor live metrics.")
+        else:
+            st.error(f"Cannot reach observability endpoint: {exc}")
         return
 
     snap.pop("_meta", None)
@@ -955,8 +974,8 @@ def render_observability_tab(base_url: str) -> None:
                 ).sort_values("Time (UTC)", ascending=False)
                 with st.expander(f"Regime Flip History ({len(flip_df)} events)", expanded=False):
                     st.dataframe(flip_df, width="stretch")
-    except Exception:
-        logger.exception("Dashboard failed to render regime flip history")
+    except Exception as exc:
+        log_fetch_failure(logger, "Dashboard failed to render regime flip history", exc)
 
     st.markdown("#### Alerts & Chaos Events")
     a1, a2 = st.columns(2)
@@ -1258,21 +1277,14 @@ def render_legacy_quick_actions_row(p: DashboardPaths, api_base_url: str) -> Non
 
 
 def tail_evolution_log(p: DashboardPaths, limit: int = 40) -> list[str]:
-    if not p.evolution_log.exists():
-        return []
-    lines = p.evolution_log.read_text(encoding="utf-8", errors="replace").splitlines()
-    tail = [ln.strip() for ln in lines[-limit:] if ln.strip()]
-    return tail
+    return read_tail_lines(p.evolution_log, limit)
 
 
 def blackboard_event_rate_series(p: DashboardPaths, max_points: int = 48) -> pd.DataFrame | None:
     if not p.agent_blackboard.exists():
         return None
     rows: list[tuple[datetime, int]] = []
-    for line in p.agent_blackboard.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = line.strip()
-        if not line:
-            continue
+    for line in read_tail_lines(p.agent_blackboard, 2000):
         try:
             obj = json.loads(line)
         except json.JSONDecodeError:

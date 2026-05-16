@@ -16,6 +16,8 @@ import pandas as pd
 import requests
 import streamlit as st
 
+from lumina_os.frontend.http_utils import is_backend_unreachable, log_fetch_failure
+
 _LOG = logging.getLogger(__name__)
 
 _STATE_DIR = Path("state")
@@ -241,8 +243,8 @@ def render_backend_observability_subpanel(base_url: str, api_key: str) -> None:
     try:
         health_resp = requests.get(f"{base_url}/api/monitoring/health", timeout=3)
         health = health_resp.json() if health_resp.ok else {}
-    except Exception:
-        _LOG.exception("monitoring health fetch failed")
+    except Exception as exc:
+        log_fetch_failure(_LOG, "monitoring health fetch failed", exc)
         health = {}
 
     status = health.get("status", "unknown")
@@ -283,8 +285,11 @@ def render_backend_observability_subpanel(base_url: str, api_key: str) -> None:
             return
         snap: dict[str, Any] = snap_resp.json()
     except Exception as exc:
-        _LOG.exception("monitoring metrics/json failed")
-        st.error(f"Cannot reach observability endpoint: {exc}")
+        log_fetch_failure(_LOG, "monitoring metrics/json failed", exc)
+        if is_backend_unreachable(exc):
+            st.info("Backend niet bereikbaar — start `lumina_os\\run_backend.ps1` voor live metrics.")
+        else:
+            st.error(f"Cannot reach observability endpoint: {exc}")
         return
 
     snap.pop("_meta", None)
@@ -338,8 +343,8 @@ def render_backend_observability_subpanel(base_url: str, api_key: str) -> None:
                 ).sort_values("Time (UTC)", ascending=False)
                 with st.expander(f"Regime Flip History ({len(flip_df)} events)", expanded=False):
                     st.dataframe(flip_df, width="stretch")
-    except Exception:
-        _LOG.exception("regime history fetch failed")
+    except Exception as exc:
+        log_fetch_failure(_LOG, "regime history fetch failed", exc)
 
     st.markdown("#### Alerts & Chaos Events")
     a1, a2 = st.columns(2)

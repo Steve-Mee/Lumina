@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from typing import Any, Optional
 
 import httpx
+
+from lumina_launcher.observability import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,7 @@ class BackendClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.client: Optional[httpx.AsyncClient] = None
+        self.sync_client: Optional[httpx.Client] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self.client is None or self.client.is_closed:
@@ -33,16 +37,39 @@ class BackendClient:
     def _sync_request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         """Sync HTTP helper for Streamlit (no asyncio event-loop coupling)."""
         url = f"{self.base_url}{path}"
+        started = time.perf_counter()
         try:
-            with httpx.Client(timeout=self.timeout) as sync_client:
-                response = sync_client.request(method, url, **kwargs)
-                response.raise_for_status()
-                return response.json()
+            if self.sync_client is None or self.sync_client.is_closed:
+                self.sync_client = httpx.Client(timeout=self.timeout)
+            response = self.sync_client.request(method, url, **kwargs)
+            response.raise_for_status()
+            payload = response.json()
+            elapsed = int((time.perf_counter() - started) * 1000)
+            log_event("launcher.http.request", method=method, path=path, status=response.status_code, duration_ms=elapsed)
+            return payload
         except httpx.HTTPStatusError as exc:
+            elapsed = int((time.perf_counter() - started) * 1000)
             logger.warning(f"Backend HTTP error {exc.response.status_code} on {path}")
+            log_event(
+                "launcher.http.error",
+                level=logging.WARNING,
+                method=method,
+                path=path,
+                status=exc.response.status_code,
+                duration_ms=elapsed,
+            )
             return {"error": f"HTTP {exc.response.status_code}", "detail": exc.response.text}
         except httpx.RequestError as exc:
-            logger.error(f"Backend connection error: {exc}")
+            elapsed = int((time.perf_counter() - started) * 1000)
+            logger.debug("Backend unavailable on %s: %s", path, exc)
+            log_event(
+                "launcher.http.error",
+                level=logging.DEBUG,
+                method=method,
+                path=path,
+                status="unavailable",
+                duration_ms=elapsed,
+            )
             return {"error": "Backend unavailable", "detail": str(exc)}
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
@@ -56,22 +83,29 @@ class BackendClient:
             logger.warning(f"Backend HTTP error {exc.response.status_code} on {path}")
             return {"error": f"HTTP {exc.response.status_code}", "detail": exc.response.text}
         except httpx.RequestError as exc:
-            logger.error(f"Backend connection error: {exc}")
+            logger.debug("Backend unavailable on %s: %s", path, exc)
             return {"error": "Backend unavailable", "detail": str(exc)}
 
-    def get_leaderboard(self) -> dict[str, Any]:
-        return self._sync_request("GET", "/leaderboard")
+    def _cached_sync_get(self, cache_key: str, path: str, ttl_seconds: int = 10) -> dict[str, Any]:
+        now = time.time()
+        cached = self._cache.get(cache_key)
+        if isinstance(cached, dict) and (now - float(cached.get("timestamp", 0.0))) < ttl_seconds:
+            return cached.get("data", {})
+        payload = self._sync_request("GET", path)
+        self._cache[cache_key] = {"data": payload, "timestamp": now}
+        return payload
+
+    def get_leaderboard(self, ttl_seconds: int = 10) -> dict[str, Any]:
+        return self._cached_sync_get("leaderboard_sync", "/leaderboard", ttl_seconds=ttl_seconds)
 
     def get_leaderboard_sync(self) -> dict[str, Any]:
-        # Direct _sync_request: do not chain via get_leaderboard() — old hot-reload
-        # states could leave an async get_leaderboard on the class and return a coroutine.
-        return self._sync_request("GET", "/leaderboard")
+        return self.get_leaderboard(ttl_seconds=10)
 
-    def get_global_wisdom(self) -> dict[str, Any]:
-        return self._sync_request("GET", "/global_wisdom")
+    def get_global_wisdom(self, ttl_seconds: int = 15) -> dict[str, Any]:
+        return self._cached_sync_get("global_wisdom_sync", "/global_wisdom", ttl_seconds=ttl_seconds)
 
     def get_global_wisdom_sync(self) -> dict[str, Any]:
-        return self._sync_request("GET", "/global_wisdom")
+        return self.get_global_wisdom(ttl_seconds=15)
 
     async def get_leaderboard_async(self) -> dict[str, Any]:
         return await self._request("GET", "/leaderboard")
@@ -105,3 +139,5 @@ class BackendClient:
     async def close(self):
         if self.client and not self.client.is_closed:
             await self.client.aclose()
+        if self.sync_client and not self.sync_client.is_closed:
+            self.sync_client.close()

@@ -81,8 +81,13 @@ def persist_setup_configuration(
         prefer_real_data_only=bool(training["prefer_real_data_only"]),
         max_real_days=int(training["max_real_days"]),
         allow_minimal_synthetic_fallback=bool(training["allow_minimal_synthetic_fallback"]),
+        require_real_simulator_data=bool(
+            training.get("require_real_simulator_data", training["prefer_real_data_only"])
+        ),
     )
-    first_boot_manager.save_neuro_require_real_simulator_data(bool(training["prefer_real_data_only"]))
+    first_boot_manager.save_neuro_require_real_simulator_data(
+        bool(training.get("require_real_simulator_data", training["prefer_real_data_only"]))
+    )
     steps.append({"name": "first_boot_config", "success": True, "message": "First-boot training settings saved"})
 
     if admin_password:
@@ -153,6 +158,7 @@ def _init_wizard_state(
             "prefer_real_data_only": bool(first_boot["prefer_real_data_only"]),
             "max_real_days": int(first_boot["max_real_days"]),
             "allow_minimal_synthetic_fallback": bool(first_boot["allow_minimal_synthetic_fallback"]),
+            "require_real_simulator_data": bool(first_boot["require_real_simulator_data"]),
         },
         "admin_password": "",
     }
@@ -325,6 +331,12 @@ def render_setup_wizard(
                 value=bool(training["allow_minimal_synthetic_fallback"]),
             )
         )
+        training["require_real_simulator_data"] = bool(
+            st.checkbox(
+                "Neuro/simulator vereist echte data (fail-closed)",
+                value=bool(training["require_real_simulator_data"]),
+            )
+        )
         from lumina_core.first_boot_ui import estimate_first_boot_real_days, exceeds_max_real_days_window
 
         estimate = estimate_first_boot_real_days(training["training_trades"])
@@ -343,6 +355,7 @@ def render_setup_wizard(
         st.write(f"- Model: `{selected_model.display_name}`")
         st.write(f"- Training trades: `{training['training_trades']}`")
         st.write(f"- Prefer real data only: `{training['prefer_real_data_only']}`")
+        st.write(f"- Require real simulator data: `{training['require_real_simulator_data']}`")
         st.write("- Credentials")
         st.write(f"  - CROSSTRADE_TOKEN: `{_mask_secret(creds['CROSSTRADE_TOKEN'])}`")
         st.write(f"  - CROSSTRADE_ACCOUNT: `{creds['CROSSTRADE_ACCOUNT'] or '(empty)'}`")

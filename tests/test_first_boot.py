@@ -27,6 +27,7 @@ def test_save_and_read_settings():
         # Het getal moet overeenkomen met wat de gebruiker heeft ingegeven
         assert settings["training_trades"] == 5000
         assert "prefer_real_data_only" in settings
+        assert "require_real_simulator_data" in settings
 
 
 def test_artifacts_missing_when_no_files():

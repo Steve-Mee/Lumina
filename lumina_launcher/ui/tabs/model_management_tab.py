@@ -3,12 +3,19 @@ UI Tabs - Model Management
 """
 
 import streamlit as st
+from lumina_core.engine.setup_service import SetupService
 
 from lumina_launcher.services.hardware_service import HardwareService
 from lumina_launcher.services.model_service import ModelService
+from lumina_launcher.ui.help_texts import help_for
 
 
-def render_model_management_tab(hardware_service: HardwareService, model_service: ModelService, snapshot) -> None:
+def render_model_management_tab(
+    hardware_service: HardwareService,
+    model_service: ModelService,
+    snapshot,
+    setup_service: SetupService | None = None,
+) -> None:
     st.subheader("Model Management")
 
     catalog = model_service.get_catalog()
@@ -21,9 +28,9 @@ def render_model_management_tab(hardware_service: HardwareService, model_service
 
     col1, col2 = st.columns(2)
     with col1:
-        st.info(f"**Current Model**\n\n{current.display_name}")
+        st.info(f"**Current Model**\n\n{current.display_name}", icon="🧠")
     with col2:
-        st.success(f"**Recommended Model**\n\n{recommended.display_name}")
+        st.success(f"**Recommended Model**\n\n{recommended.display_name}", icon="✅")
 
     # === Model Details ===
     st.markdown("#### Model Details")
@@ -52,10 +59,26 @@ def render_model_management_tab(hardware_service: HardwareService, model_service
     # === Actions ===
     st.markdown("#### Acties")
 
-    if st.button("⬇️ Install / Upgrade naar Recommended", width="stretch"):
-        st.info("Model installatie/upgrade zou hier starten (SetupService integratie volgt).")
+    if st.button(
+        "⬇️ Install / Upgrade naar Recommended",
+        width="stretch",
+        help="Download model en update config naar de gekozen target.",
+    ):
+        if setup_service is None:
+            st.warning("SetupService niet beschikbaar in deze context.")
+        else:
+            results = setup_service.upgrade_model(recommended)
+            success = all(item.success for item in results)
+            for item in results:
+                if item.success:
+                    st.success(f"{item.name}: {item.message}")
+                else:
+                    st.error(f"{item.name}: {item.message}")
+            if success:
+                model_service.set_current_model(recommended.key)
 
-    if st.button("🔄 Refresh Model Catalog", width="stretch"):
-        st.success("Model catalog zou hier herladen worden.")
+    if st.button("🔄 Refresh Model Catalog", width="stretch", help=help_for("dashboard_enabled")):
+        refreshed = hardware_service.get_snapshot(refresh=True)
+        st.success(f"Hardware snapshot refreshed ({refreshed.profile_tier}).")
 
     st.caption("Model Management tab — Fase 2 (uitgewerkt)")

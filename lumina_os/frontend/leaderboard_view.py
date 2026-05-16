@@ -8,19 +8,18 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import plotly.express as px
-import requests
 import streamlit as st
+
+from lumina_os.frontend.http_utils import fetch_json
+
+_LOG = logging.getLogger(__name__)
 
 
 def _get_json(url: str, timeout: float = 5.0) -> dict[str, Any] | list[Any] | None:
-    try:
-        response = requests.get(url, timeout=timeout)
-        response.raise_for_status()
-        return response.json()
-    except Exception as exc:
-        logging.exception("Unhandled broad exception fallback in lumina_os/frontend/leaderboard_view.py:19")
-        st.warning(f"Data request failed for {url}: {exc}")
-        return None
+    data = fetch_json(url, timeout=timeout, logger=_LOG)
+    if data is None:
+        st.info("Backend niet bereikbaar — start `lumina_os\\run_backend.ps1` voor live rankings.")
+    return data
 
 
 def render_leaderboard_tab(api_base_url: str) -> None:

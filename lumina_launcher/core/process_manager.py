@@ -16,6 +16,8 @@ from typing import Any
 
 import psutil  # type: ignore[import]
 
+from lumina_launcher.observability import log_event, timed_event
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,6 +26,7 @@ class ProcessManager:
         self.launcher_root = launcher_root
         self.runtime_entry = runtime_entry
         self.process_state_path = launcher_root / "state" / "launcher_bot_process.json"
+        self._alive_cache: tuple[float, bool] | None = None
 
     def _normalize_process_cmdline(self, text: str) -> str:
         return text.lower().replace("\\\\", "/").replace("\\", "/")
@@ -99,36 +102,48 @@ class ProcessManager:
             pass
 
     def is_process_alive(self) -> bool:
+        now = time.monotonic()
+        if self._alive_cache and (now - self._alive_cache[0]) < 2.0:
+            return self._alive_cache[1]
         state = self._load_process_state()
         pid = int(state.get("pid", 0) or 0)
-        if pid > 0 and self._pid_is_alive(pid):
-            return True
-        external = self._find_external_runtime_pid()
-        return external > 0 and self._pid_is_alive(external)
+        result = False
+        with timed_event("launcher.proc.check", pid=pid):
+            if pid > 0 and self._pid_is_alive(pid):
+                result = True
+            else:
+                external = self._find_external_runtime_pid()
+                result = external > 0 and self._pid_is_alive(external)
+        self._alive_cache = (now, result)
+        return result
 
-    def start_bot(self) -> tuple[bool, str]:
+    def start_bot(self, mode: str = "auto") -> tuple[bool, str]:
         if not self.runtime_entry.exists():
             return False, f"Runtime entry not found: {self.runtime_entry}"
         if self.is_process_alive():
             return True, "Bot is already running"
 
-        command = [os.getenv("LUMINA_PYTHON", "python"), str(self.runtime_entry), "--mode", "auto"]
+        normalized_mode = str(mode or "auto").strip().lower() or "auto"
+        command = [os.getenv("LUMINA_PYTHON", "python"), str(self.runtime_entry), "--mode", normalized_mode]
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
 
         try:
-            proc = subprocess.Popen(
-                command,
-                cwd=str(self.launcher_root),
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            with timed_event("launcher.proc.start", mode=normalized_mode):
+                proc = subprocess.Popen(
+                    command,
+                    cwd=str(self.launcher_root),
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
             self._save_process_state(proc.pid, command)
+            log_event("launcher.proc.started", pid=proc.pid, mode=normalized_mode)
             return True, f"Bot started (pid={proc.pid})"
         except FileNotFoundError:
             return False, "Python interpreter not found. Check LUMINA_PYTHON env var."
         except Exception as exc:
+            log_event("launcher.proc.start_failed", level=logging.ERROR, error=str(exc), mode=normalized_mode)
             return False, f"Failed to start bot: {exc}"
 
     def stop_bot(self) -> tuple[bool, str]:
@@ -148,18 +163,22 @@ class ProcessManager:
             return True, "Bot process already stopped"
 
         try:
-            for pid in target_pids:
-                try:
-                    if os.name == "nt":
-                        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False)
-                    else:
-                        os.kill(pid, 15)
-                        time.sleep(0.3)
-                        os.kill(pid, 9)
-                except ProcessLookupError:
-                    pass
+            with timed_event("launcher.proc.stop", target_count=len(target_pids)):
+                for pid in target_pids:
+                    try:
+                        if os.name == "nt":
+                            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False)
+                        else:
+                            os.kill(pid, 15)
+                            time.sleep(0.3)
+                            os.kill(pid, 9)
+                    except ProcessLookupError:
+                        pass
 
             self._clear_process_state()
+            self._alive_cache = None
+            log_event("launcher.proc.stopped", pids=",".join(str(pid) for pid in target_pids))
             return True, "Bot stopped"
         except Exception as exc:
+            log_event("launcher.proc.stop_failed", level=logging.ERROR, error=str(exc))
             return False, f"Failed to stop bot: {exc}"

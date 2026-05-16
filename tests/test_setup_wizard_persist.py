@@ -79,6 +79,7 @@ def test_persist_setup_configuration_writes_env_yaml_and_state(tmp_path: Path) -
             "prefer_real_data_only": True,
             "max_real_days": 120,
             "allow_minimal_synthetic_fallback": False,
+            "require_real_simulator_data": True,
         },
     )
 

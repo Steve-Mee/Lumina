@@ -16,6 +16,10 @@ from typing import Any
 import requests
 import streamlit as st
 
+from lumina_os.frontend.http_utils import is_backend_unreachable, log_fetch_failure
+
+_LOG = logging.getLogger(__name__)
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -30,8 +34,11 @@ def _fetch_proposals(base_url: str, api_key: str) -> list[dict[str, Any]]:
         st.warning(f"Proposals fetch failed: HTTP {resp.status_code}")
         return []
     except Exception as exc:
-        logging.exception("Unhandled broad exception fallback in lumina_os/frontend/evolution_approval.py:31")
-        st.warning(f"Cannot reach evolution endpoint: {exc}")
+        log_fetch_failure(_LOG, "evolution proposals fetch failed", exc)
+        if is_backend_unreachable(exc):
+            st.info("Backend niet bereikbaar — evolution proposals vereisen `lumina_os\\run_backend.ps1`.")
+        else:
+            st.warning(f"Cannot reach evolution endpoint: {exc}")
         return []
 
 
@@ -196,10 +203,11 @@ def render_evolution_approval_tab(base_url: str, api_key: str = "") -> None:
                             else:
                                 st.error(f"Approval failed: HTTP {resp.status_code} — {resp.text}")
                         except Exception as exc:
-                            logging.exception(
-                                "Unhandled broad exception fallback in lumina_os/frontend/evolution_approval.py:196"
-                            )
-                            st.error(f"Request error: {exc}")
+                            log_fetch_failure(_LOG, "evolution approve failed", exc)
+                            if is_backend_unreachable(exc):
+                                st.error("Backend niet bereikbaar — start de FastAPI-server eerst.")
+                            else:
+                                st.error(f"Request error: {exc}")
 
                 st.write("")  # spacing between challengers
 
@@ -237,7 +245,8 @@ def render_evolution_approval_tab(base_url: str, api_key: str = "") -> None:
                         else:
                             st.error(f"Rejection failed: HTTP {resp.status_code} — {resp.text}")
                     except Exception as exc:
-                        logging.exception(
-                            "Unhandled broad exception fallback in lumina_os/frontend/evolution_approval.py:234"
-                        )
-                        st.error(f"Request error: {exc}")
+                        log_fetch_failure(_LOG, "evolution reject failed", exc)
+                        if is_backend_unreachable(exc):
+                            st.error("Backend niet bereikbaar — start de FastAPI-server eerst.")
+                        else:
+                            st.error(f"Request error: {exc}")

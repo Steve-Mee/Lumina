@@ -10,13 +10,13 @@ import importlib.util
 import logging
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 from lumina_launcher.core.first_boot import FirstBootManager
+from lumina_launcher.observability import log_event, timed_event
 from lumina_launcher.core.process_manager import ProcessManager
 from lumina_launcher.services.hardware_service import HardwareService
 from lumina_os.frontend.dashboard_views import (
@@ -69,15 +69,13 @@ def render_training_dashboard_tab(
         st.info("State directory is empty — training idle or First Boot not started.")
 
     auto = st.checkbox("Auto-refresh (10s)", value=False, key="lumina_training_autorefresh")
-    if auto:
-        time.sleep(10)
-        st.rerun()
+    if auto and hasattr(st, "autorefresh"):
+        st.autorefresh(interval=10_000, key="lumina_training_autorefresh_tick")
 
     render_luxury_status_bar(p, api_base, runtime_mode)
 
-    render_command_center_hero(
-        p, api_base, runtime_mode, process_alive=process_manager.is_process_alive()
-    )
+    process_alive = process_manager.is_process_alive()
+    render_command_center_hero(p, api_base, runtime_mode, process_alive=process_alive)
 
     try:
         snap = hardware_service.get_snapshot(refresh=False)
@@ -85,7 +83,7 @@ def render_training_dashboard_tab(
         h1.metric("Host CPU (logical)", snap.cpu_cores_logical)
         h2.metric("Host RAM (GB)", f"{snap.ram_gb:.1f}")
         h3.metric("GPU VRAM (GB)", f"{snap.gpu_vram_gb:.1f}")
-        h4.metric("Runtime process", "alive" if process_manager.is_process_alive() else "down")
+        h4.metric("Runtime process", "alive" if process_alive else "down")
     except Exception:
         logger.exception("Hardware snapshot unavailable")
 
@@ -111,12 +109,14 @@ def render_training_dashboard_tab(
                 "--overnight-sim",
                 "--stability-check",
             ]
-            proc = subprocess.Popen(
-                cmd,
-                cwd=str(workspace_root),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            with timed_event("launcher.training.overnight_sim"):
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=str(workspace_root),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            log_event("launcher.training.overnight_sim_started", pid=proc.pid)
             st.success(f"Overnight SIM PID {proc.pid}")
     with q4:
         if st.button("🔍 Stability refresh", key="td_stab", use_container_width=True):
