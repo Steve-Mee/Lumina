@@ -1,0 +1,9 @@
+{
+  "last_load_time_sec": 0.0,
+  "policy_path": "lumina_agents\\ppo\\lumina_ppo_policy.zip",
+  "policy_version": "ppo-1778936047-180285",
+  "status": "trained",
+  "total_training_steps": 300000,
+  "training_time_sec": 2826.9,
+  "updated_at": "2026-05-16T12:54:07Z"
+}

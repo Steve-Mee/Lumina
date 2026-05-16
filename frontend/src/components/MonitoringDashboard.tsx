@@ -32,12 +32,20 @@ const BG_VOID = "#0a0a0f";
 const ACCENT_CYAN = "#00f0ff";
 const ACCENT_GREEN = "#00ff9f";
 
-const TARGET_TRAINING_TRADES = 500_000;
-
 const DISPLAY_USER =
   typeof import.meta !== "undefined" && typeof import.meta.env?.VITE_DASHBOARD_OPERATOR === "string"
     ? import.meta.env.VITE_DASHBOARD_OPERATOR.trim() || "Operator"
     : "Operator";
+const METRICS_SOURCE_PATH = "/api/monitoring/metrics/json";
+const BUILD_MARKER = (() => {
+  try {
+    const raw = typeof import.meta !== "undefined" ? String(import.meta.url || "") : "";
+    const match = raw.match(/index-([A-Za-z0-9_-]+)\.js/);
+    return match?.[1] ?? "dev";
+  } catch {
+    return "dev";
+  }
+})();
 
 /** Activity log level — colours map per spec */
 type ActivityLevel = "INFO" | "PROGRESS";
@@ -239,10 +247,12 @@ function LiveStatNumber({
 function TradeOrbitRing({
   tradesCompleted,
   target,
+  hasTarget,
   reduceMotion,
 }: {
   tradesCompleted: number;
   target: number;
+  hasTarget: boolean;
   reduceMotion: boolean | null;
 }): JSX.Element {
   const pct = pct01(tradesCompleted, target);
@@ -295,12 +305,20 @@ function TradeOrbitRing({
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: reduceMotion ? 0 : 0.5 }}
           >
-            <LiveStatNumber value={tradesCompleted} reduceMotion={reduceMotion} />
-            <span className="mx-2 text-[#414152]">/</span>
-            <span className="font-mono text-zinc-500">{formatCompact(target)}</span>
+            {hasTarget ? (
+              <>
+                <LiveStatNumber value={tradesCompleted} reduceMotion={reduceMotion} />
+                <span className="mx-2 text-[#414152]">/</span>
+                <span className="font-mono text-zinc-500">{formatCompact(target)}</span>
+              </>
+            ) : (
+              <span className="font-mono text-zinc-500">—</span>
+            )}
           </motion.div>
           <p className="mt-4 text-[12px] text-zinc-500">
-            {Math.round(pct * 1000) / 10}% complete • live counter from telemetry
+            {hasTarget
+              ? `${Math.round(pct * 1000) / 10}% complete • live counter from telemetry`
+              : "Target not selected yet — start first boot training"}
           </p>
         </div>
       </div>
@@ -316,6 +334,9 @@ function useActivityJournal(
 ): ActivityRow[] {
   const [rows, setRows] = useState<ActivityRow[]>([]);
   const prevTrades = useRef<number | null>(null);
+  const prevSession = useRef<string>("");
+  const prevStage = useRef<string>("");
+  const prevSessionActive = useRef<boolean | null>(null);
   const initRef = useRef(false);
   const lastErrDigest = useRef<string | null>(null);
   const channelInfoRef = useRef(false);
@@ -326,13 +347,6 @@ function useActivityJournal(
       return [...prev.slice(-149), row];
     });
   }, []);
-
-  useEffect(() => {
-    if (!initRef.current) {
-      initRef.current = true;
-      push("INFO", "Activity stream geactiveerd • gekoppeld aan LUMINA telemetry bus.");
-    }
-  }, [push]);
 
   useEffect(() => {
     if (error instanceof LuminaMetricsFetchError) {
@@ -363,6 +377,18 @@ function useActivityJournal(
     if (!metrics || !lastUpdatedAt) {
       return;
     }
+    if (!metrics.session_active) {
+      if (prevSessionActive.current === true) {
+        push("INFO", "Sessie idle — activity stream pauzeert.");
+      }
+      prevSessionActive.current = false;
+      return;
+    }
+    prevSessionActive.current = true;
+    if (!initRef.current) {
+      initRef.current = true;
+      push("INFO", "Activity stream geactiveerd.");
+    }
     if (!channelInfoRef.current && !loading) {
       channelInfoRef.current = true;
       push(
@@ -371,9 +397,15 @@ function useActivityJournal(
       );
     }
 
-    const t = metrics.trades_completed;
+    const t = metrics.training_completed_trades || metrics.trades_completed;
     const prev = prevTrades.current;
     prevTrades.current = t;
+    const sessionKey = `${metrics.session_kind}:${metrics.session_active ? "1" : "0"}`;
+    const stageKey = metrics.first_boot_stage || "";
+    const sessionChanged = prevSession.current !== sessionKey;
+    const stageChanged = prevStage.current !== stageKey;
+    prevSession.current = sessionKey;
+    prevStage.current = stageKey;
 
     let deltaFrag = "";
     if (prev === null) {
@@ -387,8 +419,12 @@ function useActivityJournal(
     const velFrag =
       metrics.velocity >= 1000 ? formatCompact(metrics.velocity) : metrics.velocity.toFixed(1);
 
+    if (!sessionChanged && !stageChanged && prev !== null && t === prev) {
+      return;
+    }
     const msg = [
       `Tick ${new Date(lastUpdatedAt).toLocaleTimeString()}`,
+      `session "${metrics.session_kind}"`,
       `trades ${formatCompact(t)}${deltaFrag ? ` • ${deltaFrag}` : ""}`,
       `velocity ${velFrag} evt/s`,
       `phase "${metrics.phase || "UNKNOWN"}"`,
@@ -436,6 +472,18 @@ export default function MonitoringDashboard(): JSX.Element {
 
   const modeLabel = useMemo(() => (liveMetrics ? deriveOperationalMode(liveMetrics) : "—"), [liveMetrics]);
   const phaseLabel = liveMetrics?.phase.trim() || "—";
+  const targetTrades = liveMetrics?.training_target_trades ?? 0;
+  const hasTrainingTarget = Boolean(liveMetrics?.training_target_applicable) && targetTrades > 0;
+  const completedTrades = liveMetrics?.training_completed_trades ?? liveMetrics?.trades_completed ?? 0;
+  const sessionLabel = liveMetrics?.session_kind?.trim() || "idle";
+  const sessionActive = Boolean(liveMetrics?.session_active);
+  const ppoSteps = liveMetrics?.ppo_steps ?? 0;
+  const ppoTotal = Math.max(1, liveMetrics?.ppo_timesteps_total ?? 300000);
+  const ppoPct = Math.max(
+    0,
+    Math.min(100, liveMetrics?.ppo_progress_pct ?? (ppoSteps / Math.max(1, ppoTotal)) * 100),
+  );
+  const showPpoProgress = sessionActive && (liveMetrics?.phase?.trim().toLowerCase() === "ppo_training" || ppoSteps > 0);
 
   /** scroll activity to bottom when new rows arrive */
   useEffect(() => {
@@ -481,7 +529,9 @@ export default function MonitoringDashboard(): JSX.Element {
                 />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-[#00ff9f] shadow-[0_0_10px_#00ff9faa]" />
               </span>
-              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#00ff9f]">Training Live</span>
+              <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#00ff9f]">
+                {sessionActive ? sessionLabel.replaceAll("_", " ") : "Idle"}
+              </span>
             </span>
 
             <motion.button
@@ -529,6 +579,10 @@ export default function MonitoringDashboard(): JSX.Element {
                 <span>Laatste update {new Date(lastUpdatedAt).toLocaleTimeString()}</span>
               </>
             ) : null}
+            <span aria-hidden className="hidden text-zinc-700 sm:inline">/</span>
+            <span className="font-mono text-zinc-500">
+              src {METRICS_SOURCE_PATH} | build {BUILD_MARKER} | {sessionLabel}
+            </span>
           </div>
         </div>
       </header>
@@ -542,13 +596,19 @@ export default function MonitoringDashboard(): JSX.Element {
                 <div>
                   <h2 className="text-lg font-semibold text-white sm:text-xl">Training horizon</h2>
                   <p className="mt-1 max-w-md text-sm text-zinc-500">
-                    Centrale voortgang op simulatie-trades (target {formatCompact(TARGET_TRAINING_TRADES)}). Live data via{" "}
+                    Centrale voortgang op simulatie-trades
+                    {hasTrainingTarget
+                      ? ` (target ${formatCompact(targetTrades)})`
+                      : " (target not configured yet)"}
+                    .
+                    {" "}Live data via{" "}
                     <code className="rounded bg-black/50 px-1 font-mono text-[#00f0ff]/90">useLuminaMetrics</code>.
                   </p>
                 </div>
                 <TradeOrbitRing
-                  tradesCompleted={liveMetrics?.trades_completed ?? 0}
-                  target={TARGET_TRAINING_TRADES}
+                  tradesCompleted={completedTrades}
+                  target={hasTrainingTarget ? targetTrades : 1}
+                  hasTarget={hasTrainingTarget}
                   reduceMotion={reduceMotion}
                 />
               </div>
@@ -568,7 +628,10 @@ export default function MonitoringDashboard(): JSX.Element {
                   </div>
                   <p className="mt-4 text-[11px] font-medium uppercase tracking-wider text-zinc-500">Trades completed</p>
                   <p className="mt-2 text-3xl font-semibold text-white">
-                    <LiveStatNumber value={liveMetrics?.trades_completed ?? 0} reduceMotion={reduceMotion} />
+                    <LiveStatNumber
+                      value={liveMetrics?.training_completed_trades ?? liveMetrics?.trades_completed ?? 0}
+                      reduceMotion={reduceMotion}
+                    />
                   </p>
                 </MetricGlassCard>
 
@@ -588,6 +651,20 @@ export default function MonitoringDashboard(): JSX.Element {
                   <p className="mt-2 text-3xl font-semibold text-white">
                     <LiveStatNumber value={liveMetrics?.ppo_steps ?? 0} reduceMotion={reduceMotion} />
                   </p>
+                  {showPpoProgress ? (
+                    <div className="mt-3 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                        <span>{formatCompact(ppoSteps)} / {formatCompact(ppoTotal)} steps</span>
+                        <span>{ppoPct.toFixed(1)}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-zinc-900/70">
+                        <div
+                          className="h-1.5 rounded-full bg-[#00ff9f]/80 transition-all"
+                          style={{ width: `${ppoPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
                 </MetricGlassCard>
 
                 <MetricGlassCard
@@ -643,12 +720,18 @@ export default function MonitoringDashboard(): JSX.Element {
                   </div>
                   <p className="mt-4 text-[11px] font-medium uppercase tracking-wider text-zinc-500">Training velocity</p>
                   <p className="mt-2 text-3xl font-semibold text-white">
-                    <LiveStatNumber
-                      value={liveMetrics?.velocity ?? 0}
-                      decimals={1}
-                      reduceMotion={reduceMotion}
-                    />
-                    <span className="ml-2 align-middle font-sans text-sm font-normal text-zinc-500">evt · s⁻¹</span>
+                    {hasTrainingTarget ? (
+                      <>
+                        <LiveStatNumber
+                          value={liveMetrics?.velocity ?? 0}
+                          decimals={1}
+                          reduceMotion={reduceMotion}
+                        />
+                        <span className="ml-2 align-middle font-sans text-sm font-normal text-zinc-500">evt · s⁻¹</span>
+                      </>
+                    ) : (
+                      <span className="font-mono text-zinc-500">—</span>
+                    )}
                   </p>
                 </MetricGlassCard>
 
@@ -690,6 +773,12 @@ export default function MonitoringDashboard(): JSX.Element {
                             : liveMetrics.eta_minutes === null
                               ? "—"
                               : liveMetrics.eta_minutes.toLocaleString()}
+                        </dd>
+                      </div>
+                      <div className="col-span-2">
+                        <dt>First-boot stage</dt>
+                        <dd className="mt-1 font-mono text-zinc-200">
+                          {liveMetrics?.first_boot_stage?.trim() || "n/a"}
                         </dd>
                       </div>
                     </dl>

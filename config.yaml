@@ -156,7 +156,11 @@ security:
   jwt_algorithm: HS256
   jwt_expiration_minutes: 1440
   api_key_header: X-API-Key
-  api_keys: {}
+  api_keys:
+    ${LUMINA_ADMIN_API_KEY}:
+      name: launcher-admin
+      role: admin
+      enabled: true
   rate_limit_enabled: true
   rate_limit_requests_per_minute: 60
   rate_limit_burst_size: 10
@@ -218,10 +222,12 @@ fine_tuning:
   min_acceptance: 0.4
   drift_threshold: 0.25
 first_boot:
-  training_trades: 500000
+  training_trades: 600000
   prefer_real_data_only: true
-  max_real_days: 90
+  max_real_days: 241
   allow_minimal_synthetic_fallback: false
+  ppo_progress_interval: 5000
+  force_training: true
 session:
   cooldown_minutes_after_streak: 15
   enforce_calendar: true

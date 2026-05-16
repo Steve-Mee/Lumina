@@ -12,10 +12,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import altair as alt
 import pandas as pd
 import requests
 import streamlit as st
+import yaml
 
+from lumina_core.first_boot_progress import (
+    resolve_first_boot_completed_trades,
+    resolve_first_boot_target_trades,
+)
 from lumina_os.frontend.http_utils import is_backend_unreachable, log_fetch_failure
 
 _LOG = logging.getLogger(__name__)
@@ -45,6 +51,55 @@ _VETO_REGISTRY_DB = _STATE_DIR / "veto_registry.db"
 _STRUCTURED_ERRORS_PATH = _LOGS_DIR / "structured_errors.jsonl"
 _FULL_LOG_PATH = _LOGS_DIR / "lumina_full_log.csv"
 _LUMINA_SIM_STATE_PATH = _STATE_DIR / "lumina_sim_state.json"
+
+
+def _render_dark_series_chart(
+    values: list[float],
+    *,
+    y_col: str,
+    y_title: str,
+    color: str = "#00f0ff",
+    height: int = 180,
+) -> None:
+    if not values:
+        return
+    frame = pd.DataFrame({"idx": list(range(len(values))), y_col: values})
+    chart = (
+        alt.Chart(frame)
+        .mark_line(color=color, strokeWidth=2.2)
+        .encode(
+            x=alt.X("idx:Q", axis=alt.Axis(labelColor="#94a3b8", title=None)),
+            y=alt.Y(f"{y_col}:Q", title=y_title, axis=alt.Axis(labelColor="#94a3b8", titleColor="#94a3b8")),
+            tooltip=["idx", y_col],
+        )
+        .properties(height=height)
+        .configure(background="#0f1118")
+        .configure_view(strokeOpacity=0, fill="#0f1118")
+        .configure_axis(gridColor="#1f2937")
+    )
+    st.altair_chart(chart, use_container_width=True)
+
+
+def _render_dark_log_text(text: str, *, height_px: int = 260) -> None:
+    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    st.markdown(
+        f"""
+<div style="
+  background: rgba(11, 14, 20, 0.92);
+  border: 1px solid rgba(0, 240, 255, 0.18);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: {height_px}px;
+  max-height: {height_px}px;
+  overflow: auto;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 0.78rem;
+  color: #b6c2d3;
+  white-space: pre-wrap;
+">{escaped}</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def _first_boot_completion_display(progress: dict[str, Any]) -> tuple[str, str]:
@@ -101,6 +156,16 @@ def _load_json(path: Path) -> dict[str, Any]:
         return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception:
         return {}
     return payload if isinstance(payload, dict) else {}
@@ -357,7 +422,7 @@ def render_backend_observability_subpanel(base_url: str, api_key: str) -> None:
         try:
             prom_resp = requests.get(f"{base_url}/api/monitoring/metrics", timeout=5)
             if prom_resp.ok:
-                st.code(prom_resp.text, language="text")
+                _render_dark_log_text(prom_resp.text, height_px=300)
             else:
                 st.warning(f"HTTP {prom_resp.status_code}")
         except Exception as exc:
@@ -509,14 +574,39 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
     with col_a:
         api_key = st.text_input("API Key (optional, unlocks live metrics API)", type="password", key="monitoring_api_key")
     with col_b:
-        refresh_seconds = st.slider("Auto-refresh (sec)", min_value=15, max_value=30, value=20, step=5)
+        current_refresh_seconds = int(st.session_state.get("monitoring_refresh_seconds", 20))
+        refresh_seconds = st.slider(
+            "Auto-refresh (sec)",
+            min_value=15,
+            max_value=60,
+            value=current_refresh_seconds,
+            step=5,
+            key="monitoring_refresh_seconds_slider",
+        )
+        if int(refresh_seconds) != current_refresh_seconds:
+            current_refresh_seconds = int(refresh_seconds)
+            st.session_state["monitoring_refresh_seconds"] = current_refresh_seconds
+            st.session_state["monitoring_refresh_seconds_input"] = current_refresh_seconds
+        refresh_seconds_input = st.number_input(
+            "Refresh seconds (input)",
+            min_value=15,
+            max_value=60,
+            value=current_refresh_seconds,
+            step=5,
+            key="monitoring_refresh_seconds_input",
+        )
+        refresh_seconds = int(refresh_seconds_input)
+        st.session_state["monitoring_refresh_seconds"] = refresh_seconds
     with col_c:
         auto_refresh = st.checkbox("Auto refresh", value=False)
 
-    section_choice_raw = st.sidebar.selectbox(
-        "Monitoring section",
-        options=[
-            "All",
+    if auto_refresh:
+        time.sleep(int(refresh_seconds))
+        st.rerun()
+
+    tab_debug, tab_a, tab_b, tab_c, tab_d, tab_e, tab_f, tab_g, tab_h = st.tabs(
+        [
+            "Debug Controls",
             "A. System Overview",
             "B. First Boot Training Status",
             "C. Training History",
@@ -524,36 +614,82 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
             "E. Shadow Deployment",
             "F. Live Trading Metrics",
             "G. System Health & Logs",
-            "Debug Controls",
-        ],
-        index=0,
-        key="monitoring_section_choice",
+            "H. Trends",
+        ]
     )
-    section_choice = section_choice_raw if isinstance(section_choice_raw, str) else "All"
 
-    def _show(section_name: str) -> bool:
-        return section_choice in {"All", section_name}
-
-    if auto_refresh:
-        time.sleep(int(refresh_seconds))
-        st.rerun()
-
-    metrics_snapshot = _fetch_metrics_json(base_url, api_key=api_key)
     runtime_snapshot = _load_json(_RUNTIME_MONITORING_PATH)
     fallback_runtime_state = _load_json(_LUMINA_SIM_STATE_PATH)
     first_boot_progress = _load_json(_FIRST_BOOT_PROGRESS_PATH)
+    config_payload = _load_yaml(_REPO_ROOT / "config.yaml")
     ppo_meta = _load_json(_PPO_POLICY_METADATA_PATH)
     twin_model = _load_json(_APPROVAL_TWIN_MODEL_PATH)
-    twin_decisions = _load_jsonl(_APPROVAL_TWIN_DECISIONS_PATH, limit=20)
-    twin_training = _load_jsonl(_APPROVAL_TWIN_TRAINING_PATH, limit=20)
-    shadow_runs = _load_json(_SHADOW_RUNS_PATH)
-    gate_rows = _load_jsonl(_GATE_REJECTION_PATH, limit=300)
-    latency_rows = _load_jsonl(_REASONING_LATENCY_PATH, limit=200)
-    model_load_rows = _load_jsonl(_MODEL_LOAD_TIMES_PATH, limit=100)
-    training_reports = _latest_training_reports(limit=10)
-    structured_errors = _load_jsonl(_STRUCTURED_ERRORS_PATH, limit=120)
 
-    if _show("Debug Controls"):
+    metrics_snapshot_cache: dict[str, Any] | None = None
+    training_reports_cache: list[dict[str, Any]] | None = None
+    twin_decisions_cache: list[dict[str, Any]] | None = None
+    twin_training_cache: list[dict[str, Any]] | None = None
+    shadow_runs_cache: dict[str, Any] | None = None
+    gate_rows_cache: list[dict[str, Any]] | None = None
+    latency_rows_cache: list[dict[str, Any]] | None = None
+    model_load_rows_cache: list[dict[str, Any]] | None = None
+    structured_errors_cache: list[dict[str, Any]] | None = None
+
+    def _metrics_snapshot() -> dict[str, Any]:
+        nonlocal metrics_snapshot_cache
+        if metrics_snapshot_cache is None:
+            metrics_snapshot_cache = _fetch_metrics_json(base_url, api_key=api_key)
+        return metrics_snapshot_cache
+
+    def _training_reports() -> list[dict[str, Any]]:
+        nonlocal training_reports_cache
+        if training_reports_cache is None:
+            training_reports_cache = _latest_training_reports(limit=10)
+        return training_reports_cache
+
+    def _twin_decisions() -> list[dict[str, Any]]:
+        nonlocal twin_decisions_cache
+        if twin_decisions_cache is None:
+            twin_decisions_cache = _load_jsonl(_APPROVAL_TWIN_DECISIONS_PATH, limit=20)
+        return twin_decisions_cache
+
+    def _twin_training() -> list[dict[str, Any]]:
+        nonlocal twin_training_cache
+        if twin_training_cache is None:
+            twin_training_cache = _load_jsonl(_APPROVAL_TWIN_TRAINING_PATH, limit=20)
+        return twin_training_cache
+
+    def _shadow_runs() -> dict[str, Any]:
+        nonlocal shadow_runs_cache
+        if shadow_runs_cache is None:
+            shadow_runs_cache = _load_json(_SHADOW_RUNS_PATH)
+        return shadow_runs_cache
+
+    def _gate_rows() -> list[dict[str, Any]]:
+        nonlocal gate_rows_cache
+        if gate_rows_cache is None:
+            gate_rows_cache = _load_jsonl(_GATE_REJECTION_PATH, limit=300)
+        return gate_rows_cache
+
+    def _latency_rows() -> list[dict[str, Any]]:
+        nonlocal latency_rows_cache
+        if latency_rows_cache is None:
+            latency_rows_cache = _load_jsonl(_REASONING_LATENCY_PATH, limit=200)
+        return latency_rows_cache
+
+    def _model_load_rows() -> list[dict[str, Any]]:
+        nonlocal model_load_rows_cache
+        if model_load_rows_cache is None:
+            model_load_rows_cache = _load_jsonl(_MODEL_LOAD_TIMES_PATH, limit=100)
+        return model_load_rows_cache
+
+    def _structured_errors() -> list[dict[str, Any]]:
+        nonlocal structured_errors_cache
+        if structured_errors_cache is None:
+            structured_errors_cache = _load_jsonl(_STRUCTURED_ERRORS_PATH, limit=120)
+        return structured_errors_cache
+
+    with tab_debug:
         st.markdown("### Debug Controls")
         dc1, dc2, dc3 = st.columns(3)
         with dc1:
@@ -592,159 +728,165 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
             )
 
     # A. System Overview
-    if _show("A. System Overview"):
+    with tab_a:
         st.markdown("### A. System Overview")
-    mode = str(runtime_snapshot.get("mode") or fallback_runtime_state.get("mode") or "SIM").upper()
-    first_boot_label, first_boot_ts = _first_boot_completion_display(first_boot_progress)
-    last_training = training_reports[0] if training_reports else {}
-    twin_avg_error = _safe_float((twin_training[-1] if twin_training else {}).get("avg_prediction_error"))
-    twin_reward = _safe_float((twin_training[-1] if twin_training else {}).get("reward"))
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Current mode", mode)
-    c2.metric("First boot completed", first_boot_label)
-    c3.metric("PPO policy version", str(ppo_meta.get("policy_version", "unknown")))
-    c4.metric("PPO total training steps", _safe_int(ppo_meta.get("total_training_steps")))
-    d1, d2, d3 = st.columns(3)
-    d1.metric("Training mode", str(last_training.get("_run_type", "Background")))
-    d2.metric("Last training duration (s)", _safe_float(last_training.get("elapsed_sec")))
-    d3.metric("ApprovalTwin reward", f"{twin_reward:.3f}")
-    st.caption(
-        f"First boot timestamp: {first_boot_ts} | "
-        f"ApprovalTwin last update: {twin_model.get('last_updated', 'n/a')} | "
-        f"ApprovalTwin avg error: {twin_avg_error:.4f}"
-    )
+        mode = str(runtime_snapshot.get("mode") or fallback_runtime_state.get("mode") or "SIM").upper()
+        first_boot_label, first_boot_ts = _first_boot_completion_display(first_boot_progress)
+        training_reports = _training_reports()
+        twin_training = _twin_training()
+        last_training = training_reports[0] if training_reports else {}
+        twin_avg_error = _safe_float((twin_training[-1] if twin_training else {}).get("avg_prediction_error"))
+        twin_reward = _safe_float((twin_training[-1] if twin_training else {}).get("reward"))
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Current mode", mode)
+        c2.metric("First boot completed", first_boot_label)
+        c3.metric("PPO policy version", str(ppo_meta.get("policy_version", "unknown")))
+        c4.metric("PPO total training steps", _safe_int(ppo_meta.get("total_training_steps")))
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Training mode", str(last_training.get("_run_type", "Background")))
+        d2.metric("Last training duration (s)", _safe_float(last_training.get("elapsed_sec")))
+        d3.metric("ApprovalTwin reward", f"{twin_reward:.3f}")
+        st.caption(
+            f"First boot timestamp: {first_boot_ts} | "
+            f"ApprovalTwin last update: {twin_model.get('last_updated', 'n/a')} | "
+            f"ApprovalTwin avg error: {twin_avg_error:.4f}"
+        )
 
     # B. First Boot Training Status
-    if _show("B. First Boot Training Status"):
+    with tab_b:
         st.markdown("### B. First Boot Training Status")
-    stage = str(first_boot_progress.get("stage", "unknown"))
-    st.progress(_first_boot_progress_fraction(first_boot_progress))
-    b1, b2, b3, b4 = st.columns(4)
-    b1.metric("Stage", stage)
-    b2.metric("Historical days (loaded / est.)", _first_boot_historical_days_display(first_boot_progress))
-    b3.metric("Real vs synthetic %", f"{_safe_float(last_training.get('synthetic_pct', 0.0)):.2f}% synthetic")
-    b4.metric("Trades completed", _safe_int(last_training.get("trades")))
-    phase = str(first_boot_progress.get("phase") or "").strip() or "n/a"
-    pct_raw = first_boot_progress.get("progress_pct")
-    pct_note = f"{pct_raw}%" if pct_raw is not None else "—"
-    st.caption(
-        f"Phase: {phase} · detail progress: {pct_note} · "
-        f"{first_boot_progress.get('message', 'No first boot message available.')}"
-    )
+        training_reports = _training_reports()
+        last_training = training_reports[0] if training_reports else {}
+        stage = str(first_boot_progress.get("stage", "unknown"))
+        st.progress(_first_boot_progress_fraction(first_boot_progress))
+        b1, b2, b3, b4 = st.columns(4)
+        b1.metric("Stage", stage)
+        b2.metric("Historical days (loaded / est.)", _first_boot_historical_days_display(first_boot_progress))
+        b3.metric("Real vs synthetic %", f"{_safe_float(last_training.get('synthetic_pct', 0.0)):.2f}% synthetic")
+        b4.metric("Trades completed", _safe_int(resolve_first_boot_completed_trades(first_boot_progress)))
+        phase = str(first_boot_progress.get("phase") or "").strip() or "n/a"
+        pct_raw = first_boot_progress.get("progress_pct")
+        pct_note = f"{pct_raw}%" if pct_raw is not None else "—"
+        target = resolve_first_boot_target_trades(config_payload)
+        st.caption(
+            f"Phase: {phase} · detail progress: {pct_note} · "
+            f"target: {target:,} · {first_boot_progress.get('message', 'No first boot message available.')}"
+        )
 
     # C. Training History
-    if _show("C. Training History"):
+    with tab_c:
         st.markdown("### C. Training History")
-    history_rows: list[dict[str, Any]] = []
-    for run in training_reports:
-        sharpe = _safe_float(run.get("mean_worker_sharpe"))
-        history_rows.append(
-            {
-                "timestamp": str(run.get("timestamp", "")),
-                "window": str(run.get("_run_type", "Background")),
-                "trades": _safe_int(run.get("trades")),
-                "real_data_ratio": round(
-                    1.0
-                    - (_safe_float(run.get("synthetic_ratio"), 0.0))
-                    if run.get("synthetic_ratio") is not None
-                    else 1.0,
-                    4,
-                ),
-                "duration_s": _safe_float(run.get("elapsed_sec")),
-                "sharpe_improvement": sharpe,
-                "new_bible_rules_hint": "See simulation.bible_rules_appended logs",
-            }
-        )
-    if _show("C. Training History") and history_rows:
-        hist_df = pd.DataFrame(history_rows)
-        st.dataframe(hist_df, width="stretch")
-        st.download_button(
-            "Export training history (JSON)",
-            data=json.dumps(history_rows, indent=2),
-            file_name="training_history.json",
-            mime="application/json",
-        )
-    elif _show("C. Training History"):
-        st.info("No training history found in journal/simulator.")
+        training_reports = _training_reports()
+        history_rows: list[dict[str, Any]] = []
+        for run in training_reports:
+            sharpe = _safe_float(run.get("mean_worker_sharpe"))
+            history_rows.append(
+                {
+                    "timestamp": str(run.get("timestamp", "")),
+                    "window": str(run.get("_run_type", "Background")),
+                    "trades": _safe_int(run.get("trades")),
+                    "real_data_ratio": round(
+                        1.0
+                        - (_safe_float(run.get("synthetic_ratio"), 0.0))
+                        if run.get("synthetic_ratio") is not None
+                        else 1.0,
+                        4,
+                    ),
+                    "duration_s": _safe_float(run.get("elapsed_sec")),
+                    "sharpe_improvement": sharpe,
+                    "new_bible_rules_hint": "See simulation.bible_rules_appended logs",
+                }
+            )
+        if history_rows:
+            hist_df = pd.DataFrame(history_rows)
+            st.dataframe(hist_df, width="stretch")
+            st.download_button(
+                "Export training history (JSON)",
+                data=json.dumps(history_rows, indent=2),
+                file_name="training_history.json",
+                mime="application/json",
+            )
+        else:
+            st.info("No training history found in journal/simulator.")
 
     # D. ApprovalTwin Activity
-    if _show("D. ApprovalTwin Activity"):
+    with tab_d:
         st.markdown("### D. ApprovalTwin Activity")
-    if _show("D. ApprovalTwin Activity") and twin_decisions:
-        decision_rows = [
-            {
-                "timestamp": str(d.get("timestamp", "")),
-                "dna_hash": str(d.get("dna_hash", ""))[:12],
-                "score": _safe_float(d.get("score")),
-                "recommendation": "Approve" if bool(d.get("recommendation")) else "Veto",
-                "risk_flags": ", ".join(d.get("risk_flags", []) or []),
-            }
-            for d in twin_decisions[-20:]
-        ]
-        st.dataframe(pd.DataFrame(decision_rows), width="stretch")
-    elif _show("D. ApprovalTwin Activity"):
-        st.info("No twin decision telemetry found yet.")
-    if _show("D. ApprovalTwin Activity"):
+        twin_decisions = _twin_decisions()
+        if twin_decisions:
+            decision_rows = [
+                {
+                    "timestamp": str(d.get("timestamp", "")),
+                    "dna_hash": str(d.get("dna_hash", ""))[:12],
+                    "score": _safe_float(d.get("score")),
+                    "recommendation": "Approve" if bool(d.get("recommendation")) else "Veto",
+                    "risk_flags": ", ".join(d.get("risk_flags", []) or []),
+                }
+                for d in twin_decisions[-20:]
+            ]
+            st.dataframe(pd.DataFrame(decision_rows), width="stretch")
+        else:
+            st.info("No twin decision telemetry found yet.")
         veto_count, top_reasons = _weekly_veto_summary()
         st.metric("Weekly veto count", veto_count)
         if top_reasons:
             st.write("Top veto reasons:", ", ".join(f"{reason} ({count})" for reason, count in top_reasons[:3]))
 
     # E. Shadow Deployment
-    if _show("E. Shadow Deployment"):
+    with tab_e:
         st.markdown("### E. Shadow Deployment")
-    shadow_values = list(shadow_runs.values()) if isinstance(shadow_runs, dict) else []
-    active_shadow = [r for r in shadow_values if str(r.get("status", "")).lower() == "running"]
-    promoted = [r for r in shadow_values if str(r.get("status", "")).lower() == "promoted"]
-    if _show("E. Shadow Deployment"):
+        shadow_runs = _shadow_runs()
+        shadow_values = list(shadow_runs.values()) if isinstance(shadow_runs, dict) else []
+        active_shadow = [r for r in shadow_values if str(r.get("status", "")).lower() == "running"]
+        promoted = [r for r in shadow_values if str(r.get("status", "")).lower() == "promoted"]
         e1, e2 = st.columns(2)
         e1.metric("Active shadow runs", len(active_shadow))
         e2.metric("Promoted strategies", len(promoted))
-    if _show("E. Shadow Deployment") and shadow_values:
-        view_rows = []
-        for row in shadow_values[-25:]:
-            sim_hist = row.get("sim_pnl_history", []) or []
-            paper_hist = row.get("paper_pnl_history", []) or []
-            view_rows.append(
-                {
-                    "dna_hash": str(row.get("dna_hash", ""))[:12],
-                    "status": str(row.get("status", "")),
-                    "trade_count": _safe_int(row.get("trade_count")),
-                    "sim_pnl": _safe_float(row.get("total_sim_pnl")),
-                    "paper_pnl": _safe_float(row.get("total_paper_pnl")),
-                    "statistical_significance_proxy": round(abs(_safe_float(row.get("total_sim_pnl"))) + len(sim_hist) + len(paper_hist), 3),
-                }
-            )
-        st.dataframe(pd.DataFrame(view_rows), width="stretch")
+        if shadow_values:
+            view_rows = []
+            for row in shadow_values[-25:]:
+                sim_hist = row.get("sim_pnl_history", []) or []
+                paper_hist = row.get("paper_pnl_history", []) or []
+                view_rows.append(
+                    {
+                        "dna_hash": str(row.get("dna_hash", ""))[:12],
+                        "status": str(row.get("status", "")),
+                        "trade_count": _safe_int(row.get("trade_count")),
+                        "sim_pnl": _safe_float(row.get("total_sim_pnl")),
+                        "paper_pnl": _safe_float(row.get("total_paper_pnl")),
+                        "statistical_significance_proxy": round(abs(_safe_float(row.get("total_sim_pnl"))) + len(sim_hist) + len(paper_hist), 3),
+                    }
+                )
+            st.dataframe(pd.DataFrame(view_rows), width="stretch")
 
     # F. Live Trading Metrics
-    if _show("F. Live Trading Metrics"):
+    with tab_f:
         st.markdown("### F. Live Trading Metrics")
-    live_exposure = _safe_int(runtime_snapshot.get("live_position_qty", fallback_runtime_state.get("live_position_qty", 0)))
-    daily_pnl = _safe_float(runtime_snapshot.get("daily_pnl", _metric_value(metrics_snapshot, "lumina_risk_daily_pnl", 0.0)))
-    consecutive_losses = _safe_int(
-        runtime_snapshot.get("consecutive_losses", _metric_value(metrics_snapshot, "lumina_risk_consecutive_losses", 0.0))
-    )
-    if _show("F. Live Trading Metrics"):
+        metrics_snapshot = _metrics_snapshot()
+        live_exposure = _safe_int(runtime_snapshot.get("live_position_qty", fallback_runtime_state.get("live_position_qty", 0)))
+        daily_pnl = _safe_float(runtime_snapshot.get("daily_pnl", _metric_value(metrics_snapshot, "lumina_risk_daily_pnl", 0.0)))
+        consecutive_losses = _safe_int(
+            runtime_snapshot.get("consecutive_losses", _metric_value(metrics_snapshot, "lumina_risk_consecutive_losses", 0.0))
+        )
         f1, f2, f3 = st.columns(3)
         f1.metric("Current exposure (qty)", live_exposure)
         f2.metric("Daily PnL", f"${daily_pnl:,.2f}")
         f3.metric("Consecutive losses", consecutive_losses)
-    today_rejections = [r for r in gate_rows if (_parse_iso(r.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc)).date() == datetime.now(timezone.utc).date()]
-    reason_counter = Counter(str(r.get("reason", "unknown")) for r in today_rejections)
-    if _show("F. Live Trading Metrics"):
+        gate_rows = _gate_rows()
+        today_rejections = [r for r in gate_rows if (_parse_iso(r.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc)).date() == datetime.now(timezone.utc).date()]
+        reason_counter = Counter(str(r.get("reason", "unknown")) for r in today_rejections)
         st.metric("Gate rejections today", len(today_rejections))
         st.caption("Top 3 gate reasons: " + ", ".join(f"{k} ({v})" for k, v in reason_counter.most_common(3)) if reason_counter else "No gate rejections today.")
-    recent_trades = runtime_snapshot.get("last_trades", [])
-    if not isinstance(recent_trades, list):
-        recent_trades = []
-    if _show("F. Live Trading Metrics") and recent_trades:
-        st.dataframe(pd.DataFrame(recent_trades[-10:]), width="stretch")
-    elif _show("F. Live Trading Metrics"):
-        st.info("No executed trades captured yet.")
+        recent_trades = runtime_snapshot.get("last_trades", [])
+        if not isinstance(recent_trades, list):
+            recent_trades = []
+        if recent_trades:
+            st.dataframe(pd.DataFrame(recent_trades[-10:]), width="stretch")
+        else:
+            st.info("No executed trades captured yet.")
 
     # G. System Health & Logs
-    if _show("G. System Health & Logs"):
+    with tab_g:
         st.markdown("### G. System Health & Logs")
         try:
             import psutil  # type: ignore[import-untyped]
@@ -753,62 +895,70 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
             st.caption(f"Host: CPU {psutil.cpu_percent(interval=None):.0f}% | Memory {vm.percent:.0f}% used ({vm.available // (1024**3)} GB free)")
         except Exception:
             pass
-    warn_err = _tail_warning_error_logs(limit=80)
-    comp_filter = st.text_input("Filter logs by component/event", value="", key="monitoring_log_filter").strip().lower()
-    if comp_filter:
-        warn_err = [ln for ln in warn_err if comp_filter in ln.lower()]
-    if _show("G. System Health & Logs"):
-        st.code("\n".join(warn_err[-40:]) if warn_err else "No warning/error lines found.", language="text")
+        warn_err = _tail_warning_error_logs(limit=80)
+        comp_filter = st.text_input("Filter logs by component/event", value="", key="monitoring_log_filter").strip().lower()
+        if comp_filter:
+            warn_err = [ln for ln in warn_err if comp_filter in ln.lower()]
+        _render_dark_log_text(
+            "\n".join(warn_err[-40:]) if warn_err else "No warning/error lines found.",
+            height_px=280,
+        )
         st.download_button(
             "Export warning/error log tail",
             data="\n".join(warn_err),
             file_name="lumina_warning_error_tail.log",
             mime="text/plain",
         )
-    breaches = [r for r in latency_rows if _safe_float(r.get("elapsed_ms")) > _safe_float(r.get("sla_ms"), 0.0)]
-    if _show("G. System Health & Logs"):
+        latency_rows = _latency_rows()
+        breaches = [r for r in latency_rows if _safe_float(r.get("elapsed_ms")) > _safe_float(r.get("sla_ms"), 0.0)]
         st.metric("Latency SLA breaches", len(breaches))
+        model_load_rows = _model_load_rows()
         if model_load_rows:
             model_df = pd.DataFrame(model_load_rows[-20:])
             st.dataframe(model_df, width="stretch")
         else:
             st.info("No model loading telemetry captured yet.")
 
-    # Nice-to-have charts
-    if _show("All"):
+    # H. Trends
+    with tab_h:
         st.markdown("### Trends")
-    chart_col1, chart_col2, chart_col3 = st.columns(3)
-    with chart_col1:
-        rewards = [_safe_float(x.get("reward")) for x in twin_training if x.get("reward") is not None]
-        if rewards:
-            st.line_chart(pd.DataFrame({"twin_reward": rewards[-30:]}), height=180)
-        else:
-            st.caption("No reward trend yet.")
-    with chart_col2:
-        confidence = [_safe_float(x.get("score")) for x in twin_decisions if x.get("score") is not None]
-        if confidence:
-            st.line_chart(pd.DataFrame({"twin_confidence": confidence[-30:]}), height=180)
-        else:
-            st.caption("No twin confidence trend yet.")
-    with chart_col3:
-        pnl_points = [_safe_float(x.get("daily_pnl")) for x in _load_jsonl(_DAILY_PNL_HISTORY_PATH, limit=120)]
-        if not pnl_points:
-            pnl_points = [_safe_float(x.get("daily_pnl")) for x in _load_jsonl(_REASONING_LATENCY_PATH, limit=60) if x.get("daily_pnl") is not None]
-        if not pnl_points and daily_pnl:
-            pnl_points = [daily_pnl]
-        if pnl_points:
-            st.line_chart(pd.DataFrame({"daily_pnl": pnl_points[-30:]}), height=180)
-        else:
-            st.caption("No daily PnL trend yet.")
+        chart_col1, chart_col2, chart_col3 = st.columns(3)
+        with chart_col1:
+            twin_training = _twin_training()
+            rewards = [_safe_float(x.get("reward")) for x in twin_training if x.get("reward") is not None]
+            if rewards:
+                _render_dark_series_chart(rewards[-30:], y_col="twin_reward", y_title="Twin Reward", color="#00f0ff")
+            else:
+                st.caption("No reward trend yet.")
+        with chart_col2:
+            twin_decisions = _twin_decisions()
+            confidence = [_safe_float(x.get("score")) for x in twin_decisions if x.get("score") is not None]
+            if confidence:
+                _render_dark_series_chart(
+                    confidence[-30:],
+                    y_col="twin_confidence",
+                    y_title="Twin Confidence",
+                    color="#00ff9f",
+                )
+            else:
+                st.caption("No twin confidence trend yet.")
+        with chart_col3:
+            pnl_points = [_safe_float(x.get("daily_pnl")) for x in _load_jsonl(_DAILY_PNL_HISTORY_PATH, limit=120)]
+            if not pnl_points:
+                pnl_points = [_safe_float(x.get("daily_pnl")) for x in _load_jsonl(_REASONING_LATENCY_PATH, limit=60) if x.get("daily_pnl") is not None]
+            if pnl_points:
+                _render_dark_series_chart(pnl_points[-30:], y_col="daily_pnl", y_title="Daily PnL", color="#38bdf8")
+            else:
+                st.caption("No daily PnL trend yet.")
 
     # Structured error feed
-    if _show("G. System Health & Logs") and structured_errors:
-        st.markdown("#### Structured Errors")
-        err_df = pd.DataFrame(structured_errors[-25:])
-        st.dataframe(err_df, width="stretch")
-    elif _show("G. System Health & Logs"):
-        st.caption("No structured errors recorded.")
-
-    if _show("G. System Health & Logs"):
+    with tab_g:
+        structured_errors = _structured_errors()
+        if structured_errors:
+            st.markdown("#### Structured Errors")
+            err_df = pd.DataFrame(structured_errors[-25:])
+            st.dataframe(err_df, width="stretch")
+        else:
+            st.caption("No structured errors recorded.")
         with st.expander("Backend API observability (health + JSON metrics + Prometheus)", expanded=False):
             render_backend_observability_subpanel(base_url, api_key)

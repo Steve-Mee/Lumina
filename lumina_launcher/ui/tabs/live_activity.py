@@ -22,7 +22,15 @@ def _tail_file(path: Path, max_chars: int = 6000, max_lines: int = 220) -> str:
         return ""
 
 
-def render_live_activity_tab(launcher_root: Path, alive: bool = False, pid: int | None = None) -> None:
+def render_live_activity_tab(
+    launcher_root: Path,
+    alive: bool = False,
+    pid: int | None = None,
+    *,
+    session_kind: str = "idle",
+    session_active: bool = False,
+    activity_stale: bool = True,
+) -> None:
     st.subheader("📡 Live Activity & Heartbeat")
 
     LUMINA_LOG_PATH = launcher_root / "logs" / "lumina_full_log.csv"
@@ -31,7 +39,7 @@ def render_live_activity_tab(launcher_root: Path, alive: bool = False, pid: int 
     # === Status Header ===
     col_status, col_pid = st.columns([2, 1])
     with col_status:
-        status = "🟢 **Running**" if alive else "🔴 **Stopped**"
+        status = "🟢 **Active**" if session_active else ("🟡 **Idle**" if alive else "🔴 **Stopped**")
         st.markdown(f"**Bot Status:** {status}")
     with col_pid:
         if pid:
@@ -44,12 +52,13 @@ def render_live_activity_tab(launcher_root: Path, alive: bool = False, pid: int 
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Log Heartbeat", "Live" if alive else "Stale")
+        heartbeat = "Live" if session_active and not activity_stale else ("Stale" if alive else "Stopped")
+        st.metric("Log Heartbeat", heartbeat)
     with col2:
         state_exists = STATE_PATH.exists()
         st.metric("Runtime State", "Updated" if state_exists else "Missing")
     with col3:
-        st.metric("Process Alive", "Yes" if alive else "No")
+        st.metric("Session", session_kind or "idle")
 
     # === Log Tail ===
     st.markdown("#### Recent Log Activity (tail)")

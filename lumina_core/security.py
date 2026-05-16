@@ -78,7 +78,26 @@ class SecurityConfig:
 
         # API key settings
         self.api_key_header = self.config.get("api_key_header", "X-API-Key")
-        self.api_keys: dict[str, dict[str, Any]] = self.config.get("api_keys", {})
+        raw_api_keys = self.config.get("api_keys", {})
+        if not isinstance(raw_api_keys, dict):
+            raw_api_keys = {}
+        self.api_keys: dict[str, dict[str, Any]] = {}
+        for key, meta in raw_api_keys.items():
+            resolved_key = _expand_env_placeholder(key)
+            if not resolved_key:
+                continue
+            self.api_keys[str(resolved_key)] = dict(meta) if isinstance(meta, dict) else {}
+
+        env_admin_key = str(os.getenv("LUMINA_ADMIN_API_KEY", "")).strip()
+        if env_admin_key:
+            self.api_keys.setdefault(
+                env_admin_key,
+                {
+                    "name": "env_admin_api_key",
+                    "role": "admin",
+                    "enabled": True,
+                },
+            )
 
         # Rate limiting settings
         self.rate_limit_enabled = self.config.get("rate_limit_enabled", True)
@@ -100,7 +119,8 @@ class SecurityConfig:
             f"CORS={len(self.cors_allowed_origins)} origins, "
             f"JWT algorithm={self.jwt_algorithm}, "
             f"RateLimit={self.rate_limit_enabled}, "
-            f"AuditLog={self.audit_log_enabled}"
+            f"AuditLog={self.audit_log_enabled}, "
+            f"APIKeys={len(self.api_keys)}"
         )
 
 

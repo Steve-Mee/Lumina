@@ -1,0 +1,281 @@
+{
+  "schema_version": "1.0",
+  "runtime": "headless",
+  "mode": "sim",
+  "broker_mode": "paper",
+  "aggressive_sim": false,
+  "sim_overnight_mode": true,
+  "broker_status": "paper_ok",
+  "tick_source": "historical",
+  "duration_minutes": 240.0,
+  "started_at": "2026-05-07T19:25:49.891060+00:00",
+  "finished_at": "2026-05-07T19:26:37.250312+00:00",
+  "total_trades": 5498,
+  "pnl_realized": 87310.64,
+  "max_drawdown": 525.4,
+  "risk_events": 0,
+  "var_breach_count": 0,
+  "wins": 2497,
+  "win_rate": 0.4542,
+  "mean_pnl_per_trade": 15.88,
+  "sharpe_annualized": 4.5963,
+  "evolution_proposals": 70,
+  "session_guard_blocks": 0,
+  "observability_alerts": 0,
+  "metrics_learning": {
+    "total_trades": 5498,
+    "pnl_realized": 87310.64,
+    "max_drawdown": 525.4,
+    "risk_events": 0,
+    "var_breach_count": 0,
+    "wins": 2497,
+    "win_rate": 0.4542,
+    "mean_pnl_per_trade": 15.88,
+    "sharpe_annualized": 4.5963
+  },
+  "metrics_realism": {
+    "total_trades": 5504,
+    "pnl_realized": -56228.75,
+    "max_drawdown": 56228.75,
+    "risk_events": 24,
+    "var_breach_count": 0,
+    "wins": 1434,
+    "win_rate": 0.2605,
+    "mean_pnl_per_trade": -10.22,
+    "sharpe_annualized": -7.197
+  },
+  "metrics_primary": "learning",
+  "financial_reporting": {
+    "learning_label": "Learning Fitness (niet productie-benchmark)",
+    "realism_label": "Realism Adjusted (wel vergelijkbaar voor live readiness)",
+    "metrics_for_readiness_gate": "realism",
+    "parity_delta_pnl_realized": 143539.39,
+    "parity_delta_max_drawdown": -55703.35,
+    "parity_delta_sharpe_annualized": 11.7933
+  },
+  "stress_report": {
+    "method": "deterministic_overlay_v1",
+    "scenarios": {
+      "volatility_spike": {
+        "pnl_realized": -30925.81,
+        "max_drawdown": 81531.69,
+        "var_breach_count": 2
+      },
+      "liquidity_shock": {
+        "pnl_realized": -34861.82,
+        "max_drawdown": 74221.95,
+        "var_breach_count": 1
+      },
+      "correlation_breakdown": {
+        "pnl_realized": -26989.8,
+        "max_drawdown": 88841.43,
+        "var_breach_count": 3
+      }
+    },
+    "worst_case_drawdown": 88841.43,
+    "worst_case_var_breach_count": 3,
+    "gate_checks": {
+      "var_breach_limit": false,
+      "drawdown_limit": true
+    },
+    "gate_thresholds": {
+      "var_breach_limit": 2,
+      "drawdown_limit": 112457.5
+    },
+    "gate_fail_reasons": [
+      "VAR_BREACH_LIMIT_EXCEEDED(actual=3,limit=2)"
+    ],
+    "stress_ready_for_real_gate": false
+  },
+  "stress_ready_for_real_gate": false,
+  "stability_report": {
+    "generated_at": "2026-05-07T19:26:37.293312+00:00",
+    "status": "RED",
+    "ready_for_real": false,
+    "READY_FOR_REAL": false,
+    "criteria": {
+      "positive_expectancy_5d": {
+        "ok": false,
+        "required_days": 5,
+        "streak_days": 1,
+        "rolling_window_days": 7,
+        "missing_days": [
+          "2026-05-01",
+          "2026-05-02",
+          "2026-05-04",
+          "2026-05-06"
+        ],
+        "latest_history_day": "2026-05-07",
+        "streak_expectancy": {
+          "2026-05-07": 15.867718631178708
+        },
+        "history_days": 3,
+        "consecutive_green_days": 1,
+        "days_to_green": 4
+      },
+      "extended_run_sharpe": {
+        "ok": true,
+        "latest_sharpe": 4.5964,
+        "threshold": 1.8,
+        "extended_run_count": 24,
+        "latest_path": "state\\test_runs\\summary_sim_paper_240m_std_20260507_192636_945811.json"
+      },
+      "consistent_sharpe": {
+        "ok": true,
+        "required_runs": 5,
+        "available_runs": 5,
+        "average_sharpe": 4.54108,
+        "threshold": 1.8,
+        "sharpe_values": [
+          4.3272,
+          4.589,
+          4.5964,
+          4.5964,
+          4.5964
+        ],
+        "run_paths": [
+          "state\\test_runs\\summary_sim_paper_240m_std_20260507_192634_090983.json",
+          "state\\test_runs\\summary_sim_paper_240m_std_20260507_192636_126297.json",
+          "state\\test_runs\\summary_sim_paper_240m_std_20260507_192636_304300.json",
+          "state\\last_run_summary.json",
+          "state\\test_runs\\summary_sim_paper_240m_std_20260507_192636_945811.json"
+        ]
+      },
+      "zero_risk_and_var": {
+        "ok": true,
+        "total_risk_events": 0,
+        "total_var_breaches": 0
+      },
+      "evolution_proposals_trend": {
+        "ok": true,
+        "daily_counts": [
+          {
+            "day": "2026-05-03",
+            "count": 137.0
+          },
+          {
+            "day": "2026-05-05",
+            "count": 1242.0
+          },
+          {
+            "day": "2026-05-07",
+            "count": 421.0
+          }
+        ],
+        "slope_7d": 84.57142857142857,
+        "slope_30d": 10.26384872080089,
+        "start_7d": 0.0,
+        "end_7d": 421.0,
+        "start_30d": 0.0,
+        "end_30d": 421.0,
+        "window_days_7d": [
+          "2026-05-01",
+          "2026-05-02",
+          "2026-05-03",
+          "2026-05-04",
+          "2026-05-05",
+          "2026-05-06",
+          "2026-05-07"
+        ],
+        "window_days_30d": [
+          "2026-04-08",
+          "2026-04-09",
+          "2026-04-10",
+          "2026-04-11",
+          "2026-04-12",
+          "2026-04-13",
+          "2026-04-14",
+          "2026-04-15",
+          "2026-04-16",
+          "2026-04-17",
+          "2026-04-18",
+          "2026-04-19",
+          "2026-04-20",
+          "2026-04-21",
+          "2026-04-22",
+          "2026-04-23",
+          "2026-04-24",
+          "2026-04-25",
+          "2026-04-26",
+          "2026-04-27",
+          "2026-04-28",
+          "2026-04-29",
+          "2026-04-30",
+          "2026-05-01",
+          "2026-05-02",
+          "2026-05-03",
+          "2026-05-04",
+          "2026-05-05",
+          "2026-05-06",
+          "2026-05-07"
+        ]
+      }
+    },
+    "failures": [
+      "positive_expectancy_5d"
+    ],
+    "scanned_sim_summary_count": 33,
+    "scanned_evolution_rows": 10,
+    "history_path": "state\\sim_stability_history.jsonl",
+    "history_row_count": 3,
+    "history_sync": {
+      "appended": 0,
+      "skipped_existing": 3,
+      "source_summary_count": 33,
+      "days_considered": 3,
+      "history_path": "state\\sim_stability_history.jsonl"
+    },
+    "missing_days_7d": [
+      "2026-05-01",
+      "2026-05-02",
+      "2026-05-04",
+      "2026-05-06"
+    ],
+    "consecutive_green_days": 1,
+    "days_to_green": 4,
+    "latest_summary_path": "state\\test_runs\\summary_sim_paper_240m_std_20260507_192636_945811.json",
+    "latest_summary_ts": "2026-05-07T19:26:36.901809+00:00",
+    "summary_paths": [
+      "state\\test_runs\\summary_sim_paper_1m_std_20260503_180541_792357.json",
+      "state\\test_runs\\summary_sim_paper_1m_std_20260503_180541_890164.json",
+      "state\\test_runs\\summary_sim_paper_1m_std_20260503_180549_977752.json",
+      "state\\test_runs\\summary_sim_live_1m_std_20260503_180557_733449.json",
+      "state\\test_runs\\summary_sim_paper_1m_std_20260503_181411_888797.json",
+      "state\\test_runs\\summary_sim_paper_1m_std_20260503_181412_022559.json",
+      "state\\test_runs\\summary_sim_paper_1m_std_20260503_181419_964959.json",
+      "state\\test_runs\\summary_sim_live_1m_std_20260503_181426_841395.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184443_500797.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184443_995217.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184444_843392.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184445_305230.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184445_928116.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184446_371152.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184727_212347.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184727_858741.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184728_410820.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184728_812275.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184728_993218.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_184729_550039.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_185002_518068.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_185004_825205.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_185005_753846.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_185007_407963.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_185007_953406.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260505_185008_147637.json",
+      "state\\lumina_sim_state.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260507_192631_097261.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260507_192634_090983.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260507_192636_126297.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260507_192636_304300.json",
+      "state\\last_run_summary.json",
+      "state\\test_runs\\summary_sim_paper_240m_std_20260507_192636_945811.json"
+    ],
+    "history_append": {
+      "appended": false,
+      "reason": "day_already_recorded",
+      "day": "2026-05-07"
+    }
+  },
+  "READY_FOR_REAL": false,
+  "stability_status": "RED"
+}

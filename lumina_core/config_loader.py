@@ -270,7 +270,11 @@ class ConfigLoader:
             enabled = bool(meta.get("enabled", True)) if isinstance(meta, dict) else True
             if not enabled:
                 continue
-            if _looks_like_placeholder(api_key):
+            normalized_api_key = str(api_key or "").strip()
+            if normalized_api_key.startswith("${") and normalized_api_key.endswith("}"):
+                env_name = normalized_api_key[2:-1].strip()
+                normalized_api_key = os.getenv(env_name, "").strip()
+            if _looks_like_placeholder(normalized_api_key):
                 msg = f"Placeholder/default API key active in security.api_keys: {api_key!r}"
                 if hard_secret_mode:
                     errors.append(msg)

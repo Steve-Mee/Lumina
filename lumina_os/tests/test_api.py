@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sys
 from typing import Any
+from unittest.mock import patch
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
@@ -150,3 +151,65 @@ def test_upload_reflection_without_suggested_update_is_accepted() -> None:
     reflection_response = client.post("/upload/reflection", json=reflection_payload)
     assert reflection_response.status_code == 200
     assert reflection_response.json().get("status") == "ok"
+
+
+def test_emergency_stop_orders_endpoint_returns_flatten_summary() -> None:
+    cancel_expected = {
+        "status": "ok",
+        "cancelled_count": 3,
+        "cancelled": [{"order_id": "o1"}, {"order_id": "o2"}, {"order_id": "o3"}],
+        "message": "Cancel-all executed.",
+    }
+    flatten_expected = {
+        "status": "ok",
+        "flattened_count": 2,
+        "flattened": [
+            {"symbol": "MES", "closed_qty": 1, "side": "SELL", "order_id": "a", "status": "filled"},
+            {"symbol": "MNQ", "closed_qty": 1, "side": "BUY", "order_id": "b", "status": "filled"},
+        ],
+        "message": "Emergency flatten executed.",
+    }
+    with (
+        patch("backend.app._execute_cancel_all_orders", return_value=cancel_expected),
+        patch("backend.app._execute_emergency_flatten", return_value=flatten_expected),
+    ):
+        response = client.post("/orders/emergency-stop", headers={"X-API-Key": "pytest"})
+    assert response.status_code == 200
+    assert response.json()["cancelled_count"] == 3
+    assert response.json()["flattened_count"] == 2
+
+
+def test_emergency_stop_orders_aliases_map_to_same_handler() -> None:
+    flatten_expected = {"status": "ok", "flattened_count": 1, "flattened": [], "message": "Emergency flatten executed."}
+    cancel_expected = {"status": "ok", "cancelled_count": 4, "cancelled": [], "message": "Cancel-all executed."}
+    with (
+        patch("backend.app._execute_emergency_flatten", return_value=flatten_expected),
+        patch("backend.app._execute_cancel_all_orders", return_value=cancel_expected),
+    ):
+        r1 = client.post("/orders/flatten", headers={"X-API-Key": "pytest"})
+        r2 = client.post("/orders/cancel-all", headers={"X-API-Key": "pytest"})
+        r3 = client.delete("/orders", headers={"X-API-Key": "pytest"})
+    assert r1.status_code == 200
+    assert r1.json()["flattened_count"] == 1
+    assert r2.status_code == 200
+    assert r2.json()["cancelled_count"] == 4
+    assert r3.status_code == 200
+    assert r3.json()["cancelled_count"] == 4
+
+
+def test_embedded_ui_cache_headers() -> None:
+    ui_response = client.get("/ui/")
+    assert ui_response.status_code == 200
+    cache_control = ui_response.headers.get("cache-control", "")
+    pragma = ui_response.headers.get("pragma", "")
+    assert "no-store" in cache_control.lower()
+    assert "no-cache" in cache_control.lower()
+    assert "no-cache" in pragma.lower()
+
+    assets_dir = (Path(__file__).resolve().parents[2] / "frontend" / "dist" / "assets")
+    built_assets = sorted(assets_dir.glob("index-*.js"))
+    assert built_assets
+    js_response = client.get(f"/ui/assets/{built_assets[0].name}")
+    assert js_response.status_code == 200
+    js_cache = js_response.headers.get("cache-control", "")
+    assert "immutable" in js_cache.lower()

@@ -28,6 +28,12 @@ class BackendClient:
         self.timeout = timeout
         self.client: Optional[httpx.AsyncClient] = None
         self.sync_client: Optional[httpx.Client] = None
+        self.api_key: str = (
+            os.getenv("LUMINA_ADMIN_API_KEY", "").strip()
+            or os.getenv("LUMINA_BACKEND_API_KEY", "").strip()
+            or os.getenv("LUMINA_DASHBOARD_API_KEY", "").strip()
+            or os.getenv("X_API_KEY", "").strip()
+        )
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self.client is None or self.client.is_closed:
@@ -38,10 +44,13 @@ class BackendClient:
         """Sync HTTP helper for Streamlit (no asyncio event-loop coupling)."""
         url = f"{self.base_url}{path}"
         started = time.perf_counter()
+        headers = dict(kwargs.pop("headers", {}) or {})
+        if self.api_key and "X-API-Key" not in headers:
+            headers["X-API-Key"] = self.api_key
         try:
             if self.sync_client is None or self.sync_client.is_closed:
                 self.sync_client = httpx.Client(timeout=self.timeout)
-            response = self.sync_client.request(method, url, **kwargs)
+            response = self.sync_client.request(method, url, headers=headers, **kwargs)
             response.raise_for_status()
             payload = response.json()
             elapsed = int((time.perf_counter() - started) * 1000)
@@ -75,8 +84,11 @@ class BackendClient:
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         client = await self._get_client()
         url = f"{self.base_url}{path}"
+        headers = dict(kwargs.pop("headers", {}) or {})
+        if self.api_key and "X-API-Key" not in headers:
+            headers["X-API-Key"] = self.api_key
         try:
-            response = await client.request(method, url, **kwargs)
+            response = await client.request(method, url, headers=headers, **kwargs)
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as exc:
@@ -135,6 +147,13 @@ class BackendClient:
 
     async def delete_demo_data(self) -> dict[str, Any]:
         return await self._request("DELETE", "/demo-data")
+
+    def emergency_flatten_and_cancel(self) -> dict[str, Any]:
+        """Production safety action: backend emergency order stop."""
+        response = self._sync_request("POST", "/orders/emergency-stop")
+        if response.get("error"):
+            return {"ok": False, "error": response.get("error"), "detail": response.get("detail")}
+        return {"ok": True, "response": response}
 
     async def close(self):
         if self.client and not self.client.is_closed:

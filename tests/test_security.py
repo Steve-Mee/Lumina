@@ -66,6 +66,35 @@ class TestSecurityConfig:
         assert config.rate_limit_enabled is True
         assert config.rate_limit_requests_per_minute == 60
 
+    def test_api_key_placeholder_expands_from_env(self, monkeypatch):
+        monkeypatch.setenv("LUMINA_ADMIN_API_KEY", "sk_env_admin_key")
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost:3000"],
+                "jwt_secret_key": "x" * 32,
+                "api_keys": {
+                    "${LUMINA_ADMIN_API_KEY}": {
+                        "name": "env-admin",
+                        "role": "admin",
+                        "enabled": True,
+                    }
+                },
+            }
+        )
+        assert "sk_env_admin_key" in config.api_keys
+
+    def test_env_admin_key_is_auto_registered(self, monkeypatch):
+        monkeypatch.setenv("LUMINA_ADMIN_API_KEY", "sk_auto_admin")
+        config = SecurityConfig(
+            {
+                "cors_allowed_origins": ["http://localhost:3000"],
+                "jwt_secret_key": "x" * 32,
+                "api_keys": {},
+            }
+        )
+        assert "sk_auto_admin" in config.api_keys
+        assert config.api_keys["sk_auto_admin"]["role"] == "admin"
+
 
 class TestTokenPayload:
     """Test JWT token payload."""

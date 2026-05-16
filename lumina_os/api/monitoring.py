@@ -32,8 +32,21 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+import yaml
+
+from lumina_core.first_boot_progress import (
+    resolve_ppo_training_progress,
+    resolve_first_boot_completed_trades,
+    resolve_first_boot_target_from_progress,
+    resolve_first_boot_stage,
+    resolve_first_boot_target_trades,
+)
+from lumina_core.runtime_session import resolve_runtime_session_state
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +59,12 @@ REACT_LOCAL_DEV_ORIGINS: tuple[str, ...] = (
 # ── Canonical UI keys consumed by frontend useLuminaMetrics ───────────────────
 LUMINA_UI_FIELDS: tuple[str, ...] = (
     "trades_completed",
+    "training_completed_trades",
+    "training_target_trades",
+    "first_boot_stage",
     "ppo_steps",
+    "ppo_timesteps_total",
+    "ppo_progress_pct",
     "approval_twin_reward",
     "cpu",
     "gpu",
@@ -56,6 +74,11 @@ LUMINA_UI_FIELDS: tuple[str, ...] = (
     "historical_days",
     "synthetic_percent",
     "eta_minutes",
+    "session_kind",
+    "session_active",
+    "training_target_applicable",
+    "last_activity_ts",
+    "activity_stale",
 )
 
 _PROM_APPROVAL_NAMES = ("lumina_approval_twin_reward", "lumina_approval_twin_avg_reward")
@@ -67,6 +90,41 @@ _PROM_RAM = ("lumina_hardware_ram_pct", "lumina_ram_percent")
 _PROM_VELOCITY = ("lumina_training_velocity_trades_per_s", "lumina_training_throughput_ticks_per_s")
 _PROM_SYNTH = ("lumina_training_synthetic_ratio_pct",)
 _PROM_ETA = ("lumina_training_eta_minutes", "lumina_eta_minutes_remaining")
+
+
+def _pid_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    try:
+        if os.name == "nt":
+            result = subprocess.run(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-Command",
+                    f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            return str(pid) in (result.stdout or "")
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def _runtime_alive_from_state(state_dir: Path) -> bool:
+    state_path = state_dir / "launcher_bot_process.json"
+    if not state_path.exists():
+        return False
+    try:
+        payload = _safe_read_json(state_path)
+        pid = int(payload.get("pid", 0) or 0)
+    except Exception:
+        return False
+    return _pid_alive(pid)
 
 
 def extend_cors_origins_with_local_vite_dev(existing: Iterable[str]) -> list[str]:
@@ -121,6 +179,17 @@ def _safe_read_json(path: Path) -> dict[str, Any]:
         parsed = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         logger.debug("Skipping unreadable JSON %s: %s", path, exc)
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _safe_read_yaml(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        logger.debug("Skipping unreadable YAML %s: %s", path, exc)
         return {}
     return parsed if isinstance(parsed, dict) else {}
 
@@ -210,6 +279,7 @@ def enrich_observability_snapshot_for_react_dashboard(
     The React hook prefers ``_lumina_ui`` embedded keys over raw Prometheus scraping.
     """
     sd = resolve_state_directory() if state_dir is None else Path(state_dir)
+    config_payload = _safe_read_yaml(sd.parent / "config.yaml")
     boot = _safe_read_json(sd / "first_boot_progress.json")
     ppo_meta = _safe_read_json(sd / "ppo_policy_metadata.json")
     twin_tail = _last_json_object_from_jsonl(sd / "monitoring_twin_training.jsonl")
@@ -228,10 +298,24 @@ def enrich_observability_snapshot_for_react_dashboard(
     phase_obs = _phase_from_snapshot(snapshot)
 
     # --- File-derived fallbacks (training / launcher state) ---
-    try:
-        trades_fb = float(boot.get("sim_trades") or boot.get("trades") or 0.0)
-    except (TypeError, ValueError):
-        trades_fb = 0.0
+    trades_fb = float(resolve_first_boot_completed_trades(boot))
+    target_fb_cfg = float(resolve_first_boot_target_trades(config_payload))
+    target_fb_progress = float(resolve_first_boot_target_from_progress(boot))
+    stage_fb_normalized = resolve_first_boot_stage(boot)
+    current_mode = str(
+        os.environ.get("LUMINA_MODE")
+        or os.environ.get("TRADE_MODE")
+        or config_payload.get("mode", "sim")
+    ).strip().lower()
+    user_configured = (sd / "first_boot_user_configured.flag").exists()
+    runtime_session = resolve_runtime_session_state(
+        first_boot_stage=stage_fb_normalized,
+        process_alive=_runtime_alive_from_state(sd),
+        current_mode=current_mode,
+        first_boot_timestamp=str(boot.get("timestamp") or ""),
+    )
+    target_effective = target_fb_progress if target_fb_progress > 0 else target_fb_cfg
+    ppo_steps_fb, ppo_total_fb, ppo_progress_fb = resolve_ppo_training_progress(boot)
 
     try:
         ppo_fb = float(
@@ -242,6 +326,13 @@ def enrich_observability_snapshot_for_react_dashboard(
         )
     except (TypeError, ValueError):
         ppo_fb = 0.0
+    ppo_steps_effective = int(round(ppo_prom)) if ppo_prom is not None else int(round(max(0.0, ppo_fb)))
+    ppo_total_effective = int(max(1, ppo_total_fb))
+    ppo_progress_effective = (
+        max(0.0, min(100.0, (float(ppo_steps_effective) / float(max(1, ppo_total_effective))) * 100.0))
+        if ppo_progress_fb is None
+        else max(0.0, min(100.0, float(ppo_progress_fb)))
+    )
 
     twin_fb: float
     try:
@@ -278,11 +369,39 @@ def enrich_observability_snapshot_for_react_dashboard(
     except (TypeError, ValueError):
         eta_fb = None
 
+    runtime_alive = _runtime_alive_from_state(sd)
+    ppo_progress_stale = False
+    if stage_fb_normalized == "training_running" and str(boot.get("phase") or "").strip().lower() == "ppo_training":
+        parsed_ts = None
+        raw_ts = str(boot.get("timestamp") or "").strip()
+        if raw_ts:
+            try:
+                parsed_ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00"))
+                if parsed_ts.tzinfo is None:
+                    parsed_ts = parsed_ts.replace(tzinfo=timezone.utc)
+                parsed_ts = parsed_ts.astimezone(timezone.utc)
+            except Exception:
+                parsed_ts = None
+        if parsed_ts is not None:
+            age = (datetime.now(timezone.utc) - parsed_ts).total_seconds()
+            ppo_progress_stale = runtime_alive and age > 120
+
     ui: dict[str, Any] = {
         "trades_completed": (
             int(round(trades_prom)) if trades_prom is not None else int(round(max(0.0, trades_fb)))
         ),
-        "ppo_steps": int(round(ppo_prom)) if ppo_prom is not None else int(round(max(0.0, ppo_fb))),
+        "training_completed_trades": (
+            int(round(trades_prom)) if trades_prom is not None else int(round(max(0.0, trades_fb)))
+        ),
+        "training_target_trades": (
+            int(round(max(1.0, target_effective)))
+            if runtime_session.training_target_applicable and user_configured
+            else 0
+        ),
+        "first_boot_stage": stage_fb_normalized,
+        "ppo_steps": ppo_steps_effective,
+        "ppo_timesteps_total": ppo_total_effective,
+        "ppo_progress_pct": round(ppo_progress_effective, 2),
         "approval_twin_reward": float(twin_prom)
         if twin_prom is not None
         else (float(twin_fb) if twin_fb == twin_fb else 0.0),
@@ -296,6 +415,11 @@ def enrich_observability_snapshot_for_react_dashboard(
         if synth_prom is not None
         else (float(synthetic_fb) if synthetic_fb == synthetic_fb else 0.0),
         "eta_minutes": float(eta_prom) if eta_prom is not None else eta_fb,
+        "session_kind": runtime_session.session_kind,
+        "session_active": runtime_session.session_active,
+        "training_target_applicable": runtime_session.training_target_applicable and user_configured,
+        "last_activity_ts": runtime_session.last_activity_ts,
+        "activity_stale": runtime_session.activity_stale or ppo_progress_stale,
     }
 
     missing = set(LUMINA_UI_FIELDS) - set(ui.keys())

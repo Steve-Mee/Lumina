@@ -1,0 +1,11 @@
+{
+  "account_equity": 50000.0,
+  "consecutive_losses": 0,
+  "daily_pnl": 0.0,
+  "last_trades": [],
+  "live_position_qty": 0,
+  "mode": "real",
+  "open_pnl": 0.0,
+  "pending_reconciliations": 0,
+  "timestamp": "2026-05-16T14:58:28Z"
+}

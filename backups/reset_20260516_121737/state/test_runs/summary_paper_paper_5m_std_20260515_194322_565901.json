@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.0",
+  "runtime": "headless",
+  "mode": "paper",
+  "broker_mode": "paper",
+  "aggressive_sim": false,
+  "sim_overnight_mode": false,
+  "broker_status": "paper_ok",
+  "tick_source": "synthetic",
+  "duration_minutes": 5.0,
+  "started_at": "2026-05-15T19:43:22.496207+00:00",
+  "finished_at": "2026-05-15T19:43:22.562900+00:00",
+  "total_trades": 121,
+  "pnl_realized": -1219.6,
+  "max_drawdown": 1219.6,
+  "risk_events": 0,
+  "var_breach_count": 0,
+  "wins": 7,
+  "win_rate": 0.0579,
+  "mean_pnl_per_trade": -10.08,
+  "sharpe_annualized": -19.5524,
+  "evolution_proposals": 0,
+  "session_guard_blocks": 0,
+  "observability_alerts": 0,
+  "metrics_learning": {
+    "total_trades": 121,
+    "pnl_realized": -1219.6,
+    "max_drawdown": 1219.6,
+    "risk_events": 0,
+    "var_breach_count": 0,
+    "wins": 7,
+    "win_rate": 0.0579,
+    "mean_pnl_per_trade": -10.08,
+    "sharpe_annualized": -19.5524
+  },
+  "metrics_realism": {
+    "total_trades": 121,
+    "pnl_realized": -1219.6,
+    "max_drawdown": 1219.6,
+    "risk_events": 0,
+    "var_breach_count": 0,
+    "wins": 7,
+    "win_rate": 0.0579,
+    "mean_pnl_per_trade": -10.08,
+    "sharpe_annualized": -19.5524
+  },
+  "metrics_primary": "realism",
+  "financial_reporting": {
+    "learning_label": "Learning Fitness (niet productie-benchmark)",
+    "realism_label": "Realism Adjusted (wel vergelijkbaar voor live readiness)",
+    "metrics_for_readiness_gate": "realism",
+    "parity_delta_pnl_realized": 0.0,
+    "parity_delta_max_drawdown": 0.0,
+    "parity_delta_sharpe_annualized": 0.0
+  },
+  "stress_report": {
+    "method": "deterministic_overlay_v1",
+    "scenarios": {
+      "volatility_spike": {
+        "pnl_realized": -670.78,
+        "max_drawdown": 1768.42,
+        "var_breach_count": 2
+      },
+      "liquidity_shock": {
+        "pnl_realized": -756.15,
+        "max_drawdown": 1609.87,
+        "var_breach_count": 1
+      },
+      "correlation_breakdown": {
+        "pnl_realized": -585.41,
+        "max_drawdown": 1926.97,
+        "var_breach_count": 3
+      }
+    },
+    "worst_case_drawdown": 1926.97,
+    "worst_case_var_breach_count": 3,
+    "gate_checks": {
+      "var_breach_limit": false,
+      "drawdown_limit": true
+    },
+    "gate_thresholds": {
+      "var_breach_limit": 2,
+      "drawdown_limit": 2439.2
+    },
+    "gate_fail_reasons": [
+      "VAR_BREACH_LIMIT_EXCEEDED(actual=3,limit=2)"
+    ],
+    "stress_ready_for_real_gate": false
+  },
+  "stress_ready_for_real_gate": false
+}

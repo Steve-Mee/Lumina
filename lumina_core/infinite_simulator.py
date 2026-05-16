@@ -16,7 +16,12 @@ from typing import Any
 
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.engine.valuation_engine import ValuationEngine
-from lumina_core.evolution.simulator_data_support import MIN_SIMULATOR_BARS, require_real_simulator_data_strict
+from lumina_core.evolution.simulator_data_support import (
+    MIN_SIMULATOR_BARS,
+    require_real_simulator_data_strict,
+    select_first_boot_ppo_bars,
+)
+from lumina_core.first_boot_progress import resolve_ppo_progress_interval
 from lumina_core.first_boot_ui import (
     FIRST_BOOT_EST_TRADES_PER_REAL_DAY as _FIRST_BOOT_TRADES_PER_REAL_DAY,
     normalize_first_boot_training_trades,
@@ -346,9 +351,18 @@ class InfiniteSimulator:
             requested_trades=requested_trades,
             progress_pct=52,
             phase="parallel_simulation",
+            velocity_trades_per_sec=0.0,
+            eta_minutes=None,
         )
+        sim_started_at = time.time()
         while cumulative_trades < requested_trades:
             if _is_first_boot_pause_requested():
+                elapsed_sim_sec = max(1.0, time.time() - sim_started_at)
+                live_tps = float(cumulative_trades) / elapsed_sim_sec if cumulative_trades > 0 else 0.0
+                remaining_trades = max(0, requested_trades - cumulative_trades)
+                eta_minutes = None
+                if elapsed_sim_sec >= 30.0 and live_tps > 0:
+                    eta_minutes = round((float(remaining_trades) / live_tps) / 60.0, 1)
                 pause_msg = (
                     f"Pauzeverzoek ontvangen. First-boot training pauzeert op {cumulative_trades:,}/{requested_trades:,} trades."
                 )
@@ -356,10 +370,12 @@ class InfiniteSimulator:
                     "paused",
                     pause_msg,
                     cumulative_trades=cumulative_trades,
-                    remaining_trades=max(0, requested_trades - cumulative_trades),
+                    remaining_trades=remaining_trades,
                     requested_trades=requested_trades,
                     progress_pct=min(99.0, (100.0 * float(cumulative_trades) / float(max(1, requested_trades)))),
                     phase="paused",
+                    velocity_trades_per_sec=round(live_tps, 3),
+                    eta_minutes=eta_minutes,
                 )
                 _write_first_boot_checkpoint(
                     {
@@ -417,6 +433,12 @@ class InfiniteSimulator:
                     "chunk_sharpes": chunk_sharpes,
                 }
             )
+            elapsed_sim_sec = max(1.0, time.time() - sim_started_at)
+            live_tps = float(cumulative_trades) / elapsed_sim_sec if cumulative_trades > 0 else 0.0
+            remaining_trades = max(0, requested_trades - cumulative_trades)
+            eta_minutes = None
+            if elapsed_sim_sec >= 30.0 and live_tps > 0:
+                eta_minutes = round((float(remaining_trades) / live_tps) / 60.0, 1)
             _notify_first_boot_training_progress(
                 "training_running",
                 f"Parallel SIM chunk {chunk_index} voltooid ({cumulative_trades:,}/{requested_trades:,} trades).",
@@ -424,20 +446,43 @@ class InfiniteSimulator:
                 chunk_trades=chunk_done,
                 cumulative_trades=cumulative_trades,
                 requested_trades=requested_trades,
-                remaining_trades=max(0, requested_trades - cumulative_trades),
+                remaining_trades=remaining_trades,
                 progress_pct=min(67.0, 52.0 + (15.0 * float(cumulative_trades) / float(max(1, requested_trades)))),
                 phase="parallel_simulation",
+                velocity_trades_per_sec=round(live_tps, 3),
+                eta_minutes=eta_minutes,
             )
             if chunk_done <= 0:
                 break
-        _notify_first_boot_training_progress(
-            "training_running",
-            "PPO policy-training (Stable-Baselines3); SIM-deel afgerond, neural net trainen…",
-            sim_trades=int(cumulative_trades),
-            progress_pct=68,
-            phase="ppo_training",
-        )
-        self._train_rl(ticks)
+        sim_resume_only = cumulative_trades >= requested_trades and chunk_index > 0
+        if sim_resume_only:
+            _notify_first_boot_training_progress(
+                "training_running",
+                "SIM-checkpoint al compleet; PPO policy-training wordt hervat vanaf bestaande first-boot status.",
+                sim_trades=int(cumulative_trades),
+                sim_completed=True,
+                ppo_resume_only=True,
+                progress_pct=68,
+                phase="ppo_training",
+                eta_minutes=None,
+            )
+        else:
+            _notify_first_boot_training_progress(
+                "training_running",
+                "PPO policy-training (Stable-Baselines3); SIM-deel afgerond, neural net trainen…",
+                sim_trades=int(cumulative_trades),
+                sim_completed=bool(cumulative_trades >= requested_trades),
+                ppo_resume_only=False,
+                progress_pct=68,
+                phase="ppo_training",
+                eta_minutes=None,
+            )
+        ppo_error: str | None = None
+        try:
+            self._train_rl(ticks)
+        except Exception as exc:
+            ppo_error = str(exc)
+            status = "ppo_failed"
 
         synthetic_pct = float(len(synthetic_ticks) / max(1, len(ticks)))
         report = {
@@ -463,18 +508,23 @@ class InfiniteSimulator:
             "chunk_trades": chunk_trades,
             "chunk_count": chunk_index,
             "elapsed_sec": round(time.time() - start, 2),
+            "sim_completed": bool(cumulative_trades >= requested_trades),
+            "ppo_resume_only": bool(sim_resume_only),
         }
+        if ppo_error:
+            report["ppo_error"] = ppo_error
         out_dir = Path("journal/simulator")
         out_dir.mkdir(parents=True, exist_ok=True)
         report_path = out_dir / f"first_boot_training_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
         report["report_path"] = str(report_path)
-        _clear_first_boot_checkpoint()
-        if _FIRST_BOOT_PAUSE_FLAG_PATH.exists():
-            try:
-                _FIRST_BOOT_PAUSE_FLAG_PATH.unlink()
-            except Exception:
-                logger.warning("first_boot.pause_flag.clear_failed", exc_info=True)
+        if ppo_error is None:
+            _clear_first_boot_checkpoint()
+            if _FIRST_BOOT_PAUSE_FLAG_PATH.exists():
+                try:
+                    _FIRST_BOOT_PAUSE_FLAG_PATH.unlink()
+                except Exception:
+                    logger.warning("first_boot.pause_flag.clear_failed", exc_info=True)
         logger.info(
             "simulation.first_boot.complete",
             extra={
@@ -885,11 +935,25 @@ class InfiniteSimulator:
 
     def _train_rl(self, ticks: list[dict[str, Any]]) -> None:
         if self.ppo_trainer is None:
-            return
+            raise RuntimeError("ppo_trainer unavailable")
         try:
             # Keep training set bounded for nightly cycle.
-            train_rows = ticks[-200000:]
-            self.ppo_trainer.train_nightly_on_infinite_simulator(train_rows, timesteps=300000)
-        except Exception:
+            train_rows = select_first_boot_ppo_bars(ticks, cap=200_000)
+            first_boot_cfg = ConfigLoader.section("first_boot", default={}) or {}
+            interval_payload = {"first_boot": first_boot_cfg} if isinstance(first_boot_cfg, dict) else {}
+            interval = resolve_ppo_progress_interval(interval_payload)
+            self.ppo_trainer.train_nightly_on_infinite_simulator(
+                train_rows,
+                timesteps=300000,
+                report_first_boot_progress=True,
+                ppo_progress_interval=interval,
+            )
+        except Exception as exc:
             logging.exception("Unhandled broad exception fallback in lumina_core/infinite_simulator.py:425")
-            return
+            _notify_first_boot_training_progress(
+                "failed",
+                "PPO policy-training is mislukt; runtime blijft fail-closed.",
+                phase="ppo_training_failed",
+                ppo_error=str(exc)[:500],
+            )
+            raise

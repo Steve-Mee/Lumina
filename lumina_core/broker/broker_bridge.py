@@ -267,6 +267,10 @@ class BrokerBridge(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def cancel_all_orders(self) -> dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
     def subscribe_to_websocket(self) -> None:
         raise NotImplementedError
 
@@ -423,6 +427,10 @@ class PaperBroker(BrokerBridge):
 
     def get_fills(self) -> list[Fill]:
         return list(self._fills)
+
+    def cancel_all_orders(self) -> dict[str, Any]:
+        # Paper broker fills market orders immediately; no pending order book exists.
+        return {"status": "ok", "cancelled_count": 0, "cancelled": [], "message": "No pending paper orders."}
 
     def last_fill_for_symbol(self, symbol: str) -> Fill | None:
         sym = str(symbol).strip()
@@ -705,6 +713,34 @@ class CrossTradeBroker(BrokerBridge):
             if self.logger is not None:
                 self.logger.error(f"CrossTrade get_fills failed: {exc}")
             return []
+
+    def cancel_all_orders(self) -> dict[str, Any]:
+        response = self._client().post(
+            f"{self.base_url}/v1/api/accounts/{self.account}/orders/cancel",
+            headers=self._headers(),
+            json={},
+            timeout=self.timeout_seconds,
+        )
+        try:
+            body = response.json() if response.content else {}
+        except Exception:
+            body = {"raw_text": (response.text or "")[:600]}
+        if response.status_code not in (200, 201):
+            raise RuntimeError(
+                f"CrossTrade cancel orders rejected HTTP {response.status_code}: "
+                f"{(response.text or '')[:400]}"
+            )
+        if not isinstance(body, dict):
+            body = {"raw": body}
+        order_ids = body.get("orderIds") if isinstance(body.get("orderIds"), list) else []
+        cancelled_rows = [{"order_id": str(order_id)} for order_id in order_ids]
+        cancelled_count = len(cancelled_rows)
+        return {
+            "status": "ok",
+            "cancelled_count": cancelled_count,
+            "cancelled": cancelled_rows,
+            "raw": body,
+        }
 
     def subscribe_to_websocket(self) -> None:
         for attempt in range(1, 4):

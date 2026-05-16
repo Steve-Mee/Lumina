@@ -1,0 +1,17 @@
+{
+  "pid": 24636,
+  "label": "headless_sim_training",
+  "command": [
+    "C:\\Python313\\python.exe",
+    "-m",
+    "lumina_core.engine.runtime_entrypoint",
+    "--mode",
+    "sim",
+    "--headless",
+    "--duration",
+    "120m"
+  ],
+  "started_at": "2026-05-16T09:29:33.069100+00:00",
+  "status": "stopped",
+  "stopped_at": "2026-05-16T09:29:33.077492+00:00"
+}

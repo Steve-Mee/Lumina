@@ -1,0 +1,5 @@
+2026-05-16 17:59:23,979,INFO,ObservabilityService started (flush_interval=30.0s)
+2026-05-16 17:59:23,980,INFO,[ConfigLoader] startup OK | broker=live trade_mode=sim symbols=[] model=<unset> log_level=INFO secret_hygiene_status=pass
+2026-05-16 17:59:23,980,INFO,Instruments configured: primary=MES JUN26, swarm=['MES JUN26', 'MNQ JUN26', 'MYM JUN26', 'ES JUN26']
+2026-05-16 17:59:23,984,INFO,bootstrap.bible_loaded
+2026-05-16 17:59:23,986,INFO,bootstrap.engine_ready

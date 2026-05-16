@@ -7,13 +7,22 @@ import logging
 import socket
 import time
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 import streamlit as st
 
+from lumina_core.first_boot_progress import (
+    resolve_first_boot_completed_trades,
+    resolve_first_boot_target_from_progress,
+    resolve_first_boot_stage,
+)
+from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES
+from lumina_core.runtime_session import resolve_runtime_session_state
 from lumina_core.engine.setup_service import SetupService
 from lumina_launcher.core.config_manager import ConfigManager
 from lumina_launcher.core.first_boot import FirstBootManager
+from lumina_launcher.core.pause_policy import resolve_pause_policy
 from lumina_launcher.core.process_manager import ProcessManager
 from lumina_launcher.observability import ensure_run_id, log_event, timed_event
 from lumina_launcher.services.backend_client import BackendClient
@@ -22,9 +31,8 @@ from lumina_launcher.services.model_service import ModelService
 from lumina_launcher.ui.components.presence_strip import render_presence_strip
 from lumina_launcher.ui.help_texts import help_for
 from lumina_launcher.ui.setup_wizard import render_setup_wizard
-from lumina_launcher.ui.tabs.community_bibles import render_community_bibles_tab
+from lumina_launcher.ui.tab_registry import TabRenderContext, launcher_tab_specs
 from lumina_launcher.ui.tabs.first_boot import render_first_boot_tab
-from lumina_launcher.ui.tabs.live_activity import render_live_activity_tab
 from lumina_launcher.ui.tabs.training_dashboard import render_training_dashboard_tab
 
 logger = logging.getLogger(__name__)
@@ -34,6 +42,70 @@ _RUNTIME_ENTRY = Path("lumina_core/engine/runtime_entrypoint.py")
 _STATE_PATH = _LAUNCHER_ROOT / "state" / "lumina_sim_state.json"
 _TRACE_INTERVAL_OPTIONS = [0, 1, 2, 5, 10]
 _LATENCY_SLA_OPTIONS = [150, 250, 400, 700, 1000]
+_LAUNCHER_PREMIUM_CSS = """
+<style>
+section[data-testid="stMain"] {
+  background:
+    radial-gradient(circle at 11% 5%, rgba(0, 240, 255, 0.1), transparent 38%),
+    radial-gradient(circle at 88% 12%, rgba(0, 255, 159, 0.08), transparent 34%),
+    #0a0a0f;
+}
+h1, h2, h3, h4 {
+  color: #e8e6e3;
+}
+.stApp [data-testid="stMarkdownContainer"] p {
+  color: #9aa4b6;
+}
+.stApp [data-testid="stMarkdownContainer"] h5,
+.stApp [data-testid="stMarkdownContainer"] h6 {
+  color: #c8d3e2;
+}
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  gap: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  background: rgba(9, 10, 15, 0.7);
+  padding: 8px;
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+  background: linear-gradient(92deg, rgba(0, 240, 255, 0.2), rgba(0, 255, 159, 0.13));
+  border: 1px solid rgba(0, 240, 255, 0.35);
+}
+[data-testid="stTextInput"] > div > div,
+[data-testid="stNumberInput"] > div > div > input,
+[data-testid="stSelectbox"] > div > div,
+[data-testid="stMultiSelect"] > div > div {
+  background: rgba(12, 14, 20, 0.9) !important;
+  border-color: rgba(0, 240, 255, 0.28) !important;
+  color: #e8e6e3 !important;
+}
+[data-testid="stSlider"] [role="slider"] {
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.45) !important;
+}
+.stButton > button {
+  background: linear-gradient(95deg, rgba(0, 240, 255, 0.2), rgba(0, 255, 159, 0.16)) !important;
+  color: #e8e6e3 !important;
+}
+[data-testid="stArrowVegaLiteChart"],
+[data-testid="stDataFrame"],
+[data-testid="stCodeBlock"],
+.stCodeBlock {
+  background: rgba(12, 14, 20, 0.9) !important;
+  border: 1px solid rgba(0, 240, 255, 0.16) !important;
+  border-radius: 12px !important;
+}
+[data-testid="stCodeBlock"] pre,
+.stCodeBlock pre {
+  background: transparent !important;
+  color: #b6c2d3 !important;
+}
+</style>
+"""
+
+
+class LauncherPhase(str, Enum):
+    FIRST_BOOT_REQUIRED = "first_boot_required"
+    OPERATIONS_READY = "operations_ready"
 
 
 @dataclass
@@ -148,11 +220,113 @@ def _persist_prestart_settings(
             max_real_days=int(existing["max_real_days"]),
             allow_minimal_synthetic_fallback=bool(existing["allow_minimal_synthetic_fallback"]),
             require_real_simulator_data=bool(require_real_simulator_data),
+            mark_user_configured=False,
         )
+
+
+def _resolve_launcher_phase(*, first_boot_manager: FirstBootManager) -> LauncherPhase:
+    return LauncherPhase.OPERATIONS_READY if first_boot_manager.should_enter_operations() else LauncherPhase.FIRST_BOOT_REQUIRED
+
+
+def _render_first_boot_home(
+    *,
+    services: LauncherServices,
+    workspace_root: Path,
+    show_setup_wizard: bool,
+) -> None:
+    st.markdown("## First Boot Command Center")
+    st.caption(
+        "Je ziet nu enkel de first-boot ervaring. Rond training volledig af, "
+        "daarna schakelt de launcher automatisch naar het volledige operations dashboard."
+    )
+    if show_setup_wizard:
+        setup_tab = st.tabs(["Setup"])[0]
+        with setup_tab:
+            render_setup_wizard(
+                workspace_root=workspace_root,
+                setup_service=services.setup_service,
+                config_manager=services.config_manager,
+                first_boot_manager=services.first_boot_manager,
+                hardware_service=services.hardware_service,
+                model_service=services.model_service,
+            )
+        return
+
+    tabs = st.tabs(["First Boot", "Overview"])
+    with tabs[0]:
+        render_first_boot_tab(
+            services.first_boot_manager,
+            process_manager=services.process_manager,
+            backend_client=services.backend_client,
+        )
+    with tabs[1]:
+        render_training_dashboard_tab(
+            workspace_root,
+            first_boot_manager=services.first_boot_manager,
+            hardware_service=services.hardware_service,
+            process_manager=services.process_manager,
+            backend_base_url=services.backend_client.base_url,
+        )
+
+
+def _render_operations_shell(
+    *,
+    services: LauncherServices,
+    workspace_root: Path,
+    state: dict,
+    current_dream: dict,
+    snapshot: object,
+    process_alive: bool,
+    current_mode: str,
+) -> None:
+    ctx = TabRenderContext(
+        launcher_root=workspace_root,
+        services=services,
+        state=state,
+        current_dream=current_dream,
+        snapshot=snapshot,
+        process_alive=process_alive,
+        current_mode=current_mode,
+        first_boot_completed=True,
+    )
+    visible_specs = [spec for spec in launcher_tab_specs() if spec.visible(ctx)]
+    groups = list(dict.fromkeys(spec.group for spec in visible_specs))
+    if not groups:
+        st.error("No workspace groups available in current launcher mode.")
+        return
+
+    default_group = str(st.session_state.get("lumina_nav_group", groups[0]))
+    if default_group not in groups:
+        default_group = groups[0]
+    selected_group = st.radio(
+        "Workspace section",
+        options=groups,
+        index=groups.index(default_group),
+        horizontal=True,
+        key="lumina_nav_group",
+    )
+    group_specs = [spec for spec in visible_specs if spec.group == selected_group]
+    labels = [spec.label for spec in group_specs]
+    if not labels:
+        st.warning("Selected workspace section has no tabs.")
+        return
+    tab_state_key = f"lumina_nav_tab_{selected_group.lower()}"
+    default_label = str(st.session_state.get(tab_state_key, labels[0]))
+    if default_label not in labels:
+        default_label = labels[0]
+    selected_label = st.selectbox(
+        "Workspace tab",
+        options=labels,
+        index=labels.index(default_label),
+        key=tab_state_key,
+    )
+    selected_spec = next(spec for spec in group_specs if spec.label == selected_label)
+    selected_spec.render(ctx)
 
 
 def render_streamlit_app() -> None:
     st.set_page_config(page_title="LUMINA OS Launcher", layout="wide")
+    st.markdown(_LAUNCHER_PREMIUM_CSS, unsafe_allow_html=True)
     run_id = ensure_run_id(st.session_state)
     log_event("launcher.rerun_started", run_id=run_id, seq=int(st.session_state.get("lumina_run_seq", 1)))
     services = _get_services()
@@ -164,16 +338,8 @@ def render_streamlit_app() -> None:
             "Start met `powershell -ExecutionPolicy Bypass -File .\\lumina_os\\run_backend.ps1`."
         )
 
-    if services.setup_service.is_first_run():
-        render_setup_wizard(
-            workspace_root=_LAUNCHER_ROOT,
-            setup_service=services.setup_service,
-            config_manager=services.config_manager,
-            first_boot_manager=services.first_boot_manager,
-            hardware_service=services.hardware_service,
-            model_service=services.model_service,
-        )
-        return
+    is_first_run = services.setup_service.is_first_run()
+    phase = _resolve_launcher_phase(first_boot_manager=services.first_boot_manager)
 
     state = _load_runtime_state()
     current_dream = state.get("current_dream", {}) if isinstance(state.get("current_dream"), dict) else {}
@@ -181,186 +347,191 @@ def render_streamlit_app() -> None:
     process_alive = services.process_manager.is_process_alive()
     current_mode = _current_mode(services.config_manager)
     first_boot = services.first_boot_manager.read_settings()
+    first_boot_progress = services.first_boot_manager.read_progress()
+    first_boot_completed_trades = resolve_first_boot_completed_trades(first_boot_progress)
+    first_boot_target_trades = int(
+        resolve_first_boot_target_from_progress(first_boot_progress)
+        or first_boot.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
+        or 0
+    )
+    first_boot_stage = resolve_first_boot_stage(first_boot_progress)
+    runtime_session = resolve_runtime_session_state(
+        first_boot_stage=first_boot_stage,
+        process_alive=process_alive,
+        current_mode=current_mode,
+        first_boot_timestamp=str(first_boot_progress.get("timestamp") or ""),
+    )
+    show_training_target = (
+        services.first_boot_manager.is_user_configured()
+        and runtime_session.training_target_applicable
+        and first_boot_target_trades > 0
+    )
 
     st.title("LUMINA OS Launcher")
     render_presence_strip(
         {
             "pulse_live": process_alive,
             "last_activity_verbose": f"Mode={current_mode.upper()} • Backend={'UP' if backend_up else 'DOWN'}",
-            "tpm_label": f"{int(state.get('total_trades', 0) or 0):,} trades",
+            "tpm_label": (
+                f"{first_boot_completed_trades:,}/{first_boot_target_trades:,} first-boot trades"
+                if show_training_target
+                else "Not started"
+            ),
         }
     )
+    st.caption("Progress source: state/first_boot_progress.json • target source: config.yaml:first_boot.training_trades")
 
-    if services.first_boot_manager.artifacts_missing():
+    if phase == LauncherPhase.FIRST_BOOT_REQUIRED:
         st.warning("First-boot training is nog niet voltooid.")
     else:
-        st.success("First-boot training artifacts zijn aanwezig.")
+        st.success("First-boot training is voltooid. Volledige launcher is geactiveerd.")
 
-    with st.sidebar:
-        st.header("Bot Configuration")
-        mode = st.selectbox(
-            "Trading Mode",
-            options=["paper", "sim", "sim_real_guard", "real"],
-            index=["paper", "sim", "sim_real_guard", "real"].index(current_mode if current_mode in {"paper", "sim", "sim_real_guard", "real"} else "sim"),
-            help=help_for("trading_mode"),
-        )
-        risk_profile = st.selectbox(
-            "Risk Profile",
-            options=["Conservative", "Balanced", "Aggressive"],
-            index=1,
-            help=help_for("risk_profile"),
-        )
-        instrument = st.selectbox(
-            "Instrument",
-            options=["MES JUN26", "MNQ JUN26", "MYM JUN26", "ES JUN26"],
-            index=0,
-            help=help_for("instrument"),
-        )
-        first_boot_trades = st.number_input(
-            "First-boot training trades",
-            min_value=500,
-            max_value=2_000_000,
-            value=int(first_boot.get("training_trades", 500_000)),
-            step=500,
-            help=help_for("training_trades"),
-        )
-        require_real_simulator_data = st.checkbox(
-            "Require real simulator data",
-            value=bool(first_boot.get("require_real_simulator_data", True)),
-            help=help_for("require_real_simulator_data"),
-        )
-        voice_enabled = st.checkbox("Voice (TTS + input)", value=True, help=help_for("voice_enabled"))
-        screen_share_enabled = st.checkbox(
-            "Live Chart Screen Share", value=True, help=help_for("screen_share_enabled")
-        )
-        dashboard_enabled = st.checkbox("Dashboard", value=True, help=help_for("dashboard_enabled"))
-        runtime_trace = st.checkbox("Runtime trace", value=True, help=help_for("runtime_trace"))
-        runtime_trace_interval = int(
-            st.selectbox(
-                "Runtime trace interval (sec)",
-                options=_TRACE_INTERVAL_OPTIONS,
-                index=0,
-                help=help_for("runtime_trace_interval"),
+    if phase == LauncherPhase.OPERATIONS_READY:
+        with st.sidebar:
+            st.header("Bot Configuration")
+            mode = st.selectbox(
+                "Trading Mode",
+                options=["paper", "sim", "sim_real_guard", "real"],
+                index=["paper", "sim", "sim_real_guard", "real"].index(current_mode if current_mode in {"paper", "sim", "sim_real_guard", "real"} else "sim"),
+                help=help_for("trading_mode"),
             )
-        )
-        latency_sla_ms = int(
-            st.selectbox(
-                "Latency SLA (ms)",
-                options=_LATENCY_SLA_OPTIONS,
+            risk_profile = st.selectbox(
+                "Risk Profile",
+                options=["Conservative", "Balanced", "Aggressive"],
                 index=1,
-                help=help_for("latency_sla"),
+                help=help_for("risk_profile"),
             )
+            instrument = st.selectbox(
+                "Instrument",
+                options=["MES JUN26", "MNQ JUN26", "MYM JUN26", "ES JUN26"],
+                index=0,
+                help=help_for("instrument"),
+            )
+            first_boot_trades = st.number_input(
+                "First-boot training trades",
+                min_value=500,
+                max_value=2_000_000,
+                value=int(first_boot.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)),
+                step=500,
+                help=help_for("training_trades"),
+            )
+            require_real_simulator_data = st.checkbox(
+                "Require real simulator data",
+                value=bool(first_boot.get("require_real_simulator_data", True)),
+                help=help_for("require_real_simulator_data"),
+            )
+            voice_enabled = st.checkbox("Voice (TTS + input)", value=True, help=help_for("voice_enabled"))
+            screen_share_enabled = st.checkbox(
+                "Live Chart Screen Share", value=True, help=help_for("screen_share_enabled")
+            )
+            dashboard_enabled = st.checkbox("Dashboard", value=True, help=help_for("dashboard_enabled"))
+            runtime_trace = st.checkbox("Runtime trace", value=True, help=help_for("runtime_trace"))
+            runtime_trace_interval = int(
+                st.selectbox(
+                    "Runtime trace interval (sec)",
+                    options=_TRACE_INTERVAL_OPTIONS,
+                    index=0,
+                    help=help_for("runtime_trace_interval"),
+                )
+            )
+            latency_sla_ms = int(
+                st.selectbox(
+                    "Latency SLA (ms)",
+                    options=_LATENCY_SLA_OPTIONS,
+                    index=1,
+                    help=help_for("latency_sla"),
+                )
+            )
+            if st.button("Save Config", use_container_width=True):
+                _persist_prestart_settings(
+                    config_manager=services.config_manager,
+                    first_boot_manager=services.first_boot_manager,
+                    mode=mode,
+                    risk_profile=risk_profile,
+                    instrument=instrument,
+                    voice_enabled=voice_enabled,
+                    screen_share_enabled=screen_share_enabled,
+                    dashboard_enabled=dashboard_enabled,
+                    runtime_trace=runtime_trace,
+                    runtime_trace_interval=runtime_trace_interval,
+                    latency_sla_ms=latency_sla_ms,
+                    require_real_simulator_data=require_real_simulator_data,
+                    first_boot_trades=int(first_boot_trades),
+                )
+                st.success("Pre-start configuratie opgeslagen.")
+            if st.button("Save Config and Start Bot", type="primary", use_container_width=True):
+                _persist_prestart_settings(
+                    config_manager=services.config_manager,
+                    first_boot_manager=services.first_boot_manager,
+                    mode=mode,
+                    risk_profile=risk_profile,
+                    instrument=instrument,
+                    voice_enabled=voice_enabled,
+                    screen_share_enabled=screen_share_enabled,
+                    dashboard_enabled=dashboard_enabled,
+                    runtime_trace=runtime_trace,
+                    runtime_trace_interval=runtime_trace_interval,
+                    latency_sla_ms=latency_sla_ms,
+                    require_real_simulator_data=require_real_simulator_data,
+                    first_boot_trades=int(first_boot_trades),
+                )
+                ok, msg = services.process_manager.start_bot(mode="auto")
+                st.success(msg) if ok else st.error(msg)
+            if st.button("Stop Bot", use_container_width=True):
+                ok, msg = services.process_manager.stop_bot()
+                st.info(msg) if ok else st.error(msg)
+            pause_policy = resolve_pause_policy(
+                context="operations",
+                runtime_mode=current_mode,
+                process_alive=process_alive,
+            )
+            if pause_policy.require_risk_warning:
+                st.warning(
+                    "Live pause stopt trading direct en probeert open orders onmiddellijk te sluiten/annuleren. "
+                    "Dit kan verlies veroorzaken bij snelle marktbewegingen."
+                )
+                ops_pause_ack = st.checkbox(
+                    "Ik begrijp het risico en wil live trading direct pauzeren.",
+                    key="ops_pause_ack",
+                )
+                if st.button(
+                    "⏸️ Pauzeer live trading (veiligheidsstop)",
+                    use_container_width=True,
+                    disabled=not ops_pause_ack,
+                ):
+                    emergency_result = services.backend_client.emergency_flatten_and_cancel()
+                    ok, msg = services.process_manager.pause_trading_safely(
+                        emergency_action=services.backend_client.emergency_flatten_and_cancel,
+                        require_emergency_success=True,
+                    )
+                    if emergency_result.get("ok"):
+                        st.success("Orders gesloten/geannuleerd via backend safety endpoint.")
+                    st.success(msg) if ok else st.error(msg)
+            if st.button("Stop alles & afsluiten", use_container_width=True):
+                emergency_result = services.backend_client.emergency_flatten_and_cancel()
+                ok, msg = services.process_manager.stop_all_activities()
+                if emergency_result.get("ok"):
+                    st.success("Orders gesloten/geannuleerd via backend safety endpoint.")
+                else:
+                    detail = emergency_result.get("detail") or emergency_result.get("error") or "onbekende backendfout"
+                    st.error(f"Order-safety endpoint faalde: {detail}")
+                st.success(msg) if ok else st.error(msg)
+                st.info("Je kan het launcher-venster nu veilig sluiten.")
+        _render_operations_shell(
+            services=services,
+            workspace_root=_LAUNCHER_ROOT,
+            state=state,
+            current_dream=current_dream,
+            snapshot=snapshot,
+            process_alive=process_alive,
+            current_mode=current_mode,
         )
-        if st.button("Save Config", use_container_width=True):
-            _persist_prestart_settings(
-                config_manager=services.config_manager,
-                first_boot_manager=services.first_boot_manager,
-                mode=mode,
-                risk_profile=risk_profile,
-                instrument=instrument,
-                voice_enabled=voice_enabled,
-                screen_share_enabled=screen_share_enabled,
-                dashboard_enabled=dashboard_enabled,
-                runtime_trace=runtime_trace,
-                runtime_trace_interval=runtime_trace_interval,
-                latency_sla_ms=latency_sla_ms,
-                require_real_simulator_data=require_real_simulator_data,
-                first_boot_trades=int(first_boot_trades),
-            )
-            st.success("Pre-start configuratie opgeslagen.")
-        if st.button("Save Config and Start Bot", type="primary", use_container_width=True):
-            _persist_prestart_settings(
-                config_manager=services.config_manager,
-                first_boot_manager=services.first_boot_manager,
-                mode=mode,
-                risk_profile=risk_profile,
-                instrument=instrument,
-                voice_enabled=voice_enabled,
-                screen_share_enabled=screen_share_enabled,
-                dashboard_enabled=dashboard_enabled,
-                runtime_trace=runtime_trace,
-                runtime_trace_interval=runtime_trace_interval,
-                latency_sla_ms=latency_sla_ms,
-                require_real_simulator_data=require_real_simulator_data,
-                first_boot_trades=int(first_boot_trades),
-            )
-            ok, msg = services.process_manager.start_bot(mode="auto")
-            st.success(msg) if ok else st.error(msg)
-        if st.button("Stop Bot", use_container_width=True):
-            ok, msg = services.process_manager.stop_bot()
-            st.info(msg) if ok else st.error(msg)
-
-    tab_labels: list[str] = [
-        "📡 Live Activity",
-        "🚀 First Boot",
-        "Live Trader",
-        "Hardware",
-        "Model Mgmt",
-        "Trader League",
-        "SIM Evolution",
-        "📊 LUMINA OS Dashboard",
-        "📖 Community Bibles",
-        "🛠️ Admin",
-    ]
-    if current_mode == "real":
-        tab_labels.append("🛡️ REAL Operations")
-
-    if hasattr(st, "segmented_control"):
-        selected = st.segmented_control("Workspace", options=tab_labels, default=tab_labels[0])
-        if selected is None:
-            selected = tab_labels[0]
     else:
-        selected = st.selectbox("Workspace", options=tab_labels, index=0)
-
-    if selected == "📡 Live Activity":
-        proc_state = services.process_manager._load_process_state()
-        render_live_activity_tab(
-            _LAUNCHER_ROOT,
-            alive=process_alive,
-            pid=int(proc_state.get("pid", 0) or 0) or None,
+        _render_first_boot_home(
+            services=services,
+            workspace_root=_LAUNCHER_ROOT,
+            show_setup_wizard=is_first_run,
         )
-    elif selected == "🚀 First Boot":
-        render_first_boot_tab(services.first_boot_manager)
-    elif selected == "Live Trader":
-        from lumina_launcher.ui.tabs.live_trader import render_live_trader_tab
-
-        render_live_trader_tab(state, current_dream)
-    elif selected == "Hardware":
-        from lumina_launcher.ui.tabs.hardware_tab import render_hardware_tab
-
-        render_hardware_tab(services.hardware_service, services.model_service, snapshot)
-    elif selected == "Model Mgmt":
-        from lumina_launcher.ui.tabs.model_management_tab import render_model_management_tab
-
-        render_model_management_tab(
-            services.hardware_service, services.model_service, snapshot, setup_service=services.setup_service
-        )
-    elif selected == "Trader League":
-        from lumina_launcher.ui.tabs.trader_league import render_trader_league_tab
-
-        render_trader_league_tab(services.backend_client)
-    elif selected == "SIM Evolution":
-        from lumina_launcher.ui.tabs.sim_evolution import render_sim_evolution_tab
-
-        render_sim_evolution_tab(_LAUNCHER_ROOT)
-    elif selected == "📊 LUMINA OS Dashboard":
-        render_training_dashboard_tab(
-            _LAUNCHER_ROOT,
-            first_boot_manager=services.first_boot_manager,
-            hardware_service=services.hardware_service,
-            process_manager=services.process_manager,
-            backend_base_url=services.backend_client.base_url,
-        )
-    elif selected == "📖 Community Bibles":
-        render_community_bibles_tab(services.backend_client)
-    elif selected == "🛠️ Admin":
-        from lumina_launcher.ui.tabs.admin import render_admin_tab
-
-        render_admin_tab(services.backend_client)
-    elif selected == "🛡️ REAL Operations":
-        from lumina_launcher.ui.tabs.real_operations import render_real_operations_tab
-
-        render_real_operations_tab(_LAUNCHER_ROOT)
 
     st.divider()
     st.caption("LUMINA OS Launcher — parity restored, modular, observable, and performance-focused.")

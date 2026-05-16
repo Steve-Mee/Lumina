@@ -1,0 +1,16 @@
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_swing", "timestamp": "2026-05-07T19:20:05Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_scalper", "timestamp": "2026-05-07T19:20:05Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_risk", "timestamp": "2026-05-07T19:20:05Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 25.23, "fast_path_only": false, "sla_ms": 10000.0, "source": "multi_agent_risk", "timestamp": "2026-05-07T20:12:10Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 90.19, "fast_path_only": false, "sla_ms": 10000.0, "source": "multi_agent_scalper", "timestamp": "2026-05-07T20:12:11Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 5.86, "fast_path_only": false, "sla_ms": 10000.0, "source": "multi_agent_swing", "timestamp": "2026-05-07T20:12:12Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 65.4, "fast_path_only": false, "sla_ms": 10000.0, "source": "meta_reasoning", "timestamp": "2026-05-07T20:12:14Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_swing", "timestamp": "2026-05-15T19:19:22Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_scalper", "timestamp": "2026-05-15T19:19:22Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_risk", "timestamp": "2026-05-15T19:19:22Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.02, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_swing", "timestamp": "2026-05-15T19:31:52Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.02, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_scalper", "timestamp": "2026-05-15T19:31:52Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.02, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_risk", "timestamp": "2026-05-15T19:31:52Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_swing", "timestamp": "2026-05-15T19:41:51Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_scalper", "timestamp": "2026-05-15T19:41:51Z"}
+{"breach_streak": 0, "daily_pnl": 0.0, "elapsed_ms": 0.01, "fast_path_only": false, "sla_ms": 300.0, "source": "multi_agent_risk", "timestamp": "2026-05-15T19:41:51Z"}

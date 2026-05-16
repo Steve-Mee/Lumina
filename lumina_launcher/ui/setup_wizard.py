@@ -45,10 +45,12 @@ def persist_setup_configuration(
     admin_password: str = "",
 ) -> list[dict[str, Any]]:
     mode_value, broker_backend = resolve_mode_matrix(mode_selection)
+    admin_api_key = str(credentials.get("LUMINA_ADMIN_API_KEY", "")).strip() or f"sk_{secrets.token_hex(32)}"
     env_updates = {
         "TRADE_MODE": mode_value,
         "LUMINA_MODE": mode_value,
         "BROKER_BACKEND": broker_backend,
+        "LUMINA_ADMIN_API_KEY": admin_api_key,
     }
     for key in (
         "CROSSTRADE_TOKEN",
@@ -65,6 +67,14 @@ def persist_setup_configuration(
     steps: list[dict[str, Any]] = []
     config_manager.write_env_file(env_updates)
     steps.append({"name": "env_update", "success": True, "message": "Environment values written"})
+    if not str(credentials.get("LUMINA_ADMIN_API_KEY", "")).strip():
+        steps.append(
+            {
+                "name": "admin_api_key",
+                "success": True,
+                "message": "Admin API key auto-generated and stored in .env",
+            }
+        )
 
     config_payload = config_manager.load_yaml_config()
     config_payload["mode"] = mode_value
@@ -84,6 +94,7 @@ def persist_setup_configuration(
         require_real_simulator_data=bool(
             training.get("require_real_simulator_data", training["prefer_real_data_only"])
         ),
+        mark_user_configured=False,
     )
     first_boot_manager.save_neuro_require_real_simulator_data(
         bool(training.get("require_real_simulator_data", training["prefer_real_data_only"]))
@@ -150,6 +161,7 @@ def _init_wizard_state(
             "TELEGRAM_BOT_TOKEN": str(env_values.get("TELEGRAM_BOT_TOKEN", "")),
             "TELEGRAM_CHAT_ID": str(env_values.get("TELEGRAM_CHAT_ID", "")),
             "LUMINA_JWT_SECRET_KEY": str(env_values.get("LUMINA_JWT_SECRET_KEY", "")),
+            "LUMINA_ADMIN_API_KEY": str(env_values.get("LUMINA_ADMIN_API_KEY", "")) or f"sk_{secrets.token_hex(32)}",
         },
         "mode_selection": str(env_values.get("TRADE_MODE", "sim") or "sim").strip().lower(),
         "selected_model_key": recommended.key,
@@ -237,6 +249,17 @@ def render_setup_wizard(
         with col_b:
             if st.button("Genereer veilige JWT sleutel", use_container_width=True):
                 creds["LUMINA_JWT_SECRET_KEY"] = secrets.token_urlsafe(32)
+                st.rerun()
+        admin_col_a, admin_col_b = st.columns([3, 2])
+        with admin_col_a:
+            creds["LUMINA_ADMIN_API_KEY"] = st.text_input(
+                "LUMINA Admin API key (voor emergency backend acties)",
+                value=creds["LUMINA_ADMIN_API_KEY"],
+                type="password",
+            )
+        with admin_col_b:
+            if st.button("Genereer Admin API key", use_container_width=True):
+                creds["LUMINA_ADMIN_API_KEY"] = f"sk_{secrets.token_hex(32)}"
                 st.rerun()
         st.caption(
             "TradingView-gegevens worden hier niet apart opgeslagen; in deze stack lopen signalen en data via broker/Crosstrade."
@@ -337,10 +360,29 @@ def render_setup_wizard(
                 value=bool(training["require_real_simulator_data"]),
             )
         )
-        from lumina_core.first_boot_ui import estimate_first_boot_real_days, exceeds_max_real_days_window
+        from lumina_core.first_boot_ui import (
+            estimate_first_boot_duration,
+            estimate_first_boot_real_days,
+            exceeds_max_real_days_window,
+            format_duration_range,
+        )
 
         estimate = estimate_first_boot_real_days(training["training_trades"])
         st.caption(f"Geschatte historische vensterbehoefte: ongeveer {estimate} dagen.")
+        duration_estimate = estimate_first_boot_duration(
+            training_trades=int(training["training_trades"]),
+            max_real_days=int(training["max_real_days"]),
+            prefer_real_data_only=bool(training["prefer_real_data_only"]),
+            allow_minimal_synthetic_fallback=bool(training["allow_minimal_synthetic_fallback"]),
+            workspace_root=workspace_root,
+        )
+        st.caption(
+            "Geschatte trainingsduur: "
+            f"{format_duration_range(duration_estimate)} "
+            f"({duration_estimate.confidence} confidence, bron: {duration_estimate.method})."
+        )
+        for note in duration_estimate.notes[:2]:
+            st.caption(f"- {note}")
         if exceeds_max_real_days_window(estimate, training["max_real_days"]):
             st.warning("De schatting ligt boven `max_real_days`; verhoog venster of verlaag training trades.")
 
@@ -363,6 +405,7 @@ def render_setup_wizard(
         st.write(f"  - TELEGRAM_BOT_TOKEN: `{_mask_secret(creds['TELEGRAM_BOT_TOKEN'])}`")
         st.write(f"  - TELEGRAM_CHAT_ID: `{creds['TELEGRAM_CHAT_ID'] or '(empty)'}`")
         st.write(f"  - LUMINA_JWT_SECRET_KEY: `{_mask_secret(creds['LUMINA_JWT_SECRET_KEY'])}`")
+        st.write(f"  - LUMINA_ADMIN_API_KEY: `{_mask_secret(creds['LUMINA_ADMIN_API_KEY'])}`")
         with st.expander("Optionele guided dependency install"):
             st.caption("Deze acties zijn optioneel en blokkeren setup-voltooiing niet.")
             if st.button("Install launcher dependencies", use_container_width=True):
@@ -416,6 +459,9 @@ def render_setup_wizard(
                     if not creds["LUMINA_JWT_SECRET_KEY"]:
                         st.error("LUMINA_JWT_SECRET_KEY is verplicht voor startup-validatie.")
                         st.stop()
+                    if not creds["LUMINA_ADMIN_API_KEY"]:
+                        creds["LUMINA_ADMIN_API_KEY"] = f"sk_{secrets.token_hex(32)}"
+                        st.info("LUMINA_ADMIN_API_KEY ontbrak en is automatisch veilig gegenereerd.")
                 st.session_state[_WIZARD_STEP_KEY] = min(len(_WIZARD_STEPS) - 1, step_index + 1)
                 st.rerun()
 

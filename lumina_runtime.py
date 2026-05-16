@@ -277,6 +277,12 @@ def main(argv: list[str] | None = None) -> int:
         fb_rc = _runtime_ep._run_first_boot_training()
         if fb_rc != 0:
             return fb_rc
+        _runtime_ep._write_first_boot_progress(
+            "completed_waiting_user_action",
+            "First-boot training is voltooid. Runtime stopt nu fail-safe; start bot handmatig voor trading.",
+            phase="completed_waiting_user_action",
+        )
+        return 0
 
     container = get_container()
     runtime_module = sys.modules.get("__main__")

@@ -339,8 +339,9 @@ Before deploying to production:
 - [ ] Generate unique JWT secret: `python -c "import secrets; print(secrets.token_hex(32))"`
 - [ ] Generate admin API key: `python -c "import secrets; print(f'sk_{secrets.token_hex(32)}')"`
 - [ ] Set `LUMINA_JWT_SECRET_KEY` environment variable
+- [ ] Set `LUMINA_ADMIN_API_KEY` environment variable (used by launcher/backend emergency admin endpoints)
 - [ ] Update `config.yaml` with production CORS origins (NOT `["*"]`)
-- [ ] Update `config.yaml` with production admin API key
+- [ ] Confirm `config.yaml` maps `security.api_keys` to `${LUMINA_ADMIN_API_KEY}` (no hardcoded secrets)
 - [ ] Ensure `logs/` directory exists and is writable
 - [ ] Run full test suite: `pytest tests/ -v --tb=short`
 - [ ] Review audit log path: ensure it's persisted across restarts
@@ -355,6 +356,20 @@ Before deploying to production:
 - `POST /api/evolution/approve` and `POST /api/evolution/reject` require `role: admin` on the presented `X-API-Key` when `admin_role_required` is true in config.
 - If the security module is not injected (e.g. isolated unit tests), behaviour falls back to `LUMINA_DASHBOARD_API_KEY` for protected modes (`real`, `paper`, `sim_real_guard`).
 - Key rotation: add the new key under `security.api_keys` with the desired role, deploy, validate evolution mutations, then remove the old key after the overlap window.
+
+## Admin API Key Lifecycle (`LUMINA_ADMIN_API_KEY`)
+
+- Purpose: protects destructive backend operations (for example `/orders/emergency-stop`, `/orders/flatten`, `/orders/cancel-all`).
+- Scope: this key is **not** the Crosstrade/NinjaTrader credential. Broker execution still uses `CROSSTRADE_TOKEN`.
+- Provisioning:
+  - Setup Wizard generates `LUMINA_ADMIN_API_KEY` automatically when missing and stores it in `.env`.
+  - `config.yaml` should reference it via placeholder in `security.api_keys` (`${LUMINA_ADMIN_API_KEY}`), never as plaintext.
+- Rotation (recommended every 90 days or incident-triggered):
+  1. Generate new key: `python -c "import secrets; print(f'sk_{secrets.token_hex(32)}')"`
+  2. Update `.env` (`LUMINA_ADMIN_API_KEY=<new_key>`)
+  3. Restart backend + launcher
+  4. Validate authenticated admin endpoint call
+  5. Invalidate old key in secret manager/runbook notes
 
 ---
 

@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-05-05T19:31:27.974656",
+  "status": "ok_minimal_synthetic_fallback",
+  "requested_trades": 300000,
+  "target_trades": 300000,
+  "trades": 300000,
+  "wins": 150000,
+  "net_pnl": 10.0,
+  "mean_worker_sharpe": 1.0,
+  "estimated_real_days": 120,
+  "actual_real_days_loaded": 4,
+  "max_real_days": 100,
+  "real_ticks": 5000,
+  "synthetic_ticks": 200000,
+  "synthetic_pct": 97.561,
+  "elapsed_sec": 1.52
+}

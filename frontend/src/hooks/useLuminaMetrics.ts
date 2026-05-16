@@ -3,7 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /** Canonical dashboard fields (normalized from `/api/monitoring/metrics/json`). */
 export interface LuminaMetrics {
   trades_completed: number;
+  training_completed_trades: number;
+  training_target_trades: number;
+  first_boot_stage: string;
   ppo_steps: number;
+  ppo_timesteps_total: number;
+  ppo_progress_pct: number;
   approval_twin_reward: number;
   cpu: number;
   gpu: number;
@@ -14,6 +19,11 @@ export interface LuminaMetrics {
   synthetic_percent: number;
   /** `null` when ETA is unknown/unavailable */
   eta_minutes: number | null;
+  session_kind: string;
+  session_active: boolean;
+  training_target_applicable: boolean;
+  last_activity_ts: string | null;
+  activity_stale: boolean;
 }
 
 /** 1.8 seconden — interval voor automatische polling */
@@ -36,7 +46,12 @@ export class LuminaMetricsFetchError extends Error {
 
 const EMPTY_METRICS: LuminaMetrics = {
   trades_completed: 0,
+  training_completed_trades: 0,
+  training_target_trades: 0,
+  first_boot_stage: "",
   ppo_steps: 0,
+  ppo_timesteps_total: 0,
+  ppo_progress_pct: 0,
   approval_twin_reward: 0,
   cpu: 0,
   gpu: 0,
@@ -46,6 +61,11 @@ const EMPTY_METRICS: LuminaMetrics = {
   historical_days: 0,
   synthetic_percent: 0,
   eta_minutes: null,
+  session_kind: "idle",
+  session_active: false,
+  training_target_applicable: false,
+  last_activity_ts: null,
+  activity_stale: true,
 };
 
 type PrometheusEntry = {
@@ -59,6 +79,7 @@ const SNAPSHOT_EMBEDDED_KEYS = ["_lumina_ui", "lumina_ui", "lumina_dashboard", "
 const PROM_FALLBACK_SUMS: Partial<Record<keyof Omit<LuminaMetrics, "phase" | "eta_minutes">, readonly string[]>> =
   {
     trades_completed: ["lumina_trades_completed_total", "lumina_model_decisions_total"],
+    training_completed_trades: ["lumina_trades_completed_total", "lumina_model_decisions_total"],
     ppo_steps: ["lumina_ppo_training_steps_total", "lumina_ppo_steps_total"],
     approval_twin_reward: ["lumina_approval_twin_reward", "lumina_approval_twin_avg_reward"],
     cpu: ["lumina_hardware_cpu_pct", "lumina_cpu_percent"],
@@ -178,9 +199,37 @@ function partialFromLooseUi(obj: unknown): Partial<LuminaMetrics> | null {
     }
     return undefined;
   };
+  const pickBool = (...names: readonly string[]): boolean | undefined => {
+    for (const name of names) {
+      if (!(name in r)) {
+        continue;
+      }
+      const v = r[name];
+      if (typeof v === "boolean") {
+        return v;
+      }
+      if (typeof v === "number") {
+        return v > 0;
+      }
+      if (typeof v === "string") {
+        const norm = v.trim().toLowerCase();
+        if (["true", "1", "yes", "on"].includes(norm)) {
+          return true;
+        }
+        if (["false", "0", "no", "off"].includes(norm)) {
+          return false;
+        }
+      }
+    }
+    return undefined;
+  };
 
   const trades = pickNum("trades_completed");
+  const trainingCompleted = pickNum("training_completed_trades");
+  const trainingTarget = pickNum("training_target_trades");
   const ppo = pickNum("ppo_steps");
+  const ppoTotal = pickNum("ppo_timesteps_total");
+  const ppoPct = pickNum("ppo_progress_pct");
   const atr = pickNum("approval_twin_reward");
   const cpu = pickNum("cpu");
   const gpu = pickNum("gpu");
@@ -190,6 +239,12 @@ function partialFromLooseUi(obj: unknown): Partial<LuminaMetrics> | null {
   const syn = pickNum("synthetic_percent");
   const eta = pickNum("eta_minutes");
   const ph = pickStr("phase");
+  const firstBootStage = pickStr("first_boot_stage");
+  const sessionKind = pickStr("session_kind");
+  const lastActivityTs = pickStr("last_activity_ts");
+  const sessionActive = pickBool("session_active");
+  const targetApplicable = pickBool("training_target_applicable");
+  const activityStale = pickBool("activity_stale");
 
   if (Object.prototype.hasOwnProperty.call(r, "eta_minutes") && r.eta_minutes === null) {
     out.eta_minutes = null;
@@ -198,8 +253,20 @@ function partialFromLooseUi(obj: unknown): Partial<LuminaMetrics> | null {
   if (trades !== undefined) {
     out.trades_completed = trades;
   }
+  if (trainingCompleted !== undefined) {
+    out.training_completed_trades = trainingCompleted;
+  }
+  if (trainingTarget !== undefined) {
+    out.training_target_trades = trainingTarget;
+  }
   if (ppo !== undefined) {
     out.ppo_steps = ppo;
+  }
+  if (ppoTotal !== undefined) {
+    out.ppo_timesteps_total = ppoTotal;
+  }
+  if (ppoPct !== undefined) {
+    out.ppo_progress_pct = ppoPct;
   }
   if (atr !== undefined) {
     out.approval_twin_reward = atr;
@@ -229,6 +296,24 @@ function partialFromLooseUi(obj: unknown): Partial<LuminaMetrics> | null {
   }
   if (ph !== undefined) {
     out.phase = ph;
+  }
+  if (firstBootStage !== undefined) {
+    out.first_boot_stage = firstBootStage;
+  }
+  if (sessionKind !== undefined) {
+    out.session_kind = sessionKind;
+  }
+  if (lastActivityTs !== undefined) {
+    out.last_activity_ts = lastActivityTs;
+  }
+  if (sessionActive !== undefined) {
+    out.session_active = sessionActive;
+  }
+  if (targetApplicable !== undefined) {
+    out.training_target_applicable = targetApplicable;
+  }
+  if (activityStale !== undefined) {
+    out.activity_stale = activityStale;
   }
 
   return Object.keys(out).length > 0 ? out : null;
@@ -271,6 +356,18 @@ export function normalizeLuminaMetricsPayload(raw: unknown): LuminaMetrics {
     ...EMPTY_METRICS,
     ...(ui ?? {}),
   };
+  if (!(uiKeys.has("training_completed_trades"))) {
+    merged.training_completed_trades = merged.trades_completed;
+  }
+  if (!(uiKeys.has("training_target_trades")) || merged.training_target_trades < 0) {
+    merged.training_target_trades = 0;
+  }
+  if (!merged.training_target_applicable) {
+    merged.training_target_trades = 0;
+  }
+  if (!(uiKeys.has("session_kind")) || merged.session_kind.trim() === "") {
+    merged.session_kind = "idle";
+  }
 
   const phaseUnset = !(uiKeys.has("phase"));
   const phaseEmptyAfterUi = merged.phase.trim() === "";
@@ -288,7 +385,40 @@ export function normalizeLuminaMetricsPayload(raw: unknown): LuminaMetrics {
     }
     const v = firstMetricWithAnyKey(snap, candidates);
     if (v !== null) {
-      merged[fieldKey] = v as LuminaMetrics[typeof fieldKey];
+      switch (fieldKey) {
+        case "trades_completed":
+          merged.trades_completed = v;
+          break;
+        case "training_completed_trades":
+          merged.training_completed_trades = v;
+          break;
+        case "ppo_steps":
+          merged.ppo_steps = v;
+          break;
+        case "approval_twin_reward":
+          merged.approval_twin_reward = v;
+          break;
+        case "cpu":
+          merged.cpu = v;
+          break;
+        case "gpu":
+          merged.gpu = v;
+          break;
+        case "ram":
+          merged.ram = v;
+          break;
+        case "velocity":
+          merged.velocity = v;
+          break;
+        case "historical_days":
+          merged.historical_days = v;
+          break;
+        case "synthetic_percent":
+          merged.synthetic_percent = v;
+          break;
+        default:
+          break;
+      }
     }
   });
 

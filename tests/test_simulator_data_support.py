@@ -3,6 +3,7 @@ from __future__ import annotations
 from lumina_core.evolution.simulator_data_support import (
     MIN_SIMULATOR_BARS,
     fallback_synthetic_bars,
+    select_first_boot_ppo_bars,
     resolve_neuro_simulator_rows_for_neuro_cycle,
     validate_simulator_bars,
 )
@@ -69,3 +70,11 @@ def test_resolve_uses_simulator_data_when_valid() -> None:
     assert skip is None
     assert len(rows) >= MIN_SIMULATOR_BARS
     assert source == "simulator_data"
+
+
+def test_select_first_boot_ppo_bars_ignores_synthetic_tail() -> None:
+    real_rows = [{"last": 100.0 + i, "source": "real"} for i in range(120)]
+    synthetic_tail = [{"last": 300.0 + i, "source": "synthetic"} for i in range(600)]
+    selected = select_first_boot_ppo_bars(real_rows + synthetic_tail, cap=200)
+    assert len(selected) == 120
+    assert all(str(row.get("source", "")).lower() != "synthetic" for row in selected)

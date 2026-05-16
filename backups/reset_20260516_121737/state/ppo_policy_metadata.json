@@ -1,0 +1,9 @@
+{
+  "last_load_time_sec": 0.0,
+  "policy_path": "C:\\Users\\steve\\AppData\\Local\\Temp\\pytest-of-steve\\pytest-362\\test_save_weights_writes_zip_t0\\weights.zip",
+  "policy_version": "ppo-1778873949-4",
+  "status": "saved",
+  "total_training_steps": 0,
+  "training_time_sec": 0.0,
+  "updated_at": "2026-05-15T19:39:09Z"
+}

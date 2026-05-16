@@ -1,0 +1,22 @@
+{
+  "timestamp": "2026-05-05T20:24:48.441235",
+  "status": "ok_capped_real_only",
+  "requested_trades": 300000,
+  "target_trades": 10000,
+  "trades": 10000,
+  "executed_trades": 10000,
+  "wins": 5000,
+  "net_pnl": 10.0,
+  "mean_worker_sharpe": 1.0,
+  "estimated_real_days": 120,
+  "actual_real_days_loaded": 4,
+  "real_days_loaded": 4,
+  "max_real_days": 100,
+  "configured_real_trade_capacity": 250000,
+  "actual_real_trade_capacity": 10000,
+  "real_ticks": 5000,
+  "synthetic_ticks": 0,
+  "synthetic_pct": 0.0,
+  "synthetic_ratio": 0.0,
+  "elapsed_sec": 0.0
+}

@@ -159,6 +159,28 @@ def filter_non_synthetic_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]
     return out
 
 
+def select_first_boot_ppo_bars(
+    rows: list[dict[str, Any]] | None,
+    *,
+    cap: int = 200_000,
+) -> list[dict[str, Any]]:
+    """Prefer non-synthetic rows for first-boot PPO input.
+
+    First-boot SIM appends synthetic ticks at the tail to hit requested trade volume.
+    Selecting ``rows[-N:]`` can therefore produce mostly synthetic data, forcing an
+    expensive historical refetch in ``coerce_rl_training_bars``. This helper keeps PPO
+    training anchored to the real portion when available.
+    """
+    bounded_cap = max(MIN_SIMULATOR_BARS, int(cap or 200_000))
+    pool = list(rows or [])
+    if not pool:
+        return []
+    non_synthetic = filter_non_synthetic_rows(pool)
+    if len(non_synthetic) >= MIN_SIMULATOR_BARS:
+        return non_synthetic[-bounded_cap:]
+    return pool[-bounded_cap:]
+
+
 def coerce_rl_training_bars(
     engine: Any,
     simulator_data: list[dict[str, Any]] | None,

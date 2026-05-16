@@ -20,15 +20,89 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import altair as alt
 import pandas as pd
 import requests
 import streamlit as st
 import yaml
 
+from lumina_core.first_boot_progress import (
+    resolve_first_boot_completed_trades,
+    resolve_first_boot_target_trades,
+)
 from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
 from lumina_os.frontend.http_utils import is_backend_unreachable, log_fetch_failure
 
 logger = logging.getLogger(__name__)
+
+PREMIUM_THEME_CSS = """
+<style>
+:root {
+  --lumina-bg: #0a0a0f;
+  --lumina-card: #11131a;
+  --lumina-card-2: #0f1218;
+  --lumina-border: rgba(0, 240, 255, 0.16);
+  --lumina-border-strong: rgba(0, 240, 255, 0.32);
+  --lumina-text: #e8e6e3;
+  --lumina-text-muted: #94a3b8;
+  --lumina-cyan: #00f0ff;
+  --lumina-green: #00ff9f;
+}
+section[data-testid="stMain"] {
+  background:
+    radial-gradient(circle at 12% 4%, rgba(0, 240, 255, 0.12), transparent 42%),
+    radial-gradient(circle at 87% 13%, rgba(0, 255, 159, 0.1), transparent 38%),
+    var(--lumina-bg);
+}
+h1, h2, h3, h4, h5, h6 {
+  color: var(--lumina-text);
+}
+[data-testid="stTabs"] [data-baseweb="tab-list"] {
+  gap: 10px;
+  background: rgba(9, 10, 15, 0.75);
+  border: 1px solid var(--lumina-border);
+  border-radius: 14px;
+  padding: 8px;
+}
+[data-testid="stTabs"] [data-baseweb="tab"] {
+  border-radius: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+[data-testid="stTabs"] [aria-selected="true"] {
+  background: linear-gradient(95deg, rgba(0, 240, 255, 0.18), rgba(0, 255, 159, 0.12));
+  border: 1px solid var(--lumina-border-strong);
+}
+[data-testid="stMetric"] {
+  background: linear-gradient(145deg, rgba(17, 19, 26, 0.94), rgba(9, 10, 15, 0.9));
+  border: 1px solid var(--lumina-border);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+}
+[data-testid="stArrowVegaLiteChart"],
+[data-testid="stDataFrame"],
+[data-testid="stCodeBlock"],
+.stCodeBlock {
+  background: rgba(12, 14, 20, 0.9) !important;
+  border: 1px solid rgba(0, 240, 255, 0.16) !important;
+  border-radius: 12px !important;
+}
+[data-testid="stCodeBlock"] pre,
+.stCodeBlock pre {
+  background: transparent !important;
+  color: #b6c2d3 !important;
+}
+.stButton > button, a[data-testid="stLinkButton"] {
+  border-radius: 11px !important;
+  border: 1px solid var(--lumina-border-strong) !important;
+  box-shadow: 0 8px 28px rgba(0, 240, 255, 0.14) !important;
+}
+.stCaptionContainer, [data-testid="stCaptionContainer"] {
+  color: var(--lumina-text-muted) !important;
+}
+</style>
+"""
 
 LUXURY_STATUS_BAR_CSS = """
 <style>
@@ -38,14 +112,14 @@ LUXURY_STATUS_BAR_CSS = """
 }
 section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text),
 section.main [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.94) 0%, rgba(30, 27, 75, 0.9) 48%, rgba(15, 23, 42, 0.94) 100%);
-  border: 1px solid rgba(56, 189, 248, 0.38);
+  background: linear-gradient(135deg, rgba(10, 10, 15, 0.98) 0%, rgba(13, 20, 30, 0.96) 52%, rgba(10, 10, 15, 0.98) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.34);
   border-radius: 16px;
   padding: 10px 18px 14px;
   margin-bottom: 6px;
   box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.55),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    0 0 0 1px rgba(0, 255, 159, 0.05) inset;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
 }
@@ -61,15 +135,15 @@ section.main [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) {
   justify-content: center;
 }
 .lumina-logo-text {
-  font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Inter", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   font-weight: 800;
   font-size: 1.28rem;
   letter-spacing: 0.32em;
-  background: linear-gradient(92deg, #38bdf8 0%, #a78bfa 45%, #f472b6 100%);
+  background: linear-gradient(92deg, #00f0ff 0%, #9be8ff 45%, #00ff9f 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.35));
+  filter: drop-shadow(0 0 16px rgba(0, 240, 255, 0.35));
 }
 .lumina-badge {
   font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
@@ -80,17 +154,17 @@ section.main [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) {
   white-space: nowrap;
 }
 .lumina-badge-training {
-  color: #4ade80;
-  text-shadow: 0 0 14px rgba(74, 222, 128, 0.85);
+  color: #00ff9f;
+  text-shadow: 0 0 14px rgba(0, 255, 159, 0.82);
   animation: lumina-pulse-glow 1.85s ease-in-out infinite;
 }
 .lumina-badge-idle {
   color: #94a3b8;
 }
 .lumina-metrics {
-  font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Inter", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   font-size: 0.92rem;
-  color: #cbd5e1;
+  color: #d4d4db;
   flex-wrap: wrap;
   gap: 4px;
 }
@@ -100,7 +174,7 @@ section.main [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) {
   font-variant-numeric: tabular-nums;
 }
 .lumina-metric-muted {
-  color: #7dd3fc;
+  color: #7de7ff;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -112,9 +186,9 @@ section.main [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) {
   display: inline-block;
   padding: 2px 10px;
   border-radius: 999px;
-  background: rgba(56, 189, 248, 0.16);
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  color: #e0f2fe;
+  background: rgba(0, 240, 255, 0.15);
+  border: 1px solid rgba(0, 240, 255, 0.45);
+  color: #d9fbff;
   font-weight: 700;
   font-size: 0.82rem;
   letter-spacing: 0.06em;
@@ -129,15 +203,26 @@ section.main [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) {
 .lumina-phase-v {
   font-size: 1.02rem;
   font-weight: 800;
-  color: #e879f9;
-  text-shadow: 0 0 18px rgba(232, 121, 249, 0.35);
+  color: #00f0ff;
+  text-shadow: 0 0 18px rgba(0, 240, 255, 0.35);
 }
-section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) a[data-testid="stLinkButton"],
-section.main [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) a[data-testid="stLinkButton"] {
-  border-radius: 11px !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.04em !important;
-  box-shadow: 0 0 22px rgba(56, 189, 248, 0.25) !important;
+.lumina-artifacts {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  color: #d9fbff;
+}
+.lumina-artifacts-ok {
+  border-color: rgba(0, 255, 159, 0.34);
+  color: #00ff9f;
+}
+.lumina-artifacts-missing {
+  border-color: rgba(251, 191, 36, 0.44);
+  color: #fbbf24;
 }
 </style>
 """
@@ -232,6 +317,38 @@ def linear_trend(values: list[float]) -> list[float]:
     slope = ((n * sum_xy) - (sum_x * sum_y)) / denom
     intercept = (sum_y - (slope * sum_x)) / n
     return [float((slope * x) + intercept) for x in xs]
+
+
+def render_dark_multi_series_chart(
+    frame: pd.DataFrame,
+    *,
+    x_col: str,
+    value_cols: list[str],
+    height: int = 200,
+) -> None:
+    melted = frame.reset_index().melt(id_vars=[x_col], value_vars=value_cols, var_name="series", value_name="value")
+    chart = (
+        alt.Chart(melted)
+        .mark_line(strokeWidth=2.0)
+        .encode(
+            x=alt.X(f"{x_col}:N", axis=alt.Axis(labelColor="#94a3b8", titleColor="#94a3b8")),
+            y=alt.Y("value:Q", axis=alt.Axis(labelColor="#94a3b8", titleColor="#94a3b8")),
+            color=alt.Color(
+                "series:N",
+                scale=alt.Scale(
+                    domain=value_cols,
+                    range=["#00f0ff", "#00ff9f", "#38bdf8", "#f59e0b"],
+                ),
+                legend=alt.Legend(labelColor="#94a3b8", titleColor="#94a3b8"),
+            ),
+            tooltip=[x_col, "series", "value"],
+        )
+        .properties(height=height)
+        .configure(background="#0f1118")
+        .configure_view(strokeOpacity=0, fill="#0f1118")
+        .configure_axis(gridColor="#1f2937")
+    )
+    st.altair_chart(chart, use_container_width=True)
 
 
 def load_json_dict(path: Path) -> dict[str, Any]:
@@ -330,12 +447,11 @@ def resolve_mode(p: DashboardPaths) -> str:
 
 
 def training_target_trades(p: DashboardPaths) -> int:
+    user_configured = (p.state_dir / "first_boot_user_configured.flag").is_file()
+    if not user_configured:
+        return 0
     cfg = load_yaml_dict(p.config_yaml)
-    fb = cfg.get("first_boot") if isinstance(cfg.get("first_boot"), dict) else {}
-    n = safe_int(fb.get("training_trades"), 0)
-    if n > 0:
-        return n
-    return 500_000
+    return resolve_first_boot_target_trades(cfg)
 
 
 def host_only_from_streamlit_host(header_val: str) -> str:
@@ -353,12 +469,18 @@ def host_only_from_streamlit_host(header_val: str) -> str:
 
 
 def react_dashboard_url(api_base: str, p: DashboardPaths) -> str:
+    def _ui_build_stamp(path: Path) -> str:
+        try:
+            return str(int(path.stat().st_mtime_ns))
+        except OSError:
+            return "0"
+
     explicit = (os.getenv("LUMINA_REACT_DASHBOARD_URL") or "").strip()
     if explicit:
         return explicit
     base = api_base.rstrip("/")
     if p.embedded_ui_index.is_file():
-        return f"{base}/ui/"
+        return f"{base}/ui/?v={_ui_build_stamp(p.embedded_ui_index)}"
     port = (os.getenv("LUMINA_REACT_DASHBOARD_PORT") or "5173").strip() or "5173"
     host = "localhost"
     try:
@@ -435,11 +557,14 @@ def status_phase_label(runtime_mode: str, first_boot: dict[str, Any]) -> str:
 
 
 def status_bar_trade_count(first_boot: dict[str, Any], summary: dict[str, Any]) -> int:
+    n = resolve_first_boot_completed_trades(first_boot)
+    if n > 0:
+        return n
     stage = str(first_boot.get("stage", "")).strip().lower()
     if stage in {"detected", "loading_data", "training_running"}:
-        n = safe_int(first_boot.get("trades"))
-        if n > 0:
-            return n
+        cumulative = safe_int(first_boot.get("cumulative_trades"))
+        if cumulative > 0:
+            return cumulative
     n = safe_int(summary.get("total_trades"))
     if n > 0:
         return n
@@ -450,7 +575,7 @@ def status_bar_trade_count(first_boot: dict[str, Any], summary: dict[str, Any]) 
 
 
 def render_luxury_status_bar(p: DashboardPaths, api_base_url: str, runtime_mode: str) -> None:
-    st.markdown(LUXURY_STATUS_BAR_CSS, unsafe_allow_html=True)
+    st.markdown(PREMIUM_THEME_CSS + LUXURY_STATUS_BAR_CSS, unsafe_allow_html=True)
     fb = load_json_dict(p.first_boot_progress)
     dbg = load_json_dict(p.debug_training_proc)
     summary = load_json_dict(p.last_run_summary)
@@ -459,12 +584,16 @@ def render_luxury_status_bar(p: DashboardPaths, api_base_url: str, runtime_mode:
     trades = status_bar_trade_count(fb, summary)
     heartbeat = heartbeat_age_display(p)
     mode_label = (runtime_mode or "sim").strip().upper() or "SIM"
-    react_url = react_dashboard_url(api_base_url, p)
+    completed_flag = (p.state_dir / "first_boot_completed.flag").is_file()
+    policy_zip = (p.workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip").is_file()
+    artifacts_ok = completed_flag and policy_zip
 
     badge_cls = "lumina-badge lumina-badge-training" if training_on else "lumina-badge lumina-badge-idle"
     badge_txt = "● TRAINING ACTIVE" if training_on else "● IDLE"
+    artifacts_cls = "lumina-artifacts lumina-artifacts-ok" if artifacts_ok else "lumina-artifacts lumina-artifacts-missing"
+    artifacts_txt = "Artifacts OK" if artifacts_ok else "Artifacts missing"
 
-    c_logo, c_badge, c_metrics, c_phase, c_btn = st.columns([1.0, 1.15, 2.65, 1.0, 1.25])
+    c_logo, c_badge, c_metrics, c_phase, c_artifacts = st.columns([1.0, 1.15, 2.65, 1.0, 1.35])
     with c_logo:
         st.markdown(
             '<div class="lumina-bar-cell"><span class="lumina-logo-text">LUMINA</span></div>',
@@ -494,16 +623,14 @@ def render_luxury_status_bar(p: DashboardPaths, api_base_url: str, runtime_mode:
             "</div>",
             unsafe_allow_html=True,
         )
-    with c_btn:
-        if react_url:
-            st.link_button(
-                "Open React Dashboard",
-                react_url,
-                use_container_width=True,
-                type="primary",
-            )
-        else:
-            st.caption("React-dashboard-URL onbekend")
+    with c_artifacts:
+        st.markdown(
+            '<div class="lumina-bar-cell lumina-phase-stack">'
+            '<span class="lumina-phase-k">First Boot SSOT</span>'
+            f'<span class="{artifacts_cls}">{artifacts_txt}</span>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
 
 
 def render_shared_monitoring_dashboard(base_url: str) -> None:
@@ -660,14 +787,24 @@ def render_sim_evolution_dashboard_tab(p: DashboardPaths) -> None:
                 {"Sharpe": sharpes, "Threshold 1.8": [1.8] * len(sharpes)},
                 index=day_labels,
             )
-            st.line_chart(df_sharpe, height=200)
+            render_dark_multi_series_chart(
+                df_sharpe,
+                x_col="index",
+                value_cols=["Sharpe", "Threshold 1.8"],
+                height=200,
+            )
 
         with chart_col2:
             st.markdown("##### 🧬 Evolution Proposals Trend (last 7 days)")
             df_props = pd.DataFrame(
                 {"Proposals": proposals, "Trend": proposal_trend}, index=day_labels
             )
-            st.line_chart(df_props, height=200)
+            render_dark_multi_series_chart(
+                df_props,
+                x_col="index",
+                value_cols=["Proposals", "Trend"],
+                height=200,
+            )
     else:
         st.info("No history data yet — run a SIM to start accumulating daily records.")
 

@@ -1,0 +1,10 @@
+{
+  "method": "websocket",
+  "connection_state": "idle",
+  "status": "ready",
+  "last_error": null,
+  "last_message_ts": null,
+  "pending_count": 0,
+  "pending_symbols": [],
+  "updated_at": "2026-05-16T15:25:02.362877+00:00"
+}

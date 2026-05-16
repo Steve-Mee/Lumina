@@ -12,6 +12,7 @@ from lumina_os.frontend.dashboard_views import (
     format_eta_minutes,
     get_training_velocity_tpm,
     load_json_dict,
+    react_dashboard_url,
     resolve_workspace_root_from_this_module,
     training_target_trades,
 )
@@ -69,6 +70,8 @@ def test_training_target_trades_from_config(tmp_path: Path) -> None:
         """
     )
     (ws / "config.yaml").write_text(cfg, encoding="utf-8")
+    (ws / "state").mkdir(parents=True, exist_ok=True)
+    (ws / "state" / "first_boot_user_configured.flag").write_text("ok", encoding="utf-8")
     p = DashboardPaths(ws)
     assert training_target_trades(p) == 250_000
 
@@ -78,7 +81,17 @@ def test_training_target_trades_default(tmp_path: Path) -> None:
     ws = tmp_path
     (ws / "config.yaml").write_text("mode: sim\n", encoding="utf-8")
     p = DashboardPaths(ws)
-    assert training_target_trades(p) == 500_000
+    assert training_target_trades(p) == 0
+
+
+@pytest.mark.unit
+def test_react_dashboard_url_embedded_includes_build_stamp(tmp_path: Path) -> None:
+    ws = tmp_path
+    (ws / "frontend" / "dist").mkdir(parents=True, exist_ok=True)
+    (ws / "frontend" / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
+    p = DashboardPaths(ws)
+    url = react_dashboard_url("http://localhost:8000", p)
+    assert url.startswith("http://localhost:8000/ui/?v=")
 
 
 @pytest.mark.unit
@@ -99,8 +112,9 @@ def test_get_training_velocity_tpm_none_without_api(monkeypatch: pytest.MonkeyPa
 def test_streamlit_main_wires_training_dashboard_tab() -> None:
     root = Path(__file__).resolve().parents[1]
     text = (root / "lumina_launcher" / "streamlit_main.py").read_text(encoding="utf-8")
-    assert "render_training_dashboard_tab" in text
-    assert "LUMINA OS Dashboard" in text
+    registry_text = (root / "lumina_launcher" / "ui" / "tab_registry.py").read_text(encoding="utf-8")
+    assert "launcher_tab_specs" in text
+    assert "LUMINA OS Dashboard" in registry_text
 
 
 @pytest.mark.integration

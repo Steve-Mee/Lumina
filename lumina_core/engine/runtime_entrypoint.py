@@ -450,6 +450,7 @@ def _run_first_boot_training() -> int:
     trades = int(report.get("trades", 0) or 0)
     requested_norm = normalize_first_boot_training_trades(target)
     volume_met = trades >= requested_norm
+    policy_ready = FIRST_BOOT_POLICY_PATH.exists()
 
     if status == "paused":
         pause_msg = (
@@ -469,7 +470,7 @@ def _run_first_boot_training() -> int:
 
     # Must reach the configured (snapped) trade volume — not only "ok" + some trades.
     # Otherwise ok_capped_real_only (~real-data cap) incorrectly completed first boot at ~67k vs 500k.
-    if status.startswith("ok") and trades > 0 and volume_met:
+    if status.startswith("ok") and trades > 0 and volume_met and policy_ready:
         FIRST_BOOT_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
         FIRST_BOOT_FLAG_PATH.write_text(datetime.now().isoformat(), encoding="utf-8")
         synthetic_ticks = int(report.get("synthetic_ticks", 0) or 0)
@@ -490,9 +491,27 @@ def _run_first_boot_training() -> int:
             status=status,
             trades=trades,
             requested_trades=requested_norm,
+            phase="completed",
         )
         logging.info("First boot training finished - starting normal runtime mode")
         return 0
+
+    if status.startswith("ok") and trades > 0 and volume_met and not policy_ready:
+        msg = (
+            "First-boot SIM-volume is gehaald, maar PPO policy ontbreekt nog. "
+            "Runtime blijft fail-closed; hervat training totdat policy is opgeslagen."
+        )
+        print(msg, flush=True)
+        _write_first_boot_progress(
+            "failed",
+            msg,
+            status="ppo_policy_missing",
+            trades=trades,
+            requested_trades=requested_norm,
+            phase="ppo_training_failed",
+        )
+        logging.error("first_boot.policy_missing_after_volume status=%s trades=%s", status, trades)
+        return 1
 
     if status.startswith("ok") and trades > 0 and not volume_met:
         msg = (
@@ -561,13 +580,23 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
         and not bool(args.headless)
         and not bool(args.stability_check)
     )
+    first_boot_ran = False
     if should_check_first_boot:
         if _first_boot_needed():
             first_boot_rc = _run_first_boot_training()
             if first_boot_rc != 0:
                 return first_boot_rc
+            first_boot_ran = True
         else:
             logging.info("first_boot.check runtime gate open; normale runtime start zonder verplichte first-boot training.")
+    if first_boot_ran:
+        _write_first_boot_progress(
+            "completed_waiting_user_action",
+            "First-boot training is voltooid. Runtime stopt nu fail-safe; start bot handmatig voor trading.",
+            phase="completed_waiting_user_action",
+        )
+        logging.info("first_boot.complete fail-safe stop active; runtime exits and waits for explicit user start")
+        return 0
 
     if resolved_mode == "nightly":
         return _run_nightly()

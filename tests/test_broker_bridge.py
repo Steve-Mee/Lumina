@@ -90,6 +90,8 @@ class _FakeSession:
 
     def post(self, url: str, headers=None, json=None, timeout: float = 0):
         self.calls.append(("POST", url, headers, json))
+        if url.endswith("/orders/cancel"):
+            return _FakeResponse(200, {"orderIds": ["c1", "c2"], "success": True})
         payload = json if isinstance(json, dict) else {}
         return _FakeResponse(
             201, {"orderId": "order-123", "filledQuantity": payload.get("quantity", 0), "fillPrice": 5001.25}
@@ -194,6 +196,9 @@ def test_paper_broker_submit_order_and_fill_tracking() -> None:
     fills = broker.get_fills()
     assert len(fills) == 1
     assert fills[0].symbol == "MES JUN26"
+    cancel_result = broker.cancel_all_orders()
+    assert cancel_result["status"] == "ok"
+    assert cancel_result["cancelled_count"] == 0
 
 
 def test_cross_trade_broker_and_operations_service_submit_via_bridge() -> None:
@@ -240,6 +245,9 @@ def test_cross_trade_broker_and_operations_service_submit_via_bridge() -> None:
     )
     assert direct.accepted is True
     assert direct.order_id == "order-123"
+    cancel_result = broker.cancel_all_orders()
+    assert cancel_result["status"] == "ok"
+    assert cancel_result["cancelled_count"] == 2
 
     class _BrokerSpy:
         def __init__(self):

@@ -252,6 +252,8 @@ def test_json_metrics_returns_snapshot_with_key() -> None:
     for ui_key in (
         "trades_completed",
         "ppo_steps",
+        "ppo_timesteps_total",
+        "ppo_progress_pct",
         "approval_twin_reward",
         "cpu",
         "gpu",

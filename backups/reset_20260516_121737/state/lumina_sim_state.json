@@ -1,0 +1,255 @@
+{
+  "sim_position_qty": 0,
+  "sim_entry_price": 0.0,
+  "sim_unrealized": 0.0,
+  "sim_peak": 50000.0,
+  "live_position_qty": 0,
+  "last_entry_price": 0.0,
+  "last_realized_pnl_snapshot": 0.0,
+  "live_trade_signal": "HOLD",
+  "pending_trade_reconciliations": [],
+  "pnl_history": [],
+  "equity_curve": [
+    50000.0
+  ],
+  "current_dream": {
+    "signal": "HOLD",
+    "confidence": null,
+    "stop": 7366.02,
+    "target": 7377.95,
+    "reason": "Initial | EMO_CORRECT: Tilt -> halved size, wider stop | EMO_CORRECT: Boredom -> no trade",
+    "why_no_trade": "",
+    "confluence_score": 0.8,
+    "fib_levels": {},
+    "swing_high": 0.0,
+    "swing_low": 0.0,
+    "a_been_direction": "NEUTRAL",
+    "chosen_strategy": "fast_path_ma_tape_fib",
+    "emotional_bias": {
+      "fomo_score": 0.0,
+      "tilt_score": 0.0,
+      "boredom_score": 0.0,
+      "revenge_risk": 0.0
+    },
+    "counterfactual_human_decision": "HOLD",
+    "min_confluence_override": 0.0,
+    "position_size_multiplier": 0.5,
+    "stop_widen_multiplier": 1.3,
+    "hold_until_ts": 1778863019.009936,
+    "qty": 0.16000000000000003,
+    "swarm_ts": "2026-05-15T18:20:01.777812",
+    "swarm_primary_symbol": "MES JUN26",
+    "swarm_consensus_multiplier": 1.0,
+    "swarm_alloc_risk_percent": 0.2246450104061212,
+    "swarm_arbitrage_signals": [],
+    "swarm_dashboard_path": "journal\\swarm_dashboard.html",
+    "tape_signal": "HOLD",
+    "tape_direction": "SELL",
+    "tape_confidence": 0.5,
+    "tape_reason": "vol_delta=1 vs avg=3, imbalance=100.00, cum_delta_10=-2",
+    "tape_fast_path_trigger": false,
+    "cumulative_delta_10": -2.0,
+    "bid_ask_imbalance": 100.0,
+    "swarm_regime": "NEUTRAL",
+    "swarm_allocation": {
+      "MES JUN26": 0.2246450104061212,
+      "MNQ JUN26": 0.17403571782716887,
+      "MYM JUN26": 0.33393868184822395,
+      "ES JUN26": 0.267380589918486
+    }
+  },
+  "bible_evolvable": {
+    "mtf_matrix": {
+      "dominant_tf": "240min",
+      "confluence_scores": {}
+    },
+    "filters": [
+      "volume_delta > 2.0x avg",
+      "price_above_ema_50",
+      "adx > 22"
+    ],
+    "probability_model": {
+      "base_winrate": 0.55,
+      "confluence_bonus": 0.15,
+      "risk_penalty": 0.1
+    },
+    "news_avoidance": {
+      "pre_event_minutes": 10,
+      "post_event_minutes": 5,
+      "high_impact_pre_minutes": 15,
+      "high_impact_post_minutes": 10
+    },
+    "eod_management": {
+      "force_close_minutes_before_session_end": 30,
+      "no_new_trades_minutes_before_session_end": 60,
+      "overnight_gap_protection_enabled": true
+    },
+    "last_reflection": "2026-05-03 | win_rate=52.00%, net_pnl=150.00, sharpe=1.10",
+    "lessons_learned": [
+      "Capital preservation > profit growth",
+      "Skip low-confidence trades",
+      "Avoid news windows aggressively"
+    ],
+    "meta_learning": {
+      "avg_aggregate_confidence": 0.0,
+      "events_observed": 0
+    }
+  },
+  "memory_buffer": [],
+  "narrative_memory": [],
+  "regime_history": [
+    {
+      "ts": "2026-05-15T18:21:50.155330",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:21:52.276764",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:21:53.704953",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:21:54.942361",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:21:56.305515",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:21:57.561771",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:21:58.474870",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:22:00.274139",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:22:02.768768",
+      "regime": "LOW_LIQUIDITY"
+    },
+    {
+      "ts": "2026-05-15T18:22:04.344568",
+      "regime": "LOW_LIQUIDITY"
+    }
+  ],
+  "trade_reflection_history": [],
+  "state_snapshot": {
+    "agent": {
+      "chosen_strategy": "fast_path_ma_tape_fib",
+      "confidence": 0.0,
+      "memory_size": 0,
+      "regime": "NEUTRAL"
+    },
+    "market": {
+      "has_current_candle": true,
+      "last_candle_start_ts": 1778185440.0,
+      "quote_count": 16
+    },
+    "position": {
+      "last_entry_price": 0.0,
+      "live_position_qty": 0,
+      "live_trade_signal": "HOLD",
+      "sim_position_qty": 0
+    },
+    "risk": {
+      "account_equity": 0.0,
+      "open_pnl": 0.0,
+      "pending_reconciliations": 0,
+      "realized_pnl_today": 0.0
+    }
+  },
+  "economic_truth": {
+    "sequence": 2688,
+    "latest": {
+      "open_pnl": {
+        "version": 2681,
+        "value": 0.0,
+        "timestamp": "2026-05-15T16:22:05.466881+00:00",
+        "metadata": {
+          "trade_mode": "real",
+          "pending_reconciliations": 0
+        }
+      },
+      "realized_pnl_today": {
+        "version": 2682,
+        "value": 0.0,
+        "timestamp": "2026-05-15T16:22:05.466881+00:00",
+        "metadata": {
+          "trade_mode": "real",
+          "pending_reconciliations": 0
+        }
+      },
+      "sim_unrealized": {
+        "version": 2683,
+        "value": 0.0,
+        "timestamp": "2026-05-15T16:22:05.466881+00:00",
+        "metadata": {
+          "trade_mode": "real",
+          "pending_reconciliations": 0
+        }
+      },
+      "last_realized_pnl_snapshot": {
+        "version": 2684,
+        "value": 0.0,
+        "timestamp": "2026-05-15T16:22:05.466881+00:00",
+        "metadata": {
+          "trade_mode": "real",
+          "pending_reconciliations": 0
+        }
+      },
+      "equity_delta_observability": {
+        "version": 2685,
+        "value": 0.0,
+        "timestamp": "2026-05-15T16:22:05.466881+00:00",
+        "metadata": {
+          "trade_mode": "real",
+          "pending_reconciliations": 0
+        }
+      },
+      "runtime_trade_log_pnl_sum_usd": {
+        "version": 2686,
+        "value": 0.0,
+        "timestamp": "2026-05-15T16:22:05.466881+00:00",
+        "metadata": {
+          "trade_mode": "real",
+          "pending_reconciliations": 0
+        }
+      },
+      "runtime_pnl_history_close_sum_usd": {
+        "version": 2687,
+        "value": 0.0,
+        "timestamp": "2026-05-15T16:22:05.466881+00:00",
+        "metadata": {
+          "trade_mode": "real",
+          "pending_reconciliations": 0
+        }
+      },
+      "reconciliation_pending_expected_pnl_observability": {
+        "version": 2688,
+        "value": 0.0,
+        "timestamp": "2026-05-15T16:22:05.466881+00:00",
+        "metadata": {
+          "trade_mode": "real",
+          "pending_reconciliations": 0
+        }
+      }
+    }
+  },
+  "economic_truth_snapshot": {
+    "open_pnl": 0.0,
+    "realized_pnl_today": 0.0,
+    "sim_unrealized": 0.0,
+    "last_realized_pnl_snapshot": 0.0,
+    "equity_delta_observability": 0.0,
+    "runtime_trade_log_pnl_sum_usd": 0.0,
+    "runtime_pnl_history_close_sum_usd": 0.0,
+    "reconciliation_pending_expected_pnl_observability": 0.0
+  }
+}

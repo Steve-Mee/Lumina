@@ -2,12 +2,14 @@ from __future__ import annotations
 # pyright: reportMissingImports=false
 
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 import logging
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from lumina_core.first_boot_progress import resolve_ppo_progress_interval
 from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
 from lumina_core.logging_utils import (
     correlation_id,
@@ -20,7 +22,41 @@ from lumina_core.rl import RLConfig, RLTradingEnvironment
 logger = get_logger("lumina.rl.ppo")
 
 
-def _ppo_heartbeat_callbacks(*, log_every_timesteps: int = 25_000) -> list[Any]:
+def _notify_first_boot_ppo_progress(
+    *,
+    steps: int,
+    total_timesteps: int,
+    elapsed_sec: float,
+) -> None:
+    """Write incremental PPO progress into first_boot_progress.json."""
+    from lumina_core.engine.runtime_entrypoint import _write_first_boot_progress
+
+    total = max(1, int(total_timesteps))
+    current = max(0, min(int(steps), total))
+    ratio = float(current) / float(total)
+    ppo_pct = max(0.0, min(100.0, ratio * 100.0))
+    overall_pct = max(68.0, min(95.0, 68.0 + (27.0 * ratio)))
+    eta_minutes: float | None = None
+    if current > 0 and elapsed_sec > 0:
+        steps_per_sec = float(current) / max(1e-6, float(elapsed_sec))
+        remaining_steps = max(0, total - current)
+        if steps_per_sec > 0:
+            eta_minutes = round((float(remaining_steps) / steps_per_sec) / 60.0, 1)
+    _write_first_boot_progress(
+        "training_running",
+        f"PPO training: {current:,}/{total:,} timesteps ({ppo_pct:.1f}%)",
+        phase="ppo_training",
+        ppo_steps=current,
+        ppo_timesteps_total=total,
+        ppo_progress_pct=round(ppo_pct, 2),
+        ppo_elapsed_sec=round(float(elapsed_sec), 1),
+        ppo_eta_minutes=eta_minutes,
+        progress_pct=round(overall_pct, 2),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def _ppo_heartbeat_callbacks(*, log_every_timesteps: int = 5_000) -> list[Any]:
     """Periodic INFO logs during ``model.learn`` (SB3 uses ``verbose=0`` otherwise — looks hung)."""
     try:
         from stable_baselines3.common.callbacks import BaseCallback
@@ -55,6 +91,44 @@ def _ppo_heartbeat_callbacks(*, log_every_timesteps: int = 25_000) -> list[Any]:
             return True
 
     return [_PPOTrainHeartbeat()]
+
+
+def _ppo_first_boot_progress_callback(
+    *,
+    total_timesteps: int,
+    report_interval: int,
+) -> Any | None:
+    try:
+        from stable_baselines3.common.callbacks import BaseCallback
+    except ImportError:
+        return None
+
+    interval = max(1000, int(report_interval))
+    total = max(1, int(total_timesteps))
+
+    class _FirstBootPPOProgressCallback(BaseCallback):
+        def __init__(self) -> None:
+            super().__init__(verbose=0)
+            self._next_report_at = interval
+            self._started_at = __import__("time").time()
+
+        def _on_step(self) -> bool:
+            ts = int(getattr(self, "num_timesteps", 0) or 0)
+            if ts >= self._next_report_at:
+                elapsed = __import__("time").time() - self._started_at
+                try:
+                    _notify_first_boot_ppo_progress(
+                        steps=ts,
+                        total_timesteps=total,
+                        elapsed_sec=elapsed,
+                    )
+                except Exception:
+                    logger.warning("ppo.first_boot_progress_callback_failed", exc_info=True)
+                while self._next_report_at <= ts:
+                    self._next_report_at += interval
+            return True
+
+    return _FirstBootPPOProgressCallback()
 
 
 def _sb3_ppo_load(path: str | Path) -> Any | None:
@@ -243,6 +317,8 @@ class PPOTrainer:
         total_timesteps: int = 200_000,
         policy_path: str | None = None,
         dna_hash: str | None = None,
+        report_first_boot_progress: bool = False,
+        ppo_progress_interval: int | None = None,
     ) -> str:
         from stable_baselines3 import PPO
 
@@ -259,6 +335,15 @@ class PPOTrainer:
                 },
             )
         started = __import__("time").time()
+        if report_first_boot_progress:
+            try:
+                _notify_first_boot_ppo_progress(
+                    steps=0,
+                    total_timesteps=int(total_timesteps),
+                    elapsed_sec=0.0,
+                )
+            except Exception:
+                logger.warning("ppo.first_boot_progress_initial_write_failed", exc_info=True)
         self.model_dir.mkdir(parents=True, exist_ok=True)
         bars = coerce_rl_training_bars(self.engine, simulator_data, nightly_context=None)
         rl_cfg = self._build_rl_config()
@@ -288,10 +373,30 @@ class PPOTrainer:
             ent_coef=0.005,
         )
         heartbeat = _ppo_heartbeat_callbacks()
+        callbacks: list[Any] = list(heartbeat)
+        if report_first_boot_progress:
+            interval = (
+                int(ppo_progress_interval)
+                if ppo_progress_interval is not None
+                else resolve_ppo_progress_interval(None)
+            )
+            fb_cb = _ppo_first_boot_progress_callback(
+                total_timesteps=int(total_timesteps),
+                report_interval=interval,
+            )
+            if fb_cb is not None:
+                callbacks.append(fb_cb)
         learn_kw: dict[str, Any] = {}
-        if heartbeat:
-            learn_kw["callback"] = heartbeat
+        if callbacks:
+            learn_kw["callback"] = callbacks
         model.learn(total_timesteps=total_timesteps, **learn_kw)
+        if report_first_boot_progress:
+            elapsed = __import__("time").time() - started
+            _notify_first_boot_ppo_progress(
+                steps=int(total_timesteps),
+                total_timesteps=int(total_timesteps),
+                elapsed_sec=float(elapsed),
+            )
 
         if not policy_path:
             policy_path = str(self.model_dir / "lumina_ppo_policy.zip")
@@ -328,9 +433,17 @@ class PPOTrainer:
         *,
         timesteps: int = 250_000,
         dna_hash: str | None = None,
+        report_first_boot_progress: bool = False,
+        ppo_progress_interval: int | None = None,
     ) -> str:
         # Infinite Simulator orchestration hook for next step.
-        return self.train(simulator_data, total_timesteps=timesteps, dna_hash=dna_hash)
+        return self.train(
+            simulator_data,
+            total_timesteps=timesteps,
+            dna_hash=dna_hash,
+            report_first_boot_progress=report_first_boot_progress,
+            ppo_progress_interval=ppo_progress_interval,
+        )
 
     def load_policy(self, policy_path: str) -> None:
         try:
