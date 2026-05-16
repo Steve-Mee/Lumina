@@ -1,8 +1,0 @@
-{
-  "completed": true,
-  "python": "C:\\NinjaTraderAI_Bot\\.venv\\Scripts\\python.exe",
-  "os": "Windows",
-  "hardware_profile": "sweet",
-  "recommended_model": "qwen3.5-9b",
-  "provider": "ollama"
-}

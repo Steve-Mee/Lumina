@@ -82,11 +82,16 @@ lumina_analyse.md
 lumina_analyse._*
 /lumina_analyse_*.md
 
+# Local reset snapshots (blank-state script); never commit
+backups/
+
 # First-boot / monitoring runtime snapshots (regenerated locally)
 state/first_boot_completed.flag
 state/first_boot_progress.json
 state/first_boot_checkpoint.json
 state/first_boot_pause_requested
+state/first_boot_user_configured.flag
+state/first_boot_go_to_bot.flag
 state/monitoring_*.jsonl
 state/monitoring_runtime_metrics.json
 state/ppo_policy_metadata.json

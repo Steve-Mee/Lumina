@@ -1,9 +1,0 @@
-{
-  "steps": [
-    {
-      "name": "skip_wizard",
-      "success": true,
-      "message": "User skipped guided install"
-    }
-  ]
-}
