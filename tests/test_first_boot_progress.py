@@ -31,7 +31,7 @@ def test_resolve_stage_normalization() -> None:
     assert resolve_first_boot_stage({}) == ""
 
 
-def test_resolve_ppo_training_progress_prefers_cumulative_and_live_batch() -> None:
+def test_resolve_ppo_training_progress_uses_cumulative_without_double_batch() -> None:
     steps, total, pct = resolve_ppo_training_progress(
         {
             "ppo_steps_cumulative": 175000,
@@ -40,9 +40,9 @@ def test_resolve_ppo_training_progress_prefers_cumulative_and_live_batch() -> No
             "ppo_batch_total": 25000,
         }
     )
-    assert steps == 195000
+    assert steps == 175000
     assert total == 225000
-    assert pct is not None and 86.0 <= pct <= 87.0
+    assert pct is not None and 77.0 <= pct <= 78.0
 
 
 def test_resolve_ppo_training_progress_legacy_fallback() -> None:

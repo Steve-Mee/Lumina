@@ -98,6 +98,7 @@ state/first_boot_pause_requested
 state/first_boot_user_configured.flag
 state/first_boot_go_to_bot.flag
 state/first_boot_birth_progress.json
+state/birth_runner.json
 state/_manual_verify*/
 journal/simulator/lumina_birth_training_*.json
 state/monitoring_*.jsonl

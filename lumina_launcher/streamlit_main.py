@@ -13,11 +13,16 @@ from pathlib import Path
 import streamlit as st
 
 from lumina_core.first_boot_progress import (
+    birth_runner_lock_active,
     resolve_first_boot_completed_trades,
     resolve_first_boot_target_from_progress,
     resolve_first_boot_stage,
 )
-from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES
+from lumina_core.first_boot_ui import (
+    FIRST_BOOT_DEFAULT_TRADES,
+    FIRST_BOOT_EST_TRADES_PER_REAL_DAY,
+    estimate_first_boot_real_days,
+)
 from lumina_core.runtime_session import resolve_runtime_session_state
 from lumina_core.engine.setup_service import SetupService
 from lumina_launcher.core.config_manager import ConfigManager
@@ -33,7 +38,7 @@ from lumina_launcher.ui.components.presence_strip import render_presence_strip
 from lumina_launcher.ui.help_texts import help_for
 from lumina_launcher.ui.setup_wizard import render_setup_wizard
 from lumina_launcher.ui.tab_registry import TabRenderContext, launcher_tab_specs
-from lumina_launcher.ui.tabs.first_boot import _progress_recently_active, render_first_boot_tab
+from lumina_launcher.ui.tabs.first_boot import render_first_boot_tab
 from lumina_launcher.ui.tabs.training_dashboard import render_first_boot_command_center
 
 logger = logging.getLogger(__name__)
@@ -191,6 +196,21 @@ def _configured_operations_mode(config_manager: ConfigManager) -> str:
     return _current_mode(config_manager)
 
 
+def _sidebar_training_trades_help_text(current_trades: int) -> str:
+    def fmt(value: int) -> str:
+        return f"{int(value):,}".replace(",", ".")
+
+    base = help_for("training_trades")
+    estimated_days = estimate_first_boot_real_days(int(current_trades))
+    return (
+        f"{base}\n"
+        f"Huidige schatting: ~{fmt(estimated_days)} echte handelsdag(en) voor {fmt(current_trades)} trades "
+        f"(ceil(trades/{FIRST_BOOT_EST_TRADES_PER_REAL_DAY})).\n"
+        "Referentie: 200.000 -> ~445 dagen, 500.000 -> ~1.112 dagen, 1.000.000 -> ~2.223 dagen.\n"
+        "Hoge volumes vragen vaak langdurige historical cycling; bij beperkt real window kan synthetic top-up nodig zijn."
+    )
+
+
 def _persist_prestart_settings(
     *,
     config_manager: ConfigManager,
@@ -281,6 +301,7 @@ def _render_first_boot_home(
             process_manager=services.process_manager,
             backend_client=services.backend_client,
             birth_service=services.birth_service,
+            skip_autorefresh=True,
         )
 
     render_first_boot_command_center(
@@ -385,9 +406,11 @@ def render_streamlit_app() -> None:
         or 0
     )
     first_boot_stage = resolve_first_boot_stage(first_boot_progress)
-    progress_recently_active = _progress_recently_active(first_boot_progress, stage=first_boot_stage)
     training_pulse_live = bool(
-        process_alive or birth_running or birth_stopping or progress_recently_active
+        process_alive
+        or birth_running
+        or birth_stopping
+        or birth_runner_lock_active(services.first_boot_manager.workspace_root)
     )
     runtime_session = resolve_runtime_session_state(
         first_boot_stage=first_boot_stage,
@@ -452,7 +475,15 @@ def render_streamlit_app() -> None:
                 max_value=2_000_000,
                 value=int(first_boot.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)),
                 step=500,
-                help=help_for("training_trades"),
+                key="sidebar_first_boot_training_trades",
+                help=_sidebar_training_trades_help_text(
+                    int(
+                        st.session_state.get(
+                            "sidebar_first_boot_training_trades",
+                            first_boot.get("training_trades", FIRST_BOOT_DEFAULT_TRADES),
+                        )
+                    )
+                ),
             )
             require_real_simulator_data = st.checkbox(
                 "Require real simulator data",

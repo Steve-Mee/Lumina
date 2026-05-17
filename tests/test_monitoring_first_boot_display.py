@@ -32,10 +32,11 @@ def test_first_boot_completion_display(
 ) -> None:
     from lumina_os.frontend import monitoring_dashboard as md
 
-    flag_path = tmp_path / "first_boot_completed.flag"
-    policy_path = tmp_path / "lumina_ppo_policy.zip"
-    monkeypatch.setattr(md, "_FIRST_BOOT_FLAG_PATH", flag_path)
-    monkeypatch.setattr(md, "_FIRST_BOOT_POLICY_ZIP_PATH", policy_path)
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    flag_path = state_dir / "first_boot_completed.flag"
+    policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
+    paths = md._MonitoringPaths.resolve(tmp_path)
 
     if flag:
         flag_path.write_text("2026-01-01T00:00:00", encoding="utf-8")
@@ -44,7 +45,7 @@ def test_first_boot_completion_display(
         policy_path.write_bytes(b"x")
 
     progress = {"stage": stage, "timestamp": "2026-01-02T00:00:00"}
-    label, _ts = md._first_boot_completion_display(progress)
+    label, _ts = md._first_boot_completion_display(paths, progress)
     assert label == expected_label
 
 

@@ -13,9 +13,13 @@ from pathlib import Path
 from statistics import median
 from typing import Literal
 
-# Aligns with InfiniteSimulator first-boot capacity heuristic (~trades per calendar day of real data).
-FIRST_BOOT_EST_TRADES_PER_REAL_DAY = 2500
-# Prompt: very high trade counts imply ~800+ days; surface an extra operator warning above this band.
+# Aligns with LuminaBirthEngine _BIRTH_TICKS_PER_REAL_DAY (shared day-estimate heuristic).
+FIRST_BOOT_EST_TRADES_PER_REAL_DAY = 450
+FIRST_BOOT_MIN_REAL_DAYS = 30
+# MES RTH ~6.5h session at 1-min bars; used only for optional explicit bar caps (preflight uses fixed limit).
+BIRTH_BARS_PER_TRADING_DAY = 390
+HISTORICAL_BAR_LIMIT_SAFETY_CAP = 500_000
+# Very high trade counts imply long historical windows; surface an extra warning above this band.
 FIRST_BOOT_HIGH_LOAD_ESTIMATE_DAYS = 700
 
 # Bounds for user-configurable first-boot volume (launcher + YAML). Values are clamped here only;
@@ -51,6 +55,20 @@ class FirstBootDurationEstimate:
 
 def estimate_first_boot_real_days(training_trades: int) -> int:
     return int(math.ceil(max(1, int(training_trades)) / float(FIRST_BOOT_EST_TRADES_PER_REAL_DAY)))
+
+
+def resolve_default_max_real_days(training_trades: int) -> int:
+    """SSOT default for max_real_days when config omits the field."""
+    return max(FIRST_BOOT_MIN_REAL_DAYS, estimate_first_boot_real_days(training_trades))
+
+
+def resolve_historical_bar_limit(max_real_days: int | None) -> int | None:
+    """Explicit bar cap for historical fetch; None = load full days_back window (MDS safety cap only)."""
+    if max_real_days is None:
+        return None
+    days = max(1, int(max_real_days))
+    explicit = days * BIRTH_BARS_PER_TRADING_DAY
+    return min(explicit, HISTORICAL_BAR_LIMIT_SAFETY_CAP)
 
 
 def normalize_first_boot_training_trades(raw_value: int | float | str | None) -> int:

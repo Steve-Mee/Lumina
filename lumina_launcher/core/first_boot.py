@@ -18,7 +18,9 @@ from lumina_core.first_boot_progress import resolve_first_boot_stage
 from lumina_core.first_boot_ui import (
     FIRST_BOOT_DEFAULT_MAX_REAL_DAYS,
     FIRST_BOOT_DEFAULT_TRADES,
+    FIRST_BOOT_MIN_REAL_DAYS,
     normalize_first_boot_training_trades,
+    resolve_default_max_real_days,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,14 +117,18 @@ class FirstBootManager:
         section = cfg.get("first_boot", {}) if isinstance(cfg.get("first_boot"), dict) else {}
         evolution = cfg.get("evolution", {}) if isinstance(cfg.get("evolution"), dict) else {}
         neuro = evolution.get("neuroevolution", {}) if isinstance(evolution.get("neuroevolution"), dict) else {}
+        training_trades = normalize_first_boot_training_trades(
+            section.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
+        )
+        raw_max_days = section.get("max_real_days")
+        if raw_max_days is None or str(raw_max_days).strip() == "":
+            max_real_days = resolve_default_max_real_days(training_trades)
+        else:
+            max_real_days = max(FIRST_BOOT_MIN_REAL_DAYS, int(raw_max_days))
         return {
-            "training_trades": normalize_first_boot_training_trades(
-                section.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
-            ),
+            "training_trades": training_trades,
             "prefer_real_data_only": bool(section.get("prefer_real_data_only", True)),
-            "max_real_days": max(
-                30, int(section.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS)
-            ),
+            "max_real_days": max_real_days,
             "allow_minimal_synthetic_fallback": bool(section.get("allow_minimal_synthetic_fallback", False)),
             "require_real_simulator_data": bool(neuro.get("require_real_simulator_data", True)),
         }

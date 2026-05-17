@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import threading
 import time
 from datetime import datetime, timezone
@@ -21,7 +22,14 @@ import yaml
 from lumina_core.container import ApplicationContainer
 from lumina_core.engine.runtime_entrypoint import _bind_headless_runtime_app
 from lumina_core.lumina_birth_engine import LuminaBirthEngine
-from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES
+from lumina_core.first_boot_progress import (
+    birth_runner_lock_active,
+    birth_training_is_live,
+    read_birth_runner_lock,
+    resolve_first_boot_stage,
+    resolve_progress_active_max_age_sec,
+)
+from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES, resolve_default_max_real_days
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +37,20 @@ logger = get_logger(__name__)
 # lumina_launcher/services/birth_service.py -> repo root
 _DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[2]
 _POLICY_REL = Path("lumina_agents") / "ppo" / "lumina_ppo_policy.zip"
+_BIRTH_ACTIVE_STAGES = frozenset(
+    {
+        "detected",
+        "loading_data",
+        "training_running",
+        "pipeline_boot",
+        "historical_loaded",
+        "synthetic_top_up",
+        "parallel_simulation",
+        "ppo_training",
+        "deferred_calendar",
+        "simulation_stall_retry",
+    }
+)
 
 
 def resolve_birth_workspace_root(explicit: Path | str | None = None) -> Path:
@@ -72,10 +94,13 @@ class BirthService:
         """Bind state paths to repo root (safe when backend cwd != repo root)."""
         self.workspace_root = resolve_birth_workspace_root(workspace_root)
         self.progress_file = self.workspace_root / "state" / "lumina_birth_progress.json"
+        self.legacy_progress_file = self.workspace_root / "state" / "first_boot_progress.json"
         self.completed_flag = self.workspace_root / "state" / "lumina_birth_completed.flag"
         self.checkpoint_file = self.workspace_root / "state" / "lumina_birth_checkpoint.json"
+        self.runner_lock_path = self.workspace_root / "state" / "birth_runner.json"
         self.policy_path = self.workspace_root / _POLICY_REL
         self.pause_flag_path = self.workspace_root / "state" / "first_boot_pause_requested"
+        self.reconcile_orphaned_birth_progress()
         return self.workspace_root
 
     @property
@@ -140,6 +165,7 @@ class BirthService:
         force: bool = False,
         practice_mode: bool = False,
         explicit_user_start: bool = False,
+        continue_training: bool = False,
     ) -> Dict[str, Any]:
         if not explicit_user_start:
             return {
@@ -150,7 +176,7 @@ class BirthService:
         if self.is_running():
             return {"status": "already_running", "message": "Birth Phase is already in progress"}
 
-        if self.is_completed() and not force and not practice_mode:
+        if self.is_completed() and not force and not practice_mode and not continue_training:
             return {"status": "already_completed", "message": "Birth Phase already completed"}
 
         self._stop_requested.clear()
@@ -165,10 +191,17 @@ class BirthService:
         self._start_time = time.time()
         saved_settings = self._load_saved_birth_settings()
         resolved_target = int(saved_settings.get("training_trades", target_trades) or target_trades or FIRST_BOOT_DEFAULT_TRADES)
-        resolved_max_real_days = int(saved_settings.get("max_real_days", 365) or 365)
+        resolved_max_real_days = int(
+            saved_settings.get("max_real_days")
+            or resolve_default_max_real_days(resolved_target)
+        )
         resolved_prefer_real_data_only = (
             False if practice_mode else bool(saved_settings.get("prefer_real_data_only", True))
         )
+        checkpoint_exists = (self.workspace_root / "state" / "lumina_birth_checkpoint.json").exists() or (
+            self.workspace_root / "state" / "first_boot_checkpoint.json"
+        ).exists()
+        reuse_existing_policy = bool(continue_training or (checkpoint_exists and not force))
 
         if not practice_mode:
             preflight_ok, preflight_msg = self._preflight_historical_data(resolved_max_real_days)
@@ -179,13 +212,17 @@ class BirthService:
                 }
 
         def _run_birth() -> None:
+            self._clear_stale_runner_lock()
+            self._write_runner_lock()
             try:
                 logger.info(
-                    "Starting Birth Phase with target_trades=%s max_real_days=%s prefer_real_data_only=%s practice_mode=%s workspace=%s",
+                    "birth.start route=local target_trades=%s max_real_days=%s prefer_real_data_only=%s practice_mode=%s continue_training=%s reuse_existing_policy=%s workspace=%s",
                     resolved_target,
                     resolved_max_real_days,
                     resolved_prefer_real_data_only,
                     bool(practice_mode),
+                    bool(continue_training),
+                    bool(reuse_existing_policy),
                     self.workspace_root,
                 )
                 previous_cfg = os.getenv("LUMINA_CONFIG", "")
@@ -210,6 +247,7 @@ class BirthService:
                         ppo_update_timesteps=25000,
                         force=force,
                         practice_mode=bool(practice_mode),
+                        reuse_existing_policy=bool(reuse_existing_policy),
                     )
                 finally:
                     os.chdir(previous_cwd)
@@ -221,6 +259,8 @@ class BirthService:
             except Exception as e:
                 self._error = str(e)
                 logger.exception("Birth Phase failed: %s", e)
+            finally:
+                self._clear_runner_lock()
 
         self._thread = threading.Thread(target=_run_birth, daemon=True, name="LuminaBirthThread")
         self._thread.start()
@@ -231,6 +271,7 @@ class BirthService:
             "max_real_days": resolved_max_real_days,
             "prefer_real_data_only": resolved_prefer_real_data_only,
             "practice_mode": bool(practice_mode),
+            "continue_training": bool(continue_training),
             "message": (
                 "Practice Birth Phase started in background"
                 if practice_mode
@@ -239,33 +280,74 @@ class BirthService:
         }
 
     def get_status(self) -> Dict[str, Any]:
+        progress = self._load_progress()
+        live = birth_training_is_live(self.workspace_root, thread_running=self.is_running())
+        stage = resolve_first_boot_stage(progress)
+        base_meta = {"progress": progress, "live": live}
+
         if self.completed_flag.exists():
             return {
+                **base_meta,
                 "status": "completed",
                 "progress_pct": 100,
                 "message": "Birth Phase voltooid",
                 "result": self._result,
+                "orphaned": False,
             }
 
         if self._error:
-            return {"status": "error", "error": self._error, "message": "Birth Phase gefaald"}
+            return {
+                **base_meta,
+                "status": "error",
+                "error": self._error,
+                "message": "Birth Phase gefaald",
+                "orphaned": False,
+            }
 
         if self.is_running():
-            progress = self._load_progress()
             return {
+                **base_meta,
                 "status": "running",
-                "progress": progress,
+                "runner": "thread",
                 "elapsed_seconds": round(time.time() - self._start_time, 1) if self._start_time else 0,
                 "message": "Birth Phase draait...",
+                "orphaned": False,
+            }
+
+        if self._progress_indicates_running(progress):
+            runner_meta = self._read_runner_lock() or {}
+            return {
+                **base_meta,
+                "status": "running",
+                "runner": str(runner_meta.get("runner", "file_progress")),
+                "message": str(progress.get("message") or "Birth Phase actief (cross-process)."),
+                "runner_pid": runner_meta.get("pid"),
+                "runner_host": runner_meta.get("host"),
+                "orphaned": False,
+            }
+
+        if stage == "interrupted":
+            return {
+                **base_meta,
+                "status": "interrupted",
+                "orphaned": True,
+                "message": str(
+                    progress.get("message")
+                    or "Vorige Birth Phase gestopt. Klik Start Birth Phase om opnieuw te beginnen."
+                ),
             }
 
         if isinstance(self._result, dict) and self._result:
-            progress = self._load_progress()
             status = str(self._result.get("status", "idle") or "idle")
             msg = str(progress.get("message") or self._result.get("message") or "Birth Phase klaar.")
-            return {"status": status, "progress": progress, "result": self._result, "message": msg}
+            return {**base_meta, "status": status, "result": self._result, "message": msg, "orphaned": False}
 
-        return {"status": "idle", "progress": self._load_progress(), "message": "Birth Phase nog niet gestart"}
+        return {
+            **base_meta,
+            "status": "idle",
+            "message": "Birth Phase nog niet gestart",
+            "orphaned": False,
+        }
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -278,18 +360,7 @@ class BirthService:
         had_thread = self.is_running()
         progress = self._load_progress()
         stage = str(progress.get("stage", "") or "").strip().lower()
-        running_stages = {
-            "detected",
-            "loading_data",
-            "training_running",
-            "pipeline_boot",
-            "historical_loaded",
-            "synthetic_top_up",
-            "parallel_simulation",
-            "ppo_training",
-            "deferred_calendar",
-        }
-        progress_active = stage in running_stages
+        progress_active = stage in _BIRTH_ACTIVE_STAGES
 
         if not had_thread and not progress_active and not self.is_stopping():
             return {"status": "not_running", "message": "Geen actieve Birth Phase."}
@@ -333,9 +404,101 @@ class BirthService:
                 pass
         return {"trades_done": 0, "target_trades": 25000, "progress_pct": 0, "ppo_steps": 0, "stage": "not_started"}
 
+    def _progress_timestamp_age_sec(self, progress: Dict[str, Any]) -> float | None:
+        raw = str(progress.get("timestamp", "") or "").strip()
+        if not raw:
+            return None
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return max(0.0, (datetime.now(timezone.utc) - parsed.astimezone(timezone.utc)).total_seconds())
+        except Exception:
+            return None
+
+    def reconcile_orphaned_birth_progress(self) -> bool:
+        """Mark on-disk active progress as interrupted when no live Birth runner exists."""
+        self._clear_stale_runner_lock()
+        progress = self._load_progress()
+        stage = resolve_first_boot_stage(progress)
+        if stage not in _BIRTH_ACTIVE_STAGES:
+            return False
+        if birth_training_is_live(self.workspace_root, thread_running=self.is_running()):
+            return False
+        payload: Dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "stage": "interrupted",
+            "phase": "restart_required",
+            "message": (
+                "Vorige Birth Phase gestopt (herstart). "
+                "Klik Start Birth Phase om opnieuw te beginnen."
+            ),
+            "target_trades": int(progress.get("target_trades", 25000) or 25000),
+            "trades_done": int(progress.get("trades_done", 0) or 0),
+            "cumulative_trades": int(progress.get("cumulative_trades", 0) or 0),
+            "total_trades": int(progress.get("total_trades", 0) or 0),
+            "ppo_steps": int(progress.get("ppo_steps", 0) or 0),
+            "progress_pct": float(progress.get("progress_pct", 0) or 0),
+            "prior_stage": stage,
+            "prior_phase": str(progress.get("phase", "") or ""),
+        }
+        encoded = json.dumps(payload, ensure_ascii=True, indent=2)
+        for path in (self.progress_file, self.legacy_progress_file):
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(encoded, encoding="utf-8")
+            except OSError:
+                logger.warning("birth.reconcile.write_failed path=%s", path, exc_info=True)
+        logger.info("birth.reconcile_orphaned prior_stage=%s workspace=%s", stage, self.workspace_root)
+        return True
+
+    def _progress_indicates_running(self, progress: Dict[str, Any]) -> bool:
+        stage = resolve_first_boot_stage(progress)
+        if stage not in _BIRTH_ACTIVE_STAGES:
+            return False
+        if not birth_training_is_live(self.workspace_root, thread_running=self.is_running()):
+            return False
+        lock_active = birth_runner_lock_active(self.workspace_root)
+        age = self._progress_timestamp_age_sec(progress)
+        if age is None:
+            return lock_active
+        max_age = resolve_progress_active_max_age_sec(stage, runner_lock_active=lock_active)
+        return age <= max_age
+
+    def _write_runner_lock(self) -> None:
+        payload = {
+            "pid": int(os.getpid()),
+            "host": socket.gethostname(),
+            "runner": "thread",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "workspace_root": str(self.workspace_root),
+        }
+        try:
+            self.runner_lock_path.parent.mkdir(parents=True, exist_ok=True)
+            self.runner_lock_path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+        except OSError:
+            logger.warning("birth.runner_lock.write_failed path=%s", self.runner_lock_path, exc_info=True)
+
+    def _read_runner_lock(self) -> Dict[str, Any] | None:
+        return read_birth_runner_lock(self.workspace_root)
+
+    def _clear_stale_runner_lock(self) -> None:
+        if not self.runner_lock_path.exists():
+            return
+        if birth_runner_lock_active(self.workspace_root):
+            return
+        self._clear_runner_lock()
+
+    def _clear_runner_lock(self) -> None:
+        try:
+            if self.runner_lock_path.exists():
+                self.runner_lock_path.unlink()
+        except OSError:
+            logger.warning("birth.runner_lock.clear_failed path=%s", self.runner_lock_path, exc_info=True)
+
 
 def configure_birth_workspace(workspace_root: Path | str | None = None) -> Path:
-    """Configure the process-wide BirthService singleton workspace."""
+    """Configure the process-wide BirthService singleton workspace and reconcile orphan state."""
     return birth_service.configure_workspace(workspace_root)
 
 

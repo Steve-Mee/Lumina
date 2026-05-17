@@ -12,6 +12,7 @@ from typing import Any
 
 import numpy as np
 
+from lumina_core.birth_policy_observation import BIRTH_RL_OBS_DIM, build_birth_rl_observation_vector
 from lumina_core.first_boot_ui import (
     FIRST_BOOT_DEFAULT_TRADES,
     FIRST_BOOT_TRAINING_TRADES_MAX,
@@ -22,7 +23,13 @@ from lumina_core.logging_utils import get_logger
 from lumina_core.ppo_trainer import PPOTrainer
 
 logger = get_logger("lumina.birth_engine")
-_BIRTH_TICKS_PER_REAL_DAY = 1560
+_BIRTH_TICKS_PER_REAL_DAY = 450
+_STALL_CONSECUTIVE_MAX = 3
+_STALL_CHUNK_RETRIES = 3
+_NEAR_COMPLETE_RATIO = 0.98
+_SIM_ZERO_TRADE_ABORT_TICKS = 100_000
+_SIM_EXPLORATION_AFTER_TICKS = 50_000
+_BOOTSTRAP_WARMUP_TRADES = 25
 
 
 @dataclass(slots=True)
@@ -82,6 +89,7 @@ class LuminaBirthEngine:
         self._active_training_mode = "certified"
         self._ppo_timesteps_planned_total = 0
         self._ppo_batch_count = 0
+        self._consecutive_stall_chunks = 0
 
         self.checkpoint_path = self.workspace_root / "state" / "lumina_birth_checkpoint.json"
         self.legacy_checkpoint_path = self.workspace_root / "state" / "first_boot_checkpoint.json"
@@ -194,6 +202,32 @@ class LuminaBirthEngine:
             return False
         return True
 
+    def _checkpoint_resume_block_reason(self, *, target: int, training_mode: str) -> str | None:
+        payload = self._read_checkpoint_payload()
+        if not payload:
+            return None
+        if self._can_resume_checkpoint(target=target, training_mode=training_mode):
+            return None
+        ckpt_target = int(payload.get("target_trades", 0) or 0)
+        if ckpt_target != int(target):
+            return "target_mismatch"
+        ckpt_mode = str(payload.get("training_mode", "") or "").strip().lower()
+        desired = str(training_mode).strip().lower()
+        if ckpt_mode and ckpt_mode != desired:
+            return "mode_mismatch"
+        if not ckpt_mode and desired == "certified":
+            return "mode_mismatch"
+        return "checkpoint_incompatible"
+
+    def _create_birth_policy(self, *, allow_load_existing: bool) -> Any:
+        create = getattr(self.ppo_trainer, "create_fresh_birth_policy", None)
+        if not callable(create):
+            raise RuntimeError("PPO trainer heeft geen create_fresh_birth_policy.")
+        try:
+            return create(allow_load_existing=bool(allow_load_existing))
+        except TypeError:
+            return create()
+
     def run_birth_phase(
         self,
         target_trades: int | None = None,
@@ -203,6 +237,7 @@ class LuminaBirthEngine:
         ppo_update_timesteps: int = 25_000,
         force: bool = False,
         practice_mode: bool = False,
+        reuse_existing_policy: bool | None = None,
     ) -> dict[str, Any]:
         # BIRTH ENGINE 2026-05-17
         training_mode = "practice" if practice_mode else "certified"
@@ -221,7 +256,51 @@ class LuminaBirthEngine:
             progress_pct=5.0,
             **self._data_progress_extra(training_mode),
         )
-        ticks = self._load_training_ticks(max_real_days=max_days, prefer_real_data_only=prefer_real_data_only)
+        block_reason = self._checkpoint_resume_block_reason(target=target, training_mode=training_mode)
+        if block_reason and not force:
+            ckpt = self._read_checkpoint_payload() or {}
+            ckpt_trades = int(ckpt.get("cumulative_trades", 0) or 0)
+            ckpt_mode = str(ckpt.get("training_mode", "") or "").strip().lower()
+            self._write_progress(
+                stage="checkpoint_available",
+                message=(
+                    f"Checkpoint beschikbaar ({ckpt_trades:,} trades, mode `{ckpt_mode or 'onbekend'}`) — "
+                    f"hervatten niet mogelijk ({block_reason.replace('_', ' ')})."
+                ),
+                target_trades=target,
+                phase="checkpoint_available",
+                progress_pct=self._overall_progress_pct(target),
+                retryable=True,
+                failure_reason=block_reason,
+                checkpoint_trades=ckpt_trades,
+                checkpoint_mode=ckpt_mode,
+                requested_training_mode=training_mode,
+                **self._data_progress_extra(training_mode),
+            )
+            self.logger.info(
+                "birth.checkpoint.skipped_resume reason=%s target=%s training_mode=%s checkpoint_trades=%s",
+                block_reason,
+                target,
+                training_mode,
+                ckpt_trades,
+            )
+            return {
+                "status": "checkpoint_available",
+                "total_trades": ckpt_trades,
+                "ppo_steps": int(ckpt.get("ppo_steps", 0) or 0),
+                "duration_seconds": round(time.time() - self.birth_start_time, 2),
+                "real_data_pct": 0.0,
+                "policy_path": str(self.final_policy_path),
+                "training_mode": training_mode,
+                "failure_reason": block_reason,
+            }
+        ticks = self._load_training_ticks(
+            max_real_days=max_days,
+            prefer_real_data_only=prefer_real_data_only,
+            target_trades=target,
+            training_mode=training_mode,
+        )
+        ticks = self._enrich_ticks_for_sim(ticks)
         self._real_data_pct = self._calculate_real_data_percentage(ticks)
         if not ticks:
             self._write_progress(
@@ -243,52 +322,108 @@ class LuminaBirthEngine:
                 "policy_path": str(self.final_policy_path),
                 "training_mode": training_mode,
             }
-        if self._can_resume_checkpoint(target=target, training_mode=training_mode) and not force:
+        can_resume = self._can_resume_checkpoint(target=target, training_mode=training_mode) and not force
+        if reuse_existing_policy is None:
+            reuse_existing_policy = bool(can_resume)
+        if can_resume:
             self._load_checkpoint()
             self.logger.info("birth.resume checkpoint trades=%s ppo_steps=%s", self.cumulative_trades, self.ppo_steps)
         else:
-            if self._read_checkpoint_payload() is not None and not force:
+            if self._read_checkpoint_payload() is not None:
                 self.logger.info(
-                    "birth.checkpoint.skipped_resume target=%s training_mode=%s",
+                    "birth.checkpoint.fresh_start target=%s training_mode=%s force=%s",
                     target,
                     training_mode,
+                    bool(force),
                 )
             self.cumulative_trades = 0
             self.ppo_steps = 0
             self.buffer.clear()
-            self.current_policy = self.ppo_trainer.create_fresh_birth_policy()
-            self._clear_checkpoint()
+            self.current_policy = self._create_birth_policy(allow_load_existing=bool(reuse_existing_policy))
+            if force:
+                self._clear_checkpoint()
         if self.current_policy is None:
-            self.current_policy = self.ppo_trainer.create_fresh_birth_policy()
+            self.current_policy = self._create_birth_policy(allow_load_existing=bool(reuse_existing_policy))
 
         self._ppo_timesteps_planned_total = self._estimate_ppo_timesteps_planned(
             target_trades=target,
             chunk_size=chunk_size,
             ppo_update_timesteps=ppo_update_timesteps,
         )
+        self._write_progress(
+            stage="pipeline_boot",
+            message=(
+                f"Simulatie starten — doel {target:,} trades "
+                f"(chunk {chunk_size:,}, PPO plan {self._ppo_timesteps_planned_total:,} steps)."
+            ),
+            target_trades=target,
+            phase="parallel_simulation",
+            progress_pct=30.0,
+            ticks_loaded=len(ticks),
+            **self._data_progress_extra(training_mode),
+        )
 
         last_checkpoint = time.time()
+        self._consecutive_stall_chunks = 0
         while self.cumulative_trades < target:
             if self._stop_requested():
                 return self._handle_user_stop(target=target, ticks=ticks, training_mode=training_mode)
 
             remaining = max(0, target - self.cumulative_trades)
             chunk_target = min(chunk_size, remaining)
-            chunk = self._simulate_chunk_with_policy(ticks=ticks, chunk_trades=chunk_target, policy=self.current_policy)
-            if self._stop_requested():
-                return self._handle_user_stop(target=target, ticks=ticks, training_mode=training_mode)
-            chunk_trades = int(chunk.get("trades", 0) or 0)
-            if chunk_trades <= 0:
-                self._write_progress(
-                    stage="failed",
-                    message="Birth Phase stopte: simulatie leverde geen trades op.",
+            self._write_progress(
+                stage="training_running",
+                message=(
+                    f"Simulatie-chunk: {self.cumulative_trades:,}/{target:,} trades "
+                    f"(doel chunk {chunk_target:,})…"
+                ),
+                target_trades=target,
+                phase="parallel_simulation",
+                progress_pct=max(30.0, self._overall_progress_pct(target)),
+                **self._data_progress_extra(training_mode),
+            )
+            chunk: dict[str, Any] = {}
+            chunk_trades = 0
+            stall_diag: dict[str, Any] = {}
+            for attempt in range(1, _STALL_CHUNK_RETRIES + 1):
+                chunk = self._simulate_chunk_with_policy(
+                    ticks=ticks,
+                    chunk_trades=chunk_target,
+                    policy=self.current_policy,
                     target_trades=target,
-                    phase="simulation_stall",
-                    progress_pct=self._overall_progress_pct(target),
-                    **self._data_progress_extra(training_mode),
+                    training_mode=training_mode,
                 )
-                return self._result_payload(status="birth_failed", ticks=ticks)
+                if self._stop_requested():
+                    return self._handle_user_stop(target=target, ticks=ticks, training_mode=training_mode)
+                chunk_trades = int(chunk.get("trades", 0) or 0)
+                stall_diag = dict(chunk.get("diagnostics", {}) or {})
+                if chunk_trades > 0:
+                    break
+                self._log_chunk_stall(
+                    chunk_target=chunk_target,
+                    remaining_trades=remaining,
+                    attempt=attempt,
+                    max_attempts=_STALL_CHUNK_RETRIES,
+                    diagnostics=stall_diag,
+                )
 
+            if chunk_trades <= 0:
+                stall_outcome = self._handle_chunk_stall(
+                    target=target,
+                    ticks=ticks,
+                    training_mode=training_mode,
+                    chunk_target=chunk_target,
+                    remaining_trades=remaining,
+                    diagnostics=stall_diag,
+                )
+                if stall_outcome == "grace_complete":
+                    self.cumulative_trades = target
+                    break
+                if stall_outcome == "failed":
+                    return self._result_payload(status="birth_failed", ticks=ticks)
+                continue
+
+            self._consecutive_stall_chunks = 0
             self.cumulative_trades += chunk_trades
             self._recent_pnl.extend([float(v) for v in chunk.get("pnl_series", [])])
             self._recent_pnl = self._recent_pnl[-500:]
@@ -317,10 +452,13 @@ class LuminaBirthEngine:
                 phase=ppo_phase,
                 progress_pct=self._overall_progress_pct(target),
                 chunk_trades=chunk_trades,
+                chunk_trades_partial=chunk_trades,
                 chunk_pnl=float(chunk.get("total_pnl", 0.0) or 0.0),
                 recent_winrate=round(float(chunk.get("winrate", 0.0) or 0.0), 4),
                 velocity_trades_per_sec=round(self._velocity_trades_per_sec(), 3),
                 estimated_real_days=self._estimate_required_real_days(target),
+                sim_ticks_processed=int(stall_diag.get("ticks_processed", 0) or 0),
+                **self._sim_diagnostics_extra(stall_diag),
                 **self._data_progress_extra(training_mode),
             )
             if self.cumulative_trades % 100_000 == 0:
@@ -385,17 +523,78 @@ class LuminaBirthEngine:
         normalized = normalize_first_boot_training_trades(raw)
         return max(FIRST_BOOT_TRAINING_TRADES_MIN, min(FIRST_BOOT_TRAINING_TRADES_MAX, int(normalized)))
 
-    def _load_training_ticks(self, *, max_real_days: int, prefer_real_data_only: bool) -> list[dict[str, Any]]:
+    def _load_training_ticks(
+        self,
+        *,
+        max_real_days: int,
+        prefer_real_data_only: bool,
+        target_trades: int = 0,
+        training_mode: str = "certified",
+    ) -> list[dict[str, Any]]:
+        resolved_target = max(0, int(target_trades))
         self._write_progress(
             stage="loading_data",
             message="Historische marktdata laden voor Birth Phase.",
-            target_trades=0,
+            target_trades=resolved_target,
             phase="loading_history",
             progress_pct=18.0,
+            **self._data_progress_extra(training_mode),
         )
-        limit = max(10_000, max_real_days * 2200)
-        ticks = self._load_real_historical_ticks(days_back=max_real_days, limit=limit)
+        def _on_history_chunk(
+            *,
+            chunk_index: int,
+            chunk_total: int,
+            bars_merged: int,
+            chunk_bars: int = 0,
+            chunk_phase: str = "fetch",
+        ) -> None:
+            phase_name = str(chunk_phase or "fetch").strip().lower()
+            if phase_name == "expand" or int(chunk_total) > 64:
+                progress_phase = "expanding_ticks"
+                message = (
+                    f"Ticks genereren uit bars: {bars_merged:,}/{chunk_total:,} "
+                    f"({100.0 * float(chunk_index) / float(max(1, chunk_total)):.0f}%)"
+                )
+                progress_pct = min(27.0, 25.0 + (float(chunk_index) / float(max(1, chunk_total))) * 2.0)
+            else:
+                progress_phase = "loading_history"
+                message = (
+                    f"Historische data: chunk {chunk_index}/{chunk_total} "
+                    f"({bars_merged:,} bars geladen)"
+                )
+                progress_pct = min(25.0, 18.0 + (float(chunk_index) / float(max(1, chunk_total))) * 7.0)
+            self._write_progress(
+                stage="loading_data",
+                message=message,
+                target_trades=resolved_target,
+                phase=progress_phase,
+                progress_pct=progress_pct,
+                loading_chunk=int(chunk_index),
+                loading_chunks_total=int(chunk_total),
+                bars_loaded=int(bars_merged),
+                **self._data_progress_extra(training_mode),
+            )
+
+        ticks = self._load_real_historical_ticks(
+            days_back=max_real_days,
+            limit=None,
+            on_chunk=_on_history_chunk,
+        )
         self._loaded_real_days = max(1, int(math.ceil(float(len(ticks)) / float(_BIRTH_TICKS_PER_REAL_DAY)))) if ticks else 0
+        if ticks:
+            self._real_data_pct = self._calculate_real_data_percentage(ticks)
+            self._write_progress(
+                stage="historical_loaded",
+                message=(
+                    f"Historische data klaar: {len(ticks):,} ticks "
+                    f"(~{self._loaded_real_days} handelsdagen)."
+                ),
+                target_trades=resolved_target,
+                phase="ticks_ready",
+                progress_pct=28.0,
+                ticks_loaded=len(ticks),
+                **self._data_progress_extra(training_mode),
+            )
         if ticks and prefer_real_data_only:
             return ticks
         if ticks and not prefer_real_data_only:
@@ -406,11 +605,22 @@ class LuminaBirthEngine:
             return self._generate_synthetic_ticks(max(20_000, max_real_days * 1000), start_price=5000.0)
         return []
 
-    def _load_real_historical_ticks(self, *, days_back: int, limit: int) -> list[dict[str, Any]]:
+    def _load_real_historical_ticks(
+        self,
+        *,
+        days_back: int,
+        limit: int,
+        on_chunk: Any = None,
+    ) -> list[dict[str, Any]]:
         source = self.market_data_service
         if source is not None and hasattr(source, "load_historical_ohlc_extended"):
             try:
-                rows = source.load_historical_ohlc_extended(days_back=days_back, limit=limit, ticks_per_bar=4)
+                rows = source.load_historical_ohlc_extended(
+                    days_back=days_back,
+                    limit=limit,
+                    ticks_per_bar=4,
+                    on_chunk=on_chunk,
+                )
                 if isinstance(rows, list):
                     return self._normalize_tick_rows(rows, source_label="real_historical")
             except Exception as exc:
@@ -423,6 +633,57 @@ class LuminaBirthEngine:
         except Exception:
             return []
         return self._normalize_tick_rows(records, source_label="real_runtime")
+
+    @staticmethod
+    def _sim_diagnostics_extra(diagnostics: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "sim_diagnostics": {
+                "ticks_processed": int(diagnostics.get("ticks_processed", 0) or 0),
+                "hold_signals": int(diagnostics.get("hold_signals", 0) or 0),
+                "buy_signals": int(diagnostics.get("buy_signals", 0) or 0),
+                "sell_signals": int(diagnostics.get("sell_signals", 0) or 0),
+                "infer_success": int(diagnostics.get("infer_success", 0) or 0),
+                "bootstrap_count": int(diagnostics.get("bootstrap_count", 0) or 0),
+                "policy_hold_count": int(diagnostics.get("policy_hold_count", 0) or 0),
+                "infer_errors": int(diagnostics.get("infer_errors", 0) or 0),
+                "open_position_at_end": bool(diagnostics.get("open_position_at_end", False)),
+                "exploration_count": int(diagnostics.get("exploration_count", 0) or 0),
+                "zero_trade_abort": bool(diagnostics.get("zero_trade_abort", False)),
+            }
+        }
+
+    def _enrich_ticks_for_sim(self, ticks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Derive regime/imbalance from price path so bootstrap/policy can open positions on real OHLC ticks."""
+        if not ticks:
+            return ticks
+        lookback = 20
+        for i, tick in enumerate(ticks):
+            try:
+                price = float(tick.get("last", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                continue
+            if price <= 0:
+                continue
+            bid = float(tick.get("bid", price - 0.125) or price - 0.125)
+            ask = float(tick.get("ask", price + 0.125) or price + 0.125)
+            spread = max(0.25, ask - bid)
+            tick["imbalance"] = max(0.5, min(2.0, 1.0 + (ask - bid) / spread * 0.15))
+            if i < lookback:
+                tick["regime"] = str(tick.get("regime", "NEUTRAL"))
+                continue
+            window_start = max(0, i - lookback)
+            start_price = float(ticks[window_start].get("last", price) or price)
+            if start_price <= 0:
+                tick["regime"] = "NEUTRAL"
+                continue
+            ret = (price - start_price) / start_price
+            if ret > 0.0015:
+                tick["regime"] = "TREND_UP"
+            elif ret < -0.0015:
+                tick["regime"] = "TREND_DOWN"
+            else:
+                tick["regime"] = "NEUTRAL"
+        return ticks
 
     def _normalize_tick_rows(self, rows: list[dict[str, Any]], *, source_label: str) -> list[dict[str, Any]]:
         normalized: list[dict[str, Any]] = []
@@ -476,6 +737,125 @@ class LuminaBirthEngine:
             )
         return out
 
+    def _is_near_complete(self, target: int) -> bool:
+        threshold = float(max(1, target)) * _NEAR_COMPLETE_RATIO
+        return float(self.cumulative_trades) >= threshold
+
+    def _log_chunk_stall(
+        self,
+        *,
+        chunk_target: int,
+        remaining_trades: int,
+        attempt: int,
+        max_attempts: int,
+        diagnostics: dict[str, Any],
+    ) -> None:
+        self.logger.warning(
+            "birth.chunk.stall",
+            extra={
+                "event_data": {
+                    "chunk_target": int(chunk_target),
+                    "remaining_trades": int(remaining_trades),
+                    "cumulative_trades": int(self.cumulative_trades),
+                    "attempt": int(attempt),
+                    "max_attempts": int(max_attempts),
+                    "near_complete": self._is_near_complete(max(1, self.cumulative_trades + remaining_trades)),
+                    **diagnostics,
+                }
+            },
+        )
+
+    def _handle_chunk_stall(
+        self,
+        *,
+        target: int,
+        ticks: list[dict[str, Any]],
+        training_mode: str,
+        chunk_target: int,
+        remaining_trades: int,
+        diagnostics: dict[str, Any],
+    ) -> str:
+        """Return ``grace_complete``, ``failed``, or ``continue`` (retry next loop iteration)."""
+        self._consecutive_stall_chunks += 1
+        near_complete = self._is_near_complete(target)
+        stall_extra = {
+            "failure_reason": "simulation_stall",
+            "retryable": True,
+            "remaining_trades": int(remaining_trades),
+            "consecutive_stall_chunks": int(self._consecutive_stall_chunks),
+            "stall_diagnostics": diagnostics,
+            "chunk_target": int(chunk_target),
+        }
+        if near_complete:
+            self._write_progress(
+                stage="training_running",
+                message=(
+                    f"SIM-chunk zonder trades bij {self.cumulative_trades:,}/{target:,} "
+                    f"({remaining_trades:,} resterend) — near-complete grace: doel afgerond."
+                ),
+                target_trades=target,
+                phase="simulation_stall_grace",
+                progress_pct=self._overall_progress_pct(target),
+                **stall_extra,
+                **self._data_progress_extra(training_mode),
+            )
+            self.logger.warning(
+                "birth.chunk.stall.grace_complete",
+                extra={
+                    "event_data": {
+                        "cumulative_trades": int(self.cumulative_trades),
+                        "target": int(target),
+                        **diagnostics,
+                    }
+                },
+            )
+            return "grace_complete"
+
+        if self._consecutive_stall_chunks >= _STALL_CONSECUTIVE_MAX:
+            self._write_progress(
+                stage="failed",
+                message=(
+                    "Birth Phase stopte: simulatie leverde geen trades op "
+                    f"({self._consecutive_stall_chunks} opeenvolgende lege chunks)."
+                ),
+                target_trades=target,
+                phase="simulation_stall",
+                progress_pct=self._overall_progress_pct(target),
+                **stall_extra,
+                **self._data_progress_extra(training_mode),
+            )
+            return "failed"
+
+        self._write_progress(
+            stage="training_running",
+            message=(
+                f"SIM-chunk zonder trades ({self._consecutive_stall_chunks}/{_STALL_CONSECUTIVE_MAX}); "
+                f"volgende chunk wordt geprobeerd ({remaining_trades:,} trades resterend)."
+            ),
+            target_trades=target,
+            phase="simulation_stall_retry",
+            progress_pct=self._overall_progress_pct(target),
+            **stall_extra,
+            **self._data_progress_extra(training_mode),
+        )
+        return "continue"
+
+    def _build_policy_observation_vector(
+        self,
+        *,
+        tick: dict[str, Any],
+        position: dict[str, Any] | None,
+        tick_index: int,
+        tick_count: int,
+    ) -> np.ndarray:
+        return build_birth_rl_observation_vector(
+            tick=tick,
+            position=position,
+            tick_index=tick_index,
+            tick_count=tick_count,
+            recent_pnl=self._recent_pnl,
+        )
+
     # BIRTH ENGINE 2026-05-17
     def _simulate_chunk_with_policy(
         self,
@@ -483,6 +863,8 @@ class LuminaBirthEngine:
         ticks: list[dict[str, Any]],
         chunk_trades: int,
         policy: Any,
+        target_trades: int = 0,
+        training_mode: str = "certified",
     ) -> dict[str, Any]:
         trades = 0
         wins = 0
@@ -492,20 +874,131 @@ class LuminaBirthEngine:
         idx = 0
         position: dict[str, Any] | None = None
         local_limit = max(5_000, chunk_trades * 80)
+        diagnostics: dict[str, Any] = {
+            "ticks_processed": 0,
+            "infer_success": 0,
+            "infer_errors": 0,
+            "bootstrap_count": 0,
+            "policy_hold_count": 0,
+            "hold_signals": 0,
+            "buy_signals": 0,
+            "sell_signals": 0,
+            "open_position_at_end": False,
+            "exhausted": False,
+            "obs_dim": BIRTH_RL_OBS_DIM,
+        }
+        tick_count = max(1, len(ticks))
+        last_sim_progress = 0.0
+        prev_price = float(ticks[0].get("last", 0.0) or 0.0) if ticks else 0.0
         while trades < chunk_trades and idx < local_limit:
             if idx > 0 and idx % 1000 == 0 and self._stop_requested():
                 break
+            if idx > 0 and idx % 2500 == 0:
+                now = time.time()
+                if now - last_sim_progress >= 8.0:
+                    last_sim_progress = now
+                    diagnostics["ticks_processed"] = int(idx)
+                    resolved_target = max(1, int(target_trades or chunk_trades))
+                    self._write_progress(
+                        stage="training_running",
+                        message=(
+                            f"Simulatie bezig: {self.cumulative_trades + trades:,}/"
+                            f"{resolved_target:,} trades "
+                            f"({idx:,} ticks, BUY {diagnostics['buy_signals']}/"
+                            f"SELL {diagnostics['sell_signals']}/"
+                            f"HOLD {diagnostics['hold_signals']})…"
+                        ),
+                        target_trades=resolved_target,
+                        phase="parallel_simulation",
+                        progress_pct=max(30.0, self._overall_progress_pct(resolved_target)),
+                        trades_done=int(self.cumulative_trades + trades),
+                        cumulative_trades=int(self.cumulative_trades + trades),
+                        total_trades=int(self.cumulative_trades + trades),
+                        chunk_trades_partial=int(trades),
+                        sim_ticks_processed=int(idx),
+                        **self._sim_diagnostics_extra(diagnostics),
+                        **self._data_progress_extra(training_mode),
+                    )
             tick = ticks[idx % len(ticks)]
             idx += 1
+            if trades == 0 and idx >= _SIM_ZERO_TRADE_ABORT_TICKS:
+                diagnostics["zero_trade_abort"] = True
+                self.logger.warning(
+                    "birth.sim.zero_trade_abort ticks=%s chunk_trades=%s",
+                    idx,
+                    chunk_trades,
+                )
+                break
             observation = self._build_observation(tick=tick, position=position)
-            action = self._resolve_policy_action(policy=policy, observation=observation, tick=tick)
+            obs_vector = self._build_policy_observation_vector(
+                tick=tick,
+                position=position,
+                tick_index=idx,
+                tick_count=tick_count,
+            )
+            action: dict[str, Any]
+            action_source: str
+            allow_bootstrap = bool(training_mode == "practice" or trades < _BOOTSTRAP_WARMUP_TRADES)
+            if (
+                trades == 0
+                and idx >= _SIM_EXPLORATION_AFTER_TICKS
+                and position is None
+                and idx % 200 == 0
+            ):
+                try:
+                    cur_px = float(tick.get("last", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    cur_px = 0.0
+                if cur_px > prev_price:
+                    action = {"side": "BUY", "qty": 1, "stop_pct": 0.0075, "target_pct": 0.013}
+                    action_source = "exploration"
+                elif cur_px < prev_price:
+                    action = {"side": "SELL", "qty": 1, "stop_pct": 0.0075, "target_pct": 0.013}
+                    action_source = "exploration"
+                else:
+                    action, action_source = self._resolve_policy_action(
+                        policy=policy,
+                        observation=observation,
+                        tick=tick,
+                        observation_vector=obs_vector,
+                        allow_bootstrap=allow_bootstrap,
+                    )
+            else:
+                action, action_source = self._resolve_policy_action(
+                    policy=policy,
+                    observation=observation,
+                    tick=tick,
+                    observation_vector=obs_vector,
+                    allow_bootstrap=allow_bootstrap,
+                )
+            try:
+                prev_price = float(tick.get("last", prev_price) or prev_price)
+            except (TypeError, ValueError):
+                pass
+            side = str(action.get("side", "HOLD")).upper()
+            if side == "HOLD":
+                diagnostics["hold_signals"] = int(diagnostics["hold_signals"]) + 1
+            elif side == "BUY":
+                diagnostics["buy_signals"] = int(diagnostics["buy_signals"]) + 1
+            elif side == "SELL":
+                diagnostics["sell_signals"] = int(diagnostics["sell_signals"]) + 1
+            if action_source == "policy":
+                diagnostics["infer_success"] = int(diagnostics["infer_success"]) + 1
+            elif action_source == "bootstrap":
+                diagnostics["bootstrap_count"] = int(diagnostics["bootstrap_count"]) + 1
+            elif action_source == "exploration":
+                diagnostics["exploration_count"] = int(diagnostics.get("exploration_count", 0)) + 1
+            elif action_source == "policy_hold":
+                diagnostics["policy_hold_count"] = int(diagnostics.get("policy_hold_count", 0)) + 1
+            else:
+                diagnostics["infer_errors"] = int(diagnostics["infer_errors"]) + 1
             if position is None and action["side"] != "HOLD":
                 self._entry_counter += 1
-                position = self._open_position(tick=tick, action=action, entry_tick=self._entry_counter)
+                position = self._open_position(tick=tick, action=action, entry_tick=idx)
                 continue
             if position is None:
                 continue
-            exited, pnl, reason = self._check_exit(position=position, tick=tick, current_entry_index=self._entry_counter)
+            exited, pnl, reason = self._check_exit(position=position, tick=tick, current_entry_index=idx)
             if not exited:
                 continue
             trades += 1
@@ -526,12 +1019,16 @@ class LuminaBirthEngine:
                 }
             )
             position = None
+        diagnostics["ticks_processed"] = int(idx)
+        diagnostics["open_position_at_end"] = bool(position is not None)
+        diagnostics["exhausted"] = bool(idx >= local_limit)
         return {
             "trades": trades,
             "total_pnl": round(total_pnl, 6),
             "winrate": float(wins) / float(max(1, trades)),
             "trajectories": trajectories,
             "pnl_series": pnl_series,
+            "diagnostics": diagnostics,
         }
 
     def _build_observation(self, *, tick: dict[str, Any], position: dict[str, Any] | None) -> dict[str, Any]:
@@ -545,17 +1042,66 @@ class LuminaBirthEngine:
             "unrealized_pnl": self._calculate_unrealized(position=position, tick=tick) if position else 0.0,
         }
 
-    def _resolve_policy_action(self, *, policy: Any, observation: dict[str, Any], tick: dict[str, Any]) -> dict[str, Any]:
+    def _resolve_policy_action(
+        self,
+        *,
+        policy: Any,
+        observation: dict[str, Any],
+        tick: dict[str, Any],
+        observation_vector: np.ndarray | None = None,
+        allow_bootstrap: bool = True,
+    ) -> tuple[dict[str, Any], str]:
+        obs_vec = observation_vector
+        if obs_vec is None:
+            obs_vec = self._build_policy_observation_vector(
+                tick=tick,
+                position=None,
+                tick_index=0,
+                tick_count=1,
+            )
+        if obs_vec.shape[0] != BIRTH_RL_OBS_DIM:
+            obs_vec = np.resize(obs_vec, BIRTH_RL_OBS_DIM).astype(np.float32)
+
+        predicted = self._predict_from_policy(policy=policy, observation_vector=obs_vec)
+        if predicted is not None and predicted["side"] != "HOLD":
+            return predicted, "policy"
+
         infer = getattr(self.ppo_trainer, "infer_live_action", None)
         if callable(infer):
             try:
-                action = infer(np.asarray([observation["price"]], dtype=np.float32))
+                action = infer(obs_vec)
             except Exception:
                 action = None
+                if not allow_bootstrap:
+                    return {"side": "HOLD", "qty": 1, "stop_pct": 0.0075, "target_pct": 0.013}, "policy_hold"
+                return self._bootstrap_action(observation=observation, tick=tick), "bootstrap"
             parsed = self._parse_action(action)
             if parsed["side"] != "HOLD":
-                return parsed
-        return self._bootstrap_action(observation=observation, tick=tick)
+                return parsed, "policy"
+        if not allow_bootstrap:
+            return {"side": "HOLD", "qty": 1, "stop_pct": 0.0075, "target_pct": 0.013}, "policy_hold"
+        return self._bootstrap_action(observation=observation, tick=tick), "bootstrap"
+
+    def _predict_from_policy(self, *, policy: Any, observation_vector: np.ndarray) -> dict[str, Any] | None:
+        if policy is None:
+            return None
+        predict = getattr(policy, "predict", None)
+        if not callable(predict):
+            return None
+        try:
+            action, _ = predict(observation_vector, deterministic=True)
+        except Exception:
+            self.logger.warning("birth.policy.predict_failed", exc_info=True)
+            return None
+        action_arr = np.asarray(action, dtype=np.float32).reshape(-1)
+        if action_arr.size < 1:
+            return None
+        side_bucket = int(np.clip(np.round(action_arr[0]), 0, 2))
+        side = "HOLD" if side_bucket == 0 else ("BUY" if side_bucket == 1 else "SELL")
+        qty = max(1, min(10, int(1 + np.clip(action_arr[1], 0.0, 1.0) * 9))) if action_arr.size > 1 else 1
+        stop_pct = float(np.clip(action_arr[2], 0.001, 0.02)) if action_arr.size > 2 else 0.0075
+        target_pct = float(np.clip(action_arr[3], 0.001, 0.05)) if action_arr.size > 3 else 0.013
+        return {"side": side, "qty": qty, "stop_pct": stop_pct, "target_pct": target_pct}
 
     def _parse_action(self, action: Any) -> dict[str, Any]:
         if not isinstance(action, dict):
@@ -575,13 +1121,13 @@ class LuminaBirthEngine:
         regime = str(observation.get("regime", "NEUTRAL")).upper()
         imbalance = float(observation.get("imbalance", 1.0) or 1.0)
         side = "HOLD"
-        if "TREND" in regime and imbalance >= 1.0:
+        if "TREND_UP" in regime or ("TREND" in regime and imbalance >= 1.0):
             side = "BUY"
-        elif "TREND" in regime and imbalance < 1.0:
+        elif "TREND_DOWN" in regime or ("TREND" in regime and imbalance < 1.0):
             side = "SELL"
-        elif imbalance > 1.2:
+        elif imbalance > 1.05:
             side = "BUY"
-        elif imbalance < 0.8:
+        elif imbalance < 0.95:
             side = "SELL"
         if tick.get("source") == "synthetic" and side != "HOLD":
             side = "HOLD" if random.random() < 0.35 else side

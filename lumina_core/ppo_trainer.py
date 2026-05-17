@@ -507,7 +507,7 @@ class PPOTrainer:
             )
         return out
 
-    def create_fresh_birth_policy(self) -> Any:
+    def create_fresh_birth_policy(self, *, allow_load_existing: bool = True) -> Any:
         """Ensure an active policy object exists for the birth phase loop."""
         # BIRTH ENGINE 2026-05-17
         active = self._resolve_active_model()
@@ -515,7 +515,7 @@ class PPOTrainer:
             self.logger.info("ppo.birth.policy.reuse_active")
             return active
         default_path = self.model_dir / "lumina_ppo_policy.zip"
-        if default_path.exists():
+        if allow_load_existing and default_path.exists():
             loaded = self.load_weights(default_path)
             if loaded is not None:
                 self.logger.info("ppo.birth.policy.loaded_existing", extra={"event_data": {"path": str(default_path)}})

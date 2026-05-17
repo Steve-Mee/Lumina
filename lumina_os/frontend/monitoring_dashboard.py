@@ -6,8 +6,8 @@ import os
 import sqlite3
 import subprocess
 import sys
-import time
 from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -20,8 +20,10 @@ import yaml
 
 from lumina_core.first_boot_progress import (
     resolve_first_boot_completed_trades,
+    resolve_first_boot_stage,
     resolve_first_boot_target_trades,
 )
+from lumina_os.frontend.dashboard_views import DashboardPaths, resolve_workspace_root_from_this_module
 from lumina_os.frontend.http_utils import (
     is_backend_unreachable,
     log_fetch_failure,
@@ -30,33 +32,78 @@ from lumina_os.frontend.http_utils import (
 
 _LOG = logging.getLogger(__name__)
 
-_STATE_DIR = Path("state")
-_LOGS_DIR = Path("logs")
-_JOURNAL_SIM_DIR = Path("journal/simulator")
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-_EMBEDDED_UI_INDEX = _REPO_ROOT / "frontend" / "dist" / "index.html"
+_ACTIVE_TRAINING_STAGES = frozenset(
+    {
+        "detected",
+        "loading_data",
+        "training_running",
+        "pipeline_boot",
+        "parallel_simulation",
+        "ppo_training",
+    }
+)
 
-_FIRST_BOOT_PROGRESS_PATH = _STATE_DIR / "lumina_birth_progress.json"
-_FIRST_BOOT_LEGACY_PROGRESS_PATH = _STATE_DIR / "first_boot_progress.json"
-_FIRST_BOOT_FLAG_PATH = _STATE_DIR / "lumina_birth_completed.flag"
-_FIRST_BOOT_LEGACY_FLAG_PATH = _STATE_DIR / "first_boot_completed.flag"
-_FIRST_BOOT_POLICY_ZIP_PATH = Path("lumina_agents/ppo/lumina_ppo_policy.zip")
-_PPO_POLICY_METADATA_PATH = _STATE_DIR / "ppo_policy_metadata.json"
-_APPROVAL_TWIN_MODEL_PATH = _STATE_DIR / "approval_twin_model.json"
-_APPROVAL_TWIN_DECISIONS_PATH = _STATE_DIR / "monitoring_twin_decisions.jsonl"
-_APPROVAL_TWIN_TRAINING_PATH = _STATE_DIR / "monitoring_twin_training.jsonl"
-_SHADOW_RUNS_PATH = _STATE_DIR / "evolution_shadow_runs.json"
-_RUNTIME_MONITORING_PATH = _STATE_DIR / "monitoring_runtime_metrics.json"
-_GATE_REJECTION_PATH = _STATE_DIR / "monitoring_gate_rejections.jsonl"
-_REASONING_LATENCY_PATH = _STATE_DIR / "monitoring_reasoning_latency.jsonl"
-_MODEL_LOAD_TIMES_PATH = _STATE_DIR / "monitoring_model_load_times.jsonl"
-_DAILY_PNL_HISTORY_PATH = _STATE_DIR / "monitoring_daily_pnl.jsonl"
-_DEBUG_TRAINING_PROCESS_PATH = _STATE_DIR / "monitoring_debug_training_process.json"
-_VETO_REGISTRY_JSONL = _STATE_DIR / "veto_registry.jsonl"
-_VETO_REGISTRY_DB = _STATE_DIR / "veto_registry.db"
-_STRUCTURED_ERRORS_PATH = _LOGS_DIR / "structured_errors.jsonl"
-_FULL_LOG_PATH = _LOGS_DIR / "lumina_full_log.csv"
-_LUMINA_SIM_STATE_PATH = _STATE_DIR / "lumina_sim_state.json"
+
+@dataclass(frozen=True)
+class _MonitoringPaths:
+    workspace_root: Path
+    state_dir: Path
+    logs_dir: Path
+    journal_sim_dir: Path
+    first_boot_progress: Path
+    first_boot_legacy_progress: Path
+    first_boot_flag: Path
+    first_boot_legacy_flag: Path
+    policy_zip: Path
+    ppo_policy_metadata: Path
+    approval_twin_model: Path
+    twin_decisions: Path
+    twin_training: Path
+    shadow_runs: Path
+    runtime_metrics: Path
+    gate_rejections: Path
+    reasoning_latency: Path
+    model_load_times: Path
+    daily_pnl_history: Path
+    debug_training_process: Path
+    structured_errors: Path
+    full_log: Path
+    sim_state: Path
+    config_yaml: Path
+    embedded_ui_index: Path
+
+    @classmethod
+    def resolve(cls, workspace_root: Path | None = None) -> _MonitoringPaths:
+        root = (workspace_root or resolve_workspace_root_from_this_module()).resolve()
+        dp = DashboardPaths(root)
+        state = dp.state_dir
+        return cls(
+            workspace_root=root,
+            state_dir=state,
+            logs_dir=root / "logs",
+            journal_sim_dir=root / "journal" / "simulator",
+            first_boot_progress=state / "lumina_birth_progress.json",
+            first_boot_legacy_progress=state / "first_boot_progress.json",
+            first_boot_flag=state / "lumina_birth_completed.flag",
+            first_boot_legacy_flag=state / "first_boot_completed.flag",
+            policy_zip=root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip",
+            ppo_policy_metadata=state / "ppo_policy_metadata.json",
+            approval_twin_model=state / "approval_twin_model.json",
+            twin_decisions=state / "monitoring_twin_decisions.jsonl",
+            twin_training=state / "monitoring_twin_training.jsonl",
+            shadow_runs=state / "evolution_shadow_runs.json",
+            runtime_metrics=state / "monitoring_runtime_metrics.json",
+            gate_rejections=state / "monitoring_gate_rejections.jsonl",
+            reasoning_latency=state / "monitoring_reasoning_latency.jsonl",
+            model_load_times=state / "monitoring_model_load_times.jsonl",
+            daily_pnl_history=state / "monitoring_daily_pnl.jsonl",
+            debug_training_process=state / "monitoring_debug_training_process.json",
+            structured_errors=root / "logs" / "structured_errors.jsonl",
+            full_log=root / "logs" / "lumina_full_log.csv",
+            sim_state=dp.runtime_state,
+            config_yaml=dp.config_yaml,
+            embedded_ui_index=dp.embedded_ui_index,
+        )
 
 
 def _render_dark_series_chart(
@@ -108,7 +155,7 @@ def _render_dark_log_text(text: str, *, height_px: int = 260) -> None:
     )
 
 
-def _first_boot_completion_display(progress: dict[str, Any]) -> tuple[str, str]:
+def _first_boot_completion_display(paths: _MonitoringPaths, progress: dict[str, Any]) -> tuple[str, str]:
     """Show Yes only when first boot truly finished; In progress while training runs.
 
     progress ``stage`` wins over a stale completion flag
@@ -116,15 +163,15 @@ def _first_boot_completion_display(progress: dict[str, Any]) -> tuple[str, str]:
     """
     stage = str(progress.get("stage", "")).strip().lower()
     # BIRTH ENGINE 2026-05-17
-    if stage in {"detected", "loading_data", "training_running", "pipeline_boot", "parallel_simulation", "ppo_training"}:
+    if stage in _ACTIVE_TRAINING_STAGES:
         return "In progress", "n/a"
     if stage in {"completed", "completed_waiting_user_action"}:
         ts = (
-            _FIRST_BOOT_FLAG_PATH.read_text(encoding="utf-8").strip()
-            if _FIRST_BOOT_FLAG_PATH.exists()
+            paths.first_boot_flag.read_text(encoding="utf-8").strip()
+            if paths.first_boot_flag.exists()
             else (
-                _FIRST_BOOT_LEGACY_FLAG_PATH.read_text(encoding="utf-8").strip()
-                if _FIRST_BOOT_LEGACY_FLAG_PATH.exists()
+                paths.first_boot_legacy_flag.read_text(encoding="utf-8").strip()
+                if paths.first_boot_legacy_flag.exists()
                 else str(progress.get("timestamp", "n/a"))
             )
         )
@@ -134,11 +181,11 @@ def _first_boot_completion_display(progress: dict[str, Any]) -> tuple[str, str]:
     if stage == "deferred_calendar":
         return "Deferred", "n/a"
     # Idle / normale herstart: alleen Yes als zowel vlag als policy er zijn.
-    if (_FIRST_BOOT_FLAG_PATH.exists() or _FIRST_BOOT_LEGACY_FLAG_PATH.exists()) and _FIRST_BOOT_POLICY_ZIP_PATH.exists():
+    if (paths.first_boot_flag.exists() or paths.first_boot_legacy_flag.exists()) and paths.policy_zip.exists():
         ts = (
-            _FIRST_BOOT_FLAG_PATH.read_text(encoding="utf-8").strip()
-            if _FIRST_BOOT_FLAG_PATH.exists()
-            else _FIRST_BOOT_LEGACY_FLAG_PATH.read_text(encoding="utf-8").strip()
+            paths.first_boot_flag.read_text(encoding="utf-8").strip()
+            if paths.first_boot_flag.exists()
+            else paths.first_boot_legacy_flag.read_text(encoding="utf-8").strip()
         )
         return "Yes", ts
     return "No", "n/a"
@@ -248,11 +295,11 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def _tail_warning_error_logs(limit: int = 100) -> list[str]:
-    if not _FULL_LOG_PATH.exists():
+def _tail_warning_error_logs(log_path: Path, *, limit: int = 100) -> list[str]:
+    if not log_path.exists():
         return []
     lines: list[str] = []
-    for raw in _FULL_LOG_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
+    for raw in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = raw.strip()
         if not line:
             continue
@@ -261,16 +308,21 @@ def _tail_warning_error_logs(limit: int = 100) -> list[str]:
     return lines[-limit:]
 
 
-def _latest_training_reports(limit: int = 10) -> list[dict[str, Any]]:
+def _latest_training_reports(journal_sim_dir: Path, *, limit: int = 10) -> list[dict[str, Any]]:
     reports: list[dict[str, Any]] = []
+    if not journal_sim_dir.is_dir():
+        return reports
     # BIRTH ENGINE 2026-05-17
-    for path in sorted(list(_JOURNAL_SIM_DIR.glob("lumina_birth_training_*.json")) + list(_JOURNAL_SIM_DIR.glob("first_boot_training_*.json"))):
+    for path in sorted(
+        list(journal_sim_dir.glob("lumina_birth_training_*.json"))
+        + list(journal_sim_dir.glob("first_boot_training_*.json"))
+    ):
         payload = _load_json(path)
         if payload:
             payload["_run_type"] = "Background"
             payload["_path"] = str(path)
             reports.append(payload)
-    for path in sorted(_JOURNAL_SIM_DIR.glob("nightly_sim_*.json")):
+    for path in sorted(journal_sim_dir.glob("nightly_sim_*.json")):
         payload = _load_json(path)
         if payload:
             ts = _parse_iso(payload.get("timestamp"))
@@ -286,8 +338,8 @@ def _latest_training_reports(limit: int = 10) -> list[dict[str, Any]]:
 
 
 def weekly_veto_summary(state_dir: Path | None = None) -> tuple[int, list[tuple[str, int]]]:
-    """Weekly veto counts; ``state_dir`` defaults to ``state/`` (for tests pass a temp dir)."""
-    base = state_dir or _STATE_DIR
+    """Weekly veto counts; ``state_dir`` defaults to workspace ``state/`` (for tests pass a temp dir)."""
+    base = state_dir or _MonitoringPaths.resolve().state_dir
     veto_jsonl = base / "veto_registry.jsonl"
     veto_db = base / "veto_registry.db"
     now = datetime.now(timezone.utc)
@@ -326,8 +378,20 @@ def weekly_veto_summary(state_dir: Path | None = None) -> tuple[int, list[tuple[
     return 0, []
 
 
-def _weekly_veto_summary() -> tuple[int, list[tuple[str, int]]]:
-    return weekly_veto_summary()
+def _weekly_veto_summary(state_dir: Path) -> tuple[int, list[tuple[str, int]]]:
+    return weekly_veto_summary(state_dir)
+
+
+def _progress_data_freshness(paths: _MonitoringPaths, progress: dict[str, Any]) -> str:
+    for candidate in (paths.first_boot_progress, paths.first_boot_legacy_progress):
+        if candidate.exists():
+            try:
+                mtime = datetime.fromtimestamp(candidate.stat().st_mtime, tz=timezone.utc)
+                return f"bestand {mtime.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+            except OSError:
+                pass
+    ts = str(progress.get("timestamp", "")).strip()
+    return f"timestamp {ts}" if ts else "geen progress-bestand"
 
 
 def render_backend_observability_subpanel(base_url: str, api_key: str) -> None:
@@ -480,34 +544,40 @@ def _metric_value(snapshot: dict[str, Any], key: str, default: float = 0.0) -> f
     return default
 
 
-def _load_debug_process_meta() -> dict[str, Any]:
-    return _load_json(_DEBUG_TRAINING_PROCESS_PATH)
+def _load_debug_process_meta(paths: _MonitoringPaths) -> dict[str, Any]:
+    return _load_json(paths.debug_training_process)
 
 
-def _write_debug_process_meta(payload: dict[str, Any]) -> None:
-    _DEBUG_TRAINING_PROCESS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _DEBUG_TRAINING_PROCESS_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+def _write_debug_process_meta(paths: _MonitoringPaths, payload: dict[str, Any]) -> None:
+    paths.debug_training_process.parent.mkdir(parents=True, exist_ok=True)
+    paths.debug_training_process.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _start_debug_training_process(command: list[str], *, label: str) -> str:
+def _start_debug_training_process(
+    paths: _MonitoringPaths,
+    command: list[str],
+    *,
+    label: str,
+) -> str:
     try:
-        proc = subprocess.Popen(command, cwd=str(Path(".").resolve()))
+        proc = subprocess.Popen(command, cwd=str(paths.workspace_root))
     except Exception as exc:
         return f"Start mislukt: {exc}"
     _write_debug_process_meta(
+        paths,
         {
             "pid": int(proc.pid),
             "label": str(label),
             "command": command,
             "started_at": datetime.now(timezone.utc).isoformat(),
             "status": "running",
-        }
+        },
     )
     return f"Gestart: {label} (pid={proc.pid})"
 
 
-def _stop_debug_training_process() -> str:
-    meta = _load_debug_process_meta()
+def _stop_debug_training_process(paths: _MonitoringPaths) -> str:
+    meta = _load_debug_process_meta(paths)
     pid = _safe_int(meta.get("pid"), 0)
     if pid <= 0:
         return "Geen actieve debug training process gevonden."
@@ -529,7 +599,7 @@ def _stop_debug_training_process() -> str:
 
     meta["status"] = "stopped"
     meta["stopped_at"] = datetime.now(timezone.utc).isoformat()
-    _write_debug_process_meta(meta)
+    _write_debug_process_meta(paths, meta)
     return f"Gestopt: pid={pid}"
 
 
@@ -564,24 +634,30 @@ def _react_dashboard_url_default() -> str:
     return f"http://{host}:{port}"
 
 
-def _react_dashboard_link(api_base: str) -> str:
+def _react_dashboard_link(api_base: str, paths: _MonitoringPaths) -> str:
     """Voorkeur: gebouwde SPA onder FastAPI /ui/; anders Vite-dev URL; override via env."""
     explicit = (os.getenv("LUMINA_REACT_DASHBOARD_URL") or "").strip()
     if explicit:
         return explicit
     base = api_base.rstrip("/")
-    if _EMBEDDED_UI_INDEX.is_file():
+    if paths.embedded_ui_index.is_file():
         return f"{base}/ui/"
     return _react_dashboard_url_default()
 
 
-def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring Dashboard") -> None:
+def render_monitoring_dashboard_tab(
+    base_url: str,
+    *,
+    workspace_root: Path | None = None,
+    title: str = "Monitoring Dashboard",
+) -> None:
+    paths = _MonitoringPaths.resolve(workspace_root)
     st.subheader(title)
-    react_dashboard_url = _react_dashboard_link(base_url)
+    react_dashboard_url = _react_dashboard_link(base_url, paths)
 
     top_a, top_b = st.columns([3, 2])
     with top_a:
-        if _EMBEDDED_UI_INDEX.is_file():
+        if paths.embedded_ui_index.is_file():
             st.caption(
                 "React-dashboard wordt meegeleverd via de FastAPI-backend (geen aparte terminal). "
                 "Open de knop rechts. Ontbreekt `frontend/dist`, bouw eenmalig: `cd frontend && npm ci && npm run build:embedded` "
@@ -597,43 +673,15 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
         if react_dashboard_url:
             st.link_button("Open React Dashboard", react_dashboard_url, use_container_width=True)
 
-    col_a, col_b, col_c = st.columns([2, 2, 1])
-    with col_a:
-        if not str(st.session_state.get("monitoring_api_key", "")).strip():
-            resolved = resolve_dashboard_api_key()
-            if resolved:
-                st.session_state["monitoring_api_key"] = resolved
-        api_key = st.text_input("API Key (optional, unlocks live metrics API)", type="password", key="monitoring_api_key")
-    with col_b:
-        current_refresh_seconds = int(st.session_state.get("monitoring_refresh_seconds", 20))
-        refresh_seconds = st.slider(
-            "Auto-refresh (sec)",
-            min_value=15,
-            max_value=60,
-            value=current_refresh_seconds,
-            step=5,
-            key="monitoring_refresh_seconds_slider",
-        )
-        if int(refresh_seconds) != current_refresh_seconds:
-            current_refresh_seconds = int(refresh_seconds)
-            st.session_state["monitoring_refresh_seconds"] = current_refresh_seconds
-            st.session_state["monitoring_refresh_seconds_input"] = current_refresh_seconds
-        refresh_seconds_input = st.number_input(
-            "Refresh seconds (input)",
-            min_value=15,
-            max_value=60,
-            value=current_refresh_seconds,
-            step=5,
-            key="monitoring_refresh_seconds_input",
-        )
-        refresh_seconds = int(refresh_seconds_input)
-        st.session_state["monitoring_refresh_seconds"] = refresh_seconds
-    with col_c:
-        auto_refresh = st.checkbox("Auto refresh", value=False)
-
-    if auto_refresh:
-        time.sleep(int(refresh_seconds))
-        st.rerun()
+    if not str(st.session_state.get("monitoring_api_key", "")).strip():
+        resolved = resolve_dashboard_api_key()
+        if resolved:
+            st.session_state["monitoring_api_key"] = resolved
+    api_key = st.text_input("API Key (optional, unlocks live metrics API)", type="password", key="monitoring_api_key")
+    st.caption(
+        "Auto-refresh staat op command-center niveau (boven de subtabs). "
+        f"Workspace: `{paths.workspace_root}`"
+    )
 
     tab_debug, tab_a, tab_b, tab_c, tab_d, tab_e, tab_f, tab_g, tab_h = st.tabs(
         [
@@ -649,14 +697,15 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
         ]
     )
 
-    runtime_snapshot = _load_json(_RUNTIME_MONITORING_PATH)
-    fallback_runtime_state = _load_json(_LUMINA_SIM_STATE_PATH)
-    first_boot_progress = _load_json(_FIRST_BOOT_PROGRESS_PATH)
+    runtime_snapshot = _load_json(paths.runtime_metrics)
+    fallback_runtime_state = _load_json(paths.sim_state)
+    first_boot_progress = _load_json(paths.first_boot_progress)
     if not first_boot_progress:
-        first_boot_progress = _load_json(_FIRST_BOOT_LEGACY_PROGRESS_PATH)
-    config_payload = _load_yaml(_REPO_ROOT / "config.yaml")
-    ppo_meta = _load_json(_PPO_POLICY_METADATA_PATH)
-    twin_model = _load_json(_APPROVAL_TWIN_MODEL_PATH)
+        first_boot_progress = _load_json(paths.first_boot_legacy_progress)
+    config_payload = _load_yaml(paths.config_yaml)
+    ppo_meta = _load_json(paths.ppo_policy_metadata)
+    twin_model = _load_json(paths.approval_twin_model)
+    st.caption(f"Laatste progress-data: {_progress_data_freshness(paths, first_boot_progress)}")
 
     metrics_snapshot_cache: dict[str, Any] | None = None
     training_reports_cache: list[dict[str, Any]] | None = None
@@ -677,49 +726,49 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
     def _training_reports() -> list[dict[str, Any]]:
         nonlocal training_reports_cache
         if training_reports_cache is None:
-            training_reports_cache = _latest_training_reports(limit=10)
+            training_reports_cache = _latest_training_reports(paths.journal_sim_dir, limit=10)
         return training_reports_cache
 
     def _twin_decisions() -> list[dict[str, Any]]:
         nonlocal twin_decisions_cache
         if twin_decisions_cache is None:
-            twin_decisions_cache = _load_jsonl(_APPROVAL_TWIN_DECISIONS_PATH, limit=20)
+            twin_decisions_cache = _load_jsonl(paths.twin_decisions, limit=20)
         return twin_decisions_cache
 
     def _twin_training() -> list[dict[str, Any]]:
         nonlocal twin_training_cache
         if twin_training_cache is None:
-            twin_training_cache = _load_jsonl(_APPROVAL_TWIN_TRAINING_PATH, limit=20)
+            twin_training_cache = _load_jsonl(paths.twin_training, limit=20)
         return twin_training_cache
 
     def _shadow_runs() -> dict[str, Any]:
         nonlocal shadow_runs_cache
         if shadow_runs_cache is None:
-            shadow_runs_cache = _load_json(_SHADOW_RUNS_PATH)
+            shadow_runs_cache = _load_json(paths.shadow_runs)
         return shadow_runs_cache
 
     def _gate_rows() -> list[dict[str, Any]]:
         nonlocal gate_rows_cache
         if gate_rows_cache is None:
-            gate_rows_cache = _load_jsonl(_GATE_REJECTION_PATH, limit=300)
+            gate_rows_cache = _load_jsonl(paths.gate_rejections, limit=300)
         return gate_rows_cache
 
     def _latency_rows() -> list[dict[str, Any]]:
         nonlocal latency_rows_cache
         if latency_rows_cache is None:
-            latency_rows_cache = _load_jsonl(_REASONING_LATENCY_PATH, limit=200)
+            latency_rows_cache = _load_jsonl(paths.reasoning_latency, limit=200)
         return latency_rows_cache
 
     def _model_load_rows() -> list[dict[str, Any]]:
         nonlocal model_load_rows_cache
         if model_load_rows_cache is None:
-            model_load_rows_cache = _load_jsonl(_MODEL_LOAD_TIMES_PATH, limit=100)
+            model_load_rows_cache = _load_jsonl(paths.model_load_times, limit=100)
         return model_load_rows_cache
 
     def _structured_errors() -> list[dict[str, Any]]:
         nonlocal structured_errors_cache
         if structured_errors_cache is None:
-            structured_errors_cache = _load_jsonl(_STRUCTURED_ERRORS_PATH, limit=120)
+            structured_errors_cache = _load_jsonl(paths.structured_errors, limit=120)
         return structured_errors_cache
 
     with tab_debug:
@@ -728,6 +777,7 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
         with dc1:
             if st.button("Start nightly training", key="monitoring_start_nightly"):
                 msg = _start_debug_training_process(
+                    paths,
                     [sys.executable, "-m", "lumina_core.engine.runtime_entrypoint", "--mode", "nightly"],
                     label="nightly_training",
                 )
@@ -735,6 +785,7 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
         with dc2:
             if st.button("Start headless SIM training", key="monitoring_start_headless_sim"):
                 msg = _start_debug_training_process(
+                    paths,
                     [
                         sys.executable,
                         "-m",
@@ -750,8 +801,8 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
                 st.info(msg)
         with dc3:
             if st.button("Stop tracked training", key="monitoring_stop_training"):
-                st.info(_stop_debug_training_process())
-        proc_meta = _load_debug_process_meta()
+                st.info(_stop_debug_training_process(paths))
+        proc_meta = _load_debug_process_meta(paths)
         if proc_meta:
             st.caption(
                 "Tracked process: "
@@ -764,7 +815,7 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
     with tab_a:
         st.markdown("### A. System Overview")
         mode = str(runtime_snapshot.get("mode") or fallback_runtime_state.get("mode") or "SIM").upper()
-        first_boot_label, first_boot_ts = _first_boot_completion_display(first_boot_progress)
+        first_boot_label, first_boot_ts = _first_boot_completion_display(paths, first_boot_progress)
         training_reports = _training_reports()
         twin_training = _twin_training()
         last_training = training_reports[0] if training_reports else {}
@@ -788,6 +839,12 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
     # B. First Boot Training Status
     with tab_b:
         st.markdown("### B. First Boot Training Status")
+        stage_key = resolve_first_boot_stage(first_boot_progress)
+        if stage_key in _ACTIVE_TRAINING_STAGES:
+            st.info(
+                "Birth/PPO training actief — deze tab ververst via command-center auto-refresh. "
+                "Live trading metrics (tab F/G) verschijnen na runtime start."
+            )
         training_reports = _training_reports()
         last_training = training_reports[0] if training_reports else {}
         stage = str(first_boot_progress.get("stage", "unknown"))
@@ -840,7 +897,10 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
                 mime="application/json",
             )
         else:
-            st.info("No training history found in journal/simulator.")
+            st.info(
+                "Nog geen training history in journal/simulator — verschijnt na een voltooide birth-run "
+                f"(`{paths.journal_sim_dir}`)."
+            )
 
     # D. ApprovalTwin Activity
     with tab_d:
@@ -860,7 +920,7 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
             st.dataframe(pd.DataFrame(decision_rows), width="stretch")
         else:
             st.info("No twin decision telemetry found yet.")
-        veto_count, top_reasons = _weekly_veto_summary()
+        veto_count, top_reasons = _weekly_veto_summary(paths.state_dir)
         st.metric("Weekly veto count", veto_count)
         if top_reasons:
             st.write("Top veto reasons:", ", ".join(f"{reason} ({count})" for reason, count in top_reasons[:3]))
@@ -928,7 +988,7 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
             st.caption(f"Host: CPU {psutil.cpu_percent(interval=None):.0f}% | Memory {vm.percent:.0f}% used ({vm.available // (1024**3)} GB free)")
         except Exception:
             pass
-        warn_err = _tail_warning_error_logs(limit=80)
+        warn_err = _tail_warning_error_logs(paths.full_log, limit=80)
         comp_filter = st.text_input("Filter logs by component/event", value="", key="monitoring_log_filter").strip().lower()
         if comp_filter:
             warn_err = [ln for ln in warn_err if comp_filter in ln.lower()]
@@ -976,9 +1036,13 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
             else:
                 st.caption("No twin confidence trend yet.")
         with chart_col3:
-            pnl_points = [_safe_float(x.get("daily_pnl")) for x in _load_jsonl(_DAILY_PNL_HISTORY_PATH, limit=120)]
+            pnl_points = [_safe_float(x.get("daily_pnl")) for x in _load_jsonl(paths.daily_pnl_history, limit=120)]
             if not pnl_points:
-                pnl_points = [_safe_float(x.get("daily_pnl")) for x in _load_jsonl(_REASONING_LATENCY_PATH, limit=60) if x.get("daily_pnl") is not None]
+                pnl_points = [
+                    _safe_float(x.get("daily_pnl"))
+                    for x in _load_jsonl(paths.reasoning_latency, limit=60)
+                    if x.get("daily_pnl") is not None
+                ]
             if pnl_points:
                 _render_dark_series_chart(pnl_points[-30:], y_col="daily_pnl", y_title="Daily PnL", color="#38bdf8")
             else:

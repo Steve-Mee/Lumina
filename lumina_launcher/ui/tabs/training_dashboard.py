@@ -27,6 +27,7 @@ from lumina_core.first_boot_progress import (
 from lumina_launcher.ui.tabs.first_boot import (
     _render_birth_phase_status_banner,
     _render_ppo_progress_bars,
+    resolve_command_center_birth_flags,
 )
 from lumina_core.runtime_session import resolve_runtime_session_state
 from lumina_launcher.core.first_boot import FirstBootManager
@@ -51,6 +52,52 @@ from lumina_os.frontend.dashboard_views import (
 )
 
 logger = logging.getLogger(__name__)
+
+_CC_AUTOREFRESH_KEY = "lumina_command_center_autorefresh"
+_CC_REFRESH_SECONDS_KEY = "lumina_command_center_refresh_seconds"
+_ACTIVE_TRAINING_STAGES = frozenset(
+    {
+        "detected",
+        "loading_data",
+        "training_running",
+        "pipeline_boot",
+        "parallel_simulation",
+        "ppo_training",
+    }
+)
+
+
+def _default_command_center_autorefresh(first_boot_manager: FirstBootManager) -> bool:
+    if _CC_AUTOREFRESH_KEY in st.session_state:
+        return bool(st.session_state[_CC_AUTOREFRESH_KEY])
+    progress = first_boot_manager.read_progress()
+    stage = resolve_first_boot_stage(progress)
+    return stage in _ACTIVE_TRAINING_STAGES
+
+
+def render_command_center_autorefresh_controls(
+    first_boot_manager: FirstBootManager,
+) -> tuple[bool, int]:
+    """Single auto-refresh control for all command-center subtabs (Birth Phase, Monitoring, …)."""
+    default_on = _default_command_center_autorefresh(first_boot_manager)
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        enabled = st.checkbox(
+            "Auto-refresh command center",
+            value=default_on,
+            key=_CC_AUTOREFRESH_KEY,
+            help="Ververs alle subtabs (Birth Phase, Monitoring A–H, Overview, …).",
+        )
+    with c2:
+        seconds = st.slider(
+            "Interval (s)",
+            min_value=5,
+            max_value=60,
+            value=int(st.session_state.get(_CC_REFRESH_SECONDS_KEY, 10)),
+            step=5,
+            key=_CC_REFRESH_SECONDS_KEY,
+        )
+    return bool(enabled), int(seconds)
 
 
 def _progress_age_seconds(progress: dict[str, object]) -> float | None:
@@ -298,8 +345,8 @@ def _render_overview_tab_content(
         _render_dark_log_block(evo[-25:] if evo else [])
 
 
-def _render_monitoring_tab_content(*, api_base: str) -> None:
-    render_shared_monitoring_dashboard(api_base)
+def _render_monitoring_tab_content(*, api_base: str, workspace_root: Path) -> None:
+    render_shared_monitoring_dashboard(api_base, workspace_root=workspace_root)
 
 
 def _render_evolution_tab_content(*, api_base: str) -> None:
@@ -320,6 +367,37 @@ def _render_react_tab_content(*, api_base: str, p: DashboardPaths) -> None:
             st.link_button("Open React Dashboard", react_url, use_container_width=True)
     else:
         st.info("React dashboard URL kon niet bepaald worden.")
+
+
+def _render_luxury_status_bar_live(
+    p: DashboardPaths,
+    *,
+    api_base: str,
+    runtime_mode: str,
+    first_boot_manager: FirstBootManager,
+    process_manager: ProcessManager,
+    birth_service: object | None,
+    backend_client: object | None = None,
+) -> None:
+    progress = first_boot_manager.read_progress()
+    process_alive = process_manager.is_process_alive()
+    flags = resolve_command_center_birth_flags(
+        birth_service=birth_service,  # type: ignore[arg-type]
+        backend_client=backend_client,  # type: ignore[arg-type]
+        workspace_root=first_boot_manager.workspace_root,
+        process_alive=process_alive,
+        progress=progress,
+    )
+    render_luxury_status_bar(
+        p,
+        api_base,
+        runtime_mode,
+        progress=progress,
+        birth_running=bool(flags["birth_running"]),
+        birth_stopping=bool(flags["birth_stopping"]),
+        process_alive=process_alive,
+        pulse=str(flags.get("pulse", "idle")),
+    )
 
 
 def _render_command_center_tabs(
@@ -361,7 +439,7 @@ def _render_command_center_tabs(
     idx += 1
 
     with tabs[idx]:
-        _render_monitoring_tab_content(api_base=api_base)
+        _render_monitoring_tab_content(api_base=api_base, workspace_root=workspace_root)
     idx += 1
 
     with tabs[idx]:
@@ -396,18 +474,32 @@ def render_first_boot_command_center(
     p = DashboardPaths(workspace_root)
     api_base = _normalize_api_base(backend_base_url)
     runtime_mode = "sim"
-    render_luxury_status_bar(p, api_base, runtime_mode)
-    _render_command_center_tabs(
-        p,
-        api_base=api_base,
-        runtime_mode=runtime_mode,
-        workspace_root=workspace_root,
-        first_boot_manager=first_boot_manager,
-        hardware_service=hardware_service,
-        process_manager=process_manager,
-        include_birth_phase=True,
-        birth_tab_renderer=birth_tab_renderer,
-    )
+    enabled, interval = render_command_center_autorefresh_controls(first_boot_manager)
+
+    def _command_center_body() -> None:
+        _render_luxury_status_bar_live(
+            p,
+            api_base=api_base,
+            runtime_mode=runtime_mode,
+            first_boot_manager=first_boot_manager,
+            process_manager=process_manager,
+            birth_service=birth_service,
+            backend_client=backend_client,
+        )
+        _render_command_center_tabs(
+            p,
+            api_base=api_base,
+            runtime_mode=runtime_mode,
+            workspace_root=workspace_root,
+            first_boot_manager=first_boot_manager,
+            hardware_service=hardware_service,
+            process_manager=process_manager,
+            include_birth_phase=True,
+            birth_tab_renderer=birth_tab_renderer,
+        )
+
+    run_with_autorefresh(_command_center_body, enabled=enabled, interval_seconds=interval)
+    st.caption("Auto-refresh werkt voor alle command-center subtabs, inclusief Monitoring (A–H).")
 
 
 def render_training_dashboard_tab(
@@ -428,10 +520,17 @@ def render_training_dashboard_tab(
     elif not any(p.state_dir.iterdir()):
         st.info("State directory is empty — training idle or First Boot not started.")
 
-    auto = st.checkbox("Auto-refresh (10s)", value=False, key="lumina_training_autorefresh")
+    enabled, interval = render_command_center_autorefresh_controls(first_boot_manager)
 
     def _dashboard_body() -> None:
-        render_luxury_status_bar(p, api_base, runtime_mode)
+        _render_luxury_status_bar_live(
+            p,
+            api_base=api_base,
+            runtime_mode=runtime_mode,
+            first_boot_manager=first_boot_manager,
+            process_manager=process_manager,
+            birth_service=None,
+        )
         _render_command_center_tabs(
             p,
             api_base=api_base,
@@ -443,5 +542,5 @@ def render_training_dashboard_tab(
             include_birth_phase=False,
         )
 
-    run_with_autorefresh(_dashboard_body, enabled=auto, interval_seconds=10)
-    st.caption("Auto-refresh keeps active tab content up to date.")
+    run_with_autorefresh(_dashboard_body, enabled=enabled, interval_seconds=interval)
+    st.caption("Auto-refresh werkt voor alle command-center subtabs, inclusief Monitoring (A–H).")

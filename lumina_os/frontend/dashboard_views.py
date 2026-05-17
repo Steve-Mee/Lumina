@@ -6,7 +6,6 @@ legacy ``dashboard.py`` entrypoints behave consistently regardless of process cw
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import logging
 import os
@@ -27,7 +26,14 @@ import streamlit as st
 import yaml
 
 from lumina_core.first_boot_progress import (
+    birth_runner_lock_active,
+    format_progress_heartbeat_age,
+    is_active_training_stage,
+    progress_is_recently_active,
+    resolve_birth_training_pulse,
     resolve_first_boot_completed_trades,
+    resolve_first_boot_stage,
+    resolve_first_boot_target_from_progress,
     resolve_first_boot_target_trades,
 )
 from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
@@ -181,6 +187,10 @@ section.main [data-testid="stHorizontalBlock"]:has(span.lumina-logo-text) {
   color: #7de7ff;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+.lumina-heartbeat {
+  font-family: "Consolas", "Courier New", monospace;
+  letter-spacing: 0.02em;
 }
 .lumina-dot {
   color: rgba(148, 163, 184, 0.65);
@@ -514,12 +524,19 @@ def training_dashboard_fallback_url(port: int = 8502) -> str:
     return f"http://{host}:{port}"
 
 
-def heartbeat_age_display(p: DashboardPaths) -> str:
+def heartbeat_age_display(p: DashboardPaths, *, progress: dict[str, Any] | None = None) -> str:
+    """Prefer first-boot progress timestamp (same SSOT as Birth Phase tab)."""
+    fb = progress if progress is not None else load_json_dict(p.first_boot_progress)
+    if fb:
+        label = format_progress_heartbeat_age(fb)
+        stage = resolve_first_boot_stage(fb)
+        if label != "— ago" and not progress_is_recently_active(fb, stage=stage):
+            return f"{label} (stale)"
+        return label
     now = datetime.now(timezone.utc)
     candidates: list[datetime] = []
     for path, keys in (
         (p.monitoring_runtime_metrics, ("timestamp",)),
-        (p.first_boot_progress, ("timestamp",)),
         (p.last_run_summary, ("finished_at", "started_at")),
     ):
         payload = load_json_dict(path)
@@ -527,11 +544,6 @@ def heartbeat_age_display(p: DashboardPaths) -> str:
             ts = parse_ts(payload.get(key))
             if ts is not None:
                 candidates.append(ts)
-    sim = load_json_dict(p.runtime_state)
-    dream = sim.get("current_dream") if isinstance(sim.get("current_dream"), dict) else {}
-    swarm_ts = parse_ts(dream.get("swarm_ts"))
-    if swarm_ts is not None:
-        candidates.append(swarm_ts)
     if not candidates:
         return "— ago"
     newest = max(candidates)
@@ -544,11 +556,15 @@ def heartbeat_age_display(p: DashboardPaths) -> str:
 
 
 def training_active_from_state(
-    first_boot: dict[str, Any], debug_proc: dict[str, Any]
+    first_boot: dict[str, Any],
+    debug_proc: dict[str, Any],
+    *,
+    workspace_root: Path | None = None,
+    birth_running: bool = False,
 ) -> bool:
-    stage = str(first_boot.get("stage", "")).strip().lower()
-    # BIRTH ENGINE 2026-05-17
-    if stage in {"detected", "loading_data", "training_running", "pipeline_boot", "parallel_simulation", "ppo_training"}:
+    if birth_running:
+        return True
+    if birth_runner_lock_active(workspace_root):
         return True
     return str(debug_proc.get("status", "")).strip().lower() == "running"
 
@@ -556,50 +572,107 @@ def training_active_from_state(
 def status_phase_label(runtime_mode: str, first_boot: dict[str, Any]) -> str:
     if runtime_mode == "real":
         return "REAL"
-    stage = str(first_boot.get("stage", "")).strip().lower()
-    if stage in {"detected", "loading_data", "training_running", "pipeline_boot", "parallel_simulation", "ppo_training"}:
+    stage = resolve_first_boot_stage(first_boot)
+    if stage == "interrupted":
+        return "Interrupted"
+    if stage in {"detected", "loading_data", "training_running", "pipeline_boot", "parallel_simulation", "ppo_training", "historical_loaded"}:
         return "Birth Phase"
     return "Evolution"
 
 
-def status_bar_trade_count(first_boot: dict[str, Any], summary: dict[str, Any]) -> int:
-    n = resolve_first_boot_completed_trades(first_boot)
-    if n > 0:
-        return n
-    stage = str(first_boot.get("stage", "")).strip().lower()
-    if stage in {"detected", "loading_data", "training_running"}:
-        cumulative = safe_int(first_boot.get("cumulative_trades"))
-        if cumulative > 0:
-            return cumulative
-    n = safe_int(summary.get("total_trades"))
-    if n > 0:
-        return n
-    ml = summary.get("metrics_learning")
-    if isinstance(ml, dict):
-        return safe_int(ml.get("total_trades"))
-    return 0
+def status_bar_trade_count(first_boot: dict[str, Any]) -> int:
+    return resolve_first_boot_completed_trades(first_boot)
 
 
-def render_luxury_status_bar(p: DashboardPaths, api_base_url: str, runtime_mode: str) -> None:
+def status_bar_trades_label(first_boot: dict[str, Any], *, target_trades: int = 0) -> str:
+    completed = status_bar_trade_count(first_boot)
+    if target_trades > 0:
+        return f"{completed:,} / {target_trades:,}"
+    return f"{completed:,}"
+
+
+def render_luxury_status_bar(
+    p: DashboardPaths,
+    api_base_url: str,
+    runtime_mode: str,
+    *,
+    progress: dict[str, Any] | None = None,
+    birth_running: bool = False,
+    birth_stopping: bool = False,
+    process_alive: bool = False,
+    pulse: str | None = None,
+) -> None:
     st.markdown(PREMIUM_THEME_CSS + LUXURY_STATUS_BAR_CSS, unsafe_allow_html=True)
-    fb = load_json_dict(p.first_boot_progress)
+    fb = progress if progress is not None else load_json_dict(p.first_boot_progress)
     dbg = load_json_dict(p.debug_training_proc)
-    summary = load_json_dict(p.last_run_summary)
-    training_on = training_active_from_state(fb, dbg)
+    debug_proc_running = str(dbg.get("status", "")).strip().lower() == "running"
+    resolved_pulse = pulse or resolve_birth_training_pulse(
+        fb,
+        birth_running=birth_running,
+        birth_stopping=birth_stopping,
+        process_alive=process_alive,
+        debug_proc_running=debug_proc_running,
+        workspace_root=p.workspace_root,
+    )
+    training_on = resolved_pulse == "active" or training_active_from_state(
+        fb,
+        dbg,
+        workspace_root=p.workspace_root,
+        birth_running=birth_running,
+    )
+    stage = resolve_first_boot_stage(fb)
     phase = status_phase_label(runtime_mode, fb)
-    trades = status_bar_trade_count(fb, summary)
-    heartbeat = heartbeat_age_display(p)
+    target_trades = resolve_first_boot_target_from_progress(fb)
+    if target_trades <= 0:
+        target_trades = resolve_first_boot_target_trades(load_yaml_dict(p.config_yaml))
+    trades_label = status_bar_trades_label(fb, target_trades=target_trades)
+    heartbeat = heartbeat_age_display(p, progress=fb)
     mode_label = (runtime_mode or "sim").strip().upper() or "SIM"
     completed_flag = (p.state_dir / "lumina_birth_completed.flag").is_file() or (
         p.state_dir / "first_boot_completed.flag"
     ).is_file()
     policy_zip = (p.workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip").is_file()
     artifacts_ok = completed_flag and policy_zip
+    load_phase = str(progress.get("phase") or "").strip().lower()
+    runner_loading = (
+        stage == "loading_data"
+        and (birth_running or birth_runner_lock_active(p.workspace_root))
+    )
+    runner_preparing = stage in {"historical_loaded", "pipeline_boot"} and (
+        birth_running or birth_runner_lock_active(p.workspace_root)
+    )
 
-    badge_cls = "lumina-badge lumina-badge-training" if training_on else "lumina-badge lumina-badge-idle"
-    badge_txt = "● TRAINING ACTIVE" if training_on else "● IDLE"
+    badge_cls = "lumina-badge lumina-badge-training" if resolved_pulse == "active" else "lumina-badge lumina-badge-idle"
+    if runner_loading and load_phase == "expanding_ticks":
+        badge_cls = "lumina-badge lumina-badge-training"
+        badge_txt = "● EXPANDING TICKS"
+    elif runner_loading:
+        badge_cls = "lumina-badge lumina-badge-training"
+        badge_txt = "● LOADING DATA"
+    elif runner_preparing:
+        badge_cls = "lumina-badge lumina-badge-training"
+        badge_txt = "● PREPARING SIM"
+    elif resolved_pulse == "stale":
+        badge_cls = "lumina-badge lumina-badge-idle"
+        badge_txt = "● STALE"
+    elif (
+        stage == "training_running"
+        and int(fb.get("sim_ticks_processed", 0) or 0) > 0
+        and status_bar_trade_count(fb) == 0
+    ):
+        badge_cls = "lumina-badge lumina-badge-training"
+        badge_txt = "● SIM ACTIVE (0 trades)"
+    elif training_on:
+        badge_txt = "● TRAINING ACTIVE"
+    else:
+        badge_txt = "● IDLE"
     artifacts_cls = "lumina-artifacts lumina-artifacts-ok" if artifacts_ok else "lumina-artifacts lumina-artifacts-missing"
-    artifacts_txt = "Artifacts OK" if artifacts_ok else "Artifacts missing"
+    if artifacts_ok:
+        artifacts_txt = "Artifacts OK"
+    elif is_active_training_stage(fb, stage=stage):
+        artifacts_txt = "Artifacts pending"
+    else:
+        artifacts_txt = "Artifacts missing"
 
     c_logo, c_badge, c_metrics, c_phase, c_artifacts = st.columns([1.0, 1.15, 2.65, 1.0, 1.35])
     with c_logo:
@@ -615,9 +688,9 @@ def render_luxury_status_bar(p: DashboardPaths, api_base_url: str, runtime_mode:
     with c_metrics:
         st.markdown(
             '<div class="lumina-bar-cell lumina-metrics">'
-            f'<span class="lumina-metric-strong">{trades:,}</span> trades'
+            f'<span class="lumina-metric-strong">{trades_label}</span> trades'
             '<span class="lumina-dot">•</span>'
-            f'<span class="lumina-metric-muted">{heartbeat}</span> heartbeat'
+            f'<span class="lumina-metric-muted lumina-heartbeat">{heartbeat}</span>'
             '<span class="lumina-dot">•</span>'
             f'<span class="lumina-mode-pill">{mode_label}</span> mode'
             "</div>",
@@ -641,22 +714,18 @@ def render_luxury_status_bar(p: DashboardPaths, api_base_url: str, runtime_mode:
         )
 
 
-def render_shared_monitoring_dashboard(base_url: str) -> None:
-    try:
-        from monitoring_dashboard import render_monitoring_dashboard_tab
-    except ModuleNotFoundError:
-        module_path = Path(__file__).with_name("monitoring_dashboard.py")
-        spec = importlib.util.spec_from_file_location("__lumina_monitoring_dashboard__", module_path)
-        if spec is None or spec.loader is None:
-            st.error("Monitoring dashboard module kon niet geladen worden.")
-            return
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        render_monitoring_dashboard_tab = getattr(mod, "render_monitoring_dashboard_tab", None)
-        if not callable(render_monitoring_dashboard_tab):
-            st.error("Monitoring dashboard module mist render functie.")
-            return
-    render_monitoring_dashboard_tab(base_url, title="Monitoring Dashboard")
+def render_shared_monitoring_dashboard(
+    base_url: str,
+    *,
+    workspace_root: Path | None = None,
+) -> None:
+    from lumina_os.frontend.monitoring_dashboard import render_monitoring_dashboard_tab
+
+    render_monitoring_dashboard_tab(
+        base_url,
+        workspace_root=workspace_root,
+        title="Monitoring Dashboard",
+    )
 
 
 def window_metrics(
@@ -1244,12 +1313,11 @@ def render_command_center_hero(
     process_alive: bool | None = None,
 ) -> None:
     fb = load_json_dict(p.first_boot_progress)
-    summary = load_json_dict(p.last_run_summary)
     dbg = load_json_dict(p.debug_training_proc)
-    trades = status_bar_trade_count(fb, summary)
-    heartbeat = heartbeat_age_display(p)
+    trades = status_bar_trade_count(fb)
+    heartbeat = heartbeat_age_display(p, progress=fb)
     phase = status_phase_label(runtime_mode, fb)
-    training_on = training_active_from_state(fb, dbg)
+    training_on = training_active_from_state(fb, dbg, workspace_root=p.workspace_root)
     target = training_target_trades(p)
     report = stability_report(p)
     consecutive = int(report.get("consecutive_green_days", 0))
@@ -1514,7 +1582,7 @@ def render_full_streamlit_dashboard(p: DashboardPaths) -> None:
     with tab2:
         render_global_wisdom_tab(api_base_url)
     with tab3:
-        render_shared_monitoring_dashboard(api_base_url)
+        render_shared_monitoring_dashboard(api_base_url, workspace_root=p.workspace_root)
     with tab4:
         render_evolution_approval_tab(api_base_url, api_key=resolve_dashboard_api_key())
     if tab5 is not None:

@@ -125,6 +125,19 @@ def test_monitoring_dashboard_uses_inline_tabs_not_sidebar_select() -> None:
     source = (root / "lumina_os" / "frontend" / "monitoring_dashboard.py").read_text(encoding="utf-8")
     assert "tab_debug, tab_a, tab_b, tab_c, tab_d, tab_e, tab_f, tab_g, tab_h = st.tabs" in source
     assert "st.sidebar.selectbox(" not in source
+    assert "time.sleep" not in source
+
+
+def test_first_boot_command_center_uses_shared_autorefresh() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "lumina_launcher" / "ui" / "tabs" / "training_dashboard.py").read_text(encoding="utf-8")
+    fb_section = source.split("def render_first_boot_command_center", 1)[1].split(
+        "def render_training_dashboard_tab", 1
+    )[0]
+    assert "render_command_center_autorefresh_controls" in fb_section
+    assert "run_with_autorefresh" in fb_section
+    assert "lumina_command_center_autorefresh" in source
+    assert "lumina_training_autorefresh" not in source
 
 
 def test_status_bar_no_longer_shows_react_open_button() -> None:

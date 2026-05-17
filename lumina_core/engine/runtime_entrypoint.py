@@ -413,7 +413,6 @@ def _run_first_boot_training() -> int:
     target = int(cfg["training_trades"])
     prefer_real = bool(cfg["prefer_real_data_only"])
     max_days = int(cfg["max_real_days"])
-    allow_synth = bool(cfg["allow_minimal_synthetic_fallback"])
     birth_phase_enabled = bool(cfg.get("birth_phase", True))
     estimated_days = estimate_first_boot_real_days(target)
 
@@ -451,52 +450,34 @@ def _run_first_boot_training() -> int:
         phase="pipeline_boot",
     )
     if not birth_phase_enabled:
-        logging.warning(
-            "first_boot.birth_phase=false is legacy; LuminaBirthEngine remains mandatory for first boot runtime gate."
-        )
-    legacy_first_boot = str(os.getenv("LUMINA_ALLOW_LEGACY_FIRST_BOOT_SIM", "false")).strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    if legacy_first_boot:
-        # BIRTH ENGINE 2026-05-17
-        logging.warning("legacy_first_boot_sim_enabled=true; using compatibility simulator first-boot path")
-        report = container.infinite_simulator.run_first_boot_training(
-            target_trades=target,
-            prefer_real_data_only=prefer_real,
-            max_real_days=max_days,
-            allow_minimal_synthetic_fallback=allow_synth,
-        )
-    else:
-        from lumina_core.lumina_birth_engine import LuminaBirthEngine
+        logging.warning("first_boot.birth_phase=false is ignored; LuminaBirthEngine is mandatory for first boot.")
+    from lumina_core.lumina_birth_engine import LuminaBirthEngine
 
-        engine = LuminaBirthEngine(
-            runtime=container.engine,
-            ppo_trainer=container.ppo_trainer,
-            market_data_service=container.market_data_service,
-            config={"first_boot": cfg},
-            workspace_root=ROOT_DIR,
-        )
-        birth_result = engine.run_birth_phase(
-            target_trades=target,
-            max_real_days=max_days,
-            prefer_real_data_only=prefer_real,
-        )
-        birth_status = str(birth_result.get("status", "error")).strip().lower()
-        if birth_status == "completed":
-            mapped_status = "ok_birth_phase"
-        elif birth_status == "paused":
-            mapped_status = "paused"
-        else:
-            mapped_status = "birth_failed"
-        report = {
-            "status": mapped_status,
-            "trades": int(birth_result.get("total_trades", 0) or 0),
-            "synthetic_ticks": 0,
-            "policy_path": str(birth_result.get("policy_path") or FIRST_BOOT_POLICY_PATH),
-        }
+    engine = LuminaBirthEngine(
+        runtime=container.engine,
+        ppo_trainer=container.ppo_trainer,
+        market_data_service=container.market_data_service,
+        config={"first_boot": cfg},
+        workspace_root=ROOT_DIR,
+    )
+    birth_result = engine.run_birth_phase(
+        target_trades=target,
+        max_real_days=max_days,
+        prefer_real_data_only=prefer_real,
+    )
+    birth_status = str(birth_result.get("status", "error")).strip().lower()
+    if birth_status == "completed":
+        mapped_status = "ok_birth_phase"
+    elif birth_status == "paused":
+        mapped_status = "paused"
+    else:
+        mapped_status = "birth_failed"
+    report = {
+        "status": mapped_status,
+        "trades": int(birth_result.get("total_trades", 0) or 0),
+        "synthetic_ticks": 0,
+        "policy_path": str(birth_result.get("policy_path") or FIRST_BOOT_POLICY_PATH),
+    }
     status = str(report.get("status", "error"))
     trades = int(report.get("trades", 0) or 0)
     requested_norm = normalize_first_boot_training_trades(target)

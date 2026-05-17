@@ -54,12 +54,14 @@ async def test_start_birth_delegates(_reset_birth_service: MagicMock) -> None:
         force=False,
         practice_mode=False,
         explicit_user_start=True,
+        continue_training=False,
     )
     _reset_birth_service.start_birth.assert_called_once_with(
         target_trades=10000,
         force=False,
         practice_mode=False,
         explicit_user_start=True,
+        continue_training=False,
     )
     assert result["status"] == "started"
 

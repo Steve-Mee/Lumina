@@ -369,6 +369,7 @@ def render_setup_wizard(
             )
         )
         from lumina_core.first_boot_ui import (
+            FIRST_BOOT_EST_TRADES_PER_REAL_DAY,
             estimate_first_boot_duration,
             estimate_first_boot_real_days,
             exceeds_max_real_days_window,
@@ -376,7 +377,15 @@ def render_setup_wizard(
         )
 
         estimate = estimate_first_boot_real_days(training["training_trades"])
-        st.caption(f"Geschatte historische vensterbehoefte: ongeveer {estimate} dagen.")
+        st.caption(
+            "Geschatte historische vensterbehoefte: "
+            f"~{estimate:,} dagen (ceil(trades/{FIRST_BOOT_EST_TRADES_PER_REAL_DAY}))."
+        )
+        st.caption("Referentie: 200.000 -> ~445 dagen, 500.000 -> ~1.112 dagen, 1.000.000 -> ~2.223 dagen.")
+        st.caption(
+            "Realistische verwachting: hogere targets vragen meer cycling door historische dagen; "
+            "bij beperkt real window kan synthetic top-up nodig zijn."
+        )
         duration_estimate = estimate_first_boot_duration(
             training_trades=int(training["training_trades"]),
             max_real_days=int(training["max_real_days"]),

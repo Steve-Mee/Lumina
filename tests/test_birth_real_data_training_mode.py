@@ -16,7 +16,11 @@ from lumina_launcher.ui.tabs import first_boot as fb
 
 
 class _FakePpoTrainer:
-    def create_fresh_birth_policy(self):
+    def __init__(self) -> None:
+        self.create_policy_calls: list[bool] = []
+
+    def create_fresh_birth_policy(self, *, allow_load_existing: bool = True):
+        self.create_policy_calls.append(bool(allow_load_existing))
         return {"policy": "fresh"}
 
     def update_from_buffer(self, **_kwargs):
@@ -58,7 +62,7 @@ def test_certified_start_sets_training_mode_certified(tmp_path: Path, monkeypatc
     monkeypatch.setattr(
         engine,
         "_simulate_chunk_with_policy",
-        lambda *, ticks, chunk_trades, policy: {
+        lambda *, ticks, chunk_trades, policy, **kwargs: {
             "trades": chunk_trades,
             "total_pnl": 1.0,
             "winrate": 0.5,
@@ -108,7 +112,7 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
     monkeypatch.setattr(
         engine,
         "_simulate_chunk_with_policy",
-        lambda *, ticks, chunk_trades, policy: {
+        lambda *, ticks, chunk_trades, policy, **kwargs: {
             "trades": min(chunk_trades, 100),
             "total_pnl": 1.0,
             "winrate": 0.5,
@@ -157,7 +161,7 @@ def test_checkpoint_mode_mismatch_blocks_resume(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setattr(
         engine,
         "_simulate_chunk_with_policy",
-        lambda *, ticks, chunk_trades, policy: {
+        lambda *, ticks, chunk_trades, policy, **kwargs: {
             "trades": chunk_trades,
             "total_pnl": 0.0,
             "winrate": 0.0,
@@ -165,13 +169,15 @@ def test_checkpoint_mode_mismatch_blocks_resume(tmp_path: Path, monkeypatch: pyt
             "pnl_series": [],
         },
     )
-    engine.run_birth_phase(
+    result = engine.run_birth_phase(
         target_trades=5000,
         practice_mode=False,
         chunk_size=5000,
         ppo_update_timesteps=1000,
     )
-    assert engine.cumulative_trades == 5000
+    assert result["status"] == "checkpoint_available"
+    assert result.get("failure_reason") == "mode_mismatch"
+    assert engine.cumulative_trades == 0
 
 
 @pytest.mark.unit

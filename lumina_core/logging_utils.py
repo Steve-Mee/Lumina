@@ -242,6 +242,25 @@ def setup_logging(
     return logger
 
 
+def resolve_monitoring_state_dir() -> Path:
+    """Workspace ``state/`` directory (never rely on process cwd alone)."""
+    override = os.getenv("LUMINA_WORKSPACE_ROOT", "").strip()
+    if override:
+        return (Path(override).expanduser().resolve() / "state")
+    config_path = os.getenv("LUMINA_CONFIG", "").strip()
+    if config_path:
+        return Path(config_path).expanduser().resolve().parent / "state"
+    cwd = Path.cwd()
+    for candidate in (cwd, Path(__file__).resolve().parents[1]):
+        if (candidate / "state").is_dir() and (candidate / "lumina_core").exists():
+            return (candidate / "state").resolve()
+    return (cwd / "state").resolve()
+
+
+def _monitoring_state_path(name: str) -> Path:
+    return resolve_monitoring_state_dir() / name
+
+
 def _append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     line = json.dumps(payload, ensure_ascii=True, sort_keys=True)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -274,7 +293,7 @@ def record_twin_decision_monitoring(
         "risk_flags": list(risk_flags),
         "explanation": str(explanation),
     }
-    _append_jsonl(Path("state/monitoring_twin_decisions.jsonl"), payload)
+    _append_jsonl(_monitoring_state_path("monitoring_twin_decisions.jsonl"), payload)
 
 
 def record_twin_training_metrics_monitoring(*, avg_prediction_error: float, reward: float, training_steps: int) -> None:
@@ -284,7 +303,7 @@ def record_twin_training_metrics_monitoring(*, avg_prediction_error: float, rewa
         "reward": float(reward),
         "training_steps": int(training_steps),
     }
-    _append_jsonl(Path("state/monitoring_twin_training.jsonl"), payload)
+    _append_jsonl(_monitoring_state_path("monitoring_twin_training.jsonl"), payload)
 
 
 def record_gate_rejection_monitoring(
@@ -305,7 +324,7 @@ def record_gate_rejection_monitoring(
         "side": str(side),
         "decision_context_id": str(decision_context_id),
     }
-    _append_jsonl(Path("state/monitoring_gate_rejections.jsonl"), payload)
+    _append_jsonl(_monitoring_state_path("monitoring_gate_rejections.jsonl"), payload)
 
 
 def record_model_load_time_monitoring(
@@ -322,7 +341,7 @@ def record_model_load_time_monitoring(
         "load_time_sec": float(load_time_sec),
         "status": str(status),
     }
-    _append_jsonl(Path("state/monitoring_model_load_times.jsonl"), payload)
+    _append_jsonl(_monitoring_state_path("monitoring_model_load_times.jsonl"), payload)
 
 
 def write_ppo_policy_metadata(
@@ -343,17 +362,17 @@ def write_ppo_policy_metadata(
         "last_load_time_sec": float(last_load_time_sec),
         "status": str(status),
     }
-    _write_json(Path("state/ppo_policy_metadata.json"), payload)
+    _write_json(_monitoring_state_path("ppo_policy_metadata.json"), payload)
 
 
 def write_runtime_monitoring_snapshot(payload: dict[str, Any]) -> None:
     base = {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     base.update(payload if isinstance(payload, dict) else {})
-    _write_json(Path("state/monitoring_runtime_metrics.json"), base)
+    _write_json(_monitoring_state_path("monitoring_runtime_metrics.json"), base)
     if "daily_pnl" in base:
         try:
             _append_jsonl(
-                Path("state/monitoring_daily_pnl.jsonl"),
+                _monitoring_state_path("monitoring_daily_pnl.jsonl"),
                 {"timestamp": str(base["timestamp"]), "daily_pnl": float(base["daily_pnl"])},
             )
         except (TypeError, ValueError):
@@ -379,4 +398,4 @@ def record_reasoning_latency_monitoring(
     }
     if daily_pnl is not None:
         payload["daily_pnl"] = float(daily_pnl)
-    _append_jsonl(Path("state/monitoring_reasoning_latency.jsonl"), payload)
+    _append_jsonl(_monitoring_state_path("monitoring_reasoning_latency.jsonl"), payload)

@@ -154,17 +154,24 @@ class BackendClient:
         force: bool = False,
         practice_mode: bool = False,
         explicit_user_start: bool = False,
+        continue_training: bool = False,
     ) -> dict[str, Any]:
         params = (
             f"target_trades={int(target_trades)}"
             f"&force={'true' if force else 'false'}"
             f"&practice_mode={'true' if practice_mode else 'false'}"
             f"&explicit_user_start={'true' if explicit_user_start else 'false'}"
+            f"&continue_training={'true' if continue_training else 'false'}"
         )
         return self._sync_request("POST", f"/api/birth/start?{params}")
 
     def get_birth_status_sync(self) -> dict[str, Any]:
         return self._sync_request("GET", "/api/birth/status")
+
+    def is_backend_reachable(self) -> bool:
+        """True when FastAPI responds (used to route birth start/stop through backend SSOT)."""
+        payload = self._sync_request("GET", "/api/monitoring/health")
+        return not bool(payload.get("error"))
 
     def stop_birth_sync(self) -> dict[str, Any]:
         return self._sync_request("POST", "/api/birth/stop")

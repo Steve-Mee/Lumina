@@ -8,7 +8,7 @@ import traceback
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 import requests
@@ -17,6 +17,7 @@ from websockets.exceptions import ConnectionClosed
 
 from .errors import ErrorSeverity, LuminaError, log_structured
 from .tape_reading_agent import TapeReadingAgent
+from lumina_core.first_boot_ui import HISTORICAL_BAR_LIMIT_SAFETY_CAP
 from lumina_core.sla_config import market_data_latency_sla_ms
 
 from .lumina_engine import LuminaEngine
@@ -379,7 +380,13 @@ class MarketDataIngestService:
             app.logger.error(f"Historical load error: {exc}")
             return []
 
-    def _fetch_historical_bars(self, instrument: str, days_back: int, limit: int) -> list[dict[str, Any]]:
+    def _fetch_historical_bars(
+        self,
+        instrument: str,
+        days_back: int,
+        limit: int | None,
+        on_chunk: Callable[..., None] | None = None,
+    ) -> list[dict[str, Any]]:
         """Load 1-min bars from CrossTrade, paginating with ``from``/``to`` windows.
 
         A single huge ``daysBack`` + ``limit`` request can stall or hit provider timeouts
@@ -389,7 +396,13 @@ class MarketDataIngestService:
         app = self._app()
         instrument = self._normalize_symbol(instrument)
         token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
-        target_cap = max(1, min(int(limit), 500_000))
+        uncapped = limit is None
+        if uncapped:
+            target_cap: int | None = HISTORICAL_BAR_LIMIT_SAFETY_CAP
+            limit_label = f"all bars in window (safety cap {HISTORICAL_BAR_LIMIT_SAFETY_CAP:,})"
+        else:
+            target_cap = max(1, min(int(limit), HISTORICAL_BAR_LIMIT_SAFETY_CAP))
+            limit_label = str(target_cap)
         days_back_i = max(1, int(days_back))
 
         log_structured(
@@ -397,10 +410,15 @@ class MarketDataIngestService:
                 severity=ErrorSeverity.RECOVERABLE_LEARNING,
                 code="INFO_PRINT_LEGACY",
                 message=(
-                    f"[v21.6] Loading up to {target_cap} real 1-min OHLC bars for {instrument} "
+                    f"[v21.6] Loading {limit_label} real 1-min OHLC bars for {instrument} "
                     f"(last {days_back_i} days, paginated)..."
                 ),
-                context={"instrument": instrument, "limit": target_cap, "days_back": days_back_i},
+                context={
+                    "instrument": instrument,
+                    "limit": target_cap,
+                    "days_back": days_back_i,
+                    "uncapped": uncapped,
+                },
             )
         )
 
@@ -425,9 +443,12 @@ class MarketDataIngestService:
         seen_time: set[str] = set()
 
         for idx, (win_from, win_to) in enumerate(windows):
-            if len(merged) >= target_cap:
+            if target_cap is not None and len(merged) >= target_cap:
                 break
-            chunk_limit = min(per_chunk_limit, target_cap - len(merged))
+            if target_cap is None:
+                chunk_limit = per_chunk_limit
+            else:
+                chunk_limit = min(per_chunk_limit, target_cap - len(merged))
             payload = {
                 "instrument": instrument,
                 "periodType": "minute",
@@ -445,6 +466,17 @@ class MarketDataIngestService:
                 chunk_limit,
             )
             bars = self._post_historical_bars(instrument=instrument, token=token, payload=payload, app=app)
+            if on_chunk is not None:
+                try:
+                    on_chunk(
+                        chunk_index=idx + 1,
+                        chunk_total=len(windows),
+                        bars_merged=len(merged) + len(bars),
+                        chunk_bars=len(bars),
+                        chunk_phase="fetch",
+                    )
+                except Exception:
+                    app.logger.warning("birth.history.on_chunk_failed", exc_info=True)
             for bar in bars:
                 ep = bar.get("epoch")
                 ts_raw = bar.get("timestamp") or bar.get("time")
@@ -459,7 +491,7 @@ class MarketDataIngestService:
                         continue
                     seen_time.add(tk)
                 merged.append(bar)
-                if len(merged) >= target_cap:
+                if target_cap is not None and len(merged) >= target_cap:
                     break
 
         if merged:
@@ -477,10 +509,12 @@ class MarketDataIngestService:
                 return (3, 0.0, "")
 
             merged.sort(key=_bar_sort_key)
-            return merged[:target_cap]
+            if target_cap is not None:
+                return merged[:target_cap]
+            return merged
 
         # Fallback: single bounded request (legacy path) for providers that ignore from/to.
-        fallback_limit = min(8_000, target_cap)
+        fallback_limit = min(8_000, target_cap if target_cap is not None else HISTORICAL_BAR_LIMIT_SAFETY_CAP)
         payload_fb = {
             "instrument": instrument,
             "periodType": "minute",
@@ -489,11 +523,21 @@ class MarketDataIngestService:
             "limit": fallback_limit,
         }
         app.logger.warning(
-            "Paginated historical load returned no bars; retrying single request limit=%s daysBack=%s",
+            "birth.history.paginated_empty fallback=daysBack limit=%s daysBack=%s",
             fallback_limit,
             days_back_i,
         )
-        return self._post_historical_bars(instrument=instrument, token=token, payload=payload_fb, app=app)
+        fallback_bars = self._post_historical_bars(
+            instrument=instrument, token=token, payload=payload_fb, app=app
+        )
+        if not fallback_bars:
+            app.logger.error(
+                "birth.history.load_failed instrument=%s days_back=%s limit=%s (0 bars after paginated+fallback)",
+                instrument,
+                days_back_i,
+                target_cap,
+            )
+        return fallback_bars
 
     def load_historical_ohlc_for_symbol(self, instrument: str, days_back: int = 3, limit: int = 5000) -> pd.DataFrame:
         bars = self._fetch_historical_bars(instrument=instrument, days_back=days_back, limit=limit)
@@ -523,8 +567,9 @@ class MarketDataIngestService:
     def load_historical_ohlc_extended(
         self,
         days_back: int = 30,
-        limit: int = 120000,
+        limit: int | None = 120000,
         ticks_per_bar: int = 4,
+        on_chunk: Callable[..., None] | None = None,
     ) -> list[dict[str, Any]]:
         """Load historical bars and expand each bar into pseudo ticks.
 
@@ -534,10 +579,17 @@ class MarketDataIngestService:
         app = self._app()
         instrument = self._normalize_symbol(getattr(app, "INSTRUMENT", self.engine.config.instrument))
         try:
-            bars = self._fetch_historical_bars(instrument=instrument, days_back=days_back, limit=limit)
+            bars = self._fetch_historical_bars(
+                instrument=instrument,
+                days_back=days_back,
+                limit=limit,
+                on_chunk=on_chunk,
+            )
 
             ticks: list[dict[str, Any]] = []
-            for bar in bars:
+            total_bars = len(bars)
+            expand_batch = 500
+            for bar_index, bar in enumerate(bars):
                 ts_str = bar.get("timestamp") or bar.get("time")
                 if not ts_str:
                     continue
@@ -573,6 +625,19 @@ class MarketDataIngestService:
                             "volume": int(cum_vol),
                         }
                     )
+                if on_chunk is not None and total_bars > 0 and (
+                    (bar_index + 1) % expand_batch == 0 or (bar_index + 1) == total_bars
+                ):
+                    try:
+                        on_chunk(
+                            chunk_index=bar_index + 1,
+                            chunk_total=total_bars,
+                            bars_merged=bar_index + 1,
+                            chunk_bars=0,
+                            chunk_phase="expand",
+                        )
+                    except Exception:
+                        app.logger.warning("birth.history.on_chunk_failed", exc_info=True)
 
             return ticks
         except Exception as exc:

@@ -13,9 +13,14 @@ from typing import Any
 import streamlit as st
 
 from lumina_core.first_boot_progress import (
+    birth_training_is_live,
+    format_progress_heartbeat_age,
     is_sim_trades_complete,
+    progress_is_recently_active,
+    resolve_birth_training_pulse,
     resolve_first_boot_completed_trades,
     resolve_first_boot_stage,
+    resolve_first_boot_target_from_progress,
     resolve_ppo_batch_progress,
     resolve_ppo_training_progress,
 )
@@ -31,6 +36,7 @@ from lumina_launcher.services.backend_client import BackendClient
 from lumina_launcher.services.birth_service import BirthService
 from lumina_core.first_boot_ui import (
     FIRST_BOOT_DEFAULT_TRADES,
+    FIRST_BOOT_EST_TRADES_PER_REAL_DAY,
     FIRST_BOOT_LAUNCHER_TRADE_STEP,
     FIRST_BOOT_TRAINING_TRADES_MAX,
     FIRST_BOOT_TRAINING_TRADES_MIN,
@@ -63,9 +69,6 @@ _SAVE_SETTINGS_KEY = "first_boot_save_settings"
 _START_BIRTH_KEY = "first_boot_start_birth_phase"
 _STOP_TRAINING_KEY = "first_boot_stop_training"
 _FIRST_BOOT_PENDING_STOP_KEY = "first_boot_pending_stop"
-_PROGRESS_ACTIVE_MAX_AGE_SEC = 30.0
-
-
 def _clear_start_request_flags() -> None:
     st.session_state[_FIRST_BOOT_START_REQUESTED_KEY] = False
     st.session_state[_FIRST_BOOT_PENDING_START_KEY] = False
@@ -190,11 +193,97 @@ def _render_certified_data_metrics(progress: dict[str, Any], *, estimate_days: i
         )
 
 
-def _progress_recently_active(progress: dict[str, Any], *, stage: str) -> bool:
-    if stage not in _RUNNING_STAGES:
-        return False
-    age = _progress_age_seconds(progress)
-    return age is not None and age < _PROGRESS_ACTIVE_MAX_AGE_SEC
+def _progress_recently_active(
+    progress: dict[str, Any],
+    *,
+    stage: str,
+    workspace_root: Path | None = None,
+    thread_running: bool = False,
+) -> bool:
+    return progress_is_recently_active(
+        progress,
+        stage=stage,
+        workspace_root=workspace_root,
+        thread_running=thread_running,
+    )
+
+
+def _render_sim_activity_panel(progress: dict[str, Any]) -> None:
+    sim_ticks = int(progress.get("sim_ticks_processed", 0) or 0)
+    diag = progress.get("sim_diagnostics")
+    if not isinstance(diag, dict):
+        diag = {}
+    if sim_ticks <= 0 and not diag:
+        return
+    st.markdown("**PPO / Sim activiteit**")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Ticks (chunk)", f"{sim_ticks:,}")
+    c2.metric("BUY / SELL / HOLD", f"{int(diag.get('buy_signals', 0)):,} / {int(diag.get('sell_signals', 0)):,} / {int(diag.get('hold_signals', 0)):,}")
+    c3.metric("Infer OK", f"{int(diag.get('infer_success', 0)):,}")
+    c4.metric("Bootstrap", f"{int(diag.get('bootstrap_count', 0)):,}")
+    policy_non_hold = int(diag.get("infer_success", 0) or 0)
+    policy_hold = int(diag.get("policy_hold_count", 0) or 0)
+    bootstrap_count = int(diag.get("bootstrap_count", 0) or 0)
+    action_total = max(1, policy_non_hold + policy_hold + bootstrap_count)
+    policy_pct = 100.0 * float(policy_non_hold + policy_hold) / float(action_total)
+    bootstrap_pct = 100.0 * float(bootstrap_count) / float(action_total)
+    st.caption(f"Action source: policy {policy_pct:.1f}% · bootstrap {bootstrap_pct:.1f}%")
+    explore = int(diag.get("exploration_count", 0) or 0)
+    open_pos = bool(diag.get("open_position_at_end", False))
+    extras: list[str] = []
+    if explore > 0:
+        extras.append(f"exploration {explore:,}")
+    if open_pos:
+        extras.append("open position at chunk end")
+    if bool(diag.get("zero_trade_abort", False)):
+        extras.append("zero-trade abort (chunk herstart)")
+    if extras:
+        st.caption(" · ".join(extras))
+
+
+def _render_live_snapshot(
+    *,
+    progress: dict[str, Any],
+    completed_trades: int,
+    target_trades: int,
+    stage: str,
+) -> None:
+    ppo_steps, ppo_total, ppo_pct = resolve_ppo_training_progress(progress)
+    heartbeat = format_progress_heartbeat_age(progress)
+    trades_label = f"{completed_trades:,} / {target_trades:,}" if target_trades > 0 else f"{completed_trades:,}"
+    ppo_label = f"{(ppo_pct or 0.0):.1f}%" if ppo_pct is not None else "—"
+    st.markdown(
+        """
+<style>
+.lumina-live-snapshot {
+  border: 1px solid rgba(0, 240, 255, 0.22);
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin: 0 0 12px 0;
+  background: linear-gradient(135deg, rgba(10, 12, 18, 0.95), rgba(14, 20, 32, 0.88));
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Trades", trades_label)
+    c2.metric("Stage", stage or "—")
+    c3.metric("Heartbeat", heartbeat)
+    c4.metric("PPO", ppo_label)
+    chunk_partial = int(progress.get("chunk_trades_partial", 0) or 0)
+    if chunk_partial > 0:
+        st.caption(f"Huidige chunk: {chunk_partial:,} afgeronde trades (totaal live: {completed_trades:,}).")
+    if ppo_total > 0:
+        st.caption(f"PPO timesteps: {ppo_steps:,} / {ppo_total:,}")
+    if stage in {"training_running", "parallel_simulation", "ppo_training", "pipeline_boot"}:
+        _render_sim_activity_panel(progress)
+        sim_ticks = int(progress.get("sim_ticks_processed", 0) or 0)
+        if completed_trades == 0 and sim_ticks > 0:
+            st.caption(
+                f"Simulatie draait — {sim_ticks:,} ticks verwerkt, nog geen afgeronde trade "
+                "(policy/bootstrap kan HOLD geven; zie activiteitspaneel)."
+            )
 
 
 def _load_first_boot_reports(root: Path) -> list[dict]:
@@ -338,7 +427,7 @@ def _apply_first_boot_settings_to_form(settings: dict) -> None:
     st.session_state["first_boot_training_trades_value"] = int(
         settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
     )
-    st.session_state["first_boot_max_real_days_value"] = int(settings.get("max_real_days", 365))
+    st.session_state["first_boot_max_real_days_value"] = int(settings.get("max_real_days", 30))
     st.session_state["first_boot_prefer_real_data_only_value"] = bool(settings.get("prefer_real_data_only", True))
     st.session_state["first_boot_allow_fallback_value"] = bool(settings.get("allow_minimal_synthetic_fallback", False))
     st.session_state["first_boot_require_real_sim_value"] = bool(settings.get("require_real_simulator_data", True))
@@ -418,6 +507,30 @@ def _slider_with_input(
     return selected_value
 
 
+def _training_trades_help_text(*, fallback_trades: int) -> str:
+    base_text = help_for("training_trades")
+    def fmt(value: int) -> str:
+        return f"{int(value):,}".replace(",", ".")
+    raw_value = st.session_state.get("first_boot_training_trades_value", fallback_trades)
+    try:
+        current_trades = int(raw_value)
+    except (TypeError, ValueError):
+        current_trades = int(fallback_trades)
+    current_trades = max(FIRST_BOOT_TRAINING_TRADES_MIN, min(FIRST_BOOT_TRAINING_TRADES_MAX, current_trades))
+    estimated_days = estimate_first_boot_real_days(current_trades)
+    example_200k = estimate_first_boot_real_days(200_000)
+    example_500k = estimate_first_boot_real_days(500_000)
+    example_1m = estimate_first_boot_real_days(1_000_000)
+    return (
+        f"{base_text}\n"
+        f"Huidige schatting: ~{fmt(estimated_days)} echte handelsdag(en) voor {fmt(current_trades)} trades "
+        f"(ceil(trades/{FIRST_BOOT_EST_TRADES_PER_REAL_DAY})).\n"
+        f"Referentie: 200.000 -> ~{fmt(example_200k)} dagen, 500.000 -> ~{fmt(example_500k)} dagen, "
+        f"1.000.000 -> ~{fmt(example_1m)} dagen.\n"
+        "Hoge volumes vragen vaak langdurige historical cycling; bij beperkt real window kan synthetic top-up nodig zijn."
+    )
+
+
 def _persist_first_boot_settings(
     first_boot_manager: FirstBootManager,
     *,
@@ -443,6 +556,71 @@ def _persist_first_boot_settings(
     st.session_state["first_boot_rehydrate"] = True
 
 
+def _backend_is_reachable(backend_client: BackendClient | None) -> bool:
+    if backend_client is None:
+        return False
+    return bool(backend_client.is_backend_reachable())
+
+
+def _resolve_birth_status_payload(
+    *,
+    birth_service: BirthService | None,
+    backend_client: BackendClient | None,
+    workspace_root: Path,
+) -> dict[str, Any]:
+    """Prefer backend birth status when FastAPI is reachable (SSOT for cross-process UI)."""
+    if _backend_is_reachable(backend_client):
+        payload = backend_client.get_birth_status_sync()  # type: ignore[union-attr]
+        if not payload.get("error"):
+            return payload
+    if birth_service is not None:
+        birth_service.configure_workspace(workspace_root)
+        return birth_service.get_status()
+    if backend_client is not None:
+        return backend_client.get_birth_status_sync()
+    return {}
+
+
+def _birth_status_is_running(status_payload: dict[str, Any]) -> bool:
+    raw = str(status_payload.get("status", "") or "").strip().lower()
+    return raw in {"running", "started", "already_running"}
+
+
+def resolve_command_center_birth_flags(
+    *,
+    birth_service: BirthService | None,
+    backend_client: BackendClient | None,
+    workspace_root: Path,
+    process_alive: bool,
+    progress: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Shared birth_running / birth_stopping / pulse for luxury bar and Birth tab."""
+    from lumina_core.first_boot_progress import resolve_birth_training_pulse
+
+    status_payload = _resolve_birth_status_payload(
+        birth_service=birth_service,
+        backend_client=backend_client,
+        workspace_root=workspace_root,
+    )
+    thread_running = bool(birth_service.is_running()) if birth_service is not None else False
+    birth_running = _birth_status_is_running(status_payload) or thread_running
+    birth_stopping = bool(birth_service.is_stopping()) if birth_service is not None else False
+    pulse = resolve_birth_training_pulse(
+        progress,
+        birth_running=birth_running,
+        birth_stopping=birth_stopping,
+        process_alive=process_alive,
+        workspace_root=workspace_root,
+        thread_running=thread_running,
+    )
+    return {
+        "birth_running": birth_running,
+        "birth_stopping": birth_stopping,
+        "pulse": pulse,
+        "status_payload": status_payload,
+    }
+
+
 def _start_birth_training(
     *,
     birth_service: BirthService | None,
@@ -451,33 +629,21 @@ def _start_birth_training(
     target_trades: int,
     force: bool = False,
     practice_mode: bool = False,
+    continue_training: bool = False,
     require_explicit_request: bool = True,
 ) -> tuple[bool, str]:
-    """Start Birth Phase via in-process BirthService, with HTTP fallback to FastAPI."""
+    """Start Birth Phase via FastAPI when reachable; fallback to in-process BirthService."""
     if require_explicit_request and not _explicit_start_requested():
         return False, "Start Birth Phase vereist een expliciete klik op Start (of Retry/Practice)."
 
     try:
-        if birth_service is not None:
-            birth_service.configure_workspace(workspace_root)
-            result = birth_service.start_birth(
+        if _backend_is_reachable(backend_client):
+            payload = backend_client.start_birth_sync(  # type: ignore[union-attr]
                 target_trades=int(target_trades),
                 force=bool(force),
                 practice_mode=bool(practice_mode),
                 explicit_user_start=True,
-            )
-            status = str(result.get("status", "")).strip().lower()
-            message = str(result.get("message", "") or "").strip()
-            if status in {"started", "already_running"}:
-                return True, message or "Birth Phase gestart."
-            return False, message or f"Birth Phase kon niet starten ({status or 'unknown'})."
-
-        if backend_client is not None:
-            payload = backend_client.start_birth_sync(
-                target_trades=int(target_trades),
-                force=bool(force),
-                practice_mode=bool(practice_mode),
-                explicit_user_start=True,
+                continue_training=bool(continue_training),
             )
             if payload.get("error"):
                 detail = str(payload.get("detail", "") or "").strip()
@@ -487,6 +653,21 @@ def _start_birth_training(
             if status in {"started", "already_running"}:
                 return True, message or "Birth Phase gestart via backend."
             return False, message or f"Backend weigerde start ({status or 'unknown'})."
+
+        if birth_service is not None:
+            birth_service.configure_workspace(workspace_root)
+            result = birth_service.start_birth(
+                target_trades=int(target_trades),
+                force=bool(force),
+                practice_mode=bool(practice_mode),
+                explicit_user_start=True,
+                continue_training=bool(continue_training),
+            )
+            status = str(result.get("status", "")).strip().lower()
+            message = str(result.get("message", "") or "").strip()
+            if status in {"started", "already_running"}:
+                return True, message or "Birth Phase gestart (lokaal, backend offline)."
+            return False, message or f"Birth Phase kon niet starten ({status or 'unknown'})."
 
         return False, "Geen BirthService of backend-client beschikbaar."
     finally:
@@ -507,16 +688,10 @@ def _stop_birth_training(
     any_action = False
     progress_active = _progress_recently_active(progress, stage=stage)
     birth_thread_running = birth_service is not None and birth_service.is_running()
+    backend_reachable = _backend_is_reachable(backend_client)
 
-    if birth_service is not None and (birth_thread_running or progress_active or birth_service.is_stopping()):
-        result = birth_service.stop_birth()
-        status = str(result.get("status", "") or "").strip().lower()
-        message = str(result.get("message", "") or "").strip()
-        messages.append(message or f"Birth stop: {status or 'unknown'}")
-        any_action = status in {"stopped", "stopping"}
-
-    if backend_client is not None and (progress_active or not birth_thread_running):
-        payload = backend_client.stop_birth_sync()
+    if backend_reachable:
+        payload = backend_client.stop_birth_sync()  # type: ignore[union-attr]
         if not payload.get("error"):
             status = str(payload.get("status", "") or "").strip().lower()
             message = str(payload.get("message", "") or "").strip()
@@ -527,6 +702,12 @@ def _stop_birth_training(
         elif progress_active:
             detail = str(payload.get("detail", "") or payload.get("error", "") or "").strip()
             messages.append(f"Backend stop: {detail}" if detail else "Backend stop mislukt.")
+    elif birth_service is not None and (birth_thread_running or progress_active or birth_service.is_stopping()):
+        result = birth_service.stop_birth()
+        status = str(result.get("status", "") or "").strip().lower()
+        message = str(result.get("message", "") or "").strip()
+        messages.append(message or f"Birth stop: {status or 'unknown'}")
+        any_action = status in {"stopped", "stopping"}
 
     first_boot_manager.request_pause()
 
@@ -549,6 +730,113 @@ def _stop_birth_training(
 def _is_history_unavailable(progress: dict[str, Any], stage: str) -> bool:
     phase = str(progress.get("phase", "") or "").strip().lower()
     return stage == "history_unavailable" or phase == "loading_history_failed"
+
+
+def _is_checkpoint_available(progress: dict[str, Any], stage: str) -> bool:
+    return str(stage or "").strip().lower() == "checkpoint_available"
+
+
+def _render_checkpoint_available_panel(
+    *,
+    first_boot_manager: FirstBootManager,
+    progress: dict[str, Any],
+    settings: dict[str, Any],
+    birth_service: BirthService | None,
+    backend_client: BackendClient | None,
+) -> None:
+    ckpt_trades = int(progress.get("checkpoint_trades", 0) or progress.get("cumulative_trades", 0) or 0)
+    ckpt_mode = str(progress.get("checkpoint_mode", "") or "").strip().lower() or "onbekend"
+    desired_mode = str(progress.get("requested_training_mode", "") or "").strip().lower()
+    target_trades = int(
+        progress.get("target_trades")
+        or settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
+        or FIRST_BOOT_DEFAULT_TRADES
+    )
+    st.warning("Checkpoint gevonden — hervatten vereist dezelfde training mode en trade target.")
+    st.caption(
+        f"Checkpoint: {ckpt_trades:,} trades, mode `{ckpt_mode}`. "
+        f"Gevraagde start: mode `{desired_mode or 'certified'}`, target {target_trades:,}."
+    )
+    msg = str(progress.get("message", "") or "").strip()
+    if msg:
+        st.caption(f"Details: {msg}")
+
+    resume_col, fresh_col = st.columns(2)
+    with resume_col:
+        if st.button("Hervat practice-checkpoint", key="birth_resume_practice_ckpt", use_container_width=True):
+            _arm_explicit_birth_start()
+            ok, msg_resume = _start_birth_training(
+                birth_service=birth_service,
+                backend_client=backend_client,
+                workspace_root=first_boot_manager.workspace_root,
+                target_trades=target_trades,
+                force=False,
+                practice_mode=True,
+            )
+            if ok:
+                st.session_state["first_boot_last_start_failed"] = False
+                st.session_state["first_boot_settings_locked"] = True
+                st.success(msg_resume)
+            else:
+                st.session_state["first_boot_last_start_failed"] = True
+                st.session_state["first_boot_last_start_error"] = msg_resume
+                st.error(msg_resume)
+            st.rerun()
+    with fresh_col:
+        if st.button("Opnieuw (certified, force)", key="birth_force_fresh_ckpt", use_container_width=True):
+            _arm_explicit_birth_start()
+            ok, msg_fresh = _start_birth_training(
+                birth_service=birth_service,
+                backend_client=backend_client,
+                workspace_root=first_boot_manager.workspace_root,
+                target_trades=target_trades,
+                force=True,
+                practice_mode=False,
+            )
+            if ok:
+                st.session_state["first_boot_last_start_failed"] = False
+                st.session_state["first_boot_settings_locked"] = True
+                st.success(msg_fresh)
+            else:
+                st.session_state["first_boot_last_start_failed"] = True
+                st.session_state["first_boot_last_start_error"] = msg_fresh
+                st.error(msg_fresh)
+            st.rerun()
+    st.divider()
+
+
+def _is_simulation_stall(progress: dict[str, Any], stage: str) -> bool:
+    phase = str(progress.get("phase", "") or "").strip().lower()
+    if phase in {"simulation_stall", "simulation_stall_retry", "simulation_stall_grace"}:
+        return True
+    return str(stage or "").strip().lower() == "failed" and phase == "simulation_stall"
+
+
+def _render_simulation_stall_panel(
+    *,
+    progress: dict[str, Any],
+    first_boot_manager: FirstBootManager,
+) -> None:
+    st.error("SIM-chunk leverde geen trades (simulation stall).")
+    remaining = progress.get("remaining_trades")
+    if isinstance(remaining, int) and remaining > 0:
+        st.warning(f"Nog ongeveer {remaining:,} trades nodig om het doel te halen.")
+    msg = str(progress.get("message", "") or "").strip()
+    if msg:
+        st.caption(f"Details: {msg}")
+    retryable = bool(progress.get("retryable", True))
+    if retryable:
+        st.info(
+            "Dit is herstelbaar: start **Birth Phase** opnieuw om vanaf het checkpoint "
+            "de laatste chunk(s) opnieuw te proberen."
+        )
+    diag = progress.get("stall_diagnostics")
+    if isinstance(diag, dict) and diag:
+        with st.expander("Stall-diagnostiek", expanded=False):
+            st.json(diag)
+    checkpoint = first_boot_manager.workspace_root / "state" / "lumina_birth_checkpoint.json"
+    if checkpoint.exists():
+        st.caption(f"Checkpoint: `{checkpoint}`")
 
 
 def _render_history_unavailable_panel(
@@ -634,17 +922,30 @@ def _render_history_unavailable_panel(
 def _birth_training_active(
     *,
     birth_service: BirthService | None,
+    backend_client: BackendClient | None = None,
+    workspace_root: Path | None = None,
     process_alive: bool,
     progress: dict[str, Any] | None = None,
     stage: str = "",
 ) -> bool:
+    if backend_client is not None and workspace_root is not None:
+        status_payload = _resolve_birth_status_payload(
+            birth_service=birth_service,
+            backend_client=backend_client,
+            workspace_root=workspace_root,
+        )
+        if _birth_status_is_running(status_payload):
+            return True
     if birth_service is not None and birth_service.is_running():
         return True
     if birth_service is not None and birth_service.is_stopping():
         return True
     if process_alive:
         return True
-    if progress is not None and _progress_recently_active(progress, stage=stage):
+    if workspace_root is not None and birth_training_is_live(
+        workspace_root,
+        thread_running=bool(birth_service.is_running()) if birth_service is not None else False,
+    ):
         return True
     return False
 
@@ -655,9 +956,20 @@ def render_first_boot_tab(
     process_manager: ProcessManager | None = None,
     backend_client: BackendClient | None = None,
     birth_service: BirthService | None = None,
+    skip_autorefresh: bool = False,
 ) -> None:
     # BIRTH ENGINE 2026-05-17
     st.subheader("Birth Phase Training")
+    if skip_autorefresh:
+        st.caption("Verversing via **Auto-refresh command center** hierboven.")
+        _render_first_boot_body(
+            first_boot_manager,
+            process_manager=process_manager,
+            backend_client=backend_client,
+            birth_service=birth_service,
+        )
+        return
+
     auto_refresh = st.checkbox("Auto-refresh (10s)", value=False, key="lumina_first_boot_tab_autorefresh")
 
     def _first_boot_body() -> None:
@@ -684,22 +996,32 @@ def _render_first_boot_body(
     show_summary = first_boot_manager.should_show_completion_summary(progress)
     ppo_phase = first_boot_manager.is_ppo_training_phase(progress)
     process_alive = bool(process_manager.is_process_alive()) if process_manager is not None else False
-    birth_running = bool(birth_service.is_running()) if birth_service is not None else False
-    progress_recently_active = _progress_recently_active(progress, stage=stage)
+    root = first_boot_manager.workspace_root
+    birth_status_payload = _resolve_birth_status_payload(
+        birth_service=birth_service,
+        backend_client=backend_client,
+        workspace_root=root,
+    )
+    thread_running = bool(birth_service.is_running()) if birth_service is not None else False
     training_active = _birth_training_active(
         birth_service=birth_service,
+        backend_client=backend_client,
+        workspace_root=root,
         process_alive=process_alive,
         progress=progress,
         stage=stage,
     )
-    if birth_running:
+    birth_running = training_active and (
+        _birth_status_is_running(birth_status_payload) or thread_running
+    )
+    if training_active:
         st.session_state["first_boot_settings_locked"] = True
-    elif not training_active:
+    else:
         st.session_state["first_boot_settings_locked"] = False
 
     settings_locked = bool(st.session_state.get("first_boot_settings_locked", False))
-    stale_running_stage = stage in _RUNNING_STAGES and not training_active and not progress_recently_active
-    orphan_progress_active = progress_recently_active and not birth_running and not process_alive
+    stale_running_stage = stage in _RUNNING_STAGES and not training_active
+    orphan_progress_active = False
 
     # Form sync must run before widgets are created (Streamlit forbids mutating widget keys after bind).
     if st.session_state.pop("first_boot_rehydrate", False):
@@ -760,9 +1082,22 @@ def _render_first_boot_body(
             backend_client=backend_client,
         )
 
+    if _is_simulation_stall(progress, stage) and not training_active:
+        _render_simulation_stall_panel(progress=progress, first_boot_manager=first_boot_manager)
+
+    if _is_checkpoint_available(progress, stage) and not training_active:
+        _render_checkpoint_available_panel(
+            first_boot_manager=first_boot_manager,
+            progress=progress,
+            settings=settings,
+            birth_service=birth_service,
+            backend_client=backend_client,
+        )
+
     # Settings
     st.markdown("#### Training Instellingen")
     col1, col2 = st.columns(2)
+    default_training_trades = int(settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES))
 
     with col1:
         training_trades = _slider_with_input(
@@ -770,9 +1105,9 @@ def _render_first_boot_body(
             key="first_boot_training_trades",
             min_value=FIRST_BOOT_TRAINING_TRADES_MIN,
             max_value=FIRST_BOOT_TRAINING_TRADES_MAX,
-            default_value=int(settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)),
+            default_value=default_training_trades,
             step=FIRST_BOOT_LAUNCHER_TRADE_STEP,
-            help_text=help_for("training_trades"),
+            help_text=_training_trades_help_text(fallback_trades=default_training_trades),
             disabled=settings_locked,
         )
     with col2:
@@ -796,10 +1131,13 @@ def _render_first_boot_body(
             key="first_boot_max_real_days",
             min_value=30,
             max_value=3650,
-            default_value=int(settings.get("max_real_days", 365)),
+            default_value=int(settings.get("max_real_days", 30)),
             step=5,
             help_text=help_for("max_real_days"),
             disabled=settings_locked,
+        )
+        st.caption(
+            "Laadt alle 1-min bars in dit venster (niet afgekapt op trade-count)."
         )
     with col4:
         _init_checkbox_from_settings(
@@ -843,7 +1181,17 @@ def _render_first_boot_body(
     dirty_settings = not first_boot_manager.is_user_configured() or not settings_match_saved
 
     estimate_days = estimate_first_boot_real_days(int(training_trades))
-    st.caption(f"Geschatte benodigde echte historische dagen: {estimate_days}")
+    st.caption(
+        "Geschatte benodigde echte historische dagen: "
+        f"~{estimate_days:,} (ceil(trades/{FIRST_BOOT_EST_TRADES_PER_REAL_DAY}))."
+    )
+    st.caption(
+        "Referentie: 200.000 -> ~445 dagen, 500.000 -> ~1.112 dagen, 1.000.000 -> ~2.223 dagen."
+    )
+    st.caption(
+        "Realistische verwachting: hogere targets betekenen meer historical cycling; "
+        "synthetic top-up kan nodig worden als het real-data venster te klein is."
+    )
     duration_estimate = _cached_duration_estimate(
         training_trades=int(training_trades),
         max_real_days=int(max_real_days),
@@ -965,13 +1313,78 @@ def _render_first_boot_body(
     elif dirty_settings:
         st.info("Start Birth Phase is pas actief nadat je op Save Settings hebt geklikt.")
 
+    completed_trades = resolve_first_boot_completed_trades(progress)
+    target_trades = int(
+        resolve_first_boot_target_from_progress(progress)
+        or settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
+        or 0
+    )
+    if progress:
+        _render_live_snapshot(
+            progress=progress,
+            completed_trades=completed_trades,
+            target_trades=target_trades,
+            stage=stage,
+        )
+
     if birth_running:
-        birth_status = birth_service.get_status() if birth_service is not None else {}
-        elapsed = birth_status.get("elapsed_seconds")
+        elapsed = birth_status_payload.get("elapsed_seconds")
         elapsed_txt = f" ({elapsed}s)" if elapsed is not None else ""
-        st.success(f"Birth Phase status: actief{elapsed_txt}.")
+        if stage == "loading_data":
+            load_phase = str(progress.get("phase", "") or "").strip().lower()
+            bars_loaded = progress.get("bars_loaded")
+            chunk = progress.get("loading_chunk")
+            chunk_total = progress.get("loading_chunks_total")
+            if load_phase == "expanding_ticks":
+                pct_txt = ""
+                if isinstance(chunk, int) and isinstance(chunk_total, int) and chunk_total > 0:
+                    pct_txt = f" — {chunk:,}/{chunk_total:,} bars ({100 * chunk // max(1, chunk_total)}%)"
+                st.success(
+                    f"Birth Phase status: ticks genereren uit OHLC-bars{pct_txt}{elapsed_txt}. "
+                    "Daarna start de eerste simulatie-chunk."
+                )
+            else:
+                chunk_txt = ""
+                if isinstance(chunk, int) and isinstance(chunk_total, int) and chunk_total > 0:
+                    chunk_txt = f" — chunk {chunk}/{chunk_total}"
+                if isinstance(bars_loaded, int) and bars_loaded > 0:
+                    chunk_txt += f", {bars_loaded:,} bars"
+                st.success(
+                    f"Birth Phase status: historische data laden{chunk_txt}{elapsed_txt}. "
+                    "Dit kan enkele minuten duren bij veel dagen."
+                )
+        elif stage in {"historical_loaded", "pipeline_boot"}:
+            ticks_loaded = progress.get("ticks_loaded")
+            days_loaded = progress.get("actual_real_days_loaded")
+            extra = ""
+            if isinstance(ticks_loaded, int) and ticks_loaded > 0:
+                extra = f" — {ticks_loaded:,} ticks"
+            if isinstance(days_loaded, int) and days_loaded > 0:
+                extra += f", ~{days_loaded} dagen"
+            st.success(
+                f"Birth Phase status: data geladen, simulatie voorbereiden{extra}{elapsed_txt}."
+            )
+        elif stage == "training_running" and int(progress.get("trades_done", 0) or 0) == 0:
+            sim_ticks = int(progress.get("sim_ticks_processed", 0) or 0)
+            if sim_ticks > 0:
+                st.success(
+                    f"Birth Phase status: simulatie actief — {sim_ticks:,} ticks verwerkt, "
+                    f"nog geen afgeronde trade{elapsed_txt}."
+                )
+            else:
+                st.success(
+                    f"Birth Phase status: eerste simulatie-chunk draait{elapsed_txt} "
+                    "(trades tellen op na afloop chunk)."
+                )
+        else:
+            st.success(f"Birth Phase status: actief{elapsed_txt}.")
     elif birth_service is not None and birth_service.is_stopping():
         st.warning("Birth Phase status: stop aangevraagd — wacht op checkpoint.")
+    elif stage == "interrupted":
+        st.warning(
+            "Vorige Birth Phase is onderbroken (bijv. na herstart). "
+            "Klik **Start Birth Phase** om opnieuw te beginnen."
+        )
     elif orphan_progress_active:
         st.warning(
             "Birth Phase lijkt nog actief (recente progress op schijf) maar geen lokale thread. "
@@ -984,6 +1397,8 @@ def _render_first_boot_body(
         )
     elif _is_history_unavailable(progress, stage):
         st.error("Birth status: real historical data tijdelijk niet beschikbaar.")
+    elif _is_simulation_stall(progress, stage):
+        st.error("Birth status: simulation stall — herstart Birth Phase om vanaf checkpoint verder te gaan.")
     elif process_alive:
         st.success("Legacy runtime-bot actief (lumina_runtime.py).")
     elif ppo_interrupted:
@@ -1002,6 +1417,41 @@ def _render_first_boot_body(
             "Birth status: laatste startpoging mislukt."
             + (f" {last_error}" if last_error else " Controleer `logs/launcher_runtime_stderr.log`.")
         )
+    elif progress and stage in _RUNNING_STAGES:
+        pulse = resolve_birth_training_pulse(
+            progress,
+            birth_running=birth_running,
+            birth_stopping=bool(birth_service is not None and birth_service.is_stopping()),
+            process_alive=process_alive,
+        )
+        if pulse == "active":
+            if stage == "loading_data":
+                load_phase = str(progress.get("phase", "") or "").strip().lower()
+                if load_phase == "expanding_ticks":
+                    st.info(
+                        f"Birth status: ticks genereren (stage `{stage}`, phase `{load_phase}`) — "
+                        "heartbeat per 500 bars."
+                    )
+                else:
+                    st.info(
+                        f"Birth status: historische data laden (stage `{stage}`) — "
+                        "heartbeat wordt bijgewerkt per Crosstrade-chunk."
+                    )
+            else:
+                st.success(f"Birth status: actief (stage `{stage}`).")
+        elif pulse == "stale":
+            if stage == "loading_data":
+                st.warning(
+                    f"Birth status: laden duurt lang (stage `{stage}`) — "
+                    "controleer Crosstrade-token en logs als dit >10 minuten duurt."
+                )
+            else:
+                st.warning(
+                    f"Birth status: progress verouderd (stage `{stage}`) — "
+                    "wacht op nieuwe checkpoint of controleer BirthService."
+                )
+        else:
+            st.info(f"Birth status: stage `{stage}` — wacht op eerste progress-update.")
     else:
         st.info("Birth status: niet actief.")
 
@@ -1042,23 +1492,32 @@ def _render_first_boot_body(
         st.progress(pct, text=f"Stage: {stage}")
         if phase:
             st.caption(f"Phase: {phase}")
-        _render_training_mode_warning(progress)
+        if _is_simulation_stall(progress, stage):
+            retryable = bool(progress.get("retryable", True))
+            if retryable:
+                st.warning(
+                    "Simulation stall: laatste SIM-chunk(s) leverden geen trades. "
+                    "Start Birth Phase opnieuw om vanaf het checkpoint te hervatten."
+                )
+            remaining = progress.get("remaining_trades")
+            if isinstance(remaining, int) and remaining > 0:
+                st.caption(f"Resterende trades (checkpoint): ~{remaining:,}")
         _render_certified_data_metrics(progress, estimate_days=estimate_days)
-        completed_trades = resolve_first_boot_completed_trades(progress)
-        target = int(settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES))
         has_saved_settings = first_boot_manager.is_user_configured()
-        st.metric("Trades Completed", f"{completed_trades:,}")
         if has_saved_settings:
-            st.caption(f"Target trades: {target:,}")
+            st.caption(f"Target trades: {target_trades:,} (sync met status bar)")
         else:
             st.caption("Target trades: nog niet geconfigureerd (klik eerst op Save Settings).")
+        if str(progress.get("training_mode", "") or "").strip().lower() == "practice":
+            with st.expander("Practice-run details", expanded=False):
+                _render_training_mode_warning(progress)
         if is_sim_trades_complete(progress):
             st.caption("SIM-training: afgerond voor geconfigureerd trade-aantal.")
         if ppo_phase and not show_summary:
             _render_birth_phase_status_banner(
                 progress=progress,
                 completed_trades=completed_trades,
-                target_trades=target,
+                target_trades=target_trades,
                 ppo_phase=ppo_phase,
             )
             _render_ppo_progress_bars(progress)

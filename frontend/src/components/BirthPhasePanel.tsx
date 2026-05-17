@@ -16,6 +16,20 @@ const BG_VOID = "#0a0a0f";
 const ACCENT_CYAN = "#00f0ff";
 const ACCENT_GREEN = "#00ff9f";
 const DEFAULT_TARGET_TRADES = 25_000;
+const EST_TRADES_PER_REAL_DAY = 450;
+
+const ACTIVE_PROGRESS_STAGES = new Set([
+  "detected",
+  "loading_data",
+  "training_running",
+  "pipeline_boot",
+  "historical_loaded",
+  "synthetic_top_up",
+  "parallel_simulation",
+  "ppo_training",
+  "deferred_calendar",
+  "simulation_stall_retry",
+]);
 
 function formatCompact(n: number): string {
   if (!Number.isFinite(n)) {
@@ -29,6 +43,10 @@ function formatCompact(n: number): string {
     return `${(n / 1000).toFixed(abs >= 100_000 ? 0 : 1)}k`;
   }
   return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function estimateRealDays(trainingTrades: number): number {
+  return Math.max(1, Math.ceil(Math.max(1, Number(trainingTrades) || 1) / EST_TRADES_PER_REAL_DAY));
 }
 
 function statusTone(status: string): { label: string; color: string; pulse: boolean } {
@@ -60,6 +78,7 @@ export default function BirthPhasePanel(): JSX.Element {
   const progress = status?.progress;
   const tradesDone = progress?.trades_done ?? 0;
   const tradesTarget = progress?.target_trades ?? targetTrades;
+  const estimatedRealDays = estimateRealDays(targetTrades);
   const progressPct = Math.max(
     0,
     Math.min(
@@ -69,6 +88,19 @@ export default function BirthPhasePanel(): JSX.Element {
   );
   const stage = progress?.stage?.trim() || "not_started";
   const ppoSteps = progress?.ppo_steps ?? 0;
+  const crossProcessActive =
+    rawStatus.toLowerCase() === "idle" && ACTIVE_PROGRESS_STAGES.has(stage.toLowerCase());
+  const displayTone = crossProcessActive
+    ? { label: "Training mogelijk actief (andere runner)", color: ACCENT_CYAN, pulse: true }
+    : tone;
+  const progressMessage =
+    typeof (progress as { message?: unknown } | undefined)?.message === "string"
+      ? String((progress as { message?: string }).message)
+      : status?.message ?? "";
+  const remainingTrades =
+    typeof (progress as { remaining_trades?: unknown } | undefined)?.remaining_trades === "number"
+      ? Number((progress as { remaining_trades?: number }).remaining_trades)
+      : null;
   const artifactsOk = Boolean(status?.artifacts_ok);
   const artifactsLabel = status?.artifacts_label ?? (artifactsOk ? "Artifacts OK" : "Artifacts missing");
   const phaseLabel = status?.phase_label ?? "Birth Phase";
@@ -121,23 +153,26 @@ export default function BirthPhasePanel(): JSX.Element {
             <span
               className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider"
               style={{
-                borderColor: `${tone.color}44`,
-                color: tone.color,
-                background: `${tone.color}11`,
+                borderColor: `${displayTone.color}44`,
+                color: displayTone.color,
+                background: `${displayTone.color}11`,
               }}
             >
-              {tone.pulse ? (
+              {displayTone.pulse ? (
                 <span className="relative flex h-2 w-2">
                   <motion.span
                     className="absolute inline-flex h-full w-full rounded-full"
-                    style={{ backgroundColor: tone.color }}
+                    style={{ backgroundColor: displayTone.color }}
                     animate={reduceMotion ? {} : { scale: [1, 2.6], opacity: [0.7, 0] }}
                     transition={{ duration: 1.3, repeat: Infinity }}
                   />
-                  <span className="relative inline-flex h-2 w-2 rounded-full" style={{ backgroundColor: tone.color }} />
+                  <span
+                    className="relative inline-flex h-2 w-2 rounded-full"
+                    style={{ backgroundColor: displayTone.color }}
+                  />
                 </span>
               ) : null}
-              {tone.label}
+              {displayTone.label}
             </span>
             <motion.button
               type="button"
@@ -208,6 +243,17 @@ export default function BirthPhasePanel(): JSX.Element {
                 onChange={(e) => setTargetTrades(Number(e.target.value) || DEFAULT_TARGET_TRADES)}
                 className="mt-2 w-full rounded-xl border border-[#00f0ff]/25 bg-black/70 px-4 py-3 font-mono text-white outline-none focus:border-[#00f0ff]/55"
               />
+              <p className="mt-2 text-xs text-zinc-400">
+                Geschatte echte historische dagen: ~{estimatedRealDays.toLocaleString()} (ceil(trades/
+                {EST_TRADES_PER_REAL_DAY})).
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Referentie: 200.000 - ~445 dagen, 500.000 - ~1.112 dagen, 1.000.000 - ~2.223 dagen.
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Realistische verwachting: hogere targets vragen meer historical cycling; synthetic top-up kan nodig zijn
+                als het real-data venster te klein is.
+              </p>
             </label>
             <div className="flex flex-wrap gap-2">
               <motion.button
@@ -300,6 +346,17 @@ export default function BirthPhasePanel(): JSX.Element {
               <h3 className="font-semibold text-white">Live status</h3>
             </motion.div>
             <p className="mt-3 font-mono text-sm text-zinc-400">{rawStatus}</p>
+            {crossProcessActive ? (
+              <p className="mt-2 text-sm text-amber-200/90">
+                Status is idle in dit proces, maar progress op schijf toont actieve stage{" "}
+                <code className="text-zinc-300">{stage}</code>. Start training via dezelfde backend
+                (POST /api/birth/start).
+              </p>
+            ) : null}
+            {progressMessage ? <p className="mt-2 text-sm text-zinc-500">{progressMessage}</p> : null}
+            {remainingTrades != null && remainingTrades > 0 ? (
+              <p className="mt-1 text-xs text-zinc-500">Resterende trades: ~{remainingTrades.toLocaleString()}</p>
+            ) : null}
             {status?.error ? <p className="mt-2 text-sm text-red-300">{status.error}</p> : null}
           </div>
           <motion.div

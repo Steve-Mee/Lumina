@@ -18,6 +18,7 @@ def _build_st_mock() -> MagicMock:
     st.slider.return_value = 20
     st.checkbox.return_value = False
     st.sidebar.selectbox.return_value = "All"
+    st.tabs.return_value = [MagicMock() for _ in range(9)]
     return st
 
 
@@ -36,6 +37,7 @@ def test_monitoring_dashboard_tab_renders_without_exception() -> None:
     # wanneer
     with patch.dict(sys.modules, {"streamlit": st_mock}):
         with patch("requests.get", return_value=mock_resp):
+            sys.modules[spec.name] = module  # type: ignore[union-attr]
             spec.loader.exec_module(module)  # type: ignore[union-attr]
             module.render_monitoring_dashboard_tab("http://localhost:8000", title="Monitoring Dashboard")
 
@@ -45,12 +47,11 @@ def test_monitoring_dashboard_tab_renders_without_exception() -> None:
     assert "Training History" in calls
 
 
-def test_monitoring_dashboard_section_choice_gates_content() -> None:
+def test_monitoring_dashboard_inline_tabs_render_all_sections() -> None:
     frontend_file = Path(__file__).resolve().parents[1] / "lumina_os" / "frontend" / "monitoring_dashboard.py"
     spec = importlib.util.spec_from_file_location("__monitoring_dashboard_test_section__", frontend_file)
     module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
     st_mock = _build_st_mock()
-    st_mock.sidebar.selectbox.return_value = "B. First Boot Training Status"
 
     mock_resp = MagicMock()
     mock_resp.ok = False
@@ -59,9 +60,11 @@ def test_monitoring_dashboard_section_choice_gates_content() -> None:
 
     with patch.dict(sys.modules, {"streamlit": st_mock}):
         with patch("requests.get", return_value=mock_resp):
+            sys.modules[spec.name] = module  # type: ignore[union-attr]
             spec.loader.exec_module(module)  # type: ignore[union-attr]
             module.render_monitoring_dashboard_tab("http://localhost:8000", title="Monitoring Dashboard")
 
     calls = " ".join(str(c) for c in st_mock.markdown.call_args_list)
     assert "First Boot Training Status" in calls
-    assert "A. System Overview" not in calls
+    assert "A. System Overview" in calls
+    assert "time.sleep" not in frontend_file.read_text(encoding="utf-8")

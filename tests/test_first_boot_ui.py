@@ -8,10 +8,12 @@ from pathlib import Path
 import pytest
 
 from lumina_core.first_boot_ui import (
+    BIRTH_BARS_PER_TRADING_DAY,
     FIRST_BOOT_DEFAULT_MAX_REAL_DAYS,
     FIRST_BOOT_DEFAULT_TRADES,
     FIRST_BOOT_EST_TRADES_PER_REAL_DAY,
     FIRST_BOOT_HIGH_LOAD_ESTIMATE_DAYS,
+    FIRST_BOOT_MIN_REAL_DAYS,
     FIRST_BOOT_TRADE_MAX,
     FIRST_BOOT_TRADE_MIN,
     FIRST_BOOT_TRADE_STEP,
@@ -23,23 +25,41 @@ from lumina_core.first_boot_ui import (
     format_duration_range,
     is_high_load_estimate,
     normalize_first_boot_training_trades,
+    resolve_default_max_real_days,
+    resolve_historical_bar_limit,
 )
 
 
 @pytest.mark.unit
-def test_estimate_first_boot_real_days_matches_prompt_examples() -> None:
-    # Rough formula from LUMINA_CURSOR_FIRST_BOOT_REAL_DATA_PROMPT.md
-    assert estimate_first_boot_real_days(100_000) == 40
-    assert estimate_first_boot_real_days(300_000) == 120
-    assert estimate_first_boot_real_days(500_000) == 200
-    assert estimate_first_boot_real_days(1_000_000) == 400
-    assert estimate_first_boot_real_days(2_000_000) == 800
-    assert FIRST_BOOT_EST_TRADES_PER_REAL_DAY == 2500
+def test_estimate_first_boot_real_days_matches_engine_ssot() -> None:
+    assert FIRST_BOOT_EST_TRADES_PER_REAL_DAY == 450
+    assert estimate_first_boot_real_days(25_000) == 56
+    assert estimate_first_boot_real_days(100_000) == 223
+    assert estimate_first_boot_real_days(300_000) == 667
+    assert estimate_first_boot_real_days(500_000) == 1112
+    assert estimate_first_boot_real_days(1_000_000) == 2223
+    assert estimate_first_boot_real_days(2_000_000) == 4445
+
+
+@pytest.mark.unit
+def test_resolve_default_max_real_days_floor_and_estimate() -> None:
+    assert resolve_default_max_real_days(25_000) == max(FIRST_BOOT_MIN_REAL_DAYS, 56)
+    assert resolve_default_max_real_days(5_000) == FIRST_BOOT_MIN_REAL_DAYS
+    assert resolve_default_max_real_days(100_000) == max(FIRST_BOOT_MIN_REAL_DAYS, 223)
+
+
+@pytest.mark.unit
+def test_resolve_historical_bar_limit_no_25k_cap() -> None:
+    limit = resolve_historical_bar_limit(30)
+    assert limit is not None
+    assert limit == 30 * BIRTH_BARS_PER_TRADING_DAY
+    assert limit != 25_000
+    assert resolve_historical_bar_limit(90) == 90 * BIRTH_BARS_PER_TRADING_DAY
 
 
 @pytest.mark.unit
 def test_exceeds_max_real_days_window_default_config() -> None:
-    """Default max_real_days in config is 90; 1M trades → 400 estimated days → warn."""
+    """Default max_real_days in config is 90; large estimates should trigger a warning."""
     max_days = FIRST_BOOT_DEFAULT_MAX_REAL_DAYS
     assert exceeds_max_real_days_window(400, max_days) is True
     assert exceeds_max_real_days_window(80, max_days) is False

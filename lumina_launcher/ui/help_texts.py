@@ -16,7 +16,11 @@ HELP_TEXTS: dict[str, str] = {
     "runtime_trace": "Schrijft extra runtime trace events voor diagnose in de logs.",
     "runtime_trace_interval": "Throttle voor repetitieve runtime trace regels (in seconden).",
     "latency_sla": "SLA-drempel (ms) voor fast-path beslissingen bij hoge latency.",
-    "training_trades": "Aantal trades voor eerste trainingsronde; hoger = langer maar robuustere start.",
+    "training_trades": (
+        "Aantal trades voor eerste trainingsronde; hoger = langer maar robuustere start "
+        "(richtwaarde: ~450 trades per echte handelsdag; hoge targets vereisen vaak meer historical cycling "
+        "en kunnen synthetic top-up vragen als het real window beperkt is)."
+    ),
     "prefer_real_data_only": "Gebruik bij voorkeur alleen echte historische data tijdens first boot.",
     "max_real_days": "Maximum aantal historische dagen dat first-boot mag gebruiken.",
     "allow_minimal_synthetic_fallback": "Laat minimale synthetische aanvulling toe als echte data te schaars is.",

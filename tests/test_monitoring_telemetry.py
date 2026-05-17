@@ -12,6 +12,7 @@ from lumina_core import logging_utils
 def test_monitoring_telemetry_writers_create_expected_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # gegeven
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LUMINA_WORKSPACE_ROOT", str(tmp_path))
 
     # wanneer
     logging_utils.record_twin_decision_monitoring(

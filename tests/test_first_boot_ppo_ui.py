@@ -9,6 +9,10 @@ def test_first_boot_ui_uses_phase_specific_ppo_status() -> None:
     dashboard_src = (root / "lumina_launcher" / "ui" / "tabs" / "training_dashboard.py").read_text(encoding="utf-8")
 
     assert "_render_birth_phase_status_banner" in first_boot_src
+    assert "_render_sim_activity_panel" in first_boot_src
+    assert "sim_ticks_processed" in first_boot_src
+    assert "chunk_trades_partial" in first_boot_src
+    assert "Action source: policy" in first_boot_src
     assert "_render_ppo_progress_bars" in first_boot_src
     assert "Totaal PPO:" in first_boot_src
     assert "Huidige PPO-batch:" in first_boot_src
@@ -16,3 +20,5 @@ def test_first_boot_ui_uses_phase_specific_ppo_status() -> None:
     assert "PPO policy-training loopt nog" not in first_boot_src
     assert "SIM-deel is voltooid" not in dashboard_src
     assert "_render_ppo_progress_bars" in dashboard_src
+    luxury_src = (root / "lumina_os" / "frontend" / "dashboard_views.py").read_text(encoding="utf-8")
+    assert "SIM ACTIVE (0 trades)" in luxury_src

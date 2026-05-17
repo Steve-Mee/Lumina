@@ -27,12 +27,14 @@ async def start_birth(
     force: bool = Query(False),
     practice_mode: bool = Query(False),
     explicit_user_start: bool = Query(True),
+    continue_training: bool = Query(False),
 ) -> dict[str, Any]:
     return birth_service.start_birth(
         target_trades=target_trades,
         force=force,
         practice_mode=practice_mode,
         explicit_user_start=explicit_user_start,
+        continue_training=continue_training,
     )
 
 
