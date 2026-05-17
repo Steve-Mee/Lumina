@@ -78,6 +78,7 @@ def _render_first_boot(ctx: TabRenderContext) -> None:
         ctx.services.first_boot_manager,
         process_manager=ctx.services.process_manager,
         backend_client=ctx.services.backend_client,
+        birth_service=ctx.services.birth_service,
     )
 
 

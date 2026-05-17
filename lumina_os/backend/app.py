@@ -20,6 +20,7 @@ from backend.database import CommunityBible, CommunityReflection, Participant, S
 from backend.models import BibleUpload, ReflectionUpload, TradeSubmit
 from backend.monitoring_endpoints import router as monitoring_router, set_observability_service
 from backend.evolution_endpoints import router as evolution_router
+from backend.birth_endpoints import router as birth_router
 from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
 from backend.evolution_endpoints import set_security_module as set_evolution_security_module
 from lumina_core.broker.broker_bridge import broker_factory
@@ -38,6 +39,10 @@ _LUMINA_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # Ensure backend sees the same env as launcher/runtime.
 load_dotenv(_LUMINA_REPO_ROOT / ".env")
 load_dotenv()
+
+from lumina_launcher.services.birth_service import configure_birth_workspace
+
+configure_birth_workspace(_LUMINA_REPO_ROOT)
 
 
 def _embedded_ui_dist_dir() -> Path:
@@ -139,6 +144,7 @@ set_observability_service(_obs)
 set_evolution_obs_service(_obs)
 app.include_router(monitoring_router)
 app.include_router(evolution_router)
+app.include_router(birth_router)
 
 app.add_middleware(LuminaEmbeddedUIMiddleware, dist_dir=_UI_DIST)
 if (_UI_DIST / "index.html").is_file():

@@ -84,6 +84,9 @@ function deriveOperationalMode(metrics: LuminaMetrics): string {
   if (p.includes("ppo") || p.includes("training")) {
     return "PPO training corridor";
   }
+  if (p.includes("birth") || p.includes("first_boot") || p.includes("first boot")) {
+    return "Birth Phase training";
+  }
   if (p.includes("evolution")) {
     return "Evolution / promotion";
   }

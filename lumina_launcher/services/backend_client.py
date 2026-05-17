@@ -148,6 +148,13 @@ class BackendClient:
     async def delete_demo_data(self) -> dict[str, Any]:
         return await self._request("DELETE", "/demo-data")
 
+    def start_birth_sync(self, target_trades: int = 25000, force: bool = False) -> dict[str, Any]:
+        params = f"target_trades={int(target_trades)}&force={'true' if force else 'false'}"
+        return self._sync_request("POST", f"/api/birth/start?{params}")
+
+    def get_birth_status_sync(self) -> dict[str, Any]:
+        return self._sync_request("GET", "/api/birth/status")
+
     def emergency_flatten_and_cancel(self) -> dict[str, Any]:
         """Production safety action: backend emergency order stop."""
         response = self._sync_request("POST", "/orders/emergency-stop")

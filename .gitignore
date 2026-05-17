@@ -54,18 +54,15 @@ old/
 lumina_launcher.py.old
 
 # Runtime generated data
-logs/*.csv
-logs/*.log
-logs/structured_errors.jsonl
-logs/trade_fill_audit.jsonl
-logs/security_audit.jsonl
-logs/evolution_metrics.jsonl
-logs/reality_gap.jsonl
+logs/
+!logs/.gitkeep
 journal/simulator/*.json
+
+# Frontend production build (embedded React under /ui)
+frontend/dist/
 state/lumina_thought_log.jsonl
 state/thought_log.jsonl
 state/thought_log.jsonl.corrupt.*
-logs/llm_decisions.jsonl
 state/agent_decision_log.jsonl
 state/live_stream.jsonl
 state/trade_reconciler_status.json
@@ -84,6 +81,7 @@ lumina_analyse._*
 
 # Birth-engine integration scratch (canonical code lives in ppo_trainer.py + lumina_birth_engine.py)
 lumina_core/ppo_trainer_birth_extensions.py
+LUMINA_BIRTH_ENGINE_INTEGRATION_GUIDE.md
 
 # Local reset snapshots (blank-state script); never commit
 backups/

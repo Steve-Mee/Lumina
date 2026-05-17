@@ -24,6 +24,7 @@ from lumina_launcher.core.first_boot import (
 from lumina_launcher.core.pause_policy import resolve_pause_policy
 from lumina_launcher.core.process_manager import ProcessManager
 from lumina_launcher.services.backend_client import BackendClient
+from lumina_launcher.services.birth_service import BirthService
 from lumina_core.first_boot_ui import (
     FIRST_BOOT_DEFAULT_TRADES,
     FIRST_BOOT_LAUNCHER_TRADE_STEP,
@@ -233,11 +234,54 @@ def _slider_with_input(
     return selected_value
 
 
+def _start_birth_training(
+    *,
+    birth_service: BirthService | None,
+    backend_client: BackendClient | None,
+    workspace_root: Path,
+    target_trades: int,
+    force: bool = False,
+) -> tuple[bool, str]:
+    """Start Birth Phase via in-process BirthService, with HTTP fallback to FastAPI."""
+    if birth_service is not None:
+        birth_service.configure_workspace(workspace_root)
+        result = birth_service.start_birth(target_trades=int(target_trades), force=bool(force))
+        status = str(result.get("status", "")).strip().lower()
+        message = str(result.get("message", "") or "").strip()
+        if status in {"started", "already_running"}:
+            return True, message or "Birth Phase gestart."
+        return False, message or f"Birth Phase kon niet starten ({status or 'unknown'})."
+
+    if backend_client is not None:
+        payload = backend_client.start_birth_sync(target_trades=int(target_trades), force=bool(force))
+        if payload.get("error"):
+            detail = str(payload.get("detail", "") or "").strip()
+            return False, f"Backend: {payload.get('error')}" + (f" — {detail}" if detail else "")
+        status = str(payload.get("status", "")).strip().lower()
+        message = str(payload.get("message", "") or "").strip()
+        if status in {"started", "already_running"}:
+            return True, message or "Birth Phase gestart via backend."
+        return False, message or f"Backend weigerde start ({status or 'unknown'})."
+
+    return False, "Geen BirthService of backend-client beschikbaar."
+
+
+def _birth_training_active(
+    *,
+    birth_service: BirthService | None,
+    process_manager: ProcessManager | None,
+) -> bool:
+    if birth_service is not None and birth_service.is_running():
+        return True
+    return bool(process_manager.is_process_alive()) if process_manager is not None else False
+
+
 def render_first_boot_tab(
     first_boot_manager: FirstBootManager,
     *,
     process_manager: ProcessManager | None = None,
     backend_client: BackendClient | None = None,
+    birth_service: BirthService | None = None,
 ) -> None:
     # BIRTH ENGINE 2026-05-17
     st.subheader("Birth Phase Training")
@@ -248,6 +292,7 @@ def render_first_boot_tab(
             first_boot_manager,
             process_manager=process_manager,
             backend_client=backend_client,
+            birth_service=birth_service,
         )
 
     run_with_autorefresh(_first_boot_body, enabled=auto_refresh, interval_seconds=10)
@@ -258,6 +303,7 @@ def _render_first_boot_body(
     *,
     process_manager: ProcessManager | None = None,
     backend_client: BackendClient | None = None,
+    birth_service: BirthService | None = None,
 ) -> None:
     settings = first_boot_manager.read_settings()
     progress = first_boot_manager.read_progress()
@@ -265,9 +311,11 @@ def _render_first_boot_body(
     show_summary = first_boot_manager.should_show_completion_summary(progress)
     ppo_phase = first_boot_manager.is_ppo_training_phase(progress)
     process_alive = bool(process_manager.is_process_alive()) if process_manager is not None else False
-    if stage in _LOCKED_STAGES:
+    birth_running = bool(birth_service.is_running()) if birth_service is not None else False
+    training_active = _birth_training_active(birth_service=birth_service, process_manager=process_manager)
+    if stage in _LOCKED_STAGES or birth_running:
         st.session_state["first_boot_settings_locked"] = True
-    elif not progress and not process_alive:
+    elif not progress and not training_active:
         # Streamlit server session survives browser hard-refresh; drop stale pre-start lock.
         st.session_state["first_boot_settings_locked"] = False
 
@@ -465,14 +513,19 @@ def _render_first_boot_body(
             st.success("Instellingen opgeslagen.")
             st.rerun()
     with start_col:
-        start_disabled = process_manager is None or dirty_settings or settings_locked
-        if process_manager is not None and st.button(
-            "▶️ Start Bot (training)",
+        start_disabled = dirty_settings or settings_locked or (birth_service is None and backend_client is None)
+        if st.button(
+            "▶️ Start Birth Phase",
             type="primary",
             use_container_width=True,
             disabled=start_disabled,
         ):
-            ok, msg = process_manager.start_bot(mode="auto")
+            ok, msg = _start_birth_training(
+                birth_service=birth_service,
+                backend_client=backend_client,
+                workspace_root=first_boot_manager.workspace_root,
+                target_trades=int(training_trades),
+            )
             if ok:
                 st.session_state["first_boot_last_start_failed"] = False
                 st.session_state["first_boot_settings_locked"] = True
@@ -489,10 +542,15 @@ def _render_first_boot_body(
     if settings_locked:
         st.warning("Instellingen zijn vergrendeld tijdens/na gestart Birth Phase training.")
     elif dirty_settings:
-        st.info("Start Bot is pas actief nadat je op Save Settings hebt geklikt.")
+        st.info("Start Birth Phase is pas actief nadat je op Save Settings hebt geklikt.")
 
-    if process_alive:
-        st.success("Runtime status: actief. Birth Phase training draait of initialiseert.")
+    if birth_running:
+        birth_status = birth_service.get_status() if birth_service is not None else {}
+        elapsed = birth_status.get("elapsed_seconds")
+        elapsed_txt = f" ({elapsed}s)" if elapsed is not None else ""
+        st.success(f"Birth Phase status: actief{elapsed_txt}.")
+    elif process_alive:
+        st.success("Legacy runtime-bot actief (lumina_runtime.py).")
     elif ppo_interrupted:
         st.error(
             "Runtime status: PPO-training onderbroken — runtime is niet actief en policy ontbreekt nog. "
@@ -521,8 +579,8 @@ def _render_first_boot_body(
     )
     with st.expander("Waar vind ik logs en training-status?", expanded=not progress):
         st.markdown(
-            "Birth Phase training draait in de **runtime bot** (`lumina_runtime.py`), niet in Streamlit zelf. "
-            "Sla instellingen op en klik **Start Bot (training)**."
+            "Birth Phase training draait via **BirthService** (achtergrondthread + LuminaBirthEngine), niet in Streamlit zelf. "
+            "Sla instellingen op en klik **Start Birth Phase**."
         )
         for path in log_paths:
             exists = "✓" if path.exists() else "—"

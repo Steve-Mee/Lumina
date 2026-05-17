@@ -28,6 +28,7 @@ from lumina_launcher.observability import ensure_run_id, log_event, timed_event
 from lumina_launcher.services.backend_client import BackendClient
 from lumina_launcher.services.hardware_service import HardwareService
 from lumina_launcher.services.model_service import ModelService
+from lumina_launcher.services.birth_service import BirthService, birth_service, configure_birth_workspace
 from lumina_launcher.ui.components.presence_strip import render_presence_strip
 from lumina_launcher.ui.help_texts import help_for
 from lumina_launcher.ui.setup_wizard import render_setup_wizard
@@ -38,6 +39,7 @@ from lumina_launcher.ui.tabs.training_dashboard import render_training_dashboard
 logger = logging.getLogger(__name__)
 
 _LAUNCHER_ROOT = Path(__file__).resolve().parents[1]
+configure_birth_workspace(_LAUNCHER_ROOT)
 _RUNTIME_ENTRY = Path("lumina_core/engine/runtime_entrypoint.py")
 _STATE_PATH = _LAUNCHER_ROOT / "state" / "lumina_sim_state.json"
 _TRACE_INTERVAL_OPTIONS = [0, 1, 2, 5, 10]
@@ -117,6 +119,7 @@ class LauncherServices:
     hardware_service: HardwareService
     model_service: ModelService
     backend_client: BackendClient
+    birth_service: BirthService
 
 
 @st.cache_resource
@@ -133,6 +136,7 @@ def _get_services() -> LauncherServices:
         hardware_service=HardwareService(_LAUNCHER_ROOT),
         model_service=ModelService(_LAUNCHER_ROOT / "lumina_model_catalog.json"),
         backend_client=BackendClient(),
+        birth_service=birth_service,
     )
 
 
@@ -256,18 +260,22 @@ def _render_first_boot_home(
     auto_start = st.session_state.pop("lumina_auto_start_birth_after_setup", False)
     if not show_setup_wizard and services.first_boot_manager.artifacts_missing():
         auto_start = auto_start or not st.session_state.get("lumina_birth_auto_start_attempted")
-    if auto_start and not services.process_manager.is_process_alive():
+    if auto_start and not services.birth_service.is_running():
         st.session_state["lumina_birth_auto_start_attempted"] = True
-        ok, msg = services.process_manager.start_bot(mode="auto")
-        if ok:
+        settings = services.first_boot_manager.read_settings()
+        target_trades = int(settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES))
+        services.birth_service.configure_workspace(services.first_boot_manager.workspace_root)
+        result = services.birth_service.start_birth(target_trades=target_trades)
+        status = str(result.get("status", "")).strip().lower()
+        if status in {"started", "already_running"}:
             st.session_state["first_boot_settings_locked"] = True
-            st.success(f"Birth Phase training gestart: {msg}")
+            st.success(f"Birth Phase training gestart: {result.get('message', '')}")
         else:
             st.session_state["first_boot_last_start_failed"] = True
-            st.session_state["first_boot_last_start_error"] = msg
-            st.error(f"Birth Phase kon niet starten: {msg}")
-    elif auto_start and services.process_manager.is_process_alive():
-        st.info("Runtime draait al; Birth Phase training wordt hervat.")
+            st.session_state["first_boot_last_start_error"] = str(result.get("message", status))
+            st.error(f"Birth Phase kon niet starten: {result.get('message', status)}")
+    elif auto_start and services.birth_service.is_running():
+        st.info("Birth Phase draait al; training wordt hervat.")
 
     tabs = st.tabs(["Birth Phase", "Overview"])
     with tabs[0]:
@@ -275,6 +283,7 @@ def _render_first_boot_home(
             services.first_boot_manager,
             process_manager=services.process_manager,
             backend_client=services.backend_client,
+            birth_service=services.birth_service,
         )
     with tabs[1]:
         render_training_dashboard_tab(
