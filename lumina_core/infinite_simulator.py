@@ -224,6 +224,11 @@ class InfiniteSimulator:
         max_real_days: int,
         allow_minimal_synthetic_fallback: bool = False,
     ) -> dict[str, Any]:
+        # BIRTH ENGINE 2026-05-17
+        logger.warning(
+            "InfiniteSimulator.run_first_boot_training is deprecated for normal runtime flow; "
+            "use LuminaBirthEngine as canonical first-boot path."
+        )
         start = time.time()
         run_id = datetime.now(timezone.utc).strftime("fb-%Y%m%d%H%M%S")
         requested_trades = normalize_first_boot_training_trades(target_trades)

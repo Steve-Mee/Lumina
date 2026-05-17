@@ -22,7 +22,11 @@ from lumina_core.first_boot_progress import (
     resolve_first_boot_completed_trades,
     resolve_first_boot_target_trades,
 )
-from lumina_os.frontend.http_utils import is_backend_unreachable, log_fetch_failure
+from lumina_os.frontend.http_utils import (
+    is_backend_unreachable,
+    log_fetch_failure,
+    resolve_dashboard_api_key,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -32,8 +36,10 @@ _JOURNAL_SIM_DIR = Path("journal/simulator")
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 _EMBEDDED_UI_INDEX = _REPO_ROOT / "frontend" / "dist" / "index.html"
 
-_FIRST_BOOT_PROGRESS_PATH = _STATE_DIR / "first_boot_progress.json"
-_FIRST_BOOT_FLAG_PATH = _STATE_DIR / "first_boot_completed.flag"
+_FIRST_BOOT_PROGRESS_PATH = _STATE_DIR / "lumina_birth_progress.json"
+_FIRST_BOOT_LEGACY_PROGRESS_PATH = _STATE_DIR / "first_boot_progress.json"
+_FIRST_BOOT_FLAG_PATH = _STATE_DIR / "lumina_birth_completed.flag"
+_FIRST_BOOT_LEGACY_FLAG_PATH = _STATE_DIR / "first_boot_completed.flag"
 _FIRST_BOOT_POLICY_ZIP_PATH = Path("lumina_agents/ppo/lumina_ppo_policy.zip")
 _PPO_POLICY_METADATA_PATH = _STATE_DIR / "ppo_policy_metadata.json"
 _APPROVAL_TWIN_MODEL_PATH = _STATE_DIR / "approval_twin_model.json"
@@ -105,17 +111,22 @@ def _render_dark_log_text(text: str, *, height_px: int = 260) -> None:
 def _first_boot_completion_display(progress: dict[str, Any]) -> tuple[str, str]:
     """Show Yes only when first boot truly finished; In progress while training runs.
 
-    ``first_boot_progress.json`` ``stage`` wins over a stale ``first_boot_completed.flag`` file
+    progress ``stage`` wins over a stale completion flag
     so the dashboard does not show Yes during detected/loading/training.
     """
     stage = str(progress.get("stage", "")).strip().lower()
-    if stage in {"detected", "loading_data", "training_running"}:
+    # BIRTH ENGINE 2026-05-17
+    if stage in {"detected", "loading_data", "training_running", "pipeline_boot", "parallel_simulation", "ppo_training"}:
         return "In progress", "n/a"
-    if stage == "completed":
+    if stage in {"completed", "completed_waiting_user_action"}:
         ts = (
             _FIRST_BOOT_FLAG_PATH.read_text(encoding="utf-8").strip()
             if _FIRST_BOOT_FLAG_PATH.exists()
-            else str(progress.get("timestamp", "n/a"))
+            else (
+                _FIRST_BOOT_LEGACY_FLAG_PATH.read_text(encoding="utf-8").strip()
+                if _FIRST_BOOT_LEGACY_FLAG_PATH.exists()
+                else str(progress.get("timestamp", "n/a"))
+            )
         )
         return "Yes", ts
     if stage == "failed":
@@ -123,8 +134,13 @@ def _first_boot_completion_display(progress: dict[str, Any]) -> tuple[str, str]:
     if stage == "deferred_calendar":
         return "Deferred", "n/a"
     # Idle / normale herstart: alleen Yes als zowel vlag als policy er zijn.
-    if _FIRST_BOOT_FLAG_PATH.exists() and _FIRST_BOOT_POLICY_ZIP_PATH.exists():
-        return "Yes", _FIRST_BOOT_FLAG_PATH.read_text(encoding="utf-8").strip()
+    if (_FIRST_BOOT_FLAG_PATH.exists() or _FIRST_BOOT_LEGACY_FLAG_PATH.exists()) and _FIRST_BOOT_POLICY_ZIP_PATH.exists():
+        ts = (
+            _FIRST_BOOT_FLAG_PATH.read_text(encoding="utf-8").strip()
+            if _FIRST_BOOT_FLAG_PATH.exists()
+            else _FIRST_BOOT_LEGACY_FLAG_PATH.read_text(encoding="utf-8").strip()
+        )
+        return "Yes", ts
     return "No", "n/a"
 
 
@@ -139,7 +155,17 @@ def _first_boot_progress_fraction(progress: dict[str, Any]) -> float:
         except (TypeError, ValueError):
             pass
     stage = str(progress.get("stage", "unknown"))
-    stage_to_progress = {"detected": 10, "loading_data": 35, "training_running": 70, "completed": 100, "failed": 100}
+    stage_to_progress = {
+        "detected": 10,
+        "loading_data": 30,
+        "pipeline_boot": 40,
+        "parallel_simulation": 60,
+        "ppo_training": 82,
+        "training_running": 70,
+        "completed": 100,
+        "completed_waiting_user_action": 100,
+        "failed": 100,
+    }
     return stage_to_progress.get(stage, 0) / 100.0
 
 
@@ -237,7 +263,8 @@ def _tail_warning_error_logs(limit: int = 100) -> list[str]:
 
 def _latest_training_reports(limit: int = 10) -> list[dict[str, Any]]:
     reports: list[dict[str, Any]] = []
-    for path in sorted(_JOURNAL_SIM_DIR.glob("first_boot_training_*.json")):
+    # BIRTH ENGINE 2026-05-17
+    for path in sorted(list(_JOURNAL_SIM_DIR.glob("lumina_birth_training_*.json")) + list(_JOURNAL_SIM_DIR.glob("first_boot_training_*.json"))):
         payload = _load_json(path)
         if payload:
             payload["_run_type"] = "Background"
@@ -572,6 +599,10 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
 
     col_a, col_b, col_c = st.columns([2, 2, 1])
     with col_a:
+        if not str(st.session_state.get("monitoring_api_key", "")).strip():
+            resolved = resolve_dashboard_api_key()
+            if resolved:
+                st.session_state["monitoring_api_key"] = resolved
         api_key = st.text_input("API Key (optional, unlocks live metrics API)", type="password", key="monitoring_api_key")
     with col_b:
         current_refresh_seconds = int(st.session_state.get("monitoring_refresh_seconds", 20))
@@ -621,6 +652,8 @@ def render_monitoring_dashboard_tab(base_url: str, *, title: str = "Monitoring D
     runtime_snapshot = _load_json(_RUNTIME_MONITORING_PATH)
     fallback_runtime_state = _load_json(_LUMINA_SIM_STATE_PATH)
     first_boot_progress = _load_json(_FIRST_BOOT_PROGRESS_PATH)
+    if not first_boot_progress:
+        first_boot_progress = _load_json(_FIRST_BOOT_LEGACY_PROGRESS_PATH)
     config_payload = _load_yaml(_REPO_ROOT / "config.yaml")
     ppo_meta = _load_json(_PPO_POLICY_METADATA_PATH)
     twin_model = _load_json(_APPROVAL_TWIN_MODEL_PATH)

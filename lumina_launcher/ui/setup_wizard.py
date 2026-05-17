@@ -94,7 +94,7 @@ def persist_setup_configuration(
         require_real_simulator_data=bool(
             training.get("require_real_simulator_data", training["prefer_real_data_only"])
         ),
-        mark_user_configured=False,
+        mark_user_configured=True,
     )
     first_boot_manager.save_neuro_require_real_simulator_data(
         bool(training.get("require_real_simulator_data", training["prefer_real_data_only"]))
@@ -434,7 +434,8 @@ def render_setup_wizard(
             if has_failures:
                 st.warning("Setup deels opgeslagen, maar er zijn fouten in één of meer stappen.")
             else:
-                st.success("Setup voltooid. Launcher wordt geladen...")
+                st.success("Setup voltooid. Birth Phase training start automatisch...")
+                st.session_state["lumina_auto_start_birth_after_setup"] = True
             st.session_state.pop(_WIZARD_STATE_KEY, None)
             st.session_state.pop(_WIZARD_STEP_KEY, None)
             st.rerun()

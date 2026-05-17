@@ -103,9 +103,40 @@ def test_load_json_dict_missing(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_get_training_velocity_tpm_none_without_api(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LUMINA_BACKEND_URL", "http://127.0.0.1:59999")
+    monkeypatch.setattr(
+        "lumina_os.frontend.dashboard_views.resolve_dashboard_api_key",
+        lambda explicit="": "",
+    )
     v, est = get_training_velocity_tpm("http://127.0.0.1:59999", trades=0)
     assert v is None
     assert est is True
+
+
+def test_get_training_velocity_tpm_uses_api_key_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "lumina_os.frontend.dashboard_views.resolve_dashboard_api_key",
+        lambda explicit="": "test-metrics-key",
+    )
+
+    class _Resp:
+        ok = True
+
+        @staticmethod
+        def json() -> dict[str, object]:
+            return {"lumina_training_velocity": {"value": 4200}}
+
+    captured: dict[str, object] = {}
+
+    def _fake_get(url: str, **kwargs: object) -> _Resp:
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers")
+        return _Resp()
+
+    monkeypatch.setattr("lumina_os.frontend.dashboard_views.requests.get", _fake_get)
+    v, est = get_training_velocity_tpm("http://127.0.0.1:8000", trades=100)
+    assert v == 4200
+    assert est is False
+    assert captured["headers"] == {"X-API-Key": "test-metrics-key"}
 
 
 @pytest.mark.integration

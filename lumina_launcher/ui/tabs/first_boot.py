@@ -53,11 +53,13 @@ _LOCKED_STAGES = _RUNNING_STAGES | {"paused"}
 
 
 def _load_first_boot_reports(root: Path) -> list[dict]:
+    # BIRTH ENGINE 2026-05-17
     reports_dir = root / "journal" / "simulator"
     if not reports_dir.exists():
         return []
     reports: list[dict] = []
-    for path in sorted(reports_dir.glob("first_boot_training_*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+    paths = list(reports_dir.glob("lumina_birth_training_*.json")) + list(reports_dir.glob("first_boot_training_*.json"))
+    for path in sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True):
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
@@ -237,7 +239,8 @@ def render_first_boot_tab(
     process_manager: ProcessManager | None = None,
     backend_client: BackendClient | None = None,
 ) -> None:
-    st.subheader("🚀 First Boot Training")
+    # BIRTH ENGINE 2026-05-17
+    st.subheader("Birth Phase Training")
     auto_refresh = st.checkbox("Auto-refresh (10s)", value=False, key="lumina_first_boot_tab_autorefresh")
 
     def _first_boot_body() -> None:
@@ -286,14 +289,14 @@ def _render_first_boot_body(
                 "Training is afgerond in progress, maar policy/flag worden nog weggeschreven. "
                 "Wacht even of controleer of de runtime nog draait."
             )
-        st.success("✅ First-boot training is voltooid.")
+        st.success("Birth Phase training is voltooid.")
         reports = _load_first_boot_reports(first_boot_manager.workspace_root)
         latest, aggregate = _report_summary(reports)
         c1, c2, c3 = st.columns(3)
         c1.metric("Laatste run trades", f"{int(latest.get('trades', 0) or 0):,}")
         c2.metric("Laatste run duur", f"{float(latest.get('elapsed_sec', 0.0) or 0.0):.1f}s")
         c3.metric("Laatste status", str(latest.get("status", "unknown")))
-        st.markdown("#### Totaal over alle first-boot trainingen")
+        st.markdown("#### Totaal over alle Birth Phase runs")
         g1, g2, g3, g4 = st.columns(4)
         g1.metric("Aantal runs", int(aggregate.get("runs", 0) or 0))
         g2.metric("Totaal trades", f"{int(aggregate.get('total_trades', 0) or 0):,}")
@@ -484,12 +487,12 @@ def _render_first_boot_body(
             ok, msg = process_manager.stop_bot()
             st.info(msg) if ok else st.error(msg)
     if settings_locked:
-        st.warning("Instellingen zijn vergrendeld tijdens/na gestart first-boot training.")
+        st.warning("Instellingen zijn vergrendeld tijdens/na gestart Birth Phase training.")
     elif dirty_settings:
         st.info("Start Bot is pas actief nadat je op Save Settings hebt geklikt.")
 
     if process_alive:
-        st.success("Runtime status: actief. First-boot training draait of initialiseert.")
+        st.success("Runtime status: actief. Birth Phase training draait of initialiseert.")
     elif ppo_interrupted:
         st.error(
             "Runtime status: PPO-training onderbroken — runtime is niet actief en policy ontbreekt nog. "
@@ -513,11 +516,12 @@ def _render_first_boot_body(
         root / "logs" / "lumina_full_log.csv",
         root / "logs" / "structured_errors.jsonl",
         root / "logs" / "launcher_runtime_stderr.log",
+        root / "state" / "lumina_birth_progress.json",
         root / "state" / "first_boot_progress.json",
     )
     with st.expander("Waar vind ik logs en training-status?", expanded=not progress):
         st.markdown(
-            "First-boot training draait in de **runtime bot** (`lumina_runtime.py`), niet in Streamlit zelf. "
+            "Birth Phase training draait in de **runtime bot** (`lumina_runtime.py`), niet in Streamlit zelf. "
             "Sla instellingen op en klik **Start Bot (training)**."
         )
         for path in log_paths:
@@ -528,7 +532,10 @@ def _render_first_boot_body(
         if runtime_crashed or recent_start_failed or ppo_interrupted:
             st.warning("Runtime startte maar stopte direct; check stderr-log en interpreter configuratie.")
         elif not progress:
-            st.warning("Zolang `first_boot_progress.json` ontbreekt, is de runtime nog niet gestart of nog niet begonnen met trainen.")
+            st.warning(
+                "Zolang `lumina_birth_progress.json` en `first_boot_progress.json` ontbreken, "
+                "is de runtime nog niet gestart of nog niet begonnen met trainen."
+            )
 
     st.divider()
 
@@ -600,10 +607,10 @@ def _render_first_boot_body(
             st.success("Pause-vlag gewist. Start de bot opnieuw als deze gestopt was.")
 
     pause_policy = resolve_pause_policy(
-        context="first_boot_training",
+        context="birth_phase_training",  # BIRTH ENGINE 2026-05-17
         runtime_mode="sim",
         process_alive=bool(process_alive),
     )
-    st.info(f"Tijdens first-boot training is pauze een {pause_policy.label} (niet-destructief).")
+    st.info(f"Tijdens Birth Phase training is pauze een {pause_policy.label} (niet-destructief).")
 
     st.caption("First Boot tab — Fase 2 (Feature Restoration)")

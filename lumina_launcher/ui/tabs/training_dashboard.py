@@ -30,6 +30,7 @@ from lumina_launcher.observability import log_event, timed_event
 from lumina_launcher.core.process_manager import ProcessManager
 from lumina_launcher.ui.auto_refresh import run_with_autorefresh
 from lumina_launcher.services.hardware_service import HardwareService
+from lumina_os.frontend.http_utils import resolve_dashboard_api_key
 from lumina_os.frontend.dashboard_views import (
     DashboardPaths,
     blackboard_event_rate_series,
@@ -137,6 +138,7 @@ def render_training_dashboard_tab(
     process_manager: ProcessManager,
     backend_base_url: str,
 ) -> None:
+    # BIRTH ENGINE 2026-05-17
     p = DashboardPaths(workspace_root)
     api_base = backend_base_url.rstrip("/")
     if not api_base.startswith("http"):
@@ -231,8 +233,8 @@ def render_training_dashboard_tab(
                 elif ppo_interrupted:
                     st.error("PPO-training onderbroken: runtime is niet actief en policy ontbreekt nog.")
             st.caption(
-                "Strict completion rule active: requires both first_boot_completed.flag and "
-                "lumina_ppo_policy.zip."
+                "Strict Birth Phase completion rule active: requires completion flag "
+                "(lumina_birth_completed.flag or first_boot_completed.flag) and lumina_ppo_policy.zip."
             )
 
             st.subheader("Quick actions")
@@ -317,7 +319,7 @@ def render_training_dashboard_tab(
         with evo_tab:
             fn = _import_evolution_approval()
             if callable(fn):
-                fn(api_base)
+                fn(api_base, api_key=resolve_dashboard_api_key())
             else:
                 st.error("Could not load evolution_approval module.")
 

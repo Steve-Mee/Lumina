@@ -222,9 +222,10 @@ fine_tuning:
   min_acceptance: 0.4
   drift_threshold: 0.25
 first_boot:
-  training_trades: 600000
+  training_trades: 25000
   prefer_real_data_only: true
-  max_real_days: 241
+  max_real_days: 30
+  birth_phase: true
   allow_minimal_synthetic_fallback: false
   ppo_progress_interval: 5000
   force_training: true

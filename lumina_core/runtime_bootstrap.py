@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 from typing import Callable, Optional
 
 from lumina_core.engine.swarm_manager import SwarmManager
@@ -7,6 +8,20 @@ _log = logging.getLogger("lumina")
 
 
 RuntimeWorker = Callable[[], None]
+_WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+_BIRTH_POLICY = _WORKSPACE_ROOT / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
+_BIRTH_FLAG = _WORKSPACE_ROOT / "state" / "lumina_birth_completed.flag"
+_BIRTH_LEGACY_FLAG = _WORKSPACE_ROOT / "state" / "first_boot_completed.flag"
+
+
+def _assert_birth_phase_completed() -> None:
+    # BIRTH ENGINE 2026-05-17
+    has_flag = _BIRTH_FLAG.exists() or _BIRTH_LEGACY_FLAG.exists()
+    if has_flag and _BIRTH_POLICY.exists():
+        return
+    raise RuntimeError(
+        "Birth Phase artifacts missing; runtime services stay fail-closed until first boot training completes."
+    )
 
 
 def start_runtime_services(
@@ -29,8 +44,11 @@ def start_runtime_services(
     pre_dream_daemon_fn: Optional[RuntimeWorker],
     auto_journal_daemon_fn: RuntimeWorker,
     auto_backtest_daemon_fn: RuntimeWorker,
+    enforce_birth_guard: bool = False,
 ) -> None:
     """Start all runtime workers from a single engine-driven bootstrap call."""
+    if enforce_birth_guard:
+        _assert_birth_phase_completed()
     app = getattr(supervisor_loop_fn, "__self__", None)
     engine = getattr(app, "engine", None)
     container = getattr(app, "container", None)

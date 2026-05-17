@@ -230,7 +230,7 @@ def test_evolution_approval_tab_approve_button_present() -> None:
     assert len(approve_buttons) >= 2, f"Expected at least 2 approve buttons, got: {approve_buttons}"
 
 
-def test_evolution_approval_tab_no_api_key_shows_input() -> None:
+def test_evolution_approval_tab_no_api_key_shows_input(tmp_path: Path) -> None:
     """When api_key is empty, an 'API Key' text_input field is rendered."""
 
     def _render() -> None:
@@ -240,8 +240,19 @@ def test_evolution_approval_tab_no_api_key_shows_input() -> None:
         _mock = MagicMock()
         _mock.ok = True
         _mock.json.return_value = []
-        with patch("requests.get", return_value=_mock):
-            render_evolution_approval_tab("http://localhost:8000", api_key="")
+        with patch.dict(
+            "os.environ",
+            {
+                "LUMINA_ADMIN_API_KEY": "",
+                "LUMINA_BACKEND_API_KEY": "",
+                "LUMINA_DASHBOARD_API_KEY": "",
+                "X_API_KEY": "",
+            },
+            clear=False,
+        ):
+            with patch("lumina_os.frontend.http_utils._read_repo_dotenv", return_value={}):
+                with patch("requests.get", return_value=_mock):
+                    render_evolution_approval_tab("http://localhost:8000", api_key="")
 
     at = AppTest.from_function(_render, default_timeout=10)
     at.run()
@@ -249,3 +260,27 @@ def test_evolution_approval_tab_no_api_key_shows_input() -> None:
     assert not at.exception, f"AppTest raised: {at.exception}"
     input_labels = [inp.label for inp in at.text_input]
     assert any("API" in lbl for lbl in input_labels), f"Expected API key input field, got: {input_labels}"
+
+
+def test_evolution_approval_tab_uses_env_api_key_for_fetch() -> None:
+    """When env key exists, fetch request includes X-API-Key and no manual input is required."""
+
+    def _render() -> None:
+        from unittest.mock import MagicMock, patch
+        from evolution_approval import render_evolution_approval_tab
+
+        _mock = MagicMock()
+        _mock.ok = True
+        _mock.json.return_value = []
+        with patch.dict("os.environ", {"LUMINA_ADMIN_API_KEY": "env-admin-key"}, clear=False):
+            with patch("requests.get", return_value=_mock) as mocked_get:
+                render_evolution_approval_tab("http://localhost:8000", api_key="")
+                called_headers = mocked_get.call_args.kwargs.get("headers", {})
+                assert called_headers.get("X-API-Key") == "env-admin-key"
+
+    at = AppTest.from_function(_render, default_timeout=10)
+    at.run()
+
+    assert not at.exception, f"AppTest raised: {at.exception}"
+    input_labels = [inp.label for inp in at.text_input]
+    assert not any("API Key" == lbl for lbl in input_labels), f"Did not expect API key input field, got: {input_labels}"

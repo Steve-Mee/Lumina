@@ -14,7 +14,8 @@ class PausePolicy:
 def resolve_pause_policy(*, context: str, runtime_mode: str, process_alive: bool) -> PausePolicy:
     mode = str(runtime_mode or "").strip().lower()
     ctx = str(context or "").strip().lower()
-    if ctx == "first_boot_training":
+    # BIRTH ENGINE 2026-05-17
+    if ctx in {"first_boot_training", "birth_phase_training"}:
         return PausePolicy(
             mode="cooperative_training_pause",
             require_risk_warning=False,

@@ -52,8 +52,11 @@ $backupTargets = @(
     "lumina_os\logs",
     "lumina_os\state\metrics.db",
     "lumina_agents\ppo\lumina_ppo_policy.zip",
+    "state\lumina_birth_completed.flag",
     "state\first_boot_completed.flag",
     "state\ppo_policy_metadata.json",
+    "state\lumina_birth_progress.json",
+    "state\lumina_birth_checkpoint.json",
     "state\first_boot_progress.json"
 )
 
@@ -99,8 +102,11 @@ Get-ChildItem -LiteralPath $stateDir -Force -ErrorAction SilentlyContinue | ForE
 $deleteTargets = @(
     "lumina_os\state\metrics.db",
     "lumina_agents\ppo\lumina_ppo_policy.zip",
+    "state\lumina_birth_completed.flag",
     "state\first_boot_completed.flag",
     "state\ppo_policy_metadata.json",
+    "state\lumina_birth_progress.json",
+    "state\lumina_birth_checkpoint.json",
     "state\first_boot_progress.json",
     "state\monitoring_debug_training_process.json",
     "state\trade_reconciler_status.json"

@@ -16,7 +16,11 @@ from typing import Any
 import requests
 import streamlit as st
 
-from lumina_os.frontend.http_utils import is_backend_unreachable, log_fetch_failure
+from lumina_os.frontend.http_utils import (
+    is_backend_unreachable,
+    log_fetch_failure,
+    resolve_dashboard_api_key,
+)
 
 _LOG = logging.getLogger(__name__)
 
@@ -31,6 +35,12 @@ def _fetch_proposals(base_url: str, api_key: str) -> list[dict[str, Any]]:
         resp = requests.get(f"{base_url}/api/evolution/proposals", headers=headers, timeout=5)
         if resp.ok:
             return resp.json()  # type: ignore[return-value]
+        if resp.status_code == 401:
+            st.warning(
+                "Evolution proposals vereisen een geldige API key. "
+                "Controleer `LUMINA_ADMIN_API_KEY` in `.env` en herstart backend/launcher."
+            )
+            return []
         st.warning(f"Proposals fetch failed: HTTP {resp.status_code}")
         return []
     except Exception as exc:
@@ -74,18 +84,25 @@ def render_evolution_approval_tab(base_url: str, api_key: str = "") -> None:
 
     # ── Toolbar ───────────────────────────────────────────────────────────────
     col_key, col_refresh, col_auto = st.columns([3, 1, 2])
+    resolved_key = resolve_dashboard_api_key(api_key)
+    if not resolved_key:
+        resolved_key = str(
+            st.session_state.get("monitoring_api_key")
+            or st.session_state.get("evo_api_key")
+            or ""
+        ).strip()
 
     with col_key:
-        # Allow an API key override in the UI when not passed in
-        if api_key:
-            resolved_key = api_key
-        else:
+        # Only ask for manual key input when no key is resolved from args/env.
+        if not resolved_key:
             resolved_key = st.text_input(
                 "API Key",
                 type="password",
                 key="evo_api_key",
                 placeholder="Required to approve / reject",
             )
+        else:
+            st.caption("API key geladen uit runtime-omgeving.")
 
     with col_refresh:
         st.write("")  # vertical alignment nudge

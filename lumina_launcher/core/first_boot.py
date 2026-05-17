@@ -74,10 +74,13 @@ class FirstBootManager:
     def __init__(self, workspace_root: Path):
         self.workspace_root = workspace_root
         self.config_path = workspace_root / "config.yaml"
-        self.progress_path = workspace_root / "state" / "first_boot_progress.json"
-        self.checkpoint_path = workspace_root / "state" / "first_boot_checkpoint.json"
+        self.progress_path = workspace_root / "state" / "lumina_birth_progress.json"
+        self.legacy_progress_path = workspace_root / "state" / "first_boot_progress.json"
+        self.checkpoint_path = workspace_root / "state" / "lumina_birth_checkpoint.json"
+        self.legacy_checkpoint_path = workspace_root / "state" / "first_boot_checkpoint.json"
         self.pause_flag_path = workspace_root / "state" / "first_boot_pause_requested"
-        self.flag_path = workspace_root / "state" / "first_boot_completed.flag"
+        self.flag_path = workspace_root / "state" / "lumina_birth_completed.flag"
+        self.legacy_flag_path = workspace_root / "state" / "first_boot_completed.flag"
         self.policy_path = workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
         self.go_to_bot_flag_path = workspace_root / "state" / "first_boot_go_to_bot.flag"
         self.user_configured_flag_path = workspace_root / "state" / "first_boot_user_configured.flag"
@@ -141,6 +144,7 @@ class FirstBootManager:
         require_real_simulator_data: bool | None = None,
         mark_user_configured: bool = False,
     ) -> None:
+        # BIRTH ENGINE 2026-05-17
         cfg = self._load_yaml_config()
         first_boot = self._ensure_mapping(cfg, "first_boot")
         first_boot["training_trades"] = normalize_first_boot_training_trades(training_trades)
@@ -148,6 +152,7 @@ class FirstBootManager:
         first_boot["max_real_days"] = max(30, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS))
         first_boot["allow_minimal_synthetic_fallback"] = bool(allow_minimal_synthetic_fallback)
         first_boot["force_training"] = True
+        first_boot["birth_phase"] = True
         if require_real_simulator_data is not None:
             evolution = self._ensure_mapping(cfg, "evolution")
             neuro = self._ensure_mapping(evolution, "neuroevolution")
@@ -170,20 +175,26 @@ class FirstBootManager:
         self._save_yaml_config(cfg)
 
     def read_progress(self) -> dict[str, Any]:
-        if not self.progress_path.exists():
+        candidates = [p for p in (self.progress_path, self.legacy_progress_path) if p.exists()]
+        if not candidates:
             return {}
+        latest = max(candidates, key=lambda p: p.stat().st_mtime)
         try:
-            return json.loads(self.progress_path.read_text(encoding="utf-8"))
+            payload = json.loads(latest.read_text(encoding="utf-8"))
         except Exception:
             return {}
+        return payload if isinstance(payload, dict) else {}
 
     def read_checkpoint(self) -> dict[str, Any]:
-        if not self.checkpoint_path.exists():
+        candidates = [p for p in (self.checkpoint_path, self.legacy_checkpoint_path) if p.exists()]
+        if not candidates:
             return {}
+        latest = max(candidates, key=lambda p: p.stat().st_mtime)
         try:
-            return json.loads(self.checkpoint_path.read_text(encoding="utf-8"))
+            payload = json.loads(latest.read_text(encoding="utf-8"))
         except Exception:
             return {}
+        return payload if isinstance(payload, dict) else {}
 
     def request_pause(self) -> None:
         self.pause_flag_path.parent.mkdir(parents=True, exist_ok=True)
@@ -197,7 +208,8 @@ class FirstBootManager:
             pass
 
     def artifacts_missing(self) -> bool:
-        return (not self.flag_path.exists()) or (not self.policy_path.exists())
+        has_completion_flag = self.flag_path.exists() or self.legacy_flag_path.exists()
+        return (not has_completion_flag) or (not self.policy_path.exists())
 
     def get_stage_progress(self, stage: str) -> float:
         stage_map = {
@@ -213,7 +225,7 @@ class FirstBootManager:
         return float(stage_map.get(str(stage).strip().lower(), 0.1))
 
     def is_completed(self) -> bool:
-        return self.flag_path.exists() and self.policy_path.exists()
+        return (self.flag_path.exists() or self.legacy_flag_path.exists()) and self.policy_path.exists()
 
     def should_show_completion_summary(self, progress: dict[str, Any] | None = None) -> bool:
         if self.is_completed():
@@ -256,9 +268,12 @@ class FirstBootManager:
     def clear_completion_artifacts_for_extra_training(self) -> None:
         for path in (
             self.flag_path,
+            self.legacy_flag_path,
             self.policy_path,
             self.progress_path,
+            self.legacy_progress_path,
             self.checkpoint_path,
+            self.legacy_checkpoint_path,
             self.pause_flag_path,
             self.go_to_bot_flag_path,
             self.user_configured_flag_path,

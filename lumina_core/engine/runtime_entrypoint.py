@@ -29,19 +29,23 @@ from lumina_core.runtime.headless_runtime import HeadlessRuntime, parse_duration
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-FIRST_BOOT_FLAG_PATH = ROOT_DIR / "state" / "first_boot_completed.flag"
+FIRST_BOOT_FLAG_PATH = ROOT_DIR / "state" / "lumina_birth_completed.flag"
+FIRST_BOOT_LEGACY_FLAG_PATH = ROOT_DIR / "state" / "first_boot_completed.flag"
 FIRST_BOOT_POLICY_PATH = ROOT_DIR / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
-FIRST_BOOT_PROGRESS_PATH = ROOT_DIR / "state" / "first_boot_progress.json"
+FIRST_BOOT_PROGRESS_PATH = ROOT_DIR / "state" / "lumina_birth_progress.json"
+FIRST_BOOT_LEGACY_PROGRESS_PATH = ROOT_DIR / "state" / "first_boot_progress.json"
 FIRST_BOOT_EXIT_PAUSED = 2
 
 
 def _write_first_boot_progress(stage: str, message: str, **extra: object) -> None:
     prev: dict[str, object] = {}
-    if FIRST_BOOT_PROGRESS_PATH.exists():
+    for progress_path in (FIRST_BOOT_PROGRESS_PATH, FIRST_BOOT_LEGACY_PROGRESS_PATH):
+        if not progress_path.exists():
+            continue
         try:
-            prev = json.loads(FIRST_BOOT_PROGRESS_PATH.read_text(encoding="utf-8"))
-            if not isinstance(prev, dict):
-                prev = {}
+            prev = json.loads(progress_path.read_text(encoding="utf-8"))
+            if isinstance(prev, dict):
+                break
         except Exception:
             prev = {}
     payload: dict[str, object] = dict(prev)
@@ -51,7 +55,9 @@ def _write_first_boot_progress(stage: str, message: str, **extra: object) -> Non
     payload.update(extra)
     try:
         FIRST_BOOT_PROGRESS_PATH.parent.mkdir(parents=True, exist_ok=True)
-        FIRST_BOOT_PROGRESS_PATH.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+        encoded = json.dumps(payload, ensure_ascii=True)
+        FIRST_BOOT_PROGRESS_PATH.write_text(encoded, encoding="utf-8")
+        FIRST_BOOT_LEGACY_PROGRESS_PATH.write_text(encoded, encoding="utf-8")
     except Exception:
         logging.exception("first_boot.progress_write_failed")
 
@@ -371,17 +377,19 @@ def _load_first_boot_config() -> dict[str, int | bool]:
     max_real_days = int(cfg.get("max_real_days", FIRST_BOOT_DEFAULT_MAX_REAL_DAYS) or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS)
     allow_minimal_synth = bool(cfg.get("allow_minimal_synthetic_fallback", False))
     force_training = bool(cfg.get("force_training", True))
+    birth_phase = bool(cfg.get("birth_phase", True))
     return {
         "training_trades": training_trades,
         "prefer_real_data_only": prefer_real_data_only,
         "max_real_days": max(30, min(3_650, max_real_days)),
         "allow_minimal_synthetic_fallback": allow_minimal_synth,
         "force_training": force_training,
+        "birth_phase": birth_phase,
     }
 
 
 def _first_boot_needed() -> bool:
-    missing_flag = not FIRST_BOOT_FLAG_PATH.exists()
+    missing_flag = not (FIRST_BOOT_FLAG_PATH.exists() or FIRST_BOOT_LEGACY_FLAG_PATH.exists())
     missing_policy = not FIRST_BOOT_POLICY_PATH.exists()
     missing_artifacts = missing_flag or missing_policy
     cfg = _load_first_boot_config()
@@ -400,11 +408,13 @@ def _first_boot_needed() -> bool:
 
 
 def _run_first_boot_training() -> int:
+    # BIRTH ENGINE 2026-05-17
     cfg = _load_first_boot_config()
     target = int(cfg["training_trades"])
     prefer_real = bool(cfg["prefer_real_data_only"])
     max_days = int(cfg["max_real_days"])
     allow_synth = bool(cfg["allow_minimal_synthetic_fallback"])
+    birth_phase_enabled = bool(cfg.get("birth_phase", True))
     estimated_days = estimate_first_boot_real_days(target)
 
     start_message = (
@@ -440,12 +450,53 @@ def _run_first_boot_training() -> int:
         progress_pct=26,
         phase="pipeline_boot",
     )
-    report = container.infinite_simulator.run_first_boot_training(
-        target_trades=target,
-        prefer_real_data_only=prefer_real,
-        max_real_days=max_days,
-        allow_minimal_synthetic_fallback=allow_synth,
-    )
+    if not birth_phase_enabled:
+        logging.warning(
+            "first_boot.birth_phase=false is legacy; LuminaBirthEngine remains mandatory for first boot runtime gate."
+        )
+    legacy_first_boot = str(os.getenv("LUMINA_ALLOW_LEGACY_FIRST_BOOT_SIM", "false")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if legacy_first_boot:
+        # BIRTH ENGINE 2026-05-17
+        logging.warning("legacy_first_boot_sim_enabled=true; using compatibility simulator first-boot path")
+        report = container.infinite_simulator.run_first_boot_training(
+            target_trades=target,
+            prefer_real_data_only=prefer_real,
+            max_real_days=max_days,
+            allow_minimal_synthetic_fallback=allow_synth,
+        )
+    else:
+        from lumina_core.lumina_birth_engine import LuminaBirthEngine
+
+        engine = LuminaBirthEngine(
+            runtime=container.engine,
+            ppo_trainer=container.ppo_trainer,
+            market_data_service=container.market_data_service,
+            config={"first_boot": cfg},
+            workspace_root=ROOT_DIR,
+        )
+        birth_result = engine.run_birth_phase(
+            target_trades=target,
+            max_real_days=max_days,
+            prefer_real_data_only=prefer_real,
+        )
+        birth_status = str(birth_result.get("status", "error")).strip().lower()
+        if birth_status == "completed":
+            mapped_status = "ok_birth_phase"
+        elif birth_status == "paused":
+            mapped_status = "paused"
+        else:
+            mapped_status = "birth_failed"
+        report = {
+            "status": mapped_status,
+            "trades": int(birth_result.get("total_trades", 0) or 0),
+            "synthetic_ticks": 0,
+            "policy_path": str(birth_result.get("policy_path") or FIRST_BOOT_POLICY_PATH),
+        }
     status = str(report.get("status", "error"))
     trades = int(report.get("trades", 0) or 0)
     requested_norm = normalize_first_boot_training_trades(target)
@@ -473,6 +524,7 @@ def _run_first_boot_training() -> int:
     if status.startswith("ok") and trades > 0 and volume_met and policy_ready:
         FIRST_BOOT_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
         FIRST_BOOT_FLAG_PATH.write_text(datetime.now().isoformat(), encoding="utf-8")
+        FIRST_BOOT_LEGACY_FLAG_PATH.write_text(datetime.now().isoformat(), encoding="utf-8")
         synthetic_ticks = int(report.get("synthetic_ticks", 0) or 0)
         if synthetic_ticks > 0:
             done_message = (

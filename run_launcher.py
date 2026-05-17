@@ -7,6 +7,8 @@ import sys
 import warnings
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 try:
     from authlib.deprecate import AuthlibDeprecationWarning
 except Exception:  # pragma: no cover - only used when authlib is missing
@@ -16,6 +18,7 @@ except Exception:  # pragma: no cover - only used when authlib is missing
 warnings.filterwarnings("ignore", category=AuthlibDeprecationWarning)
 
 _REPO_ROOT = Path(__file__).resolve().parent
+load_dotenv(_REPO_ROOT / ".env")
 _LAUNCHER_SCRIPT = _REPO_ROOT / "streamlit_launcher.py"
 _FILE_WATCHER_FLAG = ("--server.fileWatcherType", "none")
 

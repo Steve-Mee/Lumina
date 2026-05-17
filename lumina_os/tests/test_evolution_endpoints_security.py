@@ -65,6 +65,33 @@ def test_security_module_requires_admin_for_mutations(monkeypatch: pytest.Monkey
     assert exc.value.status_code == 403
 
 
+def test_get_proposals_accepts_valid_key_in_protected_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LUMINA_MODE", "real")
+
+    class _Cfg:
+        admin_role_required = True
+
+    class _AK:
+        def verify_api_key(self, key: str):
+            if key == "admin-key":
+                return {"name": "ops", "role": "admin", "enabled": True}
+            return None
+
+    class _Audit:
+        def log_auth_attempt(self, *args: object, **kwargs: object) -> None:
+            return None
+
+        def log_unauthorized_access(self, *args: object, **kwargs: object) -> None:
+            return None
+
+    ep.set_security_module({"config": _Cfg(), "api_key": _AK(), "audit_log": _Audit()})
+    monkeypatch.setattr(ep, "_load_proposals", lambda: [])
+    monkeypatch.setattr(ep, "_load_decisions", lambda: {})
+
+    result = asyncio.run(ep.get_proposals(x_api_key="admin-key"))
+    assert result == []
+
+
 def test_append_decision_is_hash_chained(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     decisions_file = tmp_path / "evolution_decisions.jsonl"
     monkeypatch.setattr(ep, "_EVOLUTION_DECISIONS", decisions_file)

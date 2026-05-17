@@ -8,6 +8,7 @@ from typing import Any, Optional, cast
 
 import yaml
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -33,6 +34,10 @@ logger = logging.getLogger(__name__)
 _EMERGENCY_LOCK = threading.Lock()
 
 _LUMINA_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Ensure backend sees the same env as launcher/runtime.
+load_dotenv(_LUMINA_REPO_ROOT / ".env")
+load_dotenv()
 
 
 def _embedded_ui_dist_dir() -> Path:

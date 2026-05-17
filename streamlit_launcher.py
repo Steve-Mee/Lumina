@@ -7,7 +7,13 @@ For headless / stability-check, use :mod:`lumina_launcher` (``python -m lumina_l
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import warnings
+from dotenv import load_dotenv
+
+_REPO_ROOT = Path(__file__).resolve().parent
+load_dotenv(_REPO_ROOT / ".env")
 
 # Third-party (authlib via Streamlit). Optional dependency in some environments.
 try:

@@ -423,11 +423,17 @@ class RegimeDetector:
         if now is not None:
             return now if now.tzinfo is not None else now.replace(tzinfo=timezone.utc)
         if "timestamp" in rows.columns:
+            raw = rows["timestamp"].iloc[-1]
             try:
-                ts = pd.to_datetime(rows["timestamp"].iloc[-1], utc=True)
+                ts = pd.to_datetime(raw, utc=True)
+                if pd.isna(ts):
+                    raise ValueError(f"timestamp is NaT: {raw!r}")
                 return ts.to_pydatetime()
             except Exception:
-                logger.exception("RegimeDetector failed to parse latest timestamp; using current UTC time")
+                logger.debug(
+                    "RegimeDetector could not parse timestamp %r; using current UTC",
+                    raw,
+                )
         return datetime.now(timezone.utc)
 
     @staticmethod

@@ -6,10 +6,21 @@ from typing import Any, Mapping
 
 from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES, normalize_first_boot_training_trades
 
+_STAGE_ALIASES: dict[str, str] = {
+    # BIRTH ENGINE 2026-05-17
+    "birth_phase": "training_running",
+    "birth_running": "training_running",
+    "birth_detected": "detected",
+    "birth_loading_data": "loading_data",
+    "birth_paused": "paused",
+    "birth_completed": "completed",
+    "birth_completed_waiting_user_action": "completed_waiting_user_action",
+}
+
 
 def resolve_first_boot_completed_trades(progress: Mapping[str, Any] | None) -> int:
     src = progress or {}
-    for key in ("trades_done", "trades", "sim_trades", "cumulative_trades"):
+    for key in ("trades_done", "trades", "sim_trades", "cumulative_trades", "total_trades", "birth_trades"):
         value = src.get(key)
         try:
             count = int(value)
@@ -41,7 +52,9 @@ def resolve_first_boot_target_from_progress(progress: Mapping[str, Any] | None) 
 def resolve_first_boot_stage(progress: Mapping[str, Any] | None) -> str:
     src = progress or {}
     stage = str(src.get("stage", "")).strip().lower()
-    return stage
+    if not stage:
+        return stage
+    return _STAGE_ALIASES.get(stage, stage)
 
 
 def resolve_ppo_training_progress(
@@ -50,7 +63,8 @@ def resolve_ppo_training_progress(
     default_total_steps: int = 300_000,
 ) -> tuple[int, int, float | None]:
     src = progress or {}
-    raw_steps = src.get("ppo_steps", src.get("policy_steps", 0))
+    # BIRTH ENGINE 2026-05-17
+    raw_steps = src.get("ppo_steps", src.get("policy_steps", src.get("birth_ppo_steps", 0)))
     raw_total = src.get("ppo_timesteps_total", default_total_steps)
     try:
         steps = max(0, int(raw_steps or 0))

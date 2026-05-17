@@ -12,7 +12,8 @@ Injectie van echte training data
 Voor productie-metrics uit je PPO / infinite sim loop kun je óf Prometheus gauges zetten
 (zie naamgeving onder **Prometheus-alias**) óf state-files bijwerken:
 
-1. **``state/first_boot_progress.json``** — bv. ``trades`` / ``sim_trades``, ``phase`` /
+1. **``state/lumina_birth_progress.json``** (fallback ``state/first_boot_progress.json``) —
+   bv. ``trades`` / ``sim_trades``, ``phase`` /
    ``stage``, ``actual_real_days_loaded``, ``estimated_real_days``,
    ``synthetic_blend_pct``, ``ppo_steps`` (custom keys worden hieronder gelezen indien aanwezig).
 2. **``state/ppo_policy_metadata.json``** — bv. ``total_training_steps`` (wordt gebruikt als
@@ -278,9 +279,12 @@ def enrich_observability_snapshot_for_react_dashboard(
 
     The React hook prefers ``_lumina_ui`` embedded keys over raw Prometheus scraping.
     """
+    # BIRTH ENGINE 2026-05-17
     sd = resolve_state_directory() if state_dir is None else Path(state_dir)
     config_payload = _safe_read_yaml(sd.parent / "config.yaml")
-    boot = _safe_read_json(sd / "first_boot_progress.json")
+    boot = _safe_read_json(sd / "lumina_birth_progress.json")
+    if not boot:
+        boot = _safe_read_json(sd / "first_boot_progress.json")
     ppo_meta = _safe_read_json(sd / "ppo_policy_metadata.json")
     twin_tail = _last_json_object_from_jsonl(sd / "monitoring_twin_training.jsonl")
 

@@ -82,10 +82,16 @@ lumina_analyse.md
 lumina_analyse._*
 /lumina_analyse_*.md
 
+# Birth-engine integration scratch (canonical code lives in ppo_trainer.py + lumina_birth_engine.py)
+lumina_core/ppo_trainer_birth_extensions.py
+
 # Local reset snapshots (blank-state script); never commit
 backups/
 
 # First-boot / monitoring runtime snapshots (regenerated locally)
+state/lumina_birth_completed.flag
+state/lumina_birth_progress.json
+state/lumina_birth_checkpoint.json
 state/first_boot_completed.flag
 state/first_boot_progress.json
 state/first_boot_checkpoint.json

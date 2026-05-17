@@ -42,7 +42,8 @@ def test_runtime_first_boot_success_continues_to_runtime(monkeypatch: pytest.Mon
     monkeypatch.setattr(runtime_entrypoint, "_run_real_runtime", lambda **_kwargs: called.append(True) or 0)
     rc = runtime_entrypoint.run_with_mode("auto", argv=["--mode", "real"])
     assert rc == 0
-    assert called == [True]
+    # Birth completion is fail-safe: runtime waits for explicit user restart.
+    assert called == []
 
 
 @pytest.mark.unit
@@ -70,7 +71,7 @@ def test_runtime_runs_first_boot_even_when_calendar_closed(monkeypatch: pytest.M
     rc = runtime_entrypoint.run_with_mode("auto", argv=["--mode", "real"])
     assert rc == 0
     assert called_fb == [True]
-    assert called_rt == [True]
+    assert called_rt == []
 
 
 @pytest.mark.unit
@@ -98,6 +99,7 @@ def test_first_boot_needed_is_mandatory_when_artifacts_missing(
     flag_path = tmp_path / "state" / "first_boot_completed.flag"
     policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_FLAG_PATH", flag_path)
+    monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_LEGACY_FLAG_PATH", tmp_path / "state" / "first_boot_completed_legacy.flag")
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_POLICY_PATH", policy_path)
     monkeypatch.setattr(
         runtime_entrypoint,
@@ -108,6 +110,7 @@ def test_first_boot_needed_is_mandatory_when_artifacts_missing(
             "max_real_days": 90,
             "allow_minimal_synthetic_fallback": False,
             "force_training": force_training,
+            "birth_phase": True,
         },
     )
     if flag_exists:
@@ -143,8 +146,10 @@ def test_runtime_first_boot_rejects_ok_status_below_requested_volume(
     policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
     progress_path = tmp_path / "state" / "first_boot_progress.json"
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_FLAG_PATH", flag_path)
+    monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_LEGACY_FLAG_PATH", tmp_path / "state" / "first_boot_completed_legacy.flag")
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_POLICY_PATH", policy_path)
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_PROGRESS_PATH", progress_path)
+    monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_LEGACY_PROGRESS_PATH", tmp_path / "state" / "first_boot_progress_legacy.json")
     monkeypatch.setattr(
         runtime_entrypoint,
         "_load_first_boot_config",
@@ -153,6 +158,7 @@ def test_runtime_first_boot_rejects_ok_status_below_requested_volume(
             "prefer_real_data_only": True,
             "max_real_days": 90,
             "allow_minimal_synthetic_fallback": False,
+            "birth_phase": False,
         },
     )
 
@@ -163,18 +169,21 @@ def test_runtime_first_boot_rejects_ok_status_below_requested_volume(
     class _FakeContainer:
         def __init__(self) -> None:
             self.engine = _FakeEngine()
+            self.ppo_trainer = object()
+            self.market_data_service = object()
             self.logger = logging.getLogger("test_fake_container")
             self.runtime_context = SimpleNamespace(app=None)
-            self.infinite_simulator = SimpleNamespace(
-                run_first_boot_training=lambda **_kwargs: {
-                    "status": "ok_capped_real_only",
-                    "trades": 67_501,
-                    "requested_trades": 500_000,
-                    "target_trades": 67_501,
-                }
-            )
+
+    class _FakeBirthEngine:
+        # BIRTH ENGINE 2026-05-17
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def run_birth_phase(self, **_kwargs: Any) -> dict[str, Any]:
+            return {"status": "completed", "total_trades": 67_501, "policy_path": str(policy_path)}
 
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr("lumina_core.lumina_birth_engine.LuminaBirthEngine", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
     assert rc == 1
     assert not flag_path.exists()
@@ -191,8 +200,10 @@ def test_runtime_first_boot_writes_flag_on_success(monkeypatch: pytest.MonkeyPat
     policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
     progress_path = tmp_path / "state" / "first_boot_progress.json"
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_FLAG_PATH", flag_path)
+    monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_LEGACY_FLAG_PATH", tmp_path / "state" / "first_boot_completed_legacy.flag")
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_POLICY_PATH", policy_path)
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_PROGRESS_PATH", progress_path)
+    monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_LEGACY_PROGRESS_PATH", tmp_path / "state" / "first_boot_progress_legacy.json")
     monkeypatch.setattr(
         runtime_entrypoint,
         "_load_first_boot_config",
@@ -201,6 +212,7 @@ def test_runtime_first_boot_writes_flag_on_success(monkeypatch: pytest.MonkeyPat
             "prefer_real_data_only": True,
             "max_real_days": 365,
             "allow_minimal_synthetic_fallback": False,
+            "birth_phase": False,
         },
     )
 
@@ -211,13 +223,23 @@ def test_runtime_first_boot_writes_flag_on_success(monkeypatch: pytest.MonkeyPat
     class _FakeContainer:
         def __init__(self) -> None:
             self.engine = _FakeEngine()
+            self.ppo_trainer = object()
+            self.market_data_service = object()
             self.logger = logging.getLogger("test_fake_container")
             self.runtime_context = SimpleNamespace(app=None)
-            self.infinite_simulator = SimpleNamespace(
-                run_first_boot_training=lambda **_kwargs: {"status": "ok_real_only", "trades": 100_000}
-            )
+            policy_path.parent.mkdir(parents=True, exist_ok=True)
+            policy_path.write_text("ok", encoding="utf-8")
+
+    class _FakeBirthEngine:
+        # BIRTH ENGINE 2026-05-17
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def run_birth_phase(self, **_kwargs: Any) -> dict[str, Any]:
+            return {"status": "completed", "total_trades": 100_000, "policy_path": str(policy_path)}
 
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr("lumina_core.lumina_birth_engine.LuminaBirthEngine", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
     assert rc == 0
     assert flag_path.exists()
@@ -233,8 +255,10 @@ def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
     policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
     progress_path = tmp_path / "state" / "first_boot_progress.json"
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_FLAG_PATH", flag_path)
+    monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_LEGACY_FLAG_PATH", tmp_path / "state" / "first_boot_completed_legacy.flag")
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_POLICY_PATH", policy_path)
     monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_PROGRESS_PATH", progress_path)
+    monkeypatch.setattr(runtime_entrypoint, "FIRST_BOOT_LEGACY_PROGRESS_PATH", tmp_path / "state" / "first_boot_progress_legacy.json")
     monkeypatch.setattr(
         runtime_entrypoint,
         "_load_first_boot_config",
@@ -243,8 +267,10 @@ def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
             "prefer_real_data_only": True,
             "max_real_days": 365,
             "allow_minimal_synthetic_fallback": True,
+            "birth_phase": False,
         },
     )
+    monkeypatch.setenv("LUMINA_ALLOW_LEGACY_FIRST_BOOT_SIM", "true")
 
     class _FakeEngine:
         def bind_app(self, _app: object) -> None:
@@ -255,6 +281,8 @@ def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
             self.engine = _FakeEngine()
             self.logger = logging.getLogger("test_fake_container")
             self.runtime_context = SimpleNamespace(app=None)
+            policy_path.parent.mkdir(parents=True, exist_ok=True)
+            policy_path.write_text("ok", encoding="utf-8")
             self.infinite_simulator = SimpleNamespace(
                 run_first_boot_training=lambda **_kwargs: {
                     "status": "ok_minimal_synthetic_fallback",
@@ -292,6 +320,7 @@ def test_infinite_simulator_first_boot_reaches_target_with_forced_synthetic_top_
         },
     )
     monkeypatch.setattr("lumina_core.infinite_simulator._notify_first_boot_training_progress", lambda *_a, **_k: None)
+    monkeypatch.setattr(InfiniteSimulator, "_train_rl", lambda self, _ticks: None)
 
     report = sim.run_first_boot_training(
         target_trades=300_000,
@@ -324,6 +353,7 @@ def test_infinite_simulator_first_boot_can_use_minimal_synthetic(monkeypatch: py
         },
     )
     monkeypatch.setattr("lumina_core.infinite_simulator._notify_first_boot_training_progress", lambda *_a, **_k: None)
+    monkeypatch.setattr(InfiniteSimulator, "_train_rl", lambda self, _ticks: None)
 
     report = sim.run_first_boot_training(
         target_trades=300_000,
@@ -372,6 +402,7 @@ def test_infinite_simulator_first_boot_allows_flexible_data_policy(monkeypatch: 
         },
     )
     monkeypatch.setattr("lumina_core.infinite_simulator._notify_first_boot_training_progress", lambda *_a, **_k: None)
+    monkeypatch.setattr(InfiniteSimulator, "_train_rl", lambda self, _ticks: None)
     report = sim.run_first_boot_training(
         target_trades=500_000,
         prefer_real_data_only=False,

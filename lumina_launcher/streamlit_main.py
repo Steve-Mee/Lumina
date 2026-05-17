@@ -234,9 +234,10 @@ def _render_first_boot_home(
     workspace_root: Path,
     show_setup_wizard: bool,
 ) -> None:
+    # BIRTH ENGINE 2026-05-17
     st.markdown("## First Boot Command Center")
     st.caption(
-        "Je ziet nu enkel de first-boot ervaring. Rond training volledig af, "
+        "Je ziet nu enkel de Birth Phase ervaring. Rond training volledig af, "
         "daarna schakelt de launcher automatisch naar het volledige operations dashboard."
     )
     if show_setup_wizard:
@@ -252,7 +253,23 @@ def _render_first_boot_home(
             )
         return
 
-    tabs = st.tabs(["First Boot", "Overview"])
+    auto_start = st.session_state.pop("lumina_auto_start_birth_after_setup", False)
+    if not show_setup_wizard and services.first_boot_manager.artifacts_missing():
+        auto_start = auto_start or not st.session_state.get("lumina_birth_auto_start_attempted")
+    if auto_start and not services.process_manager.is_process_alive():
+        st.session_state["lumina_birth_auto_start_attempted"] = True
+        ok, msg = services.process_manager.start_bot(mode="auto")
+        if ok:
+            st.session_state["first_boot_settings_locked"] = True
+            st.success(f"Birth Phase training gestart: {msg}")
+        else:
+            st.session_state["first_boot_last_start_failed"] = True
+            st.session_state["first_boot_last_start_error"] = msg
+            st.error(f"Birth Phase kon niet starten: {msg}")
+    elif auto_start and services.process_manager.is_process_alive():
+        st.info("Runtime draait al; Birth Phase training wordt hervat.")
+
+    tabs = st.tabs(["Birth Phase", "Overview"])
     with tabs[0]:
         render_first_boot_tab(
             services.first_boot_manager,
@@ -338,7 +355,7 @@ def render_streamlit_app() -> None:
             "Start met `powershell -ExecutionPolicy Bypass -File .\\lumina_os\\run_backend.ps1`."
         )
 
-    is_first_run = services.setup_service.is_first_run()
+    setup_complete = services.setup_service.is_setup_complete()
     phase = _resolve_launcher_phase(first_boot_manager=services.first_boot_manager)
 
     state = _load_runtime_state()
@@ -379,12 +396,15 @@ def render_streamlit_app() -> None:
             ),
         }
     )
-    st.caption("Progress source: state/first_boot_progress.json • target source: config.yaml:first_boot.training_trades")
+    st.caption(
+        "Progress source: state/lumina_birth_progress.json (fallback: state/first_boot_progress.json) "
+        "• target source: config.yaml:first_boot.training_trades"
+    )
 
     if phase == LauncherPhase.FIRST_BOOT_REQUIRED:
-        st.warning("First-boot training is nog niet voltooid.")
+        st.warning("Birth Phase training is nog niet voltooid.")
     else:
-        st.success("First-boot training is voltooid. Volledige launcher is geactiveerd.")
+        st.success("Birth Phase training is voltooid. Volledige launcher is geactiveerd.")
 
     if phase == LauncherPhase.OPERATIONS_READY:
         with st.sidebar:
@@ -530,7 +550,7 @@ def render_streamlit_app() -> None:
         _render_first_boot_home(
             services=services,
             workspace_root=_LAUNCHER_ROOT,
-            show_setup_wizard=is_first_run,
+            show_setup_wizard=not setup_complete,
         )
 
     st.divider()

@@ -100,7 +100,7 @@ def test_status_bar_no_longer_shows_react_open_button() -> None:
     )[0]
     assert "Open React Dashboard" not in status_bar_section
     assert "st.link_button(" not in status_bar_section
-    assert "First Boot SSOT" in source
+    assert "Birth Phase SSOT" in source
 
 
 def test_first_boot_slider_input_state_sync_and_adjust_button_present() -> None:
@@ -159,7 +159,7 @@ def test_first_boot_tab_contains_strict_save_start_and_summary_actions() -> None
     root = Path(__file__).resolve().parents[1]
     source = (root / "lumina_launcher" / "ui" / "tabs" / "first_boot.py").read_text(encoding="utf-8")
     assert "Start Bot is pas actief nadat je op Save Settings hebt geklikt." in source
-    assert "Instellingen zijn vergrendeld tijdens/na gestart first-boot training." in source
+    assert "Instellingen zijn vergrendeld tijdens/na gestart Birth Phase training." in source
     assert "Extra trainen" in source
     assert "Ga naar bot" in source
 

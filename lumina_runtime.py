@@ -270,7 +270,8 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv(Path(__file__).resolve().parent / ".env")
     _run_evolution_startup_prompt()
 
-    # Same first-boot gate as `runtime_entrypoint.run_with_mode`: no bootstrap/trading until training completes.
+    # BIRTH ENGINE 2026-05-17
+    # Same first-boot gate as `runtime_entrypoint.run_with_mode`: no bootstrap/trading until Birth Phase completes.
     from lumina_core.engine import runtime_entrypoint as _runtime_ep
 
     if _runtime_ep._first_boot_needed():

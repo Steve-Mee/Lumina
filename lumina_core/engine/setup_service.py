@@ -55,8 +55,32 @@ class SetupService:
         self._setup_complete_path = self.workspace_root / "state" / "lumina_setup_complete.json"
         self._setup_status_path = self.workspace_root / "state" / "lumina_setup_status.json"
 
+    def is_setup_complete(self) -> bool:
+        if self._setup_complete_path.exists():
+            try:
+                payload = json.loads(self._setup_complete_path.read_text(encoding="utf-8"))
+                if isinstance(payload, dict) and payload.get("completed") is False:
+                    return False
+            except Exception:
+                pass
+            return True
+        if not self.config_path.exists():
+            return False
+        try:
+            data = yaml.safe_load(self.config_path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            return False
+        first_boot = data.get("first_boot") if isinstance(data.get("first_boot"), dict) else {}
+        if not bool(first_boot.get("force_training")):
+            return False
+        if not self.env_path.exists():
+            return False
+        env_text = self.env_path.read_text(encoding="utf-8")
+        required_keys = ("LUMINA_JWT_SECRET_KEY=", "CROSSTRADE_TOKEN=", "CROSSTRADE_ACCOUNT=")
+        return all(key in env_text for key in required_keys)
+
     def is_first_run(self) -> bool:
-        return not self._setup_complete_path.exists()
+        return not self.is_setup_complete()
 
     def load_status(self) -> dict[str, Any]:
         if not self._setup_status_path.exists():

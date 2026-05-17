@@ -1,9 +1,13 @@
 from datetime import datetime, timezone
 import os
+from pathlib import Path
+
 from dotenv import load_dotenv
 from sqlalchemy import JSON, Column, DateTime, Float, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(_REPO_ROOT / ".env")
 load_dotenv()
 
 DATABASE_URL = os.getenv(

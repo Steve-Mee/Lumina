@@ -491,6 +491,7 @@ def bootstrap_runtime(container: ApplicationContainer) -> None:
         ),
         auto_journal_daemon_fn=container.reporting_service.auto_journal_daemon,
         auto_backtest_daemon_fn=container.reporting_service.auto_backtest_daemon,
+        enforce_birth_guard=True,  # BIRTH ENGINE 2026-05-17
     )
     bootstrap_logger.info(
         "bootstrap.component_loaded",

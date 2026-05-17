@@ -54,7 +54,7 @@ def resolve_runtime_session_state(
     is_live_mode = mode in {"sim", "sim_real_guard", "real"}
 
     if stage_training:
-        session_kind = "first_boot_training"
+        session_kind = "birth_phase_training"  # BIRTH ENGINE 2026-05-17
     elif process_alive and is_live_mode:
         session_kind = "live_execution"
     elif process_alive and mode == "paper":

@@ -1,8 +1,8 @@
 from __future__ import annotations
 # pyright: reportMissingImports=false
 
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass, field
+from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
 from typing import Any
@@ -147,6 +147,10 @@ class PPOTrainer:
 
     engine: Any
     model_dir: Path = Path("lumina_agents/ppo")
+    logger: Any = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.logger = logger
 
     def _resolve_active_model(self) -> Any | None:
         return getattr(self.engine, "rl_policy_model", None)
@@ -444,6 +448,152 @@ class PPOTrainer:
             report_first_boot_progress=report_first_boot_progress,
             ppo_progress_interval=ppo_progress_interval,
         )
+
+    def _trajectory_buffer_to_rows(self, buffer: Any) -> list[dict[str, Any]]:
+        trajectories = list(getattr(buffer, "trajectories", []) or [])
+        rows: list[dict[str, Any]] = []
+        for idx, item in enumerate(trajectories):
+            if not isinstance(item, dict):
+                continue
+            obs = item.get("observation")
+            next_obs = item.get("next_observation")
+            price = 0.0
+            if isinstance(obs, dict):
+                try:
+                    price = float(obs.get("price", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    price = 0.0
+            if price <= 0.0 and isinstance(next_obs, dict):
+                try:
+                    price = float(next_obs.get("price", 0.0) or 0.0)
+                except (TypeError, ValueError):
+                    price = 0.0
+            if price <= 0.0:
+                continue
+            ts = datetime.now(timezone.utc) - timedelta(seconds=max(0, len(trajectories) - idx))
+            rows.append(
+                {
+                    "timestamp": ts.isoformat(),
+                    "open": price,
+                    "high": price,
+                    "low": price,
+                    "close": price,
+                    "last": price,
+                    "volume": 1,
+                }
+            )
+        return rows
+
+    def _birth_bootstrap_rows(self, *, count: int = 256) -> list[dict[str, Any]]:
+        # BIRTH ENGINE 2026-05-17
+        out: list[dict[str, Any]] = []
+        base = 5000.0
+        bar_count = max(80, int(count))
+        base_ts = datetime.now(timezone.utc)
+        for idx in range(bar_count):
+            price = float(base + (idx * 0.25))
+            ts = base_ts - timedelta(minutes=bar_count - idx)
+            out.append(
+                {
+                    "timestamp": ts.isoformat(),
+                    "open": price,
+                    "high": price + 0.25,
+                    "low": price - 0.25,
+                    "close": price,
+                    "last": price,
+                    "volume": 10,
+                }
+            )
+        return out
+
+    def create_fresh_birth_policy(self) -> Any:
+        """Ensure an active policy object exists for the birth phase loop."""
+        # BIRTH ENGINE 2026-05-17
+        active = self._resolve_active_model()
+        if active is not None:
+            self.logger.info("ppo.birth.policy.reuse_active")
+            return active
+        default_path = self.model_dir / "lumina_ppo_policy.zip"
+        if default_path.exists():
+            loaded = self.load_weights(default_path)
+            if loaded is not None:
+                self.logger.info("ppo.birth.policy.loaded_existing", extra={"event_data": {"path": str(default_path)}})
+                return loaded
+        # Create a minimal valid PPO model so birth loop always has concrete policy state.
+        bootstrap_rows = self._birth_bootstrap_rows(count=256)
+        self.train(
+            bootstrap_rows,
+            total_timesteps=1_024,
+            report_first_boot_progress=False,
+        )
+        created = self._resolve_active_model()
+        if created is None:
+            raise RuntimeError("create_fresh_birth_policy failed to initialize PPO model")
+        self.logger.info("ppo.birth.policy.initialized_bootstrap")
+        return created
+
+    def update_from_buffer(
+        self,
+        *,
+        buffer: Any,
+        timesteps: int = 25_000,
+        birth_phase: bool = True,
+    ) -> Any:
+        """Train PPO from trajectory snapshots and return latest active model."""
+        # BIRTH ENGINE 2026-05-17
+        rows = self._trajectory_buffer_to_rows(buffer)
+        active = self._resolve_active_model()
+        if active is None:
+            active = self.create_fresh_birth_policy()
+        if len(rows) < 80:
+            self.logger.info(
+                "ppo.birth.update.skipped_insufficient_rows",
+                extra={"event_data": {"rows": len(rows), "timesteps": int(timesteps)}},
+            )
+            return active
+        self.logger.info(
+            "ppo.birth.update.start",
+            extra={
+                "event_data": {
+                    "rows": len(rows),
+                    "timesteps": int(timesteps),
+                    "birth_phase": bool(birth_phase),
+                }
+            },
+        )
+        self.train(
+            rows,
+            total_timesteps=max(1_000, int(timesteps)),
+            report_first_boot_progress=bool(birth_phase),
+        )
+        updated = self._resolve_active_model()
+        if updated is None:
+            raise RuntimeError("update_from_buffer completed without an active PPO policy")
+        return updated
+
+    def final_birth_polish(self, buffer: Any) -> None:
+        # BIRTH ENGINE 2026-05-17
+        self.logger.info("ppo.birth.polish.start")
+        self.update_from_buffer(buffer=buffer, timesteps=50_000, birth_phase=False)
+
+    def save_intermediate_policy(self, trade_count: int) -> None:
+        # BIRTH ENGINE 2026-05-17
+        path = self.model_dir / f"lumina_ppo_policy_birth_{max(0, int(trade_count))}.zip"
+        try:
+            self.save_weights(path)
+            self.logger.info("ppo.birth.policy.intermediate_saved", extra={"event_data": {"path": str(path)}})
+        except Exception:
+            self.logger.warning("ppo.birth.policy.intermediate_save_failed", exc_info=True)
+
+    def save_final_birth_policy(self, path: str | None = None) -> None:
+        # BIRTH ENGINE 2026-05-17
+        target = Path(path) if path else (self.model_dir / "lumina_ppo_policy.zip")
+        if self._resolve_active_model() is None and target.exists():
+            self.load_weights(target)
+        if self._resolve_active_model() is None:
+            self.create_fresh_birth_policy()
+        self.save_weights(target)
+        self.logger.info("ppo.birth.policy.final_saved", extra={"event_data": {"path": str(target)}})
 
     def load_policy(self, policy_path: str) -> None:
         try:
