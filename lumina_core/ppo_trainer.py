@@ -44,10 +44,11 @@ def _notify_first_boot_ppo_progress(
             eta_minutes = round((float(remaining_steps) / steps_per_sec) / 60.0, 1)
     _write_first_boot_progress(
         "training_running",
-        f"PPO training: {current:,}/{total:,} timesteps ({ppo_pct:.1f}%)",
+        f"PPO training: {current:,}/{total:,} timesteps in huidige batch ({ppo_pct:.1f}%)",
         phase="ppo_training",
-        ppo_steps=current,
-        ppo_timesteps_total=total,
+        ppo_batch_steps=current,
+        ppo_batch_total=total,
+        ppo_batch_progress_pct=round(ppo_pct, 2),
         ppo_progress_pct=round(ppo_pct, 2),
         ppo_elapsed_sec=round(float(elapsed_sec), 1),
         ppo_eta_minutes=eta_minutes,

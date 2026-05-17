@@ -82,6 +82,8 @@ class FirstBootManager:
         self.flag_path = workspace_root / "state" / "lumina_birth_completed.flag"
         self.legacy_flag_path = workspace_root / "state" / "first_boot_completed.flag"
         self.policy_path = workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
+        self.practice_policy_path = workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy_practice.zip"
+        self.practice_completed_flag_path = workspace_root / "state" / "lumina_birth_practice_completed.flag"
         self.go_to_bot_flag_path = workspace_root / "state" / "first_boot_go_to_bot.flag"
         self.user_configured_flag_path = workspace_root / "state" / "first_boot_user_configured.flag"
 
@@ -220,6 +222,8 @@ class FirstBootManager:
             "paused_by_user": 0.75,
             "completed": 1.0,
             "completed_waiting_user_action": 1.0,
+            "practice_completed": 1.0,
+            "history_unavailable": 1.0,
             "failed": 1.0,
         }
         return float(stage_map.get(str(stage).strip().lower(), 0.1))
@@ -234,12 +238,18 @@ class FirstBootManager:
         return stage in {"completed", "completed_waiting_user_action"}
 
     def is_ppo_training_phase(self, progress: dict[str, Any] | None = None) -> bool:
+        from lumina_core.first_boot_progress import is_sim_trades_complete
+
         src = progress if progress is not None else self.read_progress()
         phase = str(src.get("phase", "") or "").strip().lower()
         if phase == "ppo_training":
             return True
         message = str(src.get("message", "") or "").lower()
-        return resolve_first_boot_stage(src) == "training_running" and "ppo" in message
+        if resolve_first_boot_stage(src) != "training_running" or "ppo" not in message:
+            return False
+        if phase == "birth_phase" and not is_sim_trades_complete(src):
+            return True
+        return is_sim_trades_complete(src) or phase not in {"birth_phase", "loading_data", "loading_history"}
 
     def is_ppo_interrupted(
         self,
@@ -270,6 +280,8 @@ class FirstBootManager:
             self.flag_path,
             self.legacy_flag_path,
             self.policy_path,
+            self.practice_policy_path,
+            self.practice_completed_flag_path,
             self.progress_path,
             self.legacy_progress_path,
             self.checkpoint_path,
@@ -282,3 +294,17 @@ class FirstBootManager:
                 path.unlink(missing_ok=True)
             except Exception:
                 logger.warning("first_boot.clear_artifact_failed path=%s", path, exc_info=True)
+
+    def clear_progress_runtime_state(self) -> None:
+        for path in (
+            self.progress_path,
+            self.legacy_progress_path,
+            self.checkpoint_path,
+            self.legacy_checkpoint_path,
+            self.pause_flag_path,
+            self.practice_completed_flag_path,
+        ):
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:
+                logger.warning("first_boot.clear_progress_runtime_state_failed path=%s", path, exc_info=True)

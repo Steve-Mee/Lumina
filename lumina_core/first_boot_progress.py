@@ -57,6 +57,38 @@ def resolve_first_boot_stage(progress: Mapping[str, Any] | None) -> str:
     return _STAGE_ALIASES.get(stage, stage)
 
 
+def is_sim_trades_complete(progress: Mapping[str, Any] | None) -> bool:
+    src = progress or {}
+    if src.get("sim_trades_complete") is True:
+        return True
+    target = resolve_first_boot_target_from_progress(src)
+    if target <= 0:
+        return False
+    return resolve_first_boot_completed_trades(src) >= target
+
+
+def resolve_ppo_batch_progress(progress: Mapping[str, Any] | None) -> tuple[int, int, float | None]:
+    src = progress or {}
+    try:
+        batch_steps = max(0, int(src.get("ppo_batch_steps", 0) or 0))
+    except (TypeError, ValueError):
+        batch_steps = 0
+    try:
+        batch_total = max(0, int(src.get("ppo_batch_total", 0) or 0))
+    except (TypeError, ValueError):
+        batch_total = 0
+    if batch_total <= 0:
+        return batch_steps, 0, None
+    raw_pct = src.get("ppo_batch_progress_pct", src.get("ppo_progress_pct"))
+    try:
+        pct = float(raw_pct)
+        if pct < 0 or pct > 100:
+            pct = (float(batch_steps) / float(batch_total)) * 100.0
+    except (TypeError, ValueError):
+        pct = (float(batch_steps) / float(batch_total)) * 100.0
+    return batch_steps, batch_total, round(pct, 2)
+
+
 def resolve_ppo_training_progress(
     progress: Mapping[str, Any] | None,
     *,
@@ -64,24 +96,26 @@ def resolve_ppo_training_progress(
 ) -> tuple[int, int, float | None]:
     src = progress or {}
     # BIRTH ENGINE 2026-05-17
-    raw_steps = src.get("ppo_steps", src.get("policy_steps", src.get("birth_ppo_steps", 0)))
-    raw_total = src.get("ppo_timesteps_total", default_total_steps)
+    raw_cumulative = src.get(
+        "ppo_steps_cumulative",
+        src.get("ppo_steps", src.get("policy_steps", src.get("birth_ppo_steps", 0))),
+    )
+    raw_total = src.get("ppo_timesteps_planned_total", src.get("ppo_timesteps_total", default_total_steps))
     try:
-        steps = max(0, int(raw_steps or 0))
+        cumulative = max(0, int(raw_cumulative or 0))
     except (TypeError, ValueError):
-        steps = 0
+        cumulative = 0
+    batch_steps, batch_total, _ = resolve_ppo_batch_progress(src)
+    display_steps = cumulative + (batch_steps if batch_total > 0 else 0)
     try:
         total_steps = max(1, int(raw_total or default_total_steps))
     except (TypeError, ValueError):
         total_steps = max(1, int(default_total_steps))
-    raw_pct = src.get("ppo_progress_pct")
-    try:
-        pct = float(raw_pct)
-        if pct < 0 or pct > 100:
-            pct = (float(steps) / float(total_steps)) * 100.0
-    except (TypeError, ValueError):
-        pct = (float(steps) / float(total_steps)) * 100.0 if total_steps > 0 else None
-    return steps, total_steps, (round(pct, 2) if pct is not None else None)
+    if display_steps > 0 and total_steps > 0:
+        pct = (float(display_steps) / float(total_steps)) * 100.0
+    else:
+        pct = None
+    return display_steps, total_steps, (round(pct, 2) if pct is not None else None)
 
 
 def resolve_ppo_progress_interval(config_payload: Mapping[str, Any] | None) -> int:

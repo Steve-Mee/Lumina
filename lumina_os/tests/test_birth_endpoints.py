@@ -23,6 +23,7 @@ def _reset_birth_service(monkeypatch: pytest.MonkeyPatch) -> Any:
         "progress": {"trades_done": 0, "target_trades": 25000, "progress_pct": 0, "ppo_steps": 0, "stage": "not_started"},
     }
     mock.start_birth.return_value = {"status": "started", "target_trades": 25000, "message": "ok"}
+    mock.stop_birth.return_value = {"status": "stopped", "message": "ok"}
     monkeypatch.setattr(be, "birth_service", mock)
     yield mock
 
@@ -48,9 +49,27 @@ def test_enrich_status_artifacts_ok(_reset_birth_service: MagicMock, tmp_path: P
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_start_birth_delegates(_reset_birth_service: MagicMock) -> None:
-    result = await be.start_birth(target_trades=10000, force=False)
-    _reset_birth_service.start_birth.assert_called_once_with(target_trades=10000, force=False)
+    result = await be.start_birth(
+        target_trades=10000,
+        force=False,
+        practice_mode=False,
+        explicit_user_start=True,
+    )
+    _reset_birth_service.start_birth.assert_called_once_with(
+        target_trades=10000,
+        force=False,
+        practice_mode=False,
+        explicit_user_start=True,
+    )
     assert result["status"] == "started"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_stop_birth_delegates(_reset_birth_service: MagicMock) -> None:
+    result = await be.stop_birth()
+    _reset_birth_service.stop_birth.assert_called_once_with()
+    assert result["status"] == "stopped"
 
 
 @pytest.mark.unit

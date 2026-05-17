@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from lumina_core.first_boot_progress import (
+    is_sim_trades_complete,
+    resolve_ppo_batch_progress,
     resolve_ppo_progress_interval,
     resolve_ppo_training_progress,
     resolve_first_boot_completed_trades,
@@ -29,11 +31,40 @@ def test_resolve_stage_normalization() -> None:
     assert resolve_first_boot_stage({}) == ""
 
 
-def test_resolve_ppo_training_progress_defaults_and_pct() -> None:
+def test_resolve_ppo_training_progress_prefers_cumulative_and_live_batch() -> None:
+    steps, total, pct = resolve_ppo_training_progress(
+        {
+            "ppo_steps_cumulative": 175000,
+            "ppo_timesteps_planned_total": 225000,
+            "ppo_batch_steps": 20000,
+            "ppo_batch_total": 25000,
+        }
+    )
+    assert steps == 195000
+    assert total == 225000
+    assert pct is not None and 86.0 <= pct <= 87.0
+
+
+def test_resolve_ppo_training_progress_legacy_fallback() -> None:
     steps, total, pct = resolve_ppo_training_progress({"ppo_steps": 120000, "ppo_timesteps_total": 300000})
     assert steps == 120000
     assert total == 300000
     assert pct == 40.0
+
+
+def test_resolve_ppo_batch_progress() -> None:
+    steps, total, pct = resolve_ppo_batch_progress(
+        {"ppo_batch_steps": 20000, "ppo_batch_total": 25000, "ppo_batch_progress_pct": 80.0}
+    )
+    assert steps == 20000
+    assert total == 25000
+    assert pct == 80.0
+
+
+def test_is_sim_trades_complete_flag_and_trades() -> None:
+    assert is_sim_trades_complete({"sim_trades_complete": True}) is True
+    assert is_sim_trades_complete({"target_trades": 100, "trades": 100}) is True
+    assert is_sim_trades_complete({"target_trades": 100, "trades": 50}) is False
 
 
 def test_resolve_ppo_progress_interval_clamps() -> None:

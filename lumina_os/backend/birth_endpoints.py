@@ -25,8 +25,20 @@ def _enrich_status(payload: dict[str, Any]) -> dict[str, Any]:
 async def start_birth(
     target_trades: int = Query(25000, ge=1000, le=5_000_000),
     force: bool = Query(False),
+    practice_mode: bool = Query(False),
+    explicit_user_start: bool = Query(True),
 ) -> dict[str, Any]:
-    return birth_service.start_birth(target_trades=target_trades, force=force)
+    return birth_service.start_birth(
+        target_trades=target_trades,
+        force=force,
+        practice_mode=practice_mode,
+        explicit_user_start=explicit_user_start,
+    )
+
+
+@router.post("/stop")
+async def stop_birth() -> dict[str, Any]:
+    return birth_service.stop_birth()
 
 
 @router.get("/status")

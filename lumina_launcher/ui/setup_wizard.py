@@ -45,11 +45,13 @@ def persist_setup_configuration(
     admin_password: str = "",
 ) -> list[dict[str, Any]]:
     mode_value, broker_backend = resolve_mode_matrix(mode_selection)
+    birth_mode_value, birth_backend = resolve_mode_matrix("sim")
     admin_api_key = str(credentials.get("LUMINA_ADMIN_API_KEY", "")).strip() or f"sk_{secrets.token_hex(32)}"
     env_updates = {
-        "TRADE_MODE": mode_value,
-        "LUMINA_MODE": mode_value,
-        "BROKER_BACKEND": broker_backend,
+        # During first boot we force SIM runtime; selected mode remains in config for post-birth operations.
+        "TRADE_MODE": birth_mode_value,
+        "LUMINA_MODE": birth_mode_value,
+        "BROKER_BACKEND": birth_backend,
         "LUMINA_ADMIN_API_KEY": admin_api_key,
     }
     for key in (
@@ -84,7 +86,13 @@ def persist_setup_configuration(
     broker["backend"] = broker_backend
     config_payload["broker"] = broker
     config_manager.save_yaml_config(config_payload)
-    steps.append({"name": "runtime_mode", "success": True, "message": f"Mode set to {mode_value}/{broker_backend}"})
+    steps.append(
+        {
+            "name": "runtime_mode",
+            "success": True,
+            "message": f"Mode set to {mode_value}/{broker_backend} (first-boot runtime forced to sim/{birth_backend})",
+        }
+    )
 
     first_boot_manager.save_full_settings(
         training_trades=int(training["training_trades"]),
@@ -434,8 +442,10 @@ def render_setup_wizard(
             if has_failures:
                 st.warning("Setup deels opgeslagen, maar er zijn fouten in één of meer stappen.")
             else:
-                st.success("Setup voltooid. Birth Phase training start automatisch...")
-                st.session_state["lumina_auto_start_birth_after_setup"] = True
+                st.success(
+                    "Setup voltooid. Open Birth Phase, sla instellingen op met Save Settings "
+                    "en start daarna handmatig met Start Birth Phase."
+                )
             st.session_state.pop(_WIZARD_STATE_KEY, None)
             st.session_state.pop(_WIZARD_STEP_KEY, None)
             st.rerun()

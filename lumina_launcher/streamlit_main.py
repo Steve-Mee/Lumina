@@ -33,8 +33,8 @@ from lumina_launcher.ui.components.presence_strip import render_presence_strip
 from lumina_launcher.ui.help_texts import help_for
 from lumina_launcher.ui.setup_wizard import render_setup_wizard
 from lumina_launcher.ui.tab_registry import TabRenderContext, launcher_tab_specs
-from lumina_launcher.ui.tabs.first_boot import render_first_boot_tab
-from lumina_launcher.ui.tabs.training_dashboard import render_training_dashboard_tab
+from lumina_launcher.ui.tabs.first_boot import _progress_recently_active, render_first_boot_tab
+from lumina_launcher.ui.tabs.training_dashboard import render_first_boot_command_center
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +182,15 @@ def _current_mode(config_manager: ConfigManager) -> str:
     return mode if mode in {"paper", "sim", "sim_real_guard", "real"} else "sim"
 
 
+def _configured_operations_mode(config_manager: ConfigManager) -> str:
+    """Read desired long-term operations mode from config first."""
+    cfg = config_manager.load_yaml_config()
+    cfg_mode = str(cfg.get("mode", "") or "").strip().lower()
+    if cfg_mode in {"paper", "sim", "sim_real_guard", "real"}:
+        return cfg_mode
+    return _current_mode(config_manager)
+
+
 def _persist_prestart_settings(
     *,
     config_manager: ConfigManager,
@@ -228,6 +237,17 @@ def _persist_prestart_settings(
         )
 
 
+def _enforce_first_boot_sim_mode(*, config_manager: ConfigManager, phase: LauncherPhase) -> None:
+    """Fail-closed gate: until birth is complete, effective runtime mode is SIM."""
+    if phase != LauncherPhase.FIRST_BOOT_REQUIRED:
+        return
+    env_values = config_manager.parse_env_file()
+    current = str(env_values.get("TRADE_MODE", "") or "").strip().lower()
+    if current == "sim":
+        return
+    config_manager.write_env_file({"TRADE_MODE": "sim", "LUMINA_MODE": "sim"})
+
+
 def _resolve_launcher_phase(*, first_boot_manager: FirstBootManager) -> LauncherPhase:
     return LauncherPhase.OPERATIONS_READY if first_boot_manager.should_enter_operations() else LauncherPhase.FIRST_BOOT_REQUIRED
 
@@ -238,12 +258,6 @@ def _render_first_boot_home(
     workspace_root: Path,
     show_setup_wizard: bool,
 ) -> None:
-    # BIRTH ENGINE 2026-05-17
-    st.markdown("## First Boot Command Center")
-    st.caption(
-        "Je ziet nu enkel de Birth Phase ervaring. Rond training volledig af, "
-        "daarna schakelt de launcher automatisch naar het volledige operations dashboard."
-    )
     if show_setup_wizard:
         setup_tab = st.tabs(["Setup"])[0]
         with setup_tab:
@@ -257,42 +271,28 @@ def _render_first_boot_home(
             )
         return
 
-    auto_start = st.session_state.pop("lumina_auto_start_birth_after_setup", False)
-    if not show_setup_wizard and services.first_boot_manager.artifacts_missing():
-        auto_start = auto_start or not st.session_state.get("lumina_birth_auto_start_attempted")
-    if auto_start and not services.birth_service.is_running():
-        st.session_state["lumina_birth_auto_start_attempted"] = True
-        settings = services.first_boot_manager.read_settings()
-        target_trades = int(settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES))
-        services.birth_service.configure_workspace(services.first_boot_manager.workspace_root)
-        result = services.birth_service.start_birth(target_trades=target_trades)
-        status = str(result.get("status", "")).strip().lower()
-        if status in {"started", "already_running"}:
-            st.session_state["first_boot_settings_locked"] = True
-            st.success(f"Birth Phase training gestart: {result.get('message', '')}")
-        else:
-            st.session_state["first_boot_last_start_failed"] = True
-            st.session_state["first_boot_last_start_error"] = str(result.get("message", status))
-            st.error(f"Birth Phase kon niet starten: {result.get('message', status)}")
-    elif auto_start and services.birth_service.is_running():
-        st.info("Birth Phase draait al; training wordt hervat.")
+    st.caption(
+        "Rond Birth Phase training af om door te schakelen naar het volledige operations dashboard."
+    )
 
-    tabs = st.tabs(["Birth Phase", "Overview"])
-    with tabs[0]:
+    def _render_birth_phase_tab() -> None:
         render_first_boot_tab(
             services.first_boot_manager,
             process_manager=services.process_manager,
             backend_client=services.backend_client,
             birth_service=services.birth_service,
         )
-    with tabs[1]:
-        render_training_dashboard_tab(
-            workspace_root,
-            first_boot_manager=services.first_boot_manager,
-            hardware_service=services.hardware_service,
-            process_manager=services.process_manager,
-            backend_base_url=services.backend_client.base_url,
-        )
+
+    render_first_boot_command_center(
+        workspace_root,
+        first_boot_manager=services.first_boot_manager,
+        hardware_service=services.hardware_service,
+        process_manager=services.process_manager,
+        backend_client=services.backend_client,
+        birth_service=services.birth_service,
+        backend_base_url=services.backend_client.base_url,
+        birth_tab_renderer=_render_birth_phase_tab,
+    )
 
 
 def _render_operations_shell(
@@ -366,12 +366,16 @@ def render_streamlit_app() -> None:
 
     setup_complete = services.setup_service.is_setup_complete()
     phase = _resolve_launcher_phase(first_boot_manager=services.first_boot_manager)
+    _enforce_first_boot_sim_mode(config_manager=services.config_manager, phase=phase)
 
     state = _load_runtime_state()
     current_dream = state.get("current_dream", {}) if isinstance(state.get("current_dream"), dict) else {}
     snapshot = services.hardware_service.get_cached_snapshot() or services.hardware_service.get_snapshot()
     process_alive = services.process_manager.is_process_alive()
-    current_mode = _current_mode(services.config_manager)
+    configured_operations_mode = _configured_operations_mode(services.config_manager)
+    effective_runtime_mode = "sim" if phase == LauncherPhase.FIRST_BOOT_REQUIRED else configured_operations_mode
+    birth_running = services.birth_service.is_running()
+    birth_stopping = services.birth_service.is_stopping()
     first_boot = services.first_boot_manager.read_settings()
     first_boot_progress = services.first_boot_manager.read_progress()
     first_boot_completed_trades = resolve_first_boot_completed_trades(first_boot_progress)
@@ -381,10 +385,14 @@ def render_streamlit_app() -> None:
         or 0
     )
     first_boot_stage = resolve_first_boot_stage(first_boot_progress)
+    progress_recently_active = _progress_recently_active(first_boot_progress, stage=first_boot_stage)
+    training_pulse_live = bool(
+        process_alive or birth_running or birth_stopping or progress_recently_active
+    )
     runtime_session = resolve_runtime_session_state(
         first_boot_stage=first_boot_stage,
-        process_alive=process_alive,
-        current_mode=current_mode,
+        process_alive=training_pulse_live,
+        current_mode=effective_runtime_mode,
         first_boot_timestamp=str(first_boot_progress.get("timestamp") or ""),
     )
     show_training_target = (
@@ -394,21 +402,23 @@ def render_streamlit_app() -> None:
     )
 
     st.title("LUMINA OS Launcher")
-    render_presence_strip(
-        {
-            "pulse_live": process_alive,
-            "last_activity_verbose": f"Mode={current_mode.upper()} • Backend={'UP' if backend_up else 'DOWN'}",
-            "tpm_label": (
-                f"{first_boot_completed_trades:,}/{first_boot_target_trades:,} first-boot trades"
-                if show_training_target
-                else "Not started"
-            ),
-        }
-    )
-    st.caption(
-        "Progress source: state/lumina_birth_progress.json (fallback: state/first_boot_progress.json) "
-        "• target source: config.yaml:first_boot.training_trades"
-    )
+    if phase != LauncherPhase.FIRST_BOOT_REQUIRED:
+        mode_label = f"Mode={configured_operations_mode.upper()} • Backend={'UP' if backend_up else 'DOWN'}"
+        render_presence_strip(
+            {
+                "pulse_live": training_pulse_live,
+                "last_activity_verbose": mode_label,
+                "tpm_label": (
+                    f"{first_boot_completed_trades:,}/{first_boot_target_trades:,} first-boot trades"
+                    if show_training_target
+                    else "Not started"
+                ),
+            }
+        )
+        st.caption(
+            "Progress source: state/lumina_birth_progress.json (fallback: state/first_boot_progress.json) "
+            "• target source: config.yaml:first_boot.training_trades"
+        )
 
     if phase == LauncherPhase.FIRST_BOOT_REQUIRED:
         st.warning("Birth Phase training is nog niet voltooid.")
@@ -421,7 +431,7 @@ def render_streamlit_app() -> None:
             mode = st.selectbox(
                 "Trading Mode",
                 options=["paper", "sim", "sim_real_guard", "real"],
-                index=["paper", "sim", "sim_real_guard", "real"].index(current_mode if current_mode in {"paper", "sim", "sim_real_guard", "real"} else "sim"),
+                index=["paper", "sim", "sim_real_guard", "real"].index(configured_operations_mode if configured_operations_mode in {"paper", "sim", "sim_real_guard", "real"} else "sim"),
                 help=help_for("trading_mode"),
             )
             risk_profile = st.selectbox(
@@ -507,11 +517,14 @@ def render_streamlit_app() -> None:
                 ok, msg = services.process_manager.start_bot(mode="auto")
                 st.success(msg) if ok else st.error(msg)
             if st.button("Stop Bot", use_container_width=True):
+                birth_stop = services.birth_service.stop_birth()
                 ok, msg = services.process_manager.stop_bot()
-                st.info(msg) if ok else st.error(msg)
+                birth_msg = str(birth_stop.get("message", "") or "").strip()
+                combined = f"{birth_msg}. {msg}" if birth_msg else msg
+                st.info(combined) if ok else st.error(combined)
             pause_policy = resolve_pause_policy(
                 context="operations",
-                runtime_mode=current_mode,
+                runtime_mode=configured_operations_mode,
                 process_alive=process_alive,
             )
             if pause_policy.require_risk_warning:
@@ -553,7 +566,7 @@ def render_streamlit_app() -> None:
             current_dream=current_dream,
             snapshot=snapshot,
             process_alive=process_alive,
-            current_mode=current_mode,
+            current_mode=configured_operations_mode,
         )
     else:
         _render_first_boot_home(

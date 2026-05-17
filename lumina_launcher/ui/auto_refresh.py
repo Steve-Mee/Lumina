@@ -18,15 +18,15 @@ def run_with_autorefresh(
     if not enabled:
         render_fn()
         return
-    if hasattr(st, "autorefresh"):
-        st.autorefresh(interval=int(interval_seconds * 1000), key="lumina_autorefresh_tick")
-        render_fn()
-        return
     if hasattr(st, "fragment"):
         @st.fragment(run_every=timedelta(seconds=interval_seconds))
         def _fragment_body() -> None:
             render_fn()
 
         _fragment_body()
+        return
+    if hasattr(st, "autorefresh"):
+        st.autorefresh(interval=int(interval_seconds * 1000), key="lumina_autorefresh_tick")
+        render_fn()
         return
     render_fn()

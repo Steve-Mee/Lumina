@@ -71,9 +71,44 @@ def test_first_boot_home_uses_tabs_not_expanders() -> None:
     root = Path(__file__).resolve().parents[1]
     source = (root / "lumina_launcher" / "streamlit_main.py").read_text(encoding="utf-8")
     assert 'st.tabs(["Setup"])' in source
-    assert 'st.tabs(["First Boot", "Overview"])' in source
+    assert "render_first_boot_command_center(" in source
+    dashboard_source = (root / "lumina_launcher" / "ui" / "tabs" / "training_dashboard.py").read_text(encoding="utf-8")
+    assert '"Birth Phase"' in dashboard_source
+    assert '"Overview", "Monitoring", "Evolution approvals"' in dashboard_source
     assert 'with st.expander("Guided setup wizard"' not in source
     assert 'with st.expander("Monitoring and training overview"' not in source
+
+
+def test_first_boot_home_never_auto_starts_birth() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "lumina_launcher" / "streamlit_main.py").read_text(encoding="utf-8")
+    assert "lumina_auto_start_birth_after_setup" not in source
+    assert "lumina_birth_auto_start_attempted" not in source
+    assert "birth_service.start_birth" not in source
+
+
+def test_first_boot_tab_has_stop_training_guard() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "lumina_launcher" / "ui" / "tabs" / "first_boot.py").read_text(encoding="utf-8")
+    assert "first_boot_stop_training" in source
+    assert "_stop_birth_training" in source
+    assert "stop_birth" in source
+
+
+def test_stop_all_activities_stops_birth_service() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "lumina_launcher" / "core" / "process_manager.py").read_text(encoding="utf-8")
+    assert "birth_service.stop_birth" in source
+
+
+def test_first_boot_tab_separates_save_from_start() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "lumina_launcher" / "ui" / "tabs" / "first_boot.py").read_text(encoding="utf-8")
+    assert "first_boot_save_settings" in source
+    assert "first_boot_start_birth_phase" in source
+    assert "_persist_first_boot_settings" in source
+    assert "explicit_user_start=True" in source
+    assert "first_boot_start_requested" in source
 
 
 def test_training_dashboard_uses_tabs_for_embedded_sections() -> None:
@@ -158,8 +193,10 @@ def test_admin_tab_contains_setup_training_configuration_section() -> None:
 def test_first_boot_tab_contains_strict_save_start_and_summary_actions() -> None:
     root = Path(__file__).resolve().parents[1]
     source = (root / "lumina_launcher" / "ui" / "tabs" / "first_boot.py").read_text(encoding="utf-8")
-    assert "Start Bot is pas actief nadat je op Save Settings hebt geklikt." in source
+    assert "Start Birth Phase is pas actief nadat je op Save Settings hebt geklikt." in source
     assert "Instellingen zijn vergrendeld tijdens/na gestart Birth Phase training." in source
+    assert "Historische data tijdelijk niet beschikbaar." in source
+    assert "Practice met synthetic" in source
     assert "Extra trainen" in source
     assert "Ga naar bot" in source
 

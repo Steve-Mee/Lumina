@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -60,12 +61,14 @@ class LuminaBirthEngine:
         market_data_service: Any = None,
         config: dict[str, Any] | None = None,
         workspace_root: str | Path = Path.cwd(),
+        stop_event: threading.Event | None = None,
     ) -> None:
         self.runtime = runtime
         self.ppo_trainer = ppo_trainer or PPOTrainer(engine=runtime)
         self.market_data_service = market_data_service
         self.config = config or {}
         self.workspace_root = Path(workspace_root)
+        self.stop_event = stop_event
         self.logger = logger
         self.cumulative_trades = 0
         self.ppo_steps = 0
@@ -75,6 +78,10 @@ class LuminaBirthEngine:
         self._entry_counter = 0
         self._recent_pnl: list[float] = []
         self._loaded_real_days = 0
+        self._real_data_pct = 0.0
+        self._active_training_mode = "certified"
+        self._ppo_timesteps_planned_total = 0
+        self._ppo_batch_count = 0
 
         self.checkpoint_path = self.workspace_root / "state" / "lumina_birth_checkpoint.json"
         self.legacy_checkpoint_path = self.workspace_root / "state" / "first_boot_checkpoint.json"
@@ -82,11 +89,110 @@ class LuminaBirthEngine:
         self.legacy_progress_path = self.workspace_root / "state" / "first_boot_progress.json"
         self.pause_flag_path = self.workspace_root / "state" / "first_boot_pause_requested"
         self.final_policy_path = self.workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
+        self.practice_policy_path = self.workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy_practice.zip"
         self.completion_flag_path = self.workspace_root / "state" / "lumina_birth_completed.flag"
         self.legacy_completion_flag_path = self.workspace_root / "state" / "first_boot_completed.flag"
+        self.practice_completed_flag_path = self.workspace_root / "state" / "lumina_birth_practice_completed.flag"
 
         self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         self.final_policy_path.parent.mkdir(parents=True, exist_ok=True)
+        self.practice_policy_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _user_stop_requested(self) -> bool:
+        return self.stop_event is not None and self.stop_event.is_set()
+
+    def _stop_requested(self) -> bool:
+        if self._user_stop_requested():
+            return True
+        return self.pause_flag_path.exists()
+
+    def _handle_user_stop(
+        self,
+        *,
+        target: int,
+        ticks: list[dict[str, Any]],
+        training_mode: str,
+    ) -> dict[str, Any]:
+        self._save_checkpoint(target=target, training_mode=training_mode)
+        if self._user_stop_requested():
+            stage = "stopped_by_user"
+            phase = "stopped_by_user"
+            status = "stopped"
+            message = "Birth Phase gestopt op gebruikersverzoek."
+        else:
+            stage = "paused"
+            phase = "paused"
+            status = "paused"
+            message = "Birth Phase gepauzeerd op gebruikersverzoek."
+        self._write_progress(
+            stage=stage,
+            message=message,
+            target_trades=target,
+            phase=phase,
+            progress_pct=self._overall_progress_pct(target),
+            remaining_trades=max(0, target - self.cumulative_trades),
+            **self._data_progress_extra(training_mode),
+        )
+        return self._result_payload(status=status, ticks=ticks)
+
+    def _data_progress_extra(self, training_mode: str) -> dict[str, Any]:
+        mode = str(training_mode or self._active_training_mode or "certified").strip().lower()
+        return {
+            "training_mode": mode,
+            "actual_real_days_loaded": int(self._loaded_real_days),
+            "real_data_pct": round(float(self._real_data_pct), 3),
+            "certification_eligible": mode == "certified",
+        }
+
+    def _estimate_ppo_timesteps_planned(
+        self,
+        *,
+        target_trades: int,
+        chunk_size: int,
+        ppo_update_timesteps: int,
+    ) -> int:
+        chunks = max(1, int(math.ceil(float(max(1, target_trades)) / float(max(1, chunk_size)))))
+        per_chunk_updates = max(1, int(ppo_update_timesteps))
+        final_polish = 50_000
+        return int(chunks * per_chunk_updates + final_polish)
+
+    def _ppo_progress_extra(self, *, target_trades: int) -> dict[str, Any]:
+        target = max(1, int(target_trades))
+        planned = max(0, int(self._ppo_timesteps_planned_total))
+        cumulative = max(0, int(self.ppo_steps))
+        return {
+            "ppo_steps_cumulative": cumulative,
+            "ppo_timesteps_planned_total": planned,
+            "sim_trades_complete": bool(self.cumulative_trades >= target),
+            "ppo_batch_count": int(self._ppo_batch_count),
+        }
+
+    def _read_checkpoint_payload(self) -> dict[str, Any] | None:
+        candidates = [p for p in (self.checkpoint_path, self.legacy_checkpoint_path) if p.exists()]
+        if not candidates:
+            return None
+        latest = max(candidates, key=lambda p: p.stat().st_mtime)
+        try:
+            payload = json.loads(latest.read_text(encoding="utf-8"))
+        except Exception:
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _can_resume_checkpoint(self, *, target: int, training_mode: str) -> bool:
+        if self._birth_completed_flag_exists():
+            return False
+        payload = self._read_checkpoint_payload()
+        if not payload:
+            return False
+        if int(payload.get("target_trades", 0) or 0) != int(target):
+            return False
+        ckpt_mode = str(payload.get("training_mode", "") or "").strip().lower()
+        desired = str(training_mode).strip().lower()
+        if ckpt_mode and ckpt_mode != desired:
+            return False
+        if not ckpt_mode and desired == "certified":
+            return False
+        return True
 
     def run_birth_phase(
         self,
@@ -96,8 +202,11 @@ class LuminaBirthEngine:
         chunk_size: int = 50_000,
         ppo_update_timesteps: int = 25_000,
         force: bool = False,
+        practice_mode: bool = False,
     ) -> dict[str, Any]:
         # BIRTH ENGINE 2026-05-17
+        training_mode = "practice" if practice_mode else "certified"
+        self._active_training_mode = training_mode
         target = self._resolve_target_trades(target_trades)
         max_days = max(30, min(3650, int(max_real_days)))
         chunk_size = max(2_500, min(250_000, int(chunk_size)))
@@ -110,28 +219,40 @@ class LuminaBirthEngine:
             max_real_days=max_days,
             phase="detected",
             progress_pct=5.0,
+            **self._data_progress_extra(training_mode),
         )
         ticks = self._load_training_ticks(max_real_days=max_days, prefer_real_data_only=prefer_real_data_only)
+        self._real_data_pct = self._calculate_real_data_percentage(ticks)
         if not ticks:
             self._write_progress(
-                stage="failed",
+                stage="history_unavailable",
                 message="Birth Phase kon niet starten: geen historische data beschikbaar.",
                 target_trades=target,
                 phase="loading_history_failed",
                 progress_pct=100.0,
+                retryable=True,
+                failure_reason="historical_data_unavailable",
+                **self._data_progress_extra(training_mode),
             )
             return {
-                "status": "blocked_no_real_data",
+                "status": "history_unavailable",
                 "total_trades": 0,
                 "ppo_steps": 0,
                 "duration_seconds": round(time.time() - self.birth_start_time, 2),
                 "real_data_pct": 0.0,
                 "policy_path": str(self.final_policy_path),
+                "training_mode": training_mode,
             }
-        if self._should_resume(target=target) and not force:
+        if self._can_resume_checkpoint(target=target, training_mode=training_mode) and not force:
             self._load_checkpoint()
             self.logger.info("birth.resume checkpoint trades=%s ppo_steps=%s", self.cumulative_trades, self.ppo_steps)
         else:
+            if self._read_checkpoint_payload() is not None and not force:
+                self.logger.info(
+                    "birth.checkpoint.skipped_resume target=%s training_mode=%s",
+                    target,
+                    training_mode,
+                )
             self.cumulative_trades = 0
             self.ppo_steps = 0
             self.buffer.clear()
@@ -140,23 +261,22 @@ class LuminaBirthEngine:
         if self.current_policy is None:
             self.current_policy = self.ppo_trainer.create_fresh_birth_policy()
 
+        self._ppo_timesteps_planned_total = self._estimate_ppo_timesteps_planned(
+            target_trades=target,
+            chunk_size=chunk_size,
+            ppo_update_timesteps=ppo_update_timesteps,
+        )
+
         last_checkpoint = time.time()
         while self.cumulative_trades < target:
-            if self.pause_flag_path.exists():
-                self._save_checkpoint(target=target)
-                self._write_progress(
-                    stage="paused",
-                    message="Birth Phase gepauzeerd op gebruikersverzoek.",
-                    target_trades=target,
-                    phase="paused",
-                    progress_pct=self._overall_progress_pct(target),
-                    remaining_trades=max(0, target - self.cumulative_trades),
-                )
-                return self._result_payload(status="paused", ticks=ticks)
+            if self._stop_requested():
+                return self._handle_user_stop(target=target, ticks=ticks, training_mode=training_mode)
 
             remaining = max(0, target - self.cumulative_trades)
             chunk_target = min(chunk_size, remaining)
             chunk = self._simulate_chunk_with_policy(ticks=ticks, chunk_trades=chunk_target, policy=self.current_policy)
+            if self._stop_requested():
+                return self._handle_user_stop(target=target, ticks=ticks, training_mode=training_mode)
             chunk_trades = int(chunk.get("trades", 0) or 0)
             if chunk_trades <= 0:
                 self._write_progress(
@@ -165,6 +285,7 @@ class LuminaBirthEngine:
                     target_trades=target,
                     phase="simulation_stall",
                     progress_pct=self._overall_progress_pct(target),
+                    **self._data_progress_extra(training_mode),
                 )
                 return self._result_payload(status="birth_failed", ticks=ticks)
 
@@ -177,6 +298,7 @@ class LuminaBirthEngine:
 
             ppo_phase = "birth_phase"
             if len(self.buffer) >= 256:
+                self._ppo_batch_count += 1
                 self.current_policy = self.ppo_trainer.update_from_buffer(
                     buffer=self.buffer,
                     timesteps=ppo_update_timesteps,
@@ -189,7 +311,7 @@ class LuminaBirthEngine:
                 stage="training_running",
                 message=(
                     f"Birth Phase actief: {self.cumulative_trades:,}/{target:,} trades, "
-                    f"{self.ppo_steps:,} PPO steps."
+                    f"{self.ppo_steps:,}/{self._ppo_timesteps_planned_total:,} PPO timesteps (totaal)."
                 ),
                 target_trades=target,
                 phase=ppo_phase,
@@ -199,26 +321,58 @@ class LuminaBirthEngine:
                 recent_winrate=round(float(chunk.get("winrate", 0.0) or 0.0), 4),
                 velocity_trades_per_sec=round(self._velocity_trades_per_sec(), 3),
                 estimated_real_days=self._estimate_required_real_days(target),
-                actual_real_days_loaded=self._loaded_real_days,
+                **self._data_progress_extra(training_mode),
             )
             if self.cumulative_trades % 100_000 == 0:
                 self.ppo_trainer.save_intermediate_policy(self.cumulative_trades)
             if time.time() - last_checkpoint >= 20.0:
-                self._save_checkpoint(target=target)
+                self._save_checkpoint(target=target, training_mode=training_mode)
                 last_checkpoint = time.time()
 
+        self._ppo_timesteps_planned_total = max(
+            int(self._ppo_timesteps_planned_total),
+            int(self.ppo_steps) + 50_000,
+        )
+        self._write_progress(
+            stage="training_running",
+            message=(
+                f"SIM-training afgerond ({self.cumulative_trades:,}/{target:,} trades). "
+                f"Final PPO polish gestart."
+            ),
+            target_trades=target,
+            phase="ppo_training",
+            progress_pct=self._overall_progress_pct(target),
+            **self._data_progress_extra(training_mode),
+        )
+        self._ppo_batch_count += 1
         self.ppo_trainer.final_birth_polish(self.buffer)
-        self.ppo_trainer.save_final_birth_policy(str(self.final_policy_path))
-        self._create_birth_completed_flag()
+        self.ppo_steps += 50_000
+        target_policy_path = self.practice_policy_path if practice_mode else self.final_policy_path
+        self.ppo_trainer.save_final_birth_policy(str(target_policy_path))
+        if practice_mode:
+            self.practice_completed_flag_path.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
+        else:
+            self._create_birth_completed_flag()
         self._clear_checkpoint()
         self._write_progress(
-            stage="completed",
-            message="Birth Phase voltooid. Policy opgeslagen.",
+            stage="practice_completed" if practice_mode else "completed",
+            message=(
+                "Practice Birth Phase voltooid met synthetic fallback. "
+                "Dit telt niet mee voor live-gang."
+                if practice_mode
+                else "Birth Phase voltooid. Policy opgeslagen."
+            ),
             target_trades=target,
-            phase="completed",
+            phase="practice_completed" if practice_mode else "completed",
             progress_pct=100.0,
+            **self._data_progress_extra(training_mode),
         )
-        return self._result_payload(status="completed", ticks=ticks)
+        return self._result_payload(
+            status="practice_completed" if practice_mode else "completed",
+            ticks=ticks,
+            policy_path_override=target_policy_path,
+            training_mode=training_mode,
+        )
 
     # BIRTH ENGINE 2026-05-17
     def _resolve_target_trades(self, target_trades: int | None) -> int:
@@ -259,8 +413,8 @@ class LuminaBirthEngine:
                 rows = source.load_historical_ohlc_extended(days_back=days_back, limit=limit, ticks_per_bar=4)
                 if isinstance(rows, list):
                     return self._normalize_tick_rows(rows, source_label="real_historical")
-            except Exception:
-                self.logger.warning("birth.load_historical_ohlc_extended_failed", exc_info=True)
+            except Exception as exc:
+                self.logger.warning("birth.load_historical_ohlc_extended_failed detail=%s", exc, exc_info=True)
         ohlc = getattr(self.runtime, "ohlc_1min", None)
         if ohlc is None:
             return []
@@ -339,6 +493,8 @@ class LuminaBirthEngine:
         position: dict[str, Any] | None = None
         local_limit = max(5_000, chunk_trades * 80)
         while trades < chunk_trades and idx < local_limit:
+            if idx > 0 and idx % 1000 == 0 and self._stop_requested():
+                break
             tick = ticks[idx % len(ticks)]
             idx += 1
             observation = self._build_observation(tick=tick, position=position)
@@ -483,12 +639,15 @@ class LuminaBirthEngine:
         return (price - entry) * qty if side == "BUY" else (entry - price) * qty
 
     # BIRTH ENGINE 2026-05-17
-    def _save_checkpoint(self, *, target: int) -> None:
+    def _save_checkpoint(self, *, target: int, training_mode: str | None = None) -> None:
+        mode = str(training_mode or self._active_training_mode or "certified").strip().lower()
         payload = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "target_trades": int(target),
             "cumulative_trades": int(self.cumulative_trades),
             "ppo_steps": int(self.ppo_steps),
+            "training_mode": mode,
+            "practice_mode": mode == "practice",
         }
         encoded = json.dumps(payload, ensure_ascii=True, indent=2)
         for path in (self.checkpoint_path, self.legacy_checkpoint_path):
@@ -519,21 +678,6 @@ class LuminaBirthEngine:
             except Exception:
                 self.logger.warning("birth.checkpoint.clear_failed path=%s", path, exc_info=True)
 
-    def _should_resume(self, *, target: int) -> bool:
-        if self._birth_completed_flag_exists():
-            return False
-        candidates = [p for p in (self.checkpoint_path, self.legacy_checkpoint_path) if p.exists()]
-        if not candidates:
-            return False
-        latest = max(candidates, key=lambda p: p.stat().st_mtime)
-        try:
-            payload = json.loads(latest.read_text(encoding="utf-8"))
-        except Exception:
-            return False
-        if not isinstance(payload, dict):
-            return False
-        return int(payload.get("target_trades", 0) or 0) == int(target)
-
     def _birth_completed_flag_exists(self) -> bool:
         return self.completion_flag_path.exists() or self.legacy_completion_flag_path.exists()
 
@@ -554,6 +698,7 @@ class LuminaBirthEngine:
             "cumulative_trades": int(self.cumulative_trades),
             "total_trades": int(self.cumulative_trades),
             "ppo_steps": int(self.ppo_steps),
+            **self._ppo_progress_extra(target_trades=int(target_trades)),
             "progress_pct": round(max(0.0, min(100.0, float(progress_pct))), 2),
             "elapsed_sec": round(max(0.0, time.time() - self.birth_start_time), 2) if self.birth_start_time > 0 else 0.0,
             "recent_pnl_avg": round(float(np.mean(self._recent_pnl)) if self._recent_pnl else 0.0, 4),
@@ -592,14 +737,22 @@ class LuminaBirthEngine:
                 real += 1
         return round((float(real) / float(max(1, len(ticks)))) * 100.0, 3)
 
-    def _result_payload(self, *, status: str, ticks: list[dict[str, Any]]) -> dict[str, Any]:
+    def _result_payload(
+        self,
+        *,
+        status: str,
+        ticks: list[dict[str, Any]],
+        policy_path_override: Path | None = None,
+        training_mode: str = "certified",
+    ) -> dict[str, Any]:
         payload = {
             "status": str(status),
             "total_trades": int(self.cumulative_trades),
             "ppo_steps": int(self.ppo_steps),
             "duration_seconds": round(max(0.0, time.time() - self.birth_start_time), 2),
             "real_data_pct": self._calculate_real_data_percentage(ticks),
-            "policy_path": str(self.final_policy_path),
+            "policy_path": str(policy_path_override or self.final_policy_path),
+            "training_mode": str(training_mode),
         }
         payload["report_path"] = self._write_birth_report(payload)
         return payload

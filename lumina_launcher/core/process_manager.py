@@ -325,7 +325,18 @@ class ProcessManager:
             return False, f"Failed to stop bot: {exc}"
 
     def stop_all_activities(self) -> tuple[bool, str]:
+        birth_msg = ""
+        try:
+            from lumina_launcher.services.birth_service import birth_service
+
+            birth_result = birth_service.stop_birth()
+            birth_msg = str(birth_result.get("message", "") or "").strip()
+        except Exception as exc:
+            birth_msg = f"Birth stop warning: {exc}"
+
         ok_rt, rt_msg = self.stop_bot()
+        if birth_msg:
+            rt_msg = f"{birth_msg}. {rt_msg}"
         backend_pids = self._enumerate_backend_pids()
         worker_pids = self._enumerate_launcher_worker_pids()
         backend_stopped = 0
