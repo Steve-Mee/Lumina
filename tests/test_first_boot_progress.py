@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from lumina_core.first_boot_progress import (
     is_sim_trades_complete,
+    resolve_first_boot_target_for_display,
     resolve_ppo_batch_progress,
     resolve_ppo_progress_interval,
     resolve_ppo_training_progress,
@@ -71,3 +72,21 @@ def test_resolve_ppo_progress_interval_clamps() -> None:
     assert resolve_ppo_progress_interval({}) == 10000
     assert resolve_ppo_progress_interval({"first_boot": {"ppo_progress_interval": 500}}) == 1000
     assert resolve_ppo_progress_interval({"first_boot": {"ppo_progress_interval": 250000}}) == 100000
+
+
+def test_resolve_first_boot_target_for_display_prefers_session_draft_when_idle() -> None:
+    target = resolve_first_boot_target_for_display(
+        progress={"stage": "idle", "target_trades": 0},
+        config_payload={"first_boot": {"training_trades": 25000}},
+        session_trades=100000,
+    )
+    assert target == 100000
+
+
+def test_resolve_first_boot_target_for_display_prefers_active_progress_target() -> None:
+    target = resolve_first_boot_target_for_display(
+        progress={"stage": "training_running", "target_trades": 30000},
+        config_payload={"first_boot": {"training_trades": 25000}},
+        session_trades=100000,
+    )
+    assert target == 30000

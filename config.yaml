@@ -53,6 +53,12 @@ inference:
   fast_path_threshold: 0.75
   request_timeout_sec: 60
   max_consecutive_failures: 5
+intelligence:
+  mode: auto
+  tier_names:
+    high: high
+    standard: standard
+    light: light
 vllm:
   host: http://localhost:8000
   model_name: qwen3.5-35b
@@ -224,7 +230,7 @@ fine_tuning:
 first_boot:
   training_trades: 25000
   prefer_real_data_only: true
-  max_real_days: 30
+  max_real_days: 56
   birth_phase: true
   allow_minimal_synthetic_fallback: false
   ppo_progress_interval: 5000

@@ -66,6 +66,49 @@ For `sim_real_guard` selection:
 3. Set `TRADERLEAGUE_ACCOUNT_MODE=sim`.
 4. Verify parity metrics are visible in observability/dashboard before considering REAL promotion.
 
+## Adaptive Intelligence (SSOT + monitoring)
+
+LUMINA uses a single public facade for runtime intelligence selection:
+
+- `AdaptiveIntelligenceManager` — SSOT for tier, model, provider, reasoning mode, and degrade state
+- `HardwareIntelligenceManager` — internal helper for hardware snapshot + model catalog resolution (not a second public status API)
+
+Canonical intelligence tiers in code/UI/logging:
+
+- `high`
+- `standard`
+- `light`
+
+Legacy hardware profile names (`beast`, `sweet`, `light`) are mapped internally to these canonical tiers.
+
+Configuration (`config.yaml`):
+
+```yaml
+intelligence:
+  mode: auto   # auto | force_high | force_standard | force_light
+```
+
+State files written at runtime:
+
+- `state/adaptive_intelligence_status.json` — latest published intelligence event envelope
+- `state/adaptive_intelligence_events.jsonl` — transition history (deduplicated identical states)
+
+Event bus topic:
+
+- `inference.adaptive_intelligence.state` (typed Pydantic contract)
+
+Monitoring API (FastAPI backend on port 8000, requires `X-API-Key`):
+
+```powershell
+curl http://localhost:8000/api/monitoring/adaptive-intelligence/latest -H "X-API-Key: $env:LUMINA_ADMIN_API_KEY"
+curl "http://localhost:8000/api/monitoring/adaptive-intelligence/history?limit=100" -H "X-API-Key: $env:LUMINA_ADMIN_API_KEY"
+```
+
+Launcher visibility:
+
+- First Boot tab shows current adaptive intelligence status (tier, provider, mode, degraded)
+- Operations sidebar shows the same status via birth-service SSOT
+
 ## Current Qwen3.5 defaults
 
 - `light`: `qwen3.5:4b`

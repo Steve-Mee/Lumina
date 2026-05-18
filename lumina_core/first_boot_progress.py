@@ -74,6 +74,60 @@ def resolve_first_boot_target_from_progress(progress: Mapping[str, Any] | None) 
     return max(0, target)
 
 
+def resolve_effective_first_boot_target_trades(
+    *,
+    progress: Mapping[str, Any] | None,
+    config_payload: Mapping[str, Any] | None,
+) -> int:
+    """Resolve target trades for UI surfaces.
+
+    Rule-set:
+    - During active training stages, progress target is authoritative.
+    - Otherwise prefer config target so edited/saved settings are visible immediately.
+    - Fall back to progress target, then canonical default.
+    """
+    progress_target = resolve_first_boot_target_from_progress(progress)
+    config_target = resolve_first_boot_target_trades(config_payload)
+    stage = resolve_first_boot_stage(progress)
+    if stage in _ACTIVE_TRAINING_STAGES and progress_target > 0:
+        return progress_target
+    if config_target > 0:
+        return config_target
+    if progress_target > 0:
+        return progress_target
+    return FIRST_BOOT_DEFAULT_TRADES
+
+
+def resolve_first_boot_target_for_display(
+    *,
+    progress: Mapping[str, Any] | None,
+    config_payload: Mapping[str, Any] | None,
+    session_trades: int | None = None,
+) -> int:
+    """Resolve target for UI display with optional unsaved form draft.
+
+    Priority:
+    1) Active training progress target.
+    2) Session draft (when user edits form but has not saved yet).
+    3) Persisted config target.
+    4) Non-active progress target.
+    5) Canonical default.
+    """
+    progress_target = resolve_first_boot_target_from_progress(progress)
+    stage = resolve_first_boot_stage(progress)
+    if stage in _ACTIVE_TRAINING_STAGES and progress_target > 0:
+        return progress_target
+    draft_target = None
+    if session_trades is not None:
+        try:
+            draft_target = normalize_first_boot_training_trades(session_trades)
+        except (TypeError, ValueError):
+            draft_target = None
+    if draft_target is not None and draft_target > 0:
+        return draft_target
+    return resolve_effective_first_boot_target_trades(progress=progress, config_payload=config_payload)
+
+
 def birth_runner_lock_path(workspace_root: Path | str) -> Path:
     return Path(workspace_root).resolve() / "state" / BIRTH_RUNNER_LOCK_FILENAME
 

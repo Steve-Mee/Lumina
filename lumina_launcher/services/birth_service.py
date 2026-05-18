@@ -20,6 +20,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 from lumina_core.container import ApplicationContainer
+from lumina_core.adaptive_intelligence import AdaptiveIntelligenceManager
 from lumina_core.engine.runtime_entrypoint import _bind_headless_runtime_app
 from lumina_core.lumina_birth_engine import LuminaBirthEngine
 from lumina_core.first_boot_progress import (
@@ -29,7 +30,12 @@ from lumina_core.first_boot_progress import (
     resolve_first_boot_stage,
     resolve_progress_active_max_age_sec,
 )
-from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES, resolve_default_max_real_days
+from lumina_core.first_boot_ui import (
+    FIRST_BOOT_DEFAULT_PPO_UPDATE_TIMESTEPS,
+    FIRST_BOOT_DEFAULT_TRADES,
+    normalize_first_boot_training_trades,
+    resolve_default_max_real_days,
+)
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -89,6 +95,24 @@ class BirthService:
 
         self._initialized = True
         logger.info("BirthService initialized (singleton) workspace=%s", self.workspace_root)
+
+    def _adaptive_intelligence_status(self) -> dict[str, Any]:
+        try:
+            manager = AdaptiveIntelligenceManager(self.workspace_root)
+            return manager.to_dict()
+        except Exception as exc:
+            logger.warning("birth.adaptive_intelligence.status_failed detail=%s", exc)
+            return {
+                "tier": "light",
+                "mode": "auto",
+                "reasoning_mode": "fast_path_only",
+                "degraded_state": True,
+                "status_reason": "adaptive_intelligence_init_failed",
+                "recommended_model": "",
+                "recommended_provider": "ollama",
+                "context_length": 0,
+                "last_probe_error": str(exc),
+            }
 
     def configure_workspace(self, workspace_root: Path | str | None = None) -> Path:
         """Bind state paths to repo root (safe when backend cwd != repo root)."""
@@ -161,7 +185,7 @@ class BirthService:
 
     def start_birth(
         self,
-        target_trades: int = 25000,
+        target_trades: int | None = None,
         force: bool = False,
         practice_mode: bool = False,
         explicit_user_start: bool = False,
@@ -190,7 +214,15 @@ class BirthService:
         self._error = None
         self._start_time = time.time()
         saved_settings = self._load_saved_birth_settings()
-        resolved_target = int(saved_settings.get("training_trades", target_trades) or target_trades or FIRST_BOOT_DEFAULT_TRADES)
+        requested_target = (
+            normalize_first_boot_training_trades(target_trades)
+            if target_trades is not None
+            else 0
+        )
+        saved_target = normalize_first_boot_training_trades(
+            saved_settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
+        )
+        resolved_target = requested_target or saved_target or FIRST_BOOT_DEFAULT_TRADES
         resolved_max_real_days = int(
             saved_settings.get("max_real_days")
             or resolve_default_max_real_days(resolved_target)
@@ -198,6 +230,11 @@ class BirthService:
         resolved_prefer_real_data_only = (
             False if practice_mode else bool(saved_settings.get("prefer_real_data_only", True))
         )
+        raw_ppo_update_timesteps = saved_settings.get("ppo_update_timesteps", FIRST_BOOT_DEFAULT_PPO_UPDATE_TIMESTEPS)
+        try:
+            resolved_ppo_update_timesteps = max(1_000, int(raw_ppo_update_timesteps))
+        except (TypeError, ValueError):
+            resolved_ppo_update_timesteps = FIRST_BOOT_DEFAULT_PPO_UPDATE_TIMESTEPS
         checkpoint_exists = (self.workspace_root / "state" / "lumina_birth_checkpoint.json").exists() or (
             self.workspace_root / "state" / "first_boot_checkpoint.json"
         ).exists()
@@ -216,7 +253,7 @@ class BirthService:
             self._write_runner_lock()
             try:
                 logger.info(
-                    "birth.start route=local target_trades=%s max_real_days=%s prefer_real_data_only=%s practice_mode=%s continue_training=%s reuse_existing_policy=%s workspace=%s",
+                    "birth.start route=local target_trades=%s max_real_days=%s prefer_real_data_only=%s practice_mode=%s continue_training=%s reuse_existing_policy=%s workspace=%s intelligence_tier=%s",
                     resolved_target,
                     resolved_max_real_days,
                     resolved_prefer_real_data_only,
@@ -224,6 +261,7 @@ class BirthService:
                     bool(continue_training),
                     bool(reuse_existing_policy),
                     self.workspace_root,
+                    self._adaptive_intelligence_status().get("tier", "light"),
                 )
                 previous_cfg = os.getenv("LUMINA_CONFIG", "")
                 previous_cwd = Path.cwd()
@@ -232,10 +270,12 @@ class BirthService:
                     os.chdir(self.workspace_root)
                     container = ApplicationContainer()
                     _bind_headless_runtime_app(container)
+                    effective_settings = dict(saved_settings)
+                    effective_settings["training_trades"] = int(resolved_target)
                     engine = LuminaBirthEngine(
                         runtime=container.engine,
                         market_data_service=container.market_data_service,
-                        config={"first_boot": saved_settings},
+                        config={"first_boot": effective_settings},
                         workspace_root=self.workspace_root,
                         stop_event=self._stop_requested,
                     )
@@ -244,7 +284,7 @@ class BirthService:
                         max_real_days=resolved_max_real_days,
                         prefer_real_data_only=resolved_prefer_real_data_only,
                         chunk_size=50000,
-                        ppo_update_timesteps=25000,
+                        ppo_update_timesteps=resolved_ppo_update_timesteps,
                         force=force,
                         practice_mode=bool(practice_mode),
                         reuse_existing_policy=bool(reuse_existing_policy),
@@ -293,6 +333,7 @@ class BirthService:
                 "message": "Birth Phase voltooid",
                 "result": self._result,
                 "orphaned": False,
+                "adaptive_intelligence": self._adaptive_intelligence_status(),
             }
 
         if self._error:
@@ -302,6 +343,7 @@ class BirthService:
                 "error": self._error,
                 "message": "Birth Phase gefaald",
                 "orphaned": False,
+                "adaptive_intelligence": self._adaptive_intelligence_status(),
             }
 
         if self.is_running():
@@ -312,6 +354,7 @@ class BirthService:
                 "elapsed_seconds": round(time.time() - self._start_time, 1) if self._start_time else 0,
                 "message": "Birth Phase draait...",
                 "orphaned": False,
+                "adaptive_intelligence": self._adaptive_intelligence_status(),
             }
 
         if self._progress_indicates_running(progress):
@@ -324,6 +367,7 @@ class BirthService:
                 "runner_pid": runner_meta.get("pid"),
                 "runner_host": runner_meta.get("host"),
                 "orphaned": False,
+                "adaptive_intelligence": self._adaptive_intelligence_status(),
             }
 
         if stage == "interrupted":
@@ -340,14 +384,22 @@ class BirthService:
         if isinstance(self._result, dict) and self._result:
             status = str(self._result.get("status", "idle") or "idle")
             msg = str(progress.get("message") or self._result.get("message") or "Birth Phase klaar.")
-            return {**base_meta, "status": status, "result": self._result, "message": msg, "orphaned": False}
-
-        return {
+            return {
+                **base_meta,
+                "status": status,
+                "result": self._result,
+                "message": msg,
+                "orphaned": False,
+                "adaptive_intelligence": self._adaptive_intelligence_status(),
+            }
+        status = {
             **base_meta,
             "status": "idle",
             "message": "Birth Phase nog niet gestart",
             "orphaned": False,
+            "adaptive_intelligence": self._adaptive_intelligence_status(),
         }
+        return status
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -402,7 +454,13 @@ class BirthService:
                     return json.load(f)
             except Exception:
                 pass
-        return {"trades_done": 0, "target_trades": 25000, "progress_pct": 0, "ppo_steps": 0, "stage": "not_started"}
+        return {
+            "trades_done": 0,
+            "target_trades": FIRST_BOOT_DEFAULT_TRADES,
+            "progress_pct": 0,
+            "ppo_steps": 0,
+            "stage": "not_started",
+        }
 
     def _progress_timestamp_age_sec(self, progress: Dict[str, Any]) -> float | None:
         raw = str(progress.get("timestamp", "") or "").strip()
@@ -433,7 +491,7 @@ class BirthService:
                 "Vorige Birth Phase gestopt (herstart). "
                 "Klik Start Birth Phase om opnieuw te beginnen."
             ),
-            "target_trades": int(progress.get("target_trades", 25000) or 25000),
+            "target_trades": int(progress.get("target_trades", FIRST_BOOT_DEFAULT_TRADES) or FIRST_BOOT_DEFAULT_TRADES),
             "trades_done": int(progress.get("trades_done", 0) or 0),
             "cumulative_trades": int(progress.get("cumulative_trades", 0) or 0),
             "total_trades": int(progress.get("total_trades", 0) or 0),

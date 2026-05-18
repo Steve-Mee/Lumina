@@ -88,6 +88,7 @@ class LuminaEngine:
     rl_policy_enabled: bool = False
     rl_confidence_threshold: float = 0.78
     current_regime_snapshot: dict[str, Any] = field(default_factory=dict)
+    adaptive_intelligence: dict[str, Any] | None = None
     logger: Any = field(default_factory=lambda: logging.getLogger("lumina"))
     fast_path: Any | None = None
     backtester: Any | None = None

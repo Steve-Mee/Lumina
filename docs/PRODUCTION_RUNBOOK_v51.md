@@ -287,8 +287,24 @@ Metrics/API checks (when backend is running):
 ```powershell
 curl http://localhost:8000/api/monitoring/health
 curl http://localhost:8000/api/monitoring/metrics
-curl http://localhost:8000/api/monitoring/metrics/json
+curl http://localhost:8000/api/monitoring/metrics/json -H "X-API-Key: $env:LUMINA_ADMIN_API_KEY"
 ```
+
+Adaptive Intelligence checks (tier/provider/degrade visibility):
+
+```powershell
+curl http://localhost:8000/api/monitoring/adaptive-intelligence/latest -H "X-API-Key: $env:LUMINA_ADMIN_API_KEY"
+curl "http://localhost:8000/api/monitoring/adaptive-intelligence/history?limit=50" -H "X-API-Key: $env:LUMINA_ADMIN_API_KEY"
+```
+
+On-disk state (when runtime has published at least one transition):
+
+```powershell
+Get-Content state\adaptive_intelligence_status.json
+Get-Content state\adaptive_intelligence_events.jsonl -Tail 5
+```
+
+`latest` includes `transition_summary` with `changed_fields`, `from_state`, and `to_state` when tier/provider/mode/degraded changes.
 
 Validation summary checks:
 

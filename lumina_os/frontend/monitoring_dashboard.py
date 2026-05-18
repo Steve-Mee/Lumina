@@ -23,7 +23,11 @@ from lumina_core.first_boot_progress import (
     resolve_first_boot_stage,
     resolve_first_boot_target_trades,
 )
-from lumina_os.frontend.dashboard_views import DashboardPaths, resolve_workspace_root_from_this_module
+from lumina_os.frontend.dashboard_views import (
+    DashboardPaths,
+    embedded_react_ui_status,
+    resolve_workspace_root_from_this_module,
+)
 from lumina_os.frontend.http_utils import (
     is_backend_unreachable,
     log_fetch_failure,
@@ -636,12 +640,10 @@ def _react_dashboard_url_default() -> str:
 
 def _react_dashboard_link(api_base: str, paths: _MonitoringPaths) -> str:
     """Voorkeur: gebouwde SPA onder FastAPI /ui/; anders Vite-dev URL; override via env."""
-    explicit = (os.getenv("LUMINA_REACT_DASHBOARD_URL") or "").strip()
-    if explicit:
-        return explicit
-    base = api_base.rstrip("/")
-    if paths.embedded_ui_index.is_file():
-        return f"{base}/ui/"
+    status = embedded_react_ui_status(api_base, DashboardPaths(paths.workspace_root))
+    react_url = status.get("react_url")
+    if isinstance(react_url, str) and react_url.strip():
+        return react_url.strip()
     return _react_dashboard_url_default()
 
 
@@ -653,20 +655,28 @@ def render_monitoring_dashboard_tab(
 ) -> None:
     paths = _MonitoringPaths.resolve(workspace_root)
     st.subheader(title)
+    react_status = embedded_react_ui_status(base_url, DashboardPaths(paths.workspace_root))
     react_dashboard_url = _react_dashboard_link(base_url, paths)
 
     top_a, top_b = st.columns([3, 2])
     with top_a:
-        if paths.embedded_ui_index.is_file():
+        reason = str(react_status.get("reason") or "missing_dist")
+        if reason == "ok":
             st.caption(
-                "React-dashboard wordt meegeleverd via de FastAPI-backend (geen aparte terminal). "
-                "Open de knop rechts. Ontbreekt `frontend/dist`, bouw eenmalig: `cd frontend && npm ci && npm run build:embedded` "
-                "of voer `scripts/build_embedded_ui.ps1` uit."
+                "React-dashboard wordt meegeleverd via de FastAPI-backend op `/ui/`. "
+                "Open de knop rechts of gebruik het React dashboard-tabblad in het command center."
             )
+        elif reason == "wrong_base_path":
+            st.warning(
+                "Embedded React build heeft verkeerde asset-paden. "
+                "Voer `scripts/build_embedded_ui.ps1` uit (of `npm run build:embedded` in `frontend/`)."
+            )
+        elif reason == "explicit_override":
+            st.caption("React dashboard URL komt uit `LUMINA_REACT_DASHBOARD_URL`.")
         else:
             st.caption(
-                "Geen productie-build van het React-dashboard aangetroffen (`frontend/dist`). "
-                "Eenmalig bouwen met `npm run build:embedded` in map `frontend`, of tijdelijk: `npm run dev` (poort 5173). "
+                "Geen geldige embedded React build gevonden (`frontend/dist`). "
+                "Bouw eenmalig met `scripts/build_embedded_ui.ps1`, of start tijdelijk `npm run dev` (poort 5173). "
                 "Zet anders `LUMINA_REACT_DASHBOARD_URL`."
             )
     with top_b:

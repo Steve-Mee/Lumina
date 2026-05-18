@@ -65,7 +65,7 @@ python scripts/bootstrap_lumina.py
 
 - Maakt een lokale **`.venv`**, installeert launcher/runtime-dependencies en start **Streamlit**.
 - **`lumina_launcher.py`** — hardware-aware **guided setup**: hardwarescan, aanbevolen **Qwen3.5**-model en stap-voor-stap installatie.
-- **Monitoring Dashboard** — tab `📡 Monitoring Dashboard` in de launcher (en in `lumina_os/frontend/dashboard.py`); telemetry onder `state/monitoring_*.json(l)`; backend-metrics via FastAPI `lumina_os` (`/api/monitoring/health`, `/api/monitoring/metrics/json` met API-key). Zie `lumina_os/README.md`.
+- **Monitoring Dashboard** — tab `📡 Monitoring Dashboard` in de launcher (en in `lumina_os/frontend/dashboard.py`); telemetry onder `state/monitoring_*.json(l)`; backend-metrics via FastAPI `lumina_os` (`/api/monitoring/health`, `/api/monitoring/metrics/json`, `/api/monitoring/adaptive-intelligence/latest`, `/api/monitoring/adaptive-intelligence/history` met API-key). Adaptive intelligence state: `state/adaptive_intelligence_status.json` en `state/adaptive_intelligence_events.jsonl`. Zie `lumina_os/README.md` en `docs/launcher-setup-and-model-management.md`.
 - Status na setup: `state/lumina_setup_complete.json`, `state/lumina_setup_status.json`.
 - Modelcatalogus en aanbevelingen: `lumina_model_catalog.json`.
 

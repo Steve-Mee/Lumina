@@ -342,6 +342,7 @@ def render_setup_wizard(
                 max_value=2_000_000,
                 value=int(training["training_trades"]),
                 step=500,
+                key="setup_wizard_training_trades_input",
             )
         )
         training["prefer_real_data_only"] = bool(
@@ -354,6 +355,7 @@ def render_setup_wizard(
                 max_value=3650,
                 value=int(training["max_real_days"]),
                 step=5,
+                key="setup_wizard_max_real_days_input",
             )
         )
         training["allow_minimal_synthetic_fallback"] = bool(

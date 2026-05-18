@@ -41,9 +41,9 @@ from typing import Any, Iterable
 import yaml
 
 from lumina_core.first_boot_progress import (
+    resolve_effective_first_boot_target_trades,
     resolve_ppo_training_progress,
     resolve_first_boot_completed_trades,
-    resolve_first_boot_target_from_progress,
     resolve_first_boot_stage,
     resolve_first_boot_target_trades,
 )
@@ -304,7 +304,7 @@ def enrich_observability_snapshot_for_react_dashboard(
     # --- File-derived fallbacks (training / launcher state) ---
     trades_fb = float(resolve_first_boot_completed_trades(boot))
     target_fb_cfg = float(resolve_first_boot_target_trades(config_payload))
-    target_fb_progress = float(resolve_first_boot_target_from_progress(boot))
+    target_fb_progress = float(resolve_effective_first_boot_target_trades(progress=boot, config_payload=config_payload))
     stage_fb_normalized = resolve_first_boot_stage(boot)
     current_mode = str(
         os.environ.get("LUMINA_MODE")

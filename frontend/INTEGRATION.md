@@ -51,9 +51,13 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173).
 
-## API key voor metrics/json
+## API key voor monitoring endpoints
 
-`/api/monitoring/metrics/json` vereist `X-API-Key`.
+Deze endpoints vereisen `X-API-Key`:
+
+- `/api/monitoring/metrics/json`
+- `/api/monitoring/adaptive-intelligence/latest`
+- `/api/monitoring/adaptive-intelligence/history`
 
 Frontend opties:
 
@@ -75,6 +79,22 @@ Optioneel extra origins:
 ```powershell
 $env:LUMINA_EXTRA_CORS_ORIGINS = "http://localhost:4173,http://devbox:5173"
 ```
+
+## Adaptive Intelligence endpoints
+
+Voor tier/provider/degrade zichtbaarheid (SSOT: `AdaptiveIntelligenceManager`):
+
+```powershell
+curl http://127.0.0.1:8000/api/monitoring/adaptive-intelligence/latest -H "X-API-Key: <key>"
+curl "http://127.0.0.1:8000/api/monitoring/adaptive-intelligence/history?limit=50" -H "X-API-Key: <key>"
+```
+
+`latest` bevat naast het event-envelope ook `transition_summary` (`changed_fields`, `from_state`, `to_state`) wanneer de status is gewijzigd t.o.v. de vorige history-regel.
+
+On-disk mirrors:
+
+- `state/adaptive_intelligence_status.json`
+- `state/adaptive_intelligence_events.jsonl`
 
 ## Payload contract `/api/monitoring/metrics/json`
 

@@ -23,7 +23,7 @@ def _enrich_status(payload: dict[str, Any]) -> dict[str, Any]:
 
 @router.post("/start")
 async def start_birth(
-    target_trades: int = Query(25000, ge=1000, le=5_000_000),
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
     force: bool = Query(False),
     practice_mode: bool = Query(False),
     explicit_user_start: bool = Query(True),

@@ -120,6 +120,15 @@ def test_training_dashboard_uses_tabs_for_embedded_sections() -> None:
     assert 'with st.expander("SIM evolution (full panel)"' not in source
 
 
+def test_react_dashboard_tab_validates_embedded_build_before_iframe() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "lumina_launcher" / "ui" / "tabs" / "training_dashboard.py").read_text(encoding="utf-8")
+    react_section = source.split("def _render_react_tab_content", 1)[1].split("def _render_luxury_status_bar_live", 1)[0]
+    assert "embedded_react_ui_status(" in react_section
+    assert 'reason == "wrong_base_path"' in react_section
+    assert "if ready and react_url:" in react_section
+
+
 def test_monitoring_dashboard_uses_inline_tabs_not_sidebar_select() -> None:
     root = Path(__file__).resolve().parents[1]
     source = (root / "lumina_os" / "frontend" / "monitoring_dashboard.py").read_text(encoding="utf-8")

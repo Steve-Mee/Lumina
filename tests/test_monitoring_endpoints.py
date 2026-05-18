@@ -11,6 +11,7 @@ Coverage:
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 from pathlib import Path
@@ -29,6 +30,7 @@ if str(_LUMINA_OS_PATH) not in sys.path:
     sys.path.insert(0, str(_LUMINA_OS_PATH))
 
 from backend.monitoring_endpoints import router, set_observability_service  # noqa: E402  # type: ignore[import-untyped]
+import backend.monitoring_endpoints as monitoring_endpoints  # noqa: E402  # type: ignore[import-untyped]
 
 # ── Minimal test app ──────────────────────────────────────────────────────────
 
@@ -331,3 +333,59 @@ def test_regime_history_passes_since_and_limit_to_collector() -> None:
 def test_regime_history_503_when_no_service() -> None:
     resp = _client.get("/api/monitoring/regime/history", headers={"X-API-Key": "k"})
     assert resp.status_code == 503
+
+
+def test_adaptive_intelligence_latest_includes_transition_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    latest_path = tmp_path / "adaptive_intelligence_status.json"
+    history_path = tmp_path / "adaptive_intelligence_events.jsonl"
+    monkeypatch.setattr(monitoring_endpoints, "_ADAPTIVE_INTELLIGENCE_LATEST", latest_path)
+    monkeypatch.setattr(monitoring_endpoints, "_ADAPTIVE_INTELLIGENCE_HISTORY", history_path)
+    latest = {
+        "topic": "inference.adaptive_intelligence.state",
+        "producer": "application_container",
+        "timestamp": "2026-05-18T10:00:01+00:00",
+        "metadata": {"transition": True},
+        "payload": {
+            "tier": "standard",
+            "mode": "auto",
+            "reasoning_mode": "hybrid_balanced",
+            "degraded_state": True,
+            "status_reason": "force_high_requested_but_hardware_insufficient",
+            "recommended_model": "qwen3.5-9b",
+            "recommended_provider": "ollama",
+            "context_length": 16384,
+            "last_probe_error": None,
+        },
+    }
+    previous = {
+        "topic": "inference.adaptive_intelligence.state",
+        "producer": "application_container",
+        "timestamp": "2026-05-18T10:00:00+00:00",
+        "metadata": {"transition": False},
+        "payload": {
+            "tier": "high",
+            "mode": "auto",
+            "reasoning_mode": "hybrid_deep",
+            "degraded_state": False,
+            "status_reason": "auto_hardware_resolution",
+            "recommended_model": "qwen3.5-35b",
+            "recommended_provider": "vllm",
+            "context_length": 32768,
+            "last_probe_error": None,
+        },
+    }
+    latest_path.write_text(json.dumps(latest), encoding="utf-8")
+    history_path.write_text("\n".join([json.dumps(previous), json.dumps(latest)]) + "\n", encoding="utf-8")
+
+    resp = _client.get("/api/monitoring/adaptive-intelligence/latest", headers={"X-API-Key": "k"})
+    assert resp.status_code == 200
+    body = resp.json()
+    summary = body["transition_summary"]
+    assert summary["is_transition"] is True
+    assert "tier" in summary["changed_fields"]
+    assert "recommended_provider" in summary["changed_fields"]
+
+
+def test_adaptive_intelligence_latest_requires_api_key() -> None:
+    resp = _client.get("/api/monitoring/adaptive-intelligence/latest")
+    assert resp.status_code == 401

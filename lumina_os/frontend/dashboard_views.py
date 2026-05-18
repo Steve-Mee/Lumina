@@ -27,13 +27,13 @@ import yaml
 
 from lumina_core.first_boot_progress import (
     birth_runner_lock_active,
+    resolve_first_boot_target_for_display,
     format_progress_heartbeat_age,
     is_active_training_stage,
     progress_is_recently_active,
     resolve_birth_training_pulse,
     resolve_first_boot_completed_trades,
     resolve_first_boot_stage,
-    resolve_first_boot_target_from_progress,
     resolve_first_boot_target_trades,
 )
 from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
@@ -483,19 +483,7 @@ def host_only_from_streamlit_host(header_val: str) -> str:
     return h
 
 
-def react_dashboard_url(api_base: str, p: DashboardPaths) -> str:
-    def _ui_build_stamp(path: Path) -> str:
-        try:
-            return str(int(path.stat().st_mtime_ns))
-        except OSError:
-            return "0"
-
-    explicit = (os.getenv("LUMINA_REACT_DASHBOARD_URL") or "").strip()
-    if explicit:
-        return explicit
-    base = api_base.rstrip("/")
-    if p.embedded_ui_index.is_file():
-        return f"{base}/ui/?v={_ui_build_stamp(p.embedded_ui_index)}"
+def react_dashboard_dev_url() -> str:
     port = (os.getenv("LUMINA_REACT_DASHBOARD_PORT") or "5173").strip() or "5173"
     host = "localhost"
     try:
@@ -508,6 +496,62 @@ def react_dashboard_url(api_base: str, p: DashboardPaths) -> str:
     except Exception:
         pass
     return f"http://{host}:{port}"
+
+
+def _embedded_ui_build_stamp(path: Path) -> str:
+    try:
+        return str(int(path.stat().st_mtime_ns))
+    except OSError:
+        return "0"
+
+
+def _read_embedded_ui_index_html(p: DashboardPaths) -> str:
+    try:
+        return p.embedded_ui_index.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def embedded_react_ui_status(api_base: str, p: DashboardPaths) -> dict[str, Any]:
+    """Validate embedded React build and resolve the best dashboard URL."""
+    explicit = (os.getenv("LUMINA_REACT_DASHBOARD_URL") or "").strip()
+    if explicit:
+        return {
+            "ready": True,
+            "reason": "explicit_override",
+            "react_url": explicit,
+        }
+
+    dev_url = react_dashboard_dev_url()
+    if not p.embedded_ui_index.is_file():
+        return {
+            "ready": False,
+            "reason": "missing_dist",
+            "react_url": dev_url,
+        }
+
+    html = _read_embedded_ui_index_html(p)
+    if "/ui/assets/" not in html:
+        return {
+            "ready": False,
+            "reason": "wrong_base_path",
+            "react_url": dev_url,
+        }
+
+    base = api_base.rstrip("/")
+    return {
+        "ready": True,
+        "reason": "ok",
+        "react_url": f"{base}/ui/?v={_embedded_ui_build_stamp(p.embedded_ui_index)}",
+    }
+
+
+def react_dashboard_url(api_base: str, p: DashboardPaths) -> str:
+    status = embedded_react_ui_status(api_base, p)
+    react_url = status.get("react_url")
+    if isinstance(react_url, str) and react_url.strip():
+        return react_url.strip()
+    return react_dashboard_dev_url()
 
 
 def training_dashboard_fallback_url(port: int = 8502) -> str:
@@ -601,6 +645,7 @@ def render_luxury_status_bar(
     birth_stopping: bool = False,
     process_alive: bool = False,
     pulse: str | None = None,
+    session_target_trades: int | None = None,
 ) -> None:
     st.markdown(PREMIUM_THEME_CSS + LUXURY_STATUS_BAR_CSS, unsafe_allow_html=True)
     fb = progress if progress is not None else load_json_dict(p.first_boot_progress)
@@ -622,9 +667,11 @@ def render_luxury_status_bar(
     )
     stage = resolve_first_boot_stage(fb)
     phase = status_phase_label(runtime_mode, fb)
-    target_trades = resolve_first_boot_target_from_progress(fb)
-    if target_trades <= 0:
-        target_trades = resolve_first_boot_target_trades(load_yaml_dict(p.config_yaml))
+    target_trades = resolve_first_boot_target_for_display(
+        progress=fb,
+        config_payload=load_yaml_dict(p.config_yaml),
+        session_trades=session_target_trades,
+    )
     trades_label = status_bar_trades_label(fb, target_trades=target_trades)
     heartbeat = heartbeat_age_display(p, progress=fb)
     mode_label = (runtime_mode or "sim").strip().upper() or "SIM"

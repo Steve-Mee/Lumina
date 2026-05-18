@@ -9,6 +9,7 @@ import pytest
 from lumina_os.frontend.dashboard_views import (
     DashboardPaths,
     compute_readiness_score,
+    embedded_react_ui_status,
     format_eta_minutes,
     get_training_velocity_tpm,
     load_json_dict,
@@ -85,10 +86,52 @@ def test_training_target_trades_default(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_embedded_react_ui_status_missing_dist(tmp_path: Path) -> None:
+    p = DashboardPaths(tmp_path)
+    status = embedded_react_ui_status("http://localhost:8000", p)
+    assert status["ready"] is False
+    assert status["reason"] == "missing_dist"
+    assert str(status["react_url"]).startswith("http://")
+
+
+@pytest.mark.unit
+def test_embedded_react_ui_status_wrong_base_path(tmp_path: Path) -> None:
+    ws = tmp_path
+    (ws / "frontend" / "dist").mkdir(parents=True)
+    (ws / "frontend" / "dist" / "index.html").write_text(
+        '<html><script src="/assets/index.js"></script></html>',
+        encoding="utf-8",
+    )
+    p = DashboardPaths(ws)
+    status = embedded_react_ui_status("http://localhost:8000", p)
+    assert status["ready"] is False
+    assert status["reason"] == "wrong_base_path"
+    assert str(status["react_url"]).startswith("http://localhost:")
+
+
+@pytest.mark.unit
+def test_embedded_react_ui_status_ready_embedded_build(tmp_path: Path) -> None:
+    ws = tmp_path
+    (ws / "frontend" / "dist").mkdir(parents=True)
+    (ws / "frontend" / "dist" / "index.html").write_text(
+        '<html><script src="/ui/assets/index.js"></script></html>',
+        encoding="utf-8",
+    )
+    p = DashboardPaths(ws)
+    status = embedded_react_ui_status("http://localhost:8000", p)
+    assert status["ready"] is True
+    assert status["reason"] == "ok"
+    assert str(status["react_url"]).startswith("http://localhost:8000/ui/?v=")
+
+
+@pytest.mark.unit
 def test_react_dashboard_url_embedded_includes_build_stamp(tmp_path: Path) -> None:
     ws = tmp_path
     (ws / "frontend" / "dist").mkdir(parents=True, exist_ok=True)
-    (ws / "frontend" / "dist" / "index.html").write_text("<html></html>", encoding="utf-8")
+    (ws / "frontend" / "dist" / "index.html").write_text(
+        '<html><script src="/ui/assets/index.js"></script></html>',
+        encoding="utf-8",
+    )
     p = DashboardPaths(ws)
     url = react_dashboard_url("http://localhost:8000", p)
     assert url.startswith("http://localhost:8000/ui/?v=")

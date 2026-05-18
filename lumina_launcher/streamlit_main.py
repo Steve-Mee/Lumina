@@ -14,8 +14,8 @@ import streamlit as st
 
 from lumina_core.first_boot_progress import (
     birth_runner_lock_active,
+    resolve_first_boot_target_for_display,
     resolve_first_boot_completed_trades,
-    resolve_first_boot_target_from_progress,
     resolve_first_boot_stage,
 )
 from lumina_core.first_boot_ui import (
@@ -371,6 +371,27 @@ def _render_operations_shell(
     selected_spec.render(ctx)
 
 
+def _render_adaptive_intelligence_sidebar_status(services: LauncherServices) -> None:
+    try:
+        payload = services.birth_service.get_status()
+    except Exception:
+        return
+    ai = payload.get("adaptive_intelligence")
+    if not isinstance(ai, dict):
+        return
+    tier = str(ai.get("tier", "light") or "light").upper()
+    provider = str(ai.get("recommended_provider", "ollama") or "ollama")
+    mode = str(ai.get("mode", "auto") or "auto")
+    degraded = bool(ai.get("degraded_state", False))
+    reason = str(ai.get("status_reason", "") or "").strip()
+    if degraded:
+        st.warning(f"Adaptive Intelligence: {tier} ({provider}) | {mode} | degraded")
+        if reason:
+            st.caption(f"Reason: {reason}")
+    else:
+        st.caption(f"Adaptive Intelligence: {tier} ({provider}) | {mode}")
+
+
 def render_streamlit_app() -> None:
     st.set_page_config(page_title="LUMINA OS Launcher", layout="wide")
     st.markdown(_LAUNCHER_PREMIUM_CSS, unsafe_allow_html=True)
@@ -400,10 +421,19 @@ def render_streamlit_app() -> None:
     first_boot = services.first_boot_manager.read_settings()
     first_boot_progress = services.first_boot_manager.read_progress()
     first_boot_completed_trades = resolve_first_boot_completed_trades(first_boot_progress)
+    session_target_trades = None
+    if bool(st.session_state.get("first_boot_form_dirty", False)):
+        raw_session_target = st.session_state.get("first_boot_training_trades_value")
+        try:
+            session_target_trades = int(raw_session_target)
+        except (TypeError, ValueError):
+            session_target_trades = None
     first_boot_target_trades = int(
-        resolve_first_boot_target_from_progress(first_boot_progress)
-        or first_boot.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
-        or 0
+        resolve_first_boot_target_for_display(
+            progress=first_boot_progress,
+            config_payload={"first_boot": first_boot},
+            session_trades=session_target_trades,
+        )
     )
     first_boot_stage = resolve_first_boot_stage(first_boot_progress)
     training_pulse_live = bool(
@@ -440,7 +470,7 @@ def render_streamlit_app() -> None:
         )
         st.caption(
             "Progress source: state/lumina_birth_progress.json (fallback: state/first_boot_progress.json) "
-            "• target source: config.yaml:first_boot.training_trades"
+            "• target source: active progress tijdens run, anders config.yaml:first_boot.training_trades"
         )
 
     if phase == LauncherPhase.FIRST_BOOT_REQUIRED:
@@ -451,6 +481,7 @@ def render_streamlit_app() -> None:
     if phase == LauncherPhase.OPERATIONS_READY:
         with st.sidebar:
             st.header("Bot Configuration")
+            _render_adaptive_intelligence_sidebar_status(services)
             mode = st.selectbox(
                 "Trading Mode",
                 options=["paper", "sim", "sim_real_guard", "real"],

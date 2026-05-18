@@ -104,6 +104,12 @@ journal/simulator/lumina_birth_training_*.json
 state/monitoring_*.jsonl
 state/monitoring_runtime_metrics.json
 state/ppo_policy_metadata.json
+state/adaptive_intelligence_status.json
+state/adaptive_intelligence_events.jsonl
+
+# Frontend dev/build artifacts
+frontend/tsconfig.app.tsbuildinfo
+frontend/node_modules/
 
 # Trained PPO policy checkpoints (regenerate via training)
 lumina_agents/ppo/*.zip

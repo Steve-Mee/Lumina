@@ -25,6 +25,7 @@ export interface BirthStatus {
   artifacts_label?: string;
   phase_label?: string;
   target_trades?: number;
+  adaptive_intelligence?: Record<string, unknown>;
 }
 
 export class BirthStatusFetchError extends Error {

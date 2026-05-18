@@ -45,7 +45,7 @@ from lumina_os.frontend.dashboard_views import (
     render_luxury_status_bar,
     render_shared_monitoring_dashboard,
     render_sim_evolution_dashboard_tab,
-    react_dashboard_url,
+    embedded_react_ui_status,
     resolve_mode,
     stability_report,
     tail_evolution_log,
@@ -358,14 +358,34 @@ def _render_evolution_tab_content(*, api_base: str) -> None:
 
 
 def _render_react_tab_content(*, api_base: str, p: DashboardPaths) -> None:
-    react_url = react_dashboard_url(api_base, p)
+    status = embedded_react_ui_status(api_base, p)
+    react_url = str(status.get("react_url") or "").strip()
+    reason = str(status.get("reason") or "missing_dist")
+    ready = bool(status.get("ready"))
+
     st.caption("Dezelfde React cockpit als /ui/, ingebed in het command center.")
+    if reason == "wrong_base_path":
+        st.warning(
+            "Embedded React build gebruikt verkeerde asset-paden (`/assets/` i.p.v. `/ui/assets/`). "
+            "Bouw opnieuw met `cd frontend && npm run build:embedded` of `scripts/build_embedded_ui.ps1`."
+        )
+    elif reason == "missing_dist":
+        st.info(
+            "Geen embedded React build gevonden in `frontend/dist`. "
+            "Bouw eenmalig met `scripts/build_embedded_ui.ps1`, of start tijdelijk `npm run dev` (poort 5173)."
+        )
+    elif reason == "explicit_override":
+        st.caption("React dashboard URL komt uit `LUMINA_REACT_DASHBOARD_URL`.")
+
     if react_url:
+        st.link_button("Open React Dashboard in nieuw tabblad", react_url, use_container_width=True)
+
+    if ready and react_url:
         try:
             components.iframe(react_url, height=980, scrolling=True)
         except Exception:
-            st.link_button("Open React Dashboard", react_url, use_container_width=True)
-    else:
+            st.caption("Iframe kon niet geladen worden; gebruik de knop hierboven.")
+    elif not react_url:
         st.info("React dashboard URL kon niet bepaald worden.")
 
 
@@ -388,6 +408,13 @@ def _render_luxury_status_bar_live(
         process_alive=process_alive,
         progress=progress,
     )
+    session_target_trades = None
+    if bool(st.session_state.get("first_boot_form_dirty", False)):
+        raw_session_target = st.session_state.get("first_boot_training_trades_value")
+        try:
+            session_target_trades = int(raw_session_target)
+        except (TypeError, ValueError):
+            session_target_trades = None
     render_luxury_status_bar(
         p,
         api_base,
@@ -397,6 +424,7 @@ def _render_luxury_status_bar_live(
         birth_stopping=bool(flags["birth_stopping"]),
         process_alive=process_alive,
         pulse=str(flags.get("pulse", "idle")),
+        session_target_trades=session_target_trades,
     )
 
 
@@ -470,36 +498,45 @@ def render_first_boot_command_center(
     backend_base_url: str,
     birth_tab_renderer,
 ) -> None:
-    """First-boot home: luxury status bar + unified tab strip (Birth Phase + monitoring tabs)."""
+    """First-boot home with isolated Birth tab + auto-refresh monitoring tabs."""
     p = DashboardPaths(workspace_root)
     api_base = _normalize_api_base(backend_base_url)
     runtime_mode = "sim"
     enabled, interval = render_command_center_autorefresh_controls(first_boot_manager)
 
-    def _command_center_body() -> None:
-        _render_luxury_status_bar_live(
-            p,
-            api_base=api_base,
-            runtime_mode=runtime_mode,
-            first_boot_manager=first_boot_manager,
-            process_manager=process_manager,
-            birth_service=birth_service,
-            backend_client=backend_client,
-        )
-        _render_command_center_tabs(
-            p,
-            api_base=api_base,
-            runtime_mode=runtime_mode,
-            workspace_root=workspace_root,
-            first_boot_manager=first_boot_manager,
-            hardware_service=hardware_service,
-            process_manager=process_manager,
-            include_birth_phase=True,
-            birth_tab_renderer=birth_tab_renderer,
-        )
+    birth_tab, monitoring_tab = st.tabs(["Birth Phase", "Monitoring & Overview"])
+    with birth_tab:
+        birth_tab_renderer()
+    with monitoring_tab:
+        def _command_center_live_body() -> None:
+            st.caption(f"Laatste refresh: {datetime.now().strftime('%H:%M:%S')}")
+            _render_luxury_status_bar_live(
+                p,
+                api_base=api_base,
+                runtime_mode=runtime_mode,
+                first_boot_manager=first_boot_manager,
+                process_manager=process_manager,
+                birth_service=birth_service,
+                backend_client=backend_client,
+            )
+            _render_command_center_tabs(
+                p,
+                api_base=api_base,
+                runtime_mode=runtime_mode,
+                workspace_root=workspace_root,
+                first_boot_manager=first_boot_manager,
+                hardware_service=hardware_service,
+                process_manager=process_manager,
+                include_birth_phase=False,
+            )
 
-    run_with_autorefresh(_command_center_body, enabled=enabled, interval_seconds=interval)
-    st.caption("Auto-refresh werkt voor alle command-center subtabs, inclusief Monitoring (A–H).")
+        run_with_autorefresh(
+            _command_center_live_body,
+            enabled=enabled,
+            interval_seconds=interval,
+            strategy="autorefresh",
+        )
+        st.caption("Auto-refresh werkt voor Monitoring/Overview subtabs; Birth Phase settings blijven stabiel.")
 
 
 def render_training_dashboard_tab(
@@ -542,5 +579,10 @@ def render_training_dashboard_tab(
             include_birth_phase=False,
         )
 
-    run_with_autorefresh(_dashboard_body, enabled=enabled, interval_seconds=interval)
+    run_with_autorefresh(
+        _dashboard_body,
+        enabled=enabled,
+        interval_seconds=interval,
+        strategy="autorefresh",
+    )
     st.caption("Auto-refresh werkt voor alle command-center subtabs, inclusief Monitoring (A–H).")

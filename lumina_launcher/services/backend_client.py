@@ -150,19 +150,20 @@ class BackendClient:
 
     def start_birth_sync(
         self,
-        target_trades: int = 25000,
+        target_trades: int | None = None,
         force: bool = False,
         practice_mode: bool = False,
         explicit_user_start: bool = False,
         continue_training: bool = False,
     ) -> dict[str, Any]:
-        params = (
-            f"target_trades={int(target_trades)}"
-            f"&force={'true' if force else 'false'}"
-            f"&practice_mode={'true' if practice_mode else 'false'}"
-            f"&explicit_user_start={'true' if explicit_user_start else 'false'}"
-            f"&continue_training={'true' if continue_training else 'false'}"
-        )
+        parts = []
+        if target_trades is not None:
+            parts.append(f"target_trades={int(target_trades)}")
+        parts.append(f"force={'true' if force else 'false'}")
+        parts.append(f"practice_mode={'true' if practice_mode else 'false'}")
+        parts.append(f"explicit_user_start={'true' if explicit_user_start else 'false'}")
+        parts.append(f"continue_training={'true' if continue_training else 'false'}")
+        params = "&".join(parts)
         return self._sync_request("POST", f"/api/birth/start?{params}")
 
     def get_birth_status_sync(self) -> dict[str, Any]:

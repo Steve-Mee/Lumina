@@ -27,6 +27,7 @@ import {
   DEFAULT_POLLING_INTERVAL_MS,
   useLuminaMetrics,
 } from "../hooks/useLuminaMetrics";
+import { IntelligenceTierBadgeLive } from "./IntelligenceTierBadge";
 
 const BG_VOID = "#0a0a0f";
 const ACCENT_CYAN = "#00f0ff";
@@ -522,7 +523,8 @@ export default function MonitoringDashboard(): JSX.Element {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-3 sm:gap-4">
+          <motion.div className="flex flex-wrap items-center justify-end gap-3 sm:gap-4">
+            <IntelligenceTierBadgeLive />
             <span className="relative inline-flex items-center gap-2 rounded-full border border-[#00ff9f]/30 bg-black/65 px-3 py-1.5">
               <span className="relative flex h-2 w-2">
                 <motion.span
@@ -559,7 +561,7 @@ export default function MonitoringDashboard(): JSX.Element {
                 <p className="max-w-[140px] truncate font-medium text-white">{DISPLAY_USER}</p>
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
 
         {/* auto-refresh ticker strip */}

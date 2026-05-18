@@ -73,3 +73,37 @@ def test_enrichment_marks_activity_stale_when_ppo_timestamp_stalls(tmp_path: Pat
     payload = enrich_observability_snapshot_for_react_dashboard({}, state_dir=state_dir)
     ui = payload["_lumina_ui"]
     assert ui["activity_stale"] is True
+
+
+def test_enrichment_uses_config_target_when_progress_target_missing(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config.yaml").write_text(
+        yaml.safe_dump({"first_boot": {"training_trades": 100000}}),
+        encoding="utf-8",
+    )
+    (state_dir / "first_boot_progress.json").write_text(
+        '{"stage":"training_running"}',
+        encoding="utf-8",
+    )
+    (state_dir / "first_boot_user_configured.flag").write_text("ok", encoding="utf-8")
+    payload = enrich_observability_snapshot_for_react_dashboard({}, state_dir=state_dir)
+    ui = payload["_lumina_ui"]
+    assert ui["training_target_trades"] == 100000
+
+
+def test_enrichment_prefers_progress_target_while_training_active(tmp_path: Path) -> None:
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config.yaml").write_text(
+        yaml.safe_dump({"first_boot": {"training_trades": 100000}}),
+        encoding="utf-8",
+    )
+    (state_dir / "first_boot_progress.json").write_text(
+        '{"stage":"training_running","target_trades":25000}',
+        encoding="utf-8",
+    )
+    (state_dir / "first_boot_user_configured.flag").write_text("ok", encoding="utf-8")
+    payload = enrich_observability_snapshot_for_react_dashboard({}, state_dir=state_dir)
+    ui = payload["_lumina_ui"]
+    assert ui["training_target_trades"] == 25000

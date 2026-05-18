@@ -120,9 +120,106 @@ def test_start_birth_wires_container_dependencies(monkeypatch: pytest.MonkeyPatc
     assert captured["engine_kwargs"] is not None
     run_kwargs = captured.get("run_kwargs")
     assert isinstance(run_kwargs, dict)
-    assert run_kwargs.get("target_trades") == 12000
+    assert run_kwargs.get("target_trades") == 9000
     assert run_kwargs.get("practice_mode") is False
     assert run_kwargs.get("reuse_existing_policy") is False
+    engine_kwargs = captured.get("engine_kwargs")
+    assert isinstance(engine_kwargs, dict)
+    assert engine_kwargs.get("config", {}).get("first_boot", {}).get("training_trades") == 9000
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_start_birth_uses_saved_target_when_request_omits_target(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config.yaml").write_text(
+        "first_boot:\n  training_trades: 12000\n  prefer_real_data_only: true\n  max_real_days: 40\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    class _FakeEngine:
+        def __init__(self, **kwargs) -> None:
+            captured["engine_kwargs"] = kwargs
+
+        def run_birth_phase(self, **kwargs):
+            captured["run_kwargs"] = kwargs
+            return {"status": "history_unavailable", "message": "no data", "total_trades": 0}
+
+    class _FakeContainer:
+        def __init__(self) -> None:
+            self.engine = SimpleNamespace()
+            self.ppo_trainer = object()
+            self.market_data_service = object()
+            self.runtime_context = SimpleNamespace(app=None)
+            self.logger = SimpleNamespace(info=lambda *a, **k: None)
+
+    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_service_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(svc, "_preflight_historical_data", lambda _days: (True, ""))
+
+    result = svc.start_birth(
+        target_trades=None, force=True, practice_mode=False, explicit_user_start=True
+    )
+    assert result["status"] == "started"
+    assert svc._thread is not None  # type: ignore[attr-defined]
+    svc._thread.join(timeout=1.0)  # type: ignore[attr-defined]
+    run_kwargs = captured.get("run_kwargs")
+    assert isinstance(run_kwargs, dict)
+    assert run_kwargs.get("target_trades") == 12000
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_start_birth_uses_configured_ppo_update_timesteps(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config.yaml").write_text(
+        "first_boot:\n  training_trades: 12000\n  prefer_real_data_only: true\n  max_real_days: 40\n  ppo_update_timesteps: 12345\n",
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    class _FakeEngine:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def run_birth_phase(self, **kwargs):
+            captured["run_kwargs"] = kwargs
+            return {"status": "history_unavailable", "message": "no data", "total_trades": 0}
+
+    class _FakeContainer:
+        def __init__(self) -> None:
+            self.engine = SimpleNamespace()
+            self.ppo_trainer = object()
+            self.market_data_service = object()
+            self.runtime_context = SimpleNamespace(app=None)
+            self.logger = SimpleNamespace(info=lambda *a, **k: None)
+
+    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_service_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(svc, "_preflight_historical_data", lambda _days: (True, ""))
+
+    result = svc.start_birth(
+        target_trades=None, force=True, practice_mode=False, explicit_user_start=True
+    )
+    assert result["status"] == "started"
+    assert svc._thread is not None  # type: ignore[attr-defined]
+    svc._thread.join(timeout=1.0)  # type: ignore[attr-defined]
+    run_kwargs = captured.get("run_kwargs")
+    assert isinstance(run_kwargs, dict)
+    assert run_kwargs.get("ppo_update_timesteps") == 12345
     BirthService._instance = None  # type: ignore[attr-defined]
 
 

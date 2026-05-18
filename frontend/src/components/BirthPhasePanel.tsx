@@ -9,13 +9,13 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useBirthStatus } from "../hooks/useBirthStatus";
+import { IntelligenceTierBadgeLive } from "./IntelligenceTierBadge";
 
 const BG_VOID = "#0a0a0f";
 const ACCENT_CYAN = "#00f0ff";
 const ACCENT_GREEN = "#00ff9f";
-const DEFAULT_TARGET_TRADES = 25_000;
 const EST_TRADES_PER_REAL_DAY = 450;
 
 const ACTIVE_PROGRESS_STAGES = new Set([
@@ -68,7 +68,7 @@ function statusTone(status: string): { label: string; color: string; pulse: bool
 
 export default function BirthPhasePanel(): JSX.Element {
   const reduceMotion = useReducedMotion() ?? false;
-  const [targetTrades, setTargetTrades] = useState(DEFAULT_TARGET_TRADES);
+  const [targetTrades, setTargetTrades] = useState(0);
 
   const { status, error, loading, isFetching, refresh, lastUpdatedAt, startBirth, starting } =
     useBirthStatus();
@@ -76,9 +76,15 @@ export default function BirthPhasePanel(): JSX.Element {
   const rawStatus = status?.status ?? "idle";
   const tone = statusTone(rawStatus);
   const progress = status?.progress;
+  useEffect(() => {
+    const progressTarget = Number(progress?.target_trades ?? 0);
+    if (targetTrades <= 0 && Number.isFinite(progressTarget) && progressTarget > 0) {
+      setTargetTrades(progressTarget);
+    }
+  }, [progress?.target_trades, targetTrades]);
   const tradesDone = progress?.trades_done ?? 0;
   const tradesTarget = progress?.target_trades ?? targetTrades;
-  const estimatedRealDays = estimateRealDays(targetTrades);
+  const estimatedRealDays = estimateRealDays(Math.max(1, targetTrades));
   const progressPct = Math.max(
     0,
     Math.min(
@@ -104,7 +110,8 @@ export default function BirthPhasePanel(): JSX.Element {
   const artifactsOk = Boolean(status?.artifacts_ok);
   const artifactsLabel = status?.artifacts_label ?? (artifactsOk ? "Artifacts OK" : "Artifacts missing");
   const phaseLabel = status?.phase_label ?? "Birth Phase";
-  const canStart = !starting && !["running", "started"].includes(rawStatus.toLowerCase());
+  const hasValidTarget = Number.isFinite(targetTrades) && targetTrades >= 1000;
+  const canStart = !starting && !["running", "started"].includes(rawStatus.toLowerCase()) && hasValidTarget;
   const showForce = rawStatus === "already_completed" || rawStatus === "completed";
 
   const startDisabledReason = useMemo(() => {
@@ -114,8 +121,11 @@ export default function BirthPhasePanel(): JSX.Element {
     if (rawStatus === "running") {
       return "Birth Phase draait al.";
     }
+    if (!hasValidTarget) {
+      return "Kies eerst een target (minimaal 1000 trades).";
+    }
     return null;
-  }, [rawStatus, starting]);
+  }, [hasValidTarget, rawStatus, starting]);
 
   return (
     <motion.div
@@ -149,7 +159,9 @@ export default function BirthPhasePanel(): JSX.Element {
             </div>
           </motion.div>
 
-          <motion.div className="flex items-center gap-2">
+          <motion.div className="flex flex-wrap items-center justify-end gap-2">
+            <IntelligenceTierBadgeLive fallbackStatus={status?.adaptive_intelligence} />
+
             <span
               className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider"
               style={{
@@ -240,7 +252,7 @@ export default function BirthPhasePanel(): JSX.Element {
                 step={1000}
                 value={targetTrades}
                 disabled={!canStart && !showForce}
-                onChange={(e) => setTargetTrades(Number(e.target.value) || DEFAULT_TARGET_TRADES)}
+                onChange={(e) => setTargetTrades(Number(e.target.value) || 0)}
                 className="mt-2 w-full rounded-xl border border-[#00f0ff]/25 bg-black/70 px-4 py-3 font-mono text-white outline-none focus:border-[#00f0ff]/55"
               />
               <p className="mt-2 text-xs text-zinc-400">
@@ -275,7 +287,7 @@ export default function BirthPhasePanel(): JSX.Element {
               {showForce ? (
                 <motion.button
                   type="button"
-                  disabled={starting}
+                  disabled={starting || !hasValidTarget}
                   onClick={() => void startBirth(targetTrades, true)}
                   className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-black/50 px-4 py-3 text-sm text-zinc-300"
                   whileTap={reduceMotion ? undefined : { scale: 0.97 }}

@@ -19,7 +19,10 @@ The router is mounted in lumina_os/backend/app.py via:
 
 from __future__ import annotations
 
+import json
+import os
 import time
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, HTTPException, Header, Query
@@ -51,6 +54,23 @@ router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 
 # ── Service singleton injected at FastAPI startup ─────────────────────────────
 _obs_service: Any = None
+_ADAPTIVE_INTELLIGENCE_LATEST = Path(
+    os.getenv("ADAPTIVE_INTELLIGENCE_STATUS_PATH", "state/adaptive_intelligence_status.json")
+)
+_ADAPTIVE_INTELLIGENCE_HISTORY = Path(
+    os.getenv("ADAPTIVE_INTELLIGENCE_HISTORY_PATH", "state/adaptive_intelligence_events.jsonl")
+)
+_ADAPTIVE_TRANSITION_FIELDS = (
+    "tier",
+    "mode",
+    "reasoning_mode",
+    "degraded_state",
+    "status_reason",
+    "recommended_model",
+    "recommended_provider",
+    "context_length",
+    "last_probe_error",
+)
 
 
 def _metric_value(snapshot: dict[str, Any], key: str, default: float = 0.0) -> float:
@@ -132,6 +152,52 @@ def _require_service() -> Any:
             detail="Observability service not yet initialised",
         )
     return _obs_service
+
+
+def _load_adaptive_history_rows(*, limit: int = 100) -> list[dict[str, Any]]:
+    if not _ADAPTIVE_INTELLIGENCE_HISTORY.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        with _ADAPTIVE_INTELLIGENCE_HISTORY.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                raw = line.strip()
+                if not raw:
+                    continue
+                try:
+                    payload = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(payload, dict):
+                    rows.append(payload)
+    except OSError:
+        raise HTTPException(status_code=500, detail="Adaptive intelligence history unreadable")
+    return rows[-max(1, int(limit)) :]
+
+
+def _build_adaptive_transition_summary(
+    *,
+    latest_record: dict[str, Any],
+    previous_record: dict[str, Any] | None,
+) -> dict[str, Any]:
+    latest_payload = latest_record.get("payload", {})
+    if not isinstance(latest_payload, dict):
+        return {"is_transition": False, "changed_fields": []}
+    previous_payload = previous_record.get("payload", {}) if isinstance(previous_record, dict) else {}
+    if not isinstance(previous_payload, dict):
+        return {
+            "is_transition": False,
+            "changed_fields": [],
+            "from_state": {},
+            "to_state": {k: latest_payload.get(k) for k in _ADAPTIVE_TRANSITION_FIELDS},
+        }
+    changed = [k for k in _ADAPTIVE_TRANSITION_FIELDS if previous_payload.get(k) != latest_payload.get(k)]
+    return {
+        "is_transition": bool(changed),
+        "changed_fields": changed,
+        "from_state": {k: previous_payload.get(k) for k in changed},
+        "to_state": {k: latest_payload.get(k) for k in changed},
+    }
 
 
 # ── Prometheus scrape endpoint (no auth – standard Prometheus convention) ─────
@@ -263,6 +329,45 @@ async def get_regime_history(
     if collector is None:
         return []
     return collector.query_history("lumina_regime_current", since_ts=since, limit=limit)  # type: ignore[union-attr]
+
+
+@router.get(
+    "/adaptive-intelligence/latest",
+    summary="Latest adaptive intelligence state",
+    description="Read the latest adaptive intelligence state persisted by EventBus consumers.",
+)
+async def get_adaptive_intelligence_latest(
+    x_api_key: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    _check_api_key(x_api_key)
+    if not _ADAPTIVE_INTELLIGENCE_LATEST.exists():
+        return {}
+    try:
+        payload = json.loads(_ADAPTIVE_INTELLIGENCE_LATEST.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise HTTPException(status_code=500, detail="Adaptive intelligence latest state unreadable")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=500, detail="Adaptive intelligence latest payload invalid")
+    history_rows = _load_adaptive_history_rows(limit=2)
+    previous = history_rows[-2] if len(history_rows) >= 2 else None
+    payload["transition_summary"] = _build_adaptive_transition_summary(
+        latest_record=payload,
+        previous_record=previous,
+    )
+    return payload
+
+
+@router.get(
+    "/adaptive-intelligence/history",
+    summary="Adaptive intelligence transition history",
+    description="Read recent adaptive intelligence events persisted by EventBus consumers.",
+)
+async def get_adaptive_intelligence_history(
+    limit: int = Query(100, ge=1, le=2000, description="Maximum rows to return"),
+    x_api_key: Optional[str] = Header(None),
+) -> list[dict[str, Any]]:
+    _check_api_key(x_api_key)
+    return _load_adaptive_history_rows(limit=limit)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

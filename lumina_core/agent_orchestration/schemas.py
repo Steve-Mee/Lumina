@@ -171,6 +171,24 @@ class ConstitutionAudit(BaseModel):
     summary: str | None = None
 
 
+class AdaptiveIntelligenceState(BaseModel):
+    """Typed contract for adaptive intelligence runtime status."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tier: Literal["high", "standard", "light"]
+    mode: Literal["auto", "force_high", "force_standard", "force_light"]
+    reasoning_mode: str
+    degraded_state: bool
+    status_reason: str
+    recommended_model: str
+    recommended_provider: str
+    context_length: int = Field(ge=0)
+    last_probe_error: str | None = None
+    source: str | None = None
+    timestamp: str | None = None
+
+
 class AgentReflection(BaseModel):
     """Contract for reflective meta-agent summary payloads."""
 
@@ -356,6 +374,7 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "meta.agent.thought": MetaAgentThought,
     "meta.community.knowledge": CommunityKnowledgeSnippet,
     "inference.llm.decision_context": LLMDecisionContext,
+    "inference.adaptive_intelligence.state": AdaptiveIntelligenceState,
 }
 
 # Topics that must use registry models only, hard validation on publish_validated,

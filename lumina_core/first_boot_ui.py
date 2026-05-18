@@ -30,7 +30,11 @@ FIRST_BOOT_TRAINING_TRADES_MAX = 2_000_000
 FIRST_BOOT_LAUNCHER_TRADE_STEP = 500
 
 # Default when config omits `first_boot.training_trades` entirely (explicit YAML always wins via normalize input).
+# Technical fallback only; launcher still treats this as a minimum viable default when
+# config is missing, not as a recommended production target.
 FIRST_BOOT_DEFAULT_TRADES = 5_000
+# PPO batch update fallback for Birth Phase (not related to user trade target).
+FIRST_BOOT_DEFAULT_PPO_UPDATE_TIMESTEPS = 25_000
 FIRST_BOOT_DEFAULT_MAX_REAL_DAYS = 90
 
 # Back-compat names used in older snippets / docs — map to launcher-aligned bounds above.

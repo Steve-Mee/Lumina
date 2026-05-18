@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any, Optional, cast
@@ -12,6 +13,7 @@ from typing import Any, Optional, cast
 from dotenv import load_dotenv
 
 from lumina_core.audit import register_default_streams
+from lumina_core.adaptive_intelligence import AdaptiveIntelligenceManager, build_status_signature
 from lumina_core.audit.agent_decision_log import AgentDecisionLog
 from lumina_core.audit.audit_log_service import AuditLogService
 from lumina_core.engine import (
@@ -32,6 +34,7 @@ from lumina_core.agent_orchestration import (
     SelfEvolutionMetaAgent,
     SwarmManager,
 )
+from lumina_core.agent_orchestration.schemas import AdaptiveIntelligenceState
 from lumina_core.broker.broker_bridge import BrokerBridge, broker_factory
 from lumina_core.ports import EngineServicePorts
 from lumina_core.risk.equity_snapshot import EquitySnapshotProvider
@@ -49,6 +52,7 @@ from lumina_core.evolution.self_evolution_meta_agent import load_evolution_confi
 from lumina_core.engine.canonical_training import InfiniteSimulator, PPOTrainer
 from lumina_core.logging_utils import build_logger, flush_logger_handlers
 from lumina_core.monitoring import ObservabilityService
+from lumina_core.monitoring.adaptive_intelligence_tracker import AdaptiveIntelligenceTracker
 from lumina_core.rl import RLTradingEnvironment
 from lumina_core.runtime_context import RuntimeContext
 
@@ -126,6 +130,7 @@ class ApplicationContainer:
     engine: LuminaEngine = field(init=False)
     runtime_context: RuntimeContext = field(init=False)
     local_inference_engine: LocalInferenceEngine = field(init=False)
+    adaptive_intelligence_manager: AdaptiveIntelligenceManager = field(init=False)
     market_data_service: MarketDataIngestService = field(init=False)
     memory_service: MemoryService = field(init=False)
     reasoning_service: ReasoningService = field(init=False)
@@ -147,6 +152,7 @@ class ApplicationContainer:
     performance_validator: PerformanceValidator = field(init=False)
     rl_environment: RLTradingEnvironment | None = field(default=None, init=False)
     observability_service: ObservabilityService = field(init=False)
+    adaptive_intelligence_tracker: AdaptiveIntelligenceTracker = field(init=False)
     decision_log: AgentDecisionLog = field(init=False)
     audit_log_service: AuditLogService = field(init=False)
     blackboard: AgentBlackboard = field(init=False)
@@ -161,6 +167,7 @@ class ApplicationContainer:
     # Instrument symbols
     swarm_symbols: list[str] = field(default_factory=list, init=False)
     primary_instrument: str = field(default="", init=False)
+    _adaptive_intelligence_last_published_signature: tuple[Any, ...] | None = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         """Initialize all services with explicit dependency ordering."""
@@ -194,6 +201,8 @@ class ApplicationContainer:
         self.event_bus = EventBus()
         self.engine.event_bus = self.event_bus
         self.engine.bind_event_bus(self.event_bus)
+        self.adaptive_intelligence_tracker = AdaptiveIntelligenceTracker(Path.cwd())
+        self.adaptive_intelligence_tracker.bind(self.event_bus)
         self.valuation_engine = self.engine.valuation_engine
         if self.engine.risk_controller is None:
             raise RuntimeError("Engine risk_controller was not initialized")
@@ -214,6 +223,11 @@ class ApplicationContainer:
 
         # Initialize inference engine and inject into LuminaEngine
         self.local_inference_engine = LocalInferenceEngine(context=self.runtime_context)
+        self.adaptive_intelligence_manager = AdaptiveIntelligenceManager(Path.cwd())
+        intelligence_status = self._refresh_adaptive_intelligence(
+            source="container_bootstrap",
+            refresh_hardware=False,
+        )
         self.engine.local_engine = self.local_inference_engine
 
         # Initialize services (order matters due to dependencies)
@@ -232,6 +246,7 @@ class ApplicationContainer:
             dream=self.engine,
             evolution=None,
             reasoning=self.reasoning_service,
+            experimental={"adaptive_intelligence": intelligence_status},
         )
         self.engine._sync_services_registry()
 
@@ -591,8 +606,44 @@ class ApplicationContainer:
 
         self.logger.info("Cleanup handlers registered")
 
+    def _refresh_adaptive_intelligence(self, *, source: str, refresh_hardware: bool) -> dict[str, Any]:
+        status_obj = self.adaptive_intelligence_manager.refresh(refresh_hardware=refresh_hardware)
+        intelligence_status = status_obj.to_dict()
+        self.local_inference_engine.apply_adaptive_intelligence(intelligence_status)
+        self.engine.adaptive_intelligence = intelligence_status
+        self._publish_adaptive_intelligence_state(intelligence_status, source=source)
+        return intelligence_status
+
+    def _publish_adaptive_intelligence_state(self, status: dict[str, Any], *, source: str) -> bool:
+        signature = build_status_signature(status)
+        previous = self._adaptive_intelligence_last_published_signature
+        if previous == signature:
+            return False
+        transition = previous is not None
+        transition_reason = "initial_publish" if previous is None else "status_signature_changed"
+        self.event_bus.publish(
+            topic="inference.adaptive_intelligence.state",
+            producer="application_container",
+            payload={
+                **status,
+                "source": source,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            },
+            metadata={
+                "transition": transition,
+                "transition_reason": transition_reason,
+            },
+            payload_model=AdaptiveIntelligenceState,
+        )
+        self._adaptive_intelligence_last_published_signature = signature
+        return True
+
     def get_status(self) -> dict[str, Any]:
         """Get container initialization status."""
+        current_adaptive_intelligence = self._refresh_adaptive_intelligence(
+            source="container_status_poll",
+            refresh_hardware=False,
+        )
         return {
             "engine_initialized": self.engine is not None,
             "services_count": sum(
@@ -622,6 +673,7 @@ class ApplicationContainer:
             "tts_enabled": self.tts_engine is not None,
             "swarm_symbols": self.swarm_symbols,
             "primary_instrument": self.primary_instrument,
+            "adaptive_intelligence": current_adaptive_intelligence,
         }
 
 

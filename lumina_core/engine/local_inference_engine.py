@@ -442,6 +442,21 @@ class LocalInferenceEngine:
             return self.backend_override
         return str(self.config.get("inference", {}).get("primary_provider", "ollama")).strip().lower()
 
+    def apply_adaptive_intelligence(self, status: dict[str, Any] | None) -> None:
+        if not isinstance(status, dict):
+            return
+        provider = str(status.get("recommended_provider", "") or "").strip().lower()
+        if provider in {"ollama", "vllm", "grok_remote"}:
+            self.backend_override = provider
+            self.active_provider = provider
+        self.cost_tracker["adaptive_intelligence"] = {
+            "tier": str(status.get("tier", "light")),
+            "reasoning_mode": str(status.get("reasoning_mode", "fast_path_only")),
+            "degraded_state": bool(status.get("degraded_state", False)),
+            "status_reason": str(status.get("status_reason", "")),
+            "recommended_model": str(status.get("recommended_model", "")),
+        }
+
     def infer(
         self,
         prompt: str | list,

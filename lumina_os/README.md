@@ -80,6 +80,29 @@ Belangrijkste bronnen voor monitoring:
 - `state/monitoring_reasoning_latency.jsonl`
 - `state/monitoring_model_load_times.jsonl`
 - `state/ppo_policy_metadata.json`
+- `state/adaptive_intelligence_status.json`
+- `state/adaptive_intelligence_events.jsonl`
+
+## Monitoring API (FastAPI)
+
+Router: `lumina_os/backend/monitoring_endpoints.py` (mounted in `backend/app.py`).
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `GET /api/monitoring/health` | No | Kill-switch, websocket, regime summary |
+| `GET /api/monitoring/metrics` | No | Prometheus scrape |
+| `GET /api/monitoring/metrics/json` | `X-API-Key` | Full JSON metrics snapshot |
+| `GET /api/monitoring/metrics/history` | `X-API-Key` | SQLite metric history |
+| `GET /api/monitoring/regime/history` | `X-API-Key` | Regime flip history |
+| `GET /api/monitoring/adaptive-intelligence/latest` | `X-API-Key` | Latest adaptive intelligence state + `transition_summary` |
+| `GET /api/monitoring/adaptive-intelligence/history` | `X-API-Key` | Recent intelligence transition events |
+
+Example:
+
+```bash
+curl http://localhost:8000/api/monitoring/adaptive-intelligence/latest -H "X-API-Key: <key>"
+curl "http://localhost:8000/api/monitoring/adaptive-intelligence/history?limit=50" -H "X-API-Key: <key>"
+```
 
 ## Demo Data Seeden en Verwijderen
 

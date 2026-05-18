@@ -18,9 +18,9 @@ from lumina_core.first_boot_progress import (
     is_sim_trades_complete,
     progress_is_recently_active,
     resolve_birth_training_pulse,
+    resolve_first_boot_target_for_display,
     resolve_first_boot_completed_trades,
     resolve_first_boot_stage,
-    resolve_first_boot_target_from_progress,
     resolve_ppo_batch_progress,
     resolve_ppo_training_progress,
 )
@@ -69,6 +69,9 @@ _SAVE_SETTINGS_KEY = "first_boot_save_settings"
 _START_BIRTH_KEY = "first_boot_start_birth_phase"
 _STOP_TRAINING_KEY = "first_boot_stop_training"
 _FIRST_BOOT_PENDING_STOP_KEY = "first_boot_pending_stop"
+_FIRST_BOOT_FORM_DIRTY_KEY = "first_boot_form_dirty"
+
+
 def _clear_start_request_flags() -> None:
     st.session_state[_FIRST_BOOT_START_REQUESTED_KEY] = False
     st.session_state[_FIRST_BOOT_PENDING_START_KEY] = False
@@ -404,6 +407,50 @@ def _settings_signature(
     )
 
 
+def _current_form_signature_from_session(settings: dict[str, Any]) -> tuple[int, bool, int, bool, bool] | None:
+    tracked_keys = (
+        "first_boot_training_trades_value",
+        "first_boot_prefer_real_data_only_value",
+        "first_boot_max_real_days_value",
+        "first_boot_allow_fallback_value",
+        "first_boot_require_real_sim_value",
+    )
+    if not any(key in st.session_state for key in tracked_keys):
+        return None
+    return _settings_signature(
+        training_trades=int(
+            st.session_state.get(
+                "first_boot_training_trades_value",
+                settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES),
+            )
+        ),
+        prefer_real_data_only=bool(
+            st.session_state.get(
+                "first_boot_prefer_real_data_only_value",
+                settings.get("prefer_real_data_only", True),
+            )
+        ),
+        max_real_days=int(
+            st.session_state.get(
+                "first_boot_max_real_days_value",
+                settings.get("max_real_days", 30),
+            )
+        ),
+        allow_fallback=bool(
+            st.session_state.get(
+                "first_boot_allow_fallback_value",
+                settings.get("allow_minimal_synthetic_fallback", False),
+            )
+        ),
+        require_real_sim=bool(
+            st.session_state.get(
+                "first_boot_require_real_sim_value",
+                settings.get("require_real_simulator_data", True),
+            )
+        ),
+    )
+
+
 _FIRST_BOOT_FORM_VERSION_KEY = "first_boot_form_version"
 
 
@@ -431,6 +478,66 @@ def _apply_first_boot_settings_to_form(settings: dict) -> None:
     st.session_state["first_boot_prefer_real_data_only_value"] = bool(settings.get("prefer_real_data_only", True))
     st.session_state["first_boot_allow_fallback_value"] = bool(settings.get("allow_minimal_synthetic_fallback", False))
     st.session_state["first_boot_require_real_sim_value"] = bool(settings.get("require_real_simulator_data", True))
+    st.session_state[_FIRST_BOOT_FORM_DIRTY_KEY] = False
+
+
+def clamp_slider_value(*, raw_value: object, min_value: int, max_value: int, fallback: int) -> int:
+    """Pure clamp helper for slider/number_input pairs."""
+    try:
+        selected = int(raw_value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        selected = int(fallback)
+    return max(min(selected, max_value), min_value)
+
+
+def resolve_slider_canonical_pre_render(
+    *,
+    state_key: str,
+    slider_key: str,
+    input_key: str,
+    session: dict[str, object],
+    min_value: int,
+    max_value: int,
+    default: int,
+    form_dirty: bool,
+) -> int:
+    """Resolve canonical value before widget render and align widget keys."""
+    if form_dirty:
+        raw = session.get(state_key, session.get(input_key, session.get(slider_key, default)))
+    else:
+        raw = session.get(state_key, default)
+    selected = clamp_slider_value(
+        raw_value=raw,
+        min_value=min_value,
+        max_value=max_value,
+        fallback=default,
+    )
+    session[state_key] = selected
+    session[slider_key] = selected
+    session[input_key] = selected
+    return selected
+
+
+def sync_slider_canonical_post_render(
+    *,
+    state_key: str,
+    slider_key: str,
+    input_key: str,
+    session: dict[str, object],
+    min_value: int,
+    max_value: int,
+    fallback: int,
+) -> int:
+    """Read rendered widget keys and persist only canonical value key."""
+    raw = session.get(state_key, session.get(input_key, session.get(slider_key, fallback)))
+    selected = clamp_slider_value(
+        raw_value=raw,
+        min_value=min_value,
+        max_value=max_value,
+        fallback=fallback,
+    )
+    session[state_key] = selected
+    return selected
 
 
 def _init_checkbox_from_settings(*, base_key: str, settings: dict, settings_field: str, default: bool) -> None:
@@ -452,31 +559,35 @@ def _slider_with_input(
     step: int,
     help_text: str | None = None,
     disabled: bool = False,
+    form_dirty: bool = False,
 ) -> int:
     state_key = f"{key}_value"
     slider_key = _versioned_widget_key(f"{key}_slider")
     input_key = _versioned_widget_key(f"{key}_input")
     if state_key not in st.session_state:
         st.session_state[state_key] = int(default_value)
-    current = int(st.session_state[state_key])
-    current = max(min(current, max_value), min_value)
-    st.session_state[state_key] = current
-    if slider_key not in st.session_state:
-        st.session_state[slider_key] = current
-    if input_key not in st.session_state:
-        st.session_state[input_key] = current
+    current = resolve_slider_canonical_pre_render(
+        state_key=state_key,
+        slider_key=slider_key,
+        input_key=input_key,
+        session=st.session_state,
+        min_value=min_value,
+        max_value=max_value,
+        default=int(default_value),
+        form_dirty=bool(form_dirty),
+    )
 
     def _on_slider_change() -> None:
         selected = int(st.session_state.get(slider_key, current))
         selected = max(min(selected, max_value), min_value)
         st.session_state[state_key] = selected
-        st.session_state[input_key] = selected
+        st.session_state[_FIRST_BOOT_FORM_DIRTY_KEY] = True
 
     def _on_input_change() -> None:
         selected = int(st.session_state.get(input_key, current))
         selected = max(min(selected, max_value), min_value)
         st.session_state[state_key] = selected
-        st.session_state[slider_key] = selected
+        st.session_state[_FIRST_BOOT_FORM_DIRTY_KEY] = True
 
     left, right = st.columns([3, 1])
     with left:
@@ -501,9 +612,18 @@ def _slider_with_input(
             on_change=_on_input_change,
             disabled=disabled,
         )
-    selected_value = int(st.session_state.get(state_key, current))
-    selected_value = max(min(selected_value, max_value), min_value)
-    st.session_state[state_key] = selected_value
+    prior_value = int(st.session_state.get(state_key, current))
+    selected_value = sync_slider_canonical_post_render(
+        state_key=state_key,
+        slider_key=slider_key,
+        input_key=input_key,
+        session=st.session_state,
+        min_value=min_value,
+        max_value=max_value,
+        fallback=current,
+    )
+    if prior_value != selected_value:
+        st.session_state[_FIRST_BOOT_FORM_DIRTY_KEY] = True
     return selected_value
 
 
@@ -554,6 +674,8 @@ def _persist_first_boot_settings(
     persisted_signature = build_first_boot_settings_signature_from_settings(persisted)
     st.session_state["first_boot_saved_signature"] = persisted_signature
     st.session_state["first_boot_rehydrate"] = True
+    st.session_state.pop("first_boot_pending_disk_signature", None)
+    st.session_state[_FIRST_BOOT_FORM_DIRTY_KEY] = False
 
 
 def _backend_is_reachable(backend_client: BackendClient | None) -> bool:
@@ -584,6 +706,22 @@ def _resolve_birth_status_payload(
 def _birth_status_is_running(status_payload: dict[str, Any]) -> bool:
     raw = str(status_payload.get("status", "") or "").strip().lower()
     return raw in {"running", "started", "already_running"}
+
+
+def _render_adaptive_intelligence_status(status_payload: dict[str, Any]) -> None:
+    ai = status_payload.get("adaptive_intelligence")
+    if not isinstance(ai, dict):
+        return
+    tier = str(ai.get("tier", "light") or "light").upper()
+    provider = str(ai.get("recommended_provider", "ollama") or "ollama")
+    mode = str(ai.get("mode", "auto") or "auto")
+    degraded = bool(ai.get("degraded_state", False))
+    reason = str(ai.get("status_reason", "") or "").strip()
+    suffix = f" | reason: {reason}" if reason else ""
+    if degraded:
+        st.warning(f"Adaptive Intelligence: {tier} via {provider} ({mode}, degraded){suffix}")
+    else:
+        st.caption(f"Adaptive Intelligence: {tier} via {provider} ({mode}){suffix}")
 
 
 def resolve_command_center_birth_flags(
@@ -1002,6 +1140,7 @@ def _render_first_boot_body(
         backend_client=backend_client,
         workspace_root=root,
     )
+    _render_adaptive_intelligence_status(birth_status_payload)
     thread_running = bool(birth_service.is_running()) if birth_service is not None else False
     training_active = _birth_training_active(
         birth_service=birth_service,
@@ -1020,18 +1159,32 @@ def _render_first_boot_body(
         st.session_state["first_boot_settings_locked"] = False
 
     settings_locked = bool(st.session_state.get("first_boot_settings_locked", False))
+    form_dirty = bool(st.session_state.get(_FIRST_BOOT_FORM_DIRTY_KEY, False))
     stale_running_stage = stage in _RUNNING_STAGES and not training_active
     orphan_progress_active = False
 
     # Form sync must run before widgets are created (Streamlit forbids mutating widget keys after bind).
     if st.session_state.pop("first_boot_rehydrate", False):
         _apply_first_boot_settings_to_form(settings)
+        st.session_state.pop("first_boot_pending_disk_signature", None)
     elif first_boot_manager.is_user_configured() and not settings_locked:
         disk_signature = build_first_boot_settings_signature_from_settings(settings)
         saved_signature = st.session_state.get("first_boot_saved_signature")
-        if saved_signature is None or tuple(saved_signature) != disk_signature:
-            _apply_first_boot_settings_to_form(settings)
+        if saved_signature is None:
+            if _current_form_signature_from_session(settings) is None and not form_dirty:
+                _apply_first_boot_settings_to_form(settings)
             st.session_state["first_boot_saved_signature"] = disk_signature
+        elif tuple(saved_signature) != disk_signature:
+            form_signature = _current_form_signature_from_session(settings)
+            has_unsaved_form_edits = form_dirty or (
+                form_signature is not None and tuple(saved_signature) != tuple(form_signature)
+            )
+            if not has_unsaved_form_edits:
+                _apply_first_boot_settings_to_form(settings)
+                st.session_state["first_boot_saved_signature"] = disk_signature
+                settings = first_boot_manager.read_settings()
+            else:
+                st.session_state["first_boot_pending_disk_signature"] = disk_signature
 
     if show_summary:
         if not first_boot_manager.is_completed():
@@ -1109,6 +1262,7 @@ def _render_first_boot_body(
             step=FIRST_BOOT_LAUNCHER_TRADE_STEP,
             help_text=_training_trades_help_text(fallback_trades=default_training_trades),
             disabled=settings_locked,
+            form_dirty=form_dirty,
         )
     with col2:
         _init_checkbox_from_settings(
@@ -1135,6 +1289,7 @@ def _render_first_boot_body(
             step=5,
             help_text=help_for("max_real_days"),
             disabled=settings_locked,
+            form_dirty=form_dirty,
         )
         st.caption(
             "Laadt alle 1-min bars in dit venster (niet afgekapt op trade-count)."
@@ -1314,10 +1469,20 @@ def _render_first_boot_body(
         st.info("Start Birth Phase is pas actief nadat je op Save Settings hebt geklikt.")
 
     completed_trades = resolve_first_boot_completed_trades(progress)
+    session_target_trades = None
+    if form_dirty:
+        raw_session_target = st.session_state.get("first_boot_training_trades_value")
+        try:
+            session_target_trades = int(raw_session_target)
+        except (TypeError, ValueError):
+            session_target_trades = None
     target_trades = int(
-        resolve_first_boot_target_from_progress(progress)
-        or settings.get("training_trades", FIRST_BOOT_DEFAULT_TRADES)
-        or 0
+        resolve_first_boot_target_for_display(
+            progress=progress,
+            config_payload={"first_boot": settings},
+            session_trades=session_target_trades,
+        )
+        or FIRST_BOOT_DEFAULT_TRADES
     )
     if progress:
         _render_live_snapshot(
