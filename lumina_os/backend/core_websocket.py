@@ -20,7 +20,16 @@ from typing import Any, Literal
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
+from backend.adaptive_intelligence_snapshot import (
+    build_adaptive_intelligence_block,
+    resolve_adaptive_history_path,
+    resolve_adaptive_status_path,
+)
+from backend.live_trading_snapshot import build_live_trading_block
 from backend.monitoring_endpoints import _extract_regime_summary, _metric_value
+from backend.performance_snapshot import build_performance_block
+from backend.real_ops_snapshot import build_real_ops_block
+from backend.risk_fortress_snapshot import build_fortress_block
 
 try:
     from api.monitoring import _safe_read_json, resolve_state_directory
@@ -154,9 +163,9 @@ class CoreLiveTelemetryReader:
     def build_snapshot(self, obs: Any | None = None) -> dict[str, Any]:
         runtime = self._files.read_json(self._state_dir / "monitoring_runtime_metrics.json")
         sim_state = self._files.read_json(self._state_dir / "lumina_sim_state.json")
-        adaptive = self._files.read_json(
-            Path(os.getenv("ADAPTIVE_INTELLIGENCE_STATUS_PATH", str(self._state_dir / "adaptive_intelligence_status.json")))
-        )
+        adaptive_path = resolve_adaptive_status_path(self._state_dir)
+        adaptive = self._files.read_json(adaptive_path)
+        history_path = resolve_adaptive_history_path(self._state_dir)
         mutations = self._files.read_active_mutations(
             Path(os.getenv("EVOLUTION_LOG_PATH", str(self._state_dir / "evolution_log.jsonl")))
         )
@@ -203,6 +212,35 @@ class CoreLiveTelemetryReader:
         if not source_ts and isinstance(adaptive.get("timestamp"), str):
             source_ts = adaptive["timestamp"]
 
+        adaptive_block = build_adaptive_intelligence_block(
+            latest_record=adaptive if adaptive else None,
+            history_path=history_path,
+        )
+
+        live_trading_block = build_live_trading_block(
+            runtime=runtime,
+            sim_state=sim_state,
+            regime_summary=regime_summary,
+            state_dir=self._state_dir,
+        )
+
+        fortress_block = build_fortress_block(
+            runtime=runtime,
+            sim_state=sim_state,
+            obs_snapshot=obs_snapshot,
+            kill_switch_metric_fn=_metric_value,
+        )
+
+        performance_block = build_performance_block(
+            runtime=runtime,
+            state_dir=self._state_dir,
+        )
+
+        real_ops_block = build_real_ops_block(
+            runtime=runtime,
+            state_dir=self._state_dir,
+        )
+
         return {
             "mode": mode.lower() if mode else "unknown",
             "equity": equity,
@@ -210,6 +248,11 @@ class CoreLiveTelemetryReader:
             "risk_level": risk_level,
             "active_mutations": mutations,
             "source_ts": source_ts,
+            "adaptive_intelligence": adaptive_block,
+            "live_trading": live_trading_block,
+            "fortress": fortress_block,
+            "performance": performance_block,
+            "real_ops": real_ops_block,
         }
 
 

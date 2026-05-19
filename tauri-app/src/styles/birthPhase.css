@@ -1,0 +1,189 @@
+.birth-phase-screen {
+  background:
+    radial-gradient(
+      ellipse 80% 60% at 50% 20%,
+      color-mix(in oklch, var(--cockpit-glow-accent) 22%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 40% 35% at 80% 90%,
+      color-mix(in oklch, var(--cockpit-glow-primary) 12%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(180deg, oklch(0.1 0.03 270) 0%, oklch(0.08 0.035 290) 100%);
+}
+
+.birth-phase-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.birth-phase-headline {
+  background: linear-gradient(135deg, oklch(0.94 0.05 190), oklch(0.82 0.14 285));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Organism centerpiece */
+.birth-organism-core {
+  position: relative;
+  z-index: 3;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, oklch(0.95 0.08 195), oklch(0.55 0.18 285));
+  box-shadow:
+    0 0 40px color-mix(in oklch, var(--cockpit-glow-primary) 70%, transparent),
+    0 0 80px color-mix(in oklch, var(--cockpit-glow-accent) 40%, transparent);
+  animation: birth-core-pulse 2.4s ease-in-out infinite;
+}
+
+.birth-organism-ring {
+  position: absolute;
+  border-radius: 999px;
+  border: 1px solid color-mix(in oklch, var(--cockpit-glow-primary) 45%, transparent);
+}
+
+.birth-organism-ring--outer {
+  width: 88%;
+  height: 88%;
+  animation: birth-ring-spin 18s linear infinite;
+}
+
+.birth-organism-ring--inner {
+  width: 68%;
+  height: 68%;
+  animation: birth-ring-spin 12s linear infinite reverse;
+}
+
+.birth-organism-helix {
+  position: absolute;
+  width: 72%;
+  height: 72%;
+  border-radius: 999px;
+  border: 2px dashed color-mix(in oklch, var(--cockpit-glow-accent) 35%, transparent);
+  opacity: 0.55;
+}
+
+.birth-organism-helix--a {
+  animation: birth-helix-tilt 6s ease-in-out infinite;
+}
+
+.birth-organism-helix--b {
+  animation: birth-helix-tilt 6s ease-in-out infinite reverse;
+  transform: rotate(60deg);
+}
+
+.birth-organism-burst {
+  position: absolute;
+  inset: -20%;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--cockpit-glow-primary) 35%, transparent) 0%,
+    transparent 65%
+  );
+  animation: birth-burst 2.8s ease-out forwards;
+  pointer-events: none;
+}
+
+.birth-organism--awakening .birth-organism-core {
+  animation: birth-core-awaken 2.8s ease-out forwards;
+  transform: scale(1.15);
+}
+
+.birth-organism--awakening .birth-organism-ring {
+  border-color: color-mix(in oklch, var(--cockpit-glow-accent) 70%, transparent);
+}
+
+.birth-organism--static .birth-organism-core,
+.birth-organism--static .birth-organism-ring,
+.birth-organism--static .birth-organism-helix {
+  animation: none;
+}
+
+@keyframes birth-core-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes birth-core-awaken {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 40px color-mix(in oklch, var(--cockpit-glow-primary) 70%, transparent);
+  }
+  40% {
+    transform: scale(1.35);
+    box-shadow: 0 0 100px color-mix(in oklch, var(--cockpit-glow-accent) 80%, transparent);
+  }
+  100% {
+    transform: scale(1.2);
+    box-shadow: 0 0 60px color-mix(in oklch, var(--cockpit-glow-primary) 90%, transparent);
+  }
+}
+
+@keyframes birth-ring-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes birth-helix-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: rotate(12deg) scale(1.04);
+    opacity: 0.75;
+  }
+}
+
+@keyframes birth-burst {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+/* Milestones */
+.birth-milestone-dot[data-state="active"] {
+  border-color: color-mix(in oklch, var(--cockpit-glow-primary) 60%, transparent);
+  box-shadow: 0 0 14px color-mix(in oklch, var(--cockpit-glow-primary) 45%, transparent);
+  color: var(--cockpit-glow-primary);
+}
+
+.birth-milestone-dot[data-state="complete"] {
+  border-color: oklch(0.72 0.18 155 / 50%);
+  background: oklch(0.72 0.18 155 / 12%);
+}
+
+.birth-milestone--active .birth-milestone-dot span {
+  background: var(--cockpit-glow-primary);
+  opacity: 1;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.birth-metric-bar-fill {
+  box-shadow: 0 0 12px color-mix(in oklch, var(--cockpit-glow-primary) 40%, transparent);
+}

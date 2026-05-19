@@ -43,6 +43,16 @@ async def stop_birth() -> dict[str, Any]:
     return birth_service.stop_birth()
 
 
+@router.post("/extra-training")
+async def extra_training() -> dict[str, Any]:
+    """Clear birth completion artifacts so operator can run extra training."""
+    from lumina_launcher.core.first_boot import FirstBootManager
+
+    root = birth_service.workspace_root
+    FirstBootManager(root).clear_completion_artifacts_for_extra_training()
+    return {"ok": True, "message": "Completion artifacts cleared — start birth with continue_training"}
+
+
 @router.get("/status")
 async def get_birth_status() -> dict[str, Any]:
     return _enrich_status(birth_service.get_status())

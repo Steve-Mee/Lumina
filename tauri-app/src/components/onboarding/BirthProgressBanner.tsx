@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+import { Button } from "@/components/ui/button";
 import { fetchBirthStatus } from "@/lib/setupClient";
+import { useOnboardingStore } from "@/store/onboardingStore";
 
 interface BirthProgress {
   status: string;
@@ -16,6 +18,7 @@ interface BirthProgress {
 
 export function BirthProgressBanner() {
   const [birth, setBirth] = useState<BirthProgress | null>(null);
+  const setPhase = useOnboardingStore((s) => s.setPhase);
 
   useEffect(() => {
     let active = true;
@@ -57,9 +60,21 @@ export function BirthProgressBanner() {
         className="relative z-20 border-b border-cyan-400/20 bg-cyan-950/40 px-4 py-2 backdrop-blur-sm"
       >
         <div className="mx-auto flex max-w-4xl flex-col gap-1">
-          <div className="flex items-center justify-between text-xs tracking-wider uppercase">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs tracking-wider uppercase">
             <span className="text-cyan-300/90">Birth Phase — {stage}</span>
-            <span className="text-muted-foreground">{pct.toFixed(0)}%</span>
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">{pct.toFixed(0)}%</span>
+              {birth.status === "running" ? (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="secondary"
+                  onClick={() => setPhase("birth")}
+                >
+                  View birth progress
+                </Button>
+              ) : null}
+            </div>
           </div>
           <div className="h-1 overflow-hidden rounded-full bg-white/10">
             <div

@@ -5,7 +5,7 @@ import {
   useSpring,
   useTransform,
 } from "framer-motion";
-import { Shield } from "lucide-react";
+import { Shield, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { FadeInView } from "@/components/cockpit/FadeInView";
@@ -17,20 +17,27 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { citadelCoreGradient, citadelShieldClass } from "@/lib/modePresentation";
 import {
   aggregateIntegrity,
+  citadelCoreRingDuration,
+  citadelModeHeadline,
   deriveCitadelWalls,
   integrityTier,
   tierBarClass,
   tierBorderClass,
   tierLabel,
   tierRingClass,
+  wallEducationCopy,
   type WallMetric,
 } from "@/lib/riskCitadelMetrics";
 import { cn } from "@/lib/utils";
 import {
+  selectCurrentMode,
+  selectFortress,
   selectLiveMetrics,
   selectRiskLevel,
+  selectSafeModeActive,
   useCoreStore,
 } from "@/store/coreStore";
 
@@ -44,6 +51,14 @@ interface CitadelWallProps {
   gridArea: string;
   onSelect: (wall: WallMetric) => void;
   reducedMotion: boolean;
+}
+
+function formatUsd(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  const prefix = value >= 0 ? "+" : "";
+  return `${prefix}$${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 function IntegrityBar({
@@ -123,16 +138,19 @@ function CitadelCore({
   integrity,
   tier,
   reducedMotion,
+  mode,
 }: {
   integrity: number;
   tier: ReturnType<typeof integrityTier>;
   reducedMotion: boolean;
+  mode: ReturnType<typeof selectCurrentMode>;
 }) {
   const spring = useSpring(integrity, {
     stiffness: 100,
     damping: 20,
   });
   const [displayValue, setDisplayValue] = useState(Math.round(integrity));
+  const ringDuration = citadelCoreRingDuration(mode, reducedMotion);
 
   useEffect(() => {
     spring.set(integrity);
@@ -147,30 +165,39 @@ function CitadelCore({
       className="relative flex items-center justify-center"
       style={{ gridArea: "core" }}
     >
-      <motion.div
-        className={cn(
-          "absolute size-24 rounded-full border-2 border-dashed md:size-28",
-          tierRingClass(tier),
-        )}
-        animate={reducedMotion ? undefined : { rotate: 360 }}
-        transition={
-          reducedMotion
-            ? undefined
-            : { duration: 24, repeat: Infinity, ease: "linear" }
-        }
-      />
+      {ringDuration !== null ? (
+        <motion.div
+          className={cn(
+            "absolute size-24 rounded-full border-2 border-dashed md:size-28",
+            tierRingClass(tier),
+          )}
+          animate={{ rotate: 360 }}
+          transition={{ duration: ringDuration, repeat: Infinity, ease: "linear" }}
+        />
+      ) : (
+        <div
+          className={cn(
+            "absolute size-24 rounded-full border-2 border-dashed md:size-28",
+            tierRingClass(tier),
+          )}
+        />
+      )}
       <div
         className={cn(
-          "relative flex size-20 flex-col items-center justify-center rounded-2xl border bg-gradient-to-br from-cyan-950/80 via-black/60 to-violet-950/70 md:size-24",
+          "relative flex size-20 flex-col items-center justify-center rounded-2xl border bg-gradient-to-br md:size-24",
+          citadelCoreGradient(mode),
           tierRingClass(tier),
         )}
       >
-        <Shield className="mb-1 size-5 text-cyan-300/80" aria-hidden />
+        <Shield className={cn("mb-1 size-5", citadelShieldClass(mode))} aria-hidden />
         <motion.span
           key={displayValue}
           initial={reducedMotion ? false : { scale: 0.92, opacity: 0.7 }}
           animate={{ scale: 1, opacity: 1 }}
-          className="font-mono text-xl font-medium text-cyan-100 md:text-2xl"
+          className={cn(
+            "font-mono text-xl font-medium md:text-2xl",
+            mode === "SIM" ? "text-cyan-100" : "text-amber-100/90",
+          )}
         >
           {reducedMotion ? Math.round(integrity) : displayValue}
         </motion.span>
@@ -184,11 +211,13 @@ function CitadelCore({
 
 function WallDetailDialog({
   wall,
+  mode,
   lastUpdatedTs,
   open,
   onOpenChange,
 }: {
   wall: WallMetric | null;
+  mode: ReturnType<typeof selectCurrentMode>;
   lastUpdatedTs: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -218,6 +247,10 @@ function WallDetailDialog({
         </DialogHeader>
 
         <div className="space-y-3">
+          <p className="text-[10px] text-muted-foreground/90">
+            {wallEducationCopy(wall.id, mode)}
+          </p>
+
           <div className="flex items-baseline justify-between border-b border-white/10 pb-2">
             <span className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
               Integrity
@@ -255,17 +288,77 @@ function WallDetailDialog({
   );
 }
 
+function CitadelProtectiveBanner({
+  safeModeActive,
+  killSwitchActive,
+}: {
+  safeModeActive: boolean;
+  killSwitchActive: boolean;
+}) {
+  if (!safeModeActive && !killSwitchActive) {
+    return null;
+  }
+
+  return (
+    <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-950/40 px-2 py-1.5 text-[10px] text-amber-100/90">
+      <ShieldAlert className="size-3.5 shrink-0 text-amber-400" aria-hidden />
+      <span>
+        {killSwitchActive
+          ? "Kill switch active — fortress in protective lockdown"
+          : "REAL safe mode — telemetry disconnected, controls blocked"}
+      </span>
+    </div>
+  );
+}
+
+function CitadelCapitalFooter({
+  equity,
+  dailyPnl,
+  openPnl,
+}: {
+  equity: number | null;
+  dailyPnl: number | null;
+  openPnl: number | null;
+}) {
+  return (
+    <div className="mt-2 grid grid-cols-3 gap-1.5 font-mono text-[9px]">
+      <div className="rounded border border-white/10 bg-black/20 px-2 py-1">
+        <span className="text-muted-foreground">Equity</span>
+        <p className="text-cyan-100/90">
+          {equity !== null ? `$${equity.toLocaleString()}` : "—"}
+        </p>
+      </div>
+      <div className="rounded border border-white/10 bg-black/20 px-2 py-1">
+        <span className="text-muted-foreground">Daily PnL</span>
+        <p className={dailyPnl !== null && dailyPnl < 0 ? "text-red-300/90" : "text-emerald-300/90"}>
+          {formatUsd(dailyPnl)}
+        </p>
+      </div>
+      <div className="rounded border border-white/10 bg-black/20 px-2 py-1">
+        <span className="text-muted-foreground">Open PnL</span>
+        <p className={openPnl !== null && openPnl < 0 ? "text-red-300/90" : "text-emerald-300/90"}>
+          {formatUsd(openPnl)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function RiskCitadel({ className, walls: wallsOverride }: RiskCitadelProps) {
-  const reducedMotion = useReducedMotion() ?? false;
+  const prefersReducedMotion = useReducedMotion() ?? false;
+  const mode = useCoreStore(selectCurrentMode);
+  const safeModeActive = useCoreStore(selectSafeModeActive);
+  const fortress = useCoreStore(selectFortress);
   const riskLevel = useCoreStore(selectRiskLevel);
   const liveMetrics = useCoreStore(selectLiveMetrics);
+  const reducedMotion = prefersReducedMotion || mode === "REAL";
 
   const walls = useMemo(() => {
     if (wallsOverride) {
       return wallsOverride;
     }
     return deriveCitadelWalls(useCoreStore.getState());
-  }, [wallsOverride, riskLevel, liveMetrics]);
+  }, [wallsOverride, riskLevel, liveMetrics, fortress, mode]);
 
   const aggregate = useMemo(() => aggregateIntegrity(walls), [walls]);
   const aggregateTier = integrityTier(aggregate);
@@ -291,54 +384,81 @@ export function RiskCitadel({ className, walls: wallsOverride }: RiskCitadelProp
   return (
     <>
       <FadeInView className={cn("w-full", className)}>
-      <div
-        role="img"
-        aria-label={`Risk citadel aggregate integrity ${Math.round(aggregate)} percent`}
-        className={cn(
-          "grid w-full max-w-sm grid-cols-3 grid-rows-3 gap-2 md:max-w-md md:gap-2.5",
-        )}
-        style={{
-          gridTemplateAreas: `
+        <div
+          className="citadel-shell flex flex-col items-center"
+          data-mode={mode}
+        >
+          <CitadelProtectiveBanner
+            safeModeActive={safeModeActive}
+            killSwitchActive={fortress?.kill_switch_active ?? false}
+          />
+
+          <p
+            className={cn(
+              "mb-2 text-center text-[9px] tracking-[0.12em] uppercase",
+              mode === "SIM" ? "text-cyan-300/70" : "text-amber-200/60",
+            )}
+          >
+            {citadelModeHeadline(mode)}
+          </p>
+
+          <div
+            role="img"
+            aria-label={`Risk citadel aggregate integrity ${Math.round(aggregate)} percent`}
+            className={cn(
+              "grid w-full max-w-sm grid-cols-3 grid-rows-3 gap-2 md:max-w-md md:gap-2.5",
+            )}
+            style={{
+              gridTemplateAreas: `
             ". risk ."
             "kelly core regime"
             ". drawdown ."
           `,
-        }}
-      >
-        <CitadelWall
-          wall={wallById.risk}
-          gridArea="risk"
-          onSelect={openWallDetail}
-          reducedMotion={reducedMotion}
-        />
-        <CitadelWall
-          wall={wallById.kelly}
-          gridArea="kelly"
-          onSelect={openWallDetail}
-          reducedMotion={reducedMotion}
-        />
-        <CitadelCore
-          integrity={aggregate}
-          tier={aggregateTier}
-          reducedMotion={reducedMotion}
-        />
-        <CitadelWall
-          wall={wallById.regime}
-          gridArea="regime"
-          onSelect={openWallDetail}
-          reducedMotion={reducedMotion}
-        />
-        <CitadelWall
-          wall={wallById.drawdown}
-          gridArea="drawdown"
-          onSelect={openWallDetail}
-          reducedMotion={reducedMotion}
-        />
-      </div>
+            }}
+          >
+            <CitadelWall
+              wall={wallById.risk}
+              gridArea="risk"
+              onSelect={openWallDetail}
+              reducedMotion={reducedMotion}
+            />
+            <CitadelWall
+              wall={wallById.kelly}
+              gridArea="kelly"
+              onSelect={openWallDetail}
+              reducedMotion={reducedMotion}
+            />
+            <CitadelCore
+              integrity={aggregate}
+              tier={aggregateTier}
+              reducedMotion={reducedMotion}
+              mode={mode}
+            />
+            <CitadelWall
+              wall={wallById.regime}
+              gridArea="regime"
+              onSelect={openWallDetail}
+              reducedMotion={reducedMotion}
+            />
+            <CitadelWall
+              wall={wallById.drawdown}
+              gridArea="drawdown"
+              onSelect={openWallDetail}
+              reducedMotion={reducedMotion}
+            />
+          </div>
+
+          <CitadelCapitalFooter
+            equity={liveMetrics.equity}
+            dailyPnl={liveMetrics.dailyPnlUsd}
+            openPnl={liveMetrics.openPnl}
+          />
+        </div>
       </FadeInView>
 
       <WallDetailDialog
         wall={selectedWall}
+        mode={mode}
         lastUpdatedTs={liveMetrics.lastUpdatedTs}
         open={dialogOpen}
         onOpenChange={setDialogOpen}

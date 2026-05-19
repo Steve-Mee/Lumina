@@ -78,6 +78,16 @@ export function BirthActivateStep({
             />
             Prefer real historical data only
           </label>
+          <label className="flex items-center gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={draft.training.allow_minimal_synthetic_fallback}
+              onChange={(e) =>
+                onChangeTraining({ allow_minimal_synthetic_fallback: e.target.checked })
+              }
+            />
+            Allow minimal synthetic fallback when real data is insufficient
+          </label>
         </div>
 
         <div className="mb-6 rounded-lg border border-white/10 bg-black/20 p-4 text-xs text-muted-foreground">

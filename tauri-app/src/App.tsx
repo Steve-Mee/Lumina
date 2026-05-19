@@ -1,14 +1,17 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 
+import { CommandDeckTour } from "@/components/cockpit/CommandDeckTour";
 import { CockpitShell } from "@/components/cockpit/CockpitShell";
 import { CorePanelSlot } from "@/components/cockpit/CorePanelSlot";
+import { EvolutionDeckPanel } from "@/components/cockpit/EvolutionDeckPanel";
 import { FadeInView } from "@/components/cockpit/FadeInView";
 import { PanelErrorBoundary } from "@/components/cockpit/PanelErrorBoundary";
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
-import { DecisionTheater } from "@/components/DecisionTheater";
+import { IntelligenceDeckPanel } from "@/components/cockpit/IntelligenceDeckPanel";
 import { RiskCitadel } from "@/components/RiskCitadel";
-import { useTauriGlobalShortcuts } from "@/hooks/useTauriGlobalShortcuts";import {
+import { useTauriGlobalShortcuts } from "@/hooks/useTauriGlobalShortcuts";
+import {
   selectConnectionStatus,
   selectCurrentMode,
   selectEvolutionState,
@@ -25,13 +28,8 @@ const LivingCore = lazy(() =>
   })),
 );
 
-const EvolutionArena = lazy(() =>
-  import("@/components/EvolutionArena").then((module) => ({
-    default: module.EvolutionArena,
-  })),
-);
-
 function CoreDebugPanel() {
+  const [expanded, setExpanded] = useState(false);
   const connectionStatus = useCoreStore(selectConnectionStatus);
   const fallbackMode = useCoreStore(selectFallbackMode);
   const currentMode = useCoreStore(selectCurrentMode);
@@ -56,45 +54,66 @@ function CoreDebugPanel() {
     source_ts: liveMetrics.lastUpdatedTs,
   };
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        setExpanded((value) => !value);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <aside
-      className="fixed bottom-12 right-3 z-50 max-w-sm rounded-lg border border-white/10 bg-black/70 p-3 font-mono text-[10px] text-cyan-100/90 shadow-lg backdrop-blur-md"
+      className="fixed bottom-12 right-3 z-50 max-w-sm rounded-lg border border-white/10 bg-black/70 font-mono text-[10px] text-cyan-100/90 shadow-lg backdrop-blur-md"
       aria-label="WebSocket debug panel"
     >
-      <p className="mb-2 text-[9px] tracking-[0.18em] text-cyan-300/80 uppercase">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[9px] tracking-[0.18em] text-cyan-300/80 uppercase hover:bg-white/5"
+        onClick={() => setExpanded((value) => !value)}
+        title="Toggle debug panel (Ctrl+Shift+D)"
+      >
         Debug — WS /ws/core/live
-      </p>
-      <dl className="space-y-1">
-        <div className="flex gap-2">
-          <dt className="text-muted-foreground">Status</dt>
-          <dd className="uppercase">{connectionStatus}</dd>
+        <span className="text-muted-foreground">{expanded ? "▾" : "▸"}</span>
+      </button>
+      {expanded ? (
+        <div className="border-t border-white/10 p-3">
+          <dl className="space-y-1">
+            <div className="flex gap-2">
+              <dt className="text-muted-foreground">Status</dt>
+              <dd className="uppercase">{connectionStatus}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="text-muted-foreground">Fallback</dt>
+              <dd className={fallbackMode ? "text-amber-300/90" : undefined}>
+                {fallbackMode ? "true" : "false"}
+              </dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="text-muted-foreground">Mode</dt>
+              <dd>{currentMode}</dd>
+            </div>
+            {lastError ? (
+              <div className="flex gap-2 text-red-300/90">
+                <dt>Error</dt>
+                <dd>{lastError}</dd>
+              </div>
+            ) : null}
+            {reconnectAttempt > 0 ? (
+              <div className="flex gap-2 text-amber-300/90">
+                <dt>Retry</dt>
+                <dd>{reconnectAttempt}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <pre className="mt-2 max-h-[120px] overflow-auto rounded border border-white/5 bg-black/40 p-2 text-[9px] leading-relaxed text-emerald-200/80">
+            {JSON.stringify(lastPayload, null, 2)}
+          </pre>
         </div>
-        <div className="flex gap-2">
-          <dt className="text-muted-foreground">Fallback</dt>
-          <dd className={fallbackMode ? "text-amber-300/90" : undefined}>
-            {fallbackMode ? "true" : "false"}
-          </dd>
-        </div>
-        <div className="flex gap-2">
-          <dt className="text-muted-foreground">Mode</dt>
-          <dd>{currentMode}</dd>
-        </div>
-        {lastError ? (
-          <div className="flex gap-2 text-red-300/90">
-            <dt>Error</dt>
-            <dd>{lastError}</dd>
-          </div>
-        ) : null}
-        {reconnectAttempt > 0 ? (
-          <div className="flex gap-2 text-amber-300/90">
-            <dt>Retry</dt>
-            <dd>{reconnectAttempt}</dd>
-          </div>
-        ) : null}
-      </dl>
-      <pre className="mt-2 max-h-[120px] overflow-auto rounded border border-white/5 bg-black/40 p-2 text-[9px] leading-relaxed text-emerald-200/80">
-        {JSON.stringify(lastPayload, null, 2)}
-      </pre>
+      ) : null}
     </aside>
   );
 }
@@ -106,21 +125,27 @@ function ThreeDPanelFallback() {
 function CommandDeckGrid() {
   const connectionStatus = useCoreStore(selectConnectionStatus);
   const liveMetrics = useCoreStore(selectLiveMetrics);
+  const operatorMode = useCoreStore(selectCurrentMode);
   const telemetryPending =
     connectionStatus === "connecting" && liveMetrics.equity === null;
 
   return (
     <main className="command-deck-grid grid h-full min-h-0 gap-3">
       <FadeInView delay={0} className="command-deck-area-left flex min-h-0 flex-col gap-3">
+        <div
+          className="flex min-h-0 flex-col gap-3"
+          data-mode={operatorMode}
+          data-tour="risk-citadel"
+        >
         <CorePanelSlot
           title="Risk Monitor"
-          subtitle="VaR, drawdown & policy verdicts"
+          subtitle="Fortress integrity & drawdown buffer"
           className="min-h-[220px] overflow-hidden"
           loading={telemetryPending}
           loadingLabel="Connecting risk citadel…"
         >
           <PanelErrorBoundary panelName="Risk Monitor">
-            <RiskCitadel className="h-full w-full" />
+            <RiskCitadel key={operatorMode} className="h-full w-full" />
           </PanelErrorBoundary>
         </CorePanelSlot>
 
@@ -137,32 +162,19 @@ function CommandDeckGrid() {
             </Suspense>
           </PanelErrorBoundary>
         </CorePanelSlot>
+        </div>
       </FadeInView>
 
       <FadeInView delay={0.08} layout className="command-deck-area-center min-h-[360px]">
-        <CorePanelSlot
-          title="Evolution Queue"
-          subtitle="Pending mutation proposals"
-          className="min-h-[360px] overflow-hidden"
-        >
-          <PanelErrorBoundary panelName="Evolution Arena">
-            <Suspense fallback={<ThreeDPanelFallback />}>
-              <EvolutionArena className="h-full w-full" />
-            </Suspense>
-          </PanelErrorBoundary>
-        </CorePanelSlot>
+        <PanelErrorBoundary panelName="Evolution Deck">
+          <EvolutionDeckPanel className="h-full min-h-[360px]" />
+        </PanelErrorBoundary>
       </FadeInView>
 
       <FadeInView delay={0.16} className="command-deck-area-right min-h-[360px]">
-        <CorePanelSlot
-          title="Intelligence"
-          subtitle="Decision theater & reasoning chain"
-          className="min-h-[360px] overflow-hidden"
-        >
-          <PanelErrorBoundary panelName="Decision Theater">
-            <DecisionTheater className="h-full w-full" />
-          </PanelErrorBoundary>
-        </CorePanelSlot>
+        <PanelErrorBoundary panelName="Intelligence Deck">
+          <IntelligenceDeckPanel className="h-full min-h-[360px]" />
+        </PanelErrorBoundary>
       </FadeInView>
     </main>
   );
@@ -188,6 +200,7 @@ export default function App() {
               <CockpitShell>
                 <CommandDeckGrid />
               </CockpitShell>
+              <CommandDeckTour />
               {import.meta.env.DEV ? <CoreDebugPanel /> : null}
             </>
           )

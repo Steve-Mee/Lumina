@@ -49,6 +49,7 @@ export interface ConfigurePayload {
   evolution: {
     approval_required: boolean;
     aggressive_evolution: boolean;
+    max_mutation_depth?: "conservative" | "moderate" | "radical";
   };
   training: {
     training_trades: number;
@@ -60,8 +61,40 @@ export interface ConfigurePayload {
   selected_model_key?: string;
 }
 
+export async function postCredentials(credentials: ConfigurePayload["credentials"]): Promise<{
+  success: boolean;
+  missing: string[];
+}> {
+  return apiFetch("/api/setup/credentials", {
+    method: "POST",
+    body: JSON.stringify(credentials),
+  });
+}
+
 export async function postConfigure(body: ConfigurePayload): Promise<{ success: boolean; steps: unknown[] }> {
   return apiFetch("/api/setup/configure", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export type BotConfigPayload = {
+  mode: string;
+  risk: ConfigurePayload["risk"];
+  evolution: ConfigurePayload["evolution"] & {
+    max_mutation_depth: "conservative" | "moderate" | "radical";
+  };
+  preferences?: {
+    instrument: string;
+    voice_enabled: boolean;
+    screen_share_enabled: boolean;
+  };
+};
+
+export async function postBotConfig(
+  body: BotConfigPayload,
+): Promise<{ success: boolean; defaults: OnboardingPayload["defaults"] }> {
+  return apiFetch("/api/config/bot", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -70,10 +103,23 @@ export async function postConfigure(body: ConfigurePayload): Promise<{ success: 
 export async function startSmartSetup(options?: {
   install_ollama?: boolean;
   download_recommended_model?: boolean;
+  selected_model_key?: string;
 }): Promise<{ status: string; message: string }> {
   return apiFetch("/api/setup/smart-setup", {
     method: "POST",
     body: JSON.stringify(options ?? {}),
+  });
+}
+
+export async function generateTauriSigningKey(force = false): Promise<{
+  success: boolean;
+  message: string;
+  key_path?: string;
+  public_key?: string;
+}> {
+  return apiFetch("/api/setup/tauri-signing/generate", {
+    method: "POST",
+    body: JSON.stringify({ force }),
   });
 }
 
@@ -100,12 +146,11 @@ export async function startBirth(targetTrades: number): Promise<Record<string, u
   return response.json();
 }
 
-export async function fetchBirthStatus(): Promise<Record<string, unknown>> {
-  const base = resolveBackendBaseUrl();
-  const response = await fetch(`${base}/api/birth/status`);
-  if (!response.ok) throw new Error(`Birth status HTTP ${response.status}`);
-  return response.json();
-}
+export type {
+  BirthProgressPayload,
+  BirthStatusPayload,
+} from "@/lib/birthClient";
+export { fetchBirthStatusTyped as fetchBirthStatus } from "@/lib/birthClient";
 
 export async function probeBackendHealth(): Promise<boolean> {
   try {

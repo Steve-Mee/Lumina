@@ -9,6 +9,22 @@ export type OnboardingStepId =
 
 export type StepStatus = "pending" | "done" | "running" | "blocked";
 
+export interface ModelCatalogEntry {
+  key: string;
+  display_name: string;
+  ollama_tag: string;
+  recommended_tier: string;
+  parameter_size_b: number;
+  fits_hardware: boolean;
+  is_recommended: boolean;
+}
+
+export interface ReadinessRow {
+  id: string;
+  label: string;
+  status: "ok" | "missing" | "pending";
+}
+
 export interface OnboardingPayload {
   backend: { reachable: boolean; url: string; latency_ms?: number; error?: string };
   setup_complete: boolean;
@@ -31,8 +47,11 @@ export interface OnboardingPayload {
     adaptive_intelligence: Record<string, unknown>;
     missing: string[];
   };
+  model_catalog: ModelCatalogEntry[];
+  readiness: ReadinessRow[];
   credentials: { missing: string[]; has_admin_api_key: boolean };
   required_steps: OnboardingStepId[];
+  wizard_steps: OnboardingStepId[];
   step_status: Record<string, StepStatus>;
   defaults: {
     mode: string;
@@ -58,13 +77,25 @@ export const STEP_LABELS: Record<OnboardingStepId, string> = {
 /** Client-side mirror of server gate for tests and UI hints. */
 export function shouldEnterCockpit(payload: OnboardingPayload): boolean {
   if (payload.skip_wizard) return true;
-  const pending = payload.required_steps.filter((s) => s !== "welcome");
+  if (
+    payload.setup_complete &&
+    (payload.birth.status === "running" || payload.birth.artifacts_ok)
+  ) {
+    return true;
+  }
+  const pending = payload.wizard_steps.filter((s) => s !== "welcome");
   if (pending.length === 0 && payload.setup_complete) {
     return payload.birth.status === "running" || payload.birth.artifacts_ok;
   }
   return false;
 }
 
-export function visibleSteps(required: OnboardingStepId[]): OnboardingStepId[] {
-  return required.filter((s) => s !== "welcome");
+export function visibleSteps(steps: OnboardingStepId[]): OnboardingStepId[] {
+  return steps.filter((s) => s !== "welcome");
+}
+
+export function resolveWizardSteps(required: OnboardingStepId[]): OnboardingStepId[] {
+  const pending = required.filter((step) => step !== "welcome");
+  if (pending.length <= 2) return pending;
+  return required;
 }

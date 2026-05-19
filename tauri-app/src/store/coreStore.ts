@@ -1,7 +1,20 @@
 import { create } from "zustand";
 
 import { postOperatorMode } from "@/lib/modeClient";
+import {
+  normalizeAdaptiveIntelligenceStatus,
+  normalizeTransitionSummary,
+  type AdaptiveIntelligenceStatus,
+  type AdaptiveTransitionSummary,
+} from "@/lib/adaptiveIntelligenceTypes";
 import type { TelemetryFrame } from "@/lib/websocket";
+import {
+  deriveWinrateFromTrades,
+  type LiveTradingSnapshot,
+} from "@/lib/liveTradingTypes";
+import type { FortressSnapshot } from "@/lib/fortressTypes";
+import type { PerformanceSnapshot } from "@/lib/performanceTypes";
+import type { RealOpsSnapshot } from "@/lib/realOpsTypes";
 
 export type TradingMode = "SIM" | "REAL";
 
@@ -62,6 +75,13 @@ interface CoreStoreState {
   lastSeq: number | null;
   lastError: string | null;
   reconnectAttempt: number;
+  adaptiveIntelligenceStatus: AdaptiveIntelligenceStatus | null;
+  adaptiveTransitionSummary: AdaptiveTransitionSummary | null;
+  adaptiveLastUpdatedTs: string | null;
+  tradingLive: LiveTradingSnapshot | null;
+  fortress: FortressSnapshot | null;
+  performanceLive: PerformanceSnapshot | null;
+  realOpsLive: RealOpsSnapshot | null;
 }
 
 interface CoreStoreActions {
@@ -113,6 +133,13 @@ const INITIAL_STATE: CoreStoreState = {
   lastSeq: null,
   lastError: null,
   reconnectAttempt: 0,
+  adaptiveIntelligenceStatus: null,
+  adaptiveTransitionSummary: null,
+  adaptiveLastUpdatedTs: null,
+  tradingLive: null,
+  fortress: null,
+  performanceLive: null,
+  realOpsLive: null,
 };
 
 const RISK_LEVELS: RiskLevel[] = [
@@ -217,6 +244,29 @@ export const useCoreStore = create<CoreStore>((set, get) => ({
     set((state) => {
       const { payload } = frame;
       const activeMutations = mapEvolutionMutations(payload.active_mutations);
+      const adaptiveBlock = payload.adaptive_intelligence;
+      const adaptiveStatus = adaptiveBlock
+        ? normalizeAdaptiveIntelligenceStatus(adaptiveBlock.status ?? adaptiveBlock)
+        : null;
+      const adaptiveTransition = adaptiveBlock
+        ? normalizeTransitionSummary(adaptiveBlock.transition_summary)
+        : null;
+      const adaptiveTs =
+        adaptiveBlock?.event_timestamp ??
+        adaptiveStatus?.timestamp ??
+        payload.source_ts;
+
+      const tradingLive = payload.live_trading ?? null;
+      const fortress = payload.fortress ?? null;
+      const performanceLive = payload.performance ?? null;
+      const realOpsLive = payload.real_ops ?? null;
+      const winrate =
+        performanceLive?.sessionKpis.winrate ??
+        (tradingLive ? deriveWinrateFromTrades(tradingLive.last_trades) : null);
+
+      const drawdownPct =
+        fortress?.drawdown_pct ??
+        (fortress?.mc_drawdown_pct != null ? fortress.mc_drawdown_pct : null);
 
       return {
         reportedMode: normalizeTradingMode(payload.mode),
@@ -226,12 +276,25 @@ export const useCoreStore = create<CoreStore>((set, get) => ({
           equity: payload.equity,
           regime: payload.regime,
           lastUpdatedTs: payload.source_ts,
+          regimeConfidence: tradingLive?.regime_confidence ?? null,
+          dailyPnlUsd: tradingLive?.position.daily_pnl ?? null,
+          openPnl: tradingLive?.position.open_pnl ?? null,
+          consecutiveLosses: tradingLive?.consecutive_losses ?? null,
+          drawdownPct,
+          winrate,
         },
         evolutionState: {
           ...state.evolutionState,
           pendingCount: activeMutations.length,
           activeMutations,
         },
+        adaptiveIntelligenceStatus: adaptiveBlock ? adaptiveStatus : null,
+        adaptiveTransitionSummary: adaptiveBlock ? adaptiveTransition : null,
+        adaptiveLastUpdatedTs: adaptiveBlock ? adaptiveTs : null,
+        tradingLive,
+        fortress,
+        performanceLive,
+        realOpsLive,
         lastSeq: frame.seq,
         lastError: null,
       };
@@ -250,3 +313,12 @@ export const selectConnectionStatus = (state: CoreStore) => state.connectionStat
 export const selectFallbackMode = (state: CoreStore) => state.fallbackMode;
 export const selectSafeModeActive = (state: CoreStore) => state.safeModeActive;
 export const selectSafeModeSince = (state: CoreStore) => state.safeModeSince;
+export const selectAdaptiveIntelligenceStatus = (state: CoreStore) =>
+  state.adaptiveIntelligenceStatus;
+export const selectAdaptiveTransitionSummary = (state: CoreStore) =>
+  state.adaptiveTransitionSummary;
+export const selectAdaptiveLastUpdatedTs = (state: CoreStore) => state.adaptiveLastUpdatedTs;
+export const selectTradingLive = (state: CoreStore) => state.tradingLive;
+export const selectFortress = (state: CoreStore) => state.fortress;
+export const selectPerformanceLive = (state: CoreStore) => state.performanceLive;
+export const selectRealOpsLive = (state: CoreStore) => state.realOpsLive;

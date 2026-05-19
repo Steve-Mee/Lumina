@@ -12,6 +12,7 @@ from .smart_setup_service import (
     SmartSetupResult,
 )
 from .tauri_signing_service import TauriSigningResult, TauriSigningService
+from .ppo_realtime import PPORealtimeTailer, ppo_realtime_tailer
 
 __all__ = [
     "BackendClient",
@@ -27,4 +28,6 @@ __all__ = [
     "SmartSetupResult",
     "TauriSigningResult",
     "TauriSigningService",
+    "PPORealtimeTailer",
+    "ppo_realtime_tailer",
 ]

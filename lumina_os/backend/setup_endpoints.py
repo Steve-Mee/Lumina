@@ -7,7 +7,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -19,6 +19,7 @@ from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_launcher.core.onboarding import (
     compute_onboarding_steps,
     extract_config_defaults,
+    resolve_wizard_steps,
     should_skip_wizard,
 )
 from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
@@ -26,6 +27,7 @@ from lumina_launcher.services.birth_service import birth_service
 from lumina_launcher.services.hardware_service import HardwareService
 from lumina_launcher.services.model_service import ModelService
 from lumina_launcher.services.setup_persist import (
+    persist_credentials_only,
     persist_tauri_quick_config,
     scan_missing_credentials,
 )
@@ -79,8 +81,81 @@ def _probe_backend(base_url: str) -> dict[str, Any]:
         }
 
 
+def _model_catalog_payload(hardware: HardwareService, model_service: ModelService) -> list[dict[str, Any]]:
+    snapshot = hardware.get_snapshot()
+    recommended = model_service.get_recommended(
+        ram_gb=snapshot.ram_gb,
+        gpu_vram_gb=snapshot.gpu_vram_gb,
+        vllm_supported=snapshot.vllm_supported,
+    )
+    catalog: list[dict[str, Any]] = []
+    for descriptor in model_service.get_all_models():
+        if descriptor.recommended_provider != "ollama" or not descriptor.tested_by_lumina:
+            continue
+        catalog.append(
+            {
+                "key": descriptor.key,
+                "display_name": descriptor.display_name,
+                "ollama_tag": descriptor.ollama_tag,
+                "recommended_tier": descriptor.recommended_tier,
+                "parameter_size_b": descriptor.parameter_size_b,
+                "fits_hardware": hardware.fits_hardware(descriptor),
+                "is_recommended": descriptor.key == recommended.key,
+            }
+        )
+    catalog.sort(key=lambda item: (not item["is_recommended"], item["display_name"]))
+    return catalog
+
+
+def _readiness_summary(
+    *,
+    backend: dict[str, Any],
+    intelligence: dict[str, Any],
+    credentials_missing: list[str],
+    setup_complete: bool,
+    birth_status: str,
+    artifacts_ok: bool,
+) -> list[dict[str, str]]:
+    intel_missing = [item for item in intelligence.get("missing", []) if item != "setup_complete"]
+    rows = [
+        {
+            "id": "backend",
+            "label": "Python backend",
+            "status": "ok" if backend.get("reachable") else "missing",
+        },
+        {
+            "id": "ollama",
+            "label": "Ollama runtime",
+            "status": "ok" if intelligence.get("ollama_installed") else "missing",
+        },
+        {
+            "id": "model",
+            "label": "Trading model",
+            "status": "ok" if intelligence.get("recommended_model_present") else "missing",
+        },
+        {
+            "id": "credentials",
+            "label": "API credentials",
+            "status": "ok" if not credentials_missing else "missing",
+        },
+        {
+            "id": "configuration",
+            "label": "Quick configuration",
+            "status": "ok" if setup_complete else "missing",
+        },
+        {
+            "id": "birth",
+            "label": "Birth Phase",
+            "status": "ok" if artifacts_ok or birth_status == "running" else "pending",
+        },
+    ]
+    if intel_missing and rows[1]["status"] == "ok" and rows[2]["status"] == "ok":
+        pass
+    return rows
+
+
 def build_onboarding_payload(*, backend_url: str | None = None, serving_request: bool = False) -> dict[str, Any]:
-    setup, config_manager, _, smart, _, _ = _services()
+    setup, config_manager, _, smart, hardware, model_service = _services()
     root = _workspace_root()
     base_url = (backend_url or os.getenv("LUMINA_BACKEND_URL", "http://127.0.0.1:8000")).strip()
     backend = (
@@ -112,6 +187,18 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
 
     config = config_manager.load_yaml_config()
     env_values = config_manager.parse_env_file()
+    intelligence_payload = {
+        "ollama_installed": bool(intel_status.get("ollama_installed")),
+        "ollama_required": bool(intel_status.get("ollama_required")),
+        "recommended_model_key": str(intel_status.get("recommended_model_key", "")),
+        "recommended_ollama_tag": str(intel_status.get("recommended_ollama_tag", "")),
+        "recommended_model_present": bool(intel_status.get("recommended_model_present")),
+        "recommended_provider": str(intel_status.get("recommended_provider", "ollama")),
+        "hardware": intel_status.get("hardware", {}),
+        "adaptive_intelligence": intel_status.get("adaptive_intelligence", {}),
+        "missing": intelligence_missing,
+    }
+    wizard_steps = resolve_wizard_steps(required_steps)
 
     return {
         "backend": backend,
@@ -129,22 +216,22 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             "artifacts_ok": artifacts_ok,
             "artifacts_label": "Artifacts OK" if artifacts_ok else "Artifacts missing",
         },
-        "intelligence": {
-            "ollama_installed": bool(intel_status.get("ollama_installed")),
-            "ollama_required": bool(intel_status.get("ollama_required")),
-            "recommended_model_key": str(intel_status.get("recommended_model_key", "")),
-            "recommended_ollama_tag": str(intel_status.get("recommended_ollama_tag", "")),
-            "recommended_model_present": bool(intel_status.get("recommended_model_present")),
-            "recommended_provider": str(intel_status.get("recommended_provider", "ollama")),
-            "hardware": intel_status.get("hardware", {}),
-            "adaptive_intelligence": intel_status.get("adaptive_intelligence", {}),
-            "missing": intelligence_missing,
-        },
+        "intelligence": intelligence_payload,
+        "model_catalog": _model_catalog_payload(hardware, model_service),
+        "readiness": _readiness_summary(
+            backend=backend,
+            intelligence=intelligence_payload,
+            credentials_missing=credentials_missing,
+            setup_complete=setup_complete,
+            birth_status=birth_status,
+            artifacts_ok=artifacts_ok,
+        ),
         "credentials": {
             "missing": credentials_missing,
             "has_admin_api_key": bool(str(env_values.get("LUMINA_ADMIN_API_KEY", "")).strip()),
         },
         "required_steps": required_steps,
+        "wizard_steps": wizard_steps,
         "step_status": step_status,
         "defaults": extract_config_defaults(config),
         "smart_setup_running": _smart_setup_running,
@@ -162,6 +249,7 @@ class SmartSetupRequest(BaseModel):
     download_recommended_model: bool = True
     force_high_tier: bool = False
     pull_extra_models: bool = False
+    selected_model_key: str | None = None
 
 
 @router.post("/smart-setup")
@@ -178,7 +266,8 @@ async def start_smart_setup(body: SmartSetupRequest | None = None) -> dict[str, 
     def _run() -> None:
         global _smart_setup_running
         try:
-            smart.run_smart_setup(
+            _, _, _, _, hardware, model_service = _services()
+            result = smart.run_smart_setup(
                 options=SmartSetupOptions(
                     install_ollama=opts.install_ollama,
                     download_recommended_model=opts.download_recommended_model,
@@ -188,6 +277,16 @@ async def start_smart_setup(body: SmartSetupRequest | None = None) -> dict[str, 
                 ),
                 mark_complete=False,
             )
+            if opts.selected_model_key and result.success:
+                selected = model_service.get_model(opts.selected_model_key)
+                recommended_key = str(
+                    smart.get_setup_status().get("recommended_model_key", "")
+                )
+                if selected and selected.key != recommended_key:
+                    snapshot = hardware.get_snapshot()
+                    pull_step = setup.pull_model(selected)
+                    if pull_step.success:
+                        setup.apply_recommended_config(hardware=snapshot, model=selected)
         except Exception as exc:
             logger.exception("smart_setup.background_failed detail=%s", exc)
             setup.save_status({"smart_setup_error": str(exc), "phase": "failed"})
@@ -228,6 +327,7 @@ class ConfigureRisk(BaseModel):
 class ConfigureEvolution(BaseModel):
     approval_required: bool = True
     aggressive_evolution: bool = False
+    max_mutation_depth: Literal["conservative", "moderate", "radical"] = "conservative"
 
 
 class ConfigureTraining(BaseModel):
@@ -245,6 +345,21 @@ class ConfigureRequest(BaseModel):
     evolution: ConfigureEvolution = Field(default_factory=ConfigureEvolution)
     training: ConfigureTraining = Field(default_factory=ConfigureTraining)
     selected_model_key: str | None = None
+
+
+@router.post("/credentials")
+async def save_credentials(body: ConfigureCredentials) -> dict[str, Any]:
+    _, config_manager, _, _, _, _ = _services()
+    creds = body.model_dump()
+    for key in ("LUMINA_JWT_SECRET_KEY", "CROSSTRADE_TOKEN", "CROSSTRADE_ACCOUNT"):
+        if not str(creds.get(key, "")).strip():
+            raise HTTPException(status_code=400, detail=f"Missing required credential: {key}")
+    still_missing = persist_credentials_only(config_manager, creds)
+    return {
+        "success": not still_missing,
+        "missing": still_missing,
+        "onboarding": build_onboarding_payload(serving_request=True),
+    }
 
 
 @router.post("/configure")
@@ -279,3 +394,23 @@ async def configure_setup(body: ConfigureRequest) -> dict[str, Any]:
         "steps": steps,
         "onboarding": build_onboarding_payload(serving_request=True),
     }
+
+
+class TauriSigningRequest(BaseModel):
+    force: bool = False
+
+
+@router.post("/tauri-signing/generate")
+async def generate_tauri_signing(body: TauriSigningRequest | None = None) -> dict[str, Any]:
+    from lumina_launcher.services.tauri_signing_service import TauriSigningService
+
+    _, config_manager, _, _, _, _ = _services()
+    service = TauriSigningService(_workspace_root())
+    result = service.generate_keypair(
+        config_manager=config_manager,
+        force=bool(body.force if body else False),
+    )
+    payload = result.to_dict()
+    if not result.success:
+        raise HTTPException(status_code=422, detail=result.message)
+    return payload

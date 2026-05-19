@@ -21,6 +21,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { useDeckPanelStore } from "@/store/deckPanelStore";
+import {
+  approveProposal,
+  rejectProposal,
+  resolveDefaultChallengerName,
+} from "@/lib/evolutionClient";
 import { useEvolutionTree } from "@/hooks/useEvolutionTree";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { springSoft } from "@/lib/motionPresets";
@@ -467,6 +475,36 @@ function NodeDetailDialog({
               </div>
             ) : null}
           </dl>
+          {node.status === "proposed" ? (
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                size="xs"
+                onClick={() => {
+                  void approveProposal({
+                    hash: node.hash,
+                    challenger_name: resolveDefaultChallengerName({ hash: node.hash, challengers: [{ name: node.promptId }] }) ?? node.promptId,
+                  })
+                    .then(() => toast.success("Mutation approved"))
+                    .catch((e) => toast.error(e instanceof Error ? e.message : "Approve failed"));
+                }}
+              >
+                Approve
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                onClick={() => {
+                  void rejectProposal({ hash: node.hash, reason: "Rejected from Evolution Arena" })
+                    .then(() => toast.success("Mutation rejected"))
+                    .catch((e) => toast.error(e instanceof Error ? e.message : "Reject failed"));
+                }}
+              >
+                Reject
+              </Button>
+            </div>
+          ) : null}
         </div>
       </DialogContent>
     </Dialog>
@@ -478,7 +516,7 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
   const currentMode = useCoreStore(selectCurrentMode);
   const renderConfig = useVisualSettingsStore(selectRenderConfig);
   const reducedMotion = prefersReducedMotion || currentMode === "REAL";
-  const { graph, newNodeIds, loading, error, clearNewNodes } = useEvolutionTree();
+  const { graph, newNodeIds, loading, error, clearNewNodes, refresh } = useEvolutionTree();
   const [selectedNode, setSelectedNode] = useState<EvolutionNode | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -527,17 +565,50 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
         </AnimatePresence>
         <AnimatePresence>
           {error ? (
-            <motion.p
+            <motion.div
               key="arena-error"
-              className="absolute top-2 right-2 z-30 font-mono text-[9px] text-amber-300/80"
+              className="absolute inset-x-3 top-3 z-30 rounded-lg border border-amber-500/35 bg-amber-950/80 px-3 py-2"
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
             >
-              {error}
-            </motion.p>
+              <p className="font-mono text-[10px] text-amber-100/90">{error}</p>
+              <Button
+                type="button"
+                size="xs"
+                variant="secondary"
+                className="mt-2"
+                onClick={() => void refresh()}
+              >
+                Retry
+              </Button>
+            </motion.div>
           ) : null}
         </AnimatePresence>
+
+        {!loading && !error && graph.nodes.length === 0 ? (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="font-mono text-xs tracking-wide text-cyan-200/90 uppercase">
+              No evolution tree yet
+            </p>
+            <p className="max-w-xs text-[11px] text-muted-foreground">
+              Strategies appear here after birth completes and evolution proposals are recorded.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={() => void refresh()}>
+                Refresh
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => useDeckPanelStore.getState().setActiveRightTab("monitor")}
+              >
+                Open Monitor
+              </Button>
+            </div>
+          </div>
+        ) : null}
 
         <motion.div
           className="h-full w-full"

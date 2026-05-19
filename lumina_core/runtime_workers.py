@@ -71,18 +71,86 @@ def _paper_clear_round_ledger(app: RuntimeContext) -> None:
             delattr(app.engine, key)
 
 
+def _compute_session_kpis(app: RuntimeContext) -> dict[str, float]:
+    """Compute live session KPIs using the same formulas as the ORACLE log block."""
+    np = app.np
+    pnl_history = list(getattr(app, "pnl_history", []) or [])
+    equity_curve = list(getattr(app, "equity_curve", []) or [])
+
+    winrate = float(np.mean(np.array(pnl_history) > 0)) if pnl_history else 0.0
+    returns = np.array(pnl_history[-50:])
+    sharpe = (
+        (float(np.mean(returns)) / (float(np.std(returns)) + 1e-8)) * float(np.sqrt(252))
+        if len(returns) > 1
+        else 0.0
+    )
+    profit_factor = 0.0
+    if any(p < 0 for p in pnl_history):
+        gross_profit = sum(p for p in pnl_history if p > 0)
+        gross_loss = sum(abs(p) for p in pnl_history if p < 0)
+        profit_factor = abs(gross_profit / (gross_loss + 1e-8))
+
+    max_drawdown_pct = 0.0
+    max_drawdown_usd = 0.0
+    if len(equity_curve) > 1:
+        peak = np.maximum.accumulate(np.array(equity_curve, dtype=float))
+        drawdowns = peak - np.array(equity_curve, dtype=float)
+        max_drawdown_usd = float(np.max(drawdowns))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            dd_pct = (drawdowns / peak) * 100.0
+        max_drawdown_pct = float(np.min(dd_pct)) if dd_pct.size else 0.0
+
+    realized_pnl_session = float(sum(pnl_history)) if pnl_history else 0.0
+
+    return {
+        "winrate": round(winrate, 6),
+        "sharpe_annualized": round(sharpe, 4),
+        "profit_factor": round(profit_factor, 4),
+        "max_drawdown_pct": round(max_drawdown_pct, 4),
+        "max_drawdown_usd": round(max_drawdown_usd, 2),
+        "realized_pnl_session": round(realized_pnl_session, 2),
+    }
+
+
 def _publish_runtime_monitoring_snapshot(app: RuntimeContext) -> None:
     risk_controller = getattr(app.engine, "risk_controller", None)
     consecutive_losses = int(getattr(risk_controller, "consecutive_losses", 0) or 0)
+    account_balance = float(getattr(app, "account_balance", 0.0) or 0.0)
+    account_equity = float(getattr(app, "account_equity", 0.0) or 0.0)
+    drawdown_pct = 0.0
+    if account_balance > 0:
+        drawdown_pct = max(0.0, (account_balance - account_equity) / account_balance * 100.0)
+
+    mc_drawdown_pct = None
+    if risk_controller is not None:
+        rc_state = getattr(risk_controller, "state", None)
+        if rc_state is not None:
+            worst = getattr(rc_state, "mc_drawdown_worst_pct", None)
+            if worst is not None:
+                mc_drawdown_pct = float(worst)
+
+    drawdown_kill_pct = float(getattr(app.engine.config, "drawdown_kill_percent", 8.0) or 8.0)
+
+    equity_curve = [float(v) for v in list(getattr(app, "equity_curve", []) or [])[-120:]]
+    pnl_history = [float(v) for v in list(getattr(app, "pnl_history", []) or [])[-50:]]
+    session_kpis = _compute_session_kpis(app)
+
     payload = {
         "mode": str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower(),
         "live_position_qty": int(getattr(app.engine, "live_position_qty", 0) or 0),
         "daily_pnl": float(getattr(app, "realized_pnl_today", 0.0) or 0.0),
         "open_pnl": float(getattr(app, "open_pnl", 0.0) or 0.0),
-        "account_equity": float(getattr(app, "account_equity", 0.0) or 0.0),
+        "account_equity": account_equity,
+        "account_balance": account_balance,
+        "drawdown_pct": round(drawdown_pct, 4),
+        "drawdown_kill_pct": drawdown_kill_pct,
+        "mc_drawdown_pct": mc_drawdown_pct,
         "consecutive_losses": consecutive_losses,
         "pending_reconciliations": len(getattr(app, "pending_trade_reconciliations", []) or []),
         "last_trades": list(getattr(app, "trade_log", []) or [])[-10:],
+        "equity_curve": equity_curve,
+        "pnl_history": pnl_history,
+        "session_kpis": session_kpis,
     }
     write_runtime_monitoring_snapshot(payload)
 
@@ -1427,26 +1495,12 @@ def _old_supervisor_loop_inner(app: RuntimeContext) -> None:
             last_infinite_sim_status = time.time()
 
         if time.time() - last_oracle > 60 and len(app.pnl_history) > 5:
-            returns = app.np.array(app.pnl_history[-50:])
-            sharpe = (app.np.mean(returns) / (app.np.std(returns) + 1e-8)) * app.np.sqrt(252) if len(returns) > 1 else 0
-            winrate = app.np.mean(app.np.array(app.pnl_history) > 0) if app.pnl_history else 0
+            kpis = _compute_session_kpis(app)
             expectancy = app.np.mean(app.pnl_history) if app.pnl_history else 0
-            profit_factor = (
-                abs(sum([p for p in app.pnl_history if p > 0]) / sum([abs(p) for p in app.pnl_history if p < 0]) + 1e-8)
-                if any(p < 0 for p in app.pnl_history)
-                else 0
-            )
-            maxdd = (
-                min(
-                    (app.np.maximum.accumulate(app.equity_curve) - app.equity_curve)
-                    / app.np.maximum.accumulate(app.equity_curve)
-                )
-                * 100
-                if len(app.equity_curve) > 1
-                else 0
-            )
             app.logger.info(
-                f"ORACLE metrics | Sharpe {sharpe:.2f} | Expected ${expectancy:.0f} | Winrate {winrate:.1%} | PF {profit_factor:.2f} | MaxDD {maxdd:.1f}%"
+                f"ORACLE metrics | Sharpe {kpis['sharpe_annualized']:.2f} | Expected ${expectancy:.0f} | "
+                f"Winrate {kpis['winrate']:.1%} | PF {kpis['profit_factor']:.2f} | "
+                f"MaxDD {kpis['max_drawdown_pct']:.1f}%"
             )
 
         if time.time() - last_save > 30:

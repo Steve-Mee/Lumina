@@ -7,9 +7,29 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from backend import setup_endpoints as se
-from lumina_launcher.core.onboarding import compute_onboarding_steps, should_skip_wizard
+from lumina_launcher.core.onboarding import (
+    compute_onboarding_steps,
+    resolve_wizard_steps,
+    should_skip_wizard,
+)
+
+
+@pytest.mark.unit
+def test_resolve_wizard_steps_short_path_skips_welcome() -> None:
+    assert resolve_wizard_steps(["welcome", "birth"]) == ["birth"]
+    assert resolve_wizard_steps(["welcome", "credentials", "birth"]) == [
+        "credentials",
+        "birth",
+    ]
+
+
+@pytest.mark.unit
+def test_resolve_wizard_steps_full_path_keeps_welcome() -> None:
+    steps = ["welcome", "ollama", "credentials", "configuration", "birth"]
+    assert resolve_wizard_steps(steps) == steps
 
 
 @pytest.mark.unit
@@ -112,10 +132,12 @@ def test_get_onboarding_status(mock_services: MagicMock, mock_birth: MagicMock, 
 
     with patch.object(se, "_workspace_root", return_value=tmp_path):
         with patch.object(se, "_probe_backend", return_value={"reachable": True, "url": "http://127.0.0.1:8000"}):
-            payload = se.build_onboarding_payload()
+            with patch.object(se, "_model_catalog_payload", return_value=[]):
+                payload = se.build_onboarding_payload(serving_request=True)
 
     assert payload["setup_complete"] is False
     assert "credentials" in payload["required_steps"]
+    assert "wizard_steps" in payload
     assert payload["backend"]["reachable"] is True
 
 
@@ -128,6 +150,34 @@ async def test_start_smart_setup_returns_started() -> None:
         result = await se.start_smart_setup()
         assert result["status"] == "started"
         se._smart_setup_running = False
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_save_credentials_persists_env(tmp_path: Path) -> None:
+    env_path = tmp_path / ".env"
+    env_path.write_text("FOO=bar\n", encoding="utf-8")
+    config_manager = MagicMock()
+    config_manager.parse_env_file.return_value = {"FOO": "bar"}
+    config_manager.write_env_file = MagicMock()
+    mock_services = (MagicMock(), config_manager, MagicMock(), MagicMock(), MagicMock(), MagicMock())
+
+    with patch.object(se, "_services", return_value=mock_services):
+        with patch.object(
+            se,
+            "persist_credentials_only",
+            return_value=[],
+        ) as persist_mock:
+            with patch.object(se, "build_onboarding_payload", return_value={"setup_complete": False}):
+                result = await se.save_credentials(
+                    se.ConfigureCredentials(
+                        LUMINA_JWT_SECRET_KEY="jwt",
+                        CROSSTRADE_TOKEN="token",
+                        CROSSTRADE_ACCOUNT="acct",
+                    )
+                )
+    persist_mock.assert_called_once()
+    assert result["success"] is True
 
 
 @pytest.mark.unit

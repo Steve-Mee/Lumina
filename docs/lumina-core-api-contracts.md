@@ -26,6 +26,8 @@ The **`/api/core/*`** and **`/ws/core/*`** paths defined here are the **canonica
 8. [SIM vs REAL Mode Delta](#8-sim-vs-real-mode-delta)
 9. [Related Documents](#9-related-documents)
 
+See also [ppo-evolution.md](ppo-evolution.md) for **`/ws/ppo-evolution`** — raw JSONL PPO training metrics during birth phase.
+
 ---
 
 ## 1. Conventions

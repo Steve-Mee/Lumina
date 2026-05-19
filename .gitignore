@@ -109,6 +109,7 @@ journal/simulator/lumina_birth_training_*.json
 state/monitoring_*.jsonl
 state/monitoring_runtime_metrics.json
 state/ppo_policy_metadata.json
+state/ppo_training_log.jsonl
 state/adaptive_intelligence_status.json
 state/adaptive_intelligence_events.jsonl
 
@@ -138,6 +139,7 @@ lumina_os/logs/
 quality_fix_report.md
 
 # Runtime-generated databases and audit logs
+lumina_os.db
 lumina_vector_db/chroma.sqlite3
 state/chroma_community/
 state/metrics.db

@@ -74,6 +74,14 @@ def compute_onboarding_steps(
     return required, step_status
 
 
+def resolve_wizard_steps(required_steps: list[OnboardingStepId]) -> list[OnboardingStepId]:
+    """UI sequence: skip Welcome when at most two non-welcome steps remain."""
+    pending = [step for step in required_steps if step != "welcome"]
+    if len(pending) <= 2:
+        return pending
+    return required_steps
+
+
 def should_skip_wizard(
     *,
     setup_complete: bool,
@@ -107,6 +115,7 @@ def extract_config_defaults(config: dict[str, Any]) -> dict[str, Any]:
             "max_total_open_risk": sim.get("max_total_open_risk", 3000.0),
             "aggressive_evolution": sim.get("aggressive_evolution", True),
             "approval_required": sim.get("approval_required", False),
+            "max_mutation_depth": sim.get("max_mutation_depth", "radical"),
         },
         "real": {
             "kelly_fraction": real.get("kelly_fraction", 0.25),
@@ -114,6 +123,7 @@ def extract_config_defaults(config: dict[str, Any]) -> dict[str, Any]:
             "max_total_open_risk": real.get("max_total_open_risk", 150.0),
             "aggressive_evolution": real.get("aggressive_evolution", False),
             "approval_required": real.get("approval_required", True),
+            "max_mutation_depth": real.get("max_mutation_depth", "conservative"),
         },
         "evolution": {
             "approval_required": evolution.get("approval_required", True),

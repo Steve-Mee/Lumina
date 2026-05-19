@@ -389,3 +389,19 @@ def test_adaptive_intelligence_latest_includes_transition_summary(tmp_path: Path
 def test_adaptive_intelligence_latest_requires_api_key() -> None:
     resp = _client.get("/api/monitoring/adaptive-intelligence/latest")
     assert resp.status_code == 401
+
+
+def test_training_reports_returns_list_with_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    sample = [{"timestamp": "2026-05-19T12:00:00+00:00", "_run_type": "Background", "trades_completed": 100}]
+    monkeypatch.setattr(monitoring_endpoints, "_latest_training_reports", lambda *, limit=10: sample[:limit])
+
+    resp = _client.get("/api/monitoring/training-reports?limit=5", headers={"X-API-Key": "k"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 1
+    assert body["reports"][0]["trades_completed"] == 100
+
+
+def test_training_reports_requires_api_key() -> None:
+    resp = _client.get("/api/monitoring/training-reports")
+    assert resp.status_code == 401

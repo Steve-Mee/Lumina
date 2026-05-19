@@ -1,4 +1,5 @@
-import type { CoreStore, RiskLevel } from "@/store/coreStore";
+import type { FortressSnapshot } from "@/lib/fortressTypes";
+import type { CoreStore, RiskLevel, TradingMode } from "@/store/coreStore";
 
 export type WallId = "risk" | "drawdown" | "kelly" | "regime";
 
@@ -33,6 +34,25 @@ const REGIME_INTEGRITY: Record<string, number> = {
   UNKNOWN: 50,
 };
 
+const WALL_EDUCATION: Record<WallId, { sim: string; real: string }> = {
+  risk: {
+    sim: "Learning posture — risk level reflects simulated policy gates, not live capital.",
+    real: "Capital protection — kill switch and constitutional risk posture are enforced.",
+  },
+  drawdown: {
+    sim: "Drawdown buffer shows headroom before the simulated kill threshold.",
+    real: "Drawdown buffer tracks live equity vs session balance before forced halt.",
+  },
+  kelly: {
+    sim: "Kelly factor estimates sizing confidence from recent simulated win-rate.",
+    real: "Kelly factor is capped — quarter-Kelly limits position size in REAL mode.",
+  },
+  regime: {
+    sim: "Regime safety reflects how stable the market classification appears for learning.",
+    real: "Regime safety gates entries when classification confidence is insufficient.",
+  },
+};
+
 function clamp(value: number, min = 0, max = 100): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -54,7 +74,25 @@ export function aggregateIntegrity(walls: WallMetric[]): number {
   return Math.min(...walls.map((wall) => wall.integrity));
 }
 
-function deriveRiskWall(riskLevel: RiskLevel): WallMetric {
+export function wallEducationCopy(wallId: WallId, mode: TradingMode): string {
+  return mode === "SIM" ? WALL_EDUCATION[wallId].sim : WALL_EDUCATION[wallId].real;
+}
+
+function deriveRiskWall(riskLevel: RiskLevel, killSwitchActive: boolean): WallMetric {
+  if (killSwitchActive) {
+    const integrity = 15;
+    return {
+      id: "risk",
+      label: "Risk",
+      integrity,
+      tier: integrityTier(integrity),
+      description:
+        "Kill switch active — constitutional risk posture has halted trading.",
+      rawValues: { risk_level: riskLevel, kill_switch_active: 1 },
+      isStandby: false,
+    };
+  }
+
   const integrity = RISK_INTEGRITY[riskLevel];
   return {
     id: "risk",
@@ -63,12 +101,15 @@ function deriveRiskWall(riskLevel: RiskLevel): WallMetric {
     tier: integrityTier(integrity),
     description:
       "Constitutional risk posture derived from live policy verdicts and capital-at-risk signals.",
-    rawValues: { risk_level: riskLevel },
+    rawValues: { risk_level: riskLevel, kill_switch_active: 0 },
     isStandby: riskLevel === "UNKNOWN",
   };
 }
 
-function deriveDrawdownWall(drawdownPct: number | null): WallMetric {
+function deriveDrawdownWall(
+  drawdownPct: number | null,
+  killThresholdPct: number,
+): WallMetric {
   if (drawdownPct === null) {
     const integrity = 88;
     return {
@@ -80,15 +121,13 @@ function deriveDrawdownWall(drawdownPct: number | null): WallMetric {
         "Remaining headroom before the drawdown kill threshold is breached.",
       rawValues: {
         drawdown_pct: null,
-        kill_threshold_pct: DEFAULT_DRAWDOWN_KILL_PCT,
+        kill_threshold_pct: killThresholdPct,
       },
       isStandby: true,
     };
   }
 
-  const integrity = clamp(
-    100 - (drawdownPct / DEFAULT_DRAWDOWN_KILL_PCT) * 100,
-  );
+  const integrity = clamp(100 - (drawdownPct / killThresholdPct) * 100);
   return {
     id: "drawdown",
     label: "Drawdown Buffer",
@@ -98,7 +137,7 @@ function deriveDrawdownWall(drawdownPct: number | null): WallMetric {
       "Remaining headroom before the drawdown kill threshold is breached.",
     rawValues: {
       drawdown_pct: drawdownPct,
-      kill_threshold_pct: DEFAULT_DRAWDOWN_KILL_PCT,
+      kill_threshold_pct: killThresholdPct,
     },
     isStandby: false,
   };
@@ -182,10 +221,14 @@ function deriveRegimeWall(
 }
 
 export function deriveCitadelWalls(state: CoreStore): WallMetric[] {
-  const { liveMetrics, riskLevel } = state;
+  const { liveMetrics, riskLevel, fortress } = state;
+  const killSwitchActive = fortress?.kill_switch_active ?? false;
+  const killThreshold =
+    fortress?.drawdown_kill_pct ?? DEFAULT_DRAWDOWN_KILL_PCT;
+
   return [
-    deriveRiskWall(riskLevel),
-    deriveDrawdownWall(liveMetrics.drawdownPct),
+    deriveRiskWall(riskLevel, killSwitchActive),
+    deriveDrawdownWall(liveMetrics.drawdownPct, killThreshold),
     deriveKellyWall(liveMetrics.winrate, liveMetrics.consecutiveLosses),
     deriveRegimeWall(liveMetrics.regime, liveMetrics.regimeConfidence),
   ];
@@ -234,3 +277,18 @@ export function tierRingClass(tier: IntegrityTier): string {
       return "border-red-400/55 shadow-[0_0_24px_oklch(0.65_0.2_25/40%)]";
   }
 }
+
+export function citadelCoreRingDuration(mode: TradingMode, reducedMotion: boolean): number | null {
+  if (reducedMotion || mode === "REAL") {
+    return null;
+  }
+  return mode === "SIM" ? 12 : 24;
+}
+
+export function citadelModeHeadline(mode: TradingMode): string {
+  return mode === "SIM"
+    ? "Simulation — walls reflect learning posture"
+    : "Capital fortress — protective posture active";
+}
+
+export type { FortressSnapshot };

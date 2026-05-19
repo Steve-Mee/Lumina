@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+import asyncio
 import json
 import logging
 import os
 import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional, cast
 
@@ -24,6 +26,9 @@ from backend.core_websocket import set_observability_service as set_core_ws_obs_
 from backend.evolution_endpoints import router as evolution_router
 from backend.birth_endpoints import router as birth_router
 from backend.setup_endpoints import router as setup_router
+from backend.config_endpoints import router as config_router
+from backend.runtime_endpoints import router as runtime_router
+from backend.ppo_websocket import router as ppo_ws_router
 from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
 from backend.evolution_endpoints import set_security_module as set_evolution_security_module
 from lumina_core.broker.broker_bridge import broker_factory
@@ -44,6 +49,7 @@ load_dotenv(_LUMINA_REPO_ROOT / ".env")
 load_dotenv()
 
 from lumina_launcher.services.birth_service import configure_birth_workspace
+from lumina_launcher.services.ppo_realtime import ppo_realtime_tailer
 
 configure_birth_workspace(_LUMINA_REPO_ROOT)
 
@@ -138,7 +144,15 @@ if violations:
     logger.error(f"Dangerous config values detected: {violations}")
     raise ValueError(f"Startup validation failed: {violations}")
 
-app = FastAPI(title="Trader League Live - Powered by LUMINA")
+
+@asynccontextmanager
+async def _app_lifespan(_app: FastAPI):
+    ppo_realtime_tailer.start_watching(loop=asyncio.get_running_loop())
+    yield
+    ppo_realtime_tailer.stop_watching()
+
+
+app = FastAPI(title="Trader League Live - Powered by LUMINA", lifespan=_app_lifespan)
 
 # ── Observability layer ────────────────────────────────────────────────────────
 _obs = ObservabilityService.from_config(FULL_CONFIG)
@@ -150,7 +164,10 @@ app.include_router(monitoring_router)
 app.include_router(evolution_router)
 app.include_router(birth_router)
 app.include_router(setup_router)
+app.include_router(config_router)
+app.include_router(runtime_router)
 app.include_router(core_ws_router)
+app.include_router(ppo_ws_router)
 
 app.add_middleware(LuminaEmbeddedUIMiddleware, dist_dir=_UI_DIST)
 if (_UI_DIST / "index.html").is_file():

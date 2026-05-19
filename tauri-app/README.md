@@ -18,6 +18,25 @@ npm run tauri dev
 
 Dev server: `http://localhost:1420`
 
+## First-boot onboarding wizard
+
+On first launch (or when setup is incomplete), the app shows a **Smart Progressive Onboarding Wizard** instead of the Command Deck. The backend computes which steps are required via `GET /api/setup/onboarding`.
+
+**Typical full flow:** Welcome → Smart Setup (Ollama/model) → Credentials → Quick Config → Birth Activate → Command Deck.
+
+**Short path:** When only 1–2 steps remain (e.g. Birth only), Welcome is skipped and the wizard opens on the first pending step.
+
+**Simulate fresh install (dev):**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ..\scripts\reset-onboarding-dev.ps1
+cd ..\lumina_os
+$env:PYTHONPATH = ".." ; $env:LUMINA_CONFIG = "..\config.yaml"
+python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+cd ..\tauri-app
+npm run tauri dev
+```
+
 Styling: **Tailwind CSS v4** + **shadcn/ui** (base-nova, dark mode default via `class="dark"` on `<html>`). Run `npx shadcn@latest add <component>` to add UI primitives.
 
 ## Template

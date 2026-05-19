@@ -1,4 +1,8 @@
 import { useCoreStore } from "@/store/coreStore";
+import { parseFortressSnapshot, type FortressSnapshot } from "@/lib/fortressTypes";
+import { parseLiveTradingSnapshot, type LiveTradingSnapshot } from "@/lib/liveTradingTypes";
+import { parsePerformanceSnapshot, type PerformanceSnapshot } from "@/lib/performanceTypes";
+import { parseRealOpsSnapshot, type RealOpsSnapshot } from "@/lib/realOpsTypes";
 
 export type { ConnectionStatus } from "@/store/coreStore";
 
@@ -8,6 +12,16 @@ export interface ActiveMutation {
   challenger_count: number;
 }
 
+export interface AdaptiveIntelligenceWsBlock {
+  status?: unknown;
+  transition_summary?: unknown;
+  event_timestamp?: string | null;
+}
+
+export type { FortressSnapshot } from "@/lib/fortressTypes";
+export type { PerformanceSnapshot } from "@/lib/performanceTypes";
+export type { RealOpsSnapshot } from "@/lib/realOpsTypes";
+
 export interface CoreLiveTelemetry {
   mode: string;
   equity: number | null;
@@ -15,6 +29,11 @@ export interface CoreLiveTelemetry {
   risk_level: string;
   active_mutations: ActiveMutation[];
   source_ts: string | null;
+  adaptive_intelligence?: AdaptiveIntelligenceWsBlock | null;
+  live_trading?: LiveTradingSnapshot | null;
+  fortress?: FortressSnapshot | null;
+  performance?: PerformanceSnapshot | null;
+  real_ops?: RealOpsSnapshot | null;
 }
 
 export interface TelemetryFrame {
@@ -92,6 +111,12 @@ function parseTelemetryPayload(value: unknown): CoreLiveTelemetry | null {
         .filter((item): item is ActiveMutation => item !== null)
     : [];
 
+  const adaptiveBlock = value.adaptive_intelligence;
+  const liveTrading = parseLiveTradingSnapshot(value.live_trading);
+  const fortress = parseFortressSnapshot(value.fortress);
+  const performance = parsePerformanceSnapshot(value.performance);
+  const realOps = parseRealOpsSnapshot(value.real_ops);
+
   return {
     mode: typeof value.mode === "string" ? value.mode : "unknown",
     equity:
@@ -106,6 +131,14 @@ function parseTelemetryPayload(value: unknown): CoreLiveTelemetry | null {
     active_mutations,
     source_ts:
       typeof value.source_ts === "string" ? value.source_ts : null,
+    adaptive_intelligence:
+      adaptiveBlock && typeof adaptiveBlock === "object"
+        ? (adaptiveBlock as AdaptiveIntelligenceWsBlock)
+        : null,
+    live_trading: liveTrading,
+    fortress,
+    performance,
+    real_ops: realOps,
   };
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
 import { StepProgressRail } from "@/components/onboarding/StepProgressRail";
@@ -29,12 +29,14 @@ export function OnboardingWizard() {
   const setStepIndex = useOnboardingStore((s) => s.setStepIndex);
   const updateDraft = useOnboardingStore((s) => s.updateDraft);
   const runSmartSetup = useOnboardingStore((s) => s.runSmartSetup);
+  const saveCredentials = useOnboardingStore((s) => s.saveCredentials);
   const saveConfiguration = useOnboardingStore((s) => s.saveConfiguration);
   const activateBirth = useOnboardingStore((s) => s.activateBirth);
+  const [savingCredentials, setSavingCredentials] = useState(false);
 
   const steps = useMemo(() => selectActiveSteps(payload), [payload]);
   const currentStep = steps[currentStepIndex] ?? steps[0] ?? "welcome";
-  const shortPath = steps.filter((s) => s !== "welcome").length <= 2;
+  const shortPath = steps.length <= 2;
 
   const advance = useCallback(() => {
     let next = currentStepIndex + 1;
@@ -46,6 +48,13 @@ export function OnboardingWizard() {
     }
     setStepIndex(Math.min(next, steps.length - 1));
   }, [currentStepIndex, setStepIndex, steps]);
+
+  const handleCredentialsContinue = async () => {
+    setSavingCredentials(true);
+    const ok = await saveCredentials();
+    setSavingCredentials(false);
+    if (ok) advance();
+  };
 
   const handleConfigContinue = async () => {
     const ok = await saveConfiguration();
@@ -81,33 +90,44 @@ export function OnboardingWizard() {
   const renderStep = () => {
     switch (currentStep) {
       case "welcome":
-        return <WelcomeStep onContinue={advance} shortPath={shortPath} />;
+        return (
+          <WelcomeStep
+            onContinue={advance}
+            shortPath={shortPath}
+            readiness={payload.readiness}
+          />
+        );
       case "backend":
         return (
           <BackendStep
-            reachable={payload?.backend.reachable ?? false}
+            reachable={payload.backend.reachable}
+            readiness={payload.readiness}
             onConnected={advance}
             onRefresh={() => void refresh()}
           />
         );
       case "ollama":
       case "model":
-        return payload ? (
+        return (
           <SmartSetupStep
             payload={payload}
             running={smartSetupRunning}
+            selectedModelKey={draft.selected_model_key}
+            onSelectModel={(key) => updateDraft({ selected_model_key: key })}
             onRun={() => void runSmartSetup()}
             onContinue={advance}
             onRefresh={() => void refresh()}
           />
-        ) : null;
+        );
       case "credentials":
         return (
           <CredentialsStep
             draft={draft}
-            missing={payload?.credentials.missing ?? []}
+            missing={payload.credentials.missing}
+            hasAdminApiKeyInEnv={payload.credentials.has_admin_api_key}
+            saving={savingCredentials}
             onChange={(credentials) => updateDraft({ credentials })}
-            onContinue={advance}
+            onContinue={() => void handleCredentialsContinue()}
           />
         );
       case "configuration":

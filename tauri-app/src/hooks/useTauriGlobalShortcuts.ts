@@ -7,6 +7,8 @@ import {
   dispatchEvolve,
   dispatchPause,
 } from "@/lib/commandActions";
+import { isCommandDeckBlocked } from "@/lib/commandDeckGuard";
+import { useCoreStore } from "@/store/coreStore";
 
 const SHORTCUTS = [
   "CommandOrControl+E",
@@ -28,6 +30,9 @@ function isEditableFocused(): boolean {
 }
 
 function dispatchForShortcut(shortcut: string): void {
+  if (isCommandDeckBlocked(useCoreStore.getState())) {
+    return;
+  }
   switch (shortcut) {
     case "CommandOrControl+E":
       dispatchEvolve();
@@ -36,13 +41,16 @@ function dispatchForShortcut(shortcut: string): void {
       dispatchPause();
       break;
     case "CommandOrControl+A":
-      dispatchApproveLastMutation();
+      void dispatchApproveLastMutation();
       break;
   }
 }
 
 function handleBrowserKeyDown(event: KeyboardEvent): void {
   if (isEditableFocused()) {
+    return;
+  }
+  if (isCommandDeckBlocked(useCoreStore.getState())) {
     return;
   }
 

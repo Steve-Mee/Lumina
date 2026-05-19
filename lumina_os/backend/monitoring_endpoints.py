@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -60,16 +61,12 @@ _ADAPTIVE_INTELLIGENCE_LATEST = Path(
 _ADAPTIVE_INTELLIGENCE_HISTORY = Path(
     os.getenv("ADAPTIVE_INTELLIGENCE_HISTORY_PATH", "state/adaptive_intelligence_events.jsonl")
 )
-_ADAPTIVE_TRANSITION_FIELDS = (
-    "tier",
-    "mode",
-    "reasoning_mode",
-    "degraded_state",
-    "status_reason",
-    "recommended_model",
-    "recommended_provider",
-    "context_length",
-    "last_probe_error",
+from backend.adaptive_intelligence_snapshot import (
+    build_adaptive_intelligence_block,
+    build_adaptive_transition_summary,
+    load_adaptive_history_rows,
+    resolve_adaptive_history_path,
+    resolve_adaptive_status_path,
 )
 
 
@@ -155,24 +152,7 @@ def _require_service() -> Any:
 
 
 def _load_adaptive_history_rows(*, limit: int = 100) -> list[dict[str, Any]]:
-    if not _ADAPTIVE_INTELLIGENCE_HISTORY.exists():
-        return []
-    rows: list[dict[str, Any]] = []
-    try:
-        with _ADAPTIVE_INTELLIGENCE_HISTORY.open("r", encoding="utf-8") as fh:
-            for line in fh:
-                raw = line.strip()
-                if not raw:
-                    continue
-                try:
-                    payload = json.loads(raw)
-                except json.JSONDecodeError:
-                    continue
-                if isinstance(payload, dict):
-                    rows.append(payload)
-    except OSError:
-        raise HTTPException(status_code=500, detail="Adaptive intelligence history unreadable")
-    return rows[-max(1, int(limit)) :]
+    return load_adaptive_history_rows(history_path=_ADAPTIVE_INTELLIGENCE_HISTORY, limit=limit)
 
 
 def _build_adaptive_transition_summary(
@@ -180,24 +160,10 @@ def _build_adaptive_transition_summary(
     latest_record: dict[str, Any],
     previous_record: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    latest_payload = latest_record.get("payload", {})
-    if not isinstance(latest_payload, dict):
-        return {"is_transition": False, "changed_fields": []}
-    previous_payload = previous_record.get("payload", {}) if isinstance(previous_record, dict) else {}
-    if not isinstance(previous_payload, dict):
-        return {
-            "is_transition": False,
-            "changed_fields": [],
-            "from_state": {},
-            "to_state": {k: latest_payload.get(k) for k in _ADAPTIVE_TRANSITION_FIELDS},
-        }
-    changed = [k for k in _ADAPTIVE_TRANSITION_FIELDS if previous_payload.get(k) != latest_payload.get(k)]
-    return {
-        "is_transition": bool(changed),
-        "changed_fields": changed,
-        "from_state": {k: previous_payload.get(k) for k in changed},
-        "to_state": {k: latest_payload.get(k) for k in changed},
-    }
+    return build_adaptive_transition_summary(
+        latest_record=latest_record,
+        previous_record=previous_record,
+    )
 
 
 # ── Prometheus scrape endpoint (no auth – standard Prometheus convention) ─────
@@ -368,6 +334,172 @@ async def get_adaptive_intelligence_history(
 ) -> list[dict[str, Any]]:
     _check_api_key(x_api_key)
     return _load_adaptive_history_rows(limit=limit)
+
+
+def _repo_state_dir() -> Path:
+    raw = os.getenv("LUMINA_STATE_DIR", "").strip()
+    if raw:
+        return Path(raw)
+    return Path(__file__).resolve().parents[2] / "state"
+
+
+def _load_jsonl_file(path: Path, *, limit: int = 50) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    rows: list[dict[str, Any]] = []
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line:
+                    continue
+                try:
+                    parsed = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(parsed, dict):
+                    rows.append(parsed)
+    except OSError:
+        return []
+    return rows[-limit:]
+
+
+def _parse_iso(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _load_json_file(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _journal_sim_dir() -> Path:
+    repo = Path(__file__).resolve().parents[2]
+    raw = os.getenv("LUMINA_JOURNAL_SIM_DIR", "").strip()
+    if raw:
+        return Path(raw)
+    return repo / "journal" / "sim"
+
+
+def _latest_training_reports(*, limit: int = 10) -> list[dict[str, Any]]:
+    journal_sim_dir = _journal_sim_dir()
+    reports: list[dict[str, Any]] = []
+    if not journal_sim_dir.is_dir():
+        return reports
+    for path in sorted(
+        list(journal_sim_dir.glob("lumina_birth_training_*.json"))
+        + list(journal_sim_dir.glob("first_boot_training_*.json"))
+    ):
+        payload = _load_json_file(path)
+        if payload:
+            payload["_run_type"] = "Background"
+            payload["_path"] = str(path)
+            reports.append(payload)
+    for path in sorted(journal_sim_dir.glob("nightly_sim_*.json")):
+        payload = _load_json_file(path)
+        if payload:
+            ts = _parse_iso(payload.get("timestamp"))
+            run_type = "Weekend" if ts is not None and ts.weekday() >= 5 else "Daily Maintenance"
+            payload["_run_type"] = run_type
+            payload["_path"] = str(path)
+            reports.append(payload)
+    reports.sort(
+        key=lambda row: _parse_iso(row.get("timestamp"))
+        or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+    return reports[:limit]
+
+
+@router.get("/training-reports")
+async def get_training_reports(
+    limit: int = Query(10, ge=1, le=50),
+    x_api_key: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    _check_api_key(x_api_key)
+    reports = _latest_training_reports(limit=limit)
+    return {"reports": reports, "count": len(reports)}
+
+
+@router.get("/logs/tail")
+async def get_log_tail(
+    limit: int = Query(50, ge=10, le=500),
+    x_api_key: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    _check_api_key(x_api_key)
+    repo = Path(__file__).resolve().parents[2]
+    log_path = repo / "logs" / "lumina_full_log.csv"
+    lines: list[str] = []
+    if log_path.is_file():
+        try:
+            content = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+            lines = content[-limit:]
+        except OSError:
+            lines = []
+    return {"path": str(log_path), "lines": lines}
+
+
+@router.get("/stability-report")
+async def get_stability_report(
+    x_api_key: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    _check_api_key(x_api_key)
+    from lumina_core.engine.sim_stability_checker import generate_stability_report
+
+    report = generate_stability_report()
+    history_path = _repo_state_dir().parent / "state" / "sim_stability_history.jsonl"
+    if not history_path.is_file():
+        history_path = _repo_state_dir() / "sim_stability_history.jsonl"
+    tail = _load_jsonl_file(history_path, limit=7)
+    report["history_tail"] = [
+        {
+            "day": str(row.get("day", "")),
+            "sharpe_annualized": float(row.get("sharpe_annualized", 0) or 0),
+        }
+        for row in tail
+        if row.get("day")
+    ]
+    return report
+
+
+@router.get("/ops-data")
+async def get_ops_data(
+    x_api_key: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    _check_api_key(x_api_key)
+    state = _repo_state_dir()
+    twin = _load_jsonl_file(state / "monitoring_twin_decisions.jsonl", limit=20)
+    gate = _load_jsonl_file(state / "monitoring_gate_rejections.jsonl", limit=50)
+    shadow: dict[str, Any] = {}
+    shadow_path = state / "evolution_shadow_runs.json"
+    if shadow_path.is_file():
+        try:
+            parsed = json.loads(shadow_path.read_text(encoding="utf-8"))
+            shadow = parsed if isinstance(parsed, dict) else {}
+        except (OSError, json.JSONDecodeError):
+            shadow = {}
+    daily_pnl = _load_jsonl_file(state / "monitoring_daily_pnl.jsonl", limit=30)
+    return {
+        "twin_decisions": twin,
+        "gate_rejections": gate,
+        "shadow_runs": shadow,
+        "daily_pnl_trend": daily_pnl,
+    }
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

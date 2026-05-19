@@ -164,6 +164,39 @@
   transition: height 0.6s ease;
 }
 
+.citadel-shell[data-mode="SIM"] .citadel-wall {
+  box-shadow: 0 0 12px oklch(0.75 0.15 195 / 8%);
+}
+
+.citadel-shell[data-mode="SIM"] .citadel-wall-critical {
+  animation-duration: 1.2s;
+}
+
+.citadel-shell[data-mode="REAL"] .citadel-wall {
+  box-shadow: none;
+}
+
+.citadel-shell[data-mode="REAL"] .citadel-wall-critical {
+  animation: none;
+  opacity: 1;
+  border-color: oklch(0.65 0.2 25 / 55%);
+}
+
+.command-deck-area-left [data-mode="REAL"] .cockpit-panel:first-child {
+  border-color: oklch(0.62 0.1 55 / 28%);
+  box-shadow: inset 0 1px 0 oklch(0.62 0.1 55 / 8%);
+}
+
+.cockpit-shell[data-mode="REAL"] .cockpit-panel:hover {
+  border-color: color-mix(in oklch, var(--cockpit-glow-accent) 22%, transparent);
+  box-shadow: 0 0 16px color-mix(in oklch, var(--cockpit-glow-accent) 8%, transparent);
+}
+
+.cockpit-shell[data-mode="SIM"] .cockpit-panel:hover {
+  border-color: color-mix(in oklch, var(--cockpit-glow-primary) 35%, transparent);
+  box-shadow: 0 0 24px color-mix(in oklch, var(--cockpit-glow-primary) 12%, transparent);
+}
+
 .living-core-shell {
   background: radial-gradient(
     circle at 50% 50%,
@@ -191,6 +224,28 @@
     oklch(0.75 0.15 195 / 6%),
     transparent 60%
   );
+}
+
+.decision-theater-banner {
+  box-shadow: inset 0 1px 0 oklch(1 0 0 / 6%);
+}
+
+.decision-signal-buy {
+  border: 1px solid oklch(0.72 0.17 155 / 35%);
+  background: oklch(0.55 0.14 155 / 18%);
+  color: oklch(0.88 0.12 155);
+}
+
+.decision-signal-sell {
+  border: 1px solid oklch(0.62 0.2 25 / 35%);
+  background: oklch(0.48 0.16 25 / 18%);
+  color: oklch(0.86 0.12 25);
+}
+
+.decision-signal-hold {
+  border: 1px solid oklch(0.72 0.12 85 / 30%);
+  background: oklch(0.55 0.08 85 / 15%);
+  color: oklch(0.88 0.08 85);
 }
 
 .decision-chart-placeholder {
@@ -330,4 +385,38 @@
   .command-deck-area-right {
     min-height: 0;
   }
+}
+
+@keyframes gauge-pulse {
+  0%,
+  100% {
+    opacity: 0.82;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.ppo-gauge-arc-pulse {
+  animation: gauge-pulse 2.5s ease-in-out infinite;
+}
+
+.bot-config-dialog {
+  background: linear-gradient(180deg, oklch(0.14 0.02 260) 0%, oklch(0.11 0.03 280) 100%);
+}
+
+.bot-config-section-title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: oklch(0.75 0.12 195 / 85%);
+}
+
+.config-range,
+.onboarding-range {
+  accent-color: oklch(0.72 0.17 195);
+  height: 0.35rem;
+  border-radius: 9999px;
+  background: oklch(1 0 0 / 8%);
 }

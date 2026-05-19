@@ -204,6 +204,8 @@ def persist_tauri_quick_config(
         mode_section["aggressive_evolution"] = bool(evolution["aggressive_evolution"])
     if "approval_required" in evolution:
         mode_section["approval_required"] = bool(evolution["approval_required"])
+    if "max_mutation_depth" in evolution:
+        mode_section["max_mutation_depth"] = str(evolution["max_mutation_depth"]).strip().lower()
 
     risk_controller = _ensure_mapping(config_payload, "risk_controller")
     if "real_capital_safety_threshold_usd" in risk:
@@ -255,6 +257,25 @@ def persist_tauri_quick_config(
     if required.issubset(ok_names):
         setup_service.mark_complete(hardware=snapshot, model=model)
     return steps
+
+
+def persist_credentials_only(
+    config_manager: ConfigManager,
+    credentials: dict[str, str],
+) -> list[str]:
+    """Write credential keys to .env without completing setup."""
+    admin_api_key = str(credentials.get("LUMINA_ADMIN_API_KEY", "")).strip() or f"sk_{secrets.token_hex(32)}"
+    env_updates: dict[str, str] = {"LUMINA_ADMIN_API_KEY": admin_api_key}
+    for key in (
+        "CROSSTRADE_TOKEN",
+        "CROSSTRADE_ACCOUNT",
+        "LUMINA_JWT_SECRET_KEY",
+    ):
+        value = str(credentials.get(key, "")).strip()
+        if value:
+            env_updates[key] = value
+    config_manager.write_env_file(env_updates)
+    return scan_missing_credentials(config_manager)
 
 
 def scan_missing_credentials(config_manager: ConfigManager) -> list[str]:

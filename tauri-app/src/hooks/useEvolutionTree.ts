@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { buildEvolutionGraph, seedDemoGraph } from "@/lib/buildEvolutionGraph";
+import { buildEvolutionGraph } from "@/lib/buildEvolutionGraph";
 import { fetchEvolutionTree } from "@/lib/evolutionTreeClient";
 import type { EvolutionGraph } from "@/lib/evolutionTreeTypes";
 import { selectEvolutionState, useCoreStore } from "@/store/coreStore";
 
 const POLL_INTERVAL_MS = 5_000;
 
+const EMPTY_GRAPH: EvolutionGraph = { nodes: [], edges: [], activeHash: null, championHash: null };
+
 export function useEvolutionTree() {
   const evolutionState = useCoreStore(selectEvolutionState);
-  const [graph, setGraph] = useState<EvolutionGraph>(() => seedDemoGraph());
+  const [graph, setGraph] = useState<EvolutionGraph>(EMPTY_GRAPH);
   const [newNodeIds, setNewNodeIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -40,10 +42,11 @@ export function useEvolutionTree() {
     try {
       const apiGraph = await fetchEvolutionTree();
       const merged = buildEvolutionGraph(apiGraph, evolutionState);
-      applyGraph(merged);
+      applyGraph(merged.nodes.length > 0 ? merged : EMPTY_GRAPH);
       setError(null);
     } catch {
       setError("Failed to load evolution tree");
+      applyGraph(EMPTY_GRAPH);
     } finally {
       setLoading(false);
     }
@@ -59,8 +62,10 @@ export function useEvolutionTree() {
 
   useEffect(() => {
     const merged = buildEvolutionGraph(null, evolutionState);
-    applyGraph(merged.nodes.length > 0 ? merged : seedDemoGraph());
-  }, [evolutionState, applyGraph]);
+    if (merged.nodes.length > 0 && !error) {
+      applyGraph(merged);
+    }
+  }, [evolutionState, applyGraph, error]);
 
   const clearNewNodes = useCallback(() => {
     setNewNodeIds([]);

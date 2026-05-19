@@ -1,4 +1,5 @@
 import { deriveCitadelWalls } from "@/lib/riskCitadelMetrics";
+import type { LiveTradingSnapshot } from "@/lib/liveTradingTypes";
 import type { CoreStore, RiskLevel, TradingMode } from "@/store/coreStore";
 
 export type DecisionVerdict = "proceed" | "caution" | "hold";
@@ -49,9 +50,12 @@ function deriveKellyFraction(state: CoreStore): number {
 }
 
 function deriveOverallConfidence(state: CoreStore): number {
-  const { liveMetrics } = state;
+  const { liveMetrics, tradingLive } = state;
   const parts: number[] = [];
 
+  if (tradingLive?.active_signal.confidence) {
+    parts.push(tradingLive.active_signal.confidence);
+  }
   if (liveMetrics.regimeConfidence !== null) {
     parts.push(liveMetrics.regimeConfidence);
   }
@@ -59,78 +63,119 @@ function deriveOverallConfidence(state: CoreStore): number {
     parts.push(liveMetrics.winrate);
   }
 
-  if (parts.length === 0) {
-    return 0.68;
-  }
-
+  if (parts.length === 0) return 0;
   return clamp(parts.reduce((sum, value) => sum + value, 0) / parts.length);
 }
 
-function deriveVerdict(
-  riskLevel: RiskLevel,
-  overallConfidence: number,
-): DecisionVerdict {
-  if (riskLevel === "CRITICAL" || riskLevel === "UNKNOWN") {
-    return "hold";
-  }
-  if (riskLevel === "HIGH" || overallConfidence < 0.5) {
-    return "caution";
-  }
-  if (
-    (riskLevel === "NORMAL" || riskLevel === "ELEVATED") &&
-    overallConfidence > 0.65
-  ) {
+function deriveVerdict(riskLevel: RiskLevel, overallConfidence: number): DecisionVerdict {
+  if (riskLevel === "CRITICAL" || riskLevel === "UNKNOWN") return "hold";
+  if (riskLevel === "HIGH" || overallConfidence < 0.5) return "caution";
+  if ((riskLevel === "NORMAL" || riskLevel === "ELEVATED") && overallConfidence > 0.65) {
     return "proceed";
   }
   return "caution";
 }
 
-function regimeBody(regime: string, confidence: number | null): string {
-  const confidencePct =
-    confidence !== null ? `${Math.round(confidence * 100)}%` : "standby estimate";
-  return `Market classified as ${regime}. Regime detector confidence is ${confidencePct}, gating signal aggression and position sizing before execution.`;
-}
-
-function signalBody(winrate: number | null, confidence: number): string {
-  if (winrate !== null) {
-    return `Recent win-rate ${Math.round(winrate * 100)}% supports the current directional bias. Signal stack confidence aggregates to ${Math.round(confidence * 100)}% after noise filtering.`;
+export function buildReasoningSteps(
+  tradingLive: LiveTradingSnapshot | null,
+  regime: string,
+  riskLevel: RiskLevel,
+  operatorMode: TradingMode,
+  kellyFraction: number,
+): ReasoningStep[] {
+  if (!tradingLive) {
+    return [
+      {
+        id: "standby",
+        title: "Awaiting live trading telemetry",
+        body: "Connect to core live stream to see regime, signal, and risk reasoning.",
+        confidence: 0,
+      },
+    ];
   }
-  return `No fresh win-rate window yet — using regime confidence (${Math.round(confidence * 100)}%) as the primary signal quality proxy until more trades complete.`;
+
+  const signal = tradingLive.active_signal;
+  const position = tradingLive.position;
+  const regimeConf = tradingLive.regime_confidence;
+  const riskScore = RISK_SCORE[riskLevel];
+
+  const steps: ReasoningStep[] = [
+    {
+      id: "regime",
+      title: "Regime Analysis",
+      body: `Market classified as ${regime}. Regime detector confidence ${Math.round(regimeConf * 100)}% gates signal aggression before execution.`,
+      confidence: clamp(regimeConf),
+    },
+    {
+      id: "signal",
+      title: "Signal Decision",
+      body:
+        signal.reason ||
+        `Active signal ${signal.signal} with ${Math.round(signal.confidence * 100)}% model confidence.`,
+      confidence: clamp(signal.confidence),
+    },
+    {
+      id: "confluence",
+      title: "Confluence & Levels",
+      body: `Confluence ${Math.round(signal.confluence * 100)}% · Strategy ${signal.strategy || "unknown"} · Entry ${position.entry_price.toFixed(2)} · Stop ${signal.stop.toFixed(2)} · Target ${signal.target.toFixed(2)}`,
+      confidence: clamp(signal.confluence),
+    },
+    {
+      id: "risk",
+      title: "Risk Posture",
+      body: `Daily PnL ${position.daily_pnl.toFixed(2)} · Open PnL ${position.open_pnl.toFixed(2)} · Consecutive losses ${tradingLive.consecutive_losses} · Constitutional risk ${riskLevel} (${riskScore}/100).`,
+      confidence: clamp(riskScore / 100),
+    },
+  ];
+
+  const policyBody =
+    signal.signal === "HOLD" && signal.why_no_trade
+      ? signal.why_no_trade
+      : tradingLive.latest_decision?.policy_outcome
+        ? `${tradingLive.latest_decision.policy_outcome}${tradingLive.latest_decision.output_summary ? ` — ${tradingLive.latest_decision.output_summary}` : ""}`
+        : `Kelly sizing ${Math.round(kellyFraction * 100)}% (${operatorMode} mode cap applied).`;
+
+  steps.push({
+    id: "policy",
+    title: "Policy Outcome",
+    body: policyBody,
+    confidence: clamp(tradingLive.latest_decision?.confidence ?? signal.confidence),
+  });
+
+  return steps;
 }
 
-function kellyBody(kellyFraction: number, mode: TradingMode): string {
-  const pct = Math.round(kellyFraction * 100);
-  if (mode === "REAL") {
-    return `Quarter-Kelly cap enforced in REAL mode. Effective sizing fraction: ${pct}% of theoretical optimum to preserve capital under variance.`;
+export function buildDecisionHeadline(
+  tradingLive: LiveTradingSnapshot | null,
+  proposalHash: string | null,
+  lastUpdatedTs: string | null,
+): string {
+  if (proposalHash) return "Mutation proposal awaiting operator review";
+  if (!tradingLive) {
+    return lastUpdatedTs ? "Live decision chain synchronized" : "Standby — awaiting telemetry";
   }
-  return `Dynamic Kelly sizing recommends ${pct}% of theoretical optimum for SIM exploration while staying inside constitution bounds.`;
-}
-
-function riskBody(riskLevel: RiskLevel, riskScore: number): string {
-  return `Constitutional risk posture: ${riskLevel}. Policy integrity score ${riskScore}/100 — gates order flow before any mutation or live deployment proceeds.`;
+  const qty = tradingLive.position.live_qty;
+  const signal = tradingLive.active_signal.signal;
+  if (qty !== 0) {
+    return `Open position ${qty > 0 ? "LONG" : "SHORT"} ${Math.abs(qty)} · signal ${signal}`;
+  }
+  if (signal !== "HOLD") {
+    return `Flat · evaluating ${signal} entry`;
+  }
+  return "Flat · monitoring for next setup";
 }
 
 export function confidenceLabel(confidence: number): string {
   const pct = Math.round(confidence * 100);
-  if (pct > 75) {
-    return "High";
-  }
-  if (pct >= 50) {
-    return "Moderate";
-  }
+  if (pct > 75) return "High";
+  if (pct >= 50) return "Moderate";
   return "Low";
 }
 
-export function confidenceTone(
-  confidence: number,
-): "high" | "moderate" | "low" {
+export function confidenceTone(confidence: number): "high" | "moderate" | "low" {
   const pct = confidence * 100;
-  if (pct > 75) {
-    return "high";
-  }
-  if (pct >= 50) {
-    return "moderate";
-  }
+  if (pct > 75) return "high";
+  if (pct >= 50) return "moderate";
   return "low";
 }
 
@@ -157,53 +202,23 @@ export function verdictTone(verdict: DecisionVerdict): "high" | "moderate" | "lo
 }
 
 export function deriveDecisionBrief(state: CoreStore): DecisionBrief {
-  const { liveMetrics, riskLevel, evolutionState, operatorMode } = state;
+  const { liveMetrics, riskLevel, evolutionState, operatorMode, tradingLive } = state;
   const overallConfidence = deriveOverallConfidence(state);
   const kellyFraction = deriveKellyFraction(state);
   const riskScore = RISK_SCORE[riskLevel];
-  const regimeConfidence =
-    liveMetrics.regimeConfidence ?? overallConfidence;
   const proposalHash = evolutionState.activeMutations[0]?.hash ?? null;
   const verdict = deriveVerdict(riskLevel, overallConfidence);
 
-  const steps: ReasoningStep[] = [
-    {
-      id: "regime",
-      title: "Regime Analysis",
-      body: regimeBody(liveMetrics.regime, liveMetrics.regimeConfidence),
-      confidence: clamp(regimeConfidence),
-    },
-    {
-      id: "signal",
-      title: "Signal Confidence",
-      body: signalBody(liveMetrics.winrate, overallConfidence),
-      confidence: clamp(overallConfidence),
-    },
-    {
-      id: "kelly",
-      title: "Kelly Sizing",
-      body: kellyBody(kellyFraction, operatorMode),
-      confidence: clamp(kellyFraction / (operatorMode === "REAL" ? 0.25 : 0.5)),
-    },
-    {
-      id: "risk",
-      title: "Risk Calculation",
-      body: riskBody(riskLevel, riskScore),
-      confidence: clamp(riskScore / 100),
-    },
-  ];
-
-  const headline =
-    proposalHash !== null
-      ? "Mutation proposal awaiting operator review"
-      : liveMetrics.lastUpdatedTs
-        ? "Live decision chain synchronized"
-        : "Standby decision theater — awaiting telemetry";
-
   return {
-    headline,
+    headline: buildDecisionHeadline(tradingLive, proposalHash, liveMetrics.lastUpdatedTs),
     verdict,
-    steps,
+    steps: buildReasoningSteps(
+      tradingLive,
+      liveMetrics.regime,
+      riskLevel,
+      operatorMode,
+      kellyFraction,
+    ),
     metrics: {
       overallConfidence,
       kellyFraction,

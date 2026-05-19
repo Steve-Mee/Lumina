@@ -2,19 +2,28 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 
 import { Button } from "@/components/ui/button";
+import type { ReadinessRow } from "@/lib/onboardingSteps";
 import {
   probeBackendHealth,
   resolveBackendBaseUrl,
   setBackendBaseUrl,
 } from "@/lib/setupClient";
+import { cn } from "@/lib/utils";
 
 interface BackendStepProps {
   reachable: boolean;
+  readiness?: ReadinessRow[];
   onConnected: () => void;
   onRefresh: () => void;
 }
 
-export function BackendStep({ reachable, onConnected, onRefresh }: BackendStepProps) {
+function statusLabel(status: ReadinessRow["status"]): string {
+  if (status === "ok") return "Ready";
+  if (status === "pending") return "Pending";
+  return "Missing";
+}
+
+export function BackendStep({ reachable, readiness = [], onConnected, onRefresh }: BackendStepProps) {
   const [url, setUrl] = useState(resolveBackendBaseUrl());
   const [probing, setProbing] = useState(false);
   const [localOk, setLocalOk] = useState(reachable);
@@ -60,6 +69,32 @@ export function BackendStep({ reachable, onConnected, onRefresh }: BackendStepPr
         The Neural Command Deck connects to the LUMINA FastAPI backend for telemetry, birth
         phase, and configuration.
       </p>
+
+      {readiness.length > 0 && (
+        <div className="mb-6 rounded-lg border border-white/10 bg-black/20 p-4">
+          <p className="mb-3 text-xs tracking-wider text-muted-foreground uppercase">
+            System readiness
+          </p>
+          <ul className="space-y-2">
+            {readiness.map((row) => (
+              <li key={row.id} className="flex items-center justify-between text-sm">
+                <span>{row.label}</span>
+                <span
+                  className={cn(
+                    "text-xs tracking-wide uppercase",
+                    row.status === "ok" && "text-emerald-400/90",
+                    row.status === "pending" && "text-cyan-300/80",
+                    row.status === "missing" && "text-amber-300/90",
+                  )}
+                >
+                  {statusLabel(row.status)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <label className="mb-2 block text-xs tracking-wider text-muted-foreground uppercase">
         Backend URL
       </label>

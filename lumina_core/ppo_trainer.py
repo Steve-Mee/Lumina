@@ -15,8 +15,10 @@ from lumina_core.logging_utils import (
     correlation_id,
     get_logger,
     record_model_load_time_monitoring,
+    resolve_monitoring_state_dir,
     write_ppo_policy_metadata,
 )
+from lumina_core.ppo_evolution_logger import PPOEvolutionLogger
 from lumina_core.rl import RLConfig, RLTradingEnvironment
 
 logger = get_logger("lumina.rl.ppo")
@@ -391,6 +393,11 @@ class PPOTrainer:
             )
             if fb_cb is not None:
                 callbacks.append(fb_cb)
+        evolution_logger = PPOEvolutionLogger(
+            log_path=str(resolve_monitoring_state_dir() / "ppo_training_log.jsonl"),
+            log_interval=5000,
+        )
+        callbacks.append(evolution_logger)
         learn_kw: dict[str, Any] = {}
         if callbacks:
             learn_kw["callback"] = callbacks

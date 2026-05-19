@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
+import { Keyboard } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { AnimatedMetric } from "@/components/cockpit/AnimatedMetric";
 import { LaunchNinjaTraderButton } from "@/components/cockpit/LaunchNinjaTraderButton";
-import { VisualSettingsDialog } from "@/components/cockpit/VisualSettingsDialog";
+import { TrainingMonitorTrigger } from "@/components/cockpit/TrainingMonitorTrigger";
+import { SettingsDialog } from "@/components/cockpit/SettingsDialog";
+import { IntelligenceTierBadgeLive } from "@/components/intelligence/IntelligenceTierBadge";
 import { Button } from "@/components/ui/button";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +27,19 @@ import {
 
 } from "@/components/ui/dialog";
 
+import { handleRuntimeError } from "@/lib/runtimeErrorToast";
 import { cn } from "@/lib/utils";
+import { formatUsd } from "@/lib/tradingPerformanceModel";
+import {
+  emergencyStop,
+  fetchRuntimeStatus,
+  flattenPositions,
+  startEngine,
+  stopAllActivities,
+  stopEngine,
+  type RuntimeStatus,
+} from "@/lib/runtimeClient";
+import { toast } from "sonner";
 import { springSnappy } from "@/lib/motionPresets";
 
 import {
@@ -52,6 +67,10 @@ import {
   type TradingMode,
 
 } from "@/store/coreStore";
+
+import { useDeckPanelStore } from "@/store/deckPanelStore";
+import { selectApiKeyConfigured, useApiKeyStore } from "@/store/apiKeyStore";
+import { useBotConfigStore } from "@/store/botConfigStore";
 
 
 
@@ -325,6 +344,9 @@ export function CommandHud({ className }: CommandHudProps) {
   const [clock, setClock] = useState(() => formatClock(new Date()));
 
   const [realConfirmOpen, setRealConfirmOpen] = useState(false);
+  const [safetyConfirmOpen, setSafetyConfirmOpen] = useState(false);
+  const [realSafetyAck, setRealSafetyAck] = useState(false);
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
 
   const currentMode = useCoreStore(selectCurrentMode);
 
@@ -343,6 +365,9 @@ export function CommandHud({ className }: CommandHudProps) {
   const connectionStatus = useCoreStore(selectConnectionStatus);
 
   const fallbackMode = useCoreStore(selectFallbackMode);
+  const apiKeyConfigured = useApiKeyStore(selectApiKeyConfigured);
+  const botConfigDirty = useBotConfigStore((s) => s.isDirty);
+  const saveBotConfig = useBotConfigStore((s) => s.save);
 
 
 
@@ -356,6 +381,23 @@ export function CommandHud({ className }: CommandHudProps) {
 
     return () => window.clearInterval(timer);
 
+  }, []);
+
+  useEffect(() => {
+    if (!safetyConfirmOpen) {
+      setRealSafetyAck(false);
+    }
+  }, [safetyConfirmOpen]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void fetchRuntimeStatus()
+        .then(setRuntime)
+        .catch(() => setRuntime(null));
+    };
+    refresh();
+    const id = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(id);
   }, []);
 
 
@@ -388,6 +430,16 @@ export function CommandHud({ className }: CommandHudProps) {
 
     setRealConfirmOpen(false);
 
+    if (!sessionStorage.getItem("lumina.realOpsHintShown")) {
+      sessionStorage.setItem("lumina.realOpsHintShown", "1");
+      toast.info("REAL Ops tab unlocked in Intelligence deck", {
+        action: {
+          label: "Open REAL Ops",
+          onClick: () => useDeckPanelStore.getState().setActiveRightTab("realOps"),
+        },
+      });
+    }
+
   };
 
 
@@ -405,6 +457,8 @@ export function CommandHud({ className }: CommandHudProps) {
     <>
 
       <header
+
+        data-tour="command-hud"
 
         className={cn(
 
@@ -439,6 +493,73 @@ export function CommandHud({ className }: CommandHudProps) {
               </time>
             </div>
             <LaunchNinjaTraderButton className="w-full lg:w-auto" />
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Button
+                type="button"
+                size="xs"
+                variant={runtime?.alive ? "secondary" : "default"}
+                disabled={!runtime?.alive && !apiKeyConfigured}
+                title={
+                  !apiKeyConfigured && !runtime?.alive
+                    ? "Configure admin API key in Settings to start the engine"
+                    : undefined
+                }
+                onClick={() =>
+                  void (runtime?.alive
+                    ? stopEngine()
+                        .then((r) => {
+                          toast.success(r.message);
+                          setRuntime({ ...runtime!, alive: false, message: r.message });
+                        })
+                        .catch(handleRuntimeError)
+                    : startEngine()
+                        .then((r) => {
+                          toast.success(r.message);
+                          void fetchRuntimeStatus().then(setRuntime);
+                        })
+                        .catch(handleRuntimeError))
+                }
+              >
+                {runtime?.alive ? "Stop Engine" : "Start Engine"}
+              </Button>
+              {!runtime?.alive && apiKeyConfigured ? (
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  title="Save bot config to config.yaml then start the engine"
+                  onClick={() =>
+                    void (async () => {
+                      if (botConfigDirty()) {
+                        const ok = await saveBotConfig();
+                        if (!ok) {
+                          toast.error("Save bot config before starting engine");
+                          return;
+                        }
+                        toast.success("Bot configuration saved");
+                      }
+                      return startEngine()
+                        .then((r) => {
+                          toast.success(r.message);
+                          void fetchRuntimeStatus().then(setRuntime);
+                        })
+                        .catch(handleRuntimeError);
+                    })()
+                  }
+                >
+                  Save & Start
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                size="xs"
+                variant="ghost"
+                className="text-amber-200/90"
+                onClick={() => setSafetyConfirmOpen(true)}
+              >
+                Safety
+              </Button>
+            </div>
           </div>
 
 
@@ -446,6 +567,12 @@ export function CommandHud({ className }: CommandHudProps) {
           <div className="command-hud-metrics flex gap-2 overflow-x-auto pb-0.5 lg:flex-1 lg:justify-center">
 
             <MetricPill label="Equity" value={formatEquity(liveMetrics.equity)} />
+
+            <MetricPill
+              label="Daily P&L"
+              value={formatUsd(liveMetrics.dailyPnlUsd)}
+              accent={liveMetrics.dailyPnlUsd != null && liveMetrics.dailyPnlUsd >= 0 ? "emerald" : "amber"}
+            />
 
             <MetricPill label="Regime" value={liveMetrics.regime} accent="violet" />
 
@@ -463,12 +590,36 @@ export function CommandHud({ className }: CommandHudProps) {
 
             <MetricPill label="Transport" value={transportLabel} accent="emerald" />
 
+            <IntelligenceTierBadgeLive className="shrink-0" compact />
+
           </div>
 
 
 
           <div className="flex items-center justify-between gap-3 lg:justify-end">
-            <VisualSettingsDialog />
+            <TrainingMonitorTrigger />
+            <div className="group relative hidden md:block">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-9 w-9 p-0 text-muted-foreground hover:text-cyan-200"
+                aria-label="Keyboard shortcuts"
+              >
+                <Keyboard className="size-4" />
+              </Button>
+              <div className="pointer-events-none absolute right-0 top-full z-50 mt-1 w-48 rounded-md border border-white/10 bg-black/90 p-2 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                <p className="font-mono text-[9px] tracking-wide text-cyan-300/80 uppercase">
+                  Shortcuts
+                </p>
+                <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-muted-foreground">
+                  <li>Ctrl+E — Evolve</li>
+                  <li>Ctrl+P — Pause</li>
+                  <li>Ctrl+A — Approve last</li>
+                </ul>
+              </div>
+            </div>
+            <SettingsDialog />
             <ModeSwitch
 
               mode={currentMode}
@@ -559,6 +710,72 @@ export function CommandHud({ className }: CommandHudProps) {
 
         </DialogContent>
 
+      </Dialog>
+
+      <Dialog open={safetyConfirmOpen} onOpenChange={setSafetyConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-red-200">Safety actions</DialogTitle>
+            <DialogDescription>
+              Flatten closes open positions. Emergency stop cancels orders and flattens all.
+              {currentMode === "REAL" ? " These actions affect live capital." : null}
+            </DialogDescription>
+          </DialogHeader>
+          {currentMode === "REAL" ? (
+            <label className="flex items-start gap-2 text-xs text-amber-200/90">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={realSafetyAck}
+                onChange={(e) => setRealSafetyAck(e.target.checked)}
+              />
+              I understand this affects live capital
+            </label>
+          ) : null}
+          <DialogFooter className="flex-wrap gap-2">
+            <Button type="button" variant="ghost" onClick={() => setSafetyConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                void flattenPositions()
+                  .then(() => toast.success("Positions flattened"))
+                  .catch(handleRuntimeError);
+                setSafetyConfirmOpen(false);
+              }}
+            >
+              Flatten
+            </Button>
+            <Button
+              type="button"
+              className="bg-red-700/80 text-red-50"
+              disabled={currentMode === "REAL" && !realSafetyAck}
+              onClick={() => {
+                void emergencyStop()
+                  .then(() => toast.success("Emergency stop executed"))
+                  .catch(handleRuntimeError);
+                setSafetyConfirmOpen(false);
+              }}
+            >
+              Emergency Stop
+            </Button>
+            <Button
+              type="button"
+              className="bg-red-900/80 text-red-50"
+              disabled={currentMode === "REAL" && !realSafetyAck}
+              onClick={() => {
+                void stopAllActivities()
+                  .then((r) => toast.success(r.message))
+                  .catch(handleRuntimeError);
+                setSafetyConfirmOpen(false);
+              }}
+            >
+              Stop All
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
     </>
