@@ -168,6 +168,15 @@ class ApplicationContainer:
     swarm_symbols: list[str] = field(default_factory=list, init=False)
     primary_instrument: str = field(default="", init=False)
     _adaptive_intelligence_last_published_signature: tuple[Any, ...] | None = field(default=None, init=False)
+    _smart_setup_service: Any = field(default=None, init=False)
+
+    @property
+    def smart_setup_service(self) -> Any:
+        if self._smart_setup_service is None:
+            from lumina_launcher.services.smart_setup_service import SmartSetupService
+
+            self._smart_setup_service = SmartSetupService(Path.cwd())
+        return self._smart_setup_service
 
     def __post_init__(self) -> None:
         """Initialize all services with explicit dependency ordering."""
@@ -644,6 +653,16 @@ class ApplicationContainer:
             source="container_status_poll",
             refresh_hardware=False,
         )
+        launcher_setup: dict[str, Any] = {}
+        try:
+            from lumina_launcher.core.setup_gate import launcher_setup_status_payload
+
+            launcher_setup = launcher_setup_status_payload(
+                Path.cwd(),
+                smart_setup_service=self.smart_setup_service,
+            )
+        except Exception as exc:
+            self.logger.warning("container.launcher_setup_status_failed detail=%s", exc)
         return {
             "engine_initialized": self.engine is not None,
             "services_count": sum(
@@ -674,6 +693,7 @@ class ApplicationContainer:
             "swarm_symbols": self.swarm_symbols,
             "primary_instrument": self.primary_instrument,
             "adaptive_intelligence": current_adaptive_intelligence,
+            "launcher_setup": launcher_setup,
         }
 
 

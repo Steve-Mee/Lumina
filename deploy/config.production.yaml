@@ -10,6 +10,12 @@ inference:
   json_mode: true
   fast_path_threshold: 0.75
 
+setup:
+  mode: smart
+  auto_install_ollama: true
+  auto_download_model: true
+  allow_force_tier: false
+
 vllm:
   host: "http://vllm:8000"
   model_name: "qwen3.5-35b"

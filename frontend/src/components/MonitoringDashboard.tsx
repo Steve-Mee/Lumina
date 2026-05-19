@@ -28,6 +28,7 @@ import {
   useLuminaMetrics,
 } from "../hooks/useLuminaMetrics";
 import { IntelligenceTierBadgeLive } from "./IntelligenceTierBadge";
+import { IntelligenceTierStatusCardLive } from "./IntelligenceTierStatusCard";
 
 const BG_VOID = "#0a0a0f";
 const ACCENT_CYAN = "#00f0ff";
@@ -793,8 +794,10 @@ export default function MonitoringDashboard(): JSX.Element {
             </section>
           </div>
 
-          {/* right column activity */}
-          <aside className="xl:sticky xl:top-[108px]">
+          {/* right column: intelligence + activity */}
+          <aside className="space-y-6 xl:sticky xl:top-[108px]">
+            <IntelligenceTierStatusCardLive />
+
             <motion.div
               initial={{ opacity: 0, x: reduceMotion ? 0 : 12 }}
               animate={{ opacity: 1, x: 0 }}

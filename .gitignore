@@ -25,6 +25,10 @@ htmlcov/
 .idea/
 .cursor/settings.json
 
+# Tauri updater signing keys (generated in Guided Setup)
+state/lumina-tauri-signing.key
+state/lumina-tauri-signing.key.pub
+
 # Secrets / env
 .env
 .env.*
@@ -41,6 +45,7 @@ state/finetune_dataset_preview.jsonl
 state/llama_cpp_setup.json
 state/launcher_support_events.jsonl
 state/launcher_bot_process.json
+state/core_events.jsonl
 
 # Docker
 docker-compose.override.yml
@@ -110,6 +115,11 @@ state/adaptive_intelligence_events.jsonl
 # Frontend dev/build artifacts
 frontend/tsconfig.app.tsbuildinfo
 frontend/node_modules/
+
+# Neural Command Deck (Tauri) dev/build artifacts
+tauri-app/node_modules/
+tauri-app/dist/
+tauri-app/src-tauri/target/
 
 # Trained PPO policy checkpoints (regenerate via training)
 lumina_agents/ppo/*.zip

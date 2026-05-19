@@ -9,7 +9,6 @@ Production-grade service om de LuminaBirthEngine te starten en te monitoren.
 from __future__ import annotations
 
 import json
-import os
 import socket
 import threading
 import time
@@ -37,11 +36,10 @@ from lumina_core.first_boot_ui import (
     resolve_default_max_real_days,
 )
 from lumina_core.logging_utils import get_logger
+from lumina_launcher.core.setup_gate import launcher_setup_status_payload
+from lumina_launcher.services.workspace_root import resolve_birth_workspace_root
 
 logger = get_logger(__name__)
-
-# lumina_launcher/services/birth_service.py -> repo root
-_DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[2]
 _POLICY_REL = Path("lumina_agents") / "ppo" / "lumina_ppo_policy.zip"
 _BIRTH_ACTIVE_STAGES = frozenset(
     {
@@ -57,16 +55,6 @@ _BIRTH_ACTIVE_STAGES = frozenset(
         "simulation_stall_retry",
     }
 )
-
-
-def resolve_birth_workspace_root(explicit: Path | str | None = None) -> Path:
-    """Resolve SSOT workspace root (never rely on process cwd)."""
-    if explicit is not None and str(explicit).strip():
-        return Path(explicit).expanduser().resolve()
-    override = os.getenv("LUMINA_WORKSPACE_ROOT", "").strip()
-    if override:
-        return Path(override).expanduser().resolve()
-    return _DEFAULT_REPO_ROOT.resolve()
 
 
 class BirthService:
@@ -95,6 +83,27 @@ class BirthService:
 
         self._initialized = True
         logger.info("BirthService initialized (singleton) workspace=%s", self.workspace_root)
+
+    def _launcher_setup_status(self) -> dict[str, Any]:
+        try:
+            return launcher_setup_status_payload(self.workspace_root)
+        except Exception as exc:
+            logger.warning("birth.launcher_setup.status_failed detail=%s", exc)
+            return {
+                "setup_complete": False,
+                "intelligence_stack_ready": False,
+                "needs_smart_setup": True,
+                "needs_guided_setup": False,
+                "launcher_ready": False,
+                "recommended_model": "",
+                "recommended_provider": "ollama",
+                "recommended_ollama_tag": "",
+                "missing": ["launcher_setup_status_failed"],
+            }
+
+    def _enrich_birth_status(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload["launcher_setup"] = self._launcher_setup_status()
+        return payload
 
     def _adaptive_intelligence_status(self) -> dict[str, Any]:
         try:
@@ -248,6 +257,8 @@ class BirthService:
                     "message": preflight_msg or "Historische data niet beschikbaar voor certified training.",
                 }
 
+        logger.info("birth.launcher_setup %s", self._launcher_setup_status())
+
         def _run_birth() -> None:
             self._clear_stale_runner_lock()
             self._write_runner_lock()
@@ -326,80 +337,94 @@ class BirthService:
         base_meta = {"progress": progress, "live": live}
 
         if self.completed_flag.exists():
-            return {
-                **base_meta,
-                "status": "completed",
-                "progress_pct": 100,
-                "message": "Birth Phase voltooid",
-                "result": self._result,
-                "orphaned": False,
-                "adaptive_intelligence": self._adaptive_intelligence_status(),
-            }
+            return self._enrich_birth_status(
+                {
+                    **base_meta,
+                    "status": "completed",
+                    "progress_pct": 100,
+                    "message": "Birth Phase voltooid",
+                    "result": self._result,
+                    "orphaned": False,
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
 
         if self._error:
-            return {
-                **base_meta,
-                "status": "error",
-                "error": self._error,
-                "message": "Birth Phase gefaald",
-                "orphaned": False,
-                "adaptive_intelligence": self._adaptive_intelligence_status(),
-            }
+            return self._enrich_birth_status(
+                {
+                    **base_meta,
+                    "status": "error",
+                    "error": self._error,
+                    "message": "Birth Phase gefaald",
+                    "orphaned": False,
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
 
         if self.is_running():
-            return {
-                **base_meta,
-                "status": "running",
-                "runner": "thread",
-                "elapsed_seconds": round(time.time() - self._start_time, 1) if self._start_time else 0,
-                "message": "Birth Phase draait...",
-                "orphaned": False,
-                "adaptive_intelligence": self._adaptive_intelligence_status(),
-            }
+            return self._enrich_birth_status(
+                {
+                    **base_meta,
+                    "status": "running",
+                    "runner": "thread",
+                    "elapsed_seconds": round(time.time() - self._start_time, 1) if self._start_time else 0,
+                    "message": "Birth Phase draait...",
+                    "orphaned": False,
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
 
         if self._progress_indicates_running(progress):
             runner_meta = self._read_runner_lock() or {}
-            return {
-                **base_meta,
-                "status": "running",
-                "runner": str(runner_meta.get("runner", "file_progress")),
-                "message": str(progress.get("message") or "Birth Phase actief (cross-process)."),
-                "runner_pid": runner_meta.get("pid"),
-                "runner_host": runner_meta.get("host"),
-                "orphaned": False,
-                "adaptive_intelligence": self._adaptive_intelligence_status(),
-            }
+            return self._enrich_birth_status(
+                {
+                    **base_meta,
+                    "status": "running",
+                    "runner": str(runner_meta.get("runner", "file_progress")),
+                    "message": str(progress.get("message") or "Birth Phase actief (cross-process)."),
+                    "runner_pid": runner_meta.get("pid"),
+                    "runner_host": runner_meta.get("host"),
+                    "orphaned": False,
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
 
         if stage == "interrupted":
-            return {
-                **base_meta,
-                "status": "interrupted",
-                "orphaned": True,
-                "message": str(
-                    progress.get("message")
-                    or "Vorige Birth Phase gestopt. Klik Start Birth Phase om opnieuw te beginnen."
-                ),
-            }
+            return self._enrich_birth_status(
+                {
+                    **base_meta,
+                    "status": "interrupted",
+                    "orphaned": True,
+                    "message": str(
+                        progress.get("message")
+                        or "Vorige Birth Phase gestopt. Klik Start Birth Phase om opnieuw te beginnen."
+                    ),
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
 
         if isinstance(self._result, dict) and self._result:
             status = str(self._result.get("status", "idle") or "idle")
             msg = str(progress.get("message") or self._result.get("message") or "Birth Phase klaar.")
-            return {
+            return self._enrich_birth_status(
+                {
+                    **base_meta,
+                    "status": status,
+                    "result": self._result,
+                    "message": msg,
+                    "orphaned": False,
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
+        return self._enrich_birth_status(
+            {
                 **base_meta,
-                "status": status,
-                "result": self._result,
-                "message": msg,
+                "status": "idle",
+                "message": "Birth Phase nog niet gestart",
                 "orphaned": False,
                 "adaptive_intelligence": self._adaptive_intelligence_status(),
             }
-        status = {
-            **base_meta,
-            "status": "idle",
-            "message": "Birth Phase nog niet gestart",
-            "orphaned": False,
-            "adaptive_intelligence": self._adaptive_intelligence_status(),
-        }
-        return status
+        )
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()

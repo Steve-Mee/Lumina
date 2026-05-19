@@ -65,6 +65,35 @@ def test_artifacts_ok_requires_flag_and_policy(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_get_status_includes_launcher_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    import sys
+
+    birth_module = sys.modules["lumina_launcher.services.birth_service"]
+    monkeypatch.setattr(
+        birth_module,
+        "launcher_setup_status_payload",
+        lambda workspace_root: {
+            "setup_complete": False,
+            "intelligence_stack_ready": True,
+            "needs_smart_setup": False,
+            "needs_guided_setup": True,
+            "launcher_ready": False,
+            "recommended_model": "qwen3.5-9b",
+            "recommended_provider": "ollama",
+            "recommended_ollama_tag": "qwen3.5:9b",
+            "missing": ["setup_complete"],
+        },
+    )
+    status = svc.get_status()
+    assert "launcher_setup" in status
+    assert status["launcher_setup"]["needs_guided_setup"] is True
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
 def test_configure_birth_workspace_module_helper(tmp_path: Path) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     out = configure_birth_workspace(tmp_path)

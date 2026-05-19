@@ -3,7 +3,15 @@
 from .backend_client import BackendClient
 from .hardware_service import HardwareService
 from .model_service import ModelService
-from .birth_service import BirthService, birth_service, configure_birth_workspace, resolve_birth_workspace_root
+from .birth_service import BirthService, birth_service, configure_birth_workspace
+from .workspace_root import resolve_birth_workspace_root
+from .smart_setup_service import (
+    SmartSetupOptions,
+    SmartSetupService,
+    SetupProgressEvent,
+    SmartSetupResult,
+)
+from .tauri_signing_service import TauriSigningResult, TauriSigningService
 
 __all__ = [
     "BackendClient",
@@ -13,4 +21,10 @@ __all__ = [
     "birth_service",
     "configure_birth_workspace",
     "resolve_birth_workspace_root",
+    "SmartSetupOptions",
+    "SmartSetupService",
+    "SetupProgressEvent",
+    "SmartSetupResult",
+    "TauriSigningResult",
+    "TauriSigningService",
 ]

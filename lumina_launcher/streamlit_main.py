@@ -27,6 +27,8 @@ from lumina_core.runtime_session import resolve_runtime_session_state
 from lumina_core.engine.setup_service import SetupService
 from lumina_launcher.core.config_manager import ConfigManager
 from lumina_launcher.core.first_boot import FirstBootManager
+from lumina_launcher.core.setup_config import SetupConfig
+from lumina_launcher.core.setup_gate import LauncherSetupState, resolve_launcher_setup_state
 from lumina_launcher.core.pause_policy import resolve_pause_policy
 from lumina_launcher.core.process_manager import ProcessManager
 from lumina_launcher.observability import ensure_run_id, log_event, timed_event
@@ -34,9 +36,11 @@ from lumina_launcher.services.backend_client import BackendClient
 from lumina_launcher.services.hardware_service import HardwareService
 from lumina_launcher.services.model_service import ModelService
 from lumina_launcher.services.birth_service import BirthService, birth_service, configure_birth_workspace
+from lumina_launcher.services.smart_setup_service import SmartSetupService
 from lumina_launcher.ui.components.presence_strip import render_presence_strip
 from lumina_launcher.ui.help_texts import help_for
 from lumina_launcher.ui.setup_wizard import render_setup_wizard
+from lumina_launcher.ui.smart_setup_wizard import render_smart_setup_wizard
 from lumina_launcher.ui.tab_registry import TabRenderContext, launcher_tab_specs
 from lumina_launcher.ui.tabs.first_boot import render_first_boot_tab
 from lumina_launcher.ui.tabs.training_dashboard import render_first_boot_command_center
@@ -118,6 +122,7 @@ class LauncherPhase(str, Enum):
 @dataclass
 class LauncherServices:
     setup_service: SetupService
+    smart_setup_service: SmartSetupService
     config_manager: ConfigManager
     process_manager: ProcessManager
     first_boot_manager: FirstBootManager
@@ -135,6 +140,7 @@ def _get_services() -> LauncherServices:
             config_path=_LAUNCHER_ROOT / "config.yaml",
             env_path=_LAUNCHER_ROOT / ".env",
         ),
+        smart_setup_service=SmartSetupService(_LAUNCHER_ROOT),
         config_manager=ConfigManager(_LAUNCHER_ROOT / ".env", _LAUNCHER_ROOT / "config.yaml"),
         process_manager=ProcessManager(_LAUNCHER_ROOT, _RUNTIME_ENTRY),
         first_boot_manager=FirstBootManager(_LAUNCHER_ROOT),
@@ -279,16 +285,31 @@ def _render_first_boot_home(
     show_setup_wizard: bool,
 ) -> None:
     if show_setup_wizard:
-        setup_tab = st.tabs(["Setup"])[0]
+        setup_state = resolve_launcher_setup_state(
+            workspace_root,
+            setup_service=services.setup_service,
+            smart_setup_service=services.smart_setup_service,
+        )
+        setup_cfg = SetupConfig.from_workspace(workspace_root)
+        intelligence_ready = setup_state.intelligence_stack_ready
+        use_guided_only = setup_cfg.skips_smart_setup_wizard() or intelligence_ready
+        phase_label = "Configuration" if use_guided_only else "Intelligence"
+        setup_tab = st.tabs([f"Setup — {phase_label}"])[0]
         with setup_tab:
-            render_setup_wizard(
-                workspace_root=workspace_root,
-                setup_service=services.setup_service,
-                config_manager=services.config_manager,
-                first_boot_manager=services.first_boot_manager,
-                hardware_service=services.hardware_service,
-                model_service=services.model_service,
-            )
+            if use_guided_only:
+                render_setup_wizard(
+                    workspace_root=workspace_root,
+                    setup_service=services.setup_service,
+                    config_manager=services.config_manager,
+                    first_boot_manager=services.first_boot_manager,
+                    hardware_service=services.hardware_service,
+                    model_service=services.model_service,
+                )
+            else:
+                render_smart_setup_wizard(
+                    workspace_root=workspace_root,
+                    smart_setup_service=services.smart_setup_service,
+                )
         return
 
     st.caption(
@@ -371,6 +392,36 @@ def _render_operations_shell(
     selected_spec.render(ctx)
 
 
+def _render_launcher_setup_sidebar_status(
+    services: LauncherServices,
+    launcher_setup: LauncherSetupState | None = None,
+) -> None:
+    state = launcher_setup or resolve_launcher_setup_state(
+        _LAUNCHER_ROOT,
+        setup_service=services.setup_service,
+        smart_setup_service=services.smart_setup_service,
+    )
+    detail = services.smart_setup_service.get_setup_status()
+    intelligence = detail.get("adaptive_intelligence", {})
+    tier = str(intelligence.get("tier", "light") or "light").upper()
+    provider = str(detail.get("recommended_provider", "ollama") or "ollama")
+    stack_missing = [item for item in detail.get("missing", []) if item != "setup_complete"]
+
+    intel_label = "Ready" if state.intelligence_stack_ready else "Incomplete"
+    config_label = "Complete" if state.setup_complete else "Pending"
+    st.caption(f"Intelligence stack: {intel_label} | Guided setup: {config_label}")
+    st.caption(f"Tier {tier} via {provider}")
+    if stack_missing:
+        st.caption(f"Stack missing: {', '.join(stack_missing)}")
+    if state.setup_complete and not state.intelligence_stack_ready:
+        st.warning(
+            "Guided setup is voltooid maar de intelligence stack is incompleet. "
+            "Voer Smart Setup opnieuw uit indien inference faalt."
+        )
+    elif state.needs_smart_setup:
+        st.info("Smart Setup vereist voordat guided configuratie kan starten.")
+
+
 def _render_adaptive_intelligence_sidebar_status(services: LauncherServices) -> None:
     try:
         payload = services.birth_service.get_status()
@@ -406,7 +457,12 @@ def render_streamlit_app() -> None:
             "Start met `powershell -ExecutionPolicy Bypass -File .\\lumina_os\\run_backend.ps1`."
         )
 
-    setup_complete = services.setup_service.is_setup_complete()
+    launcher_setup = resolve_launcher_setup_state(
+        _LAUNCHER_ROOT,
+        setup_service=services.setup_service,
+        smart_setup_service=services.smart_setup_service,
+    )
+    setup_complete = launcher_setup.setup_complete
     phase = _resolve_launcher_phase(first_boot_manager=services.first_boot_manager)
     _enforce_first_boot_sim_mode(config_manager=services.config_manager, phase=phase)
 
@@ -468,10 +524,13 @@ def render_streamlit_app() -> None:
                 ),
             }
         )
+        intel_setup = "OK" if launcher_setup.intelligence_stack_ready else "Incomplete"
+        config_setup = "OK" if launcher_setup.setup_complete else "Pending"
         st.caption(
             "Progress source: state/lumina_birth_progress.json (fallback: state/first_boot_progress.json) "
             "• target source: active progress tijdens run, anders config.yaml:first_boot.training_trades"
         )
+        st.caption(f"Setup: Intelligence {intel_setup} | Config {config_setup}")
 
     if phase == LauncherPhase.FIRST_BOOT_REQUIRED:
         st.warning("Birth Phase training is nog niet voltooid.")
@@ -481,6 +540,7 @@ def render_streamlit_app() -> None:
     if phase == LauncherPhase.OPERATIONS_READY:
         with st.sidebar:
             st.header("Bot Configuration")
+            _render_launcher_setup_sidebar_status(services, launcher_setup)
             _render_adaptive_intelligence_sidebar_status(services)
             mode = st.selectbox(
                 "Trading Mode",
@@ -630,11 +690,21 @@ def render_streamlit_app() -> None:
             process_alive=process_alive,
             current_mode=configured_operations_mode,
         )
+    elif setup_complete:
+        with st.sidebar:
+            st.header("Launcher Status")
+            _render_launcher_setup_sidebar_status(services, launcher_setup)
+            _render_adaptive_intelligence_sidebar_status(services)
+        _render_first_boot_home(
+            services=services,
+            workspace_root=_LAUNCHER_ROOT,
+            show_setup_wizard=False,
+        )
     else:
         _render_first_boot_home(
             services=services,
             workspace_root=_LAUNCHER_ROOT,
-            show_setup_wizard=not setup_complete,
+            show_setup_wizard=True,
         )
 
     st.divider()

@@ -74,6 +74,7 @@ def test_persist_setup_configuration_writes_env_yaml_and_state(tmp_path: Path) -
             "TELEGRAM_CHAT_ID": "1234",
             "LUMINA_JWT_SECRET_KEY": "jwt-secret-test",
             "LUMINA_ADMIN_API_KEY": "sk_test_admin_key",
+            "TAURI_SIGNING_PRIVATE_KEY_PATH": "state/lumina-tauri-signing.key",
         },
         training={
             "training_trades": 15000,
@@ -89,6 +90,7 @@ def test_persist_setup_configuration_writes_env_yaml_and_state(tmp_path: Path) -
     assert "BROKER_BACKEND=live" in env_text
     assert "CROSSTRADE_TOKEN=test-token" in env_text
     assert "LUMINA_ADMIN_API_KEY=sk_test_admin_key" in env_text
+    assert "TAURI_SIGNING_PRIVATE_KEY_PATH=state/lumina-tauri-signing.key" in env_text
 
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     assert payload["mode"] == "sim"

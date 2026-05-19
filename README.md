@@ -12,7 +12,7 @@
 [![Lumina Quality Gate](https://github.com/Steve-Mee/Lumina/actions/workflows/lumina-quality-gate.yml/badge.svg?branch=main)](https://github.com/Steve-Mee/Lumina/actions/workflows/lumina-quality-gate.yml)
 [![Safety Gate](https://github.com/Steve-Mee/Lumina/actions/workflows/safety-gate.yml/badge.svg?branch=main)](https://github.com/Steve-Mee/Lumina/actions/workflows/safety-gate.yml)
 
-[Quick Start](#-quick-start) · [Architectuur](#-architectuur-overzicht) · [Safety](#️-risk-management--safety) · [ADR’s](docs/adr/README.md)
+[Quick Start](#-quick-start) · [Neural Command Deck](#-lumina-neural-command-deck-tauri) · [Architectuur](#-architectuur-overzicht) · [Safety](#️-risk-management--safety) · [ADR’s](docs/adr/README.md)
 
 </div>
 
@@ -83,6 +83,82 @@ Unsloth fine-tuning zit voorbereid in de app; echte training vraagt **Linux of W
 
 ---
 
+## 🖥️ LUMINA Neural Command Deck (Tauri)
+
+De **LUMINA Neural Command Deck** (intern: *The Core*) is een volledig nieuwe, native desktop UI — geen Streamlit-reskin. Het vervangt de oude Streamlit launcher en dashboard als primair operator-interface voor het trading-organisme. De stack is **Tauri v2 + React 19 + TypeScript + Three.js**: een spaceship-cockpit interface met live telemetry, evolution-visualisatie en fail-closed REAL-mode gates.
+
+De migratie is **in uitvoering**. Legacy Streamlit-paden (`lumina_launcher.py`, `lumina_os/frontend/dashboard.py`) blijven beschikbaar tot de finale cleanup-fase.
+
+### Streamlit vs Neural Command Deck
+
+| Aspect | Streamlit (legacy) | Neural Command Deck |
+|--------|-------------------|---------------------|
+| Runtime | Browser-tab | Native desktop (Tauri) |
+| Telemetry | Polling / gedeeltelijk | REST + WebSocket live stream |
+| Visuele identiteit | Formulieren & charts | Three.js neural core + HUD panels |
+| REAL-veiligheid | Basisbevestiging | Fail-closed mode gates, constitution overlays |
+
+### Architectuur & documentatie
+
+- Frontend (greenfield): **`tauri-app/`** — Phase 0 scaffold
+- Backend API: **`lumina_os/backend/`** op poort **8000**
+- [docs/lumina-core-architecture.md](docs/lumina-core-architecture.md) — systeemdesign, dataflow, security
+- [docs/lumina-core-api-contracts.md](docs/lumina-core-api-contracts.md) — JSON Schema contracten (REST + WebSocket)
+
+### Getting Started (nieuwe UI)
+
+**Vereisten**
+
+| Tool | Versie | Doel |
+|------|--------|------|
+| Node.js | 20+ | Tauri frontend build |
+| Rust | stable (via [rustup](https://rustup.rs/)) | Tauri shell |
+| Python backend | 3.13+ | Al vereist door LUMINA |
+
+**Stappen**
+
+1. **Start de FastAPI backend** (vereist voor beide UI’s):
+
+   ```powershell
+   cd lumina_os
+   powershell -ExecutionPolicy Bypass -File .\run_backend.ps1
+   ```
+
+   Verificatie: `GET http://127.0.0.1:8000/api/monitoring/health`
+
+2. **Configureer omgevingsvariabelen** in `.env` (repo root):
+
+   ```
+   LUMINA_BACKEND_URL=http://127.0.0.1:8000
+   LUMINA_ADMIN_API_KEY=<your-key>
+   ```
+
+3. **Start de Neural Command Deck** (zodra `tauri-app/` is gescaffold):
+
+   ```bash
+   cd tauri-app
+   npm ci
+   npm run tauri dev
+   ```
+
+   Het dev-venster opent op `localhost:1420` en verbindt met de backend op `:8000`.
+
+> Tijdens Phase 0–5 blijft Streamlit beschikbaar via `python lumina_launcher.py` tot de finale cleanup.
+
+### API-overzicht (compact)
+
+| Type | Pad | Doel |
+|------|-----|------|
+| REST | `GET /api/core/status` | Cockpit snapshot |
+| REST | `GET /api/evolution/tree` | DNA lineage graph |
+| REST | `POST /api/core/approve-mutation` | Mutatie goedkeuren / afwijzen |
+| WS | `/ws/core/live` | Live organism telemetry |
+| WS | `/ws/evolution` | Evolution events |
+
+Volledige schema’s: [docs/lumina-core-api-contracts.md](docs/lumina-core-api-contracts.md).
+
+---
+
 ## 🏛️ Architectuur overzicht
 
 LUMINA is opgebouwd als **bounded contexts** onder `lumina_core/`: elk domein heeft een duidelijke grens en API — risk, trading engine, evolution, safety, agent orchestratie.
@@ -133,7 +209,7 @@ flowchart TB
 | 📊 Risk | Hard limits, Monte Carlo / VaR-stijl allocatie, dynamic Kelly, execution cost model. |
 | 🤖 Agents & bus | Blackboard-topics, centrale event bus, producer allowlists waar van toepassing. |
 | 📈 Backtest-realism | Purged CV, order book replay, reality-gap penalty (zie [ADR 0004](docs/adr/0004-backtest-realism-purged-cv-orderbook-replay-reality-gap.md)). |
-| 🖥️ Operator UX | Launcher met guided setup, journals/dashboards onder `journal/`. |
+| 🖥️ Operator UX | Neural Command Deck (Tauri, nieuw) + Streamlit launcher (legacy, tot cleanup); journals onder `journal/`. |
 
 ---
 
@@ -180,6 +256,7 @@ Meer detail: [docs/AGI_SAFETY.md](docs/AGI_SAFETY.md) · [ADR 0003](docs/adr/000
 | 5 | Nightly / CI: backtest-realism stack (purged CV, replay, reality gap) als gate waar haalbaar | 🔄 |
 | 6 | Observability: dashboards en audit-first operator workflows (`journal/`, logging) | 🔄 |
 | 7 | Model pipeline: Unsloth / GGUF / inference pad productie-hardening (Linux/WSL2) | 📋 |
+| 8 | Neural Command Deck (Tauri): Phase 0 scaffold → live cockpit ([architectuur](docs/lumina-core-architecture.md)) | 🔄 |
 
 Legenda: ✅ volbracht in kern · 🔄 actief · 📋 gepland / kritiek pad
 
@@ -189,6 +266,7 @@ Legenda: ✅ volbracht in kern · 🔄 actief · 📋 gepland / kritiek pad
 
 | Pad | Rol |
 |-----|-----|
+| `tauri-app/` | Neural Command Deck — Tauri v2 + React 19 native UI (greenfield) |
 | `lumina_core/` | Engine, workers, trainer, simulator, risk, evolution, safety |
 | `lumina_bible/` | Bible-engine integratie |
 | `lumina_agents/` | Agent-specifieke code |

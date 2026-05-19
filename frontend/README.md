@@ -30,11 +30,32 @@ Deze endpoints vereisen `X-API-Key`:
 
 **Operatornaam top-bar**: `VITE_DASHBOARD_OPERATOR` in `.env.local`.
 
-## Adaptive Intelligence badge
+## Adaptive Intelligence UI
 
-`IntelligenceTierBadgeLive` pollt `/api/monitoring/adaptive-intelligence/latest` en toont tier, provider, mode en degrade-state in de header van Birth Phase en Monitoring.
+### Badge (top bar)
+
+`IntelligenceTierBadgeLive` pollt `/api/monitoring/adaptive-intelligence/latest` en toont in de launcher-topbar (Birth Phase + Monitoring):
+
+- **Tier** (HIGH / STD / LIGHT) met tier-accent glow
+- **Model** (`recommended_model`)
+- **Backend** (`Ollama`, `vLLM`, `llama.cpp` via provider-mapping)
+- **Status dot**: groen = healthy, geel = degraded/transition, rood = error/probe/fetch-fout
 
 Op Birth Phase valt de badge terug op `adaptive_intelligence` uit `/api/birth/status` wanneer er nog geen persisted monitoring-state is.
+
+### Status card (Monitoring dashboard)
+
+`IntelligenceTierStatusCardLive` staat in de rechterkolom van het Monitoring-dashboard (boven de activity stream) en toont het volledige inference-profiel: model, reasoning mode, context, mode, status/transition en laatste update met handmatige refresh.
+
+### Health mapping
+
+| Dot | Conditie |
+|-----|----------|
+| Groen | Status OK, geen degrade, geen probe-error |
+| Geel | `degraded_state`, actieve tier-transition, of refresh terwijl data al geladen is |
+| Rood | Fetch-fout, geen status na load, of `last_probe_error` |
+
+Provider labels: `ollama` → Ollama, `vllm` → vLLM, `llama_cpp` / `llama-cpp` → llama.cpp.
 
 ## Build
 

@@ -1,0 +1,313 @@
+"""FastAPI WebSocket for LUMINA Core live telemetry.
+
+Endpoint
+--------
+WS /ws/core/live — pushes aggregated organism telemetry every 500ms.
+
+Sources: state/ JSON files + optional ObservabilityService snapshot.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Literal
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
+
+from backend.monitoring_endpoints import _extract_regime_summary, _metric_value
+
+try:
+    from api.monitoring import _safe_read_json, resolve_state_directory
+except ImportError:  # pragma: no cover
+
+    def resolve_state_directory() -> Path:
+        raw = os.environ.get("LUMINA_STATE_DIR", "").strip()
+        if raw:
+            return Path(raw)
+        return Path(__file__).resolve().parents[2] / "state"
+
+    def _safe_read_json(path: Path) -> dict[str, Any]:
+        if not path.is_file():
+            return {}
+        try:
+            parsed = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(tags=["core"])
+
+_TELEMETRY_INTERVAL_S = 0.5
+_obs_service: Any = None
+_operator_mode_override: str | None = None
+
+
+class OperatorModeRequest(BaseModel):
+    mode: Literal["sim", "real"] = Field(description="Operator-selected trading mode")
+
+
+class OperatorModeResponse(BaseModel):
+    ok: bool = True
+    mode: str
+
+
+def set_observability_service(service: Any) -> None:
+    """Inject the shared ObservabilityService instance at app startup."""
+    global _obs_service
+    _obs_service = service
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+class _CachedFileReader:
+    """Read JSON / JSONL files only when mtime changes."""
+
+    def __init__(self) -> None:
+        self._cache: dict[str, tuple[int, Any]] = {}
+
+    def read_json(self, path: Path) -> dict[str, Any]:
+        cached = self._get_cached(path)
+        if cached is not None:
+            return cached if isinstance(cached, dict) else {}
+        data = _safe_read_json(path)
+        self._store(path, data)
+        return data
+
+    def read_active_mutations(self, path: Path) -> list[dict[str, Any]]:
+        cached = self._get_cached(path)
+        if cached is not None:
+            return cached if isinstance(cached, list) else []
+
+        mutations: list[dict[str, Any]] = []
+        if path.is_file():
+            try:
+                with path.open("r", encoding="utf-8") as fh:
+                    for raw in fh:
+                        line = raw.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if not isinstance(entry, dict) or entry.get("status") != "proposed":
+                            continue
+                        challengers = entry.get("challengers")
+                        challenger_count = len(challengers) if isinstance(challengers, list) else 0
+                        mutations.append(
+                            {
+                                "hash": str(entry.get("hash", "")),
+                                "timestamp": entry.get("timestamp"),
+                                "challenger_count": challenger_count,
+                            }
+                        )
+            except OSError:
+                logger.debug("Unable to read evolution log at %s", path)
+
+        self._store(path, mutations)
+        return mutations
+
+    def _get_cached(self, path: Path) -> Any | None:
+        key = str(path)
+        if not path.is_file():
+            self._cache.pop(key, None)
+            return None
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            return None
+        hit = self._cache.get(key)
+        if hit is not None and hit[0] == mtime_ns:
+            return hit[1]
+        return None
+
+    def _store(self, path: Path, data: Any) -> None:
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            return
+        self._cache[str(path)] = (mtime_ns, data)
+
+
+class CoreLiveTelemetryReader:
+    """Build aggregated telemetry snapshots from state files and observability."""
+
+    def __init__(self, state_dir: Path | None = None) -> None:
+        self._state_dir = state_dir or resolve_state_directory()
+        self._files = _CachedFileReader()
+
+    @property
+    def state_dir(self) -> Path:
+        return self._state_dir
+
+    def build_snapshot(self, obs: Any | None = None) -> dict[str, Any]:
+        runtime = self._files.read_json(self._state_dir / "monitoring_runtime_metrics.json")
+        sim_state = self._files.read_json(self._state_dir / "lumina_sim_state.json")
+        adaptive = self._files.read_json(
+            Path(os.getenv("ADAPTIVE_INTELLIGENCE_STATUS_PATH", str(self._state_dir / "adaptive_intelligence_status.json")))
+        )
+        mutations = self._files.read_active_mutations(
+            Path(os.getenv("EVOLUTION_LOG_PATH", str(self._state_dir / "evolution_log.jsonl")))
+        )
+
+        obs_snapshot: dict[str, Any] = {}
+        if obs is not None:
+            try:
+                raw = obs.snapshot()
+                obs_snapshot = raw if isinstance(raw, dict) else {}
+            except Exception:
+                logger.debug("Observability snapshot unavailable", exc_info=True)
+
+        regime_summary = _extract_regime_summary(obs_snapshot) if obs_snapshot else {}
+        regime = str(regime_summary.get("current_regime") or "UNKNOWN")
+        if regime == "UNKNOWN":
+            agent = (sim_state.get("state_snapshot") or {}).get("agent") or {}
+            if isinstance(agent, dict) and agent.get("regime"):
+                regime = str(agent["regime"])
+
+        mode = str(runtime.get("mode") or "").strip()
+        if not mode:
+            payload = adaptive.get("payload") if isinstance(adaptive.get("payload"), dict) else {}
+            mode = str(payload.get("mode") or "unknown")
+
+        if _operator_mode_override:
+            mode = _operator_mode_override
+
+        equity = _coerce_float(runtime.get("account_equity"))
+        if equity is None:
+            risk = (sim_state.get("state_snapshot") or {}).get("risk") or {}
+            if isinstance(risk, dict):
+                equity = _coerce_float(risk.get("account_equity"))
+
+        consecutive_losses = _coerce_int(runtime.get("consecutive_losses"), default=0)
+        has_data = bool(runtime) or bool(sim_state) or bool(adaptive)
+        risk_level = _resolve_risk_level(
+            obs_snapshot=obs_snapshot,
+            regime_summary=regime_summary,
+            consecutive_losses=consecutive_losses,
+            has_data=has_data,
+        )
+
+        source_ts = runtime.get("timestamp")
+        if not source_ts and isinstance(adaptive.get("timestamp"), str):
+            source_ts = adaptive["timestamp"]
+
+        return {
+            "mode": mode.lower() if mode else "unknown",
+            "equity": equity,
+            "regime": regime,
+            "risk_level": risk_level,
+            "active_mutations": mutations,
+            "source_ts": source_ts,
+        }
+
+
+def _coerce_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_int(value: Any, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _resolve_risk_level(
+    *,
+    obs_snapshot: dict[str, Any],
+    regime_summary: dict[str, Any],
+    consecutive_losses: int,
+    has_data: bool = False,
+) -> str:
+    if obs_snapshot:
+        kill_switch = _metric_value(obs_snapshot, "lumina_risk_kill_switch_active", 0.0)
+        if kill_switch >= 1.0:
+            return "CRITICAL"
+
+    risk_state = str(regime_summary.get("regime_risk_state") or "").strip().upper()
+    if risk_state and risk_state != "UNKNOWN":
+        return risk_state
+
+    if consecutive_losses >= 3:
+        return "ELEVATED"
+    if has_data or consecutive_losses > 0 or obs_snapshot or regime_summary:
+        return "NORMAL"
+    return "UNKNOWN"
+
+
+def _build_frame(*, seq: int, payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "telemetry",
+        "seq": seq,
+        "ts": _utc_now_iso(),
+        "payload": payload,
+    }
+
+
+@router.get("/api/core/live")
+async def get_core_live() -> dict[str, Any]:
+    """REST snapshot for polling fallback when WebSocket is unavailable (v1, no auth)."""
+    reader = CoreLiveTelemetryReader()
+    payload = reader.build_snapshot(_obs_service)
+    return _build_frame(seq=0, payload=payload)
+
+
+@router.post("/api/core/mode", response_model=OperatorModeResponse)
+async def post_core_mode(body: OperatorModeRequest) -> OperatorModeResponse:
+    """Accept operator mode selection from the command deck (v1 in-memory override)."""
+    global _operator_mode_override
+    _operator_mode_override = body.mode
+    logger.info("Operator mode override set to %s", body.mode)
+    return OperatorModeResponse(mode=body.mode)
+
+
+@router.websocket("/ws/core/live")
+async def ws_core_live(websocket: WebSocket) -> None:
+    await websocket.accept()
+    reader = CoreLiveTelemetryReader()
+    seq = 0
+
+    try:
+        while True:
+            payload = reader.build_snapshot(_obs_service)
+            await websocket.send_json(_build_frame(seq=seq, payload=payload))
+            seq += 1
+
+            try:
+                incoming = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=_TELEMETRY_INTERVAL_S,
+                )
+            except asyncio.TimeoutError:
+                continue
+
+            if not incoming:
+                continue
+            try:
+                frame = json.loads(incoming)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(frame, dict) and frame.get("type") == "ping":
+                await websocket.send_json({"type": "pong", "ts": _utc_now_iso()})
+    except WebSocketDisconnect:
+        logger.debug("Core live WebSocket disconnected")
+    except Exception:
+        logger.exception("Core live WebSocket error")
+        raise

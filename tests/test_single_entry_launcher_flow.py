@@ -203,6 +203,13 @@ def test_react_dashboard_includes_idle_hard_gate_and_provenance_stamp() -> None:
     assert "target not configured yet" in source
 
 
+def test_streamlit_main_uses_launcher_setup_gate() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "lumina_launcher" / "streamlit_main.py").read_text(encoding="utf-8")
+    assert "resolve_launcher_setup_state" in source
+    assert "_render_launcher_setup_sidebar_status" in source
+
+
 def test_admin_tab_contains_setup_training_configuration_section() -> None:
     root = Path(__file__).resolve().parents[1]
     source = (root / "lumina_launcher" / "ui" / "tabs" / "admin.py").read_text(encoding="utf-8")

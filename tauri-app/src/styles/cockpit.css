@@ -1,0 +1,333 @@
+:root {
+  --cockpit-glow-primary: oklch(0.75 0.15 195);
+  --cockpit-glow-accent: oklch(0.65 0.2 280);
+  --cockpit-glow-real: oklch(0.7 0.18 45);
+  --cockpit-grid-line: oklch(1 0 0 / 4%);
+  --cockpit-star: oklch(1 0 0 / 35%);
+}
+
+@keyframes cockpit-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+    box-shadow:
+      0 0 20px color-mix(in oklch, var(--cockpit-glow-primary) 60%, transparent),
+      0 0 40px color-mix(in oklch, var(--cockpit-glow-accent) 30%, transparent);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+    box-shadow:
+      0 0 28px color-mix(in oklch, var(--cockpit-glow-primary) 80%, transparent),
+      0 0 56px color-mix(in oklch, var(--cockpit-glow-accent) 45%, transparent);
+  }
+}
+
+@keyframes cockpit-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes cockpit-orbit-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+.cockpit-shell {
+  background:
+    radial-gradient(
+      ellipse 80% 60% at 50% 0%,
+      color-mix(in oklch, var(--cockpit-glow-accent) 12%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 80% 100%,
+      color-mix(in oklch, var(--cockpit-glow-primary) 8%, transparent),
+      transparent 60%
+    ),
+    linear-gradient(180deg, oklch(0.12 0.02 260) 0%, oklch(0.1 0.03 280) 100%);
+  transition:
+    background 0.5s ease,
+    filter 0.5s ease;
+}
+
+.cockpit-shell[data-mode="SIM"] {
+  --cockpit-glow-primary: oklch(0.78 0.17 195);
+  --cockpit-glow-accent: oklch(0.68 0.22 280);
+  --cockpit-star: oklch(1 0 0 / 45%);
+}
+
+.cockpit-shell[data-mode="REAL"] {
+  --cockpit-glow-primary: oklch(0.55 0.06 240);
+  --cockpit-glow-accent: oklch(0.62 0.1 55);
+  --cockpit-star: oklch(1 0 0 / 18%);
+}
+
+.cockpit-shell[data-mode="SIM"] .cockpit-stars {
+  opacity: 0.65;
+}
+
+.cockpit-shell[data-mode="REAL"] .cockpit-grid {
+  opacity: 0.2;
+}
+
+.cockpit-shell[data-mode="REAL"] .cockpit-stars {
+  opacity: 0.25;
+}
+
+.cockpit-stars {
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, var(--cockpit-star), transparent),
+    radial-gradient(1px 1px at 80px 120px, var(--cockpit-star), transparent),
+    radial-gradient(1px 1px at 160px 60px, var(--cockpit-star), transparent),
+    radial-gradient(1px 1px at 240px 180px, var(--cockpit-star), transparent),
+    radial-gradient(1px 1px at 320px 40px, var(--cockpit-star), transparent),
+    radial-gradient(1px 1px at 400px 140px, var(--cockpit-star), transparent),
+    radial-gradient(1px 1px at 480px 90px, var(--cockpit-star), transparent),
+    radial-gradient(1px 1px at 560px 200px, var(--cockpit-star), transparent);
+  background-size: 600px 220px;
+  opacity: 0.5;
+}
+
+.cockpit-grid {
+  background-image:
+    linear-gradient(var(--cockpit-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cockpit-grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 50%, black 20%, transparent 75%);
+}
+
+.cockpit-panel {
+  background: color-mix(in oklch, var(--card) 40%, transparent);
+  backdrop-filter: blur(12px);
+  border: 1px solid oklch(1 0 0 / 10%);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.2s ease;
+}
+
+.cockpit-panel:hover {
+  border-color: color-mix(in oklch, var(--cockpit-glow-primary) 35%, transparent);
+  box-shadow: 0 0 24px color-mix(in oklch, var(--cockpit-glow-primary) 12%, transparent);
+}
+
+.cockpit-logo-core {
+  animation: cockpit-pulse 3s ease-in-out infinite;
+}
+
+.cockpit-logo-ring {
+  animation: cockpit-orbit 12s linear infinite;
+}
+
+.cockpit-logo-ring-inner {
+  animation: cockpit-orbit-reverse 8s linear infinite;
+}
+
+@keyframes citadel-critical-pulse {
+  0%,
+  100% {
+    opacity: 0.82;
+    box-shadow: 0 0 12px oklch(0.65 0.2 25 / 25%);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 22px oklch(0.65 0.2 25 / 45%);
+  }
+}
+
+.citadel-wall-critical {
+  animation: citadel-critical-pulse 1.4s ease-in-out infinite;
+}
+
+.citadel-bar-glow-emerald {
+  filter: drop-shadow(0 0 6px oklch(0.72 0.17 155 / 55%));
+  transition: height 0.6s ease;
+}
+
+.citadel-bar-glow-amber {
+  filter: drop-shadow(0 0 6px oklch(0.78 0.15 85 / 55%));
+  transition: height 0.6s ease;
+}
+
+.citadel-bar-glow-red {
+  filter: drop-shadow(0 0 8px oklch(0.65 0.2 25 / 60%));
+  transition: height 0.6s ease;
+}
+
+.living-core-shell {
+  background: radial-gradient(
+    circle at 50% 50%,
+    oklch(0.75 0.15 195 / 8%),
+    transparent 70%
+  );
+}
+
+.evolution-arena-shell {
+  background: radial-gradient(
+    circle at 50% 50%,
+    oklch(0.65 0.2 280 / 8%),
+    transparent 70%
+  );
+}
+
+.decision-theater-shell {
+  background: radial-gradient(
+    circle at 30% 40%,
+    oklch(0.65 0.2 280 / 6%),
+    transparent 65%
+  ),
+  radial-gradient(
+    circle at 70% 60%,
+    oklch(0.75 0.15 195 / 6%),
+    transparent 60%
+  );
+}
+
+.decision-chart-placeholder {
+  box-shadow: inset 0 0 24px oklch(0.75 0.15 195 / 6%);
+}
+
+@keyframes decision-scan {
+  0% {
+    transform: translateY(-80px);
+    opacity: 0;
+  }
+  40% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(80px);
+    opacity: 0;
+  }
+}
+
+.decision-chart-scan {
+  animation: decision-scan 3.5s ease-in-out infinite;
+}
+
+@keyframes cockpit-shimmer {
+  0% {
+    transform: translateX(-100%);
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 0.4;
+  }
+}
+
+.cockpit-shimmer {
+  animation: cockpit-shimmer 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decision-chart-scan {
+    animation: none;
+    opacity: 0.25;
+  }
+
+  .cockpit-shimmer {
+    animation: none;
+  }
+
+  .cockpit-shell {
+    transition: none;
+  }
+}
+
+.reasoning-step {
+  backdrop-filter: blur(8px);
+  border-left-width: 2px;
+}
+
+.command-hud {
+  box-shadow: inset 0 -1px 0 oklch(1 0 0 / 4%);
+}
+
+.command-hud-metrics {
+  scrollbar-width: thin;
+}
+
+.launch-ninjatrader-btn {
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease;
+}
+
+.launch-ninjatrader-btn:hover:not(:disabled) {
+  box-shadow: 0 0 22px oklch(0.75 0.15 195 / 28%);
+}
+
+.launch-ninjatrader-btn:disabled {
+  opacity: 0.75;
+}
+
+.real-safe-mode-overlay {
+  animation: real-safe-mode-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes real-safe-mode-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px oklch(0.7 0.18 45 / 18%);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px oklch(0.7 0.18 45 / 42%);
+  }
+}
+
+.command-deck-grid {
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "center"
+    "left"
+    "right";
+}
+
+.command-deck-area-left {
+  grid-area: left;
+}
+
+.command-deck-area-center {
+  grid-area: center;
+}
+
+.command-deck-area-right {
+  grid-area: right;
+}
+
+@media (min-width: 768px) {
+  .command-deck-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "center center"
+      "left right";
+  }
+}
+
+@media (min-width: 1280px) {
+  .command-deck-grid {
+    grid-template-columns: minmax(260px, 0.9fr) minmax(400px, 1.6fr) minmax(300px, 1fr);
+    grid-template-areas: "left center right";
+  }
+
+  .command-deck-area-left,
+  .command-deck-area-center,
+  .command-deck-area-right {
+    min-height: 0;
+  }
+}

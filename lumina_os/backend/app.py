@@ -19,8 +19,11 @@ from starlette.types import ASGIApp
 from backend.database import CommunityBible, CommunityReflection, Participant, SessionLocal, TradeEntry
 from backend.models import BibleUpload, ReflectionUpload, TradeSubmit
 from backend.monitoring_endpoints import router as monitoring_router, set_observability_service
+from backend.core_websocket import router as core_ws_router
+from backend.core_websocket import set_observability_service as set_core_ws_obs_service
 from backend.evolution_endpoints import router as evolution_router
 from backend.birth_endpoints import router as birth_router
+from backend.setup_endpoints import router as setup_router
 from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
 from backend.evolution_endpoints import set_security_module as set_evolution_security_module
 from lumina_core.broker.broker_bridge import broker_factory
@@ -141,10 +144,13 @@ app = FastAPI(title="Trader League Live - Powered by LUMINA")
 _obs = ObservabilityService.from_config(FULL_CONFIG)
 _obs.start()
 set_observability_service(_obs)
+set_core_ws_obs_service(_obs)
 set_evolution_obs_service(_obs)
 app.include_router(monitoring_router)
 app.include_router(evolution_router)
 app.include_router(birth_router)
+app.include_router(setup_router)
+app.include_router(core_ws_router)
 
 app.add_middleware(LuminaEmbeddedUIMiddleware, dist_dir=_UI_DIST)
 if (_UI_DIST / "index.html").is_file():

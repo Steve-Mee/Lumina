@@ -13,12 +13,33 @@
 - The launcher now disables export and registration actions automatically when the runtime is not Linux or WSL2, or when prerequisites are missing.
 - The hardware and model tabs now show explicit readiness badges for tier fit, recommended model state, Ollama, and vLLM.
 - Blocked fine-tuning/export/register attempts are now written to a support log so admin users can see what a user tried to run and why it was blocked.
+- Launcher setup preferences are configurable via `config.yaml` (`setup:` block).
+
+## `config.yaml` setup block
+
+```yaml
+setup:
+  mode: smart              # smart | classic | manual
+  auto_install_ollama: true
+  auto_download_model: true
+  allow_force_tier: false
+```
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `mode` | `smart` | **smart**: Smart Setup wizard then Guided Setup. **classic**: Guided Setup only (skip intelligence wizard). **manual**: Smart Setup with auto-install/model off by default. |
+| `auto_install_ollama` | `true` | Default for Ollama auto-install in Smart Setup (ignored when `mode: manual`). |
+| `auto_download_model` | `true` | Default for recommended model pull (ignored when `mode: manual`). |
+| `allow_force_tier` | `false` | When `false`, hides High Tier checkbox and blocks `force_high` in Smart Setup. |
+
+Loader: `lumina_launcher.core.setup_config.SetupConfig`. Gate routing: `lumina_launcher.core.setup_gate`.
 
 ## New files and their role
 
 - `lumina_core/engine/hardware_inspector.py`: reads RAM, CPU, NVIDIA GPU, compute capability, and Ollama availability.
 - `lumina_core/engine/model_catalog.py`: loads the model catalog and resolves upgrade paths.
 - `lumina_core/engine/setup_service.py`: runs the guided install and updates `config.yaml`.
+- `lumina_launcher/core/setup_config.py`: reads `setup:` from `config.yaml` for Smart Setup defaults and wizard routing.
 - `lumina_core/engine/model_trainer.py`: inspects whether Unsloth training is possible and prepares dataset/commands.
 - `lumina_core/engine/unsloth_runner.py`: concrete Unsloth LoRA/QLoRA training entrypoint for Linux/WSL2 CUDA environments.
 - `lumina_model_catalog.json`: central catalog of Lumina-tested Qwen3.5 variants and upgrade paths.
@@ -49,6 +70,28 @@
 8. When a Linux/WSL2 CUDA environment exists, use the generated training, GGUF export, and `ollama create` commands from the launcher admin panel.
 9. If `llama.cpp` is not prepared yet, run the launcher button or `python scripts/setup_llama_cpp.py` first.
 10. If a user presses a blocked admin action, the launcher records the attempt in `state/launcher_support_events.jsonl` for follow-up.
+
+## Tauri desktop build signing (Guided Setup)
+
+During **Guided Setup → credentials**, operators can generate a Tauri updater minisign keypair:
+
+- Private key file: `state/lumina-tauri-signing.key` (gitignored)
+- Public key is synced into `tauri-app/src-tauri/tauri.conf.json` (`plugins.updater.pubkey`)
+- `.env` receives `TAURI_SIGNING_PRIVATE_KEY_PATH=state/lumina-tauri-signing.key`
+
+Use **Regenerate** only when you accept that existing installs may no longer verify updates.
+
+Release build from repo root (loads `.env` and resolves the key path):
+
+```powershell
+.\scripts\tauri-build.ps1
+```
+
+Or from `tauri-app/`:
+
+```powershell
+npm run build:release
+```
 
 ## Trading mode selection for operators
 
