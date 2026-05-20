@@ -47,6 +47,16 @@ def persist_bot_config(
         env_updates["VOICE_ENABLED"] = str(bool(prefs["voice_enabled"])).lower()
     if "screen_share_enabled" in prefs:
         env_updates["SCREEN_SHARE_ENABLED"] = str(bool(prefs["screen_share_enabled"])).lower()
+    if "dashboard_enabled" in prefs:
+        env_updates["DASHBOARD_ENABLED"] = str(bool(prefs["dashboard_enabled"])).lower()
+    if "runtime_trace" in prefs:
+        env_updates["LUMINA_RUNTIME_TRACE"] = str(bool(prefs["runtime_trace"])).lower()
+    if "runtime_trace_interval_sec" in prefs:
+        env_updates["LUMINA_RUNTIME_TRACE_INTERVAL_SEC"] = str(
+            int(prefs["runtime_trace_interval_sec"])
+        )
+    if "latency_sla_ms" in prefs:
+        env_updates["LUMINA_LATENCY_SLA_MS"] = str(int(prefs["latency_sla_ms"]))
     if env_updates:
         config_manager.write_env_file(env_updates)
 

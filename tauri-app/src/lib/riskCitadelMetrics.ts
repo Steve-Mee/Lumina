@@ -220,8 +220,17 @@ function deriveRegimeWall(
   };
 }
 
-export function deriveCitadelWalls(state: CoreStore): WallMetric[] {
-  const { liveMetrics, riskLevel, fortress } = state;
+export interface CitadelWallInputs {
+  liveMetrics: CoreStore["liveMetrics"];
+  riskLevel: CoreStore["riskLevel"];
+  fortress: CoreStore["fortress"];
+}
+
+export function deriveCitadelWallsFromInputs({
+  liveMetrics,
+  riskLevel,
+  fortress,
+}: CitadelWallInputs): WallMetric[] {
   const killSwitchActive = fortress?.kill_switch_active ?? false;
   const killThreshold =
     fortress?.drawdown_kill_pct ?? DEFAULT_DRAWDOWN_KILL_PCT;
@@ -232,6 +241,14 @@ export function deriveCitadelWalls(state: CoreStore): WallMetric[] {
     deriveKellyWall(liveMetrics.winrate, liveMetrics.consecutiveLosses),
     deriveRegimeWall(liveMetrics.regime, liveMetrics.regimeConfidence),
   ];
+}
+
+export function deriveCitadelWalls(state: CoreStore): WallMetric[] {
+  return deriveCitadelWallsFromInputs({
+    liveMetrics: state.liveMetrics,
+    riskLevel: state.riskLevel,
+    fortress: state.fortress,
+  });
 }
 
 export function tierLabel(tier: IntegrityTier): string {
@@ -259,22 +276,22 @@ export function tierBarClass(tier: IntegrityTier): string {
 export function tierBorderClass(tier: IntegrityTier): string {
   switch (tier) {
     case "green":
-      return "border-emerald-400/35 hover:border-emerald-400/55 hover:shadow-[0_0_20px_oklch(0.72_0.17_155/25%)]";
+      return "border-emerald-400/35 hover:border-emerald-400/55 hover:lumina-glow-edge";
     case "orange":
-      return "border-amber-400/35 hover:border-amber-400/55 hover:shadow-[0_0_20px_oklch(0.78_0.15_85/25%)]";
+      return "border-amber-400/35 hover:border-amber-400/55 hover:lumina-glow-edge";
     case "red":
-      return "border-red-400/40 hover:border-red-400/60 hover:shadow-[0_0_20px_oklch(0.65_0.2_25/30%)]";
+      return "border-red-400/40 hover:border-red-400/60 hover:lumina-glow-edge";
   }
 }
 
 export function tierRingClass(tier: IntegrityTier): string {
   switch (tier) {
     case "green":
-      return "border-emerald-400/50 shadow-[0_0_24px_oklch(0.72_0.17_155/35%)]";
+      return "border-emerald-400/50 lumina-glow-edge";
     case "orange":
-      return "border-amber-400/50 shadow-[0_0_24px_oklch(0.78_0.15_85/35%)]";
+      return "border-amber-400/50 lumina-glow-edge";
     case "red":
-      return "border-red-400/55 shadow-[0_0_24px_oklch(0.65_0.2_25/40%)]";
+      return "border-red-400/55 lumina-glow-edge";
   }
 }
 

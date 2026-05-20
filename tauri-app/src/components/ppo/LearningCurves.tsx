@@ -11,13 +11,12 @@ import {
 } from "recharts";
 
 import {
-  CHART_AXIS_TICK,
-  CHART_COLORS,
-  CHART_GRID_STROKE,
-  CHART_TOOLTIP_STYLE,
+  chartThemeForMode,
+  type ChartTheme,
 } from "@/lib/ppoEvolutionChartTheme";
 import { mapLogsToLearningCurvePoints } from "@/lib/ppoLearningCurvesModel";
 import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
 export interface LearningCurvesProps {
@@ -34,6 +33,7 @@ interface CurveCardProps {
   data: ReturnType<typeof mapLogsToLearningCurvePoints>;
   height: number;
   formatValue: (value: number) => string;
+  chartTheme: ChartTheme;
 }
 
 function CurveCard({
@@ -44,12 +44,13 @@ function CurveCard({
   data,
   height,
   formatValue,
+  chartTheme,
 }: CurveCardProps) {
   const uid = useId();
   const resolvedGradientId = `${gradientId}${uid.replace(/:/g, "")}`;
 
   return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+    <div className="lumina-surface-muted rounded-lg p-3">
       <p className="mb-2 text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
         {title}
       </p>
@@ -62,11 +63,11 @@ function CurveCard({
                 <stop offset="100%" stopColor={stroke} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
+            <CartesianGrid stroke={chartTheme.grid} vertical={false} />
             <XAxis dataKey="step" hide />
-            <YAxis width={36} tick={CHART_AXIS_TICK} />
+            <YAxis width={36} tick={chartTheme.axisTick} />
             <Tooltip
-              contentStyle={CHART_TOOLTIP_STYLE}
+              contentStyle={chartTheme.tooltip}
               labelFormatter={(step) => `step ${Number(step).toLocaleString()}`}
               formatter={(value) => [
                 formatValue(Number(value)),
@@ -96,6 +97,9 @@ function CurveCard({
 }
 
 export function LearningCurves({ logs, compact = false, className }: LearningCurvesProps) {
+  const operatorMode = useCoreStore(selectCurrentMode);
+  const chartTheme = chartThemeForMode(operatorMode);
+
   if (logs.length < 2) return null;
 
   const data = mapLogsToLearningCurvePoints(logs);
@@ -106,20 +110,22 @@ export function LearningCurves({ logs, compact = false, className }: LearningCur
       <CurveCard
         title="Mean reward"
         dataKey="meanReward"
-        stroke={CHART_COLORS.reward}
+        stroke={chartTheme.colors.reward}
         gradientId="ppo-reward-gradient"
         data={data}
         height={height}
         formatValue={(value) => value.toFixed(4)}
+        chartTheme={chartTheme}
       />
       <CurveCard
         title="Entropy"
         dataKey="entropy"
-        stroke={CHART_COLORS.entropy}
+        stroke={chartTheme.colors.entropy}
         gradientId="ppo-entropy-gradient"
         data={data}
         height={height}
         formatValue={(value) => value.toFixed(4)}
+        chartTheme={chartTheme}
       />
     </div>
   );

@@ -49,7 +49,15 @@ export interface OnboardingPayload {
   };
   model_catalog: ModelCatalogEntry[];
   readiness: ReadinessRow[];
-  credentials: { missing: string[]; has_admin_api_key: boolean };
+  credentials: {
+    missing: string[];
+    has_admin_api_key: boolean;
+    env_path?: string;
+    present?: Record<string, boolean>;
+    wizard_required?: boolean;
+    skip_reason?: "env_configured" | "setup_complete" | null;
+  };
+  workspace_root?: string;
   required_steps: OnboardingStepId[];
   wizard_steps: OnboardingStepId[];
   step_status: Record<string, StepStatus>;

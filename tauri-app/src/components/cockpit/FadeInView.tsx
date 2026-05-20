@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 
+import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { fadeUp, springSoft, transitionOrNone } from "@/lib/motionPresets";
+import { fadeUp, transitionOrNone } from "@/lib/motionPresets";
 import { cn } from "@/lib/utils";
 
 interface FadeInViewProps {
@@ -19,6 +20,7 @@ export function FadeInView({
   layout = false,
 }: FadeInViewProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const modeMotion = useModeMotion();
 
   return (
     <motion.div
@@ -28,7 +30,7 @@ export function FadeInView({
       animate="visible"
       variants={fadeUp}
       transition={transitionOrNone(reducedMotion, {
-        ...springSoft,
+        ...modeMotion,
         delay,
       })}
     >

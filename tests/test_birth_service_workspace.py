@@ -102,6 +102,39 @@ def test_configure_birth_workspace_module_helper(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_preflight_historical_data_does_not_raise_name_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: preflight must not crash with NameError (missing import os)."""
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "config.yaml").write_text(
+        "first_boot:\n  max_real_days: 30\n",
+        encoding="utf-8",
+    )
+
+    class _FakeMds:
+        def load_historical_ohlc_extended(self, **_kwargs: object) -> list[dict[str, int]]:
+            return [{"t": 1}]
+
+    class _FakeContainer:
+        def __init__(self) -> None:
+            self.engine = SimpleNamespace()
+            self.market_data_service = _FakeMds()
+            self.runtime_context = SimpleNamespace(app=None)
+
+    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
+
+    ok, msg = svc._preflight_historical_data(30)
+    assert isinstance(ok, bool)
+    assert isinstance(msg, str)
+    assert ok is True
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
 def test_start_birth_wires_container_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()

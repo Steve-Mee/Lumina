@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 
+import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { springSoft, transitionOrNone } from "@/lib/motionPresets";
+import { transitionOrNone } from "@/lib/motionPresets";
 import { cn } from "@/lib/utils";
 
 const VIEWBOX_WIDTH = 100;
@@ -39,6 +40,7 @@ export function Gauge({
   className,
 }: GaugeProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const modeMotion = useModeMotion();
   const percent = clampPercent(fillPercent);
   const dashOffset = ARC_LENGTH * (1 - percent / 100);
 
@@ -47,7 +49,7 @@ export function Gauge({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-lg border border-white/10 bg-black/30 p-3",
+        "relative overflow-hidden lumina-surface-muted rounded-lg p-3",
         compact ? "min-h-[108px]" : "min-h-[128px]",
         className,
       )}
@@ -83,7 +85,7 @@ export function Gauge({
             strokeDasharray={ARC_LENGTH}
             initial={false}
             animate={{ strokeDashoffset: dashOffset }}
-            transition={transitionOrNone(reducedMotion, springSoft)}
+            transition={transitionOrNone(reducedMotion, modeMotion)}
             style={{
               filter: glowFilter,
             }}
@@ -96,7 +98,7 @@ export function Gauge({
             className="font-mono text-sm font-semibold tabular-nums text-cyan-100/95"
             initial={reducedMotion ? false : { opacity: 0.7, scale: 0.98 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={transitionOrNone(reducedMotion, springSoft)}
+            transition={transitionOrNone(reducedMotion, modeMotion)}
           >
             {displayValue}
           </motion.p>

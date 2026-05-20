@@ -1,19 +1,10 @@
-import { OrbitControls } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
-import {
-  forceCenter,
-  forceCollide,
-  forceLink,
-  forceManyBody,
-  forceSimulation,
-} from "d3-force-3d";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import * as THREE from "three";
 
+import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { VisibilityCanvas } from "@/components/cockpit/VisibilityCanvas";
-
+import { EvolutionForceGraphScene } from "@/components/evolution/EvolutionForceGraphScene";
 import {
   Dialog,
   DialogContent,
@@ -30,17 +21,17 @@ import {
   resolveDefaultChallengerName,
 } from "@/lib/evolutionClient";
 import { useEvolutionTree } from "@/hooks/useEvolutionTree";
+import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { springSoft } from "@/lib/motionPresets";
-import type {
-  EvolutionEdge,
-  EvolutionGraph,
-  EvolutionNode,
-} from "@/lib/evolutionTreeTypes";
+import { birthClearTimeoutMs, calmMode, evolutionPalette, truncateHash } from "@/lib/evolutionArenaTheme";
+import { modeTitleClass } from "@/lib/modePresentation";
+import { transitionOrNone } from "@/lib/motionPresets";
+import type { EvolutionEdge, EvolutionNode } from "@/lib/evolutionTreeTypes";
 import { cn } from "@/lib/utils";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import {
   selectRenderConfig,
+  selectVisualQuality,
   useVisualSettingsStore,
 } from "@/store/visualSettingsStore";
 
@@ -48,364 +39,30 @@ interface EvolutionArenaProps {
   className?: string;
 }
 
-interface SimNode extends EvolutionNode {
-  x: number;
-  y: number;
-  z: number;
-  vx?: number;
-  vy?: number;
-  vz?: number;
-}
-
-interface BurstParticle {
-  id: number;
-  position: THREE.Vector3;
-  velocity: THREE.Vector3;
-  life: number;
-}
-
-const BURST_DURATION_S = 1.2;
-
-function truncateHash(hash: string, head = 8, tail = 6): string {
-  if (hash.length <= head + tail + 3) {
-    return hash;
-  }
-  return `${hash.slice(0, head)}…${hash.slice(-tail)}`;
-}
-
-function nodeRadius(fitness: number): number {
-  return 0.12 + fitness * 0.18;
-}
-
-function fitnessColor(fitness: number): string {
-  if (fitness >= 0.7) {
-    return "#00e5ff";
-  }
-  if (fitness >= 0.55) {
-    return "#a855f7";
-  }
-  return "#64748b";
-}
-
-function MutationBurst({
-  origin,
-  active,
-  reducedMotion,
-  burstParticles,
-}: {
-  origin: THREE.Vector3 | null;
-  active: boolean;
-  reducedMotion: boolean;
-  burstParticles: number;
-}) {
-  const meshRef = useRef<THREE.InstancedMesh>(null);
-  const particlesRef = useRef<BurstParticle[]>([]);
-  const dummy = useMemo(() => new THREE.Object3D(), []);
-
-  useEffect(() => {
-    if (!active || !origin || reducedMotion) {
-      particlesRef.current = [];
-      return;
-    }
-
-    particlesRef.current = Array.from({ length: burstParticles }, (_, i) => {
-      const direction = new THREE.Vector3(
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 2,
-      ).normalize();
-      return {
-        id: i,
-        position: origin.clone(),
-        velocity: direction.multiplyScalar(0.8 + Math.random() * 1.4),
-        life: 1,
-      };
-    });
-  }, [active, origin, reducedMotion, burstParticles]);
-
-  useFrame((_, delta) => {
-    const mesh = meshRef.current;
-    if (!mesh || particlesRef.current.length === 0) {
-      return;
-    }
-
-    let alive = 0;
-    for (const particle of particlesRef.current) {
-      particle.life -= delta / BURST_DURATION_S;
-      if (particle.life <= 0) {
-        continue;
-      }
-      alive += 1;
-      particle.position.addScaledVector(particle.velocity, delta);
-      particle.velocity.multiplyScalar(0.96);
-
-      dummy.position.copy(particle.position);
-      dummy.scale.setScalar(0.035 * particle.life);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(particle.id, dummy.matrix);
-    }
-
-    mesh.instanceMatrix.needsUpdate = true;
-
-    if (alive === 0) {
-      particlesRef.current = [];
-    }
-  });
-
-  if (!active || !origin || reducedMotion) {
-    return null;
-  }
-
-  return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, burstParticles]}>
-      <sphereGeometry args={[1, 6, 6]} />
-      <meshBasicMaterial color="#fbbf24" transparent opacity={0.85} />
-    </instancedMesh>
-  );
-}
-
-function GraphEdges({
-  edges,
-  positions,
-}: {
-  edges: EvolutionEdge[];
-  positions: Map<string, THREE.Vector3>;
-}) {
-  const geometry = useMemo(() => {
-    const points: number[] = [];
-    for (const edge of edges) {
-      const from = positions.get(edge.from);
-      const to = positions.get(edge.to);
-      if (!from || !to) {
-        continue;
-      }
-      points.push(from.x, from.y, from.z, to.x, to.y, to.z);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
-    return geo;
-  }, [edges, positions]);
-
-  return (
-    <lineSegments geometry={geometry}>
-      <lineBasicMaterial color="#22d3ee" transparent opacity={0.45} />
-    </lineSegments>
-  );
-}
-
-function GraphNode({
-  node,
-  position,
-  isNew,
-  reducedMotion,
-  onSelect,
-}: {
-  node: EvolutionNode;
-  position: THREE.Vector3;
-  isNew: boolean;
-  reducedMotion: boolean;
-  onSelect: (node: EvolutionNode) => void;
-}) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const ringRef = useRef<THREE.Mesh>(null);
-  const radius = nodeRadius(node.fitness);
-  const color = fitnessColor(node.fitness);
-  const isChampion = node.status === "champion";
-  const isProposed = node.status === "proposed";
-
-  useFrame(({ clock }) => {
-    if (meshRef.current && isProposed && !reducedMotion) {
-      const mat = meshRef.current.material as THREE.MeshStandardMaterial;
-      mat.emissiveIntensity = 0.35 + Math.sin(clock.getElapsedTime() * 4) * 0.25;
-    }
-    if (ringRef.current && isChampion) {
-      ringRef.current.rotation.x += 0.01;
-      ringRef.current.rotation.y += 0.015;
-    }
-  });
-
-  return (
-    <group position={position}>
-      {isChampion ? (
-        <mesh ref={ringRef}>
-          <torusGeometry args={[radius + 0.08, 0.012, 8, 24]} />
-          <meshBasicMaterial color="#fbbf24" transparent opacity={0.85} />
-        </mesh>
-      ) : null}
-      <mesh
-        ref={meshRef}
-        onClick={(event) => {
-          event.stopPropagation();
-          onSelect(node);
-        }}
-        scale={isNew && !reducedMotion ? 1.15 : 1}
-      >
-        <sphereGeometry args={[radius, 20, 20]} />
-        <meshStandardMaterial
-          color={color}
-          emissive={isProposed ? "#f59e0b" : color}
-          emissiveIntensity={isProposed ? 0.45 : 0.25}
-          roughness={0.35}
-          metalness={0.55}
-        />
-      </mesh>
-    </group>
-  );
-}
-
-function ForceGraphScene({
-  graph,
-  newNodeIds,
-  reducedMotion,
-  forceTicksPerFrame,
-  burstParticles,
-  onNodeSelect,
-}: {
-  graph: EvolutionGraph;
-  newNodeIds: string[];
-  reducedMotion: boolean;
-  forceTicksPerFrame: number;
-  burstParticles: number;
-  onNodeSelect: (node: EvolutionNode) => void;
-}) {
-  const simulationRef = useRef<ReturnType<typeof forceSimulation> | null>(null);
-  const simNodesRef = useRef<SimNode[]>([]);
-  const [positions, setPositions] = useState<Map<string, THREE.Vector3>>(new Map());
-  const tickBudgetRef = useRef(240);
-
-  useEffect(() => {
-    const simNodes: SimNode[] = graph.nodes.map((node, index) => ({
-      ...node,
-      x: Math.cos(index) * 1.5,
-      y: (index - graph.nodes.length / 2) * 0.35,
-      z: Math.sin(index) * 1.5,
-    }));
-
-    const links = graph.edges.map((edge) => ({
-      source: edge.from,
-      target: edge.to,
-    }));
-
-    const linkForce = forceLink(links) as unknown as {
-      id: (fn: (node: SimNode) => string) => {
-        distance: (d: number) => { strength: (s: number) => unknown };
-      };
-    };
-    const collideForce = forceCollide() as unknown as {
-      radius: (fn: (node: SimNode) => number) => unknown;
-    };
-    const chargeForce = forceManyBody() as unknown as {
-      strength: (s: number) => unknown;
-    };
-
-    const simulation = forceSimulation(simNodes, 3)
-      .force("link", linkForce.id((node) => node.id).distance(1.1).strength(0.7))
-      .force("charge", chargeForce.strength(-140))
-      .force("center", forceCenter(0, 0, 0))
-      .force(
-        "collide",
-        collideForce.radius((node) => nodeRadius(node.fitness) + 0.08),
-      )
-      .alpha(1)
-      .alphaDecay(reducedMotion ? 0.08 : 0.02);
-
-    simulationRef.current = simulation;
-    simNodesRef.current = simNodes;
-    tickBudgetRef.current = 240;
-
-    return () => {
-      simulation.stop();
-      simulationRef.current = null;
-    };
-  }, [graph, reducedMotion]);
-
-  useFrame(() => {
-    const simulation = simulationRef.current;
-    const simNodes = simNodesRef.current;
-    if (!simulation || simNodes.length === 0) {
-      return;
-    }
-
-    if (simulation.alpha() > 0.02 && tickBudgetRef.current > 0) {
-      for (let i = 0; i < forceTicksPerFrame; i += 1) {
-        if (simulation.alpha() <= 0.02 || tickBudgetRef.current <= 0) {
-          break;
-        }
-        simulation.tick();
-        tickBudgetRef.current -= 1;
-      }
-    }
-
-    const next = new Map<string, THREE.Vector3>();
-    for (const node of simNodes) {
-      next.set(node.id, new THREE.Vector3(node.x ?? 0, node.y ?? 0, node.z ?? 0));
-    }
-    setPositions(next);
-  });
-
-  const burstOrigin = useMemo(() => {
-    if (newNodeIds.length === 0) {
-      return null;
-    }
-    return positions.get(newNodeIds[0]) ?? null;
-  }, [newNodeIds, positions]);
-
-  return (
-    <>
-      <ambientLight intensity={0.45} />
-      <pointLight position={[4, 5, 6]} intensity={1.1} color="#a855f7" />
-      <pointLight position={[-5, -3, 4]} intensity={0.7} color="#22d3ee" />
-
-      <GraphEdges edges={graph.edges} positions={positions} />
-      {graph.nodes.map((node) => {
-        const position = positions.get(node.id);
-        if (!position) {
-          return null;
-        }
-        return (
-          <GraphNode
-            key={node.id}
-            node={node}
-            position={position}
-            isNew={newNodeIds.includes(node.id)}
-            reducedMotion={reducedMotion}
-            onSelect={onNodeSelect}
-          />
-        );
-      })}
-
-      <MutationBurst
-        origin={burstOrigin}
-        active={newNodeIds.length > 0}
-        reducedMotion={reducedMotion}
-        burstParticles={burstParticles}
-      />
-
-      <OrbitControls enablePan={false} minDistance={3} maxDistance={12} />
-    </>
-  );
-}
-
 function NodeDetailDialog({
   node,
   incomingEdge,
   open,
   onOpenChange,
+  mode,
 }: {
   node: EvolutionNode | null;
   incomingEdge: EvolutionEdge | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  mode: ReturnType<typeof selectCurrentMode>;
 }) {
   if (!node) {
     return null;
   }
 
+  const palette = evolutionPalette(mode);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-violet-100">
+          <DialogTitle className={cn("flex items-center gap-2", modeTitleClass(mode))}>
             {truncateHash(node.hash)}
             <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] tracking-wider uppercase text-violet-300">
               {node.status}
@@ -437,8 +94,11 @@ function NodeDetailDialog({
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-white/5">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400"
-                style={{ width: `${Math.round(node.fitness * 100)}%` }}
+                className="h-full rounded-full"
+                style={{
+                  width: `${Math.round(node.fitness * 100)}%`,
+                  background: `linear-gradient(90deg, ${palette.secondary}, ${palette.primary})`,
+                }}
               />
             </div>
           </div>
@@ -480,13 +140,20 @@ function NodeDetailDialog({
               <Button
                 type="button"
                 size="xs"
+                variant="command-primary"
                 onClick={() => {
                   void approveProposal({
                     hash: node.hash,
-                    challenger_name: resolveDefaultChallengerName({ hash: node.hash, challengers: [{ name: node.promptId }] }) ?? node.promptId,
+                    challenger_name:
+                      resolveDefaultChallengerName({
+                        hash: node.hash,
+                        challengers: [{ name: node.promptId }],
+                      }) ?? node.promptId,
                   })
                     .then(() => toast.success("Mutation approved"))
-                    .catch((e) => toast.error(e instanceof Error ? e.message : "Approve failed"));
+                    .catch((e) =>
+                      toast.error(e instanceof Error ? e.message : "Approve failed"),
+                    );
                 }}
               >
                 Approve
@@ -494,11 +161,17 @@ function NodeDetailDialog({
               <Button
                 type="button"
                 size="xs"
-                variant="secondary"
+                variant="command-ghost"
+                data-intent="danger"
                 onClick={() => {
-                  void rejectProposal({ hash: node.hash, reason: "Rejected from Evolution Arena" })
+                  void rejectProposal({
+                    hash: node.hash,
+                    reason: "Rejected from Evolution Arena",
+                  })
                     .then(() => toast.success("Mutation rejected"))
-                    .catch((e) => toast.error(e instanceof Error ? e.message : "Reject failed"));
+                    .catch((e) =>
+                      toast.error(e instanceof Error ? e.message : "Reject failed"),
+                    );
                 }}
               >
                 Reject
@@ -513,9 +186,12 @@ function NodeDetailDialog({
 
 export function EvolutionArena({ className }: EvolutionArenaProps) {
   const prefersReducedMotion = usePrefersReducedMotion();
+  const modeMotion = useModeMotion();
   const currentMode = useCoreStore(selectCurrentMode);
   const renderConfig = useVisualSettingsStore(selectRenderConfig);
-  const reducedMotion = prefersReducedMotion || currentMode === "REAL";
+  const visualQuality = useVisualSettingsStore(selectVisualQuality);
+  const reducedMotion = prefersReducedMotion || visualQuality === "low";
+  const isCalmMode = calmMode(currentMode);
   const { graph, newNodeIds, loading, error, clearNewNodes, refresh } = useEvolutionTree();
   const [selectedNode, setSelectedNode] = useState<EvolutionNode | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -526,9 +202,9 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
     }
     const timer = setTimeout(() => {
       clearNewNodes();
-    }, BURST_DURATION_S * 1000);
+    }, birthClearTimeoutMs(currentMode));
     return () => clearTimeout(timer);
-  }, [newNodeIds, clearNewNodes]);
+  }, [newNodeIds, clearNewNodes, currentMode]);
 
   const incomingEdge = useMemo(() => {
     if (!selectedNode) {
@@ -537,7 +213,12 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
     return graph.edges.find((edge) => edge.to === selectedNode.id) ?? null;
   }, [graph.edges, selectedNode]);
 
-  const handleNodeSelect = (node: EvolutionNode) => {
+  const handleNodeClick = (node: EvolutionNode) => {
+    if (node.status === "proposed") {
+      setSelectedNode(node);
+      setDialogOpen(true);
+      return;
+    }
     setSelectedNode(node);
     setDialogOpen(true);
   };
@@ -545,9 +226,14 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
   return (
     <>
       <div
-        className={cn("evolution-arena-shell relative min-h-[220px] w-full", className)}
+        className={cn(
+          "evolution-arena-shell relative min-h-[220px] w-full",
+          isCalmMode ? "evolution-arena-shell--real" : "evolution-arena-shell--sim",
+          className,
+        )}
         aria-label={`Evolution arena — ${graph.nodes.length} strategies`}
         role="img"
+        data-mode={currentMode}
       >
         <AnimatePresence>
           {loading ? (
@@ -557,9 +243,9 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={transitionOrNone(reducedMotion, modeMotion)}
             >
-              <PanelLoader label="Syncing evolution tree…" />
+              <PanelLoader label={DECK_LOADING_COPY.evolutionArena} />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -576,7 +262,7 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
               <Button
                 type="button"
                 size="xs"
-                variant="secondary"
+                variant="command-ghost"
                 className="mt-2"
                 onClick={() => void refresh()}
               >
@@ -588,20 +274,25 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
 
         {!loading && !error && graph.nodes.length === 0 ? (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            <p className="font-mono text-xs tracking-wide text-cyan-200/90 uppercase">
+            <p
+              className={cn(
+                "mode-text-tier2 font-mono text-xs tracking-wide uppercase",
+                modeTitleClass(currentMode),
+              )}
+            >
               No evolution tree yet
             </p>
             <p className="max-w-xs text-[11px] text-muted-foreground">
               Strategies appear here after birth completes and evolution proposals are recorded.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
-              <Button type="button" size="sm" variant="secondary" onClick={() => void refresh()}>
+              <Button type="button" size="sm" variant="command-primary" onClick={() => void refresh()}>
                 Refresh
               </Button>
               <Button
                 type="button"
                 size="sm"
-                variant="ghost"
+                variant="command-ghost"
                 onClick={() => useDeckPanelStore.getState().setActiveRightTab("monitor")}
               >
                 Open Monitor
@@ -614,28 +305,30 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
           className="h-full w-full"
           initial={{ opacity: 0 }}
           animate={{ opacity: loading ? 0.3 : 1 }}
-          transition={springSoft}
+          transition={transitionOrNone(reducedMotion, modeMotion)}
         >
-        <Suspense
-          fallback={
-            <PanelLoader label="Initializing force graph…" className="min-h-[220px]" />
-          }
-        >
-          <VisibilityCanvas
-            panelName="Evolution Arena"
-            idleLabel="Evolution arena paused — scroll into view"
-            camera={{ position: [0, 0, 5.5], fov: 50 }}
+          <Suspense
+            fallback={
+              <PanelLoader label={DECK_LOADING_COPY.forceGraph} className="min-h-[220px]" />
+            }
           >
-            <ForceGraphScene
-              graph={graph}
-              newNodeIds={newNodeIds}
-              reducedMotion={reducedMotion}
-              forceTicksPerFrame={renderConfig.forceTicksPerFrame}
-              burstParticles={renderConfig.burstParticles}
-              onNodeSelect={handleNodeSelect}
-            />
-          </VisibilityCanvas>
-        </Suspense>
+            <VisibilityCanvas
+              panelName="Evolution Arena"
+              idleLabel="Evolution arena paused — scroll into view"
+              camera={{ position: [0, 0, 5.5], fov: 50 }}
+            >
+              <EvolutionForceGraphScene
+                graph={graph}
+                newNodeIds={newNodeIds}
+                reducedMotion={reducedMotion}
+                calmMode={isCalmMode}
+                mode={currentMode}
+                visualQuality={visualQuality}
+                renderConfig={renderConfig}
+                onNodeClick={handleNodeClick}
+              />
+            </VisibilityCanvas>
+          </Suspense>
         </motion.div>
       </div>
 
@@ -644,6 +337,7 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
         incomingEdge={incomingEdge}
         open={dialogOpen}
         onOpenChange={setDialogOpen}
+        mode={currentMode}
       />
     </>
   );

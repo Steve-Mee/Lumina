@@ -20,12 +20,12 @@ const STATUS_STYLES: Record<
 > = {
   healthy: {
     badge:
-      "border-emerald-500/40 bg-emerald-950/40 text-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.2)]",
+      "border-emerald-500/40 bg-emerald-950/40 text-emerald-300 lumina-glow-edge",
     dot: "bg-emerald-400",
   },
   watch: {
     badge:
-      "border-amber-500/40 bg-amber-950/40 text-amber-300 shadow-[0_0_10px_rgba(251,191,36,0.15)]",
+      "border-amber-500/40 bg-amber-950/40 text-amber-300 lumina-glow-edge",
     dot: "bg-amber-400",
   },
   critical: {
@@ -56,7 +56,7 @@ function MetricRow({ label, displayValue, metric, compact }: MetricRowProps) {
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 rounded-md border border-white/5 bg-black/20 px-3",
+        "flex items-center justify-between gap-3 lumina-surface-muted rounded-md px-3",
         compact ? "py-2" : "py-2.5",
       )}
     >
@@ -73,7 +73,7 @@ export function PolicyHealthPanel({ metric, compact = false, className }: Policy
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-lg border border-white/10 bg-black/20 p-3",
+        "relative overflow-hidden lumina-surface-muted rounded-lg p-3",
         className,
       )}
       aria-label="Policy health"

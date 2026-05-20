@@ -78,7 +78,7 @@ export function PolicyComparison({ logs, className }: PolicyComparisonProps) {
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-lg border border-white/10 bg-black/20 p-4",
+        "relative overflow-hidden lumina-surface-muted rounded-lg p-4",
         className,
       )}
       aria-label="Policy comparison"
@@ -95,7 +95,7 @@ export function PolicyComparison({ logs, className }: PolicyComparisonProps) {
         <p className="text-xs text-muted-foreground">Need at least 2 training snapshots…</p>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_auto_1fr]">
-          <div className="space-y-3 rounded-lg border border-white/10 bg-black/25 p-3">
+          <div className="lumina-surface-muted space-y-3 rounded-lg p-3">
             <p className="font-mono text-xs tracking-wide text-cyan-200/90 uppercase">
               {comparison.birth.label}
             </p>

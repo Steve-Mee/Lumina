@@ -11,7 +11,12 @@ import {
   startSmartSetup,
   type ConfigurePayload,
 } from "@/lib/setupClient";
+import { mergeCredentialsIntoDraft } from "@/lib/credentialsPrefill";
 import { persistMonitoringApiKey, resolveMonitoringApiKey } from "@/lib/monitoringClient";
+import {
+  fetchAndHydrateDeckApiKey,
+  fetchDeckCredentialsPrefill,
+} from "@/lib/setupClient";
 import { useBirthStore } from "@/store/birthStore";
 
 export interface OnboardingDraft {
@@ -22,6 +27,13 @@ export interface OnboardingDraft {
     CROSSTRADE_TOKEN: string;
     CROSSTRADE_ACCOUNT: string;
     LUMINA_ADMIN_API_KEY: string;
+    XAI_API_KEY: string;
+    TELEGRAM_BOT_TOKEN: string;
+    TELEGRAM_CHAT_ID: string;
+  };
+  smart_setup: {
+    force_high_tier: boolean;
+    pull_extra_models: boolean;
   };
   risk: {
     kelly_fraction: number;
@@ -78,11 +90,15 @@ interface OnboardingState {
   completeBirthTransition: () => void;
   setStepIndex: (index: number) => void;
   updateDraft: (patch: Partial<OnboardingDraft>) => void;
-  runSmartSetup: () => Promise<void>;
+  runSmartSetup: (options?: {
+    force_high_tier?: boolean;
+    pull_extra_models?: boolean;
+  }) => Promise<void>;
   saveCredentials: () => Promise<boolean>;
   saveConfiguration: () => Promise<boolean>;
   activateBirth: () => Promise<boolean>;
   hydrateDraftFromPayload: (payload: OnboardingPayload) => void;
+  importCredentialsFromEnv: () => Promise<boolean>;
 }
 
 const defaultDraft = (): OnboardingDraft => ({
@@ -93,6 +109,13 @@ const defaultDraft = (): OnboardingDraft => ({
     CROSSTRADE_TOKEN: "",
     CROSSTRADE_ACCOUNT: "",
     LUMINA_ADMIN_API_KEY: "",
+    XAI_API_KEY: "",
+    TELEGRAM_BOT_TOKEN: "",
+    TELEGRAM_CHAT_ID: "",
+  },
+  smart_setup: {
+    force_high_tier: false,
+    pull_extra_models: false,
   },
   risk: {
     kelly_fraction: 1.0,
@@ -126,7 +149,17 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
 
   setPhase: (phase) => set({ phase }),
 
-  completeBirthTransition: () => set({ phase: "cockpit" }),
+  completeBirthTransition: () => {
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("lumina.showCockpitWelcome", "1");
+      } catch {
+        // ignore storage failures
+      }
+    }
+    void fetchAndHydrateDeckApiKey();
+    set({ phase: "cockpit" });
+  },
 
   setStepIndex: (index) => set({ currentStepIndex: index }),
 
@@ -165,21 +198,41 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
             (payload.defaults.first_boot as Record<string, unknown>).allow_minimal_synthetic_fallback ?? false,
           ),
         },
-        credentials: {
-          ...get().draft.credentials,
+        credentials: mergeCredentialsIntoDraft(get().draft.credentials, {
           LUMINA_ADMIN_API_KEY:
             get().draft.credentials.LUMINA_ADMIN_API_KEY.trim() ||
             resolveMonitoringApiKey() ||
             "",
-        },
+        }),
       },
     });
+  },
+
+  importCredentialsFromEnv: async () => {
+    try {
+      const snapshot = await fetchDeckCredentialsPrefill();
+      const merged = mergeCredentialsIntoDraft(get().draft.credentials, snapshot.credentials);
+      const adminKey = merged.LUMINA_ADMIN_API_KEY.trim();
+      if (adminKey) {
+        persistMonitoringApiKey(adminKey);
+      }
+      set({
+        draft: {
+          ...get().draft,
+          credentials: merged,
+        },
+      });
+      return true;
+    } catch {
+      return false;
+    }
   },
 
   refresh: async () => {
     try {
       const payload = await fetchOnboardingStatus();
       get().hydrateDraftFromPayload(payload);
+      void get().importCredentialsFromEnv();
       const priorPhase = get().phase;
       set({
         payload,
@@ -199,7 +252,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     }
   },
 
-  runSmartSetup: async () => {
+  runSmartSetup: async (options) => {
     const { draft } = get();
     set({ smartSetupRunning: true, error: null });
     try {
@@ -207,6 +260,8 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         install_ollama: true,
         download_recommended_model: true,
         selected_model_key: draft.selected_model_key || undefined,
+        force_high_tier: options?.force_high_tier ?? draft.smart_setup.force_high_tier,
+        pull_extra_models: options?.pull_extra_models ?? draft.smart_setup.pull_extra_models,
       });
     } catch (err) {
       set({
@@ -217,7 +272,10 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   },
 
   saveCredentials: async () => {
-    const { draft } = get();
+    const { draft, payload } = get();
+    if (payload?.credentials.wizard_required === false) {
+      return true;
+    }
     try {
       persistMonitoringApiKey(draft.credentials.LUMINA_ADMIN_API_KEY);
       const result = await postCredentials(draft.credentials);

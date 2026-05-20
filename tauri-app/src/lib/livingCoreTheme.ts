@@ -1,3 +1,19 @@
+import type { IntelligenceHealth } from "@/lib/adaptiveIntelligenceTypes";
+import {
+  MODE_REAL_ACCENT,
+  MODE_REAL_PRIMARY,
+  MODE_REAL_SECONDARY,
+  MODE_SIM_ACCENT,
+  MODE_SIM_ACCENT_SOFT,
+  MODE_SIM_SECONDARY,
+  STATUS_ERROR,
+  STATUS_WARN,
+} from "@/lib/designTokens";
+import {
+  buildVisualParamsFromSignals,
+  type LivingCoreLiveSignals,
+  type LivingCoreVisualParams,
+} from "@/lib/livingCoreLiveModel";
 import type { RiskLevel, TradingMode } from "@/store/coreStore";
 
 export interface LivingCorePalette {
@@ -8,33 +24,33 @@ export interface LivingCorePalette {
 }
 
 const SIM_PALETTE: LivingCorePalette = {
-  primary: "#00e5ff",
-  secondary: "#a855f7",
-  accent: "#ec4899",
-  pulseSpeed: 1.4,
+  primary: MODE_SIM_ACCENT,
+  secondary: MODE_SIM_SECONDARY,
+  accent: MODE_SIM_ACCENT_SOFT,
+  pulseSpeed: 0.55,
 };
 
 const REAL_PALETTE: LivingCorePalette = {
-  primary: "#64748b",
-  secondary: "#3b82f6",
-  accent: "#f59e0b",
-  pulseSpeed: 0.7,
+  primary: MODE_REAL_PRIMARY,
+  secondary: MODE_REAL_SECONDARY,
+  accent: MODE_REAL_ACCENT,
+  pulseSpeed: 0.35,
 };
 
 const RISK_AGITATION: Record<RiskLevel, number> = {
   NORMAL: 0.25,
   ELEVATED: 0.5,
   HIGH: 0.75,
-  CRITICAL: 1.0,
+  CRITICAL: 1,
   UNKNOWN: 0.35,
 };
 
 const RISK_TINT: Record<RiskLevel, string> = {
   NORMAL: "#2dd4bf",
-  ELEVATED: "#fbbf24",
-  HIGH: "#f97316",
-  CRITICAL: "#ef4444",
-  UNKNOWN: "#94a3b8",
+  ELEVATED: STATUS_WARN,
+  HIGH: STATUS_WARN,
+  CRITICAL: STATUS_ERROR,
+  UNKNOWN: MODE_REAL_PRIMARY,
 };
 
 export function modePalette(mode: TradingMode): LivingCorePalette {
@@ -48,3 +64,11 @@ export function riskAgitation(risk: RiskLevel): number {
 export function riskTint(risk: RiskLevel): string {
   return RISK_TINT[risk];
 }
+
+export function buildLivingCoreVisualParams(
+  signals: LivingCoreLiveSignals,
+): LivingCoreVisualParams {
+  return buildVisualParamsFromSignals(modePalette(signals.mode), signals);
+}
+
+export type { IntelligenceHealth, LivingCoreLiveSignals, LivingCoreVisualParams };

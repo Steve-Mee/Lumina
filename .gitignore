@@ -61,6 +61,7 @@ lumina_launcher.py.old
 # Runtime generated data
 logs/
 !logs/.gitkeep
+logs/structured_errors.jsonl
 journal/simulator/*.json
 
 # Frontend production build (embedded React under /ui)

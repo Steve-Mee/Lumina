@@ -16,6 +16,7 @@ import {
   type BotConfigDraft,
   type MutationDepth,
 } from "@/lib/botConfigDraft";
+import { helpFor } from "@/lib/helpTexts";
 import { cn } from "@/lib/utils";
 
 interface BotConfigFormProps {
@@ -318,6 +319,64 @@ export function BotConfigForm({
               />
               <span>Live chart screen share</span>
             </label>
+          </div>
+        </section>
+
+        <section>
+          <h3 className="bot-config-section-title">Operator diagnostics</h3>
+          <div className="mt-3 space-y-3">
+            <label className="flex items-start gap-3 text-sm" title={helpFor("dashboard_enabled")}>
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={draft.preferences.dashboard_enabled}
+                onChange={(e) =>
+                  onChange({
+                    preferences: { ...draft.preferences, dashboard_enabled: e.target.checked },
+                  })
+                }
+              />
+              <span>Dashboard feedback paths</span>
+            </label>
+            <label className="flex items-start gap-3 text-sm" title={helpFor("runtime_trace")}>
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={draft.preferences.runtime_trace}
+                onChange={(e) =>
+                  onChange({
+                    preferences: { ...draft.preferences, runtime_trace: e.target.checked },
+                  })
+                }
+              />
+              <span>Runtime trace</span>
+            </label>
+            <ConfigRange
+              label="Runtime trace interval"
+              value={draft.preferences.runtime_trace_interval_sec}
+              min={0}
+              max={10}
+              step={1}
+              format={(v) => `${v}s`}
+              onChange={(v) =>
+                onChange({
+                  preferences: { ...draft.preferences, runtime_trace_interval_sec: v },
+                })
+              }
+            />
+            <ConfigRange
+              label="Latency SLA"
+              value={draft.preferences.latency_sla_ms}
+              min={150}
+              max={1000}
+              step={50}
+              format={(v) => `${v} ms`}
+              onChange={(v) =>
+                onChange({
+                  preferences: { ...draft.preferences, latency_sla_ms: v },
+                })
+              }
+            />
           </div>
         </section>
       </div>

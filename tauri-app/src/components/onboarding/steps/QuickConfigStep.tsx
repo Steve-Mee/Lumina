@@ -29,7 +29,7 @@ export function QuickConfigStep({ draft, onChange, onContinue }: QuickConfigStep
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="onboarding-card mx-auto max-w-xl p-8"
+      className="mx-auto max-w-xl p-2 md:p-4"
     >
       <h2 className="mb-2 text-lg font-semibold">Quick Configuration</h2>
       <p className="mb-6 text-sm text-muted-foreground">

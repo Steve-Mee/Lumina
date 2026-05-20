@@ -1,28 +1,48 @@
-import { OrbitControls } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import * as THREE from "three";
 
+import { CinematicBloom } from "@/components/cockpit/CinematicBloom";
 import { LuminaLogo } from "@/components/cockpit/LuminaLogo";
+import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { VisibilityCanvas } from "@/components/cockpit/VisibilityCanvas";
+import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { resolveIntelligenceHealth } from "@/lib/adaptiveIntelligenceTypes";
+import { getOrganismClock } from "@/lib/organismClockStore";
 import {
-  modePalette,
-  riskAgitation,
+  vigilantHeartbeatPulse,
+} from "@/lib/breatheCurve";
+import {
+  BIRTH_HELIX_HEIGHT,
+  buildHelixCurve,
+  helixPoint,
+  LIVING_RUNG_COUNT,
+} from "@/lib/birthHelixGeometry";
+import {
+  buildLivingCoreVisualParams,
   riskTint,
-  type LivingCorePalette,
+  type LivingCoreVisualParams,
 } from "@/lib/livingCoreTheme";
-import { springSoft } from "@/lib/motionPresets";
+import { vitalityBucket } from "@/lib/livingCoreLiveModel";
+import { immersiveHaloClass } from "@/lib/pulseLanguage";
+import { transitionOrNone } from "@/lib/motionPresets";
 import { cn } from "@/lib/utils";
 import {
+  selectAdaptiveIntelligenceStatus,
+  selectAdaptiveTransitionSummary,
+  selectConnectionStatus,
   selectCurrentMode,
+  selectFallbackMode,
+  selectLiveMetrics,
   selectRiskLevel,
   useCoreStore,
   type RiskLevel,
   type TradingMode,
 } from "@/store/coreStore";
+import type { VisualQuality } from "@/lib/visualQualityPresets";
 import {
   selectRenderConfig,
   selectVisualQuality,
@@ -34,48 +54,25 @@ interface LivingCoreProps {
 }
 
 interface SceneProps {
-  mode: TradingMode;
+  visualParams: LivingCoreVisualParams;
   riskLevel: RiskLevel;
+  mode: TradingMode;
   reducedMotion: boolean;
   particleCount: number;
+  synapseBoost: number;
+  visualQuality: VisualQuality;
 }
-
-const HELIX_HEIGHT = 3.2;
-const HELIX_TURNS = 2.5;
-const RUNG_COUNT = 40;
 
 export function particleCountForMode(
   mode: TradingMode,
   particleScale: number,
+  vitality = 1,
 ): number {
-  const base = mode === "SIM" ? 420 : 120;
-  return Math.max(20, Math.round(base * particleScale));
+  const base = mode === "SIM" ? 504 : 120;
+  return Math.max(20, Math.round(base * particleScale * (0.45 + vitality * 0.55)));
 }
 
-function helixPoint(
-  t: number,
-  strand: 0 | 1,
-  radius: number,
-  phase: number,
-): THREE.Vector3 {
-  const angle = t * Math.PI * 2 * HELIX_TURNS + strand * Math.PI + phase;
-  const y = (t - 0.5) * HELIX_HEIGHT;
-  return new THREE.Vector3(
-    Math.cos(angle) * radius,
-    y,
-    Math.sin(angle) * radius,
-  );
-}
-
-function buildHelixCurve(strand: 0 | 1, radius: number, phase: number): THREE.CatmullRomCurve3 {
-  const points: THREE.Vector3[] = [];
-  for (let i = 0; i <= 64; i++) {
-    points.push(helixPoint(i / 64, strand, radius, phase));
-  }
-  return new THREE.CatmullRomCurve3(points);
-}
-
-function useLerpedColor(targetHex: string, speed = 0.08): THREE.Color {
+function useLerpedColor(targetHex: string, speed = 0.06): THREE.Color {
   const colorRef = useRef(new THREE.Color(targetHex));
 
   useEffect(() => {
@@ -89,72 +86,127 @@ function useLerpedColor(targetHex: string, speed = 0.08): THREE.Color {
   return colorRef.current;
 }
 
-function CoreGlow({
-  palette,
-  agitation,
-  pulseSpeed,
+function clampPulse(value: number): number {
+  return Math.min(1, Math.max(0.28, value));
+}
+
+function HeartCore({
+  visualParams,
   reducedMotion,
+  mode,
+  synapseBoost,
 }: {
-  palette: LivingCorePalette;
-  agitation: number;
-  pulseSpeed: number;
+  visualParams: LivingCoreVisualParams;
   reducedMotion: boolean;
+  mode: TradingMode;
+  synapseBoost: number;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
-  const color = useLerpedColor(palette.accent);
+  const color = useLerpedColor(visualParams.palette.accent);
 
-  useFrame(({ clock }) => {
+  useFrame(() => {
     if (!meshRef.current) {
       return;
     }
-    const t = clock.getElapsedTime();
+    const { elapsedSec: t, envelope } = getOrganismClock(mode);
+    const simHeartbeat =
+      visualParams.vitality > 0.6
+        ? Math.sin(t * visualParams.pulseSpeed * 2.4) * 0.16
+        : Math.sin(t * visualParams.pulseSpeed * 2.4) * 0.1;
+    const realVigil = mode === "REAL" ? vigilantHeartbeatPulse(t, 6) * 0.2 : 0;
     const pulse = reducedMotion
-      ? 0.35
-      : 0.25 + Math.sin(t * pulseSpeed * 2) * 0.15 + agitation * 0.1;
+      ? 0.32 + visualParams.vitality * 0.14
+      : 0.24 +
+        envelope * 0.16 +
+        simHeartbeat +
+        realVigil +
+        visualParams.agitation * 0.08 * visualParams.vitality +
+        synapseBoost * 0.15;
     const mat = meshRef.current.material as THREE.MeshBasicMaterial;
-    mat.opacity = pulse;
-    meshRef.current.scale.setScalar(0.55 + pulse * 0.25);
+    mat.opacity = clampPulse(pulse) * (0.68 + visualParams.vitality * 0.32);
+    meshRef.current.scale.setScalar(0.42 + clampPulse(pulse) * 0.24 * visualParams.vitality);
   });
 
   return (
     <mesh ref={meshRef}>
-      <sphereGeometry args={[0.45, 24, 24]} />
+      <sphereGeometry args={[0.38, 24, 24]} />
       <meshBasicMaterial color={color} transparent opacity={0.35} depthWrite={false} />
     </mesh>
   );
 }
 
-function DnaHelix({
-  palette,
-  agitation,
-  pulseSpeed,
+function AuraHalo({
+  visualParams,
   reducedMotion,
+  mode,
 }: {
-  palette: LivingCorePalette;
-  agitation: number;
-  pulseSpeed: number;
+  visualParams: LivingCoreVisualParams;
   reducedMotion: boolean;
+  mode: TradingMode;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const color = useLerpedColor(visualParams.palette.primary, 0.05);
+
+  useFrame(() => {
+    if (!meshRef.current) {
+      return;
+    }
+    const { elapsedSec: t, envelope } = getOrganismClock(mode);
+    const breathe = reducedMotion ? 1 : 1 + (envelope - 0.5) * 0.1;
+    const scale = (0.85 + visualParams.vitality * 0.35) * breathe;
+    meshRef.current.scale.setScalar(scale);
+    const mat = meshRef.current.material as THREE.MeshBasicMaterial;
+    mat.opacity = 0.14 + visualParams.vitality * 0.16;
+  });
+
+  return (
+    <mesh ref={meshRef}>
+      <sphereGeometry args={[0.72, 20, 20]} />
+      <meshBasicMaterial color={color} transparent opacity={0.12} depthWrite={false} />
+    </mesh>
+  );
+}
+
+function DnaHelix({
+  visualParams,
+  reducedMotion,
+  synapseBoost,
+  mode,
+}: {
+  visualParams: LivingCoreVisualParams;
+  reducedMotion: boolean;
+  synapseBoost: number;
+  mode: TradingMode;
 }) {
   const groupRef = useRef<THREE.Group>(null);
-  const primaryColor = useLerpedColor(palette.primary);
-  const secondaryColor = useLerpedColor(palette.secondary);
+  const primaryColor = useLerpedColor(visualParams.palette.primary);
+  const secondaryColor = useLerpedColor(visualParams.palette.secondary);
+  const phase = visualParams.regimePhase;
 
   const radius = 0.55;
-  const curveA = useMemo(() => buildHelixCurve(0, radius, 0), []);
-  const curveB = useMemo(() => buildHelixCurve(1, radius, 0), []);
+  const curveA = useMemo(() => buildHelixCurve(0, radius, phase), [phase]);
+  const curveB = useMemo(() => buildHelixCurve(1, radius, phase), [phase]);
 
   const rungs = useMemo(() => {
-    return Array.from({ length: RUNG_COUNT }, (_, i) => i / (RUNG_COUNT - 1));
+    return Array.from({ length: LIVING_RUNG_COUNT }, (_, i) => i / (LIVING_RUNG_COUNT - 1));
   }, []);
 
-  useFrame(({ clock }, delta) => {
+  const emissive =
+    (0.28 + visualParams.agitation * 0.4) *
+    visualParams.emissiveBoost *
+    visualParams.vitality *
+    (1 + synapseBoost * 0.5);
+
+  useFrame((_, delta) => {
     if (!groupRef.current) {
       return;
     }
-    const t = clock.getElapsedTime();
-    groupRef.current.rotation.y += reducedMotion ? delta * 0.08 : delta * 0.25;
+    groupRef.current.rotation.y += reducedMotion
+      ? delta * 0.04
+      : delta * visualParams.helixDrift;
 
-    const breathe = 1 + Math.sin(t * pulseSpeed) * 0.06 + agitation * 0.04;
+    const { envelope } = getOrganismClock(mode);
+    const breathe = 1 + (envelope - 0.5) * 0.09 + visualParams.agitation * 0.03;
     groupRef.current.scale.setScalar(breathe);
   });
 
@@ -165,7 +217,7 @@ function DnaHelix({
         <meshStandardMaterial
           color={primaryColor}
           emissive={primaryColor}
-          emissiveIntensity={0.35 + agitation * 0.45}
+          emissiveIntensity={emissive}
           roughness={0.35}
           metalness={0.6}
         />
@@ -175,15 +227,15 @@ function DnaHelix({
         <meshStandardMaterial
           color={secondaryColor}
           emissive={secondaryColor}
-          emissiveIntensity={0.3 + agitation * 0.4}
+          emissiveIntensity={emissive * 0.9}
           roughness={0.35}
           metalness={0.6}
         />
       </mesh>
 
-      {rungs.map((t, index) => {
-        const a = helixPoint(t, 0, radius, 0);
-        const b = helixPoint(t, 1, radius, 0);
+      {rungs.map((rungT, index) => {
+        const a = helixPoint(rungT, 0, radius, phase);
+        const b = helixPoint(rungT, 1, radius, phase);
         const midpoint = a.clone().add(b).multiplyScalar(0.5);
         const direction = b.clone().sub(a);
         const length = direction.length();
@@ -195,11 +247,11 @@ function DnaHelix({
           <mesh key={index} position={midpoint} quaternion={orientation}>
             <cylinderGeometry args={[0.018, 0.018, length, 6]} />
             <meshStandardMaterial
-              color={palette.accent}
-              emissive={palette.accent}
-              emissiveIntensity={0.2 + (index % 3) * 0.05}
+              color={visualParams.palette.accent}
+              emissive={visualParams.palette.accent}
+              emissiveIntensity={0.15 + (index % 3) * 0.04}
               transparent
-              opacity={0.85}
+              opacity={0.75 + visualParams.vitality * 0.15}
             />
           </mesh>
         );
@@ -211,17 +263,13 @@ function DnaHelix({
 function ParticleField({
   mode,
   riskLevel,
-  palette,
-  agitation,
-  pulseSpeed,
+  visualParams,
   reducedMotion,
   particleCount,
 }: {
   mode: TradingMode;
   riskLevel: RiskLevel;
-  palette: LivingCorePalette;
-  agitation: number;
-  pulseSpeed: number;
+  visualParams: LivingCoreVisualParams;
   reducedMotion: boolean;
   particleCount: number;
 }) {
@@ -244,7 +292,7 @@ function ParticleField({
     for (let i = 0; i < particleCount; i++) {
       const theta = (i / particleCount) * Math.PI * 2 * 6;
       const radius = 1.1 + (i % 7) * 0.08;
-      const y = ((i % 23) / 23 - 0.5) * HELIX_HEIGHT * 1.1;
+      const y = ((i % 23) / 23 - 0.5) * BIRTH_HELIX_HEIGHT * 1.1;
       positions.push(
         new THREE.Vector3(
           Math.cos(theta) * radius,
@@ -256,22 +304,46 @@ function ParticleField({
     return positions;
   }, [particleCount]);
 
-  const primaryColor = useMemo(() => new THREE.Color(palette.primary), [palette.primary]);
+  const primaryColor = useMemo(
+    () => new THREE.Color(visualParams.palette.primary),
+    [visualParams.palette.primary],
+  );
   const tintColor = useMemo(() => new THREE.Color(riskTint(riskLevel)), [riskLevel]);
+  const accentColor = useMemo(
+    () => new THREE.Color(visualParams.palette.accent),
+    [visualParams.palette.accent],
+  );
   const blendedColor = useMemo(() => {
     const c = primaryColor.clone();
-    c.lerp(tintColor, 0.35 + agitation * 0.45);
+    c.lerp(accentColor, 0.2);
+    c.lerp(tintColor, 0.25 + visualParams.agitation * 0.35);
     return c;
-  }, [primaryColor, tintColor, agitation]);
+  }, [primaryColor, accentColor, tintColor, visualParams.agitation]);
+
+  const frameCounter = useRef(0);
 
   useFrame(({ clock }, delta) => {
     if (!meshRef.current) {
       return;
     }
-    const t = clock.getElapsedTime();
-    const orbitSpeed = reducedMotion ? 0.15 : 0.35 + agitation * 1.1;
-    const turbulence = reducedMotion ? 0.02 : 0.05 + agitation * 0.18;
-    const breathe = 1 + Math.sin(t * pulseSpeed + 0.8) * 0.04;
+    frameCounter.current += 1;
+    const skipFrame =
+      particleCount > 200 &&
+      frameCounter.current % 2 !== 0 &&
+      visualParams.agitation < 0.55;
+    if (skipFrame) {
+      meshRef.current.rotation.y += delta * 0.06;
+      return;
+    }
+
+    const { elapsedSec: t, envelope } = getOrganismClock(mode);
+    const orbitSpeed = reducedMotion
+      ? 0.08
+      : 0.18 + visualParams.agitation * 0.65;
+    const turbulence = reducedMotion
+      ? 0.015
+      : 0.03 + visualParams.agitation * 0.12;
+    const breathe = 1 + (envelope - 0.5) * 0.07;
 
     for (let i = 0; i < particleCount; i++) {
       const base = basePositions[i];
@@ -286,7 +358,8 @@ function ParticleField({
         base.z * breathe + wobbleZ,
       );
 
-      const scale = 0.018 + (i % 5) * 0.003 + agitation * 0.008;
+      const scale =
+        0.014 + (i % 5) * 0.0025 + visualParams.agitation * 0.006 * visualParams.vitality;
       dummy.scale.setScalar(scale);
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(i, dummy.matrix);
@@ -298,58 +371,66 @@ function ParticleField({
       meshRef.current.instanceColor.needsUpdate = true;
     }
 
-    meshRef.current.rotation.y += delta * orbitSpeed * (mode === "SIM" ? 0.15 : 0.06);
+    meshRef.current.rotation.y += delta * orbitSpeed * (mode === "SIM" ? 0.1 : 0.04);
   });
 
   return (
     <instancedMesh ref={meshRef} args={[undefined, undefined, particleCount]}>
       <sphereGeometry args={[1, 6, 6]} />
-      <meshBasicMaterial transparent opacity={0.75} toneMapped={false} />
+      <meshBasicMaterial
+        transparent
+        opacity={visualParams.particleOpacity}
+        toneMapped={false}
+      />
     </instancedMesh>
   );
 }
 
-function LivingCoreScene({ mode, riskLevel, reducedMotion, particleCount }: SceneProps) {
-  const palette = modePalette(mode);
-  const agitation = riskAgitation(riskLevel);
+function LivingCoreScene({
+  visualParams,
+  riskLevel,
+  mode,
+  reducedMotion,
+  particleCount,
+  synapseBoost,
+  visualQuality,
+}: SceneProps) {
+  const palette = visualParams.palette;
+  const lightIntensity = 0.55 + visualParams.vitality * 0.75;
+  const fillColor = mode === "REAL" ? palette.accent : palette.secondary;
 
   return (
     <>
-      <ambientLight intensity={0.35} />
-      <pointLight position={[3, 4, 5]} intensity={1.2} color={palette.primary} />
-      <pointLight position={[-4, -2, 3]} intensity={0.6} color={palette.secondary} />
-
-      <CoreGlow
-        palette={palette}
-        agitation={agitation}
-        pulseSpeed={palette.pulseSpeed}
-        reducedMotion={reducedMotion}
+      <ambientLight intensity={0.22 + visualParams.vitality * 0.18} />
+      <pointLight
+        position={[3, 4, 5]}
+        intensity={lightIntensity}
+        color={palette.primary}
       />
-      <DnaHelix
-        palette={palette}
-        agitation={agitation}
-        pulseSpeed={palette.pulseSpeed}
+      <pointLight position={[-4, -2, 3]} intensity={lightIntensity * 0.5} color={fillColor} />
+
+      <HeartCore
+        visualParams={visualParams}
         reducedMotion={reducedMotion}
+        mode={mode}
+        synapseBoost={synapseBoost}
+      />
+      <AuraHalo visualParams={visualParams} reducedMotion={reducedMotion} mode={mode} />
+      <DnaHelix
+        visualParams={visualParams}
+        reducedMotion={reducedMotion}
+        synapseBoost={synapseBoost}
+        mode={mode}
       />
       <ParticleField
         key={particleCount}
         mode={mode}
         riskLevel={riskLevel}
-        palette={palette}
-        agitation={agitation}
-        pulseSpeed={palette.pulseSpeed}
+        visualParams={visualParams}
         reducedMotion={reducedMotion}
         particleCount={particleCount}
       />
-
-      <OrbitControls
-        enablePan={false}
-        enableZoom
-        minDistance={4}
-        maxDistance={10}
-        autoRotate={!reducedMotion}
-        autoRotateSpeed={mode === "SIM" ? 0.8 : 0.35}
-      />
+      <CinematicBloom mode={mode} reducedMotion={reducedMotion} visualQuality={visualQuality} />
     </>
   );
 }
@@ -357,25 +438,72 @@ function LivingCoreScene({ mode, riskLevel, reducedMotion, particleCount }: Scen
 export function LivingCore({ className }: LivingCoreProps) {
   const mode = useCoreStore(selectCurrentMode);
   const riskLevel = useCoreStore(selectRiskLevel);
+  const liveMetrics = useCoreStore(selectLiveMetrics);
+  const connectionStatus = useCoreStore(selectConnectionStatus);
+  const fallbackMode = useCoreStore(selectFallbackMode);
+  const adaptiveStatus = useCoreStore(selectAdaptiveIntelligenceStatus);
+  const adaptiveTransition = useCoreStore(selectAdaptiveTransitionSummary);
   const visualQuality = useVisualSettingsStore(selectVisualQuality);
   const renderConfig = useVisualSettingsStore(selectRenderConfig);
   const prefersReducedMotion = usePrefersReducedMotion();
-  const reducedMotion =
-    prefersReducedMotion || mode === "REAL" || visualQuality === "low";
-  const particleCount = particleCountForMode(mode, renderConfig.particleScale);
+  const modeMotion = useModeMotion();
+  const reducedMotion = prefersReducedMotion || visualQuality === "low";
+
+  const intelligenceHealth = resolveIntelligenceHealth({
+    status: adaptiveStatus,
+    loading: false,
+    error: null,
+    transition: adaptiveTransition,
+  });
+
+  const visualParams = buildLivingCoreVisualParams({
+    mode,
+    riskLevel,
+    regime: liveMetrics.regime,
+    regimeConfidence: liveMetrics.regimeConfidence,
+    connectionStatus,
+    fallbackMode,
+    intelligenceHealth,
+  });
+
+  const particleCount = particleCountForMode(
+    mode,
+    renderConfig.particleScale,
+    visualParams.vitality,
+  );
   const [canvasReady, setCanvasReady] = useState(false);
+  const [synapseBoost, setSynapseBoost] = useState(0);
+  const prevConnection = useRef(connectionStatus);
+  const vitalityLevel = vitalityBucket(visualParams.vitality);
+
+  useEffect(() => {
+    if (prevConnection.current === connectionStatus) {
+      return;
+    }
+    prevConnection.current = connectionStatus;
+    setSynapseBoost(1);
+    const timer = setTimeout(() => setSynapseBoost(0), 400);
+    return () => clearTimeout(timer);
+  }, [connectionStatus]);
 
   return (
     <div
-      className={cn("living-core-shell relative min-h-[220px] w-full", className)}
-      aria-label={`Living neural core — ${mode} mode, risk ${riskLevel}`}
+      className={cn(
+        "living-core-shell living-core-shell--immersive relative min-h-[220px] w-full",
+        immersiveHaloClass(mode),
+        className,
+      )}
+      data-mode={mode}
+      data-regime={visualParams.regimeKey}
+      data-vitality={vitalityLevel}
+      aria-label={`Living neural core — ${mode} mode, ${liveMetrics.regime} regime, ${connectionStatus}, risk ${riskLevel}`}
       role="img"
     >
       <Suspense
         fallback={
           <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-3">
             <LuminaLogo />
-            <PanelLoader label="Initializing neural core…" className="min-h-0" rows={2} />
+            <PanelLoader label={DECK_LOADING_COPY.neuralCore} className="min-h-0" rows={2} />
           </div>
         }
       >
@@ -383,19 +511,22 @@ export function LivingCore({ className }: LivingCoreProps) {
           className="h-full min-h-[220px] w-full"
           initial={{ opacity: 0 }}
           animate={{ opacity: canvasReady ? 1 : 0.4 }}
-          transition={springSoft}
+          transition={transitionOrNone(reducedMotion, modeMotion)}
         >
           <VisibilityCanvas
             panelName="Neural Core"
             idleLabel="Neural core paused — scroll into view"
-            camera={{ position: [0, 0, 6], fov: 45 }}
+            camera={{ position: [0, 0.2, 5.8], fov: 42 }}
             onCreated={() => setCanvasReady(true)}
           >
             <LivingCoreScene
-              mode={mode}
+              visualParams={visualParams}
               riskLevel={riskLevel}
+              mode={mode}
               reducedMotion={reducedMotion}
               particleCount={particleCount}
+              synapseBoost={synapseBoost}
+              visualQuality={visualQuality}
             />
           </VisibilityCanvas>
         </motion.div>

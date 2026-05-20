@@ -125,7 +125,7 @@ export function ActionDistributionChart({
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-lg border border-white/10 bg-black/20 p-3",
+        "relative overflow-hidden lumina-surface-muted rounded-lg p-3",
         className,
       )}
       aria-label="Action distribution"

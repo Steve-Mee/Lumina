@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type SettingsTab = "apiKey" | "bot" | "visual";
+export type SettingsTab = "apiKey" | "bot" | "visual" | "refresh";
 
 interface SettingsDialogState {
   open: boolean;

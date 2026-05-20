@@ -87,3 +87,44 @@ export async function clearBirthForExtraTraining(): Promise<Record<string, unkno
   if (!response.ok) throw new Error(`Extra training HTTP ${response.status}`);
   return response.json();
 }
+
+export interface BirthSettingsPayload {
+  training_trades: number;
+  prefer_real_data_only: boolean;
+  max_real_days: number;
+  allow_minimal_synthetic_fallback: boolean;
+  require_real_simulator_data: boolean;
+}
+
+export async function saveBirthSettings(body: BirthSettingsPayload): Promise<Record<string, unknown>> {
+  const base = resolveBackendBaseUrl();
+  const response = await fetch(`${base}/api/birth/settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Birth settings HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function adjustBirthMaxDays(): Promise<{ ok: boolean; max_real_days: number }> {
+  const base = resolveBackendBaseUrl();
+  const response = await fetch(`${base}/api/birth/adjust-max-days`, { method: "POST" });
+  if (!response.ok) throw new Error(`Adjust max days HTTP ${response.status}`);
+  return response.json() as Promise<{ ok: boolean; max_real_days: number }>;
+}
+
+export async function fetchBirthLogsTail(limit = 40): Promise<{
+  stderr_path: string;
+  stderr_tail: string[];
+  full_log_path: string;
+  full_log_tail: string[];
+}> {
+  const base = resolveBackendBaseUrl();
+  const response = await fetch(`${base}/api/birth/logs-tail?limit=${limit}`);
+  if (!response.ok) throw new Error(`Birth logs HTTP ${response.status}`);
+  return response.json();
+}

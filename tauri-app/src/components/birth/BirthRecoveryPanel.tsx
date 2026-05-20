@@ -9,6 +9,7 @@ import {
   type BirthRecoveryKind,
 } from "@/lib/birthRecoveryModel";
 import { useBirthStore } from "@/store/birthStore";
+import { warnOverlayPanelClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 interface BirthRecoveryPanelProps {
@@ -68,7 +69,8 @@ export function BirthRecoveryPanel({
   return (
     <div
       className={cn(
-        "rounded-lg border border-amber-500/30 bg-amber-950/20 p-4 text-sm text-amber-100/90",
+        "rounded-lg p-4 text-sm text-amber-100/90",
+        warnOverlayPanelClass(),
         className,
       )}
     >

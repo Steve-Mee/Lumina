@@ -3,9 +3,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { useModeMotion } from "@/hooks/useModeMotion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { panelCrossfadeWith, transitionOrNone } from "@/lib/motionPresets";
+import { modeAccentCssVars } from "@/lib/modePresentation";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 
-const TOUR_KEY = "lumina.deck.tourComplete";
+export const TOUR_KEY = "lumina.deck.tourComplete";
+const TOUR_START_EVENT = "lumina:deck-tour-start";
 
 const STEPS = [
   {
@@ -28,7 +33,21 @@ const STEPS = [
     title: "Command HUD",
     body: "Top bar — SIM/REAL mode, engine start/stop, safety actions, and settings.",
   },
+  {
+    target: '[data-tour="settings-button"]',
+    title: "Settings & API key",
+    body: "Open Settings to sync your admin API key from .env, tune visuals, and replay this tour.",
+  },
 ] as const;
+
+export function resetCommandDeckTour(): void {
+  try {
+    localStorage.removeItem(TOUR_KEY);
+  } catch {
+    // ignore
+  }
+  window.dispatchEvent(new Event(TOUR_START_EVENT));
+}
 
 function getTargetRect(selector: string): DOMRect | null {
   const el = document.querySelector(selector);
@@ -39,6 +58,9 @@ export function CommandDeckTour() {
   const [visible, setVisible] = useState(false);
   const [step, setStep] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const modeMotion = useModeMotion();
+  const operatorMode = useCoreStore(selectCurrentMode);
 
   useEffect(() => {
     if (localStorage.getItem(TOUR_KEY)) {
@@ -46,6 +68,15 @@ export function CommandDeckTour() {
     }
     const timer = window.setTimeout(() => setVisible(true), 600);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const onStart = () => {
+      setStep(0);
+      setVisible(true);
+    };
+    window.addEventListener(TOUR_START_EVENT, onStart);
+    return () => window.removeEventListener(TOUR_START_EVENT, onStart);
   }, []);
 
   useEffect(() => {
@@ -79,10 +110,14 @@ export function CommandDeckTour() {
   const isLast = step === STEPS.length - 1;
 
   return (
-    <div className="fixed inset-0 z-[100] pointer-events-none">
+    <div
+      className="fixed inset-0 z-[100] pointer-events-none"
+      data-mode={operatorMode}
+      style={modeAccentCssVars(operatorMode)}
+    >
       {rect ? (
         <div
-          className="absolute rounded-lg ring-2 ring-cyan-400/80 ring-offset-2 ring-offset-black/50 transition-all duration-300"
+          className="deck-tour-spotlight absolute transition-all duration-300"
           style={{
             top: rect.top - 4,
             left: rect.left - 4,
@@ -98,23 +133,24 @@ export function CommandDeckTour() {
       <AnimatePresence mode="wait">
         <motion.div
           key={step}
-          className="pointer-events-auto absolute bottom-24 left-1/2 w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-cyan-400/30 bg-black/90 p-5 shadow-2xl backdrop-blur-md"
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.2 }}
+          className="deck-tour-card pointer-events-auto absolute bottom-24 left-1/2 w-[min(420px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl p-5 shadow-2xl"
+          variants={panelCrossfadeWith(modeMotion)}
+          initial={reducedMotion ? false : "hidden"}
+          animate="visible"
+          exit={reducedMotion ? undefined : "exit"}
+          transition={transitionOrNone(reducedMotion, modeMotion)}
         >
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
-              <p className="font-mono text-[9px] tracking-[0.2em] text-cyan-300/80 uppercase">
+              <p className="deck-tour-card__eyebrow">
                 Command deck tour · {step + 1}/{STEPS.length}
               </p>
-              <h3 className="mt-1 text-base font-semibold text-cyan-50">{current.title}</h3>
+              <h3 className="deck-tour-card__title mt-1 text-base font-semibold">{current.title}</h3>
             </div>
             <button
               type="button"
               className="rounded p-1 text-muted-foreground hover:bg-white/10 hover:text-foreground"
-              aria-label="Close tour"
+              aria-label="Close tour for this session"
               onClick={() => dismiss(false)}
             >
               <X className="size-4" />
@@ -122,19 +158,19 @@ export function CommandDeckTour() {
           </div>
           <p className="text-sm leading-relaxed text-muted-foreground">{current.body}</p>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => dismiss(true)}>
+            <Button type="button" variant="command-ghost" size="sm" onClick={() => dismiss(true)}>
               Don&apos;t show again
             </Button>
             <div className="flex gap-2">
               {step > 0 ? (
-                <Button type="button" variant="outline" size="sm" onClick={() => setStep((s) => s - 1)}>
+                <Button type="button" variant="command-ghost" size="sm" onClick={() => setStep((s) => s - 1)}>
                   Back
                 </Button>
               ) : null}
               <Button
                 type="button"
                 size="sm"
-                className={cn(isLast && "bg-cyan-600/80 hover:bg-cyan-600")}
+                variant="command-primary"
                 onClick={() => {
                   if (isLast) {
                     dismiss(true);

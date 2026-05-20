@@ -208,6 +208,37 @@ async def go_live_real(
     }
 
 
+@router.post("/pause-trading")
+async def pause_trading_safely(
+    x_api_key: str | None = Header(None),
+) -> dict[str, Any]:
+    """Flatten/cancel orders and stop runtime (REAL operations parity with Streamlit sidebar)."""
+    _check_api_key(x_api_key)
+
+    def _emergency() -> dict[str, Any]:
+        try:
+            from backend.app import _execute_cancel_all_orders, _execute_emergency_flatten
+
+            cancel_result = _execute_cancel_all_orders()
+            flatten_result = _execute_emergency_flatten()
+            return {
+                "ok": True,
+                "cancelled_count": int(cancel_result.get("cancelled_count", 0) or 0),
+                "flattened_count": int(flatten_result.get("flattened_count", 0) or 0),
+            }
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    pm = _get_process_manager()
+    ok, message = pm.pause_trading_safely(
+        emergency_action=_emergency,
+        require_emergency_success=True,
+    )
+    if not ok:
+        raise HTTPException(status_code=500, detail=message)
+    return {"ok": True, "message": message}
+
+
 @router.post("/reset-first-boot")
 async def reset_first_boot(
     phrase: str = Query(..., min_length=1),

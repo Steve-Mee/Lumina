@@ -2,20 +2,26 @@ import { useCallback, useEffect, useState } from "react";
 import { Activity } from "lucide-react";
 import { toast } from "sonner";
 
+import { DeckMetricTile } from "@/components/cockpit/DeckMetricTile";
+import { DeckSection } from "@/components/cockpit/DeckSection";
 import { ApiKeySetupCallout } from "@/components/cockpit/ApiKeySetupCallout";
 import { Button } from "@/components/ui/button";
 import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceContext";
 import { fetchLogTail } from "@/lib/opsClient";
+import { selectPanelRefreshMs, usePanelRefreshStore } from "@/store/panelRefreshStore";
 import { fetchRuntimeStatus, type RuntimeStatus } from "@/lib/runtimeClient";
-import { selectTradingLive, useCoreStore } from "@/store/coreStore";
+import { modeTitleClass } from "@/lib/modePresentation";
+import { selectCurrentMode, selectTradingLive, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
 export function LiveActivityPanel({ className }: { className?: string }) {
   const trading = useCoreStore(selectTradingLive);
+  const operatorMode = useCoreStore(selectCurrentMode);
   const { metrics, apiKeyConfigured } = useAdaptiveIntelligenceContext();
   const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [lines, setLines] = useState<string[]>([]);
   const [viewCleared, setViewCleared] = useState(false);
+  const refreshMs = usePanelRefreshStore(selectPanelRefreshMs);
 
   const refresh = useCallback(async () => {
     try {
@@ -31,9 +37,9 @@ export function LiveActivityPanel({ className }: { className?: string }) {
 
   useEffect(() => {
     void refresh();
-    const id = window.setInterval(() => void refresh(), 10_000);
+    const id = window.setInterval(() => void refresh(), refreshMs);
     return () => window.clearInterval(id);
-  }, [refresh]);
+  }, [refresh, refreshMs]);
 
   if (!apiKeyConfigured) {
     return <ApiKeySetupCallout className={className} />;
@@ -63,58 +69,49 @@ export function LiveActivityPanel({ className }: { className?: string }) {
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-1", className)}>
       <div className="flex items-center gap-2">
-        <Activity className="size-4 text-cyan-300/90" />
-        <h3 className="font-mono text-[11px] tracking-[0.14em] text-cyan-200/90 uppercase">
+        <Activity className={cn("size-4", modeTitleClass(operatorMode))} />
+        <h3 className={cn("deck-title text-[11px] tracking-[0.14em]", modeTitleClass(operatorMode))}>
           Live Activity
         </h3>
-        <Button type="button" size="xs" variant="ghost" className="ml-auto" onClick={() => void refresh()}>
+        <Button type="button" size="xs" variant="command-ghost" className="ml-auto" onClick={() => void refresh()}>
           Refresh
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-3">
-        <div className="rounded border border-white/10 bg-black/25 px-3 py-2">
-          Engine:{" "}
-          <span className={runtime?.alive ? "text-emerald-300" : "text-muted-foreground"}>
-            {runtime?.alive ? `Running (pid ${runtime.pid ?? "?"})` : "Stopped"}
-          </span>
-        </div>
-        <div className="rounded border border-white/10 bg-black/25 px-3 py-2">
-          Heartbeat: <span className="font-mono">{heartbeat}</span>
-        </div>
-        <div className="rounded border border-white/10 bg-black/25 px-3 py-2">
-          Session: <span className="font-mono">{metrics?.session_kind ?? "idle"}</span>
-        </div>
-        <div className="rounded border border-white/10 bg-black/25 px-3 py-2">
-          Runtime state:{" "}
-          <span className={trading?.runtime_state ? "text-emerald-300" : "text-muted-foreground"}>
-            {trading?.runtime_state ? "Updated" : "Missing"}
-          </span>
-        </div>
-        <div className="rounded border border-white/10 bg-black/25 px-3 py-2">
-          Open P&L: <span className="font-mono">{trading?.position.open_pnl ?? "—"}</span>
-        </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <DeckMetricTile
+          label="Engine"
+          value={runtime?.alive ? `Running (pid ${runtime.pid ?? "?"})` : "Stopped"}
+        />
+        <DeckMetricTile label="Heartbeat" value={heartbeat} />
+        <DeckMetricTile label="Session" value={metrics?.session_kind ?? "idle"} />
+        <DeckMetricTile
+          label="Runtime state"
+          value={trading?.runtime_state ? "Updated" : "Missing"}
+        />
+        <DeckMetricTile label="Open P&L" value={String(trading?.position.open_pnl ?? "—")} />
       </div>
 
       {trading ? (
-        <details className="rounded border border-white/10 bg-black/20 p-2 text-[11px]">
-          <summary className="cursor-pointer font-mono text-cyan-200/80">Live trading snapshot</summary>
-          <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-muted-foreground">
-            {JSON.stringify(trading, null, 2)}
-          </pre>
-        </details>
+        <DeckSection title="Live trading snapshot">
+          <details className="text-[11px]">
+            <summary className="cursor-pointer deck-accent-text font-mono">Expand JSON</summary>
+            <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-muted-foreground">
+              {JSON.stringify(trading, null, 2)}
+            </pre>
+          </details>
+        </DeckSection>
       ) : null}
 
-      <div className="min-h-0 flex-1 rounded-lg border border-white/10 bg-black/30 p-2">
+      <DeckSection title="Log tail" className="min-h-0 flex-1">
         <div className="mb-2 flex flex-wrap items-center gap-2">
-          <p className="font-mono text-[9px] uppercase text-muted-foreground">Log tail</p>
-          <Button type="button" size="xs" variant="ghost" onClick={() => void copyLastLines()}>
+          <Button type="button" size="xs" variant="command-ghost" onClick={() => void copyLastLines()}>
             Copy last 50
           </Button>
           <Button
             type="button"
             size="xs"
-            variant="ghost"
+            variant="command-ghost"
             onClick={() => {
               setViewCleared(true);
               setLines([]);
@@ -131,7 +128,7 @@ export function LiveActivityPanel({ className }: { className?: string }) {
               ? lines.join("\n")
               : "No log lines available"}
         </pre>
-      </div>
+      </DeckSection>
     </div>
   );
 }

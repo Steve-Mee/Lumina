@@ -54,40 +54,40 @@ export function RealOperationsPanel({ className }: { className?: string }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        <div className="rounded-md border border-white/10 bg-black/30 px-3 py-2">
+        <div className="lumina-surface-muted rounded-md px-3 py-2">
           <p className="font-mono text-[9px] text-muted-foreground uppercase">Realized P&L</p>
           <AnimatedMetric value={formatUsd(realOps.realizedPnl)} className={pnlToneClass(realOps.realizedPnl)} />
         </div>
-        <div className="rounded-md border border-white/10 bg-black/30 px-3 py-2">
+        <div className="lumina-surface-muted rounded-md px-3 py-2">
           <p className="font-mono text-[9px] text-muted-foreground uppercase">Max DD</p>
           <AnimatedMetric value={formatUsd(-realOps.maxDrawdownUsd, { signed: false })} />
         </div>
-        <div className="rounded-md border border-white/10 bg-black/30 px-3 py-2">
+        <div className="lumina-surface-muted rounded-md px-3 py-2">
           <p className="font-mono text-[9px] text-muted-foreground uppercase">Risk Events</p>
           <AnimatedMetric value={String(realOps.riskEvents)} />
         </div>
-        <div className="rounded-md border border-white/10 bg-black/30 px-3 py-2">
+        <div className="lumina-surface-muted rounded-md px-3 py-2">
           <p className="font-mono text-[9px] text-muted-foreground uppercase">VaR Breaches</p>
           <AnimatedMetric value={String(realOps.varBreachCount)} />
         </div>
       </div>
 
       <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2">
+        <div className="lumina-surface-muted rounded-md px-3 py-2">
           <p className="text-[9px] text-muted-foreground uppercase">24h P&L</p>
           <AnimatedMetric value={formatUsd(realOps.windowPnl.h24)} className={pnlToneClass(realOps.windowPnl.h24)} />
         </div>
-        <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2">
+        <div className="lumina-surface-muted rounded-md px-3 py-2">
           <p className="text-[9px] text-muted-foreground uppercase">7d P&L</p>
           <AnimatedMetric value={formatUsd(realOps.windowPnl.d7)} className={pnlToneClass(realOps.windowPnl.d7)} />
         </div>
-        <div className="rounded-md border border-white/10 bg-black/25 px-3 py-2">
+        <div className="lumina-surface-muted rounded-md px-3 py-2">
           <p className="text-[9px] text-muted-foreground uppercase">30d P&L</p>
           <AnimatedMetric value={formatUsd(realOps.windowPnl.d30)} className={pnlToneClass(realOps.windowPnl.d30)} />
         </div>
       </div>
 
-      <section className="rounded-lg border border-white/10 bg-black/25 p-3">
+      <section className="lumina-surface-muted rounded-lg p-3">
         <p className="mb-2 font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
           Capital Preservation Protocol
         </p>

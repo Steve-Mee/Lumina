@@ -270,12 +270,27 @@ def persist_credentials_only(
         "CROSSTRADE_TOKEN",
         "CROSSTRADE_ACCOUNT",
         "LUMINA_JWT_SECRET_KEY",
+        "XAI_API_KEY",
+        "TELEGRAM_BOT_TOKEN",
+        "TELEGRAM_CHAT_ID",
+        "TAURI_SIGNING_PRIVATE_KEY_PATH",
     ):
         value = str(credentials.get(key, "")).strip()
         if value:
             env_updates[key] = value
     config_manager.write_env_file(env_updates)
     return scan_missing_credentials(config_manager)
+
+
+CREDENTIAL_ENV_KEYS: tuple[str, ...] = (
+    "LUMINA_JWT_SECRET_KEY",
+    "CROSSTRADE_TOKEN",
+    "CROSSTRADE_ACCOUNT",
+    "LUMINA_ADMIN_API_KEY",
+    "XAI_API_KEY",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
+)
 
 
 def scan_missing_credentials(config_manager: ConfigManager) -> list[str]:
@@ -286,3 +301,19 @@ def scan_missing_credentials(config_manager: ConfigManager) -> list[str]:
         if not str(env_values.get(key, "")).strip():
             missing.append(key)
     return missing
+
+
+def build_credentials_env_snapshot(config_manager: ConfigManager) -> dict[str, Any]:
+    """Read .env credential keys for deck prefill and onboarding status (no masking)."""
+    env_values = config_manager.parse_env_file()
+    present: dict[str, bool] = {}
+    credentials: dict[str, str] = {}
+    for key in CREDENTIAL_ENV_KEYS:
+        value = str(env_values.get(key, "")).strip()
+        present[key] = bool(value)
+        credentials[key] = value
+    return {
+        "env_path": str(config_manager.env_path.resolve()),
+        "present": present,
+        "credentials": credentials,
+    }

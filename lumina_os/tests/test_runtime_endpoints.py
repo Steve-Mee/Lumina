@@ -123,3 +123,16 @@ def test_runtime_stop_all(client: TestClient) -> None:
                 assert response.status_code == 200
                 assert response.json()["ok"] is True
                 mock_pm.stop_all_activities.assert_called_once()
+
+
+def test_runtime_pause_trading(client: TestClient) -> None:
+    mock_pm = MagicMock()
+    mock_pm.pause_trading_safely.return_value = (True, "Trading gepauzeerd")
+
+    with patch("backend.runtime_endpoints._get_process_manager", return_value=mock_pm):
+        with patch("backend.app._execute_cancel_all_orders", return_value={"cancelled_count": 0}):
+            with patch("backend.app._execute_emergency_flatten", return_value={"flattened_count": 0}):
+                response = client.post("/api/runtime/pause-trading", headers={"X-API-Key": "test-key"})
+                assert response.status_code == 200
+                assert response.json()["ok"] is True
+                mock_pm.pause_trading_safely.assert_called_once()

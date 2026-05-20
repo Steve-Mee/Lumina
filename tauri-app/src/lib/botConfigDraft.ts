@@ -21,6 +21,10 @@ export interface BotConfigDraft {
     instrument: string;
     voice_enabled: boolean;
     screen_share_enabled: boolean;
+    dashboard_enabled: boolean;
+    runtime_trace: boolean;
+    runtime_trace_interval_sec: number;
+    latency_sla_ms: number;
   };
 }
 
@@ -42,6 +46,10 @@ export function defaultBotConfigDraft(): BotConfigDraft {
       instrument: "ES",
       voice_enabled: true,
       screen_share_enabled: true,
+      dashboard_enabled: true,
+      runtime_trace: true,
+      runtime_trace_interval_sec: 2,
+      latency_sla_ms: 300,
     },
   };
 }
@@ -111,6 +119,26 @@ export function hydrateBotConfigDraftFromPayload(
       instrument: String(prior?.preferences?.instrument ?? "ES"),
       voice_enabled: prior?.preferences?.voice_enabled ?? true,
       screen_share_enabled: prior?.preferences?.screen_share_enabled ?? true,
+      dashboard_enabled: Boolean(
+        (d.diagnostics as Record<string, unknown> | undefined)?.dashboard_enabled ??
+          prior?.preferences?.dashboard_enabled ??
+          true,
+      ),
+      runtime_trace: Boolean(
+        (d.diagnostics as Record<string, unknown> | undefined)?.runtime_trace ??
+          prior?.preferences?.runtime_trace ??
+          true,
+      ),
+      runtime_trace_interval_sec: Number(
+        (d.diagnostics as Record<string, unknown> | undefined)?.runtime_trace_interval_sec ??
+          prior?.preferences?.runtime_trace_interval_sec ??
+          2,
+      ),
+      latency_sla_ms: Number(
+        (d.diagnostics as Record<string, unknown> | undefined)?.latency_sla_ms ??
+          prior?.preferences?.latency_sla_ms ??
+          300,
+      ),
     },
   };
 }

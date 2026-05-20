@@ -55,6 +55,12 @@ logger = logging.getLogger(__name__)
 REACT_LOCAL_DEV_ORIGINS: tuple[str, ...] = (
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    # Tauri Neural Command Deck (vite.config.ts strictPort 1420)
+    "http://localhost:1420",
+    "http://127.0.0.1:1420",
+    # Tauri 2 production webview origins
+    "https://tauri.localhost",
+    "http://tauri.localhost",
 )
 
 # ── Canonical UI keys consumed by frontend useLuminaMetrics ───────────────────

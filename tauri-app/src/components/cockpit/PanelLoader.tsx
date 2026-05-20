@@ -37,7 +37,7 @@ export function PanelLoader({
           >
             <div
               className={cn(
-                "h-full rounded-full bg-gradient-to-r from-cyan-500/20 via-violet-400/30 to-cyan-500/20",
+                "h-full rounded-full panel-loader__bar",
                 !reducedMotion && "cockpit-shimmer",
               )}
               style={{ width: `${100 - index * 12}%` }}

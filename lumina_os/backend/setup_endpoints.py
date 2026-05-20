@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from lumina_core.engine.setup_service import SetupService
@@ -19,6 +19,7 @@ from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_launcher.core.onboarding import (
     compute_onboarding_steps,
     extract_config_defaults,
+    resolve_credentials_wizard_meta,
     resolve_wizard_steps,
     should_skip_wizard,
 )
@@ -27,6 +28,7 @@ from lumina_launcher.services.birth_service import birth_service
 from lumina_launcher.services.hardware_service import HardwareService
 from lumina_launcher.services.model_service import ModelService
 from lumina_launcher.services.setup_persist import (
+    build_credentials_env_snapshot,
     persist_credentials_only,
     persist_tauri_quick_config,
     scan_missing_credentials,
@@ -187,6 +189,11 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
 
     config = config_manager.load_yaml_config()
     env_values = config_manager.parse_env_file()
+    creds_snapshot = build_credentials_env_snapshot(config_manager)
+    credentials_meta = resolve_credentials_wizard_meta(
+        credentials_missing=credentials_missing,
+        setup_complete=setup_complete,
+    )
     intelligence_payload = {
         "ollama_installed": bool(intel_status.get("ollama_installed")),
         "ollama_required": bool(intel_status.get("ollama_required")),
@@ -229,14 +236,48 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         "credentials": {
             "missing": credentials_missing,
             "has_admin_api_key": bool(str(env_values.get("LUMINA_ADMIN_API_KEY", "")).strip()),
+            "env_path": creds_snapshot["env_path"],
+            "present": creds_snapshot["present"],
+            "wizard_required": credentials_meta["wizard_required"],
+            "skip_reason": credentials_meta["skip_reason"],
         },
         "required_steps": required_steps,
         "wizard_steps": wizard_steps,
         "step_status": step_status,
-        "defaults": extract_config_defaults(config),
+        "defaults": extract_config_defaults(config, env_values=env_values),
         "smart_setup_running": _smart_setup_running,
         "workspace_root": str(root),
     }
+
+
+def _is_loopback_client(request: Request) -> bool:
+    client = request.client
+    if client is None:
+        return False
+    host = (client.host or "").strip().lower()
+    return host in {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+@router.get("/deck-credentials-prefill")
+async def get_deck_credentials_prefill(request: Request) -> dict[str, Any]:
+    """Expose .env credential values to local Tauri deck only (Streamlit wizard parity)."""
+    if not _is_loopback_client(request):
+        raise HTTPException(status_code=403, detail="Localhost clients only")
+    _, config_manager, _, _, _, _ = _services()
+    return build_credentials_env_snapshot(config_manager)
+
+
+@router.get("/deck-api-key")
+async def get_deck_api_key(request: Request) -> dict[str, Any]:
+    """Expose admin API key to local Tauri deck only (Streamlit .env parity)."""
+    if not _is_loopback_client(request):
+        raise HTTPException(status_code=403, detail="Localhost clients only")
+    _, config_manager, _, _, _, _ = _services()
+    env_values = config_manager.parse_env_file()
+    api_key = str(env_values.get("LUMINA_ADMIN_API_KEY", "")).strip()
+    if not api_key:
+        return {"configured": False}
+    return {"configured": True, "api_key": api_key}
 
 
 @router.get("/onboarding")
@@ -315,6 +356,9 @@ class ConfigureCredentials(BaseModel):
     CROSSTRADE_TOKEN: str = ""
     CROSSTRADE_ACCOUNT: str = ""
     LUMINA_ADMIN_API_KEY: str = ""
+    XAI_API_KEY: str = ""
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_CHAT_ID: str = ""
 
 
 class ConfigureRisk(BaseModel):

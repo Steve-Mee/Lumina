@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { fetchSmartSetupProgress } from "@/lib/setupClient";
 import type { ModelCatalogEntry, OnboardingPayload } from "@/lib/onboardingSteps";
+import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
+import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 interface SmartSetupStepProps {
@@ -12,7 +14,7 @@ interface SmartSetupStepProps {
   running: boolean;
   selectedModelKey: string;
   onSelectModel: (key: string) => void;
-  onRun: () => void;
+  onRun: (options?: { force_high_tier?: boolean; pull_extra_models?: boolean }) => void;
   onContinue: () => void;
   onRefresh: () => void;
 }
@@ -42,6 +44,8 @@ export function SmartSetupStep({
   const [failed, setFailed] = useState(false);
   const [instructions, setInstructions] = useState<InstructionStep[]>([]);
   const [instructionSummary, setInstructionSummary] = useState("");
+  const [forceHighTier, setForceHighTier] = useState(false);
+  const [pullExtraModels, setPullExtraModels] = useState(false);
 
   const needsOllama = payload.intelligence.missing.includes("ollama");
   const needsModel = payload.intelligence.missing.some((m) => m.startsWith("model:"));
@@ -106,7 +110,7 @@ export function SmartSetupStep({
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="onboarding-card mx-auto max-w-xl p-8"
+      className="mx-auto max-w-xl p-2 md:p-4"
     >
       <h2 className="mb-2 text-lg font-semibold">Intelligence Stack</h2>
       <p className="mb-6 text-sm text-muted-foreground">
@@ -140,7 +144,7 @@ export function SmartSetupStep({
                     "w-full rounded-lg border px-3 py-3 text-left text-sm transition-all",
                     selected
                       ? "border-cyan-400/45 bg-cyan-400/10"
-                      : "border-white/10 bg-black/20 hover:border-white/20",
+                      : luminaSurfaceMutedClass("border border-white/10 hover:border-white/20"),
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -170,9 +174,11 @@ export function SmartSetupStep({
       )}
 
       {payload.intelligence.recommended_provider !== "ollama" && (
-        <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200/90">
-          High-tier provider ({payload.intelligence.recommended_provider}) requires manual vLLM
-          setup. See launcher documentation for GPU requirements.
+        <p className={cn("mb-4 rounded-lg p-3 text-xs", distressPanelClass())}>
+          <span className={warnOverlayBodyClass()}>
+            High-tier provider ({payload.intelligence.recommended_provider}) requires manual vLLM
+            setup. See launcher documentation for GPU requirements.
+          </span>
         </p>
       )}
 
@@ -189,8 +195,8 @@ export function SmartSetupStep({
       )}
 
       {(failed || (!ready && !running && instructions.length > 0)) && (
-        <div className="mb-6 rounded-lg border border-amber-500/25 bg-amber-500/5 p-4">
-          <p className="mb-2 text-xs font-semibold tracking-wider text-amber-200/90 uppercase">
+        <div className={cn("mb-6 rounded-lg p-4", distressPanelClass())}>
+          <p className="mb-2 text-xs font-semibold tracking-wider uppercase text-muted-foreground">
             Manual setup fallback
           </p>
           {instructionSummary && (
@@ -198,7 +204,7 @@ export function SmartSetupStep({
           )}
           <ul className="space-y-3">
             {instructions.map((step) => (
-              <li key={step.title} className="rounded border border-white/10 bg-black/20 p-3">
+              <li key={step.title} className={luminaSurfaceMutedClass("rounded border border-white/10 p-3")}>
                 <p className="text-sm font-medium">{step.title}</p>
                 {step.manual && <p className="mt-1 text-xs text-muted-foreground">{step.manual}</p>}
                 {step.command && (
@@ -222,9 +228,34 @@ export function SmartSetupStep({
         </div>
       )}
 
+      {!ready && payload.intelligence.recommended_provider === "ollama" && (
+        <div className="mb-4 space-y-2 text-sm">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={forceHighTier}
+              onChange={(e) => setForceHighTier(e.target.checked)}
+            />
+            Force high tier profile
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={pullExtraModels}
+              onChange={(e) => setPullExtraModels(e.target.checked)}
+            />
+            Download extra recommended models
+          </label>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-3">
         {!ready && payload.intelligence.recommended_provider === "ollama" && (
-          <Button className="onboarding-cta" onClick={onRun} disabled={running || !activeKey}>
+          <Button
+            className="onboarding-cta"
+            onClick={() => onRun({ force_high_tier: forceHighTier, pull_extra_models: pullExtraModels })}
+            disabled={running || !activeKey}
+          >
             {running ? "Installing…" : "Install & Configure"}
           </Button>
         )}

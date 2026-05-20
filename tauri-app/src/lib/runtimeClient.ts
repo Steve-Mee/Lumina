@@ -56,6 +56,10 @@ export async function stopAllActivities(): Promise<{ ok: boolean; message: strin
   return runtimeFetch("/api/runtime/stop-all", { method: "POST" });
 }
 
+export async function pauseTradingSafely(): Promise<{ ok: boolean; message: string }> {
+  return runtimeFetch("/api/runtime/pause-trading", { method: "POST" });
+}
+
 export async function pauseTraining(): Promise<{ ok: boolean; message: string }> {
   return runtimeFetch("/api/runtime/training-pause", { method: "POST" });
 }

@@ -6,6 +6,7 @@ import { CorePanelSlot } from "@/components/cockpit/CorePanelSlot";
 import { EvolutionDeckPanel } from "@/components/cockpit/EvolutionDeckPanel";
 import { FadeInView } from "@/components/cockpit/FadeInView";
 import { PanelErrorBoundary } from "@/components/cockpit/PanelErrorBoundary";
+import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { IntelligenceDeckPanel } from "@/components/cockpit/IntelligenceDeckPanel";
@@ -119,7 +120,7 @@ function CoreDebugPanel() {
 }
 
 function ThreeDPanelFallback() {
-  return <PanelLoader label="Loading 3D module…" className="min-h-[220px]" />;
+  return <PanelLoader label={DECK_LOADING_COPY.generic3d} className="min-h-[220px]" />;
 }
 
 function CommandDeckGrid() {
@@ -142,7 +143,7 @@ function CommandDeckGrid() {
           subtitle="Fortress integrity & drawdown buffer"
           className="min-h-[220px] overflow-hidden"
           loading={telemetryPending}
-          loadingLabel="Connecting risk citadel…"
+          loadingLabel={DECK_LOADING_COPY.riskCitadel}
         >
           <PanelErrorBoundary panelName="Risk Monitor">
             <RiskCitadel key={operatorMode} className="h-full w-full" />
@@ -151,10 +152,10 @@ function CommandDeckGrid() {
 
         <CorePanelSlot
           title="Neural Core"
-          subtitle="Central organism visualization"
-          className="min-h-[280px] flex-1 overflow-hidden"
+          immersive
+          className="min-h-[280px] flex-1 overflow-hidden border-none"
           loading={telemetryPending}
-          loadingLabel="Awakening neural core…"
+          loadingLabel={DECK_LOADING_COPY.neuralCore}
         >
           <PanelErrorBoundary panelName="Neural Core">
             <Suspense fallback={<ThreeDPanelFallback />}>
@@ -201,7 +202,9 @@ export default function App() {
                 <CommandDeckGrid />
               </CockpitShell>
               <CommandDeckTour />
-              {import.meta.env.DEV ? <CoreDebugPanel /> : null}
+              {import.meta.env.DEV && localStorage.getItem("lumina.debugPanel") === "1" ? (
+                <CoreDebugPanel />
+              ) : null}
             </>
           )
         }
@@ -210,7 +213,7 @@ export default function App() {
         theme="dark"
         position="top-right"
         toastOptions={{
-          className: "font-mono text-xs border border-white/10 bg-black/85",
+          className: "lumina-glass lumina-glass--overlay font-mono text-xs",
         }}
       />
     </>

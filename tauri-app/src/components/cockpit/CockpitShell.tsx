@@ -1,18 +1,27 @@
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { toast } from "sonner";
 
+import { OrganismEnvelopeProvider } from "@/context/OrganismEnvelopeContext";
+import { DeckStatusBanner } from "@/components/cockpit/DeckStatusBanner";
 import { CommandHud } from "@/components/cockpit/CommandHud";
+import { DeckBlockingOverlay } from "@/components/cockpit/DeckBlockingOverlay";
 import { PPOEvolutionProvider } from "@/context/PPOEvolutionContext";
 import { AdaptiveIntelligenceProvider } from "@/context/AdaptiveIntelligenceContext";
-import { FallbackBanner } from "@/components/cockpit/FallbackBanner";
-import { BirthProgressBanner } from "@/components/onboarding/BirthProgressBanner";
-import { ModeBanner } from "@/components/cockpit/ModeBanner";
 import { RealSafeModeOverlay } from "@/components/cockpit/RealSafeModeOverlay";
 import { StatusBar } from "@/components/cockpit/StatusBar";
+import { useOrganismClock } from "@/hooks/useOrganismClock";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useRealSafeModeMonitor } from "@/hooks/useRealSafeModeMonitor";
+import { fetchAndHydrateDeckApiKey } from "@/lib/setupClient";
 import { connectCoreLive, disconnectCoreLive } from "@/lib/websocket";
-import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
-import { useVisualSettingsStore } from "@/store/visualSettingsStore";
+import { useApiKeyStore } from "@/store/apiKeyStore";
+import {
+  selectCurrentMode,
+  selectModeSyncStatus,
+  useCoreStore,
+} from "@/store/coreStore";
+import { useVisualSettingsStore, selectVisualQuality } from "@/store/visualSettingsStore";
 import { cn } from "@/lib/utils";
 
 interface CockpitShellProps {
@@ -27,41 +36,69 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
     (state) => state.hydrateVisualSettings,
   );
 
+  const hydrateApiKey = useApiKeyStore((s) => s.hydrate);
+  const modeSyncStatus = useCoreStore(selectModeSyncStatus);
+  const modeSyncError = useCoreStore((s) => s.modeSyncError);
+  const lastModeErrorToast = useRef<string | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
+  const reducedMotion = usePrefersReducedMotion();
+  const visualQuality = useVisualSettingsStore(selectVisualQuality);
+  const clockFrozen = visualQuality === "low";
+
+  useOrganismClock(shellRef, operatorMode, reducedMotion, clockFrozen);
+
+  useEffect(() => {
+    if (modeSyncStatus === "error" && modeSyncError) {
+      if (lastModeErrorToast.current !== modeSyncError) {
+        lastModeErrorToast.current = modeSyncError;
+        toast.error(modeSyncError);
+      }
+    } else if (modeSyncStatus !== "error") {
+      lastModeErrorToast.current = null;
+    }
+  }, [modeSyncStatus, modeSyncError]);
+
   useEffect(() => {
     hydrateOperatorMode();
     hydrateVisualSettings();
+    void fetchAndHydrateDeckApiKey().then((ok) => {
+      if (ok) hydrateApiKey();
+    });
     connectCoreLive();
     return () => disconnectCoreLive();
-  }, [hydrateOperatorMode, hydrateVisualSettings]);
+  }, [hydrateOperatorMode, hydrateVisualSettings, hydrateApiKey]);
 
   useRealSafeModeMonitor();
 
   return (
-    <div
-      data-mode={operatorMode}
-      className={cn(
-        "cockpit-shell relative flex h-screen flex-col overflow-hidden text-foreground",
-        className,
-      )}
-    >
-      <div className="cockpit-stars pointer-events-none absolute inset-0" />
-      <div className="cockpit-grid pointer-events-none absolute inset-0 opacity-40" />
+    <OrganismEnvelopeProvider>
+      <div
+        ref={shellRef}
+        data-mode={operatorMode}
+        className={cn(
+          "cockpit-shell lumina-glow-ambient relative flex h-screen flex-col overflow-hidden text-foreground",
+          className,
+        )}
+      >
+        <div className="cockpit-stars pointer-events-none absolute inset-0" />
+        <div className="cockpit-grid pointer-events-none absolute inset-0 opacity-40" />
+        <div className="deck-vignette pointer-events-none" aria-hidden />
 
-      <PPOEvolutionProvider>
-        <AdaptiveIntelligenceProvider>
-          <CommandHud />
-          <BirthProgressBanner />
-          <ModeBanner />
-          <FallbackBanner />
+        <PPOEvolutionProvider>
+          <AdaptiveIntelligenceProvider>
+            <DeckStatusBanner />
+            <CommandHud />
+            <DeckBlockingOverlay />
 
-          <div className="relative z-10 min-h-0 flex-1 overflow-hidden p-3">
-            {children}
-          </div>
+            <div className="relative z-10 min-h-0 flex-1 overflow-hidden p-3">
+              {children}
+            </div>
 
-          <StatusBar />
-          <RealSafeModeOverlay />
-        </AdaptiveIntelligenceProvider>
-      </PPOEvolutionProvider>
-    </div>
+            <StatusBar />
+            <RealSafeModeOverlay />
+          </AdaptiveIntelligenceProvider>
+        </PPOEvolutionProvider>
+      </div>
+    </OrganismEnvelopeProvider>
   );
 }

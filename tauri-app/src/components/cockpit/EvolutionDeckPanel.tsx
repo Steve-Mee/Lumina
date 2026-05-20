@@ -1,94 +1,276 @@
-import { Suspense, lazy, useEffect } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
+
+import { BarChart3 } from "lucide-react";
+
 import { motion } from "framer-motion";
 
-import { SimReadinessPanel } from "@/components/operations/SimReadinessPanel";
-import { PanelLoader } from "@/components/cockpit/PanelLoader";
-import { PPOEvolutionDeckView } from "@/components/cockpit/PPOEvolutionDeckView";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+
+import { EvolutionTabContent } from "@/components/cockpit/EvolutionTabContent";
+
+import { SubsystemsDrawer, SubsystemsDrawerTrigger } from "@/components/cockpit/SubsystemsDrawer";
+
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import { useModeMotion } from "@/hooks/useModeMotion";
+import { usePanelTabTransition } from "@/hooks/usePanelTabTransition";
+
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { springSoft, transitionOrNone } from "@/lib/motionPresets";
+
+import {
+
+  analyticsAnnexTabClass,
+
+  isAnalyticsCenterTab,
+
+} from "@/lib/analyticsAnnexPresentation";
+
+import {
+
+  EVOLUTION_DECK_TAB_SUBTITLES,
+
+  EVOLUTION_OPS_SECTIONS,
+
+  EVOLUTION_PRIMARY_TABS,
+
+  evolutionOpsTabLabel,
+
+  isEvolutionOpsTab,
+
+  primaryEvolutionTabLabel,
+
+} from "@/lib/evolutionDeckNav";
+
+import { transitionOrNone } from "@/lib/motionPresets";
+
+import { modePanelClass, modeTitleClass } from "@/lib/modePresentation";
+
 import { selectActiveCenterTab, useDeckPanelStore, type CenterDeckTab } from "@/store/deckPanelStore";
+
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
+
 import { cn } from "@/lib/utils";
 
-const EvolutionArena = lazy(() =>
-  import("@/components/EvolutionArena").then((module) => ({
-    default: module.EvolutionArena,
-  })),
-);
 
-export const EVOLUTION_DECK_TAB_SUBTITLES: Record<CenterDeckTab, string> = {
-  evolution: "Pending mutation proposals",
-  ppo: "Live policy evolution & training analytics",
-  readiness: "SIM stability & REAL readiness criteria",
-};
+
+export { EVOLUTION_DECK_TAB_SUBTITLES } from "@/lib/evolutionDeckNav";
+
+
 
 interface EvolutionDeckPanelProps {
+
   className?: string;
+
 }
 
-function ThreeDPanelFallback() {
-  return <PanelLoader label="Loading 3D module…" className="min-h-[220px]" />;
-}
+
 
 export function EvolutionDeckPanel({ className }: EvolutionDeckPanelProps) {
+
   const reducedMotion = usePrefersReducedMotion();
+
+  const modeMotion = useModeMotion();
+
+  const operatorMode = useCoreStore(selectCurrentMode);
+
   const activeCenterTab = useDeckPanelStore(selectActiveCenterTab);
+
   const setActiveCenterTab = useDeckPanelStore((state) => state.setActiveCenterTab);
+
   const hydrateCenterTab = useDeckPanelStore((state) => state.hydrateCenterTab);
+
+  const isReal = operatorMode === "REAL";
+
+  const isAnnexActive = isAnalyticsCenterTab(activeCenterTab);
+
+  const isOpsActive = isEvolutionOpsTab(activeCenterTab);
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const hideSubtitle = drawerOpen || isOpsActive;
+  const { pulseTabTransition } = usePanelTabTransition('[data-tour="evolution-deck"]');
 
   useEffect(() => {
     hydrateCenterTab();
   }, [hydrateCenterTab]);
 
+  useEffect(() => {
+    pulseTabTransition();
+  }, [activeCenterTab, pulseTabTransition]);
+
+
+
   return (
+
     <div
+
       data-tour="evolution-deck"
+
+      data-mode={operatorMode}
+
       className={cn(
-        "cockpit-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-white/10 py-0",
+
+        "lumina-glass lumina-glass--panel lumina-glass--interactive flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg py-0",
+
+        modePanelClass(operatorMode),
+
         className,
+
       )}
+
     >
+
       <Tabs
+
         value={activeCenterTab}
+
         onValueChange={(value) => setActiveCenterTab(value as CenterDeckTab)}
+
         className="flex min-h-0 flex-1 flex-col"
+
       >
-        <div className="relative border-b border-white/5 px-4 py-3">
+
+        <div
+
+          className={cn(
+
+            "relative border-b border-white/5 px-4 py-3",
+
+            isAnnexActive && "deck-header--annex",
+
+          )}
+
+        >
+
           <motion.div
-            className="absolute inset-x-4 top-0 h-px origin-left bg-gradient-to-r from-cyan-400/60 to-violet-400/30"
+
+            className="deck-panel-accent absolute inset-x-4 top-0 h-px origin-left"
+
             initial={reducedMotion ? { scaleX: 1 } : { scaleX: 0 }}
+
             animate={{ scaleX: 1 }}
-            transition={transitionOrNone(reducedMotion, { ...springSoft, delay: 0.1 })}
+
+            transition={transitionOrNone(reducedMotion, { ...modeMotion, delay: 0.1 })}
+
           />
+
           <div className="flex flex-wrap items-start justify-between gap-3">
+
             <div>
-              <h2 className="font-mono text-xs tracking-[0.18em] text-cyan-200/90 uppercase">
-                Command Center
+
+              <h2
+
+                className={cn(
+
+                  "deck-header-title deck-title mode-text-tier2",
+
+                  isAnnexActive ? "text-muted-foreground/80" : modeTitleClass(operatorMode),
+
+                )}
+
+              >
+
+                Evolution{isAnnexActive ? " · Annex" : ""}
+
               </h2>
-              <p className="font-mono text-[11px] text-muted-foreground/80">
-                {EVOLUTION_DECK_TAB_SUBTITLES[activeCenterTab]}
-              </p>
+
+              {!hideSubtitle ? (
+
+                <p className="font-mono text-[11px] text-muted-foreground/80">
+
+                  {EVOLUTION_DECK_TAB_SUBTITLES[activeCenterTab]}
+
+                </p>
+
+              ) : null}
+
             </div>
-            <TabsList>
-              <TabsTrigger value="evolution">Evolution Queue</TabsTrigger>
-              <TabsTrigger value="ppo">PPO Evolution</TabsTrigger>
-              <TabsTrigger value="readiness">SIM Readiness</TabsTrigger>
-            </TabsList>
+
+            <div className="flex items-center gap-1">
+
+              <TabsList>
+
+                {EVOLUTION_PRIMARY_TABS.map((tab) => (
+
+                  <TabsTrigger key={tab} value={tab}>
+
+                    {primaryEvolutionTabLabel(tab)}
+
+                  </TabsTrigger>
+
+                ))}
+
+              </TabsList>
+
+              <SubsystemsDrawerTrigger
+
+                label="Analytics"
+
+                icon={BarChart3}
+
+                onClick={() => setDrawerOpen(true)}
+
+                className={isOpsActive ? "deck-tab-chip deck-tab-chip--active border-transparent" : undefined}
+
+              />
+
+            </div>
+
           </div>
+
         </div>
 
-        <TabsContent value="evolution" className="mt-0 flex min-h-0 flex-1 flex-col p-2">
-          <Suspense fallback={<ThreeDPanelFallback />}>
-            <EvolutionArena className="h-full min-h-[280px] w-full" />
-          </Suspense>
-        </TabsContent>
-        <TabsContent value="ppo" className="mt-0 flex min-h-0 flex-1 flex-col p-0">
-          <PPOEvolutionDeckView className="flex-1" />
-        </TabsContent>
-        <TabsContent value="readiness" className="mt-0 flex min-h-0 flex-1 flex-col p-2">
-          <SimReadinessPanel className="h-full min-h-[280px]" />
-        </TabsContent>
+
+
+        <div className="mt-0 flex min-h-0 flex-1 flex-col p-2">
+
+          <EvolutionTabContent
+
+            tab={activeCenterTab}
+
+            reducedMotion={reducedMotion}
+
+            modeMotion={modeMotion}
+
+          />
+
+        </div>
+
       </Tabs>
+
+
+
+      <SubsystemsDrawer
+
+        open={drawerOpen}
+
+        activeTab={activeCenterTab}
+
+        onOpenChange={setDrawerOpen}
+
+        onSelectTab={setActiveCenterTab}
+
+        sections={EVOLUTION_OPS_SECTIONS}
+
+        getTabLabel={evolutionOpsTabLabel}
+
+        title="Analytics"
+
+        subtitle="PPO evolution & SIM readiness"
+
+        footerText={`${EVOLUTION_OPS_SECTIONS.length} section · ${operatorMode} mode`}
+
+        getTabHighlightClass={(tab) =>
+
+          tab === "readiness" && isReal ? analyticsAnnexTabClass() : undefined
+
+        }
+
+      />
+
     </div>
+
   );
+
 }
+

@@ -1,25 +1,25 @@
 import { Loader2, Radio, WifiOff } from "lucide-react";
 
 import { ApiKeySetupCallout } from "@/components/cockpit/ApiKeySetupCallout";
-import { Button } from "@/components/ui/button";
+import { pendingHighlightClass, warnOverlayPanelClass } from "@/lib/modePresentation";
 import { selectApiKeyConfigured, useApiKeyStore } from "@/store/apiKeyStore";
-import { useDeckPanelStore } from "@/store/deckPanelStore";
-import type { ConnectionStatus } from "@/store/coreStore";
+import type { ConnectionStatus, TradingMode } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
 interface DecisionTheaterStatusHeroProps {
   connectionStatus: ConnectionStatus;
   hasLiveData: boolean;
+  mode: TradingMode;
   className?: string;
 }
 
 export function DecisionTheaterStatusHero({
   connectionStatus,
   hasLiveData,
+  mode,
   className,
 }: DecisionTheaterStatusHeroProps) {
   const apiKeyConfigured = useApiKeyStore(selectApiKeyConfigured);
-  const setActiveRightTab = useDeckPanelStore((s) => s.setActiveRightTab);
 
   if (!apiKeyConfigured) {
     return <ApiKeySetupCallout className={className} />;
@@ -29,13 +29,14 @@ export function DecisionTheaterStatusHero({
     return (
       <div
         className={cn(
-          "flex flex-col items-center justify-center gap-3 rounded-lg border border-cyan-500/25 bg-cyan-950/20 px-6 py-8 text-center",
+          "flex flex-col items-center justify-center gap-3 rounded-lg px-6 py-8 text-center",
+          warnOverlayPanelClass(),
           className,
         )}
       >
-        <Loader2 className="size-8 animate-spin text-cyan-300/90" />
+        <Loader2 className={cn("size-8 animate-spin", pendingHighlightClass(mode))} />
         <div>
-          <p className="font-mono text-xs tracking-wide text-cyan-200 uppercase">
+          <p className={cn("font-mono text-xs tracking-wide uppercase", pendingHighlightClass(mode))}>
             {connectionStatus === "reconnecting" ? "Reconnecting to live core" : "Connecting to live core"}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -50,23 +51,21 @@ export function DecisionTheaterStatusHero({
     return (
       <div
         className={cn(
-          "flex flex-col items-center justify-center gap-3 rounded-lg border border-amber-500/25 bg-amber-950/20 px-6 py-8 text-center",
+          "flex flex-col items-center justify-center gap-3 rounded-lg px-6 py-8 text-center",
+          warnOverlayPanelClass(),
           className,
         )}
       >
-        <WifiOff className="size-8 text-amber-300/90" />
+        <WifiOff className={cn("size-8", pendingHighlightClass(mode))} />
         <div>
-          <p className="font-mono text-xs tracking-wide text-amber-200 uppercase">
+          <p className={cn("font-mono text-xs tracking-wide uppercase", pendingHighlightClass(mode))}>
             Live stream offline
           </p>
           <p className="mt-1 max-w-sm text-xs text-muted-foreground">
-            Showing last known state. Start the engine or check backend health to resume live
-            decisions.
+            Showing last known state. Start the engine or check transport status in the deck
+            header. System diagnostics are available under Ops.
           </p>
         </div>
-        <Button type="button" size="sm" variant="secondary" onClick={() => setActiveRightTab("monitor")}>
-          Open Monitor
-        </Button>
       </div>
     );
   }
@@ -75,21 +74,14 @@ export function DecisionTheaterStatusHero({
     return (
       <div
         className={cn(
-          "flex items-center gap-2 rounded-md border border-amber-500/20 bg-amber-950/15 px-3 py-2 text-xs text-amber-100/85",
+          "flex items-center gap-2 rounded-md px-3 py-2 text-xs",
+          warnOverlayPanelClass(),
+          pendingHighlightClass(mode),
           className,
         )}
       >
-        <Radio className="size-3.5 shrink-0 text-amber-300/90" />
+        <Radio className={cn("size-3.5 shrink-0", pendingHighlightClass(mode))} />
         <span>Live stream offline — displaying cached trades and reasoning.</span>
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          className="ml-auto shrink-0"
-          onClick={() => setActiveRightTab("monitor")}
-        >
-          Monitor
-        </Button>
       </div>
     );
   }

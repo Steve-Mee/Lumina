@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 
+import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { metricPop } from "@/lib/motionPresets";
 import { cn } from "@/lib/utils";
@@ -11,6 +12,7 @@ interface AnimatedMetricProps {
 
 export function AnimatedMetric({ value, className }: AnimatedMetricProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const modeMotion = useModeMotion();
 
   if (reducedMotion) {
     return (
@@ -29,7 +31,7 @@ export function AnimatedMetric({ value, className }: AnimatedMetricProps) {
         initial="initial"
         animate="animate"
         exit="exit"
-        transition={{ duration: 0.18, ease: "easeOut" }}
+        transition={modeMotion}
       >
         {value}
       </motion.p>

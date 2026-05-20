@@ -119,6 +119,39 @@ export interface ReconciliationStatus {
   last_error?: string | null;
 }
 
+export interface MonitoringDiagnostics {
+  paths: Record<string, string>;
+  structured_errors: Array<Record<string, unknown>>;
+  reasoning_latency: Array<Record<string, unknown>>;
+  model_load_times: Array<Record<string, unknown>>;
+  twin_training: Array<Record<string, unknown>>;
+  gate_rejections: Array<Record<string, unknown>>;
+}
+
+export async function fetchMonitoringDiagnostics(): Promise<MonitoringDiagnostics> {
+  return monitoringFetch<MonitoringDiagnostics>("/api/monitoring/diagnostics");
+}
+
+export async function fetchWorkspaceSnapshot(): Promise<Record<string, unknown>> {
+  return monitoringFetch("/api/monitoring/workspace-snapshot");
+}
+
+export async function fetchReactDashboardStatus(): Promise<{
+  ready: boolean;
+  reason?: string;
+  react_url?: string;
+}> {
+  return monitoringFetch("/api/monitoring/react-dashboard-status");
+}
+
+export async function fetchAdminSetupSnapshot(): Promise<Record<string, unknown>> {
+  return monitoringFetch("/api/monitoring/admin-setup-snapshot");
+}
+
+export async function fetchMetricsJson(): Promise<Record<string, unknown>> {
+  return monitoringFetch("/api/monitoring/metrics/json");
+}
+
 export async function fetchReconciliationStatus(): Promise<ReconciliationStatus> {
   const apiKey = resolveMonitoringApiKey();
   if (!apiKey) return { status: "unavailable" };

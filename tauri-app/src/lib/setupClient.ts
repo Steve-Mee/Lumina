@@ -1,4 +1,9 @@
 import type { OnboardingPayload } from "@/lib/onboardingSteps";
+import { luminaFetch, readHttpErrorDetail } from "@/lib/httpClient";
+import {
+  persistMonitoringApiKey,
+  resolveMonitoringApiKey,
+} from "@/lib/monitoringClient";
 
 const STORAGE_KEY = "lumina.backendUrl";
 
@@ -14,7 +19,7 @@ export function setBackendBaseUrl(url: string): void {
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const base = resolveBackendBaseUrl();
-  const response = await fetch(`${base}${path}`, {
+  const response = await luminaFetch(`${base}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -22,8 +27,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `HTTP ${response.status}`);
+    throw new Error(await readHttpErrorDetail(response));
   }
   return response.json() as Promise<T>;
 }
@@ -39,6 +43,9 @@ export interface ConfigurePayload {
     CROSSTRADE_TOKEN: string;
     CROSSTRADE_ACCOUNT: string;
     LUMINA_ADMIN_API_KEY?: string;
+    XAI_API_KEY?: string;
+    TELEGRAM_BOT_TOKEN?: string;
+    TELEGRAM_CHAT_ID?: string;
   };
   risk: {
     kelly_fraction: number;
@@ -88,6 +95,10 @@ export type BotConfigPayload = {
     instrument: string;
     voice_enabled: boolean;
     screen_share_enabled: boolean;
+    dashboard_enabled: boolean;
+    runtime_trace: boolean;
+    runtime_trace_interval_sec: number;
+    latency_sla_ms: number;
   };
 };
 
@@ -104,6 +115,8 @@ export async function startSmartSetup(options?: {
   install_ollama?: boolean;
   download_recommended_model?: boolean;
   selected_model_key?: string;
+  force_high_tier?: boolean;
+  pull_extra_models?: boolean;
 }): Promise<{ status: string; message: string }> {
   return apiFetch("/api/setup/smart-setup", {
     method: "POST",
@@ -138,10 +151,9 @@ export async function startBirth(targetTrades: number): Promise<Record<string, u
     explicit_user_start: "true",
     target_trades: String(targetTrades),
   });
-  const response = await fetch(`${base}/api/birth/start?${params}`, { method: "POST" });
+  const response = await luminaFetch(`${base}/api/birth/start?${params}`, { method: "POST" });
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `HTTP ${response.status}`);
+    throw new Error(await readHttpErrorDetail(response));
   }
   return response.json();
 }
@@ -155,9 +167,46 @@ export { fetchBirthStatusTyped as fetchBirthStatus } from "@/lib/birthClient";
 export async function probeBackendHealth(): Promise<boolean> {
   try {
     const base = resolveBackendBaseUrl();
-    const response = await fetch(`${base}/api/monitoring/health`, { signal: AbortSignal.timeout(4000) });
+    const response = await luminaFetch(`${base}/api/monitoring/health`, {
+      signal: AbortSignal.timeout(4000),
+    });
     return response.ok;
   } catch {
     return false;
   }
+}
+
+export interface DeckApiKeyResponse {
+  configured: boolean;
+  api_key?: string;
+}
+
+export async function fetchDeckApiKey(): Promise<DeckApiKeyResponse> {
+  return apiFetch<DeckApiKeyResponse>("/api/setup/deck-api-key");
+}
+
+export type { DeckCredentialsPrefillResponse } from "@/lib/credentialsPrefill";
+
+export async function fetchDeckCredentialsPrefill(): Promise<
+  import("@/lib/credentialsPrefill").DeckCredentialsPrefillResponse
+> {
+  return apiFetch("/api/setup/deck-credentials-prefill");
+}
+
+/** Sync admin key from backend .env into deck localStorage when not already set. */
+export async function fetchAndHydrateDeckApiKey(): Promise<boolean> {
+  if (resolveMonitoringApiKey()) {
+    return true;
+  }
+  try {
+    const response = await fetchDeckApiKey();
+    const key = response.api_key?.trim();
+    if (response.configured && key) {
+      persistMonitoringApiKey(key);
+      return true;
+    }
+  } catch {
+    // backend offline or non-localhost
+  }
+  return false;
 }

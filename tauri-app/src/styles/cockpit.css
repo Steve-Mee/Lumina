@@ -1,9 +1,150 @@
 :root {
-  --cockpit-glow-primary: oklch(0.75 0.15 195);
-  --cockpit-glow-accent: oklch(0.65 0.2 280);
-  --cockpit-glow-real: oklch(0.7 0.18 45);
-  --cockpit-grid-line: oklch(1 0 0 / 4%);
-  --cockpit-star: oklch(1 0 0 / 35%);
+  /* cockpit.css section index: organism (shell, clock, presence) · deck (HUD, tabs) · annex (theater, evolution) */
+  --cockpit-glow-primary: var(--mode-sim-accent);
+  --cockpit-glow-accent: var(--mode-sim-secondary);
+  --cockpit-grid-line: color-mix(in srgb, var(--mode-sim-accent) 3%, transparent);
+  --cockpit-star: color-mix(in srgb, var(--mode-sim-accent) 25%, white 10%);
+}
+
+.lumina-glass {
+  position: relative;
+  background: var(--lumina-glass-bg, var(--lumina-glass-bg-panel));
+  backdrop-filter: blur(var(--lumina-glass-blur, var(--lumina-glass-blur-panel)));
+  -webkit-backdrop-filter: blur(var(--lumina-glass-blur, var(--lumina-glass-blur-panel)));
+  border: 1px solid var(--lumina-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--lumina-glass-inset),
+    0 8px 32px -12px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 8%, transparent);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease;
+}
+
+.lumina-glass::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0.028;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.lumina-glass--panel::after {
+  opacity: 0.04;
+}
+
+.lumina-glass--hud::after {
+  opacity: 0.07;
+  animation: grain-shift 8s ease-in-out infinite;
+}
+
+@keyframes grain-shift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(1px, 1px);
+  }
+}
+
+.lumina-glass--overlay::after {
+  opacity: 0.085;
+}
+
+.lumina-glass--hud {
+  --lumina-glass-bg: var(--lumina-glass-bg-hud);
+  --lumina-glass-blur: calc(var(--lumina-glass-blur-hud) + 2px);
+}
+
+.lumina-glass--panel {
+  --lumina-glass-bg: var(--lumina-glass-bg-panel);
+  --lumina-glass-blur: var(--lumina-glass-blur-panel);
+}
+
+.lumina-glass--overlay {
+  --lumina-glass-bg: var(--lumina-glass-bg-overlay);
+  --lumina-glass-blur: var(--lumina-glass-blur-overlay);
+}
+
+.lumina-glow-edge {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 22%, transparent),
+    0 0 12px var(--lumina-glow-edge),
+    0 8px 28px -10px var(--lumina-glow-halo);
+}
+
+@media (hover: hover) {
+  .hover\:lumina-glow-edge:hover {
+    box-shadow: 0 0 12px var(--lumina-glow-edge);
+  }
+}
+
+[data-slot="tabs-trigger"][data-state="active"] {
+  box-shadow: 0 0 12px var(--lumina-glow-edge);
+}
+
+.lumina-glow-halo {
+  box-shadow: 0 0 32px var(--lumina-glow-halo);
+}
+
+.lumina-glow-ambient {
+  --lumina-shell-ambient: var(--lumina-glow-ambient);
+}
+
+.lumina-glass--interactive:hover,
+.lumina-glass--interactive:focus-within {
+  border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 40%, transparent);
+  box-shadow:
+    inset 0 1px 0 var(--lumina-glass-inset),
+    0 0 20px var(--lumina-glow-edge),
+    0 10px 28px -12px var(--lumina-glow-halo);
+}
+
+.lumina-glass:focus-within:not(.lumina-glass--interactive),
+.lumina-glass:focus-visible:not(.lumina-glass--interactive) {
+  border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 45%, transparent);
+  box-shadow:
+    inset 0 1px 0 var(--lumina-glass-inset),
+    0 0 16px var(--lumina-glow-edge);
+}
+
+.lumina-surface-muted {
+  background: var(--annex-surface, oklch(0 0 0 / 18%));
+  border: 1px solid var(--annex-border, oklch(1 0 0 / 5%));
+}
+
+/* @deprecated — use .lumina-glass.lumina-glass--interactive */
+.cockpit-panel {
+  background: var(--lumina-glass-bg);
+  backdrop-filter: blur(var(--lumina-glass-blur));
+  -webkit-backdrop-filter: blur(var(--lumina-glass-blur));
+  border: 1px solid var(--lumina-glass-border);
+  box-shadow: inset 0 1px 0 var(--lumina-glass-inset);
+  transition:
+    border-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.2s ease;
+}
+
+.cockpit-panel:hover,
+.cockpit-panel:focus-within {
+  border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 40%, transparent);
+  box-shadow:
+    inset 0 1px 0 var(--lumina-glass-inset),
+    0 0 16px var(--lumina-glow-edge);
+}
+
+@keyframes organism-nebula-drift {
+  0%,
+  100% {
+    background-position: 0% 0%, 100% 100%, 50% 50%;
+  }
+  50% {
+    background-position: 10% 4%, 90% 96%, 52% 48%;
+  }
 }
 
 @keyframes cockpit-pulse {
@@ -43,33 +184,84 @@
 }
 
 .cockpit-shell {
+  --organism-phase: 0;
+  --organism-envelope: 0.5;
+  --organism-cycle: 9s;
   background:
     radial-gradient(
       ellipse 80% 60% at 50% 0%,
-      color-mix(in oklch, var(--cockpit-glow-accent) 12%, transparent),
+      color-mix(in srgb, var(--cockpit-glow-accent) 10%, transparent),
       transparent 70%
     ),
     radial-gradient(
       ellipse 60% 50% at 80% 100%,
-      color-mix(in oklch, var(--cockpit-glow-primary) 8%, transparent),
+      color-mix(in srgb, var(--cockpit-glow-primary) 7%, transparent),
       transparent 60%
     ),
-    linear-gradient(180deg, oklch(0.12 0.02 260) 0%, oklch(0.1 0.03 280) 100%);
-  transition:
-    background 0.5s ease,
-    filter 0.5s ease;
+    radial-gradient(
+      ellipse 45% 35% at 15% 70%,
+      color-mix(in srgb, var(--lumina-glow-ambient) 50%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(180deg, var(--lumina-void) 0%, color-mix(in srgb, var(--lumina-void) 92%, #0d1020) 100%);
+  background-size:
+    calc(120% + var(--organism-envelope) * 4%) calc(120% + var(--organism-envelope) * 4%),
+    calc(120% + var(--organism-envelope) * 3%) calc(120% + var(--organism-envelope) * 3%),
+    100% 100%,
+    100% 100%;
+  animation: organism-nebula-drift var(--organism-cycle, 9s) ease-in-out infinite;
+  transition: filter 0.5s ease;
+}
+
+.cockpit-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  color: var(--deck-accent, var(--mode-sim-accent));
+  opacity: 0.24;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill='none' stroke='currentColor' stroke-opacity='0.1' stroke-width='0.45'%3E%3Cpath d='M8 22 Q50 12 92 22 M8 50 Q50 38 92 50 M8 78 Q50 68 92 78'/%3E%3Cpath d='M8 22 Q8 50 8 78 M50 15 Q50 45 50 75 M92 22 Q92 50 92 78'/%3E%3C/g%3E%3Cg fill='currentColor' fill-opacity='0.14'%3E%3Ccircle cx='8' cy='22' r='1.1'/%3E%3Ccircle cx='50' cy='15' r='0.9'/%3E%3Ccircle cx='92' cy='22' r='1.1'/%3E%3Ccircle cx='8' cy='50' r='0.9'/%3E%3Ccircle cx='50' cy='45' r='1.1'/%3E%3Ccircle cx='92' cy='50' r='0.9'/%3E%3Ccircle cx='8' cy='78' r='1.1'/%3E%3Ccircle cx='50' cy='75' r='0.9'/%3E%3Ccircle cx='92' cy='78' r='1.1'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 100px 100px;
+  mask-image: radial-gradient(ellipse 95% 85% at 50% 45%, black 15%, transparent 80%);
+  transform: rotate(calc(var(--organism-phase, 0) * 360deg));
+}
+
+.cockpit-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: calc(0.04 + var(--organism-envelope, 0.5) * 0.05);
+  background:
+    radial-gradient(
+      ellipse 70% 50% at 20% 0%,
+      color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 18%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 55% 45% at 85% 100%,
+      color-mix(in srgb, var(--cockpit-glow-accent) 12%, transparent),
+      transparent 65%
+    );
 }
 
 .cockpit-shell[data-mode="SIM"] {
-  --cockpit-glow-primary: oklch(0.78 0.17 195);
-  --cockpit-glow-accent: oklch(0.68 0.22 280);
-  --cockpit-star: oklch(1 0 0 / 45%);
+  --cockpit-glow-primary: var(--mode-sim-accent);
+  --cockpit-glow-accent: var(--mode-sim-secondary);
+  --cockpit-star: color-mix(in srgb, var(--mode-sim-accent) 35%, white 12%);
 }
 
 .cockpit-shell[data-mode="REAL"] {
-  --cockpit-glow-primary: oklch(0.55 0.06 240);
-  --cockpit-glow-accent: oklch(0.62 0.1 55);
+  --organism-cycle: 11s;
+  --cockpit-glow-primary: var(--mode-real-secondary);
+  --cockpit-glow-accent: var(--mode-real-muted);
   --cockpit-star: oklch(1 0 0 / 18%);
+  --lumina-glass-border: color-mix(in srgb, var(--mode-real-muted) 12%, transparent);
+  --lumina-glass-inset: color-mix(in srgb, var(--mode-real-muted) 4%, transparent);
+  --lumina-glow-edge: color-mix(in srgb, var(--mode-real-accent) 28%, transparent);
+  --lumina-glow-halo: color-mix(in srgb, var(--mode-real-muted) 12%, transparent);
 }
 
 .cockpit-shell[data-mode="SIM"] .cockpit-stars {
@@ -84,6 +276,451 @@
   opacity: 0.25;
 }
 
+/* ── Deck mode tokens (consumed by chrome + panels) ── */
+
+.cockpit-shell[data-mode="SIM"] {
+  --deck-accent: var(--mode-sim-accent);
+  --deck-glow: color-mix(in srgb, var(--mode-sim-accent) 22%, transparent);
+  --deck-border: color-mix(in srgb, var(--mode-sim-accent) 16%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] {
+  --deck-accent: var(--mode-real-accent);
+  --deck-glow: color-mix(in srgb, var(--mode-real-muted) 18%, transparent);
+  --deck-border: color-mix(in srgb, var(--mode-real-muted) 20%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .cockpit-stars,
+.cockpit-shell[data-mode="REAL"] .cockpit-grid {
+  animation: deck-mode-crossfade 0.45s ease-out;
+}
+
+@keyframes deck-mode-crossfade {
+  0% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.cockpit-shell[data-mode="REAL"]::before {
+  opacity: 0.14;
+}
+
+.cockpit-shell[data-mode="REAL"] [data-slot="tabs-trigger"][data-state="active"] {
+  background: color-mix(in srgb, var(--mode-real-muted) 14%, transparent);
+  color: oklch(0.88 0.04 250);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--mode-real-muted) 18%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] [data-slot="tabs-list"] {
+  border-color: var(--deck-border);
+}
+
+.presence-rail[data-mode="REAL"] {
+  border-color: var(--deck-border);
+  background: color-mix(in srgb, var(--mode-real-muted) 5%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--mode-real-accent) 14%, transparent);
+}
+
+.presence-rail[data-mode="SIM"] {
+  background: color-mix(in srgb, var(--lumina-cyan) 4%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--lumina-cyan) 20%, transparent);
+}
+
+.presence-rail[data-mode="SIM"] .presence-rail__velocity {
+  color: color-mix(in srgb, var(--lumina-cyan) 85%, white);
+}
+
+.presence-rail[data-mode="REAL"] .presence-rail__velocity {
+  color: var(--mode-real-accent);
+}
+
+.presence-rail__live-dot--sim {
+  background: color-mix(in srgb, var(--lumina-cyan) 75%, #34d399 25%);
+}
+
+.presence-rail__live-dot--real {
+  background: var(--real-chrome-accent, var(--mode-real-accent));
+}
+
+.presence-rail[data-mode="SIM"] .presence-rail__live-dot--sim {
+  animation: presence-pulse-sim 1.6s ease-in-out infinite;
+}
+
+.presence-rail[data-mode="REAL"] .presence-rail__live-dot--real {
+  animation: presence-breathe-real 4s ease-in-out infinite;
+}
+
+.presence-rail__sync-pulse {
+  animation: presence-pulse-sim 1.2s ease-in-out infinite;
+}
+
+@keyframes presence-pulse-sim {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.presence-rail__live-dot--engine::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 55%, transparent);
+}
+
+.presence-rail[data-mode="SIM"] .presence-rail__live-dot--engine::after {
+  animation: pulse-ring-sim 1.6s ease-out infinite;
+}
+
+.presence-rail[data-mode="REAL"] .presence-rail__live-dot--engine::after {
+  border-color: color-mix(in srgb, var(--real-chrome-accent) 45%, transparent);
+  animation: pulse-breathe-real 3.2s ease-in-out infinite;
+}
+
+@keyframes pulse-ring-sim {
+  0% {
+    opacity: 0.85;
+    transform: scale(0.75);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+.cockpit-shell[data-mode="REAL"] .hud-signal--cyan:not([data-flash]) .hud-signal__glow,
+.cockpit-shell[data-mode="REAL"] .hud-signal--emerald:not([data-flash]) .hud-signal__glow {
+  animation: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--real-chrome-accent, var(--mode-real-accent)),
+    transparent
+  );
+}
+
+.subsystems-drawer-scrim {
+  background: color-mix(in srgb, var(--lumina-void) 55%, var(--deck-accent, var(--lumina-cyan)) 12%);
+}
+
+.subsystems-drawer-airlock[data-mode="SIM"] {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 18%, transparent);
+}
+
+.subsystems-drawer-airlock[data-mode="REAL"] {
+  border-color: color-mix(in srgb, var(--mode-real-muted) 22%, transparent);
+}
+
+.deck-overflow-menu {
+  border-top: 1px solid color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 22%, transparent);
+}
+
+.deck-tab-chip--hint-pulse {
+  animation: deck-hint-pulse 1.4s ease-in-out 4;
+}
+
+.deck-tab-chip--metrics-hint {
+  border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 28%, transparent);
+  color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 82%, white);
+}
+
+@keyframes deck-hint-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--real-chrome-accent) 0%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--real-chrome-accent) 35%, transparent);
+  }
+}
+
+.panel-tab-transition-active {
+  animation: panel-tab-pulse var(--mode-transition-duration, 0.35s) ease-out;
+}
+
+@keyframes panel-tab-pulse {
+  0% {
+    filter: brightness(1);
+  }
+  40% {
+    filter: brightness(1.08);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+.decision-theater-shell--immersive {
+  position: relative;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.decision-theater-shell--immersive::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: calc(0.35 + var(--organism-envelope, 0.5) * 0.25);
+  background: radial-gradient(
+    ellipse 80% 55% at 50% 0%,
+    color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 10%, transparent),
+    transparent 72%
+  );
+}
+
+.decision-theater-shell--immersive[data-mode="REAL"]::before {
+  background: radial-gradient(
+    ellipse 80% 55% at 50% 0%,
+    color-mix(in srgb, var(--mode-real-muted) 12%, transparent),
+    transparent 72%
+  );
+}
+
+@keyframes presence-breathe-real {
+  0%,
+  100% {
+    opacity: 0.62;
+    transform: scale(0.94);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-breathe-real {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.88);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+}
+
+.deck-vignette,
+.t1-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background: radial-gradient(
+    ellipse 92% 88% at 50% 48%,
+    transparent 42%,
+    color-mix(in srgb, var(--lumina-void) 72%, transparent) 100%
+  );
+}
+
+.t1-vignette {
+  background: radial-gradient(
+    ellipse 95% 90% at 50% 62%,
+    transparent 38%,
+    color-mix(in srgb, var(--lumina-void) 78%, transparent) 100%
+  );
+}
+
+.status-bar[data-mode="SIM"] {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+}
+
+.status-bar[data-mode="REAL"] {
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--mode-real-muted) 14%, transparent);
+}
+
+.status-bar[data-mode="SIM"] .status-bar__brand {
+  color: color-mix(in srgb, var(--lumina-cyan) 55%, transparent);
+}
+
+.status-bar[data-mode="REAL"] .status-bar__brand {
+  color: color-mix(in srgb, var(--mode-real-accent) 70%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .mode-text-tier2 {
+  color: oklch(0.78 0.03 250 / 85%);
+}
+
+.cockpit-shell[data-mode="REAL"] .mode-text-tier2-muted {
+  color: oklch(0.62 0.02 260 / 75%);
+}
+
+.cockpit-shell[data-mode="REAL"] .mode-text-tier2:hover,
+.cockpit-shell[data-mode="REAL"] .mode-text-tier2:focus-visible {
+  color: color-mix(in srgb, var(--mode-real-accent) 90%, white);
+}
+
+.cockpit-shell[data-mode="SIM"] .mode-text-tier2-sim {
+  color: oklch(0.82 0.12 195 / 90%);
+}
+
+.cockpit-shell[data-mode="SIM"] .mode-text-tier2-muted {
+  color: oklch(0.72 0.08 195 / 75%);
+}
+
+.cockpit-shell[data-mode="REAL"] {
+  filter: saturate(0.92);
+}
+
+/* Command button system — scoped to cockpit shell */
+.command-btn {
+  border-width: 1px;
+  border-style: solid;
+  transition:
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.cockpit-shell[data-mode="SIM"] .command-btn--primary {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 35%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 20%, transparent);
+  color: oklch(0.88 0.08 195 / 95%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--lumina-cyan) 8%, transparent);
+}
+
+.cockpit-shell[data-mode="SIM"] .command-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lumina-cyan) 28%, transparent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--lumina-cyan) 28%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .command-btn--primary {
+  border-color: color-mix(in srgb, var(--mode-real-muted) 30%, transparent);
+  background: color-mix(in srgb, var(--mode-real-muted) 15%, transparent);
+  color: oklch(0.92 0.02 250 / 95%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mode-real-muted) 8%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .command-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mode-real-muted) 22%, transparent);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--mode-real-accent) 18%, transparent);
+}
+
+.cockpit-shell .command-btn--ghost {
+  border-color: color-mix(in srgb, white 10%, transparent);
+  background: transparent;
+  color: oklch(0.75 0.02 260 / 85%);
+}
+
+.cockpit-shell[data-mode="SIM"] .command-btn--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, white 5%, transparent);
+  border-color: color-mix(in srgb, var(--lumina-cyan) 25%, transparent);
+  color: oklch(0.88 0.08 195 / 95%);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--lumina-cyan) 18%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .command-btn--ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, white 5%, transparent);
+  border-color: color-mix(in srgb, var(--real-chrome-muted) 22%, transparent);
+  color: color-mix(in srgb, var(--real-chrome-accent) 88%, white);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--real-chrome-accent) 16%, transparent);
+}
+
+.cockpit-shell[data-mode="SIM"] .command-btn--ghost[data-intent="danger"] {
+  color: oklch(0.78 0.14 25 / 90%);
+}
+
+.cockpit-shell[data-mode="SIM"] .command-btn--ghost[data-intent="danger"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, oklch(0.65 0.2 25) 35%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, oklch(0.65 0.2 25) 22%, transparent);
+  color: oklch(0.85 0.16 25 / 95%);
+}
+
+.cockpit-shell[data-mode="REAL"] .command-btn--ghost[data-intent="danger"] {
+  color: color-mix(in srgb, var(--status-warn-fg) 88%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .command-btn--ghost[data-intent="danger"]:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--status-warn) 32%, transparent);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--status-warn) 20%, transparent);
+  color: var(--status-warn-fg);
+}
+
+.command-btn:disabled {
+  opacity: 0.75;
+}
+
+.mode-panel-real .deck-panel-accent {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--mode-real-muted) 45%, transparent),
+    transparent
+  );
+}
+
+.mode-panel-sim .deck-panel-accent {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--mode-sim-accent) 45%, transparent),
+    color-mix(in srgb, var(--mode-sim-secondary) 25%, transparent)
+  );
+}
+
+.deck-tab-readiness-real[data-state="active"] {
+  box-shadow: 0 0 10px color-mix(in srgb, var(--real-chrome-accent) 20%, transparent);
+}
+
+.cockpit-shell[data-mode="SIM"] .deck-tab-trigger[data-state="active"] {
+  background: color-mix(in srgb, var(--lumina-cyan) 15%, transparent);
+  color: oklch(0.85 0.1 195 / 95%);
+}
+
+.cockpit-shell[data-mode="SIM"] .deck-tab-trigger:hover {
+  color: oklch(0.88 0.08 195 / 90%);
+}
+
+.cockpit-shell[data-mode="REAL"] .deck-tab-trigger[data-state="active"] {
+  background: color-mix(in srgb, var(--real-chrome-accent) 15%, transparent);
+  color: color-mix(in srgb, var(--real-chrome-accent) 92%, white);
+}
+
+.cockpit-shell[data-mode="REAL"] .deck-tab-trigger:hover {
+  color: color-mix(in srgb, var(--real-chrome-muted) 88%, white);
+}
+
+.decision-theater-shell[data-mode="SIM"] {
+  background:
+    radial-gradient(
+      circle at 30% 40%,
+      color-mix(in srgb, var(--lumina-cyan) 8%, transparent),
+      transparent 65%
+    ),
+    radial-gradient(
+      circle at 70% 60%,
+      color-mix(in srgb, #a78bfa 6%, transparent),
+      transparent 60%
+    );
+}
+
+.decision-theater-shell[data-mode="REAL"] {
+  background:
+    radial-gradient(
+      circle at 35% 45%,
+      color-mix(in srgb, var(--real-chrome-accent) 7%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      circle at 68% 58%,
+      color-mix(in srgb, var(--mode-real-muted) 6%, transparent),
+      transparent 58%
+    );
+}
+
 .cockpit-stars {
   background-image:
     radial-gradient(1px 1px at 20px 30px, var(--cockpit-star), transparent),
@@ -95,30 +732,18 @@
     radial-gradient(1px 1px at 480px 90px, var(--cockpit-star), transparent),
     radial-gradient(1px 1px at 560px 200px, var(--cockpit-star), transparent);
   background-size: 600px 220px;
-  opacity: 0.5;
+  opacity: 0.38;
 }
 
 .cockpit-grid {
   background-image:
     linear-gradient(var(--cockpit-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--cockpit-grid-line) 1px, transparent 1px);
-  background-size: 48px 48px;
+    linear-gradient(90deg, var(--cockpit-grid-line) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--lumina-cyan) 1.5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--lumina-cyan) 1.5%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px, 128px 128px, 128px 128px;
+  background-position: 0 0, 0 0, 16px 16px, 16px 16px;
   mask-image: radial-gradient(ellipse 90% 80% at 50% 50%, black 20%, transparent 75%);
-}
-
-.cockpit-panel {
-  background: color-mix(in oklch, var(--card) 40%, transparent);
-  backdrop-filter: blur(12px);
-  border: 1px solid oklch(1 0 0 / 10%);
-  transition:
-    border-color 0.3s ease,
-    box-shadow 0.3s ease,
-    transform 0.2s ease;
-}
-
-.cockpit-panel:hover {
-  border-color: color-mix(in oklch, var(--cockpit-glow-primary) 35%, transparent);
-  box-shadow: 0 0 24px color-mix(in oklch, var(--cockpit-glow-primary) 12%, transparent);
 }
 
 .cockpit-logo-core {
@@ -173,57 +798,886 @@
 }
 
 .citadel-shell[data-mode="REAL"] .citadel-wall {
-  box-shadow: none;
+  box-shadow: 0 0 10px oklch(0.62 0.1 55 / 12%);
 }
 
 .citadel-shell[data-mode="REAL"] .citadel-wall-critical {
-  animation: none;
+  animation: citadel-critical-pulse 2.2s ease-in-out infinite;
   opacity: 1;
   border-color: oklch(0.65 0.2 25 / 55%);
 }
 
-.command-deck-area-left [data-mode="REAL"] .cockpit-panel:first-child {
-  border-color: oklch(0.62 0.1 55 / 28%);
-  box-shadow: inset 0 1px 0 oklch(0.62 0.1 55 / 8%);
+/* ── Command HUD signals ── */
+
+.command-hud {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--lumina-cyan) 8%, transparent);
 }
 
-.cockpit-shell[data-mode="REAL"] .cockpit-panel:hover {
-  border-color: color-mix(in oklch, var(--cockpit-glow-accent) 22%, transparent);
-  box-shadow: 0 0 16px color-mix(in oklch, var(--cockpit-glow-accent) 8%, transparent);
+.command-hud-metrics {
+  scrollbar-width: thin;
 }
 
-.cockpit-shell[data-mode="SIM"] .cockpit-panel:hover {
-  border-color: color-mix(in oklch, var(--cockpit-glow-primary) 35%, transparent);
-  box-shadow: 0 0 24px color-mix(in oklch, var(--cockpit-glow-primary) 12%, transparent);
+.deck-annex-inset {
+  position: relative;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 6%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 8%, transparent),
+    inset 0 0 24px color-mix(in srgb, var(--lumina-void) 40%, transparent);
+  background: radial-gradient(
+    ellipse at 50% 0%,
+    color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 6%, transparent),
+    transparent 72%
+  );
+}
+
+.cockpit-shell[data-mode="REAL"] .deck-annex-inset {
+  border-color: color-mix(in srgb, var(--mode-real-muted) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--mode-real-muted) 12%, transparent),
+    inset 0 0 24px color-mix(in srgb, var(--lumina-void) 45%, transparent);
+}
+
+.command-hud[data-mode="REAL"] {
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--real-chrome-muted) 12%, transparent);
+}
+
+.command-hud[data-mode="REAL"] .hud-signal__value {
+  color: color-mix(in srgb, var(--real-chrome-accent) 90%, white);
+}
+
+.command-hud[data-mode="REAL"] .hud-signal--pulse .hud-signal__glow {
+  animation: hud-signal-pulse-real 2.8s ease-in-out infinite;
+}
+
+@keyframes hud-signal-pulse-real {
+  0%,
+  100% {
+    opacity: calc(var(--hud-signal-intensity, 0.85) * 0.45);
+  }
+  50% {
+    opacity: calc(var(--hud-signal-intensity, 0.85) * 0.85);
+  }
+}
+
+.hud-signal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 72px;
+  padding-bottom: 4px;
+}
+
+.hud-signal__label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.hud-signal__value {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.hud-signal__glow {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 9999px;
+  opacity: calc(var(--hud-signal-intensity, 0.85) * 0.9);
+  transform-origin: center;
+  scale: calc(0.92 + var(--organism-envelope, 0.5) * 0.08);
+}
+
+.hud-signal__glow::before {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+  border-radius: inherit;
+  filter: blur(6px);
+  opacity: calc(var(--hud-signal-intensity, 0.85) * 0.5);
+  background: inherit;
+}
+
+.hud-signal--cyan .hud-signal__glow {
+  background: linear-gradient(90deg, transparent, var(--lumina-cyan), transparent);
+  box-shadow: 0 0 10px var(--lumina-glow-edge);
+}
+
+.hud-signal--violet .hud-signal__glow {
+  background: linear-gradient(90deg, transparent, oklch(0.72 0.14 290), transparent);
+  box-shadow: 0 0 10px var(--lumina-glow-edge);
+}
+
+.hud-signal--emerald .hud-signal__glow {
+  background: linear-gradient(90deg, transparent, oklch(0.72 0.17 155), transparent);
+  box-shadow: 0 0 10px var(--lumina-glow-edge);
+}
+
+.hud-signal--gold .hud-signal__glow {
+  background: linear-gradient(90deg, transparent, var(--real-chrome-accent, var(--mode-real-accent)), transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--real-chrome-accent, var(--mode-real-accent)) 35%, transparent);
+}
+
+@property --glow-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.cockpit-shell[data-mode="SIM"] .hud-signal--cyan:not([data-flash]) .hud-signal__glow,
+.cockpit-shell[data-mode="SIM"] .hud-signal--emerald:not([data-flash]) .hud-signal__glow {
+  background: conic-gradient(
+    from var(--glow-angle, 0deg),
+    transparent,
+    var(--lumina-cyan),
+    transparent
+  );
+  animation: hud-glow-rotate 8s linear infinite;
+}
+
+.hud-signal[data-flash] .hud-signal__glow {
+  animation: hud-glow-flash 0.22s ease-out;
+}
+
+@keyframes hud-glow-rotate {
+  to {
+    --glow-angle: 360deg;
+  }
+}
+
+@supports not (background: conic-gradient(from 0deg, red, blue)) {
+  .cockpit-shell[data-mode="SIM"] .hud-signal--cyan:not([data-flash]) .hud-signal__glow,
+  .cockpit-shell[data-mode="SIM"] .hud-signal--emerald:not([data-flash]) .hud-signal__glow {
+    background: linear-gradient(90deg, transparent, var(--lumina-cyan), transparent);
+    animation: hud-glow-sweep 3s linear infinite;
+  }
+}
+
+@keyframes hud-glow-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes hud-glow-flash {
+  0% {
+    opacity: calc(var(--hud-signal-intensity, 0.85) * 0.4);
+    filter: brightness(1);
+  }
+  40% {
+    opacity: 1;
+    filter: brightness(1.35);
+  }
+  100% {
+    opacity: calc(var(--hud-signal-intensity, 0.85) * 0.9);
+    filter: brightness(1);
+  }
+}
+
+.cockpit-shell[data-mode="REAL"] .hud-signal[data-flash] .hud-signal__glow {
+  animation: hud-glow-flash-real 0.28s ease-out;
+}
+
+@keyframes hud-glow-flash-real {
+  0% {
+    opacity: calc(var(--hud-signal-intensity, 0.85) * 0.5);
+  }
+  45% {
+    opacity: 1;
+    box-shadow: 0 0 16px color-mix(in srgb, var(--real-chrome-accent) 45%, transparent);
+  }
+  100% {
+    opacity: calc(var(--hud-signal-intensity, 0.85) * 0.85);
+  }
+}
+
+.hud-signal--amber .hud-signal__glow {
+  background: linear-gradient(90deg, transparent, oklch(0.78 0.15 85), transparent);
+  box-shadow: 0 0 10px var(--lumina-glow-edge);
+}
+
+.hud-signal--warn .hud-signal__glow {
+  background: linear-gradient(90deg, transparent, var(--status-warn-icon), transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--status-warn) 35%, transparent);
+}
+
+.hud-signal--neutral .hud-signal__glow {
+  background: linear-gradient(90deg, transparent, oklch(0.7 0.02 260), transparent);
+}
+
+.hud-signal--pulse .hud-signal__glow {
+  animation: hud-signal-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes hud-signal-pulse {
+  0%,
+  100% {
+    opacity: calc(var(--hud-signal-intensity, 0.85) * 0.5);
+  }
+  50% {
+    opacity: calc(var(--hud-signal-intensity, 0.85) * 1);
+  }
+}
+
+.hud-signal-arc__wrap {
+  position: relative;
+  width: 48px;
+  height: 28px;
+  margin-top: 2px;
+}
+
+.hud-signal-arc__svg {
+  display: block;
+  width: 48px;
+  height: 28px;
+}
+
+.hud-signal-arc__fill {
+  transition: stroke-dashoffset 0.6s ease;
+  opacity: var(--hud-arc-opacity, 0.9);
+}
+
+.hud-signal-arc__value {
+  position: absolute;
+  inset: auto 0 0;
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--foreground);
+}
+
+/* ── Citadel energy field ── */
+
+.citadel-energy-field {
+  z-index: 0;
+  opacity: var(--citadel-field-opacity, 0.5);
+}
+
+.citadel-energy-field__dome {
+  position: absolute;
+  inset: 8% 4% 12%;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.citadel-energy-field__dome--sim {
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 55%,
+    color-mix(in srgb, var(--lumina-cyan) 18%, transparent),
+    transparent 70%
+  );
+}
+
+.citadel-energy-field__dome--real {
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 55%,
+    color-mix(in srgb, var(--real-chrome-accent) 16%, transparent),
+    transparent 72%
+  );
+}
+
+.citadel-energy-field__dome--critical {
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 55%,
+    color-mix(in srgb, oklch(0.65 0.2 25) 14%, transparent),
+    transparent 70%
+  );
+}
+
+.citadel-energy-field__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.citadel-energy-field--sim .citadel-energy-field__ring {
+  opacity: calc(0.55 + var(--organism-envelope) * 0.48);
+}
+
+.citadel-energy-field--calm .citadel-energy-field__ring {
+  opacity: calc(0.55 + var(--organism-envelope) * 0.38);
+}
+
+.citadel-energy-field--sim .citadel-energy-field__conduit {
+  stroke-opacity: calc(0.2 + var(--organism-envelope) * 0.5);
+}
+
+.citadel-energy-field--calm .citadel-energy-field__conduit {
+  stroke-opacity: calc(0.2 + var(--organism-envelope) * 0.4);
+}
+
+.citadel-energy-field__conduit {
+  /* stroke-opacity set per sim/calm above */
+}
+
+.citadel-energy-field--static .citadel-energy-field__ring,
+.citadel-energy-field--static .citadel-energy-field__conduit,
+.citadel-energy-field--static .citadel-energy-field__dome {
+  animation: none !important;
+  opacity: 0.75;
+}
+
+.citadel-energy-field--static .citadel-energy-field__conduit {
+  stroke-opacity: 0.42;
+}
+
+.citadel-lockdown::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23f59e0b' stroke-opacity='0.14' stroke-width='0.5'%3E%3Cpath d='M0 30h40M40 30v20M40 50h30M70 50v-15M70 35h50M20 0v40M20 40h15M35 40v35M35 75h25M60 75v25M90 60h30M90 60v30'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  background-size: 80px 80px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.citadel-shell[data-lockdown="true"] .citadel-wall-segment {
+  filter: saturate(0.75);
+}
+
+.citadel-wall-segment {
+  position: relative;
+  z-index: 1;
+}
+
+.citadel-shell[data-mode="SIM"] .citadel-wall-segment .citadel-wall {
+  box-shadow: 0 0 14px oklch(0.75 0.15 195 / 10%);
+}
+
+.citadel-core-field {
+  box-shadow: 0 0 32px var(--lumina-glow-halo);
+}
+
+.citadel-core-field::before {
+  content: "";
+  position: absolute;
+  inset: -12%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--lumina-cyan) 12%, transparent),
+    transparent 68%
+  );
+  z-index: -1;
+  pointer-events: none;
+}
+
+.citadel-shell[data-mode="REAL"] .citadel-core-field::before {
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--real-chrome-accent) 14%, transparent),
+    transparent 68%
+  );
+}
+
+.citadel-bar-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.citadel-bar-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--lumina-cyan) 35%, transparent) 50%,
+    transparent 100%
+  );
+  animation: citadel-bar-shimmer 2.4s ease-in-out infinite;
+}
+
+@keyframes citadel-bar-shimmer {
+  0% {
+    transform: translateY(100%);
+  }
+  100% {
+    transform: translateY(-100%);
+  }
+}
+
+.citadel-lockdown-banner {
+  animation: citadel-lockdown-border 3s ease-in-out infinite;
+  z-index: 2;
+}
+
+@keyframes citadel-lockdown-border {
+  0%,
+  100% {
+    border-color: oklch(0.78 0.15 85 / 30%);
+    box-shadow: 0 0 8px oklch(0.78 0.15 85 / 10%);
+  }
+  50% {
+    border-color: oklch(0.78 0.15 85 / 55%);
+    box-shadow: 0 0 16px oklch(0.78 0.15 85 / 22%);
+  }
+}
+
+.citadel-capital-strip {
+  border-top: 1px solid color-mix(in srgb, var(--lumina-cyan) 8%, transparent);
+  padding-top: 6px;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-signal--pulse .hud-signal__glow,
+  .citadel-energy-field__ring,
+  .citadel-energy-field__conduit,
+  .citadel-bar-shimmer::after,
+  .citadel-lockdown-banner,
+  .presence-rail[data-mode="SIM"] .presence-rail__live-dot--sim,
+  .presence-rail[data-mode="REAL"] .presence-rail__live-dot--real,
+  .presence-rail__live-dot--engine::after,
+  .living-core-halo--scan,
+  .living-core-halo--breathe,
+  .lumina-glass--hud::after,
+  .cockpit-shell[data-mode="SIM"] .hud-signal--cyan:not([data-flash]) .hud-signal__glow,
+  .cockpit-shell[data-mode="SIM"] .hud-signal--emerald:not([data-flash]) .hud-signal__glow,
+  .deck-tab-chip--hint-pulse,
+  .cockpit-shell::before {
+    animation: none !important;
+  }
+}
+
+
+.command-deck-area-left [data-mode="REAL"] .lumina-glass--interactive:first-child {
+  border-color: color-mix(in srgb, var(--real-chrome-muted) 28%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--real-chrome-accent) 8%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .lumina-glass--interactive:hover,
+.cockpit-shell[data-mode="REAL"] .lumina-glass--interactive:focus-within,
+.cockpit-shell[data-mode="REAL"] .cockpit-panel:hover,
+.cockpit-shell[data-mode="REAL"] .cockpit-panel:focus-within {
+  border-color: color-mix(in srgb, var(--cockpit-glow-accent) 28%, transparent);
+  box-shadow:
+    inset 0 1px 0 var(--lumina-glass-inset),
+    0 0 16px var(--lumina-glow-edge);
+}
+
+.cockpit-shell[data-mode="SIM"] .lumina-glass--interactive:hover,
+.cockpit-shell[data-mode="SIM"] .lumina-glass--interactive:focus-within,
+.cockpit-shell[data-mode="SIM"] .cockpit-panel:hover,
+.cockpit-shell[data-mode="SIM"] .cockpit-panel:focus-within {
+  border-color: color-mix(in srgb, var(--cockpit-glow-primary) 42%, transparent);
+  box-shadow:
+    inset 0 1px 0 var(--lumina-glass-inset),
+    0 0 16px var(--lumina-glow-edge);
 }
 
 .living-core-shell {
+  position: relative;
+  isolation: isolate;
+  box-shadow: 0 0 32px var(--lumina-glow-halo);
   background: radial-gradient(
     circle at 50% 50%,
-    oklch(0.75 0.15 195 / 8%),
+    color-mix(in srgb, var(--lumina-cyan) 8%, transparent),
     transparent 70%
   );
 }
 
-.evolution-arena-shell {
+.living-core-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
   background: radial-gradient(
-    circle at 50% 50%,
-    oklch(0.65 0.2 280 / 8%),
-    transparent 70%
+    ellipse 85% 75% at 50% 50%,
+    transparent 40%,
+    color-mix(in srgb, var(--lumina-void) 55%, transparent) 100%
   );
 }
+
+.living-core-shell--immersive {
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--lumina-cyan) 10%, transparent),
+    transparent 68%
+  );
+}
+
+.living-core-shell::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: 999px;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--lumina-cyan) 14%, transparent),
+    transparent 68%
+  );
+  transform: scale(calc(0.96 + var(--organism-envelope) * 0.08));
+  opacity: calc(0.55 + var(--organism-envelope) * 0.35);
+}
+
+.living-core-shell[data-mode="REAL"] {
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--real-chrome-accent) 6%, transparent),
+    transparent 72%
+  );
+}
+
+.living-core-shell[data-mode="REAL"]::after {
+  background: radial-gradient(
+    circle at 50% 50%,
+    color-mix(in srgb, var(--real-chrome-muted) 10%, transparent),
+    transparent 68%
+  );
+}
+
+.living-core-shell[data-vitality="low"]::after {
+  opacity: calc((0.55 + var(--organism-envelope) * 0.35) * 0.72);
+}
+
+.living-core-shell[data-vitality="mid"]::after {
+  opacity: calc((0.55 + var(--organism-envelope) * 0.35) * 0.85);
+}
+
+.living-core-shell[data-vitality="high"]::after {
+  opacity: calc(0.55 + var(--organism-envelope) * 0.35);
+}
+
+.living-core-shell[data-mode="REAL"][data-vitality="high"]::after {
+  opacity: calc(0.55 + var(--organism-envelope) * 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .living-core-shell::after {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+}
+
+.evolution-arena-shell {
+  box-shadow: 0 0 32px var(--lumina-glow-halo);
+  background:
+    radial-gradient(
+      circle at 35% 40%,
+      color-mix(in srgb, var(--lumina-cyan) 10%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 70% 65%,
+      color-mix(in srgb, #a78bfa 8%, transparent),
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 50% 50%,
+      color-mix(in srgb, var(--cockpit-glow-accent) 6%, transparent),
+      transparent 72%
+    );
+}
+
+.living-core-halo--scan {
+  animation: presence-pulse-sim 1.6s ease-in-out infinite;
+}
+
+.living-core-halo--breathe {
+  animation: presence-breathe-real 4s ease-in-out infinite;
+}
+
+.evolution-arena-shell[data-mode="REAL"] {
+  background:
+    radial-gradient(
+      circle at 35% 40%,
+      color-mix(in srgb, var(--mode-real-muted) 12%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      circle at 70% 65%,
+      color-mix(in srgb, var(--mode-real-accent) 8%, transparent),
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 50% 50%,
+      color-mix(in srgb, var(--lumina-void) 8%, transparent),
+      transparent 72%
+    );
+}
+
+.decision-theater-shell[data-mode="REAL"] .reasoning-spine__rail {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mode-real-muted) 55%, transparent),
+    var(--real-chrome-accent, var(--mode-real-accent)),
+    color-mix(in srgb, var(--mode-real-muted) 35%, transparent)
+  );
+}
+
+.decision-theater-shell[data-mode="REAL"] .reasoning-spine__node {
+  background: color-mix(in srgb, var(--mode-real-muted) 35%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--real-chrome-accent) 35%, transparent);
+  border-color: color-mix(in srgb, var(--real-chrome-accent) 45%, transparent);
+}
+
+.decision-theater-shell[data-mode="REAL"] .reasoning-spine__connector {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mode-real-muted) 40%, transparent),
+    color-mix(in srgb, var(--real-chrome-accent) 25%, transparent)
+  );
+}
+
+.evolution-arena-shell[data-mode="REAL"] .evolution-node-tooltip {
+  border-color: color-mix(in srgb, var(--real-chrome-accent) 35%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--mode-real-muted) 25%, transparent);
+}
+
+.subsystems-drawer-airlock__footer {
+  border-top: 1px solid color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 18%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 8%, transparent);
+}
+
+.cockpit-shell[data-mode="REAL"] .evolution-arena-shell {
+  background: unset;
+}
+
+.evolution-arena-shell--sim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 50%,
+    color-mix(in srgb, var(--lumina-cyan) 4%, transparent),
+    transparent 70%
+  );
+  opacity: calc(0.45 + var(--organism-envelope) * 0.4);
+  z-index: 0;
+}
+
+.evolution-arena-shell--real::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 80% 60% at 50% 50%,
+    color-mix(in srgb, var(--mode-real-muted) 5%, transparent),
+    transparent 72%
+  );
+  opacity: calc(0.45 + var(--organism-envelope) * 0.4);
+  z-index: 0;
+}
+
+.evolution-node-tooltip {
+  max-width: 220px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 18%, transparent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.evolution-node-tooltip--hidden {
+  opacity: 0;
+}
+
+.evolution-node-tooltip--visible {
+  opacity: 1;
+}
+
+.evolution-node-tooltip__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.evolution-node-tooltip__hash {
+  font-size: 11px;
+  color: var(--foreground);
+  letter-spacing: 0.04em;
+}
+
+.evolution-node-tooltip__status {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.evolution-node-tooltip__status--champion {
+  background: color-mix(in srgb, #fcd34d 18%, transparent);
+  color: #fcd34d;
+}
+
+.evolution-node-tooltip__status--active {
+  background: color-mix(in srgb, var(--lumina-cyan) 15%, transparent);
+  color: var(--lumina-cyan);
+}
+
+.evolution-node-tooltip__status--archived {
+  background: color-mix(in srgb, #64748b 15%, transparent);
+  color: #94a3b8;
+}
+
+.evolution-node-tooltip__status--proposed {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #fbbf24;
+}
+
+.cockpit-shell[data-mode="REAL"] .evolution-node-tooltip__status--proposed {
+  background: color-mix(in srgb, var(--real-chrome-accent) 18%, transparent);
+  color: color-mix(in srgb, var(--real-chrome-accent) 92%, white);
+}
+
+.evolution-node-tooltip__status--rejected {
+  background: color-mix(in srgb, #ef4444 15%, transparent);
+  color: #f87171;
+}
+
+.evolution-node-tooltip__fitness {
+  margin: 0 0 6px;
+  color: var(--muted-foreground);
+}
+
+.evolution-node-tooltip__fitness strong {
+  color: var(--lumina-cyan);
+  font-weight: 500;
+}
+
+.evolution-node-tooltip__meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin: 0 0 6px;
+}
+
+.evolution-node-tooltip__meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.evolution-node-tooltip__meta dt {
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.evolution-node-tooltip__meta dd {
+  margin: 0;
+  color: var(--foreground);
+}
+
+.evolution-node-tooltip__reasoning {
+  margin: 0;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--foreground) 75%, transparent);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.evolution-node-tooltip__hint {
+  margin: 6px 0 0;
+  font-size: 9px;
+  color: color-mix(in srgb, #fbbf24 80%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evolution-arena-shell--sim::after,
+  .evolution-arena-shell--real::after {
+    opacity: 0.55;
+  }
+}
+
 
 .decision-theater-shell {
   background: radial-gradient(
     circle at 30% 40%,
-    oklch(0.65 0.2 280 / 6%),
+    color-mix(in srgb, var(--cockpit-glow-accent) 6%, transparent),
     transparent 65%
   ),
   radial-gradient(
     circle at 70% 60%,
-    oklch(0.75 0.15 195 / 6%),
+    color-mix(in srgb, var(--lumina-cyan) 6%, transparent),
     transparent 60%
   );
+}
+
+.decision-theater-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 38%) 1fr;
+  min-height: 0;
+}
+
+@media (max-width: 768px) {
+  .decision-theater-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(180px, 38%) 1fr;
+  }
+}
+
+.reasoning-spine {
+  position: relative;
+  min-height: 0;
+}
+
+.reasoning-spine__rail {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, #a78bfa 55%, transparent),
+    var(--lumina-cyan),
+    color-mix(in srgb, #a78bfa 35%, transparent)
+  );
+  opacity: 0.85;
+}
+
+.reasoning-spine__node {
+  width: 11px;
+  height: 11px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--lumina-cyan) 35%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--lumina-cyan) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 55%, transparent);
+}
+
+.reasoning-spine__connector {
+  width: 2px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lumina-cyan) 40%, transparent),
+    color-mix(in srgb, #a78bfa 25%, transparent)
+  );
+}
+
+.decision-theater-stage__metrics {
+  scrollbar-width: thin;
+}
+
+.decision-theater-stage__trade-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+
+.decision-theater-stage__trade-row:last-child {
+  border-bottom: none;
 }
 
 .decision-theater-banner {
@@ -249,7 +1703,7 @@
 }
 
 .decision-chart-placeholder {
-  box-shadow: inset 0 0 24px oklch(0.75 0.15 195 / 6%);
+  box-shadow: inset 0 0 24px color-mix(in srgb, var(--lumina-cyan) 6%, transparent);
 }
 
 @keyframes decision-scan {
@@ -299,21 +1753,20 @@
   }
 
   .cockpit-shell {
+    animation: none;
     transition: none;
+    --organism-phase: 0.5;
+    --organism-envelope: 0.72;
   }
-}
 
-.reasoning-step {
-  backdrop-filter: blur(8px);
-  border-left-width: 2px;
-}
+  .cockpit-shell[data-mode="REAL"] .cockpit-stars,
+  .cockpit-shell[data-mode="REAL"] .cockpit-grid {
+    animation: none;
+  }
 
-.command-hud {
-  box-shadow: inset 0 -1px 0 oklch(1 0 0 / 4%);
-}
-
-.command-hud-metrics {
-  scrollbar-width: thin;
+  .citadel-wall-critical {
+    animation: none !important;
+  }
 }
 
 .launch-ninjatrader-btn {
@@ -324,7 +1777,7 @@
 }
 
 .launch-ninjatrader-btn:hover:not(:disabled) {
-  box-shadow: 0 0 22px oklch(0.75 0.15 195 / 28%);
+  box-shadow: 0 0 22px color-mix(in srgb, var(--lumina-cyan) 28%, transparent);
 }
 
 .launch-ninjatrader-btn:disabled {
@@ -402,7 +1855,11 @@
 }
 
 .bot-config-dialog {
-  background: linear-gradient(180deg, oklch(0.14 0.02 260) 0%, oklch(0.11 0.03 280) 100%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lumina-surface) 95%, var(--lumina-cyan) 5%) 0%,
+    var(--lumina-void) 100%
+  );
 }
 
 .bot-config-section-title {
@@ -410,13 +1867,359 @@
   font-size: 0.65rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: oklch(0.75 0.12 195 / 85%);
+  color: var(--lumina-cyan-dim);
 }
 
 .config-range,
 .onboarding-range {
-  accent-color: oklch(0.72 0.17 195);
+  accent-color: var(--lumina-cyan);
   height: 0.35rem;
   border-radius: 9999px;
-  background: oklch(1 0 0 / 8%);
+  background: color-mix(in srgb, var(--lumina-cyan) 8%, transparent);
+}
+
+/* ── Analytics Annex (dimmed ops / PPO / performance) ── */
+
+.analytics-annex {
+  background: var(--annex-bg, oklch(0.11 0.008 260 / 0.92));
+  border-color: var(--annex-border, oklch(1 0 0 / 5%));
+  box-shadow: none;
+}
+
+.analytics-annex:hover,
+.analytics-annex:focus-within {
+  box-shadow: none;
+  transform: none;
+}
+
+.analytics-annex__section-title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--annex-muted, oklch(0.58 0.015 260 / 75%));
+}
+
+.analytics-annex__metric {
+  border: 1px solid var(--annex-border, oklch(1 0 0 / 5%));
+  background: var(--annex-surface, oklch(0 0 0 / 20%));
+  border-radius: 0.375rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.analytics-annex__metric-value {
+  color: var(--annex-fg, oklch(0.72 0.02 260));
+}
+
+.analytics-annex .text-cyan-200,
+.analytics-annex .text-cyan-200\/90,
+.analytics-annex .text-cyan-200\/80,
+.analytics-annex .text-cyan-100,
+.analytics-annex .text-cyan-100\/90,
+.analytics-annex .text-cyan-300,
+.analytics-annex .text-cyan-300\/80 {
+  color: var(--annex-fg, oklch(0.72 0.02 260));
+}
+
+.analytics-annex .lumina-glass--interactive,
+.analytics-annex .cockpit-panel {
+  box-shadow: none;
+  border-color: var(--annex-border, oklch(1 0 0 / 5%));
+  background: transparent;
+}
+
+.analytics-annex .lumina-glass--interactive:hover,
+.analytics-annex .lumina-glass--interactive:focus-within,
+.analytics-annex .cockpit-panel:hover,
+.analytics-annex .cockpit-panel:focus-within {
+  box-shadow: none;
+  transform: none;
+  border-color: var(--annex-border, oklch(1 0 0 / 5%));
+}
+
+.analytics-annex-tab[data-state="active"] {
+  border-color: oklch(1 0 0 / 12%);
+  background: oklch(0 0 0 / 25%);
+  color: var(--annex-fg, oklch(0.72 0.02 260));
+  box-shadow: none;
+}
+
+.deck-header--annex .deck-panel-accent {
+  opacity: 0.35;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    oklch(0.58 0.015 260 / 40%),
+    transparent
+  );
+}
+
+.deck-header--annex .deck-header-title {
+  color: oklch(0.62 0.015 260 / 85%);
+}
+
+/* ── Deck typography & chrome utilities ── */
+
+.deck-title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 88%, white);
+}
+
+.deck-subtitle {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: oklch(0.68 0.02 260 / 80%);
+}
+
+.deck-accent-text {
+  color: color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 85%, white);
+}
+
+/* ── Deck section & metric primitives ── */
+
+.deck-section {
+  border: 1px solid color-mix(in srgb, var(--deck-border, var(--lumina-glass-border)) 80%, transparent);
+  background: color-mix(in srgb, var(--lumina-surface) 42%, transparent);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}
+
+.deck-section__title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 72%, white);
+}
+
+.deck-metric-tile {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 10%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 55%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.625rem 0.75rem;
+}
+
+.deck-metric-tile::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0.75rem;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 35%, transparent),
+    transparent
+  );
+  opacity: 0.65;
+}
+
+.deck-metric-tile__label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: oklch(0.68 0.02 260 / 75%);
+}
+
+.deck-metric-tile__value {
+  margin-top: 0.25rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 82%, white);
+}
+
+.deck-tab-chip {
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: oklch(0.68 0.02 260 / 75%);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.deck-tab-chip:hover {
+  background: color-mix(in srgb, white 5%, transparent);
+}
+
+.deck-tab-chip--active {
+  background: color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 14%, transparent);
+  color: color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 88%, white);
+}
+
+.cockpit-shell[data-mode="REAL"] .deck-tab-chip:not(.deck-tab-chip--active) {
+  color: oklch(0.55 0.02 260 / 50%);
+}
+
+.cockpit-shell[data-mode="REAL"] .hud-signal--violet:not([data-flash]) .hud-signal__glow,
+.cockpit-shell[data-mode="REAL"] .hud-signal--gold:not([data-flash]) .hud-signal__glow {
+  animation: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--real-chrome-accent, var(--mode-real-accent)),
+    transparent
+  );
+}
+
+/* ── Mode transition veil (SIM ↔ REAL) v2 ── */
+
+.mode-transition-veil {
+  mix-blend-mode: soft-light;
+  backdrop-filter: saturate(0.25) blur(3px);
+  animation-duration: var(--mode-transition-duration, 0.8s);
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-fill-mode: both;
+}
+
+.mode-transition-veil--sim {
+  animation-name: mode-transition-veil-sim;
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 45%,
+    color-mix(in srgb, var(--mode-sim-accent) 28%, transparent),
+    transparent 70%
+  );
+}
+
+.mode-transition-veil--real {
+  animation-name: mode-transition-veil-real;
+  backdrop-filter: saturate(0.15) blur(6px);
+  background: radial-gradient(
+    ellipse 70% 60% at 50% 45%,
+    color-mix(in srgb, var(--mode-real-muted) 32%, transparent),
+    transparent 68%
+  );
+}
+
+.cockpit-shell.mode-transition-active[data-transition-target="SIM"] {
+  animation: mode-transition-shell-sim var(--mode-transition-duration, 0.8s) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cockpit-shell.mode-transition-active[data-transition-target="REAL"] {
+  animation: mode-transition-shell-real var(--mode-transition-duration, 1s) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.onboarding-shell.mode-transition-active[data-transition-target="SIM"] {
+  animation: mode-transition-shell-sim var(--mode-transition-duration, 0.8s) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes mode-transition-veil-sim {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  40% {
+    opacity: 0.9;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes mode-transition-veil-real {
+  0%,
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  45% {
+    opacity: 0.88;
+    transform: scale(0.92);
+  }
+}
+
+@keyframes mode-transition-shell-sim {
+  0%,
+  100% {
+    filter: saturate(1);
+  }
+  40% {
+    filter: saturate(1.25);
+  }
+}
+
+@keyframes mode-transition-shell-real {
+  0%,
+  100% {
+    filter: saturate(1) blur(0);
+  }
+  45% {
+    filter: saturate(0.3) blur(1px);
+  }
+}
+
+.mode-transition-veil--reduced {
+  mix-blend-mode: normal;
+  backdrop-filter: blur(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lumina-glass--hud,
+  .lumina-glass--overlay,
+  .lumina-glass--panel {
+    border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 22%, transparent);
+    box-shadow:
+      inset 0 1px 0 var(--lumina-glass-inset),
+      0 0 0 1px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 12%, transparent);
+  }
+
+  .cockpit-shell[data-mode="REAL"] .lumina-glass--hud,
+  .cockpit-shell[data-mode="REAL"] .lumina-glass--overlay {
+    box-shadow:
+      inset 0 1px 0 var(--lumina-glass-inset),
+      0 0 0 1px color-mix(in srgb, var(--real-chrome-accent) 14%, transparent);
+  }
+}
+
+/* ── Panel loader (mode-aware shimmer) ── */
+
+.panel-loader__bar {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 20%, transparent),
+    color-mix(in srgb, var(--mode-sim-secondary) 30%, transparent),
+    color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 20%, transparent)
+  );
+}
+
+.cockpit-shell[data-mode="REAL"] .panel-loader__bar {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--mode-real-muted) 18%, transparent),
+    color-mix(in srgb, var(--mode-real-accent) 24%, transparent),
+    color-mix(in srgb, var(--mode-real-muted) 18%, transparent)
+  );
+}
+
+/* ── Command deck tour (mode-aware) ── */
+
+.deck-tour-spotlight {
+  border-radius: 0.5rem;
+  outline: 2px solid color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 80%, transparent);
+  outline-offset: 2px;
+}
+
+.deck-tour-card {
+  border: 1px solid color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 30%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 92%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.deck-tour-card__eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 78%, white);
+}
+
+.deck-tour-card__title {
+  color: color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 95%, white);
 }

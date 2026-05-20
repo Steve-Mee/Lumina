@@ -7,7 +7,11 @@ import { Button } from "@/components/ui/button";
 import { TrainingControlBar } from "@/components/operations/TrainingControlBar";
 import { fetchStabilityReport, type StabilityReport } from "@/lib/opsClient";
 import { goLiveReal, runOvernightSim } from "@/lib/runtimeClient";
-import { CHART_AXIS_TICK, CHART_TOOLTIP_STYLE } from "@/lib/ppoEvolutionChartTheme";
+import {
+  ANNEX_CHART_AXIS_TICK,
+  ANNEX_CHART_COLORS,
+  ANNEX_CHART_TOOLTIP_STYLE,
+} from "@/lib/ppoEvolutionChartTheme";
 import { cn } from "@/lib/utils";
 
 function CriteriaTile({
@@ -22,8 +26,8 @@ function CriteriaTile({
   return (
     <div
       className={cn(
-        "rounded-md border px-3 py-2",
-        ok ? "border-emerald-500/25 bg-emerald-950/20" : "border-red-500/25 bg-red-950/20",
+        "analytics-annex__metric",
+        ok ? "border-emerald-500/20" : "border-red-500/20",
       )}
     >
       <p className="font-mono text-[9px] uppercase text-muted-foreground">{label}</p>
@@ -71,8 +75,8 @@ export function SimReadinessPanel({ className }: { className?: string }) {
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-1", className)}>
       <div className="flex items-center gap-2">
-        <Rocket className="size-4 text-violet-300/90" />
-        <h3 className="font-mono text-[11px] tracking-[0.14em] text-violet-200/90 uppercase">
+        <Rocket className="size-4 text-muted-foreground/70" />
+        <h3 className="analytics-annex__section-title text-[11px]">
           SIM Readiness
         </h3>
         <span
@@ -89,27 +93,30 @@ export function SimReadinessPanel({ className }: { className?: string }) {
         <p className="text-xs text-muted-foreground">Loading stability report…</p>
       ) : null}
 
-      <div className="rounded-lg border border-white/10 bg-black/25 p-3">
-        <p className="mb-2 font-mono text-[10px] text-muted-foreground uppercase">
+      <div className="analytics-annex__metric p-3">
+        <p className="analytics-annex__section-title mb-2">
           5-day green streak — {consecutive}/{daysToGreen}
         </p>
-        <div className="h-2 overflow-hidden rounded-full bg-white/10">
+        <div className="h-2 overflow-hidden rounded-full bg-white/5">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-cyan-400 transition-all duration-500"
-            style={{ width: `${streakPct}%` }}
+            className="h-full rounded-full transition-all duration-500"
+            style={{
+              width: `${streakPct}%`,
+              background: ANNEX_CHART_COLORS.explainedVariance,
+            }}
           />
         </div>
       </div>
 
       {sharpeHistory.length > 0 ? (
-        <div className="rounded-lg border border-white/10 bg-black/25 p-3" style={{ height: 160 }}>
-          <p className="mb-2 font-mono text-[10px] text-muted-foreground uppercase">Rolling Sharpe (7d)</p>
+        <div className="analytics-annex__metric p-3" style={{ height: 160 }}>
+          <p className="analytics-annex__section-title mb-2">Rolling Sharpe (7d)</p>
           <ResponsiveContainer width="100%" height="85%">
             <LineChart data={sharpeHistory}>
-              <XAxis dataKey="day" tick={CHART_AXIS_TICK} />
-              <YAxis tick={CHART_AXIS_TICK} width={36} />
-              <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-              <Line type="monotone" dataKey="sharpe_annualized" stroke="#a78bfa" dot={false} />
+              <XAxis dataKey="day" tick={ANNEX_CHART_AXIS_TICK} />
+              <YAxis tick={ANNEX_CHART_AXIS_TICK} width={36} />
+              <Tooltip contentStyle={ANNEX_CHART_TOOLTIP_STYLE} />
+              <Line type="monotone" dataKey="sharpe_annualized" stroke={ANNEX_CHART_COLORS.policyLoss} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>

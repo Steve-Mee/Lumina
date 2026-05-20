@@ -17,10 +17,8 @@ import { PolicyHealthPanel } from "@/components/ppo/PolicyHealthPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  CHART_AXIS_TICK,
-  CHART_COLORS,
-  CHART_GRID_STROKE,
-  CHART_TOOLTIP_STYLE,
+  chartThemeForMode,
+  type ChartTheme,
 } from "@/lib/ppoEvolutionChartTheme";
 import {
   gaugePercent,
@@ -31,6 +29,7 @@ import {
 } from "@/lib/ppoEvolutionMetrics";
 import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
 import { cn } from "@/lib/utils";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 
 const AmbitiousLab = lazy(() =>
   import("@/components/ppo/ambitious/AmbitiousLab").then((module) => ({
@@ -40,7 +39,7 @@ const AmbitiousLab = lazy(() =>
 
 function AmbitiousLabFallback() {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/20 p-4 text-xs text-muted-foreground">
+    <div className="analytics-annex__metric rounded-lg p-4 text-xs text-muted-foreground">
       Loading ambitious lab…
     </div>
   );
@@ -71,7 +70,7 @@ function ConnectionBadge({ connected }: { connected: boolean }) {
       className={cn(
         "font-mono text-[10px] tracking-wider uppercase",
         connected
-          ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.25)]"
+          ? "border-emerald-500/40 bg-emerald-950/40 text-emerald-300 lumina-glow-edge"
           : "border-red-500/40 bg-red-950/30 text-red-300",
       )}
     >
@@ -97,7 +96,7 @@ function ViewModeToggle({
   disabled?: boolean;
 }) {
   return (
-    <div className="inline-flex rounded-md border border-white/10 bg-black/30 p-0.5">
+    <div className="inline-flex rounded-md border p-0.5" style={{ borderColor: "var(--annex-border)", background: "var(--annex-surface)" }}>
       {(["compact", "advanced"] as const).map((mode) => {
         const active = viewMode === mode;
         return (
@@ -110,8 +109,8 @@ function ViewModeToggle({
             className={cn(
               "h-7 px-2.5 font-mono text-[10px] tracking-wide uppercase",
               active
-                ? "bg-cyan-500/15 text-cyan-200 shadow-[0_0_12px_rgba(34,211,238,0.15)]"
-                : "text-muted-foreground hover:bg-white/5 hover:text-cyan-100/80",
+                ? "bg-black/30 text-muted-foreground"
+                : "text-muted-foreground/70 hover:bg-white/5 hover:text-muted-foreground",
             )}
             onClick={() => onChange(mode)}
           >
@@ -123,22 +122,30 @@ function ViewModeToggle({
   );
 }
 
-function SupplementalLearningCharts({ data, height }: { data: Record<string, number>[]; height: number }) {
+function SupplementalLearningCharts({
+  data,
+  height,
+  chartTheme,
+}: {
+  data: Record<string, number>[];
+  height: number;
+  chartTheme: ChartTheme;
+}) {
   const charts: SupplementalChartProps[] = [
     {
       title: "Policy & value loss",
       data,
       height,
       lines: [
-        { dataKey: "policyLoss", stroke: CHART_COLORS.policyLoss, name: "Policy" },
-        { dataKey: "valueLoss", stroke: CHART_COLORS.valueLoss, name: "Value" },
+        { dataKey: "policyLoss", stroke: chartTheme.colors.policyLoss, name: "Policy" },
+        { dataKey: "valueLoss", stroke: chartTheme.colors.valueLoss, name: "Value" },
       ],
     },
     {
       title: "Sharpe rolling 5k",
       data,
       height,
-      lines: [{ dataKey: "sharpe", stroke: CHART_COLORS.sharpe }],
+      lines: [{ dataKey: "sharpe", stroke: chartTheme.colors.sharpe }],
     },
   ];
 
@@ -147,18 +154,18 @@ function SupplementalLearningCharts({ data, height }: { data: Record<string, num
       {charts.map((chart) => (
         <div
           key={chart.title}
-          className="rounded-lg border border-white/10 bg-black/20 p-3"
+          className="analytics-annex__metric p-3"
         >
-          <p className="mb-2 text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+          <p className="analytics-annex__section-title mb-2">
             {chart.title}
           </p>
           <div style={{ height: chart.height }}>
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chart.data}>
-                <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
+                <CartesianGrid stroke={chartTheme.grid} vertical={false} />
                 <XAxis dataKey="step" hide />
-                <YAxis width={36} tick={CHART_AXIS_TICK} />
-                <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                <YAxis width={36} tick={chartTheme.axisTick} />
+                <Tooltip contentStyle={chartTheme.tooltip} />
                 {chart.lines.map((line) => (
                   <Line
                     key={line.dataKey}
@@ -188,6 +195,8 @@ export function PPOEvolutionDashboard({
   showAdvancedFeatures = false,
   className,
 }: PPOEvolutionDashboardProps) {
+  const operatorMode = useCoreStore(selectCurrentMode);
+  const chartTheme = chartThemeForMode(operatorMode);
   const [viewMode, setViewMode] = useState<DashboardViewMode>(compact ? "compact" : "advanced");
   const isAdvanced = !compact && viewMode === "advanced";
   const isCompactView = !isAdvanced;
@@ -218,48 +227,43 @@ export function PPOEvolutionDashboard({
         label: "Mean Reward",
         displayValue: latest.mean_reward.toFixed(3),
         fillPercent: gaugePercent(normalizeMeanReward(latest.mean_reward, logs)),
-        color: CHART_COLORS.reward,
+        color: chartTheme.colors.reward,
       },
       {
         label: "Entropy",
         displayValue: latest.entropy.toFixed(3),
         fillPercent: gaugePercent(normalizeEntropy(latest.entropy)),
-        color: CHART_COLORS.entropy,
+        color: chartTheme.colors.entropy,
       },
       {
         label: "Explained Variance",
         displayValue: `${(latest.explained_variance * 100).toFixed(1)}%`,
         fillPercent: gaugePercent(normalizeExplainedVariance(latest.explained_variance)),
-        color: CHART_COLORS.explainedVariance,
+        color: chartTheme.colors.explainedVariance,
       },
       {
         label: "Winrate 5k",
         displayValue: `${(latest.winrate_rolling_5k * 100).toFixed(1)}%`,
         fillPercent: gaugePercent(normalizeWinrate(latest.winrate_rolling_5k)),
-        color: CHART_COLORS.sharpe,
+        color: chartTheme.colors.sharpe,
       },
     ];
-  }, [latest, logs]);
+  }, [latest, logs, chartTheme]);
 
   return (
     <section
       className={cn(
-        "cockpit-panel relative overflow-hidden rounded-lg border border-white/10 bg-black/25 p-4 backdrop-blur-sm",
+        "relative overflow-hidden p-2",
         isCompactView ? "space-y-3" : "space-y-4",
         className,
       )}
       aria-label={title}
     >
-      <div
-        className="pointer-events-none absolute inset-x-4 top-0 h-px bg-gradient-to-r from-cyan-400/60 to-violet-400/30"
-        aria-hidden
-      />
-
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <h3
             className={cn(
-              "font-semibold tracking-[0.18em] text-cyan-200/90 uppercase",
+              "analytics-annex__section-title font-semibold",
               isCompactView ? "text-[10px]" : "text-xs",
             )}
           >
@@ -314,7 +318,11 @@ export function PPOEvolutionDashboard({
           ) : null}
 
           {isAdvanced ? (
-            <SupplementalLearningCharts data={supplementalChartData} height={chartHeight} />
+            <SupplementalLearningCharts
+              data={supplementalChartData}
+              height={chartHeight}
+              chartTheme={chartTheme}
+            />
           ) : null}
 
           {isAdvanced && logs.length > 0 ? (
@@ -331,13 +339,13 @@ export function PPOEvolutionDashboard({
 
       {showAdvancedFeatures && isAdvanced && latest ? (
         <div className="flex flex-wrap gap-2 text-[11px]">
-          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
+          <span className="analytics-annex__metric px-2 py-1 text-[11px]">
             Sharpe 5k: {latest.sharpe_rolling_5k.toFixed(2)}
           </span>
-          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
+          <span className="analytics-annex__metric px-2 py-1 text-[11px]">
             Avg stop: {(latest.avg_stop_pct * 100).toFixed(2)}%
           </span>
-          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1">
+          <span className="analytics-annex__metric px-2 py-1 text-[11px]">
             Avg target: {(latest.avg_target_pct * 100).toFixed(2)}%
           </span>
         </div>

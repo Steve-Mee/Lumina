@@ -6,6 +6,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { modeTitleClass, modeValueClass } from "@/lib/modePresentation";
+import { cn } from "@/lib/utils";
 import { usePPOEvolutionLive } from "@/context/PPOEvolutionContext";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 
@@ -22,12 +24,17 @@ export function TrainingMonitorDialog({ open, onOpenChange }: TrainingMonitorDia
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto border-white/10 bg-black/90 backdrop-blur-md">
         <DialogHeader>
-          <DialogTitle className="font-mono text-sm tracking-[0.18em] text-cyan-200/90 uppercase">
+          <DialogTitle
+            className={cn(
+              "mode-text-tier2 font-mono text-sm tracking-[0.18em] uppercase",
+              modeTitleClass(operatorMode),
+            )}
+          >
             Training Monitor
           </DialogTitle>
           <DialogDescription>
             Live PPO policy evolution — operator mode{" "}
-            <span className="font-mono text-cyan-300/90">{operatorMode}</span>
+            <span className={cn("font-mono", modeValueClass(operatorMode))}>{operatorMode}</span>
           </DialogDescription>
         </DialogHeader>
         <PPOEvolutionDashboard

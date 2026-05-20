@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
+import { cn } from "@/lib/utils";
 import { StepProgressRail } from "@/components/onboarding/StepProgressRail";
 import { BackendStep } from "@/components/onboarding/steps/BackendStep";
 import { BirthActivateStep } from "@/components/onboarding/steps/BirthActivateStep";
@@ -32,6 +34,7 @@ export function OnboardingWizard() {
   const saveCredentials = useOnboardingStore((s) => s.saveCredentials);
   const saveConfiguration = useOnboardingStore((s) => s.saveConfiguration);
   const activateBirth = useOnboardingStore((s) => s.activateBirth);
+  const importCredentialsFromEnv = useOnboardingStore((s) => s.importCredentialsFromEnv);
   const [savingCredentials, setSavingCredentials] = useState(false);
 
   const steps = useMemo(() => selectActiveSteps(payload), [payload]);
@@ -68,20 +71,28 @@ export function OnboardingWizard() {
     }
   }, [smartSetupRunning, refresh]);
 
+  useEffect(() => {
+    if (!payload) return;
+    if (currentStep !== "credentials") return;
+    if (payload.credentials.wizard_required === false) {
+      advance();
+      return;
+    }
+    if (!steps.includes("credentials")) {
+      advance();
+    }
+  }, [payload, currentStep, steps, advance]);
+
   if (!payload) {
     return (
       <OnboardingShell>
-        <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
           <BackendStep
             reachable={false}
+            connectionError={error}
             onConnected={() => void refresh()}
             onRefresh={() => void refresh()}
           />
-          {error && (
-            <p className="max-w-md text-center text-sm text-red-400/90" role="alert">
-              {error}
-            </p>
-          )}
         </div>
       </OnboardingShell>
     );
@@ -102,6 +113,7 @@ export function OnboardingWizard() {
           <BackendStep
             reachable={payload.backend.reachable}
             readiness={payload.readiness}
+            connectionError={error}
             onConnected={advance}
             onRefresh={() => void refresh()}
           />
@@ -114,7 +126,7 @@ export function OnboardingWizard() {
             running={smartSetupRunning}
             selectedModelKey={draft.selected_model_key}
             onSelectModel={(key) => updateDraft({ selected_model_key: key })}
-            onRun={() => void runSmartSetup()}
+            onRun={(opts) => void runSmartSetup(opts)}
             onContinue={advance}
             onRefresh={() => void refresh()}
           />
@@ -124,10 +136,18 @@ export function OnboardingWizard() {
           <CredentialsStep
             draft={draft}
             missing={payload.credentials.missing}
+            present={payload.credentials.present}
+            envPath={
+              payload.credentials.env_path ??
+              (payload.workspace_root ? `${payload.workspace_root}/.env` : undefined)
+            }
             hasAdminApiKeyInEnv={payload.credentials.has_admin_api_key}
+            wizardRequired={payload.credentials.wizard_required ?? true}
+            skipReason={payload.credentials.skip_reason ?? null}
             saving={savingCredentials}
             onChange={(credentials) => updateDraft({ credentials })}
             onContinue={() => void handleCredentialsContinue()}
+            onImportFromEnv={importCredentialsFromEnv}
           />
         );
       case "configuration":
@@ -175,12 +195,22 @@ export function OnboardingWizard() {
             stepStatus={payload.step_status}
           />
         )}
-        {error && currentStep !== "birth" && (
-          <p className="mb-4 max-w-xl text-center text-sm text-red-400/90" role="alert">
-            {error}
+        {error && currentStep !== "birth" ? (
+          <p className={cn("mb-4 max-w-xl rounded-lg p-3 text-center text-sm", distressPanelClass("error"))} role="alert">
+            <span className={warnOverlayBodyClass()}>{error}</span>
           </p>
-        )}
-        {renderStep()}
+        ) : null}
+        <div
+          className={cn(
+            "w-full max-w-xl",
+            currentStep !== "welcome" &&
+              currentStep !== "birth" &&
+              "lumina-glass lumina-glass--panel rounded-xl p-4 md:p-6",
+            currentStep === "birth" && "max-w-5xl",
+          )}
+        >
+          {renderStep()}
+        </div>
       </div>
     </OnboardingShell>
   );

@@ -12,11 +12,13 @@ import {
   resolveIntelligenceHealth,
   TIER_VISUAL,
 } from "@/lib/intelligenceDisplay";
+import { modeLabelClass, modeTitleClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-white/10 bg-black/30 px-3 py-2">
+    <div className="lumina-surface-muted rounded-md px-3 py-2">
       <p className="font-mono text-[9px] tracking-[0.16em] text-muted-foreground uppercase">
         {label}
       </p>
@@ -30,6 +32,7 @@ interface AdaptiveIntelligenceStatusCardProps {
 }
 
 export function AdaptiveIntelligenceStatusCard({ className }: AdaptiveIntelligenceStatusCardProps) {
+  const operatorMode = useCoreStore(selectCurrentMode);
   const {
     status,
     transitionSummary,
@@ -48,13 +51,18 @@ export function AdaptiveIntelligenceStatusCard({ className }: AdaptiveIntelligen
   return (
     <section
       className={cn(
-        "cockpit-panel overflow-hidden rounded-lg border border-white/10 bg-black/25 p-4",
+        "lumina-surface-muted overflow-hidden rounded-lg p-4",
         className,
       )}
     >
       <div className="mb-3 flex items-start justify-between gap-2">
         <div>
-          <p className="font-mono text-[10px] tracking-[0.18em] text-cyan-200/80 uppercase">
+          <p
+            className={cn(
+              "mode-text-tier2 font-mono text-[10px] tracking-[0.18em] uppercase",
+              modeLabelClass(operatorMode),
+            )}
+          >
             Adaptive Intelligence
           </p>
           <h3 className="text-sm font-medium text-foreground">Inference stack</h3>
@@ -93,7 +101,7 @@ export function AdaptiveIntelligenceStatusCard({ className }: AdaptiveIntelligen
 
       {status ? (
         <div className="space-y-3">
-          <div className="flex items-center gap-3 rounded-md border border-white/10 bg-black/35 px-3 py-3">
+          <div className="lumina-surface-muted flex items-center gap-3 rounded-md px-3 py-3">
             <IntelligenceHealthDot health={health} pulse={Boolean(transitionSummary?.is_transition)} />
             <div className="min-w-0 flex-1">
               <p className="font-mono text-lg font-semibold" style={{ color: tierVisual?.color }}>

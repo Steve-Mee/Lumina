@@ -2,6 +2,8 @@ import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { PanelLoader } from "@/components/cockpit/PanelLoader";
+import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
 import { BotConfigForm } from "@/components/config/BotConfigForm";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +15,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { modeTitleClass } from "@/lib/modePresentation";
+import { cn } from "@/lib/utils";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { useBotConfigStore } from "@/store/botConfigStore";
 
@@ -65,8 +69,8 @@ export function BotConfigurationDialog() {
           <Button
             type="button"
             size="sm"
-            variant="ghost"
-            className="h-9 w-9 p-0 text-muted-foreground hover:text-violet-200"
+            variant="command-ghost"
+            className="h-9 w-9 p-0"
             aria-label="Bot configuration"
             title="Bot configuration"
           >
@@ -75,7 +79,9 @@ export function BotConfigurationDialog() {
         </DialogTrigger>
         <DialogContent className="bot-config-dialog max-h-[90vh] max-w-xl overflow-hidden p-0">
           <DialogHeader className="border-b border-white/10 px-6 py-4">
-            <DialogTitle className="text-cyan-100">Bot Configuration</DialogTitle>
+            <DialogTitle className={cn("mode-text-tier2", modeTitleClass(operatorMode))}>
+              Bot Configuration
+            </DialogTitle>
             <DialogDescription>
               Persisted to config.yaml — applies on next engine reload
             </DialogDescription>
@@ -83,14 +89,7 @@ export function BotConfigurationDialog() {
 
           <div className="max-h-[min(60vh,520px)] overflow-y-auto px-6 py-4">
             {loading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="h-12 animate-pulse rounded-lg bg-white/5"
-                  />
-                ))}
-              </div>
+              <PanelLoader label={DECK_LOADING_COPY.settingsSync} className="min-h-[200px]" />
             ) : (
               <>
                 {error ? (
@@ -109,7 +108,7 @@ export function BotConfigurationDialog() {
           <DialogFooter className="border-t border-white/10 px-6 py-4">
             <Button
               type="button"
-              variant="outline"
+              variant="command-ghost"
               onClick={() => handleOpenChange(false)}
               disabled={saving}
             >
@@ -117,6 +116,7 @@ export function BotConfigurationDialog() {
             </Button>
             <Button
               type="button"
+              variant="command-primary"
               onClick={() => void handleSave()}
               disabled={!isDirty() || saving || loading}
             >
@@ -135,11 +135,12 @@ export function BotConfigurationDialog() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmClose(false)}>
+            <Button variant="command-ghost" onClick={() => setConfirmClose(false)}>
               Keep editing
             </Button>
             <Button
-              variant="destructive"
+              variant="command-ghost"
+              data-intent="danger"
               onClick={() => {
                 resetDraft();
                 setConfirmClose(false);

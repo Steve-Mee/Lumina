@@ -13,7 +13,7 @@ import {
 } from "@/lib/evolutionClient";
 import { selectApiKeyConfigured, useApiKeyStore } from "@/store/apiKeyStore";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
-import { cn } from "@/lib/utils";
+import { pendingHighlightClass } from "@/lib/modePresentation";
 
 export function EvolutionApprovalsPanel({ className }: { className?: string }) {
   const [proposals, setProposals] = useState<EvolutionProposal[]>([]);
@@ -99,7 +99,7 @@ export function EvolutionApprovalsPanel({ className }: { className?: string }) {
       {proposals.map((proposal) => (
         <article
           key={proposal.hash}
-          className="rounded-lg border border-white/10 bg-black/25 p-3"
+          className="lumina-surface-muted rounded-lg p-3"
         >
           <p className="font-mono text-xs text-cyan-100/90">{proposal.hash.slice(0, 16)}…</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
@@ -113,7 +113,7 @@ export function EvolutionApprovalsPanel({ className }: { className?: string }) {
           </ul>
           <div className="mt-3 flex flex-col gap-2">
             {operatorMode === "REAL" ? (
-              <label className="flex items-start gap-2 text-[10px] text-amber-200/90">
+              <label className={cn("flex items-start gap-2 text-[10px]", pendingHighlightClass(operatorMode))}>
                 <input
                   type="checkbox"
                   className="mt-0.5"

@@ -20,14 +20,15 @@ export function WelcomeStep({ onContinue, shortPath, readiness = [] }: WelcomeSt
       className="flex flex-col items-center gap-10 px-6 py-12"
     >
       <OnboardingBrand />
-      <div className="onboarding-card max-w-lg p-6 text-center">
-        <p className="text-sm leading-relaxed text-muted-foreground">
+      <div className="relative lumina-glass lumina-glass--overlay max-w-lg p-6 text-center">
+        <div className="t1-vignette pointer-events-none absolute inset-0 rounded-[inherit]" aria-hidden />
+        <p className="relative text-sm leading-relaxed text-muted-foreground">
           {shortPath
             ? "Almost ready. Complete the remaining steps to activate Birth Phase and enter the Command Deck."
             : "Welcome aboard. We'll detect what's missing — backend, intelligence stack, credentials — and guide you through only what's needed."}
         </p>
         {readiness.length > 0 && !shortPath && (
-          <p className="mt-3 text-xs text-cyan-300/80">
+          <p className="relative mt-3 text-xs text-cyan-300/80">
             {readiness.filter((row) => row.status === "missing").length} components still need attention.
           </p>
         )}

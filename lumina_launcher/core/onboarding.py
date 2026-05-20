@@ -54,7 +54,7 @@ def compute_onboarding_steps(
             required.append("model")
         step_status["model"] = "running" if smart_setup_running else "pending"
 
-    if credentials_missing:
+    if credentials_missing and not setup_complete:
         required.append("credentials")
         step_status["credentials"] = "pending"
 
@@ -72,6 +72,25 @@ def compute_onboarding_steps(
         step_status["birth"] = "done"
 
     return required, step_status
+
+
+def resolve_credentials_wizard_meta(
+    *,
+    credentials_missing: list[str],
+    setup_complete: bool,
+) -> dict[str, Any]:
+    """Whether the deck must show the credentials step and why it was skipped."""
+    wizard_required = bool(credentials_missing and not setup_complete)
+    if wizard_required:
+        skip_reason = None
+    elif setup_complete:
+        skip_reason = "setup_complete"
+    else:
+        skip_reason = "env_configured"
+    return {
+        "wizard_required": wizard_required,
+        "skip_reason": skip_reason,
+    }
 
 
 def resolve_wizard_steps(required_steps: list[OnboardingStepId]) -> list[OnboardingStepId]:
@@ -101,7 +120,36 @@ def should_skip_wizard(
     return False
 
 
-def extract_config_defaults(config: dict[str, Any]) -> dict[str, Any]:
+def extract_env_diagnostics(env_values: dict[str, str] | None = None) -> dict[str, Any]:
+    """Operator diagnostics toggles persisted in .env (Streamlit sidebar parity)."""
+    env = env_values or {}
+
+    def _bool(key: str, default: bool) -> bool:
+        raw = str(env.get(key, str(default))).strip().lower()
+        return raw in {"1", "true", "yes", "on"}
+
+    def _int(key: str, default: int, *, lo: int, hi: int) -> int:
+        try:
+            value = int(str(env.get(key, default)).strip())
+        except (TypeError, ValueError):
+            value = default
+        return max(lo, min(hi, value))
+
+    return {
+        "dashboard_enabled": _bool("DASHBOARD_ENABLED", True),
+        "runtime_trace": _bool("LUMINA_RUNTIME_TRACE", True),
+        "runtime_trace_interval_sec": _int(
+            "LUMINA_RUNTIME_TRACE_INTERVAL_SEC", 2, lo=0, hi=10
+        ),
+        "latency_sla_ms": _int("LUMINA_LATENCY_SLA_MS", 300, lo=150, hi=1000),
+    }
+
+
+def extract_config_defaults(
+    config: dict[str, Any],
+    *,
+    env_values: dict[str, str] | None = None,
+) -> dict[str, Any]:
     sim = config.get("sim") if isinstance(config.get("sim"), dict) else {}
     real = config.get("real") if isinstance(config.get("real"), dict) else {}
     evolution = config.get("evolution") if isinstance(config.get("evolution"), dict) else {}
@@ -140,4 +188,5 @@ def extract_config_defaults(config: dict[str, Any]) -> dict[str, Any]:
             ),
             "max_total_open_risk": risk_controller.get("max_total_open_risk", 3000.0),
         },
+        "diagnostics": extract_env_diagnostics(env_values),
     }

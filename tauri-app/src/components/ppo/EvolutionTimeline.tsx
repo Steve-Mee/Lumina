@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
 import { Activity, AlertTriangle, Target, TrendingUp, type LucideIcon } from "lucide-react";
 
+import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { fadeUp, transitionOrNone } from "@/lib/motionPresets";
+import { transitionOrNone } from "@/lib/motionPresets";
 import {
   buildEvolutionTimeline,
   DEFAULT_TIMELINE_MAX_STEPS,
@@ -36,6 +37,8 @@ const EVENT_STYLES: Record<EvolutionEventType, string> = {
 };
 
 function EventPill({ event, compact }: { event: EvolutionTimelineEvent; compact?: boolean }) {
+  const reducedMotion = usePrefersReducedMotion();
+  const modeMotion = useModeMotion();
   const Icon = EVENT_ICON[event.type];
 
   return (
@@ -47,7 +50,7 @@ function EventPill({ event, compact }: { event: EvolutionTimelineEvent; compact?
       )}
       initial={{ opacity: 0, scale: 0.92 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.2 }}
+      transition={transitionOrNone(reducedMotion, modeMotion)}
     >
       <Icon className={cn(compact ? "size-2.5" : "size-3")} aria-hidden />
       {event.label}
@@ -112,7 +115,7 @@ function VerticalTimelineEntry({
           className={cn(
             "relative z-10 mt-1 inline-flex size-3 rounded-full border",
             isLatest
-              ? "border-cyan-400/70 bg-cyan-400/30 shadow-[0_0_10px_rgba(34,211,238,0.45)]"
+              ? "border-cyan-400/70 bg-cyan-400/30 lumina-glow-edge"
               : "border-white/20 bg-white/10",
             hasEvents && !reducedMotion && "animate-pulse",
           )}
@@ -122,7 +125,7 @@ function VerticalTimelineEntry({
 
       <div
         className={cn(
-          "rounded-lg border bg-black/25 p-3",
+          "lumina-surface-muted rounded-lg border p-3",
           isLatest ? "border-cyan-400/30" : "border-white/10",
         )}
       >
@@ -165,7 +168,7 @@ function HorizontalTimelineEntry({
   return (
     <motion.li
       className={cn(
-        "w-[160px] shrink-0 snap-start rounded-lg border bg-black/25 p-3",
+        "w-[160px] shrink-0 snap-start lumina-surface-muted rounded-lg border p-3",
         isLatest ? "border-cyan-400/30" : "border-white/10",
       )}
       variants={fadeUp}
@@ -217,7 +220,7 @@ export function EvolutionTimeline({
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-lg border border-white/10 bg-black/20 p-3",
+        "relative overflow-hidden lumina-surface-muted rounded-lg p-3",
         className,
       )}
       aria-label="Evolution timeline"

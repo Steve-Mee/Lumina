@@ -1,14 +1,10 @@
-import {
-  motion,
-  useMotionValueEvent,
-  useReducedMotion,
-  useSpring,
-  useTransform,
-} from "framer-motion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { motion, useMotionValueEvent, useSpring, useTransform } from "framer-motion";
 import { Shield, ShieldAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { FadeInView } from "@/components/cockpit/FadeInView";
+import { CitadelEnergyField } from "@/components/cockpit/CitadelEnergyField";
 
 import {
   Dialog,
@@ -20,7 +16,6 @@ import {
 import { citadelCoreGradient, citadelShieldClass } from "@/lib/modePresentation";
 import {
   aggregateIntegrity,
-  citadelCoreRingDuration,
   citadelModeHeadline,
   deriveCitadelWalls,
   integrityTier,
@@ -65,10 +60,12 @@ function IntegrityBar({
   integrity,
   tier,
   reducedMotion,
+  calmMode,
 }: {
   integrity: number;
   tier: WallMetric["tier"];
   reducedMotion: boolean;
+  calmMode: boolean;
 }) {
   const spring = useSpring(integrity, {
     stiffness: 120,
@@ -80,7 +77,11 @@ function IntegrityBar({
   return (
     <div className="relative h-16 w-2 overflow-hidden rounded-full bg-white/5">
       <motion.div
-        className={cn("absolute bottom-0 w-full rounded-full", tierBarClass(tier))}
+        className={cn(
+          "absolute bottom-0 w-full rounded-full",
+          tierBarClass(tier),
+          !calmMode && !reducedMotion && "citadel-bar-shimmer",
+        )}
         style={{ height: reducedMotion ? `${integrity}%` : height }}
       />
     </div>
@@ -92,45 +93,38 @@ function CitadelWall({
   gridArea,
   onSelect,
   reducedMotion,
-}: CitadelWallProps) {
+  calmMode,
+}: CitadelWallProps & { calmMode: boolean }) {
   const isCritical = wall.tier === "red";
 
   return (
-    <motion.button
-      type="button"
-      style={{ gridArea }}
-      aria-label={`${wall.label} integrity ${Math.round(wall.integrity)} percent`}
-      onClick={() => onSelect(wall)}
-      whileHover={reducedMotion ? undefined : { scale: 1.03 }}
-      whileTap={reducedMotion ? undefined : { scale: 0.98 }}
-      animate={
-        isCritical && !reducedMotion
-          ? { opacity: [0.78, 1, 0.78] }
-          : { opacity: 1 }
-      }
-      transition={
-        isCritical && !reducedMotion
-          ? { duration: 1.4, repeat: Infinity, ease: "easeInOut" }
-          : undefined
-      }
-      className={cn(
-        "citadel-wall flex flex-col items-center justify-between gap-2 rounded-lg border bg-black/25 px-2 py-2.5 backdrop-blur-sm transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
-        tierBorderClass(wall.tier),
-        isCritical && "citadel-wall-critical",
-      )}
-    >
-      <span className="text-[9px] tracking-[0.14em] text-muted-foreground uppercase">
-        {wall.label}
-      </span>
-      <IntegrityBar
-        integrity={wall.integrity}
-        tier={wall.tier}
-        reducedMotion={reducedMotion}
-      />
-      <span className="font-mono text-[11px] text-foreground/90">
-        {Math.round(wall.integrity)}%
-      </span>
-    </motion.button>
+    <div className="citadel-wall-segment" style={{ gridArea }}>
+      <motion.button
+        type="button"
+        aria-label={`${wall.label} integrity ${Math.round(wall.integrity)} percent`}
+        onClick={() => onSelect(wall)}
+        whileHover={reducedMotion ? undefined : { scale: 1.03 }}
+        whileTap={reducedMotion ? undefined : { scale: 0.98 }}
+        className={cn(
+          "citadel-wall lumina-glass flex h-full w-full flex-col items-center justify-between gap-2 rounded-lg border px-2 py-2.5 transition-colors focus-visible:ring-2 focus-visible:ring-cyan-400/50 focus-visible:outline-none",
+          tierBorderClass(wall.tier),
+          isCritical && "citadel-wall-critical",
+        )}
+      >
+        <span className="text-[9px] tracking-[0.14em] text-muted-foreground uppercase">
+          {wall.label}
+        </span>
+        <IntegrityBar
+          integrity={wall.integrity}
+          tier={wall.tier}
+          reducedMotion={reducedMotion}
+          calmMode={calmMode}
+        />
+        <span className="font-mono text-[11px] text-foreground/90">
+          {Math.round(wall.integrity)}%
+        </span>
+      </motion.button>
+    </div>
   );
 }
 
@@ -139,18 +133,20 @@ function CitadelCore({
   tier,
   reducedMotion,
   mode,
+  calmMode,
 }: {
   integrity: number;
   tier: ReturnType<typeof integrityTier>;
   reducedMotion: boolean;
   mode: ReturnType<typeof selectCurrentMode>;
+  calmMode: boolean;
 }) {
   const spring = useSpring(integrity, {
     stiffness: 100,
     damping: 20,
   });
   const [displayValue, setDisplayValue] = useState(Math.round(integrity));
-  const ringDuration = citadelCoreRingDuration(mode, reducedMotion);
+  const ringDuration = reducedMotion ? null : calmMode ? 24 : 12;
 
   useEffect(() => {
     spring.set(integrity);
@@ -162,13 +158,13 @@ function CitadelCore({
 
   return (
     <div
-      className="relative flex items-center justify-center"
+      className="citadel-core-field relative flex items-center justify-center"
       style={{ gridArea: "core" }}
     >
       {ringDuration !== null ? (
         <motion.div
           className={cn(
-            "absolute size-24 rounded-full border-2 border-dashed md:size-28",
+            "absolute size-24 rounded-full border border-dashed md:size-28",
             tierRingClass(tier),
           )}
           animate={{ rotate: 360 }}
@@ -177,7 +173,7 @@ function CitadelCore({
       ) : (
         <div
           className={cn(
-            "absolute size-24 rounded-full border-2 border-dashed md:size-28",
+            "absolute size-24 rounded-full border border-dashed md:size-28",
             tierRingClass(tier),
           )}
         />
@@ -300,7 +296,7 @@ function CitadelProtectiveBanner({
   }
 
   return (
-    <div className="mb-2 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-950/40 px-2 py-1.5 text-[10px] text-amber-100/90">
+    <div className="citadel-lockdown-banner mb-2 flex items-center gap-2 rounded-md border border-amber-500/35 bg-amber-950/40 px-2 py-1.5 text-[10px] text-amber-100/90">
       <ShieldAlert className="size-3.5 shrink-0 text-amber-400" aria-hidden />
       <span>
         {killSwitchActive
@@ -321,20 +317,20 @@ function CitadelCapitalFooter({
   openPnl: number | null;
 }) {
   return (
-    <div className="mt-2 grid grid-cols-3 gap-1.5 font-mono text-[9px]">
-      <div className="rounded border border-white/10 bg-black/20 px-2 py-1">
+    <div className="citadel-capital-strip mt-2 grid grid-cols-3 gap-2 font-mono text-[9px]">
+      <div className="px-1 py-0.5">
         <span className="text-muted-foreground">Equity</span>
         <p className="text-cyan-100/90">
           {equity !== null ? `$${equity.toLocaleString()}` : "—"}
         </p>
       </div>
-      <div className="rounded border border-white/10 bg-black/20 px-2 py-1">
+      <div className="px-1 py-0.5">
         <span className="text-muted-foreground">Daily PnL</span>
         <p className={dailyPnl !== null && dailyPnl < 0 ? "text-red-300/90" : "text-emerald-300/90"}>
           {formatUsd(dailyPnl)}
         </p>
       </div>
-      <div className="rounded border border-white/10 bg-black/20 px-2 py-1">
+      <div className="px-1 py-0.5">
         <span className="text-muted-foreground">Open PnL</span>
         <p className={openPnl !== null && openPnl < 0 ? "text-red-300/90" : "text-emerald-300/90"}>
           {formatUsd(openPnl)}
@@ -345,13 +341,15 @@ function CitadelCapitalFooter({
 }
 
 export function RiskCitadel({ className, walls: wallsOverride }: RiskCitadelProps) {
-  const prefersReducedMotion = useReducedMotion() ?? false;
+  const prefersReducedMotion = usePrefersReducedMotion();
   const mode = useCoreStore(selectCurrentMode);
   const safeModeActive = useCoreStore(selectSafeModeActive);
   const fortress = useCoreStore(selectFortress);
   const riskLevel = useCoreStore(selectRiskLevel);
   const liveMetrics = useCoreStore(selectLiveMetrics);
-  const reducedMotion = prefersReducedMotion || mode === "REAL";
+  const reducedMotion = prefersReducedMotion;
+  const calmMode = mode === "REAL";
+  const lockdown = safeModeActive || (fortress?.kill_switch_active ?? false);
 
   const walls = useMemo(() => {
     if (wallsOverride) {
@@ -387,6 +385,7 @@ export function RiskCitadel({ className, walls: wallsOverride }: RiskCitadelProp
         <div
           className="citadel-shell flex flex-col items-center"
           data-mode={mode}
+          data-lockdown={lockdown ? "true" : undefined}
         >
           <CitadelProtectiveBanner
             safeModeActive={safeModeActive}
@@ -402,50 +401,64 @@ export function RiskCitadel({ className, walls: wallsOverride }: RiskCitadelProp
             {citadelModeHeadline(mode)}
           </p>
 
-          <div
-            role="img"
-            aria-label={`Risk citadel aggregate integrity ${Math.round(aggregate)} percent`}
-            className={cn(
-              "grid w-full max-w-sm grid-cols-3 grid-rows-3 gap-2 md:max-w-md md:gap-2.5",
-            )}
-            style={{
-              gridTemplateAreas: `
+          <div className="relative w-full max-w-sm md:max-w-md">
+            <CitadelEnergyField
+              aggregate={aggregate}
+              tier={aggregateTier}
+              walls={walls}
+              mode={mode}
+              lockdown={lockdown}
+              calmMode={calmMode}
+              reducedMotion={reducedMotion}
+            />
+            <div
+              role="img"
+              aria-label={`Risk citadel aggregate integrity ${Math.round(aggregate)} percent`}
+              className="relative grid w-full grid-cols-3 grid-rows-3 gap-2 md:gap-2.5"
+              style={{
+                gridTemplateAreas: `
             ". risk ."
             "kelly core regime"
             ". drawdown ."
           `,
-            }}
-          >
-            <CitadelWall
-              wall={wallById.risk}
-              gridArea="risk"
-              onSelect={openWallDetail}
-              reducedMotion={reducedMotion}
-            />
-            <CitadelWall
-              wall={wallById.kelly}
-              gridArea="kelly"
-              onSelect={openWallDetail}
-              reducedMotion={reducedMotion}
-            />
-            <CitadelCore
-              integrity={aggregate}
-              tier={aggregateTier}
-              reducedMotion={reducedMotion}
-              mode={mode}
-            />
-            <CitadelWall
-              wall={wallById.regime}
-              gridArea="regime"
-              onSelect={openWallDetail}
-              reducedMotion={reducedMotion}
-            />
-            <CitadelWall
-              wall={wallById.drawdown}
-              gridArea="drawdown"
-              onSelect={openWallDetail}
-              reducedMotion={reducedMotion}
-            />
+              }}
+            >
+              <CitadelWall
+                wall={wallById.risk}
+                gridArea="risk"
+                onSelect={openWallDetail}
+                reducedMotion={reducedMotion}
+                calmMode={calmMode}
+              />
+              <CitadelWall
+                wall={wallById.kelly}
+                gridArea="kelly"
+                onSelect={openWallDetail}
+                reducedMotion={reducedMotion}
+                calmMode={calmMode}
+              />
+              <CitadelCore
+                integrity={aggregate}
+                tier={aggregateTier}
+                reducedMotion={reducedMotion}
+                mode={mode}
+                calmMode={calmMode}
+              />
+              <CitadelWall
+                wall={wallById.regime}
+                gridArea="regime"
+                onSelect={openWallDetail}
+                reducedMotion={reducedMotion}
+                calmMode={calmMode}
+              />
+              <CitadelWall
+                wall={wallById.drawdown}
+                gridArea="drawdown"
+                onSelect={openWallDetail}
+                reducedMotion={reducedMotion}
+                calmMode={calmMode}
+              />
+            </div>
           </div>
 
           <CitadelCapitalFooter

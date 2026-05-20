@@ -82,12 +82,12 @@ export function NinjaTraderInstallDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="command-ghost" onClick={() => onOpenChange(false)}>
             Close
           </Button>
           <Button
             type="button"
-            className="bg-cyan-600/80 text-cyan-50 hover:bg-cyan-600"
+            variant="command-primary"
             onClick={() => void openDownloadPage()}
           >
             <ExternalLink className="mr-2 size-4" />

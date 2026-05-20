@@ -1023,6 +1023,20 @@ tauri-app/
 | Stores | camelCase with `Store` suffix | `organismStore.ts` |
 | Types | PascalCase interfaces | `BootstrapResponse` |
 | CSS variables | `--cockpit-*` prefix | `--cockpit-glow-primary` |
+
+### 9.3 Glass & Glow Taxonomy (max 3 levels)
+
+| Layer | Class / token | Use |
+|-------|---------------|-----|
+| Surface | `.lumina-glass` | Official glass recipe: `backdrop-filter` + `--lumina-glass-border` + inset highlight only. No `bg-black/*` stacking. |
+| Edge accent | `.lumina-glow-edge` / `--lumina-glow-edge` | HUD signal underlines, active tabs, status dots, interactive chrome hover |
+| Halo | `.lumina-glow-halo` / `--lumina-glow-halo` | Living Core shell, Evolution Arena, Citadel core field |
+| Ambient | `.lumina-glow-ambient` / `--lumina-glow-ambient` | `.cockpit-shell` background only — never on cards |
+| Annex muted | `.lumina-surface-muted` | Ops/PPO inner sections — no blur, no glow |
+
+Helpers: [`glassGlowTaxonomy.ts`](tauri-app/src/lib/glassGlowTaxonomy.ts) (`glassSurfaceClass`, `luminaGlowClass`).
+
+**Rule:** glow levels are mutually exclusive per element; glass never carries outer glow by default.
 | API paths | kebab-case | `/api/command-deck/risk/snapshot` |
 | WS topics | dot-separated | `risk.policy.decision` |
 

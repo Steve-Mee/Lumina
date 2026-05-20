@@ -16,16 +16,28 @@ class ConfigManager:
         self.env_path = env_path
         self.config_path = config_path
 
+    @staticmethod
+    def _normalize_env_key(raw_key: str) -> str:
+        return raw_key.strip().lstrip("\ufeff")
+
+    @staticmethod
+    def _normalize_env_value(raw_value: str) -> str:
+        return raw_value.split("#", 1)[0].strip()
+
     def parse_env_file(self) -> dict[str, str]:
         if not self.env_path.exists():
             return {}
         values: dict[str, str] = {}
-        for raw_line in self.env_path.read_text(encoding="utf-8").splitlines():
+        text = self.env_path.read_text(encoding="utf-8-sig")
+        for raw_line in text.splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            values[key.strip()] = value.strip()
+            normalized_key = self._normalize_env_key(key)
+            if not normalized_key:
+                continue
+            values[normalized_key] = self._normalize_env_value(value)
         return values
 
     def write_env_file(self, updates: dict[str, str]) -> None:

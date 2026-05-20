@@ -25,7 +25,12 @@ const basePayload: OnboardingPayload = {
   },
   model_catalog: [],
   readiness: [],
-  credentials: { missing: [], has_admin_api_key: true },
+  credentials: {
+    missing: [],
+    has_admin_api_key: true,
+    wizard_required: false,
+    skip_reason: "env_configured",
+  },
   required_steps: ["welcome", "configuration", "birth"],
   wizard_steps: ["welcome", "configuration", "birth"],
   step_status: {},

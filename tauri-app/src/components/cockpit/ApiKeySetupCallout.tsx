@@ -32,7 +32,7 @@ export function ApiKeySetupCallout({ className, compact }: ApiKeySetupCalloutPro
           <Button
             type="button"
             size="sm"
-            variant="secondary"
+            variant="command-primary"
             className="mt-3"
             onClick={() => openSettings("apiKey")}
           >

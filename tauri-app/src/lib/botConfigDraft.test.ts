@@ -27,7 +27,12 @@ function mockPayload(overrides: Partial<OnboardingPayload["defaults"]> = {}): On
     },
     model_catalog: [],
     readiness: [],
-    credentials: { missing: [], has_admin_api_key: true },
+    credentials: {
+      missing: [],
+      has_admin_api_key: true,
+      wizard_required: false,
+      skip_reason: "env_configured",
+    },
     required_steps: [],
     wizard_steps: [],
     step_status: {},

@@ -1,8 +1,9 @@
 import { motion } from "framer-motion";
 import { useMemo, useState } from "react";
 
+import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { springSoft, transitionOrNone } from "@/lib/motionPresets";
+import { transitionOrNone } from "@/lib/motionPresets";
 import { predictWhatIf } from "@/lib/ppoWhatIfModel";
 import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
 import { cn } from "@/lib/utils";
@@ -45,20 +46,22 @@ function PredictionCard({
   label,
   value,
   reducedMotion,
+  modeMotion,
 }: {
   label: string;
   value: string;
   reducedMotion: boolean;
+  modeMotion: ReturnType<typeof useModeMotion>;
 }) {
   return (
-    <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+    <div className="lumina-surface-muted rounded-lg p-3">
       <p className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{label}</p>
       <motion.p
         key={value}
         className="mt-1 font-mono text-lg font-semibold tabular-nums text-cyan-100/95"
         initial={reducedMotion ? false : { opacity: 0.7, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={transitionOrNone(reducedMotion, springSoft)}
+        transition={transitionOrNone(reducedMotion, modeMotion)}
       >
         {value}
       </motion.p>
@@ -68,6 +71,7 @@ function PredictionCard({
 
 export function WhatIfSimulator({ logs, className }: WhatIfSimulatorProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const modeMotion = useModeMotion();
   const latest = logs.length > 0 ? logs[logs.length - 1]! : null;
   const [entropyLevel, setEntropyLevel] = useState(50);
   const [riskAversion, setRiskAversion] = useState(50);
@@ -80,7 +84,7 @@ export function WhatIfSimulator({ logs, className }: WhatIfSimulatorProps) {
   return (
     <section
       className={cn(
-        "relative overflow-hidden rounded-lg border border-white/10 bg-black/20 p-4",
+        "relative overflow-hidden lumina-surface-muted rounded-lg p-4",
         className,
       )}
       aria-label="What-if simulator"
@@ -111,16 +115,19 @@ export function WhatIfSimulator({ logs, className }: WhatIfSimulatorProps) {
               label="Expected Reward"
               value={prediction.expectedReward.toFixed(3)}
               reducedMotion={reducedMotion}
+              modeMotion={modeMotion}
             />
             <PredictionCard
               label="Expected Sharpe"
               value={prediction.expectedSharpe.toFixed(2)}
               reducedMotion={reducedMotion}
+              modeMotion={modeMotion}
             />
             <PredictionCard
               label="Confidence"
               value={`${(prediction.confidence * 100).toFixed(0)}%`}
               reducedMotion={reducedMotion}
+              modeMotion={modeMotion}
             />
           </div>
         </div>

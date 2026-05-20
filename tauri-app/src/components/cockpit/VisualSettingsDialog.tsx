@@ -15,16 +15,16 @@ import {
   VISUAL_QUALITY_PRESETS,
   type VisualQuality,
 } from "@/lib/visualQualityPresets";
+import { modeTitleClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
-import {
-  selectVisualQuality,
-  useVisualSettingsStore,
-} from "@/store/visualSettingsStore";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
+import { selectVisualQuality, useVisualSettingsStore } from "@/store/visualSettingsStore";
 
 const QUALITY_ORDER: VisualQuality[] = ["low", "balanced", "high"];
 
 export function VisualSettingsDialog() {
   const [open, setOpen] = useState(false);
+  const operatorMode = useCoreStore(selectCurrentMode);
   const visualQuality = useVisualSettingsStore(selectVisualQuality);
   const setVisualQuality = useVisualSettingsStore((s) => s.setVisualQuality);
 
@@ -34,8 +34,8 @@ export function VisualSettingsDialog() {
         <Button
           type="button"
           size="sm"
-          variant="ghost"
-          className="h-9 w-9 p-0 text-muted-foreground hover:text-cyan-200"
+          variant="command-ghost"
+          className="h-9 w-9 p-0"
           aria-label="Visual quality settings"
           title="Visual quality"
         >
@@ -44,7 +44,9 @@ export function VisualSettingsDialog() {
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="text-cyan-100">Visual Quality</DialogTitle>
+          <DialogTitle className={cn("mode-text-tier2", modeTitleClass(operatorMode))}>
+            Visual Quality
+          </DialogTitle>
           <DialogDescription>
             3D panels pause when off-screen to save GPU. Changes apply immediately.
           </DialogDescription>

@@ -1,146 +1,368 @@
+/* Self-contained dark theme — do not rely on html.dark / Tailwind tokens in WebView */
+
 .onboarding-shell {
+
+  color-scheme: dark;
+
+  color: oklch(0.96 0.005 260);
+
+  --onboarding-fg: oklch(0.96 0.005 260);
+
+  --onboarding-muted: oklch(0.68 0.02 260);
+
+  --onboarding-card-bg: var(--lumina-glass-bg);
+
   background:
+
     radial-gradient(
+
       ellipse 90% 70% at 50% -10%,
-      color-mix(in oklch, var(--cockpit-glow-accent) 18%, transparent),
+
+      color-mix(in srgb, var(--cockpit-glow-accent) 14%, transparent),
+
       transparent 65%
+
     ),
+
     radial-gradient(
+
       ellipse 50% 40% at 10% 100%,
-      color-mix(in oklch, var(--cockpit-glow-primary) 10%, transparent),
+
+      color-mix(in srgb, var(--lumina-cyan) 8%, transparent),
+
       transparent 55%
+
     ),
-    linear-gradient(180deg, oklch(0.11 0.025 260) 0%, oklch(0.09 0.03 285) 100%);
+
+    linear-gradient(180deg, var(--lumina-void) 0%, color-mix(in srgb, var(--lumina-void) 90%, #0d1020) 100%);
+
 }
 
-.onboarding-card {
-  background: color-mix(in oklch, var(--card) 35%, transparent);
-  backdrop-filter: blur(16px);
-  border: 1px solid oklch(1 0 0 / 12%);
-  border-radius: 1rem;
-  box-shadow:
-    0 0 40px color-mix(in oklch, var(--cockpit-glow-primary) 8%, transparent),
-    inset 0 1px 0 oklch(1 0 0 / 6%);
-}
+
 
 .onboarding-hero-title {
-  background: linear-gradient(135deg, oklch(0.92 0.04 195), oklch(0.78 0.12 280));
+
+  background: linear-gradient(
+
+    135deg,
+
+    var(--lumina-cyan),
+
+    color-mix(in srgb, var(--lumina-cyan) 70%, var(--cockpit-glow-accent) 30%)
+
+  );
+
   -webkit-background-clip: text;
+
   background-clip: text;
+
   color: transparent;
+
   letter-spacing: 0.04em;
+
 }
+
+
 
 .onboarding-status-orb {
+
   width: 1rem;
+
   height: 1rem;
+
   border-radius: 999px;
+
   box-shadow: 0 0 12px currentColor;
+
 }
+
+
 
 .onboarding-status-orb[data-state="ok"] {
+
   background: oklch(0.72 0.18 155);
+
   color: oklch(0.72 0.18 155);
+
   animation: onboarding-pulse-ok 2s ease-in-out infinite;
+
 }
+
+
 
 .onboarding-status-orb[data-state="warn"] {
+
   background: oklch(0.78 0.16 85);
+
   color: oklch(0.78 0.16 85);
+
   animation: onboarding-pulse-warn 1.5s ease-in-out infinite;
+
 }
+
+
 
 .onboarding-status-orb[data-state="error"] {
+
   background: oklch(0.62 0.22 25);
+
   color: oklch(0.62 0.22 25);
+
 }
+
+
 
 @keyframes onboarding-pulse-ok {
+
   0%,
+
   100% {
+
     opacity: 0.85;
+
     transform: scale(1);
+
   }
+
   50% {
+
     opacity: 1;
+
     transform: scale(1.12);
+
   }
+
 }
+
+
 
 @keyframes onboarding-pulse-warn {
+
   0%,
+
   100% {
+
     opacity: 0.7;
+
   }
+
   50% {
+
     opacity: 1;
+
   }
+
 }
+
+
 
 .onboarding-step-rail-dot {
+
   width: 0.5rem;
+
   height: 0.5rem;
+
   border-radius: 999px;
-  background: oklch(1 0 0 / 20%);
+
+  background: color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+
   transition: all 0.25s ease;
+
 }
+
+
 
 .onboarding-step-rail-dot[data-active="true"] {
+
   width: 1.5rem;
-  background: var(--cockpit-glow-primary);
-  box-shadow: 0 0 10px color-mix(in oklch, var(--cockpit-glow-primary) 60%, transparent);
+
+  background: var(--lumina-cyan);
+
+  box-shadow: 0 0 10px color-mix(in srgb, var(--lumina-cyan) 60%, transparent);
+
 }
+
+
 
 .onboarding-step-rail-dot[data-done="true"] {
+
   background: oklch(0.72 0.18 155);
+
 }
+
+
 
 .onboarding-cta {
+
   background: linear-gradient(
+
     135deg,
-    color-mix(in oklch, var(--cockpit-glow-primary) 90%, white),
-    color-mix(in oklch, var(--cockpit-glow-accent) 85%, white)
+
+    color-mix(in srgb, var(--lumina-cyan) 92%, white),
+
+    color-mix(in srgb, var(--lumina-cyan) 75%, var(--cockpit-glow-accent) 25%)
+
   );
-  color: oklch(0.12 0.02 260);
+
+  color: var(--lumina-void);
+
   font-weight: 700;
+
   letter-spacing: 0.06em;
+
   text-transform: uppercase;
+
   border: none;
+
   box-shadow:
-    0 0 32px color-mix(in oklch, var(--cockpit-glow-primary) 45%, transparent),
+
+    0 0 32px color-mix(in srgb, var(--lumina-cyan) 45%, transparent),
+
     0 4px 20px oklch(0 0 0 / 40%);
+
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+
 }
+
+
 
 .onboarding-cta:hover:not(:disabled) {
+
   transform: translateY(-1px);
+
   box-shadow:
-    0 0 48px color-mix(in oklch, var(--cockpit-glow-primary) 55%, transparent),
+
+    0 0 48px color-mix(in srgb, var(--lumina-cyan) 55%, transparent),
+
     0 6px 24px oklch(0 0 0 / 45%);
+
 }
+
+
 
 .onboarding-cta:disabled {
+
   opacity: 0.55;
+
   cursor: not-allowed;
+
 }
+
+
 
 .onboarding-field {
-  background: oklch(0.14 0.02 260 / 80%);
-  border: 1px solid oklch(1 0 0 / 10%);
+
+  background: color-mix(in srgb, var(--lumina-surface) 82%, transparent);
+
+  border: 1px solid var(--lumina-glass-border);
+
   border-radius: 0.5rem;
+
   padding: 0.625rem 0.875rem;
-  color: inherit;
+
+  color: var(--onboarding-fg);
+
   width: 100%;
+
   font-size: 0.875rem;
+
 }
+
+
+
+.onboarding-field::placeholder {
+
+  color: oklch(0.55 0 0);
+
+}
+
+
+
+.onboarding-btn-outline {
+
+  border: 1px solid var(--lumina-glass-border);
+
+  background: color-mix(in srgb, var(--lumina-surface) 85%, transparent);
+
+  color: oklch(0.92 0 0);
+
+  border-radius: 0.5rem;
+
+  padding: 0.375rem 0.75rem;
+
+  font-size: 0.875rem;
+
+  font-weight: 500;
+
+  transition: background 0.15s ease;
+
+}
+
+
+
+.onboarding-btn-outline:hover:not(:disabled) {
+
+  background: color-mix(in srgb, var(--lumina-surface) 70%, var(--lumina-cyan) 8%);
+
+}
+
+
+
+.onboarding-btn-outline:disabled {
+
+  opacity: 0.5;
+
+  cursor: not-allowed;
+
+}
+
+
+
+.onboarding-btn-secondary {
+
+  border: 1px solid var(--lumina-glass-border);
+
+  background: color-mix(in srgb, var(--lumina-surface) 90%, var(--lumina-cyan) 5%);
+
+  color: oklch(0.9 0 0);
+
+  border-radius: 0.5rem;
+
+  padding: 0.375rem 0.75rem;
+
+  font-size: 0.875rem;
+
+  font-weight: 500;
+
+}
+
+
+
+.onboarding-btn-secondary:hover:not(:disabled) {
+
+  background: color-mix(in srgb, var(--lumina-surface) 80%, var(--lumina-cyan) 12%);
+
+}
+
+
 
 .onboarding-field:focus {
+
   outline: none;
-  border-color: color-mix(in oklch, var(--cockpit-glow-primary) 50%, transparent);
-  box-shadow: 0 0 0 2px color-mix(in oklch, var(--cockpit-glow-primary) 20%, transparent);
+
+  border-color: color-mix(in srgb, var(--lumina-cyan) 50%, transparent);
+
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lumina-cyan) 20%, transparent);
+
 }
 
+
+
 .onboarding-range {
-  accent-color: var(--cockpit-glow-primary);
+
+  accent-color: var(--lumina-cyan);
+
   width: 100%;
+
 }
+

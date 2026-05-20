@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { deriveCitadelWalls, integrityTier } from "@/lib/riskCitadelMetrics";
+import { deriveCitadelWalls, deriveCitadelWallsFromInputs, integrityTier } from "@/lib/riskCitadelMetrics";
 import type { CoreStore } from "@/store/coreStore";
 
 function baseState(overrides: Partial<CoreStore> = {}): CoreStore {
@@ -117,5 +117,42 @@ describe("deriveCitadelWalls", () => {
     const regime = walls.find((wall) => wall.id === "regime");
     expect(regime?.isStandby).toBe(false);
     expect(regime?.integrity).toBe(91);
+  });
+
+  it("deriveCitadelWallsFromInputs reacts to drawdown input changes", () => {
+    const baseInput = {
+      liveMetrics: baseState().liveMetrics,
+      riskLevel: "NORMAL" as const,
+      fortress: null,
+    };
+
+    const standby = deriveCitadelWallsFromInputs({
+      ...baseInput,
+      liveMetrics: { ...baseInput.liveMetrics, drawdownPct: null },
+    });
+    const active = deriveCitadelWallsFromInputs({
+      ...baseInput,
+      liveMetrics: { ...baseInput.liveMetrics, drawdownPct: 6 },
+      fortress: {
+        drawdown_pct: 6,
+        drawdown_kill_pct: 8,
+        kill_switch_active: false,
+        mc_drawdown_pct: null,
+        pending_reconciliations: 0,
+      },
+    });
+
+    expect(standby.find((wall) => wall.id === "drawdown")?.isStandby).toBe(true);
+    expect(active.find((wall) => wall.id === "drawdown")?.isStandby).toBe(false);
+    expect(deriveCitadelWalls(baseState({
+      liveMetrics: { ...baseState().liveMetrics, drawdownPct: 6 },
+      fortress: {
+        drawdown_pct: 6,
+        drawdown_kill_pct: 8,
+        kill_switch_active: false,
+        mc_drawdown_pct: null,
+        pending_reconciliations: 0,
+      },
+    }))).toEqual(active);
   });
 });

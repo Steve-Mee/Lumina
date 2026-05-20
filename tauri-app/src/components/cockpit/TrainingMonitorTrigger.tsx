@@ -26,12 +26,9 @@ export function TrainingMonitorTrigger({ className }: TrainingMonitorTriggerProp
     <>
       <Button
         type="button"
-        variant="outline"
+        variant="command-ghost"
         size="sm"
-        className={cn(
-          "h-8 border-white/10 bg-black/30 font-mono text-[10px] tracking-wider text-cyan-200/90 uppercase hover:bg-white/5",
-          className,
-        )}
+        className={cn("h-8", className)}
         onClick={openPpoPanel}
         onDoubleClick={() => setOpen(true)}
         title="Open PPO Evolution tab (double-click for fullscreen monitor)"

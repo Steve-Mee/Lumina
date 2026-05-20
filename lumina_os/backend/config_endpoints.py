@@ -31,6 +31,10 @@ class BotConfigPreferences(BaseModel):
     instrument: str = Field(default="ES", min_length=1, max_length=16)
     voice_enabled: bool = True
     screen_share_enabled: bool = True
+    dashboard_enabled: bool = True
+    runtime_trace: bool = True
+    runtime_trace_interval_sec: int = Field(default=2, ge=0, le=10)
+    latency_sla_ms: int = Field(default=300, ge=150, le=1000)
 
 
 class BotConfigRequest(BaseModel):
@@ -55,7 +59,8 @@ async def save_bot_config(body: BotConfigRequest) -> dict[str, object]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     config = config_manager.load_yaml_config()
+    env_values = config_manager.parse_env_file()
     return {
         "success": True,
-        "defaults": extract_config_defaults(config),
+        "defaults": extract_config_defaults(config, env_values=env_values),
     }

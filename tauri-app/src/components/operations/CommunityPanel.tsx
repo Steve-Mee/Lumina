@@ -4,6 +4,8 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { fetchGlobalWisdom, fetchLeaderboard, fetchReconciliationStatus, type LeaderboardRow, type ReconciliationStatus } from "@/lib/opsClient";
+import { modeTitleClass } from "@/lib/modePresentation";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
 function formatPnl(value: number): string {
@@ -12,6 +14,7 @@ function formatPnl(value: number): string {
 }
 
 export function CommunityPanel({ className }: { className?: string }) {
+  const operatorMode = useCoreStore(selectCurrentMode);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const [wisdom, setWisdom] = useState<Record<string, unknown>>({});
   const [reconciliation, setReconciliation] = useState<ReconciliationStatus | null>(null);
@@ -43,16 +46,21 @@ export function CommunityPanel({ className }: { className?: string }) {
   return (
     <div className={cn("space-y-4 overflow-y-auto p-1", className)}>
       <div className="flex items-center gap-2">
-        <Users className="size-4 text-cyan-300/90" />
-        <h3 className="font-mono text-[11px] tracking-[0.14em] text-cyan-200/90 uppercase">
+        <Users className={cn("size-4", modeTitleClass(operatorMode))} />
+        <h3
+          className={cn(
+            "mode-text-tier2 font-mono text-[11px] tracking-[0.14em] uppercase",
+            modeTitleClass(operatorMode),
+          )}
+        >
           Community
         </h3>
-        <Button type="button" size="xs" variant="ghost" className="ml-auto" onClick={() => void refresh()}>
+        <Button type="button" size="xs" variant="command-ghost" className="ml-auto" onClick={() => void refresh()}>
           Refresh
         </Button>
       </div>
 
-      <section className="rounded-lg border border-white/10 bg-black/25 p-3">
+      <section className="lumina-surface-muted rounded-lg p-3">
         <p className="mb-2 font-mono text-[10px] uppercase text-muted-foreground">Reconciliation</p>
         {reconciliation ? (
           <div className="grid grid-cols-2 gap-2 text-xs">
@@ -70,7 +78,7 @@ export function CommunityPanel({ className }: { className?: string }) {
         )}
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-black/25 p-3">
+      <section className="lumina-surface-muted rounded-lg p-3">
         <p className="mb-2 font-mono text-[10px] uppercase text-muted-foreground">Trader League</p>
         {leaderboard.length === 0 ? (
           <p className="text-xs text-muted-foreground">No leaderboard entries.</p>
@@ -113,7 +121,7 @@ export function CommunityPanel({ className }: { className?: string }) {
         )}
       </section>
 
-      <section className="rounded-lg border border-white/10 bg-black/25 p-3">
+      <section className="lumina-surface-muted rounded-lg p-3">
         <p className="mb-2 font-mono text-[10px] uppercase text-muted-foreground">Global Wisdom</p>
         {wisdomEntries.length === 0 ? (
           <p className="text-xs text-muted-foreground">No wisdom entries yet.</p>
