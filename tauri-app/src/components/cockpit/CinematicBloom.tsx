@@ -9,6 +9,8 @@ interface CinematicBloomProps {
   reducedMotion?: boolean;
   intensity?: number;
   visualQuality?: VisualQuality;
+  /** Birth ceremony / hero surfaces — softer bloom, no chromatic fringing. */
+  disableChromaticAberration?: boolean;
 }
 
 export function CinematicBloom({
@@ -17,6 +19,7 @@ export function CinematicBloom({
   reducedMotion = false,
   intensity,
   visualQuality = "balanced",
+  disableChromaticAberration = false,
 }: CinematicBloomProps) {
   if (!enabled) {
     return null;
@@ -51,7 +54,9 @@ export function CinematicBloom({
         mipmapBlur
       />
       <Vignette eskil={false} offset={0.1} darkness={sim ? 0.4 : 0.62} />
-      {sim ? <ChromaticAberration offset={[0.003, 0.003]} /> : null}
+      {sim && !disableChromaticAberration ? (
+        <ChromaticAberration offset={[0.003, 0.003]} />
+      ) : null}
     </EffectComposer>
   );
 }

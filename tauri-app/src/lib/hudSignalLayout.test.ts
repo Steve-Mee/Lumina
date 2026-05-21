@@ -5,6 +5,7 @@ import {
   HUD_HERO_MAX,
   pnlGlowForMode,
   resolveContextualKind,
+  resolveHudAnnexHintCopy,
   resolveHudHeroLayout,
   resolveHudSignalLayout,
 } from "@/lib/hudSignalLayout";
@@ -40,6 +41,11 @@ describe("hudSignalLayout", () => {
     expect(pnlGlowForMode("SIM", -50)).toBe("warn");
   });
 
+  it("resolveHudAnnexHintCopy returns mode-aware annex micro-hints", () => {
+    expect(resolveHudAnnexHintCopy("SIM", "regime")).toBe("Regime · annex");
+    expect(resolveHudAnnexHintCopy("REAL", "pnl")).toBe("REAL P&L · annex");
+  });
+
   it("resolveHudHeroLayout caps at HUD_HERO_MAX slots", () => {
     expect(HUD_HERO_MAX).toBe(2);
 
@@ -49,7 +55,6 @@ describe("hudSignalLayout", () => {
       fallbackMode: false,
     });
     expect(idle.primary.kind).toBe("equity");
-    expect(idle.secondary).toBeNull();
     expect(idle.showContextualAnnexHint).toBe(true);
 
     const live = resolveHudHeroLayout("SIM", metrics, 0.9, {}, {
@@ -57,8 +62,7 @@ describe("hudSignalLayout", () => {
       sessionActive: true,
       fallbackMode: false,
     });
-    expect(live.secondary?.kind).toBe("regime");
-    expect(live.showContextualAnnexHint).toBe(false);
+    expect(live.showContextualAnnexHint).toBe(true);
 
     const fortress = resolveHudHeroLayout("REAL", metrics, 0.9, { heroPrimary: "fortress" }, {
       connectionStatus: "connected",
@@ -66,6 +70,6 @@ describe("hudSignalLayout", () => {
       fallbackMode: false,
     });
     expect(fortress.primary.kind).toBe("fortress");
-    expect(fortress.secondary?.kind).toBe("pnl");
+    expect(fortress.showContextualAnnexHint).toBe(true);
   });
 });

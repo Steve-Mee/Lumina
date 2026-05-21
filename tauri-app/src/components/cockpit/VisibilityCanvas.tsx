@@ -1,6 +1,7 @@
 import { Canvas, type CanvasProps } from "@react-three/fiber";
 import type { ReactNode } from "react";
 
+import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
 import { PanelErrorBoundary } from "@/components/cockpit/PanelErrorBoundary";
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { usePanelVisibility } from "@/hooks/usePanelVisibility";
@@ -60,10 +61,11 @@ export function VisibilityCanvas({
       ) : (
         <div
           className={cn(
-            "flex h-full w-full items-center justify-center bg-black/20",
+            "flex h-full w-full flex-col items-center justify-center gap-3 opacity-40",
             minHeight,
           )}
         >
+          <BirthOrganismVisual className="size-16" />
           <PanelLoader label={idleLabel} className="min-h-0" rows={2} />
         </div>
       )}

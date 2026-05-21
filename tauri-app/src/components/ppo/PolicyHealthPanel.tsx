@@ -6,6 +6,7 @@ import {
   type PolicyHealthStatus,
 } from "@/lib/ppoPolicyHealth";
 import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
+import { distressPanelClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 export interface PolicyHealthPanelProps {
@@ -24,8 +25,7 @@ const STATUS_STYLES: Record<
     dot: "bg-emerald-400",
   },
   watch: {
-    badge:
-      "border-amber-500/40 bg-amber-950/40 text-amber-300 lumina-glow-edge",
+    badge: cn(distressPanelClass("warn"), "font-mono text-[10px] tracking-wide"),
     dot: "bg-amber-400",
   },
   critical: {

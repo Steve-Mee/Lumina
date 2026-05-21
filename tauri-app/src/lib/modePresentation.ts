@@ -3,7 +3,9 @@ import type { CSSProperties } from "react";
 import type { Transition } from "framer-motion";
 
 import { springLuxury, springSnappy } from "@/lib/motionPresets";
+import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
 import type { TradingMode } from "@/store/coreStore";
+import { cn } from "@/lib/utils";
 
 export function modeMotionScale(mode: TradingMode): number {
   return mode === "SIM" ? 1 : 0.45;
@@ -164,6 +166,68 @@ export function modeSwitchTooltip(mode: TradingMode): string {
   return mode === "REAL" ? "Capital Protection" : "Hyper Evolution";
 }
 
+export function modeSwitchShellClass(mode: TradingMode): string {
+  return mode === "SIM"
+    ? "border-cyan-400/30 bg-cyan-950/40"
+    : "border-[color-mix(in_srgb,var(--real-chrome-accent)_28%,transparent)] bg-slate-900/50";
+}
+
+export function modeSwitchActivePillClass(mode: TradingMode, active: boolean): string {
+  if (!active) {
+    return "";
+  }
+  return mode === "SIM" ? "text-cyan-200" : "text-[#c9b896]";
+}
+
+export function modeSwitchActivePillMotionClass(mode: TradingMode): string {
+  return mode === "SIM"
+    ? "bg-[color-mix(in_srgb,var(--mode-sim-accent)_20%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--mode-sim-accent)_40%,transparent)] lumina-glow-edge"
+    : "bg-[color-mix(in_srgb,var(--real-chrome-accent)_18%,transparent)] ring-1 ring-[color-mix(in_srgb,var(--real-chrome-accent)_35%,transparent)]";
+}
+
+export function modeFinaleHeaderClass(mode: TradingMode): string {
+  return mode === "SIM"
+    ? "border-b border-[color-mix(in_srgb,var(--mode-sim-accent)_15%,transparent)] bg-[color-mix(in_srgb,var(--mode-sim-accent)_8%,transparent)]"
+    : "border-b border-[color-mix(in_srgb,var(--real-chrome-accent)_15%,transparent)] bg-[color-mix(in_srgb,var(--real-chrome-accent)_8%,transparent)]";
+}
+
+export function modeSuccessIconClass(mode: TradingMode): string {
+  return mode === "SIM" ? "text-cyan-300" : "text-[#c9b896]";
+}
+
+export function deckRecoveryChipClass(): string {
+  return "inline-flex items-center gap-1 rounded-full border border-[color-mix(in_srgb,#34d399_30%,transparent)] px-2 py-0.5 text-[9px] tracking-wide text-[color-mix(in_srgb,#34d399_90%,white)] uppercase";
+}
+
+export function modeNodeBadgeClass(mode: TradingMode): string {
+  return mode === "REAL"
+    ? realBadgeClass()
+    : "rounded bg-[color-mix(in_srgb,var(--mode-sim-accent)_15%,transparent)] px-1.5 py-0.5 text-[10px] tracking-wider uppercase text-[color-mix(in_srgb,var(--mode-sim-accent)_90%,white)]";
+}
+
+export function modeAccentBorderClass(mode: TradingMode): string {
+  return mode === "SIM" ? "border-cyan-400/25" : "border-[color-mix(in_srgb,var(--real-chrome-accent)_25%,transparent)]";
+}
+
+export function modeApproveButtonClass(mode: TradingMode): string {
+  return mode === "SIM"
+    ? "border-emerald-500/35 bg-emerald-600/80 text-white hover:bg-emerald-600"
+    : "border-[color-mix(in_srgb,var(--real-chrome-accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--real-chrome-accent)_22%,transparent)] text-slate-100 hover:bg-[color-mix(in_srgb,var(--real-chrome-accent)_30%,transparent)]";
+}
+
+export function deckPanelFrameClass(
+  frameVariant: "glass" | "muted",
+  mode: TradingMode,
+): string {
+  if (frameVariant === "muted") {
+    return cn("lumina-surface-muted rounded-lg py-0", modePanelClass(mode));
+  }
+  return cn(
+    "lumina-glass lumina-glass--panel lumina-glass--interactive rounded-lg py-0",
+    modePanelClass(mode),
+  );
+}
+
 /** Warning/degraded telemetry overlays — amber reserved for true alerts. */
 export function warnOverlayPanelClass(): string {
   return "border-[color-mix(in_srgb,var(--status-warn)_35%,transparent)] lumina-glass lumina-glass--overlay lumina-glow-halo";
@@ -193,4 +257,118 @@ export function warnOverlayBodyClass(): string {
 
 export function warnOverlayIconClass(): string {
   return "text-[var(--status-warn-icon)]";
+}
+
+/** Full-screen blocking overlay scrim — canonical glass overlay grammar. */
+export function deckOverlayScrimClass(variant: "blocking" | "safe" = "blocking"): string {
+  const zIndex = variant === "safe" ? "z-[100]" : "z-[90]";
+  return cn(
+    "deck-overlay-scrim fixed inset-0 flex items-center justify-center p-6",
+    zIndex,
+    "lumina-glass lumina-glass--overlay",
+  );
+}
+
+/** Birth progress blocking panel — SIM T1 tokens. */
+export function birthOverlayPanelClass(): string {
+  return cn(
+    "w-full max-w-lg rounded-xl p-6 lumina-glass lumina-glass--overlay lumina-glow-halo",
+    modeAccentBorderClass("SIM"),
+  );
+}
+
+export function birthOverlayTitleClass(): string {
+  return "font-mono text-sm tracking-[0.14em] text-cyan-200 uppercase";
+}
+
+export function birthOverlayProgressClass(): string {
+  return "h-full bg-gradient-to-r from-cyan-400 to-violet-500 transition-all duration-700";
+}
+
+/** Welcome overlay — mode-aware, no emerald third accent. */
+export function welcomeOverlayPanelClass(mode: TradingMode): string {
+  return cn(
+    "relative w-full max-w-lg rounded-xl p-6 lumina-glass lumina-glass--overlay lumina-glow-halo",
+    modeAccentBorderClass(mode),
+  );
+}
+
+export function welcomeOverlayTitleClass(mode: TradingMode): string {
+  return mode === "SIM"
+    ? "font-mono text-sm tracking-[0.14em] text-cyan-200 uppercase"
+    : realOverlayTitleClass();
+}
+
+export function welcomeOverlayBodyClass(mode: TradingMode): string {
+  return mode === "SIM"
+    ? "text-sm leading-relaxed text-cyan-100/90"
+    : realOverlayBodyClass();
+}
+
+export function welcomeOverlayIconClass(mode: TradingMode): string {
+  return mode === "SIM" ? "text-cyan-300" : realOverlayIconClass();
+}
+
+export function welcomeOverlayDismissClass(mode: TradingMode): string {
+  return mode === "SIM"
+    ? "rounded p-1 text-cyan-200/80 hover:bg-cyan-900/40"
+    : "rounded p-1 text-slate-300/80 hover:bg-slate-800/40";
+}
+
+export function welcomeOverlayStrongClass(mode: TradingMode): string {
+  return mode === "SIM" ? "font-medium text-cyan-50" : "font-medium text-slate-100";
+}
+
+/** T3 utility surfaces — muted chrome with mode border. */
+export function utilityPanelClass(mode: TradingMode): string {
+  return cn("lumina-surface-muted rounded-lg p-3", modeAccentBorderClass(mode));
+}
+
+export function utilityListItemClass(mode: TradingMode): string {
+  return cn(
+    "rounded-md border px-3 py-2",
+    modeAccentBorderClass(mode),
+    "bg-[color-mix(in_srgb,var(--lumina-void)_28%,transparent)]",
+  );
+}
+
+export function utilityInputClass(mode: TradingMode): string {
+  return cn(
+    "w-full rounded-md border py-2 font-mono text-xs text-foreground outline-none",
+    "bg-[color-mix(in_srgb,var(--lumina-void)_35%,transparent)]",
+    mode === "SIM"
+      ? "border-white/10 focus:border-cyan-400/40"
+      : "border-white/10 focus:border-[color-mix(in_srgb,var(--real-chrome-accent)_35%,transparent)]",
+  );
+}
+
+export function utilityFieldInputClass(): string {
+  return cn(
+    "mt-1 w-full rounded border border-white/10 px-2 py-1 font-mono text-xs",
+    "bg-[color-mix(in_srgb,var(--lumina-void)_40%,transparent)]",
+  );
+}
+
+export function utilityCodeBlockClass(): string {
+  return "mt-2 max-h-32 overflow-auto rounded-md lumina-surface-muted p-2 font-mono text-[9px] text-muted-foreground";
+}
+
+export function utilityMetricTileClass(mode: TradingMode): string {
+  return cn("rounded border px-2 py-1.5 text-xs", modeAccentBorderClass(mode));
+}
+
+export function utilityQualityChipClass(mode: TradingMode, active: boolean): string {
+  if (!active) {
+    return cn("rounded-lg border px-3 py-2.5 text-left transition-colors", luminaSurfaceMutedClass("border border-white/10 hover:border-white/20"));
+  }
+  return mode === "SIM"
+    ? "rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2.5 text-left transition-colors"
+    : "rounded-lg border border-[color-mix(in_srgb,var(--real-chrome-accent)_35%,transparent)] bg-[color-mix(in_srgb,var(--real-chrome-accent)_12%,transparent)] px-3 py-2.5 text-left transition-colors";
+}
+
+export function panelLoaderScrimClass(inset: "full" | "inset" = "full"): string {
+  return cn(
+    "panel-loader-scrim absolute z-10 flex items-center justify-center",
+    inset === "full" ? "inset-0" : "inset-2 rounded-lg",
+  );
 }

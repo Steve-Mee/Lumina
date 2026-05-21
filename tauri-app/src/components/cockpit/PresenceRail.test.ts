@@ -3,8 +3,6 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { deckSyncNote } from "@/lib/deckStatusModel";
-
 const presenceRailSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "PresenceRail.tsx"),
   "utf8",
@@ -21,11 +19,9 @@ describe("PresenceRail layout contract", () => {
     expect(presenceRailSource).toContain("presence-rail__velocity");
   });
 
-  it("renders deckSyncNote in secondary desktop slot when sync pending", () => {
-    expect(presenceRailSource).toContain("deckSyncNote");
-    const note = deckSyncNote("pending", null);
-    expect(note).toBeTruthy();
-    expect(presenceRailSource).toContain("syncNote");
+  it("does not render sync copy in the rail secondary slot", () => {
+    expect(presenceRailSource).not.toContain("deckSyncNote");
+    expect(presenceRailSource).not.toContain("syncNote");
   });
 
   it("uses unified secondary channel on all breakpoints", () => {
@@ -33,7 +29,13 @@ describe("PresenceRail layout contract", () => {
     expect(presenceRailSource).toContain("presence-rail__velocity");
   });
 
-  it("uses pulseLanguage presence dot classes", () => {
+  it("uses pulseLanguage presence dot classes without orphaned animation class", () => {
     expect(presenceRailSource).toContain("presenceDotClass");
+    expect(presenceRailSource).not.toContain("presenceDotAnimationClass");
+  });
+
+  it("styles mode icon via CSS hook not inline Tailwind mode colors", () => {
+    expect(presenceRailSource).toContain("presence-rail__mode-icon");
+    expect(presenceRailSource).not.toContain("border-cyan-400/15");
   });
 });

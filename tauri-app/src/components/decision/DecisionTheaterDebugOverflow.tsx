@@ -2,20 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
+import { HudSignal } from "@/components/cockpit/HudSignal";
 import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { hasDebugPayload } from "@/lib/decisionTheaterLayout";
+import {
+  hasDebugPayload,
+  type StageOverflowSignal,
+} from "@/lib/decisionTheaterLayout";
 import { menuPopWith, transitionOrNone } from "@/lib/motionPresets";
 import type { LiveTradingSnapshot } from "@/lib/liveTradingTypes";
 import { cn } from "@/lib/utils";
 
 interface DecisionTheaterDebugOverflowProps {
   trading: LiveTradingSnapshot | null;
+  overflow?: StageOverflowSignal[];
   className?: string;
 }
 
 export function DecisionTheaterDebugOverflow({
   trading,
+  overflow = [],
   className,
 }: DecisionTheaterDebugOverflowProps) {
   const reducedMotion = usePrefersReducedMotion();
@@ -23,7 +29,9 @@ export function DecisionTheaterDebugOverflow({
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const visible = hasDebugPayload(trading);
+  const hasDebug = hasDebugPayload(trading);
+  const hasOverflow = overflow.length > 0;
+  const visible = hasDebug || hasOverflow;
 
   useEffect(() => {
     if (!open) {
@@ -38,7 +46,7 @@ export function DecisionTheaterDebugOverflow({
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [open]);
 
-  if (!visible || !trading) {
+  if (!visible) {
     return null;
   }
 
@@ -50,21 +58,34 @@ export function DecisionTheaterDebugOverflow({
         className="inline-flex items-center gap-1 font-mono text-[10px] tracking-wide text-muted-foreground uppercase transition-colors hover:text-cyan-200/90"
         aria-expanded={open}
       >
-        Debug
+        {hasOverflow ? `Metrics (${overflow.length})` : "Debug"}
         <ChevronDown className={cn("size-3 transition-transform", open && "rotate-180")} />
       </button>
       <AnimatePresence>
         {open ? (
           <motion.div
             key="theater-debug"
-            className="absolute bottom-full right-0 z-30 mb-1 w-[min(420px,85vw)] rounded-md p-3 lumina-glass"
+            className="absolute bottom-full right-0 z-30 mb-1 w-[min(420px,85vw)] rounded-md p-3 lumina-glass lumina-glass--overlay"
             variants={menuPopWith(modeMotion)}
             initial={reducedMotion ? false : "hidden"}
             animate="visible"
             exit={reducedMotion ? undefined : "exit"}
             transition={transitionOrNone(reducedMotion, modeMotion)}
           >
-            {trading.current_dream ? (
+            {hasOverflow ? (
+              <div className="mb-3 flex flex-wrap gap-3">
+                {overflow.map((signal) => (
+                  <HudSignal
+                    key={signal.id}
+                    label={signal.label}
+                    value={signal.value}
+                    glow={signal.glow}
+                    intensity={signal.intensity}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {trading?.current_dream ? (
               <div className="mb-3">
                 <p className="mb-1 font-mono text-[9px] tracking-wide text-cyan-300/80 uppercase">
                   Current Dream
@@ -74,7 +95,7 @@ export function DecisionTheaterDebugOverflow({
                 </pre>
               </div>
             ) : null}
-            {trading.runtime_state ? (
+            {trading?.runtime_state ? (
               <div>
                 <p className="mb-1 font-mono text-[9px] tracking-wide text-cyan-300/80 uppercase">
                   Runtime State

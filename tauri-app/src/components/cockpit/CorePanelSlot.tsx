@@ -5,7 +5,7 @@ import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { fadeIn, transitionOrNone } from "@/lib/motionPresets";
-import { modePanelClass, modeTitleClass } from "@/lib/modePresentation";
+import { deckPanelFrameClass, modeTextTier2Class, modeTitleClass, panelLoaderScrimClass } from "@/lib/modePresentation";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,8 @@ interface CorePanelSlotProps {
   loading?: boolean;
   loadingLabel?: string;
   immersive?: boolean;
+  frameless?: boolean;
+  frameVariant?: "glass" | "muted";
 }
 
 export function CorePanelSlot({
@@ -27,17 +29,60 @@ export function CorePanelSlot({
   loading = false,
   loadingLabel = "Syncing telemetry…",
   immersive = false,
+  frameless = false,
+  frameVariant = "muted",
 }: CorePanelSlotProps) {
   const reducedMotion = usePrefersReducedMotion();
   const modeMotion = useModeMotion();
   const mode = useCoreStore(selectCurrentMode);
 
+  if (frameless && immersive) {
+    return (
+      <div
+        data-mode={mode}
+        className={cn(
+          "living-core-frame--immersive relative flex min-h-0 flex-1 flex-col overflow-hidden",
+          className,
+        )}
+      >
+        <span
+          className={cn(
+            "pointer-events-none absolute left-3 top-2 z-10 hidden font-mono text-[9px] tracking-[0.14em] uppercase md:inline",
+            modeTitleClass(mode),
+          )}
+        >
+          {title}
+        </span>
+        <div className="relative flex flex-1 items-stretch justify-stretch">
+          <AnimatePresence mode="wait" initial={false}>
+            {loading ? (
+              <motion.div
+                key="loader"
+                className={panelLoaderScrimClass("full")}
+                variants={fadeIn}
+                initial={reducedMotion ? false : "hidden"}
+                animate="visible"
+                exit={reducedMotion ? undefined : "hidden"}
+                transition={transitionOrNone(reducedMotion, modeMotion)}
+              >
+                <PanelLoader label={loadingLabel} className="min-h-0" />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+          {children ?? (
+            <p className="font-mono text-xs text-muted-foreground/60">Standby</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       data-mode={mode}
       className={cn(
-        "lumina-glass lumina-glass--panel lumina-glass--interactive flex min-h-0 flex-1 flex-col rounded-lg py-0",
-        modePanelClass(mode),
+        "flex min-h-0 flex-1 flex-col",
+        deckPanelFrameClass(frameVariant, mode),
         className,
       )}
     >
@@ -48,14 +93,7 @@ export function CorePanelSlot({
           animate={{ scaleX: 1 }}
           transition={transitionOrNone(reducedMotion, { ...modeMotion, delay: 0.1 })}
         />
-        <h2
-          className={cn(
-            "deck-title mode-text-tier2",
-            modeTitleClass(mode),
-          )}
-        >
-          {title}
-        </h2>
+        <h2 className={cn("deck-title", modeTextTier2Class(mode))}>{title}</h2>
         {subtitle && !immersive ? (
           <p className="font-mono text-[11px] text-muted-foreground/80">{subtitle}</p>
         ) : null}
@@ -70,7 +108,7 @@ export function CorePanelSlot({
           {loading ? (
             <motion.div
               key="loader"
-              className="absolute inset-2 z-10 flex items-center justify-center rounded-lg lumina-glass"
+              className={panelLoaderScrimClass("inset")}
               variants={fadeIn}
               initial={reducedMotion ? false : "hidden"}
               animate="visible"

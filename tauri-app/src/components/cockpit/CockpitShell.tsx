@@ -3,7 +3,6 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { OrganismEnvelopeProvider } from "@/context/OrganismEnvelopeContext";
-import { DeckStatusBanner } from "@/components/cockpit/DeckStatusBanner";
 import { CommandHud } from "@/components/cockpit/CommandHud";
 import { DeckBlockingOverlay } from "@/components/cockpit/DeckBlockingOverlay";
 import { PPOEvolutionProvider } from "@/context/PPOEvolutionContext";
@@ -12,7 +11,7 @@ import { RealSafeModeOverlay } from "@/components/cockpit/RealSafeModeOverlay";
 import { StatusBar } from "@/components/cockpit/StatusBar";
 import { useOrganismClock } from "@/hooks/useOrganismClock";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { useRealSafeModeMonitor } from "@/hooks/useRealSafeModeMonitor";
+import { useDeckStatusSyncToast } from "@/hooks/useDeckStatusResolution";
 import { fetchAndHydrateDeckApiKey } from "@/lib/setupClient";
 import { connectCoreLive, disconnectCoreLive } from "@/lib/websocket";
 import { useApiKeyStore } from "@/store/apiKeyStore";
@@ -39,6 +38,7 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
   const hydrateApiKey = useApiKeyStore((s) => s.hydrate);
   const modeSyncStatus = useCoreStore(selectModeSyncStatus);
   const modeSyncError = useCoreStore((s) => s.modeSyncError);
+  const suppressSyncToast = useDeckStatusSyncToast();
   const lastModeErrorToast = useRef<string | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const reducedMotion = usePrefersReducedMotion();
@@ -48,7 +48,7 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
   useOrganismClock(shellRef, operatorMode, reducedMotion, clockFrozen);
 
   useEffect(() => {
-    if (modeSyncStatus === "error" && modeSyncError) {
+    if (modeSyncStatus === "error" && modeSyncError && !suppressSyncToast) {
       if (lastModeErrorToast.current !== modeSyncError) {
         lastModeErrorToast.current = modeSyncError;
         toast.error(modeSyncError);
@@ -56,7 +56,7 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
     } else if (modeSyncStatus !== "error") {
       lastModeErrorToast.current = null;
     }
-  }, [modeSyncStatus, modeSyncError]);
+  }, [modeSyncStatus, modeSyncError, suppressSyncToast]);
 
   useEffect(() => {
     hydrateOperatorMode();
@@ -86,7 +86,6 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
 
         <PPOEvolutionProvider>
           <AdaptiveIntelligenceProvider>
-            <DeckStatusBanner />
             <CommandHud />
             <DeckBlockingOverlay />
 

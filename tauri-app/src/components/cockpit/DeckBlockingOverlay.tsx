@@ -9,15 +9,25 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useBackendHealthSnapshot } from "@/hooks/useBackendHealth";
 import { transitionOrNone } from "@/lib/motionPresets";
 import {
+  birthOverlayPanelClass,
+  birthOverlayProgressClass,
+  birthOverlayTitleClass,
+  deckOverlayScrimClass,
   warnOverlayBodyClass,
   warnOverlayIconClass,
   warnOverlayPanelClass,
   warnOverlayTitleClass,
+  welcomeOverlayBodyClass,
+  welcomeOverlayDismissClass,
+  welcomeOverlayIconClass,
+  welcomeOverlayPanelClass,
+  welcomeOverlayStrongClass,
+  welcomeOverlayTitleClass,
 } from "@/lib/modePresentation";
 import { refreshBackendHealth } from "@/lib/backendHealthStore";
 import { fetchBirthStatus } from "@/lib/setupClient";
 import { resolveDeckStatus } from "@/lib/deckStatusOrchestrator";
-import { selectFallbackMode, useCoreStore } from "@/store/coreStore";
+import { selectCurrentMode, selectFallbackMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 import { useOnboardingStore } from "@/store/onboardingStore";
 
@@ -58,7 +68,7 @@ function OverlayShell({
       animate={{ opacity: 1 }}
       exit={reducedMotion ? undefined : { opacity: 0 }}
       transition={transitionOrNone(reducedMotion, modeMotion)}
-      className="deck-blocking-overlay fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-6 backdrop-blur-md"
+      className={cn("deck-blocking-overlay", deckOverlayScrimClass("blocking"))}
     >
       {children}
     </motion.div>
@@ -104,16 +114,13 @@ function BirthProgressPanel({
 
   return (
     <OverlayShell role="alertdialog" ariaLabelledBy="deck-birth-title">
-      <div className="w-full max-w-lg rounded-xl border border-cyan-400/35 p-6 lumina-glass lumina-glow-halo">
-        <h2
-          id="deck-birth-title"
-          className="font-mono text-sm tracking-[0.14em] text-cyan-200 uppercase"
-        >
+      <div className={birthOverlayPanelClass()}>
+        <h2 id="deck-birth-title" className={birthOverlayTitleClass()}>
           Birth Phase — {stage}
         </h2>
         <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full bg-gradient-to-r from-cyan-400 to-violet-500 transition-all duration-700"
+            className={birthOverlayProgressClass()}
             style={{ width: `${Math.min(100, pct)}%` }}
           />
         </div>
@@ -177,29 +184,29 @@ function FallbackPanel({
 }
 
 function WelcomePanel({ onDismiss }: { onDismiss: () => void }) {
+  const operatorMode = useCoreStore(selectCurrentMode);
+
   return (
     <OverlayShell role="status" ariaLabelledBy="deck-welcome-title">
-      <div className="relative w-full max-w-lg rounded-xl border border-emerald-500/35 p-6 lumina-glass lumina-glow-halo">
+      <div className={welcomeOverlayPanelClass(operatorMode)}>
         <button
           type="button"
-          className="absolute right-3 top-3 rounded p-1 text-emerald-200/80 hover:bg-emerald-900/40"
+          className={cn("absolute right-3 top-3", welcomeOverlayDismissClass(operatorMode))}
           aria-label="Dismiss welcome"
           onClick={onDismiss}
         >
           <X className="size-3.5" />
         </button>
         <div className="flex items-start gap-4 pr-6">
-          <Sparkles className="mt-0.5 size-8 shrink-0 text-emerald-300" aria-hidden />
+          <Sparkles className={cn("mt-0.5 size-8 shrink-0", welcomeOverlayIconClass(operatorMode))} aria-hidden />
           <div className="min-w-0">
-            <h2
-              id="deck-welcome-title"
-              className="font-mono text-sm tracking-[0.14em] text-emerald-200 uppercase"
-            >
+            <h2 id="deck-welcome-title" className={welcomeOverlayTitleClass(operatorMode)}>
               Welcome to the Command Deck
             </h2>
-            <p className="mt-3 text-sm leading-relaxed text-emerald-100/90">
-              Birth complete — use <strong className="font-medium text-emerald-50">Start Engine</strong>{" "}
-              in the command bar when you are ready. New here? Take the guided tour.
+            <p className={cn("mt-3", welcomeOverlayBodyClass(operatorMode))}>
+              Birth complete — use{" "}
+              <strong className={welcomeOverlayStrongClass(operatorMode)}>Start Engine</strong> in
+              the command bar when you are ready. New here? Take the guided tour.
             </p>
           </div>
         </div>

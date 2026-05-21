@@ -12,6 +12,7 @@ import {
   ANNEX_CHART_COLORS,
   ANNEX_CHART_TOOLTIP_STYLE,
 } from "@/lib/ppoEvolutionChartTheme";
+import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 function CriteriaTile({
@@ -168,7 +169,7 @@ export function SimReadinessPanel({ className }: { className?: string }) {
       </Button>
 
       {isGreen ? (
-        <div className="rounded-lg border border-amber-500/25 bg-amber-950/20 p-3">
+        <div className={cn("p-3", distressPanelClass("warn"))}>
           <label className="flex items-start gap-2 text-xs text-amber-100/90">
             <input
               type="checkbox"
@@ -181,7 +182,7 @@ export function SimReadinessPanel({ className }: { className?: string }) {
           <Button
             type="button"
             size="sm"
-            className="mt-3 bg-amber-700/80"
+            variant="command-primary"
             disabled={!realConfirm || goingLive}
             onClick={() => {
               setGoingLive(true);

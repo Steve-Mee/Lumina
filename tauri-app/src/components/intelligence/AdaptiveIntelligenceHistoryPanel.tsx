@@ -4,6 +4,12 @@ import { Search } from "lucide-react";
 import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceContext";
 import { filterAdaptiveHistoryEvents } from "@/lib/adaptiveIntelligenceTypes";
 import { formatModeLabel, formatTierLabel } from "@/lib/intelligenceDisplay";
+import {
+  modeValueClass,
+  utilityInputClass,
+  utilityListItemClass,
+} from "@/lib/modePresentation";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
 interface AdaptiveIntelligenceHistoryPanelProps {
@@ -14,6 +20,7 @@ export function AdaptiveIntelligenceHistoryPanel({
   className,
 }: AdaptiveIntelligenceHistoryPanelProps) {
   const { history } = useAdaptiveIntelligenceContext();
+  const operatorMode = useCoreStore(selectCurrentMode);
   const [query, setQuery] = useState("");
 
   const filtered = useMemo(
@@ -30,7 +37,7 @@ export function AdaptiveIntelligenceHistoryPanel({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search tier, model, mode, reason…"
-          className="w-full rounded-md border border-white/10 bg-black/35 py-2 pr-3 pl-8 font-mono text-xs text-foreground outline-none focus:border-cyan-400/40"
+          className={cn(utilityInputClass(operatorMode), "py-2 pr-3 pl-8")}
           aria-label="Search adaptive intelligence history"
         />
       </div>
@@ -44,10 +51,10 @@ export function AdaptiveIntelligenceHistoryPanel({
               return (
                 <li
                   key={`${event.timestamp ?? "row"}-${index}`}
-                  className="rounded-md border border-white/8 bg-black/25 px-3 py-2"
+                  className={utilityListItemClass(operatorMode)}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-[10px] text-cyan-200/90">
+                    <span className={cn("font-mono text-[10px]", modeValueClass(operatorMode))}>
                       {payload.tier ? formatTierLabel(payload.tier as never) : "—"}
                     </span>
                     <span className="font-mono text-[10px] text-muted-foreground">

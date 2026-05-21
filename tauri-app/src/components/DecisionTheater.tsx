@@ -32,6 +32,8 @@ import {
 
   selectEvolutionState,
 
+  selectFallbackMode,
+
   selectLiveMetrics,
 
   selectRiskLevel,
@@ -69,6 +71,8 @@ export function DecisionTheater({ className, brief: briefOverride }: DecisionThe
   const currentMode = useCoreStore(selectCurrentMode);
 
   const connectionStatus = useCoreStore(selectConnectionStatus);
+
+  const fallbackMode = useCoreStore(selectFallbackMode);
 
   const safeModeActive = useCoreStore(selectSafeModeActive);
 
@@ -147,14 +151,9 @@ export function DecisionTheater({ className, brief: briefOverride }: DecisionThe
 
 
   const statusHeroVisible =
-
-    connectionStatus === "connecting" ||
-
-    connectionStatus === "reconnecting" ||
-
-    (connectionStatus === "disconnected" && !hasLiveData) ||
-
-    (connectionStatus === "disconnected" && hasLiveData);
+    connectionStatus === "connecting" &&
+    !fallbackMode &&
+    !deckBlocked;
 
 
 
@@ -206,7 +205,12 @@ export function DecisionTheater({ className, brief: briefOverride }: DecisionThe
 
       >
 
-        <ReasoningSpine steps={brief.steps} mode={currentMode} motionReduced={motionReduced} />
+        <ReasoningSpine
+          steps={brief.steps}
+          mode={currentMode}
+          motionReduced={motionReduced}
+          compact={brief.verdict !== "hold" && brief.proposalHash !== null}
+        />
 
         <DecisionTheaterStage
 

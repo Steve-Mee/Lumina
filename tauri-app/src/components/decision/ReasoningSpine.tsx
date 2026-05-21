@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 
 import { useModeMotion } from "@/hooks/useModeMotion";
@@ -13,6 +14,7 @@ interface ReasoningSpineProps {
   mode: TradingMode;
   className?: string;
   motionReduced?: boolean;
+  compact?: boolean;
 }
 
 function SpineStep({
@@ -22,6 +24,7 @@ function SpineStep({
   reducedMotion,
   modeMotion,
   mode,
+  compact,
 }: {
   step: ReasoningStep;
   index: number;
@@ -29,16 +32,41 @@ function SpineStep({
   reducedMotion: boolean;
   modeMotion: ReturnType<typeof useModeMotion>;
   mode: TradingMode;
+  compact: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = !compact && step.body.length > 120;
+
+  if (compact) {
+    return (
+      <motion.article
+        initial={reducedMotion ? false : { opacity: 0, x: -8 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={transitionOrNone(reducedMotion, { ...modeMotion, delay: index * 0.05 })}
+        className={cn("reasoning-spine__step relative pb-3 pl-6", isLast && "pb-1")}
+      >
+        <span className="reasoning-spine__node absolute top-1 left-0" aria-hidden />
+        {!isLast ? (
+          <span className="reasoning-spine__connector absolute top-3 bottom-0 left-[5px]" aria-hidden />
+        ) : null}
+        <p className={cn("font-mono text-xs tracking-[0.16em] uppercase", reasoningSpineTitleClass(mode))}>
+          {index + 1}. {step.title}
+        </p>
+      </motion.article>
+    );
+  }
+
   return (
     <motion.article
       initial={reducedMotion ? false : { opacity: 0, x: -8 }}
       animate={{ opacity: 1, x: 0 }}
       transition={transitionOrNone(reducedMotion, { ...modeMotion, delay: index * 0.05 })}
-      className={cn("reasoning-spine__step relative pb-6 pl-6", isLast && "pb-2")}
+      className={cn("reasoning-spine__step relative pb-4 pl-6", isLast && "pb-2")}
     >
       <span className="reasoning-spine__node absolute top-1 left-0" aria-hidden />
-      {!isLast ? <span className="reasoning-spine__connector absolute top-3 bottom-0 left-[5px]" aria-hidden /> : null}
+      {!isLast ? (
+        <span className="reasoning-spine__connector absolute top-3 bottom-0 left-[5px]" aria-hidden />
+      ) : null}
       <header className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <p className={cn("font-mono text-xs tracking-[0.16em] uppercase", reasoningSpineTitleClass(mode))}>
           {index + 1}. {step.title}
@@ -47,12 +75,29 @@ function SpineStep({
           {confidenceLabel(step.confidence)} · {Math.round(step.confidence * 100)}%
         </span>
       </header>
-      <p className="mt-2 text-sm leading-relaxed text-foreground/90">{step.body}</p>
+      <p
+        className={cn(
+          "mt-1.5 text-sm leading-relaxed text-foreground/90",
+          collapsible && !expanded && "reasoning-spine__body--collapsed",
+        )}
+      >
+        {step.body}
+      </p>
+      {collapsible ? (
+        <button
+          type="button"
+          className="reasoning-spine__toggle"
+          onClick={() => setExpanded((value) => !value)}
+          aria-expanded={expanded}
+        >
+          {expanded ? "Collapse" : "Expand reasoning"}
+        </button>
+      ) : null}
     </motion.article>
   );
 }
 
-export function ReasoningSpine({ steps, mode, className, motionReduced }: ReasoningSpineProps) {
+export function ReasoningSpine({ steps, mode, className, motionReduced, compact = false }: ReasoningSpineProps) {
   const reducedMotionPref = usePrefersReducedMotion();
   const reducedMotion = motionReduced ?? reducedMotionPref;
   const modeMotion = useModeMotion();
@@ -77,6 +122,7 @@ export function ReasoningSpine({ steps, mode, className, motionReduced }: Reason
           reducedMotion={reducedMotion}
           modeMotion={modeMotion}
           mode={mode}
+          compact={compact}
         />
       ))}
     </aside>

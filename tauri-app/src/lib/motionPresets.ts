@@ -1,5 +1,12 @@
 import type { Transition, Variants } from "framer-motion";
 
+/** T0 wizard step fade. */
+export const stepFade = {
+  type: "tween" as const,
+  duration: 0.2,
+  ease: "easeOut" as const,
+};
+
 /** Birth/onboarding surfaces — slower luxury spring. */
 export const springBirthLuxury = {
   type: "spring" as const,

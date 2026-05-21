@@ -15,7 +15,7 @@ import {
   VISUAL_QUALITY_PRESETS,
   type VisualQuality,
 } from "@/lib/visualQualityPresets";
-import { modeTitleClass } from "@/lib/modePresentation";
+import { modeTextTier2Class, modeValueClass, utilityQualityChipClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { selectVisualQuality, useVisualSettingsStore } from "@/store/visualSettingsStore";
@@ -44,7 +44,7 @@ export function VisualSettingsDialog() {
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className={cn("mode-text-tier2", modeTitleClass(operatorMode))}>
+          <DialogTitle className={cn(modeTextTier2Class(operatorMode))}>
             Visual Quality
           </DialogTitle>
           <DialogDescription>
@@ -63,12 +63,7 @@ export function VisualSettingsDialog() {
                 key={quality}
                 type="button"
                 onClick={() => setVisualQuality(quality)}
-                className={cn(
-                  "rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  active
-                    ? "border-cyan-400/40 bg-cyan-500/10"
-                    : "border-white/10 bg-black/20 hover:border-white/20",
-                )}
+                className={utilityQualityChipClass(operatorMode, active)}
               >
                 <p className="font-mono text-xs tracking-wide text-foreground">
                   {meta.title}
@@ -76,7 +71,7 @@ export function VisualSettingsDialog() {
                 <p className="mt-0.5 text-[10px] text-muted-foreground">
                   {meta.description}
                 </p>
-                <p className="mt-1.5 font-mono text-[9px] text-cyan-200/70">
+                <p className={cn("mt-1.5 font-mono text-[9px]", modeValueClass(operatorMode))}>
                   DPR {preset.dpr.join("–")} · AA {preset.antialias ? "on" : "off"} ·
                   particles ×{preset.particleScale}
                 </p>

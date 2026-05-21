@@ -13,7 +13,7 @@ import {
 } from "@/lib/evolutionClient";
 import { selectApiKeyConfigured, useApiKeyStore } from "@/store/apiKeyStore";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
-import { pendingHighlightClass } from "@/lib/modePresentation";
+import { modeValueClass, pendingHighlightClass } from "@/lib/modePresentation";
 
 export function EvolutionApprovalsPanel({ className }: { className?: string }) {
   const [proposals, setProposals] = useState<EvolutionProposal[]>([]);
@@ -101,7 +101,7 @@ export function EvolutionApprovalsPanel({ className }: { className?: string }) {
           key={proposal.hash}
           className="lumina-surface-muted rounded-lg p-3"
         >
-          <p className="font-mono text-xs text-cyan-100/90">{proposal.hash.slice(0, 16)}…</p>
+          <p className={cn("font-mono text-xs", modeValueClass(operatorMode))}>{proposal.hash.slice(0, 16)}…</p>
           <p className="mt-1 text-[11px] text-muted-foreground">
             {proposal.challengers?.length ?? 0} challenger(s)
             {proposal.timestamp ? ` · ${proposal.timestamp}` : ""}

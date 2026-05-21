@@ -6,10 +6,6 @@ export function presenceDotClass(mode: TradingMode, engineCompanion: boolean): s
   return engineCompanion ? `${base} presence-rail__live-dot--engine` : base;
 }
 
-export function presenceDotAnimationClass(mode: TradingMode): string {
-  return mode === "SIM" ? "presence-pulse-sim" : "presence-breathe-real";
-}
-
-export function immersiveHaloClass(mode: TradingMode): string {
-  return mode === "SIM" ? "living-core-halo--scan" : "living-core-halo--breathe";
+export function livingCoreHaloAnimationClass(mode: TradingMode): string {
+  return mode === "SIM" ? "living-core-halo--pulse" : "living-core-halo--breathe-slow";
 }

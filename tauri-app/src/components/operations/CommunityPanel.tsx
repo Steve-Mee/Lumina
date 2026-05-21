@@ -4,7 +4,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { fetchGlobalWisdom, fetchLeaderboard, fetchReconciliationStatus, type LeaderboardRow, type ReconciliationStatus } from "@/lib/opsClient";
-import { modeTitleClass } from "@/lib/modePresentation";
+import { modeTextTier2Class, modeTitleClass, modeValueClass, utilityListItemClass } from "@/lib/modePresentation";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
@@ -49,8 +49,8 @@ export function CommunityPanel({ className }: { className?: string }) {
         <Users className={cn("size-4", modeTitleClass(operatorMode))} />
         <h3
           className={cn(
-            "mode-text-tier2 font-mono text-[11px] tracking-[0.14em] uppercase",
-            modeTitleClass(operatorMode),
+            "font-mono text-[11px] tracking-[0.14em] uppercase",
+            modeTextTier2Class(operatorMode),
           )}
         >
           Community
@@ -128,8 +128,8 @@ export function CommunityPanel({ className }: { className?: string }) {
         ) : (
           <ul className="space-y-2">
             {wisdomEntries.slice(0, 8).map(([key, value]) => (
-              <li key={key} className="rounded border border-white/5 px-2 py-1.5">
-                <p className="font-mono text-[10px] uppercase text-cyan-200/80">{key}</p>
+              <li key={key} className={utilityListItemClass(operatorMode)}>
+                <p className={cn("font-mono text-[10px] uppercase", modeValueClass(operatorMode))}>{key}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {typeof value === "string" ? value : JSON.stringify(value)}
                 </p>

@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { fetchOnboardingHardware } from "@/lib/opsClient";
 import { startSmartSetup } from "@/lib/setupClient";
+import { modeTextTier2Class, modeTitleClass, modeValueClass, utilityPanelClass } from "@/lib/modePresentation";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
 interface CatalogEntry {
@@ -18,6 +20,7 @@ interface CatalogEntry {
 }
 
 export function HardwareModelPanel({ className }: { className?: string }) {
+  const operatorMode = useCoreStore(selectCurrentMode);
   const [payload, setPayload] = useState<Record<string, unknown> | null>(null);
 
   const refresh = useCallback(async () => {
@@ -62,8 +65,8 @@ export function HardwareModelPanel({ className }: { className?: string }) {
   return (
     <div className={cn("space-y-3 overflow-y-auto p-1", className)}>
       <div className="flex items-center gap-2">
-        <Cpu className="size-4 text-violet-300/90" />
-        <h3 className="font-mono text-[11px] tracking-[0.14em] text-violet-200/90 uppercase">
+        <Cpu className={cn("size-4", modeTitleClass(operatorMode))} />
+        <h3 className={cn("font-mono text-[11px] tracking-[0.14em] uppercase", modeTextTier2Class(operatorMode))}>
           Hardware & Models
         </h3>
         <Button type="button" size="xs" variant="command-ghost" className="ml-auto" onClick={() => void refresh()}>
@@ -90,15 +93,15 @@ export function HardwareModelPanel({ className }: { className?: string }) {
       </div>
 
       <div className="grid gap-2 sm:grid-cols-2">
-        <div className="rounded-lg border border-cyan-500/20 bg-cyan-950/15 p-3 text-xs">
+        <div className={utilityPanelClass(operatorMode)}>
           <p className="font-mono text-[9px] uppercase text-muted-foreground">Current model</p>
-          <p className="mt-1 font-medium text-cyan-100/90">
+          <p className={cn("mt-1 font-medium", modeValueClass(operatorMode))}>
             {(current?.display_name ?? currentKey) || "—"}
           </p>
         </div>
-        <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/15 p-3 text-xs">
+        <div className={utilityPanelClass(operatorMode)}>
           <p className="font-mono text-[9px] uppercase text-muted-foreground">Recommended</p>
-          <p className="mt-1 font-medium text-emerald-100/90">
+          <p className={cn("mt-1 font-medium", modeValueClass(operatorMode))}>
             {recommended?.display_name ?? "—"}
           </p>
           {recommended ? (

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, MoreHorizontal, Settings } from "lucide-react";
-import { AnimatePresence, motion } from "framer-motion";
+import { Settings } from "lucide-react";
+import { motion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 
 import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceContext";
 import { useOrganismEnvelope } from "@/context/OrganismEnvelopeContext";
 import { BotConfigurationDialog } from "@/components/cockpit/BotConfigurationDialog";
-import { HudSignal, HudSignalArc } from "@/components/cockpit/HudSignal";
+import { HudOrganismCenter } from "@/components/cockpit/HudOrganismCenter";
+import { HudNerveTap } from "@/components/cockpit/HudNerveTap";
 import { LaunchNinjaTraderButton } from "@/components/cockpit/LaunchNinjaTraderButton";
 import { ModeTransitionVeil } from "@/components/cockpit/ModeTransitionVeil";
 import { PresenceRail } from "@/components/cockpit/PresenceRail";
@@ -21,39 +22,37 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useDeckStatusRail } from "@/hooks/useDeckStatusResolution";
 import { useDeckTransition } from "@/hooks/useDeckTransition";
 import { handleRuntimeError } from "@/lib/runtimeErrorToast";
 import {
+  modeSwitchShellClass,
+  modeSwitchActivePillClass,
+  modeSwitchActivePillMotionClass,
   modeSwitchTooltip,
   realDialogBodyClass,
   realDialogTitleClass,
 } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
-import { formatUsd } from "@/lib/tradingPerformanceModel";
 import {
   aggregateIntegrity,
   deriveCitadelWallsFromInputs,
-  integrityTier,
 } from "@/lib/riskCitadelMetrics";
+import { useRuntimeStatusPoll, refreshRuntimeStatus } from "@/hooks/useRuntimeStatusPoll";
 import {
   emergencyStop,
-  fetchRuntimeStatus,
   flattenPositions,
   pauseTradingSafely,
   startEngine,
   stopAllActivities,
   stopEngine,
-  type RuntimeStatus,
 } from "@/lib/runtimeClient";
 import { helpFor } from "@/lib/helpTexts";
 import {
-  menuPopWith,
-  springHudSnappy,
   springLuxury,
   transitionOrNone,
 } from "@/lib/motionPresets";
 import {
+  resolveHudAnnexHintCopy,
   resolveHudHeroLayout,
 } from "@/lib/hudSignalLayout";
 import {
@@ -120,29 +119,6 @@ function connectionVitality(status: ConnectionStatus, fallback: boolean): number
   }
 }
 
-function DeckStatusRailChip({ kind }: { kind: "recovery" | "sync" | "fallback" }) {
-  if (kind === "recovery") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 px-2 py-0.5 text-[9px] tracking-wide text-emerald-200/90 uppercase lumina-glass lumina-glass--overlay">
-        <CheckCircle2 className="size-2.5 shrink-0" />
-        Linked
-      </span>
-    );
-  }
-  if (kind === "sync") {
-    return (
-      <span className="rounded-full border border-amber-400/25 px-2 py-0.5 text-[9px] tracking-wide text-amber-200/90 uppercase">
-        Syncing
-      </span>
-    );
-  }
-  return (
-    <span className="rounded-full border border-amber-400/25 px-2 py-0.5 text-[9px] tracking-wide text-amber-200/80 uppercase">
-      Polling
-    </span>
-  );
-}
-
 function ModeSwitch({
   mode,
   reportedMode,
@@ -188,9 +164,7 @@ function ModeSwitch({
         layout
         className={cn(
           "relative flex rounded-lg border p-0.5 lumina-glow-edge",
-          mode === "SIM"
-            ? "border-cyan-400/30 bg-cyan-950/40"
-            : "border-slate-500/30 bg-slate-900/40",
+          modeSwitchShellClass(mode),
         )}
         transition={modeMotion}
         role="group"
@@ -209,8 +183,7 @@ function ModeSwitch({
               onClick={() => onSelect(option)}
               className={cn(
                 "relative h-9 min-w-[64px] font-mono text-[11px] tracking-[0.18em] uppercase transition-colors",
-                active && option === "SIM" && "text-cyan-200",
-                active && option === "REAL" && "text-slate-200",
+                modeSwitchActivePillClass(option, active),
                 !active && option === "REAL" && "text-slate-500/60 hover:text-slate-300/80",
                 !active && option === "SIM" && "text-muted-foreground/70 hover:text-foreground",
               )}
@@ -219,10 +192,8 @@ function ModeSwitch({
                 <motion.span
                   layoutId="mode-pill"
                   className={cn(
-                    "absolute inset-0 rounded-md lumina-glow-edge",
-                    option === "SIM"
-                      ? "bg-cyan-500/20 ring-1 ring-cyan-400/40"
-                      : "bg-slate-700/30 ring-1 ring-slate-400/30",
+                    "absolute inset-0 rounded-md",
+                    modeSwitchActivePillMotionClass(option),
                   )}
                   transition={pillMotion}
                 />
@@ -244,10 +215,9 @@ export function CommandHud({ className }: CommandHudProps) {
   const [safetyConfirmOpen, setSafetyConfirmOpen] = useState(false);
   const [realSafetyAck, setRealSafetyAck] = useState(false);
   const [pauseTradingAck, setPauseTradingAck] = useState(false);
-  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
+  const runtime = useRuntimeStatusPoll();
   const [overflowOpen, setOverflowOpen] = useState(false);
   const { transition, startTransition, completeTransition } = useDeckTransition();
-  const overflowRef = useRef<HTMLDivElement>(null);
   const reducedMotion = usePrefersReducedMotion();
   const modeMotion = useModeMotion();
   const prevRegimeRef = useRef<string | null>(null);
@@ -267,9 +237,9 @@ export function CommandHud({ className }: CommandHudProps) {
   const hydrateHudPrefs = useHudLayoutPrefsStore((s) => s.hydrate);
   const openSettings = useSettingsDialogStore((s) => s.openSettings);
   const { metrics } = useAdaptiveIntelligenceContext();
-  const { railChip } = useDeckStatusRail();
   const setAnnexHint = useHudMetricsHintStore((s) => s.setAnnexHint);
   const pulseHint = useHudMetricsHintStore((s) => s.pulseHint);
+  const metricsHintPulse = useHudMetricsHintStore((s) => s.pulse);
 
   const citadelInput = useCoreStore(
     useShallow((state) => ({
@@ -284,7 +254,6 @@ export function CommandHud({ className }: CommandHudProps) {
     [citadelInput],
   );
   const fortressIntegrity = useMemo(() => aggregateIntegrity(walls), [walls]);
-  const fortressTier = integrityTier(fortressIntegrity);
 
   const equityIntensity = connectionVitality(connectionStatus, fallbackMode) * (0.88 + organismEnvelope * 0.12);
   const heroLayout = resolveHudHeroLayout(
@@ -310,6 +279,35 @@ export function CommandHud({ className }: CommandHudProps) {
       setAnnexHint(false, null);
     }
   }, [heroLayout.showContextualAnnexHint, heroLayout.contextualKind, setAnnexHint]);
+
+  const heroReadout =
+    heroLayout.heroPrimary === "equity"
+      ? { label: "Equity", value: formatEquity(liveMetrics.equity) }
+      : { label: "Fortress", value: `${Math.round(fortressIntegrity * 100)}%` };
+
+  const equityCompact =
+    heroLayout.heroPrimary === "fortress" ? formatEquityCompact(liveMetrics.equity) : undefined;
+
+  const overflowItems = useMemo(
+    () =>
+      resolveOverflowItems({
+        mode: currentMode,
+        runtime,
+        apiKeyConfigured,
+      }),
+    [currentMode, runtime, apiKeyConfigured],
+  );
+
+  useEffect(() => {
+    return subscribeHudLayoutPrefs(() => hydrateHudPrefs());
+  }, [hydrateHudPrefs]);
+
+  useEffect(() => {
+    if (!safetyConfirmOpen) {
+      setRealSafetyAck(false);
+      setPauseTradingAck(false);
+    }
+  }, [safetyConfirmOpen]);
 
   useEffect(() => {
     if (currentMode !== "SIM" || heroLayout.contextualKind !== "regime") {
@@ -337,54 +335,6 @@ export function CommandHud({ className }: CommandHudProps) {
     liveMetrics.regime,
     pulseHint,
   ]);
-
-  const equityCompact =
-    heroLayout.heroPrimary === "fortress" ? formatEquityCompact(liveMetrics.equity) : undefined;
-
-  const overflowItems = useMemo(
-    () =>
-      resolveOverflowItems({
-        mode: currentMode,
-        runtime,
-        apiKeyConfigured,
-      }),
-    [currentMode, runtime, apiKeyConfigured],
-  );
-
-  useEffect(() => {
-    return subscribeHudLayoutPrefs(() => hydrateHudPrefs());
-  }, [hydrateHudPrefs]);
-
-  useEffect(() => {
-    if (!overflowOpen) {
-      return;
-    }
-    const onPointerDown = (event: MouseEvent) => {
-      if (overflowRef.current && !overflowRef.current.contains(event.target as Node)) {
-        setOverflowOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, [overflowOpen]);
-
-  useEffect(() => {
-    if (!safetyConfirmOpen) {
-      setRealSafetyAck(false);
-      setPauseTradingAck(false);
-    }
-  }, [safetyConfirmOpen]);
-
-  useEffect(() => {
-    const refresh = () => {
-      void fetchRuntimeStatus()
-        .then(setRuntime)
-        .catch(() => setRuntime(null));
-    };
-    refresh();
-    const id = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(id);
-  }, []);
 
   const handleModeSelect = (mode: TradingMode) => {
     if (mode === currentMode) {
@@ -418,13 +368,13 @@ export function CommandHud({ className }: CommandHudProps) {
       ? stopEngine()
           .then((r) => {
             toast.success(r.message);
-            setRuntime({ ...runtime!, alive: false, message: r.message });
+            void refreshRuntimeStatus();
           })
           .catch(handleRuntimeError)
       : startEngine()
           .then((r) => {
             toast.success(r.message);
-            void fetchRuntimeStatus().then(setRuntime);
+            void refreshRuntimeStatus();
           })
           .catch(handleRuntimeError));
   };
@@ -442,7 +392,7 @@ export function CommandHud({ className }: CommandHudProps) {
       return startEngine()
         .then((r) => {
           toast.success(r.message);
-          void fetchRuntimeStatus().then(setRuntime);
+          void refreshRuntimeStatus();
         })
         .catch(handleRuntimeError);
     })();
@@ -510,7 +460,14 @@ export function CommandHud({ className }: CommandHudProps) {
   };
 
   const engineAlive = Boolean(runtime?.alive);
-  const statusChip = railChip ? <DeckStatusRailChip kind={railChip} /> : undefined;
+
+  const handleNerveActivate = () => {
+    if (botConfigDirty()) {
+      saveAndStart();
+      return;
+    }
+    toggleEngine();
+  };
 
   return (
     <>
@@ -524,105 +481,68 @@ export function CommandHud({ className }: CommandHudProps) {
       >
         <PresenceRail
           engineAlive={engineAlive}
-          statusChip={statusChip}
+          heroReadout={heroReadout}
           equityCompact={equityCompact}
-          hideSyncSecondary={modeSyncStatus === "pending"}
         />
         <div className="flex flex-col gap-2.5 px-4 py-2.5 md:px-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="command-hud-metrics flex flex-wrap gap-3 md:flex-nowrap lg:flex-1 lg:justify-center">
-            {heroLayout.primary.kind === "equity" ? (
-              <HudSignal
-                label="Equity"
-                value={formatEquity(liveMetrics.equity)}
-                glow={heroLayout.primary.glow}
-                intensity={heroLayout.primary.intensity}
-              />
-            ) : (
-              <HudSignalArc
-                label="Fortress"
-                integrity={fortressIntegrity}
-                tier={fortressTier}
-              />
-            )}
-            {heroLayout.secondary?.kind === "regime" ? (
-              <HudSignal
-                label="Regime"
-                value={liveMetrics.regime}
-                glow="violet"
-                intensity={heroLayout.secondary.intensity}
-                className={heroLayout.secondary.pulse ? "hud-signal--pulse" : undefined}
-              />
-            ) : null}
-            {heroLayout.secondary?.kind === "pnl" ? (
-              <HudSignal
-                label="Daily P&L"
-                value={formatUsd(liveMetrics.dailyPnlUsd)}
-                glow={heroLayout.secondary.glow}
-              />
+            <HudOrganismCenter
+              mode={currentMode}
+              heroPrimary={heroLayout.heroPrimary}
+              readout={heroReadout.value}
+              readoutLabel={heroReadout.label}
+              vitality={
+                heroLayout.heroPrimary === "equity"
+                  ? heroLayout.primary.kind === "equity"
+                    ? heroLayout.primary.intensity
+                    : 0.75
+                  : fortressIntegrity
+              }
+              onActivate={() => useDeckPanelStore.getState().setActiveRightTab("performance")}
+            />
+            {heroLayout.showContextualAnnexHint && heroLayout.contextualKind !== "none" ? (
+              <button
+                type="button"
+                className={cn(
+                  "command-hud-annex-hint font-mono text-[9px] tracking-[0.14em] uppercase",
+                  metricsHintPulse && "command-hud-annex-hint--pulse",
+                )}
+                onClick={() => useDeckPanelStore.getState().setActiveRightTab("performance")}
+              >
+                {resolveHudAnnexHintCopy(currentMode, heroLayout.contextualKind)}
+              </button>
             ) : null}
           </div>
 
           <div className="flex items-center justify-end gap-2">
-            {!engineAlive ? (
-              <Button
-                type="button"
-                size="xs"
-                variant="command-primary"
-                disabled={!apiKeyConfigured}
-                title={
-                  !apiKeyConfigured
-                    ? "Configure admin API key in Settings to start the engine"
-                    : undefined
-                }
-                onClick={toggleEngine}
-              >
-                Start Engine
-              </Button>
-            ) : (
-              <div className="relative" ref={overflowRef}>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="command-ghost"
-                  className="h-9 w-9 p-0"
-                  aria-expanded={overflowOpen}
-                  aria-label="More actions"
-                  onClick={() => setOverflowOpen((open) => !open)}
-                >
-                  <MoreHorizontal className="size-4" />
-                </Button>
-                <AnimatePresence>
-                  {overflowOpen ? (
-                    <motion.div
-                      key="hud-overflow"
-                      className="deck-overflow-menu absolute right-0 top-full z-50 mt-1 w-56 rounded-lg p-2 lumina-glass lumina-glow-edge"
-                      variants={menuPopWith(springHudSnappy)}
-                      initial={reducedMotion ? false : "hidden"}
-                      animate="visible"
-                      exit={reducedMotion ? undefined : "exit"}
-                      transition={transitionOrNone(reducedMotion, modeMotion)}
-                    >
-                      <div className="flex flex-col gap-1.5">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="command-ghost"
-                          className="w-full justify-start"
-                          onClick={() => {
-                            openSettings("apiKey");
-                            setOverflowOpen(false);
-                          }}
-                        >
-                          <Settings className="mr-2 size-3.5" />
-                          Settings
-                        </Button>
-                        {overflowItems.map((item) => renderOverflowItem(item))}
-                      </div>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              </div>
-            )}
+            <HudNerveTap
+              mode={currentMode}
+              engineAlive={engineAlive}
+              apiKeyConfigured={apiKeyConfigured}
+              configDirty={botConfigDirty()}
+              menuOpen={overflowOpen}
+              onActivate={handleNerveActivate}
+              onToggleMenu={() => setOverflowOpen((open) => !open)}
+              onMenuClose={() => setOverflowOpen(false)}
+              menu={
+                <div className="flex flex-col gap-1.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="command-ghost"
+                    className="w-full justify-start"
+                    onClick={() => {
+                      openSettings("apiKey");
+                      setOverflowOpen(false);
+                    }}
+                  >
+                    <Settings className="mr-2 size-3.5" />
+                    Settings
+                  </Button>
+                  {overflowItems.map((item) => renderOverflowItem(item))}
+                </div>
+              }
+            />
             <ModeSwitch
               mode={currentMode}
               reportedMode={reportedMode}
@@ -701,7 +621,7 @@ export function CommandHud({ className }: CommandHudProps) {
                   void pauseTradingSafely()
                     .then((r) => {
                       toast.success(r.message);
-                      void fetchRuntimeStatus().then(setRuntime);
+                      void refreshRuntimeStatus();
                     })
                     .catch(handleRuntimeError);
                   setSafetyConfirmOpen(false);

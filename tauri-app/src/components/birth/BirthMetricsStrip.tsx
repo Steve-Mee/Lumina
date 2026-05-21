@@ -22,7 +22,9 @@ function ProgressBar({
   return (
     <div className="birth-metric-bar space-y-1.5">
       <div className="flex items-baseline justify-between gap-2 text-xs">
-        <span className="tracking-wide text-muted-foreground uppercase">{label}</span>
+        <span className="font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
+          {label}
+        </span>
         <span className="font-mono text-[11px] text-cyan-200/90">{detail}</span>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
@@ -47,11 +49,11 @@ export function BirthMetricsStrip({
 
   const elapsedLabel =
     elapsedSeconds != null && elapsedSeconds > 0
-      ? `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`
+      ? `${Math.floor(elapsedSeconds / 60)}m ${Math.floor(elapsedSeconds % 60)}s`
       : null;
 
   return (
-    <div className={cn("birth-metrics-strip space-y-4", className)}>
+    <div className={cn("birth-metrics-strip space-y-4 rounded-lg border border-white/8 p-3", className)}>
       <ProgressBar
         label="Simulation trades"
         value={sim.pct}
@@ -70,9 +72,13 @@ export function BirthMetricsStrip({
           detail={`${overallPct.toFixed(1)}%`}
         />
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        {elapsedLabel ? <span>Elapsed {elapsedLabel}</span> : <span />}
-        {message ? <span className="max-w-md truncate text-cyan-200/70">{message}</span> : null}
+      <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] text-muted-foreground">
+        {elapsedLabel ? <span className="shrink-0">Elapsed {elapsedLabel}</span> : <span />}
+        {message ? (
+          <span className="min-w-0 max-w-full truncate text-cyan-200/70" title={message}>
+            {message}
+          </span>
+        ) : null}
       </div>
     </div>
   );

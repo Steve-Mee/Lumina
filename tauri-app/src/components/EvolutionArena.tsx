@@ -1,6 +1,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 
+import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
 import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { VisibilityCanvas } from "@/components/cockpit/VisibilityCanvas";
@@ -24,7 +25,7 @@ import { useEvolutionTree } from "@/hooks/useEvolutionTree";
 import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { birthClearTimeoutMs, calmMode, evolutionPalette, truncateHash } from "@/lib/evolutionArenaTheme";
-import { modeTitleClass } from "@/lib/modePresentation";
+import { modeTitleClass, distressPanelClass, warnOverlayBodyClass, modeNodeBadgeClass, modeValueClass } from "@/lib/modePresentation";
 import { transitionOrNone } from "@/lib/motionPresets";
 import type { EvolutionEdge, EvolutionNode } from "@/lib/evolutionTreeTypes";
 import { cn } from "@/lib/utils";
@@ -64,7 +65,7 @@ function NodeDetailDialog({
         <DialogHeader>
           <DialogTitle className={cn("flex items-center gap-2", modeTitleClass(mode))}>
             {truncateHash(node.hash)}
-            <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] tracking-wider uppercase text-violet-300">
+            <span className={modeNodeBadgeClass(mode)}>
               {node.status}
             </span>
           </DialogTitle>
@@ -76,7 +77,7 @@ function NodeDetailDialog({
             <p className="mb-1 text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
               DNA
             </p>
-            <p className="break-all text-cyan-100/90">{node.hash}</p>
+            <p className={cn("break-all", modeValueClass(mode))}>{node.hash}</p>
             <p className="mt-1 text-muted-foreground">
               {node.promptId} · v{node.version}
             </p>
@@ -239,13 +240,13 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
           {loading ? (
             <motion.div
               key="arena-loader"
-              className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 backdrop-blur-sm"
+              className="absolute inset-0 z-20 flex items-center justify-center bg-black/30"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={transitionOrNone(reducedMotion, modeMotion)}
             >
-              <PanelLoader label={DECK_LOADING_COPY.evolutionArena} />
+              <PanelLoader label={DECK_LOADING_COPY.evolutionArena} variant="pulse" />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -253,12 +254,12 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
           {error ? (
             <motion.div
               key="arena-error"
-              className="absolute inset-x-3 top-3 z-30 rounded-lg border border-amber-500/35 bg-amber-950/80 px-3 py-2"
+              className={cn("absolute inset-x-3 top-3 z-30 px-3 py-2", distressPanelClass("warn"))}
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -4 }}
             >
-              <p className="font-mono text-[10px] text-amber-100/90">{error}</p>
+              <p className={cn("font-mono text-[10px]", warnOverlayBodyClass())}>{error}</p>
               <Button
                 type="button"
                 size="xs"
@@ -274,6 +275,7 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
 
         {!loading && !error && graph.nodes.length === 0 ? (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-6 text-center">
+            <BirthOrganismVisual className="size-20 opacity-70" />
             <p
               className={cn(
                 "mode-text-tier2 font-mono text-xs tracking-wide uppercase",
@@ -309,7 +311,7 @@ export function EvolutionArena({ className }: EvolutionArenaProps) {
         >
           <Suspense
             fallback={
-              <PanelLoader label={DECK_LOADING_COPY.forceGraph} className="min-h-[220px]" />
+              <PanelLoader label={DECK_LOADING_COPY.forceGraph} className="min-h-[220px]" variant="pulse" />
             }
           >
             <VisibilityCanvas

@@ -20,7 +20,7 @@ import {
   resolveOpsSections,
 } from "@/lib/intelligenceDeckNav";
 import { transitionOrNone } from "@/lib/motionPresets";
-import { modePanelClass, modeTitleClass, pendingHighlightClass } from "@/lib/modePresentation";
+import { modePanelClass, modeTitleClass, pendingHighlightClass, deckPanelFrameClass } from "@/lib/modePresentation";
 import {
   selectActiveRightTab,
   useDeckPanelStore,
@@ -38,9 +38,13 @@ import { motion } from "framer-motion";
 
 interface IntelligenceDeckPanelProps {
   className?: string;
+  frameVariant?: "glass" | "muted";
 }
 
-export function IntelligenceDeckPanel({ className }: IntelligenceDeckPanelProps) {
+export function IntelligenceDeckPanel({
+  className,
+  frameVariant = "glass",
+}: IntelligenceDeckPanelProps) {
   const reducedMotion = usePrefersReducedMotion();
   const modeMotion = useModeMotion();
   const activeRightTab = useDeckPanelStore(selectActiveRightTab);
@@ -81,8 +85,8 @@ export function IntelligenceDeckPanel({ className }: IntelligenceDeckPanelProps)
       data-tour="intelligence-deck"
       data-mode={operatorMode}
       className={cn(
-        "lumina-glass lumina-glass--panel lumina-glass--interactive flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg py-0",
-        modePanelClass(operatorMode),
+        "flex min-h-0 flex-1 flex-col overflow-hidden",
+        deckPanelFrameClass(frameVariant, operatorMode),
         className,
       )}
     >

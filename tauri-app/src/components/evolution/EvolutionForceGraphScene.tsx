@@ -1,5 +1,5 @@
 import { OrbitControls } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import {
   forceCenter,
   forceCollide,
@@ -13,7 +13,6 @@ import * as THREE from "three";
 import { CinematicBloom } from "@/components/cockpit/CinematicBloom";
 import { EvolutionGraphEdges } from "@/components/evolution/EvolutionGraphEdges";
 import { EvolutionGraphNode } from "@/components/evolution/EvolutionGraphNode";
-import { EvolutionNodeTooltip } from "@/components/evolution/EvolutionNodeTooltip";
 import { MutationBirthEffect } from "@/components/evolution/MutationBirthEffect";
 import {
   birthEffectParams,
@@ -47,6 +46,76 @@ interface EvolutionForceGraphSceneProps {
   visualQuality: VisualQuality;
   renderConfig: RenderConfig;
   onNodeClick: (node: EvolutionNode) => void;
+}
+
+const LOCKED_CAMERA_DISTANCE = 5.5;
+
+function ArenaCameraRig({
+  calmMode,
+  reducedMotion,
+  focusTarget,
+}: {
+  calmMode: boolean;
+  reducedMotion: boolean;
+  focusTarget: THREE.Vector3 | null;
+}) {
+  const { camera } = useThree();
+  const orbitRef = useRef(0);
+  const focusRef = useRef<THREE.Vector3 | null>(null);
+  const basePosition = useMemo(
+    () => new THREE.Vector3(0, 0, LOCKED_CAMERA_DISTANCE),
+    [],
+  );
+
+  useEffect(() => {
+    camera.position.copy(basePosition);
+    camera.lookAt(0, 0, 0);
+  }, [basePosition, camera]);
+
+  useEffect(() => {
+    focusRef.current = focusTarget;
+  }, [focusTarget]);
+
+  useFrame((_, delta) => {
+    if (reducedMotion) {
+      camera.position.copy(basePosition);
+      camera.lookAt(0, 0, 0);
+      return;
+    }
+
+    const focus = focusRef.current;
+    if (focus) {
+      const eased = basePosition.clone().lerp(
+        new THREE.Vector3(focus.x * 0.22, focus.y * 0.18 + 0.35, LOCKED_CAMERA_DISTANCE - 0.35),
+        0.08,
+      );
+      camera.position.lerp(eased, Math.min(1, delta * 3.5));
+      camera.lookAt(focus.x * 0.15, focus.y * 0.12, 0);
+      return;
+    }
+
+    if (!calmMode) {
+      orbitRef.current += delta * 0.14;
+      const sway = Math.sin(orbitRef.current) * 0.28;
+      const lift = Math.sin(orbitRef.current * 0.7) * 0.08;
+      camera.position.set(sway, lift, LOCKED_CAMERA_DISTANCE);
+      camera.lookAt(0, 0, 0);
+      return;
+    }
+
+    camera.position.copy(basePosition);
+    camera.lookAt(0, 0, 0);
+  });
+
+  return (
+    <OrbitControls
+      enablePan={false}
+      enableZoom={false}
+      enableRotate={false}
+      minDistance={LOCKED_CAMERA_DISTANCE}
+      maxDistance={LOCKED_CAMERA_DISTANCE}
+    />
+  );
 }
 
 function AmbientDust({
@@ -129,9 +198,10 @@ export function EvolutionForceGraphScene({
   const simulationRef = useRef<ReturnType<typeof forceSimulation> | null>(null);
   const simNodesRef = useRef<SimNode[]>([]);
   const [positions, setPositions] = useState<Map<string, THREE.Vector3>>(new Map());
-  const [hoveredNode, setHoveredNode] = useState<EvolutionNode | null>(null);
+  const [cameraFocus, setCameraFocus] = useState<THREE.Vector3 | null>(null);
   const tickBudgetRef = useRef(240);
   const prevNewNodeIdsRef = useRef<string[]>([]);
+  const focusTimerRef = useRef<number | null>(null);
 
   const palette = evolutionPalette(mode);
   const birthParams = birthEffectParams(
@@ -200,6 +270,32 @@ export function EvolutionForceGraphScene({
     }
     prevNewNodeIdsRef.current = newNodeIds;
   }, [newNodeIds, calmMode]);
+
+  useEffect(() => {
+    if (newNodeIds.length === 0 || reducedMotion) {
+      return;
+    }
+    const latestId = newNodeIds[newNodeIds.length - 1];
+    const target = positions.get(latestId);
+    const latestNode = graph.nodes.find((node) => node.id === latestId);
+    const championBirth = latestNode?.status === "champion";
+    if (!target) {
+      return;
+    }
+    setCameraFocus(target.clone());
+    if (focusTimerRef.current != null) {
+      window.clearTimeout(focusTimerRef.current);
+    }
+    focusTimerRef.current = window.setTimeout(() => {
+      setCameraFocus(null);
+      focusTimerRef.current = null;
+    }, championBirth ? 1500 : 900);
+    return () => {
+      if (focusTimerRef.current != null) {
+        window.clearTimeout(focusTimerRef.current);
+      }
+    };
+  }, [newNodeIds, positions, reducedMotion]);
 
   useFrame(() => {
     const simulation = simulationRef.current;
@@ -270,28 +366,20 @@ export function EvolutionForceGraphScene({
         if (!position) {
           return null;
         }
-        const isHovered = hoveredNode?.id === node.id;
         return (
           <group key={node.id} position={position}>
             <EvolutionGraphNode
               node={node}
               position={new THREE.Vector3(0, 0, 0)}
               isNew={newNodeIds.includes(node.id)}
-              isHovered={isHovered}
+              isHovered={false}
               reducedMotion={reducedMotion}
               calmMode={calmMode}
               mode={mode}
               birthParams={birthParams}
-              onHover={(n) => setHoveredNode(n)}
+              onHover={() => undefined}
               onClick={onNodeClick}
             />
-            {isHovered ? (
-              <EvolutionNodeTooltip
-                node={node}
-                incomingEdge={graph.edges.find((edge) => edge.to === node.id) ?? null}
-                visible
-              />
-            ) : null}
           </group>
         );
       })}
@@ -309,7 +397,11 @@ export function EvolutionForceGraphScene({
         />
       ))}
 
-      <OrbitControls enablePan={false} minDistance={3} maxDistance={10} />
+      <ArenaCameraRig
+        calmMode={calmMode}
+        reducedMotion={reducedMotion}
+        focusTarget={cameraFocus}
+      />
       <CinematicBloom mode={mode} reducedMotion={reducedMotion} visualQuality={visualQuality} />
     </>
   );

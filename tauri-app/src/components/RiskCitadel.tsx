@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { citadelCoreGradient, citadelShieldClass } from "@/lib/modePresentation";
+import { citadelCoreGradient, citadelShieldClass, distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import {
   aggregateIntegrity,
   citadelModeHeadline,
@@ -296,9 +296,9 @@ function CitadelProtectiveBanner({
   }
 
   return (
-    <div className="citadel-lockdown-banner mb-2 flex items-center gap-2 rounded-md border border-amber-500/35 bg-amber-950/40 px-2 py-1.5 text-[10px] text-amber-100/90">
-      <ShieldAlert className="size-3.5 shrink-0 text-amber-400" aria-hidden />
-      <span>
+    <div className={cn("citadel-lockdown-banner mb-2 flex items-center gap-2 px-2 py-1.5 text-[10px]", distressPanelClass("warn"))}>
+      <ShieldAlert className="size-3.5 shrink-0" aria-hidden />
+      <span className={warnOverlayBodyClass()}>
         {killSwitchActive
           ? "Kill switch active — fortress in protective lockdown"
           : "REAL safe mode — telemetry disconnected, controls blocked"}

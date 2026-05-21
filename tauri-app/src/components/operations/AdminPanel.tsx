@@ -8,7 +8,7 @@ import { DeckSection } from "@/components/cockpit/DeckSection";
 import { Button } from "@/components/ui/button";
 import { deleteAllTrades, deleteDemoData, fetchAdminSetupSnapshot } from "@/lib/opsClient";
 import { resetFirstBoot } from "@/lib/runtimeClient";
-import { modeTitleClass } from "@/lib/modePresentation";
+import { modeTextTier2Class, modeTitleClass, utilityCodeBlockClass, utilityFieldInputClass } from "@/lib/modePresentation";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +37,7 @@ export function AdminPanel({ className }: { className?: string }) {
       <div className="space-y-4 overflow-y-auto p-2">
       <div className="flex items-center gap-2">
         <Wrench className={cn("size-4", modeTitleClass(operatorMode))} />
-        <h3 className={cn("deck-title text-[11px] tracking-[0.14em]", modeTitleClass(operatorMode))}>
+        <h3 className={cn("deck-title text-[11px] tracking-[0.14em]", modeTextTier2Class(operatorMode))}>
           Admin Console
         </h3>
       </div>
@@ -58,7 +58,7 @@ export function AdminPanel({ className }: { className?: string }) {
         </div>
         <details className="mt-3 rounded-md lumina-surface-muted p-2">
           <summary className="cursor-pointer text-muted-foreground">Config JSON</summary>
-          <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-black/25 p-2 font-mono text-[9px] text-muted-foreground">
+          <pre className={utilityCodeBlockClass()}>
             {JSON.stringify(snapshot?.config_yaml_subset ?? {}, null, 2)}
           </pre>
         </details>
@@ -132,7 +132,7 @@ export function AdminPanel({ className }: { className?: string }) {
           <label className="block text-xs">
             Type <span className="font-mono text-[var(--status-warn-fg)]">RESET FIRST BOOT</span>
             <input
-              className="mt-1 w-full rounded border border-white/10 bg-black/40 px-2 py-1 font-mono text-xs"
+              className={utilityFieldInputClass()}
               value={phrase}
               onChange={(e) => setPhrase(e.target.value)}
             />

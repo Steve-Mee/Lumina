@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -21,10 +22,8 @@ import { isCommandDeckBlocked } from "@/lib/commandDeckGuard";
 import type { DecisionBrief } from "@/lib/decisionTheaterModel";
 import { verdictLabel, verdictTone } from "@/lib/decisionTheaterModel";
 import {
-  formatKellyLabel,
-  formatPositionQty,
-  formatPositionSide,
-  riskHudGlow,
+  resolveDecisionStageHero,
+  resolveDecisionTradePreview,
   signalChipClass,
   verdictToneClass,
 } from "@/lib/decisionTheaterLayout";
@@ -33,8 +32,8 @@ import type { LiveTradingSnapshot } from "@/lib/liveTradingTypes";
 import { staggerContainer, staggerItemWith, transitionOrNone } from "@/lib/motionPresets";
 import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { modeTitleClass, modeValueClass } from "@/lib/modePresentation";
-import { formatUsd } from "@/lib/tradingPerformanceModel";
+import { modeApproveButtonClass, modeTitleClass, modeValueClass } from "@/lib/modePresentation";
+import { useDeckPanelStore } from "@/store/deckPanelStore";
 import { cn } from "@/lib/utils";
 import type { RiskLevel, TradingMode } from "@/store/coreStore";
 
@@ -68,10 +67,32 @@ export function DecisionTheaterStage({
   const modeMotion = useModeMotion();
   const staggerItem = staggerItemWith(modeMotion);
   const verdictClass = verdictToneClass(verdictTone(brief.verdict));
+  const [verdictFlash, setVerdictFlash] = useState(false);
+  const prevVerdictRef = useRef(brief.verdict);
+
+  useEffect(() => {
+    if (prevVerdictRef.current === brief.verdict) {
+      return;
+    }
+    prevVerdictRef.current = brief.verdict;
+    setVerdictFlash(true);
+    const timer = window.setTimeout(() => setVerdictFlash(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [brief.verdict]);
   const actionsDisabled = deckBlocked || brief.proposalHash === null || brief.verdict === "hold";
   const mod = modifierKeyLabel();
   const signal = trading?.active_signal ?? null;
-  const position = trading?.position;
+
+  const stageHero = resolveDecisionStageHero(
+    currentMode,
+    brief,
+    trading,
+    riskLevel,
+    killSwitchActive,
+  );
+  const { preview: tradePreview, overflowCount: tradeOverflowCount } =
+    resolveDecisionTradePreview(trades);
+  const proposalActive = brief.verdict !== "hold" && brief.proposalHash !== null;
 
   const handleAction = (action: DecisionAction) => {
     switch (action) {
@@ -91,7 +112,14 @@ export function DecisionTheaterStage({
   };
 
   return (
-    <section className={cn("decision-theater-stage flex min-h-0 min-w-0 flex-1 flex-col", className)}>
+    <section
+      data-mode={currentMode}
+      className={cn(
+        "decision-theater-stage flex min-h-0 min-w-0 flex-1 flex-col",
+        verdictFlash && "decision-theater-stage--verdict-flash",
+        className,
+      )}
+    >
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 [scrollbar-width:thin]">
         <header className="flex items-start justify-between gap-3">
           <AnimatePresence mode="wait">
@@ -106,60 +134,37 @@ export function DecisionTheaterStage({
               {brief.headline}
             </motion.p>
           </AnimatePresence>
-          <Badge className={cn("shrink-0 text-[9px] uppercase", verdictClass)}>
+          <Badge
+            className={cn(
+              "shrink-0 text-[9px] uppercase",
+              verdictClass,
+              verdictFlash && "decision-verdict-flash",
+            )}
+          >
             {verdictLabel(brief.verdict)}
           </Badge>
         </header>
 
         <div className="decision-theater-stage__metrics mt-4 flex gap-4 overflow-x-auto pb-1">
           <HudSignal
-            label="Confidence"
-            value={`${Math.round(brief.metrics.overallConfidence * 100)}%`}
-            glow="violet"
-            intensity={brief.metrics.overallConfidence}
+            label={stageHero.primary.label}
+            value={stageHero.primary.value}
+            glow={stageHero.primary.glow}
+            intensity={stageHero.primary.intensity}
           />
-          <HudSignal
-            label="Kelly"
-            value={formatKellyLabel(currentMode, brief.metrics.kellyFraction)}
-            glow="cyan"
-          />
-          <HudSignal
-            label="Risk"
-            value={`${brief.metrics.riskScore}`}
-            glow={riskHudGlow(riskLevel)}
-            intensity={brief.metrics.riskScore / 100}
-          />
-          <HudSignal label="Regime" value={brief.metrics.regime} glow="neutral" />
-        </div>
-
-        <div className="decision-theater-stage__metrics mt-3 flex gap-4 overflow-x-auto pb-1">
-          <HudSignal label="Position" value={formatPositionSide(trading)} glow="cyan" />
-          <HudSignal label="Size" value={formatPositionQty(trading)} glow="neutral" />
-          <HudSignal
-            label="Open P&L"
-            value={formatUsd(position?.open_pnl ?? null)}
-            glow={(position?.open_pnl ?? 0) >= 0 ? "emerald" : "amber"}
-          />
-          <HudSignal
-            label="Daily"
-            value={formatUsd(position?.daily_pnl ?? null)}
-            glow={(position?.daily_pnl ?? 0) >= 0 ? "emerald" : "amber"}
-          />
-          <HudSignal
-            label="Losses"
-            value={`${trading?.consecutive_losses ?? 0}`}
-            glow={(trading?.consecutive_losses ?? 0) > 2 ? "amber" : "neutral"}
-          />
-          <HudSignal
-            label="Kill Switch"
-            value={killSwitchActive ? "ON" : "Off"}
-            glow={killSwitchActive ? "amber" : "emerald"}
-          />
+          {stageHero.secondary ? (
+            <HudSignal
+              label={stageHero.secondary.label}
+              value={stageHero.secondary.value}
+              glow={stageHero.secondary.glow}
+              intensity={stageHero.secondary.intensity}
+            />
+          ) : null}
         </div>
 
         {signal ? (
           <div className="mt-4 space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
                 Active Signal
               </span>
@@ -171,32 +176,57 @@ export function DecisionTheaterStage({
               >
                 {signal.signal}
               </span>
-              <span className={cn("font-mono text-[11px]", modeValueClass(currentMode))}>
-                {Math.round(signal.confidence * 100)}% · Confluence{" "}
-                {Math.round(signal.confluence * 100)}%
+              <span className="rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-foreground/85">
+                {Math.round(signal.confidence * 100)}%
               </span>
+              <span className="rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                CF {Math.round(signal.confluence * 100)}%
+              </span>
+              {proposalActive ? (
+                <>
+                  <span className="rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                    SL {signal.stop.toFixed(2)}
+                  </span>
+                  <span className="rounded-md bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                    TP {signal.target.toFixed(2)}
+                  </span>
+                </>
+              ) : null}
+              {signal.strategy ? (
+                <span className="font-mono text-[10px] text-muted-foreground">{signal.strategy}</span>
+              ) : null}
             </div>
-            <p className="text-sm leading-relaxed text-foreground/90">
+            <p className="text-xs leading-relaxed text-foreground/85 line-clamp-1">
               {signal.reason || "No reason published."}
-            </p>
-            <p className="font-mono text-[10px] text-muted-foreground">
-              Stop {signal.stop.toFixed(2)} · Target {signal.target.toFixed(2)} ·{" "}
-              {signal.strategy || "strategy n/a"}
             </p>
           </div>
         ) : (
           <p className="mt-4 text-xs text-muted-foreground">No active signal telemetry.</p>
         )}
 
-        <div className="mt-5">
-          <h4 className="mb-2 font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase">
-            Recent
-          </h4>
-          {trades.length === 0 ? (
+        <details className="decision-theater-stage__recent mt-5 group">
+          <summary className="mb-2 flex cursor-pointer list-none items-center justify-between gap-2 font-mono text-[10px] tracking-[0.16em] text-muted-foreground uppercase [&::-webkit-details-marker]:hidden">
+            <span>Recent{trades.length > 0 ? ` (${trades.length})` : ""}</span>
+            {trades.length > 0 ? (
+              <Button
+                type="button"
+                size="xs"
+                variant="command-ghost"
+                className="h-6 px-2 text-[9px]"
+                onClick={(event) => {
+                  event.preventDefault();
+                  useDeckPanelStore.getState().setActiveRightTab("monitor");
+                }}
+              >
+                Open Monitor
+              </Button>
+            ) : null}
+          </summary>
+          {tradePreview.length === 0 ? (
             <p className="text-xs text-muted-foreground">No recent executions.</p>
           ) : (
             <ul className="space-y-0">
-              {trades.map((trade, index) => (
+              {tradePreview.map((trade, index) => (
                 <li
                   key={`${trade.ts ?? "trade"}-${index}`}
                   className="decision-theater-stage__trade-row py-2"
@@ -222,7 +252,12 @@ export function DecisionTheaterStage({
               ))}
             </ul>
           )}
-        </div>
+          {tradeOverflowCount > 0 ? (
+            <p className="mt-1 font-mono text-[9px] text-muted-foreground">
+              +{tradeOverflowCount} more in debug metrics
+            </p>
+          ) : null}
+        </details>
       </div>
 
       <footer className="shrink-0 border-t border-white/5 px-4 py-3">
@@ -238,7 +273,7 @@ export function DecisionTheaterStage({
                 type="button"
                 size="xs"
                 variant="command-primary"
-                className="border-emerald-500/35 bg-emerald-600/80 text-white hover:bg-emerald-600"
+                className={modeApproveButtonClass(currentMode)}
                 disabled={actionsDisabled}
                 onClick={() => handleAction("approve")}
               >
@@ -283,7 +318,7 @@ export function DecisionTheaterStage({
               </Button>
             </motion.div>
           </motion.div>
-          <DecisionTheaterDebugOverflow trading={trading} />
+          <DecisionTheaterDebugOverflow trading={trading} overflow={stageHero.overflow} />
         </div>
       </footer>
     </section>

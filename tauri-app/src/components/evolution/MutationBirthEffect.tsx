@@ -31,15 +31,20 @@ export function MutationBirthEffect({
   palette,
 }: MutationBirthEffectProps) {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const burstRef = useRef<THREE.Mesh>(null);
   const particlesRef = useRef<BirthParticle[]>([]);
   const dummy = useMemo(() => new THREE.Object3D(), []);
+  const burstLifeRef = useRef(1);
   const count = params.particleCount;
 
   useEffect(() => {
     if (!active || reducedMotion) {
       particlesRef.current = [];
+      burstLifeRef.current = 0;
       return;
     }
+
+    burstLifeRef.current = 1;
 
     const direction = new THREE.Vector3().subVectors(target, origin);
     if (direction.lengthSq() < 0.001) {
@@ -56,8 +61,8 @@ export function MutationBirthEffect({
       );
       const velocity = direction
         .clone()
-        .multiplyScalar(0.4 + Math.random() * 0.9)
-        .add(spread.multiplyScalar(0.35));
+        .multiplyScalar(0.55 + Math.random() * 1.1)
+        .add(spread.multiplyScalar(0.45));
       const t = Math.random();
       const position = origin.clone().lerp(target, t * 0.35);
       return {
@@ -71,6 +76,15 @@ export function MutationBirthEffect({
 
   useFrame((_, delta) => {
     const mesh = meshRef.current;
+    const burst = burstRef.current;
+    if (burst && burstLifeRef.current > 0) {
+      burstLifeRef.current -= delta / (params.durationS * 0.85);
+      const life = Math.max(0, burstLifeRef.current);
+      burst.scale.setScalar(0.35 + (1 - life) * 1.6);
+      const material = burst.material as THREE.MeshBasicMaterial;
+      material.opacity = life * 0.75;
+    }
+
     if (!mesh || particlesRef.current.length === 0) {
       return;
     }
@@ -83,10 +97,10 @@ export function MutationBirthEffect({
       }
       alive += 1;
       particle.position.addScaledVector(particle.velocity, delta);
-      particle.velocity.multiplyScalar(0.94);
+      particle.velocity.multiplyScalar(0.92);
 
       dummy.position.copy(particle.position);
-      dummy.scale.setScalar(0.028 * particle.life);
+      dummy.scale.setScalar(0.034 * particle.life);
       dummy.updateMatrix();
       mesh.setMatrixAt(particle.id, dummy.matrix);
     }
@@ -102,15 +116,27 @@ export function MutationBirthEffect({
   }
 
   return (
-    <instancedMesh ref={meshRef} args={[undefined, undefined, count]}>
-      <sphereGeometry args={[1, 6, 6]} />
-      <meshBasicMaterial
-        color={palette.birthPrimary}
-        transparent
-        opacity={0.55}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
-    </instancedMesh>
+    <group position={target}>
+      <mesh ref={burstRef}>
+        <sphereGeometry args={[0.2, 16, 16]} />
+        <meshBasicMaterial
+          color={palette.birthPrimary}
+          transparent
+          opacity={0.75}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </mesh>
+      <instancedMesh ref={meshRef} args={[undefined, undefined, count]}>
+        <sphereGeometry args={[1, 6, 6]} />
+        <meshBasicMaterial
+          color={palette.birthPrimary}
+          transparent
+          opacity={0.65}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+        />
+      </instancedMesh>
+    </group>
   );
 }

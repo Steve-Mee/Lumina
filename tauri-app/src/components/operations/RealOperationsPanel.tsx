@@ -1,6 +1,7 @@
 import { Shield } from "lucide-react";
 
 import { AnimatedMetric } from "@/components/cockpit/AnimatedMetric";
+import { distressPanelClass, realOverlayIconClass, realOverlayTitleClass, utilityMetricTileClass } from "@/lib/modePresentation";
 import { formatUsd, pnlToneClass } from "@/lib/tradingPerformanceModel";
 import { selectRealOpsLive, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
@@ -37,8 +38,8 @@ export function RealOperationsPanel({ className }: { className?: string }) {
   return (
     <div className={cn("space-y-4", className)}>
       <div className="flex items-center gap-2">
-        <Shield className="size-4 text-amber-300/90" />
-        <h3 className="font-mono text-[11px] tracking-[0.14em] text-amber-200/90 uppercase">
+        <Shield className={cn("size-4", realOverlayIconClass())} />
+        <h3 className={cn("font-mono text-[11px] tracking-[0.14em] uppercase", realOverlayTitleClass())}>
           REAL Operations
         </h3>
         <span
@@ -46,7 +47,7 @@ export function RealOperationsPanel({ className }: { className?: string }) {
             "ml-auto rounded px-2 py-0.5 font-mono text-[9px] uppercase",
             realOps.capitalPreservation.protocolGreen
               ? "bg-emerald-950/40 text-emerald-300"
-              : "bg-amber-950/40 text-amber-200",
+              : distressPanelClass("warn"),
           )}
         >
           {realOps.capitalPreservation.protocolGreen ? "Protocol GREEN" : "Protocol AMBER"}
@@ -101,13 +102,13 @@ export function RealOperationsPanel({ className }: { className?: string }) {
       </section>
 
       <div className="grid grid-cols-3 gap-2 text-xs">
-        <div className="rounded border border-white/10 px-2 py-1.5">
+        <div className={utilityMetricTileClass("REAL")}>
           Live qty: <span className="font-mono">{realOps.exposure.livePositionQty}</span>
         </div>
-        <div className="rounded border border-white/10 px-2 py-1.5">
+        <div className={utilityMetricTileClass("REAL")}>
           Pending recon: <span className="font-mono">{realOps.exposure.pendingReconciliations}</span>
         </div>
-        <div className="rounded border border-white/10 px-2 py-1.5">
+        <div className={utilityMetricTileClass("REAL")}>
           Trades: <span className="font-mono">{realOps.totalTrades}</span>
         </div>
       </div>

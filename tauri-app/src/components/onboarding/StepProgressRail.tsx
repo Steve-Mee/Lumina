@@ -6,15 +6,39 @@ interface StepProgressRailProps {
   steps: OnboardingStepId[];
   currentStep: OnboardingStepId;
   stepStatus: Record<string, string>;
+  compact?: boolean;
+  minimal?: boolean;
 }
 
-export function StepProgressRail({ steps, currentStep, stepStatus }: StepProgressRailProps) {
+export function StepProgressRail({
+  steps,
+  currentStep,
+  stepStatus,
+  compact = false,
+  minimal = false,
+}: StepProgressRailProps) {
   const visible = steps.filter((s) => s !== "welcome");
   if (visible.length <= 1) return null;
 
+  if (minimal) {
+    return (
+      <nav
+        className="mb-3 flex w-full max-w-5xl shrink-0 justify-center"
+        aria-label="Onboarding progress"
+      >
+        <span className="rounded-full border border-cyan-500/20 bg-cyan-500/5 px-3 py-1 font-mono text-[9px] tracking-[0.16em] text-cyan-300/80 uppercase">
+          {STEP_LABELS[currentStep]}
+        </span>
+      </nav>
+    );
+  }
+
   return (
     <nav
-      className="mb-8 flex flex-wrap items-center justify-center gap-3"
+      className={cn(
+        "flex flex-wrap items-center justify-center gap-3",
+        compact ? "mb-4" : "mb-8",
+      )}
       aria-label="Onboarding progress"
     >
       {visible.map((step) => {

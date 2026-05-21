@@ -36,7 +36,7 @@
 }
 
 .lumina-glass--hud::after {
-  opacity: 0.07;
+  opacity: 0.12;
   animation: grain-shift 8s ease-in-out infinite;
 }
 
@@ -255,7 +255,11 @@
 
 .cockpit-shell[data-mode="REAL"] {
   --organism-cycle: 11s;
-  --cockpit-glow-primary: var(--mode-real-secondary);
+  --deck-accent: var(--mode-real-accent);
+  --deck-glow: color-mix(in srgb, var(--mode-real-muted) 18%, transparent);
+  --deck-border: color-mix(in srgb, var(--mode-real-muted) 20%, transparent);
+  --cockpit-grid-line: color-mix(in srgb, var(--mode-real-muted) 3%, transparent);
+  --cockpit-glow-primary: var(--mode-real-accent);
   --cockpit-glow-accent: var(--mode-real-muted);
   --cockpit-star: oklch(1 0 0 / 18%);
   --lumina-glass-border: color-mix(in srgb, var(--mode-real-muted) 12%, transparent);
@@ -269,11 +273,24 @@
 }
 
 .cockpit-shell[data-mode="REAL"] .cockpit-grid {
-  opacity: 0.2;
+  opacity: 0.08;
 }
 
 .cockpit-shell[data-mode="REAL"] .cockpit-stars {
-  opacity: 0.25;
+  opacity: 0.18;
+}
+
+.cockpit-shell[data-mode="REAL"]::before {
+  opacity: 0.06;
+}
+
+.cockpit-shell[data-mode="REAL"] .deck-vignette {
+  opacity: 0.92;
+}
+
+.cockpit-shell[data-mode="REAL"] .cockpit-stars,
+.cockpit-shell[data-mode="REAL"] .cockpit-grid {
+  animation: deck-mode-crossfade 0.45s ease-out;
 }
 
 /* ── Deck mode tokens (consumed by chrome + panels) ── */
@@ -284,17 +301,6 @@
   --deck-border: color-mix(in srgb, var(--mode-sim-accent) 16%, transparent);
 }
 
-.cockpit-shell[data-mode="REAL"] {
-  --deck-accent: var(--mode-real-accent);
-  --deck-glow: color-mix(in srgb, var(--mode-real-muted) 18%, transparent);
-  --deck-border: color-mix(in srgb, var(--mode-real-muted) 20%, transparent);
-}
-
-.cockpit-shell[data-mode="REAL"] .cockpit-stars,
-.cockpit-shell[data-mode="REAL"] .cockpit-grid {
-  animation: deck-mode-crossfade 0.45s ease-out;
-}
-
 @keyframes deck-mode-crossfade {
   0% {
     opacity: 0.35;
@@ -302,10 +308,6 @@
   100% {
     opacity: 1;
   }
-}
-
-.cockpit-shell[data-mode="REAL"]::before {
-  opacity: 0.14;
 }
 
 .cockpit-shell[data-mode="REAL"] [data-slot="tabs-trigger"][data-state="active"] {
@@ -416,6 +418,26 @@
   background: color-mix(in srgb, var(--lumina-void) 55%, var(--deck-accent, var(--lumina-cyan)) 12%);
 }
 
+.deck-overlay-scrim {
+  background: color-mix(in srgb, var(--lumina-void) 72%, var(--deck-accent, var(--lumina-cyan)) 8%);
+}
+
+.cockpit-shell[data-mode="REAL"] .deck-overlay-scrim {
+  background: color-mix(in srgb, var(--lumina-void) 82%, var(--real-chrome-muted) 6%);
+}
+
+.panel-loader-scrim {
+  background: color-mix(in srgb, var(--lumina-void) 55%, transparent);
+}
+
+.hud-nerve-tap__icon {
+  color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 88%, white);
+}
+
+.cockpit-shell[data-mode="REAL"] .hud-nerve-tap__icon {
+  color: color-mix(in srgb, var(--real-chrome-accent) 82%, white);
+}
+
 .subsystems-drawer-airlock[data-mode="SIM"] {
   border-color: color-mix(in srgb, var(--lumina-cyan) 18%, transparent);
 }
@@ -440,10 +462,10 @@
 @keyframes deck-hint-pulse {
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--real-chrome-accent) 0%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 0%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--real-chrome-accent) 35%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 35%, transparent);
   }
 }
 
@@ -551,6 +573,117 @@
   color: color-mix(in srgb, var(--mode-real-accent) 70%, transparent);
 }
 
+.status-bar--organism {
+  box-shadow: inset 0 1px 0
+    color-mix(
+      in srgb,
+      var(--deck-accent, var(--lumina-cyan)) calc(8% + var(--organism-envelope, 0.5) * 10%),
+      transparent
+    );
+}
+
+.status-bar--organism time {
+  opacity: calc(0.72 + var(--organism-envelope, 0.5) * 0.28);
+}
+
+.decision-verdict-flash {
+  animation: hud-glow-flash 220ms ease-out;
+  box-shadow: 0 0 18px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 35%, transparent);
+}
+
+.decision-theater-shell:has(.decision-theater-stage--verdict-flash)::before {
+  animation: decision-stage-wash 220ms ease-out;
+}
+
+@keyframes decision-stage-wash {
+  0% {
+    opacity: calc(0.55 + var(--organism-envelope, 0.5) * 0.35);
+  }
+  100% {
+    opacity: calc(0.35 + var(--organism-envelope, 0.5) * 0.25);
+  }
+}
+
+.decision-theater-stage__recent > summary:hover {
+  color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 75%, white);
+}
+
+.status-bar--glass {
+  --lumina-glass-blur: calc(var(--lumina-glass-blur-hud) * 0.55);
+}
+
+.panel-loader__pulse {
+  position: relative;
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.panel-loader__pulse-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 22%, transparent);
+  background: conic-gradient(
+    from -90deg,
+    var(--deck-accent, var(--lumina-cyan)) 0deg,
+    var(--deck-accent, var(--lumina-cyan)) calc(var(--hud-pulse-fill, 0.35) * 360deg),
+    transparent calc(var(--hud-pulse-fill, 0.35) * 360deg)
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 2px));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 2px));
+  opacity: calc(0.5 + var(--organism-envelope, 0.5) * 0.35);
+  animation: hud-organism-spin var(--organism-cycle, 9s) linear infinite;
+}
+
+.panel-loader__pulse-core {
+  position: absolute;
+  inset: 34%;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 88%, white),
+    color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 35%, var(--cockpit-glow-accent) 65%)
+  );
+  box-shadow: 0 0 14px color-mix(in oklch, var(--cockpit-glow-primary) 45%, transparent);
+  animation: hud-organism-core-pulse var(--organism-cycle, 9s) ease-in-out infinite;
+}
+
+.decision-theater-shell[data-mode="SIM"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    color-mix(in srgb, var(--lumina-cyan) 18%, transparent) 3px,
+    color-mix(in srgb, var(--lumina-cyan) 18%, transparent) 4px
+  );
+  mask-image: linear-gradient(180deg, black 0%, transparent 45%);
+}
+
+.reasoning-spine__body--collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.reasoning-spine__toggle {
+  margin-top: 0.35rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 65%, transparent);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
 .cockpit-shell[data-mode="REAL"] .mode-text-tier2 {
   color: oklch(0.78 0.03 250 / 85%);
 }
@@ -655,6 +788,50 @@
   opacity: 0.75;
 }
 
+.mode-panel-real {
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lumina-void) 96%, var(--mode-real-muted) 4%),
+    color-mix(in srgb, var(--lumina-void) 98%, transparent)
+  );
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--mode-real-accent) 28%, transparent);
+}
+
+.mode-panel-real::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--mode-real-muted) 8%, transparent),
+    transparent 18%
+  );
+}
+
+.mode-panel-sim {
+  position: relative;
+  overflow: hidden;
+}
+
+.mode-panel-sim::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    color-mix(in srgb, var(--mode-sim-accent) 16%, transparent) 3px,
+    color-mix(in srgb, var(--mode-sim-accent) 16%, transparent) 4px
+  );
+  mask-image: linear-gradient(180deg, black 0%, transparent 55%);
+}
+
 .mode-panel-real .deck-panel-accent {
   background: linear-gradient(
     90deg,
@@ -739,8 +916,8 @@
   background-image:
     linear-gradient(var(--cockpit-grid-line) 1px, transparent 1px),
     linear-gradient(90deg, var(--cockpit-grid-line) 1px, transparent 1px),
-    linear-gradient(color-mix(in srgb, var(--lumina-cyan) 1.5%, transparent) 1px, transparent 1px),
-    linear-gradient(90deg, color-mix(in srgb, var(--lumina-cyan) 1.5%, transparent) 1px, transparent 1px);
+    linear-gradient(color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 1.5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--deck-accent, var(--mode-sim-accent)) 1.5%, transparent) 1px, transparent 1px);
   background-size: 32px 32px, 32px 32px, 128px 128px, 128px 128px;
   background-position: 0 0, 0 0, 16px 16px, 16px 16px;
   mask-image: radial-gradient(ellipse 90% 80% at 50% 50%, black 20%, transparent 75%);
@@ -813,8 +990,231 @@
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--lumina-cyan) 8%, transparent);
 }
 
+.command-hud::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-bottom: 1px solid
+    color-mix(
+      in srgb,
+      var(--deck-accent, var(--lumina-cyan)) calc(6% + var(--organism-envelope, 0.5) * 16%),
+      transparent
+    );
+  opacity: calc(0.35 + var(--organism-envelope, 0.5) * 0.45);
+}
+
+.command-hud[data-mode="REAL"]::before {
+  border-bottom-color: color-mix(
+    in srgb,
+    var(--real-chrome-accent, var(--mode-real-accent)) calc(8% + var(--organism-envelope, 0.5) * 12%),
+    transparent
+  );
+}
+
+.hud-nerve-tap {
+  border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 28%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 72%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.hud-nerve-tap--alive {
+  border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 42%, transparent);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 18%, transparent);
+}
+
+.hud-nerve-tap--dormant:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 55%, transparent);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 22%, transparent);
+}
+
+.hud-nerve-tap__ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 35%, transparent);
+  opacity: calc(0.35 + var(--organism-envelope, 0.5) * 0.45);
+  animation: hud-nerve-breathe var(--organism-cycle, 9s) ease-in-out infinite;
+}
+
+.hud-nerve-tap--alive .hud-nerve-tap__ring {
+  animation: presence-pulse-sim 1.8s ease-in-out infinite;
+}
+
+.hud-nerve-tap[data-mode="REAL"] .hud-nerve-tap__ring {
+  animation: presence-breathe-real 4s ease-in-out infinite;
+}
+
+.hud-nerve-tap__core {
+  position: absolute;
+  inset: 30%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 65%, transparent);
+  opacity: calc(0.45 + var(--organism-envelope, 0.5) * 0.35);
+}
+
+@keyframes hud-nerve-breathe {
+  0%,
+  100% {
+    transform: scale(0.94);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+}
+
+/* Glow budget — demote ambient layers when HUD is visible */
+.cockpit-shell:has(.command-hud) .cockpit-stars {
+  opacity: 0.42;
+}
+
+.cockpit-shell[data-mode="REAL"]:has(.command-hud) .cockpit-stars {
+  opacity: 0.18;
+}
+
+.cockpit-shell:has(.command-hud)::after {
+  opacity: calc(0.22 + var(--organism-envelope, 0.5) * 0.12);
+}
+
+.cockpit-shell[data-mode="REAL"]:has(.command-hud)::after {
+  opacity: calc(0.14 + var(--organism-envelope, 0.5) * 0.08);
+}
+
+.cockpit-shell:has(.command-hud) .presence-rail__live-dot--engine::after {
+  opacity: 0.35;
+}
+
+.cockpit-shell[data-mode="REAL"]:has(.command-hud) .presence-rail__live-dot--engine::after {
+  opacity: 0.2;
+}
+
+.presence-rail__mode-icon {
+  color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 85%, white);
+}
+
+.cockpit-shell[data-mode="REAL"] .presence-rail__mode-icon {
+  color: var(--real-chrome-accent, var(--mode-real-accent));
+}
+
 .command-hud-metrics {
   scrollbar-width: thin;
+}
+
+.hud-organism-center {
+  min-width: 4.5rem;
+  min-height: 3.25rem;
+  cursor: default;
+}
+
+.hud-organism-center__pulse {
+  position: relative;
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.hud-organism-center__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 24%, transparent);
+  background: conic-gradient(
+    from -90deg,
+    var(--deck-accent, var(--lumina-cyan)) 0deg,
+    var(--deck-accent, var(--lumina-cyan)) calc(var(--hud-pulse-fill, 0.5) * 360deg),
+    transparent calc(var(--hud-pulse-fill, 0.5) * 360deg)
+  );
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 2px));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), black calc(100% - 2px));
+  opacity: calc(0.6 + var(--organism-envelope, 0.5) * 0.35);
+  animation: hud-organism-spin var(--organism-cycle, 9s) linear infinite;
+}
+
+.hud-organism-center__core {
+  position: absolute;
+  inset: 32%;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 88%, white),
+    color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 38%, var(--cockpit-glow-accent) 62%)
+  );
+  box-shadow: 0 0 16px color-mix(in oklch, var(--cockpit-glow-primary) 50%, transparent);
+  animation: hud-organism-core-pulse var(--organism-cycle, 9s) ease-in-out infinite;
+}
+
+.command-hud[data-mode="REAL"] .hud-organism-center__ring {
+  border-color: color-mix(in srgb, var(--mode-real-accent) 28%, transparent);
+  background: conic-gradient(
+    from -90deg,
+    var(--mode-real-accent) 0deg,
+    var(--mode-real-accent) calc(var(--hud-pulse-fill, 0.5) * 360deg),
+    transparent calc(var(--hud-pulse-fill, 0.5) * 360deg)
+  );
+}
+
+.command-hud[data-mode="REAL"] .hud-organism-center__core {
+  background: radial-gradient(
+    circle at 35% 30%,
+    color-mix(in srgb, var(--mode-real-accent) 85%, white),
+    color-mix(in srgb, var(--mode-real-muted) 45%, var(--lumina-void) 55%)
+  );
+  box-shadow: 0 0 14px color-mix(in srgb, var(--mode-real-accent) 35%, transparent);
+}
+
+.cockpit-shell:has(.command-hud) .command-hud::before {
+  opacity: calc(0.22 + var(--organism-envelope, 0.5) * 0.28);
+}
+
+.cockpit-shell:has(.hud-organism-center)::after {
+  opacity: calc(0.03 + var(--organism-envelope, 0.5) * 0.04);
+}
+
+@keyframes hud-organism-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes hud-organism-core-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.command-hud-annex-hint {
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 62%, transparent);
+  cursor: pointer;
+  padding: 0.125rem 0.25rem;
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+
+.command-hud-annex-hint:hover,
+.command-hud-annex-hint:focus-visible {
+  color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 88%, white);
+}
+
+.command-hud-annex-hint--pulse {
+  animation: hud-glow-flash 800ms ease-out;
+}
+
+.command-hud[data-mode="REAL"] .command-hud-annex-hint {
+  color: color-mix(in srgb, var(--mode-real-muted) 75%, white);
 }
 
 .deck-annex-inset {
@@ -1341,6 +1741,9 @@
     color-mix(in srgb, var(--real-chrome-muted) 10%, transparent),
     transparent 68%
   );
+  transform: scale(calc(0.98 + var(--organism-envelope) * 0.02));
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--real-chrome-accent) calc(var(--organism-envelope) * 40%), transparent);
 }
 
 .living-core-shell[data-vitality="low"]::after {
@@ -1670,6 +2073,67 @@
 
 .decision-theater-stage__metrics {
   scrollbar-width: thin;
+}
+
+.decision-theater-stage[data-mode="REAL"] .hud-signal:not([data-flash]) .hud-signal__glow {
+  animation: presence-breathe-real 6s ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--real-chrome-accent, var(--mode-real-accent)),
+    transparent
+  );
+}
+
+.decision-theater-stage[data-mode="REAL"] .decision-theater-stage__metrics .hud-signal {
+  --hud-signal-intensity: calc(var(--hud-signal-intensity, 0.85) * 0.78);
+}
+
+.decision-theater-shell[data-mode="REAL"] .decision-theater-stage header p {
+  letter-spacing: 0.06em;
+}
+
+.decision-theater-shell[data-mode="REAL"] .decision-theater-stage__metrics [class*="uppercase"] {
+  opacity: 0.72;
+}
+
+.decision-theater-shell[data-mode="REAL"] .decision-theater-stage header .shrink-0 {
+  border-color: color-mix(in srgb, var(--real-chrome-accent) 35%, transparent);
+  color: color-mix(in srgb, var(--real-chrome-accent) 88%, white);
+}
+
+.living-core-frame--immersive .living-core-shell {
+  box-shadow: none;
+  background: transparent;
+}
+
+.living-core-frame--immersive .living-core-shell::before {
+  display: none;
+}
+
+.living-core-halo--pulse,
+.living-core-halo--breathe-slow {
+  /* Envelope-driven via ::after — no competing keyframe pulse */
+}
+
+@keyframes living-core-halo-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes living-core-halo-breathe {
+  0%,
+  100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 0.95;
+  }
 }
 
 .decision-theater-stage__trade-row {
@@ -2061,7 +2525,7 @@
 
 .cockpit-shell[data-mode="REAL"] .hud-signal--violet:not([data-flash]) .hud-signal__glow,
 .cockpit-shell[data-mode="REAL"] .hud-signal--gold:not([data-flash]) .hud-signal__glow {
-  animation: none;
+  animation: presence-breathe-real 6s ease-in-out infinite;
   background: linear-gradient(
     90deg,
     transparent,

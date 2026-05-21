@@ -38,6 +38,46 @@
 
 }
 
+.onboarding-shell--form {
+  overflow-x: clip;
+}
+
+.onboarding-shell--form.cockpit-shell::before {
+  transform: scale(0.92);
+}
+
+.onboarding-shell--birth {
+  overflow-x: clip;
+}
+
+.onboarding-shell--birth.cockpit-shell::before {
+  transform: scale(0.95);
+  opacity: 0.14;
+}
+
+.onboarding-shell--birth .birth-activation-stars {
+  opacity: calc(0.22 + var(--organism-envelope, 0.5) * 0.12);
+}
+
+.onboarding-birth-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  align-content: stretch;
+}
+
+.onboarding-birth-viewport {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  max-width: 72rem;
+  margin-inline: auto;
+}
+
 
 
 .onboarding-hero-title {
@@ -364,5 +404,14 @@
 
   width: 100%;
 
+}
+
+.welcome-card--organism {
+  border-color: color-mix(
+    in srgb,
+    var(--mode-sim-accent)
+      calc((0.85 + var(--organism-envelope, 0.5) * 0.15) * 100%),
+    transparent
+  );
 }
 

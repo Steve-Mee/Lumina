@@ -43,7 +43,8 @@ import {
 
 import { transitionOrNone } from "@/lib/motionPresets";
 
-import { modePanelClass, modeTitleClass } from "@/lib/modePresentation";
+import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
+import { modeTitleClass, deckPanelFrameClass } from "@/lib/modePresentation";
 
 import { selectActiveCenterTab, useDeckPanelStore, type CenterDeckTab } from "@/store/deckPanelStore";
 
@@ -61,11 +62,19 @@ interface EvolutionDeckPanelProps {
 
   className?: string;
 
+  frameVariant?: "glass" | "muted";
+
 }
 
 
 
-export function EvolutionDeckPanel({ className }: EvolutionDeckPanelProps) {
+export function EvolutionDeckPanel({
+
+  className,
+
+  frameVariant = "muted",
+
+}: EvolutionDeckPanelProps) {
 
   const reducedMotion = usePrefersReducedMotion();
 
@@ -110,9 +119,9 @@ export function EvolutionDeckPanel({ className }: EvolutionDeckPanelProps) {
 
       className={cn(
 
-        "lumina-glass lumina-glass--panel lumina-glass--interactive flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg py-0",
+        "flex min-h-0 flex-1 flex-col overflow-hidden",
 
-        modePanelClass(operatorMode),
+        deckPanelFrameClass(frameVariant, operatorMode),
 
         className,
 
@@ -131,15 +140,11 @@ export function EvolutionDeckPanel({ className }: EvolutionDeckPanelProps) {
       >
 
         <div
-
           className={cn(
-
             "relative border-b border-white/5 px-4 py-3",
-
+            activeCenterTab === "arena" && cn(luminaSurfaceMutedClass(), "rounded-none border-white/5"),
             isAnnexActive && "deck-header--annex",
-
           )}
-
         >
 
           <motion.div
@@ -222,7 +227,7 @@ export function EvolutionDeckPanel({ className }: EvolutionDeckPanelProps) {
 
 
 
-        <div className="mt-0 flex min-h-0 flex-1 flex-col p-2">
+        <div className={cn("mt-0 flex min-h-0 flex-1 flex-col", activeCenterTab === "arena" ? "p-0" : "p-2")}>
 
           <EvolutionTabContent
 

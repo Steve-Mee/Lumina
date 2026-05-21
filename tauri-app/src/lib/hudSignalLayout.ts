@@ -49,7 +49,6 @@ export interface HudSignalLayout {
 
 export interface HudHeroLayout {
   primary: HudEquityConfig | HudFortressConfig;
-  secondary: HudContextualConfig | null;
   showContextualAnnexHint: boolean;
   contextualKind: HudContextualKind;
   heroPrimary: HudHeroPrimary;
@@ -145,9 +144,6 @@ export function resolveHudHeroLayout(
   const heroPrimary = prefs.heroPrimary ?? "equity";
   const contextualKind = resolveContextualKind(mode, prefs);
   const contextual = buildContextual(mode, metrics, prefs);
-  const connected =
-    context.connectionStatus === "connected" && !context.fallbackMode;
-  const showSecondary = connected && context.sessionActive && contextual !== null;
 
   const primary: HudEquityConfig | HudFortressConfig =
     heroPrimary === "fortress"
@@ -160,8 +156,7 @@ export function resolveHudHeroLayout(
 
   return {
     primary,
-    secondary: showSecondary ? contextual : null,
-    showContextualAnnexHint: contextual !== null && !showSecondary,
+    showContextualAnnexHint: contextual !== null,
     contextualKind,
     heroPrimary,
   };
@@ -196,4 +191,14 @@ export function writeHudLayoutPrefs(prefs: HudSignalLayoutPrefs): void {
   } catch {
     // ignore storage failures
   }
+}
+
+export function resolveHudAnnexHintCopy(
+  mode: TradingMode,
+  kind: Exclude<HudContextualKind, "none">,
+): string {
+  if (mode === "REAL") {
+    return kind === "pnl" ? "REAL P&L · annex" : "Guarded metrics · annex";
+  }
+  return kind === "pnl" ? "SIM P&L · annex" : "Regime · annex";
 }

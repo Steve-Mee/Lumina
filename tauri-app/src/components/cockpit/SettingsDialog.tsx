@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
+import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
 import { BotConfigForm } from "@/components/config/BotConfigForm";
 import { Button } from "@/components/ui/button";
 import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceContext";
@@ -334,7 +335,7 @@ export function SettingsDialog({ hideTrigger = false }: { hideTrigger?: boolean 
                         ? operatorMode === "REAL"
                           ? "border-slate-500/40 bg-slate-700/25"
                           : "border-cyan-400/40 bg-cyan-500/10"
-                        : "border-white/10 bg-black/20 hover:border-white/20",
+                        : luminaSurfaceMutedClass("border border-white/10 hover:border-white/20"),
                     )}
                   >
                     <p className="font-mono text-xs tracking-wide text-foreground">{meta.title}</p>
@@ -347,7 +348,7 @@ export function SettingsDialog({ hideTrigger = false }: { hideTrigger?: boolean 
               })}
             </div>
             {operatorMode === "SIM" ? (
-              <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <div className={luminaSurfaceMutedClass("rounded-lg border border-white/10 p-3")}>
                 <p className="font-mono text-xs tracking-wide text-foreground">HUD hero signal</p>
                 <p className="mt-1 text-[10px] text-muted-foreground">
                   Primary HUD slot — secondary contextual moves to Performance annex when session idle.
@@ -385,7 +386,7 @@ export function SettingsDialog({ hideTrigger = false }: { hideTrigger?: boolean 
                 </Button>
               </div>
             ) : null}
-            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <div className={luminaSurfaceMutedClass("rounded-lg border border-white/10 p-3")}>
               <p className="text-xs text-muted-foreground">Guided walkthrough of the command deck layout.</p>
               <Button
                 type="button"

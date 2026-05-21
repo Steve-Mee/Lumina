@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { motion } from "framer-motion";
+
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { useOnboardingModeMotion } from "@/hooks/useOnboardingModeMotion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
+import { stepFade, transitionOrNone } from "@/lib/motionPresets";
 import { cn } from "@/lib/utils";
 import { StepProgressRail } from "@/components/onboarding/StepProgressRail";
 import { BackendStep } from "@/components/onboarding/steps/BackendStep";
@@ -36,6 +41,9 @@ export function OnboardingWizard() {
   const activateBirth = useOnboardingStore((s) => s.activateBirth);
   const importCredentialsFromEnv = useOnboardingStore((s) => s.importCredentialsFromEnv);
   const [savingCredentials, setSavingCredentials] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
+  const onboardingMotion = useOnboardingModeMotion();
+  const stepTransition = transitionOrNone(reducedMotion, stepFade);
 
   const steps = useMemo(() => selectActiveSteps(payload), [payload]);
   const currentStep = steps[currentStepIndex] ?? steps[0] ?? "welcome";
@@ -185,14 +193,35 @@ export function OnboardingWizard() {
   const smartStepActive = needsSmartSetupStep(currentStep);
   const railStep = smartStepActive ? ("ollama" as OnboardingStepId) : currentStep;
 
+  const isBirthStep = currentStep === "birth";
+
   return (
-    <OnboardingShell>
-      <div className="flex flex-1 flex-col items-center overflow-y-auto px-4 py-8">
+    <OnboardingShell
+      className={cn("onboarding-shell--form", isBirthStep && "onboarding-shell--birth")}
+    >
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          isBirthStep
+            ? "w-full min-h-0 flex-1 overflow-hidden px-4 py-0"
+            : "items-center overflow-y-auto px-4 py-8",
+        )}
+      >
+        <div
+          className={cn(
+            "w-full min-h-0",
+            isBirthStep
+              ? "onboarding-birth-column overflow-hidden"
+              : "flex flex-col items-center",
+          )}
+        >
         {currentStep !== "welcome" && payload && (
           <StepProgressRail
             steps={displayStepsDeduped}
             currentStep={railStep}
             stepStatus={payload.step_status}
+            compact={isBirthStep}
+            minimal={isBirthStep}
           />
         )}
         {error && currentStep !== "birth" ? (
@@ -200,16 +229,23 @@ export function OnboardingWizard() {
             <span className={warnOverlayBodyClass()}>{error}</span>
           </p>
         ) : null}
-        <div
+        <motion.div
+          key={currentStep}
           className={cn(
-            "w-full max-w-xl",
+            "w-full",
+            !isBirthStep && "max-w-xl",
             currentStep !== "welcome" &&
               currentStep !== "birth" &&
               "lumina-glass lumina-glass--panel rounded-xl p-4 md:p-6",
-            currentStep === "birth" && "max-w-5xl",
+            isBirthStep &&
+              "onboarding-birth-viewport flex min-h-0 max-w-none flex-1 flex-col",
           )}
+          initial={reducedMotion ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={stepTransition}
         >
           {renderStep()}
+        </motion.div>
         </div>
       </div>
     </OnboardingShell>

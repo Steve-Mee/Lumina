@@ -6,6 +6,7 @@ import { BirthCinematicLayout } from "@/components/birth/BirthCinematicLayout";
 import { BirthHoloSlider } from "@/components/birth/BirthHoloSlider";
 import { BirthLaunchButton } from "@/components/birth/BirthLaunchButton";
 import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { helpFor } from "@/lib/helpTexts";
 import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
@@ -34,47 +35,61 @@ export function BirthActivateStep({
   onChangeTraining,
   onActivate,
 }: BirthActivateStepProps) {
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
+  const [genesisOpen, setGenesisOpen] = useState(false);
   const [helixPrimed, setHelixPrimed] = useState(false);
+  const [sequencing, setSequencing] = useState(false);
+  const helixCharged = helixPrimed || sequencing;
+
+  const caption =
+    activating
+      ? "Activation sequence engaged — organism awakening"
+      : sequencing
+        ? "Sequencing neural lattice — hold steady"
+        : helixCharged
+          ? "Neural lattice primed — commit on your mark"
+          : "Organism dormant — awaiting activation sequence";
 
   const stage = (
-    <>
-      <Suspense
-        fallback={
-          <div className="flex min-h-[320px] items-center justify-center">
-            <BirthOrganismVisual className="size-48 opacity-80" />
-          </div>
-        }
-      >
-        <BirthHelixVisual
-          activating={activating}
-          primed={helixPrimed}
-          trainingTrades={draft.training.training_trades}
-          className="min-h-[340px] md:min-h-[480px]"
-        />
-      </Suspense>
-      <p className="birth-activation-caption">
-        {activating
-          ? "Activation sequence engaged — organism awakening"
-          : helixPrimed
-            ? "Neural lattice primed — commit on your mark"
-            : "Organism dormant — awaiting activation sequence"}
-      </p>
-    </>
+    <div className="birth-activation-stage-inner">
+      <div className="birth-activation-helix-slot">
+        <Suspense
+          fallback={
+            <div className="flex h-full min-h-0 flex-1 items-center justify-center">
+              <BirthOrganismVisual className="size-48 opacity-80" />
+            </div>
+          }
+        >
+          <BirthHelixVisual
+            ceremonyMode
+            activating={activating}
+            primed={helixCharged}
+            trainingTrades={draft.training.training_trades}
+            className="h-full min-h-0 w-full max-w-2xl"
+          />
+        </Suspense>
+      </div>
+      <div className="birth-activation-hud">
+        <p className="birth-activation-caption">{caption}</p>
+      </div>
+    </div>
   );
 
   const deck = (
     <motion.div
-      className={cn("birth-activation-deck-inner", activating && "birth-activation-deck-inner--dim")}
-      initial={{ opacity: 0, x: 12 }}
-      animate={{ opacity: 1, x: 0 }}
+      className={cn(
+        "birth-activation-deck-inner",
+        (activating || sequencing) && "birth-activation-deck-inner--dim",
+      )}
+      initial={reducedMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.45, delay: 0.1 }}
     >
       <p className="birth-activation-eyebrow">Birth Protocol</p>
       <h2 className="birth-activation-title">Neural Genesis</h2>
       <p className="birth-activation-desc">
-        Seal the genesis vector. The organism will awaken through certified SIM training before
-        you enter the Neural Command Deck.
+        Seal the genesis vector. The organism awakens through certified SIM training before deck
+        entry.
       </p>
 
       {error ? (
@@ -87,68 +102,80 @@ export function BirthActivateStep({
         activating={activating}
         primed={helixPrimed}
         onPrimedChange={setHelixPrimed}
+        onSequencingChange={setSequencing}
         onClick={onActivate}
-        className="mb-5"
+        className="mb-4"
       />
 
-      <BirthHoloSlider
-        label="Training Trades"
-        value={draft.training.training_trades}
-        min={5000}
-        max={500000}
-        step={5000}
-        format={(v) => v.toLocaleString()}
-        onChange={(v) => onChangeTraining({ training_trades: v })}
-        disabled={activating}
-      />
+      {activating || sequencing ? (
+        <p className="birth-activation-progress mb-4 text-center font-mono text-[0.6rem] tracking-[0.16em] uppercase text-cyan-400/80">
+          {activating
+            ? "Saving genesis settings and starting birth engine…"
+            : "Sequencing neural lattice…"}
+        </p>
+      ) : null}
 
-      <BirthHoloSlider
-        label="Max Historical Days"
-        value={draft.training.max_real_days}
-        min={30}
-        max={365}
-        step={5}
-        onChange={(v) => onChangeTraining({ max_real_days: v })}
-        disabled={activating}
-      />
+      <div className="birth-activation-primary-param">
+        <BirthHoloSlider
+          label="Training Trades"
+          value={draft.training.training_trades}
+          min={5000}
+          max={500000}
+          step={5000}
+          format={(v) => v.toLocaleString()}
+          onChange={(v) => onChangeTraining({ training_trades: v })}
+          disabled={activating || sequencing}
+        />
+      </div>
 
       <button
         type="button"
-        className="birth-advanced-toggle"
-        onClick={() => setAdvancedOpen((v) => !v)}
-        aria-expanded={advancedOpen}
+        className="birth-advanced-toggle birth-activation-genesis-toggle"
+        onClick={() => setGenesisOpen((v) => !v)}
+        aria-expanded={genesisOpen}
       >
-        <span>Advanced genesis parameters</span>
+        <span>Genesis parameters</span>
         <ChevronDown
-          className={cn("size-4 transition-transform", advancedOpen && "rotate-180")}
+          className={cn("size-4 transition-transform", genesisOpen && "rotate-180")}
           aria-hidden
         />
       </button>
 
-      {advancedOpen ? (
-        <div className="birth-holo-chips mt-2">
-          <label className="birth-holo-chip" title={helpFor("prefer_real_data_only")}>
-            <input
-              type="checkbox"
-              checked={draft.training.prefer_real_data_only}
-              disabled={activating}
-              onChange={(e) =>
-                onChangeTraining({ prefer_real_data_only: e.target.checked })
-              }
-            />
-            Real historical data only
-          </label>
-          <label className="birth-holo-chip" title={helpFor("allow_minimal_synthetic_fallback")}>
-            <input
-              type="checkbox"
-              checked={draft.training.allow_minimal_synthetic_fallback}
-              disabled={activating}
-              onChange={(e) =>
-                onChangeTraining({ allow_minimal_synthetic_fallback: e.target.checked })
-              }
-            />
-            Minimal synthetic fallback
-          </label>
+      {genesisOpen ? (
+        <div className="birth-activation-genesis-panel mt-2">
+          <BirthHoloSlider
+            label="Max Historical Days"
+            value={draft.training.max_real_days}
+            min={30}
+            max={365}
+            step={5}
+            onChange={(v) => onChangeTraining({ max_real_days: v })}
+            disabled={activating || sequencing}
+          />
+          <div className="birth-holo-chips mt-2">
+            <label className="birth-holo-chip" title={helpFor("prefer_real_data_only")}>
+              <input
+                type="checkbox"
+                checked={draft.training.prefer_real_data_only}
+                disabled={activating || sequencing}
+                onChange={(e) =>
+                  onChangeTraining({ prefer_real_data_only: e.target.checked })
+                }
+              />
+              Real historical data only
+            </label>
+            <label className="birth-holo-chip" title={helpFor("allow_minimal_synthetic_fallback")}>
+              <input
+                type="checkbox"
+                checked={draft.training.allow_minimal_synthetic_fallback}
+                disabled={activating || sequencing}
+                onChange={(e) =>
+                  onChangeTraining({ allow_minimal_synthetic_fallback: e.target.checked })
+                }
+              />
+              Minimal synthetic fallback
+            </label>
+          </div>
         </div>
       ) : null}
     </motion.div>
@@ -156,9 +183,10 @@ export function BirthActivateStep({
 
   return (
     <BirthCinematicLayout
-      className="w-full max-w-none px-2 md:px-6"
+      className="px-2 md:px-6"
       stage={stage}
       deck={deck}
+      stageCharging={sequencing}
     />
   );
 }

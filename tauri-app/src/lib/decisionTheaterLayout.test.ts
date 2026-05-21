@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DECISION_STAGE_HERO_MAX,
   formatKellyLabel,
   formatPositionSide,
   hasDebugPayload,
+  resolveDecisionTradePreview,
+  resolveDecisionStageHero,
   riskHudGlow,
 } from "@/lib/decisionTheaterLayout";
+import type { DecisionBrief } from "@/lib/decisionTheaterModel";
 import type { LiveTradingSnapshot } from "@/lib/liveTradingTypes";
 
 const baseTrading: LiveTradingSnapshot = {
@@ -36,7 +40,64 @@ const baseTrading: LiveTradingSnapshot = {
   runtime_state: null,
 };
 
+const baseBrief: DecisionBrief = {
+  headline: "Hold",
+  verdict: "hold",
+  steps: [],
+  metrics: {
+    overallConfidence: 0.62,
+    riskScore: 74,
+    kellyFraction: 0.18,
+    regime: "Trend",
+  },
+  proposalHash: null,
+  lastUpdatedTs: null,
+};
+
 describe("decisionTheaterLayout", () => {
+  it("resolveDecisionStageHero caps visible hero signals at two", () => {
+    expect(DECISION_STAGE_HERO_MAX).toBe(2);
+
+    const sim = resolveDecisionStageHero("SIM", baseBrief, baseTrading, "NORMAL", false);
+    const visible = [sim.primary, sim.secondary].filter(Boolean);
+    expect(visible.length).toBeLessThanOrEqual(2);
+    expect(sim.primary.label).toBe("Confidence");
+    expect(sim.secondary).toBeNull();
+    expect(sim.overflow.length).toBeGreaterThan(0);
+  });
+
+  it("REAL calm mode hides Kelly secondary unless risk is HIGH+", () => {
+    const calmHold = resolveDecisionStageHero(
+      "REAL",
+      { ...baseBrief, verdict: "enter", proposalHash: "abc" },
+      baseTrading,
+      "NORMAL",
+      false,
+    );
+    expect(calmHold.primary.label).toBe("Risk");
+    expect(calmHold.secondary).toBeNull();
+
+    const highRisk = resolveDecisionStageHero(
+      "REAL",
+      { ...baseBrief, verdict: "enter", proposalHash: "abc" },
+      baseTrading,
+      "HIGH",
+      false,
+    );
+    expect(highRisk.secondary?.label).toBe("Kelly");
+  });
+
+  it("resolveDecisionTradePreview caps rows", () => {
+    const trades = [
+      { signal: "BUY", pnl: 1, entry: 1, exit: 2, qty: 1, ts: "1" },
+      { signal: "SELL", pnl: 2, entry: 1, exit: 2, qty: 1, ts: "2" },
+      { signal: "BUY", pnl: 3, entry: 1, exit: 2, qty: 1, ts: "3" },
+    ];
+    const { preview, overflowCount } = resolveDecisionTradePreview(trades);
+    expect(preview.length).toBe(2);
+    expect(overflowCount).toBe(1);
+  });
+
   it("formatKellyLabel reflects REAL quarter-kelly cap", () => {
     expect(formatKellyLabel("REAL", 0.22)).toBe("22% · Quarter-Kelly");
     expect(formatKellyLabel("SIM", 0.22)).toBe("22% · SIM cap");

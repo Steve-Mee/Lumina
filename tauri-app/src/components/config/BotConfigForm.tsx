@@ -17,6 +17,8 @@ import {
   type MutationDepth,
 } from "@/lib/botConfigDraft";
 import { helpFor } from "@/lib/helpTexts";
+import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
+import { distressPanelClass, realBadgeClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 interface BotConfigFormProps {
@@ -111,11 +113,13 @@ export function BotConfigForm({
                   "rounded-lg border px-3 py-2.5 text-sm font-semibold tracking-wider uppercase transition-all",
                   primaryMode === mode
                     ? mode === "real"
-                      ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
+                      ? cn(realBadgeClass(), "px-3 py-2.5")
                       : mode === "paper"
                         ? "border-violet-400/50 bg-violet-500/10 text-violet-200"
                         : "border-cyan-400/50 bg-cyan-400/10 text-cyan-200"
-                    : "border-white/10 bg-black/20 text-muted-foreground hover:border-white/20",
+                    : luminaSurfaceMutedClass(
+                        "border border-white/10 text-muted-foreground hover:border-white/20",
+                      ),
                 )}
               >
                 {mode}
@@ -240,7 +244,7 @@ export function BotConfigForm({
                     "rounded-lg border px-3 py-2 text-left transition-colors",
                     active
                       ? "border-violet-400/40 bg-violet-500/10"
-                      : "border-white/10 bg-black/20 hover:border-white/20",
+                      : luminaSurfaceMutedClass("border border-white/10 hover:border-white/20"),
                     disabled && "cursor-not-allowed opacity-40",
                   )}
                 >

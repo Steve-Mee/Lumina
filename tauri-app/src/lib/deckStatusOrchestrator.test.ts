@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { resolveDeckStatus } from "@/lib/deckStatusOrchestrator";
 
 describe("deckStatusOrchestrator", () => {
-  it("suppresses banner when backend is down (blocking overlay owns it)", () => {
+  it("returns blocking backend and suppresses toast when backend is down", () => {
     const resolution = resolveDeckStatus({
       backendDown: true,
       birthActive: false,
@@ -14,11 +14,11 @@ describe("deckStatusOrchestrator", () => {
       syncError: false,
     });
     expect(resolution.blocking).toBe("backend");
-    expect(resolution.banner).toBeNull();
     expect(resolution.railChip).toBeNull();
+    expect(resolution.suppressToast).toBe(true);
   });
 
-  it("suppresses banner when welcome overlay is active", () => {
+  it("returns blocking welcome when welcome overlay is active", () => {
     const resolution = resolveDeckStatus({
       backendDown: false,
       birthActive: false,
@@ -29,7 +29,7 @@ describe("deckStatusOrchestrator", () => {
       syncError: false,
     });
     expect(resolution.blocking).toBe("welcome");
-    expect(resolution.banner).toBeNull();
+    expect(resolution.railChip).toBeNull();
   });
 
   it("shows recovery rail chip when backend recovers", () => {
@@ -44,9 +44,10 @@ describe("deckStatusOrchestrator", () => {
     });
     expect(resolution.blocking).toBeNull();
     expect(resolution.railChip).toBe("recovery");
+    expect(resolution.suppressToast).toBe(true);
   });
 
-  it("shows sync rail chip when mode sync pending", () => {
+  it("does not expose sync rail chip when mode sync pending", () => {
     const resolution = resolveDeckStatus({
       backendDown: false,
       birthActive: false,
@@ -56,7 +57,21 @@ describe("deckStatusOrchestrator", () => {
       syncPending: true,
       syncError: false,
     });
-    expect(resolution.railChip).toBe("sync");
+    expect(resolution.railChip).toBeNull();
     expect(resolution.suppressToast).toBe(true);
+  });
+
+  it("allows sync error toast when sync is not pending", () => {
+    const resolution = resolveDeckStatus({
+      backendDown: false,
+      birthActive: false,
+      fallbackActive: false,
+      welcomeVisible: false,
+      backendRecovered: false,
+      syncPending: false,
+      syncError: true,
+    });
+    expect(resolution.railChip).toBeNull();
+    expect(resolution.suppressToast).toBe(false);
   });
 });

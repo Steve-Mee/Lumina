@@ -7,6 +7,7 @@ import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { transitionOrNone } from "@/lib/motionPresets";
 import {
+  deckOverlayScrimClass,
   realOverlayBodyClass,
   realOverlayIconClass,
   realOverlayMetaClass,
@@ -78,9 +79,7 @@ export function RealSafeModeOverlay() {
       initial={reducedMotion ? false : { opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={transitionOrNone(reducedMotion, modeMotion)}
-      className={cn(
-        "real-safe-mode-overlay fixed inset-0 z-[100] flex items-center justify-center bg-black/85 p-6 backdrop-blur-md",
-      )}
+      className={cn("real-safe-mode-overlay", deckOverlayScrimClass("safe"))}
     >
       <div className={cn("w-full max-w-lg rounded-xl p-6", realOverlayPanelClass())}>
         <div className="flex items-start gap-4">

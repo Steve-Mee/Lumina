@@ -34,11 +34,29 @@ describe("cockpit.css orphan selectors", () => {
     expect(cockpitCss).not.toContain(".status-warn-banner");
   });
 
-  it("aligns pulseLanguage animation class with CSS or removes pulse-scan-sim", () => {
-    const usesLegacy = pulseLanguage.includes("pulse-scan-sim");
-    const cssDefinesLegacy = cockpitCss.includes(".pulse-scan-sim");
-    expect(usesLegacy).toBe(cssDefinesLegacy);
-    expect(pulseLanguage).toContain("presence-pulse-sim");
+  it("aligns pulseLanguage with CSS presence dot selectors", () => {
+    expect(pulseLanguage).toContain("presenceDotClass");
+    expect(pulseLanguage).toContain("livingCoreHaloAnimationClass");
+    expect(pulseLanguage).not.toContain("presenceDotAnimationClass");
+    expect(pulseLanguage).not.toContain("immersiveHaloClass");
     expect(cockpitCss).toContain("presence-pulse-sim");
+    expect(cockpitCss).toContain("presence-breathe-real");
+  });
+
+  it("defines birth wizard styles in birthWizard.css not birthPhase monitor sheet", () => {
+    const birthPhaseCss = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../styles/birthPhase.css"),
+      "utf8",
+    );
+    const birthWizardCss = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../styles/birthWizard.css"),
+      "utf8",
+    );
+    expect(birthWizardCss).toContain(".birth-launch-btn");
+    expect(birthPhaseCss).not.toContain(".birth-launch-btn");
+    expect(birthPhaseCss).toContain(".birth-phase-pulse");
+    expect(birthPhaseCss).toContain(".birth-phase-helix-stage");
+    expect(birthPhaseCss).toContain("overflow-x: hidden");
+    expect(birthPhaseCss).toContain(".birth-milestone--drawer");
   });
 });

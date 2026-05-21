@@ -2,6 +2,9 @@ import { motion } from "framer-motion";
 
 import { OnboardingBrand } from "@/components/onboarding/OnboardingShell";
 import { Button } from "@/components/ui/button";
+import { useOnboardingModeMotion } from "@/hooks/useOnboardingModeMotion";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { transitionOrNone } from "@/lib/motionPresets";
 
 import type { ReadinessRow } from "@/lib/onboardingSteps";
 
@@ -12,15 +15,21 @@ interface WelcomeStepProps {
 }
 
 export function WelcomeStep({ onContinue, shortPath, readiness = [] }: WelcomeStepProps) {
+  const reducedMotion = usePrefersReducedMotion();
+  const modeMotion = useOnboardingModeMotion();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: shortPath ? 0.2 : 0.5 }}
+      transition={transitionOrNone(
+        reducedMotion,
+        shortPath ? { ...modeMotion, duration: 0.2 } : modeMotion,
+      )}
       className="flex flex-col items-center gap-10 px-6 py-12"
     >
       <OnboardingBrand />
-      <div className="relative lumina-glass lumina-glass--overlay max-w-lg p-6 text-center">
+      <div className="welcome-card--organism relative lumina-glass lumina-glass--overlay max-w-lg p-6 text-center">
         <div className="t1-vignette pointer-events-none absolute inset-0 rounded-[inherit]" aria-hidden />
         <p className="relative text-sm leading-relaxed text-muted-foreground">
           {shortPath

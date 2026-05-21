@@ -57,6 +57,20 @@ export function useDeckStatusRail(): DeckStatusRailState {
   return { railChip };
 }
 
+export function useDeckStatusSyncToast(): boolean {
+  const modeSyncStatus = useCoreStore(selectModeSyncStatus);
+  const resolution = resolveDeckStatus({
+    backendDown: false,
+    birthActive: false,
+    fallbackActive: false,
+    welcomeVisible: false,
+    backendRecovered: false,
+    syncPending: modeSyncStatus === "pending",
+    syncError: modeSyncStatus === "error",
+  });
+  return resolution.suppressToast;
+}
+
 export function resolveDeckBlockingStatus(
   input: Pick<
     DeckStatusInput,

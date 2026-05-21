@@ -1,10 +1,12 @@
 import { create } from "zustand";
+import { toast } from "sonner";
 
 import type { OnboardingPayload, OnboardingStepId } from "@/lib/onboardingSteps";
 import type { MutationDepth, OperationsMode } from "@/lib/botConfigDraft";
 import { hydrateBotConfigDraftFromPayload } from "@/lib/botConfigDraft";
 import {
   fetchOnboardingStatus,
+  isBirthStartSuccessful,
   postConfigure,
   postCredentials,
   startBirth,
@@ -59,12 +61,13 @@ export type AppPhase = "loading" | "wizard" | "birth" | "cockpit";
 function resolveAppPhase(
   payload: OnboardingPayload,
   priorPhase: AppPhase,
+  birthPhaseCommitted: boolean,
 ): AppPhase {
   const birthRunning = payload.birth.status === "running";
   const birthReady =
     payload.birth.artifacts_ok && payload.birth.status === "completed";
 
-  if (priorPhase === "birth") return "birth";
+  if (priorPhase === "birth" && birthPhaseCommitted) return "birth";
   if (birthRunning) return "birth";
   if (
     payload.skip_wizard ||
@@ -83,6 +86,7 @@ interface OnboardingState {
   draft: OnboardingDraft;
   error: string | null;
   activating: boolean;
+  birthPhaseCommitted: boolean;
   smartSetupRunning: boolean;
   refresh: () => Promise<void>;
   enterCockpit: () => void;
@@ -95,7 +99,7 @@ interface OnboardingState {
     pull_extra_models?: boolean;
   }) => Promise<void>;
   saveCredentials: () => Promise<boolean>;
-  saveConfiguration: () => Promise<boolean>;
+  saveConfiguration: (options?: { skipRefresh?: boolean }) => Promise<boolean>;
   activateBirth: () => Promise<boolean>;
   hydrateDraftFromPayload: (payload: OnboardingPayload) => void;
   importCredentialsFromEnv: () => Promise<boolean>;
@@ -143,9 +147,10 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   draft: defaultDraft(),
   error: null,
   activating: false,
+  birthPhaseCommitted: false,
   smartSetupRunning: false,
 
-  enterCockpit: () => set({ phase: "cockpit" }),
+  enterCockpit: () => set({ phase: "cockpit", birthPhaseCommitted: false }),
 
   setPhase: (phase) => set({ phase }),
 
@@ -158,7 +163,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       }
     }
     void fetchAndHydrateDeckApiKey();
-    set({ phase: "cockpit" });
+    set({ phase: "cockpit", birthPhaseCommitted: false });
   },
 
   setStepIndex: (index) => set({ currentStepIndex: index }),
@@ -234,12 +239,18 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       get().hydrateDraftFromPayload(payload);
       void get().importCredentialsFromEnv();
       const priorPhase = get().phase;
+      const activating = get().activating;
+      const preservedError = get().error;
       set({
         payload,
-        error: null,
+        error: activating ? preservedError : null,
         smartSetupRunning: payload.smart_setup_running,
         currentStepIndex: priorPhase === "loading" ? 0 : get().currentStepIndex,
-        phase: resolveAppPhase(payload, priorPhase),
+        phase: activating
+          ? priorPhase === "loading"
+            ? "wizard"
+            : priorPhase
+          : resolveAppPhase(payload, priorPhase, get().birthPhaseCommitted),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load onboarding status";
@@ -287,7 +298,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     }
   },
 
-  saveConfiguration: async () => {
+  saveConfiguration: async (options?: { skipRefresh?: boolean }) => {
     const { draft } = get();
     const body: ConfigurePayload = {
       mode: draft.mode,
@@ -303,8 +314,24 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     };
     try {
       const result = await postConfigure(body);
+      if (!result.success) {
+        const failures = result.steps.filter((step) => step.success === false);
+        const message =
+          failures[0]?.message?.trim() ||
+          failures[0]?.step?.trim() ||
+          "Configuration could not be saved";
+        set({ error: message });
+        return false;
+      }
+      if (options?.skipRefresh) {
+        if (result.onboarding) {
+          get().hydrateDraftFromPayload(result.onboarding);
+          set({ payload: result.onboarding });
+        }
+        return true;
+      }
       await get().refresh();
-      return result.success;
+      return true;
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "Configure failed" });
       return false;
@@ -312,25 +339,62 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   },
 
   activateBirth: async () => {
-    set({ activating: true, error: null });
+    if (get().activating) {
+      return false;
+    }
+    set({ activating: true, error: null, birthPhaseCommitted: true });
     try {
-      const { draft, payload } = get();
-      if (!payload?.setup_complete) {
-        const ok = await get().saveConfiguration();
-        if (!ok) {
-          set({ activating: false });
-          return false;
-        }
+      const { draft } = get();
+      const configured = await get().saveConfiguration({ skipRefresh: true });
+      if (!configured) {
+        const message =
+          get().error?.trim() || "Could not save genesis settings before birth.";
+        set({ activating: false, birthPhaseCommitted: false, error: message });
+        toast.error(message);
+        return false;
       }
+
       useBirthStore.getState().setTargetTrades(draft.training.training_trades);
-      await startBirth(draft.training.training_trades);
-      set({ phase: "birth", activating: false });
+      const result = await startBirth(draft.training.training_trades);
+
+      if (result.status === "already_completed") {
+        const message = result.message?.trim() || "Birth phase already completed.";
+        const artifactsOk = get().payload?.birth.artifacts_ok ?? false;
+        if (artifactsOk) {
+          toast.info(message);
+          get().completeBirthTransition();
+          set({ activating: false });
+          return true;
+        }
+        toast.info(message);
+        set({ phase: "birth", activating: false, birthPhaseCommitted: true });
+        return true;
+      }
+
+      if (!isBirthStartSuccessful(result.status)) {
+        const message =
+          result.message?.trim() ||
+          `Birth activation blocked (${result.status.replaceAll("_", " ")})`;
+        set({ activating: false, birthPhaseCommitted: false, error: message });
+        toast.error(message);
+        return false;
+      }
+
+      if (result.status === "already_running") {
+        toast.info(result.message ?? "Birth phase is already running.");
+      }
+
+      await get().refresh();
+      set({ phase: "birth", activating: false, birthPhaseCommitted: true });
       return true;
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Birth activation failed";
       set({
         activating: false,
-        error: err instanceof Error ? err.message : "Birth activation failed",
+        birthPhaseCommitted: false,
+        error: message,
       });
+      toast.error(message);
       return false;
     }
   },

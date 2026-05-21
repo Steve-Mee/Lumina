@@ -1,5 +1,7 @@
 import * as THREE from "three";
 
+import type { VisualQuality } from "@/lib/visualQualityPresets";
+
 export const BIRTH_HELIX_HEIGHT = 3.2;
 export const BIRTH_HELIX_TURNS = 2.5;
 export const BIRTH_RUNG_COUNT = 20;
@@ -36,17 +38,26 @@ function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }
 
+const BIRTH_PARTICLE_CEILING: Record<VisualQuality, number> = {
+  low: 0,
+  medium: 120,
+  high: 200,
+};
+
 /** Particle density scales with training volume (50–120 base before quality scale). */
 export function birthParticleCount(
   particleScale = 1,
   trainingTrades?: number,
+  visualQuality: VisualQuality = "medium",
 ): number {
   const tradeFactor =
     trainingTrades != null
       ? clamp01((trainingTrades - 5_000) / (500_000 - 5_000))
       : 0.5;
   const base = 50 + Math.round(tradeFactor * 70);
-  return Math.max(40, Math.round(base * particleScale));
+  const raw = Math.max(40, Math.round(base * particleScale));
+  const ceiling = BIRTH_PARTICLE_CEILING[visualQuality] ?? BIRTH_PARTICLE_CEILING.medium;
+  return ceiling > 0 ? Math.min(raw, ceiling) : raw;
 }
 
 /** Emissive boost from training volume (0.35–1.0). */

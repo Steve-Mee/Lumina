@@ -1,3 +1,9 @@
+import {
+  MODE_SIM_ACCENT,
+  MODE_SIM_ACCENT_SOFT,
+  MODE_SIM_SECONDARY,
+} from "@/lib/designTokens";
+
 export interface BirthHelixPalette {
   primary: string;
   secondary: string;
@@ -8,24 +14,24 @@ export interface BirthHelixPalette {
 export function birthHelixPalette(activating = false, primed = false): BirthHelixPalette {
   if (activating) {
     return {
-      primary: "#ffb347",
-      secondary: "#ff6b6b",
-      accent: "#ffd93d",
+      primary: MODE_SIM_ACCENT,
+      secondary: "#7c3aed",
+      accent: MODE_SIM_ACCENT_SOFT,
       pulseSpeed: 3.2,
     };
   }
   if (primed) {
     return {
-      primary: "#00f0ff",
+      primary: MODE_SIM_ACCENT,
       secondary: "#c084fc",
-      accent: "#a5f3fc",
+      accent: MODE_SIM_ACCENT_SOFT,
       pulseSpeed: 1.85,
     };
   }
   return {
-    primary: "#00f0ff",
-    secondary: "#a78bfa",
-    accent: "#67f7ff",
+    primary: MODE_SIM_ACCENT,
+    secondary: MODE_SIM_SECONDARY,
+    accent: MODE_SIM_ACCENT_SOFT,
     pulseSpeed: 1.1,
   };
 }

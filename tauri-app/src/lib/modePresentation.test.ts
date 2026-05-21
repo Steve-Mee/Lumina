@@ -17,7 +17,10 @@ import {
   modeSwitchTooltip,
   reasoningSpineTitleClass,
   distressPanelClass,
+  deckOverlayScrimClass,
+  modeAccentBorderClass,
   pendingHighlightClass,
+  utilityPanelClass,
   realDialogBodyClass,
   realDialogTitleClass,
   realOverlayClass,
@@ -112,5 +115,13 @@ describe("modePresentation", () => {
     expect(drawerBadgeClass("warn", "SIM")).toContain("amber");
     expect(modeSwitchTooltip("REAL")).toBe("Capital Protection");
     expect(modeSwitchTooltip("SIM")).toBe("Hyper Evolution");
+  });
+
+  it("overlay and utility helpers use canonical glass grammar", () => {
+    expect(deckOverlayScrimClass()).toContain("lumina-glass--overlay");
+    expect(deckOverlayScrimClass("safe")).toContain("z-[100]");
+    expect(utilityPanelClass("REAL")).toContain("lumina-surface-muted");
+    expect(modeAccentBorderClass("SIM")).toContain("cyan");
+    expect(modeAccentBorderClass("REAL")).toContain("real-chrome-accent");
   });
 });

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 
@@ -5,14 +6,42 @@ interface PanelLoaderProps {
   label?: string;
   className?: string;
   rows?: number;
+  variant?: "bars" | "pulse";
 }
 
 export function PanelLoader({
   label = "Loading…",
   className,
   rows = 3,
+  variant = "bars",
 }: PanelLoaderProps) {
   const reducedMotion = usePrefersReducedMotion();
+
+  if (variant === "pulse") {
+    return (
+      <div
+        className={cn(
+          "flex h-full min-h-[120px] flex-col items-center justify-center gap-3 p-4",
+          className,
+        )}
+        role="status"
+        aria-live="polite"
+        aria-label={label}
+      >
+        <span
+          className="panel-loader__pulse"
+          aria-hidden
+          style={{ "--hud-pulse-fill": 0.55 } as CSSProperties}
+        >
+          <span className="panel-loader__pulse-ring" />
+          <span className="panel-loader__pulse-core" />
+        </span>
+        <p className="font-mono text-[10px] tracking-wide text-muted-foreground/70">
+          {label}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div

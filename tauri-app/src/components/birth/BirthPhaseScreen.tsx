@@ -1,12 +1,9 @@
-import { lazy, Suspense, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { CheckCircle2 } from "lucide-react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
 import { toast } from "sonner";
 
-import { BirthCompletionSummary } from "@/components/birth/BirthCompletionSummary";
 import { BirthDiagnosticsDrawer } from "@/components/birth/BirthDiagnosticsDrawer";
-import { BirthMetricsStrip } from "@/components/birth/BirthMetricsStrip";
-import { BirthMilestoneTrack } from "@/components/birth/BirthMilestoneTrack";
+import { BirthPhasePulse } from "@/components/birth/BirthPhasePulse";
 import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
 import { BirthRecoveryPanel } from "@/components/birth/BirthRecoveryPanel";
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
@@ -14,12 +11,18 @@ import { ModeTransitionVeil } from "@/components/cockpit/ModeTransitionVeil";
 import { Button } from "@/components/ui/button";
 import { useBirthPhaseMonitor } from "@/hooks/useBirthPhaseMonitor";
 import { useDeckTransition } from "@/hooks/useDeckTransition";
-import { useModeMotion } from "@/hooks/useModeMotion";
+import { useOnboardingModeMotion } from "@/hooks/useOnboardingModeMotion";
 import { usePPOEvolution } from "@/hooks/usePPOEvolution";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { detectBirthRecoveryKind } from "@/lib/birthRecoveryModel";
+import { resolveBirthPhaseCopy } from "@/lib/birthPhaseModel";
 import { transitionOrNone, springBirthLuxury } from "@/lib/motionPresets";
-import { modeTitleClass, modeValueClass, distressPanelClass, warnOverlayBodyClass, warnOverlayPanelClass, warnOverlayTitleClass } from "@/lib/modePresentation";
+import {
+  distressPanelClass,
+  warnOverlayBodyClass,
+  warnOverlayPanelClass,
+  warnOverlayTitleClass,
+} from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 import {
   clearBirthForExtraTraining,
@@ -49,13 +52,16 @@ export function BirthPhaseScreen() {
   const setPhase = useOnboardingStore((s) => s.setPhase);
   const completeBirthTransition = useOnboardingStore((s) => s.completeBirthTransition);
   const reducedMotion = usePrefersReducedMotion();
-  const modeMotion = useModeMotion();
+  const modeMotion = useOnboardingModeMotion();
   const awakening = uiPhase === "finale";
   const failed = uiPhase === "error";
   const running = uiPhase === "running";
   const { logs, connected } = usePPOEvolution(!failed && !awakening);
   const recoveryKind = detectBirthRecoveryKind(status);
   const [recoveryDismissed, setRecoveryDismissed] = useState(false);
+  const [realPreviewActive, setRealPreviewActive] = useState(false);
+  const [milestoneVeilActive, setMilestoneVeilActive] = useState(false);
+  const veiledMilestonesRef = useRef<Set<string>>(new Set());
   const { transition, startTransition, completeTransition } = useDeckTransition();
   const showRecovery = Boolean(recoveryKind) && !recoveryDismissed && !failed && !awakening;
   const trainingDraft = useOnboardingStore((s) => s.draft.training);
@@ -70,8 +76,41 @@ export function BirthPhaseScreen() {
 
   const helixActivating = running || awakening;
   const birthMotion = { ...modeMotion, ...springBirthLuxury };
+  const phaseSubtitle = resolveBirthPhaseCopy(
+    failed ? "error" : awakening ? "finale" : running ? "running" : "idle",
+    milestones,
+  );
+
+  useEffect(() => {
+    if (!running || failed || awakening) {
+      return;
+    }
+    for (const milestone of milestones) {
+      if (
+        (milestone.id === "refinement" ||
+          milestone.id === "awakening" ||
+          milestone.id === "strategies") &&
+        milestone.state === "complete" &&
+        !veiledMilestonesRef.current.has(milestone.id)
+      ) {
+        veiledMilestonesRef.current.add(milestone.id);
+        setMilestoneVeilActive(true);
+        break;
+      }
+    }
+  }, [milestones, running, failed, awakening]);
+
+  const handleStopBirth = () =>
+    void stopBirth()
+      .then(() => toast.success("Birth phase stopped"))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Stop failed"));
 
   const enterCommandDeck = () => {
+    setRealPreviewActive(true);
+  };
+
+  const onRealPreviewComplete = () => {
+    setRealPreviewActive(false);
     startTransition({
       kind: "birthEntry",
       targetMode: "SIM",
@@ -89,72 +128,122 @@ export function BirthPhaseScreen() {
   return (
     <OnboardingShell className="birth-phase-screen birth-phase-screen--cinematic">
       <motion.div
-        className="birth-phase-cinematic mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-8 md:py-10"
+        className="birth-phase-cinematic mx-auto flex h-dvh min-h-0 w-full max-w-none flex-col overflow-hidden"
         animate={{ opacity: transition.active ? 0.35 : 1 }}
         transition={transitionOrNone(reducedMotion, birthMotion)}
       >
         <motion.div
-          className="birth-phase-hero relative mb-4 min-h-[300px] flex-1 md:min-h-[360px]"
-          animate={{ scale: awakening ? 1.05 : 1 }}
+          className={cn(
+            "birth-phase-hero relative flex min-h-0 flex-1 flex-col overflow-hidden",
+            awakening && "birth-finale-lock",
+          )}
+          animate={{ scale: awakening ? 1.03 : 1 }}
           transition={transitionOrNone(reducedMotion, modeMotion)}
         >
-          <Suspense
-            fallback={
-              <div className="flex h-full min-h-[300px] items-center justify-center">
-                <BirthOrganismVisual className="size-48 opacity-80" />
-              </div>
-            }
-          >
-            <BirthHelixVisual
-              activating={helixActivating}
-              trainingTrades={targetTrades}
-              className="min-h-[300px] md:min-h-[360px]"
-            />
-          </Suspense>
-          <div className="birth-phase-vignette pointer-events-none" aria-hidden />
+          <div className="birth-phase-helix-stage flex min-h-0 flex-1 items-center justify-center">
+            <Suspense
+              fallback={
+                <div className="flex h-full min-h-[50dvh] w-full items-center justify-center">
+                  <BirthOrganismVisual className="size-48 opacity-80" />
+                </div>
+              }
+            >
+              <BirthHelixVisual
+                activating={helixActivating}
+                ceremonyMode
+                trainingTrades={targetTrades}
+                className="h-full min-h-[50dvh] w-full md:min-h-[60dvh]"
+              />
+            </Suspense>
+          </div>
 
-          <div className="birth-phase-hud lumina-glass lumina-glass--hud pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 p-4 md:p-6">
+          <div
+            className={cn(
+              "birth-phase-hud pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 px-4 pb-16 pt-4 md:px-6 md:pb-20 md:pt-6",
+              awakening && "birth-phase-hud--finale",
+            )}
+          >
             <div className="birth-phase-hud-band pointer-events-auto text-center">
               <motion.h2
                 className="birth-phase-headline text-2xl font-semibold tracking-wide md:text-4xl"
-                key={headline}
+                key={awakening ? "finale-headline" : headline}
                 initial={reducedMotion ? false : { opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.35 }}
+                transition={transitionOrNone(reducedMotion, birthMotion)}
               >
-                {headline}
+                {awakening ? "Birth complete" : headline}
               </motion.h2>
               <p className="birth-phase-subtitle mt-1 text-sm">
                 {awakening
-                  ? "Birth phase complete — continue training or enter the command deck."
-                  : "Neural lattice forming — DNA, strategies, and policy in parallel."}
+                  ? "Your organism is trained and ready for the command deck."
+                  : phaseSubtitle}
               </p>
+              {awakening ? (
+                <p className="birth-phase-finale-note mt-2 text-sm">
+                  Capital Protection mode awaits in the command deck.
+                </p>
+              ) : null}
             </div>
-            {!failed && !awakening ? (
-              <div className="birth-phase-hud-band pointer-events-auto">
-                {running && status?.progress ? (
-                  <BirthMetricsStrip
-                    progress={status?.progress}
-                    elapsedSeconds={status?.elapsed_seconds}
-                    message={status?.progress?.message ?? status?.message}
-                  />
-                ) : (
-                  <BirthMilestoneTrack
-                    milestones={milestones}
-                    className="birth-phase-milestones max-sm:scale-90 max-sm:origin-bottom"
-                  />
-                )}
+
+            {running && !failed && !awakening ? (
+              <div className="birth-phase-hud-band pointer-events-none flex justify-center">
+                <BirthPhasePulse
+                  running={running}
+                  milestones={milestones}
+                  progress={status?.progress}
+                />
+              </div>
+            ) : null}
+
+            {awakening ? (
+              <div className="birth-phase-hud-band birth-phase-hud-cta pointer-events-auto flex flex-wrap items-center justify-center gap-3 pt-2">
+                <Button
+                  type="button"
+                  className="onboarding-cta min-w-[200px] py-5 text-base"
+                  autoFocus
+                  onClick={enterCommandDeck}
+                >
+                  Enter command deck
+                </Button>
+                <Button
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="font-mono text-[10px] tracking-wide uppercase text-muted-foreground"
+                  onClick={() =>
+                    void clearBirthForExtraTraining()
+                      .then(() => startBirthSessionContinue(targetTrades))
+                      .then(() => {
+                        useBirthStore.setState({ uiPhase: "running" });
+                        toast.success("Extra training started from checkpoint");
+                      })
+                      .catch((e) =>
+                        toast.error(e instanceof Error ? e.message : "Extra training failed"),
+                      )
+                  }
+                >
+                  Extra training
+                </Button>
               </div>
             ) : null}
           </div>
 
-          {!failed && !awakening ? (
-            <div className="absolute top-3 right-3 z-20">
+          {!failed ? (
+            <div className="birth-phase-ops pointer-events-none absolute inset-x-0 bottom-4 z-20 flex justify-center md:bottom-5">
               <BirthDiagnosticsDrawer
                 running={running}
+                finale={awakening}
+                defaultOpen={awakening}
+                milestones={milestones}
+                progress={status?.progress}
+                elapsedSeconds={status?.elapsed_seconds}
+                progressMessage={status?.progress?.message ?? status?.message}
+                birthStatus={status}
                 settingsInitial={birthSettingsInitial}
                 trainingLogs={logs}
                 trainingConnected={connected}
+                showStop={running && !awakening}
+                onStop={handleStopBirth}
               />
             </div>
           ) : null}
@@ -164,117 +253,18 @@ export function BirthPhaseScreen() {
           <BirthRecoveryPanel
             status={status}
             targetTrades={targetTrades}
-            className="mb-4"
+            className="relative z-30 mx-4 mb-2 shrink-0"
             onDismiss={() => setRecoveryDismissed(true)}
           />
         ) : null}
 
-        {!failed ? (
-          <AnimatePresence mode="wait">
-            {!awakening ? (
-              <motion.div
-                key="birth-ops"
-                className="birth-phase-ops flex flex-col items-center gap-3"
-                initial={false}
-                exit={reducedMotion ? undefined : { opacity: 0, y: -8 }}
-                transition={transitionOrNone(reducedMotion, modeMotion)}
-              >
-                <Button
-                  type="button"
-                  variant="command-ghost"
-                  size="sm"
-                  className="font-mono text-[10px] tracking-wide uppercase"
-                  onClick={() =>
-                    void stopBirth()
-                      .then(() => toast.success("Birth phase stopped"))
-                      .catch((e) =>
-                        toast.error(e instanceof Error ? e.message : "Stop failed"),
-                      )
-                  }
-                >
-                  Stop birth phase
-                </Button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="birth-finale"
-                className="birth-finale-hero overflow-hidden rounded-xl border border-cyan-400/25 lumina-glass lumina-glass--overlay"
-                initial={reducedMotion ? false : { opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={transitionOrNone(reducedMotion, { ...birthMotion, delay: 0.15 })}
-              >
-                <div className="border-b border-cyan-400/15 bg-cyan-500/8 px-6 py-5 text-center">
-                  <CheckCircle2 className="mx-auto mb-3 size-12 text-cyan-300" />
-                  <h3 className={cn("text-lg font-semibold", modeTitleClass("SIM"))}>Birth complete</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Your organism is trained and ready for the command deck.
-                  </p>
-                  <p className="mt-2 text-sm text-[#c9b896]/85">
-                    Capital Protection mode awaits in the command deck.
-                  </p>
-                </div>
-                <div className="px-6 pt-4">
-                  <BirthCompletionSummary status={status} />
-                </div>
-                <div className="grid gap-3 px-6 py-4 text-center sm:grid-cols-3">
-                  <div className="rounded-lg lumina-glass lumina-glass--panel px-3 py-2">
-                    <p className="font-mono text-[9px] uppercase text-muted-foreground">Progress</p>
-                    <p className={cn("mt-1 font-mono text-sm", modeValueClass("SIM"))}>
-                      {status?.progress?.progress_pct != null
-                        ? `${Math.round(status.progress.progress_pct)}%`
-                        : status?.progress_pct != null
-                          ? `${Math.round(status.progress_pct)}%`
-                          : "100%"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg lumina-glass lumina-glass--panel px-3 py-2">
-                    <p className="font-mono text-[9px] uppercase text-muted-foreground">Elapsed</p>
-                    <p className={cn("mt-1 font-mono text-sm", modeValueClass("SIM"))}>
-                      {status?.elapsed_seconds != null
-                        ? `${Math.floor(status.elapsed_seconds / 60)}m ${status.elapsed_seconds % 60}s`
-                        : "—"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg lumina-glass lumina-glass--panel px-3 py-2">
-                    <p className="font-mono text-[9px] uppercase text-muted-foreground">Milestones</p>
-                    <p className={cn("mt-1 font-mono text-sm", modeValueClass("SIM"))}>
-                      {milestones.filter((m) => m.state === "complete").length}/{milestones.length}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap justify-center gap-3 px-6 pb-6">
-                  <Button
-                    type="button"
-                    className="onboarding-cta min-w-[200px] py-5 text-base"
-                    autoFocus
-                    onClick={enterCommandDeck}
-                  >
-                    Enter command deck
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      void clearBirthForExtraTraining()
-                        .then(() => startBirthSessionContinue(targetTrades))
-                        .then(() => {
-                          useBirthStore.setState({ uiPhase: "running" });
-                          toast.success("Extra training started from checkpoint");
-                        })
-                        .catch((e) =>
-                          toast.error(e instanceof Error ? e.message : "Extra training failed"),
-                        )
-                    }
-                  >
-                    Extra training
-                  </Button>
-                </div>
-              </motion.div>
+        {failed ? (
+          <div
+            className={cn(
+              "birth-phase-error relative z-30 mx-4 mb-4 shrink-0 rounded-xl p-4 text-sm lumina-glass lumina-glass--overlay",
+              warnOverlayPanelClass(),
             )}
-          </AnimatePresence>
-        ) : (
-          <div className={cn("birth-phase-error rounded-xl p-4 text-sm lumina-glass lumina-glass--overlay", warnOverlayPanelClass())}>
+          >
             <p className={warnOverlayTitleClass()}>Birth interrupted</p>
             <p className={cn("mt-1", warnOverlayBodyClass())}>
               {status?.error ?? status?.message ?? pollError ?? "Training could not continue."}
@@ -296,15 +286,34 @@ export function BirthPhaseScreen() {
               </Button>
             </div>
           </div>
-        )}
+        ) : null}
 
         {pollError && !failed ? (
-          <p className={cn("mx-auto mt-4 max-w-md text-center text-xs", distressPanelClass("warn"))}>
+          <p
+            className={cn(
+              "relative z-30 mx-auto mb-3 max-w-md shrink-0 px-4 text-center text-xs",
+              distressPanelClass("warn"),
+            )}
+          >
             {pollError}
           </p>
         ) : null}
       </motion.div>
 
+      <ModeTransitionVeil
+        active={milestoneVeilActive}
+        targetMode="REAL"
+        durationSec={0.85}
+        scopeSelector=".onboarding-shell"
+        onComplete={() => setMilestoneVeilActive(false)}
+      />
+      <ModeTransitionVeil
+        active={realPreviewActive}
+        targetMode="REAL"
+        durationSec={1.2}
+        scopeSelector=".onboarding-shell"
+        onComplete={onRealPreviewComplete}
+      />
       <ModeTransitionVeil
         active={transition.active}
         targetMode={transition.targetMode}

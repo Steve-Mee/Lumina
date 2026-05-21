@@ -12,7 +12,7 @@ import {
   resolveIntelligenceHealth,
   TIER_VISUAL,
 } from "@/lib/intelligenceDisplay";
-import { modeLabelClass, modeTitleClass } from "@/lib/modePresentation";
+import { modeLabelClass, modeTitleClass, distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 
@@ -80,9 +80,11 @@ export function AdaptiveIntelligenceStatusCard({ className }: AdaptiveIntelligen
       </div>
 
       {!apiKeyConfigured ? (
-        <p className="rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200/90">
-          Monitoring API key not configured. Complete setup credentials to enable history and
-          metrics.
+        <p className={cn("px-3 py-2 text-xs", distressPanelClass("warn"))}>
+          <span className={warnOverlayBodyClass()}>
+            Monitoring API key not configured. Complete setup credentials to enable history and
+            metrics.
+          </span>
         </p>
       ) : null}
 
@@ -129,8 +131,10 @@ export function AdaptiveIntelligenceStatusCard({ className }: AdaptiveIntelligen
           </div>
 
           {status.degraded_state ? (
-            <p className="rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-xs text-amber-200/90">
-              Degraded: {status.status_reason || "Unknown reason"}
+            <p className={cn("px-3 py-2 text-xs", distressPanelClass("warn"))}>
+              <span className={warnOverlayBodyClass()}>
+                Degraded: {status.status_reason || "Unknown reason"}
+              </span>
             </p>
           ) : null}
 

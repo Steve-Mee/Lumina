@@ -78,7 +78,11 @@ export async function postCredentials(credentials: ConfigurePayload["credentials
   });
 }
 
-export async function postConfigure(body: ConfigurePayload): Promise<{ success: boolean; steps: unknown[] }> {
+export async function postConfigure(body: ConfigurePayload): Promise<{
+  success: boolean;
+  steps: Array<{ success?: boolean; message?: string; step?: string }>;
+  onboarding?: OnboardingPayload;
+}> {
   return apiFetch("/api/setup/configure", {
     method: "POST",
     body: JSON.stringify(body),
@@ -145,7 +149,19 @@ export async function fetchSmartSetupProgress(): Promise<{
   return apiFetch("/api/setup/smart-setup/progress");
 }
 
-export async function startBirth(targetTrades: number): Promise<Record<string, unknown>> {
+export type BirthStartStatus = "started" | "rejected" | "already_running" | "already_completed";
+
+export interface BirthStartResponse {
+  status: BirthStartStatus;
+  message?: string;
+  target_trades?: number;
+}
+
+export function isBirthStartSuccessful(status: BirthStartStatus): boolean {
+  return status === "started" || status === "already_running";
+}
+
+export async function startBirth(targetTrades: number): Promise<BirthStartResponse> {
   const base = resolveBackendBaseUrl();
   const params = new URLSearchParams({
     explicit_user_start: "true",
@@ -155,7 +171,7 @@ export async function startBirth(targetTrades: number): Promise<Record<string, u
   if (!response.ok) {
     throw new Error(await readHttpErrorDetail(response));
   }
-  return response.json();
+  return response.json() as Promise<BirthStartResponse>;
 }
 
 export type {

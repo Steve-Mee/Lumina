@@ -7,16 +7,25 @@ import { cn } from "@/lib/utils";
 
 interface BirthMilestoneTrackProps {
   milestones: BirthMilestone[];
+  variant?: "default" | "drawer";
   className?: string;
 }
 
-export function BirthMilestoneTrack({ milestones, className }: BirthMilestoneTrackProps) {
+export function BirthMilestoneTrack({
+  milestones,
+  variant = "default",
+  className,
+}: BirthMilestoneTrackProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const drawer = variant === "drawer";
 
   return (
     <ol
       className={cn(
-        "birth-milestone-track flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-6",
+        "birth-milestone-track",
+        drawer
+          ? "flex flex-col gap-2"
+          : "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-6",
         className,
       )}
       aria-label="Birth milestones"
@@ -25,7 +34,8 @@ export function BirthMilestoneTrack({ milestones, className }: BirthMilestoneTra
         <motion.li
           key={milestone.id}
           className={cn(
-            "birth-milestone flex items-center gap-2 text-sm",
+            "birth-milestone flex items-center gap-2",
+            drawer ? "birth-milestone--drawer rounded-md px-2 py-1.5 text-xs" : "text-sm",
             milestone.state === "active" && "birth-milestone--active",
             milestone.state === "complete" && "birth-milestone--complete",
           )}
@@ -45,7 +55,8 @@ export function BirthMilestoneTrack({ milestones, className }: BirthMilestoneTra
           </span>
           <span
             className={cn(
-              "max-w-[11rem] leading-snug",
+              "leading-snug",
+              drawer ? "font-mono text-[10px] tracking-wide" : "max-w-[11rem] text-sm",
               milestone.state === "pending" && "text-muted-foreground",
               milestone.state === "active" && "text-foreground font-medium",
               milestone.state === "complete" && "text-emerald-200/90",

@@ -1,6 +1,7 @@
 import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceContext";
 import { formatModeLabel, formatTierLabel } from "@/lib/intelligenceDisplay";
-import { cn } from "@/lib/utils";
+import { distressPanelClass, modeValueClass, utilityListItemClass } from "@/lib/modePresentation";
+import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 
 interface AdaptiveIntelligenceRecentEventsProps {
   className?: string;
@@ -12,6 +13,7 @@ export function AdaptiveIntelligenceRecentEvents({
   maxRows = 8,
 }: AdaptiveIntelligenceRecentEventsProps) {
   const { history } = useAdaptiveIntelligenceContext();
+  const operatorMode = useCoreStore(selectCurrentMode);
   const recent = [...history].reverse().slice(0, maxRows);
 
   return (
@@ -33,13 +35,13 @@ export function AdaptiveIntelligenceRecentEvents({
             return (
               <li
                 key={`${event.timestamp ?? index}-${index}`}
-                className="rounded-md border border-white/8 bg-black/25 px-3 py-2"
+                className={utilityListItemClass(operatorMode)}
               >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-[10px] text-cyan-200/90">{tier}</span>
+                  <span className={cn("font-mono text-[10px]", modeValueClass(operatorMode))}>{tier}</span>
                   <span className="font-mono text-[10px] text-muted-foreground">{mode}</span>
                   {payload.degraded_state ? (
-                    <span className="rounded border border-amber-500/30 px-1.5 py-0.5 font-mono text-[9px] text-amber-200/90 uppercase">
+                    <span className={cn("px-1.5 py-0.5 font-mono text-[9px] uppercase", distressPanelClass("warn"))}>
                       Degraded
                     </span>
                   ) : null}

@@ -23,13 +23,6 @@ const TRANSPORT_LABEL: Record<ConnectionStatus, string> = {
   disconnected: "Offline",
 };
 
-const TRANSPORT_DOT: Record<ConnectionStatus, string> = {
-  connected: "bg-emerald-400/90 lumina-glow-edge",
-  connecting: "bg-amber-400/90 animate-pulse",
-  reconnecting: "bg-amber-400/90 animate-pulse",
-  disconnected: "bg-red-400/80",
-};
-
 export function deckTransportLabel(
   connectionStatus: ConnectionStatus,
   fallbackMode: boolean,
@@ -43,40 +36,21 @@ export function deckTransportLabel(
 export function deckTransportDotClass(
   connectionStatus: ConnectionStatus,
   fallbackMode: boolean,
+  mode: "SIM" | "REAL" = "SIM",
 ): string {
   if (fallbackMode) {
-    return "bg-amber-400/90 animate-pulse";
+    return mode === "REAL"
+      ? "bg-amber-400/80 animate-pulse"
+      : "bg-amber-400/90 animate-pulse";
   }
-  return TRANSPORT_DOT[connectionStatus];
-}
-
-export function deckSyncNote(
-  syncStatus: ModeSyncStatus,
-  error: string | null,
-): string | null {
-  if (syncStatus === "pending") {
-    return "· syncing…";
-  }
-  if (syncStatus === "error") {
-    return `· ${error ?? "sync failed"}`;
-  }
-  return null;
-}
-
-export function blockingOverlayPriority(
-  states: BlockingOverlayStates,
-): BlockingOverlayKind {
-  if (states.backendDown) {
-    return "backend";
-  }
-  if (states.birthActive) {
-    return "birth";
-  }
-  if (states.fallbackActive) {
-    return "fallback";
-  }
-  if (states.welcomeVisible) {
-    return "welcome";
-  }
-  return null;
+  const tinted = {
+    connected:
+      mode === "REAL"
+        ? "bg-[color-mix(in_srgb,var(--mode-real-accent)_85%,#34d399_15%)] lumina-glow-edge"
+        : "bg-emerald-400/90 lumina-glow-edge",
+    connecting: "bg-amber-400/90 animate-pulse",
+    reconnecting: "bg-amber-400/90 animate-pulse",
+    disconnected: "bg-red-400/80",
+  } as const;
+  return tinted[connectionStatus];
 }

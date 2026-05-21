@@ -34,6 +34,8 @@ state/lumina-tauri-signing.key.pub
 .env.*
 !.env.*.example
 !.env.example
+# Local operator overrides (machine-specific broker/models/hardware)
+config.yaml.local
 state/launcher_admin_password.json
 scripts/state/launcher_admin_password.json
 state/hardware_snapshot.json

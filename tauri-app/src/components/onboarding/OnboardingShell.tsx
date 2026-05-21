@@ -18,6 +18,9 @@ export function OnboardingShell({ children, className }: OnboardingShellProps) {
   const reducedMotion = usePrefersReducedMotion();
   const visualQuality = useVisualSettingsStore(selectVisualQuality);
   const clockFrozen = visualQuality === "low";
+  const hideDeckVignette = className?.includes("birth-phase-screen");
+  const formOnlyAmbient = className?.includes("onboarding-shell--form");
+  const birthAmbient = className?.includes("onboarding-shell--birth");
   useOrganismShellVars(shellRef, "SIM", reducedMotion, clockFrozen);
 
   return (
@@ -26,13 +29,22 @@ export function OnboardingShell({ children, className }: OnboardingShellProps) {
         ref={shellRef}
         data-mode="SIM"
         className={cn(
-          "onboarding-shell cockpit-shell lumina-glow-ambient relative flex h-full min-h-full flex-col overflow-hidden text-foreground",
+          "onboarding-shell cockpit-shell lumina-glow-ambient relative flex flex-col overflow-hidden text-foreground",
+          formOnlyAmbient ? "h-dvh max-h-dvh min-h-0" : "h-full min-h-full",
           className,
         )}
       >
-        <div className="cockpit-stars pointer-events-none absolute inset-0 opacity-50" />
-        <div className="cockpit-grid pointer-events-none absolute inset-0 opacity-30" />
-        <div className="deck-vignette pointer-events-none" aria-hidden />
+        {birthAmbient ? (
+          <div className="birth-activation-stars cockpit-stars pointer-events-none absolute inset-0" />
+        ) : formOnlyAmbient ? null : (
+          <>
+            <div className="cockpit-stars pointer-events-none absolute inset-0 opacity-50" />
+            <div className="cockpit-grid pointer-events-none absolute inset-0 opacity-30" />
+          </>
+        )}
+        {hideDeckVignette ? null : (
+          <div className="deck-vignette pointer-events-none" aria-hidden />
+        )}
         <div className="relative z-10 flex min-h-0 flex-1 flex-col">{children}</div>
       </div>
     </OrganismEnvelopeProvider>

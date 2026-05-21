@@ -49,5 +49,17 @@ Contract source for launcher parity with `lumina_launcher.py.old` and the **Neur
 | `decision_theater_real_palette` | — | `ReasoningSpine.tsx` + REAL CSS overrides in `cockpit.css` |
 | `birth_shell_envelope_parity` | — | `birthPhase.css` vignette + organism cycle on CSS fallback |
 | `backend_health_single_poller` | — | `backendHealthStore.ts` + `useBackendHealth.ts` |
+| `decision_stage_hero_cap_2` | — | `decisionTheaterLayout.ts` + `DecisionTheaterStage.tsx` (max 2 stage heroes) |
+| `sync_single_surface` | — | `deckStatusOrchestrator.ts` + `PresenceRail.tsx` (rail secondary only) |
+| `birth_diagnostics_off_hero` | — | `BirthPhaseScreen.tsx` ops block + tier doc rule 1 |
+| `distress_grammar_unified` | — | `distressPanelClass()` across Evolution/PPO/onboarding alerts |
+| `real_rim_glow_family` | — | REAL `hud-signal` rim/breathe CSS in `cockpit.css` |
+| `runtime_status_poll_singleton` | — | `useRuntimeStatusPoll.ts` shared 5s poll |
+| `glass_stack_budget_enforced` | — | `glassStackBudget.test.ts` + muted StatusBar/deck frames |
+| `decision_theater_de_dashboard` | — | `decisionTheaterLayout.ts` trade preview cap + mode action grammar |
+| `real_chrome_identity_pass` | — | `modePresentation.ts` helpers + `realChromeIdentity.test.ts` |
+| `three_scene_differentiation` | — | `helixPrimitives.tsx` + `threeSceneIdentity.test.ts` |
+| `birth_finale_organism_summary` | — | `BirthPhaseScreen.tsx` finale summary + REAL preview veil |
+| `distress_grammar_complete` | — | `distressGrammarSweep.test.ts` component-wide amber purge |
 
 Backend APIs added for Command Deck: `/api/runtime/pause-trading`, `/api/monitoring/diagnostics`, `/api/monitoring/workspace-snapshot`, `/api/monitoring/react-dashboard-status`, `/api/monitoring/admin-setup-snapshot`, `/api/birth/settings`, `/api/birth/adjust-max-days`, `/api/birth/logs-tail`.

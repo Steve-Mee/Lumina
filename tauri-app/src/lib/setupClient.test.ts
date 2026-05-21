@@ -1,6 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_LUMINA_API_KEY_LS_KEY } from "@/lib/monitoringClient";
+import { isBirthStartSuccessful } from "@/lib/setupClient";
+
+describe("isBirthStartSuccessful", () => {
+  it("accepts started and already_running", () => {
+    expect(isBirthStartSuccessful("started")).toBe(true);
+    expect(isBirthStartSuccessful("already_running")).toBe(true);
+  });
+
+  it("rejects rejected and already_completed", () => {
+    expect(isBirthStartSuccessful("rejected")).toBe(false);
+    expect(isBirthStartSuccessful("already_completed")).toBe(false);
+  });
+});
 
 function mockStorage(): Storage {
   const map = new Map<string, string>();

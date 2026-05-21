@@ -142,6 +142,7 @@ function CommandDeckGrid() {
           title="Risk Monitor"
           subtitle="Fortress integrity & drawdown buffer"
           className="min-h-[220px] overflow-hidden"
+          frameVariant="muted"
           loading={telemetryPending}
           loadingLabel={DECK_LOADING_COPY.riskCitadel}
         >
@@ -153,6 +154,7 @@ function CommandDeckGrid() {
         <CorePanelSlot
           title="Neural Core"
           immersive
+          frameless
           className="min-h-[280px] flex-1 overflow-hidden border-none"
           loading={telemetryPending}
           loadingLabel={DECK_LOADING_COPY.neuralCore}
@@ -168,13 +170,13 @@ function CommandDeckGrid() {
 
       <FadeInView delay={0.08} layout className="command-deck-area-center min-h-[360px]">
         <PanelErrorBoundary panelName="Evolution Deck">
-          <EvolutionDeckPanel className="h-full min-h-[360px]" />
+          <EvolutionDeckPanel className="h-full min-h-[360px]" frameVariant="muted" />
         </PanelErrorBoundary>
       </FadeInView>
 
       <FadeInView delay={0.16} className="command-deck-area-right min-h-[360px]">
         <PanelErrorBoundary panelName="Intelligence Deck">
-          <IntelligenceDeckPanel className="h-full min-h-[360px]" />
+          <IntelligenceDeckPanel className="h-full min-h-[360px]" frameVariant="glass" />
         </PanelErrorBoundary>
       </FadeInView>
     </main>

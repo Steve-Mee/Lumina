@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { modeTitleClass, modeValueClass } from "@/lib/modePresentation";
+import { modeTextTier2Class, modeValueClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 import { usePPOEvolutionLive } from "@/context/PPOEvolutionContext";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
@@ -22,12 +22,12 @@ export function TrainingMonitorDialog({ open, onOpenChange }: TrainingMonitorDia
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto border-white/10 bg-black/90 backdrop-blur-md">
+      <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle
             className={cn(
-              "mode-text-tier2 font-mono text-sm tracking-[0.18em] uppercase",
-              modeTitleClass(operatorMode),
+              "font-mono text-sm tracking-[0.18em] uppercase",
+              modeTextTier2Class(operatorMode),
             )}
           >
             Training Monitor

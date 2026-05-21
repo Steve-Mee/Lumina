@@ -1,7 +1,6 @@
 import type { BlockingOverlayKind } from "@/lib/deckStatusModel";
 
-export type DeckStatusBannerKind = "recovery" | null;
-export type DeckStatusRailChip = "recovery" | "sync" | "fallback" | null;
+export type DeckStatusRailChip = "recovery" | "fallback" | null;
 
 export interface DeckStatusInput {
   backendDown: boolean;
@@ -15,7 +14,6 @@ export interface DeckStatusInput {
 
 export interface DeckStatusResolution {
   blocking: BlockingOverlayKind;
-  banner: DeckStatusBannerKind;
   railChip: DeckStatusRailChip;
   suppressToast: boolean;
 }
@@ -26,7 +24,6 @@ export function resolveDeckStatus(input: DeckStatusInput): DeckStatusResolution 
   if (blocking !== null) {
     return {
       blocking,
-      banner: null,
       railChip: null,
       suppressToast: true,
     };
@@ -35,26 +32,15 @@ export function resolveDeckStatus(input: DeckStatusInput): DeckStatusResolution 
   if (input.backendRecovered) {
     return {
       blocking: null,
-      banner: null,
       railChip: "recovery",
-      suppressToast: true,
-    };
-  }
-
-  if (input.syncPending) {
-    return {
-      blocking: null,
-      banner: null,
-      railChip: "sync",
       suppressToast: true,
     };
   }
 
   return {
     blocking: null,
-    banner: null,
     railChip: null,
-    suppressToast: false,
+    suppressToast: input.syncPending,
   };
 }
 
@@ -72,15 +58,4 @@ function resolveBlockingKind(input: DeckStatusInput): BlockingOverlayKind {
     return "welcome";
   }
   return null;
-}
-
-/** @deprecated Use resolveDeckStatus return value */
-export type DeckStatusSurface = "none" | "chip" | "banner" | "blocking";
-
-/** @deprecated Use resolveDeckStatus */
-export function shouldShowStatusBanner(
-  _resolution: { suppressBanner?: boolean },
-  bannerKind: "backend" | "welcome" | null,
-): boolean {
-  return bannerKind !== null;
 }

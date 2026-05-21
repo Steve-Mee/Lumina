@@ -1,16 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  blockingOverlayPriority,
-  deckSyncNote,
-  deckTransportDotClass,
-  deckTransportLabel,
-} from "@/lib/deckStatusModel";
+import { resolveDeckStatus } from "@/lib/deckStatusOrchestrator";
+import { deckTransportDotClass, deckTransportLabel } from "@/lib/deckStatusModel";
 
 describe("deckStatusModel", () => {
   it("deckTransportLabel returns Polling when fallback active", () => {
     expect(deckTransportLabel("connected", true)).toBe("Polling");
-    expect(deckTransportLabel("connected", false)).toBe("Live");
+    expect(deckTransportLabel("connected", false)).toBe("Linked");
     expect(deckTransportLabel("disconnected", false)).toBe("Offline");
   });
 
@@ -19,61 +15,73 @@ describe("deckStatusModel", () => {
     expect(deckTransportDotClass("connected", false)).toContain("emerald");
   });
 
-  it("deckSyncNote reflects sync state", () => {
-    expect(deckSyncNote("pending", null)).toBe("· syncing…");
-    expect(deckSyncNote("error", "timeout")).toBe("· timeout");
-    expect(deckSyncNote("error", null)).toBe("· sync failed");
-    expect(deckSyncNote("idle", null)).toBeNull();
+  it("deckTransportDotClass tints connected dot for REAL mode", () => {
+    expect(deckTransportDotClass("connected", false, "REAL")).toContain("mode-real-accent");
   });
 
-  it("blockingOverlayPriority prefers backend over fallback", () => {
+  it("resolveDeckStatus prefers backend over fallback and welcome", () => {
     expect(
-      blockingOverlayPriority({
+      resolveDeckStatus({
         backendDown: true,
         birthActive: false,
         fallbackActive: true,
         welcomeVisible: true,
-      }),
+        backendRecovered: false,
+        syncPending: false,
+        syncError: false,
+      }).blocking,
     ).toBe("backend");
   });
 
-  it("blockingOverlayPriority orders birth before fallback and welcome", () => {
+  it("resolveDeckStatus orders birth before fallback and welcome", () => {
     expect(
-      blockingOverlayPriority({
+      resolveDeckStatus({
         backendDown: false,
         birthActive: true,
         fallbackActive: true,
         welcomeVisible: true,
-      }),
+        backendRecovered: false,
+        syncPending: false,
+        syncError: false,
+      }).blocking,
     ).toBe("birth");
 
     expect(
-      blockingOverlayPriority({
+      resolveDeckStatus({
         backendDown: false,
         birthActive: false,
         fallbackActive: true,
         welcomeVisible: true,
-      }),
+        backendRecovered: false,
+        syncPending: false,
+        syncError: false,
+      }).blocking,
     ).toBe("fallback");
 
     expect(
-      blockingOverlayPriority({
+      resolveDeckStatus({
         backendDown: false,
         birthActive: false,
         fallbackActive: false,
         welcomeVisible: true,
-      }),
+        backendRecovered: false,
+        syncPending: false,
+        syncError: false,
+      }).blocking,
     ).toBe("welcome");
   });
 
-  it("blockingOverlayPriority returns null when nothing active", () => {
+  it("resolveDeckStatus returns null blocking when nothing active", () => {
     expect(
-      blockingOverlayPriority({
+      resolveDeckStatus({
         backendDown: false,
         birthActive: false,
         fallbackActive: false,
         welcomeVisible: false,
-      }),
+        backendRecovered: false,
+        syncPending: false,
+        syncError: false,
+      }).blocking,
     ).toBeNull();
   });
 });

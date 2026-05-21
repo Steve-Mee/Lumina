@@ -130,6 +130,31 @@ export function resolveBirthHeadline(
   return "Organism is being born…";
 }
 
+export type BirthUiPhase = "running" | "finale" | "error" | "idle";
+
+export function resolveBirthPhaseCopy(
+  uiPhase: BirthUiPhase,
+  milestones: BirthMilestone[],
+): string {
+  if (uiPhase === "finale") {
+    return "Birth phase complete — continue training or enter the command deck.";
+  }
+  if (uiPhase === "error") {
+    return "Birth interrupted — review diagnostics or retry.";
+  }
+  const active = milestones.find((m) => m.state === "active");
+  if (active?.id === "refinement") {
+    return "Policy refinement in progress — neural lattice stabilizing.";
+  }
+  if (active?.id === "strategies") {
+    return "Strategy generation active — parallel simulation lanes open.";
+  }
+  if (active?.id === "fitness") {
+    return "Fitness landscape loading — historical and synthetic lanes merging.";
+  }
+  return "Neural lattice forming — DNA, strategies, and policy in parallel.";
+}
+
 export function isBirthComplete(payload: BirthStatusPayload): boolean {
   if (payload.artifacts_ok === false) return false;
   const status = normalizeToken(payload.status);

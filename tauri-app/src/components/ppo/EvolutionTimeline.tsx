@@ -12,6 +12,7 @@ import {
   type EvolutionTimelineEvent,
 } from "@/lib/ppoEvolutionTimelineModel";
 import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
+import { distressPanelClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 export interface EvolutionTimelineProps {
@@ -33,7 +34,10 @@ const EVENT_STYLES: Record<EvolutionEventType, string> = {
   reward_spike: "border-cyan-500/30 bg-cyan-950/40 text-cyan-200",
   entropy_dip: "border-violet-500/30 bg-violet-950/40 text-violet-200",
   winrate_surge: "border-emerald-500/30 bg-emerald-950/40 text-emerald-200",
-  explained_variance_drop: "border-amber-500/30 bg-amber-950/40 text-amber-200",
+  explained_variance_drop: cn(
+    distressPanelClass("warn"),
+    "rounded-full font-mono text-[10px]",
+  ),
 };
 
 function EventPill({ event, compact }: { event: EvolutionTimelineEvent; compact?: boolean }) {
