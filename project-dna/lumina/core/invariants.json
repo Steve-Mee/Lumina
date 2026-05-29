@@ -1,0 +1,42 @@
+{
+  "schema_version": "dna-2.0",
+  "last_updated": "2026-05-29",
+  "invariants": [
+    {
+      "id": "capital_preservation_real",
+      "statement": "Kapitaalbehoud is heilig in REAL mode. Geen mutatie of proces mag REAL kapitaal in gevaar brengen zonder shadow deployment + human approval.",
+      "severity": "fatal",
+      "domain": "risk"
+    },
+    {
+      "id": "evolution_primary_mechanism",
+      "statement": "Evolution via kleine, meetbare, traceerbare stappen is het primaire mechanisme van verbetering.",
+      "severity": "high",
+      "domain": "process"
+    },
+    {
+      "id": "truth_seeking_over_performance",
+      "statement": "Truth-seeking heeft altijd prioriteit boven performance chasing of optimistische interpretaties.",
+      "severity": "high",
+      "domain": "culture"
+    },
+    {
+      "id": "modularity_required",
+      "statement": "Geen god-files of god-modules. Alle significante functionaliteit moet modulair, testbaar en vervangbaar zijn.",
+      "severity": "high",
+      "domain": "architecture"
+    },
+    {
+      "id": "safety_before_evolution",
+      "statement": "De Safety Layer (Constitution, ConstitutionalGuard, Admission Chain) mag nooit verzwakt worden ten gunste van snellere evolutie.",
+      "severity": "fatal",
+      "domain": "safety"
+    },
+    {
+      "id": "sim_real_separation",
+      "statement": "SIM/Paper is voor radicale experimentatie. REAL is een streng fort. De scheiding moet expliciet en onontkoombaar zijn.",
+      "severity": "fatal",
+      "domain": "risk"
+    }
+  ]
+}

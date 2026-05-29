@@ -167,23 +167,32 @@ project-dna/
 
 ### Fase 8: Update alle Externe Referenties
 
+**Status: VOLTOOID (2026-05-29)**
+
 1. **AGENTS.md** (root):
-   - Update alle verwijzingen naar de nieuwe structuur (`project-dna/lumina/core/`, `/operating-system/`, etc.).
-   - Verwijs expliciet naar `interfaces/export/agent-context.md` voor agents.
+   - Alle verwijzingen bijgewerkt naar de nieuwe gelaagde structuur.
+   - Expliciete aanbeveling voor `interfaces/export/agent-context.md`.
+   - Protocol en log verwijzingen gecorrigeerd.
 
 2. **.cursorrules**:
-   - Update de gedragsregel over `project-dna/lumina/`.
+   - Gedragsregel bijgewerkt en specifieker gemaakt (wijst nu naar `agent-context.md`).
 
 3. **CONTRIBUTING.md**:
-   - Update de verwijzing.
+   - Verwijzing bijgewerkt met duidelijke beschrijving van de nieuwe lagen.
 
-4. Andere bestanden (indien van toepassing na search):
-   - CURSOR_SKILLS.md
-   - Eventuele docs/
+4. Andere bestanden:
+   - Geen kritieke gebroken verwijzingen gevonden in live code (na search).
+   - Historische log entries en backups laten we met oude paden staan (ze documenteren de geschiedenis).
 
 ### Fase 9: Documenteer de Verandering Zelf (Meta)
 
-- Voeg een uitgebreide entry toe aan de nieuwe `evolution/log/` over deze redesign.
+**Status: VOLTOOID (2026-05-29)**
+
+- Uitgebreide, protocol-conforme entry toegevoegd: `evolution/log/2026-05-29-dna-2.0-redesign.md`
+  - Bevat hypothese, falsifieerbare voorspellingen, impact op evolueerbaarheid en reversibility.
+  - Geschreven volgens de strengere eisen van het nieuwe Self-Improvement Protocol.
+- Root `evolution-log.md` bijgewerkt om naar het centrale redesign document te verwijzen.
+- Deze fase is zelf gedocumenteerd als meta-verbetering volgens het protocol.
 - Gebruik het nieuwe (strengere) Self-Improvement Protocol als leidraad voor deze entry.
 
 ### Fase 10: Validatie & Afsluiting

@@ -14,7 +14,12 @@ Welkom. Als je dit leest, denk je waarschijnlijk groter dan gemiddeld — goed z
 
 **Kapitaalbehoud is heilig in REAL mode.** Jouw bijdrage moet Lumina **sterker, veiliger en evolueerbaarder** maken.
 
-**Primaire bron van waarheid voor visie, principes, architectuur en zelfverbetering:** `project-dna/lumina/` (inclusief het Recursive Self-Improvement Protocol in `self-improvement-protocol.md`).
+**Primaire bron van waarheid voor visie, principes, architectuur en zelfverbetering:** `project-dna/lumina/`
+
+- Core (bijna onveranderlijk): `core/constitution.md` + `core/north-star.md`
+- Operating System (zelfverbetering): `operating-system/self-improvement-protocol.md`, `truth-metrics.md`, `decision-framework.md`
+- Huidige staat & debt: `current-reality/`
+- Voor agents: `interfaces/export/agent-context.md` (aanbevolen compacte versie)
 
 Zie ook het leidende bestand [`.cursorrules`](.cursorrules) voor token-efficiënte workflows en agent-gedrag.
 

@@ -81,7 +81,10 @@ Dit protocol is **absoluut leidend**. Iedere interactie met Cursor moet hieraan 
 
 - Denk en handel als een levend organisme, niet als een statische bot.
 - Iedere wijziging moet Lumina sterker, **veiliger, evolueerbaarder én token-efficiënter** maken.
-- **Raadpleeg altijd eerst `project-dna/lumina/`** (vision, principles, architecture, anti-patterns en het Recursive Self-Improvement Protocol) voordat je architectuur- of proceswijzigingen doorvoert.
+- **Raadpleeg altijd eerst `project-dna/lumina/`** voordat je architectuur- of proceswijzigingen doorvoert.
+  - Voor agents: `interfaces/export/agent-context.md` (compacte high-signal versie)
+  - Core invariants: `core/constitution.md`
+  - Zelfverbeteringsproces: `operating-system/self-improvement-protocol.md` + `truth-metrics.md`
 - Prioriteer altijd: 1) Kapitaalbehoud in REAL, 2) Testbaarheid, 3) Radicale innovatie, 4) **Token-efficiëntie**.
 - Wees extreem specifiek in code, documentatie en tests.
 - Schrijf code die 5 jaar later nog perfect leesbaar en onderhoudbaar is.

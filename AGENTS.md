@@ -1,6 +1,11 @@
 # AGENTS.md - Lumina
 
-Primary source of truth: `project-dna/lumina/` (zie `project-dna/lumina/` voor vision, principles, architecture, anti-patterns en het Recursive Self-Improvement Protocol)
+Primary source of truth: `project-dna/lumina/` (gelaagd Operating System voor self-evolution)
+
+Raadpleeg bij voorkeur:
+- `project-dna/lumina/interfaces/export/agent-context.md` (compacte versie voor agents)
+- `project-dna/lumina/core/` voor de harde constitution en north star
+- `project-dna/lumina/operating-system/` voor het self-improvement protocol en decision framework
 
 ## Project Purpose
 Lumina is a self-evolving autonomous trading system. Its core strength lies in continuous, evidence-based improvement while maintaining strict risk discipline.
@@ -28,8 +33,8 @@ Lumina is a self-evolving autonomous trading system. Its core strength lies in c
 ### Evolution
 - Prefer small, measurable, low-risk evolutionary steps.
 - Document the reasoning and evidence behind changes.
-- When improving the system (especially instructions, DNA, or agent guidance), follow the **Recursive Self-Improvement Protocol** defined in `project-dna/lumina/self-improvement-protocol.md`.
-- Always record significant meta-improvements in `project-dna/lumina/evolution-log.md`.
+- When improving the system (especially instructions, DNA, or agent guidance), follow the **Recursive Self-Improvement Protocol** defined in `project-dna/lumina/operating-system/self-improvement-protocol.md`.
+- Record significant meta-improvements in `project-dna/lumina/evolution-log.md` (summary) or `project-dna/lumina/evolution/log/`.
 
 ### Code Quality
 - Apply strict modular architecture.
@@ -44,5 +49,5 @@ Lumina is a self-evolving autonomous trading system. Its core strength lies in c
 ## Process
 1. Consult `project-dna/lumina/` first (this is the authoritative source).
 2. Apply relevant capabilities (backtesting discipline, modular architecture, risk awareness).
-3. For any improvement to instructions, Project DNA, AGENTS.md, or agent guidance: follow the **Recursive Self-Improvement Protocol** (`project-dna/lumina/self-improvement-protocol.md`). This includes mandatory use of Plan Mode and an evolution-log entry.
+3. For any improvement to instructions, Project DNA, AGENTS.md, or agent guidance: follow the **Recursive Self-Improvement Protocol** (`project-dna/lumina/operating-system/self-improvement-protocol.md`). This includes mandatory use of Plan Mode and an evolution-log entry.
 4. Keep risk and reasoning transparent.
