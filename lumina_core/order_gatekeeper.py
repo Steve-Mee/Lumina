@@ -745,6 +745,40 @@ def enforce_pre_trade_gate(
         "admission_chain_final_arbitration_approved",
         bool(admission_context.metadata.get("final_arbitration_approved", False)),
     )
+
+    # --- Small evolutionary addition: emit typed RiskVerdict on the Event Bus ---
+    # This is purely additive observability. It does not change any risk decision,
+    # limit, or blocking behavior. The decision has already been made by the
+    # admission chain + final arbitration above. Telemetry failures are swallowed
+    # so they can never affect trading logic (fail-closed for safety, not for telemetry).
+    try:
+        bus = _resolve_event_bus(engine)
+        if bus is not None and hasattr(bus, "publish_validated"):
+            from lumina_core.agent_orchestration.schemas import RiskVerdict
+
+            deny_code = admission_context.metadata.get("deny_reason_code")
+            last_step = getattr(trace, "last_step_id", None)
+            verdict = RiskVerdict(
+                approved=bool(allowed),
+                reason=str(reason)[:300] if reason else None,
+                limit=str(deny_code or last_step or ""),
+                value=float(proposed_risk),
+            )
+            bus.publish_validated(
+                topic="risk.policy.decision",
+                producer="order_gatekeeper",
+                payload=verdict.model_dump(mode="json"),
+                metadata={
+                    "symbol": str(symbol),
+                    "mode": str(mode),
+                    "decision_context_id": str(decision_context_id),
+                },
+            )
+    except Exception:
+        # Telemetry must never impact gate decisions or REAL capital.
+        pass
+    # --- end RiskVerdict emission ---
+
     if not allowed:
         reason_code = str(admission_context.metadata.get("deny_reason_code", f"admission_{trace.last_step_id}"))
         return _deny(

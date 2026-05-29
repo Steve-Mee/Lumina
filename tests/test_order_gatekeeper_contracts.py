@@ -90,6 +90,19 @@ class _EventBus:
             return _EbExec()
         return None
 
+    # Support for the new RiskVerdict telemetry emission (additive, non-breaking)
+    def __init__(self) -> None:
+        self.published: list[dict[str, Any]] = []
+
+    def publish_validated(self, *, topic: str, producer: str, payload: dict[str, Any], metadata: dict[str, Any] | None = None) -> Any:
+        self.published.append({
+            "topic": topic,
+            "producer": producer,
+            "payload": dict(payload),
+            "metadata": dict(metadata or {}),
+        })
+        return SimpleNamespace(topic=topic, producer=producer, payload=payload)
+
 
 class _Blackboard:
     def latest(self, topic: str):
@@ -386,3 +399,68 @@ def test_enforce_pre_trade_gate_real_blocks_when_final_arbitration_missing(monke
 
     assert allowed is False
     assert "final_arbitration_unavailable" in reason
+
+
+# --- Tests for the new RiskVerdict telemetry emission (additive only) ---
+
+def test_enforce_pre_trade_gate_emits_risk_verdict_on_approval(monkeypatch) -> None:
+    """Verify that a typed RiskVerdict is published via the Event Bus on successful gate passage."""
+    from lumina_core.agent_orchestration.schemas import RiskVerdict
+
+    engine = _make_engine(trade_mode="paper", risk_controller=_RiskController(can_trade=True, reason="OK"))
+
+    # Ensure we have a fresh bus with publish tracking
+    bus = _EventBus()
+    engine.event_bus = bus
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=120.0,
+        order_side="BUY",
+    )
+
+    assert allowed is True
+    # At least one publish to the risk policy decision topic must have occurred
+    risk_verdicts = [p for p in bus.published if p["topic"] == "risk.policy.decision"]
+    assert len(risk_verdicts) >= 1
+    payload = risk_verdicts[-1]["payload"]
+    # Validate it conforms to the existing contract
+    verdict = RiskVerdict.model_validate(payload)
+    assert verdict.approved is True
+    assert "OK" in (verdict.reason or "")
+
+
+def test_enforce_pre_trade_gate_emits_risk_verdict_on_rejection(monkeypatch) -> None:
+    """Verify that a typed RiskVerdict is published on rejection paths as well."""
+    from lumina_core.agent_orchestration.schemas import RiskVerdict
+
+    engine = _make_engine(
+        trade_mode="real",
+        risk_controller=_RiskController(can_trade=False, reason="daily_loss_cap"),
+        observability_service=SimpleNamespace(record_mode_guard_block=lambda **_kwargs: None),
+    )
+
+    bus = _EventBus()
+    engine.event_bus = bus
+
+    monkeypatch.setattr("lumina_core.order_gatekeeper.is_stale_contract_symbol", lambda *_a, **_k: False)
+
+    allowed, reason = enforce_pre_trade_gate(
+        engine,
+        symbol="MES JUN26",
+        regime="NEUTRAL",
+        proposed_risk=50.0,
+        order_side="BUY",
+    )
+
+    assert allowed is False
+    risk_verdicts = [p for p in bus.published if p["topic"] == "risk.policy.decision"]
+    assert len(risk_verdicts) >= 1
+    payload = risk_verdicts[-1]["payload"]
+    verdict = RiskVerdict.model_validate(payload)
+    assert verdict.approved is False
+    assert "daily_loss_cap" in (verdict.reason or "") or "daily_loss" in (verdict.limit or "").lower()
