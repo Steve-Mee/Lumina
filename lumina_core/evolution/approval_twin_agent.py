@@ -117,6 +117,7 @@ class ApprovalTwinAgent:
             score = max(0.0, min(1.0, score))
             risk_flags = self._risk_flags(dna)
             recommendation = bool(score >= self._state.threshold and not risk_flags)
+            shadow_suffix = ""
 
             # === Phase 2 Deliverable 5 (Aperture Hardening) — Proactive risk shadow validation ===
             # For any DNA evaluation where an engine is available, we proactively run
@@ -128,7 +129,6 @@ class ApprovalTwinAgent:
             # so the shadow experiment is meaningful rather than using only defaults.
             if self._engine is not None:
                 try:
-                    from lumina_core.evolution.risk_shadow_bridge import run_risk_shadow_experiment_for_proposal
                     from pathlib import Path
 
                     # Best-effort extraction of risk experiment parameters from DNA
@@ -162,7 +162,7 @@ class ApprovalTwinAgent:
                     if shadow_rec.get("suggested_stage") in ("human_approval", "reject"):
                         recommendation = False
                         risk_flags.append("risk_shadow_blocked")
-                    explanation += f" | risk_shadow={shadow_rec.get('suggested_stage', 'unknown')}"
+                    shadow_suffix = f" | risk_shadow={shadow_rec.get('suggested_stage', 'unknown')}"
                 except Exception:
                     # Shadow validation is best-effort; never break the twin gate
                     pass
@@ -170,7 +170,7 @@ class ApprovalTwinAgent:
             explanation = (
                 f"Twin score={score:.2%}, threshold={self._state.threshold:.0%}, backend={self._backend_name}, "
                 f"fitness={float(dna.fitness_score):.4f}, mutation_rate={float(dna.mutation_rate):.2f}, "
-                f"source={backend_explanation}"
+                f"source={backend_explanation}{shadow_suffix}"
             )
             try:
                 logger.info(

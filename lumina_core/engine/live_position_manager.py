@@ -16,7 +16,6 @@ import logging
 from typing import Any
 
 from lumina_core.engine.runtime_state import EnginePositionState
-from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 
 logger = logging.getLogger(__name__)
 

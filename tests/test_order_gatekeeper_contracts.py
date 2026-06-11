@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from typing import Any
 
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contract_symbol
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
@@ -580,7 +581,7 @@ def test_risk_decision_lineage_reconstruction_helper(monkeypatch) -> None:
 # --- Phase 2 Slice 07: Continuous hash chain from Gate Entry root through Allocation to Arbitration ---
 def test_continuous_hash_chain_gate_entry_to_arbitration(monkeypatch) -> None:
     """Phase 2 Slice 07: The hash chain must be continuous and verifiable from root to Final Arbitration."""
-    from lumina_core.risk.decision_lineage import reconstruct_risk_decision_chain, get_core_risk_decision_chain, is_chain_healthy
+    from lumina_core.risk.decision_lineage import reconstruct_risk_decision_chain
 
     engine = _make_engine(trade_mode="paper", risk_controller=_RiskController(can_trade=True, reason="OK"))
     bus = _EventBus()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+import threading
 from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any, cast
@@ -182,6 +183,7 @@ def test_paper_broker_submit_order_and_fill_tracking(monkeypatch: pytest.MonkeyP
             )
         ),
     )
+    broker = PaperBroker(engine=engine)
     result = broker.submit_order(
         Order(
             symbol="MES JUN26",
@@ -465,7 +467,6 @@ def test_downstream_lineage_propagates_into_fill_and_order_result(monkeypatch) -
     Fill and OrderResult must carry the same decision_context_id + prev_hash in raw.
     """
     from lumina_core.risk.decision_lineage import (
-        get_lineage_from_fill,
         get_lineage_from_order_result,
     )
 

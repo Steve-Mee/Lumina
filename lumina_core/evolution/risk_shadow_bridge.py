@@ -19,9 +19,13 @@ does not implement promotion policy, and does not touch live capital paths.
 
 from __future__ import annotations
 
+import hashlib
+import json as _json_for_hash
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
+from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision
 from lumina_core.risk.orchestration import RiskOrchestrator
 from lumina_core.risk.shadow import ShadowExperimentResult
 
@@ -125,7 +129,7 @@ def get_risk_shadow_human_review_package(
 def record_risk_shadow_promotion_decision(
     shadow_result: ShadowExperimentResult,
     registry_path: str | Path | None = None,
-) -> "EvolutionPromotionDecision":
+) -> EvolutionPromotionDecision:
     """
     Promotion gate automation helper for risk shadows (Phase 2 Deliverable 5).
 
@@ -153,7 +157,6 @@ def record_risk_shadow_promotion_decision(
             package = get_risk_shadow_human_review_package(...)
     """
     from lumina_core.risk.shadow import ShadowRunRegistry
-    from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision as _EvolutionPromotionDecision
 
     reg = ShadowRunRegistry(storage_path=registry_path) if registry_path else None
 
@@ -226,10 +229,6 @@ def validate_risk_proposal_in_shadow(
 # Simple process-lifetime de-duplication for the structural hook.
 # Keeps memory bounded and prevents spamming duplicate shadow experiments
 # for the same DNA content within a single run. Best-effort and fully reversible.
-from collections import OrderedDict
-import hashlib
-import json as _json_for_hash
-
 _SEEN_RISK_CONTENT_HASHES: OrderedDict[str, None] = OrderedDict()
 _MAX_SEEN_RISK_HASHES = 2000
 

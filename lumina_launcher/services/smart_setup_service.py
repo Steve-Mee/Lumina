@@ -20,7 +20,7 @@ import yaml
 
 from lumina_core.adaptive_intelligence import AdaptiveIntelligenceManager, AdaptiveIntelligenceStatus
 from lumina_core.config_loader import ConfigLoader
-from lumina_core.engine.hardware_inspector import HardwareInspector, HardwareSnapshot
+from lumina_core.engine.hardware_inspector import HardwareInspector
 from lumina_core.engine.model_catalog import ModelCatalog, ModelDescriptor
 from lumina_core.engine.ollama_model_resolve import resolve_ollama_model_tag
 from lumina_core.engine.setup_service import SetupService

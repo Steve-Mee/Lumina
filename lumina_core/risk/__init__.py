@@ -85,6 +85,8 @@ __all__ = [
     "CalibrationResult",
     "DailyCalibrationSummary",
     "run_daily_calibration",
+    "ShadowRiskEvaluator",
+    "ShadowContext",
 ]
 
 

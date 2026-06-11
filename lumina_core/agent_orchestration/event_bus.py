@@ -19,7 +19,6 @@ from pydantic import BaseModel, ValidationError
 
 from lumina_core.agent_orchestration.schemas import (
     CRITICAL_EVENT_BUS_TOPICS,
-    AgentProposalPayload,
     AgentReflection,
     CommunityKnowledgeSnippet,
     ConstitutionAudit,
@@ -29,7 +28,6 @@ from lumina_core.agent_orchestration.schemas import (
     EvolutionPromotionDecision,
     EvolutionProposal,
     FinalArbitrationResult,
-    GateEntryPayload,
     LLMDecisionContext,
     MetaAgentThought,
     RiskVerdict,

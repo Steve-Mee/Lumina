@@ -258,9 +258,6 @@ class PaperSimulator:
 
         return close_handled
 
-    def has_position(self) -> bool:
-        return int(getattr(self.app, "sim_position_qty", 0) or 0) != 0
-
     def _post_close_actions(
         self,
         *,

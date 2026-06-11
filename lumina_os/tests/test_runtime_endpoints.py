@@ -66,7 +66,7 @@ def test_runtime_start_stop_with_mock_process_manager(client: TestClient) -> Non
 
 
 def test_runtime_training_pause_resume(client: TestClient, tmp_path: Path) -> None:
-    pause_flag = tmp_path / "state" / "first_boot_pause_requested"
+    tmp_path / "state" / "first_boot_pause_requested"
 
     with patch("backend.runtime_endpoints._REPO_ROOT", tmp_path):
         with patch("backend.runtime_endpoints._get_first_boot_manager") as mock_fb:

@@ -73,7 +73,6 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -211,9 +210,9 @@ def main() -> None:
     # Launch full genuine runtime (non-headless; full daemons for real evo/gate/arb/fills)
     cmd = [sys.executable, "-m", "lumina_core.engine.runtime_entrypoint", "--mode", "sim"]
     runtime_log = campaign_dir / "runtime.log"
-    print(f"Launched full genuine SIM runtime (full daemon, not headless toy) for multi-day aggressive evo campaign.")
+    print("Launched full genuine SIM runtime (full daemon, not headless toy) for multi-day aggressive evo campaign.")
     print(f"  Cmd: {' '.join(cmd)}")
-    print(f"  Env overrides: LUMINA_STATE_DIR, LUMINA_MODE=sim, TRADE_MODE=sim, BROKER_BACKEND=paper, LUMINA_AGGRESSIVE_SIM=true")
+    print("  Env overrides: LUMINA_STATE_DIR, LUMINA_MODE=sim, TRADE_MODE=sim, BROKER_BACKEND=paper, LUMINA_AGGRESSIVE_SIM=true")
     print(f"  Logs: {runtime_log}")
     print(f"  Monitor: tail -f {runtime_log} | grep -E '(proposal|arbitration|dream|meta)'")
     print()
@@ -229,7 +228,7 @@ def main() -> None:
 
     # Monitor/bound (wall time + count real arb ctxs/proposals from campaign logs; authentic for evo load)
     start = time.time()
-    deadline = start + (args.duration_min * 60)
+    start + (args.duration_min * 60)
     target = args.target_arb_ctxs
     print(f"Monitoring (every 10s): wall <= {args.duration_min}min or arb ctxs >= {target} (or proposals for volume).")
     print("  (Real data: arb events with decision_context_id + checks[] from production FinalArbitration; fills with lineage now wired.)")
@@ -287,7 +286,7 @@ def main() -> None:
     try:
         d4_env = env.copy()
         d4_env["LUMINA_STATE_DIR"] = str(campaign_dir)
-        d4_out = subprocess.run(d4_cmd, env=d4_env, cwd=ROOT, check=False, capture_output=True, text=True, timeout=120)
+        subprocess.run(d4_cmd, env=d4_env, cwd=ROOT, check=False, capture_output=True, text=True, timeout=120)
         print("  D4 complete (see output for bundle path + real stats).")
         # The D4 writes its own d4_... bundle; we can note it or rename for "multiday" label
         print("  (Bundle will be in state/audits/d4_30day... ; labeled LIVE FROM REAL... with real data from this run.)")

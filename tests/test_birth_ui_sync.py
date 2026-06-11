@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from lumina_core.first_boot_progress import (
-    format_progress_heartbeat_age,
     progress_is_recently_active,
     resolve_birth_training_pulse,
     resolve_ppo_training_progress,

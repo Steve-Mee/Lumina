@@ -110,7 +110,6 @@ class PreDreamDaemon:
                 cached_news_data = news.cached_news_data
                 last_news_update_ts = news.last_news_update_ts
                 news_data = news.news_data
-                news_impact = news.news_impact
                 macro_news_sentiment = news.macro_news_sentiment
                 macro_news_score = news.macro_news_score
                 macro_news_multiplier = news.macro_news_multiplier

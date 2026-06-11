@@ -7,7 +7,6 @@ Fail-closed/best-effort explicit.
 
 from __future__ import annotations
 
-from contextlib import nullcontext
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -15,7 +14,6 @@ import pytest
 
 from lumina_core.engine.live_position_manager import LivePositionManager
 from lumina_core.engine.runtime_state import EnginePositionState
-import lumina_core.runtime_workers as runtime_workers
 
 
 @pytest.mark.unit

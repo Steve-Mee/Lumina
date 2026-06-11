@@ -62,11 +62,8 @@ _ADAPTIVE_INTELLIGENCE_HISTORY = Path(
     os.getenv("ADAPTIVE_INTELLIGENCE_HISTORY_PATH", "state/adaptive_intelligence_events.jsonl")
 )
 from backend.adaptive_intelligence_snapshot import (
-    build_adaptive_intelligence_block,
     build_adaptive_transition_summary,
     load_adaptive_history_rows,
-    resolve_adaptive_history_path,
-    resolve_adaptive_status_path,
 )
 
 

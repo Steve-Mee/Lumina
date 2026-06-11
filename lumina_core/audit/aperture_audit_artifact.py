@@ -446,7 +446,7 @@ def format_aperture_audit_as_markdown(artifact: dict[str, Any]) -> str:
     ctx = artifact.get("decision_context_id", "unknown")
     lines: list[str] = []
 
-    lines.append(f"# Aperture Audit Artifact")
+    lines.append("# Aperture Audit Artifact")
     lines.append(f"**Decision Context ID**: `{ctx}`")
     lines.append(f"**Generated**: {artifact.get('generated_at', 'unknown')}")
     lines.append("")

@@ -6,10 +6,10 @@ Follows sub4 test_paper_trade_executor.py style + supervisor mock integration.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from types import SimpleNamespace
 
-from lumina_core.engine.paper_simulator import PaperSimulator, _paper_instrument
+from lumina_core.engine.paper_simulator import PaperSimulator
 from lumina_core.engine.paper_trade_executor import PaperTradeExecutor
 from lumina_core.engine.valuation_engine import ValuationEngine
 

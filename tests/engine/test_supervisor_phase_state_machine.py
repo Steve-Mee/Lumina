@@ -9,8 +9,6 @@ Self-contained (no undefined fixtures).
 
 import pytest
 from types import SimpleNamespace
-from datetime import datetime
-import time
 
 from lumina_core.engine.supervisor_phase_state_machine import SupervisorPhaseStateMachine
 
@@ -91,7 +89,7 @@ def test_supervisor_phase_state_machine_tick_timers_and_dispatch():
             # hygiene: baseline passed
             return k.get("current_signal", "HOLD"), None, k.get("qty_multiplier", 1.0), k.get("stop_widen_multiplier", 1.0)
 
-    thins = {
+    {
         "real_close": Spy(),
         "eod": Spy(),
         "paper_sim": Spy(),
@@ -195,7 +193,7 @@ def test_supervisor_phase_state_machine_fallback_graceful():
         realized_pnl_today=0.0,
     )
     phases = SupervisorPhaseStateMachine(app=app, engine=engine)
-    res = phases.tick(5000.0, dream_snapshot={"signal": "HOLD"})
+    phases.tick(5000.0, dream_snapshot={"signal": "HOLD"})
     # graceful
     assert True
 

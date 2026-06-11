@@ -6,9 +6,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from lumina_launcher.core.process_manager import ProcessManager

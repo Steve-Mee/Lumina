@@ -19,7 +19,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from lumina_core.first_boot_progress import (
-    resolve_ppo_training_progress,
     resolve_first_boot_completed_trades,
     resolve_first_boot_target_from_progress,
     resolve_first_boot_stage,

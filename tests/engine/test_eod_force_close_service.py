@@ -86,7 +86,7 @@ def test_eod_force_close_service_compat_shim():
     risk_ctrl = MagicMock()
     risk_ctrl.should_force_close_eod.return_value = (True, "window")
     app.engine.risk_controller = risk_ctrl
-    broker = _make_mock_broker(pos_qty=1)
+    _make_mock_broker(pos_qty=1)
     executor = MagicMock(spec=PaperTradeExecutor)
     executor.build_paper_order.return_value = SimpleNamespace(metadata={})
     executor.submit_paper_order.return_value = SimpleNamespace(accepted=True)

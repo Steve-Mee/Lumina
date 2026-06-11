@@ -8,7 +8,6 @@ Any regression here must be fatal.
 """
 
 import pytest
-from pathlib import Path
 
 from lumina_core.risk.shadow import (
     ShadowRiskEvaluator,
@@ -178,7 +177,7 @@ def test_create_shadow_promotion_decision_produces_correct_contract():
 
 def test_create_shadow_promotion_decision_applies_promotion_rules():
     """Promotion decision logic correctly sets allowed based on verdict + comparison."""
-    from lumina_core.agent_orchestration.schemas import ShadowResult, EvolutionPromotionDecision
+    from lumina_core.agent_orchestration.schemas import ShadowResult
 
     engine = type("FakeEngine", (), {"config": type("C", (), {"trade_mode": "paper"})()})()
     orchestrator = RiskOrchestrator(engine=engine)

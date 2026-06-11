@@ -16,6 +16,8 @@ from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
 from lumina_core.risk.cost_model import TradeExecutionCostModel
 
+logger = logging.getLogger(__name__)
+
 # One WARNING per account per process when REST returns no parsable balance/equity (avoid log spam).
 _CROSS_TRADE_BALANCE_WARN_ACCOUNTS: set[str] = set()
 

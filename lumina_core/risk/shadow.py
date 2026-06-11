@@ -23,11 +23,13 @@ This module is the single source of truth for safe shadow risk evaluation.
 from __future__ import annotations
 
 import json
-import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
+
+if TYPE_CHECKING:
+    from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision, ShadowResult
 
 from lumina_core.logging_utils import get_logger
 from lumina_core.risk.orchestration import RiskOrchestrator
@@ -312,7 +314,7 @@ class ShadowRiskEvaluator:
         # The decision_fn is responsible for using orchestrator.risk_policy,
         # orchestrator.risk_controller, orchestrator.final_arbitration etc.
         try:
-            raw_decision = decision_fn(orchestrator)
+            decision_fn(orchestrator)
         except Exception as exc:
             logger.exception("shadow_risk_evaluation_failed", extra={"experiment_id": context.experiment_id})
             verdict = ShadowResult(
@@ -1117,7 +1119,6 @@ evaluator.submit_human_approval_decision(
             human_notes = resolution["human_resolution"].get("resolution_notes")
 
         # Find the recommendation that was active when human review was requested
-        recommendation_at_human_review = None
         for item in history:
             if item["type"] == "promotion_decision" and item.get("stage") == "human_approval":
                 # This is a bit indirect; in a real system we'd store it better.
@@ -1165,7 +1166,6 @@ evaluator.submit_human_approval_decision(
         from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision as _EvolutionPromotionDecision
 
         # Look up the previous promotion decision for context (best effort)
-        previous_stage = "human_approval"
         previous_dna_hash = None
         reg = registry or getattr(self, "_registry", None)
         if reg is not None:

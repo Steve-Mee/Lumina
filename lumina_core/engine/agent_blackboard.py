@@ -19,7 +19,6 @@ from pydantic import BaseModel, ValidationError
 from lumina_core.agent_orchestration.schemas import (
     BLACKBOARD_TOPIC_MODELS,
     model_validate_payload_with_instance,
-    validate_payload_with_model,
 )
 from lumina_core.state.state_manager import safe_append_jsonl
 

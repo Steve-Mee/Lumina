@@ -7,7 +7,6 @@ delegates to the official isolated shadow path and preserves the full
 rich result (including human approval recommendations).
 """
 
-from pathlib import Path
 
 from lumina_core.risk.shadow import ShadowExperimentResult
 from lumina_core.evolution.risk_shadow_bridge import (
@@ -53,7 +52,7 @@ def test_risk_shadow_bridge_supports_reference_comparison_and_human_path(tmp_pat
     engine = _make_engine()
 
     # First run a clean baseline
-    baseline = run_risk_shadow_experiment_for_proposal(
+    run_risk_shadow_experiment_for_proposal(
         proposal={
             "experiment_id": "bridge-baseline",
             "dna_hash": "risk-v1",
@@ -65,10 +64,6 @@ def test_risk_shadow_bridge_supports_reference_comparison_and_human_path(tmp_pat
     )
 
     # Now a new proposal with a deliberately bad reference (should trigger human review)
-    bad_ref = {
-        "policy": {"approved": True},
-        "final_arbitration": {"approved": False},  # force difference
-    }
 
     result = run_risk_shadow_experiment_for_proposal(
         proposal={

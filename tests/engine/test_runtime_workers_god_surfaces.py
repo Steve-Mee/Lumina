@@ -7,7 +7,6 @@ Ensures runtime_workers.py stays a thin compat hub; non-trivial logic lives in b
 from __future__ import annotations
 
 import ast
-import re
 from pathlib import Path
 
 import pytest

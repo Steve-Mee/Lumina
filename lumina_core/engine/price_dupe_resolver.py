@@ -30,7 +30,6 @@ from typing import Any
 from .live_position_manager import LivePositionManager
 
 # For hygiene/logging if needed (mirrors runtime_workers patterns)
-from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 
 logger = __import__("logging").getLogger(__name__)
 

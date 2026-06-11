@@ -98,7 +98,7 @@ class TestPaperTradeExecutor:
     def test_eod_close_wrapper_attaches_eod_specific_and_ctx(self):
         # given
         executor = PaperTradeExecutor()
-        pos = SimpleNamespace(symbol="EODSYM", quantity=7)
+        SimpleNamespace(symbol="EODSYM", quantity=7)
 
         # when
         eod_order = executor.build_paper_order(

@@ -2,6 +2,9 @@
 #
 # Install after core: pip install -r requirements-core.txt -r requirements-trading.txt
 
+# -- RL environment (imported at engine bootstrap; required for unit tests) --
+gymnasium==1.2.3
+
 # -- Trading schedules & market sessions ------------------------------------
 exchange_calendars==4.13.2
 pandas_market_calendars==5.3.2

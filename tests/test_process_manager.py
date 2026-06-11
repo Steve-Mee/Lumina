@@ -33,6 +33,7 @@ def test_pid_is_alive_false_for_zero():
     assert pm._pid_is_alive(-5) is False
 
 
+@patch("lumina_launcher.core.process_manager.os.name", "nt")
 @patch("lumina_launcher.core.process_manager.subprocess.run")
 def test_pid_is_alive_windows(mock_run, temp_dirs):
     root, runtime = temp_dirs
@@ -134,6 +135,7 @@ def test_start_bot_fails_when_process_exits_immediately(mock_popen, temp_dirs):
     assert not pm.process_state_path.exists()
 
 
+@patch("lumina_launcher.core.process_manager.os.name", "nt")
 @patch("lumina_launcher.core.process_manager.subprocess.run")
 def test_stop_all_activities_stops_backend_and_runtime(mock_run, temp_dirs):
     root, runtime = temp_dirs

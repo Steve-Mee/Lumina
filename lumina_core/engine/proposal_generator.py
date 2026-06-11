@@ -4,7 +4,6 @@ import logging
 import hashlib
 import json
 import math
-import uuid
 from typing import Any, Protocol
 
 from ..evolution.dna_registry import DNARegistry, PolicyDNA

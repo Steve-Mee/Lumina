@@ -67,12 +67,9 @@ from lumina_core.audit.aperture_audit_artifact import (
     build_aperture_audit_artifact,
     format_aperture_audit_as_markdown,
     format_compact_aperture_audit,
-    discover_recent_final_arbitration_ctxs,
 )
 
 # For bundle writing (modeled on phase3_d4_skeleton for consistency; small controlled duplication for this slice)
-from datetime import datetime as dt
-import re
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE_AUDITS = ROOT / "state" / "audits"
@@ -228,7 +225,7 @@ def main() -> None:
     genuine_seed = campaign_dir / "genuine_final_arbitration_campaign.jsonl"
     trade_audit = campaign_dir / "trade_decision_audit.jsonl"
 
-    print(f"=== Phase 3 D4 Genuine Evidence Generator ===")
+    print("=== Phase 3 D4 Genuine Evidence Generator ===")
     print(f"Campaign dir: {campaign_dir}")
     print(f"Target: {args.num_proposals} proposals, {args.unsafe} unsafe (to demo 100% catch)")
     print()
@@ -414,7 +411,7 @@ Complete per-decision D1 artifacts built from *production* risk logic (real chec
             bundle_md += f"Shadow (D5): linked (experiment {r.get('ctx')})\n"
         bundle_md += f"Source: {r.get('source_file')}\n"
 
-    bundle_md += f"""
+    bundle_md += """
 ## Bundle Contents & Reproducibility
 - This report (md) + structured json
 - Individual guardian_d1_*.md sidecars (fresh D1 from real build_aperture_audit_artifact)

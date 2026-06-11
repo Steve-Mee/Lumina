@@ -1041,7 +1041,7 @@ def print_markdown_report(report: dict[str, Any], *, d1_audits: bool = True) -> 
             # Try to get a bus if available in the current environment
             bus = None
             try:
-                from lumina_core.order_gatekeeper import _resolve_event_bus  # type: ignore
+                pass  # type: ignore
                 # This may not always be populated at Guardian runtime; best-effort only.
             except Exception:
                 pass

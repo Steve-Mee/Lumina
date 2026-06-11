@@ -146,7 +146,6 @@ def _seed_illustrative_final_arbitration_log(num: int = 8) -> tuple[list[str], l
     """
     import json as _json
     from datetime import datetime as _dt, timezone as _tz
-    from types import SimpleNamespace
 
     # Real risk objects (imported inside to keep module load light for non-demo runs)
     from lumina_core.risk.final_arbitration import FinalArbitration
@@ -207,7 +206,7 @@ def _seed_illustrative_final_arbitration_log(num: int = 8) -> tuple[list[str], l
                     checks.append({"name": c.name, "ok": getattr(c, "ok", True), "reason": getattr(c, "reason", "")})
                 elif isinstance(c, dict):
                     checks.append({"name": c.get("name"), "ok": c.get("ok"), "reason": c.get("reason")})
-        except Exception as e:
+        except Exception:
             # Fallback to conservative values if construction fails for this demo case
             status = "REJECTED" if is_unsafe else "APPROVED"
             checks = [
@@ -674,7 +673,7 @@ def main(max_ctxs: int = 30, *, force_real: bool = False, force_synthetic: bool 
             "reports": reports,
         }, f, indent=2, default=str)
 
-    print(f"\n**Public evidence bundle saved**:")
+    print("\n**Public evidence bundle saved**:")
     print(f"- Report: {report_path}")
     print(f"- Structured: {bundle_json}")
     print("\nThis is the jaws-dropping D4 output: complete, lineage-rich, constitution-checked, D5-shadow-linked evidence that the aperture worked at scale.")

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path  # for type hints only; runtime use is lazy inside methods
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lumina_core.risk.shadow import ShadowExperimentResult, ShadowRiskEvaluator
 
 from lumina_core.engine.engine_ports import SupportsRisk
 from lumina_core.risk.session_guard import SessionGuard

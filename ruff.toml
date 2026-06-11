@@ -8,3 +8,11 @@ extend-exclude = [
   "journal",
   "lumina_vector_db"
 ]
+
+[lint.per-file-ignores]
+"lumina_core/engine/memory_service.py" = ["E402"]
+"lumina_os/backend/app.py" = ["E402"]
+"lumina_os/backend/monitoring_endpoints.py" = ["E402"]
+"scripts/phase3_ninety_day_gate_measure.py" = ["E402"]
+"scripts/phase3_protocol_adherence_backfill_hygiene.py" = ["E402"]
+"scripts/phase3_protocol_adherence_measure.py" = ["E402"]

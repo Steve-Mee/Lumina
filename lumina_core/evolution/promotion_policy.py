@@ -375,7 +375,6 @@ class PromotionPolicy:
         # enforcement point for the "must run in shadow" requirement.
         if risk_flags and hasattr(self._owner, "_engine") and self._owner._engine is not None:
             try:
-                from lumina_core.evolution.risk_shadow_bridge import run_risk_shadow_experiment_for_proposal
                 from pathlib import Path
 
                 from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow

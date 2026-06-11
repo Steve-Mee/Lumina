@@ -17,7 +17,6 @@ Usage:
 """
 
 from pathlib import Path
-from datetime import datetime, timezone
 
 # In a real environment these would come from the actual engine
 class FakeEngine:
@@ -33,7 +32,6 @@ class FakeEngine:
 def main():
     from lumina_core.risk.shadow import (
         ShadowRiskEvaluator,
-        ShadowRunRegistry,
     )
 
     print("=" * 70)
@@ -96,7 +94,7 @@ def main():
     if result.human_approval_request:
         print("[4] Human review required.")
         package = evaluator.get_human_review_package(result.experiment_id)
-        print(f"    Package prepared for reviewer:")
+        print("    Package prepared for reviewer:")
         print(f"    - Decision summary: {package['human_approval_request']['decision_summary']}")
         print()
 

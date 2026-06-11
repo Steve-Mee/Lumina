@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
-from lumina_core.logging_utils import correlation_id, get_logger, log_gate_rejection, record_gate_rejection_monitoring
+from lumina_core.logging_utils import get_logger, log_gate_rejection, record_gate_rejection_monitoring
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
 from lumina_core.risk.admission_chain import (
     ADMISSION_STEP_AUDIT_WRITE,

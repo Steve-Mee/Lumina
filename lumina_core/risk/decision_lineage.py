@@ -158,7 +158,6 @@ def reconstruct_risk_decision_chain(
         # Best effort: try to get a global or engine-provided bus if available.
         # In most call sites the caller should pass the bus explicitly.
         try:
-            from lumina_core.order_gatekeeper import _resolve_event_bus  # type: ignore
             # This is a bit of a hack; callers should prefer passing the bus.
             event_bus = None  # fallback will be handled by history checks below
         except Exception:
@@ -540,98 +539,6 @@ def build_pretrade_provenance_report(
     event_bus: Any | None = None,
     recent_fills: list[Any] | None = None,
     recent_closes: list[Any] | None = None,
-) -> dict[str, Any]:
-    """
-    Build a structured, human-oriented provenance report for a decision_context_id.
-
-    This is a thin reporting layer. It reuses the existing reconstruction helper
-    as the single source of truth and enriches the output for human consumption.
-
-    Phase 2 Slice 17/22: Accepts recent_fills (manual or auto-pulled via engine in callers).
-    Phase 2 Slice 24: Accepts recent_closes so the cryptographic chain can continue
-    into realized PnL and position closes with real hash_ok verification.
-    """
-    if not decision_context_id:
-        return {"error": "decision_context_id is required"}
-
-    full_chain = reconstruct_risk_decision_chain(decision_context_id, event_bus=event_bus, limit=100)
-
-    # Phase 2 Slice 17/22: attach fills (existing behavior)
-    if recent_fills:
-        full_chain = extend_chain_with_fills(full_chain, recent_fills)
-
-    # Phase 2 Slice 24: attach closes / realized PnL with hash verification
-    if recent_closes:
-        full_chain = extend_chain_with_closes(full_chain, recent_closes)
-
-    if not full_chain:
-        return {
-            "decision_context_id": decision_context_id,
-            "summary": {"status": "NO_DATA", "message": "No events found for this decision_context_id"},
-            "upstream": [],
-            "core_risk_chain": [],
-            "anomalies": ["No lineage events found"],
-        }
-
-    # Partition
-    upstream_topics = {
-        "trading_engine.dream_state.updated",
-        "agent.rl.proposal",
-        "agent.news.proposal",
-        "agent.emotional_twin.proposal",
-        "agent.swarm.proposal",
-        "agent.tape.proposal",
-    }
-    core_topics = {"admission.gate_entry", "risk.policy.decision", "risk.final_arbitration.result"}
-
-    upstream = [e for e in full_chain if e.get("topic") in upstream_topics]
-    core_chain = [e for e in full_chain if e.get("topic") in core_topics]
-
-    # Anomalies
-    anomalies = []
-    if not any(e.get("topic") == "admission.gate_entry" for e in core_chain):
-        anomalies.append("Missing admission.gate_entry")
-    if not any(e.get("topic") == "risk.final_arbitration.result" for e in core_chain):
-        anomalies.append("Missing final arbitration result")
-
-    broken_links = [e for e in full_chain if not e.get("hash_ok", True)]
-    if broken_links:
-        anomalies.append(f"{len(broken_links)} broken hash link(s) detected")
-
-    # Summary
-    final_arb = next((e for e in reversed(core_chain) if e.get("topic") == "risk.final_arbitration.result"), None)
-    final_status = None
-    if final_arb:
-        final_status = _outcome_label_for_chain_node(
-            str(final_arb.get("topic", "risk.final_arbitration.result")),
-            final_arb.get("payload", {}) or {},
-        )
-
-    summary = {
-        "status": "OK" if not anomalies else "ANOMALIES",
-        "total_nodes": len(full_chain),
-        "upstream_nodes": len(upstream),
-        "core_nodes": len(core_chain),
-        "final_arbitration_status": final_status,
-        "chain_integrity_ok": len(broken_links) == 0,
-    }
-
-    return {
-        "decision_context_id": decision_context_id,
-        "summary": summary,
-        "upstream": upstream,
-        "core_risk_chain": core_chain,
-        "fills": [],
-        "anomalies": anomalies,
-        "full_raw_chain": full_chain,  # for power users / debugging
-    }
-
-
-def build_pretrade_provenance_report(
-    decision_context_id: str,
-    *,
-    event_bus: Any | None = None,
-    recent_fills: list[Any] | None = None,
     engine: Any | None = None,
 ) -> dict[str, Any]:
     """
@@ -669,6 +576,8 @@ def build_pretrade_provenance_report(
 
     base_chain = reconstruct_risk_decision_chain(decision_context_id, event_bus=event_bus, limit=100)
     extended_chain = extend_chain_with_fills(base_chain, effective_fills or [])
+    if recent_closes:
+        extended_chain = extend_chain_with_closes(extended_chain, recent_closes)
 
     if not extended_chain:
         return {
@@ -744,7 +653,7 @@ def format_provenance_report_as_markdown(report: dict[str, Any]) -> str:
     ctx = report.get("decision_context_id", "unknown")
     summary = report.get("summary", {})
 
-    lines.append(f"# Pre-Trade Decision Provenance Report")
+    lines.append("# Pre-Trade Decision Provenance Report")
     lines.append(f"**Decision Context ID**: `{ctx}`")
     lines.append(f"**Status**: {summary.get('status', 'UNKNOWN')}")
     lines.append("")
