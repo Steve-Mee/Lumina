@@ -5,40 +5,51 @@ on:
     - cron: "0 3 * * *"   # 03:00 UTC every night
   workflow_dispatch:
 
+env:
+  PYTHON_VERSION: "3.13"
+
 jobs:
   dependency-audit:
     name: safety + pip-audit + SBOM
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            requirements-core.txt
+            requirements-trading.txt
+            requirements-dev.txt
 
       - name: Install audit tooling
-        run: pip install pip-audit==2.9.0 safety==3.7.0 cyclonedx-bom==7.3.0
+        run: pip install --quiet -r requirements-dev.txt
 
       - name: pip-audit (core + trading requirements)
         run: |
+          # Starlette 1.0.1 fix blocked by fastapi==0.135.3 pin; tracked until fastapi upgrade.
           pip-audit --requirement requirements-core.txt \
             --format json \
             --output pip_audit_report.json \
+            --ignore-vuln PYSEC-2026-161 \
             --skip-editable || true
-          pip-audit --requirement requirements-core.txt
+          pip-audit --requirement requirements-core.txt --ignore-vuln PYSEC-2026-161
           pip-audit --requirement requirements-trading.txt
 
       - name: safety audit (scan/check fallback)
-        run: |
-          python scripts/validation/run_safety_audit.py
+        run: python scripts/validation/run_safety_audit.py
 
       - name: Generate SBOM (CycloneDX JSON)
         run: |
-          pip install -r requirements-core.txt -r requirements-trading.txt --quiet
+          pip install --quiet -r requirements-core.txt -r requirements-trading.txt
           cyclonedx-py environment --output-format JSON -o docs/sbom.json
 
       - name: Upload audit artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: security-audit
@@ -46,4 +57,5 @@ jobs:
             pip_audit_report.json
             docs/sbom.json
             state/safety_scan_report.json
+          if-no-files-found: warn
           retention-days: 30
