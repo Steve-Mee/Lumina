@@ -36,7 +36,7 @@ jobs:
       - name: Generate SBOM (CycloneDX JSON)
         run: |
           pip install -r requirements-core.txt -r requirements-trading.txt --quiet
-          cyclonedx-py environment --output-format json --outfile docs/sbom.json
+          cyclonedx-py environment --output-format JSON -o docs/sbom.json
 
       - name: Upload audit artifacts
         uses: actions/upload-artifact@v4

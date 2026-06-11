@@ -660,18 +660,15 @@ def test_typed_execution_fill_event_published_with_lineage(monkeypatch) -> None:
 
     from lumina_core.engine.policy_engine import PolicyEngine
 
-    class _BrokerSpy:
-        def submit_order(self, o: Order):
-            # The real paper broker now publishes the typed event
-            return OrderResult(accepted=True, order_id="f-1", status="filled", filled_qty=1, fill_price=100.0)
-        def get_account_info(self):
-            return SimpleNamespace(balance=100000.0)
+    broker = PaperBroker(engine=engine)
+    policy = PolicyEngine(engine=engine, broker=broker)
 
-    broker_spy = _BrokerSpy()
-    policy = PolicyEngine(engine=engine, broker=broker_spy)
-
+    gate_stub = lambda *a, **k: (True, "OK")
+    import lumina_core.broker.broker_bridge as bb_mod
     import lumina_core.engine.policy_engine as pe_mod
-    monkeypatch.setattr(pe_mod, "enforce_pre_trade_gate", lambda *a, **k: (True, "OK"))
+
+    monkeypatch.setattr(pe_mod, "enforce_pre_trade_gate", gate_stub)
+    monkeypatch.setattr(bb_mod, "enforce_pre_trade_gate", gate_stub)
 
     result = policy.execute_order(order)
 

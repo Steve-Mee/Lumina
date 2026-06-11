@@ -127,7 +127,7 @@ jobs:
       - name: Generate CycloneDX SBOM
         run: |
           pip install --quiet -r requirements-core.txt -r requirements-trading.txt
-          cyclonedx-py environment --output-format json --outfile docs/sbom.json
+          cyclonedx-py environment --output-format JSON -o docs/sbom.json
 
       - name: Upload SBOM artifact
         if: always()

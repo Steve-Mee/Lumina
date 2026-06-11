@@ -26,7 +26,27 @@ from lumina_core.agent_orchestration.schemas import (
 
 
 def _event_topic_key(event: Any) -> str:
+    if isinstance(event, dict):
+        return str(event.get("topic", "") or "").strip().lower()
     return str(getattr(event, "topic", "") or "").strip().lower()
+
+
+def event_metadata_from_event(event: Any) -> dict[str, Any]:
+    """Metadata dict from DomainEvent or plain dict snapshots (e.g. bus.history)."""
+    if isinstance(event, dict):
+        meta = event.get("metadata", {})
+        return meta if isinstance(meta, dict) else {}
+    meta = getattr(event, "metadata", {}) or {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def event_payload_from_event(event: Any) -> dict[str, Any]:
+    """Payload dict from DomainEvent or plain dict snapshots."""
+    if isinstance(event, dict):
+        payload = event.get("payload", {})
+        return payload if isinstance(payload, dict) else {}
+    payload = getattr(event, "payload", {}) or {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _payload_model_for_topic(topic: str) -> type[BaseModel] | None:
@@ -35,27 +55,24 @@ def _payload_model_for_topic(topic: str) -> type[BaseModel] | None:
 
 def decision_context_id_from_event(event: Any) -> str:
     """Resolve decision_context_id from metadata first, then typed payload fields."""
-    meta = getattr(event, "metadata", {}) or {}
-    if not isinstance(meta, dict):
-        meta = {}
+    meta = event_metadata_from_event(event)
     cid = str(meta.get("decision_context_id", "") or "")
     if cid:
         return cid
 
-    model = _payload_model_for_topic(_event_topic_key(event))
-    if model is not None:
-        try:
-            inst = typed_payload_from_event(event, model)
-            field_cid = getattr(inst, "decision_context_id", None)
-            if field_cid:
-                return str(field_cid)
-        except ValidationError:
-            pass
+    if not isinstance(event, dict):
+        model = _payload_model_for_topic(_event_topic_key(event))
+        if model is not None:
+            try:
+                inst = typed_payload_from_event(event, model)
+                field_cid = getattr(inst, "decision_context_id", None)
+                if field_cid:
+                    return str(field_cid)
+            except ValidationError:
+                pass
 
-    payload = getattr(event, "payload", {}) or {}
-    if isinstance(payload, dict):
-        return str(payload.get("decision_context_id", "") or "")
-    return ""
+    payload = event_payload_from_event(event)
+    return str(payload.get("decision_context_id", "") or "")
 
 
 def decision_context_id_from_blackboard_event(event: Any) -> str:

@@ -31,7 +31,7 @@ reconcile_fills: true
 reconciliation_method: websocket
 reconciliation_timeout_seconds: 15
 broker:
-  backend: paper
+  backend: live
   crosstrade:
     api_key: ${CROSSTRADE_TOKEN}
     websocket_url: wss://app.crosstrade.io/ws/stream

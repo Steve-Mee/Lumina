@@ -15,12 +15,15 @@ no "B-00x" ids, and no references to the pre-1.3.4 trusted-path era.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.risk.aperture_guard import (
     STRICT_MODES,
     enforce_no_bypass_in_strict_mode,
+    logger as aperture_guard_logger,
 )
 
 
@@ -67,11 +70,11 @@ def test_any_bypass_attempt_in_sim_real_guard_mode_is_fatal():
     assert "sim_real_guard" in err.message.lower()
 
 
-def test_bypass_attempt_in_non_strict_emits_loud_warning(caplog):
+def test_bypass_attempt_in_non_strict_emits_loud_warning():
     """In sim / paper / research modes the attempt must be loudly visible."""
     engine = FakeEngine(trade_mode="sim")
 
-    with caplog.at_level("WARNING"):
+    with patch.object(aperture_guard_logger, "warning") as warn:
         enforce_no_bypass_in_strict_mode(
             engine=engine,
             bypass_id="tempting_shortcut_in_research_code",
@@ -79,9 +82,11 @@ def test_bypass_attempt_in_non_strict_emits_loud_warning(caplog):
             reason="exploratory shortcut",
         )
 
-    assert "APERTURE_REGRESSION_DETECTED" in caplog.text
-    assert "tempting_shortcut_in_research_code" in caplog.text
-    assert "authoritative Admission Chain + Final Arbitration" in caplog.text
+    assert warn.called
+    message = " ".join(str(arg) for arg in warn.call_args[0])
+    assert "APERTURE_REGRESSION_DETECTED" in message
+    assert "tempting_shortcut_in_research_code" in message
+    assert "authoritative Admission Chain + Final Arbitration" in message
 
 
 def test_strict_modes_constant_is_correct():
@@ -92,9 +97,9 @@ def test_strict_modes_constant_is_correct():
     assert "sim" not in STRICT_MODES
 
 
-def test_defensive_behavior_with_none_engine(caplog):
+def test_defensive_behavior_with_none_engine():
     """The detector must not crash when engine is None (treated as non-strict 'unknown' mode)."""
-    with caplog.at_level("WARNING"):
+    with patch.object(aperture_guard_logger, "warning") as warn:
         enforce_no_bypass_in_strict_mode(
             engine=None,
             bypass_id="defensive_none_engine_test",
@@ -102,5 +107,7 @@ def test_defensive_behavior_with_none_engine(caplog):
         )
 
     # None engine resolves to 'unknown' (non-strict) → loud warning, no raise.
-    assert "APERTURE_REGRESSION_DETECTED" in caplog.text
-    assert "defensive_none_engine_test" in caplog.text
+    assert warn.called
+    message = " ".join(str(arg) for arg in warn.call_args[0])
+    assert "APERTURE_REGRESSION_DETECTED" in message
+    assert "defensive_none_engine_test" in message

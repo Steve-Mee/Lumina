@@ -8,7 +8,7 @@ from lumina_core.logging_utils import correlation_id, get_logger
 from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
 from lumina_core.broker.broker_bridge import Order, OrderResult
 from lumina_core.order_gatekeeper import enforce_pre_trade_gate
-from lumina_core.risk.decision_lineage import decision_context_id_from_event
+from lumina_core.risk.decision_lineage import decision_context_id_from_event, event_metadata_from_event
 
 logger = get_logger("lumina.risk.gatekeeper")
 
@@ -126,8 +126,9 @@ class PolicyEngine:
                     bus = getattr(self.engine, "event_bus", None)
                     if bus and hasattr(bus, "history"):
                         recent_arbs = [
-                            e for e in bus.history("risk.final_arbitration.result", limit=20)
-                            if str(getattr(e, "metadata", {}).get("symbol", "")) == str(order.symbol)
+                            e
+                            for e in bus.history("risk.final_arbitration.result", limit=20)
+                            if str(event_metadata_from_event(e).get("symbol", "")) == str(order.symbol)
                         ]
                         if recent_arbs:
                             last_arb = recent_arbs[-1]
