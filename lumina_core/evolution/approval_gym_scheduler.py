@@ -47,6 +47,18 @@ class ApprovalGymScheduler:
         notification_scheduler: Optional[Any] = None,
     ):
         if getattr(self, "_initialized", False):
+            # Singleton may be constructed earlier (e.g. EvolutionOrchestrator); refresh injectables.
+            if approval_gym is not None:
+                self._approval_gym = approval_gym
+            if telegram_notifier is not None:
+                self._telegram_notifier = telegram_notifier
+            if notification_scheduler is not None:
+                self._notification_scheduler = notification_scheduler
+            if interval_hours != 6:
+                self._interval_hours = max(1, int(interval_hours))
+            if history_path != "state/gym_session_history.jsonl":
+                self._history_path = Path(history_path)
+                self._history_path.parent.mkdir(parents=True, exist_ok=True)
             return
         self._approval_gym = approval_gym
         self._telegram_notifier = telegram_notifier

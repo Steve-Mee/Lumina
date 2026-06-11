@@ -162,6 +162,7 @@ class TestSchedulerIntegration:
 
     def test_scheduler_runs_session_loop(self):
         """Test that scheduler loop calls gym sessions (mocked)."""
+        ApprovalGymScheduler._instance = None
         with tempfile.TemporaryDirectory() as tmpdir:
             history_path = str(Path(tmpdir) / "history.jsonl")
 
@@ -190,6 +191,7 @@ class TestSchedulerIntegration:
 
     def test_scheduler_handles_gym_failures(self):
         """Test that scheduler handles gym exceptions gracefully."""
+        ApprovalGymScheduler._instance = None
         with tempfile.TemporaryDirectory() as tmpdir:
             history_path = str(Path(tmpdir) / "history.jsonl")
 
