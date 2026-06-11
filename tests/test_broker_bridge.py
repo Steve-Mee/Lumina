@@ -663,12 +663,14 @@ def test_typed_execution_fill_event_published_with_lineage(monkeypatch) -> None:
     broker = PaperBroker(engine=engine)
     policy = PolicyEngine(engine=engine, broker=broker)
 
-    gate_stub = lambda *a, **k: (True, "OK")
+    def _gate_ok(*_a: object, **_k: object) -> tuple[bool, str]:
+        return True, "OK"
+
     import lumina_core.broker.broker_bridge as bb_mod
     import lumina_core.engine.policy_engine as pe_mod
 
-    monkeypatch.setattr(pe_mod, "enforce_pre_trade_gate", gate_stub)
-    monkeypatch.setattr(bb_mod, "enforce_pre_trade_gate", gate_stub)
+    monkeypatch.setattr(pe_mod, "enforce_pre_trade_gate", _gate_ok)
+    monkeypatch.setattr(bb_mod, "enforce_pre_trade_gate", _gate_ok)
 
     result = policy.execute_order(order)
 

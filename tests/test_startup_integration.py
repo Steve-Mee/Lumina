@@ -31,6 +31,9 @@ def test_main_calls_bootstrap_then_forever_loop(monkeypatch):
 
     monkeypatch.setattr(module, "get_container", lambda: dummy_container)
     monkeypatch.setattr(module, "bootstrap_runtime", lambda container: calls.append("bootstrap_runtime"))
+    from lumina_core.engine import runtime_entrypoint as _runtime_ep
+
+    monkeypatch.setattr(_runtime_ep, "_first_boot_needed", lambda: False)
 
     # Force the legacy no-CLI startup path; pytest injects argv values by default.
     module.main([])
