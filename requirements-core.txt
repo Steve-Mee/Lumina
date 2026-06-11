@@ -138,7 +138,7 @@ comtypes==1.4.16; platform_system == "Windows"
 
 # -- Misc ------------------------------------------------------------------
 sentry-sdk==2.57.0
-GitPython==3.1.46
+GitPython==3.1.50
 gitdb==4.0.12
 smmap==5.0.3
 mcp==1.27.0

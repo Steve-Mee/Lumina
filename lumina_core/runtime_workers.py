@@ -6,6 +6,8 @@ for bootstrap, tests, and SupervisorPhaseStateMachine lazy imports.
 
 from __future__ import annotations
 
+import time  # noqa: F401 — tests monkeypatch runtime_workers.time
+from datetime import datetime  # noqa: F401 — tests monkeypatch runtime_workers.datetime
 
 from lumina_core.runtime_context import RuntimeContext
 from lumina_core.engine.price_dupe_resolver import PriceDupeResolver

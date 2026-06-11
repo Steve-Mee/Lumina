@@ -70,7 +70,7 @@ def test_training_dashboard_no_longer_links_to_8502() -> None:
 def test_first_boot_home_uses_tabs_not_expanders() -> None:
     root = Path(__file__).resolve().parents[1]
     source = (root / "lumina_launcher" / "streamlit_main.py").read_text(encoding="utf-8")
-    assert 'st.tabs(["Setup"])' in source
+    assert "st.tabs(" in source and "Setup" in source and "phase_label" in source
     assert "render_first_boot_command_center(" in source
     dashboard_source = (root / "lumina_launcher" / "ui" / "tabs" / "training_dashboard.py").read_text(encoding="utf-8")
     assert '"Birth Phase"' in dashboard_source

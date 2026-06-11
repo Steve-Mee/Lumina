@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import importlib.util
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+
+from lumina_os.frontend.veto_registry_summary import weekly_veto_summary
 
 
 @pytest.mark.unit
@@ -39,12 +40,6 @@ def test_weekly_veto_summary_sqlite_counts_recent_rows_only(tmp_path: Path) -> N
         )
         conn.commit()
 
-    mod_path = Path(__file__).resolve().parents[1] / "lumina_os" / "frontend" / "monitoring_dashboard.py"
-    spec = importlib.util.spec_from_file_location("_weekly_veto_test_mod", mod_path)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-
-    count, top = mod.weekly_veto_summary(state)
+    count, top = weekly_veto_summary(state)
     assert count == 1
     assert top and top[0][0] == "too_risky"

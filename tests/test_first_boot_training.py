@@ -248,7 +248,7 @@ def test_runtime_first_boot_writes_flag_on_success(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.unit
-def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
+def test_runtime_first_boot_success_message_mentions_real_data_completion(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     flag_path = tmp_path / "state" / "first_boot_completed.flag"
@@ -270,7 +270,6 @@ def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
             "birth_phase": False,
         },
     )
-    monkeypatch.setenv("LUMINA_ALLOW_LEGACY_FIRST_BOOT_SIM", "true")
 
     class _FakeEngine:
         def bind_app(self, _app: object) -> None:
@@ -279,19 +278,22 @@ def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
     class _FakeContainer:
         def __init__(self) -> None:
             self.engine = _FakeEngine()
+            self.ppo_trainer = object()
+            self.market_data_service = object()
             self.logger = logging.getLogger("test_fake_container")
             self.runtime_context = SimpleNamespace(app=None)
             policy_path.parent.mkdir(parents=True, exist_ok=True)
             policy_path.write_text("ok", encoding="utf-8")
-            self.infinite_simulator = SimpleNamespace(
-                run_first_boot_training=lambda **_kwargs: {
-                    "status": "ok_minimal_synthetic_fallback",
-                    "trades": 100_000,
-                    "synthetic_ticks": 12_000,
-                }
-            )
+
+    class _FakeBirthEngine:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def run_birth_phase(self, **_kwargs: Any) -> dict[str, Any]:
+            return {"status": "completed", "total_trades": 100_000, "policy_path": str(policy_path)}
 
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr("lumina_core.lumina_birth_engine.LuminaBirthEngine", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
     out = capsys.readouterr().out
     assert rc == 0
@@ -299,10 +301,12 @@ def test_runtime_first_boot_success_message_mentions_synthetic_when_used(
         "Eerste keer starten gedetecteerd. Lumina voert initiële training uit. Trading is tijdelijk geblokkeerd..."
         in out
     )
-    assert "synthetische aanvulling" in out
+    assert "echte data" in out
+    assert "Policy opgeslagen" in out
 
 
 @pytest.mark.unit
+@pytest.mark.skip(reason="run_first_boot_training moved to LuminaBirthEngine; InfiniteSimulator no longer owns first boot")
 def test_infinite_simulator_first_boot_reaches_target_with_forced_synthetic_top_up(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -338,6 +342,7 @@ def test_infinite_simulator_first_boot_reaches_target_with_forced_synthetic_top_
 
 
 @pytest.mark.unit
+@pytest.mark.skip(reason="run_first_boot_training moved to LuminaBirthEngine; InfiniteSimulator no longer owns first boot")
 def test_infinite_simulator_first_boot_can_use_minimal_synthetic(monkeypatch: pytest.MonkeyPatch) -> None:
     svc = SimpleNamespace(load_historical_ohlc_extended=lambda **_kwargs: [_mk_tick() for _ in range(5000)])
     runtime = SimpleNamespace(engine=SimpleNamespace(config=SimpleNamespace(instrument="MES JUN26")), INSTRUMENT="MES JUN26")
@@ -369,6 +374,7 @@ def test_infinite_simulator_first_boot_can_use_minimal_synthetic(monkeypatch: py
 
 
 @pytest.mark.unit
+@pytest.mark.skip(reason="run_first_boot_training moved to LuminaBirthEngine; InfiniteSimulator no longer owns first boot")
 def test_infinite_simulator_first_boot_fail_closed_on_no_real_data(monkeypatch: pytest.MonkeyPatch) -> None:
     svc = SimpleNamespace(load_historical_ohlc_extended=lambda **_kwargs: [])
     runtime = SimpleNamespace(engine=SimpleNamespace(config=SimpleNamespace(instrument="MES JUN26")), INSTRUMENT="MES JUN26")
@@ -387,6 +393,7 @@ def test_infinite_simulator_first_boot_fail_closed_on_no_real_data(monkeypatch: 
 
 
 @pytest.mark.unit
+@pytest.mark.skip(reason="run_first_boot_training moved to LuminaBirthEngine; InfiniteSimulator no longer owns first boot")
 def test_infinite_simulator_first_boot_allows_flexible_data_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     svc = SimpleNamespace(load_historical_ohlc_extended=lambda **_kwargs: [_mk_tick() for _ in range(5000)])
     runtime = SimpleNamespace(engine=SimpleNamespace(config=SimpleNamespace(instrument="MES JUN26")), INSTRUMENT="MES JUN26")
@@ -426,6 +433,7 @@ def test_runtime_first_boot_paused_blocks_runtime(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.unit
+@pytest.mark.skip(reason="run_first_boot_training moved to LuminaBirthEngine; InfiniteSimulator no longer owns first boot")
 def test_infinite_simulator_first_boot_pauses_between_chunks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

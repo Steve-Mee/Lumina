@@ -3,12 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sqlite3
 import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +27,7 @@ from lumina_os.frontend.dashboard_views import (
     embedded_react_ui_status,
     resolve_workspace_root_from_this_module,
 )
+from lumina_os.frontend.veto_registry_summary import weekly_veto_summary
 from lumina_os.frontend.http_utils import (
     is_backend_unreachable,
     log_fetch_failure,
@@ -339,47 +339,6 @@ def _latest_training_reports(journal_sim_dir: Path, *, limit: int = 10) -> list[
             reports.append(payload)
     reports.sort(key=lambda r: _parse_iso(r.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return reports[:limit]
-
-
-def weekly_veto_summary(state_dir: Path | None = None) -> tuple[int, list[tuple[str, int]]]:
-    """Weekly veto counts; ``state_dir`` defaults to workspace ``state/`` (for tests pass a temp dir)."""
-    base = state_dir or _MonitoringPaths.resolve().state_dir
-    veto_jsonl = base / "veto_registry.jsonl"
-    veto_db = base / "veto_registry.db"
-    now = datetime.now(timezone.utc)
-    cutoff = now - timedelta(days=7)
-    reasons: Counter[str] = Counter()
-    count = 0
-
-    if veto_jsonl.exists():
-        for row in _load_jsonl(veto_jsonl):
-            ts = _parse_iso(row.get("veto_timestamp") or row.get("timestamp"))
-            if ts is None or ts < cutoff:
-                continue
-            count += 1
-            reasons[str(row.get("reason", "unknown"))] += 1
-        return count, reasons.most_common(5)
-
-    if veto_db.exists():
-        try:
-            with sqlite3.connect(veto_db) as conn:
-                q = """
-                SELECT reason, COUNT(*) as c
-                FROM veto_records
-                WHERE veto_timestamp >= ?
-                GROUP BY reason
-                ORDER BY c DESC
-                LIMIT 5
-                """
-                rows = conn.execute(q, (cutoff.isoformat(),)).fetchall()
-                total_q = "SELECT COUNT(*) FROM veto_records WHERE veto_timestamp >= ?"
-                total = conn.execute(total_q, (cutoff.isoformat(),)).fetchone()
-                count = int(total[0]) if total else 0
-                return count, [(str(r[0]), int(r[1])) for r in rows]
-        except Exception:
-            return 0, []
-
-    return 0, []
 
 
 def _weekly_veto_summary(state_dir: Path) -> tuple[int, list[tuple[str, int]]]:
