@@ -44,10 +44,10 @@ jobs:
 
       - name: MyPy type check
         run: |
-          mypy lumina_core/ \
-            --ignore-missing-imports \
+          mypy --config-file mypy.ini \
             --no-error-summary \
-            --pretty
+            --pretty \
+            lumina_core/
 
       - name: Pyright on lumina_os backend
         run: pyright lumina_os/backend
@@ -116,7 +116,8 @@ jobs:
 
       - name: Run pip-audit on core + trading
         run: |
-          pip-audit --requirement requirements-core.txt
+          # Starlette 1.0.1 fix blocked by fastapi==0.135.3 pin; tracked until fastapi upgrade.
+          pip-audit --requirement requirements-core.txt --ignore-vuln PYSEC-2026-161
           pip-audit --requirement requirements-trading.txt
 
       - name: Run Safety audit (scan/check fallback)

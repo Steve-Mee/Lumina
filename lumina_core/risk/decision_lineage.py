@@ -748,13 +748,5 @@ if __name__ == "__main__":
 
     # Phase 2 Slice 22: Best-effort attempt to provide a broker/engine context
     # so the report automatically includes recent fills (when available).
-    engine = None
-    try:
-        from lumina_core.engine.lumina_engine import LuminaEngine  # type: ignore
-        # Only attempt if a default engine can be constructed cheaply
-        engine = LuminaEngine()  # may be partial; auto-pull inside report is best-effort
-    except Exception:
-        engine = None
-
-    report = build_pretrade_provenance_report(ctx, engine=engine)
+    report = build_pretrade_provenance_report(ctx)
     print(format_provenance_report_as_markdown(report))
