@@ -18,7 +18,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install audit tooling
-        run: pip install pip-audit==2.9.0 safety==3.7.0 cyclonedx-bom==5.3.0
+        run: pip install pip-audit==2.9.0 safety==3.7.0 cyclonedx-bom==7.3.0
 
       - name: pip-audit (core + trading requirements)
         run: |

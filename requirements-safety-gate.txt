@@ -2,6 +2,8 @@
 # Keeps CI focused on SIM/REAL contract tests without resolving the full ML stack.
 PyYAML==6.0.3
 pytest==9.0.2
+pytest-asyncio==1.4.0
+pytest-timeout==2.4.0
 numpy==2.3.5
 pandas==3.0.2
 requests==2.33.1
@@ -27,5 +29,5 @@ PyJWT==2.12.1
 ruff==0.12.7
 mypy==1.17.1
 bandit==1.8.6
-pytest-cov==7.0.0
+pytest-cov==7.1.0
 stable_baselines3==2.8.0
