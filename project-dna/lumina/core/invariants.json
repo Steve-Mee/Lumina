@@ -1,6 +1,6 @@
 {
   "schema_version": "dna-2.0",
-  "last_updated": "2026-05-29",
+  "last_updated": "2026-06-04",
   "invariants": [
     {
       "id": "capital_preservation_real",
@@ -37,6 +37,20 @@
       "statement": "SIM/Paper is voor radicale experimentatie. REAL is een streng fort. De scheiding moet expliciet en onontkoombaar zijn.",
       "severity": "fatal",
       "domain": "risk"
+    },
+    {
+      "id": "no_structural_bypass_capital_paths",
+      "statement": "Geen structurele bypasses in kapitaalpaden. Enige pad naar broker in strict modes: geautoriseerde gate + Final Arbitration + lineage.",
+      "severity": "fatal",
+      "domain": "safety",
+      "enforcement": {
+        "runtime": "lumina_core.risk.aperture_guard",
+        "static_scan": "scripts.dna_guardian.capital_aperture_scan",
+        "references": [
+          "docs/adr/0010-death-of-trusted-path-optimization.md",
+          "project-dna/lumina/evolution/log/2026-05-31-current-capital-aperture-bypass-inventory.md"
+        ]
+      }
     }
   ]
 }

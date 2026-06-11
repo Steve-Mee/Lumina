@@ -12,7 +12,11 @@ from lumina_core.evolution.simulator_data_support import (
 )
 
 from .agent_blackboard import AgentBlackboard
-from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+from lumina_core.agent_orchestration.schemas import (
+    TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+    TradingEngineExecutionAggregate,
+    typed_payload_from_event,
+)
 from lumina_core.evolution.self_evolution_meta_agent import SelfEvolutionMetaAgent
 
 logger = logging.getLogger(__name__)
@@ -164,20 +168,27 @@ class MetaAgentOrchestrator:
             events = []
         confidences: list[float] = []
         for e in events:
-            payload = e.payload if isinstance(getattr(e, "payload", None), dict) else {}
-            confidences.append(float(payload.get("confidence", payload.get("confluence_score", 0.0)) or 0.0))
+            try:
+                agg = typed_payload_from_event(e, TradingEngineExecutionAggregate)
+            except Exception:
+                continue
+            confidences.append(float(agg.confidence or agg.confluence_score or 0.0))
         aggregate_conf = sum(confidences) / len(confidences) if confidences else 0.0
 
         wins = 0
         trades = 0
         pnl = 0.0
         for event in events:
-            payload = event.payload if isinstance(event.payload, dict) else {}
-            if payload.get("executed") is True:
+            try:
+                agg = typed_payload_from_event(event, TradingEngineExecutionAggregate)
+            except Exception:
+                continue
+            if agg.executed is True:
                 trades += 1
-            if float(payload.get("pnl", 0.0) or 0.0) > 0:
+            event_pnl = float(agg.pnl or 0.0)
+            if event_pnl > 0:
                 wins += 1
-            pnl += float(payload.get("pnl", 0.0) or 0.0)
+            pnl += event_pnl
 
         win_rate = (wins / trades) if trades > 0 else float(nightly_report.get("winrate", 0.0) or 0.0)
         net_pnl = pnl if trades > 0 else float(nightly_report.get("net_pnl", 0.0) or 0.0)

@@ -13,12 +13,13 @@ import threading
 from collections import defaultdict, deque
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from lumina_core.agent_orchestration.schemas import (
     CRITICAL_EVENT_BUS_TOPICS,
+    AgentProposalPayload,
     AgentReflection,
     CommunityKnowledgeSnippet,
     ConstitutionAudit,
@@ -28,12 +29,13 @@ from lumina_core.agent_orchestration.schemas import (
     EvolutionPromotionDecision,
     EvolutionProposal,
     FinalArbitrationResult,
+    GateEntryPayload,
     LLMDecisionContext,
     MetaAgentThought,
     RiskVerdict,
     ShadowResult,
     TradeIntent,
-    validate_payload_with_model,
+    model_validate_payload_with_instance,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,9 @@ def _utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+TPayload = TypeVar("TPayload", bound=BaseModel)
+
+
 @dataclass(slots=True)
 class DomainEvent:
     topic: str
@@ -68,9 +73,20 @@ class DomainEvent:
     payload: dict[str, Any]
     timestamp: str = field(default_factory=_utcnow)
     metadata: dict[str, Any] = field(default_factory=dict)
+    payload_instance: BaseModel | None = None
+
+    def typed_payload(self, model: type[TPayload]) -> TPayload:
+        """Return validated Pydantic instance (prefer payload_instance when present)."""
+        if self.payload_instance is not None and isinstance(self.payload_instance, model):
+            return self.payload_instance
+        return model.model_validate(self.payload)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        inst = data.pop("payload_instance", None)
+        if isinstance(inst, BaseModel):
+            data["payload_instance"] = inst.model_dump(mode="json")
+        return data
 
 
 class EventBus:
@@ -105,8 +121,9 @@ class EventBus:
             selected_payload_model = registry_model
         else:
             selected_payload_model = payload_model or registry_model
+        payload_instance: BaseModel | None = None
         if selected_payload_model is not None:
-            safe_payload = self._validate_payload(
+            safe_payload, payload_instance = self._validate_payload(
                 topic=topic_key,
                 producer=str(producer),
                 payload=safe_payload,
@@ -118,6 +135,7 @@ class EventBus:
             producer=str(producer),
             payload=safe_payload,
             metadata=dict(metadata or {}),
+            payload_instance=payload_instance,
         )
         with self._lock:
             self._seq += 1
@@ -136,9 +154,9 @@ class EventBus:
         producer: str,
         payload: dict[str, Any],
         payload_model: type[BaseModel],
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], BaseModel]:
         try:
-            validated = validate_payload_with_model(payload=payload, payload_model=payload_model)
+            return model_validate_payload_with_instance(payload=payload, payload_model=payload_model)
         except ValidationError as exc:
             logger.warning(
                 "EventBus schema violation topic=%s producer=%s model=%s errors=%s",
@@ -148,7 +166,6 @@ class EventBus:
                 exc.errors(),
             )
             raise
-        return validated
 
     def publish_validated(
         self,

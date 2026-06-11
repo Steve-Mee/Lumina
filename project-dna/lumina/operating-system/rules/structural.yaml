@@ -1,0 +1,75 @@
+# Structural Validation Rules for DNA Guardian
+# This file defines which files and directories must exist for the DNA 2.0 structure.
+
+version: "1.0"
+description: "Required structure for Project DNA 2.0"
+
+required_paths:
+  # Core Layer (non-negotiable)
+  - path: "core/constitution.md"
+    type: "file"
+    required: true
+    description: "The hard, near-immutable laws of the project"
+
+  - path: "core/north-star.md"
+    type: "file"
+    required: true
+    description: "Ultra-compact essence of vision and principles"
+
+  - path: "core/invariants.json"
+    type: "file"
+    required: true
+    description: "Machine-readable version of the constitution"
+
+  # Operating System Layer
+  - path: "operating-system/self-improvement-protocol.md"
+    type: "file"
+    required: true
+
+  - path: "operating-system/truth-metrics.md"
+    type: "file"
+    required: true
+
+  - path: "operating-system/decision-framework.md"
+    type: "file"
+    required: true
+
+  - path: "operating-system/anti-patterns.md"
+    type: "file"
+    required: true
+
+  - path: "operating-system/dna-validation-rules.md"
+    type: "file"
+    required: true
+
+  # Current Reality Layer
+  - path: "current-reality/architecture.md"
+    type: "file"
+    required: true
+
+  - path: "current-reality/evolutionary-debt.md"
+    type: "file"
+    required: true
+
+  # Interfaces Layer
+  - path: "interfaces/README.md"
+    type: "file"
+    required: true
+
+  - path: "interfaces/export/agent-context.md"
+    type: "file"
+    required: true
+
+  # Evolution Layer
+  - path: "evolution-log.md"
+    type: "file"
+    required: true
+    description: "Summary evolution log at the root of lumina/"
+
+  - path: "evolution/log/"
+    type: "directory"
+    required: true
+
+  - path: "evolution/experiments/"
+    type: "directory"
+    required: true

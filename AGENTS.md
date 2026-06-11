@@ -29,6 +29,7 @@ Lumina is a self-evolving autonomous trading system. Its core strength lies in c
 - Never hide or soften risk parameters.
 - Require proper backtesting + out-of-sample validation before considering changes to strategy or risk logic.
 - Use Plan Mode for any modification to core trading or risk components.
+- The 2026-05-31 Elon Musk first-principles analysis (`project-dna/lumina/evolution/log/2026-05-31-elon-musk-first-principles-trading-system-analysis.md` + 90-day aperture roadmap) is required reading before touching order flow, risk/, safety/, gatekeeper, Event Bus, or any capital path. The identified bypass mechanisms and aperture erosion are now top-priority evolutionary debt.
 
 ### Evolution
 - Prefer small, measurable, low-risk evolutionary steps.

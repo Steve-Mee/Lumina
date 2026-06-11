@@ -89,6 +89,37 @@ def apply_dream_learnings_to_dna_content(
                     "evolution_mode": str(evolution_mode),
                     "source_hints": list(hints),
                 }
+
+                # === Phase 2 Deliverable 5 (Aperture Hardening) — Dream stress risk nudges ===
+                # When the dream engine actually changes risk hyperparams under stress (breach_rate/hints),
+                # run the official isolated shadow aperture using the real post-nudge values.
+                # Exact same best-effort, non-blocking pattern as the general call later in this file
+                # and all prior D5 sites. Never breaks candidate generation.
+                try:
+                    from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+                    from pathlib import Path
+
+                    validate_risk_proposal_in_shadow(
+                        proposal={
+                            "experiment_id": f"risk-dream-nudge-{br:.2f}",
+                            "dna_hash": "dream-nudge",
+                            "signal": "PROPOSAL",
+                            "confluence_score": 0.6,
+                            "proposed_risk": float(nudged.get("max_risk_percent", 1.0)),
+                            "breach_rate": br,
+                            "source_hints": list(hints),
+                            "dream_nudged": True,
+                            "evolution_mode": str(evolution_mode),
+                        },
+                        engine=None,
+                        storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                        auto_record_promotion=True,
+                    )
+                except Exception:
+                    # Best-effort: shadow validation must never break dream learning application.
+                    pass
+                # ================================================================================
+
             base_pt = str(d2.get("prompt_tweak", "") or "")
             d2["prompt_tweak"] = (base_pt + blurb)[:8000]
             return json.dumps(d2, sort_keys=True, ensure_ascii=True)
@@ -223,6 +254,46 @@ class MutationPipeline:
                     pre_check.violation_names,
                 )
                 continue
+
+            # === Phase 2 Deliverable 5 (Aperture Hardening) — Risk shadow is the default at generation ===
+            # For every candidate, we automatically run the official reusable helper.
+            # This makes shadow validation the normal behavior for any DNA that may affect risk.
+            try:
+                content = candidate.content or {}
+                if isinstance(content, str):
+                    import json
+                    try:
+                        content = json.loads(content)
+                    except Exception:
+                        content = {}
+
+                from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+                from pathlib import Path
+
+                # Best-effort: full engine wiring will make this path stronger in future slices.
+                shadow_result = validate_risk_proposal_in_shadow(
+                    proposal={
+                        "experiment_id": f"risk-mutation-{candidate.hash[:12]}",
+                        "dna_hash": candidate.hash,
+                        "signal": content.get("signal") or "BUY",
+                        "confluence_score": float(content.get("confluence_score", content.get("confluence", 0.6))),
+                        "proposed_risk": float(content.get("proposed_risk", content.get("max_risk_percent", 150.0))),
+                    },
+                    engine=None,
+                    storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                    auto_record_promotion=True,
+                )
+                if shadow_result:
+                    self._logger.info(
+                        "Risk shadow validation executed at generation for candidate %s (recommendation=%s)",
+                        candidate.hash[:12],
+                        (shadow_result.recommendation or {}).get("suggested_stage"),
+                    )
+            except Exception:
+                # Risk shadow at generation time is best-effort and must never break candidate creation.
+                pass
+            # ================================================================================
+
             self._registry.register_dna(candidate)
             candidates.append(candidate)
         return candidates

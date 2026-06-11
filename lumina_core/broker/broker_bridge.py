@@ -127,7 +127,15 @@ def _run_final_arbitration(engine: object | None, order: "Order") -> tuple[bool,
     try:
         metadata = order.metadata if isinstance(order.metadata, dict) else {}
         if bool(metadata.get("skip_admission_chain_recheck", False)):
-            return True, "skipped_admission_chain_recheck"
+            # Defensive deprecation trap (post 1.3.4 zero-trace hygiene).
+            # The skip_admission_chain_recheck key is a pre-1.3.3 legacy bypass remnant (B-004).
+            # It has had no functional effect since 1.3.3. The authoritative gate always runs.
+            # Any code still emitting this key must be located and cleaned.
+            logger.error(
+                "LEGACY_BYPASS_FLAG_DETECTED: skip_admission_chain_recheck=True was set. "
+                "This flag has had no effect since Phase 1.3.3. Remove the source that still emits this metadata key."
+            )
+            # Always fall through — no short-circuit remains in any mode.
         reference_price = float(metadata.get("reference_price", 0.0) or 0.0)
         stop_loss = float(order.stop_loss or 0.0)
         fallback_risk = abs(reference_price - stop_loss) if reference_price > 0 and stop_loss > 0 else 0.0
@@ -170,6 +178,11 @@ class OrderResult:
     message: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
 
+    # Phase 2 live broker lineage (mirror Fill post-Slice 19; first-class for get_lineage_from_order_result + typed events)
+    decision_context_id: str | None = None
+    prev_hash: str | None = None
+    prev_event_topic: str | None = None
+
 
 @dataclass(slots=True)
 class AccountInfo:
@@ -200,6 +213,12 @@ class Fill:
     price: float
     timestamp: str
     commission: float = 0.0
+
+    # Phase 2 Slice 19: First-class lineage fields (promoted from raw)
+    decision_context_id: str | None = None
+    prev_hash: str | None = None
+    prev_event_topic: str | None = None
+
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -277,6 +296,20 @@ class BrokerBridge(ABC):
 
 @dataclass(slots=True)
 class PaperBroker(BrokerBridge):
+    """
+    Paper (simulation) broker implementation.
+
+    Phase 2 Slice 15/16 lineage note:
+    When an Order carrying decision_context_id + prev_hash (populated by the
+    authoritative post-Final-Arbitration path in policy_engine) reaches submit_order,
+    the resulting Fill and OrderResult now have the same lineage fields copied into
+    their .raw dicts (best-effort). This is the second downstream cryptographic link.
+
+    Live broker implementations (e.g. CrossTradeBroker) should apply the exact same
+    pattern when they receive fill confirmations from the wire: read lineage from the
+    original Order (if present) or from the submission context, and attach it to the
+    Fill/OrderResult objects they create or return.
+    """
     engine: Any | None = None
     logger: logging.Logger | None = None
     starting_balance: float = 50000.0
@@ -373,6 +406,27 @@ class PaperBroker(BrokerBridge):
 
         order_id = f"paper-{uuid.uuid4()}"
 
+        # Phase 2 Slice 16: Propagate downstream lineage (decision_context_id + prev_hash)
+        # from the Order (populated by Slice 15 at the post-Final-Arbitration boundary)
+        # into the Fill and OrderResult. This is purely additive metadata population.
+        fill_raw = {"broker": "paper"}
+        result_raw = {"broker": "paper", "fill_id": None}
+
+        try:
+            meta = getattr(order, "metadata", {}) or {}
+            if isinstance(meta, dict):
+                if meta.get("decision_context_id"):
+                    fill_raw["decision_context_id"] = meta["decision_context_id"]
+                    result_raw["decision_context_id"] = meta["decision_context_id"]
+                if meta.get("prev_hash"):
+                    fill_raw["prev_hash"] = meta["prev_hash"]
+                    result_raw["prev_hash"] = meta["prev_hash"]
+                if meta.get("prev_event_topic"):
+                    fill_raw["prev_event_topic"] = meta["prev_event_topic"]
+                    result_raw["prev_event_topic"] = meta["prev_event_topic"]
+        except Exception:
+            pass  # best-effort only; never break fill creation
+
         fill = Fill(
             fill_id=f"fill-{uuid.uuid4()}",
             order_id=order_id,
@@ -382,11 +436,67 @@ class PaperBroker(BrokerBridge):
             price=fill_price,
             timestamp=datetime.now(timezone.utc).isoformat(),
             commission=float(cost.total_fees_usd_per_side),
-            raw={"broker": "paper"},
+            # Phase 2 Slice 19: Populate first-class lineage fields (in addition to raw for transition)
+            decision_context_id=meta.get("decision_context_id") if isinstance(meta, dict) else None,
+            prev_hash=meta.get("prev_hash") if isinstance(meta, dict) else None,
+            prev_event_topic=meta.get("prev_event_topic") if isinstance(meta, dict) else None,
+            raw=fill_raw,
         )
         self._fills.append(fill)
         self._sync_positions_from_fills()
 
+        # Phase 2 Slice 18 + 19: Best-effort publishing of typed execution.fill.received event
+        # with full lineage. Now prefers the first-class fields on the Fill dataclass
+        # (promoted Slice 19) so the typed event contract and domain model stay aligned.
+        # Falls back to raw only during transition / for legacy fills.
+        try:
+            bus = getattr(self.engine, "event_bus", None)
+            if bus and hasattr(bus, "publish_validated"):
+                from lumina_core.agent_orchestration.schemas import (
+                    EXECUTION_FILL_RECEIVED_TOPIC,
+                    ExecutionFill,
+                )
+                payload = {
+                    "fill_id": fill.fill_id,
+                    "order_id": order_id,
+                    "symbol": fill.symbol,
+                    "side": fill.side,
+                    "quantity": fill.quantity,
+                    "price": fill.price,
+                    "timestamp": fill.timestamp,
+                    "commission": fill.commission,
+                    "raw": dict(fill.raw) if isinstance(fill.raw, dict) else {},
+                }
+                # Phase 2 Slice 19: Prefer first-class lineage fields on the Fill instance
+                # (set at construction from Order metadata). raw is fallback only.
+                dcid = getattr(fill, "decision_context_id", None)
+                ph = getattr(fill, "prev_hash", None)
+                pet = getattr(fill, "prev_event_topic", None)
+                if not dcid and isinstance(fill.raw, dict):
+                    dcid = fill.raw.get("decision_context_id")
+                if not ph and isinstance(fill.raw, dict):
+                    ph = fill.raw.get("prev_hash")
+                if not pet and isinstance(fill.raw, dict):
+                    pet = fill.raw.get("prev_event_topic")
+                if dcid:
+                    payload["decision_context_id"] = dcid
+                if ph:
+                    payload["prev_hash"] = ph
+                if pet:
+                    payload["prev_event_topic"] = pet
+
+                # Validate before publishing (follows event-bus-contract)
+                ExecutionFill.model_validate(payload)
+                bus.publish_validated(
+                    topic=EXECUTION_FILL_RECEIVED_TOPIC,
+                    producer="paper_broker",
+                    payload=payload,
+                )
+        except Exception:
+            # Best-effort only — never break fill creation or submission
+            pass
+
+        result_raw["fill_id"] = fill.fill_id
         return OrderResult(
             accepted=True,
             order_id=order_id,
@@ -394,7 +504,7 @@ class PaperBroker(BrokerBridge):
             filled_qty=int(order.quantity),
             fill_price=fill_price,
             message="paper fill",
-            raw={"broker": "paper", "fill_id": fill.fill_id},
+            raw=result_raw,
         )
 
     def get_account_info(self) -> AccountInfo:
@@ -457,6 +567,11 @@ class CrossTradeBroker(BrokerBridge):
     _session: requests.Session | None = field(default=None, init=False)
     _last_client_order_id: str = field(default="", init=False)
 
+    # Phase 2 live broker lineage (pending map by client/server order id for async fill correlation on poll/WS)
+    # Populated on submit from Order.metadata (Slice 15 attach), overlaid on get_fills / returned OrderResult.
+    # Mirrors PaperBroker exact pattern per class docstring. Additive; best-effort + raw fallback preserved.
+    _pending_lineage: dict[str, dict[str, str | None]] = field(default_factory=dict, init=False, repr=False)
+
     @staticmethod
     def _pick_float(payload: dict[str, Any], keys: tuple[str, ...]) -> float:
         for key in keys:
@@ -514,16 +629,54 @@ class CrossTradeBroker(BrokerBridge):
         assert self._session is not None
         return self._session
 
+    def lookup_pending_lineage(
+        self,
+        *,
+        order_id: str = "",
+        client_order_id: str = "",
+        consume: bool = True,
+    ) -> dict[str, str | None]:
+        """Resolve submit-time lineage from the pending map (WS/poll/get_fills overlay)."""
+        oid = str(order_id or "").strip()
+        coid = str(client_order_id or "").strip()
+        lookup = self._pending_lineage.get(oid) or (self._pending_lineage.get(coid) if coid else None) or {}
+        if not lookup:
+            return {}
+        result = dict(lookup)
+        if consume:
+            if oid:
+                self._pending_lineage.pop(oid, None)
+            if coid:
+                self._pending_lineage.pop(coid, None)
+        return result
+
     def submit_order(self, order: Order) -> OrderResult:
+        # Phase 2 live broker lineage wiring (Slice 16/19 pattern from Paper + docstring)
+        # Extract early (before arb) from Order (populated upstream by policy_engine Slice 15 from final_arb + gate_entry prev_hash).
+        # Store in pending map for async fill correlation on success path.
+        meta = getattr(order, "metadata", {}) or {}
+        lineage = {}
+        if isinstance(meta, dict):
+            for k in ("decision_context_id", "prev_hash", "prev_event_topic"):
+                if meta.get(k):
+                    lineage[k] = meta[k]
+        client_order_id = str(order.metadata.get("clientOrderId") or f"lumina-{uuid.uuid4()}") if hasattr(order, 'metadata') else f"lumina-{uuid.uuid4()}"
+        if lineage:
+            self._pending_lineage[client_order_id] = lineage
+
         allowed, reason = _run_final_arbitration(self.engine, order)
         if not allowed:
-            return OrderResult(
+            res = OrderResult(
                 accepted=False,
                 order_id="",
                 status="rejected",
                 message=f"FinalArbitration blocked order: {reason}",
             )
-        client_order_id = str(order.metadata.get("clientOrderId") or f"lumina-{uuid.uuid4()}")
+            if lineage:
+                for k, v in lineage.items():
+                    setattr(res, k, v)
+            return res
+
         payload = {
             "instrument": order.symbol,
             "action": str(order.side).upper(),
@@ -547,26 +700,41 @@ class CrossTradeBroker(BrokerBridge):
                 body = response.json() if response.content else {}
                 accepted = response.status_code in (200, 201)
                 if accepted or response.status_code < 500 or attempt == attempts:
-                    return OrderResult(
+                    server_oid = str(body.get("orderId", ""))
+                    # Inject lineage into this return (first-class + raw) + store pending under server oid for fill correlation
+                    res = OrderResult(
                         accepted=accepted,
-                        order_id=str(body.get("orderId", "")),
+                        order_id=server_oid,
                         status="accepted" if accepted else "rejected",
                         filled_qty=int(body.get("filledQuantity", 0) or 0),
                         fill_price=float(body.get("fillPrice", 0.0) or 0.0),
                         message=str(body.get("message", "")),
                         raw=body if isinstance(body, dict) else {"raw": body},
                     )
+                    if lineage:
+                        for k, v in lineage.items():
+                            setattr(res, k, v)
+                            if isinstance(res.raw, dict):
+                                res.raw.setdefault(k, v)
+                        if server_oid:
+                            self._pending_lineage[server_oid] = lineage
+                    return res
             except Exception as exc:
                 if attempt == attempts:
                     if self.logger is not None:
                         self.logger.error(f"CrossTrade submit_order failed after retries: {exc}")
-                    return OrderResult(
+                    res = OrderResult(
                         accepted=False,
                         order_id="",
                         status="error",
                         message=str(exc),
                     )
+                    if lineage:
+                        for k, v in lineage.items():
+                            setattr(res, k, v)
+                    return res
             time.sleep(min(0.25 * (2 ** (attempt - 1)), 1.0))
+        # Error path: lineage not attached (error before server response); caller can retry or log
         return OrderResult(
             accepted=False,
             order_id="",
@@ -695,16 +863,28 @@ class CrossTradeBroker(BrokerBridge):
             for row in rows:
                 if not isinstance(row, dict):
                     continue
+                oid = str(row.get("orderId", ""))
+                coid = str(row.get("clientOrderId") or row.get("client_order_id") or "")
+                peek = self.lookup_pending_lineage(order_id=oid, client_order_id=coid, consume=False)
+                dcid = row.get("decision_context_id") or peek.get("decision_context_id")
+                ph = row.get("prev_hash") or peek.get("prev_hash")
+                pet = row.get("prev_event_topic") or peek.get("prev_event_topic")
+                if oid and (dcid or ph or pet):
+                    self.lookup_pending_lineage(order_id=oid, client_order_id=coid, consume=True)
                 fills.append(
                     Fill(
                         fill_id=str(row.get("fillId", "")),
-                        order_id=str(row.get("orderId", "")),
+                        order_id=oid,
                         symbol=str(row.get("instrument", "")),
                         side=str(row.get("action", "")).upper(),
                         quantity=int(row.get("quantity", 0) or 0),
                         price=float(row.get("fillPrice", 0.0) or 0.0),
                         timestamp=str(row.get("timestamp", datetime.now(timezone.utc).isoformat())),
                         commission=float(row.get("commission", 0.0) or 0.0),
+                        # Phase 2 live broker wiring: prefer pending overlay (from submit-time Order.metadata) then wire
+                        decision_context_id=dcid,
+                        prev_hash=ph,
+                        prev_event_topic=pet,
                         raw=row,
                     )
                 )

@@ -20,9 +20,9 @@ Voor diepere context kun je combineren met:
 
 ## Machine-Leesbare Exports
 
-- `export/full-context.json` — volledige export (voor tooling)
-- `export/principles.yaml` — principes in gestructureerd formaat
+- `export/agent-context.md` bevat (vanaf Guardian v0.15) een `## DNA Health (structured)` JSON-blok + de losse `dna_health_latest.json` (standalone export). Beide zijn direct machine-leesbaar en bevatten health_score, degradation_warnings, focus, trend en aanbeveling.
 - `core/invariants.json` — de harde constitutionele regels
+- (Toekomst) `export/full-context.json` en `export/principles.yaml` zijn gepland voor bredere exports.
 
 ## Regels
 

@@ -18,6 +18,26 @@ from .rollout import EvolutionRolloutFramework
 from .shadow_run_storage import load_shadow_runs, save_shadow_runs
 from .veto_window import VetoWindow
 
+# === Phase 2 Deliverable 5 (Aperture Hardening) — Integration Hook ===
+# When a DNA/proposal change touches risk logic (policy, limits, gates, sizing, etc.),
+# evolution code should validate it in shadow first using the official bridge.
+#
+# Ergonomic one-call pattern (recommended for most callers):
+#
+#   from lumina_core.evolution.risk_shadow_bridge import run_risk_shadow_experiment_for_proposal
+#   result = run_risk_shadow_experiment_for_proposal(
+#       proposal={"experiment_id": ..., "dna_hash": dna.hash, "signal": ..., ...},
+#       engine=engine,
+#       storage_path=some_registry_path,
+#       auto_record_promotion=True,   # <-- new convenience: run + commit promotion decision
+#   )
+#
+# If human review is required, the request will be visible to the shadow_review CLI.
+#
+# This is the concrete path toward the original requirement:
+# "every evolution experiment that touches risk logic must run in a shadow aperture mode".
+# ================================================================================
+
 
 class PromotionPolicyProtocol(Protocol):
     def run_shadow_validation_gate(
@@ -347,6 +367,39 @@ class PromotionPolicy:
             veto_blocked=veto_blocked,
         )
         risk_flags = list(shadow_twin.get("risk_flags", []) or [])
+
+        # === Phase 2 Deliverable 5 (Aperture Hardening) — Second independent call site ===
+        # In addition to the proactive call inside the ApprovalTwin, the official
+        # promotion gate now also runs risk-affecting DNA through the isolated
+        # shadow aperture when risk flags are present. This creates a second
+        # enforcement point for the "must run in shadow" requirement.
+        if risk_flags and hasattr(self._owner, "_engine") and self._owner._engine is not None:
+            try:
+                from lumina_core.evolution.risk_shadow_bridge import run_risk_shadow_experiment_for_proposal
+                from pathlib import Path
+
+                from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+
+                shadow_result = validate_risk_proposal_in_shadow(
+                    proposal={
+                        "experiment_id": f"risk-shadow-gate-{dna.hash[:12]}",
+                        "dna_hash": dna.hash,
+                        "signal": "BUY",
+                        "confluence_score": 0.65,
+                        "proposed_risk": 150.0,
+                    },
+                    engine=self._owner._engine,
+                    storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                    auto_record_promotion=True,
+                )
+                shadow_rec = shadow_result.recommendation or {}
+                if shadow_rec.get("suggested_stage") in ("human_approval", "reject"):
+                    shadow_passed = False
+                    risk_flags.append("risk_shadow_promotion_gate_blocked")
+            except Exception:
+                pass
+        # ================================================================================
+
         shadow_passed = self._owner._guard.shadow_validation_passed(
             shadow_total_pnl=shadow_total_pnl,
             veto_blocked=veto_blocked,

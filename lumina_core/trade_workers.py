@@ -161,8 +161,11 @@ def submit_order_with_risk_check(
     if container is None or getattr(container, "broker", None) is None:
         raise RuntimeError("RuntimeContext.container.broker is not configured")
 
+    # Phase 1.2.3: No longer set the skip flag. The broker re-check is now authoritative.
     if isinstance(order.metadata, dict):
-        order.metadata["skip_admission_chain_recheck"] = True
+        # Defensive strip of pre-1.3.3 legacy bypass metadata (B-004 remnant).
+        # Authoritative gate is the only path.
+        order.metadata.pop("skip_admission_chain_recheck", None)
 
     # Admission chain already ran in check_pre_trade_risk; proceed with broker bridge.
     return container.broker.submit_order(order)

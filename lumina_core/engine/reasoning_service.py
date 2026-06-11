@@ -258,7 +258,6 @@ class ReasoningService:
             }:
                 raise PolicyGateError(f"ReasoningService policy gate blocked order: {gateway_result.get('reason')}")
 
-            skip_final_arbitration = bool(getattr(self.engine, "admission_chain_final_arbitration_approved", False))
             self._safe_structured_log(
                 logger,
                 logging.INFO,
@@ -272,7 +271,9 @@ class ReasoningService:
                 explanation=str(gateway_result.get("reason", "")),
                 model_used=str(getattr(self.inference_engine, "active_provider", "local")),
             )
-            return policy_engine.execute_order(order, skip_final_arbitration=skip_final_arbitration)
+
+            # Phase 1.3.2: B-001 hard removal complete. Parameter no longer exists.
+            return policy_engine.execute_order(order)
 
     def refresh_regime_snapshot(
         self,

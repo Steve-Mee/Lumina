@@ -28,7 +28,13 @@ from lumina_core.experiments.ab_framework import ABExperimentFramework
 from .anomaly_detector import AnomalyDetector
 from lumina_core.evolution.audit_writer import EvolutionAuditWriter
 from .proposal_generator import ProposalGenerator
-from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+from lumina_core.agent_orchestration.schemas import (
+    TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+    RiskConfigMutationProposal,
+    TradingEngineExecutionAggregate,
+    typed_payload_from_event,
+)
+from .evolution_risk_proposal import apply_risk_config_mutation
 
 logger = logging.getLogger(__name__)
 
@@ -497,10 +503,13 @@ class SelfEvolutionMetaAgent:
         wins = 0
         net_pnl = 0.0
         for event in recent:
-            payload = event.payload if isinstance(getattr(event, "payload", None), dict) else {}
-            if payload.get("executed") is True:
+            try:
+                agg = typed_payload_from_event(event, TradingEngineExecutionAggregate)
+            except Exception:
+                continue
+            if agg.executed is True:
                 trades += 1
-            pnl = float(payload.get("pnl", 0.0) or 0.0)
+            pnl = float(agg.pnl or 0.0)
             if pnl > 0:
                 wins += 1
             net_pnl += pnl
@@ -1039,12 +1048,43 @@ class SelfEvolutionMetaAgent:
         )
 
     def _apply_candidate(self, candidate: dict[str, Any]) -> None:
+        # Phase 3 D2 first slice + second sub-slice + D5 residual gap closure (per 2026-05-31
+        # SPF-003 + MC post-2026-06-07 D4 scale + post-first-D2 + explore surveys). The original
+        # sole writer for live risk config (max_risk_percent / drawdown_kill_percent) from
+        # evolution hyperparam_suggestion is now behind a strict typed contract, with mandatory
+        # shadow_result_ref enforcement + ConstitutionViolation on missing at apply time
+        # (second sub-slice). See evolution_risk_proposal.py + RiskConfigMutationProposal in schemas.
+        # Callers (AB promote_fn, nightly post-guard) unchanged; behavior identical on happy paths.
+        # Legacy dead code paths in this file left untouched.
         suggestion = dict(candidate.get("hyperparam_suggestion", {}))
-        cfg = self.engine.config
-        if "max_risk_percent" in suggestion:
-            cfg.max_risk_percent = float(suggestion["max_risk_percent"])
-        if "drawdown_kill_percent" in suggestion:
-            cfg.drawdown_kill_percent = float(suggestion["drawdown_kill_percent"])
+        risk_keys = [k for k in ("max_risk_percent", "drawdown_kill_percent") if k in suggestion]
+        if not risk_keys:
+            return
+
+        # Pull provenance (dna_hash / shadow/experiment refs / ctx) where available
+        # from candidate/AB/genetic results (D5 creation-time shadow already wired
+        # best-effort in ProposalGenerator + legacy genetic block).
+        dna_hash = candidate.get("dna_hash") or candidate.get("hash")
+        shadow_ref = (
+            candidate.get("shadow_result_ref")  # D2 sub3: preferred source from creation injection helper (matches RiskConfigMutationProposal field)
+            or candidate.get("experiment_id")
+            or candidate.get("shadow_experiment_id")
+            or (candidate.get("ab_experiment") or {}).get("experiment_id")
+        )
+        decision_ctx = candidate.get("decision_context_id") or "nightly_evolution_risk_mutation"
+
+        prop = RiskConfigMutationProposal(
+            decision_context_id=str(decision_ctx),
+            source="meta_agent_core._apply_candidate",
+            dna_hash=str(dna_hash) if dna_hash else None,
+            shadow_result_ref=str(shadow_ref) if shadow_ref else None,
+            proposed_values={k: float(suggestion[k]) for k in risk_keys},
+        )
+        apply_risk_config_mutation(
+            proposal=prop,
+            engine=self.engine,
+            bus=getattr(self.engine, "event_bus", None),
+        )
 
     def _dna_registry(self) -> DNARegistry:
         return self.dna_registry
@@ -1205,6 +1245,47 @@ class SelfEvolutionMetaAgent:
                 candidate = self._candidate_from_dna(draft)
                 candidates.append(candidate)
                 candidate_map[draft.hash] = draft
+
+        # === Phase 2 Deliverable 5 (Aperture Hardening) — Explicit SPF-003 god-component path ===
+        # The original highest-blast-radius concentration point (meta_agent_core) now has
+        # first-class, visible participation in the risk shadow aperture for all genetic
+        # candidates that mutate risk hyperparams. Mirrors the exact high-fidelity pattern
+        # already present in proposal_generator.py (the cleaner extraction of this logic).
+        # Structural hooks in DNARegistry + PolicyDNA.create provide defense-in-depth;
+        # this explicit call adds local observability + richer proposal data at the source.
+        # Best-effort, never breaks candidate generation (consistent with all prior D5 sites).
+        try:
+            from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+            from pathlib import Path
+
+            engine = getattr(self, "engine", None)
+            for cand in candidates:
+                hp = (cand.get("hyperparam_suggestion") or {})
+                if any(k in hp for k in ("max_risk_percent", "drawdown_kill_percent", "fast_path_threshold")):
+                    local_exp_id = f"risk-spf003-meta-genetic-{cand.get('name', cand.get('candidate_name', 'unknown'))}"
+                    # D2 Sub-Slice 3 hygiene (legacy bloat path, per plan): call centralized helper
+                    # so even the old genetic block in the god attaches the ref (defense-in-depth).
+                    # Active path delegates to ProposalGenerator (which calls it); this is for the
+                    # still-present legacy code.
+                    from lumina_core.engine.evolution_risk_proposal import ensure_candidate_has_shadow_ref
+                    ensure_candidate_has_shadow_ref(cand, local_exp_id)
+                    validate_risk_proposal_in_shadow(
+                        proposal={
+                            "experiment_id": local_exp_id,
+                            "dna_hash": cand.get("hash", "spf003-meta"),
+                            "signal": "PROPOSAL",
+                            "confluence_score": 0.6,
+                            "proposed_risk": float(hp.get("max_risk_percent", hp.get("drawdown_kill_percent", 1.0))),
+                            "source": "meta_agent_core_genetic_candidates",
+                        },
+                        engine=engine,
+                        storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                        auto_record_promotion=True,
+                    )
+        except Exception:
+            # Best-effort: shadow validation must never break the legacy god-component evolution path.
+            pass
+        # ================================================================================
 
         return candidates[:10], candidate_map
 

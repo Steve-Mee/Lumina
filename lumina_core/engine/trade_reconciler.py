@@ -37,6 +37,12 @@ class FillEvent:
     event_ts: datetime
     raw_payload: dict[str, Any] = field(default_factory=dict)
 
+    # Phase 2 Slice 25: First-class lineage fields for multi-leg netting hash chain
+    # (propagated from broker fills and pending closes)
+    decision_context_id: str | None = None
+    prev_hash: str | None = None
+    prev_event_topic: str | None = None  # for full typed spine (Slice 19/ live wiring)
+
 
 @dataclass(slots=True)
 class PendingTradeClose:
@@ -57,6 +63,11 @@ class PendingTradeClose:
     matched_qty: int = 0
     weighted_exit_notional: float = 0.0
     commission_total: float = 0.0
+
+    # Phase 2 Slice 25: Support for multi-leg netting hash chain.
+    # decision_context_id and prev_hash from the originating decision/fills (propagated for netting).
+    decision_context_id: str | None = None
+    prev_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -146,6 +157,9 @@ class TradeReconciler:
         reflection: dict[str, Any] | None = None,
         chart_base64: str | None = None,
         detected_ts: datetime | None = None,
+        # Phase 2 Slice 25: optional lineage for multi-leg netting hash chain
+        decision_context_id: str | None = None,
+        prev_hash: str | None = None,
     ) -> str:
         detected_at = detected_ts or datetime.now(timezone.utc)
         expected_close_side = "SELL" if str(signal).upper() == "BUY" else "BUY"
@@ -163,6 +177,9 @@ class TradeReconciler:
             reflection=dict(reflection or {}),
             chart_base64=chart_base64,
             expected_close_side=expected_close_side,
+            # Phase 2 Slice 25: carry lineage for multi-leg netting hash chain
+            decision_context_id=decision_context_id,
+            prev_hash=prev_hash,
         )
         items = [
             item for item in self._get_pending_closes() if item.symbol != pending.symbol or item.status != "closing"
@@ -196,12 +213,66 @@ class TradeReconciler:
         fill = self._normalize_fill_event(payload)
         if fill is None:
             return False
+        self._overlay_pending_broker_lineage(fill, payload)
         if fill.fill_id in self._seen_fill_ids:
             return False
         if any(existing.fill_id == fill.fill_id for existing in self._recent_fills):
             return False
         self._seen_fill_ids.append(fill.fill_id)
         self._recent_fills.append(fill)
+
+        # Phase 2 Slice 18: Best-effort publishing of typed execution.fill.received
+        # with lineage if present in the normalized fill or original payload.
+        try:
+            engine = self._app()
+            bus = getattr(engine, "event_bus", None)
+            if bus and hasattr(bus, "publish_validated"):
+                from lumina_core.agent_orchestration.schemas import (
+                    EXECUTION_FILL_RECEIVED_TOPIC,
+                    ExecutionFill,
+                )
+                payload = {
+                    "fill_id": fill.fill_id,
+                    "order_id": getattr(fill, "order_id", None),
+                    "symbol": fill.symbol,
+                    "side": fill.side,
+                    "quantity": fill.quantity,
+                    "price": fill.price,
+                    "timestamp": fill.event_ts.isoformat() if hasattr(fill, "event_ts") else fill.timestamp,
+                    "commission": fill.commission,
+                    "raw": dict(getattr(fill, "raw", {})) if hasattr(fill, "raw") else {},
+                }
+                # Pull lineage if it was attached to the fill (from broker or payload).
+                # Phase 2 Slice 19 note + live wiring: prefer first-class attrs on the fill object
+                # (now set by CrossTradeBroker overlay + reconciler promote), fall back to raw (Paper + legacy).
+                # This makes typed execution.fill.received + downstream (decision_lineage, Guardian, provenance)
+                # have real ctx for live production paths (not just paper/sim).
+                dcid = getattr(fill, "decision_context_id", None)
+                ph = getattr(fill, "prev_hash", None)
+                pet = getattr(fill, "prev_event_topic", None)
+                if not dcid:
+                    raw = getattr(fill, "raw", {}) or {}
+                    if isinstance(raw, dict):
+                        dcid = raw.get("decision_context_id")
+                        ph = ph or raw.get("prev_hash")
+                        pet = pet or raw.get("prev_event_topic")
+                if dcid:
+                    payload["decision_context_id"] = dcid
+                if ph:
+                    payload["prev_hash"] = ph
+                if pet:
+                    payload["prev_event_topic"] = pet
+
+                ExecutionFill.model_validate(payload)
+                bus.publish_validated(
+                    topic=EXECUTION_FILL_RECEIVED_TOPIC,
+                    producer="trade_reconciler",
+                    payload=payload,
+                )
+        except Exception:
+            # Best-effort only
+            pass
+
         self._append_audit_event(
             {
                 "event": "fill_received",
@@ -440,6 +511,17 @@ class TradeReconciler:
         event_ts = max(item.event_ts for item in fill_bundle)
         fill_ids = [item.fill_id for item in fill_bundle]
         aggregate_id = f"{fill_ids[0]}+{len(fill_ids)}"
+
+        # Phase 2 Slice 25: Propagate lineage from the fill bundle for multi-leg netting.
+        # Use the first fill's lineage as the root for the aggregate (consistent with single-leg from Slice 24).
+        # All fills in the bundle should share the same decision_context_id in practice.
+        dcid = getattr(fill_bundle[0], "decision_context_id", None)
+        ph = getattr(fill_bundle[0], "prev_hash", None)
+        if not dcid and isinstance(getattr(fill_bundle[0], "raw_payload", None), dict):
+            dcid = fill_bundle[0].raw_payload.get("decision_context_id")
+        if not ph and isinstance(getattr(fill_bundle[0], "raw_payload", None), dict):
+            ph = fill_bundle[0].raw_payload.get("prev_hash")
+
         return FillEvent(
             fill_id=aggregate_id,
             symbol=fill_bundle[-1].symbol,
@@ -448,7 +530,15 @@ class TradeReconciler:
             price=avg_price,
             commission=commission,
             event_ts=event_ts,
-            raw_payload={"fill_parts": [item.raw_payload for item in fill_bundle], "fill_ids": fill_ids},
+            raw_payload={
+                "fill_parts": [item.raw_payload for item in fill_bundle],
+                "fill_ids": fill_ids,
+                "decision_context_id": dcid,
+                "prev_hash": ph,
+            },
+            # Carry first-class lineage on the aggregate for downstream hash chain (Slice 25 multi-leg)
+            decision_context_id=dcid,
+            prev_hash=ph,
         )
 
     def _finalize_pending_close_observability_only(self, pending: PendingTradeClose, *, status: str) -> None:
@@ -492,6 +582,17 @@ class TradeReconciler:
         quantity = fill_qty if fill_qty > 0 else int(pending.quantity)
         commission = float(fill.commission)
         symbol = str(pending.symbol or self.engine.config.instrument)
+
+        # Phase 2 Slice 24/25: Best-effort lineage from the (aggregate) exit fill or pending (for multi-leg).
+        # first-class fields preferred, raw fallback. This allows the hash chain to continue
+        # through multi-leg netting for the same decision_context_id.
+        dcid = getattr(fill, "decision_context_id", None) or pending.decision_context_id
+        ph = getattr(fill, "prev_hash", None) or pending.prev_hash
+        if not dcid and isinstance(getattr(fill, "raw", None), dict):
+            dcid = fill.raw.get("decision_context_id")
+        if not ph and isinstance(getattr(fill, "raw", None), dict):
+            ph = fill.raw.get("prev_hash")
+
         ledger = EconomicPnLService(self.valuation_engine).realized_close_from_broker_fill(
             symbol=symbol,
             entry_price=float(pending.entry_price),
@@ -500,6 +601,8 @@ class TradeReconciler:
             quantity=quantity,
             exit_commission=commission,
             reference_price_for_slippage_ticks=float(pending.detected_exit_price),
+            decision_context_id=dcid,
+            prev_hash=ph,
         )
         final_pnl = float(ledger.realized_net)
         slippage_points = float(ledger.slippage_points_vs_reference)
@@ -709,6 +812,80 @@ class TradeReconciler:
             logger.exception("TradeReconciler failed to persist status file")
 
     @staticmethod
+    def _wire_order_ids_from_payload(payload: dict[str, Any]) -> tuple[str, str]:
+        """Extract orderId / clientOrderId from WS or poll wire frames (nested-aware)."""
+        if not isinstance(payload, dict):
+            return "", ""
+        nested = None
+        for key in ("fill", "execution", "data", "payload"):
+            value = payload.get(key)
+            if isinstance(value, dict):
+                nested = value
+                break
+        source = nested or payload
+
+        def _first(*keys: str, default: str = "") -> str:
+            for key in keys:
+                if key in source and source.get(key) is not None:
+                    return str(source.get(key) or "").strip()
+                if key in payload and payload.get(key) is not None:
+                    return str(payload.get(key) or "").strip()
+            return default
+
+        return _first("orderId", "order_id", default=""), _first(
+            "clientOrderId", "client_order_id", default=""
+        )
+
+    def _resolve_broker_for_lineage(self) -> Any | None:
+        """Best-effort broker handle (engine, container, or get_broker callable)."""
+        broker = getattr(self.engine, "broker", None)
+        if broker is not None:
+            return broker
+        container = getattr(self.engine, "container", None)
+        if container is not None:
+            broker = getattr(container, "broker", None)
+            if broker is not None:
+                return broker
+        get_broker = getattr(self.engine, "get_broker", None)
+        if callable(get_broker):
+            return get_broker()
+        return None
+
+    def _overlay_pending_broker_lineage(self, fill: FillEvent, wire_payload: dict[str, Any]) -> None:
+        """Best-effort overlay from CrossTrade pending map (WS/poll paths; fail-open)."""
+        if fill.decision_context_id:
+            return
+        try:
+            broker = self._resolve_broker_for_lineage()
+            if broker is None or not hasattr(broker, "lookup_pending_lineage"):
+                return
+            order_id, client_order_id = self._wire_order_ids_from_payload(wire_payload)
+            if not order_id and not client_order_id:
+                return
+            lineage = broker.lookup_pending_lineage(
+                order_id=order_id,
+                client_order_id=client_order_id,
+                consume=True,
+            )
+            if not lineage:
+                return
+            dcid = lineage.get("decision_context_id")
+            ph = lineage.get("prev_hash")
+            pet = lineage.get("prev_event_topic")
+            if dcid:
+                fill.decision_context_id = str(dcid)
+            if ph:
+                fill.prev_hash = str(ph)
+            if pet:
+                fill.prev_event_topic = str(pet)
+            if isinstance(fill.raw_payload, dict):
+                for key, value in lineage.items():
+                    if value and key not in fill.raw_payload:
+                        fill.raw_payload[key] = value
+        except Exception:
+            pass
+
+    @staticmethod
     def _normalize_fill_event(payload: dict[str, Any]) -> FillEvent | None:
         raw = payload
         if not isinstance(raw, dict):
@@ -773,7 +950,13 @@ class TradeReconciler:
         except (TypeError, ValueError):
             return None
 
-        return FillEvent(
+        # Phase 2 live broker lineage polish: promote from raw/wire (now reliably overlaid by CrossTradeBroker pending map)
+        # so FillEvent first-class + typed publish + decision_lineage consumers see it (was raw-only best-effort).
+        dcid = _first("decision_context_id", "dcid", default=None)
+        ph = _first("prev_hash", "prevHash", default=None)
+        pet = _first("prev_event_topic", "prevEventTopic", default=None)
+
+        fe = FillEvent(
             fill_id=fill_id,
             symbol=symbol,
             side=side_raw,
@@ -783,3 +966,11 @@ class TradeReconciler:
             event_ts=event_ts,
             raw_payload=raw,
         )
+        # Promote lineage (now reliably present from broker overlay for live) to first-class attrs on FillEvent
+        if dcid is not None:
+            fe.decision_context_id = dcid
+        if ph is not None:
+            fe.prev_hash = ph
+        if pet is not None:
+            fe.prev_event_topic = pet
+        return fe

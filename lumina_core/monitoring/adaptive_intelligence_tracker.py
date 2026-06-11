@@ -7,6 +7,7 @@ from typing import Any
 
 from lumina_core.adaptive_intelligence import build_status_signature
 from lumina_core.agent_orchestration.event_bus import DomainEvent, EventBus
+from lumina_core.agent_orchestration.schemas import AdaptiveIntelligenceState, typed_payload_from_event
 
 
 class AdaptiveIntelligenceTracker:
@@ -29,12 +30,13 @@ class AdaptiveIntelligenceTracker:
             self._subscription_token = event_bus.subscribe(self.TOPIC, self._on_event)
 
     def _on_event(self, event: DomainEvent) -> None:
+        state = typed_payload_from_event(event, AdaptiveIntelligenceState)
         record = {
             "topic": event.topic,
             "producer": event.producer,
             "timestamp": event.timestamp,
             "metadata": dict(event.metadata or {}),
-            "payload": dict(event.payload or {}),
+            "payload": state.model_dump(mode="json", exclude_none=False),
         }
         self._persist(record)
 

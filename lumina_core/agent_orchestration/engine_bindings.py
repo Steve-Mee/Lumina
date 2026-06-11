@@ -5,7 +5,14 @@ import logging
 
 from typing import Any, Callable
 
-from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+from pydantic import ValidationError
+
+from lumina_core.agent_orchestration.schemas import (
+    AgentProposalPayload,
+    TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+    TradingEngineExecutionAggregate,
+    typed_payload_from_event,
+)
 
 
 def bind_engine_event_bus(engine: Any, event_bus: Any) -> list[str]:
@@ -15,10 +22,12 @@ def bind_engine_event_bus(engine: Any, event_bus: Any) -> list[str]:
         return tokens
 
     def _execution_handler(event: Any) -> None:
-        payload = getattr(event, "payload", {})
-        if not isinstance(payload, dict):
+        try:
+            agg = typed_payload_from_event(event, TradingEngineExecutionAggregate)
+        except ValidationError:
             return
-        confidence = float(payload.get("confidence", payload.get("confluence_score", 0.0)) or 0.0)
+        confidence = float(agg.confidence or agg.confluence_score or 0.0)
+        payload = agg.model_dump(mode="json", exclude_none=False)
         mode = str(getattr(engine.config, "trade_mode", "paper")).strip().lower()
         if mode == "real" and confidence < 0.8:
             safe_payload = dict(payload)
@@ -31,10 +40,9 @@ def bind_engine_event_bus(engine: Any, event_bus: Any) -> list[str]:
         blackboard = getattr(engine, "blackboard", None)
         if blackboard is not None and hasattr(blackboard, "mark_policy_decision"):
             meta = getattr(event, "metadata", {}) or {}
-            if "approved" in meta or "approved" in payload:
-                approved = bool(meta.get("approved", payload.get("approved", False)))
-                reason = str(meta.get("reason", payload.get("reason", "")) or "")
-                blackboard.mark_policy_decision(approved=approved, reason=reason)
+            approved = bool(meta.get("approved", agg.approved if agg.approved is not None else False))
+            reason = str(meta.get("reason", agg.reason or "") or "")
+            blackboard.mark_policy_decision(approved=approved, reason=reason)
 
     try:
         token = event_bus.subscribe(TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC, _execution_handler)
@@ -53,9 +61,11 @@ def bind_engine_blackboard(engine: Any, blackboard: Any) -> list[str]:
         return tokens
 
     def _proposal_handler(event: Any) -> None:
-        payload = getattr(event, "payload", {})
-        if isinstance(payload, dict):
-            engine.set_current_dream_fields(payload)
+        try:
+            proposal = typed_payload_from_event(event, AgentProposalPayload)
+        except ValidationError:
+            return
+        engine.set_current_dream_fields(proposal.model_dump(mode="json", exclude_none=False))
 
     topic_handlers: dict[str, Callable[[Any], None]] = {
         "agent.news.proposal": _proposal_handler,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from lumina_core.evolution.self_evolution_meta_agent import should_run_multi_gen_nightly
@@ -117,3 +118,79 @@ def test_merge_dream_hyperparam_nudges_skips_real_by_default() -> None:
     out = merge_dream_hyperparam_nudges(base, dream, evolution_mode="real")
     assert out["_nudged"] is False
     assert float(out["max_risk_percent"]) == 1.0
+
+
+# === Phase 2 Deliverable 5 (Aperture Hardening) — Dream risk nudge shadow tests ===
+
+def test_apply_dream_learnings_triggers_shadow_on_nudged_risk_change(monkeypatch) -> None:
+    """When dream stress causes an actual risk hyperparam nudge, the official shadow bridge must be called with real values."""
+    from lumina_core.evolution.mutation_pipeline import apply_dream_learnings_to_dna_content
+
+    calls: list[dict] = []
+
+    def fake_validate(**kwargs):
+        calls.append(kwargs)
+        return None
+
+    monkeypatch.setattr(
+        "lumina_core.evolution.risk_shadow_bridge.validate_risk_proposal_in_shadow",
+        fake_validate,
+    )
+
+    content = json.dumps({
+        "prompt_tweak": "base prompt",
+        "hyperparam_suggestion": {"max_risk_percent": 1.2, "drawdown_kill_percent": 9.0},
+    })
+
+    dream_report = {
+        "enabled": True,
+        "breach_rate": 0.25,
+        "worst_dd_ratio": 0.04,
+        "rule_hints": ["flash_drawdown_escape_and_size_cap"],
+    }
+
+    result = apply_dream_learnings_to_dna_content(content, dream_report, evolution_mode="sim")
+
+    # The nudge must have been applied
+    assert isinstance(result, str)
+    parsed = json.loads(result)
+    assert float(parsed["hyperparam_suggestion"]["max_risk_percent"]) < 1.2
+
+    # The shadow helper must have been invoked because _nudged was True
+    assert len(calls) == 1
+    proposal = calls[0]["proposal"]
+    assert "risk-dream-nudge" in proposal.get("experiment_id", "")
+    assert float(proposal.get("proposed_risk", 0)) < 1.2
+    assert proposal.get("dream_nudged") is True
+    assert "breach_rate" in proposal
+    assert "source_hints" in proposal
+
+
+def test_apply_dream_learnings_shadow_failure_does_not_break_nudge(monkeypatch) -> None:
+    """Shadow validation failure must never prevent the dream risk nudge from being applied."""
+    from lumina_core.evolution.mutation_pipeline import apply_dream_learnings_to_dna_content
+
+    def exploding_validate(**kwargs):
+        raise RuntimeError("simulated shadow infrastructure failure")
+
+    monkeypatch.setattr(
+        "lumina_core.evolution.risk_shadow_bridge.validate_risk_proposal_in_shadow",
+        exploding_validate,
+    )
+
+    content = json.dumps({
+        "prompt_tweak": "base",
+        "hyperparam_suggestion": {"max_risk_percent": 1.5},
+    })
+
+    dream_report = {
+        "enabled": True,
+        "breach_rate": 0.3,
+        "rule_hints": ["strengthen_drawdown_kill_in_whatif_tail"],
+    }
+
+    # Must not raise
+    result = apply_dream_learnings_to_dna_content(content, dream_report, evolution_mode="sim")
+    parsed = json.loads(result)
+    assert float(parsed["hyperparam_suggestion"]["max_risk_percent"]) < 1.5
+    assert parsed.get("dream_risk_nudge", {}).get("applied") is True

@@ -301,8 +301,8 @@ class OperationsService:
                     "reason": str(dream_snapshot.get("reason", "") or ""),
                 },
             )
-            skip_final_arbitration = bool(getattr(self.engine, "admission_chain_final_arbitration_approved", False))
-            result = policy_engine.execute_order(order, skip_final_arbitration=skip_final_arbitration)
+            # Phase 1.3.2: B-001 hard removal complete. Parameter no longer exists.
+            result = policy_engine.execute_order(order)
             if result.accepted:
                 current_price = 0.0
                 try:
@@ -354,10 +354,14 @@ class OperationsService:
                     if lf is not None:
                         fill_px = float(lf.price)
                         fill_qty = max(fill_qty, int(lf.quantity))
-                self.engine.live_position_qty = int(signed_qty)
-                self.engine.last_entry_price = float(fill_px) if fill_px > 0.0 else 0.0
-                self.engine.live_trade_signal = action.upper()
-                self.engine.last_realized_pnl_snapshot = float(self.engine.realized_pnl_today)
+                # D2 sub-slice 8: thin delegation to LivePositionManager (shared live state).
+                from lumina_core.engine.live_position_manager import LivePositionManager
+                LivePositionManager(app=self, engine=self.engine).update_on_real_fill(
+                    signed_qty=int(signed_qty),
+                    fill_px=float(fill_px) if fill_px > 0.0 else 0.0,
+                    action=action,
+                    last_realized=float(self.engine.realized_pnl_today),
+                )
 
                 log_event(
                     app.logger,

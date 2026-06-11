@@ -277,7 +277,7 @@ def _execute_emergency_flatten() -> dict[str, Any]:
                         take_profit=0.0,
                         metadata={
                             "reason": "api_emergency_stop",
-                            "skip_admission_chain_recheck": True,
+                            # Phase 1.2.3: flag no longer used for bypass in broker re-check
                         },
                     )
                 )

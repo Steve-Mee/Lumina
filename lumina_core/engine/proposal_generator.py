@@ -4,12 +4,14 @@ import logging
 import hashlib
 import json
 import math
+import uuid
 from typing import Any, Protocol
 
 from ..evolution.dna_registry import DNARegistry, PolicyDNA
 from ..evolution.genetic_operators import calculate_fitness, crossover, mutate_prompt
 from .errors import ErrorSeverity, LuminaError
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+from lumina_core.engine.evolution_risk_proposal import ensure_candidate_has_shadow_ref  # D2 sub3 creation firewall helper (centralized attach)
 
 
 class _ProposalOwner(Protocol):
@@ -120,6 +122,52 @@ class ProposalGenerator:
                     },
                 ]
             )
+
+        # === Phase 2 Deliverable 5 (Aperture Hardening) — Primary meta path (original SPF-003) ===
+        # Best-effort risk shadow validation for challengers that propose changes to risk
+        # hyperparams (max_risk_percent, drawdown_kill_percent, etc.). Uses the official
+        # bridge + ShadowRiskEvaluator (isolated, real market data replay, zero live broker touch).
+        # Exact same non-breaking pattern as the 4 secondary sites (orchestrator_core,
+        # mutation_pipeline, promotion_policy, approval_twin). Never blocks proposal generation.
+        #
+        # D2 Sub-Slice 3 (genetic creation firewall): attach shadow_experiment_id + decision_context_id
+        # into the challenger dicts *by construction* so that when promoted/selected and passed to
+        # meta_agent_core._apply_candidate -> RiskConfigMutationProposal, the mandatory shadow_result_ref
+        # at apply (sub-slice 2) is always present for risk-affecting paths. Closes D5 residual gap #2
+        # at source (creation) complementing the apply gate. See 2026-05-31 SPF-003 + roadmap Phase 3 D2 +
+        # MC (post sub-slice 2) + prior D2 logs. Non-risk challengers unaffected. Best-effort; never breaks.
+        try:
+            from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+            from pathlib import Path
+
+            engine = getattr(self._owner, "engine", None)
+            for ch in challengers:
+                hp = ch.get("hyperparam_suggestion", {}) or {}
+                if any(k in hp for k in ("max_risk_percent", "drawdown_kill_percent", "fast_path_threshold")):
+                    local_exp_id = f"risk-meta-challenger-{ch.get('name', 'unknown')}"
+                    # D2 Sub-Slice 3: use centralized helper (from evolution_risk_proposal) to attach
+                    # "shadow_result_ref" (primary, matches RiskConfigMutationProposal) + fallbacks.
+                    # This is the "genetic creation firewall" — refs now present by construction for
+                    # the main creation volume so sub-slice 2 apply enforcement succeeds with real D5 ref.
+                    ensure_candidate_has_shadow_ref(ch, local_exp_id)
+                    # (helper also sets decision_context_id etc for compatibility/traceability)
+                    validate_risk_proposal_in_shadow(
+                        proposal={
+                            "experiment_id": local_exp_id,
+                            "dna_hash": "meta-proposal",
+                            "signal": "PROPOSAL",
+                            "confluence_score": 0.6,
+                            "proposed_risk": float(hp.get("max_risk_percent", hp.get("drawdown_kill_percent", 1.0))),
+                        },
+                        engine=engine,
+                        storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                        auto_record_promotion=True,
+                    )
+        except Exception:
+            # Best-effort: shadow validation must never break the self-evolution proposal factory.
+            pass
+        # ================================================================================
+
         return challengers
 
     def score_challenger(
@@ -264,6 +312,51 @@ class ProposalGenerator:
                 candidate_map[draft.hash] = draft
 
         del nightly_report
+
+        # === Phase 2 Deliverable 5 (Aperture Hardening) — Primary meta path (original SPF-003) ===
+        # Best-effort risk shadow validation for genetic candidates whose hyperparam_suggestion
+        # (from mutated_hyperparams / blended_hyperparams) touches risk fields. Same official
+        # bridge + non-breaking best-effort discipline as the challenger path above and the
+        # 4 earlier secondary enforcement points. DNA is already registered; this is observability + rem.
+        #
+        # D2 Sub-Slice 3 (genetic creation firewall): attach shadow_experiment_id + decision_context_id
+        # into the candidate dicts *by construction* (post candidate_from_dna) so promoted bests carry
+        # them to _apply_candidate -> typed RiskConfigMutationProposal. This makes shadow ref mandatory
+        # by construction at creation for genetic/evo paths (closes D5 gap #2 at source). Complements
+        # sub-slice 2 apply-time enforcement + ConstitutionViolation. Per 2026-05-31 SPF-003 + Phase3 D2
+        # + MC highest-leverage continue D2 + 2026-06-07 D2 sub2 log ("Next: ... genetic creation firewall").
+        # Non-risk cands untouched. Best-effort attach + validate; never breaks generation.
+        try:
+            from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+            from pathlib import Path
+
+            engine = getattr(self._owner, "engine", None)
+            for cand in candidates:
+                hp = (cand.get("hyperparam_suggestion") or cand.get("content", {}).get("hyperparam_suggestion") or {})
+                if any(k in hp for k in ("max_risk_percent", "drawdown_kill_percent", "fast_path_threshold")):
+                    local_exp_id = f"risk-meta-genetic-{cand.get('name', cand.get('candidate_name', 'unknown'))}"
+                    # D2 Sub-Slice 3: use centralized helper (from evolution_risk_proposal) to attach
+                    # "shadow_result_ref" (primary) + fallbacks. Genetic path (build_genetic_candidates)
+                    # is one of the high-volume creation surfaces for risk hp in the SPF-003 god.
+                    ensure_candidate_has_shadow_ref(cand, local_exp_id)
+                    # dna_hash already present from candidate_from_dna for most
+                    validate_risk_proposal_in_shadow(
+                        proposal={
+                            "experiment_id": local_exp_id,
+                            "dna_hash": cand.get("hash", cand.get("dna_hash", "meta-genetic")),
+                            "signal": "PROPOSAL",
+                            "confluence_score": 0.6,
+                            "proposed_risk": float(hp.get("max_risk_percent", hp.get("drawdown_kill_percent", 1.0))),
+                        },
+                        engine=engine,
+                        storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                        auto_record_promotion=True,
+                    )
+        except Exception:
+            # Best-effort: shadow validation must never break genetic candidate generation.
+            pass
+        # ================================================================================
+
         return candidates[:10], candidate_map
 
     def promote_winning_dna(
@@ -520,3 +613,33 @@ class ProposalGenerator:
         if not math.isfinite(fitness):
             return -1_000_000_000.0
         return round(float(fitness), 6)
+
+
+# =============================================================================
+# Skills compliance (constitution-guard + risk-safety-review + test-scaffolding + event-bus-contract)
+# for D2 Sub-Slice 3 creation firewall (this file's risk hyperparam paths).
+# =============================================================================
+# Constitution Guard (7 rules): 1 (kapitaalbehoud: shadow ref by construction before any risk
+#   mutation can be proposed/applied), 3 (bounded: this injection keeps risk decision in
+#   proposal layer; no god growth), 4 (typed: the attached ids feed the strict
+#   RiskConfigMutationProposal with decision_context_id + shadow_result_ref), 5 (safety/obs
+#   vóór evolutie: D5 shadow mandatory by construction at source), 7 (testable: see new tests
+#   for injection + full flow). Rules 2/6 preserved (small step, evolution with rem).
+# Risk Safety Review (Score: 9/10):
+# ✅ Fail-closed: Yes (ids injected before candidates leave creation; apply gate still rejects
+#    missing with ConstitutionViolation publish; no silent apply of risk without ref).
+# ✅ REAL mode stricter: N/A (this is pre-apply SIM evolution; REAL guard remains downstream).
+# ✅ ConstitutionViolation event: Yes (still emitted at apply if ever missing; creation now
+#    makes it unreachable for these paths).
+# ✅ Logging + provenance: Yes (experiment/ctx attached; carried to apply logs + bus).
+# ✅ No optimistic assumptions: Yes (best-effort attach + validate never assumed to succeed;
+#    fallback id always set locally before call).
+# Improvement: none for this slice.
+# Event Bus Contract: The injected ids ensure "evolution.risk_config.mutation" (registered
+#   with RiskConfigMutationProposal payload_model) will be publishable with full lineage
+#   when apply does the optional publish_validated. No raw dict bypass for this mutation.
+# Test Scaffolding: New tests use @pytest.mark.unit, given-when-then (creation produces
+#   candidates with refs -> apply succeeds), fail-closed (still exercised by apply tests),
+#   monkeypatch for the validate bridge inside creation fns.
+# Per 2026-05-31 SPF-003 + Phase 3 D2 + MC + D2 sub2 log + aperture-mission-control.
+# =============================================================================

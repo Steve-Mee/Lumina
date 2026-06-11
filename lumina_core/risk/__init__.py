@@ -36,6 +36,7 @@ from lumina_core.risk.cost_model_calibrator import (
     DailyCalibrationSummary,
     run_daily_calibration,
 )
+from lumina_core.risk.shadow import ShadowRiskEvaluator, ShadowContext  # Phase 2 Deliverable 5 - Shadow Aperture
 
 if TYPE_CHECKING:
     from lumina_core.risk.mode_capabilities import ModeCapabilities, resolve_mode_capabilities

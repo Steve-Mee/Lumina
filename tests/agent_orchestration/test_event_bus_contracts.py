@@ -62,6 +62,31 @@ def test_publish_accepts_legacy_dict_payload_without_contract() -> None:
 
 
 @pytest.mark.unit
+def test_critical_topic_subscriber_receives_payload_instance() -> None:
+    bus = EventBus()
+    instances: list[RiskVerdict] = []
+
+    def _handler(event: object) -> None:
+        from lumina_core.agent_orchestration.event_bus import DomainEvent
+
+        assert isinstance(event, DomainEvent)
+        assert event.payload_instance is not None
+        assert isinstance(event.payload_instance, RiskVerdict)
+        instances.append(event.typed_payload(RiskVerdict))
+
+    bus.subscribe("risk.policy.decision", _handler)
+    bus.publish(
+        topic="risk.policy.decision",
+        producer="risk_controller",
+        payload={"approved": True, "max_risk_percent_multiplier": 0.5},
+    )
+
+    assert len(instances) == 1
+    assert instances[0].approved is True
+    assert instances[0].max_risk_percent_multiplier == pytest.approx(0.5)
+
+
+@pytest.mark.unit
 def test_publish_typed_topic_without_payload_model_still_validates_and_coerces() -> None:
     bus = EventBus()
     event = bus.publish(
@@ -255,6 +280,32 @@ def test_publish_with_payload_model_raises_validation_error_fail_closed() -> Non
         )
 
     assert received == []
+
+
+@pytest.mark.unit
+def test_blackboard_critical_topic_subscriber_receives_payload_instance(tmp_path: Path) -> None:
+    board = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
+    instances: list[AgentProposalPayload] = []
+
+    def _handler(event: object) -> None:
+        from lumina_core.engine.agent_blackboard import BlackboardEvent
+
+        assert isinstance(event, BlackboardEvent)
+        assert event.payload_instance is not None
+        assert isinstance(event.payload_instance, AgentProposalPayload)
+        instances.append(event.payload_instance)
+
+    board.subscribe("agent.rl.proposal", _handler)
+    board.publish_sync(
+        topic="agent.rl.proposal",
+        producer="rl_policy",
+        payload={"signal": "BUY", "confidence": 0.8, "qty": 1},
+        confidence=0.9,
+    )
+
+    assert len(instances) == 1
+    assert instances[0].signal == "BUY"
+    assert instances[0].confidence == pytest.approx(0.8)
 
 
 @pytest.mark.unit

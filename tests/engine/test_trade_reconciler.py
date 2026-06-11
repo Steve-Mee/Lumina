@@ -3,10 +3,15 @@ from __future__ import annotations
 import logging
 import json
 from datetime import datetime, timezone
+
+import pytest
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any, cast
 
+from lumina_core.agent_orchestration.event_bus import EventBus
+from lumina_core.agent_orchestration.schemas import EXECUTION_FILL_RECEIVED_TOPIC
+from lumina_core.broker.broker_bridge import CrossTradeBroker
 from lumina_core.engine import EngineConfig, TradeReconciler
 from lumina_core.engine.lumina_engine import LuminaEngine
 
@@ -270,3 +275,68 @@ def test_trade_reconciler_audit_contains_mode_and_account_hint(tmp_path: Path) -
     assert event["event"] == "unit_test"
     assert event["mode"] == "sim_real_guard"
     assert event["account_mode_hint"] == "sim"
+
+
+def test_trade_reconciler_ws_frame_overlays_pending_lineage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    engine, app = _build_engine(tmp_path)
+    broker = CrossTradeBroker(api_key="k", account="DEMO")
+    broker._pending_lineage["order-99"] = {
+        "decision_context_id": "ctx-ws-overlay-1",
+        "prev_hash": "prev-hash-ws",
+        "prev_event_topic": "risk.final_arbitration.result",
+    }
+    bus = EventBus()
+    published: list[dict[str, Any]] = []
+
+    def _capture(event: object) -> None:
+        payload = getattr(event, "payload", {})
+        if isinstance(payload, dict):
+            published.append(dict(payload))
+
+    bus.subscribe(EXECUTION_FILL_RECEIVED_TOPIC, _capture)
+    app.event_bus = bus
+
+    monkeypatch.setattr(TradeReconciler, "_resolve_broker_for_lineage", lambda _self: broker)
+    reconciler = TradeReconciler(engine)
+    ok = reconciler.ingest_fill_event(
+        {
+            "type": "fill",
+            "instrument": "MES JUN26",
+            "side": "BUY",
+            "quantity": 1,
+            "fillPrice": 5000.0,
+            "commission": 0.5,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "fillId": "fill-ws-overlay-1",
+            "orderId": "order-99",
+        }
+    )
+
+    assert ok is True
+    assert reconciler._recent_fills[-1].decision_context_id == "ctx-ws-overlay-1"
+    assert reconciler._recent_fills[-1].prev_hash == "prev-hash-ws"
+    assert "order-99" not in broker._pending_lineage
+    assert len(published) == 1
+    assert published[0]["decision_context_id"] == "ctx-ws-overlay-1"
+    assert published[0]["prev_hash"] == "prev-hash-ws"
+
+
+def test_trade_reconciler_ingest_without_broker_lineage_unchanged(tmp_path: Path) -> None:
+    engine, _app = _build_engine(tmp_path)
+    reconciler = TradeReconciler(engine)
+
+    ok = reconciler.ingest_fill_event(
+        {
+            "type": "fill",
+            "instrument": "MES JUN26",
+            "side": "SELL",
+            "quantity": 1,
+            "fillPrice": 5001.0,
+            "commission": 0.25,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "fillId": "fill-no-broker-1",
+        }
+    )
+
+    assert ok is True
+    assert reconciler._recent_fills[-1].decision_context_id is None

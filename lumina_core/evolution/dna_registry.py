@@ -9,8 +9,35 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
+
 from lumina_core.state.state_manager import safe_append_jsonl, safe_sqlite_connect
-from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+from lumina_core.agent_orchestration.schemas import (
+    BLACKBOARD_TOPIC_MODELS,
+    EVENT_BUS_TOPIC_MODELS,
+    TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+    typed_payload_from_event,
+)
+
+_SNAPSHOT_TOPIC_MODELS: dict[str, type[BaseModel]] = {
+    **BLACKBOARD_TOPIC_MODELS,
+    **EVENT_BUS_TOPIC_MODELS,
+}
+
+
+def _snapshot_payload_from_event(event: Any, *, topic: str) -> dict[str, Any]:
+    """Validated snapshot dict for DNA bootstrap (typed when topic is registered)."""
+    topic_key = str(topic).strip().lower()
+    model = _SNAPSHOT_TOPIC_MODELS.get(topic_key)
+    if model is not None:
+        try:
+            return typed_payload_from_event(event, model).model_dump(mode="json", exclude_none=False)
+        except ValidationError:
+            pass
+    payload = getattr(event, "payload", None)
+    if isinstance(payload, dict):
+        return dict(payload)
+    return {}
 
 
 def _utcnow() -> str:
@@ -86,6 +113,21 @@ class PolicyDNA:
     ) -> "PolicyDNA":
         canonical_content = _canonical_content(content)
         frozen_parent_ids = _freeze_parent_ids(parent_ids)
+
+        # === Phase 2 Deliverable 5 — Belt-and-suspenders structural hook ===
+        # Even direct PolicyDNA.create calls (bypassing mutate) now get protected.
+        try:
+            from .risk_shadow_bridge import ensure_risk_shadow_for_dna_content
+            from pathlib import Path
+            ensure_risk_shadow_for_dna_content(
+                canonical_content,
+                engine=None,
+                storage_path=Path("state/risk_shadow_evolution.jsonl"),
+            )
+        except Exception:
+            pass
+        # ================================================================================
+
         return cls(
             prompt_id=str(prompt_id),
             version=str(version),
@@ -295,6 +337,28 @@ class DNARegistry:
             parent_ids.append(crossover.hash)
             if content is None:
                 next_content = self._blend_content(parent.content, crossover.content)
+
+        # === Phase 2 Deliverable 5 (Aperture Hardening) — First structural hook ===
+        # Any DNA created through the normal registry path that touches risk logic
+        # (hyperparams, high mutation, martingale, etc.) now automatically receives
+        # isolated shadow aperture treatment. This is the first central enforcement
+        # point instead of scattered manual wiring in every caller.
+        #
+        # Best-effort and non-breaking by design (consistent with all prior D5 slices).
+        try:
+            from .risk_shadow_bridge import ensure_risk_shadow_for_dna_content
+            from pathlib import Path
+
+            ensure_risk_shadow_for_dna_content(
+                next_content,
+                engine=None,
+                storage_path=Path("state/risk_shadow_evolution.jsonl"),
+            )
+        except Exception:
+            # Structural protection must never break DNA creation or evolution.
+            pass
+        # ================================================================================
+
         return PolicyDNA.create(
             prompt_id=parent.prompt_id,
             version=str(version or parent.version),
@@ -335,8 +399,7 @@ class DNARegistry:
                 event = None
             if event is None:
                 continue
-            payload = getattr(event, "payload", {}) if isinstance(getattr(event, "payload", {}), dict) else {}
-            snapshot[topic] = payload
+            snapshot[topic] = _snapshot_payload_from_event(event, topic=topic)
             ev_hash = getattr(event, "event_hash", None)
             if not ev_hash and hasattr(event, "to_dict"):
                 ev_hash = hashlib.sha256(

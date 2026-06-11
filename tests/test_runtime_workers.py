@@ -15,6 +15,32 @@ from lumina_core.risk.risk_policy import RiskPolicy
 from lumina_core.runtime_context import RuntimeContext
 
 
+def _patch_supervisor_phase_state_machine(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fake_datetime: type | None = None,
+) -> None:
+    """Post Sub11 remediation: orchestration lives in supervisor_phase_state_machine."""
+    from lumina_core.engine import supervisor_phase_state_machine as sp_sm
+
+    if fake_datetime is not None:
+        monkeypatch.setattr(sp_sm, "datetime", fake_datetime)
+    monkeypatch.setattr(
+        sp_sm,
+        "apply_hard_risk_controller_to_signal",
+        lambda **kwargs: (str(kwargs.get("signal", "HOLD")), True, "ok"),
+    )
+    monkeypatch.setattr(
+        sp_sm,
+        "apply_agent_policy_gateway",
+        lambda **kwargs: {
+            "signal": str(kwargs.get("signal", "HOLD")),
+            "approved": True,
+            "reason": "ok",
+        },
+    )
+
+
 def test_runtime_workers_exports_expected_callables():
     assert callable(runtime_workers.pre_dream_daemon)
     assert callable(runtime_workers.voice_listener_thread)
@@ -344,6 +370,7 @@ def test_supervisor_loop_runs_swarm_only_on_five_minute_boundary(monkeypatch):
     )
 
     monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
+    _patch_supervisor_phase_state_machine(monkeypatch, fake_datetime=FakeDateTime)
 
     def _raise_stop(*_a, **_k):
         raise StopIteration()
@@ -466,16 +493,7 @@ def test_supervisor_loop_paper_submit_routes_via_broker(monkeypatch):
     def _raise_stop(*_a, **_k):
         raise StopIteration()
 
-    monkeypatch.setattr(
-        runtime_workers,
-        "apply_hard_risk_controller_to_signal",
-        lambda **kwargs: (str(kwargs.get("signal", "HOLD")), True, "ok"),
-    )
-    monkeypatch.setattr(
-        runtime_workers,
-        "apply_agent_policy_gateway",
-        lambda **kwargs: {"signal": str(kwargs.get("signal", "HOLD")), "approved": True, "reason": "ok"},
-    )
+    _patch_supervisor_phase_state_machine(monkeypatch)
     monkeypatch.setattr(runtime_workers.time, "sleep", _raise_stop)
 
     with pytest.raises(StopIteration):
@@ -559,6 +577,7 @@ def test_supervisor_loop_skips_swarm_outside_five_minute_boundary(monkeypatch):
     )
 
     monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
+    _patch_supervisor_phase_state_machine(monkeypatch, fake_datetime=FakeDateTime)
 
     def _raise_stop(*_a, **_k):
         raise StopIteration()
@@ -805,6 +824,7 @@ def test_supervisor_loop_runs_swarm_once_per_boundary_across_multiple_cycles(mon
     )
 
     monkeypatch.setattr(runtime_workers, "datetime", FakeDateTime)
+    _patch_supervisor_phase_state_machine(monkeypatch, fake_datetime=FakeDateTime)
     monkeypatch.setattr(runtime_workers.time, "sleep", _sleep)
 
     with pytest.raises(StopIteration):

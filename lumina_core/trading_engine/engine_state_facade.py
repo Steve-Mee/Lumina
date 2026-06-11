@@ -29,7 +29,8 @@ STATE_PROXY_MAP: dict[str, tuple[str, str, bool]] = {
     "positions_margin_used": ("account_state", "positions_margin_used", True),
     "equity_snapshot_ok": ("account_state", "equity_snapshot_ok", True),
     "equity_snapshot_reason": ("account_state", "equity_snapshot_reason", True),
-    "admission_chain_final_arbitration_approved": ("account_state", "admission_chain_final_arbitration_approved", True),
+    # "admission_chain_final_arbitration_approved" removed in Phase 1.3.1 (2026-05-31)
+    # See evolution/log/2026-05-31-elon-phase1-3-1-godflag-deprecation.md
     "ohlc_1min": ("market_data", "ohlc_1min", True),
     "live_quotes": ("market_data", "live_quotes", True),
     "live_data_lock": ("market_data", "live_data_lock", False),

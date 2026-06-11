@@ -426,6 +426,42 @@ class EvolutionOrchestrator:
             evolution_mode=mode,
         )
 
+        # === Phase 2 Deliverable 5 (Aperture Hardening) — Risk shadow is now the default path ===
+        # For every candidate in the main evolution flow, we automatically run the
+        # official reusable helper. This makes shadow validation for risk-affecting
+        # DNA the normal, automatic behavior rather than an optional hook.
+        try:
+            from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+            from pathlib import Path
+
+            for candidate in candidates:
+                content = getattr(candidate, "content", {}) or {}
+                if isinstance(content, str):
+                    import json
+                    try:
+                        content = json.loads(content)
+                    except Exception:
+                        content = {}
+
+                # Best-effort: use whatever engine context is available
+                engine = getattr(self, "_engine", None) or getattr(self, "engine", None)
+                validate_risk_proposal_in_shadow(
+                    proposal={
+                        "experiment_id": f"risk-orchestrator-{candidate.hash[:12]}",
+                        "dna_hash": candidate.hash,
+                        "signal": content.get("signal") or "BUY",
+                        "confluence_score": float(content.get("confluence_score", content.get("confluence", 0.6))),
+                        "proposed_risk": float(content.get("proposed_risk", content.get("max_risk_percent", 150.0))),
+                    },
+                    engine=engine,
+                    storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                    auto_record_promotion=True,
+                )
+        except Exception:
+            # Risk shadow at orchestrator level is best-effort and must never break generation.
+            pass
+        # ================================================================================
+
         if not candidates:
             raise LuminaError(
                 severity=ErrorSeverity.FATAL_UNRECOVERABLE,
@@ -1115,6 +1151,35 @@ class EvolutionOrchestrator:
                 version="generated_winner",
                 lineage_hash=anchor_dna.lineage_hash,
             )
+
+            # === Phase 2 Deliverable 5 (Aperture Hardening) — LLM-generated strategy winners ===
+            # Best-effort risk shadow validation for proposals created via the LLM strategy
+            # generator path. Uses the official bridge exactly like all prior D5 sites
+            # (meta, dream nudges, mutation pipeline, etc.). Never breaks the cycle.
+            try:
+                from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+                from pathlib import Path
+
+                validate_risk_proposal_in_shadow(
+                    proposal={
+                        "experiment_id": f"risk-generated-strategy-{generated_dna.hash[:12]}",
+                        "dna_hash": generated_dna.hash,
+                        "signal": "PROPOSAL",
+                        "confluence_score": float(payload.get("confidence", 0.5)),
+                        "proposed_risk": 1.0,  # generated strategies currently carry behavior via code; risk hyperparams handled in other layers
+                        "generated_strategy": True,
+                        "hypothesis": str(payload.get("hypothesis", ""))[:200],
+                        "name": str(payload.get("name", "generated_strategy")),
+                        "regime_focus": str(payload.get("regime_focus", "neutral")),
+                    },
+                    engine=None,
+                    storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                    auto_record_promotion=True,
+                )
+            except Exception:
+                # Best-effort: shadow validation must never break generated strategy creation.
+                pass
+            # ================================================================================
 
             try:
                 shadow_results = self._sim_runner.evaluate_variants(

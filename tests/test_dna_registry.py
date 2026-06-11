@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from lumina_core.agent_orchestration.event_bus import EventBus
+from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 from lumina_core.evolution.dna_registry import DNARegistry, PolicyDNA
 
@@ -63,3 +65,23 @@ def test_dna_registry_mutate_and_load_from_blackboard(tmp_path: Path) -> None:
     lines = (tmp_path / "dna_registry.jsonl").read_text(encoding="utf-8").strip().splitlines()
     payloads = [json.loads(line) for line in lines]
     assert len(payloads) == 2
+
+
+def test_load_from_blackboard_typed_execution_aggregate(tmp_path: Path) -> None:
+    registry = DNARegistry(
+        jsonl_path=tmp_path / "dna_registry.jsonl",
+        sqlite_path=tmp_path / "dna_registry.sqlite3",
+    )
+    bus = EventBus()
+    bus.publish(
+        topic=TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+        producer="test",
+        payload={"signal": "BUY", "confidence": 0.88, "confluence_score": 0.88},
+    )
+
+    bootstrap = registry.load_from_blackboard(blackboard=None, event_bus=bus)
+    assert bootstrap is not None
+    content = json.loads(bootstrap.content)
+    snap = content[TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC]
+    assert snap["signal"] == "BUY"
+    assert snap["confidence"] == 0.88

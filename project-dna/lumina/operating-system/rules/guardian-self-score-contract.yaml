@@ -1,0 +1,38 @@
+# Phase 3 D6 — Guardian self-score vs aperture contracts (heuristic v1)
+schema_version: "guardian-self-score-v1"
+last_updated: "2026-06-04"
+
+thresholds:
+  warn_below: 8.0
+  fail_below: 6.0   # used when --strict-self-score
+
+required_report_fields:
+  - overall_status
+  - dna_health_score
+  - aperture_integrity
+  - d5_capital_aperture
+  - phase3_aperture_panel
+
+dimensions:
+  - id: structural_dna
+    weight: 1.0
+    description: "DNA 2.0 structure present (structural validation pass)"
+  - id: aperture_integrity
+    weight: 1.5
+    description: "aperture.yaml static score (fatal bypass count)"
+    min_component_score: 9.0
+  - id: d5_no_bypass
+    weight: 2.0
+    description: "D5 constitution alignment + static scan"
+  - id: d3_forcing
+    weight: 2.0
+    description: "D3 lineage/audit violations (must be empty on clean tree)"
+  - id: d4_genuine_surface
+    weight: 1.0
+    description: "Genuine D4 evidence bundle visible to daily Guardian"
+    optional: true
+    score_if_missing: 6.0
+  - id: d1_ctx_pool
+    weight: 1.0
+    description: "D1 audit context pool from live/genuine logs"
+    min_ctx_count: 1

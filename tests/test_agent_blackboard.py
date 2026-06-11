@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
-from lumina_core.engine.agent_blackboard import AgentBlackboard
+from lumina_core.agent_orchestration.schemas import AgentProposalPayload
+from lumina_core.engine.agent_blackboard import AgentBlackboard, BlackboardEvent
 
 
 def test_blackboard_publish_subscribe_and_persistence(tmp_path: Path) -> None:
@@ -111,3 +113,38 @@ def test_blackboard_critical_topic_fails_on_full_queue(tmp_path: Path) -> None:
             payload={"signal": "SELL", "qty": 1.0},
             confidence=0.92,
         )
+
+
+@pytest.mark.unit
+def test_blackboard_to_dict_canonicalizes_payload_from_instance() -> None:
+    """Phase 2 D3 slice 6: JSONL export uses validated instance, not stale raw dict."""
+    model = AgentProposalPayload(signal="BUY", confidence=0.72, qty=2.0)
+    event = BlackboardEvent(
+        topic="agent.rl.proposal",
+        producer="rl_policy",
+        payload={"signal": "HOLD", "confidence": 0.1, "qty": 0.0},
+        confidence=0.9,
+        timestamp="2026-06-11T00:00:00+00:00",
+        correlation_id="ctx-1",
+        payload_instance=model,
+    )
+    exported = event.to_dict()
+    assert exported["payload"]["signal"] == "BUY"
+    assert exported["payload_instance"] == exported["payload"]
+    assert exported["payload_model"] == "AgentProposalPayload"
+
+
+@pytest.mark.unit
+def test_blackboard_jsonl_persists_typed_export_fields(tmp_path: Path) -> None:
+    board = AgentBlackboard(persistence_path=tmp_path / "blackboard.jsonl")
+    board.publish_sync(
+        topic="agent.rl.proposal",
+        producer="rl_policy",
+        payload={"signal": "BUY", "confidence": "0.72", "qty": "2"},
+        confidence=0.9,
+    )
+    row = json.loads((tmp_path / "blackboard.jsonl").read_text(encoding="utf-8").strip())
+    assert row["payload_model"] == "AgentProposalPayload"
+    assert row["payload"]["signal"] == "BUY"
+    assert row["payload_instance"] == row["payload"]
+    print("MANUAL_SMOKE_PHASE2_D3_SLICE6_BLACKBOARD_JSONL_TYPED_SUCCESS")

@@ -103,12 +103,21 @@ def _agents_from_blackboard(engine: Any) -> list[dict[str, Any]]:
         if event is None:
             continue
 
-        payload = getattr(event, "payload", {}) if hasattr(event, "payload") else {}
-        payload = payload if isinstance(payload, dict) else {}
+        try:
+            from lumina_core.agent_orchestration.schemas import AgentProposalPayload, typed_payload_from_event
+
+            proposal = typed_payload_from_event(event, AgentProposalPayload)
+        except Exception:
+            continue
+        payload = proposal.model_dump(mode="json", exclude_none=False)
         producer = str(getattr(event, "producer", "") or "")
-        agent_id = str(payload.get("agent_id") or payload.get("chosen_strategy") or producer or topic)
+        agent_id = str(
+            payload.get("agent_id") or payload.get("chosen_strategy") or producer or topic
+        )
         confidence = float(
-            payload.get("confidence", payload.get("confluence_score", getattr(event, "confidence", 0.0))) or 0.0
+            proposal.confidence
+            or payload.get("confluence_score", getattr(event, "confidence", 0.0))
+            or 0.0
         )
         agents.append(
             {
@@ -116,8 +125,8 @@ def _agents_from_blackboard(engine: Any) -> list[dict[str, Any]]:
                 "topic": topic,
                 "producer": producer,
                 "confidence": confidence,
-                "signal": str(payload.get("signal", payload.get("sentiment_signal", "")) or ""),
-                "reason": str(payload.get("reason", payload.get("why_no_trade", "")) or ""),
+                "signal": str(proposal.signal or payload.get("sentiment_signal", "") or ""),
+                "reason": str(proposal.reason or payload.get("why_no_trade", "") or ""),
                 "timestamp": str(getattr(event, "timestamp", "") or ""),
                 "correlation_id": str(getattr(event, "correlation_id", "") or ""),
                 "sequence": int(getattr(event, "sequence", 0) or 0),
@@ -141,7 +150,11 @@ def _resolve_event_bus(engine: Any) -> Any | None:
 
 
 def _execution_aggregate_lineage(engine: Any) -> dict[str, Any]:
-    from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
+    from lumina_core.agent_orchestration.schemas import (
+        TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+        TradingEngineExecutionAggregate,
+        typed_payload_from_event,
+    )
 
     bus = _resolve_event_bus(engine)
     if bus is None or not hasattr(bus, "latest"):
@@ -150,10 +163,12 @@ def _execution_aggregate_lineage(engine: Any) -> dict[str, Any]:
     if event is None:
         return {}
 
-    payload = getattr(event, "payload", {}) if hasattr(event, "payload") else {}
-    payload = payload if isinstance(payload, dict) else {}
+    try:
+        agg = typed_payload_from_event(event, TradingEngineExecutionAggregate)
+    except Exception:
+        return {}
     meta = getattr(event, "metadata", {}) or {}
-    conf = float(payload.get("confidence", payload.get("confluence_score", 0.0)) or 0.0)
+    conf = float(agg.confidence or agg.confluence_score or 0.0)
     seq = int(meta.get("sequence", 0) or 0)
     fingerprint = _domain_event_fingerprint(event)
     return {
@@ -167,8 +182,8 @@ def _execution_aggregate_lineage(engine: Any) -> dict[str, Any]:
             "event_hash": fingerprint,
             "prev_hash": "",
         },
-        "signal": str(payload.get("signal", "") or ""),
-        "chosen_strategy": str(payload.get("chosen_strategy", "") or ""),
+        "signal": str(agg.signal or ""),
+        "chosen_strategy": str(agg.chosen_strategy or ""),
     }
 
 
@@ -376,7 +391,145 @@ def enforce_pre_trade_gate(
 ) -> tuple[bool, str]:
     """Canonical pre-trade admission chain for risk-bearing order intents."""
     mode = str(getattr(getattr(engine, "config", None), "trade_mode", "paper") or "paper").strip().lower()
-    decision_context_id = f"gate:{uuid.uuid4().hex[:12]}"
+
+    # Phase 2 Slice 08: Prefer decision_context_id from upstream proposals (true root of the lineage).
+    # Fall back to gate-generated id only if no proposal provides one.
+    decision_context_id = None
+    try:
+        from lumina_core.risk.decision_lineage import decision_context_id_from_blackboard_event
+
+        board = _resolve_blackboard(engine)
+        if board is not None and hasattr(board, "latest"):
+            proposal_topics = (
+                "agent.rl.proposal",
+                "agent.news.proposal",
+                "agent.emotional_twin.proposal",
+                "agent.swarm.proposal",
+                "agent.tape.proposal",
+            )
+            for topic in proposal_topics:
+                ev = board.latest(topic)
+                if ev is not None:
+                    candidate = decision_context_id_from_blackboard_event(ev)
+                    if candidate:
+                        decision_context_id = str(candidate)
+                        break
+    except Exception:
+        pass
+
+    if not decision_context_id:
+        decision_context_id = f"gate:{uuid.uuid4().hex[:12]}"
+
+    # Phase 2 Slice 06: Emit the root of the decision lineage at the absolute earliest point
+    # the order intent enters the authoritative admission chain.
+    try:
+        bus = _resolve_event_bus(engine)
+        if bus is not None and hasattr(bus, "publish_validated"):
+            from lumina_core.agent_orchestration.schemas import GateEntryPayload
+            from lumina_core.risk.decision_lineage import (
+                decision_context_id_from_blackboard_event,
+                decision_context_id_from_event,
+                event_hash_from_event,
+            )
+
+            # Phase 2 Slice 11 + 12: Prefer proposal events on the main Event Bus for deeper prev_hash chaining.
+            # Also consider dream_state.updated (Slice 12) as the earliest upstream origin when the
+            # same decision_context_id was originated in pre-dream / multi-agent coordination.
+            # Fall back to blackboard only if nothing suitable is found on the main bus.
+            proposal_prev_hash = None
+            proposal_topics = (
+                "agent.rl.proposal",
+                "agent.news.proposal",
+                "agent.emotional_twin.proposal",
+                "agent.swarm.proposal",
+                "agent.tape.proposal",
+            )
+
+            # First try the main bus (preferred for unified reconstruction)
+            try:
+                if bus is not None and hasattr(bus, "history"):
+                    for topic in proposal_topics:
+                        events = list(bus.history(topic, limit=20))
+                        for ev in reversed(events):
+                            if decision_context_id_from_event(ev) == str(decision_context_id):
+                                proposal_prev_hash = event_hash_from_event(ev)
+                                if proposal_prev_hash:
+                                    break
+                        if proposal_prev_hash:
+                            break
+            except Exception:
+                pass
+
+            # Fallback to blackboard (for transition / cases where dual-publish hasn't fired yet)
+            if not proposal_prev_hash:
+                try:
+                    board = _resolve_blackboard(engine)
+                    if board is not None and hasattr(board, "history"):
+                        for topic in proposal_topics:
+                            events = list(board.history(topic, limit=20))
+                            for ev in reversed(events):
+                                if decision_context_id_from_blackboard_event(ev) == str(decision_context_id):
+                                    proposal_prev_hash = event_hash_from_event(ev)
+                                    if proposal_prev_hash:
+                                        break
+                            if proposal_prev_hash:
+                                break
+                except Exception:
+                    pass
+
+            # Phase 2 Slice 12: Best-effort upstream origin — also consider dream_state.updated events
+            # on the main bus for the same decision_context_id. When present (set by pre-dream
+            # coordination that emitted the proposals), this becomes the earliest observable root
+            # for the prev_hash chain (intention → proposal → gate_entry → ...).
+            if not proposal_prev_hash:
+                try:
+                    if bus is not None and hasattr(bus, "history"):
+                        dream_events = list(bus.history("trading_engine.dream_state.updated", limit=30))
+                        for ev in reversed(dream_events):
+                            if decision_context_id_from_event(ev) == str(decision_context_id):
+                                proposal_prev_hash = event_hash_from_event(ev)
+                                if proposal_prev_hash:
+                                    break
+                except Exception:
+                    pass
+
+            entry = GateEntryPayload(
+                decision_context_id=decision_context_id,
+                symbol=str(symbol),
+                proposed_risk=float(proposed_risk),
+                mode=mode,
+                order_side=order_side,
+            )
+
+            gate_entry_meta = {"decision_context_id": decision_context_id}
+            if proposal_prev_hash:
+                gate_entry_meta["prev_hash"] = proposal_prev_hash
+
+            published = bus.publish_validated(
+                topic="admission.gate_entry",
+                producer="order_gatekeeper",
+                payload=entry.model_dump(mode="json"),
+                metadata=gate_entry_meta,
+            )
+            seq = getattr(published, "metadata", {}).get("sequence") if published else None
+            gate_entry_hash = None
+            if published:
+                try:
+                    gate_entry_hash = _domain_event_fingerprint(published)
+                except Exception:
+                    pass
+            if seq or gate_entry_hash:
+                # Store for later steps to use in prev_hash
+                # We will attach this to the first risk allocation event
+                if not hasattr(engine, "_pending_lineage_refs"):
+                    engine._pending_lineage_refs = {}
+                engine._pending_lineage_refs["gate_entry"] = {
+                    "seq": seq,
+                    "hash": gate_entry_hash,
+                }
+    except Exception:
+        pass  # Best-effort root event
+
     capabilities = resolve_mode_capabilities(mode)
     blackboard = _resolve_blackboard(engine)
     if (
@@ -501,6 +654,58 @@ def enforce_pre_trade_gate(
             resolved_policy = load_risk_policy(mode=mode)
         return evaluate_constitution_for_intent(intent=intent, state=state, resolved_policy=resolved_policy)
 
+    def _emit_risk_allocation_decision(
+        _ctx: AdmissionContext,
+        approved: bool,
+        reason: str,
+        var_payload: dict[str, Any],
+        mc_payload: dict[str, Any],
+    ) -> None:
+        """Phase 2 Slice 05: Emit the actual risk allocation decision as a first-class typed event."""
+        try:
+            bus = _resolve_event_bus(engine)
+            if bus is not None and hasattr(bus, "publish_validated"):
+                from lumina_core.agent_orchestration.schemas import RiskVerdict
+
+                verdict = RiskVerdict(
+                    approved=bool(approved),
+                    reason=str(reason)[:300] if reason else None,
+                    limit=str(_ctx.metadata.get("deny_reason_code", "")) or "risk_policy",
+                    value=float(proposed_risk),
+                )
+                meta = {
+                    "symbol": str(symbol),
+                    "mode": str(mode),
+                    "decision_context_id": str(_ctx.metadata.get("decision_context_id", "")),
+                    "resolved_regime": str(_ctx.metadata.get("resolved_regime", "")),
+                    "var_payload": var_payload,
+                    "mc_payload": mc_payload,
+                }
+
+                # Phase 2 Slice 06: Chain this allocation decision back to the gate entry root if present
+                pending = getattr(engine, "_pending_lineage_refs", {}).get("gate_entry")
+                if pending and pending.get("hash"):
+                    meta["prev_hash"] = pending["hash"]
+                published = bus.publish_validated(
+                    topic="risk.policy.decision",
+                    producer="order_gatekeeper.risk_policy_step",
+                    payload=verdict.model_dump(mode="json"),
+                    metadata=meta,
+                )
+                # Store ref + hash for later hash chaining by Final Arbitration
+                seq = getattr(published, "metadata", {}).get("sequence") if published else None
+                if seq:
+                    _ctx.metadata["risk_policy_decision_ref"] = f"seq:{seq}"
+                # Compute and store the actual hash of this allocation event for prev_hash use by downstream events
+                try:
+                    alloc_hash = _domain_event_fingerprint(published)
+                    _ctx.metadata["risk_policy_decision_hash"] = alloc_hash
+                except Exception:
+                    pass
+                _ctx.metadata["risk_policy_decision_emitted"] = True
+        except Exception:
+            pass  # Best-effort observability only
+
     def _risk_policy_step(_ctx: AdmissionContext) -> tuple[bool, str]:
         snapshot = resolve_regime_snapshot(engine, regime)
         adaptive = snapshot.get("adaptive_policy", {}) if isinstance(snapshot, dict) else {}
@@ -559,9 +764,11 @@ def enforce_pre_trade_gate(
 
             if capabilities.risk_enforced and not bool(var_ok):
                 _ctx.metadata["deny_reason_code"] = "risk_var_es"
+                _emit_risk_allocation_decision(_ctx, False, var_reason, var_payload, mc_payload)
                 return False, str(var_reason)
             if capabilities.risk_enforced and not bool(mc_ok):
                 _ctx.metadata["deny_reason_code"] = "risk_mc_drawdown"
+                _emit_risk_allocation_decision(_ctx, False, mc_reason, var_payload, mc_payload)
                 return False, str(mc_reason)
             if not capabilities.risk_enforced and not bool(var_ok):
                 _safe_log_warning(
@@ -579,7 +786,9 @@ def enforce_pre_trade_gate(
         if capabilities.risk_enforced:
             if not bool(risk_ok):
                 _ctx.metadata["deny_reason_code"] = f"risk_{risk_reason}"
+                _emit_risk_allocation_decision(_ctx, False, risk_reason, _ctx.metadata.get("var_payload", {}), _ctx.metadata.get("mc_payload", {}))
                 return False, str(risk_reason)
+            _emit_risk_allocation_decision(_ctx, True, risk_reason, _ctx.metadata.get("var_payload", {}), _ctx.metadata.get("mc_payload", {}))
             return True, str(risk_reason)
 
         if not bool(risk_ok):
@@ -587,6 +796,7 @@ def enforce_pre_trade_gate(
                 engine,
                 f"RISK_ADVISORY,mode={mode},symbol={symbol},reason={risk_reason}",
             )
+        _emit_risk_allocation_decision(_ctx, bool(risk_ok), risk_reason, _ctx.metadata.get("var_payload", {}), _ctx.metadata.get("mc_payload", {}))
         return True, str(risk_reason)
 
     def _equity_snapshot_step(_ctx: AdmissionContext) -> tuple[bool, str]:
@@ -672,6 +882,51 @@ def enforce_pre_trade_gate(
             ),
         )
         _ctx.metadata["final_arbitration_approved"] = bool(result.status == "APPROVED")
+
+        # Phase 2 Slice 02: Emit the authoritative Final Arbitration decision as a first-class
+        # typed critical event. We now ensure consistent lineage with the policy decision:
+        # - decision_context_id is read preferentially from AdmissionContext (populated at gate entry)
+        # - We include a lightweight policy_decision_ref (captured after the policy publish below)
+        #   so the two events are explicitly correlated on the bus.
+        event_bus = getattr(engine, "event_bus", None)
+        if event_bus is not None:
+            try:
+                decision_context_id = str(_ctx.metadata.get("decision_context_id", "")) or "unknown"
+                # Support both real Pydantic models and test SimpleNamespace mocks
+                if hasattr(result, "model_dump"):
+                    payload = result.model_dump(mode="json")
+                else:
+                    payload = {k: getattr(result, k) for k in ("status", "reason", "violated_principle", "checks") if hasattr(result, k)}
+
+                # Phase 2 Slice 07: Make the hash chain continuous.
+                # Attach real prev_hash from the Risk Allocation event (not just sequence ref).
+                policy_ref = _ctx.metadata.get("risk_policy_decision_ref") or _ctx.metadata.get("policy_decision_ref")
+                alloc_hash = _ctx.metadata.get("risk_policy_decision_hash")
+
+                meta = {
+                    "decision_context_id": decision_context_id,
+                    "symbol": str(symbol),
+                    "mode": str(mode),
+                }
+                if policy_ref:
+                    meta["policy_decision_ref"] = policy_ref
+                if alloc_hash:
+                    meta["prev_hash"] = alloc_hash
+
+                published_arb = event_bus.publish_validated(
+                    topic="risk.final_arbitration.result",
+                    producer="order_gatekeeper",
+                    payload=payload,
+                    metadata=meta,
+                )
+                # Capture a lightweight ref so the later policy decision summary can link back to this arbitration event
+                seq = getattr(published_arb, "metadata", {}).get("sequence") if published_arb else None
+                if seq:
+                    _ctx.metadata["final_arbitration_ref"] = f"seq:{seq}"
+            except Exception:
+                # Best-effort only. Never let observability block the gate.
+                _LOG.exception("Failed to publish risk.final_arbitration.result (non-fatal)")
+
         if result.status != "APPROVED":
             _ctx.metadata["deny_reason_code"] = "final_arbitration_reject"
             return False, str(result.reason)
@@ -726,7 +981,14 @@ def enforce_pre_trade_gate(
             ADMISSION_STEP_AUDIT_WRITE: _audit_write_step,
         },
     )
+
+    # Phase 2 Slice 02: Ensure the decision_context_id (generated at the very top of the gate)
+    # is available inside all step handlers via the AdmissionContext metadata. This enables
+    # consistent lineage across risk policy decision and final arbitration events.
+    admission_context.metadata.setdefault("decision_context_id", decision_context_id)
+
     allowed, reason, trace = default_chain_for_mode(mode).run(admission_context)
+
     setattr(
         engine,
         "admission_chain_trace",
@@ -740,11 +1002,11 @@ def enforce_pre_trade_gate(
             for item in trace.results
         ],
     )
-    setattr(
-        engine,
-        "admission_chain_final_arbitration_approved",
-        bool(admission_context.metadata.get("final_arbitration_approved", False)),
-    )
+    # Phase 1.3.1 (2026-05-31): God-flag deprecation.
+    # This flag is no longer used for authorization decisions in any hot path
+    # (removed from reasoning_service in 1.2.1 and operations_service in 1.2.2).
+    # We stop writing it as part of cleaning up the old trusted-path architecture.
+    # See evolution/log/2026-05-31-elon-phase1-3-1-godflag-deprecation.md
 
     # --- Small evolutionary addition: emit typed RiskVerdict on the Event Bus ---
     # This is purely additive observability. It does not change any risk decision,
@@ -764,15 +1026,50 @@ def enforce_pre_trade_gate(
                 limit=str(deny_code or last_step or ""),
                 value=float(proposed_risk),
             )
+            meta = {
+                "symbol": str(symbol),
+                "mode": str(mode),
+                "decision_context_id": str(decision_context_id),
+            }
+            arb_ref = admission_context.metadata.get("final_arbitration_ref")
+            if arb_ref:
+                meta["final_arbitration_ref"] = arb_ref
+
+            # Phase 2 Slice 03: Simple hash chaining
+            # Attach prev_hash pointing to the preceding Final Arbitration event for this decision_context_id.
+            # This introduces the first tamper-evident link in the core risk decision lineage.
+            try:
+                from lumina_core.risk.decision_lineage import decision_context_id_from_event
+
+                if bus is not None and hasattr(bus, "history"):
+                    recent_arbs = [
+                        e
+                        for e in bus.history("risk.final_arbitration.result", limit=20)
+                        if decision_context_id_from_event(e) == str(decision_context_id)
+                    ]
+                    if recent_arbs:
+                        prev_event = recent_arbs[-1]
+                        prev_hash = _domain_event_fingerprint(prev_event)
+                        meta["prev_hash"] = prev_hash
+                        # Also attach the current event's own hash for future chaining
+                        # (we compute it on the payload + metadata we are about to send)
+                        current_for_hash = {
+                            "topic": "risk.policy.decision",
+                            "producer": "order_gatekeeper",
+                            "payload": verdict.model_dump(mode="json"),
+                            "metadata": meta,
+                        }
+                        meta["event_hash"] = _domain_event_fingerprint(
+                            type("TempEvent", (), {"to_dict": lambda s: current_for_hash})()
+                        )
+            except Exception:
+                pass  # Hash chaining is best-effort observability
+
             bus.publish_validated(
                 topic="risk.policy.decision",
                 producer="order_gatekeeper",
                 payload=verdict.model_dump(mode="json"),
-                metadata={
-                    "symbol": str(symbol),
-                    "mode": str(mode),
-                    "decision_context_id": str(decision_context_id),
-                },
+                metadata=meta,
             )
     except Exception:
         # Telemetry must never impact gate decisions or REAL capital.

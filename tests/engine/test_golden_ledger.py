@@ -112,17 +112,21 @@ def _paper_engine_stub() -> Any:
 
 def test_paper_broker_round_turn_position_netting(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("lumina_core.broker.broker_bridge.random.gauss", lambda _mu, _sigma: 0.0)
+    # Post aperture hardening (1.3.4 zero-trace): tests exercise the authoritative gate via monkeypatch.
+    # No legacy bypass flags or shortcuts are used or asserted anywhere.
+    monkeypatch.setattr("lumina_core.broker.broker_bridge.enforce_pre_trade_gate", lambda *a, **k: (True, "OK"))
+
     broker = PaperBroker(engine=_paper_engine_stub())
     sym = "MES JUN26"
     assert broker.submit_order(
-        Order(symbol=sym, side="BUY", quantity=1, metadata={"skip_admission_chain_recheck": True})
+        Order(symbol=sym, side="BUY", quantity=1)  # Authoritative gate only (post 1.3.4 zero-trace)
     ).accepted
     pos1 = broker.get_positions()
     assert len(pos1) == 1
     assert pos1[0].quantity > 0
     fills_after_buy = broker.get_fills()
     assert broker.submit_order(
-        Order(symbol=sym, side="SELL", quantity=1, metadata={"skip_admission_chain_recheck": True})
+        Order(symbol=sym, side="SELL", quantity=1)  # Authoritative gate only (post 1.3.4 zero-trace)
     ).accepted
     assert broker.get_positions() == []
     exit_fill = broker.last_fill_for_symbol(sym)

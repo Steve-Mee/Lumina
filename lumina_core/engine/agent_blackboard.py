@@ -16,7 +16,11 @@ from typing import Any, Callable
 
 from pydantic import BaseModel, ValidationError
 
-from lumina_core.agent_orchestration.schemas import BLACKBOARD_TOPIC_MODELS, validate_payload_with_model
+from lumina_core.agent_orchestration.schemas import (
+    BLACKBOARD_TOPIC_MODELS,
+    model_validate_payload_with_instance,
+    validate_payload_with_model,
+)
 from lumina_core.state.state_manager import safe_append_jsonl
 
 logger = logging.getLogger(__name__)
@@ -34,9 +38,17 @@ class BlackboardEvent:
     sequence: int = 0
     prev_hash: str = "GENESIS"
     event_hash: str = ""
+    payload_instance: BaseModel | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        inst = data.pop("payload_instance", None)
+        if isinstance(inst, BaseModel):
+            canonical = inst.model_dump(mode="json", exclude_none=False)
+            data["payload"] = canonical
+            data["payload_instance"] = canonical
+            data["payload_model"] = type(inst).__name__
+        return data
 
 
 @dataclass(slots=True)
@@ -180,10 +192,14 @@ class AgentBlackboard:
             raise TypeError("payload must be a dict")
         self._validate_producer(topic=topic_key, producer=producer)
         safe_payload = dict(payload)
+        payload_instance: BaseModel | None = None
         selected_payload_model = payload_model or BLACKBOARD_TOPIC_MODELS.get(topic_key)
         if selected_payload_model is not None:
             try:
-                safe_payload = validate_payload_with_model(payload=safe_payload, payload_model=selected_payload_model)
+                safe_payload, payload_instance = model_validate_payload_with_instance(
+                    payload=safe_payload,
+                    payload_model=selected_payload_model,
+                )
             except ValidationError as exc:
                 self._record_reject(topic=topic_key, producer=producer, reason="schema_violation")
                 logger.warning(
@@ -202,6 +218,7 @@ class AgentBlackboard:
             confidence=conf,
             metadata=dict(metadata or {}),
             correlation_id=correlation_id,
+            payload_instance=payload_instance,
         )
         with self._lock:
             self._history[topic_key].append(event)
@@ -247,14 +264,61 @@ class AgentBlackboard:
         topic_key = str(topic).strip().lower()
         if not topic_key.startswith("agent.") or not topic_key.endswith(".proposal"):
             raise ValueError("add_proposal requires an agent.*.proposal topic")
-        return self.publish_sync(
+
+        # Phase 2 Slice 12 (defensive upstream threading): If the engine carries an active
+        # cycle-level decision_context_id from dream/multi-agent coordination (see pre_dream_daemon),
+        # honor it when the immediate caller did not supply a correlation_id. This lets future
+        # agents inside a marked cycle participate in the shared lineage root without every call site
+        # being updated in this slice. Non-breaking; only a read of an optional engine attribute.
+        if correlation_id is None:
+            try:
+                eng = getattr(self, "engine", None)
+                if eng is not None:
+                    active = getattr(eng, "_active_decision_context_id", None) or getattr(eng, "active_decision_context_id", None)
+                    if active:
+                        correlation_id = str(active)
+            except Exception:
+                pass
+
+        # Phase 2 Slice 08: Ensure decision_context_id (upstream lineage root) is present for proposals.
+        # We align it with correlation_id so the lineage thread is consistent.
+        if correlation_id is None:
+            correlation_id = uuid.uuid4().hex
+        safe_payload = dict(payload)
+        safe_payload.setdefault("decision_context_id", correlation_id)
+
+        blackboard_event = self.publish_sync(
             topic=topic_key,
             producer=producer,
-            payload=payload,
+            payload=safe_payload,
             confidence=confidence,
             metadata=metadata,
             correlation_id=correlation_id,
         )
+
+        # Phase 2 Slice 10: Also publish to the main Event Bus as a first-class typed event
+        # (in addition to blackboard) so the central spine has unified proposal lineage.
+        try:
+            engine = getattr(self, "engine", None)
+            event_bus = getattr(engine, "event_bus", None) if engine else None
+            if event_bus and hasattr(event_bus, "publish_validated"):
+                main_bus_event = event_bus.publish_validated(
+                    topic=topic_key,
+                    producer=producer,
+                    payload=safe_payload,
+                    metadata=metadata or {},
+                )
+                # Phase 2 Slice 11: Attach proper event_hash so deeper prev_hash chaining can start from this proposal event on the main bus.
+                if main_bus_event:
+                    try:
+                        from lumina_core.order_gatekeeper import _domain_event_fingerprint
+                        main_bus_event.metadata["event_hash"] = _domain_event_fingerprint(main_bus_event)
+                    except Exception:
+                        pass
+        except Exception:
+            pass  # Best-effort dual publish only
+
+        return blackboard_event
 
     def mark_policy_decision(self, *, approved: bool, reason: str = "") -> None:
         with self._lock:
@@ -356,6 +420,7 @@ class AgentBlackboard:
         confidence: float,
         metadata: dict[str, Any],
         correlation_id: str | None,
+        payload_instance: BaseModel | None = None,
     ) -> BlackboardEvent:
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
@@ -372,6 +437,7 @@ class AgentBlackboard:
             metadata=metadata,
             sequence=sequence,
             prev_hash=prev_hash,
+            payload_instance=payload_instance,
         )
         canonical = json.dumps(
             {
@@ -395,6 +461,7 @@ class AgentBlackboard:
         safe_append_jsonl(path, payload, hash_chain=False)
 
     def _append_thought_logs(self, event: BlackboardEvent) -> None:
+        export = event.to_dict()
         thought_payload = {
             "type": "blackboard_event",
             "topic": event.topic,
@@ -404,8 +471,10 @@ class AgentBlackboard:
             "correlation_id": event.correlation_id,
             "event_hash": event.event_hash,
             "sequence": event.sequence,
-            "payload": event.payload,
+            "payload": export.get("payload", event.payload),
         }
+        if "payload_model" in export:
+            thought_payload["payload_model"] = export["payload_model"]
         self._append_jsonl(self._thought_log_path, thought_payload)
 
     def _policy_for_topic(self, topic: str) -> TopicPolicy:

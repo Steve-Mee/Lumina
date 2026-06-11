@@ -1,0 +1,39 @@
+# Truth Density Heuristics for DNA Guardian
+# These lists drive the current keyword-based scoring.
+
+version: "1.0"
+
+vague_words:
+  - "should"
+  - "aims to"
+  - "as much as possible"
+  - "in the future"
+  - "we want"
+  - "we hope"
+  - "try to"
+  - "attempt to"
+  - "we believe"
+  - "it is expected that"
+
+positive_markers:
+  - "hypothesis"
+  - "falsifiable"
+  - "prediction"
+  - "measurable"
+  - "evidence"
+  - "score"
+  - "metric"
+  - "impact"
+  - "reversibility"
+  - "before/after"
+
+scoring_parameters:
+  base_score: 7.0
+  vague_penalty_per_occurrence: 0.4          # rough penalty per vague word
+  vague_density_multiplier: 1.2
+  positive_reward_per_occurrence: 0.6
+  max_vague_penalty: 4.0
+  max_positive_reward: 2.5
+  long_file_penalty_threshold: 1200          # words
+  long_file_penalty: 1.0
+  long_file_penalty_condition: "no 'hypothesis' marker"

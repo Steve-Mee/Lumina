@@ -1,0 +1,47 @@
+# Aperture Integrity Rules for DNA Guardian (Elon First-Principles Track)
+# This file is the single source of truth for the current state of capital aperture erosion.
+# Updated only via public evolution entries when the bypass inventory changes.
+
+schema_version: "aperture-v1"
+last_updated: "2026-05-31"
+analysis_reference: "evolution/log/2026-05-31-elon-musk-first-principles-trading-system-analysis.md"
+inventory_reference: "evolution/log/2026-05-31-current-capital-aperture-bypass-inventory.md"
+
+# Current state after Phase 1.3.4 zero-trace hygiene (2026-05-31)
+current:
+  active_structural_bypass_count: 0          # All 4 FATAL mechanisms (B-001..B-004) structurally eliminated
+  mechanisms_in_final_deprecation: 0
+  fully_eliminated: 4                        # B-001, B-002, B-003, B-004
+  god_flag_status: "deprecated_and_removed"  # Cleaned in 1.3.1
+
+# Post-elimination note (Phase 1.3.4)
+# The aperture_guard module now serves as a permanent regression detector:
+# any call to enforce_no_bypass_in_strict_mode in real/sim_real_guard is FATAL.
+# See evolution/log/2026-05-31-elon-phase1-3-4-zero-trace-hygiene-complete.md
+
+# Target thresholds (updated for post-1.2 reality)
+targets:
+  active_bypass_max_for_green: 0
+  active_bypass_max_for_yellow: 0   # Even 1 is not green until fully removed
+
+# Scoring parameters (adjusted for deprecation reality)
+scoring:
+  base_score: 10.0
+  active_bypass_penalty: 3.0        # High penalty while last mechanism is still present
+  deprecation_usage_penalty: 1.0    # Additional penalty for every detected use during deprecation window
+  max_penalty: 6.0
+
+# All structural bypass mechanisms eliminated (Phase 1.3.4 zero-trace hygiene)
+# The only remaining protection is the permanent regression detector in aperture_guard.
+# Any future attempt to re-introduce a bypass path in strict modes will be fatal by design.
+# See the 1.3.4 completion entry for full closure.
+
+# Enforcement status (post 1.3.4)
+enforcement:
+  active: true
+  since: "2026-05-31"
+  description: "All four FATAL structural bypass mechanisms eliminated (1.3.4 zero-trace). aperture_guard now acts as permanent regression detector: any call in strict modes is FATAL + ConstitutionViolation."
+  current_focus: "Permanent regression detection — make any future aperture erosion impossible to introduce silently in strict modes"
+
+last_updated: "2026-05-31"
+# When this file is updated, a new evolution entry + Guardian re-baseline is mandatory.

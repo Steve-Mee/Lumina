@@ -44,4 +44,5 @@ class EngineAccountState:
     open_pnl: float = 0.0
     equity_snapshot_ok: bool = False
     equity_snapshot_reason: str = "unknown"
-    admission_chain_final_arbitration_approved: bool = False
+    # admission_chain_final_arbitration_approved removed in Phase 1.3.1 (2026-05-31)
+    # See evolution/log/2026-05-31-elon-phase1-3-1-godflag-deprecation.md

@@ -10,7 +10,7 @@ contract integrity with experimental agent space.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from lumina_core.risk.schemas import ArbitrationResult
@@ -82,6 +82,28 @@ class ShadowResult(BaseModel):
     pnl: float | None = None
 
 
+class RiskConfigMutationProposal(BaseModel):
+    """Strict typed contract for risk config mutations (max_risk_percent, drawdown_kill_percent)
+    originating from evolution hyperparam_suggestion paths (e.g. ProposalGenerator + meta wrappers).
+
+    First small slice of Phase 3 D2 god decomp/firewall on meta_agent_core (SPF-003 per
+    2026-05-31 analysis + MC D2 Red/highest-leverage post D4 scale). extra=forbid + required
+    decision_context_id + source/dna/shadow ref enforce typed aperture, auditability, and
+    tie to prior shadow (addresses D5 residual _apply_candidate gap at meta:1044-1047).
+
+    Used by central apply fn in evolution_risk_proposal.py; optional bus publish under
+    "evolution.risk_config.mutation" (with payload_model for contract).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision_context_id: str = Field(min_length=1)  # e.g. from nightly/AB or upstream ctx
+    source: str = Field(min_length=1)  # e.g. "meta_agent_core._apply_candidate" or "proposal_generator"
+    dna_hash: str | None = None
+    shadow_result_ref: str | None = None  # experiment_id from prior validate_risk_proposal_in_shadow (D5)
+    proposed_values: dict[str, float] = Field(default_factory=dict)  # only the risk keys (max_risk_percent, drawdown_kill_percent)
+
+
 TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC = "trading_engine.execution.aggregate"
 
 
@@ -112,6 +134,42 @@ class TradingEngineExecutionAggregate(BaseModel):
     regime: str | None = None
     expected_value: float | None = None
     position_size_multiplier: float | None = Field(default=None, ge=0.0)
+
+
+# Phase 2 Slice 18: First-class typed fill event with full lineage
+EXECUTION_FILL_RECEIVED_TOPIC = "execution.fill.received"
+
+
+class ExecutionFill(BaseModel):
+    """Typed Event Bus contract for actual fills received from the broker.
+
+    This is the downstream counterpart to the pre-trade lineage.
+    Carries decision_context_id + prev_hash so the cryptographic chain
+    continues from Final Arbitration / submission into real execution.
+
+    Published best-effort via publish_validated when a fill is created
+    or ingested (paper and live paths).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Lineage (the important part for Phase 2)
+    decision_context_id: str | None = None
+    prev_hash: str | None = None
+    prev_event_topic: str | None = None
+
+    # Core fill data
+    fill_id: str
+    order_id: str | None = None
+    symbol: str
+    side: str
+    quantity: int
+    price: float
+    timestamp: str
+    commission: float = 0.0
+
+    # Optional raw passthrough for broker-specific details
+    raw: dict[str, Any] = Field(default_factory=dict)
     min_confluence: float | None = None
     meta_score: float | None = None
     agent_id: str | None = None
@@ -267,6 +325,7 @@ class AgentProposalPayload(BaseModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     qty: float | None = Field(default=None, gt=0.0)
     reason: str | None = None
+    decision_context_id: str | None = None  # Phase 2 Slice 08: upstream lineage root
 
 
 class ExecutionAggregatePayload(BaseModel):
@@ -359,15 +418,35 @@ class AgentMetaProposalPayload(BaseModel):
     timestamp: str | None = None
 
 
+class GateEntryPayload(BaseModel):
+    """Minimal root event marking that an order intent has entered the authoritative admission chain."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision_context_id: str
+    symbol: str
+    proposed_risk: float
+    mode: str
+    order_side: str | None = None
+
+
 EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "trading_engine.trade_signal.emitted": TradeIntent,
     "trading_engine.execution.aggregate": TradingEngineExecutionAggregate,
+    "execution.fill.received": ExecutionFill,
     "trading_engine.dream_state.updated": DreamStateEventPayload,
     "risk.policy.decision": RiskVerdict,
     "risk.final_arbitration.result": FinalArbitrationResult,
+    "admission.gate_entry": GateEntryPayload,
+    "agent.rl.proposal": AgentProposalPayload,
+    "agent.news.proposal": AgentProposalPayload,
+    "agent.emotional_twin.proposal": AgentProposalPayload,
+    "agent.swarm.proposal": AgentProposalPayload,
+    "agent.tape.proposal": AgentProposalPayload,
     "evolution.proposal.created": EvolutionProposal,
     "evolution.shadow.verdict": ShadowResult,
     "evolution.promotion.decision": EvolutionPromotionDecision,
+    "evolution.risk_config.mutation": RiskConfigMutationProposal,
     "safety.constitution.violation": ConstitutionViolation,
     "safety.constitution.audit": ConstitutionAudit,
     "meta.agent.reflection": AgentReflection,
@@ -385,9 +464,19 @@ CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
         "trading_engine.execution.aggregate",
         "risk.policy.decision",
         "risk.final_arbitration.result",
+        "admission.gate_entry",
+        "agent.rl.proposal",
+        "agent.news.proposal",
+        "agent.emotional_twin.proposal",
+        "agent.swarm.proposal",
+        "agent.tape.proposal",
         "evolution.shadow.verdict",
         "evolution.promotion.decision",
         "safety.constitution.audit",
+        # Phase 2 Slice 20: Downstream execution lineage now under the same strict critical contract
+        # as the pre-trade gates and Final Arbitration. Schema violations on fill events will
+        # now raise (fail-closed) instead of being swallowed.
+        EXECUTION_FILL_RECEIVED_TOPIC,
     }
 )
 
@@ -409,14 +498,24 @@ BLACKBOARD_TOPIC_MODELS: dict[str, type[BaseModel]] = {
 }
 
 
+def model_validate_payload_with_instance(
+    *,
+    payload: dict[str, Any],
+    payload_model: type[BaseModel],
+) -> tuple[dict[str, Any], BaseModel]:
+    """Validate payload; return JSON-safe dict plus the Pydantic instance for subscribers."""
+    instance = payload_model.model_validate(payload)
+    return instance.model_dump(mode="json", exclude_none=False), instance
+
+
 def validate_payload_with_model(
     *,
     payload: dict[str, Any],
     payload_model: type[BaseModel],
 ) -> dict[str, Any]:
     """Validate and convert payload to a JSON-safe dict."""
-    validated = payload_model.model_validate(payload)
-    return validated.model_dump(mode="json", exclude_none=False)
+    dumped, _ = model_validate_payload_with_instance(payload=payload, payload_model=payload_model)
+    return dumped
 
 
 def validate_registered_event_payload(topic: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -437,3 +536,21 @@ def registered_event_topics() -> frozenset[str]:
 
 def is_schema_violation(exc: Exception) -> bool:
     return isinstance(exc, ValidationError)
+
+
+TPayloadModel = TypeVar("TPayloadModel", bound=BaseModel)
+
+
+def typed_payload_from_event(event: Any, model: type[TPayloadModel]) -> TPayloadModel:
+    """Resolve a validated Pydantic instance from DomainEvent, BlackboardEvent, or legacy dict events."""
+    inst = getattr(event, "payload_instance", None)
+    if isinstance(inst, model):
+        return inst
+    if hasattr(event, "typed_payload"):
+        return event.typed_payload(model)
+    raw = getattr(event, "payload", None)
+    if isinstance(raw, model):
+        return raw
+    if isinstance(raw, dict):
+        return model.model_validate(raw)
+    return model.model_validate({})

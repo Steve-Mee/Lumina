@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path  # for type hints only; runtime use is lazy inside methods
 
 from lumina_core.engine.engine_ports import SupportsRisk
 from lumina_core.risk.session_guard import SessionGuard
@@ -153,3 +154,81 @@ class RiskOrchestrator:
                 f"risk_percent={adaptive_risk_percent:.2f},qty={qty}"
             )
         return qty
+
+    # ------------------------------------------------------------------
+    # Phase 2 Deliverable 5: Shadow Deployment Entry Point (narrow first increment)
+    # ------------------------------------------------------------------
+    def create_shadow_evaluator(self) -> "ShadowRiskEvaluator":
+        """
+        Returns a fully isolated ShadowRiskEvaluator.
+
+        This is the official, controlled entry point for running risk logic
+        experiments in shadow mode (real market data, zero chance of touching
+        the live broker).
+
+        All shadow evaluations must go through this method.
+        """
+        from lumina_core.risk.shadow import ShadowRiskEvaluator
+
+        return ShadowRiskEvaluator(engine=self.engine)
+
+    # ------------------------------------------------------------------
+    # Phase 2 Deliverable 5: Official high-level shadow experiment runner
+    # (evolution-facing API)
+    # ------------------------------------------------------------------
+    def run_shadow_risk_experiment(
+        self,
+        *,
+        experiment_id: str,
+        dna_hash: str,
+        signal: str,
+        confluence_score: float,
+        proposed_risk: float,
+        recent_fills: list[dict] | None = None,
+        storage_path: str | Path | None = None,
+        reference_experiment_id: str | None = None,
+    ) -> "ShadowExperimentResult":
+        """
+        Official high-level entry point for running a complete shadow risk
+        experiment from the evolution / DNA change proposal layer.
+
+        Evolution code is encouraged to go through the thin bridge at
+        `lumina_core/evolution/risk_shadow_bridge.py` for the most
+        ergonomic experience when validating risk-affecting proposals.
+
+        This is the recommended surface for any code that needs to safely
+        validate a modification to risk logic, policy, or gates against real
+        (or replayed) market data with **zero** possibility of affecting the
+        live broker or real capital.
+
+        It wires together:
+        - Isolated RiskOrchestrator + full risk stack (policy, controller, arbitration)
+        - Comparison against an optional reference run
+        - Promotion decision + recommendation (including human_approval trigger)
+        - Optional durable persistence via storage_path (one-liner production use)
+        - Full support for the rich human review tooling (resolution_notes + evidence)
+
+        Returns the rich `ShadowExperimentResult` containing everything needed
+        for promotion decisions and audit.
+
+        This directly supports the original 2026-05-31 Phase 2 Deliverable 5 goal:
+        making extended shadow deployment the practical, default-safe way to
+        evolve risk logic.
+        """
+        from lumina_core.risk.shadow import ShadowRiskEvaluator
+
+        evaluator = ShadowRiskEvaluator(engine=self.engine)
+
+        return evaluator.execute_shadow_experiment(
+            experiment_id=experiment_id,
+            dna_hash=dna_hash,
+            signal=signal,
+            confluence_score=confluence_score,
+            proposed_risk=proposed_risk,
+            recent_fills=recent_fills,
+            storage_path=Path(storage_path) if isinstance(storage_path, str) else storage_path,
+            reference_experiment_id=reference_experiment_id,
+        )
+
+    # Convenience alias for callers who prefer "execute_" naming
+    execute_shadow_risk_experiment = run_shadow_risk_experiment

@@ -94,12 +94,14 @@ class ApprovalTwinAgent:
         learning_rate: float = 0.08,
         backend: str | None = None,
         ollama_model: str | None = None,
+        engine: Any = None,  # Optional: for risk shadow validation on risky DNA
     ) -> None:
         self._registry = registry
         self._model_path = Path(model_path)
         self._learning_rate = float(learning_rate)
         self._state = self._load_state()
         self._backend_name, self._backend = self._build_backend(backend=backend, ollama_model=ollama_model)
+        self._engine = engine  # for Phase 2 Deliverable 5 risk shadow integration
 
     def evaluate_dna_promotion(self, dna: PolicyDNA) -> dict[str, Any]:
         dna_hash = str(getattr(dna, "hash", ""))
@@ -115,6 +117,56 @@ class ApprovalTwinAgent:
             score = max(0.0, min(1.0, score))
             risk_flags = self._risk_flags(dna)
             recommendation = bool(score >= self._state.threshold and not risk_flags)
+
+            # === Phase 2 Deliverable 5 (Aperture Hardening) — Proactive risk shadow validation ===
+            # For any DNA evaluation where an engine is available, we proactively run
+            # the risk logic through the isolated shadow aperture. This is the first
+            # live enforcement point where evolution proposals are forced through
+            # the shadow aperture before promotion decisions (using bridge + auto-record).
+            #
+            # We attempt to extract realistic risk parameters from the DNA content
+            # so the shadow experiment is meaningful rather than using only defaults.
+            if self._engine is not None:
+                try:
+                    from lumina_core.evolution.risk_shadow_bridge import run_risk_shadow_experiment_for_proposal
+                    from pathlib import Path
+
+                    # Best-effort extraction of risk experiment parameters from DNA
+                    content = getattr(dna, "content", {}) or {}
+                    if isinstance(content, str):
+                        import json
+                        try:
+                            content = json.loads(content)
+                        except Exception:
+                            content = {}
+
+                    proposal = {
+                        "experiment_id": f"risk-shadow-{dna_hash[:12]}",
+                        "dna_hash": dna_hash,
+                        "signal": content.get("signal") or content.get("action") or "BUY",
+                        "confluence_score": float(content.get("confluence_score", content.get("confluence", 0.65))),
+                        "proposed_risk": float(content.get("proposed_risk", content.get("risk", 150.0))),
+                    }
+
+                    from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
+
+                    shadow_result = validate_risk_proposal_in_shadow(
+                        proposal=proposal,
+                        engine=self._engine,
+                        storage_path=Path("state/risk_shadow_evolution.jsonl"),
+                        auto_record_promotion=True,
+                    )
+
+                    # Incorporate shadow outcome into the twin decision
+                    shadow_rec = shadow_result.recommendation or {}
+                    if shadow_rec.get("suggested_stage") in ("human_approval", "reject"):
+                        recommendation = False
+                        risk_flags.append("risk_shadow_blocked")
+                    explanation += f" | risk_shadow={shadow_rec.get('suggested_stage', 'unknown')}"
+                except Exception:
+                    # Shadow validation is best-effort; never break the twin gate
+                    pass
+            # ================================================================================
             explanation = (
                 f"Twin score={score:.2%}, threshold={self._state.threshold:.0%}, backend={self._backend_name}, "
                 f"fitness={float(dna.fitness_score):.4f}, mutation_rate={float(dna.mutation_rate):.2f}, "

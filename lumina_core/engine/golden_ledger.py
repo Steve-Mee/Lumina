@@ -9,12 +9,22 @@ from lumina_core.engine.valuation_engine import ValuationEngine
 
 @dataclass(frozen=True, slots=True)
 class CloseLegLedgerResult:
-    """Economic outcome of closing a position leg using broker-confirmed exit fill."""
+    """Economic outcome of closing a position leg using broker-confirmed exit fill.
+
+    Phase 2 Slice 24: Optional lineage fields threaded from the exit fill (first-class
+    decision_context_id / prev_hash preferred). This allows the cryptographic hash chain
+    to continue from the originating decision through realized PnL with real hash_ok
+    verification (mirroring the pattern proven for fills in Slices 19–23).
+    """
 
     gross_pnl: float
     exit_commission: float
     realized_net: float
     slippage_points_vs_reference: float
+
+    # Phase 2 Slice 24: Best-effort lineage from the closing fill / decision
+    decision_context_id: str | None = None
+    prev_hash: str | None = None
 
 
 def realized_close_from_broker_fill(
@@ -27,6 +37,9 @@ def realized_close_from_broker_fill(
     quantity: int,
     exit_commission: float,
     reference_price_for_slippage_ticks: float | None = None,
+    # Phase 2 Slice 24: optional lineage from the exit fill (best-effort)
+    decision_context_id: str | None = None,
+    prev_hash: str | None = None,
 ) -> CloseLegLedgerResult:
     """Compute realized PnL from entry and **exit fill** prices plus exit commission.
 
@@ -54,6 +67,8 @@ def realized_close_from_broker_fill(
         exit_commission=ec,
         realized_net=float(realized),
         slippage_points_vs_reference=float(slip_pts),
+        decision_context_id=decision_context_id,
+        prev_hash=prev_hash,
     )
 
 
@@ -67,8 +82,13 @@ def round_turn_realized_from_two_fills(
     quantity: int,
     entry_commission: float,
     exit_commission: float,
+    # Phase 2 Slice 24/25: optional lineage forwarding (best-effort) for multi-leg netting
+    decision_context_id: str | None = None,
+    prev_hash: str | None = None,
 ) -> float:
-    """Full round-turn net PnL from open and close fill prices and both commissions."""
+    """Full round-turn net PnL from open and close fill prices and both commissions.
+    For multi-leg netting (Slice 25), lineage can be passed from the netted fills/closes.
+    """
     leg = realized_close_from_broker_fill(
         valuation_engine=valuation_engine,
         symbol=symbol,
@@ -78,5 +98,7 @@ def round_turn_realized_from_two_fills(
         quantity=quantity,
         exit_commission=float(exit_commission),
         reference_price_for_slippage_ticks=None,
+        decision_context_id=decision_context_id,
+        prev_hash=prev_hash,
     )
     return float(leg.gross_pnl) - float(entry_commission) - float(leg.exit_commission)

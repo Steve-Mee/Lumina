@@ -29,6 +29,13 @@ This document defines the non-negotiable laws of the Lumina project. Everything 
    - SIM en Paper zijn laboratoria voor radicale experimentatie.
    - REAL is een fort. De scheiding tussen beide moet expliciet, geautomatiseerd en onontkoombaar zijn.
 
+7. **Geen structurele bypasses in kapitaalpaden** *(no structural bypasses in capital paths)*
+   - In `real` en `sim_real_guard` bestaat precies één geautoriseerd pad naar de broker: typed Event Bus + Admission Chain + Final Arbitration + hash-chained `decision_context_id` / `prev_hash`.
+   - Structurele bypasses zijn verboden: skip-flags op arbitration/gate, mutable god-state die veiligheid omzeilt, broker-side short-circuits die Final Arbitration overslaan.
+   - `lumina_core.risk.aperture_guard` is de permanente regression tripwire; ADR-0010 en de gesloten bypass-inventory (2026-05-31, Phase 1.3.4) zijn bindend.
+   - Nood/EOD/force-close en reconciliatie gebruiken **bounded modules** (`EODForceCloseService`, `PaperTradeExecutor`, gatekeeper) — geen parallel trusted path en geen time-boxed bypass (zie ADR-0010).
+   - Machine-leesbaar: invariant `no_structural_bypass_capital_paths` in `core/invariants.json`; dagelijkse Guardian static scan (fail-hard).
+
 ## Veranderregels
 
 - Wijzigingen aan dit document vereisen:
@@ -41,4 +48,32 @@ Dit document heeft prioriteit boven alle andere project-dna bestanden en alle co
 
 ---
 
-*Laatste update: 2026-05-29 (initiële versie als onderdeel van DNA 2.0 redesign)*
+## Evidence Contract (Guardian / enforcement)
+
+Bindende invariants hierboven blijven leidend. Dit blok maakt naleving **measurable** en **falsifiable** via dagelijkse **evidence** — zonder nieuwe invarianten toe te voegen.
+
+**Hypothesis**: Wanneer elke invariant gekoppeld is aan een reproduceerbare Guardian-check en een expliciete **metric**, daalt het risico op stille regressie in REAL-paden.
+
+**Falsifiable predictions**:
+| Invariant | Voorspelling (rolling 90d) | Meet-signaal |
+|-----------|---------------------------|--------------|
+| #1 Kapitaalbehoud | 0 FATAL aperture bypass in strict modes | Aperture Integrity **score** ≥ 9.3 sustained |
+| #7 Geen bypass | 0 nieuwe bypass-patronen in capital paths | D5 static scan PASS + `no_structural_bypass_capital_paths` in `invariants.json` |
+| #5 Safety vóór evo | Guardian structural health ≥ 9.5 | `dna_health_latest.json` trend |
+
+**Measurable metrics** (dagelijks):
+- `aperture_integrity` score (Guardian CAPITAL APERTURE section)
+- D5 `capital_aperture_scan.py` exit code (fail-hard)
+- Phase 3 gate: `python scripts/phase3_perfection_gate_verify.py` (D2 + Track C chain)
+
+**Evidence / reproduce**:
+```bash
+python scripts/dna_guardian/validate_dna.py --report --d1-audits --strict-self-score
+python scripts/phase3_track_c_gate_verify.py
+```
+
+**Rollback**: Verwijder dit Evidence Contract; invariants #1–#7 ongewijzigd. Superseding entry verplicht in `evolution/log/` (Large classificatie voor invariant-wijzigingen; Small voor dit audit-blok).
+
+---
+
+*Laatste update: 2026-06-11 (Evidence Contract; invariant #7 unchanged since 2026-06-04 D5)*

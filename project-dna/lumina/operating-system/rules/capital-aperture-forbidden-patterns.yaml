@@ -1,0 +1,39 @@
+# Phase 3 D5 — Forbidden structural bypass patterns in lumina_core (capital paths)
+# Guardian fail-hard via scripts/dna_guardian/capital_aperture_scan.py
+# Parent: core/invariants.json -> no_structural_bypass_capital_paths
+
+schema_version: "capital-aperture-forbidden-v1"
+last_updated: "2026-06-04"
+constitution_invariant_id: "no_structural_bypass_capital_paths"
+
+scan:
+  root_glob: "lumina_core"
+  extensions: [".py"]
+
+# Entire files exempt from pattern matching (traps, removal comments, hygiene)
+allowlist_files:
+  - "lumina_core/risk/aperture_guard.py"
+  - "lumina_core/broker/broker_bridge.py"
+  - "lumina_core/engine/policy_engine.py"
+  - "lumina_core/trade_workers.py"
+  - "lumina_core/engine/runtime_state.py"
+  - "lumina_core/trading_engine/engine_state_facade.py"
+
+forbidden_patterns:
+  - id: B-001-skip-final-arbitration
+    substring: "skip_final_arbitration"
+    description: "FATAL B-001: skip_final_arbitration parameter or call"
+  - id: B-002-god-flag
+    substring: "admission_chain_final_arbitration_approved"
+    description: "FATAL B-002: mutable god-state bypass flag"
+  - id: B-004-functional-short-circuit
+    regex: "return\\s+.*skip_admission_chain"
+    description: "FATAL B-004: functional short-circuit on skip_admission_chain_recheck"
+
+# Lines matching these substrings are ignored even outside allowlist (documentation/hygiene only)
+line_ignore_substrings:
+  - "permanently removed"
+  - "removed in Phase"
+  - "LEGACY_BYPASS_FLAG_DETECTED"
+  - "metadata.pop(\"skip_admission_chain_recheck\""
+  - "metadata.pop('skip_admission_chain_recheck'"

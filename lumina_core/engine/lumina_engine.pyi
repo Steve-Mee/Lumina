@@ -69,7 +69,6 @@ class LuminaEngine:
     positions_margin_used: float
     equity_snapshot_ok: bool
     equity_snapshot_reason: str
-    admission_chain_final_arbitration_approved: bool
     regime_history: list[dict[str, Any]]
     narrative_memory: list[dict[str, Any]]
     memory_buffer: list[dict[str, Any]]

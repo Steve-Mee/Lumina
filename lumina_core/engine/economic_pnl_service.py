@@ -66,6 +66,8 @@ class EconomicPnLService:
         quantity: int,
         exit_commission: float,
         reference_price_for_slippage_ticks: float | None = None,
+        decision_context_id: str | None = None,
+        prev_hash: str | None = None,
     ) -> CloseLegLedgerResult:
         return realized_close_from_broker_fill(
             valuation_engine=self._valuation_engine,
@@ -76,6 +78,8 @@ class EconomicPnLService:
             quantity=int(quantity),
             exit_commission=float(exit_commission),
             reference_price_for_slippage_ticks=reference_price_for_slippage_ticks,
+            decision_context_id=decision_context_id,
+            prev_hash=prev_hash,
         )
 
     def economic_pnl_from_reconciled_payload(self, payload: Mapping[str, Any]) -> float:

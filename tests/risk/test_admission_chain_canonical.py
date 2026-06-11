@@ -186,7 +186,9 @@ def test_enforce_pre_trade_gate_success_trace_is_canonical() -> None:
     assert allowed is True
     assert reason == "OK"
     assert [step["step_id"] for step in engine.admission_chain_trace] == list(CANONICAL_ADMISSION_STEPS)
-    assert engine.admission_chain_final_arbitration_approved is True
+    # admission_chain_final_arbitration_approved removed in Phase 1.3.1 (2026-05-31)
+    # See evolution/log/2026-05-31-elon-phase1-3-1-godflag-deprecation.md
+    # assert engine.admission_chain_final_arbitration_approved is True
     assert final_arbitration.last_skip_internal_steps == frozenset(
         {"real_equity_snapshot", "risk_policy", "constitution"}
     )
