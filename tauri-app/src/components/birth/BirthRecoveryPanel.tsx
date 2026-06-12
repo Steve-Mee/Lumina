@@ -35,6 +35,10 @@ const COPY: Record<
     title: "Simulation stall",
     body: "The SIM chunk produced no trades. Retry from the last checkpoint or review diagnostics below.",
   },
+  session_interrupted: {
+    title: "Birth session interrupted",
+    body: "A previous birth run was stopped before completion. Resume from the last checkpoint or start fresh.",
+  },
 };
 
 async function runBirthAction(
@@ -119,28 +123,30 @@ export function BirthRecoveryPanel({
           </>
         ) : null}
 
-        {kind === "checkpoint_available" ? (
+        {kind === "session_interrupted" || kind === "checkpoint_available" ? (
           <>
+            {kind === "checkpoint_available" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() =>
+                  void runBirthAction("Resuming from checkpoint…", () =>
+                    startBirthSession({
+                      targetTrades,
+                      continueTraining: true,
+                      practiceMode: true,
+                    }),
+                  )
+                }
+              >
+                Resume practice checkpoint
+              </Button>
+            ) : null}
             <Button
               type="button"
               size="sm"
-              variant="secondary"
-              onClick={() =>
-                void runBirthAction("Resuming from checkpoint…", () =>
-                  startBirthSession({
-                    targetTrades,
-                    continueTraining: true,
-                    practiceMode: true,
-                  }),
-                )
-              }
-            >
-              Resume practice checkpoint
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
+              variant={kind === "session_interrupted" ? "secondary" : "outline"}
               onClick={() =>
                 void runBirthAction("Resuming certified checkpoint…", () =>
                   startBirthSession({ targetTrades, continueTraining: true }),

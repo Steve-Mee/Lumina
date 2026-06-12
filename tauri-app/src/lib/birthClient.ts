@@ -12,6 +12,21 @@ export interface BirthProgressPayload {
   ppo_steps_cumulative?: number;
   ppo_batch_count?: number;
   message?: string;
+  curriculum_stage?: string;
+  certificate_ok?: boolean;
+  oos_metrics?: Record<string, unknown>;
+  actual_real_days_loaded?: number;
+  regimes_covered?: string[];
+}
+
+export interface BirthCertificatePayload {
+  version?: string;
+  oos_winrate?: number;
+  oos_sharpe?: number;
+  oos_max_drawdown_pct?: number;
+  real_data_pct?: number;
+  constitution_violations?: number;
+  regimes_covered?: string[];
 }
 
 export interface BirthStatusPayload {
@@ -21,6 +36,11 @@ export interface BirthStatusPayload {
   progress?: BirthProgressPayload;
   progress_pct?: number;
   artifacts_ok?: boolean;
+  certificate_ok?: boolean;
+  certificate_reason?: string;
+  certificate?: BirthCertificatePayload | null;
+  curriculum_stage?: string;
+  oos_metrics?: Record<string, unknown>;
   artifacts_label?: string;
   phase_label?: string;
   elapsed_seconds?: number;

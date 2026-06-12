@@ -7,6 +7,7 @@ describe("deckStatusOrchestrator", () => {
     const resolution = resolveDeckStatus({
       backendDown: true,
       birthActive: false,
+      birthIncomplete: false,
       fallbackActive: false,
       welcomeVisible: false,
       backendRecovered: false,
@@ -18,10 +19,26 @@ describe("deckStatusOrchestrator", () => {
     expect(resolution.suppressToast).toBe(true);
   });
 
+  it("returns blocking birth_incomplete when birth artifacts missing", () => {
+    const resolution = resolveDeckStatus({
+      backendDown: false,
+      birthActive: false,
+      birthIncomplete: true,
+      fallbackActive: false,
+      welcomeVisible: false,
+      backendRecovered: false,
+      syncPending: false,
+      syncError: false,
+    });
+    expect(resolution.blocking).toBe("birth_incomplete");
+    expect(resolution.railChip).toBeNull();
+  });
+
   it("returns blocking welcome when welcome overlay is active", () => {
     const resolution = resolveDeckStatus({
       backendDown: false,
       birthActive: false,
+      birthIncomplete: false,
       fallbackActive: false,
       welcomeVisible: true,
       backendRecovered: false,
@@ -36,6 +53,7 @@ describe("deckStatusOrchestrator", () => {
     const resolution = resolveDeckStatus({
       backendDown: false,
       birthActive: false,
+      birthIncomplete: false,
       fallbackActive: false,
       welcomeVisible: false,
       backendRecovered: true,
@@ -51,6 +69,7 @@ describe("deckStatusOrchestrator", () => {
     const resolution = resolveDeckStatus({
       backendDown: false,
       birthActive: false,
+      birthIncomplete: false,
       fallbackActive: false,
       welcomeVisible: false,
       backendRecovered: false,
@@ -65,6 +84,7 @@ describe("deckStatusOrchestrator", () => {
     const resolution = resolveDeckStatus({
       backendDown: false,
       birthActive: false,
+      birthIncomplete: false,
       fallbackActive: false,
       welcomeVisible: false,
       backendRecovered: false,

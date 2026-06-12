@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import type { OnboardingPayload, OnboardingStepId } from "@/lib/onboardingSteps";
 import type { MutationDepth, OperationsMode } from "@/lib/botConfigDraft";
+import { mapAppPhase, resolvePhaseOnRefreshError, markPayloadBackendUnreachable, type AppPhase } from "@/lib/onboardingPhase";
 import { hydrateBotConfigDraftFromPayload } from "@/lib/botConfigDraft";
 import {
   fetchOnboardingStatus,
@@ -56,28 +57,7 @@ export interface OnboardingDraft {
   };
 }
 
-export type AppPhase = "loading" | "wizard" | "birth" | "cockpit";
-
-function resolveAppPhase(
-  payload: OnboardingPayload,
-  priorPhase: AppPhase,
-  birthPhaseCommitted: boolean,
-): AppPhase {
-  const birthRunning = payload.birth.status === "running";
-  const birthReady =
-    payload.birth.artifacts_ok && payload.birth.status === "completed";
-
-  if (priorPhase === "birth" && birthPhaseCommitted) return "birth";
-  if (birthRunning) return "birth";
-  if (
-    payload.skip_wizard ||
-    (payload.setup_complete && birthReady && !birthRunning)
-  ) {
-    return "cockpit";
-  }
-  if (priorPhase === "cockpit") return "cockpit";
-  return "wizard";
-}
+export type { AppPhase } from "@/lib/onboardingPhase";
 
 interface OnboardingState {
   phase: AppPhase;
@@ -89,7 +69,6 @@ interface OnboardingState {
   birthPhaseCommitted: boolean;
   smartSetupRunning: boolean;
   refresh: () => Promise<void>;
-  enterCockpit: () => void;
   setPhase: (phase: AppPhase) => void;
   completeBirthTransition: () => void;
   setStepIndex: (index: number) => void;
@@ -149,8 +128,6 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   activating: false,
   birthPhaseCommitted: false,
   smartSetupRunning: false,
-
-  enterCockpit: () => set({ phase: "cockpit", birthPhaseCommitted: false }),
 
   setPhase: (phase) => set({ phase }),
 
@@ -250,15 +227,23 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
           ? priorPhase === "loading"
             ? "wizard"
             : priorPhase
-          : resolveAppPhase(payload, priorPhase, get().birthPhaseCommitted),
+          : mapAppPhase(payload, {
+              priorPhase,
+              birthPhaseCommitted: get().birthPhaseCommitted,
+              activating: false,
+            }),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load onboarding status";
+      const priorPhase = get().phase;
+      const lastPayload = get().payload;
+      const payloadAfterError =
+        lastPayload != null ? markPayloadBackendUnreachable(lastPayload, message) : null;
       set({
         error: message,
-        phase: "wizard",
-        payload: null,
-        currentStepIndex: 0,
+        phase: resolvePhaseOnRefreshError(priorPhase, payloadAfterError ?? lastPayload),
+        payload: payloadAfterError ?? lastPayload,
+        currentStepIndex: priorPhase === "loading" ? 0 : get().currentStepIndex,
       });
     }
   },

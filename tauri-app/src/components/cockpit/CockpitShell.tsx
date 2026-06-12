@@ -10,8 +10,10 @@ import { AdaptiveIntelligenceProvider } from "@/context/AdaptiveIntelligenceCont
 import { RealSafeModeOverlay } from "@/components/cockpit/RealSafeModeOverlay";
 import { StatusBar } from "@/components/cockpit/StatusBar";
 import { useOrganismClock } from "@/hooks/useOrganismClock";
+import { useRealSafeModeMonitor } from "@/hooks/useRealSafeModeMonitor";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { useDeckStatusSyncToast } from "@/hooks/useDeckStatusResolution";
+import { useDeckLifecycleGuard } from "@/hooks/useDeckLifecycleGuard";
 import { fetchAndHydrateDeckApiKey } from "@/lib/setupClient";
 import { connectCoreLive, disconnectCoreLive } from "@/lib/websocket";
 import { useApiKeyStore } from "@/store/apiKeyStore";
@@ -69,6 +71,7 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
   }, [hydrateOperatorMode, hydrateVisualSettings, hydrateApiKey]);
 
   useRealSafeModeMonitor();
+  useDeckLifecycleGuard();
 
   return (
     <OrganismEnvelopeProvider>

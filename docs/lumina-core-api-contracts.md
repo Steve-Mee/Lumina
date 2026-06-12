@@ -24,7 +24,8 @@ The **`/api/core/*`** and **`/ws/core/*`** paths defined here are the **canonica
 6. [WS /ws/core/live](#6-ws-wscorelive)
 7. [WS /ws/evolution](#7-ws-wsevolution)
 8. [SIM vs REAL Mode Delta](#8-sim-vs-real-mode-delta)
-9. [Related Documents](#9-related-documents)
+9. [Setup & Onboarding — GET /api/setup/onboarding](#9-setup--onboarding--get-apisetuponboarding)
+10. [Related Documents](#10-related-documents)
 
 See also [ppo-evolution.md](ppo-evolution.md) for **`/ws/ppo-evolution`** — raw JSONL PPO training metrics during birth phase.
 
@@ -1937,7 +1938,97 @@ Summary of field and behavior differences across all contracts:
 
 ---
 
-## 9. Related Documents
+## 9. Setup & Onboarding — GET /api/setup/onboarding
+
+> **Namespace:** `/api/setup/*` (Command Deck first-boot and lifecycle gate)  
+> **SSOT implementation:** [`lumina_launcher/core/onboarding.py`](../lumina_launcher/core/onboarding.py) → `resolve_app_surface()`  
+> **Operator runbook:** [command-deck-startup-runbook.md](command-deck-startup-runbook.md)
+
+Unauthenticated bootstrap endpoint used on every Tauri cold start. Returns wizard steps, birth status, and the canonical **`app_surface`** lifecycle gate.
+
+### 9.1 Request
+
+```http
+GET /api/setup/onboarding
+```
+
+No body. No API key required for read (local operator machine).
+
+### 9.2 Response (lifecycle fields)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `app_surface` | `"setup" \| "birth" \| "deck"` | yes | Canonical startup surface (SSOT) |
+| `app_surface_reason` | string | yes | Diagnostic reason (e.g. `birth_pending`, `birth_complete`, `backend_unreachable`) |
+| `setup_complete` | boolean | yes | Guided setup finished |
+| `skip_wizard` | boolean | yes | `true` only when `app_surface === "deck"` |
+| `birth.status` | string | yes | Birth service status (`idle`, `running`, `interrupted`, `error`, `completed`, …) |
+| `birth.artifacts_ok` | boolean | yes | Policy zip present on disk |
+| `birth.certificate_ok` | boolean | yes | Valid Birth Certificate v2 (`integrity_version: 2`) with matching policy hash and thresholds met — **deck gate** |
+| `birth.certificate_reason` | string | no | Fail-closed reason when `certificate_ok === false` |
+| `birth.certificate` | object | no | Parsed certificate payload when present |
+| `birth.progress` | object | no | Training progress when birth active |
+| `required_steps` | string[] | yes | Pending onboarding step ids |
+| `wizard_steps` | string[] | yes | Steps shown in progressive wizard |
+| `backend.reachable` | boolean | yes | FastAPI probe result |
+
+### 9.3 `app_surface` resolution (normative)
+
+Evaluated in order by `resolve_app_surface()`:
+
+1. If `backend.reachable === false` → `setup` (`backend_unreachable`)
+2. If `setup_complete === false` or pending setup steps → `setup` (`fresh_install` / `setup_incomplete`)
+3. If `birth.certificate_ok === false` or `birth.artifacts_ok === false` → `birth` (reason from birth status: `birth_running`, `birth_interrupted`, `birth_error`, `birth_pending`, `certificate_failed`)
+4. Else → `deck` (`birth_complete`)
+
+### 9.3.1 Birth Certificate API
+
+```http
+GET /api/birth/certificate
+GET /api/birth/status
+```
+
+`GET /api/birth/status` and `GET /api/birth/certificate` both expose `certificate_ok`, `certificate_reason`, `artifacts_ok`, and the parsed `certificate` object. Deck bootstrap requires **`certificate_ok === true`** (not legacy flag-only checks).
+
+Pre-integrity-fix certificates (`integrity_version != 2`) are invalid — run mandatory re-birth after PR-A remediation.
+
+**Fail-closed:** `skip_wizard` must not be `true` unless `app_surface === "deck"`.
+
+### 9.4 Client mapping (Tauri)
+
+| `app_surface` | Client phase | Primary component |
+|---------------|--------------|-------------------|
+| `setup` | `wizard` | `OnboardingWizard` |
+| `birth` | `birth` | `BirthPhaseScreen` |
+| `deck` | `cockpit` | `CockpitShell` |
+
+Mapper: `tauri-app/src/lib/onboardingPhase.ts` → `mapAppPhase()`.
+
+### 9.5 Example fragment
+
+```json
+{
+  "setup_complete": true,
+  "app_surface": "birth",
+  "app_surface_reason": "birth_interrupted",
+  "skip_wizard": false,
+  "birth": {
+    "status": "interrupted",
+    "artifacts_ok": false,
+    "certificate_ok": false,
+    "certificate_reason": "certificate_integrity_version_invalid",
+    "artifacts_label": "Artifacts missing",
+    "message": "Training paused at checkpoint",
+    "progress": { "progress_pct": 42, "trades_done": 10500, "target_trades": 25000 }
+  },
+  "backend": { "reachable": true, "url": "http://127.0.0.1:8000", "latency_ms": 12 },
+  "required_steps": ["birth"]
+}
+```
+
+---
+
+## 10. Related Documents
 
 | Document | Path | Relevance |
 |----------|------|-----------|
@@ -1946,6 +2037,8 @@ Summary of field and behavior differences across all contracts:
 | Constitutional principles ADR | [adr/ADR-001-constitutional-principles.md](adr/ADR-001-constitutional-principles.md) | Fail-closed safety rules |
 | Event Bus contract ADR | [adr/ADR-003-event-bus-contract.md](adr/ADR-003-event-bus-contract.md) | Typed event payloads |
 | SIM/REAL operator card | [OPERATOR_CARD_SIM_REAL_v52.md](OPERATOR_CARD_SIM_REAL_v52.md) | Operator mode-switch procedures |
+| Command Deck startup runbook | [command-deck-startup-runbook.md](command-deck-startup-runbook.md) | Cold start / restart surfaces |
+| Tauri lifecycle gate ADR | [adr/0011-tauri-lifecycle-gate-ssot.md](adr/0011-tauri-lifecycle-gate-ssot.md) | `app_surface` SSOT decision |
 | Adaptive Intelligence design | [AdaptiveIntelligenceManager.md](../AdaptiveIntelligenceManager.md) | Intelligence tier semantics |
 | Mode capabilities | [lumina_core/engine/mode_capabilities.py](../lumina_core/engine/mode_capabilities.py) | Authoritative mode matrix |
 | Event Bus schemas | [lumina_core/agent_orchestration/schemas.py](../lumina_core/agent_orchestration/schemas.py) | Pydantic payload models |

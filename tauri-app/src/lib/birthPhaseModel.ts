@@ -24,39 +24,34 @@ const MILESTONE_META: Record<
   { label: string; headline: string; stages: string[]; phases: string[] }
 > = {
   dna: {
-    label: "Initial DNA generation",
-    headline: "Sequencing initial DNA…",
+    label: "Real market history",
+    headline: "Loading real market history…",
     stages: ["detected", "pipeline_boot", "checkpoint_available"],
-    phases: ["detected", "checkpoint_available"],
+    phases: ["detected", "checkpoint_available", "loading_history"],
   },
   fitness: {
-    label: "Fitness landscape initialization",
-    headline: "Initializing fitness landscape…",
+    label: "Regime map",
+    headline: "Building regime map…",
     stages: ["loading_data", "historical_loaded", "synthetic_top_up"],
-    phases: ["loading_history", "loading_history_failed", "ticks_ready", "parallel_simulation"],
+    phases: ["loading_history", "loading_history_failed", "ticks_ready"],
   },
   strategies: {
-    label: "First generation of strategies",
-    headline: "Spawning first strategy generation…",
-    stages: ["training_running", "parallel_simulation"],
-    phases: [
-      "parallel_simulation",
-      "simulation_stall",
-      "simulation_stall_grace",
-      "simulation_stall_retry",
-    ],
+    label: "Curriculum training",
+    headline: "Curriculum stage active…",
+    stages: ["training_running"],
+    phases: ["curriculum_stage", "parallel_simulation"],
   },
   refinement: {
-    label: "Organism refinement (PPO)",
-    headline: "Refining neural policy…",
+    label: "PPO polish + OOS eval",
+    headline: "Policy polish and OOS Sharpe check…",
     stages: ["ppo_training"],
-    phases: ["ppo_training"],
+    phases: ["ppo_training", "ppo_polish", "oos_evaluation"],
   },
   awakening: {
-    label: "Neural organism online",
-    headline: "Neural organism online",
+    label: "Birth Certificate v2",
+    headline: "Birth Certificate v2 issued",
     stages: ["completed", "practice_completed"],
-    phases: ["completed", "practice_completed"],
+    phases: ["completed", "practice_completed", "certificate_issued"],
   },
 };
 
@@ -121,16 +116,33 @@ export function buildMilestones(
 export function resolveBirthHeadline(
   milestones: BirthMilestone[],
   status: string,
+  progress?: BirthProgressPayload,
 ): string {
   if (normalizeToken(status) === "completed") {
-    return "Neural organism online";
+    return "Birth Certificate v2 issued";
+  }
+  if (normalizeToken(status) === "certificate_failed") {
+    return "Birth Certificate thresholds not met — review OOS metrics and retry";
+  }
+  const phase = normalizeToken(progress?.phase);
+  if (phase === "oos_evaluation") {
+    const sharpe = Number(progress?.oos_metrics?.oos_sharpe ?? 0);
+    return `OOS Sharpe evaluation (${sharpe.toFixed(2)})…`;
+  }
+  const curriculum = String(progress?.curriculum_stage ?? "").trim();
+  if (curriculum) {
+    return `Curriculum ${curriculum.replace(/_/g, " ")}…`;
+  }
+  const days = Number(progress?.actual_real_days_loaded ?? 0);
+  if (days > 0 && phase.includes("loading")) {
+    return `Loading real history (${days} days)…`;
   }
   const active = milestones.find((m) => m.state === "active");
   if (active) return active.headline;
-  return "Organism is being born…";
+  return "Birth Phase v2 in progress…";
 }
 
-export type BirthUiPhase = "running" | "finale" | "error" | "idle";
+export type BirthUiPhase = "running" | "finale" | "error" | "idle" | "certificate_failed";
 
 export function resolveBirthPhaseCopy(
   uiPhase: BirthUiPhase,
@@ -141,6 +153,9 @@ export function resolveBirthPhaseCopy(
   }
   if (uiPhase === "error") {
     return "Birth interrupted — review diagnostics or retry.";
+  }
+  if (uiPhase === "certificate_failed") {
+    return "Certificate thresholds not met — review OOS metrics below and retry birth.";
   }
   const active = milestones.find((m) => m.state === "active");
   if (active?.id === "refinement") {
@@ -156,20 +171,43 @@ export function resolveBirthPhaseCopy(
 }
 
 export function isBirthComplete(payload: BirthStatusPayload): boolean {
-  if (payload.artifacts_ok === false) return false;
+  if (payload.certificate_ok === false || payload.artifacts_ok === false) return false;
   const status = normalizeToken(payload.status);
   const stage = normalizeToken(payload.progress?.stage);
-  return status === "completed" || stage === "completed" || stage === "practice_completed";
+  const phase = normalizeToken(payload.progress?.phase);
+  return (
+    status === "completed" ||
+    stage === "completed" ||
+    stage === "practice_completed" ||
+    phase === "certificate_issued"
+  );
 }
 
 export function isBirthRunning(payload: BirthStatusPayload): boolean {
   const status = normalizeToken(payload.status);
-  return status === "running" || status === "started";
+  return status === "running" || status === "started" || status === "active";
+}
+
+export function isBirthInterrupted(payload: BirthStatusPayload): boolean {
+  const status = normalizeToken(payload.status);
+  const stage = normalizeToken(payload.progress?.stage);
+  return status === "interrupted" || stage === "interrupted";
+}
+
+export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
+  const status = normalizeToken(payload.status);
+  const stage = normalizeToken(payload.progress?.stage);
+  const phase = normalizeToken(payload.progress?.phase);
+  return (
+    status === "certificate_failed" ||
+    (stage === "failed" && phase === "certificate_failed") ||
+    payload.certificate_ok === false
+  );
 }
 
 export function isBirthFailed(payload: BirthStatusPayload): boolean {
   const status = normalizeToken(payload.status);
-  return status === "error" || status === "interrupted";
+  return status === "error" || status === "certificate_failed";
 }
 
 export function extractSimProgress(progress: BirthProgressPayload | undefined): {

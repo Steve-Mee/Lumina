@@ -1,7 +1,10 @@
 import logging
+import os
 from pathlib import Path
 from typing import Callable, Optional
 
+from lumina_core.birth.birth_certificate import policy_path, validate_certificate_artifacts
+from lumina_core.birth.config import load_birth_v2_config
 from lumina_core.engine.swarm_manager import SwarmManager
 
 _log = logging.getLogger("lumina")
@@ -9,18 +12,19 @@ _log = logging.getLogger("lumina")
 
 RuntimeWorker = Callable[[], None]
 _WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
-_BIRTH_POLICY = _WORKSPACE_ROOT / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
-_BIRTH_FLAG = _WORKSPACE_ROOT / "state" / "lumina_birth_completed.flag"
-_BIRTH_LEGACY_FLAG = _WORKSPACE_ROOT / "state" / "first_boot_completed.flag"
 
 
-def _assert_birth_phase_completed() -> None:
-    # BIRTH ENGINE 2026-05-17
-    has_flag = _BIRTH_FLAG.exists() or _BIRTH_LEGACY_FLAG.exists()
-    if has_flag and _BIRTH_POLICY.exists():
+def _assert_birth_phase_completed(workspace_root: Path | None = None) -> None:
+    root = workspace_root or _WORKSPACE_ROOT
+    thresholds = load_birth_v2_config(root).certificate_thresholds
+    ok, reason, _cert = validate_certificate_artifacts(root, thresholds=thresholds)
+    if ok:
         return
+    pol = policy_path(root)
     raise RuntimeError(
-        "Birth Phase artifacts missing; runtime services stay fail-closed until first boot training completes."
+        "Birth Phase v2 certificate invalid or missing "
+        f"({reason}); runtime services stay fail-closed until certified birth completes. "
+        f"policy_exists={pol.is_file()}"
     )
 
 

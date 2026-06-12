@@ -156,8 +156,8 @@ def main() -> None:
     parser.add_argument(
         "--seed-birth-flag",
         action=argparse.BooleanOptionalAction,
-        default=True,
-        help="Seed workspace state/lumina_birth_completed.flag when missing (SIM campaigns only; default on).",
+        default=False,
+        help="Deprecated: birth v2 certificate seeding disabled in product paths (default off).",
     )
     parser.add_argument(
         "--check-prereqs-only",
@@ -201,7 +201,7 @@ def main() -> None:
 
     # Prereq warnings (per plan)
     print("Prereqs (see docstring for details):")
-    print("  - Birth policy + flag: satisfied via ensure_birth_prereqs (see BIRTH_PREREQ line above).")
+    print("  - Birth policy + certificate v2: required via ensure_birth_prereqs (see BIRTH_PREREQ line above).")
     print("  - Inference (ollama/vllm + models for dream/agents/meta; or XAI; fallback limited for rich evo volume).")
     print("  - For neuro: CROSSTRADE_TOKEN or config neuroevolution.require_real_simulator_data=false (stub).")
     print("  - Time: short wall for demo 'multi-day' (accelerated ticks); longer for volume.")

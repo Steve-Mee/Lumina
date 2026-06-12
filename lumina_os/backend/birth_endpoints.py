@@ -9,17 +9,29 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from lumina_launcher.services.birth_service import birth_service
+from lumina_core.birth.birth_certificate import load_certificate, validate_certificate_artifacts
+from lumina_core.birth.config import load_birth_v2_config
 
 router = APIRouter(prefix="/api/birth", tags=["birth"])
 
 
 def _enrich_status(payload: dict[str, Any]) -> dict[str, Any]:
-    """Attach SSOT artifact readiness (completion flag + policy zip)."""
+    """Attach SSOT artifact readiness (Birth Certificate v2 + policy zip)."""
+    root = birth_service.workspace_root
+    thresholds = load_birth_v2_config(root).certificate_thresholds
+    cert_ok, cert_reason, cert = validate_certificate_artifacts(root, thresholds=thresholds)
     payload["artifacts_ok"] = birth_service.artifacts_ok()
+    payload["certificate_ok"] = cert_ok
+    payload["certificate_reason"] = cert_reason
+    payload["certificate"] = cert.model_dump(mode="json") if cert is not None else None
     payload["artifacts_label"] = (
-        "Artifacts OK" if payload["artifacts_ok"] else "Artifacts missing"
+        "Birth Certificate v2 OK" if payload["artifacts_ok"] else "Certificate or policy missing"
     )
-    payload["phase_label"] = "Birth Phase"
+    payload["phase_label"] = "Birth Phase v2"
+    progress = payload.get("progress")
+    if isinstance(progress, dict):
+        payload["curriculum_stage"] = progress.get("curriculum_stage")
+        payload["oos_metrics"] = progress.get("oos_metrics")
     return payload
 
 
@@ -58,6 +70,20 @@ async def extra_training() -> dict[str, Any]:
 @router.get("/status")
 async def get_birth_status() -> dict[str, Any]:
     return _enrich_status(birth_service.get_status())
+
+
+@router.get("/certificate")
+async def get_birth_certificate() -> dict[str, Any]:
+    root = birth_service.workspace_root
+    cert = load_certificate(root)
+    thresholds = load_birth_v2_config(root).certificate_thresholds
+    ok, reason, validated = validate_certificate_artifacts(root, thresholds=thresholds)
+    return {
+        "certificate_ok": ok,
+        "certificate_reason": reason,
+        "certificate": validated.model_dump(mode="json") if validated is not None else cert.model_dump(mode="json") if cert else None,
+        "artifacts_ok": birth_service.artifacts_ok(),
+    }
 
 
 class BirthSettingsRequest(BaseModel):

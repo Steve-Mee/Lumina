@@ -25,6 +25,9 @@ export interface ReadinessRow {
   status: "ok" | "missing" | "pending";
 }
 
+/** Phase 1+ backend SSOT lifecycle surface. */
+export type AppSurface = "setup" | "birth" | "deck";
+
 export interface OnboardingPayload {
   backend: { reachable: boolean; url: string; latency_ms?: number; error?: string };
   setup_complete: boolean;
@@ -35,6 +38,8 @@ export interface OnboardingPayload {
     progress?: Record<string, unknown>;
     artifacts_ok: boolean;
     artifacts_label?: string;
+    certificate_ok?: boolean;
+    certificate_reason?: string;
   };
   intelligence: {
     ollama_installed: boolean;
@@ -70,6 +75,8 @@ export interface OnboardingPayload {
     risk_controller: Record<string, unknown>;
   };
   smart_setup_running: boolean;
+  app_surface: AppSurface;
+  app_surface_reason?: string;
 }
 
 export const STEP_LABELS: Record<OnboardingStepId, string> = {
@@ -82,21 +89,8 @@ export const STEP_LABELS: Record<OnboardingStepId, string> = {
   birth: "Birth Phase",
 };
 
-/** Client-side mirror of server gate for tests and UI hints. */
-export function shouldEnterCockpit(payload: OnboardingPayload): boolean {
-  if (payload.skip_wizard) return true;
-  if (
-    payload.setup_complete &&
-    (payload.birth.status === "running" || payload.birth.artifacts_ok)
-  ) {
-    return true;
-  }
-  const pending = payload.wizard_steps.filter((s) => s !== "welcome");
-  if (pending.length === 0 && payload.setup_complete) {
-    return payload.birth.status === "running" || payload.birth.artifacts_ok;
-  }
-  return false;
-}
+/** @deprecated Import from onboardingPhase.ts */
+export { shouldEnterCockpit } from "@/lib/onboardingPhase";
 
 export function visibleSteps(steps: OnboardingStepId[]): OnboardingStepId[] {
   return steps.filter((s) => s !== "welcome");

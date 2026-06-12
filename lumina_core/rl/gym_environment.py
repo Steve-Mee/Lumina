@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import random
 from dataclasses import dataclass
@@ -11,6 +10,7 @@ from typing import Any
 import numpy as np
 
 from lumina_core.engine.valuation_engine import ValuationEngine
+from lumina_core.rl.observation_builder import OBSERVATION_DIM, build_observation_vector
 
 try:
     import gymnasium as gym
@@ -52,7 +52,7 @@ class RLTradingEnvironment(gym.Env):
         self.data = simulator_data
         self.config = config or self._config_from_engine(engine)
         self.valuation_engine = ValuationEngine()
-        self.instrument = str(getattr(self.engine.config, "instrument", "MES"))
+        self.instrument = str(getattr(getattr(self.engine, "config", None), "instrument", "MES") or "MES")
         self.trade_mode = (
             str(self.config.trade_mode or getattr(getattr(self.engine, "config", None), "trade_mode", "sim"))
             .strip()
@@ -68,11 +68,13 @@ class RLTradingEnvironment(gym.Env):
         self.observation_space = spaces.Box(
             low=-1e6,
             high=1e6,
-            shape=(28,),
+            shape=(OBSERVATION_DIM,),
             dtype=np.float32,
         )
 
         self._dna_hash: str = ""
+        self._birth_workspace_root: Any = None
+        self._birth_constitution_guard: Any = None
         self._idx = 0
         self._position = 0
         self._qty = 0
@@ -86,11 +88,14 @@ class RLTradingEnvironment(gym.Env):
         """Inject active PolicyDNA hash so the policy can condition on lineage identity."""
         self._dna_hash = str(dna_hash or "")
 
+    def set_birth_context(self, *, workspace_root: Any = None, constitution_guard: Any = None) -> None:
+        self._birth_workspace_root = workspace_root
+        self._birth_constitution_guard = constitution_guard
+
     def _dna_embedding(self) -> list[float]:
-        if not self._dna_hash:
-            return [0.0, 0.0, 0.0, 0.0]
-        raw = hashlib.sha256(self._dna_hash.encode("utf-8")).digest()
-        return [(b / 127.5) - 1.0 for b in raw[:4]]
+        from lumina_core.rl.observation_builder import dna_embedding
+
+        return dna_embedding(self._dna_hash)
 
     @staticmethod
     def _config_from_engine(engine: Any) -> RLConfig:
@@ -153,6 +158,7 @@ class RLTradingEnvironment(gym.Env):
         return self._get_observation(), {}
 
     def step(self, action):
+        reward = 0.0
         action_arr = np.asarray(action, dtype=np.float32)
         if self._idx >= len(self.data) - 1:
             return self._get_observation(), 0.0, True, False, {}
@@ -176,6 +182,24 @@ class RLTradingEnvironment(gym.Env):
         block_reason = ""
 
         if self._position == 0 and side != 0:
+            if self.trade_mode == "birth" and self._birth_constitution_guard is not None:
+                tick_row = self.data[min(self._idx, len(self.data) - 1)]
+                allowed, _reason = self._birth_constitution_guard.check_entry(
+                    tick=tick_row,
+                    side=side,
+                    stop_pct=stop_pct,
+                    equity=self._equity,
+                )
+                if not allowed:
+                    blocked_by_capital_preservation = True
+                    block_reason = "birth_constitution_blocked"
+                    reward -= 2.0
+                    self._idx += 1
+                    return self._get_observation(), reward, False, False, {
+                        "blocked_by_birth_constitution": True,
+                        "block_reason": block_reason,
+                    }
+
             slippage_points = self._stochastic_slippage_points(price)
             entry_ticks = max(0.0, float(slippage_points) / max(self.valuation_engine.tick_size(self.instrument), 1e-9))
             fill = self.valuation_engine.apply_entry_fill(
@@ -295,68 +319,19 @@ class RLTradingEnvironment(gym.Env):
 
     def _get_observation(self) -> np.ndarray:
         row = self.data[min(self._idx, len(self.data) - 1)]
-        price = float(row.get("close", row.get("last", 0.0)))
-
-        recent = self.data[max(0, self._idx - 120) : self._idx + 1]
-        regime = (
-            str(self.engine.detect_market_regime(__import__("pandas").DataFrame(recent)))
-            if len(recent) > 20
-            else "NEUTRAL"
+        return build_observation_vector(
+            row=row,
+            engine=self.engine,
+            data=self.data,
+            idx=self._idx,
+            position=self._position,
+            qty=self._qty,
+            entry_price=self._entry_price,
+            equity=self._equity,
+            drawdown=self._drawdown(),
+            rolling_sharpe=self._rolling_sharpe(),
+            dna_hash=self._dna_hash,
         )
-        regime_map = {
-            "TRENDING": 1.0,
-            "BREAKOUT": 0.8,
-            "RANGING": -0.6,
-            "VOLATILE": -0.9,
-            "NEUTRAL": 0.0,
-        }
-        regime_val = 0.0
-        for key, val in regime_map.items():
-            if key in regime.upper():
-                regime_val = val
-                break
-
-        tape = self.engine.market_data.get_tape_snapshot()
-        dream = self.engine.get_current_dream_snapshot()
-        fib_levels = dream.get("fib_levels") or self.engine.AI_DRAWN_FIBS or {}
-        world_model = self.engine.world_model or {}
-        macro = world_model.get("macro", {}) if isinstance(world_model, dict) else {}
-
-        fib_0382 = float(fib_levels.get("0.382", price)) if isinstance(fib_levels, dict) else price
-        fib_05 = float(fib_levels.get("0.5", price)) if isinstance(fib_levels, dict) else price
-        fib_0618 = float(fib_levels.get("0.618", price)) if isinstance(fib_levels, dict) else price
-
-        obs = np.array(
-            [
-                price,
-                regime_val,
-                float(tape.get("volume_delta", 0.0)),
-                float(tape.get("avg_volume_delta_10", 0.0)),
-                float(tape.get("bid_ask_imbalance", 1.0)),
-                float(tape.get("cumulative_delta_10", 0.0)),
-                float(dream.get("confidence", 0.0)),
-                float(dream.get("confluence_score", 0.0)),
-                float(dream.get("stop", 0.0)),
-                float(dream.get("target", 0.0)),
-                fib_0382,
-                fib_05,
-                fib_0618,
-                float(macro.get("vix", 0.0)),
-                float(macro.get("yield10y", 0.0)),
-                float(macro.get("dxy", 0.0)),
-                float(self._position),
-                float(self._qty),
-                float(self._entry_price),
-                float(self._equity),
-                float(self._drawdown()),
-                float(self._rolling_sharpe()),
-                float(self._idx),
-                float(len(self.data)),
-                *self._dna_embedding(),
-            ],
-            dtype=np.float32,
-        )
-        return obs
 
     def _drawdown(self) -> float:
         peak = max(self._equity_curve) if self._equity_curve else self._equity

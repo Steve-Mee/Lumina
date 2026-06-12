@@ -10,6 +10,7 @@ import logging
 import json
 import random
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from lumina_core.config_loader import ConfigLoader
@@ -48,6 +49,30 @@ def dream_engine_config() -> tuple[bool, int, int, float]:
         ddr = 0.02
     ddr = max(0.005, min(0.25, ddr))
     return enabled, n, h, ddr
+
+
+def load_birth_regime_prior(workspace_root: Path | str | None = None) -> dict[str, Any] | None:
+    root = Path(workspace_root) if workspace_root is not None else Path.cwd()
+    path = root / "state" / "birth_regime_prior.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def enrich_metrics_with_birth_prior(
+    metrics: dict[str, Any],
+    workspace_root: Path | str | None = None,
+) -> dict[str, Any]:
+    prior = load_birth_regime_prior(workspace_root)
+    if not prior:
+        return metrics
+    out = dict(metrics)
+    out["birth_regime_prior"] = prior
+    return out
 
 
 def run_dream_batch(
@@ -103,6 +128,14 @@ def run_dream_batch(
         hints.append("bias_regime_gates_toward_defensive")
     if worst_dd > drawdown_limit_ratio * 1.8:
         hints.append("flash_drawdown_escape_and_size_cap")
+
+    prior = nightly_report.get("birth_regime_prior")
+    if isinstance(prior, dict):
+        regimes = list(prior.get("regimes_covered") or prior.get("distribution") or [])
+        if regimes:
+            hints.append(f"birth_prior_regimes:{','.join(str(r) for r in regimes[:5])}")
+        if len(regimes) < 3:
+            hints.append("bias_regime_gates_toward_defensive")
 
     return DreamReport(
         dream_count=n,
@@ -164,6 +197,7 @@ def merge_dream_hyperparam_nudges(
     dream_summary: dict[str, Any] | None,
     *,
     evolution_mode: str,
+    birth_regime_prior: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Bounded nudges to max_risk_percent / drawdown_kill_percent from dream hints.
 
@@ -187,6 +221,13 @@ def merge_dream_hyperparam_nudges(
             "_nudged": False,
         }
     hints = [str(x) for x in (dream_summary.get("rule_hints") or []) if str(x).strip()]
+    prior = birth_regime_prior
+    if prior is None and isinstance(dream_summary.get("birth_regime_prior"), dict):
+        prior = dream_summary["birth_regime_prior"]
+    if isinstance(prior, dict):
+        regimes = list(prior.get("regimes_covered") or prior.get("distribution") or [])
+        if len(regimes) < 3 and "bias_regime_gates_toward_defensive" not in hints:
+            hints.append("bias_regime_gates_toward_defensive")
     br = float(dream_summary.get("breach_rate", 0.0) or 0.0)
     if not hints and br < 0.06:
         return {

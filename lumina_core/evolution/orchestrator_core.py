@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Sequence
 
+from lumina_core.birth.dna_handoff import resolve_birth_gen0_dna
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
 from lumina_core.agent_orchestration import EventBus
 from lumina_core.config_loader import ConfigLoader
@@ -35,6 +36,7 @@ from .lumina_bible import LuminaBible
 from .community_knowledge import run_community_knowledge_nightly
 from .dream_engine import (
     dream_engine_config,
+    enrich_metrics_with_birth_prior,
     enrich_nightly_report_with_dream,
     run_dream_batch,
 )
@@ -237,8 +239,9 @@ class EvolutionOrchestrator:
             }
         horizon = max(1, min(int(horizon_cfg), int(sim_days)))
         seed = _seed_from_hash(f"dream:{generation_offset}")
+        metrics_with_prior = enrich_metrics_with_birth_prior(base_metrics)
         report = run_dream_batch(
-            base_metrics,
+            metrics_with_prior,
             dream_count=count,
             horizon_days=horizon,
             seed=seed,
@@ -401,8 +404,13 @@ class EvolutionOrchestrator:
         top_dna = self._registry.get_ranked_dna(limit=3)
         active_dna = self._registry.get_latest_dna(version="active")
         if not top_dna and active_dna is None:
-            active_dna = self._bootstrap_active_dna(base_metrics=base_metrics)
-            top_dna = [active_dna]
+            birth_dna = resolve_birth_gen0_dna(self._registry)
+            if birth_dna is not None:
+                active_dna = birth_dna
+                top_dna = [birth_dna]
+            else:
+                active_dna = self._bootstrap_active_dna(base_metrics=base_metrics)
+                top_dna = [active_dna]
         previous_fitness = float(active_dna.fitness_score) if active_dna is not None else float("-inf")
 
         dream_summary = self._run_dream_engine_batch(

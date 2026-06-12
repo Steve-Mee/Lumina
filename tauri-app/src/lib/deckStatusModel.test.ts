@@ -24,6 +24,7 @@ describe("deckStatusModel", () => {
       resolveDeckStatus({
         backendDown: true,
         birthActive: false,
+        birthIncomplete: false,
         fallbackActive: true,
         welcomeVisible: true,
         backendRecovered: false,
@@ -38,6 +39,7 @@ describe("deckStatusModel", () => {
       resolveDeckStatus({
         backendDown: false,
         birthActive: true,
+        birthIncomplete: false,
         fallbackActive: true,
         welcomeVisible: true,
         backendRecovered: false,
@@ -50,6 +52,7 @@ describe("deckStatusModel", () => {
       resolveDeckStatus({
         backendDown: false,
         birthActive: false,
+        birthIncomplete: false,
         fallbackActive: true,
         welcomeVisible: true,
         backendRecovered: false,
@@ -62,6 +65,7 @@ describe("deckStatusModel", () => {
       resolveDeckStatus({
         backendDown: false,
         birthActive: false,
+        birthIncomplete: false,
         fallbackActive: false,
         welcomeVisible: true,
         backendRecovered: false,
@@ -71,11 +75,42 @@ describe("deckStatusModel", () => {
     ).toBe("welcome");
   });
 
+  it("resolveDeckStatus orders birth_incomplete before fallback and welcome", () => {
+    expect(
+      resolveDeckStatus({
+        backendDown: false,
+        birthActive: false,
+        birthIncomplete: true,
+        fallbackActive: true,
+        welcomeVisible: true,
+        backendRecovered: false,
+        syncPending: false,
+        syncError: false,
+      }).blocking,
+    ).toBe("birth_incomplete");
+  });
+
+  it("resolveDeckStatus orders birth before birth_incomplete", () => {
+    expect(
+      resolveDeckStatus({
+        backendDown: false,
+        birthActive: true,
+        birthIncomplete: true,
+        fallbackActive: false,
+        welcomeVisible: false,
+        backendRecovered: false,
+        syncPending: false,
+        syncError: false,
+      }).blocking,
+    ).toBe("birth");
+  });
+
   it("resolveDeckStatus returns null blocking when nothing active", () => {
     expect(
       resolveDeckStatus({
         backendDown: false,
         birthActive: false,
+        birthIncomplete: false,
         fallbackActive: false,
         welcomeVisible: false,
         backendRecovered: false,

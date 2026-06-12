@@ -177,6 +177,28 @@ def _render_ppo_progress_bars(progress: dict[str, Any]) -> None:
     c4.metric("Batch %", f"{(batch_pct or 0.0):.1f}%" if batch_pct is not None and batch_total > 0 else "—")
 
 
+def _render_birth_certificate_panel(first_boot_manager: Any) -> None:
+    try:
+        from lumina_core.birth.birth_certificate import validate_certificate_artifacts
+        from lumina_core.birth.config import load_birth_v2_config
+
+        ok, reason, cert = validate_certificate_artifacts(
+            first_boot_manager.workspace_root,
+            thresholds=load_birth_v2_config(first_boot_manager.workspace_root).certificate_thresholds,
+        )
+    except Exception:
+        return
+    with st.expander("Birth Certificate v2", expanded=bool(cert)):
+        if cert is None:
+            st.caption("No certificate on disk.")
+            return
+        st.metric("Certificate OK", "Yes" if ok else f"No ({reason})")
+        st.metric("OOS Sharpe", f"{cert.oos_sharpe:.2f}")
+        st.metric("OOS winrate", f"{cert.oos_winrate:.1%}")
+        st.metric("Max drawdown", f"{cert.oos_max_drawdown_pct:.1f}%")
+        st.caption(f"Regimes: {', '.join(cert.regimes_covered)}")
+
+
 def _render_certified_data_metrics(progress: dict[str, Any], *, estimate_days: int) -> None:
     mode = str(progress.get("training_mode", "") or "").strip().lower()
     if mode != "certified":
@@ -1668,6 +1690,7 @@ def _render_first_boot_body(
             if isinstance(remaining, int) and remaining > 0:
                 st.caption(f"Resterende trades (checkpoint): ~{remaining:,}")
         _render_certified_data_metrics(progress, estimate_days=estimate_days)
+        _render_birth_certificate_panel(first_boot_manager)
         has_saved_settings = first_boot_manager.is_user_configured()
         if has_saved_settings:
             st.caption(f"Target trades: {target_trades:,} (sync met status bar)")

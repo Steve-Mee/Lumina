@@ -2,6 +2,11 @@ import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  realOverlayBodyClass,
+  realOverlayTitleClass,
+} from "@/lib/modePresentation";
+import { cn } from "@/lib/utils";
 
 interface AppErrorBoundaryProps {
   children: ReactNode;
@@ -37,14 +42,14 @@ export class AppErrorBoundary extends Component<
   render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="flex h-screen flex-col items-center justify-center gap-4 bg-black px-6 text-center">
+        <div className="flex h-screen flex-col items-center justify-center gap-4 bg-[var(--lumina-void)] px-6 text-center">
           <AlertTriangle className="size-10 text-amber-400" aria-hidden />
           <div className="font-mono">
-            <p className="text-sm tracking-wide text-foreground">
+            <p className={realOverlayTitleClass()}>
               LUMINA Command Deck encountered an error
             </p>
             {import.meta.env.DEV && this.state.message ? (
-              <p className="mt-2 max-w-md text-xs text-muted-foreground">
+              <p className={cn("mt-2 max-w-md text-xs", realOverlayBodyClass())}>
                 {this.state.message}
               </p>
             ) : null}

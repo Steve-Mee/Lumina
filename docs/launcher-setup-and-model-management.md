@@ -73,6 +73,8 @@ Loader: `lumina_launcher.core.setup_config.SetupConfig`. Gate routing: `lumina_l
 
 ## Tauri desktop build signing (Guided Setup)
 
+Command Deck startup and restart behaviour: [command-deck-startup-runbook.md](command-deck-startup-runbook.md).
+
 During **Guided Setup → credentials**, operators can generate a Tauri updater minisign keypair:
 
 - Private key file: `state/lumina-tauri-signing.key` (gitignored)

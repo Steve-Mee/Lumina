@@ -177,7 +177,8 @@ flowchart LR
 
 1. Backend API must be reachable before the Tauri app connects.
 2. Engine may start independently; bootstrap reports engine lifecycle state.
-3. Command Deck connects REST first (bootstrap), then WebSocket (live stream).
+3. Command Deck calls `GET /api/setup/onboarding` on cold start — **`app_surface`** selects Setup, Birth, or Deck (see [command-deck-startup-runbook.md](command-deck-startup-runbook.md)).
+4. Command Deck connects REST first (bootstrap), then WebSocket (live stream).
 
 ### 3.3 Environment Variables
 

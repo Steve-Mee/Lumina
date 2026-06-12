@@ -86,6 +86,8 @@ LUMINA_UI_FIELDS: tuple[str, ...] = (
     "training_target_applicable",
     "last_activity_ts",
     "activity_stale",
+    "birth_certificate_ok",
+    "birth_oos_sharpe",
 )
 
 _PROM_APPROVAL_NAMES = ("lumina_approval_twin_reward", "lumina_approval_twin_avg_reward")
@@ -327,6 +329,22 @@ def enrich_observability_snapshot_for_react_dashboard(
     target_effective = target_fb_progress if target_fb_progress > 0 else target_fb_cfg
     ppo_steps_fb, ppo_total_fb, ppo_progress_fb = resolve_ppo_training_progress(boot)
 
+    birth_certificate_ok = False
+    birth_oos_sharpe = 0.0
+    try:
+        from lumina_core.birth.birth_certificate import validate_certificate_artifacts
+        from lumina_core.birth.config import load_birth_v2_config
+
+        cert_ok, _, cert = validate_certificate_artifacts(
+            sd.parent,
+            thresholds=load_birth_v2_config(sd.parent).certificate_thresholds,
+        )
+        birth_certificate_ok = bool(cert_ok)
+        if cert is not None:
+            birth_oos_sharpe = float(cert.oos_sharpe)
+    except Exception:
+        pass
+
     try:
         ppo_fb = float(
             boot.get("ppo_steps")
@@ -430,6 +448,8 @@ def enrich_observability_snapshot_for_react_dashboard(
         "training_target_applicable": runtime_session.training_target_applicable and user_configured,
         "last_activity_ts": runtime_session.last_activity_ts,
         "activity_stale": runtime_session.activity_stale or ppo_progress_stale,
+        "birth_certificate_ok": birth_certificate_ok,
+        "birth_oos_sharpe": round(birth_oos_sharpe, 4),
     }
 
     missing = set(LUMINA_UI_FIELDS) - set(ui.keys())

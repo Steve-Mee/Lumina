@@ -4,16 +4,39 @@ export type BirthRecoveryKind =
   | "history_unavailable"
   | "checkpoint_available"
   | "simulation_stall"
+  | "session_interrupted"
   | null;
 
 function norm(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+export function hasBirthCheckpointProgress(
+  progress: BirthProgressPayload | undefined,
+): boolean {
+  if (!progress) {
+    return false;
+  }
+  return (
+    checkpointTradeCount(progress) > 0 ||
+    Number(progress.ppo_steps ?? progress.ppo_steps_cumulative ?? 0) > 0 ||
+    Number(progress.trades_done ?? progress.cumulative_trades ?? 0) > 0
+  );
+}
+
 export function detectBirthRecoveryKind(
   status: BirthStatusPayload | null,
 ): BirthRecoveryKind {
-  if (!status?.progress) {
+  if (!status) {
+    return null;
+  }
+
+  const topStatus = norm(status.status);
+  if (topStatus === "interrupted") {
+    return "session_interrupted";
+  }
+
+  if (!status.progress) {
     return null;
   }
   const stage = norm(status.progress.stage);
@@ -34,6 +57,31 @@ export function detectBirthRecoveryKind(
     return "simulation_stall";
   }
   return null;
+}
+
+/** Whether cold-start bootstrap should call continue_training without wizard activation. */
+export function shouldAutoResumeBirth(
+  status: BirthStatusPayload | null,
+  appSurfaceReason?: string,
+): boolean {
+  if (!status) {
+    return false;
+  }
+  const topStatus = norm(status.status);
+  if (topStatus === "running" || topStatus === "started" || topStatus === "active") {
+    return false;
+  }
+  if (topStatus === "interrupted" || appSurfaceReason === "birth_interrupted") {
+    return true;
+  }
+  const recovery = detectBirthRecoveryKind(status);
+  if (recovery === "checkpoint_available" || recovery === "simulation_stall") {
+    return true;
+  }
+  if (appSurfaceReason === "birth_error" && hasBirthCheckpointProgress(status.progress)) {
+    return true;
+  }
+  return false;
 }
 
 export function birthProgressDiagnostics(progress: BirthProgressPayload | undefined): string | null {

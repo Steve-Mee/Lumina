@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 
+import { BirthCompletionSummary } from "@/components/birth/BirthCompletionSummary";
 import { BirthDiagnosticsDrawer } from "@/components/birth/BirthDiagnosticsDrawer";
 import { BirthPhasePulse } from "@/components/birth/BirthPhasePulse";
 import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
@@ -15,6 +16,7 @@ import { useOnboardingModeMotion } from "@/hooks/useOnboardingModeMotion";
 import { usePPOEvolution } from "@/hooks/usePPOEvolution";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { detectBirthRecoveryKind } from "@/lib/birthRecoveryModel";
+import { isBirthInterrupted } from "@/lib/birthPhaseModel";
 import { resolveBirthPhaseCopy } from "@/lib/birthPhaseModel";
 import { transitionOrNone, springBirthLuxury } from "@/lib/motionPresets";
 import {
@@ -54,16 +56,23 @@ export function BirthPhaseScreen() {
   const reducedMotion = usePrefersReducedMotion();
   const modeMotion = useOnboardingModeMotion();
   const awakening = uiPhase === "finale";
-  const failed = uiPhase === "error";
+  const certificateFailed = uiPhase === "certificate_failed";
+  const failed = uiPhase === "error" || certificateFailed;
   const running = uiPhase === "running";
   const { logs, connected } = usePPOEvolution(!failed && !awakening);
   const recoveryKind = detectBirthRecoveryKind(status);
+  const interrupted = status != null && isBirthInterrupted(status);
   const [recoveryDismissed, setRecoveryDismissed] = useState(false);
   const [realPreviewActive, setRealPreviewActive] = useState(false);
   const [milestoneVeilActive, setMilestoneVeilActive] = useState(false);
   const veiledMilestonesRef = useRef<Set<string>>(new Set());
   const { transition, startTransition, completeTransition } = useDeckTransition();
-  const showRecovery = Boolean(recoveryKind) && !recoveryDismissed && !failed && !awakening;
+  const showRecovery =
+    (Boolean(recoveryKind) || interrupted) &&
+    !recoveryDismissed &&
+    !failed &&
+    !certificateFailed &&
+    !awakening;
   const trainingDraft = useOnboardingStore((s) => s.draft.training);
 
   const birthSettingsInitial: Partial<BirthSettingsPayload> = {
@@ -77,7 +86,15 @@ export function BirthPhaseScreen() {
   const helixActivating = running || awakening;
   const birthMotion = { ...modeMotion, ...springBirthLuxury };
   const phaseSubtitle = resolveBirthPhaseCopy(
-    failed ? "error" : awakening ? "finale" : running ? "running" : "idle",
+    certificateFailed
+      ? "certificate_failed"
+      : uiPhase === "error"
+        ? "error"
+        : awakening
+          ? "finale"
+          : running
+            ? "running"
+            : "idle",
     milestones,
   );
 
@@ -258,7 +275,42 @@ export function BirthPhaseScreen() {
           />
         ) : null}
 
-        {failed ? (
+        {certificateFailed ? (
+          <div className="relative z-30 mx-4 mb-4 shrink-0 space-y-3">
+            <BirthCompletionSummary status={status} />
+            <div
+              className={cn(
+                "birth-phase-certificate-failed rounded-xl p-4 text-sm lumina-glass lumina-glass--overlay",
+                warnOverlayPanelClass(),
+              )}
+            >
+              <p className={warnOverlayTitleClass()}>{headline}</p>
+              <p className={cn("mt-1", warnOverlayBodyClass())}>
+                {status?.certificate_reason ??
+                  status?.message ??
+                  "Birth Certificate v2 thresholds were not met. Review OOS metrics and retry."}
+              </p>
+              <div className="mt-4 flex flex-wrap gap-3">
+                <Button type="button" className="onboarding-cta" onClick={() => void retryBirth()}>
+                  Retry birth
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  onClick={() => {
+                    useBirthStore.getState().reset();
+                    setPhase("wizard");
+                  }}
+                >
+                  Return to setup
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {uiPhase === "error" ? (
           <div
             className={cn(
               "birth-phase-error relative z-30 mx-4 mb-4 shrink-0 rounded-xl p-4 text-sm lumina-glass lumina-glass--overlay",

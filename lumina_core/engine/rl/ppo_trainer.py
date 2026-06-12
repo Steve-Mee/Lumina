@@ -9,7 +9,7 @@ from typing import Any, Dict
 
 import numpy as np
 
-from lumina_core.engine.rl.rl_trading_environment import RLTradingEnvironment
+from lumina_core.rl import RLConfig, RLTradingEnvironment
 from lumina_core.runtime_context import RuntimeContext
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,40 @@ def _load_sb3() -> tuple:
         ) from exc
 
 
+def _simulator_data_from_context(context: RuntimeContext) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    ohlc = getattr(context, "ohlc_1min", None)
+    if ohlc is not None and len(ohlc) > 0:
+        for row in ohlc.tail(500).to_dict("records"):
+            price = float(row.get("close", 0.0) or 0.0)
+            if price <= 0:
+                continue
+            rows.append(
+                {
+                    "timestamp": str(row.get("timestamp", "")),
+                    "last": price,
+                    "close": price,
+                    "bid": price - 0.125,
+                    "ask": price + 0.125,
+                    "volume": int(row.get("volume", 1) or 1),
+                }
+            )
+    if rows:
+        return rows
+    price = 5000.0
+    return [
+        {
+            "timestamp": "",
+            "last": price,
+            "close": price,
+            "bid": price - 0.125,
+            "ask": price + 0.125,
+            "volume": 100,
+        }
+        for _ in range(200)
+    ]
+
+
 class PPOTrainer:
     def __init__(self, context: RuntimeContext):
         self.context = context
@@ -41,8 +75,12 @@ class PPOTrainer:
         ppo_cls, make_vec_env = _load_sb3()
 
         def _build_env() -> RLTradingEnvironment:
-            env = RLTradingEnvironment(context)
-            env.set_full_dna_embedding(self._full_dna_payload)
+            env = RLTradingEnvironment(
+                context.engine,
+                _simulator_data_from_context(context),
+                config=RLConfig(trade_mode="sim"),
+            )
+            env.set_dna_hash(self._dna_version)
             return env
 
         self.env = make_vec_env(_build_env, n_envs=4)
@@ -70,9 +108,9 @@ class PPOTrainer:
             "regime_focus": str(payload.get("regime_focus") or "neutral"),
         }
         try:
-            self.env.env_method("set_full_dna_embedding", self._full_dna_payload)
+            self.env.env_method("set_dna_hash", self._dna_version)
         except Exception:
-            logger.exception("PPOTrainer failed to propagate DNA embedding to vectorized env")
+            logger.exception("PPOTrainer failed to propagate DNA hash to vectorized env")
 
     def set_dna_version(self, dna_version: str) -> None:
         """Backward-compatible alias for callers still setting hash only."""

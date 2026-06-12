@@ -305,34 +305,14 @@ class InfiniteSimulator:
         return self.run_nightly()
 
     def _load_real_historical_ticks(self, days_back: int, limit: int) -> list[dict[str, Any]]:
-        if hasattr(self.market_data_service, "load_historical_ohlc_extended"):
-            ticks = self.market_data_service.load_historical_ohlc_extended(
-                days_back=days_back,
-                limit=limit,
-                ticks_per_bar=4,
-            )
-            return ticks if isinstance(ticks, list) else []
+        from lumina_core.birth.history_loader import load_historical_ticks
 
-        ohlc = getattr(self.runtime, "ohlc_1min", None)
-        if ohlc is None or len(ohlc) == 0:
-            return []
-
-        rows = ohlc.tail(limit).to_dict("records")
-        ticks: list[dict[str, Any]] = []
-        for row in rows:
-            price = float(row.get("close", 0.0))
-            if price <= 0:
-                continue
-            ticks.append(
-                {
-                    "timestamp": str(row.get("timestamp", "")),
-                    "last": price,
-                    "bid": price - 0.125,
-                    "ask": price + 0.125,
-                    "volume": int(row.get("volume", 1)),
-                }
-            )
-        return ticks
+        return load_historical_ticks(
+            market_data_service=self.market_data_service,
+            runtime=self.runtime,
+            days_back=days_back,
+            limit=limit,
+        )
 
     def _generate_synthetic_ticks(self, n_ticks: int, seed: int, start_price: float = 5000.0) -> list[dict[str, Any]]:
         rng = random.Random(seed)

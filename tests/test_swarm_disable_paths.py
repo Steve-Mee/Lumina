@@ -43,7 +43,7 @@ def test_lumina_engine_does_not_initialize_swarm_when_disabled(monkeypatch):
         _StubBacktester,
     )
     monkeypatch.setattr(
-        "lumina_core.engine.rl.rl_trading_environment.RLTradingEnvironment",
+        "lumina_core.rl.RLTradingEnvironment",
         _StubRLTradingEnvironment,
     )
     monkeypatch.setattr(

@@ -26,6 +26,11 @@ import {
 } from "@/lib/modePresentation";
 import { refreshBackendHealth } from "@/lib/backendHealthStore";
 import { fetchBirthStatus } from "@/lib/setupClient";
+import {
+  isDeckBirthIncomplete,
+  isDeckBirthRunning,
+  resolveDeckBirthGate,
+} from "@/lib/deckBirthGate";
 import { resolveDeckStatus } from "@/lib/deckStatusOrchestrator";
 import { selectCurrentMode, selectFallbackMode, useCoreStore } from "@/store/coreStore";
 import { cn } from "@/lib/utils";
@@ -36,6 +41,7 @@ import { DISMISS_KEY, WELCOME_FLAG } from "@/lib/deckStatusConstants";
 interface BirthProgress {
   status: string;
   message?: string;
+  artifacts_ok?: boolean;
   progress?: {
     progress_pct?: number;
     trades_done?: number;
@@ -133,6 +139,40 @@ function BirthProgressPanel({
         <div className="mt-6 flex justify-end">
           <Button type="button" variant="command-primary" onClick={onViewProgress}>
             View birth progress
+          </Button>
+        </div>
+      </div>
+    </OverlayShell>
+  );
+}
+
+function BirthIncompletePanel({
+  birth,
+  onReturnToBirth,
+}: {
+  birth: BirthProgress;
+  onReturnToBirth: () => void;
+}) {
+  const statusLabel = birth.status.replace(/_/g, " ");
+
+  return (
+    <OverlayShell role="alertdialog" ariaLabelledBy="deck-birth-incomplete-title">
+      <div className={birthOverlayPanelClass()}>
+        <h2 id="deck-birth-incomplete-title" className={birthOverlayTitleClass()}>
+          Birth Phase Incomplete
+        </h2>
+        <p className="mt-3 text-sm text-muted-foreground">
+          Training policy artifacts are not ready yet. The Command Deck stays locked until birth
+          completes successfully.
+        </p>
+        {birth.message ? (
+          <p className="mt-2 truncate font-mono text-[10px] text-muted-foreground">{birth.message}</p>
+        ) : (
+          <p className="mt-2 text-xs capitalize text-muted-foreground">Status: {statusLabel}</p>
+        )}
+        <div className="mt-6 flex justify-end">
+          <Button type="button" variant="command-primary" onClick={onReturnToBirth}>
+            Return to birth phase
           </Button>
         </div>
       </div>
@@ -281,17 +321,16 @@ export function DeckBlockingOverlay() {
     };
   }, []);
 
-  const birthActive =
-    birth != null &&
-    birth.status !== "idle" &&
-    (birth.status === "running" ||
-      (birth.status === "completed" && (birth.progress?.progress_pct ?? 100) < 100));
+  const birthGate = resolveDeckBirthGate(birth);
+  const birthActive = isDeckBirthRunning(birthGate);
+  const birthIncomplete = isDeckBirthIncomplete(birthGate);
 
   const health = useBackendHealthSnapshot();
 
   const { blocking: activeOverlay } = resolveDeckStatus({
     backendDown: health.known && !health.alive,
     birthActive,
+    birthIncomplete,
     welcomeVisible,
     fallbackActive: fallbackMode && !fallbackDismissed,
     backendRecovered: false,
@@ -318,6 +357,13 @@ export function DeckBlockingOverlay() {
           key="birth"
           birth={birth}
           onViewProgress={() => setPhase("birth")}
+        />
+      ) : null}
+      {activeOverlay === "birth_incomplete" && birth ? (
+        <BirthIncompletePanel
+          key="birth_incomplete"
+          birth={birth}
+          onReturnToBirth={() => setPhase("birth")}
         />
       ) : null}
       {activeOverlay === "fallback" ? (

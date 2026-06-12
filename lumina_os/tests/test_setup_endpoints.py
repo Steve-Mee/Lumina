@@ -12,6 +12,7 @@ from starlette.requests import Request
 from backend import setup_endpoints as se
 from lumina_launcher.core.onboarding import (
     compute_onboarding_steps,
+    resolve_app_surface,
     resolve_credentials_wizard_meta,
     resolve_wizard_steps,
     should_skip_wizard,
@@ -109,7 +110,7 @@ def test_compute_onboarding_steps_interrupted_birth() -> None:
 
 @pytest.mark.unit
 def test_should_skip_wizard_when_birth_running() -> None:
-    assert should_skip_wizard(
+    assert not should_skip_wizard(
         setup_complete=True,
         birth_status="running",
         artifacts_ok=False,
@@ -125,6 +126,238 @@ def test_should_skip_wizard_when_artifacts_ok() -> None:
         artifacts_ok=True,
         required_steps=["welcome"],
     )
+
+
+@pytest.mark.unit
+def test_should_skip_wizard_rejects_completed_without_artifacts() -> None:
+    """Fail-closed — no deck bypass without PPO artifacts."""
+    assert not should_skip_wizard(
+        setup_complete=True,
+        birth_status="completed",
+        artifacts_ok=False,
+        required_steps=["welcome"],
+    )
+
+
+@pytest.mark.unit
+def test_should_skip_wizard_rejects_error_without_artifacts_when_only_welcome() -> None:
+    assert not should_skip_wizard(
+        setup_complete=True,
+        birth_status="error",
+        artifacts_ok=False,
+        required_steps=["welcome"],
+    )
+
+
+@pytest.mark.unit
+def test_resolve_app_surface_certificate_failed_blocks_deck() -> None:
+    required, _ = compute_onboarding_steps(
+        backend_reachable=True,
+        setup_complete=True,
+        intelligence_missing=[],
+        credentials_missing=[],
+        birth_status="certificate_failed",
+        artifacts_ok=False,
+        certificate_ok=False,
+    )
+    surface, reason = resolve_app_surface(
+        setup_complete=True,
+        birth_status="certificate_failed",
+        artifacts_ok=False,
+        certificate_ok=False,
+        backend_reachable=True,
+        required_steps=required,
+    )
+    assert surface == "birth"
+    assert reason == "certificate_failed"
+    assert not should_skip_wizard(
+        setup_complete=True,
+        birth_status="certificate_failed",
+        artifacts_ok=False,
+        certificate_ok=False,
+        required_steps=required,
+    )
+
+
+@pytest.mark.unit
+def test_resolve_app_surface_completed_without_certificate_blocks_deck() -> None:
+    required, _ = compute_onboarding_steps(
+        backend_reachable=True,
+        setup_complete=True,
+        intelligence_missing=[],
+        credentials_missing=[],
+        birth_status="completed",
+        artifacts_ok=False,
+        certificate_ok=False,
+    )
+    surface, reason = resolve_app_surface(
+        setup_complete=True,
+        birth_status="completed",
+        artifacts_ok=False,
+        certificate_ok=False,
+        backend_reachable=True,
+        required_steps=required,
+    )
+    assert surface == "birth"
+    assert reason == "certificate_failed"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("birth_status", "expected_surface", "expected_reason"),
+    [
+        ("idle", "birth", "birth_pending"),
+        ("running", "birth", "birth_running"),
+        ("interrupted", "birth", "birth_interrupted"),
+        ("error", "birth", "birth_error"),
+    ],
+)
+def test_resolve_app_surface_incomplete_birth(
+    birth_status: str,
+    expected_surface: str,
+    expected_reason: str,
+) -> None:
+    required, _ = compute_onboarding_steps(
+        backend_reachable=True,
+        setup_complete=True,
+        intelligence_missing=[],
+        credentials_missing=[],
+        birth_status=birth_status,
+        artifacts_ok=False,
+    )
+    surface, reason = resolve_app_surface(
+        setup_complete=True,
+        birth_status=birth_status,
+        artifacts_ok=False,
+        backend_reachable=True,
+        required_steps=required,
+    )
+    assert surface == expected_surface
+    assert reason == expected_reason
+
+
+@pytest.mark.unit
+def test_resolve_app_surface_fresh_install() -> None:
+    required, _ = compute_onboarding_steps(
+        backend_reachable=True,
+        setup_complete=False,
+        intelligence_missing=["ollama"],
+        credentials_missing=["LUMINA_JWT_SECRET_KEY"],
+        birth_status="idle",
+        artifacts_ok=False,
+    )
+    surface, reason = resolve_app_surface(
+        setup_complete=False,
+        birth_status="idle",
+        artifacts_ok=False,
+        backend_reachable=True,
+        required_steps=required,
+    )
+    assert surface == "setup"
+    assert reason == "fresh_install"
+
+
+@pytest.mark.unit
+def test_resolve_app_surface_deck_when_artifacts_ok() -> None:
+    required, _ = compute_onboarding_steps(
+        backend_reachable=True,
+        setup_complete=True,
+        intelligence_missing=[],
+        credentials_missing=[],
+        birth_status="completed",
+        artifacts_ok=True,
+    )
+    surface, reason = resolve_app_surface(
+        setup_complete=True,
+        birth_status="completed",
+        artifacts_ok=True,
+        backend_reachable=True,
+        required_steps=required,
+    )
+    assert surface == "deck"
+    assert reason == "birth_complete"
+
+
+@pytest.mark.unit
+def test_resolve_app_surface_backend_unreachable() -> None:
+    surface, reason = resolve_app_surface(
+        setup_complete=True,
+        birth_status="completed",
+        artifacts_ok=True,
+        backend_reachable=False,
+        required_steps=["welcome"],
+    )
+    assert surface == "setup"
+    assert reason == "backend_unreachable"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("setup_complete", "birth_status", "artifacts_ok", "backend_reachable"),
+    [
+        (False, "idle", False, True),
+        (True, "idle", False, True),
+        (True, "running", False, True),
+        (True, "interrupted", False, True),
+        (True, "error", False, True),
+        (True, "completed", False, True),
+        (True, "completed", True, True),
+        (True, "completed", True, False),
+    ],
+)
+@patch.object(se, "birth_service")
+@patch.object(se, "_services")
+def test_build_onboarding_payload_skip_wizard_matches_app_surface(
+    mock_services: MagicMock,
+    mock_birth: MagicMock,
+    tmp_path: Path,
+    setup_complete: bool,
+    birth_status: str,
+    artifacts_ok: bool,
+    backend_reachable: bool,
+) -> None:
+    """Contract: skip_wizard is true iff app_surface is deck."""
+    setup = MagicMock()
+    setup.is_setup_complete.return_value = setup_complete
+    config_manager = MagicMock()
+    config_manager.load_yaml_config.return_value = {
+        "mode": "sim",
+        "sim": {},
+        "real": {},
+        "evolution": {},
+        "first_boot": {"training_trades": 25000},
+        "risk_controller": {},
+    }
+    config_manager.parse_env_file.return_value = {}
+    config_manager.env_path = tmp_path / ".env"
+    smart = MagicMock()
+    smart.get_setup_status.return_value = {
+        "missing": [] if setup_complete else ["setup_complete", "ollama"],
+        "ollama_installed": setup_complete,
+        "ollama_required": True,
+        "recommended_model_key": "qwen3.5:4b",
+        "recommended_ollama_tag": "qwen3.5:4b",
+        "recommended_model_present": setup_complete,
+        "recommended_provider": "ollama",
+        "hardware": {},
+        "adaptive_intelligence": {},
+    }
+    mock_services.return_value = (setup, config_manager, MagicMock(), smart, MagicMock(), MagicMock())
+    mock_birth.workspace_root = tmp_path
+    mock_birth.get_status.return_value = {"status": birth_status, "message": ""}
+    mock_birth.artifacts_ok.return_value = artifacts_ok
+    mock_birth.certificate_ok.return_value = artifacts_ok
+
+    with patch.object(se, "_workspace_root", return_value=tmp_path):
+        with patch.object(
+            se,
+            "_probe_backend",
+            return_value={"reachable": backend_reachable, "url": "http://127.0.0.1:8000"},
+        ):
+            with patch.object(se, "_model_catalog_payload", return_value=[]):
+                payload = se.build_onboarding_payload(serving_request=True)
+
+    assert payload["skip_wizard"] == (payload["app_surface"] == "deck")
 
 
 @pytest.mark.unit
@@ -161,6 +394,7 @@ def test_get_onboarding_status(mock_services: MagicMock, mock_birth: MagicMock, 
     mock_birth.workspace_root = tmp_path
     mock_birth.get_status.return_value = {"status": "idle", "message": "not started"}
     mock_birth.artifacts_ok.return_value = False
+    mock_birth.certificate_ok.return_value = False
 
     with patch.object(se, "_workspace_root", return_value=tmp_path):
         with patch.object(se, "_probe_backend", return_value={"reachable": True, "url": "http://127.0.0.1:8000"}):
@@ -168,6 +402,8 @@ def test_get_onboarding_status(mock_services: MagicMock, mock_birth: MagicMock, 
                 payload = se.build_onboarding_payload(serving_request=True)
 
     assert payload["setup_complete"] is False
+    assert payload["app_surface"] == "setup"
+    assert "app_surface_reason" in payload
     assert "credentials" in payload["required_steps"]
     assert "wizard_steps" in payload
     assert payload["backend"]["reachable"] is True
@@ -176,6 +412,60 @@ def test_get_onboarding_status(mock_services: MagicMock, mock_birth: MagicMock, 
     assert isinstance(payload["credentials"]["present"], dict)
     assert "wizard_required" in payload["credentials"]
     assert "skip_reason" in payload["credentials"]
+
+
+@pytest.mark.unit
+@patch.object(se, "birth_service")
+@patch.object(se, "_services")
+def test_build_onboarding_payload_exposes_certificate_fields(
+    mock_services: MagicMock,
+    mock_birth: MagicMock,
+    tmp_path: Path,
+) -> None:
+    setup = MagicMock()
+    setup.is_setup_complete.return_value = True
+    config_manager = MagicMock()
+    config_manager.load_yaml_config.return_value = {
+        "mode": "sim",
+        "sim": {},
+        "real": {},
+        "evolution": {},
+        "first_boot": {"training_trades": 25000},
+        "risk_controller": {},
+    }
+    config_manager.parse_env_file.return_value = {}
+    config_manager.env_path = tmp_path / ".env"
+    smart = MagicMock()
+    smart.get_setup_status.return_value = {
+        "missing": [],
+        "ollama_installed": True,
+        "ollama_required": True,
+        "recommended_model_key": "qwen3.5:4b",
+        "recommended_ollama_tag": "qwen3.5:4b",
+        "recommended_model_present": True,
+        "recommended_provider": "ollama",
+        "hardware": {},
+        "adaptive_intelligence": {},
+    }
+    mock_services.return_value = (setup, config_manager, MagicMock(), smart, MagicMock(), MagicMock())
+    mock_birth.workspace_root = tmp_path
+    mock_birth.get_status.return_value = {"status": "certificate_failed", "message": "thresholds not met"}
+    mock_birth.artifacts_ok.return_value = False
+    mock_birth.certificate_ok.return_value = False
+
+    with patch.object(se, "_workspace_root", return_value=tmp_path):
+        with patch.object(se, "_probe_backend", return_value={"reachable": True, "url": "http://127.0.0.1:8000"}):
+            with patch.object(se, "_model_catalog_payload", return_value=[]):
+                with patch(
+                    "lumina_core.birth.birth_certificate.validate_certificate_artifacts",
+                    return_value=(False, "holdout_regimes_insufficient", None),
+                ):
+                    payload = se.build_onboarding_payload(serving_request=True)
+
+    assert payload["birth"]["certificate_ok"] is False
+    assert payload["birth"]["certificate_reason"] == "holdout_regimes_insufficient"
+    assert payload["app_surface"] == "birth"
+    assert payload["app_surface_reason"] == "certificate_failed"
 
 
 @pytest.mark.unit

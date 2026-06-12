@@ -27,6 +27,7 @@ function needsSmartSetupStep(step: OnboardingStepId): boolean {
 
 export function OnboardingWizard() {
   const payload = useOnboardingStore((s) => s.payload);
+  const setPhase = useOnboardingStore((s) => s.setPhase);
   const currentStepIndex = useOnboardingStore((s) => s.currentStepIndex);
   const draft = useOnboardingStore((s) => s.draft);
   const error = useOnboardingStore((s) => s.error);
@@ -73,6 +74,12 @@ export function OnboardingWizard() {
   };
 
   useEffect(() => {
+    if (payload?.app_surface === "birth") {
+      setPhase("birth");
+    }
+  }, [payload?.app_surface, setPhase]);
+
+  useEffect(() => {
     if (smartSetupRunning) {
       const timer = setInterval(() => void refresh(), 2500);
       return () => clearInterval(timer);
@@ -91,19 +98,23 @@ export function OnboardingWizard() {
     }
   }, [payload, currentStep, steps, advance]);
 
-  if (!payload) {
+  if (!payload || !payload.backend.reachable) {
     return (
       <OnboardingShell>
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
           <BackendStep
             reachable={false}
-            connectionError={error}
+            connectionError={error ?? payload?.backend.error}
             onConnected={() => void refresh()}
             onRefresh={() => void refresh()}
           />
         </div>
       </OnboardingShell>
     );
+  }
+
+  if (payload.app_surface === "birth") {
+    return null;
   }
 
   const renderStep = () => {

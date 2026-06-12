@@ -144,33 +144,30 @@ def test_sim_step_loop_performance_guard() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_observation_space_shape_is_28_with_dna_embedding() -> None:
-    """FASE 2: observation space must be (28,) after Meta-RL expansion."""
+def test_observation_space_shape_is_32_with_bible_and_dna_embedding() -> None:
+    """Birth v2: observation space must be (32,) with bible + DNA slots."""
     engine = _EngineStub()
     env = RLTradingEnvironment(engine, _sim_data(), config=RLConfig())
-    assert env.observation_space.shape == (28,)
+    assert env.observation_space.shape == (32,)
 
 
 def test_set_dna_hash_changes_embedding_in_observation() -> None:
-    """FASE 2: set_dna_hash() must be reflected in _get_observation() features 24-27."""
+    """FASE 2: set_dna_hash() must be reflected in observation features 28-31."""
     engine = _EngineStub()
     env = RLTradingEnvironment(engine, _sim_data(), config=RLConfig())
     env.reset()
 
     env.set_dna_hash("")
     obs_no_hash, *_ = env.step([0.0, 0.0, 0.01, 0.02])
-    dna_features_none = obs_no_hash[24:28].tolist()
+    dna_features_none = obs_no_hash[28:32].tolist()
 
     env.reset()
     env.set_dna_hash("abc123")
     obs_with_hash, *_ = env.step([0.0, 0.0, 0.01, 0.02])
-    dna_features_abc = obs_with_hash[24:28].tolist()
+    dna_features_abc = obs_with_hash[28:32].tolist()
 
-    # Empty hash → all zeros embedding
     assert dna_features_none == [0.0, 0.0, 0.0, 0.0]
-    # Non-empty hash → non-zero embedding bytes
     assert dna_features_abc != [0.0, 0.0, 0.0, 0.0]
-    # Each byte normalised to [-1, 1]
     assert all(-1.0 <= v <= 1.0 for v in dna_features_abc)
 
 

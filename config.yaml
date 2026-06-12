@@ -232,6 +232,25 @@ fine_tuning:
   auto_trigger: true
   min_acceptance: 0.4
   drift_threshold: 0.25
+birth_v2:
+  curriculum:
+    stage1_trend_trades: 2000
+    stage2_range_trades: 3000
+    stage3_mixed_trades: 5000
+    stage4_polish_ppo_steps: 50000
+  holdout_pct: 0.20
+  certificate_thresholds:
+    min_oos_winrate: 0.48
+    min_oos_sharpe: 0.35
+    max_oos_drawdown_pct: 8.0
+    min_real_data_pct: 95.0
+    min_regimes: 3
+    min_holdout_trades: 50
+  prefer_real_data_only: true
+  max_real_days: 90
+  trade_budget_cap: 10000
+  ppo_update_timesteps: 25000
+  chunk_size: 50000
 first_boot:
   training_trades: 25000
   prefer_real_data_only: true

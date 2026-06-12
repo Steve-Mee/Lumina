@@ -142,7 +142,26 @@ class BirthService:
         return self._stop_requested
 
     def artifacts_ok(self) -> bool:
-        return self.is_completed() and self.policy_path.is_file()
+        from lumina_core.birth.birth_certificate import validate_certificate_artifacts
+        from lumina_core.birth.config import load_birth_v2_config
+
+        thresholds = load_birth_v2_config(self.workspace_root).certificate_thresholds
+        ok, _reason, _cert = validate_certificate_artifacts(
+            self.workspace_root,
+            thresholds=thresholds,
+        )
+        return ok and self.policy_path.is_file()
+
+    def certificate_ok(self) -> bool:
+        from lumina_core.birth.birth_certificate import validate_certificate_artifacts
+        from lumina_core.birth.config import load_birth_v2_config
+
+        thresholds = load_birth_v2_config(self.workspace_root).certificate_thresholds
+        ok, _reason, _cert = validate_certificate_artifacts(
+            self.workspace_root,
+            thresholds=thresholds,
+        )
+        return ok
 
     def _load_saved_birth_settings(self) -> dict[str, Any]:
         config_path = self.workspace_root / "config.yaml"

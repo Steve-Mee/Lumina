@@ -20,10 +20,12 @@ build/
 .coverage
 htmlcov/
 
-# IDE
+# IDE / local AI tooling (machine-specific; skills/rules in repo are tracked separately)
 .vscode/
 .idea/
 .cursor/settings.json
+.cursor/plans/
+.grok/
 
 # Tauri updater signing keys (generated in Guided Setup)
 state/lumina-tauri-signing.key
@@ -94,6 +96,10 @@ LUMINA_BIRTH_ENGINE_INTEGRATION_GUIDE.md
 # Local reset snapshots (blank-state script); never commit
 backups/
 
+# Birth Certificate v2 runtime (regenerated locally after training)
+state/lumina_birth_certificate.json
+state/birth_regime_prior.json
+
 # First-boot / monitoring runtime snapshots (regenerated locally)
 state/lumina_birth_completed.flag
 state/lumina_birth_practice_completed.flag
@@ -124,6 +130,8 @@ frontend/node_modules/
 tauri-app/node_modules/
 tauri-app/dist/
 tauri-app/src-tauri/target/
+tauri-app/.vscode/
+tauri-app/node_modules/.vite/
 
 # Trained PPO policy checkpoints (regenerate via training)
 lumina_agents/ppo/*.zip
@@ -178,9 +186,6 @@ test_output.txt
 test_results.txt
 test_launcher_output.txt
 coverage.json
-
-# Local AI tool artifacts
-.grok/
 
 # Local experiment / guardian baseline runs (not canonical Project DNA)
 demo_shadow_experiments.jsonl

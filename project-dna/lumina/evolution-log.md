@@ -10,6 +10,18 @@ Dit is het centrale log voor significante veranderingen aan de Project DNA zelf.
 
 ## Recente Entries (samenvatting)
 
+### 2026-06-11 (Birth Phase v2 remediation — certificate integrity + SSOT)
+- PR-A: Removed regime inflation in certificate evaluator; `integrity_version: 2`; `min_holdout_trades`; ConstitutionViolation Event Bus in birth guard.
+- PR-B: `lumina_birth_engine.py` stripped to façade; V2 checkpoint/resume; `observation_builder` 32-dim SSOT (ADR-0015); shared `history_loader`.
+- PR-C: Orchestrator uses birth gen-0 DNA; dream engine reads `birth_regime_prior.json`; Bible updates via `BibleEngine.evolve()`.
+- PR-D: OOS metrics in Tauri completion UI; `certificate_failed` phase; monitoring KPIs; API contract §9 + mandatory re-birth runbook note.
+- **Mandatory re-birth** for any certificate issued before integrity fix.
+
+### 2026-06-11 (Birth Phase v2 — Musk first-principles)
+- ADR-0012/0013/0014: single SIM SSOT (`RLTradingEnvironment`), Birth Certificate v2, curriculum + OOS gate.
+- `lumina_core/birth/` package; v1 custom tick sim removed from production path.
+- Hard break: `artifacts_ok` requires valid certificate + policy hash; flag seeding removed from product paths.
+
 ### 2026-06-11 (D4 multiday birth prereq + Phase 2 D3 slice 8 gatekeeper)
 - `d4_birth_prereq.py` + `--seed-birth-flag` / `--check-prereqs-only` on multiday runner.
 - Gatekeeper history loops use shared `decision_lineage` helpers (lazy import).

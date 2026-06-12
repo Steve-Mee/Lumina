@@ -7,6 +7,7 @@ import {
   extractSimProgress,
   isBirthComplete,
   isBirthFailed,
+  isBirthInterrupted,
   isBirthRunning,
   resolveActiveMilestone,
   resolveBirthHeadline,
@@ -44,7 +45,7 @@ describe("birthPhaseModel", () => {
 
   it("uses awakening headline when birth is complete", () => {
     const milestones = buildMilestones({ stage: "completed" }, "completed");
-    expect(resolveBirthHeadline(milestones, "completed")).toBe("Neural organism online");
+    expect(resolveBirthHeadline(milestones, "completed")).toBe("Birth Certificate v2 issued");
   });
 
   it("detects birth completion from status and artifacts", () => {
@@ -64,10 +65,11 @@ describe("birthPhaseModel", () => {
     expect(isBirthComplete(payload)).toBe(false);
   });
 
-  it("detects running and failed states", () => {
+  it("detects running, interrupted, and failed states", () => {
     expect(isBirthRunning({ status: "running" })).toBe(true);
     expect(isBirthFailed({ status: "error" })).toBe(true);
-    expect(isBirthFailed({ status: "interrupted" })).toBe(true);
+    expect(isBirthFailed({ status: "interrupted" })).toBe(false);
+    expect(isBirthInterrupted({ status: "interrupted" })).toBe(true);
   });
 
   it("extracts simulation progress from trades", () => {

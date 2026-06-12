@@ -5,6 +5,7 @@ export type ModeSyncStatus = "idle" | "pending" | "error";
 export type BlockingOverlayKind =
   | "backend"
   | "birth"
+  | "birth_incomplete"
   | "fallback"
   | "welcome"
   | null;
@@ -12,6 +13,7 @@ export type BlockingOverlayKind =
 export interface BlockingOverlayStates {
   backendDown: boolean;
   birthActive: boolean;
+  birthIncomplete: boolean;
   fallbackActive: boolean;
   welcomeVisible: boolean;
 }

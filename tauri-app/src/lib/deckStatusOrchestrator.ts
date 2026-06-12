@@ -5,6 +5,7 @@ export type DeckStatusRailChip = "recovery" | "fallback" | null;
 export interface DeckStatusInput {
   backendDown: boolean;
   birthActive: boolean;
+  birthIncomplete: boolean;
   fallbackActive: boolean;
   welcomeVisible: boolean;
   backendRecovered: boolean;
@@ -50,6 +51,9 @@ function resolveBlockingKind(input: DeckStatusInput): BlockingOverlayKind {
   }
   if (input.birthActive) {
     return "birth";
+  }
+  if (input.birthIncomplete) {
+    return "birth_incomplete";
   }
   if (input.fallbackActive) {
     return "fallback";

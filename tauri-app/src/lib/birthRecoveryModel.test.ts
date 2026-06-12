@@ -4,6 +4,7 @@ import type { BirthStatusPayload } from "@/lib/birthClient";
 import {
   checkpointTradeCount,
   detectBirthRecoveryKind,
+  shouldAutoResumeBirth,
 } from "@/lib/birthRecoveryModel";
 
 describe("birthRecoveryModel", () => {
@@ -38,6 +39,30 @@ describe("birthRecoveryModel", () => {
         progress: { phase: "simulation_stall" },
       } as BirthStatusPayload),
     ).toBe("simulation_stall");
+  });
+
+  it("detects session_interrupted from top-level status", () => {
+    expect(
+      detectBirthRecoveryKind({
+        status: "interrupted",
+        progress: { stage: "interrupted", trades_done: 1200 },
+      } as BirthStatusPayload),
+    ).toBe("session_interrupted");
+  });
+
+  it("shouldAutoResumeBirth for interrupted and birth_interrupted reason", () => {
+    const interrupted = {
+      status: "interrupted",
+      progress: { trades_done: 500 },
+    } as BirthStatusPayload;
+    expect(shouldAutoResumeBirth(interrupted)).toBe(true);
+    expect(shouldAutoResumeBirth({ status: "idle" } as BirthStatusPayload, "birth_interrupted")).toBe(
+      true,
+    );
+    expect(shouldAutoResumeBirth({ status: "idle" } as BirthStatusPayload, "birth_pending")).toBe(
+      false,
+    );
+    expect(shouldAutoResumeBirth({ status: "running" } as BirthStatusPayload)).toBe(false);
   });
 
   it("returns null when no recovery stage", () => {

@@ -28,6 +28,7 @@ import { toast } from "sonner";
 const basePayload = {
   setup_complete: true,
   skip_wizard: false,
+  app_surface: "birth" as const,
   wizard_steps: ["birth"],
   required_steps: ["birth"],
   step_status: {},
@@ -37,6 +38,7 @@ const basePayload = {
   intelligence: {},
   model_catalog: [],
   smart_setup_running: false,
+  backend: { reachable: true, url: "http://127.0.0.1:8000" },
 } as never;
 
 describe("onboardingStore.activateBirth", () => {
@@ -124,6 +126,7 @@ describe("onboardingStore.activateBirth", () => {
     useOnboardingStore.setState({
       payload: {
         ...basePayload,
+        app_surface: "deck",
         birth: { status: "completed", artifacts_ok: true },
       } as never,
     });

@@ -19,6 +19,7 @@ from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_launcher.core.onboarding import (
     compute_onboarding_steps,
     extract_config_defaults,
+    resolve_app_surface,
     resolve_credentials_wizard_meta,
     resolve_wizard_steps,
     should_skip_wizard,
@@ -117,7 +118,9 @@ def _readiness_summary(
     setup_complete: bool,
     birth_status: str,
     artifacts_ok: bool,
+    certificate_ok: bool | None = None,
 ) -> list[dict[str, str]]:
+    birth_ready = certificate_ok if certificate_ok is not None else artifacts_ok
     intel_missing = [item for item in intelligence.get("missing", []) if item != "setup_complete"]
     rows = [
         {
@@ -148,7 +151,7 @@ def _readiness_summary(
         {
             "id": "birth",
             "label": "Birth Phase",
-            "status": "ok" if artifacts_ok or birth_status == "running" else "pending",
+            "status": "ok" if birth_ready or birth_status == "running" else "pending",
         },
     ]
     if intel_missing and rows[1]["status"] == "ok" and rows[2]["status"] == "ok":
@@ -175,6 +178,15 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
     birth_raw = birth_service.get_status()
     birth_status = str(birth_raw.get("status", "idle"))
     artifacts_ok = birth_service.artifacts_ok()
+    certificate_ok = birth_service.certificate_ok()
+    from lumina_core.birth.birth_certificate import validate_certificate_artifacts
+    from lumina_core.birth.config import load_birth_v2_config
+
+    thresholds = load_birth_v2_config(_workspace_root()).certificate_thresholds
+    _cert_valid, certificate_reason, _cert = validate_certificate_artifacts(
+        _workspace_root(),
+        thresholds=thresholds,
+    )
 
     global _smart_setup_running
     required_steps, step_status = compute_onboarding_steps(
@@ -184,6 +196,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         credentials_missing=credentials_missing,
         birth_status=birth_status,
         artifacts_ok=artifacts_ok,
+        certificate_ok=certificate_ok,
         smart_setup_running=_smart_setup_running,
     )
 
@@ -206,15 +219,28 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         "missing": intelligence_missing,
     }
     wizard_steps = resolve_wizard_steps(required_steps)
+    backend_reachable = bool(backend.get("reachable"))
+    app_surface, app_surface_reason = resolve_app_surface(
+        setup_complete=setup_complete,
+        birth_status=birth_status,
+        artifacts_ok=artifacts_ok,
+        certificate_ok=certificate_ok,
+        backend_reachable=backend_reachable,
+        required_steps=required_steps,
+    )
 
     return {
         "backend": backend,
         "setup_complete": setup_complete,
+        "app_surface": app_surface,
+        "app_surface_reason": app_surface_reason,
         "skip_wizard": should_skip_wizard(
             setup_complete=setup_complete,
             birth_status=birth_status,
             artifacts_ok=artifacts_ok,
+            certificate_ok=certificate_ok,
             required_steps=required_steps,
+            backend_reachable=backend_reachable,
         ),
         "birth": {
             "status": birth_status,
@@ -222,6 +248,8 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             "progress": birth_raw.get("progress"),
             "artifacts_ok": artifacts_ok,
             "artifacts_label": "Artifacts OK" if artifacts_ok else "Artifacts missing",
+            "certificate_ok": certificate_ok,
+            "certificate_reason": certificate_reason,
         },
         "intelligence": intelligence_payload,
         "model_catalog": _model_catalog_payload(hardware, model_service),
@@ -232,6 +260,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             setup_complete=setup_complete,
             birth_status=birth_status,
             artifacts_ok=artifacts_ok,
+            certificate_ok=certificate_ok,
         ),
         "credentials": {
             "missing": credentials_missing,

@@ -41,6 +41,7 @@ export function useDeckStatusRail(): DeckStatusRailState {
   const input: DeckStatusInput = {
     backendDown: false,
     birthActive: false,
+    birthIncomplete: false,
     fallbackActive: false,
     welcomeVisible: false,
     backendRecovered: recoveryFlash,
@@ -62,6 +63,7 @@ export function useDeckStatusSyncToast(): boolean {
   const resolution = resolveDeckStatus({
     backendDown: false,
     birthActive: false,
+    birthIncomplete: false,
     fallbackActive: false,
     welcomeVisible: false,
     backendRecovered: false,
@@ -74,12 +76,13 @@ export function useDeckStatusSyncToast(): boolean {
 export function resolveDeckBlockingStatus(
   input: Pick<
     DeckStatusInput,
-    "birthActive" | "welcomeVisible" | "fallbackActive"
+    "birthActive" | "birthIncomplete" | "welcomeVisible" | "fallbackActive"
   >,
 ): ReturnType<typeof resolveDeckStatus> {
   const health = getBackendHealthSnapshot();
   return resolveDeckStatus({
     ...input,
+    birthIncomplete: input.birthIncomplete ?? false,
     backendDown: health.known && !health.alive,
     backendRecovered: false,
     syncPending: false,

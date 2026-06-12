@@ -9,13 +9,16 @@ import {
 import {
   buildMilestones,
   isBirthComplete,
+  isBirthCertificateFailed,
   isBirthFailed,
+  isBirthInterrupted,
   isBirthRunning,
   resolveBirthHeadline,
   type BirthMilestone,
 } from "@/lib/birthPhaseModel";
+import { shouldAutoResumeBirth } from "@/lib/birthRecoveryModel";
 
-export type BirthUiPhase = "idle" | "running" | "finale" | "error";
+export type BirthUiPhase = "idle" | "running" | "finale" | "error" | "certificate_failed";
 
 interface BirthState {
   status: BirthStatusPayload | null;
@@ -27,6 +30,10 @@ interface BirthState {
   setTargetTrades: (n: number) => void;
   applyStatus: (payload: BirthStatusPayload) => void;
   poll: () => Promise<BirthStatusPayload | null>;
+  bootstrapSession: (context: {
+    appSurfaceReason?: string;
+    targetTrades: number;
+  }) => Promise<boolean>;
   retryBirth: () => Promise<boolean>;
   beginFinale: () => void;
   reset: () => void;
@@ -44,15 +51,19 @@ export const useBirthStore = create<BirthState>((set, get) => ({
 
   applyStatus: (payload) => {
     const milestones = buildMilestones(payload.progress, payload.status);
-    const headline = resolveBirthHeadline(milestones, payload.status);
+    const headline = resolveBirthHeadline(milestones, payload.status, payload.progress);
     let uiPhase: BirthUiPhase = get().uiPhase;
 
     if (get().uiPhase === "finale") {
       /* keep finale until parent transitions */
+    } else if (isBirthCertificateFailed(payload)) {
+      uiPhase = "certificate_failed";
     } else if (isBirthComplete(payload)) {
       uiPhase = "finale";
     } else if (isBirthFailed(payload)) {
       uiPhase = "error";
+    } else if (isBirthInterrupted(payload)) {
+      uiPhase = "idle";
     } else if (isBirthRunning(payload)) {
       uiPhase = "running";
     }
@@ -76,6 +87,36 @@ export const useBirthStore = create<BirthState>((set, get) => ({
         pollError: err instanceof Error ? err.message : "Failed to poll birth status",
       });
       return null;
+    }
+  },
+
+  bootstrapSession: async ({ appSurfaceReason, targetTrades }) => {
+    set({ targetTrades });
+
+    let status = get().status ?? (await get().poll());
+    if (!status) {
+      return false;
+    }
+
+    if (isBirthRunning(status) || isBirthComplete(status)) {
+      return true;
+    }
+
+    if (!shouldAutoResumeBirth(status, appSurfaceReason)) {
+      return false;
+    }
+
+    set({ uiPhase: "running", pollError: null });
+    try {
+      await startBirthSessionContinue(targetTrades);
+      await get().poll();
+      return true;
+    } catch (err) {
+      set({
+        uiPhase: isBirthInterrupted(status) ? "idle" : "error",
+        pollError: err instanceof Error ? err.message : "Birth resume failed",
+      });
+      return false;
     }
   },
 

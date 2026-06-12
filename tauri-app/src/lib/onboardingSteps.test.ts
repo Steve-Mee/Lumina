@@ -11,6 +11,7 @@ const basePayload: OnboardingPayload = {
   backend: { reachable: true, url: "http://127.0.0.1:8000" },
   setup_complete: false,
   skip_wizard: false,
+  app_surface: "setup",
   birth: { status: "idle", artifacts_ok: false },
   intelligence: {
     ollama_installed: true,
@@ -54,22 +55,30 @@ describe("onboardingSteps", () => {
     expect(resolveWizardSteps(["welcome", "birth"])).toEqual(["birth"]);
   });
 
-  it("shouldEnterCockpit when skip_wizard is true", () => {
-    expect(shouldEnterCockpit({ ...basePayload, skip_wizard: true })).toBe(true);
-  });
-
-  it("shouldEnterCockpit when birth is running and setup complete", () => {
+  it("shouldEnterCockpit when app_surface is deck", () => {
     expect(
       shouldEnterCockpit({
         ...basePayload,
+        app_surface: "deck",
         setup_complete: true,
-        wizard_steps: ["birth"],
-        birth: { status: "running", artifacts_ok: false },
+        skip_wizard: true,
+        birth: { status: "completed", artifacts_ok: true },
       }),
     ).toBe(true);
   });
 
-  it("should not enter cockpit when configuration pending", () => {
+  it("should not enter cockpit when app_surface is birth", () => {
+    expect(
+      shouldEnterCockpit({
+        ...basePayload,
+        app_surface: "birth",
+        setup_complete: true,
+        birth: { status: "running", artifacts_ok: false },
+      }),
+    ).toBe(false);
+  });
+
+  it("should not enter cockpit when setup pending", () => {
     expect(shouldEnterCockpit(basePayload)).toBe(false);
   });
 });

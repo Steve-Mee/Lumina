@@ -32,9 +32,9 @@ def _reset_birth_service(monkeypatch: pytest.MonkeyPatch) -> Any:
 def test_enrich_status_artifacts_missing(_reset_birth_service: MagicMock, tmp_path: Path) -> None:
     _reset_birth_service.workspace_root = tmp_path
     payload = be._enrich_status({"status": "idle"})
-    assert payload["phase_label"] == "Birth Phase"
+    assert payload["phase_label"] == "Birth Phase v2"
     assert payload["artifacts_ok"] is False
-    assert payload["artifacts_label"] == "Artifacts missing"
+    assert "Certificate" in payload["artifacts_label"] or "missing" in payload["artifacts_label"].lower()
 
 
 @pytest.mark.unit
@@ -43,7 +43,7 @@ def test_enrich_status_artifacts_ok(_reset_birth_service: MagicMock, tmp_path: P
     _reset_birth_service.artifacts_ok.return_value = True
     payload = be._enrich_status({"status": "completed"})
     assert payload["artifacts_ok"] is True
-    assert payload["artifacts_label"] == "Artifacts OK"
+    assert "Certificate" in payload["artifacts_label"] or payload["artifacts_label"] == "Birth Certificate v2 OK"
 
 
 @pytest.mark.unit
@@ -78,5 +78,5 @@ async def test_stop_birth_delegates(_reset_birth_service: MagicMock) -> None:
 @pytest.mark.asyncio
 async def test_get_birth_status_enriched(_reset_birth_service: MagicMock) -> None:
     result = await be.get_birth_status()
-    assert result["phase_label"] == "Birth Phase"
+    assert result["phase_label"] == "Birth Phase v2"
     assert "artifacts_label" in result

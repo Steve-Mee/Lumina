@@ -68,6 +68,7 @@
 }
 
 :root {
+    color-scheme: dark;
     --lumina-void: #0a0c12;
     --lumina-surface: #0e1119;
     --lumina-cyan: #00f0ff;
@@ -105,41 +106,7 @@
     --lumina-glow-edge: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 35%, transparent);
     --lumina-glow-halo: color-mix(in srgb, var(--cockpit-glow-primary, var(--lumina-cyan)) 14%, transparent);
     --lumina-glow-ambient: color-mix(in srgb, var(--cockpit-glow-accent, oklch(0.65 0.2 280)) 8%, transparent);
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
-}
-
-.dark {
+    /* Dark-only deck — do not rely on html.dark in Tauri WebView (see onboarding.css). */
     --background: var(--lumina-void);
     --foreground: oklch(0.96 0.005 260);
     --card: var(--lumina-surface);
@@ -163,6 +130,7 @@
     --chart-3: oklch(0.72 0.17 155);
     --chart-4: oklch(0.78 0.15 85);
     --chart-5: oklch(0.68 0.02 260);
+    --radius: 0.625rem;
     --sidebar: var(--lumina-surface);
     --sidebar-foreground: oklch(0.96 0.005 260);
     --sidebar-primary: var(--lumina-cyan);
@@ -171,6 +139,10 @@
     --sidebar-accent-foreground: oklch(0.96 0.005 260);
     --sidebar-border: var(--lumina-glass-border);
     --sidebar-ring: color-mix(in srgb, var(--lumina-cyan) 45%, transparent);
+}
+
+.dark {
+    color-scheme: dark;
 }
 
 @layer base {

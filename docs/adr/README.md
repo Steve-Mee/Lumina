@@ -24,6 +24,11 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0007 | Promotion Gate voor REAL mode | Accepted | 2026-05-02 | [0007-promotion-gate-real-mode.md](./0007-promotion-gate-real-mode.md) |
 | 0008 | LuminaEngine service decomposition | Accepted | 2026-05-02 | [0008-lumina-engine-service-decomposition.md](./0008-lumina-engine-service-decomposition.md) |
 | 0009 | Thin Engine orchestrator en verwijdering van app-shim | Accepted | 2026-05-03 | [0009-thin-engine-orchestrator-and-app-shim-removal.md](./0009-thin-engine-orchestrator-and-app-shim-removal.md) |
+| 0010 | Death of trusted path optimization | Accepted | — | [0010-death-of-trusted-path-optimization.md](./0010-death-of-trusted-path-optimization.md) |
+| 0011 | Tauri lifecycle gate — backend SSOT for startup surface | Accepted | 2026-06-11 | [0011-tauri-lifecycle-gate-ssot.md](./0011-tauri-lifecycle-gate-ssot.md) |
+| 0012 | Birth Phase v2 — Single Simulator SSOT | Accepted | 2026-06-11 | [0012-birth-phase-v2-single-simulator-ssot.md](./0012-birth-phase-v2-single-simulator-ssot.md) |
+| 0013 | Birth Certificate v2 | Accepted | 2026-06-11 | [0013-birth-certificate-v2.md](./0013-birth-certificate-v2.md) |
+| 0014 | Birth Curriculum + OOS Gate | Accepted | 2026-06-11 | [0014-birth-curriculum-oos-gate.md](./0014-birth-curriculum-oos-gate.md) |
 
 ## Legacy notitie
 

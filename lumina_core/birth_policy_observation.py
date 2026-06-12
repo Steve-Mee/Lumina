@@ -1,30 +1,15 @@
-"""28-dim observation vectors aligned with ``RLTradingEnvironment`` for birth SIM inference."""
+"""32-dim observation vectors via observation_builder SSOT (ADR-0015)."""
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
 
-BIRTH_RL_OBS_DIM = 28
+from lumina_core.rl.observation_builder import OBSERVATION_DIM, build_observation_vector
 
-_REGIME_MAP = {
-    "TRENDING": 1.0,
-    "TREND": 1.0,
-    "BREAKOUT": 0.8,
-    "RANGING": -0.6,
-    "VOLATILE": -0.9,
-    "NEUTRAL": 0.0,
-    "SYNTHETIC": 0.0,
-}
-
-
-def _regime_value(regime: str) -> float:
-    upper = str(regime or "NEUTRAL").strip().upper()
-    for key, val in _REGIME_MAP.items():
-        if key in upper:
-            return val
-    return 0.0
+BIRTH_RL_OBS_DIM = OBSERVATION_DIM
 
 
 def _position_side_scalar(side: str) -> float:
@@ -67,57 +52,49 @@ def build_birth_rl_observation_vector(
     equity: float = 50_000.0,
     recent_pnl: list[float] | None = None,
 ) -> np.ndarray:
-    """Build observation compatible with ``RLTradingEnvironment.observation_space`` (28,)."""
-    price = float(tick.get("last", 0.0) or tick.get("close", 0.0) or 0.0)
-    imbalance = float(tick.get("imbalance", 1.0) or 1.0)
-    volume = float(tick.get("volume", 1) or 1)
-    pnl_tail = list(recent_pnl or [])
+    """Build observation compatible with ``RLTradingEnvironment.observation_space`` (32,)."""
+    row = dict(tick)
+    if "close" not in row and "last" in row:
+        row["close"] = row["last"]
 
+    pnl_tail = list(recent_pnl or [])
     pos_side = 0.0
-    pos_qty = 0.0
+    pos_qty = 0
     entry_price = 0.0
     if position is not None:
         pos_side = _position_side_scalar(str(position.get("side", "NONE")))
-        pos_qty = float(max(0, int(position.get("qty", 1) or 1)))
+        pos_qty = max(0, int(position.get("qty", 1) or 1))
         entry_price = float(position.get("entry_price", 0.0) or 0.0)
+        row.setdefault("stop", float(position.get("stop", row.get("last", 0.0)) or 0.0))
+        row.setdefault("target", float(position.get("target", row.get("last", 0.0)) or 0.0))
 
-    regime_val = _regime_value(str(tick.get("regime", "NEUTRAL")))
-    # dream / fib / macro placeholders use price-neutral defaults for birth SIM
-    obs = np.array(
-        [
-            price,
-            regime_val,
-            volume * imbalance * 0.01,
-            volume * 0.01,
-            imbalance,
-            imbalance * volume * 0.001,
-            0.0,
-            0.0,
-            float(position.get("stop", price) if position else 0.0),
-            float(position.get("target", price) if position else 0.0),
-            price,
-            price,
-            price,
-            0.0,
-            0.0,
-            0.0,
-            pos_side,
-            pos_qty,
-            entry_price,
-            float(equity),
-            _drawdown_from_pnl(pnl_tail, equity=equity),
-            _rolling_sharpe_from_pnl(pnl_tail),
-            float(max(0, tick_index)),
-            float(max(1, tick_count)),
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-        ],
-        dtype=np.float32,
+    volume = float(tick.get("volume", 1) or 1)
+    imbalance = float(tick.get("imbalance", 1.0) or 1.0)
+    engine = SimpleNamespace(
+        detect_market_regime=lambda _df: str(row.get("regime", "NEUTRAL")),
+        market_data=SimpleNamespace(
+            get_tape_snapshot=lambda: {
+                "volume_delta": volume * imbalance * 0.01,
+                "avg_volume_delta_10": volume * 0.01,
+                "bid_ask_imbalance": imbalance,
+                "cumulative_delta_10": imbalance * volume * 0.001,
+            }
+        ),
+        get_current_dream_snapshot=lambda: {},
+        AI_DRAWN_FIBS={},
+        world_model={},
     )
-    if obs.shape[0] != BIRTH_RL_OBS_DIM:
-        padded = np.zeros(BIRTH_RL_OBS_DIM, dtype=np.float32)
-        padded[: min(BIRTH_RL_OBS_DIM, obs.shape[0])] = obs[: min(BIRTH_RL_OBS_DIM, obs.shape[0])]
-        return padded
-    return obs
+
+    data = [row]
+    return build_observation_vector(
+        row=row,
+        engine=engine,
+        data=data,
+        idx=max(0, int(tick_index)),
+        position=pos_side,
+        qty=pos_qty,
+        entry_price=entry_price,
+        equity=float(equity),
+        drawdown=_drawdown_from_pnl(pnl_tail, equity=equity),
+        rolling_sharpe=_rolling_sharpe_from_pnl(pnl_tail),
+    )

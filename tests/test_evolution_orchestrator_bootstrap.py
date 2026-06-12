@@ -352,6 +352,56 @@ def test_evolution_orchestrator_bootstraps_seed_for_empty_registry(monkeypatch, 
     assert registry.get_latest_dna("active") is not None
 
 
+def test_orchestrator_skips_bootstrap_when_birth_gen0_exists(monkeypatch, tmp_path: Path) -> None:
+    import lumina_core.evolution.evolution_orchestrator as eo
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_instance", None)
+    monkeypatch.setattr(eo, "ABExperimentFramework", _ABFrameworkStub)
+
+    bootstrap_calls: list[dict[str, object]] = []
+
+    def _spy_bootstrap(self, *, base_metrics: dict[str, object]) -> PolicyDNA:
+        bootstrap_calls.append(dict(base_metrics))
+        return PolicyDNA.create(
+            prompt_id="bootstrap_seed",
+            version="active",
+            content={"name": "bootstrap"},
+            fitness_score=0.0,
+            generation=0,
+            lineage_hash="bootstrap",
+        )
+
+    monkeypatch.setattr(eo.EvolutionOrchestrator, "_bootstrap_active_dna", _spy_bootstrap)
+
+    orchestrator = EvolutionOrchestrator()
+    orchestrator._shadow_state_path = tmp_path / "shadow_birth_gen0_skip.json"
+    registry = _RegistryStub()
+    birth_gen0 = PolicyDNA.create(
+        prompt_id="birth_v2_certificate",
+        version="active",
+        content={"candidate_name": "birth_v2_certificate", "birth_certificate_version": "2.0"},
+        fitness_score=0.42,
+        generation=0,
+        lineage_hash="birthgen0",
+    )
+    registry.register_dna(birth_gen0)
+    orchestrator._registry = cast(Any, registry)
+    orchestrator._sim_runner = cast(Any, _SimRunnerStub())
+
+    summary = orchestrator.run_nightly_evolution_cycle(
+        generations=1,
+        sim_duration_hours=24,
+        nightly_report={"net_pnl": -50.0, "max_drawdown": 100.0, "sharpe": -0.4},
+        mode="sim",
+    )
+
+    assert summary["status"] == "complete"
+    assert bootstrap_calls == []
+    active = registry.get_latest_dna("active")
+    assert active is not None
+    assert active.prompt_id == "birth_v2_certificate"
+
+
 def test_evolution_orchestrator_real_path_starts_shadow_before_promotion(monkeypatch, tmp_path: Path) -> None:
     import lumina_core.evolution.evolution_orchestrator as eo
 

@@ -86,6 +86,7 @@ class FirstBootManager:
         self.policy_path = workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
         self.practice_policy_path = workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy_practice.zip"
         self.practice_completed_flag_path = workspace_root / "state" / "lumina_birth_practice_completed.flag"
+        self.certificate_path = workspace_root / "state" / "lumina_birth_certificate.json"
         self.go_to_bot_flag_path = workspace_root / "state" / "first_boot_go_to_bot.flag"
         self.user_configured_flag_path = workspace_root / "state" / "first_boot_user_configured.flag"
 
@@ -285,6 +286,7 @@ class FirstBootManager:
         for path in (
             self.flag_path,
             self.legacy_flag_path,
+            self.certificate_path,
             self.policy_path,
             self.practice_policy_path,
             self.practice_completed_flag_path,

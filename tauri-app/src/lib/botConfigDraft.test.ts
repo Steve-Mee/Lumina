@@ -13,6 +13,7 @@ function mockPayload(overrides: Partial<OnboardingPayload["defaults"]> = {}): On
     backend: { reachable: true, url: "http://127.0.0.1:8000" },
     setup_complete: true,
     skip_wizard: true,
+    app_surface: "deck",
     birth: { status: "completed", artifacts_ok: true },
     intelligence: {
       ollama_installed: true,

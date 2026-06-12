@@ -14,6 +14,19 @@ OnboardingStepId = Literal[
     "birth",
 ]
 
+AppSurface = Literal["setup", "birth", "deck"]
+AppSurfaceReason = Literal[
+    "fresh_install",
+    "setup_incomplete",
+    "birth_pending",
+    "birth_running",
+    "birth_interrupted",
+    "birth_error",
+    "certificate_failed",
+    "birth_complete",
+    "backend_unreachable",
+]
+
 StepStatus = Literal["pending", "done", "running", "blocked"]
 
 
@@ -25,9 +38,11 @@ def compute_onboarding_steps(
     credentials_missing: list[str],
     birth_status: str,
     artifacts_ok: bool,
+    certificate_ok: bool | None = None,
     smart_setup_running: bool = False,
 ) -> tuple[list[OnboardingStepId], dict[str, StepStatus]]:
     """Return required wizard steps and per-step status."""
+    birth_ready = certificate_ok if certificate_ok is not None else artifacts_ok
     step_status: dict[str, StepStatus] = {
         "welcome": "pending",
         "backend": "done" if backend_reachable else "pending",
@@ -63,12 +78,15 @@ def compute_onboarding_steps(
         step_status["configuration"] = "pending"
 
     birth_idle = birth_status in {"idle", "not_started", "", "interrupted", "error"}
-    if setup_complete and birth_idle and not artifacts_ok:
+    if setup_complete and birth_idle and not birth_ready:
         required.append("birth")
         step_status["birth"] = "pending"
     elif birth_status == "running":
         step_status["birth"] = "running"
-    elif artifacts_ok or birth_status in {"completed", "error"}:
+    elif birth_status == "certificate_failed":
+        required.append("birth")
+        step_status["birth"] = "pending"
+    elif birth_ready or birth_status == "completed":
         step_status["birth"] = "done"
 
     return required, step_status
@@ -107,17 +125,57 @@ def should_skip_wizard(
     birth_status: str,
     artifacts_ok: bool,
     required_steps: list[OnboardingStepId],
+    backend_reachable: bool = True,
+    certificate_ok: bool | None = None,
 ) -> bool:
-    """True when the user can enter the Command Deck without the wizard."""
-    if not required_steps or required_steps == ["welcome"]:
-        if setup_complete and (birth_status == "running" or artifacts_ok):
-            return True
-        if setup_complete and birth_status in {"completed", "error"}:
-            return True
-    pending = [s for s in required_steps if s not in {"welcome"}]
-    if not pending and setup_complete:
-        return birth_status == "running" or artifacts_ok
-    return False
+    """True when the user can enter the Command Deck without the wizard (fail-closed on artifacts)."""
+    surface, _ = resolve_app_surface(
+        setup_complete=setup_complete,
+        birth_status=birth_status,
+        artifacts_ok=artifacts_ok,
+        certificate_ok=certificate_ok,
+        backend_reachable=backend_reachable,
+        required_steps=required_steps,
+    )
+    return surface == "deck"
+
+
+def _has_pending_setup_steps(required_steps: list[OnboardingStepId]) -> bool:
+    setup_steps = {"backend", "ollama", "model", "credentials", "configuration"}
+    return any(step in setup_steps for step in required_steps)
+
+
+def resolve_app_surface(
+    *,
+    setup_complete: bool,
+    birth_status: str,
+    artifacts_ok: bool,
+    backend_reachable: bool,
+    required_steps: list[OnboardingStepId],
+    certificate_ok: bool | None = None,
+) -> tuple[AppSurface, AppSurfaceReason]:
+    """Canonical lifecycle surface for cold start (Phase 1 SSOT). Fail-closed on certificate."""
+    if not backend_reachable:
+        return "setup", "backend_unreachable"
+
+    if not setup_complete or _has_pending_setup_steps(required_steps):
+        return "setup", "setup_incomplete" if setup_complete else "fresh_install"
+
+    birth_ready = certificate_ok if certificate_ok is not None else artifacts_ok
+    if not birth_ready:
+        if birth_status == "running":
+            return "birth", "birth_running"
+        if birth_status == "interrupted":
+            return "birth", "birth_interrupted"
+        if birth_status == "error":
+            return "birth", "birth_error"
+        if birth_status == "certificate_failed":
+            return "birth", "certificate_failed"
+        if birth_status == "completed" and certificate_ok is False:
+            return "birth", "certificate_failed"
+        return "birth", "birth_pending"
+
+    return "deck", "birth_complete"
 
 
 def extract_env_diagnostics(env_values: dict[str, str] | None = None) -> dict[str, Any]:
