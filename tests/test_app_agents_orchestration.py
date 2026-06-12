@@ -48,6 +48,10 @@ def container_with_stub_app(monkeypatch):
         return types.SimpleNamespace(connect=lambda: True, disconnect=lambda: None)
 
     monkeypatch.setattr("lumina_core.container.broker_factory", _stub_broker)
+    # CI has no .env; use config.yaml sim+live matrix with stub secrets.
+    monkeypatch.setenv("XAI_API_KEY", "orchestration-test-xai-key")
+    monkeypatch.setenv("LUMINA_JWT_SECRET_KEY", "orchestration-test-jwt-secret")
+    monkeypatch.setenv("CROSSTRADE_TOKEN", "orchestration-test-crosstrade-stub")
 
     from lumina_core.container import create_application_container
 
@@ -139,10 +143,18 @@ def test_regime_detector_on_synthetic_bars(container_with_stub_app) -> None:
     assert 0.0 <= float(snap.confidence) <= 1.0
 
 
-def test_meta_orchestrator_nightly_reflection_dry_run(container_with_stub_app) -> None:
+def test_meta_orchestrator_nightly_reflection_dry_run(container_with_stub_app, monkeypatch) -> None:
     c = container_with_stub_app
     orch = c.meta_agent_orchestrator
     assert orch is not None
+
+    from lumina_core.evolution.orchestrator_core import EvolutionOrchestrator
+
+    def _stub_multi_gen_cycle(self, **kwargs: Any) -> dict[str, Any]:
+        return {"status": "stub_ok", "generations": int(kwargs.get("generations", 0) or 0)}
+
+    monkeypatch.setattr(EvolutionOrchestrator, "run_nightly_evolution_cycle", _stub_multi_gen_cycle)
+
     report = {
         "winrate": 0.52,
         "net_pnl": 150.0,
@@ -168,9 +180,11 @@ def test_swarm_manager_run_swarm_cycle(container_with_stub_app) -> None:
 def test_fastapi_backend_health_boot(monkeypatch: pytest.MonkeyPatch) -> None:
     """Smoke: FastAPI app imports and exposes monitoring health (Command Deck backend)."""
     monkeypatch.setenv("LUMINA_JWT_SECRET_KEY", "ci-test-jwt-secret-not-for-production")
+    lumina_os_root = REPO_ROOT / "lumina_os"
+    monkeypatch.syspath_prepend(str(lumina_os_root))
     from fastapi.testclient import TestClient
 
-    from lumina_os.backend.app import app
+    from backend.app import app
 
     client = TestClient(app)
     response = client.get("/api/monitoring/health")

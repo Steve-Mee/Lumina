@@ -138,6 +138,30 @@ def isolated_state(tmp_path: Path) -> Generator[Path, None, None]:
 
 
 # ---------------------------------------------------------------------------
+# Runtime mode env isolation (serial coverage / integration runs)
+# ---------------------------------------------------------------------------
+
+_RUNTIME_MODE_ENV_KEYS: tuple[str, ...] = (
+    "LUMINA_MODE",
+    "TRADE_MODE",
+    "LUMINA_ENFORCE_ENV_RUNTIME_MODE",
+    "BROKER_BACKEND",
+)
+
+
+@pytest.fixture(autouse=True)
+def _clear_leaked_runtime_mode_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear runtime mode env vars before each test.
+
+    ``runtime_entrypoint.run_with_mode`` uses ``os.environ.setdefault`` without
+    teardown; serial pytest runs (coverage job) can leave ``trade_mode=real`` and
+    break ``create_application_container()`` mode-matrix validation.
+    """
+    for key in _RUNTIME_MODE_ENV_KEYS:
+        monkeypatch.delenv(key, raising=False)
+
+
+# ---------------------------------------------------------------------------
 # Config loader: synthetic RL fallback (required for unit tests)
 # ---------------------------------------------------------------------------
 
