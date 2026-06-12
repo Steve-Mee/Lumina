@@ -1,7 +1,6 @@
-"""Central help text registry for launcher tooltips."""
+"""Central help text registry for operator UI tooltips."""
 
 from __future__ import annotations
-
 
 HELP_TEXTS: dict[str, str] = {
     "trading_mode": (

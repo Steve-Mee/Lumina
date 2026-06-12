@@ -10,7 +10,7 @@ from lumina_core.engine.setup_service import SetupService
 from lumina_launcher.core.config_manager import ConfigManager
 from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_launcher.services.model_service import ModelService
-from lumina_launcher.ui.setup_wizard import persist_setup_configuration, resolve_mode_matrix
+from lumina_launcher.services.setup_persist import persist_setup_configuration, resolve_mode_matrix
 
 
 def test_resolve_mode_matrix() -> None:

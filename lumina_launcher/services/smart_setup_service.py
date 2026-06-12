@@ -212,7 +212,7 @@ class SmartSetupService:
             {
                 "id": "launcher_deps",
                 "title": "Launcher dependencies (Streamlit, requests, ollama package)",
-                "command": f"{sys.executable} -m pip install streamlit pandas requests pyyaml psutil ollama",
+                "command": f"{sys.executable} -m pip install pandas requests pyyaml psutil ollama",
                 "manual": "Alleen nodig als automatische installatie faalt.",
                 "required": False,
             }

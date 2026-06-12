@@ -577,8 +577,7 @@ async def get_react_dashboard_status(
     """Embedded React dashboard URL readiness (Streamlit iframe parity)."""
     _check_api_key(x_api_key)
     try:
-        from lumina_os.frontend.dashboard_paths import DashboardPaths
-        from lumina_os.frontend.dashboard_views import embedded_react_ui_status
+        from lumina_os.monitoring.dashboard_helpers import DashboardPaths, embedded_react_ui_status
     except ImportError:
         return {
             "ready": False,

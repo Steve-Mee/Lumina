@@ -113,7 +113,7 @@ class SetupService:
         return self._run_step("runtime_dependencies", command, "Python runtime packages installed")
 
     def install_launcher_dependencies(self) -> SetupStepResult:
-        packages = ["streamlit", "pandas", "requests", "pyyaml", "psutil", "ollama"]
+        packages = ["pandas", "requests", "pyyaml", "psutil", "ollama"]
         command = [sys.executable, "-m", "pip", "install", *packages]
         return self._run_step("launcher_dependencies", command, "Launcher dependencies installed")
 

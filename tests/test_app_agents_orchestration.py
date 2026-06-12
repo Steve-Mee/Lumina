@@ -171,52 +171,14 @@ def test_swarm_manager_run_swarm_cycle(container_with_stub_app) -> None:
 
 
 @pytest.mark.integration
-def test_streamlit_launcher_http_boot() -> None:
-    if shutil.which("streamlit") is None:
-        pytest.skip("streamlit not on PATH")
-    port = 9876
-    cmd = [
-        sys.executable,
-        "-m",
-        "streamlit",
-        "run",
-        str(REPO_ROOT / "streamlit_launcher.py"),
-        "--server.headless",
-        "true",
-        "--server.port",
-        str(port),
-        "--browser.gatherUsageStats",
-        "false",
-    ]
-    proc = subprocess.Popen(
-        cmd,
-        cwd=str(REPO_ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    url = f"http://127.0.0.1:{port}/"
-    deadline = time.monotonic() + 45.0
-    last_err: Exception | None = None
-    try:
-        while time.monotonic() < deadline:
-            try:
-                with urllib.request.urlopen(url, timeout=2.0) as resp:
-                    body = resp.read(8000).decode("utf-8", errors="replace")
-                assert "LUMINA" in body.upper() or "streamlit" in body.lower() or len(body) > 100
-                return
-            except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
-                last_err = exc
-                if proc.poll() is not None:
-                    out = (proc.stdout.read() if proc.stdout else "") or ""
-                    pytest.fail(f"Streamlit exited early (code={proc.returncode}): {out[:2000]}\nlast_err={last_err}")
-                time.sleep(0.5)
-        pytest.fail(f"Streamlit did not become reachable: {last_err}")
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=8)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+def test_fastapi_backend_health_boot() -> None:
+    """Smoke: FastAPI app imports and exposes monitoring health (Command Deck backend)."""
+    from fastapi.testclient import TestClient
+
+    from lumina_os.backend.app import app
+
+    client = TestClient(app)
+    response = client.get("/api/monitoring/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body, dict)

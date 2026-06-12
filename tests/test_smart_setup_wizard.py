@@ -3,27 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_smart_setup_wizard_module_contains_required_screens() -> None:
+def test_setup_persist_module_contains_required_helpers() -> None:
     root = Path(__file__).resolve().parents[1]
-    source = (root / "lumina_launcher" / "ui" / "smart_setup_wizard.py").read_text(encoding="utf-8")
-    assert "render_smart_setup_wizard" in source
-    assert "lumina_smart_setup_step" in source
+    source = (root / "lumina_launcher" / "services" / "setup_persist.py").read_text(encoding="utf-8")
+    assert "persist_setup_configuration" in source
+    assert "resolve_mode_matrix" in source
+    assert "SmartSetupService" not in source
+
+
+def test_onboarding_endpoints_expose_app_surface() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "lumina_os" / "backend" / "setup_endpoints.py").read_text(encoding="utf-8")
+    assert "resolve_app_surface" in source
+    assert "app_surface" in source
+
+
+def test_tauri_onboarding_wizard_steps() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "tauri-app" / "src" / "lib" / "onboardingSteps.ts").read_text(encoding="utf-8")
     assert "welcome" in source
-    assert "configure" in source
-    assert "running" in source
-    assert "success" in source
-    assert "🚀 Alles Automatisch Instellen" in source
-    assert "Ga door naar configuratie" in source
-    assert "Hardware scannen" in source
-    assert "SmartSetupService" in source
-    assert "mark_complete=False" in source
-
-
-def test_streamlit_main_two_phase_setup_gate() -> None:
-    root = Path(__file__).resolve().parents[1]
-    source = (root / "lumina_launcher" / "streamlit_main.py").read_text(encoding="utf-8")
-    assert "smart_setup_service" in source
-    assert "resolve_launcher_setup_state" in source
-    assert "render_smart_setup_wizard" in source
-    assert "render_setup_wizard" in source
-    assert "Setup — Intelligence" in source or "Setup — {phase_label}" in source
+    assert "birth" in source

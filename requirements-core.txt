@@ -124,7 +124,6 @@ fonttools==4.62.1
 pyparsing==3.3.2
 pillow==12.2.0
 pydeck==0.9.1
-streamlit==1.56.0
 blinker==1.9.0
 narwhals==2.18.1
 fpdf2==2.8.7

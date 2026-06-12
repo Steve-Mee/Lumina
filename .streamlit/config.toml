@@ -1,3 +1,0 @@
-[server]
-# Avoid import shadowing with local watchdog.py when Streamlit enables file watching.
-fileWatcherType = "none"

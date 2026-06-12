@@ -26,8 +26,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
+
+from lumina_core.evolution.evolution_tree import build_evolution_tree
 from lumina_core.audit import get_audit_logger
 from lumina_core.governance import ApprovalChain, RealPromotionPayload, SignedApproval
 from lumina_core.evolution.promotion_readiness import check_promotion_readiness
@@ -203,6 +205,22 @@ class RejectRequest(BaseModel):
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/tree")
+async def get_evolution_tree(
+    depth: int = Query(10, ge=1, le=20),
+    include_rejected: bool = Query(False),
+    root_hash: str | None = Query(None),
+    x_api_key: Optional[str] = Header(None),
+) -> dict[str, Any]:
+    """Return DNA lineage graph for Command Deck evolution visualization."""
+    _verify_api_key(x_api_key, require_admin=False)
+    return build_evolution_tree(
+        depth=depth,
+        include_rejected=include_rejected,
+        root_hash=root_hash,
+    )
 
 
 @router.get("/proposals")

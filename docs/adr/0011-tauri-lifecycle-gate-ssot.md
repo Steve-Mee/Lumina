@@ -10,7 +10,7 @@ The Neural Command Deck (Tauri) previously inferred startup routing from mixed c
 
 LUMINA requires fail-closed capital and artifact discipline (see constitution and ADR-0007). The Elon Musk Mindset Protocol applies: one truth, minimal moving parts, no hidden bypasses.
 
-Three operator-visible surfaces exist: **Setup**, **Birth**, and **Deck**. Both Streamlit launcher and Tauri must agree on when each surface is shown.
+Three operator-visible surfaces exist: **Setup**, **Birth**, and **Deck**. The Tauri Command Deck consumes backend SSOT via `GET /api/setup/onboarding`.
 
 ## Decision
 
@@ -31,7 +31,7 @@ We introduce a **single backend function** `resolve_app_surface()` in `lumina_la
   - One function determines cold-start surface; testable matrix (T1–T8).
   - Operators get predictable restart behaviour documented in `docs/command-deck-startup-runbook.md`.
   - Deck access without PPO artifacts is structurally blocked.
-  - Streamlit and Tauri can share `resolve_app_surface()` logic.
+  - Streamlit UI removed (ADR-0016); Tauri + API are the only operator surfaces.
 - Negatief:
   - API payload change; clients must consume `app_surface` (legacy fallback temporary).
   - Extra refresh/guard logic on cockpit mount.

@@ -3,22 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_first_boot_ui_uses_phase_specific_ppo_status() -> None:
+def test_tauri_birth_phase_shows_ppo_progress() -> None:
     root = Path(__file__).resolve().parents[1]
-    first_boot_src = (root / "lumina_launcher" / "ui" / "tabs" / "first_boot.py").read_text(encoding="utf-8")
-    dashboard_src = (root / "lumina_launcher" / "ui" / "tabs" / "training_dashboard.py").read_text(encoding="utf-8")
+    birth_src = (root / "tauri-app" / "src" / "components" / "birth" / "BirthPhaseScreen.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert "ppo" in birth_src.lower() or "PPO" in birth_src
+    assert "BirthPhaseScreen" in birth_src or "export function BirthPhaseScreen" in birth_src
 
-    assert "_render_birth_phase_status_banner" in first_boot_src
-    assert "_render_sim_activity_panel" in first_boot_src
-    assert "sim_ticks_processed" in first_boot_src
-    assert "chunk_trades_partial" in first_boot_src
-    assert "Action source: policy" in first_boot_src
-    assert "_render_ppo_progress_bars" in first_boot_src
-    assert "Totaal PPO:" in first_boot_src
-    assert "Huidige PPO-batch:" in first_boot_src
-    assert "SIM-training is voltooid" not in first_boot_src
-    assert "PPO policy-training loopt nog" not in first_boot_src
-    assert "SIM-deel is voltooid" not in dashboard_src
-    assert "_render_ppo_progress_bars" in dashboard_src
-    luxury_src = (root / "lumina_os" / "frontend" / "dashboard_views.py").read_text(encoding="utf-8")
-    assert "SIM ACTIVE (0 trades)" in luxury_src
+
+def test_tauri_birth_store_tracks_ppo_fields() -> None:
+    root = Path(__file__).resolve().parents[1]
+    store_src = (root / "tauri-app" / "src" / "store" / "birthStore.ts").read_text(encoding="utf-8")
+    assert "ppo" in store_src.lower()

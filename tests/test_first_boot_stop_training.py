@@ -7,14 +7,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from lumina_launcher.core.birth_actions import stop_birth_training
 from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_launcher.services.birth_service import BirthService
-from lumina_launcher.ui.tabs import first_boot as fb
 
 
 @pytest.mark.unit
-def test_stop_birth_training_calls_birth_service(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setattr(fb.st, "session_state", {})
+def test_stop_birth_training_calls_birth_service(tmp_path: Path) -> None:
     manager = FirstBootManager(tmp_path)
     birth_service = MagicMock(spec=BirthService)
     birth_service.is_running.return_value = True
@@ -23,7 +22,7 @@ def test_stop_birth_training_calls_birth_service(monkeypatch: pytest.MonkeyPatch
     process_manager = MagicMock()
     process_manager.stop_bot.return_value = (True, "Bot stopped")
 
-    ok, msg = fb._stop_birth_training(
+    ok, msg = stop_birth_training(
         first_boot_manager=manager,
         birth_service=birth_service,
         backend_client=None,
@@ -39,9 +38,9 @@ def test_stop_birth_training_calls_birth_service(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.unit
-def test_first_boot_tab_has_unified_stop_button() -> None:
-    source = Path(fb.__file__).read_text(encoding="utf-8")
-    assert "first_boot_stop_training" in source
-    assert "_stop_birth_training" in source
-    assert "on_click=_on_stop_training_click" in source
-    assert "Stop training" in source
+def test_tauri_training_control_has_stop() -> None:
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "tauri-app" / "src" / "components" / "birth" / "TrainingControlBar.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert "stopBirth" in source or "Stop" in source

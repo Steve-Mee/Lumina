@@ -1,4 +1,4 @@
-"""Weekly veto registry summaries without Streamlit/Altair imports (testable headless)."""
+"""Weekly veto registry summaries (headless, testable)."""
 
 from __future__ import annotations
 

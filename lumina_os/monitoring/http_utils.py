@@ -1,4 +1,4 @@
-"""HTTP helpers for Streamlit frontend — quiet logs when the backend is offline."""
+"""HTTP helpers for monitoring clients — quiet logs when the backend is offline."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ try:
     import httpx
 except ImportError:  # pragma: no cover
     httpx = None  # type: ignore[assignment]
-
 
 _API_KEY_NAMES = (
     "LUMINA_ADMIN_API_KEY",
@@ -51,7 +50,6 @@ def _read_repo_dotenv() -> dict[str, str]:
 
 
 def resolve_dashboard_api_key(explicit: str = "") -> str:
-    """Resolve API key: explicit arg, process env, then repo-root ``.env``."""
     if explicit and explicit.strip():
         return explicit.strip()
     for name in _API_KEY_NAMES:
@@ -67,7 +65,6 @@ def resolve_dashboard_api_key(explicit: str = "") -> str:
 
 
 def is_backend_unreachable(exc: BaseException) -> bool:
-    """True when the FastAPI backend is down or not reachable (expected in local UI)."""
     if isinstance(exc, requests.exceptions.ConnectionError | requests.exceptions.Timeout):
         return True
     if httpx is not None and isinstance(
@@ -83,7 +80,6 @@ def is_backend_unreachable(exc: BaseException) -> bool:
 
 
 def log_fetch_failure(logger: logging.Logger, message: str, exc: BaseException) -> None:
-    """Log at debug when backend is offline; warn with traceback for unexpected failures."""
     if is_backend_unreachable(exc):
         logger.debug("%s (backend offline): %s", message, exc)
     else:
@@ -97,7 +93,6 @@ def fetch_json(
     headers: dict[str, str] | None = None,
     logger: logging.Logger | None = None,
 ) -> dict[str, Any] | list[Any] | None:
-    """GET JSON; returns None on failure without noisy exception logs when backend is down."""
     log = logger or logging.getLogger(__name__)
     try:
         response = requests.get(url, headers=headers or {}, timeout=timeout)

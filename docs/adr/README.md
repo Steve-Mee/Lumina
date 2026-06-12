@@ -29,6 +29,8 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0012 | Birth Phase v2 — Single Simulator SSOT | Accepted | 2026-06-11 | [0012-birth-phase-v2-single-simulator-ssot.md](./0012-birth-phase-v2-single-simulator-ssot.md) |
 | 0013 | Birth Certificate v2 | Accepted | 2026-06-11 | [0013-birth-certificate-v2.md](./0013-birth-certificate-v2.md) |
 | 0014 | Birth Curriculum + OOS Gate | Accepted | 2026-06-11 | [0014-birth-curriculum-oos-gate.md](./0014-birth-curriculum-oos-gate.md) |
+| 0015 | RL observation SSOT 32-dim | Accepted | 2026-06-11 | [0015-rl-observation-ssot-32dim.md](./0015-rl-observation-ssot-32dim.md) |
+| 0016 | Streamlit UI retirement | Accepted | 2026-06-12 | [0016-streamlit-ui-retirement.md](./0016-streamlit-ui-retirement.md) |
 
 ## Legacy notitie
 

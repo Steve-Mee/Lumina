@@ -63,11 +63,13 @@
 python scripts/bootstrap_lumina.py
 ```
 
-- Maakt een lokale **`.venv`**, installeert launcher/runtime-dependencies en start **Streamlit**.
-- **`lumina_launcher.py`** — hardware-aware **guided setup**: hardwarescan, aanbevolen **Qwen3.5**-model en stap-voor-stap installatie.
-- **Monitoring Dashboard** — tab `📡 Monitoring Dashboard` in de launcher (en in `lumina_os/frontend/dashboard.py`); telemetry onder `state/monitoring_*.json(l)`; backend-metrics via FastAPI `lumina_os` (`/api/monitoring/health`, `/api/monitoring/metrics/json`, `/api/monitoring/adaptive-intelligence/latest`, `/api/monitoring/adaptive-intelligence/history` met API-key). Adaptive intelligence state: `state/adaptive_intelligence_status.json` en `state/adaptive_intelligence_events.jsonl`. Zie `lumina_os/README.md` en `docs/launcher-setup-and-model-management.md`.
+- Maakt een lokale **`.venv`**, installeert runtime-dependencies en start de **FastAPI backend** op `:8000`.
+- Open daarna de **Neural Command Deck** (Tauri): `cd tauri-app && npm install && npm run tauri dev`.
+- Guided setup (hardware, Ollama, model, credentials) loopt via de **Onboarding wizard** in de Command Deck; backend SSOT: `GET /api/setup/onboarding`.
+- Monitoring telemetry: `state/monitoring_*.json(l)`; backend-metrics via FastAPI (`/api/monitoring/health`, `/api/monitoring/metrics/json`, `/api/monitoring/adaptive-intelligence/*`). Zie `lumina_os/README.md` en `docs/command-deck-startup-runbook.md`.
 - Status na setup: `state/lumina_setup_complete.json`, `state/lumina_setup_status.json`.
-- Modelcatalogus en aanbevelingen: `lumina_model_catalog.json`.
+- Modelcatalogus: `lumina_model_catalog.json`.
+- Headless runtime (geen UI): `python -m lumina_launcher --headless`.
 
 ### Handmatig / tweede machine
 
@@ -85,18 +87,16 @@ Unsloth fine-tuning zit voorbereid in de app; echte training vraagt **Linux of W
 
 ## 🖥️ LUMINA Neural Command Deck (Tauri)
 
-De **LUMINA Neural Command Deck** (intern: *The Core*) is een volledig nieuwe, native desktop UI — geen Streamlit-reskin. Het vervangt de oude Streamlit launcher en dashboard als primair operator-interface voor het trading-organisme. De stack is **Tauri v2 + React 19 + TypeScript + Three.js**: een spaceship-cockpit interface met live telemetry, evolution-visualisatie en fail-closed REAL-mode gates.
+De **LUMINA Neural Command Deck** (intern: *The Core*) is de native desktop operator-UI. De stack is **Tauri v2 + React 19 + TypeScript + Three.js**: spaceship-cockpit interface met live telemetry, evolution-visualisatie en fail-closed REAL-mode gates.
 
-De migratie is **in uitvoering**. Legacy Streamlit-paden (`lumina_launcher.py`, `lumina_os/frontend/dashboard.py`) blijven beschikbaar tot de finale cleanup-fase.
+### Operator UI
 
-### Streamlit vs Neural Command Deck
-
-| Aspect | Streamlit (legacy) | Neural Command Deck |
-|--------|-------------------|---------------------|
-| Runtime | Browser-tab | Native desktop (Tauri) |
-| Telemetry | Polling / gedeeltelijk | REST + WebSocket live stream |
-| Visuele identiteit | Formulieren & charts | Three.js neural core + HUD panels |
-| REAL-veiligheid | Basisbevestiging | Fail-closed mode gates, constitution overlays |
+| Aspect | Neural Command Deck |
+|--------|---------------------|
+| Runtime | Native desktop (Tauri) |
+| Telemetry | REST + WebSocket live stream |
+| Visuele identiteit | Three.js neural core + HUD panels |
+| REAL-veiligheid | Fail-closed mode gates, constitution overlays |
 
 ### Architectuur & documentatie
 
@@ -117,7 +117,7 @@ De migratie is **in uitvoering**. Legacy Streamlit-paden (`lumina_launcher.py`, 
 
 **Stappen**
 
-1. **Start de FastAPI backend** (vereist voor beide UI’s):
+1. **Start de FastAPI backend**:
 
    ```powershell
    cd lumina_os
@@ -133,7 +133,7 @@ De migratie is **in uitvoering**. Legacy Streamlit-paden (`lumina_launcher.py`, 
    LUMINA_ADMIN_API_KEY=<your-key>
    ```
 
-3. **Start de Neural Command Deck** (zodra `tauri-app/` is gescaffold):
+3. **Start de Neural Command Deck**:
 
    ```bash
    cd tauri-app
@@ -143,7 +143,7 @@ De migratie is **in uitvoering**. Legacy Streamlit-paden (`lumina_launcher.py`, 
 
    Het dev-venster opent op `localhost:1420` en verbindt met de backend op `:8000`.
 
-> Tijdens Phase 0–5 blijft Streamlit beschikbaar via `python lumina_launcher.py` tot de finale cleanup.
+Zie [docs/command-deck-startup-runbook.md](docs/command-deck-startup-runbook.md) voor restart-gedrag (setup → birth → deck).
 
 ### API-overzicht (compact)
 

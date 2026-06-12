@@ -1,4 +1,4 @@
-"""Tests for lumina_os.frontend.http_utils."""
+"""Tests for lumina_os.monitoring.http_utils."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import httpx
 import pytest
 import requests
 
-from lumina_os.frontend.http_utils import is_backend_unreachable, log_fetch_failure
+from lumina_os.monitoring.http_utils import is_backend_unreachable, log_fetch_failure
 
 
 def test_is_backend_unreachable_requests_connection_error() -> None:

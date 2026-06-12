@@ -1,6 +1,6 @@
 # lumina_os
 
-Complete starter implementation voor Trader League met FastAPI backend en Streamlit dashboard.
+Complete Trader League + LUMINA FastAPI backend. Operator UI is the **Neural Command Deck** (`../tauri-app/`).
 
 ## Configuratie (.env)
 
@@ -15,7 +15,10 @@ Maak een `.env` bestand in deze map (bijvoorbeeld op basis van `.env.example`):
 - backend/database.py: SQLAlchemy engine + tabellen (participants, trades)
 - backend/models.py: Pydantic request/response modellen
 - backend/webhook.py: Webhook endpoint voor externe trade ingest
-- frontend/dashboard.py: Streamlit dashboard met charts, leaderboard en trade submit form
+
+## Operator UI
+
+Start de **Neural Command Deck** (Tauri) from `../tauri-app/` after the backend is running. Streamlit dashboards were removed (ADR-0016).
 
 ## Installeren
 
@@ -52,24 +55,9 @@ Belangrijke endpoints:
 - DELETE /demo-data
 	- verwijdert alleen demo data (`DEMO_*` participants + hun trades)
 
-## Dashboard starten
+## Command Deck (operator UI)
 
-In een tweede terminal:
-
-```bash
-streamlit run frontend/dashboard.py
-```
-
-Zet in de sidebar van Streamlit de backend URL op:
-
-http://localhost:8000
-
-## Monitoring Dashboard
-
-Het gedeelde Monitoring Dashboard is nu in beide Streamlit-apps beschikbaar:
-
-- `lumina_os/frontend/dashboard.py` -> tab `📡 Monitoring Dashboard`
-- `lumina_launcher.py` -> tab `📡 Monitoring Dashboard`
+See [../docs/command-deck-startup-runbook.md](../docs/command-deck-startup-runbook.md). Backend must run on `http://127.0.0.1:8000` before starting Tauri.
 
 Belangrijkste bronnen voor monitoring:
 

@@ -319,6 +319,37 @@ class DNARegistry:
             for row in rows
         ]
 
+    def list_all_dna(self, *, limit: int = 500) -> list[PolicyDNA]:
+        """Return DNA entries newest-first (for lineage graph endpoints)."""
+        query = (
+            "SELECT prompt_id, version, hash, content, fitness_score, generation, parent_ids, "
+            "mutation_rate, lineage_hash, created_at "
+            "FROM dna_entries ORDER BY datetime(created_at) DESC, rowid DESC LIMIT ?"
+        )
+        cap = max(1, int(limit))
+        with self._lock:
+            if not self.sqlite_path.exists():
+                return []
+            with safe_sqlite_connect(self.sqlite_path) as connection:
+                rows = connection.execute(query, (cap,)).fetchall()
+        return [
+            PolicyDNA.from_record(
+                {
+                    "prompt_id": row[0],
+                    "version": row[1],
+                    "hash": row[2],
+                    "content": row[3],
+                    "fitness_score": row[4],
+                    "generation": row[5],
+                    "parent_ids": json.loads(row[6]) if row[6] else [],
+                    "mutation_rate": row[7],
+                    "lineage_hash": row[8],
+                    "created_at": row[9],
+                }
+            )
+            for row in rows
+        ]
+
     def mutate(
         self,
         *,

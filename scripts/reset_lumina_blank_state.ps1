@@ -29,7 +29,7 @@ function Backup-Path {
 }
 
 if (-not $SkipProcessStop) {
-    $ports = @(8000, 8501, 8502)
+    $ports = @(8000, 1420)
     foreach ($port in $ports) {
         $lines = netstat -ano | Select-String ":$port" | Select-String "LISTENING"
         foreach ($line in $lines) {

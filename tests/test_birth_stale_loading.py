@@ -17,9 +17,9 @@ from lumina_core.first_boot_progress import (
     resolve_birth_training_pulse,
     resolve_progress_active_max_age_sec,
 )
-from lumina_os.frontend.dashboard_views import training_active_from_state
+from lumina_os.monitoring.dashboard_helpers import training_active_from_state
 from lumina_core.lumina_birth_engine import LuminaBirthEngine
-from lumina_launcher.ui.tabs.first_boot import resolve_command_center_birth_flags
+from lumina_launcher.core.birth_actions import resolve_command_center_birth_flags
 
 
 @pytest.mark.unit

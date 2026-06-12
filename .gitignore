@@ -36,6 +36,7 @@ state/lumina-tauri-signing.key.pub
 .env.*
 !.env.*.example
 !.env.example
+deploy/.env*
 # Local operator overrides (machine-specific broker/models/hardware)
 config.yaml.local
 state/launcher_admin_password.json
@@ -124,12 +125,16 @@ state/adaptive_intelligence_events.jsonl
 
 # Frontend dev/build artifacts
 frontend/tsconfig.app.tsbuildinfo
+frontend/tsconfig.node.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 frontend/node_modules/
 
 # Neural Command Deck (Tauri) dev/build artifacts
 tauri-app/node_modules/
 tauri-app/dist/
 tauri-app/src-tauri/target/
+tauri-app/src-tauri/gen/
 tauri-app/.vscode/
 tauri-app/node_modules/.vite/
 

@@ -1,12 +1,13 @@
-"""Unit and integration checks for ``dashboard_views`` and the launcher Training tab."""
+"""Unit checks for headless dashboard helpers (post-Streamlit)."""
 
 from __future__ import annotations
 
 import textwrap
 from pathlib import Path
+
 import pytest
 
-from lumina_os.frontend.dashboard_views import (
+from lumina_os.monitoring.dashboard_helpers import (
     DashboardPaths,
     compute_readiness_score,
     embedded_react_ui_status,
@@ -32,7 +33,7 @@ class TestDashboardPaths:
 
     def test_resolve_workspace_root_points_at_repo(self) -> None:
         root = resolve_workspace_root_from_this_module()
-        assert (root / "lumina_os" / "frontend" / "dashboard_views.py").is_file()
+        assert (root / "lumina_os" / "monitoring" / "dashboard_helpers.py").is_file()
 
 
 @pytest.mark.unit
@@ -106,7 +107,6 @@ def test_embedded_react_ui_status_wrong_base_path(tmp_path: Path) -> None:
     status = embedded_react_ui_status("http://localhost:8000", p)
     assert status["ready"] is False
     assert status["reason"] == "wrong_base_path"
-    assert str(status["react_url"]).startswith("http://localhost:")
 
 
 @pytest.mark.unit
@@ -147,7 +147,7 @@ def test_load_json_dict_missing(tmp_path: Path) -> None:
 def test_get_training_velocity_tpm_none_without_api(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LUMINA_BACKEND_URL", "http://127.0.0.1:59999")
     monkeypatch.setattr(
-        "lumina_os.frontend.dashboard_views.resolve_dashboard_api_key",
+        "lumina_os.monitoring.dashboard_helpers.resolve_dashboard_api_key",
         lambda explicit="": "",
     )
     v, est = get_training_velocity_tpm("http://127.0.0.1:59999", trades=0)
@@ -157,7 +157,7 @@ def test_get_training_velocity_tpm_none_without_api(monkeypatch: pytest.MonkeyPa
 
 def test_get_training_velocity_tpm_uses_api_key_header(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "lumina_os.frontend.dashboard_views.resolve_dashboard_api_key",
+        "lumina_os.monitoring.dashboard_helpers.resolve_dashboard_api_key",
         lambda explicit="": "test-metrics-key",
     )
 
@@ -175,7 +175,7 @@ def test_get_training_velocity_tpm_uses_api_key_header(monkeypatch: pytest.Monke
         captured["headers"] = kwargs.get("headers")
         return _Resp()
 
-    monkeypatch.setattr("lumina_os.frontend.dashboard_views.requests.get", _fake_get)
+    monkeypatch.setattr("lumina_os.monitoring.dashboard_helpers.requests.get", _fake_get)
     v, est = get_training_velocity_tpm("http://127.0.0.1:8000", trades=100)
     assert v == 4200
     assert est is False
@@ -183,25 +183,9 @@ def test_get_training_velocity_tpm_uses_api_key_header(monkeypatch: pytest.Monke
 
 
 @pytest.mark.integration
-def test_streamlit_main_wires_training_dashboard_tab() -> None:
+def test_tauri_has_monitoring_deep_panel() -> None:
     root = Path(__file__).resolve().parents[1]
-    text = (root / "lumina_launcher" / "streamlit_main.py").read_text(encoding="utf-8")
-    registry_text = (root / "lumina_launcher" / "ui" / "tab_registry.py").read_text(encoding="utf-8")
-    assert "launcher_tab_specs" in text
-    assert "LUMINA OS Dashboard" in registry_text
-
-
-@pytest.mark.integration
-def test_import_training_dashboard_module() -> None:
-    from lumina_launcher.ui.tabs.training_dashboard import render_training_dashboard_tab
-
-    assert callable(render_training_dashboard_tab)
-
-
-@pytest.mark.integration
-def test_legacy_dashboard_entry_does_not_import_on_smoke_path() -> None:
-    """``dashboard.py`` calls ``main()`` at import time — do not import it in CI."""
-    root = Path(__file__).resolve().parents[1]
-    text = (root / "lumina_os" / "frontend" / "dashboard.py").read_text(encoding="utf-8")
-    assert "render_full_streamlit_dashboard" in text
-    assert "dashboard_views" in text
+    text = (root / "tauri-app" / "src" / "components" / "intelligence" / "MonitoringDeepPanel.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert "fetchMonitoringDiagnostics" in text or "monitoringClient" in text

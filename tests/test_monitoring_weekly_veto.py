@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lumina_os.frontend.veto_registry_summary import weekly_veto_summary
+from lumina_os.monitoring.veto_registry_summary import weekly_veto_summary
 
 
 @pytest.mark.unit

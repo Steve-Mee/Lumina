@@ -163,3 +163,45 @@ export async function fetchReconciliationStatus(): Promise<ReconciliationStatus>
   if (!response.ok) throw new Error(`Reconciliation HTTP ${response.status}`);
   return response.json() as Promise<ReconciliationStatus>;
 }
+
+export interface BibleUploadPayload {
+  trader_name: string;
+  evolvable_layer: Record<string, unknown>;
+  backtest_results: Record<string, unknown>;
+}
+
+export interface ReflectionUploadPayload {
+  trader_name: string;
+  reflection: string;
+  key_lesson: string;
+  suggested_update?: Record<string, unknown>;
+  pnl_impact?: number;
+}
+
+export async function uploadCommunityBible(payload: BibleUploadPayload): Promise<{ status: string; message?: string }> {
+  const apiKey = resolveMonitoringApiKey();
+  if (!apiKey) throw new Error("API key required for bible upload");
+  const base = resolveBackendBaseUrl();
+  const response = await fetch(`${base}/upload/bible`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", "X-API-Key": apiKey },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Bible upload HTTP ${response.status}`);
+  return response.json() as Promise<{ status: string; message?: string }>;
+}
+
+export async function uploadCommunityReflection(
+  payload: ReflectionUploadPayload,
+): Promise<{ status: string }> {
+  const apiKey = resolveMonitoringApiKey();
+  if (!apiKey) throw new Error("API key required for reflection upload");
+  const base = resolveBackendBaseUrl();
+  const response = await fetch(`${base}/upload/reflection`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json", "X-API-Key": apiKey },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`Reflection upload HTTP ${response.status}`);
+  return response.json() as Promise<{ status: string }>;
+}

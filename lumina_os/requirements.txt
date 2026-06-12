@@ -5,7 +5,6 @@ alembic
 pydantic
 pandas
 plotly
-streamlit
 python-dotenv
 requests
 pytest
