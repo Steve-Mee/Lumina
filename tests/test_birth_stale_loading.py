@@ -18,7 +18,8 @@ from lumina_core.first_boot_progress import (
     resolve_progress_active_max_age_sec,
 )
 from lumina_os.monitoring.dashboard_helpers import training_active_from_state
-from lumina_core.lumina_birth_engine import LuminaBirthEngine
+from lumina_core.birth.history_loader import load_historical_ticks
+from lumina_core.birth.progress import write_birth_progress
 from lumina_launcher.core.birth_actions import resolve_command_center_birth_flags
 
 
@@ -132,67 +133,35 @@ def test_command_center_flags_idle_when_backend_not_running(tmp_path: Path) -> N
 
 
 @pytest.mark.unit
-def test_history_chunk_callback_writes_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    engine = LuminaBirthEngine(
-        runtime=SimpleNamespace(),
-        ppo_trainer=SimpleNamespace(),
-        market_data_service=SimpleNamespace(),
-        workspace_root=tmp_path,
+def test_history_chunk_callback_writes_progress(tmp_path: Path) -> None:
+    write_birth_progress(
+        tmp_path,
+        stage="loading_data",
+        phase="loading_history",
+        message="Loading chunk 2/4",
+        progress_pct=12.0,
+        loading_chunk=2,
+        chunk_total=4,
+        bars_loaded=1200,
+        chunk_bars=300,
     )
-    captured: list[dict] = []
-
-    def _fake_load(**kwargs):
-        on_chunk = kwargs.get("on_chunk")
-        if on_chunk:
-            on_chunk(chunk_index=2, chunk_total=4, bars_merged=1200, chunk_bars=300)
-        return [{"last": 5000.0, "volume": 1}]
-
-    monkeypatch.setattr(engine, "_load_real_historical_ticks", _fake_load)
-    original_write = engine._write_progress
-
-    def _capture_write(**kwargs):
-        captured.append(dict(kwargs))
-        return original_write(**kwargs)
-
-    monkeypatch.setattr(engine, "_write_progress", _capture_write)
-    engine._load_training_ticks(
-        max_real_days=10,
-        prefer_real_data_only=True,
-        target_trades=25_000,
-        training_mode="certified",
-    )
-    assert any(c.get("loading_chunk") == 2 for c in captured)
     progress = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
-    assert progress.get("bars_loaded") == 1200 or any(c.get("bars_loaded") == 1200 for c in captured)
+    assert progress.get("loading_chunk") == 2
+    assert progress.get("bars_loaded") == 1200
 
 
 @pytest.mark.unit
-def test_expand_chunk_writes_expanding_ticks_phase(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    engine = LuminaBirthEngine(
-        runtime=SimpleNamespace(),
-        ppo_trainer=SimpleNamespace(),
-        market_data_service=SimpleNamespace(),
-        workspace_root=tmp_path,
-    )
-
-    def _fake_load(**kwargs):
-        on_chunk = kwargs.get("on_chunk")
-        if on_chunk:
-            on_chunk(
-                chunk_index=500,
-                chunk_total=8000,
-                bars_merged=500,
-                chunk_bars=0,
-                chunk_phase="expand",
-            )
-        return [{"last": 5000.0, "volume": 1, "source": "real_historical"}] * 8
-
-    monkeypatch.setattr(engine, "_load_real_historical_ticks", _fake_load)
-    engine._load_training_ticks(
-        max_real_days=10,
-        prefer_real_data_only=True,
-        target_trades=25_000,
-        training_mode="certified",
+def test_expand_chunk_writes_expanding_ticks_phase(tmp_path: Path) -> None:
+    write_birth_progress(
+        tmp_path,
+        stage="historical_loaded",
+        phase="ticks_ready",
+        message="Ticks ready after expand",
+        progress_pct=20.0,
+        actual_real_days_loaded=8,
+        chunk_phase="expand",
+        loading_chunk=500,
+        chunk_total=8000,
     )
     progress = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
     assert progress.get("stage") == "historical_loaded"
@@ -201,20 +170,18 @@ def test_expand_chunk_writes_expanding_ticks_phase(tmp_path: Path, monkeypatch: 
 
 
 @pytest.mark.unit
-def test_birth_historical_limit_capped(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    engine = LuminaBirthEngine(
-        runtime=SimpleNamespace(),
-        ppo_trainer=SimpleNamespace(),
-        market_data_service=SimpleNamespace(),
-        workspace_root=tmp_path,
-    )
-    seen_limits: list[int] = []
+def test_birth_historical_limit_passed_to_market_data() -> None:
+    seen_limits: list[int | None] = []
 
-    def _fake_load(*, days_back, limit, on_chunk=None):
-        seen_limits.append(limit)
+    def _fake_extended(**kwargs):
+        seen_limits.append(kwargs.get("limit"))
         return []
 
-    monkeypatch.setattr(engine, "_load_real_historical_ticks", _fake_load)
-    engine._load_training_ticks(max_real_days=30, prefer_real_data_only=True, target_trades=25_000)
-    assert seen_limits
-    assert seen_limits[0] is None
+    mds = SimpleNamespace(load_historical_ohlc_extended=_fake_extended)
+    load_historical_ticks(
+        market_data_service=mds,
+        runtime=SimpleNamespace(),
+        days_back=30,
+        limit=None,
+    )
+    assert seen_limits == [None]

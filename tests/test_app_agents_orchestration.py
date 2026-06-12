@@ -7,13 +7,7 @@ also invoked at the end of ``InfiniteSimulator.run_nightly`` in production.
 
 from __future__ import annotations
 
-import shutil
-import subprocess
-import sys
-import time
 import types
-import urllib.error
-import urllib.request
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any

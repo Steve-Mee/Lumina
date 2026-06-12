@@ -38,9 +38,13 @@ def test_stop_birth_training_calls_birth_service(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_tauri_training_control_has_stop() -> None:
+def test_tauri_birth_phase_surface_has_stop() -> None:
     root = Path(__file__).resolve().parents[1]
-    source = (root / "tauri-app" / "src" / "components" / "birth" / "TrainingControlBar.tsx").read_text(
+    birth_screen = (root / "tauri-app" / "src" / "components" / "birth" / "BirthPhaseScreen.tsx").read_text(
         encoding="utf-8"
     )
-    assert "stopBirth" in source or "Stop" in source
+    diagnostics = (root / "tauri-app" / "src" / "components" / "birth" / "BirthDiagnosticsDrawer.tsx").read_text(
+        encoding="utf-8"
+    )
+    assert "stopBirth" in birth_screen
+    assert "Stop birth phase" in diagnostics

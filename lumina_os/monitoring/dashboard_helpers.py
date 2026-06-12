@@ -15,8 +15,6 @@ import yaml
 
 from lumina_core.first_boot_progress import (
     birth_runner_lock_active,
-    format_progress_heartbeat_age,
-    progress_is_recently_active,
     resolve_first_boot_completed_trades,
     resolve_first_boot_stage,
     resolve_first_boot_target_trades,
