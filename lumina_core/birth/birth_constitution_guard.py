@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from lumina_bible.bible_engine import BibleEngine, DEFAULT_BIBLE
 
@@ -11,6 +11,17 @@ from lumina_core.agent_orchestration.schemas import ConstitutionViolation
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.constitution_guard")
+
+_BIBLE: dict[str, Any] = cast(dict[str, Any], DEFAULT_BIBLE)
+
+
+def _default_news_avoidance_cfg() -> dict[str, Any]:
+    layer = _BIBLE.get("evolvable_layer", {})
+    if isinstance(layer, dict):
+        news = layer.get("news_avoidance", {})
+        if isinstance(news, dict):
+            return news
+    return {}
 
 
 @dataclass(slots=True)
@@ -26,9 +37,9 @@ class BirthConstitutionGuard:
             engine = BibleEngine()
             layer = engine.evolvable_layer
             news = layer.get("news_avoidance") if isinstance(layer, dict) else {}
-            self._news_cfg = news if isinstance(news, dict) else DEFAULT_BIBLE["evolvable_layer"]["news_avoidance"]
+            self._news_cfg = news if isinstance(news, dict) else _default_news_avoidance_cfg()
         except Exception:
-            self._news_cfg = DEFAULT_BIBLE["evolvable_layer"]["news_avoidance"]
+            self._news_cfg = _default_news_avoidance_cfg()
 
     def check_entry(
         self,

@@ -165,8 +165,9 @@ def test_swarm_manager_run_swarm_cycle(container_with_stub_app) -> None:
 
 
 @pytest.mark.integration
-def test_fastapi_backend_health_boot() -> None:
+def test_fastapi_backend_health_boot(monkeypatch: pytest.MonkeyPatch) -> None:
     """Smoke: FastAPI app imports and exposes monitoring health (Command Deck backend)."""
+    monkeypatch.setenv("LUMINA_JWT_SECRET_KEY", "ci-test-jwt-secret-not-for-production")
     from fastapi.testclient import TestClient
 
     from lumina_os.backend.app import app
