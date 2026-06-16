@@ -39,13 +39,20 @@ const MILESTONE_META: Record<
     label: "Curriculum training",
     headline: "Curriculum stage active…",
     stages: ["training_running"],
-    phases: ["curriculum_stage", "parallel_simulation"],
+    phases: [
+      "curriculum_stage",
+      "curriculum_learning",
+      "curriculum_research",
+      "data_expansion",
+      "parallel_simulation",
+      "ppo_training",
+    ],
   },
   refinement: {
     label: "PPO polish + OOS eval",
     headline: "Policy polish and OOS Sharpe check…",
     stages: ["ppo_training"],
-    phases: ["ppo_training", "ppo_polish", "oos_evaluation"],
+    phases: ["ppo_polish", "oos_evaluation"],
   },
   awakening: {
     label: "Birth Certificate v2",
@@ -81,7 +88,8 @@ export function resolveActiveMilestone(
     }
   }
 
-  if (phase.includes("ppo") || stage.includes("ppo")) return "refinement";
+  if (phase === "ppo_polish" || phase === "oos_evaluation") return "refinement";
+  if (phase === "ppo_training") return "strategies";
   if (phase.includes("simulation") || stage.includes("simulation") || stage.includes("training")) {
     return "strategies";
   }
@@ -113,11 +121,45 @@ export function buildMilestones(
   });
 }
 
+export interface CompactMilestoneView {
+  items: BirthMilestone[];
+  upcomingCount: number;
+}
+
+/** Show completed + active + next milestone only (max 3 visible). */
+export function buildCompactMilestones(
+  progress: BirthProgressPayload | undefined,
+  status: string,
+): CompactMilestoneView {
+  const all = buildMilestones(progress, status);
+  const activeIndex = all.findIndex((m) => m.state === "active");
+  if (activeIndex < 0) {
+    return { items: all.slice(0, 1), upcomingCount: Math.max(0, all.length - 1) };
+  }
+  const start = Math.max(0, activeIndex - 1);
+  const end = Math.min(all.length, activeIndex + 2);
+  const items = all.slice(start, end);
+  const upcomingCount = Math.max(0, all.length - end);
+  return { items, upcomingCount };
+}
+
 export function resolveBirthHeadline(
   milestones: BirthMilestone[],
   status: string,
   progress?: BirthProgressPayload,
+  certificateOk?: boolean,
 ): string {
+  const failedPayload: BirthStatusPayload = {
+    status,
+    progress,
+    certificate_ok: certificateOk,
+  };
+  if (isBirthCertificateFailed(failedPayload)) {
+    if (normalizeToken(status) === "certificate_failed" || progress?.phase === "certificate_failed") {
+      return "Birth Certificate thresholds not met";
+    }
+    return "Birth Certificate v2 required";
+  }
   if (normalizeToken(status) === "completed") {
     return "Birth Certificate v2 issued";
   }
@@ -195,6 +237,9 @@ export function isBirthInterrupted(payload: BirthStatusPayload): boolean {
 }
 
 export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
+  if (isBirthRunning(payload)) {
+    return false;
+  }
   const status = normalizeToken(payload.status);
   const stage = normalizeToken(payload.progress?.stage);
   const phase = normalizeToken(payload.progress?.phase);
@@ -215,15 +260,305 @@ export function extractSimProgress(progress: BirthProgressPayload | undefined): 
   target: number;
   pct: number;
 } {
-  const done = Number(
+  const hasCurriculumStage = Boolean(String(progress?.curriculum_stage ?? "").trim());
+  const stageTrades = Number(progress?.stage_trades ?? 0);
+  const cumulative = Number(
     progress?.trades_done ?? progress?.cumulative_trades ?? progress?.total_trades ?? 0,
   );
-  const target = Number(progress?.target_trades ?? 0);
+  const done = hasCurriculumStage ? stageTrades : cumulative;
+  const stageTarget = Number(progress?.stage_target_trades ?? 0);
+  const globalTarget = Number(progress?.target_trades ?? 0);
+  const target =
+    hasCurriculumStage && stageTarget > 0 ? stageTarget : globalTarget;
   const pct =
     target > 0
       ? Math.min(100, (done / target) * 100)
       : Number(progress?.progress_pct ?? 0);
   return { done, target, pct };
+}
+
+export type StageScorecardHealth = "advancing" | "working" | "stale";
+
+export interface StageScorecardModel {
+  stageLabel: string;
+  goalLabel: string;
+  tradesDone: number;
+  tradesRequired: number;
+  tradesPct: number;
+  metricLabel: string;
+  metricValue: number | null;
+  metricTarget: number | null;
+  metricMin: number | null;
+  metricMax: number | null;
+  metricPct: number;
+  passCriteriaId: string;
+  subPhase: string;
+  subPhaseLabel: string;
+  patternsMined: number;
+  learningAttempt: number;
+  explorationActive: boolean;
+  stageWallRemainingSec: number | null;
+  stageRangeRoundTrips: number | null;
+  heartbeatSec: number | null;
+  health: StageScorecardHealth;
+  healthHint: string;
+  isCurriculum: boolean;
+}
+
+const STALE_WORKING_SEC = 120;
+const STALE_WARN_SEC = 600;
+
+function parseProgressTimestamp(progress: BirthProgressPayload | undefined): number | null {
+  const raw = progress?.timestamp;
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function resolveScorecardHealth(
+  progress: BirthProgressPayload | undefined,
+  heartbeatSec: number | null,
+): { health: StageScorecardHealth; healthHint: string } {
+  if (heartbeatSec == null) {
+    return { health: "working", healthHint: "Waiting for progress update…" };
+  }
+  if (progress?.is_advancing === true && heartbeatSec <= STALE_WORKING_SEC) {
+    return { health: "advancing", healthHint: "Progress advancing" };
+  }
+  if (heartbeatSec <= STALE_WORKING_SEC) {
+    return {
+      health: "working",
+      healthHint: "Active — PPO batch may run silently (5–20 min is normal)",
+    };
+  }
+  if (heartbeatSec <= STALE_WARN_SEC) {
+    return {
+      health: "working",
+      healthHint: "No recent update — long PPO batch may still be running",
+    };
+  }
+  return {
+    health: "stale",
+    healthHint: "Possible stall — check logs if metrics unchanged for 10+ min",
+  };
+}
+
+function metricPctForCriteria(
+  passCriteriaId: string,
+  metricValue: number | null,
+  metricTarget: number | null,
+  metricMin: number | null,
+  metricMax: number | null,
+): number {
+  if (metricValue == null) return 0;
+  if (passCriteriaId === "trend_winrate" && metricTarget != null && metricTarget > 0) {
+    return Math.min(100, (metricValue / metricTarget) * 100);
+  }
+  if (passCriteriaId === "range_hold_ratio" && metricMin != null && metricMax != null) {
+    if (metricValue >= metricMin && metricValue <= metricMax) return 100;
+    if (metricValue < metricMin && metricMin > 0) {
+      return Math.min(100, (metricValue / metricMin) * 100);
+    }
+    if (metricValue > metricMax && metricMax > 0) {
+      return Math.max(0, 100 - ((metricValue - metricMax) / metricMax) * 100);
+    }
+  }
+  if (passCriteriaId === "range_roundtrip" && metricMin != null && metricMax != null) {
+    if (metricValue >= metricMin && metricValue <= metricMax) return 100;
+    if (metricValue < metricMin && metricMin > 0) {
+      return Math.min(100, (metricValue / metricMin) * 100);
+    }
+    if (metricValue > metricMax && metricMax > 0) {
+      return Math.max(0, 100 - ((metricValue - metricMax) / metricMax) * 100);
+    }
+  }
+  if (passCriteriaId === "mixed_constitution") {
+    return metricValue <= 0 ? 100 : 0;
+  }
+  return 0;
+}
+
+function inferPassCriteriaFromStage(
+  curriculumStage: string,
+  stageTarget: number,
+): {
+  id: string;
+  goalLabel: string;
+  metricLabel: string;
+  metricTarget: number | null;
+  metricMin: number | null;
+  metricMax: number | null;
+  displayName: string;
+  curriculumIndex: number;
+} {
+  const stage = curriculumStage.toLowerCase();
+  if (stage === "stage2_range") {
+    return {
+      id: "range_roundtrip",
+      goalLabel: `≥${stageTarget} trades · position-flat 30–70% on range ticks`,
+      metricLabel: "Position flat",
+      metricTarget: null,
+      metricMin: 0.3,
+      metricMax: 0.7,
+      displayName: "Range patience",
+      curriculumIndex: 2,
+    };
+  }
+  if (stage === "stage3_mixed") {
+    return {
+      id: "mixed_constitution",
+      goalLabel: `≥${stageTarget} trades · 0 constitution violations`,
+      metricLabel: "Violations",
+      metricTarget: 0,
+      metricMin: null,
+      metricMax: null,
+      displayName: "Mixed regimes",
+      curriculumIndex: 3,
+    };
+  }
+  return {
+    id: "trend_winrate",
+    goalLabel: `≥${stageTarget} trades · winrate ≥45%`,
+    metricLabel: "Winrate",
+    metricTarget: 0.45,
+    metricMin: null,
+    metricMax: null,
+    displayName: "Trend",
+    curriculumIndex: 1,
+  };
+}
+
+export function extractStageScorecard(
+  progress: BirthProgressPayload | undefined,
+  nowMs: number = Date.now(),
+): StageScorecardModel | null {
+  const curriculumStage = String(progress?.curriculum_stage ?? "").trim();
+  const phase = normalizeToken(progress?.phase);
+  const isCurriculum =
+    Boolean(curriculumStage) &&
+    !["completed", "practice_completed", "certificate_failed"].includes(phase);
+  const isPolishOrOos = phase === "ppo_polish" || phase === "oos_evaluation";
+  if (!isCurriculum && !isPolishOrOos) {
+    return null;
+  }
+
+  const sim = extractSimProgress(progress);
+  const inferred = curriculumStage
+    ? inferPassCriteriaFromStage(curriculumStage, sim.target || 100)
+    : null;
+
+  const curriculumIndex = Number(
+    progress?.curriculum_index ?? inferred?.curriculumIndex ?? 0,
+  );
+  const curriculumTotal = Number(progress?.curriculum_total ?? 3);
+  const displayName =
+    String(progress?.stage_display_name ?? "").trim() ||
+    inferred?.displayName ||
+    curriculumStage.replace(/_/g, " ");
+  const stageLabel =
+    curriculumIndex > 0 && curriculumIndex <= curriculumTotal
+      ? `Stage ${curriculumIndex}/${curriculumTotal} · ${displayName}`
+      : displayName;
+
+  const passCriteriaId = String(
+    progress?.pass_criteria_id ?? inferred?.id ?? "trend_winrate",
+  );
+  const goalLabel =
+    String(progress?.pass_criteria_label ?? "").trim() ||
+    inferred?.goalLabel ||
+    `≥${sim.target} trades · winrate ≥45%`;
+
+  let metricValue: number | null = null;
+  let metricLabel = String(
+    progress?.pass_metric_label ?? inferred?.metricLabel ?? "Winrate",
+  );
+  const metricTarget =
+    progress?.pass_metric_target != null
+      ? Number(progress.pass_metric_target)
+      : inferred?.metricTarget ?? null;
+  const metricMin =
+    progress?.pass_metric_min != null
+      ? Number(progress.pass_metric_min)
+      : inferred?.metricMin ?? null;
+  const metricMax =
+    progress?.pass_metric_max != null
+      ? Number(progress.pass_metric_max)
+      : inferred?.metricMax ?? null;
+
+  if (passCriteriaId === "trend_winrate") {
+    if (progress?.stage_winrate != null && Number.isFinite(Number(progress.stage_winrate))) {
+      metricValue = Number(progress.stage_winrate);
+    } else if (
+      progress?.stage_wins !== undefined &&
+      progress?.stage_wins !== null &&
+      sim.done > 0
+    ) {
+      metricValue = Number(progress.stage_wins) / sim.done;
+    }
+  } else if (passCriteriaId === "range_hold_ratio") {
+    metricValue =
+      progress?.stage_hold_ratio != null
+        ? Number(progress.stage_hold_ratio)
+        : progress?.hold_ratio != null
+          ? Number(progress.hold_ratio)
+          : null;
+  } else if (passCriteriaId === "range_roundtrip") {
+    metricValue =
+      progress?.stage_range_flat_ratio != null
+        ? Number(progress.stage_range_flat_ratio)
+        : progress?.stage_hold_ratio != null
+          ? Number(progress.stage_hold_ratio)
+          : progress?.hold_ratio != null
+            ? Number(progress.hold_ratio)
+            : null;
+  } else if (passCriteriaId === "mixed_constitution") {
+    metricValue = Number(progress?.constitution_violations ?? 0);
+    metricLabel = "Violations";
+  }
+
+  const ts = parseProgressTimestamp(progress);
+  const heartbeatSec = ts != null ? Math.max(0, Math.round((nowMs - ts) / 1000)) : null;
+  const { health, healthHint } = resolveScorecardHealth(progress, heartbeatSec);
+
+  return {
+    stageLabel,
+    goalLabel,
+    tradesDone: sim.done,
+    tradesRequired: sim.target,
+    tradesPct: sim.pct,
+    metricLabel,
+    metricValue,
+    metricTarget,
+    metricMin,
+    metricMax,
+    metricPct: metricPctForCriteria(
+      passCriteriaId,
+      metricValue,
+      metricTarget,
+      metricMin,
+      metricMax,
+    ),
+    passCriteriaId,
+    subPhase: String(progress?.sub_phase ?? progress?.phase ?? ""),
+    subPhaseLabel:
+      String(progress?.sub_phase_label ?? "").trim() ||
+      String(progress?.phase ?? "").replace(/_/g, " "),
+    patternsMined: Number(progress?.patterns_mined ?? 0),
+    learningAttempt: Number(progress?.learning_attempt ?? 0),
+    explorationActive: Boolean(progress?.exploration_active),
+    stageWallRemainingSec:
+      progress?.stage_wall_remaining_sec != null
+        ? Math.max(0, Number(progress.stage_wall_remaining_sec))
+        : null,
+    stageRangeRoundTrips:
+      progress?.stage_range_round_trips != null
+        ? Math.max(0, Number(progress.stage_range_round_trips))
+        : null,
+    heartbeatSec,
+    health,
+    healthHint,
+    isCurriculum,
+  };
 }
 
 export function extractPpoProgress(progress: BirthProgressPayload | undefined): {

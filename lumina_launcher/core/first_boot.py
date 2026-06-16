@@ -303,6 +303,27 @@ class FirstBootManager:
             except Exception:
                 logger.warning("first_boot.clear_artifact_failed path=%s", path, exc_info=True)
 
+    def clear_stale_for_certified_retry(self) -> None:
+        """Remove stale birth artifacts for a fresh certified retry; keep setup/user config."""
+        for path in (
+            self.flag_path,
+            self.legacy_flag_path,
+            self.certificate_path,
+            self.policy_path,
+            self.practice_policy_path,
+            self.practice_completed_flag_path,
+            self.progress_path,
+            self.legacy_progress_path,
+            self.checkpoint_path,
+            self.legacy_checkpoint_path,
+            self.pause_flag_path,
+            self.go_to_bot_flag_path,
+        ):
+            try:
+                path.unlink(missing_ok=True)
+            except Exception:
+                logger.warning("first_boot.clear_stale_retry_failed path=%s", path, exc_info=True)
+
     def clear_progress_runtime_state(self) -> None:
         for path in (
             self.progress_path,

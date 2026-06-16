@@ -29,6 +29,40 @@ def _max_drawdown_pct(pnl_series: list[float], *, equity: float = 50_000.0) -> f
     return max(0.0, (peak - curve[-1]) / peak * 100.0)
 
 
+def build_certificate_failure_reasons(
+    *,
+    real_data_pct: float,
+    winrate: float,
+    sharpe: float,
+    drawdown: float,
+    regimes: list[str],
+    holdout_trades: int,
+    constitution_violations: int,
+    thresholds: BirthCertificateThresholds,
+) -> list[str]:
+    reasons: list[str] = []
+    if constitution_violations != 0:
+        reasons.append(f"constitution_violations:{constitution_violations}/0")
+    if real_data_pct < thresholds.min_real_data_pct:
+        reasons.append(
+            f"real_data_pct:{real_data_pct:.2f}/{thresholds.min_real_data_pct:.2f}"
+        )
+    if winrate < thresholds.min_oos_winrate:
+        reasons.append(f"oos_winrate:{winrate:.2f}/{thresholds.min_oos_winrate:.2f}")
+    if sharpe < thresholds.min_oos_sharpe:
+        reasons.append(f"oos_sharpe:{sharpe:.2f}/{thresholds.min_oos_sharpe:.2f}")
+    if drawdown > thresholds.max_oos_drawdown_pct:
+        reasons.append(
+            f"oos_max_drawdown_pct:{drawdown:.2f}/{thresholds.max_oos_drawdown_pct:.2f}"
+        )
+    regime_count = len(set(regimes))
+    if regime_count < thresholds.min_regimes:
+        reasons.append(f"regimes_covered:{regime_count}/{thresholds.min_regimes}")
+    if holdout_trades < thresholds.min_holdout_trades:
+        reasons.append(f"holdout_trades:{holdout_trades}/{thresholds.min_holdout_trades}")
+    return reasons
+
+
 def evaluate_holdout_certificate(
     *,
     runtime: Any,
@@ -56,6 +90,17 @@ def evaluate_holdout_certificate(
     drawdown = _max_drawdown_pct(rollout.pnl_series)
     regimes = sorted(set(rollout.regimes_seen))
 
+    failure_reasons = build_certificate_failure_reasons(
+        real_data_pct=float(real_data_pct),
+        winrate=winrate,
+        sharpe=sharpe,
+        drawdown=drawdown,
+        regimes=regimes,
+        holdout_trades=rollout.trades,
+        constitution_violations=total_violations,
+        thresholds=thresholds,
+    )
+
     result = {
         "real_data_pct": float(real_data_pct),
         "oos_winrate": round(winrate, 4),
@@ -65,23 +110,9 @@ def evaluate_holdout_certificate(
         "regimes_covered": regimes[: max(3, len(regimes))],
         "holdout_days": int(holdout_days),
         "holdout_trades": rollout.trades,
+        "failure_reasons": failure_reasons,
     }
 
-    passed = True
-    if total_violations != 0:
-        passed = False
-    if real_data_pct < thresholds.min_real_data_pct:
-        passed = False
-    if winrate < thresholds.min_oos_winrate:
-        passed = False
-    if sharpe < thresholds.min_oos_sharpe:
-        passed = False
-    if drawdown > thresholds.max_oos_drawdown_pct:
-        passed = False
-    if len(set(regimes)) < thresholds.min_regimes:
-        passed = False
-    if rollout.trades < thresholds.min_holdout_trades:
-        passed = False
-
+    passed = len(failure_reasons) == 0
     result["certificate_passed"] = passed
     return result

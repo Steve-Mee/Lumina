@@ -6,6 +6,9 @@ import hashlib
 from typing import Any
 
 import numpy as np
+import pandas as pd
+
+from lumina_core.engine.analysis_helpers import has_ohlc_columns, normalize_ohlc_frame
 
 OBSERVATION_DIM = 32
 
@@ -48,14 +51,18 @@ def build_observation_vector(
     drawdown: float,
     rolling_sharpe: float,
     dna_hash: str = "",
+    trade_mode: str = "sim",
 ) -> np.ndarray:
     price = float(row.get("close", row.get("last", 0.0)) or 0.0)
 
     recent = data[max(0, idx - 120) : idx + 1]
     regime = str(row.get("regime", "NEUTRAL"))
-    if len(recent) > 20 and hasattr(engine, "detect_market_regime"):
+    skip_regime_detection = trade_mode == "birth" and bool(str(row.get("regime", "")).strip())
+    if not skip_regime_detection and len(recent) > 20 and hasattr(engine, "detect_market_regime"):
         try:
-            regime = str(engine.detect_market_regime(__import__("pandas").DataFrame(recent)))
+            frame = normalize_ohlc_frame(pd.DataFrame(recent))
+            if has_ohlc_columns(frame):
+                regime = str(engine.detect_market_regime(frame))
         except Exception:
             pass
     regime_val = regime_scalar(regime)

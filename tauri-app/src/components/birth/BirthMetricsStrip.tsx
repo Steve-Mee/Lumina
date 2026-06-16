@@ -1,5 +1,9 @@
 import type { BirthProgressPayload } from "@/lib/birthClient";
-import { extractPpoProgress, extractSimProgress } from "@/lib/birthPhaseModel";
+import {
+  extractPpoProgress,
+  extractSimProgress,
+  extractStageScorecard,
+} from "@/lib/birthPhaseModel";
 import { cn } from "@/lib/utils";
 
 interface BirthMetricsStripProps {
@@ -37,6 +41,30 @@ function ProgressBar({
   );
 }
 
+function formatPassMetricDetail(
+  scorecard: NonNullable<ReturnType<typeof extractStageScorecard>>,
+): string {
+  if (scorecard.metricValue == null) {
+    if (scorecard.passCriteriaId === "trend_winrate" && scorecard.tradesDone > 0) {
+      return "syncing after next rollout or backend restart";
+    }
+    return "—";
+  }
+  if (scorecard.passCriteriaId === "mixed_constitution") {
+    return `${Math.round(scorecard.metricValue)} violations`;
+  }
+  const value = `${(scorecard.metricValue * 100).toFixed(0)}%`;
+  if (scorecard.passCriteriaId === "range_hold_ratio" || scorecard.passCriteriaId === "range_roundtrip") {
+    const min = scorecard.metricMin != null ? (scorecard.metricMin * 100).toFixed(0) : "30";
+    const max = scorecard.metricMax != null ? (scorecard.metricMax * 100).toFixed(0) : "70";
+    return `${value} (target ${min}–${max}%)`;
+  }
+  if (scorecard.metricTarget != null) {
+    return `${value} → need ${(scorecard.metricTarget * 100).toFixed(0)}%`;
+  }
+  return value;
+}
+
 export function BirthMetricsStrip({
   progress,
   elapsedSeconds,
@@ -45,7 +73,13 @@ export function BirthMetricsStrip({
 }: BirthMetricsStripProps) {
   const sim = extractSimProgress(progress);
   const ppo = extractPpoProgress(progress);
+  const scorecard = extractStageScorecard(progress);
   const overallPct = Number(progress?.progress_pct ?? sim.pct);
+  const subPhase = String(progress?.sub_phase ?? progress?.phase ?? "").toLowerCase();
+  const showPpoBatch =
+    subPhase === "ppo_training" ||
+    subPhase === "curriculum_learning" ||
+    subPhase === "curriculum_research";
 
   const elapsedLabel =
     elapsedSeconds != null && elapsedSeconds > 0
@@ -55,7 +89,7 @@ export function BirthMetricsStrip({
   return (
     <div className={cn("birth-metrics-strip space-y-4 rounded-lg border border-white/8 p-3", className)}>
       <ProgressBar
-        label="Simulation trades"
+        label={scorecard ? "Stage trades" : "Simulation trades"}
         value={sim.pct}
         detail={
           sim.target > 0
@@ -63,15 +97,24 @@ export function BirthMetricsStrip({
             : `${sim.done.toLocaleString()} trades`
         }
       />
-      {ppo.steps > 0 ? (
+      {scorecard && scorecard.passCriteriaId !== "polish_complete" ? (
+        <ProgressBar
+          label={scorecard.metricLabel}
+          value={scorecard.metricPct}
+          detail={formatPassMetricDetail(scorecard)}
+        />
+      ) : null}
+      {showPpoBatch && ppo.steps > 0 ? (
+        <ProgressBar label="PPO batch" value={overallPct} detail={ppo.label} />
+      ) : !scorecard && ppo.steps > 0 ? (
         <ProgressBar label="PPO refinement" value={overallPct} detail={ppo.label} />
-      ) : (
+      ) : !scorecard ? (
         <ProgressBar
           label="Overall progress"
           value={overallPct}
           detail={`${overallPct.toFixed(1)}%`}
         />
-      )}
+      ) : null}
       <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] text-muted-foreground">
         {elapsedLabel ? <span className="shrink-0">Elapsed {elapsedLabel}</span> : <span />}
         {message ? (

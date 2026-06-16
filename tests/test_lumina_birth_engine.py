@@ -6,9 +6,15 @@ from types import SimpleNamespace
 
 import pytest
 
+from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
+from lumina_core.birth.data_expansion import DataExpansionResult
+from lumina_core.birth.pattern_miner import PatternMineResult
+from lumina_core.birth.purged_split import purged_train_holdout_split
+from lumina_core.birth.sim_runner import SimRolloutResult, run_policy_rollout
 from lumina_core.birth.tick_enricher import enrich_ticks_for_sim
-from lumina_core.birth.sim_runner import run_policy_rollout
 from lumina_core.lumina_birth_engine import LuminaBirthEngine
+
+from tests.birth.preflight_helpers import patch_holdout_preflight_ok
 
 
 class _FakePpoTrainer:
@@ -119,7 +125,109 @@ def test_enrich_ticks_and_sim_runner_produce_trades(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_hold_only_rollout_is_bounded_not_infinite(tmp_path: Path) -> None:
+    ticks = enrich_ticks_for_sim(_rising_historical_ticks(600))
+    runtime = SimpleNamespace(
+        detect_market_regime=lambda _df: "NEUTRAL",
+        market_data=SimpleNamespace(get_tape_snapshot=lambda: {}),
+        get_current_dream_snapshot=lambda: {},
+        AI_DRAWN_FIBS={},
+        world_model={},
+    )
+    result = run_policy_rollout(
+        runtime=runtime,
+        data=ticks,
+        policy=_HoldOnlyPolicy(),
+        target_trades=2000,
+        workspace_root=tmp_path,
+        rollout_step_budget=150,
+        stall_probe_steps=40,
+        exploration_steps=0,
+    )
+    assert result.rollout_steps == 150
+    assert result.stalled is True
+
+
+@pytest.mark.unit
+def test_engine_continues_research_on_rollout_stall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_holdout_preflight_ok(monkeypatch)
+    trainer = _FakePpoTrainer()
+    engine = LuminaBirthEngine(
+        runtime=SimpleNamespace(),
+        ppo_trainer=trainer,
+        market_data_service=SimpleNamespace(),
+        workspace_root=tmp_path,
+    )
+    ticks = _rising_historical_ticks(800)
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.load_historical_ticks",
+        lambda **_kwargs: ticks,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.enrich_ticks_with_news",
+        lambda rows, **_kwargs: rows,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.mine_winning_patterns",
+        lambda **_kwargs: PatternMineResult(
+            patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}}] * 150,
+            wins=150,
+            scanned=100,
+            regimes_seen={"TREND_UP"},
+        ),
+    )
+
+    def _mock_expand(**_kwargs) -> DataExpansionResult:
+        split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+        return DataExpansionResult(
+            train_ticks=list(split.train),
+            holdout_ticks=list(split.holdout),
+            all_ticks=ticks,
+            split=split,
+            days_back=90,
+            step_index=0,
+            real_data_pct=99.0,
+            exhausted=False,
+        )
+
+    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        lambda **_kwargs: {"certificate_passed": False},
+    )
+
+    def _stalled_rollout(**_kwargs) -> SimRolloutResult:
+        return SimRolloutResult(
+            trades=0,
+            wins=0,
+            hold_signals=100,
+            total_signals=100,
+            total_pnl=0.0,
+            trajectories=[],
+            pnl_series=[],
+            constitution_violations=0,
+            regimes_seen=set(),
+            rollout_steps=5000,
+            stalled=True,
+            stall_reason="hold_only_after_exploration",
+            exploration_steps_used=500,
+            constitution_blocks=0,
+        )
+
+    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _stalled_rollout)
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(max_rollouts_per_stage=5),
+        trade_budget_cap=500,
+    )
+    result = engine.run_birth_phase(target_trades=500, force=True, prefer_real_data_only=False)
+    assert result["status"] in {"certificate_failed", "completed", "practice_completed"}
+    payload = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
+    assert payload.get("phase") not in {"simulation_stall", "curriculum_failed"}
+
+
+@pytest.mark.unit
 def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    patch_holdout_preflight_ok(monkeypatch)
     trainer = _FakePpoTrainer()
     engine = LuminaBirthEngine(
         runtime=SimpleNamespace(),
@@ -151,6 +259,34 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
         lambda **_kwargs: ticks,
     )
     monkeypatch.setattr(
+        "lumina_core.birth.engine.enrich_ticks_with_news",
+        lambda rows, **_kwargs: rows,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.mine_winning_patterns",
+        lambda **_kwargs: PatternMineResult(
+            patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}}] * 120,
+            wins=120,
+            scanned=50,
+            regimes_seen={"NEUTRAL"},
+        ),
+    )
+
+    def _mock_expand(**_kwargs) -> DataExpansionResult:
+        split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+        return DataExpansionResult(
+            train_ticks=list(split.train),
+            holdout_ticks=list(split.holdout),
+            all_ticks=ticks,
+            split=split,
+            days_back=90,
+            step_index=0,
+            real_data_pct=99.0,
+            exhausted=False,
+        )
+
+    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
+    monkeypatch.setattr(
         "lumina_core.birth.engine.evaluate_holdout_certificate",
         lambda **_kwargs: {
             "certificate_passed": True,
@@ -166,12 +302,14 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
     )
     monkeypatch.setattr(
         "lumina_core.birth.engine.run_policy_rollout",
-        lambda **_kwargs: SimpleNamespace(
+        lambda **_kwargs: SimRolloutResult(
             trades=100,
             wins=55,
             hold_signals=0,
             total_signals=100,
+            total_pnl=0.0,
             trajectories=[{"reward": 1.0}] * 300,
+            pnl_series=[],
             constitution_violations=0,
             regimes_seen={"TREND_UP", "NEUTRAL"},
         ),

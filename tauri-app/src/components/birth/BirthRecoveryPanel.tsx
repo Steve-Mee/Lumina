@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { startBirthSession, type BirthStatusPayload } from "@/lib/birthClient";
+import { startBirthSession, isBirthStartSuccessful, reuseDataBirthSession, type BirthStatusPayload } from "@/lib/birthClient";
 import {
   birthProgressDiagnostics,
   checkpointTradeCount,
@@ -39,14 +39,23 @@ const COPY: Record<
     title: "Birth session interrupted",
     body: "A previous birth run was stopped before completion. Resume from the last checkpoint or start fresh.",
   },
+  certificate_failed: {
+    title: "Certificate thresholds not met",
+    body: "OOS evaluation failed. Continue from checkpoint, reuse loaded data, or wipe and restart.",
+  },
 };
 
 async function runBirthAction(
   label: string,
-  action: () => Promise<unknown>,
+  action: () => Promise<Record<string, unknown>>,
 ): Promise<void> {
   try {
-    await action();
+    const result = await action();
+    const status = String(result.status ?? "");
+    if (!isBirthStartSuccessful(status)) {
+      toast.error(String(result.message ?? `Birth action failed (${status || "unknown"})`));
+      return;
+    }
     useBirthStore.setState({ uiPhase: "running", pollError: null });
     await useBirthStore.getState().poll();
     toast.success(label);
@@ -183,6 +192,51 @@ export function BirthRecoveryPanel({
           >
             Retry from checkpoint
           </Button>
+        ) : null}
+
+        {kind === "certificate_failed" ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                void runBirthAction("Continuing from checkpoint…", () =>
+                  startBirthSession({ targetTrades, continueTraining: true }),
+                )
+              }
+            >
+              Continue learning
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void (async () => {
+                  try {
+                    const result = await reuseDataBirthSession(targetTrades);
+                    if (!isBirthStartSuccessful(result.status)) {
+                      toast.error(String(result.message ?? "Reuse data failed"));
+                      return;
+                    }
+                    useBirthStore.setState({ uiPhase: "running", pollError: null });
+                    await useBirthStore.getState().poll();
+                    toast.success("Reusing data manifest from checkpoint");
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Reuse data failed");
+                  }
+                })()
+              }
+            >
+              Reuse data & retry
+            </Button>
+            {status?.quality_score != null ? (
+              <p className="w-full font-mono text-[10px] text-muted-foreground">
+                Quality score: {Number(status.quality_score).toFixed(1)}
+              </p>
+            ) : null}
+          </>
         ) : null}
 
         {onDismiss ? (

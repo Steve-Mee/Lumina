@@ -299,6 +299,25 @@
   border-top: none;
 }
 
+.birth-phase-certificate-overlay {
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 50% 35%,
+      color-mix(in srgb, var(--lumina-cyan) 10%, transparent),
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--lumina-void) 94%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.birth-completion-summary {
+  width: 100%;
+}
+
+.birth-phase-certificate-overlay .birth-completion-summary {
+  margin-inline: auto;
+}
+
 .birth-phase-subtitle {
   color: color-mix(in srgb, var(--muted-foreground) 70%, transparent);
   max-width: 36ch;

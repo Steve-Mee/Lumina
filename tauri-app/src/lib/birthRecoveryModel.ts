@@ -5,6 +5,7 @@ export type BirthRecoveryKind =
   | "checkpoint_available"
   | "simulation_stall"
   | "session_interrupted"
+  | "certificate_failed"
   | null;
 
 function norm(value: unknown): string {
@@ -32,6 +33,9 @@ export function detectBirthRecoveryKind(
   }
 
   const topStatus = norm(status.status);
+  if (topStatus === "certificate_failed") {
+    return "certificate_failed";
+  }
   if (topStatus === "interrupted") {
     return "session_interrupted";
   }
@@ -44,6 +48,9 @@ export function detectBirthRecoveryKind(
 
   if (stage === "history_unavailable" || phase === "loading_history_failed") {
     return "history_unavailable";
+  }
+  if (phase === "certificate_failed" || phase === "certificate_remediation") {
+    return "certificate_failed";
   }
   if (stage === "checkpoint_available") {
     return "checkpoint_available";

@@ -8,6 +8,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lumina_core.birth.stage_scorecard import SCORECARD_PRESERVE_KEYS, enrich_progress_scorecard
+
+
+def read_birth_progress(workspace_root: Path | str) -> dict[str, Any]:
+    root = Path(workspace_root)
+    for rel in ("state/lumina_birth_progress.json", "state/first_boot_progress.json"):
+        path = root / rel
+        if not path.is_file():
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
 
 def write_birth_progress(
     workspace_root: Path | str,
@@ -23,6 +40,7 @@ def write_birth_progress(
     **extra: Any,
 ) -> None:
     root = Path(workspace_root)
+    prev = read_birth_progress(root)
     payload: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "stage": str(stage).strip().lower(),
@@ -36,7 +54,13 @@ def write_birth_progress(
         "progress_pct": round(max(0.0, min(100.0, float(progress_pct))), 2),
         "elapsed_sec": round(max(0.0, time.time() - birth_start_time), 2) if birth_start_time > 0 else 0.0,
     }
+    if prev.get("elapsed_sec") and birth_start_time <= 0:
+        payload["elapsed_sec"] = prev.get("elapsed_sec", 0.0)
+    for key in SCORECARD_PRESERVE_KEYS:
+        if key not in extra and key in prev:
+            payload[key] = prev[key]
     payload.update(extra)
+    payload = enrich_progress_scorecard(payload)
     encoded = json.dumps(payload, ensure_ascii=True, indent=2)
     for rel in ("state/lumina_birth_progress.json", "state/first_boot_progress.json"):
         path = root / rel

@@ -61,6 +61,8 @@ The backend function `resolve_app_surface()` in `lumina_launcher/core/onboarding
 | Wizard when you expect birth | Setup incomplete or backend unreachable | Check `GET /api/setup/onboarding` → `required_steps`, `app_surface_reason` |
 | Empty dashboard, no controls | Birth incomplete (overlay should show) | Return to birth phase from overlay; verify `birth.artifacts_ok` |
 | Birth restarts from scratch | No checkpoint / fresh `-PartialBirth` reset | Use recovery panel; check birth logs |
+| Birth certificate failed / Retry does nothing | Stale completion flag without valid v2 cert, or old client retry path | Use **Retry birth** in Command Deck (calls `POST /api/birth/retry`: clears stale artifacts, fresh certified start). Deck stays blocked until `certificate_ok: true`. |
+| Stale `curriculum_failed` / `trades=1` while birth runs | Old backend bytecode or stale `state/lumina_birth_progress.json` | **Restart backend** after BRO deploy (`birth.engine.version=BRO-v1` in logs). Retry birth; expect phases `curriculum_research` / `curriculum_learning`, rising `patterns_mined`. |
 | Always lands on deck after reset | Artifacts still on disk | Run full dev reset script without `-PartialBirth` |
 
 ---
@@ -105,5 +107,6 @@ Full contract: [lumina-core-api-contracts.md](lumina-core-api-contracts.md) §10
 ## Related
 
 - ADR: [adr/0011-tauri-lifecycle-gate-ssot.md](adr/0011-tauri-lifecycle-gate-ssot.md)
+- ADR: [adr/0017-birth-research-oracle.md](adr/0017-birth-research-oracle.md) (BRO-v1 never-stop curriculum)
 - Client phase mapping: `tauri-app/src/lib/onboardingPhase.ts`
 - Python SSOT: `lumina_launcher/core/onboarding.py` → `resolve_app_surface()`

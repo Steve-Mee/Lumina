@@ -238,6 +238,18 @@ birth_v2:
     stage2_range_trades: 3000
     stage3_mixed_trades: 5000
     stage4_polish_ppo_steps: 50000
+    rollout_chunk_trades: 250
+    oracle_scan_stride: 5
+    oracle_patterns_per_stage: 5000
+    oracle_max_hold_bars: 120
+    data_expansion_steps: [90, 180, 365, 730]
+    stagnation_rollouts_before_expand: 5
+    max_rollouts_per_stage: 999999
+    gen0_provisional_min_trades: 25
+  news:
+    primary: finnhub
+    enable_cache: true
+    cache_path: state/birth_news_cache.json
   holdout_pct: 0.20
   certificate_thresholds:
     min_oos_winrate: 0.48

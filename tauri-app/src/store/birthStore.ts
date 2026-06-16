@@ -3,7 +3,10 @@ import { create } from "zustand";
 import type { BirthStatusPayload } from "@/lib/birthClient";
 import {
   fetchBirthStatusTyped,
-  startBirthSession,
+  isBirthStartSuccessful,
+  retryBirthSession,
+  resumeBirthSession,
+  reuseDataBirthSession,
   startBirthSessionContinue,
 } from "@/lib/birthClient";
 import {
@@ -34,7 +37,9 @@ interface BirthState {
     appSurfaceReason?: string;
     targetTrades: number;
   }) => Promise<boolean>;
-  retryBirth: () => Promise<boolean>;
+  retryBirth: (options?: { wipe?: boolean }) => Promise<boolean>;
+  resumeBirth: () => Promise<boolean>;
+  reuseDataBirth: () => Promise<boolean>;
   beginFinale: () => void;
   reset: () => void;
 }
@@ -51,7 +56,12 @@ export const useBirthStore = create<BirthState>((set, get) => ({
 
   applyStatus: (payload) => {
     const milestones = buildMilestones(payload.progress, payload.status);
-    const headline = resolveBirthHeadline(milestones, payload.status, payload.progress);
+    const headline = resolveBirthHeadline(
+      milestones,
+      payload.status,
+      payload.progress,
+      payload.certificate_ok,
+    );
     let uiPhase: BirthUiPhase = get().uiPhase;
 
     if (get().uiPhase === "finale") {
@@ -120,20 +130,70 @@ export const useBirthStore = create<BirthState>((set, get) => ({
     }
   },
 
-  retryBirth: async () => {
+  retryBirth: async (options) => {
     set({ uiPhase: "running", pollError: null });
     try {
-      const hasCheckpoint =
-        Boolean(get().status?.progress?.trades_done) ||
-        Boolean(get().status?.progress?.ppo_steps);
-      const start = hasCheckpoint ? startBirthSessionContinue : startBirthSession;
-      await start(get().targetTrades);
+      const response = await retryBirthSession(get().targetTrades, options);
+      if (!isBirthStartSuccessful(response.status)) {
+        const message = response.message ?? `Birth retry failed (${response.status})`;
+        get().applyStatus(response);
+        set({
+          uiPhase: "certificate_failed",
+          pollError: message,
+        });
+        return false;
+      }
+      get().applyStatus(response);
       await get().poll();
       return true;
     } catch (err) {
       set({
-        uiPhase: "error",
+        uiPhase: "certificate_failed",
         pollError: err instanceof Error ? err.message : "Birth restart failed",
+      });
+      return false;
+    }
+  },
+
+  resumeBirth: async () => {
+    set({ uiPhase: "running", pollError: null });
+    try {
+      const response = await resumeBirthSession(get().targetTrades);
+      if (!isBirthStartSuccessful(response.status)) {
+        const message = response.message ?? `Birth resume failed (${response.status})`;
+        get().applyStatus(response);
+        set({ uiPhase: "certificate_failed", pollError: message });
+        return false;
+      }
+      get().applyStatus(response);
+      await get().poll();
+      return true;
+    } catch (err) {
+      set({
+        uiPhase: "certificate_failed",
+        pollError: err instanceof Error ? err.message : "Birth resume failed",
+      });
+      return false;
+    }
+  },
+
+  reuseDataBirth: async () => {
+    set({ uiPhase: "running", pollError: null });
+    try {
+      const response = await reuseDataBirthSession(get().targetTrades);
+      if (!isBirthStartSuccessful(response.status)) {
+        const message = response.message ?? `Birth reuse failed (${response.status})`;
+        get().applyStatus(response);
+        set({ uiPhase: "certificate_failed", pollError: message });
+        return false;
+      }
+      get().applyStatus(response);
+      await get().poll();
+      return true;
+    } catch (err) {
+      set({
+        uiPhase: "certificate_failed",
+        pollError: err instanceof Error ? err.message : "Birth reuse failed",
       });
       return false;
     }

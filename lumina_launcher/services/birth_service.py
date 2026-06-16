@@ -54,6 +54,9 @@ _BIRTH_ACTIVE_STAGES = frozenset(
         "ppo_training",
         "deferred_calendar",
         "simulation_stall_retry",
+        "curriculum_learning",
+        "curriculum_research",
+        "data_expansion",
     }
 )
 
@@ -219,6 +222,7 @@ class BirthService:
         practice_mode: bool = False,
         explicit_user_start: bool = False,
         continue_training: bool = False,
+        reuse_data: bool = False,
     ) -> Dict[str, Any]:
         if not explicit_user_start:
             return {
@@ -319,6 +323,7 @@ class BirthService:
                         force=force,
                         practice_mode=bool(practice_mode),
                         reuse_existing_policy=bool(reuse_existing_policy),
+                        reuse_data_manifest=bool(reuse_data),
                     )
                 finally:
                     os.chdir(previous_cwd)
@@ -350,24 +355,22 @@ class BirthService:
             ),
         }
 
+    def _sanitize_running_progress(self, progress: Dict[str, Any]) -> Dict[str, Any]:
+        """Drop stale failure phases while a birth run is actively executing."""
+        sanitized = dict(progress)
+        phase = str(sanitized.get("phase", "") or "").strip().lower()
+        if phase in {"curriculum_failed", "simulation_stall"}:
+            sanitized["phase"] = "curriculum_learning"
+            sanitized["stage"] = "training_running"
+        return sanitized
+
     def get_status(self) -> Dict[str, Any]:
         progress = self._load_progress()
+        if self.is_running() or self._progress_indicates_running(progress):
+            progress = self._sanitize_running_progress(progress)
         live = birth_training_is_live(self.workspace_root, thread_running=self.is_running())
         stage = resolve_first_boot_stage(progress)
         base_meta = {"progress": progress, "live": live}
-
-        if self.completed_flag.exists():
-            return self._enrich_birth_status(
-                {
-                    **base_meta,
-                    "status": "completed",
-                    "progress_pct": 100,
-                    "message": "Birth Phase voltooid",
-                    "result": self._result,
-                    "orphaned": False,
-                    "adaptive_intelligence": self._adaptive_intelligence_status(),
-                }
-            )
 
         if self._error:
             return self._enrich_birth_status(
@@ -404,6 +407,44 @@ class BirthService:
                     "message": str(progress.get("message") or "Birth Phase actief (cross-process)."),
                     "runner_pid": runner_meta.get("pid"),
                     "runner_host": runner_meta.get("host"),
+                    "orphaned": False,
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
+
+        if self.completed_flag.exists():
+            cert_ok = self.certificate_ok()
+            if not cert_ok:
+                phase = str(progress.get("phase", "") or "").lower()
+                stage_name = str(progress.get("stage", "") or "").lower()
+                if phase == "certificate_failed" or stage_name == "failed":
+                    status = "certificate_failed"
+                    message = str(
+                        progress.get("message") or "Birth Certificate v2 thresholds not met."
+                    )
+                else:
+                    status = "certificate_failed"
+                    message = (
+                        "Birth completion flag present but Birth Certificate v2 is missing or invalid."
+                    )
+                return self._enrich_birth_status(
+                    {
+                        **base_meta,
+                        "status": status,
+                        "progress_pct": float(progress.get("progress_pct", 100) or 100),
+                        "message": message,
+                        "result": self._result,
+                        "orphaned": False,
+                        "adaptive_intelligence": self._adaptive_intelligence_status(),
+                    }
+                )
+            return self._enrich_birth_status(
+                {
+                    **base_meta,
+                    "status": "completed",
+                    "progress_pct": 100,
+                    "message": "Birth Phase complete",
+                    "result": self._result,
                     "orphaned": False,
                     "adaptive_intelligence": self._adaptive_intelligence_status(),
                 }
@@ -484,7 +525,51 @@ class BirthService:
         return {"status": "stopping", "message": "Birth Phase stop aangevraagd."}
 
     def is_completed(self) -> bool:
-        return self.completed_flag.exists()
+        if not self.completed_flag.exists():
+            return False
+        return self.certificate_ok()
+
+    def retry_birth(self, target_trades: int | None = None, *, wipe: bool = False) -> Dict[str, Any]:
+        """Resume from checkpoint on certificate failure; wipe only when explicitly requested."""
+        from lumina_launcher.core.first_boot import FirstBootManager
+
+        progress = self._load_progress()
+        phase = str(progress.get("phase", "") or "").strip().lower()
+        preserve_checkpoint = (
+            not wipe
+            and phase in {"certificate_failed", "certificate_remediation"}
+            and (
+                self.checkpoint_file.exists()
+                or (self.workspace_root / "state" / "first_boot_checkpoint.json").exists()
+            )
+        )
+        if not preserve_checkpoint:
+            FirstBootManager(self.workspace_root).clear_stale_for_certified_retry()
+        return self.start_birth(
+            target_trades=target_trades,
+            force=not preserve_checkpoint,
+            explicit_user_start=True,
+            continue_training=preserve_checkpoint,
+        )
+
+    def resume_birth(self, target_trades: int | None = None) -> Dict[str, Any]:
+        """Non-destructive resume from the last birth checkpoint."""
+        return self.start_birth(
+            target_trades=target_trades,
+            force=False,
+            explicit_user_start=True,
+            continue_training=True,
+        )
+
+    def reuse_data_birth(self, target_trades: int | None = None) -> Dict[str, Any]:
+        """Resume checkpoint and skip holdout preflight expansion when manifest hash matches."""
+        return self.start_birth(
+            target_trades=target_trades,
+            force=False,
+            explicit_user_start=True,
+            continue_training=True,
+            reuse_data=True,
+        )
 
     def reset_birth(self) -> None:
         for f in [self.completed_flag, self.checkpoint_file]:

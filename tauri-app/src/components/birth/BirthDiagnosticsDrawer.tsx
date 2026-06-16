@@ -8,6 +8,7 @@ import { BirthLogsPanel } from "@/components/birth/BirthLogsPanel";
 import { BirthMetricsStrip } from "@/components/birth/BirthMetricsStrip";
 import { BirthMilestoneTrack } from "@/components/birth/BirthMilestoneTrack";
 import { BirthSettingsPanel } from "@/components/birth/BirthSettingsPanel";
+import { BirthStageScorecard } from "@/components/birth/BirthStageScorecard";
 import { TrainingControlBar } from "@/components/operations/TrainingControlBar";
 import { PPOEvolutionDashboard } from "@/components/ppo/PPOEvolutionDashboard";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import type {
   BirthStatusPayload,
 } from "@/lib/birthClient";
 import type { BirthMilestone } from "@/lib/birthPhaseModel";
+import { buildCompactMilestones } from "@/lib/birthPhaseModel";
 import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionMetrics";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +66,7 @@ export function BirthDiagnosticsDrawer({
   const [open, setOpen] = useState(defaultOpen);
   const [panel, setPanel] = useState<DiagnosticsPanel>("progress");
   const showTraining = running || trainingLogs.length > 0 || trainingConnected;
+  const compactMilestones = buildCompactMilestones(progress, birthStatus?.status ?? "idle");
 
   const drawerOverlay =
     typeof document !== "undefined"
@@ -163,13 +166,20 @@ export function BirthDiagnosticsDrawer({
                         {finale && birthStatus ? (
                           <BirthCompletionSummary status={birthStatus} />
                         ) : null}
-                        <BirthMilestoneTrack milestones={milestones} variant="drawer" />
+                        <BirthMilestoneTrack
+                          milestones={compactMilestones.items}
+                          upcomingCount={compactMilestones.upcomingCount}
+                          variant="drawer"
+                        />
                         {(running || finale) && progress ? (
-                          <BirthMetricsStrip
-                            progress={progress}
-                            elapsedSeconds={elapsedSeconds}
-                            message={progressMessage}
-                          />
+                          <>
+                            <BirthStageScorecard progress={progress} />
+                            <BirthMetricsStrip
+                              progress={progress}
+                              elapsedSeconds={elapsedSeconds}
+                              message={progressMessage}
+                            />
+                          </>
                         ) : null}
                       </div>
                     ) : null}

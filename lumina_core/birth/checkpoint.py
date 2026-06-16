@@ -1,4 +1,4 @@
-"""Birth Phase v2 checkpoint persistence."""
+"""Birth Phase v2 checkpoint persistence (v3 — buffer + stage metrics + data manifest)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from lumina_core.birth.quality_score import quality_score_from_manifest
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.checkpoint")
+
+CHECKPOINT_VERSION = 3
 
 
 def checkpoint_paths(workspace_root: Path | str) -> tuple[Path, Path]:
@@ -61,16 +64,32 @@ def save_checkpoint(
     stages_passed: list[str],
     curriculum_stage: str | None = None,
     policy_path: str | None = None,
+    stage_metrics: dict[str, Any] | None = None,
+    buffer_path: str | None = None,
+    data_manifest: dict[str, Any] | None = None,
+    phase: str | None = None,
+    remediation_attempt: int = 0,
 ) -> None:
-    payload = {
+    manifest = dict(data_manifest or {})
+    metrics = dict(stage_metrics or {})
+    if stages_passed and "stages_passed" not in metrics:
+        metrics["stages_passed"] = list(stages_passed)
+    quality = quality_score_from_manifest(manifest, metrics)
+    payload: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": 2,
+        "version": CHECKPOINT_VERSION,
         "cumulative_trades": int(cumulative_trades),
         "ppo_steps": int(ppo_steps),
         "training_mode": str(training_mode).strip().lower(),
         "stages_passed": list(stages_passed),
         "curriculum_stage": str(curriculum_stage or ""),
         "policy_path": str(policy_path or ""),
+        "buffer_path": str(buffer_path or ""),
+        "stage_metrics": metrics,
+        "data_manifest": manifest,
+        "quality_score": quality,
+        "phase": str(phase or ""),
+        "remediation_attempt": int(remediation_attempt),
     }
     encoded = json.dumps(payload, ensure_ascii=True, indent=2)
     for path in checkpoint_paths(workspace_root):
@@ -85,13 +104,23 @@ def load_checkpoint_state(workspace_root: Path | str) -> dict[str, Any]:
     payload = read_checkpoint_payload(workspace_root)
     if not payload:
         return {}
+    version = int(payload.get("version", 2) or 2)
+    stage_metrics = payload.get("stage_metrics")
+    data_manifest = payload.get("data_manifest")
     return {
+        "version": version,
         "cumulative_trades": max(0, int(payload.get("cumulative_trades", 0) or 0)),
         "ppo_steps": max(0, int(payload.get("ppo_steps", 0) or 0)),
         "stages_passed": list(payload.get("stages_passed") or []),
         "curriculum_stage": str(payload.get("curriculum_stage", "") or ""),
         "training_mode": str(payload.get("training_mode", "") or ""),
         "policy_path": str(payload.get("policy_path", "") or ""),
+        "buffer_path": str(payload.get("buffer_path", "") or ""),
+        "stage_metrics": stage_metrics if isinstance(stage_metrics, dict) else {},
+        "data_manifest": data_manifest if isinstance(data_manifest, dict) else {},
+        "quality_score": float(payload.get("quality_score", 0.0) or 0.0),
+        "phase": str(payload.get("phase", "") or ""),
+        "remediation_attempt": max(0, int(payload.get("remediation_attempt", 0) or 0)),
     }
 
 

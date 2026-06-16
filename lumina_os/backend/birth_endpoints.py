@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from lumina_launcher.services.birth_service import birth_service
 from lumina_core.birth.birth_certificate import load_certificate, validate_certificate_artifacts
+from lumina_core.birth.checkpoint import load_checkpoint_state
 from lumina_core.birth.config import load_birth_v2_config
 
 router = APIRouter(prefix="/api/birth", tags=["birth"])
@@ -20,6 +21,33 @@ def _enrich_status(payload: dict[str, Any]) -> dict[str, Any]:
     root = birth_service.workspace_root
     thresholds = load_birth_v2_config(root).certificate_thresholds
     cert_ok, cert_reason, cert = validate_certificate_artifacts(root, thresholds=thresholds)
+    progress = payload.get("progress")
+    progress_phase = ""
+    if isinstance(progress, dict):
+        progress_phase = str(progress.get("phase", "") or "").strip().lower()
+        payload["curriculum_stage"] = progress.get("curriculum_stage")
+        payload["oos_metrics"] = progress.get("oos_metrics")
+        payload["failure_reasons"] = progress.get("failure_reasons") or (
+            (progress.get("oos_metrics") or {}).get("failure_reasons")
+            if isinstance(progress.get("oos_metrics"), dict)
+            else None
+        )
+        payload["quality_score"] = progress.get("quality_score")
+        payload["remediation_attempt"] = progress.get("remediation_attempt")
+        payload["remediation_max"] = progress.get("remediation_max")
+        payload["data_manifest"] = progress.get("data_manifest")
+    ckpt = load_checkpoint_state(root)
+    if isinstance(ckpt, dict):
+        if payload.get("quality_score") in (None, 0, 0.0):
+            payload["quality_score"] = ckpt.get("quality_score")
+        if not payload.get("data_manifest"):
+            payload["data_manifest"] = ckpt.get("data_manifest")
+        payload.setdefault("checkpoint_phase", ckpt.get("phase"))
+        payload.setdefault("checkpoint_quality_score", ckpt.get("quality_score"))
+    if progress_phase in {"certificate_failed", "certificate_remediation"}:
+        failure_reasons = payload.get("failure_reasons")
+        if isinstance(failure_reasons, list) and failure_reasons:
+            cert_reason = "; ".join(str(item) for item in failure_reasons)
     payload["artifacts_ok"] = birth_service.artifacts_ok()
     payload["certificate_ok"] = cert_ok
     payload["certificate_reason"] = cert_reason
@@ -28,10 +56,6 @@ def _enrich_status(payload: dict[str, Any]) -> dict[str, Any]:
         "Birth Certificate v2 OK" if payload["artifacts_ok"] else "Certificate or policy missing"
     )
     payload["phase_label"] = "Birth Phase v2"
-    progress = payload.get("progress")
-    if isinstance(progress, dict):
-        payload["curriculum_stage"] = progress.get("curriculum_stage")
-        payload["oos_metrics"] = progress.get("oos_metrics")
     return payload
 
 
@@ -42,6 +66,7 @@ async def start_birth(
     practice_mode: bool = Query(False),
     explicit_user_start: bool = Query(True),
     continue_training: bool = Query(False),
+    reuse_data: bool = Query(False),
 ) -> dict[str, Any]:
     return birth_service.start_birth(
         target_trades=target_trades,
@@ -49,6 +74,7 @@ async def start_birth(
         practice_mode=practice_mode,
         explicit_user_start=explicit_user_start,
         continue_training=continue_training,
+        reuse_data=reuse_data,
     )
 
 
@@ -65,6 +91,43 @@ async def extra_training() -> dict[str, Any]:
     root = birth_service.workspace_root
     FirstBootManager(root).clear_completion_artifacts_for_extra_training()
     return {"ok": True, "message": "Completion artifacts cleared — start birth with continue_training"}
+
+
+@router.post("/retry")
+async def retry_birth(
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
+    wipe: bool = Query(False),
+) -> dict[str, Any]:
+    """Resume certified birth on certificate failure; wipe=True starts completely fresh."""
+    result = birth_service.retry_birth(target_trades=target_trades, wipe=wipe)
+    payload: dict[str, Any] = dict(result)
+    if str(result.get("status", "")).lower() in {"started", "already_running"}:
+        payload.update(birth_service.get_status())
+    return _enrich_status(payload)
+
+
+@router.post("/resume")
+async def resume_birth(
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
+) -> dict[str, Any]:
+    """Continue learning from the last birth checkpoint without wiping artifacts."""
+    result = birth_service.resume_birth(target_trades=target_trades)
+    payload: dict[str, Any] = dict(result)
+    if str(result.get("status", "")).lower() in {"started", "already_running"}:
+        payload.update(birth_service.get_status())
+    return _enrich_status(payload)
+
+
+@router.post("/reuse-data")
+async def reuse_data_birth(
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
+) -> dict[str, Any]:
+    """Resume from checkpoint and reuse cached data manifest when hash matches."""
+    result = birth_service.reuse_data_birth(target_trades=target_trades)
+    payload: dict[str, Any] = dict(result)
+    if str(result.get("status", "")).lower() in {"started", "already_running"}:
+        payload.update(birth_service.get_status())
+    return _enrich_status(payload)
 
 
 @router.get("/status")

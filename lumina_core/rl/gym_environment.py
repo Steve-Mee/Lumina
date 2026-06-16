@@ -331,6 +331,7 @@ class RLTradingEnvironment(gym.Env):
             drawdown=self._drawdown(),
             rolling_sharpe=self._rolling_sharpe(),
             dna_hash=self._dna_hash,
+            trade_mode=self.trade_mode,
         )
 
     def _drawdown(self) -> float:

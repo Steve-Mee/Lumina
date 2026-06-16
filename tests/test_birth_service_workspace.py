@@ -88,6 +88,102 @@ def test_artifacts_ok_requires_v2_certificate_and_policy(tmp_path: Path, monkeyp
 
 
 @pytest.mark.unit
+def test_is_completed_requires_valid_certificate(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    assert svc.is_completed() is False
+    svc.completed_flag.write_text("done", encoding="utf-8")
+    assert svc.is_completed() is False
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_get_status_running_before_stale_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    svc.completed_flag.write_text("done", encoding="utf-8")
+    monkeypatch.setattr(svc, "is_running", lambda: True)
+    status = svc.get_status()
+    assert status["status"] == "running"
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_retry_birth_wipe_clears_stale_flag_and_starts_with_force(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    svc.completed_flag.write_text("done", encoding="utf-8")
+    calls: list[dict[str, object]] = []
+
+    def _fake_start(**kwargs: object) -> dict[str, str]:
+        calls.append(dict(kwargs))
+        return {"status": "started", "message": "ok"}
+
+    monkeypatch.setattr(svc, "start_birth", _fake_start)
+    result = svc.retry_birth(target_trades=10000, wipe=True)
+    assert result["status"] == "started"
+    assert not svc.completed_flag.exists()
+    assert calls
+    assert calls[0]["force"] is True
+    assert calls[0]["continue_training"] is False
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_retry_birth_preserves_checkpoint_on_certificate_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    svc.checkpoint_file.write_text('{"version":3}', encoding="utf-8")
+    svc.progress_file.write_text(
+        '{"phase":"certificate_failed","stage":"failed"}', encoding="utf-8"
+    )
+    calls: list[dict[str, object]] = []
+
+    def _fake_start(**kwargs: object) -> dict[str, str]:
+        calls.append(dict(kwargs))
+        return {"status": "started", "message": "ok"}
+
+    monkeypatch.setattr(svc, "start_birth", _fake_start)
+    monkeypatch.setattr(
+        "lumina_launcher.core.first_boot.FirstBootManager.clear_stale_for_certified_retry",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not wipe")),
+    )
+    result = svc.retry_birth(target_trades=10000, wipe=False)
+    assert result["status"] == "started"
+    assert calls
+    assert calls[0]["force"] is False
+    assert calls[0]["continue_training"] is True
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_get_status_flag_without_certificate_reports_certificate_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    svc.completed_flag.write_text("done", encoding="utf-8")
+    status = svc.get_status()
+    assert status["status"] == "certificate_failed"
+    assert svc.certificate_ok() is False
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
 def test_get_status_includes_launcher_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()

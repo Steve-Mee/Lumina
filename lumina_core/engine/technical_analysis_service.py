@@ -9,7 +9,9 @@ from .analysis_helpers import (
     calculate_dynamic_confluence,
     detect_market_regime,
     detect_market_structure,
+    has_ohlc_columns,
     is_significant_event,
+    normalize_ohlc_frame,
     parse_json_loose,
     run_async_safely,
     update_cost_tracker_from_usage,
@@ -26,14 +28,13 @@ class TechnicalAnalysisService:
     engine: SupportsAnalysis
 
     def detect_market_regime(self, df) -> str:
+        frame = normalize_ohlc_frame(df) if hasattr(df, "copy") else df
         regime_detector = getattr(self.engine, "regime_detector", None)
-        if regime_detector is not None:
+        if regime_detector is not None and hasattr(frame, "__len__") and len(frame) >= 20 and has_ohlc_columns(frame):
             try:
-                structure = None
-                if hasattr(df, "__len__") and len(df) >= 20:
-                    structure = detect_market_structure(df)
+                structure = detect_market_structure(frame)
                 snapshot = regime_detector.detect(
-                    df,
+                    frame,
                     instrument=str(getattr(self.engine.config, "instrument", "MES JUN26")),
                     confluence_score=float(
                         self.engine.get_current_dream_snapshot().get("confluence_score", 0.0) or 0.0
@@ -42,9 +43,9 @@ class TechnicalAnalysisService:
                 )
                 self.engine.current_regime_snapshot = snapshot.to_dict()
                 return snapshot.label
-            except Exception:
-                logger.exception("TechnicalAnalysisService failed to use regime_detector.detect; falling back")
-        regime = detect_market_regime(df)
+            except Exception as exc:
+                logger.debug("TechnicalAnalysisService regime_detector fallback: %s", exc)
+        regime = detect_market_regime(frame if hasattr(frame, "__len__") else df)
         self.engine.current_regime_snapshot = {
             "label": str(regime),
             "confidence": 0.5,

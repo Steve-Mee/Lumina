@@ -24,6 +24,25 @@ from lumina_core.rl import RLConfig, RLTradingEnvironment
 logger = get_logger("lumina.rl.ppo")
 
 
+def _resolve_ppo_device() -> str:
+    """Select CUDA when available; CPU otherwise (BRO PR-N)."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+    return "cpu"
+
+
+def _scale_timesteps_for_device(timesteps: int) -> int:
+    device = _resolve_ppo_device()
+    if device == "cuda":
+        return max(int(timesteps), int(timesteps) * 2)
+    return int(timesteps)
+
+
 def _notify_first_boot_ppo_progress(
     *,
     steps: int,
@@ -371,6 +390,7 @@ class PPOTrainer:
             policy="MlpPolicy",
             env=env,
             verbose=0,
+            device=_resolve_ppo_device(),
             learning_rate=3e-4,
             n_steps=1024,
             batch_size=256,
@@ -460,22 +480,32 @@ class PPOTrainer:
     def _trajectory_buffer_to_rows(self, buffer: Any) -> list[dict[str, Any]]:
         trajectories = list(getattr(buffer, "trajectories", []) or [])
         rows: list[dict[str, Any]] = []
+
+        def _price_from_obs(obs: Any) -> float:
+            if not isinstance(obs, dict):
+                return 0.0
+            try:
+                direct = float(obs.get("price", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                direct = 0.0
+            if direct > 0.0:
+                return direct
+            vector = obs.get("vector")
+            if isinstance(vector, list) and vector:
+                try:
+                    return float(vector[0])
+                except (TypeError, ValueError, IndexError):
+                    return 0.0
+            return 0.0
+
         for idx, item in enumerate(trajectories):
             if not isinstance(item, dict):
                 continue
             obs = item.get("observation")
             next_obs = item.get("next_observation")
-            price = 0.0
-            if isinstance(obs, dict):
-                try:
-                    price = float(obs.get("price", 0.0) or 0.0)
-                except (TypeError, ValueError):
-                    price = 0.0
-            if price <= 0.0 and isinstance(next_obs, dict):
-                try:
-                    price = float(next_obs.get("price", 0.0) or 0.0)
-                except (TypeError, ValueError):
-                    price = 0.0
+            price = _price_from_obs(obs)
+            if price <= 0.0:
+                price = _price_from_obs(next_obs)
             if price <= 0.0:
                 continue
             ts = datetime.now(timezone.utc) - timedelta(seconds=max(0, len(trajectories) - idx))
@@ -571,7 +601,7 @@ class PPOTrainer:
         )
         self.train(
             rows,
-            total_timesteps=max(1_000, int(timesteps)),
+            total_timesteps=max(1_000, _scale_timesteps_for_device(int(timesteps))),
             report_first_boot_progress=bool(birth_phase),
         )
         updated = self._resolve_active_model()

@@ -53,6 +53,7 @@ class LuminaBirthEngine:
         force: bool = False,
         practice_mode: bool = False,
         reuse_existing_policy: bool | None = None,
+        reuse_data_manifest: bool = False,
     ) -> dict[str, Any]:
         from lumina_core.birth.engine import BirthPhaseEngineV2
 
@@ -64,6 +65,9 @@ class LuminaBirthEngine:
             workspace_root=self.workspace_root,
             stop_event=self.stop_event,
         )
+        override_cfg = getattr(self, "birth_config", None)
+        if override_cfg is not None:
+            v2.birth_config = override_cfg
         return v2.run_birth_phase(
             target_trades=target_trades,
             max_real_days=max_real_days,
@@ -73,4 +77,5 @@ class LuminaBirthEngine:
             force=force,
             practice_mode=practice_mode,
             reuse_existing_policy=reuse_existing_policy,
+            reuse_data_manifest=reuse_data_manifest,
         )

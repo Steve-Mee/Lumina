@@ -13,6 +13,15 @@ from lumina_core.birth.birth_certificate import BirthCertificateThresholds
 
 logger = logging.getLogger("lumina.birth.config")
 
+BRO_ENGINE_VERSION = "BRO-v2"
+
+
+@dataclass(slots=True)
+class BirthNewsConfig:
+    primary: str = "finnhub"
+    enable_cache: bool = True
+    cache_path: str = "state/birth_news_cache.json"
+
 
 @dataclass(slots=True)
 class BirthCurriculumConfig:
@@ -20,11 +29,30 @@ class BirthCurriculumConfig:
     stage2_range_trades: int = 3000
     stage3_mixed_trades: int = 5000
     stage4_polish_ppo_steps: int = 50_000
+    rollout_step_budget_multiplier: int = 40
+    stall_probe_steps: int = 5000
+    exploration_steps: int = 2000
+    rollout_chunk_trades: int = 250
+    max_rollouts_per_stage: int = 999_999
+    max_escalation_level: int = 5
+    gen0_provisional_min_trades: int = 25
+    oracle_scan_stride: int = 5
+    oracle_patterns_per_stage: int = 5000
+    oracle_max_hold_bars: int = 120
+    data_expansion_steps: tuple[int, ...] = (90, 180, 365, 730)
+    stagnation_rollouts_before_expand: int = 5
+    curriculum_ppo_timesteps: int = 3_000
+    polish_ppo_timesteps: int = 50_000
+    max_stage_wall_sec: int = 14_400
+    stage2_hold_stagnation_rollouts: int = 8
+    checkpoint_interval_sec: int = 600
+    max_certificate_remediation_attempts: int = 5
 
 
 @dataclass(slots=True)
 class BirthV2Config:
     curriculum: BirthCurriculumConfig = field(default_factory=BirthCurriculumConfig)
+    news: BirthNewsConfig = field(default_factory=BirthNewsConfig)
     holdout_pct: float = 0.20
     certificate_thresholds: BirthCertificateThresholds = field(default_factory=BirthCertificateThresholds)
     prefer_real_data_only: bool = True
@@ -48,6 +76,19 @@ def _coerce_float(value: Any, default: float) -> float:
         return default
 
 
+def _parse_expansion_steps(raw: Any) -> tuple[int, ...]:
+    if isinstance(raw, list):
+        out: list[int] = []
+        for item in raw:
+            try:
+                out.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        if out:
+            return tuple(out)
+    return (90, 180, 365, 730)
+
+
 def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Config:
     root = Path(workspace_root or Path.cwd())
     cfg_path = root / "config.yaml"
@@ -63,7 +104,6 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
     section = raw.get("birth_v2")
     if not isinstance(section, dict):
         section = {}
-        # Deprecation bridge from first_boot
         fb = raw.get("first_boot")
         if isinstance(fb, dict):
             logger.warning("birth_v2: using deprecated first_boot keys; migrate to birth_v2 in config.yaml")
@@ -75,6 +115,7 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
             }
 
     cur_raw = section.get("curriculum") if isinstance(section.get("curriculum"), dict) else {}
+    news_raw = section.get("news") if isinstance(section.get("news"), dict) else {}
     thr_raw = section.get("certificate_thresholds") if isinstance(section.get("certificate_thresholds"), dict) else {}
 
     curriculum = BirthCurriculumConfig(
@@ -82,6 +123,32 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         stage2_range_trades=_coerce_int(cur_raw.get("stage2_range_trades"), 3000),
         stage3_mixed_trades=_coerce_int(cur_raw.get("stage3_mixed_trades"), 5000),
         stage4_polish_ppo_steps=_coerce_int(cur_raw.get("stage4_polish_ppo_steps"), 50_000),
+        rollout_step_budget_multiplier=_coerce_int(cur_raw.get("rollout_step_budget_multiplier"), 40),
+        stall_probe_steps=_coerce_int(cur_raw.get("stall_probe_steps"), 5000),
+        exploration_steps=_coerce_int(cur_raw.get("exploration_steps"), 2000),
+        rollout_chunk_trades=_coerce_int(cur_raw.get("rollout_chunk_trades"), 250),
+        max_rollouts_per_stage=_coerce_int(cur_raw.get("max_rollouts_per_stage"), 999_999),
+        max_escalation_level=_coerce_int(cur_raw.get("max_escalation_level"), 5),
+        gen0_provisional_min_trades=_coerce_int(cur_raw.get("gen0_provisional_min_trades"), 25),
+        oracle_scan_stride=_coerce_int(cur_raw.get("oracle_scan_stride"), 5),
+        oracle_patterns_per_stage=_coerce_int(cur_raw.get("oracle_patterns_per_stage"), 5000),
+        oracle_max_hold_bars=_coerce_int(cur_raw.get("oracle_max_hold_bars"), 120),
+        data_expansion_steps=_parse_expansion_steps(cur_raw.get("data_expansion_steps")),
+        stagnation_rollouts_before_expand=_coerce_int(cur_raw.get("stagnation_rollouts_before_expand"), 5),
+        curriculum_ppo_timesteps=_coerce_int(cur_raw.get("curriculum_ppo_timesteps"), 3_000),
+        polish_ppo_timesteps=_coerce_int(cur_raw.get("polish_ppo_timesteps"), 50_000),
+        max_stage_wall_sec=_coerce_int(cur_raw.get("max_stage_wall_sec"), 14_400),
+        stage2_hold_stagnation_rollouts=_coerce_int(cur_raw.get("stage2_hold_stagnation_rollouts"), 8),
+        checkpoint_interval_sec=_coerce_int(cur_raw.get("checkpoint_interval_sec"), 600),
+        max_certificate_remediation_attempts=_coerce_int(
+            cur_raw.get("max_certificate_remediation_attempts"), 5
+        ),
+    )
+
+    news = BirthNewsConfig(
+        primary=str(news_raw.get("primary", "finnhub") or "finnhub"),
+        enable_cache=bool(news_raw.get("enable_cache", True)),
+        cache_path=str(news_raw.get("cache_path", "state/birth_news_cache.json") or "state/birth_news_cache.json"),
     )
 
     try:
@@ -91,6 +158,7 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
 
     return BirthV2Config(
         curriculum=curriculum,
+        news=news,
         holdout_pct=max(0.05, min(0.4, _coerce_float(section.get("holdout_pct"), 0.20))),
         certificate_thresholds=thresholds,
         prefer_real_data_only=bool(section.get("prefer_real_data_only", True)),

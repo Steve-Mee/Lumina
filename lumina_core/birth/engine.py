@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import random
 import threading
 import time
@@ -22,17 +23,41 @@ from lumina_core.birth.checkpoint import (
     load_checkpoint_state,
     save_checkpoint,
 )
+from lumina_core.birth.buffer_persist import clear_buffer, load_buffer, save_buffer
+from lumina_core.birth.tick_cache_persist import (
+    load_split_cache,
+    load_ticks_cache,
+    save_split_cache,
+    save_ticks_cache,
+)
 from lumina_core.birth.certificate_evaluator import evaluate_holdout_certificate
-from lumina_core.birth.config import load_birth_v2_config
+from lumina_core.birth.config import BRO_ENGINE_VERSION, load_birth_v2_config
 from lumina_core.birth.curriculum import (
     CurriculumStage,
     evaluate_stage_pass,
     filter_ticks_for_stage,
     ordered_stages,
+    should_gen0_soft_pass,
+    stage_pass_trades,
     stage_trade_target,
 )
+from lumina_core.birth.data_expansion import expand_birth_data
 from lumina_core.birth.history_loader import load_historical_ticks
-from lumina_core.birth.progress import write_birth_progress
+from lumina_core.birth.news_enricher import enrich_ticks_with_news
+from lumina_core.birth.pattern_miner import mine_winning_patterns
+from lumina_core.birth.remediation import (
+    RemediationAction,
+    filter_train_ticks_for_holdout_profile,
+    manifest_train_hash_matches,
+    select_regime_diverse_train_ticks,
+    select_remediation_plan,
+    should_fast_path_remediation,
+)
+from lumina_core.birth.preflight import assess_split_preflight, data_manifest_from_split
+from lumina_core.birth.progress import read_birth_progress, write_birth_progress
+from lumina_core.birth.stage_scorecard import (
+    build_scorecard_payload,
+)
 from lumina_core.birth.purged_split import purged_train_holdout_split
 from lumina_core.birth.sim_runner import run_policy_rollout
 from lumina_core.birth.tick_enricher import enrich_ticks_for_sim, real_data_percentage
@@ -96,6 +121,10 @@ class BirthPhaseEngineV2:
         self.current_policy: Any = None
         self._stages_passed: list[str] = []
         self._real_data_pct = 0.0
+        self._data_manifest: dict[str, Any] = {}
+        self._remediation_attempt = 0
+        self._last_checkpoint_at = 0.0
+        self._active_stage_metrics: dict[str, Any] = {}
         event_bus = getattr(runtime, "event_bus", None)
         self._constitution_guard = BirthConstitutionGuard(event_bus=event_bus, mode="birth")
 
@@ -160,6 +189,482 @@ class BirthPhaseEngineV2:
             )
         return out
 
+    def _train_hash(self, ticks: list[dict[str, Any]]) -> str:
+        if not ticks:
+            return ""
+        head = str(ticks[0].get("timestamp", ""))
+        tail = str(ticks[-1].get("timestamp", ""))
+        payload = f"{len(ticks)}:{head}:{tail}"
+        return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+    def _restore_buffer_from_checkpoint(self, state: dict[str, Any]) -> None:
+        buffer_file = str(state.get("buffer_path", "") or "").strip()
+        if buffer_file and Path(buffer_file).is_file():
+            for traj in load_buffer(self.workspace_root):
+                self.buffer.add(traj)
+            return
+        if int(state.get("version", 2) or 2) >= 3:
+            for traj in load_buffer(self.workspace_root):
+                self.buffer.add(traj)
+
+    def _stage_metrics_snapshot(
+        self,
+        *,
+        stage_trades: int = 0,
+        stage_wins: int = 0,
+        stage_hold_signals: int = 0,
+        stage_total_signals: int = 0,
+        stage_range_hold_signals: int = 0,
+        stage_range_total_signals: int = 0,
+        stage_range_flat_bars: int = 0,
+        stage_range_round_trips: int = 0,
+        patterns_mined: int = 0,
+        constitution_violations: int | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "stage_trades": int(stage_trades),
+            "stage_wins": int(stage_wins),
+            "stage_hold_signals": int(stage_hold_signals),
+            "stage_total_signals": int(stage_total_signals),
+            "stage_range_hold_signals": int(stage_range_hold_signals),
+            "stage_range_total_signals": int(stage_range_total_signals),
+            "stage_range_flat_bars": int(stage_range_flat_bars),
+            "stage_range_round_trips": int(stage_range_round_trips),
+            "stage_range_flat_ratio": round(
+                float(stage_range_flat_bars) / float(max(1, stage_range_total_signals)),
+                4,
+            ),
+            "patterns_mined": int(patterns_mined),
+            "stages_passed": list(self._stages_passed),
+            "buffer_size": len(self.buffer),
+            "constitution_violations": int(
+                self._constitution_guard.violations
+                if constitution_violations is None
+                else constitution_violations
+            ),
+        }
+
+    def _apply_checkpoint_stage_metrics(self, checkpoint_state: dict[str, Any]) -> dict[str, Any]:
+        metrics = checkpoint_state.get("stage_metrics")
+        return metrics if isinstance(metrics, dict) else {}
+
+    def _persist_checkpoint(
+        self,
+        *,
+        training_mode: str,
+        curriculum_stage: str,
+        policy_path: str | None = None,
+        phase: str = "",
+        stage_metrics: dict[str, Any] | None = None,
+    ) -> None:
+        if stage_metrics:
+            merged = dict(self._active_stage_metrics)
+            merged.update(stage_metrics)
+            self._active_stage_metrics = merged
+        metrics = (
+            dict(self._active_stage_metrics)
+            if self._active_stage_metrics
+            else self._stage_metrics_snapshot()
+        )
+        saved_buffer = save_buffer(self.workspace_root, self.buffer.trajectories)
+        save_checkpoint(
+            self.workspace_root,
+            cumulative_trades=self.cumulative_trades,
+            ppo_steps=self.ppo_steps,
+            training_mode=training_mode,
+            stages_passed=self._stages_passed,
+            curriculum_stage=curriculum_stage,
+            policy_path=str(policy_path or self.final_policy_path),
+            stage_metrics=metrics,
+            buffer_path=saved_buffer,
+            data_manifest=self._data_manifest,
+            phase=phase,
+            remediation_attempt=self._remediation_attempt,
+        )
+        self._last_checkpoint_at = time.time()
+
+    def _ensure_holdout_preflight(
+        self,
+        *,
+        ticks: list[dict[str, Any]],
+        split: Any,
+        max_days: int,
+        prefer_real: bool,
+        start_price: float,
+        training_mode: str,
+        reuse_manifest: bool = False,
+        saved_manifest: dict[str, Any] | None = None,
+    ) -> tuple[list[dict[str, Any]], Any, dict[str, Any]] | dict[str, Any]:
+        """Expand history until holdout preflight passes or fail closed."""
+        cur_cfg = self.birth_config.curriculum
+        news_cfg = self.birth_config.news
+        active_ticks = list(ticks)
+        active_split = split
+        current_hash = self._train_hash(active_split.train)
+        if reuse_manifest and manifest_train_hash_matches(
+            current_hash=current_hash,
+            saved_manifest=saved_manifest,
+        ):
+            preflight = assess_split_preflight(
+                active_split,
+                thresholds=self.birth_config.certificate_thresholds,
+            )
+            if preflight.ok:
+                manifest = dict(saved_manifest or {})
+                manifest.update(
+                    data_manifest_from_split(
+                        active_split,
+                        days_loaded=max(1, len(active_ticks) // 450),
+                        real_data_pct=self._real_data_pct,
+                        train_hash=current_hash,
+                    )
+                )
+                manifest["preflight_ok"] = True
+                manifest["holdout_regimes"] = list(preflight.holdout_regimes)
+                manifest["reused_manifest"] = True
+                return active_ticks, active_split, manifest
+        expansion_step = 0
+        preflight = assess_split_preflight(
+            active_split,
+            thresholds=self.birth_config.certificate_thresholds,
+        )
+        max_attempts = max(1, len(cur_cfg.data_expansion_steps))
+        attempts = 0
+        while not preflight.ok and attempts < max_attempts:
+            attempts += 1
+            prev_regimes = len(preflight.holdout_regimes)
+            expanded = expand_birth_data(
+                market_data_service=self.market_data_service,
+                runtime=self.runtime,
+                current_step=expansion_step + 1,
+                expansion_steps=list(cur_cfg.data_expansion_steps),
+                holdout_pct=self.birth_config.holdout_pct,
+                enrich_news_fn=lambda rows: enrich_ticks_with_news(
+                    rows,
+                    workspace_root=self.workspace_root,
+                    primary=news_cfg.primary,
+                    enable_cache=news_cfg.enable_cache,
+                    cache_path=news_cfg.cache_path,
+                ),
+                synthetic_fallback_fn=(
+                    None
+                    if prefer_real
+                    else lambda n, p: self._generate_synthetic_ticks(n, start_price=p or start_price)
+                ),
+                start_price=start_price,
+            )
+            expansion_step = expanded.step_index
+            if expanded.exhausted and len(expanded.train_ticks) <= len(active_split.train):
+                write_birth_progress(
+                    self.workspace_root,
+                    stage="history_unavailable",
+                    phase="holdout_preflight_failed",
+                    message=preflight.message,
+                    progress_pct=100.0,
+                    cumulative_trades=0,
+                    target_trades=self.birth_config.trade_budget_cap,
+                    birth_start_time=self.birth_start_time,
+                    preflight_report={
+                        "ok": False,
+                        "failure_reasons": list(preflight.failure_reasons),
+                        "holdout_regimes": list(preflight.holdout_regimes),
+                    },
+                    retryable=True,
+                )
+                return {
+                    "status": "history_unavailable",
+                    "total_trades": 0,
+                    "ppo_steps": 0,
+                    "training_mode": training_mode,
+                    "preflight": preflight.failure_reasons,
+                }
+            active_ticks = list(expanded.all_ticks)
+            active_split = expanded.split
+            self._real_data_pct = expanded.real_data_pct
+            preflight = assess_split_preflight(
+                active_split,
+                thresholds=self.birth_config.certificate_thresholds,
+            )
+            write_birth_progress(
+                self.workspace_root,
+                stage="historical_loaded",
+                phase="holdout_preflight_expansion",
+                message=(
+                    f"Holdout preflight expansion: {len(preflight.holdout_regimes)} regimes, "
+                    f"{preflight.holdout_tick_count:,} holdout ticks"
+                ),
+                progress_pct=18.0,
+                cumulative_trades=0,
+                target_trades=self.birth_config.trade_budget_cap,
+                birth_start_time=self.birth_start_time,
+                preflight_report={
+                    "ok": preflight.ok,
+                    "failure_reasons": list(preflight.failure_reasons),
+                    "holdout_regimes": list(preflight.holdout_regimes),
+                },
+            )
+            if preflight.ok:
+                break
+            if len(preflight.holdout_regimes) <= prev_regimes and expanded.exhausted:
+                break
+
+        if not preflight.ok:
+            write_birth_progress(
+                self.workspace_root,
+                stage="history_unavailable",
+                phase="holdout_preflight_failed",
+                message=preflight.message,
+                progress_pct=100.0,
+                cumulative_trades=0,
+                target_trades=self.birth_config.trade_budget_cap,
+                birth_start_time=self.birth_start_time,
+                preflight_report={
+                    "ok": False,
+                    "failure_reasons": list(preflight.failure_reasons),
+                    "holdout_regimes": list(preflight.holdout_regimes),
+                },
+                retryable=True,
+            )
+            return {
+                "status": "history_unavailable",
+                "total_trades": 0,
+                "ppo_steps": 0,
+                "training_mode": training_mode,
+                "preflight": preflight.failure_reasons,
+            }
+
+        manifest = data_manifest_from_split(
+            active_split,
+            days_loaded=max(1, len(active_ticks) // 450),
+            real_data_pct=self._real_data_pct,
+            train_hash=self._train_hash(active_split.train),
+        )
+        manifest["preflight_ok"] = True
+        manifest["holdout_regimes"] = list(preflight.holdout_regimes)
+        manifest["ticks_cache_path"] = save_ticks_cache(self.workspace_root, active_ticks)
+        manifest["split_cache_path"] = save_split_cache(
+            self.workspace_root,
+            split=active_split,
+            holdout_pct=self.birth_config.holdout_pct,
+        )
+        return active_ticks, active_split, manifest
+
+    def _run_certificate_remediation(
+        self,
+        *,
+        split: Any,
+        eval_result: dict[str, Any],
+        training_mode: str,
+        ppo_steps_per_update: int,
+        trade_budget_cap: int,
+        prefer_real: bool,
+        start_price: float,
+    ) -> dict[str, Any]:
+        cur_cfg = self.birth_config.curriculum
+        news_cfg = self.birth_config.news
+        max_attempts = max(1, int(cur_cfg.max_certificate_remediation_attempts))
+        curriculum_timesteps = max(1000, int(cur_cfg.curriculum_ppo_timesteps))
+        polish_timesteps = max(1000, int(cur_cfg.polish_ppo_timesteps))
+        current_eval = dict(eval_result)
+        remediation_expansion_step = max(
+            0, int(self._data_manifest.get("remediation_expansion_step", 0) or 0)
+        )
+        holdout_data = list(split.holdout)
+
+        for attempt in range(1, max_attempts + 1):
+            self._remediation_attempt = attempt
+            reasons = list(current_eval.get("failure_reasons") or [])
+            plan = select_remediation_plan(
+                reasons,
+                attempt=attempt,
+                curriculum_ppo_timesteps=curriculum_timesteps,
+                polish_ppo_timesteps=polish_timesteps,
+                rollout_chunk_trades=cur_cfg.rollout_chunk_trades,
+            )
+            write_birth_progress(
+                self.workspace_root,
+                stage="training_running",
+                phase="certificate_remediation",
+                message=(
+                    f"Certificate remediation {attempt}/{max_attempts} "
+                    f"[{plan.label}]: {', '.join(reasons) or 'diagnose'}"
+                ),
+                progress_pct=min(99.0, 94.0 + (attempt / max_attempts) * 4.0),
+                cumulative_trades=self.cumulative_trades,
+                target_trades=trade_budget_cap,
+                ppo_steps=self.ppo_steps,
+                birth_start_time=self.birth_start_time,
+                remediation_attempt=attempt,
+                remediation_max=max_attempts,
+                remediation_action=plan.action.value,
+                oos_metrics=current_eval,
+                failure_reasons=reasons,
+                quality_score=float(self._data_manifest.get("quality_score", 0.0) or 0.0),
+            )
+            if self._stop_requested():
+                self._persist_checkpoint(
+                    training_mode=training_mode,
+                    curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
+                    phase="certificate_remediation",
+                )
+                return self._paused_result()
+
+            active_train = list(split.train)
+            if plan.expand_data:
+                expanded = expand_birth_data(
+                    market_data_service=self.market_data_service,
+                    runtime=self.runtime,
+                    current_step=remediation_expansion_step + 1,
+                    expansion_steps=list(cur_cfg.data_expansion_steps),
+                    holdout_pct=self.birth_config.holdout_pct,
+                    enrich_news_fn=lambda rows: enrich_ticks_with_news(
+                        rows,
+                        workspace_root=self.workspace_root,
+                        primary=news_cfg.primary,
+                        enable_cache=news_cfg.enable_cache,
+                        cache_path=news_cfg.cache_path,
+                    ),
+                    synthetic_fallback_fn=(
+                        None
+                        if prefer_real
+                        else lambda n, p: self._generate_synthetic_ticks(n, start_price=p or start_price)
+                    ),
+                    start_price=start_price,
+                )
+                remediation_expansion_step = expanded.step_index
+                self._data_manifest["remediation_expansion_step"] = remediation_expansion_step
+                if expanded.train_ticks:
+                    active_train = list(expanded.train_ticks)
+                    self._real_data_pct = expanded.real_data_pct
+
+            if plan.action == RemediationAction.REGIME_EXPAND:
+                rollout_ticks = select_regime_diverse_train_ticks(active_train)
+            elif plan.action == RemediationAction.HOLDOUT_ACTIVITY:
+                rollout_ticks = filter_train_ticks_for_holdout_profile(active_train, holdout_data)
+            else:
+                rollout_ticks = active_train
+
+            explore_steps = cur_cfg.exploration_steps * plan.explore_multiplier
+            remediation_rollout = run_policy_rollout(
+                runtime=self.runtime,
+                data=rollout_ticks,
+                policy=self.current_policy,
+                target_trades=plan.rollout_target_trades,
+                workspace_root=self.workspace_root,
+                constitution_guard=self._constitution_guard,
+                exploration_steps=explore_steps,
+                escalation_level=2 if plan.action != RemediationAction.SHARPE_POLISH else 1,
+            )
+            for traj in remediation_rollout.trajectories:
+                self.buffer.add(traj, priority=2.0)
+            self.cumulative_trades += remediation_rollout.trades
+
+            ppo_steps = plan.ppo_timesteps
+            if plan.action == RemediationAction.SHARPE_POLISH:
+                ppo_steps = max(1000, polish_timesteps // max(1, attempt))
+            elif len(self.buffer) < 80:
+                ppo_steps = min(ppo_steps, 2000)
+
+            if len(self.buffer) >= 80:
+                self.current_policy = self.ppo_trainer.update_from_buffer(
+                    buffer=self.buffer,
+                    timesteps=ppo_steps,
+                    birth_phase=True,
+                )
+                self.ppo_steps += ppo_steps
+                self._persist_checkpoint(
+                    training_mode=training_mode,
+                    curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
+                    phase="certificate_remediation",
+                )
+
+            current_eval = evaluate_holdout_certificate(
+                runtime=self.runtime,
+                holdout_data=holdout_data,
+                policy=self.current_policy,
+                real_data_pct=self._real_data_pct,
+                holdout_days=split.holdout_days,
+                constitution_violations=self._constitution_guard.violations,
+                workspace_root=self.workspace_root,
+                thresholds=self.birth_config.certificate_thresholds,
+            )
+            if current_eval.get("certificate_passed"):
+                return current_eval
+
+        write_birth_progress(
+            self.workspace_root,
+            stage="failed",
+            phase="certificate_failed",
+            message="Birth Certificate v2 thresholds not met after remediation.",
+            progress_pct=100.0,
+            cumulative_trades=self.cumulative_trades,
+            target_trades=trade_budget_cap,
+            birth_start_time=self.birth_start_time,
+            oos_metrics=current_eval,
+            failure_reasons=list(current_eval.get("failure_reasons") or []),
+            remediation_attempt=self._remediation_attempt,
+        )
+        self._persist_checkpoint(
+            training_mode=training_mode,
+            curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
+            phase="certificate_failed",
+        )
+        return current_eval
+
+    def _complete_certified_birth(
+        self,
+        *,
+        split: Any,
+        eval_result: dict[str, Any],
+        training_mode: str,
+        trade_budget_cap: int,
+    ) -> dict[str, Any]:
+        self._stages_passed.append(CurriculumStage.STAGE4_POLISH.value)
+        certificate = build_certificate_from_eval(
+            workspace_root=self.workspace_root,
+            eval_result=eval_result,
+            curriculum_stages_passed=self._stages_passed,
+            training_trades=self.cumulative_trades,
+            ppo_steps=self.ppo_steps,
+        )
+        write_certificate(self.workspace_root, certificate)
+        clear_checkpoint(self.workspace_root)
+        clear_buffer(self.workspace_root)
+        stamp = datetime.now(timezone.utc).isoformat()
+        for path in (self.completion_flag_path, self.legacy_completion_flag_path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(stamp, encoding="utf-8")
+
+        register_birth_gen0_dna(self.workspace_root, certificate)
+        update_bible_after_birth(self.workspace_root, certificate, eval_result)
+
+        write_birth_progress(
+            self.workspace_root,
+            stage="completed",
+            phase="certificate_issued",
+            message="Birth Certificate v2 issued.",
+            progress_pct=100.0,
+            cumulative_trades=self.cumulative_trades,
+            target_trades=trade_budget_cap,
+            ppo_steps=self.ppo_steps,
+            birth_start_time=self.birth_start_time,
+            certificate_ok=True,
+            oos_metrics=eval_result,
+            curriculum_stages_passed=self._stages_passed,
+        )
+
+        target_policy = self.final_policy_path
+        return {
+            "status": "completed",
+            "total_trades": self.cumulative_trades,
+            "ppo_steps": self.ppo_steps,
+            "real_data_pct": self._real_data_pct,
+            "policy_path": str(target_policy),
+            "certificate_path": str(certificate_path(self.workspace_root)),
+            "eval": eval_result,
+            "training_mode": training_mode,
+        }
+
     def run_birth_phase(
         self,
         target_trades: int | None = None,
@@ -170,9 +675,11 @@ class BirthPhaseEngineV2:
         force: bool = False,
         practice_mode: bool = False,
         reuse_existing_policy: bool | None = None,
+        reuse_data_manifest: bool = False,
     ) -> dict[str, Any]:
         _ = (target_trades, chunk_size, force)
         cfg = self.birth_config
+        logger.info("birth.engine.version=%s", BRO_ENGINE_VERSION)
         training_mode = "practice" if practice_mode else "certified"
         max_days = max(30, min(3650, int(max_real_days or cfg.max_real_days)))
         prefer_real = bool(prefer_real_data_only if prefer_real_data_only is not None else cfg.prefer_real_data_only)
@@ -181,6 +688,10 @@ class BirthPhaseEngineV2:
         self._stages_passed = []
         self.cumulative_trades = 0
         self.ppo_steps = 0
+        self._data_manifest = {}
+        self._remediation_attempt = 0
+        self._last_checkpoint_at = 0.0
+        self._active_stage_metrics = {}
         self.buffer.clear()
         self._constitution_guard.reset()
 
@@ -191,12 +702,22 @@ class BirthPhaseEngineV2:
             completion_flag_paths=completion_flags,
         ) and not force
         resume_policy_path = ""
+        checkpoint_state: dict[str, Any] = {}
+        checkpoint_phase = ""
         if resume:
-            state = load_checkpoint_state(self.workspace_root)
-            self.cumulative_trades = int(state.get("cumulative_trades", 0) or 0)
-            self.ppo_steps = int(state.get("ppo_steps", 0) or 0)
-            self._stages_passed = list(state.get("stages_passed") or [])
-            resume_policy_path = str(state.get("policy_path", "") or "")
+            checkpoint_state = load_checkpoint_state(self.workspace_root)
+            checkpoint_phase = str(checkpoint_state.get("phase", "") or "")
+            self.cumulative_trades = int(checkpoint_state.get("cumulative_trades", 0) or 0)
+            self.ppo_steps = int(checkpoint_state.get("ppo_steps", 0) or 0)
+            self._stages_passed = list(checkpoint_state.get("stages_passed") or [])
+            resume_policy_path = str(checkpoint_state.get("policy_path", "") or "")
+            self._data_manifest = dict(checkpoint_state.get("data_manifest") or {})
+            self._remediation_attempt = max(
+                0, int(checkpoint_state.get("remediation_attempt", 0) or 0)
+            )
+            self._active_stage_metrics = dict(checkpoint_state.get("stage_metrics") or {})
+            self.buffer.clear()
+            self._restore_buffer_from_checkpoint(checkpoint_state)
 
         allow_load = resume if reuse_existing_policy is None else bool(reuse_existing_policy)
         if resume_policy_path and Path(resume_policy_path).is_file():
@@ -216,12 +737,34 @@ class BirthPhaseEngineV2:
             resumed=resume,
         )
 
-        ticks = load_historical_ticks(
-            market_data_service=self.market_data_service,
-            runtime=self.runtime,
-            days_back=max_days,
-            limit=None,
-        )
+        ticks: list[dict[str, Any]] = []
+        split: Any = None
+        if resume and reuse_data_manifest and self._data_manifest:
+            cached_split = load_split_cache(
+                self.workspace_root,
+                holdout_pct=cfg.holdout_pct,
+            )
+            cached_ticks = load_ticks_cache(self.workspace_root)
+            cached_hash = self._train_hash(cached_split.train) if cached_split else ""
+            if (
+                cached_ticks
+                and cached_split
+                and manifest_train_hash_matches(
+                    current_hash=cached_hash,
+                    saved_manifest=self._data_manifest,
+                )
+            ):
+                ticks = cached_ticks
+                split = cached_split
+                self._real_data_pct = float(self._data_manifest.get("real_data_pct", 0.0) or 0.0)
+
+        if not ticks:
+            ticks = load_historical_ticks(
+                market_data_service=self.market_data_service,
+                runtime=self.runtime,
+                days_back=max_days,
+                limit=None,
+            )
         if not ticks and not prefer_real:
             ticks = self._generate_synthetic_ticks(max(20_000, max_days * 1000), start_price=5000.0)
         elif not ticks and prefer_real and practice_mode:
@@ -240,43 +783,140 @@ class BirthPhaseEngineV2:
             )
             return {"status": "history_unavailable", "total_trades": 0, "ppo_steps": 0, "training_mode": "certified"}
 
-        ticks = enrich_ticks_for_sim(ticks)
-        self._real_data_pct = real_data_percentage(ticks)
-        split = purged_train_holdout_split(ticks, holdout_pct=cfg.holdout_pct)
+        if split is None:
+            news_cfg = cfg.news
+            try:
+                ticks = enrich_ticks_with_news(
+                    ticks,
+                    workspace_root=self.workspace_root,
+                    primary=news_cfg.primary,
+                    enable_cache=news_cfg.enable_cache,
+                    cache_path=news_cfg.cache_path,
+                )
+            except Exception as exc:
+                logger.warning("birth.news.enrich_skipped detail=%s", exc)
+
+            ticks = enrich_ticks_for_sim(ticks)
+            self._real_data_pct = real_data_percentage(ticks)
+            split = purged_train_holdout_split(ticks, holdout_pct=cfg.holdout_pct)
+        elif not ticks:
+            return {"status": "history_unavailable", "total_trades": 0, "ppo_steps": 0, "training_mode": "certified"}
+
+        preflight_result = self._ensure_holdout_preflight(
+            ticks=ticks,
+            split=split,
+            max_days=max_days,
+            prefer_real=prefer_real,
+            start_price=float(ticks[-1].get("last", 5000.0) or 5000.0) if ticks else 5000.0,
+            training_mode=training_mode,
+            reuse_manifest=bool(reuse_data_manifest and resume),
+            saved_manifest=self._data_manifest if resume else None,
+        )
+        if isinstance(preflight_result, dict):
+            return preflight_result
+        ticks, split, self._data_manifest = preflight_result
 
         write_birth_progress(
             self.workspace_root,
             stage="historical_loaded",
             phase="ticks_ready",
-            message=f"Data geladen: {len(ticks):,} ticks, holdout {split.holdout_days} dagen.",
+            message=(
+                f"Data geladen: {len(ticks):,} ticks, holdout {split.holdout_days} dagen, "
+                f"regimes {','.join(self._data_manifest.get('holdout_regimes', []))}."
+            ),
             progress_pct=20.0,
             cumulative_trades=0,
             target_trades=cfg.trade_budget_cap,
             birth_start_time=self.birth_start_time,
             actual_real_days_loaded=max(1, len(ticks) // 450),
             real_data_pct=self._real_data_pct,
+            preflight_report={
+                "ok": True,
+                "holdout_regimes": self._data_manifest.get("holdout_regimes", []),
+            },
+            data_manifest=self._data_manifest,
         )
 
         self.current_policy = self._create_birth_policy(
             allow_load_existing=allow_load and resume,
             policy_path=resume_policy_path or None,
         )
+        start_price = float(ticks[-1].get("last", 5000.0) or 5000.0) if ticks else 5000.0
+
+        if (
+            not practice_mode
+            and resume
+            and should_fast_path_remediation(
+                checkpoint_phase=checkpoint_phase,
+                stages_passed=self._stages_passed,
+            )
+        ):
+            write_birth_progress(
+                self.workspace_root,
+                stage="training_running",
+                phase="certificate_remediation",
+                message="Resuming certificate remediation from checkpoint (fast path).",
+                progress_pct=93.0,
+                cumulative_trades=self.cumulative_trades,
+                target_trades=cfg.trade_budget_cap,
+                ppo_steps=self.ppo_steps,
+                birth_start_time=self.birth_start_time,
+                fast_path_resume=True,
+            )
+            prior_progress = read_birth_progress(self.workspace_root)
+            prior_eval = prior_progress.get("oos_metrics")
+            if not isinstance(prior_eval, dict) or not prior_eval.get("failure_reasons"):
+                prior_eval = evaluate_holdout_certificate(
+                    runtime=self.runtime,
+                    holdout_data=split.holdout,
+                    policy=self.current_policy,
+                    real_data_pct=self._real_data_pct,
+                    holdout_days=split.holdout_days,
+                    constitution_violations=self._constitution_guard.violations,
+                    workspace_root=self.workspace_root,
+                    thresholds=cfg.certificate_thresholds,
+                )
+            eval_result = self._run_certificate_remediation(
+                split=split,
+                eval_result=dict(prior_eval),
+                training_mode=training_mode,
+                ppo_steps_per_update=ppo_steps_per_update,
+                trade_budget_cap=cfg.trade_budget_cap,
+                prefer_real=prefer_real,
+                start_price=start_price,
+            )
+            if isinstance(eval_result, dict) and eval_result.get("status") == "paused":
+                return eval_result
+            if not eval_result.get("certificate_passed"):
+                return {
+                    "status": "certificate_failed",
+                    "total_trades": self.cumulative_trades,
+                    "ppo_steps": self.ppo_steps,
+                    "real_data_pct": self._real_data_pct,
+                    "eval": eval_result,
+                    "training_mode": "certified",
+                }
+            return self._complete_certified_birth(
+                split=split,
+                eval_result=eval_result,
+                training_mode=training_mode,
+                trade_budget_cap=cfg.trade_budget_cap,
+            )
+
         total_stages = len(ordered_stages())
         stage_index = 0
+        curriculum_timesteps = max(1000, int(cfg.curriculum.curriculum_ppo_timesteps))
 
         for stage in ordered_stages():
             if self._stop_requested():
                 policy_hint = str(self.final_policy_path)
                 if self.final_policy_path.is_file():
                     policy_hint = str(self.final_policy_path)
-                save_checkpoint(
-                    self.workspace_root,
-                    cumulative_trades=self.cumulative_trades,
-                    ppo_steps=self.ppo_steps,
+                self._persist_checkpoint(
                     training_mode=training_mode,
-                    stages_passed=self._stages_passed,
                     curriculum_stage=stage.value,
                     policy_path=policy_hint,
+                    phase="paused",
                 )
                 return self._paused_result()
 
@@ -293,80 +933,49 @@ class BirthPhaseEngineV2:
             target = stage_trade_target(stage, cfg.curriculum)
             self._constitution_guard.reset()
 
-            write_birth_progress(
-                self.workspace_root,
-                stage="training_running",
-                phase="curriculum_stage",
-                message=f"Curriculum {stage.value}: doel {target:,} trades.",
-                progress_pct=20.0 + (stage_index / total_stages) * 60.0,
-                cumulative_trades=self.cumulative_trades,
-                target_trades=cfg.trade_budget_cap,
-                ppo_steps=self.ppo_steps,
-                birth_start_time=self.birth_start_time,
-                curriculum_stage=stage.value,
+            stage_progress_pct = 20.0 + (stage_index / total_stages) * 60.0
+            stage_error = self._run_stage_research_loop(
+                stage=stage,
+                stage_index=stage_index,
+                stage_ticks=stage_ticks,
+                train_ticks=list(split.train),
+                holdout_ticks=list(split.holdout),
+                target=target,
+                stage_progress_pct=stage_progress_pct,
+                training_mode=training_mode,
+                ppo_steps_per_update=curriculum_timesteps,
+                polish_ppo_timesteps=max(1000, int(cfg.curriculum.polish_ppo_timesteps)),
+                trade_budget_cap=cfg.trade_budget_cap,
+                prefer_real=prefer_real,
+                start_price=start_price,
             )
-
-            rollout = run_policy_rollout(
-                runtime=self.runtime,
-                data=stage_ticks,
-                policy=self.current_policy,
-                target_trades=target,
-                workspace_root=self.workspace_root,
-                constitution_guard=self._constitution_guard,
-            )
-            self.cumulative_trades += rollout.trades
-            for traj in rollout.trajectories:
-                self.buffer.add(traj, priority=1.0 + min(10.0, abs(float(traj.get("reward", 0.0)))))
-
-            if len(self.buffer) >= 256:
-                self.current_policy = self.ppo_trainer.update_from_buffer(
-                    buffer=self.buffer,
-                    timesteps=ppo_steps_per_update,
-                    birth_phase=True,
-                )
-                self.ppo_steps += ppo_steps_per_update
-
-            stage_result = evaluate_stage_pass(
-                stage,
-                trades=rollout.trades,
-                wins=rollout.wins,
-                hold_signals=rollout.hold_signals,
-                total_signals=rollout.total_signals,
-                constitution_violations=self._constitution_guard.violations,
-                target_trades=target,
-            )
-            if not stage_result.passed and not practice_mode:
-                write_birth_progress(
-                    self.workspace_root,
-                    stage="failed",
-                    phase="curriculum_failed",
-                    message=f"Curriculum stage failed: {stage_result.message}",
-                    progress_pct=95.0,
-                    cumulative_trades=self.cumulative_trades,
-                    target_trades=cfg.trade_budget_cap,
-                    birth_start_time=self.birth_start_time,
-                    curriculum_stage=stage.value,
-                )
-                return {
-                    "status": "certificate_failed",
-                    "total_trades": self.cumulative_trades,
-                    "ppo_steps": self.ppo_steps,
-                    "training_mode": "certified",
-                }
+            if stage_error is not None:
+                return stage_error
 
             self._stages_passed.append(stage.value)
             stage_index += 1
             self.ppo_trainer.save_final_birth_policy(str(self.final_policy_path))
-            save_checkpoint(
-                self.workspace_root,
-                cumulative_trades=self.cumulative_trades,
-                ppo_steps=self.ppo_steps,
+            self._persist_checkpoint(
                 training_mode=training_mode,
-                stages_passed=self._stages_passed,
                 curriculum_stage=stage.value,
                 policy_path=str(self.final_policy_path),
+                phase="curriculum_stage_complete",
             )
 
+        polish_scorecard = build_scorecard_payload(
+            stage=CurriculumStage.STAGE4_POLISH,
+            curriculum_index=4,
+            stages_passed=list(self._stages_passed),
+            stage_trades=0,
+            stage_wins=0,
+            stage_hold_signals=0,
+            stage_total_signals=0,
+            constitution_violations=self._constitution_guard.violations,
+            target_trades=0,
+            phase="ppo_polish",
+            patterns_mined=0,
+            learning_attempt=0,
+        )
         write_birth_progress(
             self.workspace_root,
             stage="ppo_training",
@@ -378,15 +987,27 @@ class BirthPhaseEngineV2:
             ppo_steps=self.ppo_steps,
             birth_start_time=self.birth_start_time,
             curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
+            **polish_scorecard,
         )
 
-        polish_steps = cfg.curriculum.stage4_polish_ppo_steps
+        polish_steps = cfg.curriculum.polish_ppo_timesteps
         if len(self.buffer) >= 256:
             self.ppo_trainer.final_birth_polish(self.buffer)
             self.ppo_steps += polish_steps
         else:
-            self.ppo_trainer.update_from_buffer(buffer=self.buffer, timesteps=min(polish_steps, 10_000), birth_phase=True)
-            self.ppo_steps += min(polish_steps, 10_000)
+            polish_batch = min(polish_steps, 10_000)
+            self.ppo_trainer.update_from_buffer(
+                buffer=self.buffer,
+                timesteps=polish_batch,
+                birth_phase=True,
+            )
+            self.ppo_steps += polish_batch
+        self._persist_checkpoint(
+            training_mode=training_mode,
+            curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
+            policy_path=str(self.final_policy_path),
+            phase="ppo_polish",
+        )
 
         target_policy = self.practice_policy_path if practice_mode else self.final_policy_path
         self.ppo_trainer.save_final_birth_policy(str(target_policy))
@@ -394,6 +1015,7 @@ class BirthPhaseEngineV2:
         if practice_mode:
             self.practice_completed_flag_path.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
             clear_checkpoint(self.workspace_root)
+            clear_buffer(self.workspace_root)
             write_birth_progress(
                 self.workspace_root,
                 stage="practice_completed",
@@ -413,6 +1035,20 @@ class BirthPhaseEngineV2:
                 "training_mode": "practice",
             }
 
+        oos_scorecard = build_scorecard_payload(
+            stage=CurriculumStage.STAGE4_POLISH,
+            curriculum_index=3,
+            stages_passed=list(self._stages_passed),
+            stage_trades=0,
+            stage_wins=0,
+            stage_hold_signals=0,
+            stage_total_signals=0,
+            constitution_violations=self._constitution_guard.violations,
+            target_trades=0,
+            phase="oos_evaluation",
+            patterns_mined=0,
+            learning_attempt=0,
+        )
         write_birth_progress(
             self.workspace_root,
             stage="training_running",
@@ -422,6 +1058,7 @@ class BirthPhaseEngineV2:
             cumulative_trades=self.cumulative_trades,
             target_trades=cfg.trade_budget_cap,
             birth_start_time=self.birth_start_time,
+            **oos_scorecard,
         )
 
         eval_result = evaluate_holdout_certificate(
@@ -436,69 +1073,33 @@ class BirthPhaseEngineV2:
         )
 
         if not eval_result.get("certificate_passed"):
-            write_birth_progress(
-                self.workspace_root,
-                stage="failed",
-                phase="certificate_failed",
-                message="Birth Certificate v2 thresholds not met.",
-                progress_pct=100.0,
-                cumulative_trades=self.cumulative_trades,
-                target_trades=cfg.trade_budget_cap,
-                birth_start_time=self.birth_start_time,
-                oos_metrics=eval_result,
+            eval_result = self._run_certificate_remediation(
+                split=split,
+                eval_result=eval_result,
+                training_mode=training_mode,
+                ppo_steps_per_update=ppo_steps_per_update,
+                trade_budget_cap=cfg.trade_budget_cap,
+                prefer_real=prefer_real,
+                start_price=start_price,
             )
-            return {
-                "status": "certificate_failed",
-                "total_trades": self.cumulative_trades,
-                "ppo_steps": self.ppo_steps,
-                "real_data_pct": self._real_data_pct,
-                "eval": eval_result,
-                "training_mode": "certified",
-            }
+            if isinstance(eval_result, dict) and eval_result.get("status") == "paused":
+                return eval_result
+            if not eval_result.get("certificate_passed"):
+                return {
+                    "status": "certificate_failed",
+                    "total_trades": self.cumulative_trades,
+                    "ppo_steps": self.ppo_steps,
+                    "real_data_pct": self._real_data_pct,
+                    "eval": eval_result,
+                    "training_mode": "certified",
+                }
 
-        self._stages_passed.append(CurriculumStage.STAGE4_POLISH.value)
-        certificate = build_certificate_from_eval(
-            workspace_root=self.workspace_root,
+        return self._complete_certified_birth(
+            split=split,
             eval_result=eval_result,
-            curriculum_stages_passed=self._stages_passed,
-            training_trades=self.cumulative_trades,
-            ppo_steps=self.ppo_steps,
+            training_mode=training_mode,
+            trade_budget_cap=cfg.trade_budget_cap,
         )
-        write_certificate(self.workspace_root, certificate)
-        clear_checkpoint(self.workspace_root)
-        stamp = datetime.now(timezone.utc).isoformat()
-        for path in (self.completion_flag_path, self.legacy_completion_flag_path):
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(stamp, encoding="utf-8")
-
-        register_birth_gen0_dna(self.workspace_root, certificate)
-        update_bible_after_birth(self.workspace_root, certificate, eval_result)
-
-        write_birth_progress(
-            self.workspace_root,
-            stage="completed",
-            phase="certificate_issued",
-            message="Birth Certificate v2 issued.",
-            progress_pct=100.0,
-            cumulative_trades=self.cumulative_trades,
-            target_trades=cfg.trade_budget_cap,
-            ppo_steps=self.ppo_steps,
-            birth_start_time=self.birth_start_time,
-            certificate_ok=True,
-            oos_metrics=eval_result,
-            curriculum_stages_passed=self._stages_passed,
-        )
-
-        return {
-            "status": "completed",
-            "total_trades": self.cumulative_trades,
-            "ppo_steps": self.ppo_steps,
-            "real_data_pct": self._real_data_pct,
-            "policy_path": str(target_policy),
-            "certificate_path": str(certificate_path(self.workspace_root)),
-            "eval": eval_result,
-            "training_mode": "certified",
-        }
 
     def _paused_result(self) -> dict[str, Any]:
         write_birth_progress(
@@ -516,3 +1117,588 @@ class BirthPhaseEngineV2:
             ppo_steps=self.ppo_steps,
         )
         return {"status": "paused", "total_trades": self.cumulative_trades, "ppo_steps": self.ppo_steps}
+
+    def _stage_tick_pool(
+        self,
+        *,
+        stage: CurriculumStage,
+        stage_ticks: list[dict[str, Any]],
+        train_ticks: list[dict[str, Any]],
+        escalation_level: int,
+        attempt: int,
+    ) -> list[dict[str, Any]]:
+        if escalation_level >= 2:
+            pool = list(train_ticks)
+            rng = random.Random(attempt + escalation_level * 17)
+            rng.shuffle(pool)
+            return pool
+        if escalation_level >= 1 and len(stage_ticks) < len(train_ticks):
+            extra = list(train_ticks)
+            rng = random.Random(attempt + 3)
+            rng.shuffle(extra)
+            merged = list(stage_ticks) + extra[: max(len(stage_ticks), len(train_ticks) // 4)]
+            return merged
+        return list(stage_ticks)
+
+    def _run_stage_research_loop(
+        self,
+        *,
+        stage: CurriculumStage,
+        stage_index: int,
+        stage_ticks: list[dict[str, Any]],
+        train_ticks: list[dict[str, Any]],
+        holdout_ticks: list[dict[str, Any]],
+        target: int,
+        stage_progress_pct: float,
+        training_mode: str,
+        ppo_steps_per_update: int,
+        polish_ppo_timesteps: int,
+        trade_budget_cap: int,
+        prefer_real: bool,
+        start_price: float,
+    ) -> dict[str, Any] | None:
+        """BRO stage loop: oracle mine, expand data, rollout — never stop on underperformance."""
+        _ = holdout_ticks
+        cur_cfg = self.birth_config.curriculum
+        news_cfg = self.birth_config.news
+        required = stage_pass_trades(stage, cur_cfg)
+        stage_trades = 0
+        stage_wins = 0
+        stage_hold_signals = 0
+        stage_total_signals = 0
+        stage_range_hold_signals = 0
+        stage_range_total_signals = 0
+        stage_range_flat_bars = 0
+        stage_range_round_trips = 0
+        attempt = 0
+        escalation_level = 0
+        gen0_provisional = False
+        patterns_mined = 0
+        oracle_wins = 0
+        expansion_step = 0
+        data_days_loaded = self.birth_config.max_real_days
+        hold_stagnation_count = 0
+        stage_started_at = time.time()
+        checkpoint_state = load_checkpoint_state(self.workspace_root)
+        stage_metrics = checkpoint_state.get("stage_metrics")
+        if isinstance(stage_metrics, dict):
+            patterns_mined = max(0, int(stage_metrics.get("patterns_mined", patterns_mined) or patterns_mined))
+            stage_trades = max(0, int(stage_metrics.get("stage_trades", stage_trades) or stage_trades))
+            stage_wins = max(0, int(stage_metrics.get("stage_wins", stage_wins) or stage_wins))
+            stage_hold_signals = max(
+                0, int(stage_metrics.get("stage_hold_signals", stage_hold_signals) or stage_hold_signals)
+            )
+            stage_total_signals = max(
+                0, int(stage_metrics.get("stage_total_signals", stage_total_signals) or stage_total_signals)
+            )
+            stage_range_hold_signals = max(
+                0,
+                int(stage_metrics.get("stage_range_hold_signals", stage_range_hold_signals) or stage_range_hold_signals),
+            )
+            stage_range_total_signals = max(
+                0,
+                int(
+                    stage_metrics.get("stage_range_total_signals", stage_range_total_signals)
+                    or stage_range_total_signals
+                ),
+            )
+            stage_range_flat_bars = max(
+                0,
+                int(stage_metrics.get("stage_range_flat_bars", stage_range_flat_bars) or stage_range_flat_bars),
+            )
+            stage_range_round_trips = max(
+                0,
+                int(
+                    stage_metrics.get("stage_range_round_trips", stage_range_round_trips)
+                    or stage_range_round_trips
+                ),
+            )
+        prev_progress = read_birth_progress(self.workspace_root)
+        if str(prev_progress.get("curriculum_stage", "") or "").strip().lower() == stage.value:
+            stage_trades = max(0, int(prev_progress.get("stage_trades", 0) or 0))
+            if prev_progress.get("stage_wins") is not None:
+                stage_wins = max(0, int(prev_progress.get("stage_wins", 0) or 0))
+            stage_hold_signals = max(0, int(prev_progress.get("stage_hold_signals", 0) or 0))
+            stage_total_signals = max(0, int(prev_progress.get("stage_total_signals", 0) or 0))
+            stage_range_flat_bars = max(0, int(prev_progress.get("stage_range_flat_bars", 0) or 0))
+            stage_range_round_trips = max(0, int(prev_progress.get("stage_range_round_trips", 0) or 0))
+            stage_range_total_signals = max(
+                0, int(prev_progress.get("stage_range_total_signals", 0) or 0)
+            )
+            patterns_mined = max(0, int(prev_progress.get("patterns_mined", 0) or 0))
+            oracle_wins = max(0, int(prev_progress.get("oracle_wins", 0) or 0))
+            attempt = max(0, int(prev_progress.get("learning_attempt", 0) or 0) - 1)
+            escalation_level = max(0, int(prev_progress.get("escalation_level", 0) or 0))
+            gen0_provisional = bool(prev_progress.get("gen0_provisional", False))
+            expansion_step = max(0, int(prev_progress.get("expansion_step", 0) or 0))
+            data_days_loaded = max(
+                0,
+                int(prev_progress.get("data_days_loaded", data_days_loaded) or data_days_loaded),
+            )
+        last_stage_trades = -1
+        stagnation_count = 0
+        chunk_budget = max(5_000, cur_cfg.rollout_chunk_trades * cur_cfg.rollout_step_budget_multiplier)
+        active_train = list(train_ticks)
+        active_stage_ticks = list(stage_ticks)
+        data_exhausted = False
+        scorecard_snapshot_trades = stage_trades
+        scorecard_snapshot_patterns = patterns_mined
+        scorecard_snapshot_at = time.time()
+        last_progress_write_at = 0.0
+        last_hold_ratio = 0.0
+
+        def _stage_metrics_payload() -> dict[str, Any]:
+            return self._stage_metrics_snapshot(
+                stage_trades=stage_trades,
+                stage_wins=stage_wins,
+                stage_hold_signals=stage_hold_signals,
+                stage_total_signals=stage_total_signals,
+                stage_range_hold_signals=stage_range_hold_signals,
+                stage_range_total_signals=stage_range_total_signals,
+                stage_range_flat_bars=stage_range_flat_bars,
+                stage_range_round_trips=stage_range_round_trips,
+                patterns_mined=patterns_mined,
+            )
+
+        def _maybe_periodic_checkpoint(phase: str) -> None:
+            interval = max(60, int(cur_cfg.checkpoint_interval_sec))
+            if self._last_checkpoint_at <= 0.0 or time.time() - self._last_checkpoint_at >= interval:
+                self._persist_checkpoint(
+                    training_mode=training_mode,
+                    curriculum_stage=stage.value,
+                    phase=phase,
+                    stage_metrics=_stage_metrics_payload(),
+                )
+
+        def _write_progress(
+            *,
+            phase: str,
+            message: str,
+            chunk_trades: int = 0,
+            rollout_steps: int = 0,
+            exploration_active: bool = False,
+            hold_ratio: float = 0.0,
+        ) -> None:
+            nonlocal scorecard_snapshot_trades, scorecard_snapshot_patterns, scorecard_snapshot_at
+            nonlocal last_progress_write_at
+            current_stage_trades = stage_trades + chunk_trades
+            elapsed_snapshot = max(0.0, time.time() - scorecard_snapshot_at)
+            scorecard = build_scorecard_payload(
+                stage=stage,
+                curriculum_index=stage_index + 1,
+                stages_passed=list(self._stages_passed),
+                stage_trades=current_stage_trades,
+                stage_wins=stage_wins,
+                stage_hold_signals=stage_hold_signals,
+                stage_total_signals=stage_total_signals,
+                constitution_violations=self._constitution_guard.violations,
+                target_trades=target,
+                phase=phase,
+                patterns_mined=patterns_mined,
+                learning_attempt=attempt + 1,
+                prev_stage_trades=scorecard_snapshot_trades,
+                prev_patterns_mined=scorecard_snapshot_patterns,
+                snapshot_elapsed_sec=elapsed_snapshot,
+            )
+            elapsed_stage_sec = max(0.0, time.time() - stage_started_at)
+            write_birth_progress(
+                self.workspace_root,
+                stage="training_running",
+                phase=phase,
+                message=message,
+                progress_pct=stage_progress_pct,
+                cumulative_trades=self.cumulative_trades + chunk_trades,
+                target_trades=trade_budget_cap,
+                ppo_steps=self.ppo_steps,
+                birth_start_time=self.birth_start_time,
+                curriculum_stage=stage.value,
+                stage_target_trades=required,
+                stage_trades=current_stage_trades,
+                stage_hold_signals=stage_hold_signals,
+                stage_total_signals=stage_total_signals,
+                stage_range_hold_signals=stage_range_hold_signals,
+                stage_range_total_signals=stage_range_total_signals,
+                stage_range_flat_bars=stage_range_flat_bars,
+                stage_range_round_trips=stage_range_round_trips,
+                stage_range_flat_ratio=round(
+                    float(stage_range_flat_bars) / float(max(1, stage_range_total_signals)),
+                    4,
+                ),
+                rollout_trades=chunk_trades,
+                rollout_steps=rollout_steps,
+                hold_ratio=round(hold_ratio, 4),
+                exploration_active=exploration_active,
+                learning_attempt=attempt + 1,
+                escalation_level=escalation_level,
+                gen0_provisional=gen0_provisional,
+                patterns_mined=patterns_mined,
+                oracle_wins=oracle_wins,
+                data_days_loaded=data_days_loaded,
+                expansion_step=expansion_step,
+                stage_wall_remaining_sec=max(
+                    0, int(cur_cfg.max_stage_wall_sec) - int(elapsed_stage_sec)
+                ),
+                quality_score=float(self._data_manifest.get("quality_score", 0.0) or 0.0),
+                **scorecard,
+            )
+            if (
+                current_stage_trades > scorecard_snapshot_trades
+                or patterns_mined > scorecard_snapshot_patterns
+            ):
+                scorecard_snapshot_trades = current_stage_trades
+                scorecard_snapshot_patterns = patterns_mined
+                scorecard_snapshot_at = time.time()
+            last_progress_write_at = time.time()
+
+        def _mine_and_inject() -> None:
+            nonlocal patterns_mined, oracle_wins, active_stage_ticks
+            pool = active_train if len(active_train) > len(active_stage_ticks) else active_stage_ticks
+            mine_result = mine_winning_patterns(
+                ticks=pool,
+                stage=stage,
+                runtime=self.runtime,
+                workspace_root=self.workspace_root,
+                max_patterns=cur_cfg.oracle_patterns_per_stage,
+                scan_stride=cur_cfg.oracle_scan_stride,
+                max_hold_bars=cur_cfg.oracle_max_hold_bars,
+            )
+            patterns_mined += len(mine_result.patterns)
+            oracle_wins += mine_result.wins
+            for pattern in mine_result.patterns:
+                self.buffer.add(pattern, priority=3.0 + min(10.0, abs(float(pattern.get("reward", 0.0)))))
+            active_stage_ticks = filter_ticks_for_stage(stage, active_train) or list(active_train)
+
+        def _maybe_expand_data() -> bool:
+            nonlocal active_train, active_stage_ticks, expansion_step, data_days_loaded, data_exhausted
+            if data_exhausted:
+                return False
+            expanded = expand_birth_data(
+                market_data_service=self.market_data_service,
+                runtime=self.runtime,
+                current_step=expansion_step,
+                expansion_steps=list(cur_cfg.data_expansion_steps),
+                holdout_pct=self.birth_config.holdout_pct,
+                enrich_news_fn=lambda rows: enrich_ticks_with_news(
+                    rows,
+                    workspace_root=self.workspace_root,
+                    primary=news_cfg.primary,
+                    enable_cache=news_cfg.enable_cache,
+                    cache_path=news_cfg.cache_path,
+                ),
+                synthetic_fallback_fn=(
+                    None
+                    if prefer_real
+                    else lambda n, p: self._generate_synthetic_ticks(n, start_price=p or start_price)
+                ),
+                start_price=start_price,
+            )
+            expansion_step = expanded.step_index
+            data_days_loaded = expanded.days_back
+            if expanded.exhausted and not expanded.train_ticks:
+                data_exhausted = True
+                return False
+            active_train = list(expanded.train_ticks)
+            active_stage_ticks = filter_ticks_for_stage(stage, active_train) or list(active_train)
+            self._real_data_pct = expanded.real_data_pct
+            _write_progress(
+                phase="data_expansion",
+                message=(
+                    f"Data expansion: {data_days_loaded} dagen, "
+                    f"{len(active_train):,} train ticks · {stage.value}"
+                ),
+            )
+            return True
+
+        _write_progress(
+            phase="curriculum_research",
+            message=f"Curriculum {stage.value}: oracle scan start (doel {required:,} trades).",
+        )
+        _mine_and_inject()
+        if len(self.buffer) >= 80:
+            self.current_policy = self.ppo_trainer.update_from_buffer(
+                buffer=self.buffer,
+                timesteps=ppo_steps_per_update,
+                birth_phase=True,
+            )
+            self.ppo_steps += ppo_steps_per_update
+
+        while True:
+            if last_progress_write_at > 0 and time.time() - last_progress_write_at >= 60.0:
+                _write_progress(
+                    phase="curriculum_learning",
+                    message=(
+                        f"Curriculum {stage.value}: heartbeat · {stage_trades:,} / "
+                        f"{required:,} trades · patronen {patterns_mined:,}"
+                    ),
+                )
+
+            if self._stop_requested():
+                self._persist_checkpoint(
+                    training_mode=training_mode,
+                    curriculum_stage=stage.value,
+                    policy_path=str(self.final_policy_path),
+                    phase="paused",
+                    stage_metrics=_stage_metrics_payload(),
+                )
+                return self._paused_result()
+
+            elapsed_stage_sec = time.time() - stage_started_at
+            if elapsed_stage_sec >= max(300, int(cur_cfg.max_stage_wall_sec)):
+                if (
+                    stage_trades >= max(1, required // 4)
+                    and len(self.buffer) >= 256
+                    and self._constitution_guard.violations == 0
+                ):
+                    gen0_provisional = True
+                    logger.info(
+                        "birth.stage.wall_budget_provisional",
+                        extra={"event_data": {"stage": stage.value, "elapsed_sec": elapsed_stage_sec}},
+                    )
+
+            stage_result = evaluate_stage_pass(
+                stage,
+                trades=stage_trades,
+                wins=stage_wins,
+                hold_signals=stage_hold_signals,
+                total_signals=stage_total_signals,
+                range_hold_signals=stage_range_hold_signals,
+                range_total_signals=stage_range_total_signals,
+                range_flat_bars=stage_range_flat_bars,
+                range_round_trips=stage_range_round_trips,
+                constitution_violations=self._constitution_guard.violations,
+                target_trades=target,
+                cfg=cur_cfg,
+                provisional=gen0_provisional,
+                oracle_patterns=patterns_mined,
+                buffer_size=len(self.buffer),
+            )
+            if stage_result.passed:
+                logger.info(
+                    "birth.stage.passed",
+                    extra={
+                        "event_data": {
+                            "stage": stage.value,
+                            "trades": stage_trades,
+                            "patterns_mined": patterns_mined,
+                            "attempts": attempt,
+                        }
+                    },
+                )
+                return None
+
+            if (
+                gen0_provisional
+                and patterns_mined >= 100
+                and len(self.buffer) >= 80
+            ):
+                logger.info(
+                    "birth.stage.oracle_research_graduate",
+                    extra={
+                        "event_data": {
+                            "stage": stage.value,
+                            "trades": stage_trades,
+                            "patterns_mined": patterns_mined,
+                        }
+                    },
+                )
+                return None
+
+            if stage_trades == last_stage_trades:
+                stagnation_count += 1
+            else:
+                stagnation_count = 0
+                last_stage_trades = stage_trades
+
+            if stagnation_count >= cur_cfg.stagnation_rollouts_before_expand:
+                _mine_and_inject()
+                if not _maybe_expand_data():
+                    if stage_trades > 0 or patterns_mined > 0 or len(self.buffer) >= 256:
+                        gen0_provisional = True
+                        continue
+                    if data_exhausted:
+                        write_birth_progress(
+                            self.workspace_root,
+                            stage="history_unavailable",
+                            phase="data_expansion_exhausted",
+                            message="Birth research: geen extra data/patronen beschikbaar.",
+                            progress_pct=stage_progress_pct,
+                            cumulative_trades=self.cumulative_trades,
+                            target_trades=trade_budget_cap,
+                            birth_start_time=self.birth_start_time,
+                            curriculum_stage=stage.value,
+                            retryable=True,
+                        )
+                        return {
+                            "status": "history_unavailable",
+                            "total_trades": self.cumulative_trades,
+                            "ppo_steps": self.ppo_steps,
+                            "training_mode": "certified",
+                        }
+                stagnation_count = 0
+                if len(self.buffer) >= 80:
+                    self.current_policy = self.ppo_trainer.update_from_buffer(
+                        buffer=self.buffer,
+                        timesteps=ppo_steps_per_update,
+                        birth_phase=True,
+                    )
+                    self.ppo_steps += ppo_steps_per_update
+
+            if attempt >= cur_cfg.max_rollouts_per_stage:
+                if should_gen0_soft_pass(
+                    stage_trades=stage_trades,
+                    buffer_size=len(self.buffer),
+                    attempt=attempt,
+                    cfg=cur_cfg,
+                ) or patterns_mined >= 100:
+                    gen0_provisional = True
+                elif stage_trades > 0 or patterns_mined > 0:
+                    gen0_provisional = True
+                else:
+                    if _maybe_expand_data():
+                        attempt = 0
+                        continue
+                    write_birth_progress(
+                        self.workspace_root,
+                        stage="history_unavailable",
+                        phase="data_expansion_exhausted",
+                        message="Birth research: max rollouts bereikt zonder patronen.",
+                        progress_pct=stage_progress_pct,
+                        cumulative_trades=self.cumulative_trades,
+                        target_trades=trade_budget_cap,
+                        birth_start_time=self.birth_start_time,
+                        retryable=True,
+                    )
+                    return {
+                        "status": "history_unavailable",
+                        "total_trades": self.cumulative_trades,
+                        "ppo_steps": self.ppo_steps,
+                        "training_mode": "certified",
+                    }
+                attempt = 0
+                continue
+
+            remaining = max(1, required - stage_trades)
+            chunk_target = min(remaining, cur_cfg.rollout_chunk_trades)
+            active_ticks = self._stage_tick_pool(
+                stage=stage,
+                stage_ticks=active_stage_ticks,
+                train_ticks=active_train,
+                escalation_level=escalation_level,
+                attempt=attempt,
+            )
+
+            chunk_trades_snapshot = 0
+
+            def _rollout_progress(snapshot: dict[str, Any]) -> None:
+                nonlocal chunk_trades_snapshot
+                chunk_trades_snapshot = int(snapshot.get("rollout_trades", 0) or 0)
+                explore_suffix = " (exploratie actief)" if snapshot.get("exploration_active") else ""
+                _write_progress(
+                    phase="curriculum_learning",
+                    message=(
+                        f"Curriculum {stage.value}: {stage_trades + chunk_trades_snapshot:,} / "
+                        f"{required:,} trades · poging {attempt + 1} · L{escalation_level} · "
+                        f"patronen {patterns_mined:,}{explore_suffix}"
+                    ),
+                    chunk_trades=chunk_trades_snapshot,
+                    rollout_steps=int(snapshot.get("rollout_steps", 0) or 0),
+                    exploration_active=bool(snapshot.get("exploration_active")),
+                    hold_ratio=float(snapshot.get("hold_ratio", 0.0) or 0.0),
+                )
+
+            explore_steps = cur_cfg.exploration_steps * (1 + escalation_level)
+            if (
+                stage == CurriculumStage.STAGE2_RANGE
+                and stage_trades >= required
+                and hold_stagnation_count >= cur_cfg.stage2_hold_stagnation_rollouts
+            ):
+                explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
+                escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 1)
+            rollout = run_policy_rollout(
+                runtime=self.runtime,
+                data=active_ticks,
+                policy=self.current_policy,
+                target_trades=chunk_target,
+                workspace_root=self.workspace_root,
+                constitution_guard=self._constitution_guard,
+                rollout_step_budget=chunk_budget,
+                stall_probe_steps=max(200, cur_cfg.stall_probe_steps // (1 + escalation_level)),
+                exploration_steps=explore_steps,
+                escalation_level=escalation_level,
+                on_progress=_rollout_progress,
+            )
+
+            stage_trades += rollout.trades
+            stage_wins += rollout.wins
+            stage_hold_signals += rollout.hold_signals
+            stage_total_signals += rollout.total_signals
+            stage_range_hold_signals += rollout.range_hold_signals
+            stage_range_total_signals += rollout.range_total_signals
+            stage_range_flat_bars += rollout.range_flat_bars
+            stage_range_round_trips += rollout.range_round_trips
+            self.cumulative_trades += rollout.trades
+
+            current_hold_ratio = float(stage_hold_signals) / float(max(1, stage_total_signals))
+            range_flat_ratio = float(stage_range_flat_bars) / float(max(1, stage_range_total_signals))
+            metric_band = range_flat_ratio if stage_range_total_signals >= 50 else current_hold_ratio
+            if (
+                stage == CurriculumStage.STAGE2_RANGE
+                and stage_trades >= required
+                and (metric_band > 0.70 or metric_band < 0.30)
+            ):
+                if abs(metric_band - last_hold_ratio) < 0.01:
+                    hold_stagnation_count += 1
+                else:
+                    hold_stagnation_count = 0
+                last_hold_ratio = metric_band
+            else:
+                hold_stagnation_count = 0
+
+            for traj in rollout.trajectories:
+                self.buffer.add(traj, priority=1.0 + min(10.0, abs(float(traj.get("reward", 0.0)))))
+
+            if len(self.buffer) >= 256:
+                stage_winrate = float(stage_wins) / float(max(1, stage_trades))
+                _write_progress(
+                    phase="ppo_training",
+                    message=(
+                        f"PPO batch start · {stage_trades:,}/{required:,} trades · "
+                        f"winrate {stage_winrate:.1%} · patronen {patterns_mined:,}"
+                    ),
+                    hold_ratio=float(stage_hold_signals) / float(max(1, stage_total_signals)),
+                )
+                self.current_policy = self.ppo_trainer.update_from_buffer(
+                    buffer=self.buffer,
+                    timesteps=ppo_steps_per_update,
+                    birth_phase=True,
+                )
+                self.ppo_steps += ppo_steps_per_update
+                self._persist_checkpoint(
+                    training_mode=training_mode,
+                    curriculum_stage=stage.value,
+                    phase="ppo_training",
+                    stage_metrics=_stage_metrics_payload(),
+                )
+
+            if rollout.stalled and stage_trades == 0 and patterns_mined == 0:
+                escalation_level += 1
+                if escalation_level >= cur_cfg.max_escalation_level:
+                    _mine_and_inject()
+                    _maybe_expand_data()
+                    escalation_level = 0
+            elif rollout.trades == 0 or rollout.partial_complete:
+                escalation_level = min(escalation_level + 1, cur_cfg.max_escalation_level - 1)
+            elif rollout.trades < max(1, chunk_target // 4):
+                escalation_level = min(escalation_level + 1, cur_cfg.max_escalation_level - 1)
+
+            attempt += 1
+            _maybe_periodic_checkpoint("curriculum_learning")
+            _write_progress(
+                phase="curriculum_learning",
+                message=(
+                    f"Curriculum {stage.value}: {stage_trades:,} / {required:,} trades · "
+                    f"poging {attempt} · patronen {patterns_mined:,}"
+                ),
+                hold_ratio=current_hold_ratio,
+            )
+

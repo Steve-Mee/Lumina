@@ -38,6 +38,8 @@ FIRST_BOOT_EXIT_PAUSED = 2
 
 
 def _write_first_boot_progress(stage: str, message: str, **extra: object) -> None:
+    from lumina_core.birth.stage_scorecard import enrich_progress_scorecard
+
     prev: dict[str, object] = {}
     for progress_path in (FIRST_BOOT_PROGRESS_PATH, FIRST_BOOT_LEGACY_PROGRESS_PATH):
         if not progress_path.exists():
@@ -53,6 +55,8 @@ def _write_first_boot_progress(stage: str, message: str, **extra: object) -> Non
     payload["stage"] = str(stage).strip().lower()
     payload["message"] = str(message)
     payload.update(extra)
+    enriched = enrich_progress_scorecard({k: v for k, v in payload.items()})
+    payload.update(enriched)
     try:
         FIRST_BOOT_PROGRESS_PATH.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(payload, ensure_ascii=True)

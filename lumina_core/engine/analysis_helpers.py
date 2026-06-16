@@ -7,6 +7,46 @@ from typing import Any
 import pandas as pd
 
 
+def normalize_ohlc_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Map tick/alias columns to canonical OHLC names for regime and structure helpers."""
+    if df is None or len(df) == 0:
+        return df
+    out = df.copy()
+    lower_map = {str(col).lower(): col for col in out.columns}
+
+    def _resolve(*candidates: str) -> str | None:
+        for name in candidates:
+            if name in out.columns:
+                return name
+            mapped = lower_map.get(name.lower())
+            if mapped is not None:
+                return str(mapped)
+        return None
+
+    price_col = _resolve("close", "last", "price", "Close", "Last")
+    if price_col is not None:
+        for canonical in ("open", "high", "low", "close"):
+            if canonical not in out.columns:
+                out[canonical] = out[price_col]
+    for canonical, aliases in (
+        ("open", ("open", "Open", "o")),
+        ("high", ("high", "High", "h")),
+        ("low", ("low", "Low", "l")),
+        ("close", ("close", "Close", "last", "Last", "price", "c")),
+        ("volume", ("volume", "Volume", "vol", "v")),
+    ):
+        if canonical in out.columns:
+            continue
+        source = _resolve(*aliases)
+        if source is not None:
+            out[canonical] = out[source]
+    return out
+
+
+def has_ohlc_columns(df: pd.DataFrame) -> bool:
+    return {"high", "low", "close"}.issubset(set(df.columns))
+
+
 def detect_candle_patterns(df: pd.DataFrame, tf: str = "1min") -> dict[str, str]:
     if len(df) < 3:
         return {"pattern": "unknown", "description": "te weinig data"}
@@ -102,13 +142,14 @@ def generate_price_action_summary(df: pd.DataFrame, timeframes: dict[str, int]) 
 
 
 def detect_market_regime(df: pd.DataFrame) -> str:
-    if len(df) < 60:
+    df = normalize_ohlc_frame(df)
+    if len(df) < 60 or not has_ohlc_columns(df):
         return "UNKNOWN"
 
     close = df["close"]
     high = df["high"]
     low = df["low"]
-    vol = df["volume"]
+    vol = df["volume"] if "volume" in df.columns else pd.Series(1.0, index=df.index)
 
     tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
     atr = tr.rolling(14).mean()
@@ -135,7 +176,8 @@ def detect_market_regime(df: pd.DataFrame) -> str:
 
 
 def detect_market_structure(df: pd.DataFrame) -> dict[str, Any]:
-    if len(df) < 50:
+    df = normalize_ohlc_frame(df)
+    if len(df) < 50 or not has_ohlc_columns(df):
         return {"bos": None, "choch": None, "order_blocks": [], "fvg": []}
 
     recent = df.iloc[-40:].reset_index(drop=True)

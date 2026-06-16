@@ -28,6 +28,9 @@ _ACTIVE_TRAINING_STAGES = frozenset(
         "ppo_training",
         "historical_loaded",
         "synthetic_top_up",
+        "curriculum_research",
+        "curriculum_learning",
+        "data_expansion",
     }
 )
 

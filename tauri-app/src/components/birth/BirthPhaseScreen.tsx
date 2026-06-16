@@ -7,6 +7,8 @@ import { BirthDiagnosticsDrawer } from "@/components/birth/BirthDiagnosticsDrawe
 import { BirthPhasePulse } from "@/components/birth/BirthPhasePulse";
 import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
 import { BirthRecoveryPanel } from "@/components/birth/BirthRecoveryPanel";
+import { BirthRemediationBar } from "@/components/birth/BirthRemediationBar";
+import { BirthStageScorecard } from "@/components/birth/BirthStageScorecard";
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
 import { ModeTransitionVeil } from "@/components/cockpit/ModeTransitionVeil";
 import { Button } from "@/components/ui/button";
@@ -50,6 +52,8 @@ export function BirthPhaseScreen() {
   const uiPhase = useBirthStore((s) => s.uiPhase);
   const pollError = useBirthStore((s) => s.pollError);
   const retryBirth = useBirthStore((s) => s.retryBirth);
+  const resumeBirth = useBirthStore((s) => s.resumeBirth);
+  const reuseDataBirth = useBirthStore((s) => s.reuseDataBirth);
   const targetTrades = useBirthStore((s) => s.targetTrades);
   const setPhase = useOnboardingStore((s) => s.setPhase);
   const completeBirthTransition = useOnboardingStore((s) => s.completeBirthTransition);
@@ -63,6 +67,7 @@ export function BirthPhaseScreen() {
   const recoveryKind = detectBirthRecoveryKind(status);
   const interrupted = status != null && isBirthInterrupted(status);
   const [recoveryDismissed, setRecoveryDismissed] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [realPreviewActive, setRealPreviewActive] = useState(false);
   const [milestoneVeilActive, setMilestoneVeilActive] = useState(false);
   const veiledMilestonesRef = useRef<Set<string>>(new Set());
@@ -142,6 +147,59 @@ export function BirthPhaseScreen() {
     useBirthStore.getState().reset();
   };
 
+  const handleResumeBirth = () => {
+    setRetrying(true);
+    void resumeBirth()
+      .then((ok) => {
+        if (ok) {
+          toast.success("Resuming birth from checkpoint");
+          return;
+        }
+        toast.error(useBirthStore.getState().pollError ?? "Birth resume failed");
+      })
+      .finally(() => setRetrying(false));
+  };
+
+  const handleWipeRetryBirth = () => {
+    setRetrying(true);
+    void retryBirth({ wipe: true })
+      .then((ok) => {
+        if (ok) {
+          toast.success("Fresh birth training started");
+          return;
+        }
+        toast.error(useBirthStore.getState().pollError ?? "Birth restart failed");
+      })
+      .finally(() => setRetrying(false));
+  };
+
+  const handleReuseDataBirth = () => {
+    setRetrying(true);
+    void reuseDataBirth()
+      .then((ok) => {
+        if (ok) {
+          toast.success("Resuming with reused data manifest");
+          return;
+        }
+        toast.error(useBirthStore.getState().pollError ?? "Birth reuse failed");
+      })
+      .finally(() => setRetrying(false));
+  };
+
+  const handleRetryBirth = () => {
+    setRetrying(true);
+    void retryBirth()
+      .then((ok) => {
+        if (ok) {
+          toast.success("Certified birth training started");
+          return;
+        }
+        const err = useBirthStore.getState().pollError;
+        toast.error(err ?? "Birth retry failed");
+      })
+      .finally(() => setRetrying(false));
+  };
+
   return (
     <OnboardingShell className="birth-phase-screen birth-phase-screen--cinematic">
       <motion.div
@@ -178,6 +236,7 @@ export function BirthPhaseScreen() {
             className={cn(
               "birth-phase-hud pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 px-4 pb-16 pt-4 md:px-6 md:pb-20 md:pt-6",
               awakening && "birth-phase-hud--finale",
+              certificateFailed && "opacity-0",
             )}
           >
             <div className="birth-phase-hud-band pointer-events-auto text-center">
@@ -195,6 +254,16 @@ export function BirthPhaseScreen() {
                   ? "Your organism is trained and ready for the command deck."
                   : phaseSubtitle}
               </p>
+              {running && !failed && !awakening && status?.progress ? (
+                <>
+                  <BirthStageScorecard
+                    progress={status.progress}
+                    variant="compact"
+                    className="mt-2"
+                  />
+                  <BirthRemediationBar status={status} className="mt-2 max-w-md mx-auto" />
+                </>
+              ) : null}
               {awakening ? (
                 <p className="birth-phase-finale-note mt-2 text-sm">
                   Capital Protection mode awaits in the command deck.
@@ -276,23 +345,50 @@ export function BirthPhaseScreen() {
         ) : null}
 
         {certificateFailed ? (
-          <div className="relative z-30 mx-4 mb-4 shrink-0 space-y-3">
-            <BirthCompletionSummary status={status} />
-            <div
-              className={cn(
-                "birth-phase-certificate-failed rounded-xl p-4 text-sm lumina-glass lumina-glass--overlay",
-                warnOverlayPanelClass(),
-              )}
-            >
-              <p className={warnOverlayTitleClass()}>{headline}</p>
-              <p className={cn("mt-1", warnOverlayBodyClass())}>
-                {status?.certificate_reason ??
-                  status?.message ??
-                  "Birth Certificate v2 thresholds were not met. Review OOS metrics and retry."}
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Button type="button" className="onboarding-cta" onClick={() => void retryBirth()}>
-                  Retry birth
+          <div className="birth-phase-certificate-overlay absolute inset-0 z-40 flex items-center justify-center overflow-y-auto px-4 py-10">
+            <div className="w-full max-w-2xl space-y-5">
+              <div className="text-center">
+                <h2 className="birth-phase-headline text-2xl font-semibold tracking-wide md:text-3xl">
+                  {headline}
+                </h2>
+                <p className="birth-phase-subtitle mt-2 text-sm">{phaseSubtitle}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {pollError ||
+                    (Array.isArray(status?.failure_reasons) && status.failure_reasons.length > 0
+                      ? status.failure_reasons.join(" · ")
+                      : null) ||
+                    status?.message ||
+                    "Review OOS metrics below and choose a recovery action."}
+                </p>
+              </div>
+              <BirthCompletionSummary status={status} />
+              <BirthRemediationBar status={status} />
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
+                <Button
+                  type="button"
+                  className="onboarding-cta min-w-[180px]"
+                  disabled={retrying}
+                  onClick={handleResumeBirth}
+                >
+                  {retrying ? "Starting birth…" : "Continue learning"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="min-w-[160px]"
+                  disabled={retrying}
+                  onClick={handleReuseDataBirth}
+                >
+                  Reuse data & retry
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-w-[160px]"
+                  disabled={retrying}
+                  onClick={handleWipeRetryBirth}
+                >
+                  Wipe & restart
                 </Button>
                 <Button
                   type="button"

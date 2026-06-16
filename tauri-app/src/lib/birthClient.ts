@@ -6,8 +6,37 @@ export interface BirthProgressPayload {
   progress_pct?: number;
   trades_done?: number;
   target_trades?: number;
+  stage_target_trades?: number;
   cumulative_trades?: number;
   total_trades?: number;
+  rollout_trades?: number;
+  rollout_steps?: number;
+  hold_ratio?: number;
+  exploration_active?: boolean;
+  patterns_mined?: number;
+  oracle_wins?: number;
+  data_days_loaded?: number;
+  expansion_step?: number;
+  learning_attempt?: number;
+  stage_trades?: number;
+  stage_wins?: number;
+  stage_winrate?: number;
+  stage_hold_ratio?: number;
+  curriculum_index?: number;
+  curriculum_total?: number;
+  stages_passed?: string[];
+  pass_criteria_id?: string;
+  pass_criteria_label?: string;
+  pass_metric_label?: string;
+  pass_metric_target?: number;
+  pass_metric_min?: number;
+  pass_metric_max?: number;
+  stage_display_name?: string;
+  sub_phase?: string;
+  sub_phase_label?: string;
+  constitution_violations?: number;
+  is_advancing?: boolean;
+  timestamp?: string;
   ppo_steps?: number;
   ppo_steps_cumulative?: number;
   ppo_batch_count?: number;
@@ -15,6 +44,18 @@ export interface BirthProgressPayload {
   curriculum_stage?: string;
   certificate_ok?: boolean;
   oos_metrics?: Record<string, unknown>;
+  failure_reasons?: string[];
+  quality_score?: number;
+  remediation_attempt?: number;
+  remediation_max?: number;
+  remediation_action?: string;
+  stage_wall_remaining_sec?: number;
+  stage_range_hold_signals?: number;
+  stage_range_total_signals?: number;
+  stage_range_flat_bars?: number;
+  stage_range_round_trips?: number;
+  stage_range_flat_ratio?: number;
+  data_manifest?: Record<string, unknown>;
   actual_real_days_loaded?: number;
   regimes_covered?: string[];
 }
@@ -41,8 +82,13 @@ export interface BirthStatusPayload {
   certificate?: BirthCertificatePayload | null;
   curriculum_stage?: string;
   oos_metrics?: Record<string, unknown>;
-  artifacts_label?: string;
-  phase_label?: string;
+  failure_reasons?: string[];
+  quality_score?: number;
+  remediation_attempt?: number;
+  remediation_max?: number;
+  checkpoint_phase?: string;
+  checkpoint_quality_score?: number;
+  data_manifest?: Record<string, unknown>;
   elapsed_seconds?: number;
   adaptive_intelligence?: Record<string, unknown>;
 }
@@ -99,6 +145,52 @@ export async function startBirthSessionContinue(
   targetTrades: number,
 ): Promise<Record<string, unknown>> {
   return startBirthSession({ targetTrades, continueTraining: true });
+}
+
+export type BirthStartStatus = "started" | "rejected" | "already_running" | "already_completed";
+
+export function isBirthStartSuccessful(status: unknown): boolean {
+  const normalized = String(status ?? "").toLowerCase();
+  return normalized === "started" || normalized === "already_running";
+}
+
+export async function retryBirthSession(
+  targetTrades: number,
+  options?: { wipe?: boolean },
+): Promise<BirthStatusPayload> {
+  const base = resolveBackendBaseUrl();
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  if (options?.wipe) {
+    params.set("wipe", "true");
+  }
+  const response = await fetch(`${base}/api/birth/retry?${params}`, { method: "POST" });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Birth retry HTTP ${response.status}`);
+  }
+  return response.json() as Promise<BirthStatusPayload>;
+}
+
+export async function resumeBirthSession(targetTrades: number): Promise<BirthStatusPayload> {
+  const base = resolveBackendBaseUrl();
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  const response = await fetch(`${base}/api/birth/resume?${params}`, { method: "POST" });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Birth resume HTTP ${response.status}`);
+  }
+  return response.json() as Promise<BirthStatusPayload>;
+}
+
+export async function reuseDataBirthSession(targetTrades: number): Promise<BirthStatusPayload> {
+  const base = resolveBackendBaseUrl();
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  const response = await fetch(`${base}/api/birth/reuse-data?${params}`, { method: "POST" });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Birth reuse-data HTTP ${response.status}`);
+  }
+  return response.json() as Promise<BirthStatusPayload>;
 }
 
 export async function clearBirthForExtraTraining(): Promise<Record<string, unknown>> {
