@@ -46,6 +46,26 @@ def _ticks(n: int = 100) -> list[dict]:
     ]
 
 
+def _fake_rollout(**overrides: object) -> SimpleNamespace:
+    payload: dict[str, object] = {
+        "trades": 100,
+        "wins": 55,
+        "hold_signals": 0,
+        "total_signals": 100,
+        "trajectories": [{"reward": 1.0}] * 300,
+        "constitution_violations": 0,
+        "regimes_seen": {"TREND_UP", "NEUTRAL"},
+        "range_hold_signals": 0,
+        "range_total_signals": 0,
+        "range_flat_bars": 0,
+        "range_round_trips": 0,
+        "stalled": False,
+        "partial_complete": False,
+    }
+    payload.update(overrides)
+    return SimpleNamespace(**payload)
+
+
 @pytest.mark.unit
 def test_certified_start_sets_training_mode_certified(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     engine = LuminaBirthEngine(
@@ -57,15 +77,7 @@ def test_certified_start_sets_training_mode_certified(tmp_path: Path, monkeypatc
     monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", lambda **_kwargs: _ticks())
     monkeypatch.setattr(
         "lumina_core.birth.engine.run_policy_rollout",
-        lambda **_kwargs: SimpleNamespace(
-            trades=100,
-            wins=55,
-            hold_signals=0,
-            total_signals=100,
-            trajectories=[{"reward": 1.0}] * 300,
-            constitution_violations=0,
-            regimes_seen={"TREND_UP", "NEUTRAL"},
-        ),
+        lambda **_kwargs: _fake_rollout(),
     )
     monkeypatch.setattr(
         "lumina_core.birth.engine.evaluate_holdout_certificate",
@@ -98,13 +110,11 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
     monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", lambda **_kwargs: _ticks(50))
     monkeypatch.setattr(
         "lumina_core.birth.engine.run_policy_rollout",
-        lambda **_kwargs: SimpleNamespace(
+        lambda **_kwargs: _fake_rollout(
             trades=50,
             wins=25,
-            hold_signals=0,
             total_signals=50,
             trajectories=[{"reward": 1.0}] * 50,
-            constitution_violations=0,
             regimes_seen={"TREND_UP"},
         ),
     )

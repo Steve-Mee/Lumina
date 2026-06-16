@@ -36,7 +36,6 @@ def _load_watchdog_modules():
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parents[2]
-    repo_watchdog = repo_root / "watchdog.py"
 
     for mod_name in list(sys.modules):
         if mod_name == "watchdog" or mod_name.startswith("watchdog."):

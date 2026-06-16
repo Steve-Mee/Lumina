@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from lumina_core.birth.sim_runner import SimRolloutResult, run_policy_rollout
+from lumina_core.birth.sim_runner import run_policy_rollout
 from lumina_core.birth.tick_enricher import enrich_ticks_for_sim
 
 

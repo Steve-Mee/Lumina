@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from lumina_core.birth.purged_split import PurgedSplit, purged_train_holdout_split
+from lumina_core.birth.purged_split import PurgedSplit
 
 
 def ticks_cache_path(workspace_root: Path | str) -> Path:

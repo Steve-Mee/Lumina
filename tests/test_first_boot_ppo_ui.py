@@ -12,7 +12,8 @@ def test_tauri_birth_phase_shows_ppo_progress() -> None:
     assert "BirthPhaseScreen" in birth_src or "export function BirthPhaseScreen" in birth_src
 
 
-def test_tauri_birth_store_tracks_ppo_fields() -> None:
+def test_tauri_birth_phase_model_tracks_ppo_fields() -> None:
     root = Path(__file__).resolve().parents[1]
-    store_src = (root / "tauri-app" / "src" / "store" / "birthStore.ts").read_text(encoding="utf-8")
-    assert "ppo" in store_src.lower()
+    model_src = (root / "tauri-app" / "src" / "lib" / "birthPhaseModel.ts").read_text(encoding="utf-8")
+    assert "ppo" in model_src.lower()
+    assert "extractPpoProgress" in model_src

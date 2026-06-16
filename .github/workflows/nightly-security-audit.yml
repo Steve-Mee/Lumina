@@ -31,7 +31,7 @@ jobs:
 
       - name: pip-audit (core + trading requirements)
         run: |
-          # Starlette 1.0.1 fix blocked by fastapi==0.135.3 pin; tracked until fastapi upgrade.
+          # Starlette pinned to 1.3.1+ for GHSA fixes; PYSEC-2026-161 retained until fastapi unpins.
           pip-audit --requirement requirements-core.txt \
             --format json \
             --output pip_audit_report.json \
