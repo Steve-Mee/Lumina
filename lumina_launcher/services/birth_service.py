@@ -61,6 +61,36 @@ _BIRTH_ACTIVE_STAGES = frozenset(
 )
 
 
+def resolve_terminal_birth_status(progress: Dict[str, Any] | None) -> tuple[str, str] | None:
+    """Map durable progress terminal phases to top-level API status (SSOT for recovery UI)."""
+    if not progress:
+        return None
+    phase = str(progress.get("phase", "") or "").strip().lower()
+    stage_name = str(progress.get("stage", "") or "").strip().lower()
+
+    if phase == "stage_stalled" or stage_name == "stage_stalled":
+        message = str(
+            progress.get("pass_reason")
+            or progress.get("message")
+            or "Curriculum stage stalled — metrics did not converge."
+        )
+        return ("stage_stalled", message)
+
+    if phase in {"certificate_failed", "certificate_remediation"}:
+        message = str(
+            progress.get("message") or "Birth Certificate v2 thresholds not met."
+        )
+        return ("certificate_failed", message)
+
+    if stage_name == "failed" and phase == "certificate_failed":
+        message = str(
+            progress.get("message") or "Birth Certificate v2 thresholds not met."
+        )
+        return ("certificate_failed", message)
+
+    return None
+
+
 class BirthService:
     _instance: Optional["BirthService"] = None
     _lock = threading.Lock()
@@ -464,6 +494,21 @@ class BirthService:
                 }
             )
 
+        terminal = resolve_terminal_birth_status(progress)
+        if terminal is not None:
+            terminal_status, terminal_message = terminal
+            return self._enrich_birth_status(
+                {
+                    **base_meta,
+                    "status": terminal_status,
+                    "progress_pct": float(progress.get("progress_pct", 0) or 0),
+                    "message": terminal_message,
+                    "result": self._result,
+                    "orphaned": False,
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
+
         if isinstance(self._result, dict) and self._result:
             status = str(self._result.get("status", "idle") or "idle")
             msg = str(progress.get("message") or self._result.get("message") or "Birth Phase klaar.")
@@ -532,16 +577,52 @@ class BirthService:
     def retry_birth(self, target_trades: int | None = None, *, wipe: bool = False) -> Dict[str, Any]:
         """Resume from checkpoint on certificate failure; wipe only when explicitly requested."""
         from lumina_launcher.core.first_boot import FirstBootManager
+        from lumina_core.birth.config import BRO_ENGINE_VERSION
+        from lumina_core.birth.checkpoint import load_checkpoint_state
+        from lumina_core.birth.remediation import (
+            reconstruct_checkpoint_from_progress,
+            should_fast_path_remediation_from_state,
+        )
 
         progress = self._load_progress()
         phase = str(progress.get("phase", "") or "").strip().lower()
-        preserve_checkpoint = (
-            not wipe
-            and phase in {"certificate_failed", "certificate_remediation"}
-            and (
+        checkpoint_state = load_checkpoint_state(self.workspace_root)
+        checkpoint_exists = (
+            self.checkpoint_file.exists()
+            or (self.workspace_root / "state" / "first_boot_checkpoint.json").exists()
+        )
+        fast_path_eligible = (
+            should_fast_path_remediation_from_state(progress, checkpoint_state) if not wipe else False
+        )
+        preserve_checkpoint = not wipe and fast_path_eligible
+        if preserve_checkpoint and not checkpoint_exists:
+            policy_hint = str(self.policy_path) if self.policy_path.exists() else ""
+            reconstructed = reconstruct_checkpoint_from_progress(
+                self.workspace_root,
+                progress,
+                policy_path=policy_hint,
+                checkpoint=checkpoint_state,
+            )
+            if not reconstructed:
+                logger.warning(
+                    "birth.retry reconstruct_failed phase=%s policy_exists=%s",
+                    phase,
+                    self.policy_path.exists(),
+                )
+                preserve_checkpoint = False
+            checkpoint_exists = (
                 self.checkpoint_file.exists()
                 or (self.workspace_root / "state" / "first_boot_checkpoint.json").exists()
             )
+        logger.info(
+            "birth.retry preserve_checkpoint=%s phase=%s checkpoint_exists=%s wipe=%s "
+            "fast_path_eligible=%s engine_version=%s",
+            preserve_checkpoint,
+            phase,
+            checkpoint_exists,
+            wipe,
+            fast_path_eligible,
+            BRO_ENGINE_VERSION,
         )
         if not preserve_checkpoint:
             FirstBootManager(self.workspace_root).clear_stale_for_certified_retry()

@@ -163,7 +163,12 @@ def test_learning_loop_continues_after_single_trade_chunk(
     result = engine.run_birth_phase(target_trades=500, force=True, prefer_real_data_only=False)
 
     assert rollout_calls["n"] >= 3
-    assert result["status"] in {"completed", "certificate_failed", "practice_completed"}
+    assert result["status"] in {
+        "completed",
+        "certificate_failed",
+        "practice_completed",
+        "stage_stalled",
+    }
     progress_path = tmp_path / "state" / "lumina_birth_progress.json"
     if progress_path.is_file():
         payload = json.loads(progress_path.read_text(encoding="utf-8"))

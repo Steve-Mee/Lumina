@@ -16,6 +16,7 @@ import {
   isBirthFailed,
   isBirthInterrupted,
   isBirthRunning,
+  isBirthStageStalled,
   resolveBirthHeadline,
   type BirthMilestone,
 } from "@/lib/birthPhaseModel";
@@ -70,6 +71,8 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       uiPhase = "certificate_failed";
     } else if (isBirthComplete(payload)) {
       uiPhase = "finale";
+    } else if (isBirthStageStalled(payload)) {
+      uiPhase = "idle";
     } else if (isBirthFailed(payload)) {
       uiPhase = "error";
     } else if (isBirthInterrupted(payload)) {

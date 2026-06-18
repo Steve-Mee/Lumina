@@ -52,7 +52,6 @@ export function BirthPhaseScreen() {
   const uiPhase = useBirthStore((s) => s.uiPhase);
   const pollError = useBirthStore((s) => s.pollError);
   const retryBirth = useBirthStore((s) => s.retryBirth);
-  const resumeBirth = useBirthStore((s) => s.resumeBirth);
   const reuseDataBirth = useBirthStore((s) => s.reuseDataBirth);
   const targetTrades = useBirthStore((s) => s.targetTrades);
   const setPhase = useOnboardingStore((s) => s.setPhase);
@@ -149,10 +148,10 @@ export function BirthPhaseScreen() {
 
   const handleResumeBirth = () => {
     setRetrying(true);
-    void resumeBirth()
+    void retryBirth()
       .then((ok) => {
         if (ok) {
-          toast.success("Resuming birth from checkpoint");
+          toast.success("Continuing birth from checkpoint");
           return;
         }
         toast.error(useBirthStore.getState().pollError ?? "Birth resume failed");

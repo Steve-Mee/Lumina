@@ -21,6 +21,7 @@ from lumina_core.birth.checkpoint import (
     can_resume_checkpoint,
     clear_checkpoint,
     load_checkpoint_state,
+    read_checkpoint_payload,
     save_checkpoint,
 )
 from lumina_core.birth.buffer_persist import clear_buffer, load_buffer, save_buffer
@@ -51,12 +52,14 @@ from lumina_core.birth.remediation import (
     manifest_train_hash_matches,
     select_regime_diverse_train_ticks,
     select_remediation_plan,
-    should_fast_path_remediation,
+    should_fast_path_remediation_from_state,
+    reconstruct_checkpoint_from_progress,
 )
 from lumina_core.birth.preflight import assess_split_preflight, data_manifest_from_split
 from lumina_core.birth.progress import read_birth_progress, write_birth_progress
 from lumina_core.birth.stage_scorecard import (
     build_scorecard_payload,
+    compute_stage_blocker,
 )
 from lumina_core.birth.purged_split import purged_train_holdout_split
 from lumina_core.birth.sim_runner import run_policy_rollout
@@ -603,6 +606,8 @@ class BirthPhaseEngineV2:
             oos_metrics=current_eval,
             failure_reasons=list(current_eval.get("failure_reasons") or []),
             remediation_attempt=self._remediation_attempt,
+            stages_passed=list(self._stages_passed),
+            data_manifest=dict(self._data_manifest),
         )
         self._persist_checkpoint(
             training_mode=training_mode,
@@ -694,6 +699,22 @@ class BirthPhaseEngineV2:
         self._active_stage_metrics = {}
         self.buffer.clear()
         self._constitution_guard.reset()
+
+        progress_snapshot = read_birth_progress(self.workspace_root)
+        existing_checkpoint = load_checkpoint_state(self.workspace_root)
+        if (
+            not force
+            and not practice_mode
+            and not read_checkpoint_payload(self.workspace_root)
+            and should_fast_path_remediation_from_state(progress_snapshot, existing_checkpoint)
+        ):
+            policy_hint = str(self.final_policy_path)
+            reconstruct_checkpoint_from_progress(
+                self.workspace_root,
+                progress_snapshot,
+                policy_path=policy_hint if Path(policy_hint).is_file() else "",
+                checkpoint=existing_checkpoint,
+            )
 
         completion_flags = (self.completion_flag_path, self.legacy_completion_flag_path)
         resume = can_resume_checkpoint(
@@ -843,13 +864,25 @@ class BirthPhaseEngineV2:
         )
         start_price = float(ticks[-1].get("last", 5000.0) or 5000.0) if ticks else 5000.0
 
+        if resume and not checkpoint_phase:
+            progress_phase = str(progress_snapshot.get("phase", "") or "").strip().lower()
+            if progress_phase in {"certificate_failed", "certificate_remediation"}:
+                checkpoint_phase = progress_phase
+                if not self._stages_passed:
+                    self._stages_passed = list(progress_snapshot.get("stages_passed") or [])
+                self._remediation_attempt = max(
+                    self._remediation_attempt,
+                    int(progress_snapshot.get("remediation_attempt", 0) or 0),
+                )
+                if not self._data_manifest:
+                    manifest = progress_snapshot.get("data_manifest")
+                    if isinstance(manifest, dict):
+                        self._data_manifest = dict(manifest)
+
         if (
             not practice_mode
             and resume
-            and should_fast_path_remediation(
-                checkpoint_phase=checkpoint_phase,
-                stages_passed=self._stages_passed,
-            )
+            and should_fast_path_remediation_from_state(progress_snapshot, checkpoint_state)
         ):
             write_birth_progress(
                 self.workspace_root,
@@ -975,6 +1008,7 @@ class BirthPhaseEngineV2:
             phase="ppo_polish",
             patterns_mined=0,
             learning_attempt=0,
+            cfg=cfg.curriculum,
         )
         write_birth_progress(
             self.workspace_root,
@@ -1048,6 +1082,7 @@ class BirthPhaseEngineV2:
             phase="oos_evaluation",
             patterns_mined=0,
             learning_attempt=0,
+            cfg=cfg.curriculum,
         )
         write_birth_progress(
             self.workspace_root,
@@ -1162,6 +1197,12 @@ class BirthPhaseEngineV2:
         cur_cfg = self.birth_config.curriculum
         news_cfg = self.birth_config.news
         required = stage_pass_trades(stage, cur_cfg)
+        allow_provisional = training_mode == "practice" or cur_cfg.allow_provisional_pass
+        max_rollouts = (
+            cur_cfg.max_rollouts_per_stage
+            if allow_provisional
+            else min(cur_cfg.max_rollouts_per_stage, cur_cfg.certified_max_rollouts_per_stage)
+        )
         stage_trades = 0
         stage_wins = 0
         stage_hold_signals = 0
@@ -1178,6 +1219,8 @@ class BirthPhaseEngineV2:
         expansion_step = 0
         data_days_loaded = self.birth_config.max_real_days
         hold_stagnation_count = 0
+        winrate_stagnation_count = 0
+        wall_budget_exhausted = False
         stage_started_at = time.time()
         checkpoint_state = load_checkpoint_state(self.workspace_root)
         stage_metrics = checkpoint_state.get("stage_metrics")
@@ -1246,6 +1289,7 @@ class BirthPhaseEngineV2:
         scorecard_snapshot_at = time.time()
         last_progress_write_at = 0.0
         last_hold_ratio = 0.0
+        last_winrate = 0.0
 
         def _stage_metrics_payload() -> dict[str, Any]:
             return self._stage_metrics_snapshot(
@@ -1299,6 +1343,11 @@ class BirthPhaseEngineV2:
                 prev_stage_trades=scorecard_snapshot_trades,
                 prev_patterns_mined=scorecard_snapshot_patterns,
                 snapshot_elapsed_sec=elapsed_snapshot,
+                stage_range_flat_bars=stage_range_flat_bars,
+                stage_range_total_signals=stage_range_total_signals,
+                stage_range_round_trips=stage_range_round_trips,
+                provisional_pass=gen0_provisional,
+                cfg=cur_cfg,
             )
             elapsed_stage_sec = max(0.0, time.time() - stage_started_at)
             write_birth_progress(
@@ -1312,7 +1361,6 @@ class BirthPhaseEngineV2:
                 ppo_steps=self.ppo_steps,
                 birth_start_time=self.birth_start_time,
                 curriculum_stage=stage.value,
-                stage_target_trades=required,
                 stage_trades=current_stage_trades,
                 stage_hold_signals=stage_hold_signals,
                 stage_total_signals=stage_total_signals,
@@ -1422,6 +1470,81 @@ class BirthPhaseEngineV2:
             )
             self.ppo_steps += ppo_steps_per_update
 
+        def _certified_stage_stall_result(
+            *,
+            elapsed_stage_sec: float,
+            failure_key: str,
+            force: bool = False,
+        ) -> dict[str, Any] | None:
+            if allow_provisional or stage_trades < required:
+                return None
+            blocker_metric, blocker_value, blocker_reason = compute_stage_blocker(
+                stage,
+                stage_trades=stage_trades,
+                stage_wins=stage_wins,
+                hold_ratio=float(stage_hold_signals) / float(max(1, stage_total_signals)),
+                required=required,
+                constitution_violations=self._constitution_guard.violations,
+                range_flat_ratio=float(stage_range_flat_bars)
+                / float(max(1, stage_range_total_signals)),
+                range_round_trips=stage_range_round_trips,
+                range_total_signals=stage_range_total_signals,
+            )
+            if not blocker_metric:
+                return None
+            if not force:
+                stagnation_met = False
+                if stage == CurriculumStage.STAGE1_TREND:
+                    stagnation_met = (
+                        winrate_stagnation_count >= cur_cfg.stage1_winrate_stagnation_rollouts
+                    )
+                elif stage == CurriculumStage.STAGE2_RANGE:
+                    stagnation_met = (
+                        hold_stagnation_count >= cur_cfg.stage2_hold_stagnation_rollouts
+                    )
+                elif stage == CurriculumStage.STAGE3_MIXED:
+                    stagnation_met = self._constitution_guard.violations > 0
+                stall_wall = max(300, int(cur_cfg.certified_stage_stall_wall_sec))
+                if not stagnation_met:
+                    return None
+                if not (elapsed_stage_sec >= stall_wall or wall_budget_exhausted):
+                    return None
+            write_birth_progress(
+                self.workspace_root,
+                stage="stage_stalled",
+                phase="stage_stalled",
+                message=(
+                    f"Stage {stage.value} stalled: "
+                    f"{blocker_reason or blocker_metric or failure_key}"
+                ),
+                progress_pct=stage_progress_pct,
+                cumulative_trades=self.cumulative_trades,
+                target_trades=trade_budget_cap,
+                birth_start_time=self.birth_start_time,
+                curriculum_stage=stage.value,
+                stage_blocker_metric=blocker_metric,
+                stage_blocker_value=blocker_value,
+                pass_reason=blocker_reason,
+                retryable=True,
+            )
+            policy_hint = str(self.final_policy_path)
+            if self.final_policy_path.is_file():
+                policy_hint = str(self.final_policy_path)
+            self._persist_checkpoint(
+                training_mode=training_mode,
+                curriculum_stage=stage.value,
+                policy_path=policy_hint,
+                phase="stage_stalled",
+                stage_metrics=_stage_metrics_payload(),
+            )
+            return {
+                "status": "stage_stalled",
+                "failure_reason": failure_key,
+                "total_trades": self.cumulative_trades,
+                "ppo_steps": self.ppo_steps,
+                "training_mode": training_mode,
+            }
+
         while True:
             if last_progress_write_at > 0 and time.time() - last_progress_write_at >= 60.0:
                 _write_progress(
@@ -1443,17 +1566,37 @@ class BirthPhaseEngineV2:
                 return self._paused_result()
 
             elapsed_stage_sec = time.time() - stage_started_at
+            failure_key = {
+                CurriculumStage.STAGE1_TREND: "stage1_winrate",
+                CurriculumStage.STAGE2_RANGE: "stage2_metric",
+                CurriculumStage.STAGE3_MIXED: "stage3_constitution",
+            }.get(stage, "stage_metrics")
+            stall_result = _certified_stage_stall_result(
+                elapsed_stage_sec=elapsed_stage_sec,
+                failure_key=failure_key,
+            )
+            if stall_result is not None:
+                return stall_result
+
             if elapsed_stage_sec >= max(300, int(cur_cfg.max_stage_wall_sec)):
                 if (
-                    stage_trades >= max(1, required // 4)
-                    and len(self.buffer) >= 256
+                    len(self.buffer) >= 256
                     and self._constitution_guard.violations == 0
+                    and (patterns_mined >= 100 or stage_trades >= 1)
                 ):
-                    gen0_provisional = True
-                    logger.info(
-                        "birth.stage.wall_budget_provisional",
-                        extra={"event_data": {"stage": stage.value, "elapsed_sec": elapsed_stage_sec}},
-                    )
+                    if allow_provisional:
+                        gen0_provisional = True
+                        logger.info(
+                            "birth.stage.wall_budget_provisional",
+                            extra={"event_data": {"stage": stage.value, "elapsed_sec": elapsed_stage_sec}},
+                        )
+                    elif not wall_budget_exhausted:
+                        wall_budget_exhausted = True
+                        escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 1)
+                        logger.info(
+                            "birth.stage.wall_budget_exhausted",
+                            extra={"event_data": {"stage": stage.value, "elapsed_sec": elapsed_stage_sec}},
+                        )
 
             stage_result = evaluate_stage_pass(
                 stage,
@@ -1469,6 +1612,7 @@ class BirthPhaseEngineV2:
                 target_trades=target,
                 cfg=cur_cfg,
                 provisional=gen0_provisional,
+                allow_provisional=allow_provisional,
                 oracle_patterns=patterns_mined,
                 buffer_size=len(self.buffer),
             )
@@ -1481,23 +1625,8 @@ class BirthPhaseEngineV2:
                             "trades": stage_trades,
                             "patterns_mined": patterns_mined,
                             "attempts": attempt,
-                        }
-                    },
-                )
-                return None
-
-            if (
-                gen0_provisional
-                and patterns_mined >= 100
-                and len(self.buffer) >= 80
-            ):
-                logger.info(
-                    "birth.stage.oracle_research_graduate",
-                    extra={
-                        "event_data": {
-                            "stage": stage.value,
-                            "trades": stage_trades,
-                            "patterns_mined": patterns_mined,
+                            "pass_reason": stage_result.message,
+                            "provisional": stage_result.provisional,
                         }
                     },
                 )
@@ -1512,7 +1641,9 @@ class BirthPhaseEngineV2:
             if stagnation_count >= cur_cfg.stagnation_rollouts_before_expand:
                 _mine_and_inject()
                 if not _maybe_expand_data():
-                    if stage_trades > 0 or patterns_mined > 0 or len(self.buffer) >= 256:
+                    if allow_provisional and (
+                        stage_trades > 0 or patterns_mined > 0 or len(self.buffer) >= 256
+                    ):
                         gen0_provisional = True
                         continue
                     if data_exhausted:
@@ -1543,16 +1674,31 @@ class BirthPhaseEngineV2:
                     )
                     self.ppo_steps += ppo_steps_per_update
 
-            if attempt >= cur_cfg.max_rollouts_per_stage:
-                if should_gen0_soft_pass(
-                    stage_trades=stage_trades,
-                    buffer_size=len(self.buffer),
-                    attempt=attempt,
-                    cfg=cur_cfg,
-                ) or patterns_mined >= 100:
+            if attempt >= max_rollouts:
+                if allow_provisional and (
+                    should_gen0_soft_pass(
+                        stage_trades=stage_trades,
+                        buffer_size=len(self.buffer),
+                        attempt=attempt,
+                        cfg=cur_cfg,
+                    )
+                    or patterns_mined >= 100
+                ):
                     gen0_provisional = True
-                elif stage_trades > 0 or patterns_mined > 0:
+                elif allow_provisional and (stage_trades > 0 or patterns_mined > 0):
                     gen0_provisional = True
+                elif not allow_provisional and stage_trades >= required:
+                    stall_result = _certified_stage_stall_result(
+                        elapsed_stage_sec=time.time() - stage_started_at,
+                        failure_key={
+                            CurriculumStage.STAGE1_TREND: "stage1_winrate",
+                            CurriculumStage.STAGE2_RANGE: "stage2_metric",
+                            CurriculumStage.STAGE3_MIXED: "stage3_constitution",
+                        }.get(stage, "stage_metrics"),
+                        force=True,
+                    )
+                    if stall_result is not None:
+                        return stall_result
                 else:
                     if _maybe_expand_data():
                         attempt = 0
@@ -1614,6 +1760,16 @@ class BirthPhaseEngineV2:
             ):
                 explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
                 escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 1)
+            if (
+                stage == CurriculumStage.STAGE1_TREND
+                and stage_trades >= required
+                and winrate_stagnation_count >= cur_cfg.stage1_winrate_stagnation_rollouts
+            ):
+                explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
+                escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 1)
+                _mine_and_inject()
+            if wall_budget_exhausted:
+                explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
             rollout = run_policy_rollout(
                 runtime=self.runtime,
                 data=active_ticks,
@@ -1641,7 +1797,21 @@ class BirthPhaseEngineV2:
             current_hold_ratio = float(stage_hold_signals) / float(max(1, stage_total_signals))
             range_flat_ratio = float(stage_range_flat_bars) / float(max(1, stage_range_total_signals))
             metric_band = range_flat_ratio if stage_range_total_signals >= 50 else current_hold_ratio
+            current_winrate = float(stage_wins) / float(max(1, stage_trades))
             if (
+                stage == CurriculumStage.STAGE1_TREND
+                and stage_trades >= required
+                and (current_winrate < 0.45 or current_hold_ratio > 0.85)
+            ):
+                if abs(current_winrate - last_winrate) < 0.01 and abs(
+                    current_hold_ratio - last_hold_ratio
+                ) < 0.01:
+                    winrate_stagnation_count += 1
+                else:
+                    winrate_stagnation_count = 0
+                last_winrate = current_winrate
+                last_hold_ratio = current_hold_ratio
+            elif (
                 stage == CurriculumStage.STAGE2_RANGE
                 and stage_trades >= required
                 and (metric_band > 0.70 or metric_band < 0.30)
@@ -1653,6 +1823,8 @@ class BirthPhaseEngineV2:
                 last_hold_ratio = metric_band
             else:
                 hold_stagnation_count = 0
+                if stage != CurriculumStage.STAGE1_TREND:
+                    winrate_stagnation_count = 0
 
             for traj in rollout.trajectories:
                 self.buffer.add(traj, priority=1.0 + min(10.0, abs(float(traj.get("reward", 0.0)))))

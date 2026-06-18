@@ -246,6 +246,10 @@ birth_v2:
     stagnation_rollouts_before_expand: 5
     max_rollouts_per_stage: 999999
     gen0_provisional_min_trades: 25
+    allow_provisional_pass: false
+    certified_max_rollouts_per_stage: 200
+    certified_stage_stall_wall_sec: 14400
+    stage1_winrate_stagnation_rollouts: 8
   news:
     primary: finnhub
     enable_cache: true

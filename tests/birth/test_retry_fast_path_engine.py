@@ -1,4 +1,4 @@
-"""Certificate failure fast-path resume integration tests."""
+"""Engine E2E: cert-fail retry uses remediation fast path without stage1 reset."""
 
 from __future__ import annotations
 
@@ -8,12 +8,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from lumina_core.birth.buffer_persist import save_buffer
-from lumina_core.birth.checkpoint import save_checkpoint
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
 from lumina_core.birth.engine import BirthPhaseEngineV2
-from lumina_core.birth.purged_split import purged_train_holdout_split
-from lumina_launcher.services.birth_service import BirthService
 
 
 class _FakePpoTrainer:
@@ -56,33 +52,10 @@ def _ticks(n: int = 1200) -> list[dict]:
     return out
 
 
-def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
-    trajectories = [{"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.1]}} for i in range(120)]
-    buffer_path = save_buffer(tmp_path, trajectories)
+def _seed_progress_only_cert_fail(tmp_path: Path) -> None:
     policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
     policy_path.parent.mkdir(parents=True, exist_ok=True)
     policy_path.write_bytes(b"policy")
-    ticks = _ticks(1200)
-    split = purged_train_holdout_split(ticks, holdout_pct=0.2)
-    save_checkpoint(
-        tmp_path,
-        cumulative_trades=500,
-        ppo_steps=9000,
-        training_mode="certified",
-        stages_passed=["stage1_trend", "stage2_range", "stage3_mixed"],
-        curriculum_stage="stage4_polish",
-        policy_path=str(policy_path),
-        stage_metrics={
-            "stage_trades": 120,
-            "stage_wins": 60,
-            "patterns_mined": 80,
-            "buffer_size": len(trajectories),
-        },
-        buffer_path=buffer_path,
-        data_manifest={"train_hash": "abc", "preflight_ok": True},
-        phase="certificate_failed",
-        remediation_attempt=1,
-    )
     progress_path = tmp_path / "state" / "lumina_birth_progress.json"
     progress_path.parent.mkdir(parents=True, exist_ok=True)
     progress_path.write_text(
@@ -96,20 +69,21 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
                     "certificate_passed": False,
                     "failure_reasons": ["holdout_trades:12/50"],
                 },
+                "cumulative_trades": 500,
+                "ppo_steps": 9000,
                 "data_manifest": {"train_hash": "abc", "preflight_ok": True},
             }
         ),
         encoding="utf-8",
     )
-    _ = split
 
 
 @pytest.mark.unit
-def test_certificate_failed_resume_uses_remediation_fast_path(
+def test_engine_resume_progress_only_skips_curriculum(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _seed_certificate_failed_checkpoint(tmp_path)
+    _seed_progress_only_cert_fail(tmp_path)
     trainer = _FakePpoTrainer()
     engine = BirthPhaseEngineV2(
         runtime=SimpleNamespace(),
@@ -172,9 +146,18 @@ def test_certificate_failed_resume_uses_remediation_fast_path(
             rollout_steps=200,
         ),
     )
+    reconstruct_calls: list[bool] = []
+
+    def _spy_reconstruct(*args, **kwargs):  # noqa: ANN002, ANN003
+        from lumina_core.birth import remediation
+
+        ok = remediation.reconstruct_checkpoint_from_progress(*args, **kwargs)
+        reconstruct_calls.append(ok)
+        return ok
+
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected expand")),
+        "lumina_core.birth.engine.reconstruct_checkpoint_from_progress",
+        _spy_reconstruct,
     )
 
     result = engine.run_birth_phase(
@@ -186,81 +169,4 @@ def test_certificate_failed_resume_uses_remediation_fast_path(
 
     assert stage_loop_calls == []
     assert result.get("status") == "completed"
-    progress = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
-    assert progress.get("phase") in {"certificate_issued", "certificate_remediation", "completed"}
-
-
-@pytest.mark.unit
-def test_retry_birth_preserves_checkpoint_and_continues_training(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    BirthService._instance = None  # type: ignore[attr-defined]
-    svc = BirthService()
-    svc.configure_workspace(tmp_path)
-    _seed_certificate_failed_checkpoint(tmp_path)
-    calls: list[dict[str, object]] = []
-
-    def _fake_start(**kwargs: object) -> dict[str, str]:
-        calls.append(dict(kwargs))
-        return {"status": "started", "message": "ok"}
-
-    monkeypatch.setattr(svc, "start_birth", _fake_start)
-    monkeypatch.setattr(
-        "lumina_launcher.core.first_boot.FirstBootManager.clear_stale_for_certified_retry",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not wipe")),
-    )
-
-    result = svc.retry_birth(target_trades=10000, wipe=False)
-
-    assert result["status"] == "started"
-    assert calls
-    assert calls[0]["force"] is False
-    assert calls[0]["continue_training"] is True
-    BirthService._instance = None  # type: ignore[attr-defined]
-
-
-@pytest.mark.unit
-def test_retry_birth_reconstructs_checkpoint_from_progress(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    BirthService._instance = None  # type: ignore[attr-defined]
-    svc = BirthService()
-    svc.configure_workspace(tmp_path)
-    policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
-    policy_path.parent.mkdir(parents=True, exist_ok=True)
-    policy_path.write_bytes(b"policy")
-    progress_path = tmp_path / "state" / "lumina_birth_progress.json"
-    progress_path.parent.mkdir(parents=True, exist_ok=True)
-    progress_path.write_text(
-        json.dumps(
-            {
-                "phase": "certificate_failed",
-                "stages_passed": ["stage1_trend", "stage2_range", "stage3_mixed"],
-                "failure_reasons": ["oos_sharpe:0.1/0.35"],
-                "cumulative_trades": 500,
-                "ppo_steps": 9000,
-            }
-        ),
-        encoding="utf-8",
-    )
-    calls: list[dict[str, object]] = []
-
-    def _fake_start(**kwargs: object) -> dict[str, str]:
-        calls.append(dict(kwargs))
-        return {"status": "started", "message": "ok"}
-
-    monkeypatch.setattr(svc, "start_birth", _fake_start)
-    monkeypatch.setattr(
-        "lumina_launcher.core.first_boot.FirstBootManager.clear_stale_for_certified_retry",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not wipe")),
-    )
-
-    result = svc.retry_birth(target_trades=10000, wipe=False)
-
-    assert result["status"] == "started"
-    assert (tmp_path / "state" / "lumina_birth_checkpoint.json").is_file()
-    assert calls[0]["force"] is False
-    assert calls[0]["continue_training"] is True
-    BirthService._instance = None  # type: ignore[attr-defined]
+    assert reconstruct_calls == [True]

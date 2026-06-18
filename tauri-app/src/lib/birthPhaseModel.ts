@@ -240,6 +240,9 @@ export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
   if (isBirthRunning(payload)) {
     return false;
   }
+  if (isBirthStageStalled(payload)) {
+    return false;
+  }
   const status = normalizeToken(payload.status);
   const stage = normalizeToken(payload.progress?.stage);
   const phase = normalizeToken(payload.progress?.phase);
@@ -253,6 +256,16 @@ export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
 export function isBirthFailed(payload: BirthStatusPayload): boolean {
   const status = normalizeToken(payload.status);
   return status === "error" || status === "certificate_failed";
+}
+
+export function isBirthStageStalled(payload: BirthStatusPayload): boolean {
+  if (isBirthRunning(payload)) {
+    return false;
+  }
+  const status = normalizeToken(payload.status);
+  const stage = normalizeToken(payload.progress?.stage);
+  const phase = normalizeToken(payload.progress?.phase);
+  return status === "stage_stalled" || phase === "stage_stalled" || stage === "stage_stalled";
 }
 
 export function extractSimProgress(progress: BirthProgressPayload | undefined): {
@@ -303,6 +316,9 @@ export interface StageScorecardModel {
   health: StageScorecardHealth;
   healthHint: string;
   isCurriculum: boolean;
+  blockerLabel: string | null;
+  blockerDetail: string | null;
+  provisionalPass: boolean;
 }
 
 const STALE_WORKING_SEC = 120;
@@ -520,6 +536,28 @@ export function extractStageScorecard(
   const heartbeatSec = ts != null ? Math.max(0, Math.round((nowMs - ts) / 1000)) : null;
   const { health, healthHint } = resolveScorecardHealth(progress, heartbeatSec);
 
+  const tradesTargetMet = sim.target > 0 && sim.done >= sim.target;
+  let blockerLabel: string | null = null;
+  let blockerDetail: string | null = null;
+  if (tradesTargetMet) {
+    const blockerMetric = String(progress?.stage_blocker_metric ?? "").trim();
+    const passReason = String(progress?.pass_reason ?? "").trim();
+    if (passReason) {
+      blockerDetail = passReason;
+      blockerLabel = "Blocking metric";
+    } else if (passCriteriaId === "trend_winrate" && metricValue != null && metricTarget != null) {
+      if (metricValue < metricTarget) {
+        blockerLabel = "Winrate";
+        blockerDetail = `${(metricValue * 100).toFixed(0)}% — need ${(metricTarget * 100).toFixed(0)}%`;
+      }
+    } else if (blockerMetric) {
+      blockerLabel = blockerMetric.replace(/_/g, " ");
+      if (progress?.stage_blocker_value != null) {
+        blockerDetail = String(progress.stage_blocker_value);
+      }
+    }
+  }
+
   return {
     stageLabel,
     goalLabel,
@@ -558,6 +596,9 @@ export function extractStageScorecard(
     health,
     healthHint,
     isCurriculum,
+    blockerLabel,
+    blockerDetail,
+    provisionalPass: Boolean(progress?.provisional_pass),
   };
 }
 

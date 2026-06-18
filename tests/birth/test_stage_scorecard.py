@@ -119,6 +119,30 @@ def test_enrich_progress_scorecard_infers_pass_criteria() -> None:
 
 
 @pytest.mark.unit
+def test_build_scorecard_payload_stage1_with_cfg_uses_stage_pass_trades() -> None:
+    from lumina_core.birth.config import BirthCurriculumConfig
+
+    cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
+    payload = build_scorecard_payload(
+        stage=CurriculumStage.STAGE1_TREND,
+        curriculum_index=1,
+        stages_passed=[],
+        stage_trades=210,
+        stage_wins=80,
+        stage_hold_signals=0,
+        stage_total_signals=210,
+        constitution_violations=0,
+        target_trades=2000,
+        phase="curriculum_learning",
+        patterns_mined=100,
+        learning_attempt=3,
+        cfg=cfg,
+    )
+    assert payload["stage_target_trades"] == 200
+    assert "200 trades" in payload["pass_criteria_label"]
+
+
+@pytest.mark.unit
 def test_build_scorecard_payload_stage1() -> None:
     payload = build_scorecard_payload(
         stage=CurriculumStage.STAGE1_TREND,

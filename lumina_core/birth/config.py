@@ -45,8 +45,12 @@ class BirthCurriculumConfig:
     polish_ppo_timesteps: int = 50_000
     max_stage_wall_sec: int = 14_400
     stage2_hold_stagnation_rollouts: int = 8
+    stage1_winrate_stagnation_rollouts: int = 8
     checkpoint_interval_sec: int = 600
     max_certificate_remediation_attempts: int = 5
+    allow_provisional_pass: bool = False
+    certified_max_rollouts_per_stage: int = 200
+    certified_stage_stall_wall_sec: int = 14_400
 
 
 @dataclass(slots=True)
@@ -139,9 +143,20 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         polish_ppo_timesteps=_coerce_int(cur_raw.get("polish_ppo_timesteps"), 50_000),
         max_stage_wall_sec=_coerce_int(cur_raw.get("max_stage_wall_sec"), 14_400),
         stage2_hold_stagnation_rollouts=_coerce_int(cur_raw.get("stage2_hold_stagnation_rollouts"), 8),
+        stage1_winrate_stagnation_rollouts=_coerce_int(
+            cur_raw.get("stage1_winrate_stagnation_rollouts"), 8
+        ),
         checkpoint_interval_sec=_coerce_int(cur_raw.get("checkpoint_interval_sec"), 600),
         max_certificate_remediation_attempts=_coerce_int(
             cur_raw.get("max_certificate_remediation_attempts"), 5
+        ),
+        allow_provisional_pass=bool(cur_raw.get("allow_provisional_pass", False)),
+        certified_max_rollouts_per_stage=_coerce_int(
+            cur_raw.get("certified_max_rollouts_per_stage"), 200
+        ),
+        certified_stage_stall_wall_sec=_coerce_int(
+            cur_raw.get("certified_stage_stall_wall_sec"),
+            _coerce_int(cur_raw.get("max_stage_wall_sec"), 14_400),
         ),
     )
 

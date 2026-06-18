@@ -184,6 +184,56 @@ def test_get_status_flag_without_certificate_reports_certificate_failed(
 
 
 @pytest.mark.unit
+def test_get_status_stage_stalled_from_progress_file(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    svc.progress_file.parent.mkdir(parents=True, exist_ok=True)
+    svc.progress_file.write_text(
+        json.dumps(
+            {
+                "stage": "stage_stalled",
+                "phase": "stage_stalled",
+                "pass_reason": "winrate 13.0% < 45%",
+                "progress_pct": 68.0,
+                "curriculum_stage": "stage1_trend",
+            }
+        ),
+        encoding="utf-8",
+    )
+    status = svc.get_status()
+    assert status["status"] == "stage_stalled"
+    assert "13.0%" in str(status.get("message"))
+    assert status.get("live") is False
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_get_status_certificate_failed_without_completion_flag(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    svc.progress_file.parent.mkdir(parents=True, exist_ok=True)
+    svc.progress_file.write_text(
+        json.dumps(
+            {
+                "stage": "failed",
+                "phase": "certificate_failed",
+                "message": "Birth Certificate v2 thresholds not met after remediation.",
+                "failure_reasons": ["holdout_trades:12/50"],
+                "stages_passed": ["stage1_trend", "stage2_range", "stage3_mixed"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    status = svc.get_status()
+    assert status["status"] == "certificate_failed"
+    assert "thresholds" in str(status.get("message", "")).lower()
+    assert status.get("live") is False
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
 def test_get_status_includes_launcher_setup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()

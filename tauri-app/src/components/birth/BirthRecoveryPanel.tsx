@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { startBirthSession, isBirthStartSuccessful, reuseDataBirthSession, type BirthStatusPayload } from "@/lib/birthClient";
+import { startBirthSession, isBirthStartSuccessful, reuseDataBirthSession, retryBirthSession, type BirthStatusPayload } from "@/lib/birthClient";
 import {
   birthProgressDiagnostics,
   checkpointTradeCount,
@@ -41,7 +41,11 @@ const COPY: Record<
   },
   certificate_failed: {
     title: "Certificate thresholds not met",
-    body: "OOS evaluation failed. Continue from checkpoint, reuse loaded data, or wipe and restart.",
+    body: "OOS evaluation failed. Continue learning runs certificate remediation (not a full restart from stage 1). Reuse loaded data or wipe to start fresh.",
+  },
+  stage_stalled: {
+    title: "Curriculum stage stalled",
+    body: "Trade target was met but pass metrics did not improve within the stage wall. Review the blocker below, then retry this stage or expand data.",
   },
 };
 
@@ -78,6 +82,8 @@ export function BirthRecoveryPanel({
   const copy = COPY[kind];
   const diagnostics = birthProgressDiagnostics(status?.progress);
   const ckptTrades = checkpointTradeCount(status?.progress);
+  const blockerReason = String(status?.progress?.pass_reason ?? "").trim();
+  const blockerMetric = String(status?.progress?.stage_blocker_metric ?? "").trim();
 
   return (
     <div
@@ -89,6 +95,12 @@ export function BirthRecoveryPanel({
     >
       <p className="font-medium text-amber-100">{copy.title}</p>
       <p className="mt-1 text-xs leading-relaxed text-amber-100/75">{copy.body}</p>
+
+      {kind === "stage_stalled" && (blockerReason || blockerMetric) ? (
+        <p className="mt-2 rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1.5 font-mono text-[11px] text-amber-100">
+          Blocker: {blockerReason || blockerMetric.replace(/_/g, " ")}
+        </p>
+      ) : null}
 
       {kind === "checkpoint_available" && ckptTrades > 0 ? (
         <p className="mt-2 font-mono text-[10px] text-muted-foreground">
@@ -194,6 +206,47 @@ export function BirthRecoveryPanel({
           </Button>
         ) : null}
 
+        {kind === "stage_stalled" ? (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                void runBirthAction("Resuming stalled stage…", () =>
+                  startBirthSession({ targetTrades, continueTraining: true }),
+                )
+              }
+            >
+              Retry stage
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                void runBirthAction("Expanding data and retrying…", () =>
+                  startBirthSession({ targetTrades, continueTraining: true, force: true }),
+                )
+              }
+            >
+              Expand data & retry
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void runBirthAction("Fresh birth started", () =>
+                  startBirthSession({ targetTrades, force: true }),
+                )
+              }
+            >
+              Wipe & restart
+            </Button>
+          </>
+        ) : null}
+
         {kind === "certificate_failed" ? (
           <>
             <Button
@@ -202,7 +255,7 @@ export function BirthRecoveryPanel({
               variant="secondary"
               onClick={() =>
                 void runBirthAction("Continuing from checkpoint…", () =>
-                  startBirthSession({ targetTrades, continueTraining: true }),
+                  retryBirthSession(targetTrades, { wipe: false }),
                 )
               }
             >

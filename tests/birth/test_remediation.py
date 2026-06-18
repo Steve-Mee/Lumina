@@ -13,6 +13,7 @@ from lumina_core.birth.remediation import (
     select_regime_diverse_train_ticks,
     select_remediation_plan,
     should_fast_path_remediation,
+    should_fast_path_remediation_from_state,
 )
 
 
@@ -113,3 +114,22 @@ def test_manifest_train_hash_matches() -> None:
         saved_manifest={"train_hash": "other"},
     )
     assert not manifest_train_hash_matches(current_hash="abc123", saved_manifest=None)
+
+
+@pytest.mark.unit
+def test_should_fast_path_remediation_from_state_uses_checkpoint_stages() -> None:
+    progress = {"phase": "certificate_failed", "stages_passed": []}
+    checkpoint = {
+        "phase": "certificate_failed",
+        "stages_passed": ["stage1_trend", "stage2_range", "stage3_mixed"],
+    }
+    assert should_fast_path_remediation_from_state(progress, checkpoint)
+
+
+@pytest.mark.unit
+def test_should_fast_path_remediation_from_state_rejects_incomplete_curriculum() -> None:
+    progress = {
+        "phase": "certificate_failed",
+        "stages_passed": ["stage1_trend"],
+    }
+    assert not should_fast_path_remediation_from_state(progress, {})

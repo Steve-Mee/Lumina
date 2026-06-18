@@ -47,6 +47,10 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "stage_range_round_trips",
     "stage_range_flat_ratio",
     "stage_wall_remaining_sec",
+    "stage_blocker_metric",
+    "stage_blocker_value",
+    "pass_reason",
+    "provisional_pass",
 )
 
 
@@ -200,6 +204,60 @@ def enrich_progress_scorecard(payload: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def compute_stage_blocker(
+    stage: CurriculumStage,
+    *,
+    stage_trades: int,
+    stage_wins: int,
+    hold_ratio: float,
+    required: int,
+    constitution_violations: int,
+    range_flat_ratio: float,
+    range_round_trips: int,
+    range_total_signals: int,
+) -> tuple[str | None, float | None, str | None]:
+    """Return (blocker_metric_id, blocker_value, human pass/block reason)."""
+    trades = max(0, int(stage_trades))
+    wins = max(0, int(stage_wins))
+    if stage == CurriculumStage.STAGE1_TREND:
+        if trades < required:
+            return (None, None, None)
+        winrate = float(wins) / float(max(1, trades))
+        if winrate < 0.45:
+            return ("winrate", round(winrate, 4), f"winrate {winrate:.1%} < 45%")
+        return (None, None, None)
+    if stage == CurriculumStage.STAGE2_RANGE:
+        if trades < required:
+            return (None, None, None)
+        if range_total_signals >= 50:
+            metric = range_flat_ratio
+            label = "position_flat"
+            min_round_trips = max(3, required // 10)
+            if range_round_trips < min_round_trips:
+                return (
+                    "round_trips",
+                    float(range_round_trips),
+                    f"round_trips {range_round_trips} < {min_round_trips}",
+                )
+        else:
+            metric = hold_ratio
+            label = "hold"
+        if metric < 0.30 or metric > 0.70:
+            return (label, round(metric, 4), f"{label} {metric:.1%} outside 30–70%")
+        return (None, None, None)
+    if stage == CurriculumStage.STAGE3_MIXED:
+        if trades < required:
+            return (None, None, None)
+        if constitution_violations > 0:
+            return (
+                "constitution_violations",
+                float(constitution_violations),
+                f"violations {constitution_violations} > 0",
+            )
+        return (None, None, None)
+    return (None, None, None)
+
+
 def build_scorecard_payload(
     *,
     stage: CurriculumStage,
@@ -217,8 +275,13 @@ def build_scorecard_payload(
     prev_stage_trades: int = 0,
     prev_patterns_mined: int = 0,
     snapshot_elapsed_sec: float = 0.0,
+    stage_range_flat_bars: int = 0,
+    stage_range_total_signals: int = 0,
+    stage_range_round_trips: int = 0,
+    provisional_pass: bool = False,
+    cfg: BirthCurriculumConfig | None = None,
 ) -> dict[str, Any]:
-    criteria = pass_criteria_for_stage(stage, target_trades=target_trades)
+    criteria = pass_criteria_for_stage(stage, cfg=cfg, target_trades=target_trades)
     trades = max(0, int(stage_trades))
     wins = max(0, int(stage_wins))
     hold_ratio = float(stage_hold_signals) / float(max(1, stage_total_signals))
@@ -230,7 +293,20 @@ def build_scorecard_payload(
         prev_patterns_mined=int(prev_patterns_mined),
         elapsed_since_snapshot_sec=float(snapshot_elapsed_sec),
     )
-    return {
+    required = stage_pass_trades(stage, cfg) if cfg is not None else criteria.target_trades
+    range_flat_ratio = float(stage_range_flat_bars) / float(max(1, stage_range_total_signals))
+    blocker_metric, blocker_value, pass_reason = compute_stage_blocker(
+        stage,
+        stage_trades=trades,
+        stage_wins=wins,
+        hold_ratio=hold_ratio,
+        required=required,
+        constitution_violations=int(constitution_violations),
+        range_flat_ratio=range_flat_ratio,
+        range_round_trips=int(stage_range_round_trips),
+        range_total_signals=int(stage_range_total_signals),
+    )
+    payload: dict[str, Any] = {
         "stage_wins": wins,
         "stage_winrate": round(winrate, 4),
         "stage_hold_ratio": round(hold_ratio, 4),
@@ -248,4 +324,13 @@ def build_scorecard_payload(
         "sub_phase_label": human_sub_phase(phase),
         "constitution_violations": int(constitution_violations),
         "is_advancing": bool(is_advancing),
+        "stage_target_trades": int(required),
     }
+    if blocker_metric:
+        payload["stage_blocker_metric"] = blocker_metric
+        payload["stage_blocker_value"] = blocker_value
+    if pass_reason:
+        payload["pass_reason"] = pass_reason
+    if provisional_pass:
+        payload["provisional_pass"] = True
+    return payload

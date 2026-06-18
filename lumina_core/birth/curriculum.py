@@ -93,6 +93,7 @@ def evaluate_stage_pass(
     target_trades: int,
     cfg: BirthCurriculumConfig | None = None,
     provisional: bool = False,
+    allow_provisional: bool = False,
     oracle_patterns: int = 0,
     buffer_size: int = 0,
     oracle_soft_min_patterns: int = 100,
@@ -140,12 +141,13 @@ def evaluate_stage_pass(
         passed = True
         message = "polish complete"
 
-    if provisional and not passed and trades >= max(1, required // 4):
+    if allow_provisional and provisional and not passed and trades >= max(1, required // 4):
         passed = True
         message = f"{message} gen0_provisional"
 
     if (
-        not passed
+        allow_provisional
+        and not passed
         and oracle_patterns >= oracle_soft_min_patterns
         and buffer_size >= 256
         and trades >= max(1, required // 4)
@@ -154,7 +156,8 @@ def evaluate_stage_pass(
         message = f"{message} oracle_soft_pass"
 
     if (
-        not passed
+        allow_provisional
+        and not passed
         and provisional
         and oracle_patterns >= oracle_soft_min_patterns
         and buffer_size >= max(80, oracle_soft_min_patterns)

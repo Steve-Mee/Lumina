@@ -150,6 +150,7 @@ def test_stage2_wall_budget_triggers_provisional_pass(
             rollout_chunk_trades=10,
             max_stage_wall_sec=300,
             max_rollouts_per_stage=50,
+            allow_provisional_pass=True,
             checkpoint_interval_sec=3600,
         ),
         trade_budget_cap=500,
@@ -214,3 +215,94 @@ def test_stage2_wall_budget_triggers_provisional_pass(
 
     assert result is None
     assert tick["value"] - start >= 300.0
+
+
+@pytest.mark.unit
+def test_certified_wall_budget_exhausted_does_not_provisional_pass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = BirthPhaseEngineV2(
+        runtime=SimpleNamespace(),
+        ppo_trainer=_FakePpoTrainer(),
+        market_data_service=SimpleNamespace(),
+        workspace_root=tmp_path,
+    )
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(
+            stage2_range_trades=50,
+            rollout_chunk_trades=10,
+            max_stage_wall_sec=300,
+            certified_max_rollouts_per_stage=15,
+            allow_provisional_pass=False,
+            checkpoint_interval_sec=3600,
+        ),
+        trade_budget_cap=500,
+    )
+    for i in range(300):
+        engine.buffer.add({"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.01]}})
+
+    tick = {"value": 1_000_000.0}
+
+    def _fake_time() -> float:
+        return tick["value"]
+
+    def _advance_time(_: float) -> None:
+        tick["value"] += 400.0
+
+    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.run_policy_rollout",
+        lambda **_kwargs: (
+            _advance_time(0),
+            SimRolloutResult(
+                trades=6,
+                wins=2,
+                hold_signals=90,
+                total_signals=100,
+                total_pnl=0.5,
+                trajectories=[{"reward": 0.5, "observation": {"vector": [5000.0]}} for _ in range(20)],
+                pnl_series=[0.5],
+                constitution_violations=0,
+                regimes_seen={"RANGE"},
+                partial_complete=True,
+                rollout_steps=200,
+                range_hold_signals=90,
+                range_total_signals=100,
+            ),
+        )[1],
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.mine_winning_patterns",
+        lambda **_kwargs: __import__(
+            "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
+        ).PatternMineResult(
+            patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}}] * 120,
+            wins=120,
+            scanned=100,
+            regimes_seen={"RANGE"},
+        ),
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.expand_birth_data",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
+    )
+
+    result = engine._run_stage_research_loop(
+        stage=CurriculumStage.STAGE2_RANGE,
+        stage_index=1,
+        stage_ticks=_range_ticks(600),
+        train_ticks=_range_ticks(600),
+        holdout_ticks=_range_ticks(120),
+        target=50,
+        stage_progress_pct=40.0,
+        training_mode="certified",
+        ppo_steps_per_update=1000,
+        polish_ppo_timesteps=1000,
+        trade_budget_cap=500,
+        prefer_real=True,
+        start_price=5000.0,
+    )
+
+    assert result is not None
+    assert result.get("status") == "stage_stalled"

@@ -173,6 +173,8 @@ def run_policy_rollout(
                 use_exploration = True
             elif level >= 1 and _hold_ratio(hold_signals, total_signals) > 0.65:
                 use_exploration = True
+            elif _hold_ratio(hold_signals, total_signals) > 0.80:
+                use_exploration = True
 
         if use_exploration:
             exploration_active = True

@@ -106,10 +106,10 @@ async def test_retry_birth_delegates(_reset_birth_service: MagicMock) -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_resume_birth_delegates(_reset_birth_service: MagicMock) -> None:
-    _reset_birth_service.resume_birth.return_value = {"status": "started", "message": "ok"}
+    _reset_birth_service.retry_birth.return_value = {"status": "started", "message": "ok"}
     _reset_birth_service.get_status.return_value = {"status": "running", "progress": {}}
     result = await be.resume_birth(target_trades=25000)
-    _reset_birth_service.resume_birth.assert_called_once_with(target_trades=25000)
+    _reset_birth_service.retry_birth.assert_called_once_with(target_trades=25000, wipe=False)
     assert result["status"] == "running"
 
 
@@ -162,3 +162,37 @@ def test_enrich_status_certificate_failed_uses_failure_reasons(
         }
     )
     assert "regimes_covered:1/3" in str(payload["certificate_reason"])
+
+
+@pytest.mark.unit
+def test_enrich_status_exposes_engine_version_and_fast_path(
+    _reset_birth_service: MagicMock, tmp_path: Path
+) -> None:
+    _reset_birth_service.workspace_root = tmp_path
+    payload = be._enrich_status(
+        {
+            "status": "certificate_failed",
+            "progress": {
+                "phase": "certificate_failed",
+                "stages_passed": ["stage1_trend", "stage2_range", "stage3_mixed"],
+            },
+        }
+    )
+    assert payload["engine_version"] == "BRO-v2"
+    assert payload["fast_path_eligible"] is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_birth_status_stage_stalled_from_service(
+    _reset_birth_service: MagicMock,
+) -> None:
+    _reset_birth_service.get_status.return_value = {
+        "status": "stage_stalled",
+        "message": "winrate 13.0% < 45%",
+        "progress": {"phase": "stage_stalled", "pass_reason": "winrate 13.0% < 45%"},
+        "live": False,
+    }
+    result = await be.get_birth_status()
+    assert result["status"] == "stage_stalled"
+    assert result["engine_version"] == "BRO-v2"

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
+
+from lumina_core.logging_utils import get_logger
+
+logger = get_logger("lumina.birth.remediation")
 
 
 class RemediationAction(str, Enum):
@@ -146,6 +151,114 @@ def should_fast_path_remediation(*, checkpoint_phase: str, stages_passed: list[s
     if phase not in {"certificate_failed", "certificate_remediation"}:
         return False
     return curriculum_stages_complete(stages_passed)
+
+
+def should_fast_path_from_progress(progress: dict[str, Any]) -> bool:
+    """True when progress snapshot indicates cert-fail with completed curriculum."""
+    return should_fast_path_remediation_from_state(progress, {})
+
+
+def _resolve_fast_path_phase(
+    progress: dict[str, Any] | None,
+    checkpoint: dict[str, Any] | None,
+) -> str:
+    for source in (progress or {}, checkpoint or {}):
+        phase = str(source.get("phase", "") or "").strip().lower()
+        if phase in {"certificate_failed", "certificate_remediation"}:
+            return phase
+    return ""
+
+
+def _resolve_fast_path_stages(
+    progress: dict[str, Any] | None,
+    checkpoint: dict[str, Any] | None,
+) -> list[str]:
+    progress_stages = list((progress or {}).get("stages_passed") or [])
+    if curriculum_stages_complete(progress_stages):
+        return progress_stages
+    checkpoint_stages = list((checkpoint or {}).get("stages_passed") or [])
+    if curriculum_stages_complete(checkpoint_stages):
+        return checkpoint_stages
+    merged = list(dict.fromkeys([*progress_stages, *checkpoint_stages]))
+    return merged
+
+
+def should_fast_path_remediation_from_state(
+    progress: dict[str, Any] | None,
+    checkpoint: dict[str, Any] | None,
+) -> bool:
+    """Unified SSOT: cert-fail/remediation phase + curriculum stages from progress or checkpoint."""
+    phase = _resolve_fast_path_phase(progress, checkpoint)
+    if phase not in {"certificate_failed", "certificate_remediation"}:
+        return False
+    stages = _resolve_fast_path_stages(progress, checkpoint)
+    return curriculum_stages_complete(stages)
+
+
+def reconstruct_checkpoint_from_progress(
+    workspace_root: Path | str,
+    progress: dict[str, Any],
+    *,
+    policy_path: str = "",
+    checkpoint: dict[str, Any] | None = None,
+) -> bool:
+    """Persist minimal checkpoint from progress when cert-fail checkpoint was lost."""
+    from lumina_core.birth.checkpoint import read_checkpoint_payload, save_checkpoint
+
+    ckpt = dict(checkpoint or {})
+    if not ckpt:
+        legacy = read_checkpoint_payload(workspace_root)
+        if isinstance(legacy, dict):
+            ckpt = legacy
+
+    if not should_fast_path_remediation_from_state(progress, ckpt):
+        return False
+    root = Path(workspace_root)
+    default_policy = root / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
+    resolved_policy = str(
+        policy_path
+        or ckpt.get("policy_path")
+        or progress.get("policy_path")
+        or default_policy
+    )
+    if not Path(resolved_policy).is_file():
+        logger.warning(
+            "birth.reconstruct_checkpoint.policy_missing path=%s",
+            resolved_policy,
+        )
+        return False
+
+    buffer_path = str(ckpt.get("buffer_path", "") or progress.get("buffer_path", "") or "")
+    stages = _resolve_fast_path_stages(progress, ckpt)
+    save_checkpoint(
+        root,
+        cumulative_trades=max(
+            0,
+            int(progress.get("cumulative_trades", progress.get("trades_done", 0)) or 0),
+        ),
+        ppo_steps=max(0, int(progress.get("ppo_steps", ckpt.get("ppo_steps", 0)) or 0)),
+        training_mode="certified",
+        stages_passed=stages,
+        curriculum_stage="stage4_polish",
+        policy_path=resolved_policy,
+        stage_metrics=dict(ckpt.get("stage_metrics") or {}),
+        buffer_path=buffer_path or None,
+        data_manifest=dict(progress.get("data_manifest") or ckpt.get("data_manifest") or {}),
+        phase=str(
+            _resolve_fast_path_phase(progress, ckpt) or progress.get("phase", "certificate_failed")
+        ),
+        remediation_attempt=max(
+            0,
+            int(progress.get("remediation_attempt", ckpt.get("remediation_attempt", 0)) or 0),
+        ),
+    )
+    logger.info(
+        "birth.reconstruct_checkpoint.ok stages=%s policy=%s buffer=%s",
+        stages,
+        resolved_policy,
+        buffer_path or "none",
+    )
+    return True
 
 
 def manifest_train_hash_matches(

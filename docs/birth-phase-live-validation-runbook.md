@@ -51,10 +51,18 @@ Shadow birth run on a **SIM or certified workspace** (no REAL orders). Use this 
 | **Reuse data & retry** | No preflight expansion; **no** `load_historical_ticks` reload when manifest hash matches (check logs: `reused_manifest=True`). |
 | **Wipe & restart** | Fresh birth from preflight; checkpoint cleared. |
 
-## 6. Accept criteria
+## 6. Stage 1 stall abort (certified wall)
 
-- **Pass:** Birth certificate issued **or** clear abort with `failure_reasons` after max remediation attempts.
-- **Pass:** All steps 1–5 observed without silent stalls or misleading UI.
+1. During `stage1_trend`, if trade target is met but winrate stays below 45% with high hold ratio:
+   - Scorecard shows blocker text (e.g. `winrate 13% < 45%`).
+   - After `certified_stage_stall_wall_sec` (default 4h) plus stagnation rollouts, phase becomes `stage_stalled`.
+2. UI recovery panel offers **Retry stage**, **Expand data & retry**, **Wipe & restart**.
+3. **Fail if:** birth runs 6+ hours at low winrate without `stage_stalled` or blocker HUD.
+
+## 7. Accept criteria
+
+- **Pass:** Birth certificate issued **or** clear abort with `failure_reasons` / `stage_stalled` after configured walls.
+- **Pass:** All steps 1–6 observed without silent stalls or misleading UI.
 - **Defer production birth** until this shadow run passes on the same data profile you plan to use in production.
 
 ## Log markers (grep)
@@ -63,9 +71,13 @@ Shadow birth run on a **SIM or certified workspace** (no REAL orders). Use this 
 birth.engine.version=BRO-v2
 birth.stage.passed
 birth.stage.wall_budget_provisional
+birth.stage.wall_budget_exhausted
 reused_manifest
 holdout_preflight_expansion
 certificate_failed
+stage_stalled
+preserve_checkpoint
+pass_reason
 ```
 
 ## Related docs
@@ -73,3 +85,30 @@ certificate_failed
 - [Command Deck startup runbook](command-deck-startup-runbook.md)
 - [Launcher setup and model management](launcher-setup-and-model-management.md)
 - ADR-0011 Tauri lifecycle gate (startup SSOT)
+
+## Shadow validation appendix
+
+**2026-06-11 — dev workspace (`C:/NinjaTraderAI_Bot`) — Closeout PR-W1–W4**
+
+| Step | Result | Evidence |
+|------|--------|----------|
+| 1 Deploy gate | PASS | `scripts/verify-birth-deploy.ps1`; `GET /api/birth/status` → `engine_version: "BRO-v2"` |
+| 2 Stage 2 wall | PASS (automated) | `tests/birth/test_stage2_bounded.py` |
+| 3 Crash resume | PASS (automated) | `tests/birth/test_checkpoint_resume.py` |
+| 4 OOS cert fail UI | PASS (automated) | `tests/birth/test_certificate_fast_path.py` + endpoint enrichment |
+| 5 Recovery paths | PASS (automated) | `test_retry_fast_path_engine`, `birthClient.test.ts` |
+| 6 Stage1 stall abort | PASS (automated) | `test_stage1_wall_stagnation_aborts_before_max_rollouts` + checkpoint on stall |
+
+**Closeout additions (PR-W):** terminal status SSOT (`resolve_terminal_birth_status`), checkpoint persist on `stage_stalled`, `compute_stage_blocker` + recovery model tests.
+
+**Operator before REAL birth:** run `.\scripts\verify-birth-deploy.ps1`, then execute steps 1–6 live on your production data profile and append grep transcript below.
+
+```
+# Example grep after live shadow:
+# birth.engine.version=BRO-v2
+# preserve_checkpoint=true
+# certificate_remediation
+# stage_stalled
+# pass_reason
+# wall_budget_exhausted
+```

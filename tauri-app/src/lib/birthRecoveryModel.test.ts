@@ -50,6 +50,46 @@ describe("birthRecoveryModel", () => {
     ).toBe("session_interrupted");
   });
 
+  it("detects stage_stalled from top-level status", () => {
+    expect(
+      detectBirthRecoveryKind({
+        status: "stage_stalled",
+        progress: { pass_reason: "winrate 13.0% < 45%" },
+      } as BirthStatusPayload),
+    ).toBe("stage_stalled");
+  });
+
+  it("detects stage_stalled from progress phase only", () => {
+    expect(
+      detectBirthRecoveryKind({
+        status: "idle",
+        progress: {
+          stage: "stage_stalled",
+          phase: "stage_stalled",
+          pass_reason: "winrate 13.0% < 45%",
+        },
+      } as BirthStatusPayload),
+    ).toBe("stage_stalled");
+  });
+
+  it("prefers certificate_failed over progress stage_stalled when top-level cert fail", () => {
+    expect(
+      detectBirthRecoveryKind({
+        status: "certificate_failed",
+        progress: { phase: "stage_stalled" },
+      } as BirthStatusPayload),
+    ).toBe("certificate_failed");
+  });
+
+  it("detects certificate_failed from progress phase", () => {
+    expect(
+      detectBirthRecoveryKind({
+        status: "idle",
+        progress: { phase: "certificate_failed", failure_reasons: ["oos_sharpe:0.1/0.35"] },
+      } as BirthStatusPayload),
+    ).toBe("certificate_failed");
+  });
+
   it("shouldAutoResumeBirth for interrupted and birth_interrupted reason", () => {
     const interrupted = {
       status: "interrupted",

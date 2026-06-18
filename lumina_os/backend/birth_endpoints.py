@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 from lumina_launcher.services.birth_service import birth_service
 from lumina_core.birth.birth_certificate import load_certificate, validate_certificate_artifacts
 from lumina_core.birth.checkpoint import load_checkpoint_state
-from lumina_core.birth.config import load_birth_v2_config
+from lumina_core.birth.config import load_birth_v2_config, BRO_ENGINE_VERSION
+from lumina_core.birth.remediation import should_fast_path_remediation_from_state
 
 router = APIRouter(prefix="/api/birth", tags=["birth"])
 
@@ -56,6 +57,12 @@ def _enrich_status(payload: dict[str, Any]) -> dict[str, Any]:
         "Birth Certificate v2 OK" if payload["artifacts_ok"] else "Certificate or policy missing"
     )
     payload["phase_label"] = "Birth Phase v2"
+    payload["engine_version"] = BRO_ENGINE_VERSION
+    progress_for_fast_path = progress if isinstance(progress, dict) else {}
+    payload["fast_path_eligible"] = should_fast_path_remediation_from_state(
+        progress_for_fast_path,
+        ckpt if isinstance(ckpt, dict) else {},
+    )
     return payload
 
 
@@ -110,8 +117,8 @@ async def retry_birth(
 async def resume_birth(
     target_trades: int | None = Query(None, ge=1000, le=5_000_000),
 ) -> dict[str, Any]:
-    """Continue learning from the last birth checkpoint without wiping artifacts."""
-    result = birth_service.resume_birth(target_trades=target_trades)
+    """Continue learning from certificate failure (alias for retry without wipe)."""
+    result = birth_service.retry_birth(target_trades=target_trades, wipe=False)
     payload: dict[str, Any] = dict(result)
     if str(result.get("status", "")).lower() in {"started", "already_running"}:
         payload.update(birth_service.get_status())

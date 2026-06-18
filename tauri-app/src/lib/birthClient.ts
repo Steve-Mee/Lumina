@@ -1,4 +1,5 @@
 import { resolveBackendBaseUrl } from "@/lib/setupClient";
+import { luminaFetch, readHttpErrorDetail } from "@/lib/httpClient";
 
 export interface BirthProgressPayload {
   stage?: string;
@@ -55,6 +56,10 @@ export interface BirthProgressPayload {
   stage_range_flat_bars?: number;
   stage_range_round_trips?: number;
   stage_range_flat_ratio?: number;
+  stage_blocker_metric?: string;
+  stage_blocker_value?: number;
+  pass_reason?: string;
+  provisional_pass?: boolean;
   data_manifest?: Record<string, unknown>;
   actual_real_days_loaded?: number;
   regimes_covered?: string[];
@@ -88,6 +93,8 @@ export interface BirthStatusPayload {
   remediation_max?: number;
   checkpoint_phase?: string;
   checkpoint_quality_score?: number;
+  engine_version?: string;
+  fast_path_eligible?: boolean;
   data_manifest?: Record<string, unknown>;
   elapsed_seconds?: number;
   adaptive_intelligence?: Record<string, unknown>;
@@ -98,22 +105,39 @@ export interface StartBirthSessionOptions {
   practiceMode?: boolean;
   continueTraining?: boolean;
   force?: boolean;
+  reuseData?: boolean;
+}
+
+function isNotFoundError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("Not Found") || msg.includes("HTTP 404");
 }
 
 async function postBirthStart(params: URLSearchParams): Promise<Record<string, unknown>> {
   const base = resolveBackendBaseUrl();
-  const response = await fetch(`${base}/api/birth/start?${params}`, { method: "POST" });
+  const response = await luminaFetch(`${base}/api/birth/start?${params}`, { method: "POST" });
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `HTTP ${response.status}`);
+    throw new Error(await readHttpErrorDetail(response));
   }
   return response.json();
 }
 
+async function postBirthMutation(
+  path: string,
+  params: URLSearchParams,
+): Promise<BirthStatusPayload> {
+  const base = resolveBackendBaseUrl();
+  const response = await luminaFetch(`${base}${path}?${params}`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readHttpErrorDetail(response));
+  }
+  return response.json() as Promise<BirthStatusPayload>;
+}
+
 export async function fetchBirthStatusTyped(): Promise<BirthStatusPayload> {
   const base = resolveBackendBaseUrl();
-  const response = await fetch(`${base}/api/birth/status`);
-  if (!response.ok) throw new Error(`Birth status HTTP ${response.status}`);
+  const response = await luminaFetch(`${base}/api/birth/status`);
+  if (!response.ok) throw new Error(await readHttpErrorDetail(response));
   return response.json() as Promise<BirthStatusPayload>;
 }
 
@@ -138,6 +162,9 @@ export async function startBirthSession(
   if (options.force) {
     params.set("force", "true");
   }
+  if (options.reuseData) {
+    params.set("reuse_data", "true");
+  }
   return postBirthStart(params);
 }
 
@@ -158,39 +185,48 @@ export async function retryBirthSession(
   targetTrades: number,
   options?: { wipe?: boolean },
 ): Promise<BirthStatusPayload> {
-  const base = resolveBackendBaseUrl();
   const params = new URLSearchParams({ target_trades: String(targetTrades) });
   if (options?.wipe) {
     params.set("wipe", "true");
   }
-  const response = await fetch(`${base}/api/birth/retry?${params}`, { method: "POST" });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `Birth retry HTTP ${response.status}`);
+  try {
+    return await postBirthMutation("/api/birth/retry", params);
+  } catch (err) {
+    if (options?.wipe || !isNotFoundError(err)) {
+      throw err;
+    }
+    const fallback = new URLSearchParams({
+      explicit_user_start: "true",
+      target_trades: String(targetTrades),
+      continue_training: "true",
+    });
+    const result = await postBirthStart(fallback);
+    return result as BirthStatusPayload;
   }
-  return response.json() as Promise<BirthStatusPayload>;
 }
 
 export async function resumeBirthSession(targetTrades: number): Promise<BirthStatusPayload> {
-  const base = resolveBackendBaseUrl();
-  const params = new URLSearchParams({ target_trades: String(targetTrades) });
-  const response = await fetch(`${base}/api/birth/resume?${params}`, { method: "POST" });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `Birth resume HTTP ${response.status}`);
-  }
-  return response.json() as Promise<BirthStatusPayload>;
+  /** Certificate-failure fast path: retry without wipe (BRO v2 SSOT). */
+  return retryBirthSession(targetTrades, { wipe: false });
 }
 
 export async function reuseDataBirthSession(targetTrades: number): Promise<BirthStatusPayload> {
-  const base = resolveBackendBaseUrl();
   const params = new URLSearchParams({ target_trades: String(targetTrades) });
-  const response = await fetch(`${base}/api/birth/reuse-data?${params}`, { method: "POST" });
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `Birth reuse-data HTTP ${response.status}`);
+  try {
+    return await postBirthMutation("/api/birth/reuse-data", params);
+  } catch (err) {
+    if (!isNotFoundError(err)) {
+      throw err;
+    }
+    const fallback = new URLSearchParams({
+      explicit_user_start: "true",
+      target_trades: String(targetTrades),
+      continue_training: "true",
+      reuse_data: "true",
+    });
+    const result = await postBirthStart(fallback);
+    return result as BirthStatusPayload;
   }
-  return response.json() as Promise<BirthStatusPayload>;
 }
 
 export async function clearBirthForExtraTraining(): Promise<Record<string, unknown>> {

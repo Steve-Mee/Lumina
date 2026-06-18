@@ -121,7 +121,19 @@ export function BirthStageScorecard({
         <p className="font-mono text-[10px] text-muted-foreground">
           Goal: {scorecard.goalLabel}
         </p>
+        {scorecard.provisionalPass ? (
+          <p className="font-mono text-[10px] text-amber-300">Provisional pass (practice only)</p>
+        ) : null}
       </div>
+
+      {scorecard.blockerDetail ? (
+        <div className="rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1.5">
+          <p className="font-mono text-[10px] tracking-wide text-amber-200/90 uppercase">
+            {scorecard.blockerLabel ?? "Blocking metric"}
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-amber-100">{scorecard.blockerDetail}</p>
+        </div>
+      ) : null}
 
       <ProgressBar
         label="Stage trades"
