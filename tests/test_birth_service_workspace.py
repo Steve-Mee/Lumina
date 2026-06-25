@@ -15,6 +15,7 @@ from lumina_launcher.services.birth_service import (
     configure_birth_workspace,
     resolve_birth_workspace_root,
 )
+from tests.birth.test_certificate_fast_path import _seed_certificate_failed_checkpoint
 
 birth_service_module = importlib.import_module("lumina_launcher.services.birth_service")
 
@@ -144,11 +145,7 @@ def test_retry_birth_preserves_checkpoint_on_certificate_failed(
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
     svc.configure_workspace(tmp_path)
-    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
-    svc.checkpoint_file.write_text('{"version":3}', encoding="utf-8")
-    svc.progress_file.write_text(
-        '{"phase":"certificate_failed","stage":"failed"}', encoding="utf-8"
-    )
+    _seed_certificate_failed_checkpoint(tmp_path)
     calls: list[dict[str, object]] = []
 
     def _fake_start(**kwargs: object) -> dict[str, str]:

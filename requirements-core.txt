@@ -24,7 +24,7 @@ propcache==0.4.1
 # -- Data validation & settings --------------------------------------------
 pydantic==2.12.5
 pydantic-extra-types==2.11.1
-pydantic-settings==2.13.1
+pydantic-settings==2.14.2
 pydantic_core==2.41.5
 annotated-types==0.7.0
 
@@ -99,7 +99,7 @@ six==1.17.0
 tzdata==2026.1
 orjson==3.11.8
 msgspec==0.20.0
-msgpack==1.1.2
+msgpack==1.2.1
 cachetools==7.0.5
 retrying==1.4.2
 dill==0.4.1

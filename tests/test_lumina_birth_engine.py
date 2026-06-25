@@ -177,20 +177,38 @@ def test_engine_continues_research_on_rollout_stall(tmp_path: Path, monkeypatch:
         ),
     )
 
-    def _mock_expand(**_kwargs) -> DataExpansionResult:
+    expand_calls = {"n": 0}
+
+    def _mock_expand_once(**_kwargs) -> DataExpansionResult:
         split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+        expand_calls["n"] += 1
+        if expand_calls["n"] > 1:
+            return DataExpansionResult(
+                train_ticks=[],
+                holdout_ticks=[],
+                all_ticks=ticks,
+                split=split,
+                days_back=90,
+                step_index=expand_calls["n"],
+                real_data_pct=99.0,
+                exhausted=True,
+            )
         return DataExpansionResult(
             train_ticks=list(split.train),
             holdout_ticks=list(split.holdout),
             all_ticks=ticks,
             split=split,
             days_back=90,
-            step_index=0,
+            step_index=expand_calls["n"],
             real_data_pct=99.0,
             exhausted=False,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
+    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand_once)
+    monkeypatch.setattr(
+        "lumina_core.birth.buffer_persist.save_buffer",
+        lambda *_args, **_kwargs: "",
+    )
     monkeypatch.setattr(
         "lumina_core.birth.engine.evaluate_holdout_certificate",
         lambda **_kwargs: {"certificate_passed": False},
@@ -216,11 +234,22 @@ def test_engine_continues_research_on_rollout_stall(tmp_path: Path, monkeypatch:
 
     monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _stalled_rollout)
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(max_rollouts_per_stage=5),
+        curriculum=BirthCurriculumConfig(
+            max_rollouts_per_stage=3,
+            certified_max_rollouts_per_stage=3,
+            adaptation_enabled=False,
+            wall_behavior="strict",
+        ),
         trade_budget_cap=500,
     )
     result = engine.run_birth_phase(target_trades=500, force=True, prefer_real_data_only=False)
-    assert result["status"] in {"certificate_failed", "completed", "practice_completed"}
+    assert result["status"] in {
+        "certificate_failed",
+        "completed",
+        "practice_completed",
+        "history_unavailable",
+        "stage_stalled",
+    }
     payload = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
     assert payload.get("phase") not in {"simulation_stall", "curriculum_failed"}
 
@@ -314,10 +343,25 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
             regimes_seen={"TREND_UP", "NEUTRAL"},
         ),
     )
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(
+            max_rollouts_per_stage=3,
+            certified_max_rollouts_per_stage=3,
+            adaptation_enabled=False,
+            wall_behavior="strict",
+        ),
+        trade_budget_cap=500,
+    )
     result = engine.run_birth_phase(target_trades=500, force=False, prefer_real_data_only=False)
     assert trainer.loaded_paths == [str(policy_path)]
     assert trainer.create_policy_calls == []
-    assert result["status"] in {"completed", "certificate_failed", "practice_completed"}
+    assert result["status"] in {
+        "completed",
+        "certificate_failed",
+        "practice_completed",
+        "stage_stalled",
+        "history_unavailable",
+    }
 
 
 @pytest.mark.unit

@@ -103,6 +103,15 @@ def session_state_dir(_session_state_isolation: Path) -> Path:
     return _session_state_isolation
 
 
+@pytest.fixture(autouse=True)
+def _unit_tests_skip_stale_contract_calendar(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Unit tests assert gate logic, not futures expiry calendars."""
+    monkeypatch.setattr(
+        "lumina_core.order_gatekeeper.is_stale_contract_symbol",
+        lambda *_args, **_kwargs: False,
+    )
+
+
 @pytest.fixture()
 def isolated_state(tmp_path: Path) -> Generator[Path, None, None]:
     """Function-scoped isolated state directory.
