@@ -107,6 +107,17 @@ LUMINA_BIRTH_ENGINE_INTEGRATION_GUIDE.md
 
 # Local reset snapshots (blank-state script); never commit
 backups/
+*.backup-*
+project-dna/lumina-backup-*/
+
+# Editor / migration leftovers
+*.md.old
+AGENTS.md.old
+
+# Local audit / validation scratch reports
+cleanup_audit.md
+PHASE1_VALIDATION_REPORT.md
+tests/post_refactor_validation_report.md
 
 # Birth Certificate v2 runtime (regenerated locally after training)
 state/lumina_birth_certificate.json
@@ -167,7 +178,8 @@ quality_fix_report.md
 
 # Runtime-generated databases and audit logs
 lumina_os.db
-lumina_vector_db/chroma.sqlite3
+lumina_os/lumina_os.db
+lumina_vector_db/
 state/chroma_community/
 state/metrics.db
 state/*.db-journal
