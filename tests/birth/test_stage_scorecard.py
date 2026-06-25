@@ -8,8 +8,10 @@ from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.birth.stage_scorecard import (
     CURRICULUM_STAGE_COUNT,
     build_scorecard_payload,
+    calculate_simple_slope,
     compute_advancing,
     curriculum_index_for_stage,
+    enrich_adaptation_payload,
     enrich_progress_scorecard,
     human_sub_phase,
     pass_criteria_for_stage,
@@ -166,3 +168,34 @@ def test_build_scorecard_payload_stage1() -> None:
     assert payload["sub_phase"] == "curriculum_research"
     assert payload["sub_phase_label"] == "Oracle research"
     assert payload["is_advancing"] is True
+
+
+@pytest.mark.unit
+def test_calculate_simple_slope_negative() -> None:
+    slope = calculate_simple_slope([0.35, 0.34, 0.33, 0.32, 0.30])
+    assert slope < 0
+
+
+@pytest.mark.unit
+def test_calculate_simple_slope_short_history_returns_zero() -> None:
+    assert calculate_simple_slope([0.30, 0.29]) == 0.0
+
+
+@pytest.mark.unit
+def test_enrich_adaptation_payload_volume_gate_and_retry_fields() -> None:
+    payload = enrich_adaptation_payload(
+        stage_trades=120,
+        required=100,
+        winrate_history=[0.35, 0.34, 0.33, 0.32, 0.30],
+        retries_this_stage=1,
+        adaptation_history=[{"reason": "metrics_not_improving_within_wall", "chunk_target": 8}],
+        adaptation_enabled=True,
+        wall_behavior="adaptive",
+    )
+    assert payload["volume_gate_status"] == "PASSED"
+    assert payload["retries_this_stage"] == 1
+    assert payload["last_adaptation"]["reason"] == "metrics_not_improving_within_wall"
+    assert payload["winrate_trend_slope"] < 0
+    assert payload["adaptation_enabled"] is True
+    assert payload["wall_behavior"] == "adaptive"
+

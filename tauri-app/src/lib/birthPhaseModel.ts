@@ -319,6 +319,15 @@ export interface StageScorecardModel {
   blockerLabel: string | null;
   blockerDetail: string | null;
   provisionalPass: boolean;
+  volumeGateStatus: "PASSED" | "PENDING" | null;
+  winrateTrendSlope: number | null;
+  retriesThisStage: number;
+  adaptationEnabled: boolean;
+  wallBehavior: string | null;
+  escalationLevel: number | null;
+  lastAdaptationReason: string | null;
+  lastAdaptationChunk: number | null;
+  lastAdaptationSummary: string | null;
 }
 
 const STALE_WORKING_SEC = 120;
@@ -441,6 +450,80 @@ function inferPassCriteriaFromStage(
     metricMax: null,
     displayName: "Trend",
     curriculumIndex: 1,
+  };
+}
+
+const ADAPTATION_REASON_LABELS: Record<string, string> = {
+  negative_winrate_trend_after_volume_gate: "Negative winrate trend",
+  metrics_not_improving_within_wall: "Metrics stalled after volume gate",
+  default_stall_retry: "Standard stall recovery",
+};
+
+function humanAdaptationReason(reason: string): string {
+  const key = reason.trim();
+  return ADAPTATION_REASON_LABELS[key] ?? key.replace(/_/g, " ");
+}
+
+function extractAdaptationFields(progress: BirthProgressPayload | undefined): {
+  volumeGateStatus: "PASSED" | "PENDING" | null;
+  winrateTrendSlope: number | null;
+  retriesThisStage: number;
+  adaptationEnabled: boolean;
+  wallBehavior: string | null;
+  escalationLevel: number | null;
+  lastAdaptationReason: string | null;
+  lastAdaptationChunk: number | null;
+  lastAdaptationSummary: string | null;
+} {
+  const rawGate = String(progress?.volume_gate_status ?? "").trim().toUpperCase();
+  const volumeGateStatus =
+    rawGate === "PASSED" ? "PASSED" : rawGate === "PENDING" ? "PENDING" : null;
+  const winrateTrendSlope =
+    progress?.winrate_trend_slope != null && Number.isFinite(Number(progress.winrate_trend_slope))
+      ? Number(progress.winrate_trend_slope)
+      : null;
+  const retriesThisStage = Math.max(0, Number(progress?.retries_this_stage ?? 0) || 0);
+  const adaptationEnabled = progress?.adaptation_enabled !== false;
+  const wallBehavior = String(progress?.wall_behavior ?? "").trim() || null;
+  const escalationLevel =
+    progress?.escalation_level != null && Number.isFinite(Number(progress.escalation_level))
+      ? Math.max(0, Number(progress.escalation_level))
+      : null;
+
+  const last = progress?.last_adaptation;
+  let lastAdaptationReason: string | null = null;
+  let lastAdaptationChunk: number | null = null;
+  let lastAdaptationSummary: string | null = null;
+  if (last && typeof last === "object" && !Array.isArray(last)) {
+    const reasonRaw = String(last.reason ?? "").trim();
+    if (reasonRaw) {
+      lastAdaptationReason = humanAdaptationReason(reasonRaw);
+    }
+    if (last.chunk_target != null && Number.isFinite(Number(last.chunk_target))) {
+      lastAdaptationChunk = Number(last.chunk_target);
+    }
+    if (lastAdaptationReason) {
+      const parts = [lastAdaptationReason];
+      if (lastAdaptationChunk != null) {
+        parts.push(`chunk ${lastAdaptationChunk}`);
+      }
+      if (escalationLevel != null) {
+        parts.push(`L${escalationLevel}`);
+      }
+      lastAdaptationSummary = parts.join(" · ");
+    }
+  }
+
+  return {
+    volumeGateStatus,
+    winrateTrendSlope,
+    retriesThisStage,
+    adaptationEnabled,
+    wallBehavior,
+    escalationLevel,
+    lastAdaptationReason,
+    lastAdaptationChunk,
+    lastAdaptationSummary,
   };
 }
 
@@ -599,6 +682,7 @@ export function extractStageScorecard(
     blockerLabel,
     blockerDetail,
     provisionalPass: Boolean(progress?.provisional_pass),
+    ...extractAdaptationFields(progress),
   };
 }
 

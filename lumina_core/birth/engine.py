@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, List
 
 from lumina_core.birth.birth_certificate import (
     build_certificate_from_eval,
@@ -32,7 +32,7 @@ from lumina_core.birth.tick_cache_persist import (
     save_ticks_cache,
 )
 from lumina_core.birth.certificate_evaluator import evaluate_holdout_certificate
-from lumina_core.birth.config import BRO_ENGINE_VERSION, load_birth_v2_config
+from lumina_core.birth.config import BRO_ENGINE_VERSION, BirthCurriculumConfig, load_birth_v2_config
 from lumina_core.birth.curriculum import (
     CurriculumStage,
     evaluate_stage_pass,
@@ -60,6 +60,7 @@ from lumina_core.birth.progress import read_birth_progress, write_birth_progress
 from lumina_core.birth.stage_scorecard import (
     build_scorecard_payload,
     compute_stage_blocker,
+    enrich_adaptation_payload,
 )
 from lumina_core.birth.purged_split import purged_train_holdout_split
 from lumina_core.birth.sim_runner import run_policy_rollout
@@ -69,6 +70,63 @@ from lumina_core.birth.bible_meta import update_bible_after_birth
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.engine")
+
+
+@dataclass(frozen=True, slots=True)
+class AdaptationDecision:
+    should_retry: bool
+    reason: str
+    new_chunk_target: int
+    escalation_increase: int = 1
+    log_message: str = ""
+
+
+def _get_adaptation_decision(
+    *,
+    stage_trades: int,
+    required: int,
+    winrate: float,
+    winrate_history: List[float],
+    escalation_level: int,
+    cfg: BirthCurriculumConfig,
+) -> AdaptationDecision:
+    """High-leverage rule: recent winrate trend after volume gate has been passed."""
+    _ = winrate
+    if len(winrate_history) >= 5:
+        slope = (winrate_history[-1] - winrate_history[0]) / max(1, len(winrate_history) - 1)
+    else:
+        slope = 0.0
+
+    is_negative_trend = slope < cfg.negative_slope_threshold
+
+    if stage_trades >= required and is_negative_trend:
+        new_chunk = min(25, cfg.exploration_chunk_size * (1 + escalation_level))
+        return AdaptationDecision(
+            should_retry=True,
+            reason="negative_winrate_trend_after_volume_gate",
+            new_chunk_target=new_chunk,
+            escalation_increase=1,
+            log_message=(
+                f"Negative trend (slope={slope:.4f}). Boosting exploration to chunk={new_chunk}"
+            ),
+        )
+
+    if stage_trades >= required:
+        return AdaptationDecision(
+            should_retry=True,
+            reason="metrics_not_improving_within_wall",
+            new_chunk_target=cfg.exploration_chunk_size,
+            escalation_increase=1,
+            log_message="Metrics stalled after volume gate. Applying exploration boost.",
+        )
+
+    return AdaptationDecision(
+        should_retry=True,
+        reason="default_stall_retry",
+        new_chunk_target=cfg.rollout_chunk_trades,
+        escalation_increase=1,
+        log_message="Standard stall recovery.",
+    )
 
 
 @dataclass(slots=True)
@@ -1221,6 +1279,10 @@ class BirthPhaseEngineV2:
         hold_stagnation_count = 0
         winrate_stagnation_count = 0
         wall_budget_exhausted = False
+        winrate_history: list[float] = []
+        retries_this_stage = 0
+        adaptation_history: list[dict[str, Any]] = []
+        original_rollout_chunk = cur_cfg.rollout_chunk_trades
         stage_started_at = time.time()
         checkpoint_state = load_checkpoint_state(self.workspace_root)
         stage_metrics = checkpoint_state.get("stage_metrics")
@@ -1256,6 +1318,15 @@ class BirthPhaseEngineV2:
                     or stage_range_round_trips
                 ),
             )
+            raw_history = stage_metrics.get("winrate_history")
+            if isinstance(raw_history, list):
+                winrate_history = [float(x) for x in raw_history if isinstance(x, (int, float))]
+            retries_this_stage = max(0, int(stage_metrics.get("retries_this_stage", 0) or 0))
+            raw_adaptations = stage_metrics.get("adaptation_history")
+            if isinstance(raw_adaptations, list):
+                adaptation_history = [dict(x) for x in raw_adaptations if isinstance(x, dict)]
+            if stage_metrics.get("escalation_level") is not None:
+                escalation_level = max(0, int(stage_metrics.get("escalation_level", 0) or 0))
         prev_progress = read_birth_progress(self.workspace_root)
         if str(prev_progress.get("curriculum_stage", "") or "").strip().lower() == stage.value:
             stage_trades = max(0, int(prev_progress.get("stage_trades", 0) or 0))
@@ -1292,7 +1363,7 @@ class BirthPhaseEngineV2:
         last_winrate = 0.0
 
         def _stage_metrics_payload() -> dict[str, Any]:
-            return self._stage_metrics_snapshot(
+            payload = self._stage_metrics_snapshot(
                 stage_trades=stage_trades,
                 stage_wins=stage_wins,
                 stage_hold_signals=stage_hold_signals,
@@ -1303,6 +1374,11 @@ class BirthPhaseEngineV2:
                 stage_range_round_trips=stage_range_round_trips,
                 patterns_mined=patterns_mined,
             )
+            payload["winrate_history"] = list(winrate_history)
+            payload["retries_this_stage"] = int(retries_this_stage)
+            payload["adaptation_history"] = list(adaptation_history)
+            payload["escalation_level"] = int(escalation_level)
+            return payload
 
         def _maybe_periodic_checkpoint(phase: str) -> None:
             interval = max(60, int(cur_cfg.checkpoint_interval_sec))
@@ -1349,6 +1425,16 @@ class BirthPhaseEngineV2:
                 provisional_pass=gen0_provisional,
                 cfg=cur_cfg,
             )
+            adaptation_fields = enrich_adaptation_payload(
+                stage_trades=current_stage_trades,
+                required=required,
+                winrate_history=winrate_history,
+                retries_this_stage=retries_this_stage,
+                adaptation_history=adaptation_history,
+                adaptation_enabled=cur_cfg.adaptation_enabled,
+                wall_behavior=cur_cfg.wall_behavior,
+            )
+            scorecard.update(adaptation_fields)
             elapsed_stage_sec = max(0.0, time.time() - stage_started_at)
             write_birth_progress(
                 self.workspace_root,
@@ -1470,7 +1556,7 @@ class BirthPhaseEngineV2:
             )
             self.ppo_steps += ppo_steps_per_update
 
-        def _certified_stage_stall_result(
+        def _would_certified_stage_stall(
             *,
             elapsed_stage_sec: float,
             failure_key: str,
@@ -1509,6 +1595,18 @@ class BirthPhaseEngineV2:
                     return None
                 if not (elapsed_stage_sec >= stall_wall or wall_budget_exhausted):
                     return None
+            return {
+                "failure_key": failure_key,
+                "blocker_metric": blocker_metric,
+                "blocker_value": blocker_value,
+                "blocker_reason": blocker_reason,
+            }
+
+        def _finalize_certified_stage_stall(pending: dict[str, Any]) -> dict[str, Any]:
+            failure_key = str(pending["failure_key"])
+            blocker_metric = pending["blocker_metric"]
+            blocker_value = pending["blocker_value"]
+            blocker_reason = pending.get("blocker_reason")
             write_birth_progress(
                 self.workspace_root,
                 stage="stage_stalled",
@@ -1545,6 +1643,74 @@ class BirthPhaseEngineV2:
                 "training_mode": training_mode,
             }
 
+        def _try_adaptive_stall_recovery(*, failure_key: str) -> bool:
+            nonlocal escalation_level, retries_this_stage, attempt
+            nonlocal winrate_stagnation_count, hold_stagnation_count, wall_budget_exhausted
+            nonlocal stage_started_at
+            if not cur_cfg.adaptation_enabled or cur_cfg.wall_behavior != "adaptive":
+                return False
+            if retries_this_stage >= cur_cfg.max_stage_retries:
+                return False
+            current_winrate = float(stage_wins) / float(max(1, stage_trades))
+            decision = _get_adaptation_decision(
+                stage_trades=stage_trades,
+                required=required,
+                winrate=current_winrate,
+                winrate_history=winrate_history,
+                escalation_level=escalation_level,
+                cfg=cur_cfg,
+            )
+            if not decision.should_retry:
+                return False
+            escalation_level = min(
+                cur_cfg.max_escalation_level,
+                escalation_level + decision.escalation_increase,
+            )
+            cur_cfg.rollout_chunk_trades = decision.new_chunk_target
+            adaptation_history.append(
+                {
+                    "timestamp": time.time(),
+                    "reason": decision.reason,
+                    "chunk_target": decision.new_chunk_target,
+                    "escalation": escalation_level,
+                    "winrate": current_winrate,
+                    "failure_key": failure_key,
+                }
+            )
+            retries_this_stage += 1
+            attempt = 0
+            winrate_stagnation_count = 0
+            hold_stagnation_count = 0
+            wall_budget_exhausted = False
+            stage_started_at = time.time()
+            self._persist_checkpoint(
+                training_mode=training_mode,
+                curriculum_stage=stage.value,
+                policy_path=str(self.final_policy_path),
+                phase="curriculum_learning",
+                stage_metrics=_stage_metrics_payload(),
+            )
+            logger.info(
+                "birth.adaptation.applied reason=%s new_chunk=%s message=%s escalation=%s",
+                decision.reason,
+                decision.new_chunk_target,
+                decision.log_message,
+                escalation_level,
+            )
+            logger.info(
+                "birth.stage.auto_retrying_with_adaptation retry=%s max=%s",
+                retries_this_stage,
+                cur_cfg.max_stage_retries,
+            )
+            _write_progress(
+                phase="curriculum_learning",
+                message=(
+                    f"Adaptation retry {retries_this_stage}/{cur_cfg.max_stage_retries}: "
+                    f"{decision.log_message}"
+                ),
+            )
+            return True
+
         while True:
             if last_progress_write_at > 0 and time.time() - last_progress_write_at >= 60.0:
                 _write_progress(
@@ -1571,12 +1737,15 @@ class BirthPhaseEngineV2:
                 CurriculumStage.STAGE2_RANGE: "stage2_metric",
                 CurriculumStage.STAGE3_MIXED: "stage3_constitution",
             }.get(stage, "stage_metrics")
-            stall_result = _certified_stage_stall_result(
+            stall_pending = _would_certified_stage_stall(
                 elapsed_stage_sec=elapsed_stage_sec,
                 failure_key=failure_key,
             )
-            if stall_result is not None:
-                return stall_result
+            if stall_pending is not None:
+                if _try_adaptive_stall_recovery(failure_key=failure_key):
+                    continue
+                cur_cfg.rollout_chunk_trades = original_rollout_chunk
+                return _finalize_certified_stage_stall(stall_pending)
 
             if elapsed_stage_sec >= max(300, int(cur_cfg.max_stage_wall_sec)):
                 if (
@@ -1688,17 +1857,22 @@ class BirthPhaseEngineV2:
                 elif allow_provisional and (stage_trades > 0 or patterns_mined > 0):
                     gen0_provisional = True
                 elif not allow_provisional and stage_trades >= required:
-                    stall_result = _certified_stage_stall_result(
+                    force_failure_key = {
+                        CurriculumStage.STAGE1_TREND: "stage1_winrate",
+                        CurriculumStage.STAGE2_RANGE: "stage2_metric",
+                        CurriculumStage.STAGE3_MIXED: "stage3_constitution",
+                    }.get(stage, "stage_metrics")
+                    stall_pending = _would_certified_stage_stall(
                         elapsed_stage_sec=time.time() - stage_started_at,
-                        failure_key={
-                            CurriculumStage.STAGE1_TREND: "stage1_winrate",
-                            CurriculumStage.STAGE2_RANGE: "stage2_metric",
-                            CurriculumStage.STAGE3_MIXED: "stage3_constitution",
-                        }.get(stage, "stage_metrics"),
+                        failure_key=force_failure_key,
                         force=True,
                     )
-                    if stall_result is not None:
-                        return stall_result
+                    if stall_pending is not None:
+                        if _try_adaptive_stall_recovery(failure_key=force_failure_key):
+                            attempt = 0
+                            continue
+                        cur_cfg.rollout_chunk_trades = original_rollout_chunk
+                        return _finalize_certified_stage_stall(stall_pending)
                 else:
                     if _maybe_expand_data():
                         attempt = 0
@@ -1723,8 +1897,11 @@ class BirthPhaseEngineV2:
                 attempt = 0
                 continue
 
-            remaining = max(1, required - stage_trades)
-            chunk_target = min(remaining, cur_cfg.rollout_chunk_trades)
+            if stage_trades >= required:
+                chunk_target = cur_cfg.rollout_chunk_trades
+            else:
+                remaining = max(1, required - stage_trades)
+                chunk_target = min(remaining, cur_cfg.rollout_chunk_trades)
             active_ticks = self._stage_tick_pool(
                 stage=stage,
                 stage_ticks=active_stage_ticks,
@@ -1798,6 +1975,10 @@ class BirthPhaseEngineV2:
             range_flat_ratio = float(stage_range_flat_bars) / float(max(1, stage_range_total_signals))
             metric_band = range_flat_ratio if stage_range_total_signals >= 50 else current_hold_ratio
             current_winrate = float(stage_wins) / float(max(1, stage_trades))
+            if rollout.trades > 0:
+                winrate_history.append(current_winrate)
+                if len(winrate_history) > cur_cfg.winrate_trend_window:
+                    winrate_history.pop(0)
             if (
                 stage == CurriculumStage.STAGE1_TREND
                 and stage_trades >= required

@@ -51,6 +51,12 @@ class BirthCurriculumConfig:
     allow_provisional_pass: bool = False
     certified_max_rollouts_per_stage: int = 200
     certified_stage_stall_wall_sec: int = 14_400
+    adaptation_enabled: bool = True
+    wall_behavior: str = "adaptive"
+    max_stage_retries: int = 3
+    exploration_chunk_size: int = 8
+    winrate_trend_window: int = 12
+    negative_slope_threshold: float = -0.005
 
 
 @dataclass(slots=True)
@@ -78,6 +84,14 @@ def _coerce_float(value: Any, default: float) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+def _coerce_wall_behavior(raw: Any) -> str:
+    value = str(raw or "adaptive").strip().lower()
+    if value in ("adaptive", "strict"):
+        return value
+    logger.warning("birth_v2.invalid_wall_behavior value=%s fallback=strict", raw)
+    return "strict"
 
 
 def _parse_expansion_steps(raw: Any) -> tuple[int, ...]:
@@ -158,6 +172,12 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
             cur_raw.get("certified_stage_stall_wall_sec"),
             _coerce_int(cur_raw.get("max_stage_wall_sec"), 14_400),
         ),
+        adaptation_enabled=bool(cur_raw.get("adaptation_enabled", True)),
+        wall_behavior=_coerce_wall_behavior(cur_raw.get("wall_behavior", "adaptive")),
+        max_stage_retries=_coerce_int(cur_raw.get("max_stage_retries"), 3),
+        exploration_chunk_size=_coerce_int(cur_raw.get("exploration_chunk_size"), 8),
+        winrate_trend_window=_coerce_int(cur_raw.get("winrate_trend_window"), 12),
+        negative_slope_threshold=_coerce_float(cur_raw.get("negative_slope_threshold"), -0.005),
     )
 
     news = BirthNewsConfig(

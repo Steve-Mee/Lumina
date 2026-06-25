@@ -236,6 +236,7 @@ def test_certified_wall_budget_exhausted_does_not_provisional_pass(
             certified_max_rollouts_per_stage=15,
             allow_provisional_pass=False,
             checkpoint_interval_sec=3600,
+            wall_behavior="strict",
         ),
         trade_budget_cap=500,
     )

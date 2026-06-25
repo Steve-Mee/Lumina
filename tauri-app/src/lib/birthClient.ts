@@ -63,6 +63,13 @@ export interface BirthProgressPayload {
   data_manifest?: Record<string, unknown>;
   actual_real_days_loaded?: number;
   regimes_covered?: string[];
+  volume_gate_status?: string;
+  winrate_trend_slope?: number;
+  last_adaptation?: Record<string, unknown>;
+  retries_this_stage?: number;
+  adaptation_enabled?: boolean;
+  wall_behavior?: string;
+  escalation_level?: number;
 }
 
 export interface BirthCertificatePayload {

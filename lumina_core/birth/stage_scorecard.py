@@ -51,6 +51,12 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "stage_blocker_value",
     "pass_reason",
     "provisional_pass",
+    "volume_gate_status",
+    "winrate_trend_slope",
+    "last_adaptation",
+    "retries_this_stage",
+    "adaptation_enabled",
+    "wall_behavior",
 )
 
 
@@ -166,6 +172,33 @@ def parse_curriculum_stage(value: str) -> CurriculumStage | None:
         if stage.value == raw:
             return stage
     return None
+
+
+def calculate_simple_slope(winrate_history: list[float]) -> float:
+    if len(winrate_history) < 5:
+        return 0.0
+    return (winrate_history[-1] - winrate_history[0]) / max(1, len(winrate_history) - 1)
+
+
+def enrich_adaptation_payload(
+    *,
+    stage_trades: int,
+    required: int,
+    winrate_history: list[float],
+    retries_this_stage: int,
+    adaptation_history: list[dict[str, Any]],
+    adaptation_enabled: bool,
+    wall_behavior: str,
+) -> dict[str, Any]:
+    last_adaptation = adaptation_history[-1] if adaptation_history else {}
+    return {
+        "volume_gate_status": "PASSED" if stage_trades >= required else "PENDING",
+        "winrate_trend_slope": round(calculate_simple_slope(winrate_history), 6),
+        "last_adaptation": last_adaptation,
+        "retries_this_stage": int(retries_this_stage),
+        "adaptation_enabled": bool(adaptation_enabled),
+        "wall_behavior": str(wall_behavior),
+    }
 
 
 def enrich_progress_scorecard(payload: dict[str, Any]) -> dict[str, Any]:

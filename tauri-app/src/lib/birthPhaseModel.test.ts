@@ -204,6 +204,37 @@ describe("birthPhaseModel", () => {
     expect(scorecard?.stageRangeRoundTrips).toBe(12);
   });
 
+  it("extracts adaptation HUD fields for scorecard", () => {
+    const scorecard = extractStageScorecard({
+      curriculum_stage: "stage1_trend",
+      stage_trades: 386,
+      stage_target_trades: 200,
+      stage_winrate: 0.303,
+      pass_criteria_id: "trend_winrate",
+      pass_metric_target: 0.45,
+      phase: "curriculum_learning",
+      adaptation_enabled: true,
+      wall_behavior: "adaptive",
+      volume_gate_status: "PASSED",
+      winrate_trend_slope: -0.012,
+      retries_this_stage: 1,
+      escalation_level: 2,
+      last_adaptation: {
+        reason: "negative_winrate_trend_after_volume_gate",
+        chunk_target: 16,
+        escalation: 2,
+        winrate: 0.303,
+      },
+    });
+    expect(scorecard?.volumeGateStatus).toBe("PASSED");
+    expect(scorecard?.winrateTrendSlope).toBeCloseTo(-0.012);
+    expect(scorecard?.retriesThisStage).toBe(1);
+    expect(scorecard?.escalationLevel).toBe(2);
+    expect(scorecard?.lastAdaptationReason).toBe("Negative winrate trend");
+    expect(scorecard?.lastAdaptationChunk).toBe(16);
+    expect(scorecard?.lastAdaptationSummary).toContain("chunk 16");
+  });
+
   it("marks scorecard stale after long silence", () => {
     const now = Date.parse("2026-06-12T12:15:00.000Z");
     const scorecard = extractStageScorecard(

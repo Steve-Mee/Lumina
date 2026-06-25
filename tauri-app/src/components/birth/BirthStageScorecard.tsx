@@ -45,6 +45,23 @@ function healthClass(health: StageScorecardModel["health"]): string {
   return "text-cyan-200/80";
 }
 
+function formatTrendSlope(slope: number | null): string {
+  if (slope == null) return "—";
+  if (Math.abs(slope) < 0.0001) return "flat";
+  const pct = (slope * 100).toFixed(2);
+  return slope > 0 ? `+${pct}%/step` : `${pct}%/step`;
+}
+
+function showAdaptationHud(scorecard: StageScorecardModel): boolean {
+  return (
+    scorecard.adaptationEnabled &&
+    scorecard.wallBehavior === "adaptive" &&
+    (scorecard.volumeGateStatus != null ||
+      scorecard.retriesThisStage > 0 ||
+      scorecard.lastAdaptationSummary != null)
+  );
+}
+
 function ProgressBar({
   label,
   value,
@@ -103,6 +120,12 @@ export function BirthStageScorecard({
         {scorecard.stageWallRemainingSec != null
           ? ` · wall ${Math.ceil(scorecard.stageWallRemainingSec / 60)}m`
           : ""}
+        {showAdaptationHud(scorecard) && scorecard.volumeGateStatus
+          ? ` · gate ${scorecard.volumeGateStatus}`
+          : ""}
+        {scorecard.retriesThisStage > 0
+          ? ` · adapt ${scorecard.retriesThisStage}`
+          : ""}
       </p>
     );
   }
@@ -132,6 +155,40 @@ export function BirthStageScorecard({
             {scorecard.blockerLabel ?? "Blocking metric"}
           </p>
           <p className="mt-0.5 font-mono text-xs text-amber-100">{scorecard.blockerDetail}</p>
+        </div>
+      ) : null}
+
+      {showAdaptationHud(scorecard) ? (
+        <div className="rounded border border-violet-500/25 bg-violet-950/15 px-2 py-1.5">
+          <p className="font-mono text-[10px] tracking-wide text-violet-200/90 uppercase">
+            Adaptive recovery
+          </p>
+          <div className="mt-1 space-y-0.5 font-mono text-[10px] text-violet-100/90">
+            {scorecard.volumeGateStatus ? (
+              <p>
+                Volume gate:{" "}
+                <span
+                  className={
+                    scorecard.volumeGateStatus === "PASSED"
+                      ? "text-emerald-300"
+                      : "text-cyan-200"
+                  }
+                >
+                  {scorecard.volumeGateStatus}
+                </span>
+              </p>
+            ) : null}
+            <p>Winrate trend: {formatTrendSlope(scorecard.winrateTrendSlope)}</p>
+            {scorecard.retriesThisStage > 0 ? (
+              <p>Auto-retries this stage: {scorecard.retriesThisStage}</p>
+            ) : null}
+            {scorecard.escalationLevel != null && scorecard.escalationLevel > 0 ? (
+              <p>Exploration level: L{scorecard.escalationLevel}</p>
+            ) : null}
+            {scorecard.lastAdaptationSummary ? (
+              <p className="text-violet-200/80">Last: {scorecard.lastAdaptationSummary}</p>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

@@ -186,3 +186,111 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
     metrics = ckpt.get("stage_metrics") or {}
     assert int(metrics.get("stage_trades", 0) or 0) >= 42
     assert int(metrics.get("buffer_size", 0) or 0) >= 80
+
+
+@pytest.mark.unit
+def test_checkpoint_persists_adaptation_fields_on_resume(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from lumina_core.birth.engine import BirthPhaseEngineV2
+    from lumina_core.birth.curriculum import CurriculumStage
+
+    engine = BirthPhaseEngineV2(
+        runtime=SimpleNamespace(),
+        ppo_trainer=_FakePpoTrainer(),
+        market_data_service=SimpleNamespace(),
+        workspace_root=tmp_path,
+    )
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(
+            stage1_trend_trades=200,
+            rollout_chunk_trades=20,
+            checkpoint_interval_sec=60,
+            wall_behavior="adaptive",
+            max_stage_retries=3,
+        ),
+        trade_budget_cap=500,
+    )
+    for i in range(300):
+        engine.buffer.add({"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.01]}})
+
+    save_checkpoint(
+        tmp_path,
+        cumulative_trades=100,
+        ppo_steps=1000,
+        training_mode="certified",
+        stages_passed=[],
+        curriculum_stage="stage1_trend",
+        stage_metrics={
+            "stage_trades": 100,
+            "stage_wins": 30,
+            "stage_hold_signals": 0,
+            "stage_total_signals": 100,
+            "patterns_mined": 50,
+            "winrate_history": [0.30, 0.29, 0.28, 0.27, 0.26],
+            "retries_this_stage": 1,
+            "adaptation_history": [{"reason": "metrics_not_improving_within_wall", "chunk_target": 8}],
+            "escalation_level": 2,
+        },
+        phase="curriculum_learning",
+    )
+
+    rollout_calls = {"n": 0}
+
+    def _one_rollout(**_kwargs) -> SimRolloutResult:
+        rollout_calls["n"] += 1
+        if rollout_calls["n"] >= 2:
+            raise RuntimeError("bounded")
+        return SimRolloutResult(
+            trades=5,
+            wins=2,
+            hold_signals=0,
+            total_signals=5,
+            total_pnl=0.5,
+            trajectories=[{"reward": 0.5, "observation": {"vector": [5000.0]}}],
+            pnl_series=[0.5],
+            constitution_violations=0,
+            regimes_seen={"TREND_UP"},
+            partial_complete=True,
+            rollout_steps=100,
+        )
+
+    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _one_rollout)
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.mine_winning_patterns",
+        lambda **_kwargs: PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.expand_birth_data",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
+    )
+
+    ticks = _rising_ticks(600)
+    with pytest.raises(RuntimeError, match="bounded"):
+        engine._run_stage_research_loop(
+            stage=CurriculumStage.STAGE1_TREND,
+            stage_index=0,
+            stage_ticks=ticks,
+            train_ticks=ticks,
+            holdout_ticks=ticks[:120],
+            target=200,
+            stage_progress_pct=25.0,
+            training_mode="certified",
+            ppo_steps_per_update=1000,
+            polish_ppo_timesteps=1000,
+            trade_budget_cap=500,
+            prefer_real=True,
+            start_price=5000.0,
+        )
+
+    ckpt = json.loads((tmp_path / "state" / "lumina_birth_checkpoint.json").read_text(encoding="utf-8"))
+    metrics = ckpt.get("stage_metrics") or {}
+    assert metrics.get("winrate_history") == [0.30, 0.29, 0.28, 0.27, 0.26] or len(
+        metrics.get("winrate_history") or []
+    ) >= 5
+    assert int(metrics.get("retries_this_stage", 0) or 0) >= 1
+    assert len(metrics.get("adaptation_history") or []) >= 1
+    assert int(metrics.get("escalation_level", 0) or 0) >= 2
+
+
