@@ -170,6 +170,21 @@ def _clear_leaked_runtime_mode_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _reset_config_loader_cache() -> Generator[None, None, None]:
+    """Drop cached config.yaml between tests.
+
+    Some tests ``chdir`` into ``tmp_path`` and call ``ConfigLoader.invalidate()``,
+    which reloads a minimal ``config.yaml`` (e.g. ``mode: real`` without broker).
+    The poisoned cache then breaks later ``create_application_container()`` runs.
+    """
+    from lumina_core.config_loader import ConfigLoader
+
+    ConfigLoader.invalidate()
+    yield
+    ConfigLoader.invalidate()
+
+
 # ---------------------------------------------------------------------------
 # Config loader: synthetic RL fallback (required for unit tests)
 # ---------------------------------------------------------------------------

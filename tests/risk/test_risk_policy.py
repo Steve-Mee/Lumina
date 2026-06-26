@@ -110,3 +110,4 @@ class TestRiskPolicyOverlays:
         # dan
         assert before.max_total_open_risk == pytest.approx(150.0)
         assert after.max_total_open_risk == pytest.approx(90.0)
+        ConfigLoader.invalidate()
