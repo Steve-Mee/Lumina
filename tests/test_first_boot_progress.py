@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from lumina_core.first_boot_progress import (
+    ensure_first_boot_hardware_profile,
     is_sim_trades_complete,
     resolve_first_boot_target_for_display,
     resolve_ppo_batch_progress,
@@ -90,3 +95,23 @@ def test_resolve_first_boot_target_for_display_prefers_active_progress_target() 
         session_trades=100000,
     )
     assert target == 30000
+
+
+def test_ensure_first_boot_hardware_profile_delegates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = {
+        "profile": "gpu_accelerated",
+        "detection": {"recommended_profile": "gpu_accelerated"},
+        "tuning": {"rollout_chunk_trades": 250},
+    }
+    monkeypatch.setattr(
+        "lumina_core.first_boot_progress.get_or_create_hardware_profile",
+        lambda workspace_root: expected,
+    )
+
+    result = ensure_first_boot_hardware_profile(tmp_path)
+
+    assert result == expected
+    assert result["profile"] == "gpu_accelerated"

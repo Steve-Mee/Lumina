@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 from datetime import datetime, timezone
@@ -10,6 +11,9 @@ from pathlib import Path
 from typing import Any, Literal, Mapping
 
 from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES, normalize_first_boot_training_trades
+from lumina_core.hardware_intelligence import get_or_create_hardware_profile
+
+logger = logging.getLogger(__name__)
 
 BirthTrainingPulse = Literal["active", "stale", "idle"]
 
@@ -366,3 +370,21 @@ def resolve_ppo_progress_interval(config_payload: Mapping[str, Any] | None) -> i
     except (TypeError, ValueError):
         value = 10_000
     return max(1_000, min(100_000, value))
+
+
+def ensure_first_boot_hardware_profile(
+    workspace_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Ensure hardware profile exists on first Lumina boot (idempotent)."""
+    root = Path.cwd() if workspace_root is None else Path(workspace_root)
+    payload = get_or_create_hardware_profile(root)
+    profile_name = str(payload.get("profile", "unknown"))
+    detection_raw = payload.get("detection")
+    detection = detection_raw if isinstance(detection_raw, dict) else {}
+    recommended = str(detection.get("recommended_profile", profile_name))
+    logger.info(
+        "first_boot.hardware_profile profile=%s recommended=%s",
+        profile_name,
+        recommended,
+    )
+    return payload

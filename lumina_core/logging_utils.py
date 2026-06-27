@@ -352,7 +352,12 @@ def write_ppo_policy_metadata(
     training_time_sec: float = 0.0,
     last_load_time_sec: float = 0.0,
     status: str = "ok",
+    observation_dim: int | None = None,
 ) -> None:
+    if observation_dim is None:
+        from lumina_core.rl.observation_builder import OBSERVATION_DIM
+
+        observation_dim = OBSERVATION_DIM
     payload = {
         "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "policy_path": str(policy_path),
@@ -361,6 +366,7 @@ def write_ppo_policy_metadata(
         "training_time_sec": float(training_time_sec),
         "last_load_time_sec": float(last_load_time_sec),
         "status": str(status),
+        "observation_dim": int(observation_dim),
     }
     _write_json(_monitoring_state_path("ppo_policy_metadata.json"), payload)
 

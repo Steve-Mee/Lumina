@@ -8,8 +8,16 @@ from typing import Any
 import numpy as np
 
 from lumina_core.birth.bible_observation import bible_features_for_tick
+from lumina_core.birth.config import BirthRewardConfig, load_birth_v2_config
 from lumina_core.birth.curriculum import CurriculumStage, filter_ticks_for_stage
 from lumina_core.rl.observation_builder import build_observation_vector
+from lumina_core.rl.reward_shaper import (
+    RewardShapingState,
+    TradeCloseContext,
+    compute_expectancy_reward,
+    trend_features_from_tick,
+    update_trade_stats,
+)
 
 _DEFAULT_STOP_PCT = 0.0075
 _DEFAULT_TARGET_PCT = 0.013
@@ -98,6 +106,8 @@ def mine_winning_patterns(
     scanned = 0
     stride = max(1, int(scan_stride))
     cap = max(1, int(max_patterns))
+    reward_cfg: BirthRewardConfig = load_birth_v2_config(workspace_root).reward
+    reward_state = RewardShapingState()
 
     for i in range(20, len(enriched) - max_hold_bars - 1, stride):
         scanned += 1
@@ -146,7 +156,22 @@ def mine_winning_patterns(
                 rolling_sharpe=0.0,
                 trade_mode="birth",
             )
-            reward = float(np.clip(pnl / 100.0, -5.0, 5.0))
+            trend_strength, atr_norm = trend_features_from_tick(row)
+            if reward_cfg.enabled:
+                ctx = TradeCloseContext(
+                    net_pnl=float(pnl),
+                    equity=50_000.0,
+                    stop_pct=stop_pct,
+                    side=side,
+                    trend_regime_strength=trend_strength,
+                    trend_atr_norm=atr_norm,
+                )
+                reward_state.drawdown = 0.0
+                reward_state.sharpe = 0.0
+                reward, _components = compute_expectancy_reward(ctx, reward_state, reward_cfg)
+                update_trade_stats(reward_state, float(pnl), window=reward_cfg.rolling_trade_window)
+            else:
+                reward = float(np.clip(pnl / 100.0, -5.0, 5.0))
             patterns.append(
                 {
                     "observation": {"vector": obs.tolist(), "price": _tick_price(row)},

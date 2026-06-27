@@ -31,6 +31,11 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0014 | Birth Curriculum + OOS Gate | Accepted | 2026-06-11 | [0014-birth-curriculum-oos-gate.md](./0014-birth-curriculum-oos-gate.md) |
 | 0015 | RL observation SSOT 32-dim | Accepted | 2026-06-11 | [0015-rl-observation-ssot-32dim.md](./0015-rl-observation-ssot-32dim.md) |
 | 0016 | Streamlit UI retirement | Accepted | 2026-06-12 | [0016-streamlit-ui-retirement.md](./0016-streamlit-ui-retirement.md) |
+| 0018 | RL observation trend features 43-dim | Accepted | 2026-06-27 | [0018-rl-observation-trend-features-43dim.md](./0018-rl-observation-trend-features-43dim.md) |
+| 0019 | Expectancy-oriented RL reward shaping | Accepted | 2026-06-27 | [0019-expectancy-reward-shaping.md](./0019-expectancy-reward-shaping.md) |
+| 0020 | Stage 1 intra-curriculum easy→hard | Accepted | 2026-06-27 | [0020-stage1-intra-curriculum.md](./0020-stage1-intra-curriculum.md) |
+| 0021 | Birth meta controller (learning observation & recovery SSOT) | Accepted | 2026-06-27 | [0021-birth-meta-controller.md](./0021-birth-meta-controller.md) |
+| 0022 | Meta self-eval strategy probe | Accepted | 2026-06-27 | [0022-meta-self-eval-strategy-probe.md](./0022-meta-self-eval-strategy-probe.md) |
 
 ## Legacy notitie
 

@@ -113,7 +113,8 @@ $deleteTargets = @(
     "state\lumina_birth_checkpoint.json",
     "state\first_boot_progress.json",
     "state\monitoring_debug_training_process.json",
-    "state\trade_reconciler_status.json"
+    "state\trade_reconciler_status.json",
+    "state\hardware_profile.json"
 )
 
 foreach ($relativePath in $deleteTargets) {

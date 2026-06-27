@@ -1,4 +1,4 @@
-# LUMINA — Cursor Rules (v6.0)
+# LUMINA — Cursor Rules (v6.1)
 
 **Belangrijk**: Dit bestand is een **dunne Cursor-specifieke laag**.  
 De volledige en leidend instructies staan in:
@@ -25,6 +25,20 @@ Volg altijd eerst de centrale `AGENTS.md`.
 - Gebruik `todo_write` bij complexe of safety-critical taken.
 - **Nieuwe chat = nieuwe bounded context**.
 - Na elke sub-taak: ruff + mypy --strict + pyright + tests.
+
+### Breaking Changes & Architectural Evolution Policy
+
+- Breaking changes zijn **toegestaan** wanneer ze leiden tot een significant betere architectuur, leercyclus, robuustheid of self-evolving capaciteit van Lumina.
+- Voorwaarde: De **kernmissie** van Lumina mag niet worden aangetast:
+  - Self-evolving organisme
+  - Solide en betrouwbaar trading DNA
+  - Capital preservation mindset (ook in learning fase)
+  - Minimale user interventie na eerste birth
+- Bij breaking changes altijd:
+  - Duidelijke rationale toevoegen in code/comments
+  - Goede logging implementeren
+  - Waar mogelijk opsplitsen in meerdere PRs
+- "Geen breaking changes" is geen dogma. Serieuze verbeteringen mogen impact hebben.
 
 ### Extra Cursor Regels
 - Werk atomic en token-efficiënt.

@@ -4,13 +4,22 @@ from __future__ import annotations
 
 import logging
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
+from lumina_core.birth.config import BirthRewardConfig
 from lumina_core.engine.valuation_engine import ValuationEngine
 from lumina_core.rl.observation_builder import OBSERVATION_DIM, build_observation_vector
+from lumina_core.rl.reward_shaper import (
+    RewardShapingState,
+    TradeCloseContext,
+    compute_expectancy_reward,
+    compute_legacy_reward,
+    trend_features_from_tick,
+    update_trade_stats,
+)
 
 try:
     import gymnasium as gym
@@ -39,6 +48,7 @@ class RLConfig:
     trade_mode: str = "sim"
     drawdown_penalty_coeff: float = 0.2
     sharpe_bonus_coeff: float = 0.05
+    reward: BirthRewardConfig = field(default_factory=BirthRewardConfig)
 
 
 class RLTradingEnvironment(gym.Env):
@@ -83,6 +93,15 @@ class RLTradingEnvironment(gym.Env):
         self._initial_equity = 50000.0
         self._equity_curve: list[float] = [50000.0]
         self._returns: list[float] = []
+        self._entry_stop_pct = 0.0075
+        self._entry_side = 0
+        self._reward_state = RewardShapingState()
+
+    def _uses_expectancy_reward(self) -> bool:
+        return self.trade_mode in {"birth", "sim"} and bool(self.config.reward.enabled)
+
+    def _reward_cfg(self) -> BirthRewardConfig:
+        return self.config.reward
 
     def set_dna_hash(self, dna_hash: str) -> None:
         """Inject active PolicyDNA hash so the policy can condition on lineage identity."""
@@ -155,6 +174,9 @@ class RLTradingEnvironment(gym.Env):
         self._initial_equity = 50000.0
         self._equity_curve = [50000.0]
         self._returns = []
+        self._entry_stop_pct = 0.0075
+        self._entry_side = 0
+        self._reward_state = RewardShapingState()
         return self._get_observation(), {}
 
     def step(self, action):
@@ -229,13 +251,20 @@ class RLTradingEnvironment(gym.Env):
                     self._entry_price = fill
                     slippage_cost += entry_slippage_cost
                     fees_cost += entry_fees
+                    self._entry_stop_pct = stop_pct
+                    self._entry_side = side
             else:
                 self._position = side
                 self._qty = qty
                 self._entry_price = fill
                 slippage_cost += entry_slippage_cost
                 fees_cost += entry_fees
+                self._entry_stop_pct = stop_pct
+                self._entry_side = side
 
+        trade_closed = False
+        close_side = 0
+        close_stop_pct = self._entry_stop_pct
         if self._position != 0:
             stop = self._entry_price * (1.0 - stop_pct if self._position > 0 else 1.0 + stop_pct)
             target = self._entry_price * (1.0 + target_pct if self._position > 0 else 1.0 - target_pct)
@@ -245,6 +274,9 @@ class RLTradingEnvironment(gym.Env):
             flatten = side == 0 and np.random.random() < 0.05
 
             if hit_stop or hit_target or flatten:
+                close_side = self._entry_side
+                close_stop_pct = self._entry_stop_pct
+                trade_closed = True
                 exit_ticks = max(
                     0.0,
                     float(self._stochastic_slippage_points(price))
@@ -275,9 +307,6 @@ class RLTradingEnvironment(gym.Env):
 
         ret = (self._equity - prev_equity) / max(prev_equity, 1e-6)
         self._returns.append(ret)
-        drawdown_penalty = self._drawdown() * self.config.drawdown_penalty_coeff
-        sharpe_bonus = self._rolling_sharpe() * self.config.sharpe_bonus_coeff
-        reward = float(realized_pnl - slippage_cost - fees_cost - drawdown_penalty + sharpe_bonus)
 
         var_es_penalty = 0.0
         risk_controller = getattr(self.engine, "risk_controller", None)
@@ -291,7 +320,46 @@ class RLTradingEnvironment(gym.Env):
             var_es_penalty = float(self.config.sim_var_penalty_coeff) * max(0.0, var_ratio) + float(
                 self.config.sim_es_penalty_coeff
             ) * max(0.0, es_ratio)
-            reward -= var_es_penalty
+
+        rl_close_accounting_net_usd = float(realized_pnl - slippage_cost - fees_cost)
+        reward_components: dict[str, float] = {}
+
+        if self._uses_expectancy_reward():
+            if trade_closed:
+                trend_strength, atr_norm = trend_features_from_tick(row)
+                self._reward_state.drawdown = self._drawdown()
+                self._reward_state.sharpe = self._rolling_sharpe()
+                ctx = TradeCloseContext(
+                    net_pnl=rl_close_accounting_net_usd,
+                    equity=prev_equity,
+                    stop_pct=close_stop_pct,
+                    side=close_side,
+                    trend_regime_strength=trend_strength,
+                    trend_atr_norm=atr_norm,
+                    var_es_penalty=var_es_penalty,
+                )
+                reward, reward_components = compute_expectancy_reward(
+                    ctx,
+                    self._reward_state,
+                    self._reward_cfg(),
+                )
+                update_trade_stats(
+                    self._reward_state,
+                    rl_close_accounting_net_usd,
+                    window=self._reward_cfg().rolling_trade_window,
+                )
+            else:
+                reward = -var_es_penalty if var_es_penalty > 0 else 0.0
+        else:
+            reward_cfg = self._reward_cfg()
+            reward = compute_legacy_reward(
+                net_pnl=rl_close_accounting_net_usd,
+                drawdown=self._drawdown(),
+                sharpe=self._rolling_sharpe(),
+                drawdown_penalty_coeff=reward_cfg.drawdown_penalty_coeff,
+                sharpe_bonus_coeff=reward_cfg.sharpe_bonus_coeff,
+                var_es_penalty=var_es_penalty,
+            )
 
         if blocked_by_capital_preservation:
             reward -= 5.0
@@ -299,8 +367,6 @@ class RLTradingEnvironment(gym.Env):
         self._idx += 1
         terminated = self._idx >= min(len(self.data) - 1, self.config.max_steps)
 
-        # Model/sim close accounting only — not broker-confirmed economic_pnl.
-        rl_close_accounting_net_usd = float(realized_pnl - slippage_cost - fees_cost)
         training_reward = float(reward)
         info = {
             "model_close_gross_pnl_usd": realized_pnl,
@@ -312,6 +378,8 @@ class RLTradingEnvironment(gym.Env):
             "drawdown": self._drawdown(),
             "sharpe": self._rolling_sharpe(),
             "var_es_penalty": var_es_penalty,
+            "reward_components": reward_components,
+            "trade_closed": trade_closed,
             "blocked_by_capital_preservation": blocked_by_capital_preservation,
             "block_reason": block_reason,
         }

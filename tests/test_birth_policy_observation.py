@@ -7,7 +7,7 @@ from lumina_core.birth_policy_observation import BIRTH_RL_OBS_DIM, build_birth_r
 
 
 @pytest.mark.unit
-def test_build_birth_rl_observation_vector_has_28_dimensions() -> None:
+def test_build_birth_rl_observation_vector_has_43_dimensions() -> None:
     tick = {"last": 5000.0, "regime": "TRENDING", "imbalance": 1.1, "volume": 12}
     obs = build_birth_rl_observation_vector(
         tick=tick,

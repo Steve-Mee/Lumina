@@ -61,6 +61,24 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "auto_recovery_active",
     "adaptation_enabled",
     "wall_behavior",
+    "learning_velocity_combined",
+    "strong_recovery_mode",
+    "velocity_stall_attempts",
+    "strong_recovery_attempts",
+    "provisional_pass_considered",
+    "meta_primary_strategy",
+    "meta_learning_health",
+    "meta_pattern_quality",
+    "meta_reward_tweak_active",
+    "meta_reward_expectancy_coeff",
+    "meta_review_trigger",
+    "meta_explore_multiplier",
+    "meta_rollouts_since_review",
+    "meta_self_eval_phase",
+    "meta_self_eval_current_strategy",
+    "meta_self_eval_committed_strategy",
+    "meta_self_eval_best_velocity_delta",
+    "meta_self_eval_probes_completed",
 )
 
 
@@ -184,6 +202,23 @@ def calculate_simple_slope(winrate_history: list[float]) -> float:
     return (winrate_history[-1] - winrate_history[0]) / max(1, len(winrate_history) - 1)
 
 
+def combined_learning_velocity(
+    winrate_history: list[float],
+    reward_history: list[float],
+) -> float:
+    winrate_velocity = calculate_simple_slope(winrate_history)
+    reward_velocity = calculate_simple_slope(reward_history)
+    has_winrate = len(winrate_history) >= 5
+    has_reward = len(reward_history) >= 5
+    if has_winrate and has_reward:
+        return min(winrate_velocity, reward_velocity)
+    if has_winrate:
+        return winrate_velocity
+    if has_reward:
+        return reward_velocity
+    return 0.0
+
+
 def enrich_adaptation_payload(
     *,
     stage_trades: int,
@@ -196,6 +231,18 @@ def enrich_adaptation_payload(
     adaptation_history: list[dict[str, Any]],
     adaptation_enabled: bool,
     wall_behavior: str,
+    reward_history: list[float] | None = None,
+    learning_velocity_combined: float | None = None,
+    strong_recovery_mode: bool = False,
+    velocity_stall_attempts: int = 0,
+    strong_recovery_attempts: int = 0,
+    provisional_pass_considered: bool = False,
+    meta_primary_strategy: str = "hold",
+    meta_learning_health: str = "flat",
+    meta_pattern_quality: float = 0.0,
+    meta_reward_tweak_active: bool = False,
+    meta_review_trigger: str = "",
+    meta_explore_multiplier: float = 1.0,
 ) -> dict[str, Any]:
     last_adaptation = adaptation_history[-1] if adaptation_history else {}
     adaptive_active = (
@@ -203,9 +250,19 @@ def enrich_adaptation_payload(
         and wall_behavior == "adaptive"
         and stage_trades >= required
     )
+    combined = (
+        float(learning_velocity_combined)
+        if learning_velocity_combined is not None
+        else combined_learning_velocity(winrate_history, reward_history or [])
+    )
     return {
         "volume_gate_status": "PASSED" if stage_trades >= required else "PENDING",
         "winrate_trend_slope": round(calculate_simple_slope(winrate_history), 6),
+        "learning_velocity_combined": round(combined, 6),
+        "strong_recovery_mode": bool(strong_recovery_mode),
+        "velocity_stall_attempts": int(velocity_stall_attempts),
+        "strong_recovery_attempts": int(strong_recovery_attempts),
+        "provisional_pass_considered": bool(provisional_pass_considered),
         "last_adaptation": last_adaptation,
         "retries_this_stage": int(retries_this_stage),
         "adaptation_tier": int(adaptation_tier),
@@ -214,6 +271,12 @@ def enrich_adaptation_payload(
         "auto_recovery_active": adaptive_active,
         "adaptation_enabled": bool(adaptation_enabled),
         "wall_behavior": str(wall_behavior),
+        "meta_primary_strategy": str(meta_primary_strategy),
+        "meta_learning_health": str(meta_learning_health),
+        "meta_pattern_quality": round(float(meta_pattern_quality), 4),
+        "meta_reward_tweak_active": bool(meta_reward_tweak_active),
+        "meta_review_trigger": str(meta_review_trigger),
+        "meta_explore_multiplier": round(float(meta_explore_multiplier), 4),
     }
 
 

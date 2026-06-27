@@ -250,6 +250,40 @@ birth_v2:
     certified_max_rollouts_per_stage: 200
     certified_stage_stall_wall_sec: 14400
     stage1_winrate_stagnation_rollouts: 8
+    intra_stage1_enabled: true
+    intra_initial_hard_pct: 0.15
+    intra_max_hard_pct: 0.70
+    intra_hard_pct_step: 0.05
+    intra_easy_winrate_target: 0.50
+    intra_easy_stability_window: 3
+    intra_easy_percentile: 0.40
+    intra_hard_percentile: 0.40
+    intra_pool_size_multiplier: 4
+    meta_controller_enabled: true
+    meta_reward_tweak_step: 0.05
+    meta_max_expectancy_coeff: 0.75
+    meta_pattern_yield_floor: 0.15
+    meta_improving_velocity_multiplier: 1.5
+    meta_review_interval_rollouts: 5
+    meta_explore_decay_improving: 0.65
+    meta_explore_decay_stall: 0.50
+    meta_intra_ramp_on_improving: true
+    meta_self_eval_enabled: true
+    meta_self_eval_min_stall_attempts: 32
+    meta_self_eval_min_recovery_attempts: 8
+    meta_self_eval_rollouts_per_strategy: 12
+    meta_self_eval_min_velocity_gain: 0.003
+    meta_self_eval_velocity_floor: 0.002
+    meta_self_eval_cooldown_rollouts: 20
+  reward:
+    enabled: true
+    expectancy_coeff: 0.5
+    quality_win_bonus_coeff: 0.25
+    loss_asymmetry_coeff: 1.25
+    volatility_penalty_coeff: 0.15
+    trend_align_bonus_coeff: 0.10
+    min_risk_usd: 25.0
+    reward_clip: 5.0
   news:
     primary: finnhub
     enable_cache: true

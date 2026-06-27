@@ -1,4 +1,4 @@
-"""32-dim observation vectors via observation_builder SSOT (ADR-0015)."""
+"""43-dim observation vectors via observation_builder SSOT (ADR-0015 + ADR-0018)."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def build_birth_rl_observation_vector(
     equity: float = 50_000.0,
     recent_pnl: list[float] | None = None,
 ) -> np.ndarray:
-    """Build observation compatible with ``RLTradingEnvironment.observation_space`` (32,)."""
+    """Build observation compatible with ``RLTradingEnvironment.observation_space`` (43,)."""
     row = dict(tick)
     if "close" not in row and "last" in row:
         row["close"] = row["last"]

@@ -11,6 +11,7 @@ import numpy as np
 
 from lumina_core.birth.birth_constitution_guard import BirthConstitutionGuard
 from lumina_core.birth.bible_observation import bible_features_for_tick
+from lumina_core.birth.config import BirthRewardConfig, load_birth_v2_config
 from lumina_core.logging_utils import get_logger
 from lumina_core.rl.gym_environment import RLConfig, RLTradingEnvironment
 
@@ -43,6 +44,8 @@ class SimRolloutResult:
     exploration_steps_used: int = 0
     constitution_blocks: int = 0
     partial_complete: bool = False
+    easy_trades: int = 0
+    easy_wins: int = 0
 
 
 def _predict_action(policy: Any, obs: np.ndarray) -> np.ndarray:
@@ -81,6 +84,7 @@ def run_policy_rollout(
     exploration_steps: int | None = None,
     escalation_level: int = 0,
     on_progress: Callable[[dict[str, Any]], None] | None = None,
+    reward_override: BirthRewardConfig | None = None,
 ) -> SimRolloutResult:
     guard = constitution_guard or BirthConstitutionGuard()
     enriched = []
@@ -100,13 +104,19 @@ def run_policy_rollout(
     probe_steps = max(200, base_probe // (1 + level))
     explore_budget = base_explore * (1 + level)
 
-    cfg = RLConfig(trade_mode="birth", max_steps=max_steps or max(5000, target_trades * 80))
+    cfg = RLConfig(
+        trade_mode="birth",
+        max_steps=max_steps or max(5000, target_trades * 80),
+        reward=reward_override or load_birth_v2_config(workspace_root).reward,
+    )
     env = RLTradingEnvironment(runtime, enriched, config=cfg)
     env.set_birth_context(workspace_root=workspace_root, constitution_guard=guard)
 
     obs, _ = env.reset()
     trades = 0
     wins = 0
+    easy_trades = 0
+    easy_wins = 0
     hold_signals = 0
     total_signals = 0
     range_hold_signals = 0
@@ -212,6 +222,10 @@ def run_policy_rollout(
             if pnl > 0:
                 wins += 1
             idx = min(env._idx, len(enriched) - 1)
+            if str(enriched[idx].get("_intra_difficulty", "")).lower() == "easy":
+                easy_trades += 1
+                if pnl > 0:
+                    easy_wins += 1
             regime = str(enriched[idx].get("regime", "NEUTRAL"))
             regimes_seen.add(regime)
             if is_range_tick:
@@ -265,4 +279,6 @@ def run_policy_rollout(
         exploration_steps_used=exploration_steps_used,
         constitution_blocks=constitution_blocks,
         partial_complete=partial_complete,
+        easy_trades=easy_trades,
+        easy_wins=easy_wins,
     )

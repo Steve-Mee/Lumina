@@ -24,6 +24,24 @@ class BirthNewsConfig:
 
 
 @dataclass(slots=True)
+class BirthRewardConfig:
+    """Expectancy-oriented PPO training reward (birth + sim only)."""
+
+    enabled: bool = True
+    expectancy_coeff: float = 0.5
+    quality_win_bonus_coeff: float = 0.25
+    loss_asymmetry_coeff: float = 1.25
+    volatility_penalty_coeff: float = 0.15
+    atr_floor: float = 0.0005
+    trend_align_bonus_coeff: float = 0.10
+    drawdown_penalty_coeff: float = 0.20
+    sharpe_bonus_coeff: float = 0.05
+    min_risk_usd: float = 25.0
+    reward_clip: float = 5.0
+    rolling_trade_window: int = 50
+
+
+@dataclass(slots=True)
 class BirthCurriculumConfig:
     stage1_trend_trades: int = 2000
     stage2_range_trades: int = 3000
@@ -59,12 +77,47 @@ class BirthCurriculumConfig:
     exploration_chunk_size: int = 8
     winrate_trend_window: int = 12
     negative_slope_threshold: float = -0.005
+    velocity_stall_attempt_threshold: int = 32
+    velocity_stall_epsilon: float = 0.002
+    strong_recovery_escalation_boost: int = 2
+    reward_trend_window: int = 12
+    strong_recovery_explore_fraction: float = 0.5
+    strong_recovery_oracle_stride_divisor: int = 2
+    strong_recovery_pattern_multiplier: int = 2
+    strong_recovery_expand_every_attempts: int = 3
+    strong_recovery_no_improvement_threshold: int = 12
+    intra_stage1_enabled: bool = True
+    intra_initial_hard_pct: float = 0.15
+    intra_max_hard_pct: float = 0.70
+    intra_hard_pct_step: float = 0.05
+    intra_easy_winrate_target: float = 0.50
+    intra_easy_stability_window: int = 3
+    intra_easy_percentile: float = 0.40
+    intra_hard_percentile: float = 0.40
+    intra_pool_size_multiplier: int = 4
+    meta_controller_enabled: bool = True
+    meta_reward_tweak_step: float = 0.05
+    meta_max_expectancy_coeff: float = 0.75
+    meta_pattern_yield_floor: float = 0.15
+    meta_improving_velocity_multiplier: float = 1.5
+    meta_review_interval_rollouts: int = 5
+    meta_explore_decay_improving: float = 0.65
+    meta_explore_decay_stall: float = 0.50
+    meta_intra_ramp_on_improving: bool = True
+    meta_self_eval_enabled: bool = True
+    meta_self_eval_min_stall_attempts: int = 32
+    meta_self_eval_min_recovery_attempts: int = 8
+    meta_self_eval_rollouts_per_strategy: int = 12
+    meta_self_eval_min_velocity_gain: float = 0.003
+    meta_self_eval_velocity_floor: float = 0.002
+    meta_self_eval_cooldown_rollouts: int = 20
 
 
 @dataclass(slots=True)
 class BirthV2Config:
     curriculum: BirthCurriculumConfig = field(default_factory=BirthCurriculumConfig)
     news: BirthNewsConfig = field(default_factory=BirthNewsConfig)
+    reward: BirthRewardConfig = field(default_factory=BirthRewardConfig)
     holdout_pct: float = 0.20
     certificate_thresholds: BirthCertificateThresholds = field(default_factory=BirthCertificateThresholds)
     prefer_real_data_only: bool = True
@@ -136,6 +189,7 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
 
     cur_raw = section.get("curriculum") if isinstance(section.get("curriculum"), dict) else {}
     news_raw = section.get("news") if isinstance(section.get("news"), dict) else {}
+    reward_raw = section.get("reward") if isinstance(section.get("reward"), dict) else {}
     thr_raw = section.get("certificate_thresholds") if isinstance(section.get("certificate_thresholds"), dict) else {}
 
     curriculum = BirthCurriculumConfig(
@@ -182,12 +236,115 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         exploration_chunk_size=_coerce_int(cur_raw.get("exploration_chunk_size"), 8),
         winrate_trend_window=_coerce_int(cur_raw.get("winrate_trend_window"), 12),
         negative_slope_threshold=_coerce_float(cur_raw.get("negative_slope_threshold"), -0.005),
+        velocity_stall_attempt_threshold=max(
+            5,
+            min(80, _coerce_int(cur_raw.get("velocity_stall_attempt_threshold"), 32)),
+        ),
+        velocity_stall_epsilon=_coerce_float(cur_raw.get("velocity_stall_epsilon"), 0.002),
+        strong_recovery_escalation_boost=max(
+            1, _coerce_int(cur_raw.get("strong_recovery_escalation_boost"), 2)
+        ),
+        reward_trend_window=_coerce_int(cur_raw.get("reward_trend_window"), 12),
+        strong_recovery_explore_fraction=max(
+            0.25,
+            min(1.0, _coerce_float(cur_raw.get("strong_recovery_explore_fraction"), 0.5)),
+        ),
+        strong_recovery_oracle_stride_divisor=max(
+            1, _coerce_int(cur_raw.get("strong_recovery_oracle_stride_divisor"), 2)
+        ),
+        strong_recovery_pattern_multiplier=max(
+            1, _coerce_int(cur_raw.get("strong_recovery_pattern_multiplier"), 2)
+        ),
+        strong_recovery_expand_every_attempts=max(
+            1, _coerce_int(cur_raw.get("strong_recovery_expand_every_attempts"), 3)
+        ),
+        strong_recovery_no_improvement_threshold=max(
+            5, _coerce_int(cur_raw.get("strong_recovery_no_improvement_threshold"), 12)
+        ),
+        intra_stage1_enabled=bool(cur_raw.get("intra_stage1_enabled", True)),
+        intra_initial_hard_pct=max(
+            0.0, min(1.0, _coerce_float(cur_raw.get("intra_initial_hard_pct"), 0.15))
+        ),
+        intra_max_hard_pct=max(
+            0.05, min(1.0, _coerce_float(cur_raw.get("intra_max_hard_pct"), 0.70))
+        ),
+        intra_hard_pct_step=max(0.01, _coerce_float(cur_raw.get("intra_hard_pct_step"), 0.05)),
+        intra_easy_winrate_target=max(
+            0.1, min(0.95, _coerce_float(cur_raw.get("intra_easy_winrate_target"), 0.50))
+        ),
+        intra_easy_stability_window=max(1, _coerce_int(cur_raw.get("intra_easy_stability_window"), 3)),
+        intra_easy_percentile=max(
+            0.05, min(0.80, _coerce_float(cur_raw.get("intra_easy_percentile"), 0.40))
+        ),
+        intra_hard_percentile=max(
+            0.05, min(0.80, _coerce_float(cur_raw.get("intra_hard_percentile"), 0.40))
+        ),
+        intra_pool_size_multiplier=max(1, _coerce_int(cur_raw.get("intra_pool_size_multiplier"), 4)),
+        meta_controller_enabled=bool(cur_raw.get("meta_controller_enabled", True)),
+        meta_reward_tweak_step=max(
+            0.01, _coerce_float(cur_raw.get("meta_reward_tweak_step"), 0.05)
+        ),
+        meta_max_expectancy_coeff=max(
+            0.1, min(2.0, _coerce_float(cur_raw.get("meta_max_expectancy_coeff"), 0.75))
+        ),
+        meta_pattern_yield_floor=max(
+            0.0, min(1.0, _coerce_float(cur_raw.get("meta_pattern_yield_floor"), 0.15))
+        ),
+        meta_improving_velocity_multiplier=max(
+            1.0, _coerce_float(cur_raw.get("meta_improving_velocity_multiplier"), 1.5)
+        ),
+        meta_review_interval_rollouts=max(
+            1, _coerce_int(cur_raw.get("meta_review_interval_rollouts"), 5)
+        ),
+        meta_explore_decay_improving=max(
+            0.4,
+            min(1.0, _coerce_float(cur_raw.get("meta_explore_decay_improving"), 0.65)),
+        ),
+        meta_explore_decay_stall=max(
+            0.4,
+            min(1.0, _coerce_float(cur_raw.get("meta_explore_decay_stall"), 0.50)),
+        ),
+        meta_intra_ramp_on_improving=bool(cur_raw.get("meta_intra_ramp_on_improving", True)),
+        meta_self_eval_enabled=bool(cur_raw.get("meta_self_eval_enabled", True)),
+        meta_self_eval_min_stall_attempts=max(
+            5, _coerce_int(cur_raw.get("meta_self_eval_min_stall_attempts"), 32)
+        ),
+        meta_self_eval_min_recovery_attempts=max(
+            1, _coerce_int(cur_raw.get("meta_self_eval_min_recovery_attempts"), 8)
+        ),
+        meta_self_eval_rollouts_per_strategy=max(
+            5, min(30, _coerce_int(cur_raw.get("meta_self_eval_rollouts_per_strategy"), 12))
+        ),
+        meta_self_eval_min_velocity_gain=max(
+            0.0, _coerce_float(cur_raw.get("meta_self_eval_min_velocity_gain"), 0.003)
+        ),
+        meta_self_eval_velocity_floor=max(
+            0.0, _coerce_float(cur_raw.get("meta_self_eval_velocity_floor"), 0.002)
+        ),
+        meta_self_eval_cooldown_rollouts=max(
+            0, _coerce_int(cur_raw.get("meta_self_eval_cooldown_rollouts"), 20)
+        ),
     )
 
     news = BirthNewsConfig(
         primary=str(news_raw.get("primary", "finnhub") or "finnhub"),
         enable_cache=bool(news_raw.get("enable_cache", True)),
         cache_path=str(news_raw.get("cache_path", "state/birth_news_cache.json") or "state/birth_news_cache.json"),
+    )
+
+    reward = BirthRewardConfig(
+        enabled=bool(reward_raw.get("enabled", True)),
+        expectancy_coeff=_coerce_float(reward_raw.get("expectancy_coeff"), 0.5),
+        quality_win_bonus_coeff=_coerce_float(reward_raw.get("quality_win_bonus_coeff"), 0.25),
+        loss_asymmetry_coeff=_coerce_float(reward_raw.get("loss_asymmetry_coeff"), 1.25),
+        volatility_penalty_coeff=_coerce_float(reward_raw.get("volatility_penalty_coeff"), 0.15),
+        atr_floor=_coerce_float(reward_raw.get("atr_floor"), 0.0005),
+        trend_align_bonus_coeff=_coerce_float(reward_raw.get("trend_align_bonus_coeff"), 0.10),
+        drawdown_penalty_coeff=_coerce_float(reward_raw.get("drawdown_penalty_coeff"), 0.20),
+        sharpe_bonus_coeff=_coerce_float(reward_raw.get("sharpe_bonus_coeff"), 0.05),
+        min_risk_usd=max(1.0, _coerce_float(reward_raw.get("min_risk_usd"), 25.0)),
+        reward_clip=max(0.5, _coerce_float(reward_raw.get("reward_clip"), 5.0)),
+        rolling_trade_window=max(5, _coerce_int(reward_raw.get("rolling_trade_window"), 50)),
     )
 
     try:
@@ -198,6 +355,7 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
     return BirthV2Config(
         curriculum=curriculum,
         news=news,
+        reward=reward,
         holdout_pct=max(0.05, min(0.4, _coerce_float(section.get("holdout_pct"), 0.20))),
         certificate_thresholds=thresholds,
         prefer_real_data_only=bool(section.get("prefer_real_data_only", True)),

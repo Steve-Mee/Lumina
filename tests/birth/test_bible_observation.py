@@ -43,4 +43,5 @@ def test_bible_observation_slots_reflect_tick_regime() -> None:
     )
     assert obs.shape == (OBSERVATION_DIM,)
     assert obs[24] == pytest.approx(0.75)
-    assert obs[1] != 0.0 or "TREND" in str(row.get("regime", "")).upper()
+    assert obs[1] == pytest.approx(row["trend_regime_strength"])
+    assert obs[1] > 0

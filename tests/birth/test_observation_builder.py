@@ -5,11 +5,44 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from lumina_core.birth.tick_enricher import enrich_ticks_for_sim
 from lumina_core.rl.observation_builder import OBSERVATION_DIM, build_observation_vector, regime_scalar
 
 
 @pytest.mark.unit
-def test_observation_builder_returns_32_dim_vector() -> None:
+def test_observation_builder_trend_slots_from_enriched_ticks() -> None:
+    engine = SimpleNamespace(
+        detect_market_regime=lambda _df: "NEUTRAL",
+        market_data=SimpleNamespace(get_tape_snapshot=lambda: {}),
+        get_current_dream_snapshot=lambda: {},
+        AI_DRAWN_FIBS={},
+        world_model={},
+    )
+    raw = [{"last": 5000.0 + i * 2.0, "volume": 100} for i in range(100)]
+    data = enrich_ticks_for_sim(raw)
+    row = data[80]
+    obs = build_observation_vector(
+        row=row,
+        engine=engine,
+        data=data,
+        idx=80,
+        position=0,
+        qty=0,
+        entry_price=0.0,
+        equity=50_000.0,
+        drawdown=0.0,
+        rolling_sharpe=0.0,
+        trade_mode="birth",
+    )
+    assert obs.shape == (OBSERVATION_DIM,)
+    assert obs[1] == pytest.approx(row["trend_regime_strength"])
+    assert obs[35] == pytest.approx(row["trend_slope_5"])
+    assert obs[42] == pytest.approx(row["trend_atr_ratio"])
+    assert obs[1] > 0
+
+
+@pytest.mark.unit
+def test_observation_builder_returns_43_dim_vector() -> None:
     engine = SimpleNamespace(
         detect_market_regime=lambda _df: "NEUTRAL",
         market_data=SimpleNamespace(get_tape_snapshot=lambda: {}),

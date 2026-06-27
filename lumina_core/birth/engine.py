@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 from lumina_core.birth.birth_certificate import (
     build_certificate_from_eval,
@@ -37,17 +37,33 @@ from lumina_core.birth.certificate_evaluator import evaluate_holdout_certificate
 from lumina_core.birth.config import BRO_ENGINE_VERSION, BirthCurriculumConfig, load_birth_v2_config
 from lumina_core.birth.curriculum import (
     CurriculumStage,
+    Stage1IntraCurriculumState,
     evaluate_stage_pass,
     filter_ticks_for_stage,
     ordered_stages,
+    sample_intra_stage1_pool,
     should_gen0_soft_pass,
+    split_stage1_trend_ticks,
+    stage1_intra_state_from_metrics,
     stage_pass_trades,
     stage_trade_target,
+    update_stage1_intra_state,
 )
 from lumina_core.birth.data_expansion import expand_birth_data
 from lumina_core.birth.history_loader import load_historical_ticks
 from lumina_core.birth.news_enricher import enrich_ticks_with_news
 from lumina_core.birth.pattern_miner import mine_winning_patterns
+from lumina_core.birth.meta_controller import (
+    AdaptationDecision,
+    BirthMetaController,
+    LearningHealth,
+    MetaActionPlan,
+    RecoveryStrategy,
+    StallDetectionResult,
+    detect_stall,
+    get_adaptation_decision,
+)
+from lumina_core.birth.meta_self_eval import SelfEvalPhase
 from lumina_core.birth.remediation import (
     RemediationAction,
     filter_train_ticks_for_holdout_profile,
@@ -69,66 +85,19 @@ from lumina_core.birth.sim_runner import run_policy_rollout
 from lumina_core.birth.tick_enricher import enrich_ticks_for_sim, real_data_percentage
 from lumina_core.birth.dna_handoff import register_birth_gen0_dna
 from lumina_core.birth.bible_meta import update_bible_after_birth
+from lumina_core.first_boot_progress import ensure_first_boot_hardware_profile
+from lumina_core.hardware_intelligence import HARDWARE_PROFILES
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.engine")
 
 
 @dataclass(frozen=True, slots=True)
-class AdaptationDecision:
-    should_retry: bool
+class ProvisionalPassDecision:
+    should_grant: bool
     reason: str
-    new_chunk_target: int
-    escalation_increase: int = 1
-    log_message: str = ""
-
-
-def _get_adaptation_decision(
-    *,
-    stage_trades: int,
-    required: int,
-    winrate: float,
-    winrate_history: List[float],
-    escalation_level: int,
-    cfg: BirthCurriculumConfig,
-) -> AdaptationDecision:
-    """High-leverage rule: recent winrate trend after volume gate has been passed."""
-    _ = winrate
-    if len(winrate_history) >= 5:
-        slope = (winrate_history[-1] - winrate_history[0]) / max(1, len(winrate_history) - 1)
-    else:
-        slope = 0.0
-
-    is_negative_trend = slope < cfg.negative_slope_threshold
-
-    if stage_trades >= required and is_negative_trend:
-        new_chunk = min(25, cfg.exploration_chunk_size * (1 + escalation_level))
-        return AdaptationDecision(
-            should_retry=True,
-            reason="negative_winrate_trend_after_volume_gate",
-            new_chunk_target=new_chunk,
-            escalation_increase=1,
-            log_message=(
-                f"Negative trend (slope={slope:.4f}). Boosting exploration to chunk={new_chunk}"
-            ),
-        )
-
-    if stage_trades >= required:
-        return AdaptationDecision(
-            should_retry=True,
-            reason="metrics_not_improving_within_wall",
-            new_chunk_target=cfg.exploration_chunk_size,
-            escalation_increase=1,
-            log_message="Metrics stalled after volume gate. Applying exploration boost.",
-        )
-
-    return AdaptationDecision(
-        should_retry=True,
-        reason="default_stall_retry",
-        new_chunk_target=cfg.rollout_chunk_trades,
-        escalation_increase=1,
-        log_message="Standard stall recovery.",
-    )
+    blocked_reason: str | None
+    safeguards: dict[str, bool]
 
 
 @dataclass(slots=True)
@@ -188,6 +157,7 @@ class BirthPhaseEngineV2:
         self._remediation_attempt = 0
         self._last_checkpoint_at = 0.0
         self._active_stage_metrics: dict[str, Any] = {}
+        self._hardware_profile_payload: dict[str, Any] | None = None
         event_bus = getattr(runtime, "event_bus", None)
         self._constitution_guard = BirthConstitutionGuard(event_bus=event_bus, mode="birth")
 
@@ -202,6 +172,60 @@ class BirthPhaseEngineV2:
         if self.stop_event is not None and self.stop_event.is_set():
             return True
         return self.pause_flag_path.exists()
+
+    def _apply_hardware_profile(self) -> None:
+        """Apply cached hardware tuning to birth curriculum performance knobs only."""
+        profile_payload = self._hardware_profile_payload or {}
+        profile_name = str(profile_payload.get("profile", "cpu_efficient"))
+        tuning_raw = profile_payload.get("tuning")
+        if isinstance(tuning_raw, dict):
+            tuning = tuning_raw
+        elif profile_name in HARDWARE_PROFILES:
+            tuning = HARDWARE_PROFILES[profile_name].to_dict()
+        else:
+            profile_name = "cpu_efficient"
+            tuning = HARDWARE_PROFILES["cpu_efficient"].to_dict()
+
+        cur = self.birth_config.curriculum
+        changes: list[str] = []
+
+        def _apply_curriculum_int(field: str, attr: str, *, minimum: int = 1) -> None:
+            if field not in tuning:
+                return
+            before = int(getattr(cur, attr))
+            after = max(minimum, int(tuning[field]))
+            setattr(cur, attr, after)
+            if before != after:
+                changes.append(f"{attr}={before}->{after}")
+
+        _apply_curriculum_int("rollout_chunk_trades", "rollout_chunk_trades")
+        _apply_curriculum_int("curriculum_ppo_timesteps", "curriculum_ppo_timesteps", minimum=1000)
+        _apply_curriculum_int("max_escalation_level", "max_escalation_level")
+        _apply_curriculum_int("oracle_scan_stride", "oracle_scan_stride")
+
+        if "ppo_update_timesteps" in tuning:
+            before = int(self.birth_config.ppo_update_timesteps)
+            after = max(1000, int(tuning["ppo_update_timesteps"]))
+            self.birth_config.ppo_update_timesteps = after
+            if before != after:
+                changes.append(f"ppo_update_timesteps={before}->{after}")
+
+        detection_raw = profile_payload.get("detection")
+        detection = detection_raw if isinstance(detection_raw, dict) else {}
+        recommended = str(detection.get("recommended_profile", profile_name))
+        if changes:
+            logger.info(
+                "birth.hardware_profile profile=%s recommended=%s %s",
+                profile_name,
+                recommended,
+                " ".join(changes),
+            )
+        else:
+            logger.info(
+                "birth.hardware_profile profile=%s recommended=%s no_changes",
+                profile_name,
+                recommended,
+            )
 
     def _create_birth_policy(self, *, allow_load_existing: bool, policy_path: str | None = None) -> Any:
         create = getattr(self.ppo_trainer, "create_fresh_birth_policy", None)
@@ -745,6 +769,8 @@ class BirthPhaseEngineV2:
     ) -> dict[str, Any]:
         _ = (target_trades, chunk_size, force)
         cfg = self.birth_config
+        self._hardware_profile_payload = ensure_first_boot_hardware_profile(self.workspace_root)
+        self._apply_hardware_profile()
         logger.info("birth.engine.version=%s", BRO_ENGINE_VERSION)
         training_mode = "practice" if practice_mode else "certified"
         max_days = max(30, min(3650, int(max_real_days or cfg.max_real_days)))
@@ -1234,7 +1260,32 @@ class BirthPhaseEngineV2:
         train_ticks: list[dict[str, Any]],
         escalation_level: int,
         attempt: int,
+        chunk_target: int = 250,
+        cur_cfg: BirthCurriculumConfig | None = None,
+        intra_state: Stage1IntraCurriculumState | None = None,
+        easy_pool: list[dict[str, Any]] | None = None,
+        hard_pool: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
+        cfg = cur_cfg or self.birth_config.curriculum
+        if (
+            stage == CurriculumStage.STAGE1_TREND
+            and cfg.intra_stage1_enabled
+            and intra_state is not None
+            and easy_pool
+            and hard_pool
+        ):
+            pool_size = max(
+                chunk_target * max(1, int(cfg.intra_pool_size_multiplier)),
+                len(easy_pool),
+            )
+            rng = random.Random(attempt + int(intra_state.hard_pct * 1000) + escalation_level * 17)
+            return sample_intra_stage1_pool(
+                easy_pool,
+                hard_pool,
+                intra_state,
+                pool_size=pool_size,
+                rng=rng,
+            )
         if escalation_level >= 2:
             pool = list(train_ticks)
             rng = random.Random(attempt + escalation_level * 17)
@@ -1247,6 +1298,139 @@ class BirthPhaseEngineV2:
             merged = list(stage_ticks) + extra[: max(len(stage_ticks), len(train_ticks) // 4)]
             return merged
         return list(stage_ticks)
+
+    def _detect_stall(
+        self,
+        *,
+        winrate_history: list[float],
+        reward_history: list[float],
+        low_velocity_attempts: int,
+        cfg: BirthCurriculumConfig,
+    ) -> StallDetectionResult:
+        """Detect learning stall from combined winrate and reward velocity trends."""
+        return detect_stall(
+            winrate_history=winrate_history,
+            reward_history=reward_history,
+            low_velocity_attempts=low_velocity_attempts,
+            cfg=cfg,
+        )
+
+    @staticmethod
+    def _resolve_oracle_mining_params(
+        cfg: BirthCurriculumConfig,
+        *,
+        aggressive: bool,
+    ) -> tuple[int, int]:
+        max_patterns = int(cfg.oracle_patterns_per_stage)
+        scan_stride = int(cfg.oracle_scan_stride)
+        if not aggressive:
+            return max_patterns, scan_stride
+        divisor = max(1, int(cfg.strong_recovery_oracle_stride_divisor))
+        multiplier = max(1, int(cfg.strong_recovery_pattern_multiplier))
+        scan_stride = max(1, scan_stride // divisor)
+        max_patterns = min(max_patterns * multiplier, max_patterns * 2)
+        return max_patterns, scan_stride
+
+    def _maybe_trigger_provisional_pass(
+        self,
+        *,
+        stage: CurriculumStage,
+        stage_trades: int,
+        required: int,
+        attempt: int,
+        strong_recovery_attempts: int,
+        patterns_mined: int,
+        buffer_size: int,
+        constitution_violations: int,
+        combined_velocity: float,
+        allow_provisional: bool,
+        cfg: BirthCurriculumConfig,
+    ) -> ProvisionalPassDecision:
+        """Autonomously decide provisional soft-pass (practice / allow_provisional only)."""
+        _ = stage
+        soft_pass_eligible = should_gen0_soft_pass(
+            stage_trades=stage_trades,
+            buffer_size=buffer_size,
+            attempt=attempt,
+            cfg=cfg,
+        ) or (patterns_mined >= 100 and buffer_size >= 256)
+        safeguards = {
+            "allow_provisional": allow_provisional,
+            "constitution_clean": constitution_violations == 0,
+            "volume_gate_passed": stage_trades >= required,
+            "recovery_attempts_met": strong_recovery_attempts
+            >= cfg.strong_recovery_no_improvement_threshold,
+            "velocity_still_low": combined_velocity <= cfg.velocity_stall_epsilon,
+            "soft_pass_eligible": soft_pass_eligible,
+        }
+        if not allow_provisional:
+            logger.info(
+                "birth.provisional_pass_blocked reason=certified_mode_strict stage=%s "
+                "strong_recovery_attempts=%s safeguards=%s",
+                stage.value,
+                strong_recovery_attempts,
+                safeguards,
+            )
+            return ProvisionalPassDecision(
+                should_grant=False,
+                reason="",
+                blocked_reason="certified_mode_strict",
+                safeguards=safeguards,
+            )
+        if all(
+            (
+                safeguards["constitution_clean"],
+                safeguards["volume_gate_passed"],
+                safeguards["recovery_attempts_met"],
+                safeguards["velocity_still_low"],
+                safeguards["soft_pass_eligible"],
+            )
+        ):
+            logger.info(
+                "birth.provisional_pass_granted stage=%s strong_recovery_attempts=%s "
+                "combined_velocity=%.6f patterns_mined=%s buffer_size=%s safeguards=%s",
+                stage.value,
+                strong_recovery_attempts,
+                combined_velocity,
+                patterns_mined,
+                buffer_size,
+                safeguards,
+            )
+            return ProvisionalPassDecision(
+                should_grant=True,
+                reason="strong_recovery_exhausted_soft_pass",
+                blocked_reason=None,
+                safeguards=safeguards,
+            )
+        blocked_reason = next(
+            (
+                key
+                for key, ok in (
+                    ("constitution_clean", safeguards["constitution_clean"]),
+                    ("volume_gate_passed", safeguards["volume_gate_passed"]),
+                    ("recovery_attempts_met", safeguards["recovery_attempts_met"]),
+                    ("velocity_still_low", safeguards["velocity_still_low"]),
+                    ("soft_pass_eligible", safeguards["soft_pass_eligible"]),
+                )
+                if not ok
+            ),
+            "safeguard_failed",
+        )
+        logger.info(
+            "birth.provisional_pass_blocked reason=%s stage=%s strong_recovery_attempts=%s "
+            "combined_velocity=%.6f safeguards=%s",
+            blocked_reason,
+            stage.value,
+            strong_recovery_attempts,
+            combined_velocity,
+            safeguards,
+        )
+        return ProvisionalPassDecision(
+            should_grant=False,
+            reason="",
+            blocked_reason=blocked_reason,
+            safeguards=safeguards,
+        )
 
     def _run_stage_research_loop(
         self,
@@ -1295,6 +1479,11 @@ class BirthPhaseEngineV2:
         winrate_stagnation_count = 0
         wall_budget_exhausted = False
         winrate_history: list[float] = []
+        reward_history: list[float] = []
+        low_velocity_attempts = 0
+        strong_recovery_mode = False
+        strong_recovery_attempts = 0
+        provisional_pass_considered = False
         retries_this_stage = 0
         adaptation_tier = 0
         adaptation_history: list[dict[str, Any]] = []
@@ -1337,6 +1526,16 @@ class BirthPhaseEngineV2:
             raw_history = stage_metrics.get("winrate_history")
             if isinstance(raw_history, list):
                 winrate_history = [float(x) for x in raw_history if isinstance(x, (int, float))]
+            raw_reward_history = stage_metrics.get("reward_history")
+            if isinstance(raw_reward_history, list):
+                reward_history = [float(x) for x in raw_reward_history if isinstance(x, (int, float))]
+            low_velocity_attempts = max(
+                0, int(stage_metrics.get("velocity_stall_attempts", low_velocity_attempts) or 0)
+            )
+            strong_recovery_mode = bool(stage_metrics.get("strong_recovery_mode", False))
+            strong_recovery_attempts = max(
+                0, int(stage_metrics.get("strong_recovery_attempts", 0) or 0)
+            )
             retries_this_stage = max(0, int(stage_metrics.get("retries_this_stage", 0) or 0))
             adaptation_tier = max(0, int(stage_metrics.get("adaptation_tier", 0) or 0))
             raw_adaptations = stage_metrics.get("adaptation_history")
@@ -1366,6 +1565,18 @@ class BirthPhaseEngineV2:
                 0,
                 int(prev_progress.get("data_days_loaded", data_days_loaded) or data_days_loaded),
             )
+        if adaptation_history:
+            last_chunk = adaptation_history[-1].get("chunk_target")
+            if last_chunk is not None:
+                cur_cfg.rollout_chunk_trades = max(
+                    cur_cfg.exploration_chunk_size,
+                    int(last_chunk),
+                )
+        elif strong_recovery_mode:
+            cur_cfg.rollout_chunk_trades = max(
+                cur_cfg.exploration_chunk_size,
+                cur_cfg.exploration_chunk_size * 2,
+            )
         last_stage_trades = -1
         stagnation_count = 0
         chunk_budget = max(5_000, cur_cfg.rollout_chunk_trades * cur_cfg.rollout_step_budget_multiplier)
@@ -1377,7 +1588,58 @@ class BirthPhaseEngineV2:
         scorecard_snapshot_at = time.time()
         last_progress_write_at = 0.0
         last_hold_ratio = 0.0
+
+        intra_state: Stage1IntraCurriculumState | None = None
+        intra_easy_pool: list[dict[str, Any]] = []
+        intra_hard_pool: list[dict[str, Any]] = []
+        intra_meta: dict[str, Any] = {}
+        current_intra_sample_pool: list[dict[str, Any]] = []
+
+        def _rebuild_intra_pools(ticks: list[dict[str, Any]]) -> None:
+            nonlocal intra_easy_pool, intra_hard_pool, intra_meta
+            if stage != CurriculumStage.STAGE1_TREND or not cur_cfg.intra_stage1_enabled:
+                intra_easy_pool = []
+                intra_hard_pool = []
+                intra_meta = {}
+                return
+            intra_easy_pool, intra_hard_pool, intra_meta = split_stage1_trend_ticks(
+                ticks,
+                easy_percentile=cur_cfg.intra_easy_percentile,
+                hard_percentile=cur_cfg.intra_hard_percentile,
+            )
+
+        if stage == CurriculumStage.STAGE1_TREND and cur_cfg.intra_stage1_enabled:
+            if isinstance(stage_metrics, dict) and stage_metrics.get("intra_stage1_hard_pct") is not None:
+                intra_state = stage1_intra_state_from_metrics(
+                    stage_metrics,
+                    default_hard_pct=cur_cfg.intra_initial_hard_pct,
+                )
+            else:
+                intra_state = Stage1IntraCurriculumState(hard_pct=cur_cfg.intra_initial_hard_pct)
+            _rebuild_intra_pools(active_stage_ticks)
         last_winrate = 0.0
+        meta_controller = BirthMetaController(cur_cfg, self.birth_config.reward)
+        meta_controller.restore_state(stage_metrics if isinstance(stage_metrics, dict) else None)
+        meta_last_plan: MetaActionPlan | None = None
+        meta_message_suffix = ""
+
+        def _observe_snapshot() -> tuple[Any, StallDetectionResult]:
+            return meta_controller.observe(
+                winrate_history=winrate_history,
+                reward_history=reward_history,
+                stage_trades=stage_trades,
+                required_trades=required,
+                patterns_mined=patterns_mined,
+                buffer_size=len(self.buffer),
+                escalation_level=escalation_level,
+                strong_recovery_mode=strong_recovery_mode,
+                strong_recovery_attempts=strong_recovery_attempts,
+                low_velocity_attempts=low_velocity_attempts,
+                data_exhausted=data_exhausted,
+                stage=stage,
+                intra_hard_pct=intra_state.hard_pct if intra_state else None,
+                attempt=attempt,
+            )
 
         def _stage_metrics_payload() -> dict[str, Any]:
             payload = self._stage_metrics_snapshot(
@@ -1392,10 +1654,22 @@ class BirthPhaseEngineV2:
                 patterns_mined=patterns_mined,
             )
             payload["winrate_history"] = list(winrate_history)
+            payload["reward_history"] = list(reward_history)
+            payload["velocity_stall_attempts"] = int(low_velocity_attempts)
+            payload["strong_recovery_mode"] = bool(strong_recovery_mode)
+            payload["strong_recovery_attempts"] = int(strong_recovery_attempts)
             payload["retries_this_stage"] = int(retries_this_stage)
             payload["adaptation_tier"] = int(adaptation_tier)
             payload["adaptation_history"] = list(adaptation_history)
             payload["escalation_level"] = int(escalation_level)
+            if intra_state is not None:
+                payload["intra_stage1_hard_pct"] = round(float(intra_state.hard_pct), 4)
+                payload["intra_stage1_easy_trades"] = int(intra_state.easy_trades)
+                payload["intra_stage1_easy_wins"] = int(intra_state.easy_wins)
+                payload["intra_stage1_easy_winrate_history"] = list(intra_state.easy_winrate_history)
+                payload["intra_stage1_meta"] = dict(intra_meta)
+            if cur_cfg.meta_controller_enabled:
+                payload.update(meta_controller.metrics_payload())
             return payload
 
         def _maybe_periodic_checkpoint(phase: str) -> None:
@@ -1454,8 +1728,15 @@ class BirthPhaseEngineV2:
                 adaptation_history=adaptation_history,
                 adaptation_enabled=cur_cfg.adaptation_enabled,
                 wall_behavior=cur_cfg.wall_behavior,
+                reward_history=reward_history,
+                strong_recovery_mode=strong_recovery_mode,
+                velocity_stall_attempts=low_velocity_attempts,
+                strong_recovery_attempts=strong_recovery_attempts,
+                provisional_pass_considered=provisional_pass_considered,
             )
             scorecard.update(adaptation_fields)
+            if cur_cfg.meta_controller_enabled:
+                scorecard.update(meta_controller.scorecard_fields(meta_last_plan))
             elapsed_stage_sec = max(0.0, time.time() - stage_started_at)
             write_birth_progress(
                 self.workspace_root,
@@ -1494,6 +1775,13 @@ class BirthPhaseEngineV2:
                     0, int(cur_cfg.max_stage_wall_sec) - int(elapsed_stage_sec)
                 ),
                 quality_score=float(self._data_manifest.get("quality_score", 0.0) or 0.0),
+                intra_hard_pct=round(float(intra_state.hard_pct), 4) if intra_state else None,
+                intra_easy_winrate=round(
+                    float(intra_state.easy_wins) / float(max(1, intra_state.easy_trades)),
+                    4,
+                )
+                if intra_state and intra_state.easy_trades > 0
+                else None,
                 **scorecard,
             )
             if (
@@ -1505,23 +1793,152 @@ class BirthPhaseEngineV2:
                 scorecard_snapshot_at = time.time()
             last_progress_write_at = time.time()
 
-        def _mine_and_inject() -> None:
+        def _log_meta_decision(plan: MetaActionPlan, trigger: str) -> None:
+            event = BirthMetaController.format_decision_log(plan, trigger=trigger)
+            logger.info(
+                "birth.meta.decision trigger=%s primary=%s rationale=%s "
+                "health=%s combined_velocity=%.6f is_stalled=%s",
+                event.get("trigger"),
+                event.get("primary"),
+                event.get("rationale"),
+                event.get("learning_health"),
+                float(event.get("combined_velocity", 0.0) or 0.0),
+                event.get("is_stalled"),
+                extra={"event_data": event},
+            )
+
+        def _log_stall_event(
+            *,
+            event: str,
+            stall: StallDetectionResult,
+            strong_recovery: bool,
+        ) -> None:
+            logger.info(
+                "birth.%s stage=%s winrate_velocity=%.6f reward_velocity=%.6f "
+                "combined=%.6f attempts=%s/%s strong_recovery=%s escalation=%s",
+                event,
+                stage.value,
+                stall.winrate_velocity,
+                stall.reward_velocity,
+                stall.combined_velocity,
+                stall.low_velocity_attempts,
+                stall.threshold,
+                strong_recovery,
+                escalation_level,
+            )
+
+        def _log_provisional_pass_outcome(
+            *,
+            source: str,
+            should_grant: bool,
+            blocked_reason: str | None,
+            safeguards: dict[str, Any],
+        ) -> None:
+            logger.info(
+                "birth.provisional_pass source=%s stage=%s should_grant=%s "
+                "blocked_reason=%s safeguards=%s",
+                source,
+                stage.value,
+                should_grant,
+                blocked_reason or "",
+                safeguards,
+            )
+
+        def _apply_meta_plan(plan: MetaActionPlan, *, trigger: str = "") -> None:
+            nonlocal escalation_level, strong_recovery_mode, strong_recovery_attempts
+            nonlocal low_velocity_attempts, meta_last_plan, meta_message_suffix
+            meta_last_plan = plan
+            if plan.escalation_delta > 0:
+                escalation_level = min(
+                    cur_cfg.max_escalation_level,
+                    escalation_level + plan.escalation_delta,
+                )
+            elif plan.escalation_delta < 0:
+                escalation_level = max(0, escalation_level + plan.escalation_delta)
+            if plan.chunk_target is not None:
+                cur_cfg.rollout_chunk_trades = plan.chunk_target
+            if plan.enter_strong_recovery:
+                strong_recovery_mode = True
+                strong_recovery_attempts = 0
+                low_velocity_attempts = 0
+                meta_controller.explore_multiplier = max(
+                    0.4,
+                    min(1.0, float(cur_cfg.meta_explore_decay_stall)),
+                )
+            if plan.exit_strong_recovery:
+                strong_recovery_mode = False
+                strong_recovery_attempts = 0
+                cur_cfg.rollout_chunk_trades = max(
+                    cur_cfg.exploration_chunk_size,
+                    original_rollout_chunk,
+                )
+                meta_controller.explore_multiplier = 1.0
+            if plan.explore_steps_multiplier != 1.0:
+                meta_controller.explore_multiplier = max(
+                    0.4,
+                    min(1.0, float(plan.explore_steps_multiplier)),
+                )
+            if plan.intra_hard_pct_delta is not None and intra_state is not None:
+                intra_state.hard_pct = max(
+                    cur_cfg.intra_initial_hard_pct,
+                    min(
+                        cur_cfg.intra_max_hard_pct,
+                        intra_state.hard_pct + plan.intra_hard_pct_delta,
+                    ),
+                )
+            if plan.mine:
+                _mine_and_inject(aggressive=plan.mine_aggressive)
+            if plan.expand_data:
+                _maybe_expand_data()
+            if plan.reward_tweak is not None:
+                meta_controller.active_reward = plan.reward_tweak
+            if plan.primary != RecoveryStrategy.HOLD:
+                meta_message_suffix = (
+                    f" · meta: {plan.primary.value} ({plan.rationale})"
+                )
+            self_eval_suffix = meta_controller.format_self_eval_suffix()
+            if self_eval_suffix:
+                meta_message_suffix = self_eval_suffix
+            if trigger:
+                _log_meta_decision(plan, trigger)
+            else:
+                logger.info(
+                    "birth.meta.applied primary=%s rationale=%s",
+                    plan.primary.value,
+                    plan.rationale,
+                )
+
+        def _mine_and_inject(*, aggressive: bool = False) -> None:
             nonlocal patterns_mined, oracle_wins, active_stage_ticks
-            pool = active_train if len(active_train) > len(active_stage_ticks) else active_stage_ticks
+            if current_intra_sample_pool:
+                pool = list(current_intra_sample_pool)
+            elif len(active_train) > len(active_stage_ticks):
+                pool = list(active_train)
+            else:
+                pool = list(active_stage_ticks)
+            max_patterns, scan_stride = self._resolve_oracle_mining_params(
+                cur_cfg,
+                aggressive=aggressive,
+            )
             mine_result = mine_winning_patterns(
                 ticks=pool,
                 stage=stage,
                 runtime=self.runtime,
                 workspace_root=self.workspace_root,
-                max_patterns=cur_cfg.oracle_patterns_per_stage,
-                scan_stride=cur_cfg.oracle_scan_stride,
+                max_patterns=max_patterns,
+                scan_stride=scan_stride,
                 max_hold_bars=cur_cfg.oracle_max_hold_bars,
             )
             patterns_mined += len(mine_result.patterns)
             oracle_wins += mine_result.wins
+            meta_controller.record_inject(
+                patterns=len(mine_result.patterns),
+                oracle_wins=mine_result.wins,
+            )
             for pattern in mine_result.patterns:
                 self.buffer.add(pattern, priority=3.0 + min(10.0, abs(float(pattern.get("reward", 0.0)))))
             active_stage_ticks = filter_ticks_for_stage(stage, active_train) or list(active_train)
+            _rebuild_intra_pools(active_stage_ticks)
 
         def _maybe_expand_data() -> bool:
             nonlocal active_train, active_stage_ticks, expansion_step, data_days_loaded, data_exhausted
@@ -1554,6 +1971,7 @@ class BirthPhaseEngineV2:
                 return False
             active_train = list(expanded.train_ticks)
             active_stage_ticks = filter_ticks_for_stage(stage, active_train) or list(active_train)
+            _rebuild_intra_pools(active_stage_ticks)
             self._real_data_pct = expanded.real_data_pct
             _write_progress(
                 phase="data_expansion",
@@ -1696,39 +2114,64 @@ class BirthPhaseEngineV2:
             if _should_terminal_stall_in_adaptive():
                 return False
             current_winrate = float(stage_wins) / float(max(1, stage_trades))
-            decision = _get_adaptation_decision(
-                stage_trades=stage_trades,
-                required=required,
-                winrate=current_winrate,
-                winrate_history=winrate_history,
-                escalation_level=escalation_level,
-                cfg=cur_cfg,
-            )
-            if not decision.should_retry and adaptation_tier == 0 and retries_this_stage == 0:
-                decision = AdaptationDecision(
-                    should_retry=True,
-                    reason="stall_escalation",
-                    new_chunk_target=max(
-                        cur_cfg.exploration_chunk_size,
-                        min(cur_cfg.rollout_chunk_trades * 2, original_rollout_chunk),
-                    ),
-                    escalation_increase=1,
-                    log_message="Escalation ladder: forced recovery at stall boundary",
+            if cur_cfg.meta_controller_enabled:
+                snap, _ = _observe_snapshot()
+                adapt_plan = meta_controller.decide_adaptation(
+                    snap,
+                    winrate=current_winrate,
+                    escalation_level=escalation_level,
+                    adaptation_tier=adaptation_tier,
+                    retries_this_stage=retries_this_stage,
+                    original_rollout_chunk=original_rollout_chunk,
+                    failure_key=failure_key,
                 )
-            if not decision.should_retry and adaptation_tier >= 1:
-                decision = AdaptationDecision(
-                    should_retry=True,
-                    reason="persistent_recovery",
-                    new_chunk_target=max(cur_cfg.exploration_chunk_size, cur_cfg.rollout_chunk_trades),
-                    escalation_increase=0,
-                    log_message=f"Persistent recovery tier {adaptation_tier + 1}/{cur_cfg.max_adaptation_tiers}",
+                decision = adapt_plan.adaptation
+                if decision is None or not decision.should_retry:
+                    return False
+                if adapt_plan.mine:
+                    _mine_and_inject(aggressive=adapt_plan.mine_aggressive)
+                if adapt_plan.expand_data:
+                    _maybe_expand_data()
+            else:
+                decision = get_adaptation_decision(
+                    stage_trades=stage_trades,
+                    required=required,
+                    winrate=current_winrate,
+                    winrate_history=winrate_history,
+                    escalation_level=escalation_level,
+                    cfg=cur_cfg,
                 )
-            if not decision.should_retry:
-                return False
-            if adaptation_tier >= 1:
-                _mine_and_inject()
-            if adaptation_tier >= 2 and cur_cfg.auto_expand_on_adaptation:
-                _maybe_expand_data()
+                if not decision.should_retry and adaptation_tier == 0 and retries_this_stage == 0:
+                    decision = AdaptationDecision(
+                        should_retry=True,
+                        reason="stall_escalation",
+                        new_chunk_target=max(
+                            cur_cfg.exploration_chunk_size,
+                            min(cur_cfg.rollout_chunk_trades * 2, original_rollout_chunk),
+                        ),
+                        escalation_increase=1,
+                        log_message="Escalation ladder: forced recovery at stall boundary",
+                    )
+                if not decision.should_retry and adaptation_tier >= 1:
+                    decision = AdaptationDecision(
+                        should_retry=True,
+                        reason="persistent_recovery",
+                        new_chunk_target=max(
+                            cur_cfg.exploration_chunk_size,
+                            cur_cfg.rollout_chunk_trades,
+                        ),
+                        escalation_increase=0,
+                        log_message=(
+                            f"Persistent recovery tier {adaptation_tier + 1}/"
+                            f"{cur_cfg.max_adaptation_tiers}"
+                        ),
+                    )
+                if not decision.should_retry:
+                    return False
+                if adaptation_tier >= 1:
+                    _mine_and_inject()
+                if adaptation_tier >= 2 and cur_cfg.auto_expand_on_adaptation:
+                    _maybe_expand_data()
             if adaptation_tier >= cur_cfg.max_adaptation_tiers - 1:
                 winrate_stagnation_count = 0
                 hold_stagnation_count = 0
@@ -1998,7 +2441,13 @@ class BirthPhaseEngineV2:
                 train_ticks=active_train,
                 escalation_level=escalation_level,
                 attempt=attempt,
+                chunk_target=chunk_target,
+                cur_cfg=cur_cfg,
+                intra_state=intra_state,
+                easy_pool=intra_easy_pool,
+                hard_pool=intra_hard_pool,
             )
+            current_intra_sample_pool = list(active_ticks)
 
             chunk_trades_snapshot = 0
 
@@ -2019,24 +2468,93 @@ class BirthPhaseEngineV2:
                     hold_ratio=float(snapshot.get("hold_ratio", 0.0) or 0.0),
                 )
 
-            explore_steps = cur_cfg.exploration_steps * (1 + escalation_level)
-            if (
-                stage == CurriculumStage.STAGE2_RANGE
-                and stage_trades >= required
-                and hold_stagnation_count >= cur_cfg.stage2_hold_stagnation_rollouts
-            ):
-                explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
-                escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 1)
-            if (
-                stage == CurriculumStage.STAGE1_TREND
-                and stage_trades >= required
-                and winrate_stagnation_count >= cur_cfg.stage1_winrate_stagnation_rollouts
-            ):
-                explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
-                escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 1)
-                _mine_and_inject()
-            if wall_budget_exhausted:
-                explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
+            base_explore_steps = cur_cfg.exploration_steps * (1 + escalation_level)
+            reward_override = None
+            if cur_cfg.meta_controller_enabled:
+                pre_snap, _ = _observe_snapshot()
+                if cur_cfg.meta_self_eval_enabled:
+                    meta_controller.maybe_start_self_eval(
+                        pre_snap,
+                        strong_recovery_attempts=strong_recovery_attempts,
+                        attempt=attempt + 1,
+                    )
+                if (
+                    cur_cfg.meta_self_eval_enabled
+                    and meta_controller.is_self_eval_active()
+                ):
+                    if meta_controller.self_eval.phase == SelfEvalPhase.PROBING:
+                        pre_plan = meta_controller.decide_probe_rollout(pre_snap)
+                    elif meta_controller.self_eval.phase == SelfEvalPhase.COMMITTED:
+                        pre_plan = meta_controller.decide_committed_rollout(pre_snap)
+                    else:
+                        pre_plan = MetaActionPlan(
+                            primary=RecoveryStrategy.HOLD,
+                            rationale="self_eval_exhausted",
+                            snapshot=pre_snap,
+                            self_eval_phase=SelfEvalPhase.EXHAUSTED.value,
+                        )
+                else:
+                    pre_plan = meta_controller.decide_review(
+                        pre_snap,
+                        trigger="pre_rollout",
+                        base_explore_steps=base_explore_steps,
+                        wall_budget_exhausted=wall_budget_exhausted,
+                        winrate_stagnation_count=winrate_stagnation_count,
+                        hold_stagnation_count=hold_stagnation_count,
+                    )
+                if pre_plan.mine:
+                    _mine_and_inject(aggressive=pre_plan.mine_aggressive)
+                if pre_plan.escalation_delta > 0:
+                    escalation_level = min(
+                        cur_cfg.max_escalation_level,
+                        escalation_level + pre_plan.escalation_delta,
+                    )
+                elif pre_plan.escalation_delta < 0:
+                    escalation_level = max(0, escalation_level + pre_plan.escalation_delta)
+                explore_steps = meta_controller.apply_explore_multiplier(
+                    pre_plan.explore_steps or base_explore_steps,
+                )
+                meta_last_plan = pre_plan
+                if pre_plan.primary != RecoveryStrategy.HOLD or pre_plan.mine or pre_plan.expand_data:
+                    _log_meta_decision(pre_plan, trigger="pre_rollout")
+                if meta_controller.reward_tweak_active:
+                    reward_override = meta_controller.active_reward
+            else:
+                explore_steps = base_explore_steps
+                if not strong_recovery_mode:
+                    if (
+                        stage == CurriculumStage.STAGE2_RANGE
+                        and stage_trades >= required
+                        and hold_stagnation_count >= cur_cfg.stage2_hold_stagnation_rollouts
+                    ):
+                        explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
+                        escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 1)
+                    if (
+                        stage == CurriculumStage.STAGE1_TREND
+                        and stage_trades >= required
+                        and winrate_stagnation_count >= cur_cfg.stage1_winrate_stagnation_rollouts
+                    ):
+                        explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
+                        escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 1)
+                        _mine_and_inject()
+                    if wall_budget_exhausted:
+                        explore_steps = max(explore_steps, cur_cfg.exploration_steps * 4)
+                else:
+                    if (
+                        strong_recovery_attempts > 0
+                        and strong_recovery_attempts
+                        % cur_cfg.strong_recovery_expand_every_attempts
+                        == 0
+                    ):
+                        _maybe_expand_data()
+                        _mine_and_inject(aggressive=True)
+                    explore_steps = max(
+                        200,
+                        int(
+                            cur_cfg.exploration_steps
+                            * cur_cfg.strong_recovery_explore_fraction
+                        ),
+                    )
             rollout = run_policy_rollout(
                 runtime=self.runtime,
                 data=active_ticks,
@@ -2049,6 +2567,7 @@ class BirthPhaseEngineV2:
                 exploration_steps=explore_steps,
                 escalation_level=escalation_level,
                 on_progress=_rollout_progress,
+                reward_override=reward_override,
             )
 
             stage_trades += rollout.trades
@@ -2061,6 +2580,14 @@ class BirthPhaseEngineV2:
             stage_range_round_trips += rollout.range_round_trips
             self.cumulative_trades += rollout.trades
 
+            if intra_state is not None and rollout.easy_trades > 0:
+                update_stage1_intra_state(
+                    intra_state,
+                    chunk_easy_trades=rollout.easy_trades,
+                    chunk_easy_wins=rollout.easy_wins,
+                    cfg=cur_cfg,
+                )
+
             current_hold_ratio = float(stage_hold_signals) / float(max(1, stage_total_signals))
             range_flat_ratio = float(stage_range_flat_bars) / float(max(1, stage_range_total_signals))
             metric_band = range_flat_ratio if stage_range_total_signals >= 50 else current_hold_ratio
@@ -2069,6 +2596,235 @@ class BirthPhaseEngineV2:
                 winrate_history.append(current_winrate)
                 if len(winrate_history) > cur_cfg.winrate_trend_window:
                     winrate_history.pop(0)
+                mean_reward = float(rollout.total_pnl) / float(max(1, rollout.trades))
+                reward_history.append(mean_reward)
+                if len(reward_history) > cur_cfg.reward_trend_window:
+                    reward_history.pop(0)
+
+            snap: Any | None = None
+            stall_result: StallDetectionResult | None = None
+            if cur_cfg.meta_controller_enabled:
+                meta_controller.rollouts_since_review += 1
+                snap, stall_result = _observe_snapshot()
+                low_velocity_attempts = stall_result.low_velocity_attempts
+                self_eval_skip_review = (
+                    cur_cfg.meta_self_eval_enabled
+                    and meta_controller.is_self_eval_active()
+                    and meta_controller.self_eval.phase
+                    in (SelfEvalPhase.PROBING, SelfEvalPhase.COMMITTED)
+                )
+                if self_eval_skip_review:
+                    complete_plan = meta_controller.on_probe_rollout_complete(
+                        snap,
+                        attempt=attempt + 1,
+                    )
+                    if complete_plan is not None:
+                        _apply_meta_plan(complete_plan, trigger="self_eval")
+                        if complete_plan.suggest_provisional_pass:
+                            prov = meta_controller.evaluate_provisional_fallback(
+                                snap,
+                                allow_provisional=allow_provisional,
+                                strong_recovery_attempts=strong_recovery_attempts,
+                                stage_trades=stage_trades,
+                                required=required,
+                                attempt=attempt,
+                                patterns_mined=patterns_mined,
+                                buffer_size=len(self.buffer),
+                                constitution_violations=self._constitution_guard.violations,
+                            )
+                            provisional_pass_considered = True
+                            _log_provisional_pass_outcome(
+                                source="self_eval_probe_complete",
+                                should_grant=prov.should_grant,
+                                blocked_reason=prov.blocked_reason,
+                                safeguards=prov.safeguards,
+                            )
+                            if prov.should_grant:
+                                gen0_provisional = True
+                    elif meta_controller.self_eval.phase == SelfEvalPhase.COMMITTED:
+                        committed_plan = meta_controller.decide_committed_rollout(snap)
+                        _apply_meta_plan(committed_plan, trigger="self_eval_committed")
+                    meta_message_suffix = meta_controller.format_self_eval_suffix()
+                else:
+                    next_attempt = attempt + 1
+                    should_review = (
+                        (
+                            next_attempt > 0
+                            and next_attempt % cur_cfg.meta_review_interval_rollouts == 0
+                        )
+                        or stall_result.is_stalled
+                        or rollout.stalled
+                        or snap.learning_health == LearningHealth.DECLINING
+                    )
+                    exhausted_self_eval = (
+                        cur_cfg.meta_self_eval_enabled
+                        and meta_controller.self_eval.phase == SelfEvalPhase.EXHAUSTED
+                    )
+                    if exhausted_self_eval:
+                        should_review = True
+                    review_plan: MetaActionPlan | None = None
+                    review_trigger = "periodic"
+                    if should_review:
+                        if exhausted_self_eval:
+                            review_plan = MetaActionPlan(
+                                primary=RecoveryStrategy.HOLD,
+                                suggest_provisional_pass=True,
+                                rationale="self_eval_exhausted",
+                                snapshot=snap,
+                                self_eval_phase=SelfEvalPhase.EXHAUSTED.value,
+                            )
+                            review_trigger = "self_eval_exhausted"
+                        else:
+                            review_trigger = (
+                                "stall"
+                                if stall_result.is_stalled or rollout.stalled
+                                else "periodic"
+                            )
+                            review_plan = meta_controller.decide_review(
+                                snap,
+                                trigger=review_trigger,
+                                base_explore_steps=cur_cfg.exploration_steps
+                                * (1 + escalation_level),
+                                wall_budget_exhausted=wall_budget_exhausted,
+                                winrate_stagnation_count=winrate_stagnation_count,
+                                hold_stagnation_count=hold_stagnation_count,
+                            )
+                        _apply_meta_plan(review_plan, trigger=review_trigger)
+                        if review_plan.suggest_provisional_pass:
+                            prov = meta_controller.evaluate_provisional_fallback(
+                                snap,
+                                allow_provisional=allow_provisional,
+                                strong_recovery_attempts=strong_recovery_attempts,
+                                stage_trades=stage_trades,
+                                required=required,
+                                attempt=attempt,
+                                patterns_mined=patterns_mined,
+                                buffer_size=len(self.buffer),
+                                constitution_violations=self._constitution_guard.violations,
+                            )
+                            provisional_pass_considered = True
+                            _log_provisional_pass_outcome(
+                                source=(
+                                    "self_eval_exhausted"
+                                    if review_trigger == "self_eval_exhausted"
+                                    else "meta_review"
+                                ),
+                                should_grant=prov.should_grant,
+                                blocked_reason=prov.blocked_reason,
+                                safeguards=prov.safeguards,
+                            )
+                            if prov.should_grant:
+                                gen0_provisional = True
+                        if review_plan.enter_strong_recovery:
+                            _log_stall_event(
+                                event="stall_detected",
+                                stall=stall_result,
+                                strong_recovery=True,
+                            )
+                            if (
+                                cur_cfg.adaptation_enabled
+                                and cur_cfg.wall_behavior == "adaptive"
+                            ):
+                                _try_adaptive_stall_recovery(failure_key="velocity_stall")
+                        elif review_plan.exit_strong_recovery:
+                            _log_stall_event(
+                                event="stall_recovered",
+                                stall=stall_result,
+                                strong_recovery=False,
+                            )
+                if strong_recovery_mode:
+                    strong_recovery_attempts += 1
+                    prov = self._maybe_trigger_provisional_pass(
+                        stage=stage,
+                        stage_trades=stage_trades,
+                        required=required,
+                        attempt=attempt,
+                        strong_recovery_attempts=strong_recovery_attempts,
+                        patterns_mined=patterns_mined,
+                        buffer_size=len(self.buffer),
+                        constitution_violations=self._constitution_guard.violations,
+                        combined_velocity=snap.combined_velocity,
+                        allow_provisional=allow_provisional,
+                        cfg=cur_cfg,
+                    )
+                    provisional_pass_considered = True
+                    _log_provisional_pass_outcome(
+                        source="strong_recovery",
+                        should_grant=prov.should_grant,
+                        blocked_reason=prov.blocked_reason,
+                        safeguards=prov.safeguards,
+                    )
+                    if prov.should_grant:
+                        gen0_provisional = True
+            elif stage_trades >= required:
+                stall_result = self._detect_stall(
+                    winrate_history=winrate_history,
+                    reward_history=reward_history,
+                    low_velocity_attempts=low_velocity_attempts,
+                    cfg=cur_cfg,
+                )
+                low_velocity_attempts = stall_result.low_velocity_attempts
+                if stall_result.is_stalled:
+                    if not strong_recovery_mode:
+                        strong_recovery_mode = True
+                        strong_recovery_attempts = 0
+                        escalation_level = min(
+                            cur_cfg.max_escalation_level,
+                            escalation_level + cur_cfg.strong_recovery_escalation_boost,
+                        )
+                        cur_cfg.rollout_chunk_trades = max(
+                            cur_cfg.exploration_chunk_size,
+                            cur_cfg.exploration_chunk_size * 2,
+                        )
+                        low_velocity_attempts = 0
+                        _log_stall_event(
+                            event="stall_detected",
+                            stall=stall_result,
+                            strong_recovery=True,
+                        )
+                        _mine_and_inject(aggressive=True)
+                        if cur_cfg.adaptation_enabled and cur_cfg.wall_behavior == "adaptive":
+                            _try_adaptive_stall_recovery(failure_key="velocity_stall")
+                elif (
+                    strong_recovery_mode
+                    and stall_result.combined_velocity > cur_cfg.velocity_stall_epsilon
+                ):
+                    strong_recovery_mode = False
+                    strong_recovery_attempts = 0
+                    cur_cfg.rollout_chunk_trades = max(
+                        cur_cfg.exploration_chunk_size,
+                        original_rollout_chunk,
+                    )
+                    _log_stall_event(
+                        event="stall_recovered",
+                        stall=stall_result,
+                        strong_recovery=False,
+                    )
+                if strong_recovery_mode:
+                    strong_recovery_attempts += 1
+                    prov = self._maybe_trigger_provisional_pass(
+                        stage=stage,
+                        stage_trades=stage_trades,
+                        required=required,
+                        attempt=attempt,
+                        strong_recovery_attempts=strong_recovery_attempts,
+                        patterns_mined=patterns_mined,
+                        buffer_size=len(self.buffer),
+                        constitution_violations=self._constitution_guard.violations,
+                        combined_velocity=stall_result.combined_velocity,
+                        allow_provisional=allow_provisional,
+                        cfg=cur_cfg,
+                    )
+                    provisional_pass_considered = True
+                    _log_provisional_pass_outcome(
+                        source="strong_recovery_legacy",
+                        should_grant=prov.should_grant,
+                        blocked_reason=prov.blocked_reason,
+                        safeguards=prov.safeguards,
+                    )
+                    if prov.should_grant:
+                        gen0_provisional = True
+
             if (
                 stage == CurriculumStage.STAGE1_TREND
                 and stage_trades >= required
@@ -2140,8 +2896,9 @@ class BirthPhaseEngineV2:
                 phase="curriculum_learning",
                 message=(
                     f"Curriculum {stage.value}: {stage_trades:,} / {required:,} trades · "
-                    f"poging {attempt} · patronen {patterns_mined:,}"
+                    f"poging {attempt} · patronen {patterns_mined:,}{meta_message_suffix}"
                 ),
                 hold_ratio=current_hold_ratio,
             )
+            meta_message_suffix = ""
 

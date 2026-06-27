@@ -1,17 +1,184 @@
+"""Hardware intelligence: model tier resolution and performance profile detection."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import logging
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from lumina_core.engine.hardware_inspector import HardwareInspector, HardwareSnapshot
 from lumina_core.engine.model_catalog import ModelCatalog, ModelDescriptor
+
+logger = logging.getLogger(__name__)
+
+HardwareProfileName = Literal["cpu_efficient", "gpu_accelerated"]
+
+_GPU_ACCELERATED_MIN_VRAM_GB = 8.0
+_HARDWARE_PROFILE_STATE_REL = Path("state/hardware_profile.json")
 
 _LEGACY_TO_CANONICAL_TIER = {
     "beast": "high",
     "sweet": "standard",
     "light": "light",
 }
+
+
+@dataclass(slots=True, frozen=True)
+class HardwareProfileTuning:
+    """Performance knobs aligned with birth/PPO curriculum defaults."""
+
+    rollout_chunk_trades: int
+    max_escalation_level: int
+    exploration_chunk_size: int
+    curriculum_ppo_timesteps: int
+    chunk_size: int
+    ppo_update_timesteps: int
+    oracle_scan_stride: int
+    recommended_model_tier: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+HARDWARE_PROFILES: dict[str, HardwareProfileTuning] = {
+    "cpu_efficient": HardwareProfileTuning(
+        rollout_chunk_trades=50,
+        max_escalation_level=2,
+        exploration_chunk_size=4,
+        curriculum_ppo_timesteps=1_500,
+        chunk_size=10_000,
+        ppo_update_timesteps=10_000,
+        oracle_scan_stride=10,
+        recommended_model_tier="light",
+    ),
+    "gpu_accelerated": HardwareProfileTuning(
+        rollout_chunk_trades=250,
+        max_escalation_level=5,
+        exploration_chunk_size=8,
+        curriculum_ppo_timesteps=3_000,
+        chunk_size=50_000,
+        ppo_update_timesteps=25_000,
+        oracle_scan_stride=5,
+        recommended_model_tier="standard",
+    ),
+}
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch  # pyright: ignore[reportMissingImports]
+
+        return bool(torch.cuda.is_available())
+    except ImportError:
+        return False
+
+
+def _read_gpu_via_torch() -> tuple[str | None, float]:
+    try:
+        import torch  # pyright: ignore[reportMissingImports]
+
+        if not torch.cuda.is_available():
+            return None, 0.0
+        props = torch.cuda.get_device_properties(0)
+        name = str(torch.cuda.get_device_name(0) or "").strip() or None
+        vram_gb = round(float(props.total_memory) / (1024**3), 1)
+        return name, vram_gb
+    except ImportError:
+        return None, 0.0
+    except Exception:
+        logger.exception("Failed to read GPU properties via torch.cuda")
+        return None, 0.0
+
+
+def detect_hardware_profile() -> dict[str, Any]:
+    """Detect CUDA, GPU, CPU, RAM and recommend a performance profile."""
+    has_cuda = _cuda_available()
+    gpu_name, vram_gb = _read_gpu_via_torch()
+    if gpu_name is None and vram_gb <= 0.0:
+        nvidia_name, nvidia_vram, _, _ = HardwareInspector._read_nvidia_gpu()
+        gpu_name = nvidia_name
+        vram_gb = float(nvidia_vram)
+
+    cpu_cores = max(1, HardwareInspector._cpu_count(logical=True))
+    ram_gb = float(HardwareInspector._read_memory_gb())
+    recommended_profile: HardwareProfileName = (
+        "gpu_accelerated"
+        if has_cuda and vram_gb >= _GPU_ACCELERATED_MIN_VRAM_GB
+        else "cpu_efficient"
+    )
+
+    return {
+        "has_cuda": has_cuda,
+        "gpu_name": gpu_name,
+        "vram_gb": float(vram_gb),
+        "cpu_cores": int(cpu_cores),
+        "ram_gb": ram_gb,
+        "recommended_profile": recommended_profile,
+    }
+
+
+def _resolve_workspace_root(workspace_root: Path | str | None) -> Path:
+    if workspace_root is None:
+        return Path.cwd().resolve()
+    return Path(workspace_root).resolve()
+
+
+def _hardware_profile_state_path(workspace_root: Path) -> Path:
+    return workspace_root / _HARDWARE_PROFILE_STATE_REL
+
+
+def _load_hardware_profile_state(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        logger.exception("Failed to load hardware profile state from %s", path)
+        return None
+    if not isinstance(payload, dict):
+        return None
+    profile_name = str(payload.get("profile", "")).strip()
+    if profile_name not in HARDWARE_PROFILES:
+        return None
+    tuning = payload.get("tuning")
+    if not isinstance(tuning, dict):
+        return None
+    return payload
+
+
+def _save_hardware_profile_state(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _build_hardware_profile_payload(detection: dict[str, Any], profile_name: str) -> dict[str, Any]:
+    tuning = HARDWARE_PROFILES[profile_name]
+    return {
+        "profile": profile_name,
+        "detection": detection,
+        "tuning": tuning.to_dict(),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def get_or_create_hardware_profile(workspace_root: Path | str | None = None) -> dict[str, Any]:
+    """Load a persisted hardware profile or detect, persist, and return one."""
+    root = _resolve_workspace_root(workspace_root)
+    state_path = _hardware_profile_state_path(root)
+    cached = _load_hardware_profile_state(state_path)
+    if cached is not None:
+        return cached
+
+    detection = detect_hardware_profile()
+    profile_name = str(detection.get("recommended_profile", "cpu_efficient"))
+    if profile_name not in HARDWARE_PROFILES:
+        profile_name = "cpu_efficient"
+    payload = _build_hardware_profile_payload(detection, profile_name)
+    _save_hardware_profile_state(state_path, payload)
+    return payload
 
 
 @dataclass(slots=True)

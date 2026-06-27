@@ -4,11 +4,33 @@ from __future__ import annotations
 
 from typing import Any
 
+from lumina_core.rl.trend_features import (
+    MIN_TREND_LOOKBACK,
+    compute_trend_features_from_ticks,
+    regime_from_strength,
+)
+
+_IMBALANCE_LOOKBACK = 20
+
+
+def _apply_zero_trend_defaults(tick: dict[str, Any]) -> None:
+    tick.setdefault("trend_regime_strength", 0.0)
+    tick.setdefault("trend_adx_7", 0.0)
+    tick.setdefault("trend_adx_14", 0.0)
+    tick.setdefault("trend_adx_21", 0.0)
+    tick.setdefault("trend_slope_5", 0.0)
+    tick.setdefault("trend_slope_15", 0.0)
+    tick.setdefault("trend_slope_30", 0.0)
+    tick.setdefault("trend_slope_60", 0.0)
+    tick.setdefault("trend_direction", 0.0)
+    tick.setdefault("trend_duration_norm", 0.0)
+    tick.setdefault("trend_atr_norm", 0.0)
+    tick.setdefault("trend_atr_ratio", 0.0)
+
 
 def enrich_ticks_for_sim(ticks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     if not ticks:
         return ticks
-    lookback = 20
     for i, tick in enumerate(ticks):
         try:
             price = float(tick.get("last", 0.0) or 0.0)
@@ -20,22 +42,17 @@ def enrich_ticks_for_sim(ticks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ask = float(tick.get("ask", price + 0.125) or price + 0.125)
         spread = max(0.25, ask - bid)
         tick["imbalance"] = max(0.5, min(2.0, 1.0 + (ask - bid) / spread * 0.15))
-        if i < lookback:
-            tick["regime"] = str(tick.get("regime", "NEUTRAL"))
-            continue
-        window_start = max(0, i - lookback)
-        start_price = float(ticks[window_start].get("last", price) or price)
-        if start_price <= 0:
-            tick["regime"] = "NEUTRAL"
-            continue
-        ret = (price - start_price) / start_price
-        if ret > 0.0015:
-            tick["regime"] = "TREND_UP"
-        elif ret < -0.0015:
-            tick["regime"] = "TREND_DOWN"
-        else:
-            tick["regime"] = "NEUTRAL"
         tick["bar_index"] = i
+
+        if i < MIN_TREND_LOOKBACK:
+            tick["regime"] = str(tick.get("regime", "NEUTRAL"))
+            _apply_zero_trend_defaults(tick)
+            continue
+
+        window = ticks[max(0, i - MIN_TREND_LOOKBACK) : i + 1]
+        features = compute_trend_features_from_ticks(window)
+        tick.update(features)
+        tick["regime"] = regime_from_strength(float(features.get("trend_regime_strength", 0.0) or 0.0))
     return ticks
 
 

@@ -5,7 +5,7 @@ from lumina_core.rl.observation_builder import OBSERVATION_DIM
 
 
 def test_rl_trading_layer_smoke_init() -> None:
-    """Smoke test: canonical 32-dim RL environment initializes."""
+    """Smoke test: canonical 43-dim RL environment initializes."""
     engine = LuminaEngine(config=EngineConfig())
     rows = [
         {

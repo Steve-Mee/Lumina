@@ -144,11 +144,11 @@ def test_sim_step_loop_performance_guard() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_observation_space_shape_is_32_with_bible_and_dna_embedding() -> None:
-    """Birth v2: observation space must be (32,) with bible + DNA slots."""
+def test_observation_space_shape_is_43_with_bible_and_dna_embedding() -> None:
+    """Birth v2: observation space must be (43,) with bible + DNA + trend slots."""
     engine = _EngineStub()
     env = RLTradingEnvironment(engine, _sim_data(), config=RLConfig())
-    assert env.observation_space.shape == (32,)
+    assert env.observation_space.shape == (43,)
 
 
 def test_set_dna_hash_changes_embedding_in_observation() -> None:
