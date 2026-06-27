@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 DNA_ROOT = Path(__file__).resolve().parents[2] / "project-dna" / "lumina"
-INVARIANTS = DNA_ROOT / "core" / "invariants.json"
-CONSTITUTION = DNA_ROOT / "core" / "constitution.md"
+INVARIANTS = DNA_ROOT / "invariants.json"
+CONSTITUTION = DNA_ROOT / "constitution.md"
 
 
 @pytest.mark.unit

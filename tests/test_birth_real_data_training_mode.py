@@ -9,6 +9,9 @@ from types import SimpleNamespace
 import pytest
 
 from lumina_core.birth.checkpoint import can_resume_checkpoint
+from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
+from lumina_core.birth.data_expansion import DataExpansionResult
+from lumina_core.birth.purged_split import purged_train_holdout_split
 from lumina_core.lumina_birth_engine import LuminaBirthEngine
 
 
@@ -35,7 +38,7 @@ class _FakePpoTrainer:
 def _ticks(n: int = 100) -> list[dict]:
     return [
         {
-            "timestamp": "2026-01-01T00:00:00Z",
+            "timestamp": f"2026-01-01T{i:02d}:00:00Z",
             "last": 5000.0 + i,
             "bid": 4999.875,
             "ask": 5000.125,
@@ -74,6 +77,15 @@ def test_certified_start_sets_training_mode_certified(tmp_path: Path, monkeypatc
         market_data_service=SimpleNamespace(),
         workspace_root=tmp_path,
     )
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(
+            stage1_trend_trades=5,
+            stage2_range_trades=5,
+            stage3_mixed_trades=5,
+            max_rollouts_per_stage=3,
+        ),
+        trade_budget_cap=500,
+    )
     monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", lambda **_kwargs: _ticks())
     monkeypatch.setattr(
         "lumina_core.birth.engine.run_policy_rollout",
@@ -107,7 +119,32 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
         market_data_service=SimpleNamespace(),
         workspace_root=tmp_path,
     )
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(
+            stage1_trend_trades=5,
+            stage2_range_trades=5,
+            stage3_mixed_trades=5,
+            max_rollouts_per_stage=3,
+        ),
+        trade_budget_cap=500,
+    )
     monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", lambda **_kwargs: _ticks(50))
+
+    def _mock_expand(**_kwargs) -> DataExpansionResult:
+        ticks = _ticks(50)
+        split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+        return DataExpansionResult(
+            train_ticks=list(split.train),
+            holdout_ticks=list(split.holdout),
+            all_ticks=ticks,
+            split=split,
+            days_back=90,
+            step_index=1,
+            real_data_pct=99.0,
+            exhausted=True,
+        )
+
+    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
     monkeypatch.setattr(
         "lumina_core.birth.engine.run_policy_rollout",
         lambda **_kwargs: _fake_rollout(
@@ -117,6 +154,10 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
             trajectories=[{"reward": 1.0}] * 50,
             regimes_seen={"TREND_UP"},
         ),
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.enrich_ticks_for_sim",
+        lambda ticks: ticks,
     )
     result = engine.run_birth_phase(prefer_real_data_only=False, practice_mode=True)
     assert result["training_mode"] == "practice"

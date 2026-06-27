@@ -71,6 +71,38 @@ def _mock_expand(**_kwargs) -> DataExpansionResult:
     )
 
 
+_expand_calls = {"n": 0}
+
+
+def _mock_expand_once(**_kwargs) -> DataExpansionResult:
+    from lumina_core.birth.purged_split import purged_train_holdout_split
+
+    _expand_calls["n"] += 1
+    ticks = _rising_ticks(800)
+    split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+    if _expand_calls["n"] > 1:
+        return DataExpansionResult(
+            train_ticks=[],
+            holdout_ticks=[],
+            all_ticks=ticks,
+            split=split,
+            days_back=90,
+            step_index=_expand_calls["n"],
+            real_data_pct=99.0,
+            exhausted=True,
+        )
+    return DataExpansionResult(
+        train_ticks=list(split.train),
+        holdout_ticks=list(split.holdout),
+        all_ticks=ticks,
+        split=split,
+        days_back=90,
+        step_index=_expand_calls["n"],
+        real_data_pct=99.0,
+        exhausted=False,
+    )
+
+
 @pytest.mark.unit
 def test_bro_one_trade_rollout_plus_oracle_progresses_stage(
     tmp_path: Path,
@@ -85,6 +117,9 @@ def test_bro_one_trade_rollout_plus_oracle_progresses_stage(
     )
     engine.birth_config = BirthV2Config(
         curriculum=BirthCurriculumConfig(
+            stage1_trend_trades=5,
+            stage2_range_trades=5,
+            stage3_mixed_trades=5,
             rollout_chunk_trades=5,
             max_rollouts_per_stage=6,
             gen0_provisional_min_trades=5,
@@ -101,7 +136,8 @@ def test_bro_one_trade_rollout_plus_oracle_progresses_stage(
         "lumina_core.birth.engine.enrich_ticks_with_news",
         lambda ticks, **_kwargs: ticks,
     )
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
+    _expand_calls["n"] = 0
+    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand_once)
     monkeypatch.setattr(
         "lumina_core.birth.engine.mine_winning_patterns",
         lambda **_kwargs: PatternMineResult(

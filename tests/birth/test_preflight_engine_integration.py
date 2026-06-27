@@ -172,12 +172,20 @@ def test_engine_expands_history_when_holdout_preflight_fails(
     )
     engine.birth_config = BirthV2Config(
         curriculum=BirthCurriculumConfig(
+            stage1_trend_trades=5,
+            stage2_range_trades=5,
+            stage3_mixed_trades=5,
             rollout_chunk_trades=5,
             max_rollouts_per_stage=2,
             data_expansion_steps=(90, 180),
         ),
         trade_budget_cap=200,
         certificate_thresholds=BirthCertificateThresholds(min_holdout_trades=5, min_regimes=3),
+    )
+
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.enrich_ticks_for_sim",
+        lambda ticks, **_kwargs: ticks,
     )
 
     monkeypatch.setattr(

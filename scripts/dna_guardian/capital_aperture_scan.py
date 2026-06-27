@@ -15,8 +15,30 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DNA_ROOT = PROJECT_ROOT / "project-dna" / "lumina"
 RULES_PATH = DNA_ROOT / "operating-system" / "rules" / "capital-aperture-forbidden-patterns.yaml"
-INVARIANTS_PATH = DNA_ROOT / "core" / "invariants.json"
-CONSTITUTION_PATH = DNA_ROOT / "core" / "constitution.md"
+
+
+def _resolve_dna_file(*candidates: str) -> Path:
+    """Resolve Project DNA file after flat-layout migration (core/ legacy fallback)."""
+    for rel in candidates:
+        path = DNA_ROOT / rel
+        if path.is_file():
+            return path
+    return DNA_ROOT / candidates[0]
+
+
+def _dna_paths(repo_root: Path) -> tuple[Path, Path]:
+    lumina = repo_root / "project-dna" / "lumina"
+    inv = lumina / "invariants.json"
+    if not inv.is_file():
+        inv = lumina / "core" / "invariants.json"
+    const = lumina / "constitution.md"
+    if not const.is_file():
+        const = lumina / "core" / "constitution.md"
+    return inv, const
+
+
+INVARIANTS_PATH = _resolve_dna_file("invariants.json", "core/invariants.json")
+CONSTITUTION_PATH = _resolve_dna_file("constitution.md", "core/constitution.md")
 
 REQUIRED_INVARIANT_ID = "no_structural_bypass_capital_paths"
 CONSTITUTION_ANCHORS = (
@@ -147,11 +169,10 @@ def validate_constitution_invariant_alignment(
     root = repo_root or PROJECT_ROOT
     issues: list[str] = []
 
-    inv_path = root / "project-dna" / "lumina" / "core" / "invariants.json"
-    const_path = root / "project-dna" / "lumina" / "core" / "constitution.md"
+    inv_path, const_path = _dna_paths(root)
 
     if not inv_path.exists():
-        issues.append("missing core/invariants.json")
+        issues.append("missing invariants.json")
     else:
         try:
             data = json.loads(inv_path.read_text(encoding="utf-8"))
@@ -169,7 +190,7 @@ def validate_constitution_invariant_alignment(
             issues.append(f"invariants.json parse error: {e}")
 
     if not const_path.exists():
-        issues.append("missing core/constitution.md")
+        issues.append("missing constitution.md")
     else:
         text = const_path.read_text(encoding="utf-8", errors="ignore")
         if not any(anchor.lower() in text.lower() for anchor in CONSTITUTION_ANCHORS):
