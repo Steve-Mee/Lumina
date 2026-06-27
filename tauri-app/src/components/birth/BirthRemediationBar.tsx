@@ -39,7 +39,7 @@ export function BirthRemediationBar({ status, className }: BirthRemediationBarPr
         <div className="h-full rounded-full bg-amber-400/80 transition-all" style={{ width: `${pct}%` }} />
       </div>
       {action ? (
-        <p className="mt-2 text-[10px] text-muted-foreground">Action: {action.replaceAll("_", " ")}</p>
+        <p className="mt-2 text-[10px] text-muted-foreground">Action: {action.replace(/_/g, " ")}</p>
       ) : null}
     </div>
   );

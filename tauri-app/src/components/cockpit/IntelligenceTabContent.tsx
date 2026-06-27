@@ -94,7 +94,7 @@ interface IntelligenceTabContentProps {
   tab: RightDeckTab;
   operatorMode: TradingMode;
   reducedMotion: boolean;
-  modeMotion: Transition;
+  modeMotion: Transition | undefined;
 }
 
 export function IntelligenceTabContent({

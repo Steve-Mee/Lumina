@@ -54,6 +54,7 @@ class LuminaBirthEngine:
         practice_mode: bool = False,
         reuse_existing_policy: bool | None = None,
         reuse_data_manifest: bool = False,
+        expand_data: bool = False,
     ) -> dict[str, Any]:
         from lumina_core.birth.engine import BirthPhaseEngineV2
 
@@ -78,4 +79,5 @@ class LuminaBirthEngine:
             practice_mode=practice_mode,
             reuse_existing_policy=reuse_existing_policy,
             reuse_data_manifest=reuse_data_manifest,
+            expand_data=expand_data,
         )

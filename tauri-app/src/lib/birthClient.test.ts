@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resumeBirthSession, retryBirthSession } from "@/lib/birthClient";
+import { isBirthStartSuccessful, resumeBirthSession, retryBirthSession } from "@/lib/birthClient";
 
 const luminaFetch = vi.fn();
 
@@ -24,6 +24,11 @@ vi.mock("@/lib/setupClient", () => ({
 describe("birthClient recovery routes", () => {
   beforeEach(() => {
     luminaFetch.mockReset();
+  });
+
+  it("isBirthStartSuccessful accepts start_acknowledged over terminal status", () => {
+    expect(isBirthStartSuccessful("certificate_failed", { start_acknowledged: true })).toBe(true);
+    expect(isBirthStartSuccessful("certificate_failed")).toBe(false);
   });
 
   it("resumeBirthSession uses retry without wipe", async () => {

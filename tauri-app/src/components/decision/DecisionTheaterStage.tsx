@@ -18,7 +18,6 @@ import {
   dispatchShadowDeploy,
   modifierKeyLabel,
 } from "@/lib/commandActions";
-import { isCommandDeckBlocked } from "@/lib/commandDeckGuard";
 import type { DecisionBrief } from "@/lib/decisionTheaterModel";
 import { verdictLabel, verdictTone } from "@/lib/decisionTheaterModel";
 import {

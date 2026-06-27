@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
-import { useOnboardingModeMotion } from "@/hooks/useOnboardingModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import { stepFade, transitionOrNone } from "@/lib/motionPresets";
@@ -43,7 +42,6 @@ export function OnboardingWizard() {
   const importCredentialsFromEnv = useOnboardingStore((s) => s.importCredentialsFromEnv);
   const [savingCredentials, setSavingCredentials] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
-  const onboardingMotion = useOnboardingModeMotion();
   const stepTransition = transitionOrNone(reducedMotion, stepFade);
 
   const steps = useMemo(() => selectActiveSteps(payload), [payload]);

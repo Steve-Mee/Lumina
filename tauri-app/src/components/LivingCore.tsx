@@ -22,7 +22,6 @@ import { getOrganismClock } from "@/lib/organismClockStore";
 import { vigilantHeartbeatPulse } from "@/lib/breatheCurve";
 import {
   BIRTH_HELIX_HEIGHT,
-  helixPoint,
 } from "@/lib/birthHelixGeometry";
 import {
   buildLivingCoreVisualParams,
@@ -70,16 +69,16 @@ export function particleCountForMode(
   mode: TradingMode,
   particleScale: number,
   vitality = 1,
-  visualQuality: VisualQuality = "medium",
+  visualQuality: VisualQuality = "balanced",
 ): number {
   const base = mode === "SIM" ? 504 : 120;
   const raw = Math.max(20, Math.round(base * particleScale * (0.45 + vitality * 0.55)));
   const ceilings: Record<VisualQuality, number> = {
     low: 120,
-    medium: 280,
+    balanced: 280,
     high: 504,
   };
-  return Math.min(raw, ceilings[visualQuality] ?? ceilings.medium);
+  return Math.min(raw, ceilings[visualQuality] ?? ceilings.balanced);
 }
 
 function clampPulse(value: number): number {
@@ -149,7 +148,7 @@ function AuraHalo({
     if (!meshRef.current) {
       return;
     }
-    const { elapsedSec: t, envelope } = getOrganismClock(mode);
+    const { envelope } = getOrganismClock(mode);
     const breathe = reducedMotion ? 1 : 1 + (envelope - 0.5) * 0.1;
     const scale = (0.85 + visualParams.vitality * 0.35) * breathe;
     meshRef.current.scale.setScalar(scale);
@@ -277,7 +276,7 @@ function ParticleField({
   const frameCounter = useRef(0);
   const [particleWidth, particleHeight] = particleSphereSegments(visualQuality);
 
-  useFrame(({ clock }, delta) => {
+  useFrame((_state, delta) => {
     if (!meshRef.current) {
       return;
     }

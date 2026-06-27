@@ -359,7 +359,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       if (!isBirthStartSuccessful(result.status)) {
         const message =
           result.message?.trim() ||
-          `Birth activation blocked (${result.status.replaceAll("_", " ")})`;
+          `Birth activation blocked (${String(result.status).replace(/_/g, " ")})`;
         set({ activating: false, birthPhaseCommitted: false, error: message });
         toast.error(message);
         return false;

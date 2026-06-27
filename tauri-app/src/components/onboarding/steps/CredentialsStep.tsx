@@ -9,7 +9,9 @@ import {
   credentialsReadyInEnv,
 } from "@/lib/credentialsPrefill";
 import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
-import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
+import type { OnboardingDraft } from "@/store/onboardingStore";
+import { distressPanelClass } from "@/lib/modePresentation";
+import { cn } from "@/lib/utils";
 
 interface CredentialsStepProps {
   draft: OnboardingDraft;

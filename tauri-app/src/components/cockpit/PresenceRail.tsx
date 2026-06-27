@@ -1,4 +1,3 @@
-import type { ReactNode } from "react";
 
 import { ShieldAlert, Zap } from "lucide-react";
 
@@ -91,8 +90,7 @@ export function PresenceRail({
         >
           <Icon
             className="presence-rail__mode-icon size-3 shrink-0"
-            title={tagline}
-            aria-label={tagline}
+aria-label={tagline}
           />
         </motion.div>
       </AnimatePresence>

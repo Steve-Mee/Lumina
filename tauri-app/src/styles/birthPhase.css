@@ -310,6 +310,85 @@
   backdrop-filter: blur(10px);
 }
 
+.birth-failure-overlay {
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 50% 35%,
+      color-mix(in srgb, var(--lumina-cyan) 10%, transparent),
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--lumina-void) 82%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.birth-failure-overlay__card {
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 18%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 92%, transparent);
+  padding: 1.5rem;
+  box-shadow: 0 24px 80px oklch(0 0 0 / 45%);
+}
+
+.birth-recovery-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+  padding-top: 0.25rem;
+}
+
+@media (min-width: 640px) {
+  .birth-recovery-actions {
+    grid-template-columns: repeat(2, minmax(160px, max-content));
+    justify-content: center;
+  }
+}
+
+.birth-recovery-action {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  min-width: 0;
+  width: 100%;
+  padding-inline: 1rem !important;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.birth-recovery-actions .birth-recovery-action:not(.onboarding-cta) {
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 28%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 70%, var(--lumina-cyan) 8%);
+  color: color-mix(in srgb, var(--lumina-cyan) 88%, white);
+}
+
+.birth-recovery-actions .birth-recovery-action:not(.onboarding-cta):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lumina-cyan) 14%, var(--lumina-void) 70%);
+}
+
+@media (min-width: 640px) {
+  .birth-recovery-action {
+    min-width: 160px;
+    width: auto;
+  }
+}
+
+.birth-recovery-actions__footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+}
+
+.birth-phase-cinematic--recovery-active .birth-phase-hud {
+  visibility: hidden;
+  pointer-events: none !important;
+}
+
+.birth-phase-cinematic--recovery-active .birth-phase-hud * {
+  pointer-events: none !important;
+}
+
 .birth-completion-summary {
   width: 100%;
 }

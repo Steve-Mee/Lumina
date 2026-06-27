@@ -31,7 +31,7 @@ import {
 } from "@/lib/visualQualityPresets";
 import { useModeMotion } from "@/hooks/useModeMotion";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { panelCrossfadeWith, transitionOrNone } from "@/lib/motionPresets";
+import {  transitionOrNone } from "@/lib/motionPresets";
 import { realDialogBodyClass, realDialogTitleClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
@@ -46,7 +46,6 @@ import {
 } from "@/store/settingsDialogStore";
 import {
   readHudLayoutPrefs,
-  writeHudLayoutPrefs,
 } from "@/lib/hudSignalLayout";
 import { useHudLayoutPrefsStore } from "@/store/hudLayoutPrefsStore";
 import {

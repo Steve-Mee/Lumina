@@ -40,7 +40,7 @@ function clamp01(value: number): number {
 
 const BIRTH_PARTICLE_CEILING: Record<VisualQuality, number> = {
   low: 0,
-  medium: 120,
+  balanced: 120,
   high: 200,
 };
 
@@ -48,7 +48,7 @@ const BIRTH_PARTICLE_CEILING: Record<VisualQuality, number> = {
 export function birthParticleCount(
   particleScale = 1,
   trainingTrades?: number,
-  visualQuality: VisualQuality = "medium",
+  visualQuality: VisualQuality = "balanced",
 ): number {
   const tradeFactor =
     trainingTrades != null
@@ -56,7 +56,7 @@ export function birthParticleCount(
       : 0.5;
   const base = 50 + Math.round(tradeFactor * 70);
   const raw = Math.max(40, Math.round(base * particleScale));
-  const ceiling = BIRTH_PARTICLE_CEILING[visualQuality] ?? BIRTH_PARTICLE_CEILING.medium;
+  const ceiling = BIRTH_PARTICLE_CEILING[visualQuality] ?? BIRTH_PARTICLE_CEILING.balanced;
   return ceiling > 0 ? Math.min(raw, ceiling) : raw;
 }
 

@@ -100,6 +100,21 @@ async def extra_training() -> dict[str, Any]:
     return {"ok": True, "message": "Completion artifacts cleared — start birth with continue_training"}
 
 
+def _merge_start_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Keep start acknowledgement when enriching with polled status."""
+    payload: dict[str, Any] = dict(result)
+    start_status = str(result.get("status", "") or "").strip().lower()
+    if start_status not in {"started", "already_running"}:
+        return payload
+    live = birth_service.get_status()
+    payload.update(live)
+    payload["status"] = start_status
+    payload["start_acknowledged"] = True
+    if result.get("message"):
+        payload.setdefault("start_message", result.get("message"))
+    return payload
+
+
 @router.post("/retry")
 async def retry_birth(
     target_trades: int | None = Query(None, ge=1000, le=5_000_000),
@@ -107,10 +122,25 @@ async def retry_birth(
 ) -> dict[str, Any]:
     """Resume certified birth on certificate failure; wipe=True starts completely fresh."""
     result = birth_service.retry_birth(target_trades=target_trades, wipe=wipe)
-    payload: dict[str, Any] = dict(result)
-    if str(result.get("status", "")).lower() in {"started", "already_running"}:
-        payload.update(birth_service.get_status())
-    return _enrich_status(payload)
+    return _enrich_status(_merge_start_result(result))
+
+
+@router.post("/resume-stage")
+async def resume_stalled_stage(
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
+) -> dict[str, Any]:
+    """Resume curriculum from stage_stalled without wiping checkpoint."""
+    result = birth_service.resume_stalled_stage(target_trades=target_trades)
+    return _enrich_status(_merge_start_result(result))
+
+
+@router.post("/expand-and-retry")
+async def expand_and_retry_stalled_stage(
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
+) -> dict[str, Any]:
+    """Expand data window and resume stalled stage (checkpoint preserved)."""
+    result = birth_service.expand_and_retry_stalled_stage(target_trades=target_trades)
+    return _enrich_status(_merge_start_result(result))
 
 
 @router.post("/resume")
@@ -119,10 +149,7 @@ async def resume_birth(
 ) -> dict[str, Any]:
     """Continue learning from certificate failure (alias for retry without wipe)."""
     result = birth_service.retry_birth(target_trades=target_trades, wipe=False)
-    payload: dict[str, Any] = dict(result)
-    if str(result.get("status", "")).lower() in {"started", "already_running"}:
-        payload.update(birth_service.get_status())
-    return _enrich_status(payload)
+    return _enrich_status(_merge_start_result(result))
 
 
 @router.post("/reuse-data")
@@ -131,10 +158,7 @@ async def reuse_data_birth(
 ) -> dict[str, Any]:
     """Resume from checkpoint and reuse cached data manifest when hash matches."""
     result = birth_service.reuse_data_birth(target_trades=target_trades)
-    payload: dict[str, Any] = dict(result)
-    if str(result.get("status", "")).lower() in {"started", "already_running"}:
-        payload.update(birth_service.get_status())
-    return _enrich_status(payload)
+    return _enrich_status(_merge_start_result(result))
 
 
 @router.get("/status")

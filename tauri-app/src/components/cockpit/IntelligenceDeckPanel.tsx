@@ -20,7 +20,7 @@ import {
   resolveOpsSections,
 } from "@/lib/intelligenceDeckNav";
 import { transitionOrNone } from "@/lib/motionPresets";
-import { modePanelClass, modeTitleClass, pendingHighlightClass, deckPanelFrameClass } from "@/lib/modePresentation";
+import {  modeTitleClass, pendingHighlightClass, deckPanelFrameClass } from "@/lib/modePresentation";
 import {
   selectActiveRightTab,
   useDeckPanelStore,

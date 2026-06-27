@@ -56,7 +56,9 @@ export function CinematicBloom({
       <Vignette eskil={false} offset={0.1} darkness={sim ? 0.4 : 0.62} />
       {sim && !disableChromaticAberration ? (
         <ChromaticAberration offset={[0.003, 0.003]} />
-      ) : null}
+      ) : (
+        <></>
+      )}
     </EffectComposer>
   );
 }

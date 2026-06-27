@@ -55,6 +55,10 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "winrate_trend_slope",
     "last_adaptation",
     "retries_this_stage",
+    "adaptation_tier",
+    "max_adaptation_tiers",
+    "max_stage_retries",
+    "auto_recovery_active",
     "adaptation_enabled",
     "wall_behavior",
 )
@@ -186,16 +190,28 @@ def enrich_adaptation_payload(
     required: int,
     winrate_history: list[float],
     retries_this_stage: int,
+    adaptation_tier: int = 0,
+    max_adaptation_tiers: int = 4,
+    max_stage_retries: int = 3,
     adaptation_history: list[dict[str, Any]],
     adaptation_enabled: bool,
     wall_behavior: str,
 ) -> dict[str, Any]:
     last_adaptation = adaptation_history[-1] if adaptation_history else {}
+    adaptive_active = (
+        adaptation_enabled
+        and wall_behavior == "adaptive"
+        and stage_trades >= required
+    )
     return {
         "volume_gate_status": "PASSED" if stage_trades >= required else "PENDING",
         "winrate_trend_slope": round(calculate_simple_slope(winrate_history), 6),
         "last_adaptation": last_adaptation,
         "retries_this_stage": int(retries_this_stage),
+        "adaptation_tier": int(adaptation_tier),
+        "max_adaptation_tiers": int(max_adaptation_tiers),
+        "max_stage_retries": int(max_stage_retries),
+        "auto_recovery_active": adaptive_active,
         "adaptation_enabled": bool(adaptation_enabled),
         "wall_behavior": str(wall_behavior),
     }

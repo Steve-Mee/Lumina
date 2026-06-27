@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { fadeUp } from "@/lib/motionPresets";
 import { Activity, AlertTriangle, Target, TrendingUp, type LucideIcon } from "lucide-react";
 
 import { useModeMotion } from "@/hooks/useModeMotion";

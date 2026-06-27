@@ -19,6 +19,7 @@ export interface StageOverflowSignal {
   label: string;
   value: string;
   glow: HudSignalGlow;
+  intensity?: number;
 }
 
 export interface DecisionStageHeroLayout {

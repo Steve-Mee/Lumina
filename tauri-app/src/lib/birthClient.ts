@@ -67,6 +67,10 @@ export interface BirthProgressPayload {
   winrate_trend_slope?: number;
   last_adaptation?: Record<string, unknown>;
   retries_this_stage?: number;
+  adaptation_tier?: number;
+  max_adaptation_tiers?: number;
+  max_stage_retries?: number;
+  auto_recovery_active?: boolean;
   adaptation_enabled?: boolean;
   wall_behavior?: string;
   escalation_level?: number;
@@ -85,6 +89,7 @@ export interface BirthCertificatePayload {
 export interface BirthStatusPayload {
   status: string;
   message?: string;
+  start_acknowledged?: boolean;
   error?: string;
   progress?: BirthProgressPayload;
   progress_pct?: number;
@@ -183,7 +188,13 @@ export async function startBirthSessionContinue(
 
 export type BirthStartStatus = "started" | "rejected" | "already_running" | "already_completed";
 
-export function isBirthStartSuccessful(status: unknown): boolean {
+export function isBirthStartSuccessful(
+  status: unknown,
+  payload?: Pick<BirthStatusPayload, "start_acknowledged">,
+): boolean {
+  if (payload?.start_acknowledged === true) {
+    return true;
+  }
   const normalized = String(status ?? "").toLowerCase();
   return normalized === "started" || normalized === "already_running";
 }
@@ -208,7 +219,46 @@ export async function retryBirthSession(
       continue_training: "true",
     });
     const result = await postBirthStart(fallback);
-    return result as BirthStatusPayload;
+    return result as unknown as BirthStatusPayload;
+  }
+}
+
+export async function resumeStalledStageSession(targetTrades: number): Promise<BirthStatusPayload> {
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  try {
+    return await postBirthMutation("/api/birth/resume-stage", params);
+  } catch (err) {
+    if (!isNotFoundError(err)) {
+      throw err;
+    }
+    const fallback = new URLSearchParams({
+      explicit_user_start: "true",
+      target_trades: String(targetTrades),
+      continue_training: "true",
+    });
+    const result = await postBirthStart(fallback);
+    return result as unknown as BirthStatusPayload;
+  }
+}
+
+export async function expandAndRetryStalledStageSession(
+  targetTrades: number,
+): Promise<BirthStatusPayload> {
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  try {
+    return await postBirthMutation("/api/birth/expand-and-retry", params);
+  } catch (err) {
+    if (!isNotFoundError(err)) {
+      throw err;
+    }
+    const fallback = new URLSearchParams({
+      explicit_user_start: "true",
+      target_trades: String(targetTrades),
+      continue_training: "true",
+      reuse_data: "true",
+    });
+    const result = await postBirthStart(fallback);
+    return result as unknown as BirthStatusPayload;
   }
 }
 
@@ -232,7 +282,7 @@ export async function reuseDataBirthSession(targetTrades: number): Promise<Birth
       reuse_data: "true",
     });
     const result = await postBirthStart(fallback);
-    return result as BirthStatusPayload;
+    return result as unknown as BirthStatusPayload;
   }
 }
 

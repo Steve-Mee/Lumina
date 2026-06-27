@@ -150,6 +150,7 @@ def test_adaptive_recovery_does_not_write_stage_stalled_progress(
             wall_behavior="adaptive",
             max_stage_retries=1,
             exploration_chunk_size=8,
+            auto_expand_on_adaptation=False,
         ),
         trade_budget_cap=500,
     )
@@ -168,15 +169,15 @@ def test_adaptive_recovery_does_not_write_stage_stalled_progress(
             stall_writes.append(phase)
         return original_write(*args, **kwargs)
 
+    rollout_calls = {"n": 0}
+
     def _fake_time() -> float:
         tick["value"] += 400.0
         return tick["value"]
 
-    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
-    monkeypatch.setattr("lumina_core.birth.engine.write_birth_progress", _track_write)
-    monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
-        lambda **_kwargs: SimRolloutResult(
+    def _rollout(**_kwargs) -> SimRolloutResult:
+        rollout_calls["n"] += 1
+        return SimRolloutResult(
             trades=15,
             wins=2,
             hold_signals=92,
@@ -188,8 +189,12 @@ def test_adaptive_recovery_does_not_write_stage_stalled_progress(
             regimes_seen={"TREND_UP"},
             partial_complete=True,
             rollout_steps=200,
-        ),
-    )
+        )
+
+    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.engine.write_birth_progress", _track_write)
+    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _rollout)
+    monkeypatch.setattr(engine, "_stop_requested", lambda: rollout_calls["n"] >= 20)
     monkeypatch.setattr(
         "lumina_core.birth.engine.mine_winning_patterns",
         lambda **_kwargs: __import__(
@@ -218,7 +223,7 @@ def test_adaptive_recovery_does_not_write_stage_stalled_progress(
     )
 
     assert result is not None
-    assert result.get("status") == "stage_stalled"
+    assert result.get("status") == "paused"
     ckpt = json.loads((tmp_path / "state" / "lumina_birth_checkpoint.json").read_text(encoding="utf-8"))
-    assert len((ckpt.get("stage_metrics") or {}).get("adaptation_history") or []) == 1
-    assert len(stall_writes) == 1
+    assert len((ckpt.get("stage_metrics") or {}).get("adaptation_history") or []) >= 1
+    assert len(stall_writes) == 0

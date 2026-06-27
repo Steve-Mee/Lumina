@@ -100,7 +100,47 @@ async def test_retry_birth_delegates(_reset_birth_service: MagicMock) -> None:
     }
     result = await be.retry_birth(target_trades=25000, wipe=False)
     _reset_birth_service.retry_birth.assert_called_once_with(target_trades=25000, wipe=False)
-    assert result["status"] == "running"
+    assert result["status"] == "started"
+    assert result.get("start_acknowledged") is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_retry_birth_preserves_started_when_live_is_certificate_failed(
+    _reset_birth_service: MagicMock,
+) -> None:
+    _reset_birth_service.retry_birth.return_value = {"status": "started", "message": "ok"}
+    _reset_birth_service.get_status.return_value = {
+        "status": "certificate_failed",
+        "message": "Birth Certificate v2 thresholds not met after remediation.",
+        "progress": {"phase": "certificate_failed"},
+    }
+    result = await be.retry_birth(target_trades=25000, wipe=False)
+    assert result["status"] == "started"
+    assert result.get("start_acknowledged") is True
+    assert result["progress"]["phase"] == "certificate_failed"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_resume_stalled_stage_delegates(_reset_birth_service: MagicMock) -> None:
+    _reset_birth_service.resume_stalled_stage.return_value = {"status": "started", "message": "ok"}
+    _reset_birth_service.get_status.return_value = {"status": "running", "progress": {}}
+    result = await be.resume_stalled_stage(target_trades=25000)
+    _reset_birth_service.resume_stalled_stage.assert_called_once_with(target_trades=25000)
+    assert result["status"] == "started"
+    assert result.get("start_acknowledged") is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_expand_and_retry_delegates(_reset_birth_service: MagicMock) -> None:
+    _reset_birth_service.expand_and_retry_stalled_stage.return_value = {"status": "started", "message": "ok"}
+    _reset_birth_service.get_status.return_value = {"status": "running", "progress": {}}
+    result = await be.expand_and_retry_stalled_stage(target_trades=25000)
+    _reset_birth_service.expand_and_retry_stalled_stage.assert_called_once_with(target_trades=25000)
+    assert result["status"] == "started"
+    assert result.get("start_acknowledged") is True
 
 
 @pytest.mark.unit
@@ -110,7 +150,8 @@ async def test_resume_birth_delegates(_reset_birth_service: MagicMock) -> None:
     _reset_birth_service.get_status.return_value = {"status": "running", "progress": {}}
     result = await be.resume_birth(target_trades=25000)
     _reset_birth_service.retry_birth.assert_called_once_with(target_trades=25000, wipe=False)
-    assert result["status"] == "running"
+    assert result["status"] == "started"
+    assert result.get("start_acknowledged") is True
 
 
 @pytest.mark.unit
@@ -120,7 +161,8 @@ async def test_reuse_data_birth_delegates(_reset_birth_service: MagicMock) -> No
     _reset_birth_service.get_status.return_value = {"status": "running", "progress": {}}
     result = await be.reuse_data_birth(target_trades=25000)
     _reset_birth_service.reuse_data_birth.assert_called_once_with(target_trades=25000)
-    assert result["status"] == "running"
+    assert result["status"] == "started"
+    assert result.get("start_acknowledged") is True
 
 
 @pytest.mark.unit

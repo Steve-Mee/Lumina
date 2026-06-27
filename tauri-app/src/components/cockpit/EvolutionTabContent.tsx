@@ -41,7 +41,7 @@ function AnnexTabContent({
 interface EvolutionTabContentProps {
   tab: CenterDeckTab;
   reducedMotion: boolean;
-  modeMotion: Transition;
+  modeMotion: Transition | undefined;
 }
 
 export function EvolutionTabContent({

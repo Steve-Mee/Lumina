@@ -253,6 +253,7 @@ class BirthService:
         explicit_user_start: bool = False,
         continue_training: bool = False,
         reuse_data: bool = False,
+        expand_data: bool = False,
     ) -> Dict[str, Any]:
         if not explicit_user_start:
             return {
@@ -354,6 +355,7 @@ class BirthService:
                         practice_mode=bool(practice_mode),
                         reuse_existing_policy=bool(reuse_existing_policy),
                         reuse_data_manifest=bool(reuse_data),
+                        expand_data=bool(expand_data),
                     )
                 finally:
                     os.chdir(previous_cwd)
@@ -394,8 +396,36 @@ class BirthService:
             sanitized["stage"] = "training_running"
         return sanitized
 
+    def _is_stage_stalled_recovery_eligible(self) -> bool:
+        progress = self._load_progress()
+        terminal = resolve_terminal_birth_status(progress)
+        if terminal is not None and terminal[0] == "stage_stalled":
+            return True
+        from lumina_core.birth.checkpoint import load_checkpoint_state
+
+        checkpoint_state = load_checkpoint_state(self.workspace_root)
+        ckpt_phase = str(checkpoint_state.get("phase", "") or "").strip().lower()
+        return ckpt_phase == "stage_stalled"
+
     def get_status(self) -> Dict[str, Any]:
         progress = self._load_progress()
+        terminal = resolve_terminal_birth_status(progress)
+        if terminal is not None and not self.is_running():
+            terminal_status, terminal_message = terminal
+            live = birth_training_is_live(self.workspace_root, thread_running=False)
+            return self._enrich_birth_status(
+                {
+                    "progress": progress,
+                    "live": live,
+                    "status": terminal_status,
+                    "progress_pct": float(progress.get("progress_pct", 0) or 0),
+                    "message": terminal_message,
+                    "result": self._result,
+                    "orphaned": False,
+                    "adaptive_intelligence": self._adaptive_intelligence_status(),
+                }
+            )
+
         if self.is_running() or self._progress_indicates_running(progress):
             progress = self._sanitize_running_progress(progress)
         live = birth_training_is_live(self.workspace_root, thread_running=self.is_running())
@@ -633,6 +663,53 @@ class BirthService:
             continue_training=preserve_checkpoint,
         )
 
+    def resume_stalled_stage(self, target_trades: int | None = None) -> Dict[str, Any]:
+        """Resume curriculum from terminal stage_stalled without wiping checkpoint."""
+        from lumina_core.birth.checkpoint import reset_adaptation_budget_for_manual_resume
+
+        if not self._is_stage_stalled_recovery_eligible():
+            return {
+                "status": "rejected",
+                "message": "Resume stage requires stage_stalled progress or checkpoint.",
+            }
+        reset_adaptation_budget_for_manual_resume(self.workspace_root)
+        return self.start_birth(
+            target_trades=target_trades,
+            force=False,
+            explicit_user_start=True,
+            continue_training=True,
+        )
+
+    def expand_and_retry_stalled_stage(self, target_trades: int | None = None) -> Dict[str, Any]:
+        """Expand historical data window then resume stalled stage (no checkpoint wipe)."""
+        from lumina_core.birth.checkpoint import (
+            read_checkpoint_payload,
+            reset_adaptation_budget_for_manual_resume,
+            write_checkpoint_payload,
+        )
+
+        if not self._is_stage_stalled_recovery_eligible():
+            return {
+                "status": "rejected",
+                "message": "Expand and retry requires stage_stalled progress or checkpoint.",
+            }
+        reset_adaptation_budget_for_manual_resume(self.workspace_root)
+        payload = read_checkpoint_payload(self.workspace_root)
+        if payload:
+            metrics = dict(payload.get("stage_metrics") or {})
+            metrics["pending_data_expand"] = True
+            payload["stage_metrics"] = metrics
+            payload["phase"] = "curriculum_learning"
+            write_checkpoint_payload(self.workspace_root, payload)
+        return self.start_birth(
+            target_trades=target_trades,
+            force=False,
+            explicit_user_start=True,
+            continue_training=True,
+            reuse_data=True,
+            expand_data=True,
+        )
+
     def resume_birth(self, target_trades: int | None = None) -> Dict[str, Any]:
         """Non-destructive resume from the last birth checkpoint."""
         return self.start_birth(
@@ -722,6 +799,12 @@ class BirthService:
         return True
 
     def _progress_indicates_running(self, progress: Dict[str, Any]) -> bool:
+        if resolve_terminal_birth_status(progress) is not None:
+            return False
+        phase = str(progress.get("phase", "") or "").strip().lower()
+        stage_name = str(progress.get("stage", "") or "").strip().lower()
+        if phase == "stage_stalled" or stage_name == "stage_stalled":
+            return False
         stage = resolve_first_boot_stage(progress)
         if stage not in _BIRTH_ACTIVE_STAGES:
             return False

@@ -244,7 +244,7 @@ export function CommunityPanel({ className }: { className?: string }) {
             className="h-8 w-full rounded border border-white/10 bg-black/20 px-2 font-mono text-xs"
           />
         </div>
-        <Button type="button" size="xs" variant="command" disabled={uploadBusy} onClick={() => void handleBibleUpload()}>
+        <Button type="button" size="xs" variant="command-primary" disabled={uploadBusy} onClick={() => void handleBibleUpload()}>
           Upload Bible
         </Button>
       </section>

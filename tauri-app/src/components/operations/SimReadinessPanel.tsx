@@ -12,7 +12,7 @@ import {
   ANNEX_CHART_COLORS,
   ANNEX_CHART_TOOLTIP_STYLE,
 } from "@/lib/ppoEvolutionChartTheme";
-import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
+import { distressPanelClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 function CriteriaTile({

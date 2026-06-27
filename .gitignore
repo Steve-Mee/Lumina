@@ -30,6 +30,8 @@ pip_audit_report.json
 tmp_*.log
 tmp_*.txt
 tmp_test_subset.txt
+tsc_errors.txt
+_patch_*.py
 
 # IDE / local AI tooling (machine-specific; skills/rules in repo are tracked separately)
 .vscode/

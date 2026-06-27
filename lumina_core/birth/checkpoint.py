@@ -130,3 +130,60 @@ def clear_checkpoint(workspace_root: Path | str) -> None:
             path.unlink(missing_ok=True)
         except OSError:
             logger.warning("birth.checkpoint.clear_failed path=%s", path, exc_info=True)
+
+
+def reset_adaptation_budget_in_metrics(metrics: dict[str, Any]) -> dict[str, Any]:
+    """Reset per-tier retry window for manual resume from stage_stalled."""
+    merged = dict(metrics)
+    merged["retries_this_stage"] = 0
+    return merged
+
+
+def write_checkpoint_payload(workspace_root: Path | str, payload: dict[str, Any]) -> None:
+    """Persist a full checkpoint JSON blob (merge-safe updates)."""
+    existing = [p for p in checkpoint_paths(workspace_root) if p.is_file()]
+    target = existing[0] if existing else checkpoint_paths(workspace_root)[0]
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+
+
+def reset_adaptation_budget_for_manual_resume(workspace_root: Path | str) -> bool:
+    """Persist retries_this_stage=0 in checkpoint stage_metrics before resume."""
+    from lumina_core.birth.progress import read_birth_progress, write_birth_progress
+
+    payload = read_checkpoint_payload(workspace_root)
+    if not payload:
+        return False
+    metrics = payload.get("stage_metrics")
+    if not isinstance(metrics, dict):
+        metrics = {}
+    payload["stage_metrics"] = reset_adaptation_budget_in_metrics(metrics)
+    if str(payload.get("phase", "") or "").strip().lower() == "stage_stalled":
+        payload["phase"] = "curriculum_learning"
+    write_checkpoint_payload(workspace_root, payload)
+
+    progress = read_birth_progress(workspace_root)
+    phase = str(progress.get("phase", "") or "").strip().lower()
+    stage = str(progress.get("stage", "") or "").strip().lower()
+    if phase == "stage_stalled" or stage == "stage_stalled":
+        write_birth_progress(
+            workspace_root,
+            stage="training_running",
+            phase="curriculum_learning",
+            message=str(progress.get("message") or "Resuming curriculum stage after stall recovery."),
+            progress_pct=float(progress.get("progress_pct", 0) or 0),
+            cumulative_trades=int(
+                progress.get("cumulative_trades", progress.get("trades_done", 0)) or 0
+            ),
+            target_trades=int(progress.get("target_trades", 0) or 0),
+            ppo_steps=int(progress.get("ppo_steps", 0) or 0),
+            birth_start_time=float(progress.get("birth_start_time", 0) or 0),
+            curriculum_stage=str(progress.get("curriculum_stage", "") or ""),
+            pass_reason=str(progress.get("pass_reason", "") or ""),
+            stage_blocker_metric=progress.get("stage_blocker_metric"),
+            stage_blocker_value=progress.get("stage_blocker_value"),
+            retries_this_stage=0,
+            adaptation_tier=metrics.get("adaptation_tier"),
+            adaptation_history=metrics.get("adaptation_history"),
+        )
+    return True

@@ -85,6 +85,9 @@ export function hydrateBotConfigDraftFromPayload(
   const modeDefaults = (d[modeKey] ?? {}) as Record<string, unknown>;
   const rc = d.risk_controller as Record<string, unknown>;
   const evo = d.evolution as Record<string, unknown>;
+  const diagnostics = (d as Record<string, unknown>).diagnostics as
+    | Record<string, unknown>
+    | undefined;
 
   return {
     mode: parsedMode,
@@ -120,22 +123,22 @@ export function hydrateBotConfigDraftFromPayload(
       voice_enabled: prior?.preferences?.voice_enabled ?? true,
       screen_share_enabled: prior?.preferences?.screen_share_enabled ?? true,
       dashboard_enabled: Boolean(
-        (d.diagnostics as Record<string, unknown> | undefined)?.dashboard_enabled ??
+        diagnostics?.dashboard_enabled ??
           prior?.preferences?.dashboard_enabled ??
           true,
       ),
       runtime_trace: Boolean(
-        (d.diagnostics as Record<string, unknown> | undefined)?.runtime_trace ??
+        diagnostics?.runtime_trace ??
           prior?.preferences?.runtime_trace ??
           true,
       ),
       runtime_trace_interval_sec: Number(
-        (d.diagnostics as Record<string, unknown> | undefined)?.runtime_trace_interval_sec ??
+        diagnostics?.runtime_trace_interval_sec ??
           prior?.preferences?.runtime_trace_interval_sec ??
           2,
       ),
       latency_sla_ms: Number(
-        (d.diagnostics as Record<string, unknown> | undefined)?.latency_sla_ms ??
+        diagnostics?.latency_sla_ms ??
           prior?.preferences?.latency_sla_ms ??
           300,
       ),

@@ -12,6 +12,7 @@ import {
   isBirthFailed,
   isBirthInterrupted,
   isBirthRunning,
+  isBirthStageStalled,
   resolveActiveMilestone,
   resolveBirthHeadline,
 } from "@/lib/birthPhaseModel";
@@ -105,6 +106,15 @@ describe("birthPhaseModel", () => {
     expect(isBirthFailed({ status: "error" })).toBe(true);
     expect(isBirthFailed({ status: "interrupted" })).toBe(false);
     expect(isBirthInterrupted({ status: "interrupted" })).toBe(true);
+  });
+
+  it("detects stage stalled while status is running", () => {
+    expect(
+      isBirthStageStalled({
+        status: "running",
+        progress: { phase: "stage_stalled" },
+      }),
+    ).toBe(true);
   });
 
   it("extracts simulation progress from trades", () => {

@@ -184,7 +184,13 @@ export function resolveBirthHeadline(
   return "Birth Phase v2 in progress…";
 }
 
-export type BirthUiPhase = "running" | "finale" | "error" | "idle" | "certificate_failed";
+export type BirthUiPhase =
+  | "running"
+  | "finale"
+  | "error"
+  | "idle"
+  | "certificate_failed"
+  | "stage_stalled";
 
 export function resolveBirthPhaseCopy(
   uiPhase: BirthUiPhase,
@@ -198,6 +204,9 @@ export function resolveBirthPhaseCopy(
   }
   if (uiPhase === "certificate_failed") {
     return "Certificate thresholds not met — review OOS metrics below and retry birth.";
+  }
+  if (uiPhase === "stage_stalled") {
+    return "Curriculum stage stalled — review the blocker and choose a recovery action.";
   }
   const active = milestones.find((m) => m.state === "active");
   if (active?.id === "refinement") {
@@ -258,14 +267,17 @@ export function isBirthFailed(payload: BirthStatusPayload): boolean {
   return status === "error" || status === "certificate_failed";
 }
 
-export function isBirthStageStalled(payload: BirthStatusPayload): boolean {
-  if (isBirthRunning(payload)) {
+export function isBirthStageStalled(payload: BirthStatusPayload | null): boolean {
+  if (!payload) {
     return false;
   }
-  const status = normalizeToken(payload.status);
   const stage = normalizeToken(payload.progress?.stage);
   const phase = normalizeToken(payload.progress?.phase);
-  return status === "stage_stalled" || phase === "stage_stalled" || stage === "stage_stalled";
+  if (phase === "stage_stalled" || stage === "stage_stalled") {
+    return true;
+  }
+  const status = normalizeToken(payload.status);
+  return status === "stage_stalled";
 }
 
 export function extractSimProgress(progress: BirthProgressPayload | undefined): {
@@ -322,6 +334,10 @@ export interface StageScorecardModel {
   volumeGateStatus: "PASSED" | "PENDING" | null;
   winrateTrendSlope: number | null;
   retriesThisStage: number;
+  adaptationTier: number | null;
+  maxAdaptationTiers: number | null;
+  maxStageRetries: number | null;
+  autoRecoveryActive: boolean;
   adaptationEnabled: boolean;
   wallBehavior: string | null;
   escalationLevel: number | null;
@@ -468,6 +484,10 @@ function extractAdaptationFields(progress: BirthProgressPayload | undefined): {
   volumeGateStatus: "PASSED" | "PENDING" | null;
   winrateTrendSlope: number | null;
   retriesThisStage: number;
+  adaptationTier: number | null;
+  maxAdaptationTiers: number | null;
+  maxStageRetries: number | null;
+  autoRecoveryActive: boolean;
   adaptationEnabled: boolean;
   wallBehavior: string | null;
   escalationLevel: number | null;
@@ -483,6 +503,19 @@ function extractAdaptationFields(progress: BirthProgressPayload | undefined): {
       ? Number(progress.winrate_trend_slope)
       : null;
   const retriesThisStage = Math.max(0, Number(progress?.retries_this_stage ?? 0) || 0);
+  const adaptationTier =
+    progress?.adaptation_tier != null && Number.isFinite(Number(progress.adaptation_tier))
+      ? Math.max(0, Number(progress.adaptation_tier))
+      : null;
+  const maxAdaptationTiers =
+    progress?.max_adaptation_tiers != null && Number.isFinite(Number(progress.max_adaptation_tiers))
+      ? Math.max(1, Number(progress.max_adaptation_tiers))
+      : null;
+  const maxStageRetries =
+    progress?.max_stage_retries != null && Number.isFinite(Number(progress.max_stage_retries))
+      ? Math.max(1, Number(progress.max_stage_retries))
+      : null;
+  const autoRecoveryActive = Boolean(progress?.auto_recovery_active);
   const adaptationEnabled = progress?.adaptation_enabled !== false;
   const wallBehavior = String(progress?.wall_behavior ?? "").trim() || null;
   const escalationLevel =
@@ -507,7 +540,9 @@ function extractAdaptationFields(progress: BirthProgressPayload | undefined): {
       if (lastAdaptationChunk != null) {
         parts.push(`chunk ${lastAdaptationChunk}`);
       }
-      if (escalationLevel != null) {
+      if (adaptationTier != null && maxAdaptationTiers != null) {
+        parts.push(`tier ${adaptationTier + 1}/${maxAdaptationTiers}`);
+      } else if (escalationLevel != null) {
         parts.push(`L${escalationLevel}`);
       }
       lastAdaptationSummary = parts.join(" · ");
@@ -518,6 +553,10 @@ function extractAdaptationFields(progress: BirthProgressPayload | undefined): {
     volumeGateStatus,
     winrateTrendSlope,
     retriesThisStage,
+    adaptationTier,
+    maxAdaptationTiers,
+    maxStageRetries,
+    autoRecoveryActive,
     adaptationEnabled,
     wallBehavior,
     escalationLevel,

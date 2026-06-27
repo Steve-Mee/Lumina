@@ -12,7 +12,7 @@ import {
   resolveIntelligenceHealth,
   TIER_VISUAL,
 } from "@/lib/intelligenceDisplay";
-import { modeLabelClass, modeTitleClass, distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
+import { modeLabelClass,  distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 

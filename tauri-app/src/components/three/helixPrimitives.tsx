@@ -25,7 +25,7 @@ export function helixTubeSegments(quality: VisualQuality): number {
   switch (quality) {
     case "high":
       return 96;
-    case "medium":
+    case "balanced":
       return 64;
     default:
       return 32;
@@ -36,7 +36,7 @@ export function coreSphereSegments(quality: VisualQuality): [number, number] {
   switch (quality) {
     case "high":
       return [48, 48];
-    case "medium":
+    case "balanced":
       return [32, 32];
     default:
       return [24, 24];
@@ -47,7 +47,7 @@ export function particleSphereSegments(quality: VisualQuality): [number, number]
   switch (quality) {
     case "high":
       return [10, 10];
-    case "medium":
+    case "balanced":
       return [8, 8];
     default:
       return [6, 6];

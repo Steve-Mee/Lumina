@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { BarChart3 } from "lucide-react";
 
@@ -142,7 +142,7 @@ export function EvolutionDeckPanel({
         <div
           className={cn(
             "relative border-b border-white/5 px-4 py-3",
-            activeCenterTab === "arena" && cn(luminaSurfaceMutedClass(), "rounded-none border-white/5"),
+            activeCenterTab === "evolution" && cn(luminaSurfaceMutedClass(), "rounded-none border-white/5"),
             isAnnexActive && "deck-header--annex",
           )}
         >
@@ -227,7 +227,7 @@ export function EvolutionDeckPanel({
 
 
 
-        <div className={cn("mt-0 flex min-h-0 flex-1 flex-col", activeCenterTab === "arena" ? "p-0" : "p-2")}>
+        <div className={cn("mt-0 flex min-h-0 flex-1 flex-col", activeCenterTab === "evolution" ? "p-0" : "p-2")}>
 
           <EvolutionTabContent
 

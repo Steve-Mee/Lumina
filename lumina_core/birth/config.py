@@ -54,6 +54,8 @@ class BirthCurriculumConfig:
     adaptation_enabled: bool = True
     wall_behavior: str = "adaptive"
     max_stage_retries: int = 3
+    max_adaptation_tiers: int = 4
+    auto_expand_on_adaptation: bool = True
     exploration_chunk_size: int = 8
     winrate_trend_window: int = 12
     negative_slope_threshold: float = -0.005
@@ -175,6 +177,8 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         adaptation_enabled=bool(cur_raw.get("adaptation_enabled", True)),
         wall_behavior=_coerce_wall_behavior(cur_raw.get("wall_behavior", "adaptive")),
         max_stage_retries=_coerce_int(cur_raw.get("max_stage_retries"), 3),
+        max_adaptation_tiers=_coerce_int(cur_raw.get("max_adaptation_tiers"), 4),
+        auto_expand_on_adaptation=bool(cur_raw.get("auto_expand_on_adaptation", True)),
         exploration_chunk_size=_coerce_int(cur_raw.get("exploration_chunk_size"), 8),
         winrate_trend_window=_coerce_int(cur_raw.get("winrate_trend_window"), 12),
         negative_slope_threshold=_coerce_float(cur_raw.get("negative_slope_threshold"), -0.005),

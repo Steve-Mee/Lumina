@@ -293,7 +293,7 @@ function CeremonyParticleField({
     return positions;
   }, [particleCount, activating, primed]);
 
-  useFrame(({ clock }, delta) => {
+  useFrame((_state, delta) => {
     if (!meshRef.current) {
       return;
     }
@@ -598,7 +598,7 @@ function SynapseAccents({
     }
     return Array.from({ length: synapseCount }, (_, index) => {
       const rungT = (index + 1) / (synapseCount + 1);
-      const target = helixPoint(rungT, index % 2, radius, 0);
+      const target = helixPoint(rungT, (index % 2) as 0 | 1, radius, 0);
       const geometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
         target,
@@ -683,7 +683,7 @@ function LegacyParticleField({
 
   const particleColor = useMemo(() => new THREE.Color(palette.primary), [palette.primary]);
 
-  useFrame(({ clock }, delta) => {
+  useFrame((_state, delta) => {
     if (!meshRef.current) {
       return;
     }

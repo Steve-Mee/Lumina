@@ -18,7 +18,7 @@ import {
 } from "@/lib/botConfigDraft";
 import { helpFor } from "@/lib/helpTexts";
 import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
-import { distressPanelClass, realBadgeClass } from "@/lib/modePresentation";
+import {  realBadgeClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 interface BotConfigFormProps {

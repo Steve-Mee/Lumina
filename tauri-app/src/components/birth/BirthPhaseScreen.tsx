@@ -4,7 +4,9 @@ import { toast } from "sonner";
 
 import { BirthCompletionSummary } from "@/components/birth/BirthCompletionSummary";
 import { BirthDiagnosticsDrawer } from "@/components/birth/BirthDiagnosticsDrawer";
+import { BirthFailureOverlayShell } from "@/components/birth/BirthFailureOverlayShell";
 import { BirthPhasePulse } from "@/components/birth/BirthPhasePulse";
+import { BirthRecoveryActionBar } from "@/components/birth/BirthRecoveryActionBar";
 import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
 import { BirthRecoveryPanel } from "@/components/birth/BirthRecoveryPanel";
 import { BirthRemediationBar } from "@/components/birth/BirthRemediationBar";
@@ -18,8 +20,7 @@ import { useOnboardingModeMotion } from "@/hooks/useOnboardingModeMotion";
 import { usePPOEvolution } from "@/hooks/usePPOEvolution";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { detectBirthRecoveryKind } from "@/lib/birthRecoveryModel";
-import { isBirthInterrupted } from "@/lib/birthPhaseModel";
-import { resolveBirthPhaseCopy } from "@/lib/birthPhaseModel";
+import { isBirthInterrupted, isBirthStageStalled, resolveBirthPhaseCopy } from "@/lib/birthPhaseModel";
 import { transitionOrNone, springBirthLuxury } from "@/lib/motionPresets";
 import {
   distressPanelClass,
@@ -53,29 +54,37 @@ export function BirthPhaseScreen() {
   const pollError = useBirthStore((s) => s.pollError);
   const retryBirth = useBirthStore((s) => s.retryBirth);
   const reuseDataBirth = useBirthStore((s) => s.reuseDataBirth);
+  const resumeStalledStage = useBirthStore((s) => s.resumeStalledStage);
+  const expandAndRetryStalledStage = useBirthStore((s) => s.expandAndRetryStalledStage);
   const targetTrades = useBirthStore((s) => s.targetTrades);
   const setPhase = useOnboardingStore((s) => s.setPhase);
   const completeBirthTransition = useOnboardingStore((s) => s.completeBirthTransition);
   const reducedMotion = usePrefersReducedMotion();
   const modeMotion = useOnboardingModeMotion();
-  const awakening = uiPhase === "finale";
-  const certificateFailed = uiPhase === "certificate_failed";
-  const failed = uiPhase === "error" || certificateFailed;
-  const running = uiPhase === "running";
-  const { logs, connected } = usePPOEvolution(!failed && !awakening);
-  const recoveryKind = detectBirthRecoveryKind(status);
-  const interrupted = status != null && isBirthInterrupted(status);
   const [recoveryDismissed, setRecoveryDismissed] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [realPreviewActive, setRealPreviewActive] = useState(false);
   const [milestoneVeilActive, setMilestoneVeilActive] = useState(false);
   const veiledMilestonesRef = useRef<Set<string>>(new Set());
   const { transition, startTransition, completeTransition } = useDeckTransition();
+  const awakening = uiPhase === "finale";
+  const certificateFailed = uiPhase === "certificate_failed";
+  const stageStalledActive =
+    !awakening &&
+    !recoveryDismissed &&
+    (uiPhase === "stage_stalled" || isBirthStageStalled(status));
+  const recoveryOverlayActive = certificateFailed || stageStalledActive;
+  const failed = uiPhase === "error" || certificateFailed;
+  const running = uiPhase === "running" && !stageStalledActive;
+  const { logs, connected } = usePPOEvolution(!failed && !awakening);
+  const recoveryKind = detectBirthRecoveryKind(status);
+  const interrupted = status != null && isBirthInterrupted(status);
   const showRecovery =
     (Boolean(recoveryKind) || interrupted) &&
     !recoveryDismissed &&
     !failed &&
     !certificateFailed &&
+    !stageStalledActive &&
     !awakening;
   const trainingDraft = useOnboardingStore((s) => s.draft.training);
 
@@ -92,13 +101,15 @@ export function BirthPhaseScreen() {
   const phaseSubtitle = resolveBirthPhaseCopy(
     certificateFailed
       ? "certificate_failed"
-      : uiPhase === "error"
-        ? "error"
-        : awakening
-          ? "finale"
-          : running
-            ? "running"
-            : "idle",
+      : stageStalledActive
+        ? "stage_stalled"
+        : uiPhase === "error"
+          ? "error"
+          : awakening
+            ? "finale"
+            : running
+              ? "running"
+              : "idle",
     milestones,
   );
 
@@ -185,24 +196,68 @@ export function BirthPhaseScreen() {
       .finally(() => setRetrying(false));
   };
 
-  const handleRetryBirth = () => {
+  const handleResumeStalledStage = () => {
     setRetrying(true);
-    void retryBirth()
+    void resumeStalledStage()
       .then((ok) => {
         if (ok) {
-          toast.success("Certified birth training started");
+          toast.success("Resuming stalled curriculum stage");
           return;
         }
-        const err = useBirthStore.getState().pollError;
-        toast.error(err ?? "Birth retry failed");
+        toast.error(useBirthStore.getState().pollError ?? "Stage resume failed");
       })
       .finally(() => setRetrying(false));
   };
 
+  const handleExpandAndRetryStalledStage = () => {
+    setRetrying(true);
+    void expandAndRetryStalledStage()
+      .then((ok) => {
+        if (ok) {
+          toast.success("Expanding data and retrying stage");
+          return;
+        }
+        toast.error(useBirthStore.getState().pollError ?? "Expand and retry failed");
+      })
+      .finally(() => setRetrying(false));
+  };
+
+  const handleWipeStalledStage = () => {
+    setRetrying(true);
+    void retryBirth({ wipe: true })
+      .then((ok) => {
+        if (ok) {
+          toast.success("Fresh birth training started");
+          return;
+        }
+        toast.error(useBirthStore.getState().pollError ?? "Birth restart failed");
+      })
+      .finally(() => setRetrying(false));
+  };
+
+  const stalledBlocker =
+    String(status?.progress?.pass_reason ?? "").trim() ||
+    String(status?.progress?.stage_blocker_metric ?? "").trim().replace(/_/g, " ");
+  const adaptationTier = Math.max(0, Number(status?.progress?.adaptation_tier ?? 0) || 0);
+  const maxAdaptationTiers = Math.max(1, Number(status?.progress?.max_adaptation_tiers ?? 4) || 4);
+  const stalledRetries = Math.max(0, Number(status?.progress?.retries_this_stage ?? 0) || 0);
+  const maxStageRetries = Math.max(1, Number(status?.progress?.max_stage_retries ?? 3) || 3);
+
+  const certificateFailureDetail =
+    (Array.isArray(status?.failure_reasons) && status.failure_reasons.length > 0
+      ? status.failure_reasons.join(" · ")
+      : null) ||
+    status?.message ||
+    status?.certificate_reason ||
+    "Review OOS metrics below and choose a recovery action.";
+
   return (
     <OnboardingShell className="birth-phase-screen birth-phase-screen--cinematic">
       <motion.div
-        className="birth-phase-cinematic mx-auto flex h-dvh min-h-0 w-full max-w-none flex-col overflow-hidden"
+        className={cn(
+          "birth-phase-cinematic relative mx-auto flex h-dvh min-h-0 w-full max-w-none flex-col overflow-hidden",
+          recoveryOverlayActive && "birth-phase-cinematic--recovery-active",
+        )}
         animate={{ opacity: transition.active ? 0.35 : 1 }}
         transition={transitionOrNone(reducedMotion, birthMotion)}
       >
@@ -235,10 +290,15 @@ export function BirthPhaseScreen() {
             className={cn(
               "birth-phase-hud pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col gap-2 px-4 pb-16 pt-4 md:px-6 md:pb-20 md:pt-6",
               awakening && "birth-phase-hud--finale",
-              certificateFailed && "opacity-0",
+              recoveryOverlayActive && "invisible opacity-0",
             )}
           >
-            <div className="birth-phase-hud-band pointer-events-auto text-center">
+            <div
+              className={cn(
+                "birth-phase-hud-band text-center",
+                !recoveryOverlayActive && "pointer-events-auto",
+              )}
+            >
               <motion.h2
                 className="birth-phase-headline text-2xl font-semibold tracking-wide md:text-4xl"
                 key={awakening ? "finale-headline" : headline}
@@ -344,65 +404,104 @@ export function BirthPhaseScreen() {
         ) : null}
 
         {certificateFailed ? (
-          <div className="birth-phase-certificate-overlay absolute inset-0 z-40 flex items-center justify-center overflow-y-auto px-4 py-10">
-            <div className="w-full max-w-2xl space-y-5">
-              <div className="text-center">
-                <h2 className="birth-phase-headline text-2xl font-semibold tracking-wide md:text-3xl">
-                  {headline}
-                </h2>
-                <p className="birth-phase-subtitle mt-2 text-sm">{phaseSubtitle}</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {pollError ||
-                    (Array.isArray(status?.failure_reasons) && status.failure_reasons.length > 0
-                      ? status.failure_reasons.join(" · ")
-                      : null) ||
-                    status?.message ||
-                    "Review OOS metrics below and choose a recovery action."}
+          <BirthFailureOverlayShell
+            className="birth-phase-certificate-overlay z-40"
+            title="Birth Certificate thresholds not met"
+            subtitle={certificateFailureDetail}
+            error={pollError}
+            actions={
+              <BirthRecoveryActionBar
+                loading={retrying}
+                actions={[
+                  {
+                    id: "continue",
+                    label: "Continue learning",
+                    loadingLabel: "Starting birth…",
+                    variant: "primary",
+                    onClick: handleResumeBirth,
+                  },
+                  {
+                    id: "reuse",
+                    label: "Reuse data & retry",
+                    variant: "secondary",
+                    onClick: handleReuseDataBirth,
+                  },
+                  {
+                    id: "wipe",
+                    label: "Wipe & restart",
+                    variant: "outline",
+                    onClick: handleWipeRetryBirth,
+                  },
+                  {
+                    id: "setup",
+                    label: "Return to setup",
+                    variant: "ghost",
+                    onClick: () => {
+                      useBirthStore.getState().reset();
+                      setPhase("wizard");
+                    },
+                  },
+                ]}
+              />
+            }
+          >
+            <BirthCompletionSummary status={status} />
+            <BirthRemediationBar status={status} />
+          </BirthFailureOverlayShell>
+        ) : null}
+
+        {stageStalledActive ? (
+          <BirthFailureOverlayShell
+            title="Curriculum stage stalled"
+            subtitle={phaseSubtitle}
+            meta={
+              stalledBlocker ? (
+                <p className="mt-2 rounded border border-amber-500/30 bg-amber-950/20 px-3 py-2 font-mono text-xs text-amber-100">
+                  Blocker: {stalledBlocker}
                 </p>
-              </div>
-              <BirthCompletionSummary status={status} />
-              <BirthRemediationBar status={status} />
-              <div className="flex flex-wrap items-center justify-center gap-3 pt-1">
-                <Button
-                  type="button"
-                  className="onboarding-cta min-w-[180px]"
-                  disabled={retrying}
-                  onClick={handleResumeBirth}
-                >
-                  {retrying ? "Starting birth…" : "Continue learning"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="min-w-[160px]"
-                  disabled={retrying}
-                  onClick={handleReuseDataBirth}
-                >
-                  Reuse data & retry
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="min-w-[160px]"
-                  disabled={retrying}
-                  onClick={handleWipeRetryBirth}
-                >
-                  Wipe & restart
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="text-muted-foreground"
-                  onClick={() => {
-                    useBirthStore.getState().reset();
-                    setPhase("wizard");
-                  }}
-                >
-                  Return to setup
-                </Button>
-              </div>
-            </div>
-          </div>
+              ) : null
+            }
+            error={pollError}
+            actions={
+              <BirthRecoveryActionBar
+                loading={retrying}
+                actions={[
+                  {
+                    id: "retry",
+                    label: "Retry stage",
+                    loadingLabel: "Starting…",
+                    variant: "primary",
+                    onClick: handleResumeStalledStage,
+                  },
+                  {
+                    id: "expand",
+                    label: "Expand & retry",
+                    variant: "secondary",
+                    onClick: handleExpandAndRetryStalledStage,
+                  },
+                  {
+                    id: "wipe",
+                    label: "Wipe & restart",
+                    variant: "outline",
+                    onClick: handleWipeStalledStage,
+                  },
+                  {
+                    id: "dismiss",
+                    label: "Dismiss",
+                    variant: "ghost",
+                    onClick: () => setRecoveryDismissed(true),
+                  },
+                ]}
+              />
+            }
+          >
+            <BirthStageScorecard progress={status?.progress} />
+            <p className="text-center text-xs text-muted-foreground">
+              Adaptive tier {adaptationTier + 1}/{maxAdaptationTiers} · retries {stalledRetries}/
+              {maxStageRetries}
+              {status?.engine_version ? ` · engine ${status.engine_version}` : ""}
+            </p>
+          </BirthFailureOverlayShell>
         ) : null}
 
         {uiPhase === "error" ? (

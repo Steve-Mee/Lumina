@@ -23,7 +23,7 @@ import type {
 } from "@/lib/birthClient";
 import type { BirthMilestone } from "@/lib/birthPhaseModel";
 import { buildCompactMilestones } from "@/lib/birthPhaseModel";
-import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionMetrics";
+import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
 import { cn } from "@/lib/utils";
 
 type DiagnosticsPanel = "progress" | "settings" | "logs" | "training";
@@ -49,7 +49,7 @@ export function BirthDiagnosticsDrawer({
   running,
   finale = false,
   defaultOpen = false,
-  milestones = [],
+  milestones: _milestones = [],
   progress,
   elapsedSeconds,
   progressMessage,

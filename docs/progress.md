@@ -1,8 +1,37 @@
 # Adaptive Wall Retry — Progress
 
 **Last updated:** 2026-06-25  
-**Current phase:** Complete  
+**Current phase:** Never-Stall + Recovery UI complete  
 **Overall status:** DONE
+
+---
+
+## Never-Stall Escalation Ladder + Recovery UI (2026-06-25)
+
+### Engine
+- **Escalation ladder** in adaptive mode: tiers 0–3 cycle `max_stage_retries` windows; tier ≥1 re-mines oracle; tier ≥2 auto-expands data when `auto_expand_on_adaptation=true`
+- **No terminal `stage_stalled`** in adaptive mode unless `trade_budget_cap` exhausted or data exhausted at max tier with empty buffer
+- **`adaptation_tier`** persisted in `stage_metrics` + progress scorecard fields
+- **Manual resume** from `stage_stalled` resets `retries_this_stage` and clears checkpoint phase via `reset_adaptation_budget_for_manual_resume`
+- Config: `max_adaptation_tiers`, `auto_expand_on_adaptation`
+
+### Backend
+- `POST /api/birth/resume-stage` → `BirthService.resume_stalled_stage()`
+- `POST /api/birth/expand-and-retry` → `BirthService.expand_and_retry_stalled_stage()` (sets `pending_data_expand`, no checkpoint wipe)
+- `run_birth_phase(expand_data=...)` for expand-on-resume
+
+### Tauri UI
+- `uiPhase: "stage_stalled"` (not `idle` / mislabeled `certificate_failed`)
+- Full **stage stalled overlay** (mirror certificate_failed layout): blocker, tier HUD, spaced action buttons
+- Recovery panel wiring: Retry → `resumeStalledStage`; Expand → `expandAndRetryStalledStage` (**not** `force: true`)
+- `birthStore` failure paths preserve `stage_stalled` uiPhase
+
+### Tests
+- `tests/birth/test_adaptation_escalation_ladder.py`
+- `tests/birth/test_stage_stalled_manual_resume_resets_budget.py`
+- Updated adaptive stagnation/chunk tests for never-stall semantics
+- `tauri-app/src/store/birthStore.test.ts`
+- `lumina_os/tests/test_birth_endpoints.py` — resume-stage + expand-and-retry
 
 ---
 

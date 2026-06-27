@@ -139,7 +139,7 @@ export function resolveHudHeroLayout(
   metrics: HudLayoutMetrics,
   equityIntensity: number,
   prefs: HudSignalLayoutPrefs,
-  context: HudHeroContext,
+  _context: HudHeroContext,
 ): HudHeroLayout {
   const heroPrimary = prefs.heroPrimary ?? "equity";
   const contextualKind = resolveContextualKind(mode, prefs);

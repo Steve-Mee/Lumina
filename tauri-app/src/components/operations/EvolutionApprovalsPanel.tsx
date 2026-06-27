@@ -14,6 +14,7 @@ import {
 import { selectApiKeyConfigured, useApiKeyStore } from "@/store/apiKeyStore";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
 import { modeValueClass, pendingHighlightClass } from "@/lib/modePresentation";
+import { cn } from "@/lib/utils";
 
 export function EvolutionApprovalsPanel({ className }: { className?: string }) {
   const [proposals, setProposals] = useState<EvolutionProposal[]>([]);

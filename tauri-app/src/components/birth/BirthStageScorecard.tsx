@@ -180,7 +180,18 @@ export function BirthStageScorecard({
             ) : null}
             <p>Winrate trend: {formatTrendSlope(scorecard.winrateTrendSlope)}</p>
             {scorecard.retriesThisStage > 0 ? (
-              <p>Auto-retries this stage: {scorecard.retriesThisStage}</p>
+              <p>
+                Auto-retries this stage: {scorecard.retriesThisStage}
+                {scorecard.maxStageRetries != null ? ` / ${scorecard.maxStageRetries}` : ""}
+              </p>
+            ) : null}
+            {scorecard.adaptationTier != null && scorecard.maxAdaptationTiers != null ? (
+              <p>
+                Escalation tier: {scorecard.adaptationTier + 1}/{scorecard.maxAdaptationTiers}
+              </p>
+            ) : null}
+            {scorecard.autoRecoveryActive ? (
+              <p className="text-emerald-300">Auto-recovery active</p>
             ) : null}
             {scorecard.escalationLevel != null && scorecard.escalationLevel > 0 ? (
               <p>Exploration level: L{scorecard.escalationLevel}</p>

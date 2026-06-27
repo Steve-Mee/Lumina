@@ -22,7 +22,9 @@ from lumina_core.birth.checkpoint import (
     clear_checkpoint,
     load_checkpoint_state,
     read_checkpoint_payload,
+    reset_adaptation_budget_for_manual_resume,
     save_checkpoint,
+    write_checkpoint_payload,
 )
 from lumina_core.birth.buffer_persist import clear_buffer, load_buffer, save_buffer
 from lumina_core.birth.tick_cache_persist import (
@@ -739,6 +741,7 @@ class BirthPhaseEngineV2:
         practice_mode: bool = False,
         reuse_existing_policy: bool | None = None,
         reuse_data_manifest: bool = False,
+        expand_data: bool = False,
     ) -> dict[str, Any]:
         _ = (target_trades, chunk_size, force)
         cfg = self.birth_config
@@ -797,6 +800,18 @@ class BirthPhaseEngineV2:
             self._active_stage_metrics = dict(checkpoint_state.get("stage_metrics") or {})
             self.buffer.clear()
             self._restore_buffer_from_checkpoint(checkpoint_state)
+            if checkpoint_phase.strip().lower() == "stage_stalled":
+                reset_adaptation_budget_for_manual_resume(self.workspace_root)
+                checkpoint_state = load_checkpoint_state(self.workspace_root)
+                self._active_stage_metrics = dict(checkpoint_state.get("stage_metrics") or {})
+            if expand_data and resume:
+                metrics = dict(self._active_stage_metrics)
+                metrics["pending_data_expand"] = True
+                self._active_stage_metrics = metrics
+                payload = read_checkpoint_payload(self.workspace_root)
+                if payload:
+                    payload["stage_metrics"] = metrics
+                    write_checkpoint_payload(self.workspace_root, payload)
 
         allow_load = resume if reuse_existing_policy is None else bool(reuse_existing_policy)
         if resume_policy_path and Path(resume_policy_path).is_file():
@@ -1281,6 +1296,7 @@ class BirthPhaseEngineV2:
         wall_budget_exhausted = False
         winrate_history: list[float] = []
         retries_this_stage = 0
+        adaptation_tier = 0
         adaptation_history: list[dict[str, Any]] = []
         original_rollout_chunk = cur_cfg.rollout_chunk_trades
         stage_started_at = time.time()
@@ -1322,6 +1338,7 @@ class BirthPhaseEngineV2:
             if isinstance(raw_history, list):
                 winrate_history = [float(x) for x in raw_history if isinstance(x, (int, float))]
             retries_this_stage = max(0, int(stage_metrics.get("retries_this_stage", 0) or 0))
+            adaptation_tier = max(0, int(stage_metrics.get("adaptation_tier", 0) or 0))
             raw_adaptations = stage_metrics.get("adaptation_history")
             if isinstance(raw_adaptations, list):
                 adaptation_history = [dict(x) for x in raw_adaptations if isinstance(x, dict)]
@@ -1376,6 +1393,7 @@ class BirthPhaseEngineV2:
             )
             payload["winrate_history"] = list(winrate_history)
             payload["retries_this_stage"] = int(retries_this_stage)
+            payload["adaptation_tier"] = int(adaptation_tier)
             payload["adaptation_history"] = list(adaptation_history)
             payload["escalation_level"] = int(escalation_level)
             return payload
@@ -1430,6 +1448,9 @@ class BirthPhaseEngineV2:
                 required=required,
                 winrate_history=winrate_history,
                 retries_this_stage=retries_this_stage,
+                adaptation_tier=adaptation_tier,
+                max_adaptation_tiers=cur_cfg.max_adaptation_tiers,
+                max_stage_retries=cur_cfg.max_stage_retries,
                 adaptation_history=adaptation_history,
                 adaptation_enabled=cur_cfg.adaptation_enabled,
                 wall_behavior=cur_cfg.wall_behavior,
@@ -1547,6 +1568,17 @@ class BirthPhaseEngineV2:
             phase="curriculum_research",
             message=f"Curriculum {stage.value}: oracle scan start (doel {required:,} trades).",
         )
+        if isinstance(stage_metrics, dict) and stage_metrics.get("pending_data_expand"):
+            _maybe_expand_data()
+            pending_cleared = dict(_stage_metrics_payload())
+            pending_cleared.pop("pending_data_expand", None)
+            self._persist_checkpoint(
+                training_mode=training_mode,
+                curriculum_stage=stage.value,
+                policy_path=str(self.final_policy_path),
+                phase="curriculum_learning",
+                stage_metrics=pending_cleared,
+            )
         _mine_and_inject()
         if len(self.buffer) >= 80:
             self.current_policy = self.ppo_trainer.update_from_buffer(
@@ -1643,13 +1675,25 @@ class BirthPhaseEngineV2:
                 "training_mode": training_mode,
             }
 
+        def _should_terminal_stall_in_adaptive() -> bool:
+            """True only when adaptive mode must stop (budget/data exhausted)."""
+            if self.cumulative_trades >= trade_budget_cap:
+                return True
+            if (
+                data_exhausted
+                and len(self.buffer) < 80
+                and adaptation_tier >= cur_cfg.max_adaptation_tiers - 1
+            ):
+                return True
+            return False
+
         def _try_adaptive_stall_recovery(*, failure_key: str) -> bool:
-            nonlocal escalation_level, retries_this_stage, attempt
+            nonlocal escalation_level, retries_this_stage, attempt, adaptation_tier
             nonlocal winrate_stagnation_count, hold_stagnation_count, wall_budget_exhausted
             nonlocal stage_started_at
             if not cur_cfg.adaptation_enabled or cur_cfg.wall_behavior != "adaptive":
                 return False
-            if retries_this_stage >= cur_cfg.max_stage_retries:
+            if _should_terminal_stall_in_adaptive():
                 return False
             current_winrate = float(stage_wins) / float(max(1, stage_trades))
             decision = _get_adaptation_decision(
@@ -1660,24 +1704,74 @@ class BirthPhaseEngineV2:
                 escalation_level=escalation_level,
                 cfg=cur_cfg,
             )
+            if not decision.should_retry and adaptation_tier == 0 and retries_this_stage == 0:
+                decision = AdaptationDecision(
+                    should_retry=True,
+                    reason="stall_escalation",
+                    new_chunk_target=max(
+                        cur_cfg.exploration_chunk_size,
+                        min(cur_cfg.rollout_chunk_trades * 2, original_rollout_chunk),
+                    ),
+                    escalation_increase=1,
+                    log_message="Escalation ladder: forced recovery at stall boundary",
+                )
+            if not decision.should_retry and adaptation_tier >= 1:
+                decision = AdaptationDecision(
+                    should_retry=True,
+                    reason="persistent_recovery",
+                    new_chunk_target=max(cur_cfg.exploration_chunk_size, cur_cfg.rollout_chunk_trades),
+                    escalation_increase=0,
+                    log_message=f"Persistent recovery tier {adaptation_tier + 1}/{cur_cfg.max_adaptation_tiers}",
+                )
             if not decision.should_retry:
                 return False
-            escalation_level = min(
-                cur_cfg.max_escalation_level,
-                escalation_level + decision.escalation_increase,
-            )
-            cur_cfg.rollout_chunk_trades = decision.new_chunk_target
+            if adaptation_tier >= 1:
+                _mine_and_inject()
+            if adaptation_tier >= 2 and cur_cfg.auto_expand_on_adaptation:
+                _maybe_expand_data()
+            if adaptation_tier >= cur_cfg.max_adaptation_tiers - 1:
+                winrate_stagnation_count = 0
+                hold_stagnation_count = 0
+                wall_budget_exhausted = False
+                escalation_level = min(cur_cfg.max_escalation_level, cur_cfg.max_escalation_level)
+                cur_cfg.rollout_chunk_trades = max(
+                    cur_cfg.exploration_chunk_size,
+                    original_rollout_chunk,
+                )
+            else:
+                escalation_level = min(
+                    cur_cfg.max_escalation_level,
+                    escalation_level + decision.escalation_increase,
+                )
+                cur_cfg.rollout_chunk_trades = decision.new_chunk_target
             adaptation_history.append(
                 {
                     "timestamp": time.time(),
                     "reason": decision.reason,
-                    "chunk_target": decision.new_chunk_target,
+                    "chunk_target": cur_cfg.rollout_chunk_trades,
                     "escalation": escalation_level,
+                    "tier": adaptation_tier,
                     "winrate": current_winrate,
                     "failure_key": failure_key,
                 }
             )
             retries_this_stage += 1
+            if retries_this_stage >= cur_cfg.max_stage_retries:
+                if adaptation_tier + 1 < cur_cfg.max_adaptation_tiers:
+                    adaptation_tier += 1
+                    retries_this_stage = 0
+                    logger.info(
+                        "birth.adaptation.tier_advanced tier=%s max=%s",
+                        adaptation_tier,
+                        cur_cfg.max_adaptation_tiers,
+                    )
+                else:
+                    retries_this_stage = 0
+                    logger.info(
+                        "birth.adaptation.persistent_recovery tier=%s failure=%s",
+                        adaptation_tier,
+                        failure_key,
+                    )
             attempt = 0
             winrate_stagnation_count = 0
             hold_stagnation_count = 0
@@ -1691,21 +1785,17 @@ class BirthPhaseEngineV2:
                 stage_metrics=_stage_metrics_payload(),
             )
             logger.info(
-                "birth.adaptation.applied reason=%s new_chunk=%s message=%s escalation=%s",
+                "birth.adaptation.applied reason=%s tier=%s new_chunk=%s escalation=%s",
                 decision.reason,
-                decision.new_chunk_target,
-                decision.log_message,
+                adaptation_tier,
+                cur_cfg.rollout_chunk_trades,
                 escalation_level,
-            )
-            logger.info(
-                "birth.stage.auto_retrying_with_adaptation retry=%s max=%s",
-                retries_this_stage,
-                cur_cfg.max_stage_retries,
             )
             _write_progress(
                 phase="curriculum_learning",
                 message=(
-                    f"Adaptation retry {retries_this_stage}/{cur_cfg.max_stage_retries}: "
+                    f"Adaptive recovery tier {adaptation_tier + 1}/{cur_cfg.max_adaptation_tiers} "
+                    f"· retry {retries_this_stage}/{cur_cfg.max_stage_retries}: "
                     f"{decision.log_message}"
                 ),
             )

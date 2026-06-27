@@ -2,6 +2,7 @@ import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceCo
 import { formatModeLabel, formatTierLabel } from "@/lib/intelligenceDisplay";
 import { distressPanelClass, modeValueClass, utilityListItemClass } from "@/lib/modePresentation";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
+import { cn } from "@/lib/utils";
 
 interface AdaptiveIntelligenceRecentEventsProps {
   className?: string;

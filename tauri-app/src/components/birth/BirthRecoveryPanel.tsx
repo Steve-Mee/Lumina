@@ -1,7 +1,13 @@
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { startBirthSession, isBirthStartSuccessful, reuseDataBirthSession, retryBirthSession, type BirthStatusPayload } from "@/lib/birthClient";
+import {
+  isBirthStartSuccessful,
+  retryBirthSession,
+  reuseDataBirthSession,
+  startBirthSession,
+  type BirthStatusPayload,
+} from "@/lib/birthClient";
 import {
   birthProgressDiagnostics,
   checkpointTradeCount,
@@ -51,12 +57,12 @@ const COPY: Record<
 
 async function runBirthAction(
   label: string,
-  action: () => Promise<Record<string, unknown>>,
+  action: () => Promise<BirthStatusPayload | Record<string, unknown>>,
 ): Promise<void> {
   try {
     const result = await action();
     const status = String(result.status ?? "");
-    if (!isBirthStartSuccessful(status)) {
+    if (!isBirthStartSuccessful(status, result as BirthStatusPayload)) {
       toast.error(String(result.message ?? `Birth action failed (${status || "unknown"})`));
       return;
     }
@@ -78,13 +84,13 @@ export function BirthRecoveryPanel({
   if (!kind) {
     return null;
   }
+  if (kind === "stage_stalled") {
+    return null;
+  }
 
   const copy = COPY[kind];
   const diagnostics = birthProgressDiagnostics(status?.progress);
   const ckptTrades = checkpointTradeCount(status?.progress);
-  const blockerReason = String(status?.progress?.pass_reason ?? "").trim();
-  const blockerMetric = String(status?.progress?.stage_blocker_metric ?? "").trim();
-
   return (
     <div
       className={cn(
@@ -95,12 +101,6 @@ export function BirthRecoveryPanel({
     >
       <p className="font-medium text-amber-100">{copy.title}</p>
       <p className="mt-1 text-xs leading-relaxed text-amber-100/75">{copy.body}</p>
-
-      {kind === "stage_stalled" && (blockerReason || blockerMetric) ? (
-        <p className="mt-2 rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1.5 font-mono text-[11px] text-amber-100">
-          Blocker: {blockerReason || blockerMetric.replace(/_/g, " ")}
-        </p>
-      ) : null}
 
       {kind === "checkpoint_available" && ckptTrades > 0 ? (
         <p className="mt-2 font-mono text-[10px] text-muted-foreground">
@@ -114,7 +114,7 @@ export function BirthRecoveryPanel({
         </pre>
       ) : null}
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:justify-center">
         {kind === "history_unavailable" ? (
           <>
             <Button
@@ -206,47 +206,6 @@ export function BirthRecoveryPanel({
           </Button>
         ) : null}
 
-        {kind === "stage_stalled" ? (
-          <>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={() =>
-                void runBirthAction("Resuming stalled stage…", () =>
-                  startBirthSession({ targetTrades, continueTraining: true }),
-                )
-              }
-            >
-              Retry stage
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() =>
-                void runBirthAction("Expanding data and retrying…", () =>
-                  startBirthSession({ targetTrades, continueTraining: true, force: true }),
-                )
-              }
-            >
-              Expand data & retry
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() =>
-                void runBirthAction("Fresh birth started", () =>
-                  startBirthSession({ targetTrades, force: true }),
-                )
-              }
-            >
-              Wipe & restart
-            </Button>
-          </>
-        ) : null}
-
         {kind === "certificate_failed" ? (
           <>
             <Button
@@ -269,7 +228,7 @@ export function BirthRecoveryPanel({
                 void (async () => {
                   try {
                     const result = await reuseDataBirthSession(targetTrades);
-                    if (!isBirthStartSuccessful(result.status)) {
+                    if (!isBirthStartSuccessful(result.status, result)) {
                       toast.error(String(result.message ?? "Reuse data failed"));
                       return;
                     }

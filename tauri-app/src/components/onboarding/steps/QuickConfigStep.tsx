@@ -20,6 +20,10 @@ function toBotDraft(draft: OnboardingDraft): BotConfigDraft {
       instrument: "ES",
       voice_enabled: true,
       screen_share_enabled: true,
+      dashboard_enabled: true,
+      runtime_trace: true,
+      runtime_trace_interval_sec: 2,
+      latency_sla_ms: 300,
     },
   };
 }

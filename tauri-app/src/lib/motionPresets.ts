@@ -46,7 +46,7 @@ export const springLuxury = {
 
 export const panelCrossfade: Variants = panelCrossfadeWith(springLuxury);
 
-export function panelCrossfadeWith(transition: Transition): Variants {
+export function panelCrossfadeWith(transition: Transition | undefined): Variants {
   return {
     hidden: { opacity: 0, y: 6 },
     visible: { opacity: 1, y: 0, transition },
@@ -56,7 +56,7 @@ export function panelCrossfadeWith(transition: Transition): Variants {
 
 export const menuPop: Variants = menuPopWith(springSnappy);
 
-export function menuPopWith(transition: Transition): Variants {
+export function menuPopWith(transition: Transition | undefined): Variants {
   return {
     hidden: { opacity: 0, scale: 0.96, y: -4 },
     visible: { opacity: 1, scale: 1, y: 0, transition },
@@ -94,7 +94,7 @@ export const staggerContainer: Variants = {
 
 export const staggerItem: Variants = staggerItemWith(springSnappy);
 
-export function staggerItemWith(transition: Transition): Variants {
+export function staggerItemWith(transition: Transition | undefined): Variants {
   return {
     hidden: { opacity: 0, y: 8 },
     visible: { opacity: 1, y: 0, transition },
@@ -116,7 +116,7 @@ export function motionProps<T extends Record<string, unknown>>(
 
 export function transitionOrNone(
   reducedMotion: boolean,
-  transition: Transition,
+  transition: Transition | undefined,
 ): Transition | undefined {
   return reducedMotion ? { duration: 0 } : transition;
 }

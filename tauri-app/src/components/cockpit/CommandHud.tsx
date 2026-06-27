@@ -49,7 +49,6 @@ import {
 import { helpFor } from "@/lib/helpTexts";
 import {
   springLuxury,
-  transitionOrNone,
 } from "@/lib/motionPresets";
 import {
   resolveHudAnnexHintCopy,
@@ -60,7 +59,6 @@ import {
   type HudOverflowItem,
 } from "@/lib/hudOverflowLayout";
 import { useModeMotion } from "@/hooks/useModeMotion";
-import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { toast } from "sonner";
 import {
   selectConnectionStatus,
@@ -218,8 +216,6 @@ export function CommandHud({ className }: CommandHudProps) {
   const runtime = useRuntimeStatusPoll();
   const [overflowOpen, setOverflowOpen] = useState(false);
   const { transition, startTransition, completeTransition } = useDeckTransition();
-  const reducedMotion = usePrefersReducedMotion();
-  const modeMotion = useModeMotion();
   const prevRegimeRef = useRef<string | null>(null);
 
   const currentMode = useCoreStore(selectCurrentMode);
