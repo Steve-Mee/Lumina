@@ -16,3 +16,6 @@ extend-exclude = [
 "scripts/phase3_ninety_day_gate_measure.py" = ["E402"]
 "scripts/phase3_protocol_adherence_backfill_hygiene.py" = ["E402"]
 "scripts/phase3_protocol_adherence_measure.py" = ["E402"]
+"scripts/discover_telegram_chat_id.py" = ["E402"]
+"scripts/send_telegram_test.py" = ["E402"]
+"scripts/send_milestone_test.py" = ["E402"]

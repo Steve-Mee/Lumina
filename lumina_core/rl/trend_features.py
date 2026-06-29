@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -187,6 +187,73 @@ def _zero_trend_features() -> dict[str, float]:
     return {key: 0.0 for key in _TREND_FEATURE_KEYS}
 
 
+def _numpy_true_range(
+    highs: np.ndarray,
+    lows: np.ndarray,
+    closes: np.ndarray,
+) -> np.ndarray:
+    n = len(closes)
+    if n == 0:
+        return np.array([], dtype=np.float64)
+    tr = np.empty(n, dtype=np.float64)
+    tr[0] = max(0.0, highs[0] - lows[0])
+    prev_close = closes[0]
+    for i in range(1, n):
+        tr[i] = max(
+            highs[i] - lows[i],
+            abs(highs[i] - prev_close),
+            abs(lows[i] - prev_close),
+        )
+        prev_close = closes[i]
+    return tr
+
+
+def _numpy_rolling_mean(values: np.ndarray, period: int) -> np.ndarray:
+    if len(values) == 0:
+        return np.array([], dtype=np.float64)
+    window = max(1, period)
+    if len(values) < window:
+        return np.full(len(values), np.nan, dtype=np.float64)
+    kernel = np.ones(window, dtype=np.float64) / float(window)
+    rolled = np.convolve(values, kernel, mode="valid")
+    prefix = np.full(window - 1, np.nan, dtype=np.float64)
+    return np.concatenate([prefix, rolled])
+
+
+def _numpy_ewm(values: np.ndarray, period: int) -> np.ndarray:
+    if len(values) == 0:
+        return np.array([], dtype=np.float64)
+    alpha = 1.0 / max(1, period)
+    out = np.empty(len(values), dtype=np.float64)
+    out[0] = values[0]
+    for i in range(1, len(values)):
+        out[i] = alpha * values[i] + (1.0 - alpha) * out[i - 1]
+    return out
+
+
+def _numpy_adx_last(
+    highs: np.ndarray,
+    lows: np.ndarray,
+    tr: np.ndarray,
+    period: int,
+) -> float:
+    if len(tr) < period + 1:
+        return 0.0
+    atr = _numpy_rolling_mean(tr, period)
+    up = np.maximum(highs - np.roll(highs, 1), 0.0)
+    down = np.maximum(np.roll(lows, 1) - lows, 0.0)
+    up[0] = 0.0
+    down[0] = 0.0
+    atr_safe = np.where(atr > 0, atr, np.nan)
+    plus_di = 100.0 * (_numpy_ewm(up, period) / atr_safe)
+    minus_di = 100.0 * (_numpy_ewm(down, period) / atr_safe)
+    denom = plus_di + minus_di
+    dx = 100.0 * np.abs(plus_di - minus_di) / np.where(denom > 0, denom, np.nan)
+    adx = _numpy_rolling_mean(dx, period)
+    val = float(adx[-1]) if len(adx) else 0.0
+    return val if np.isfinite(val) else 0.0
+
+
 def compute_trend_features_for_window(
     closes: Sequence[float],
     highs: Sequence[float],
@@ -194,30 +261,34 @@ def compute_trend_features_for_window(
     *,
     trend_adx_threshold: float = DEFAULT_TREND_ADX_THRESHOLD,
 ) -> dict[str, float]:
-    if len(closes) < 2:
+    close_arr = np.asarray(closes, dtype=np.float64)
+    high_arr = np.asarray(highs, dtype=np.float64)
+    low_arr = np.asarray(lows, dtype=np.float64)
+    if len(close_arr) < 2:
         return _zero_trend_features()
 
-    price = float(closes[-1])
+    price = float(close_arr[-1])
     if price <= 0:
         return _zero_trend_features()
 
-    tr = _true_range_series(highs, lows, closes)
-    atr_series = tr.rolling(ATR_PERIOD).mean()
-    atr = float(atr_series.iloc[-1]) if len(atr_series) else 0.0
+    tr = _numpy_true_range(high_arr, low_arr, close_arr)
+    atr_series = _numpy_rolling_mean(tr, ATR_PERIOD)
+    atr = float(atr_series[-1]) if len(atr_series) else 0.0
     if not np.isfinite(atr):
         atr = 0.0
 
-    adx_raw = {period: _adx_from_tr(highs, lows, tr, period) for period in ADX_PERIODS}
-    slopes_raw = {period: linear_regression_slope(closes, period) for period in SLOPE_PERIODS}
-    mean_price = float(np.mean(closes[-60:])) if len(closes) >= 1 else price
+    adx_raw = {period: _numpy_adx_last(high_arr, low_arr, tr, period) for period in ADX_PERIODS}
+    slopes_raw = {period: linear_regression_slope(close_arr, period) for period in SLOPE_PERIODS}
+    mean_price = float(np.mean(close_arr[-60:])) if len(close_arr) >= 1 else price
 
     slope_norm = {period: _normalize_slope(slopes_raw[period], mean_price) for period in SLOPE_PERIODS}
-    direction, duration_norm = trend_persistence(closes)
+    direction, duration_norm = trend_persistence(close_arr)
 
     atr_norm = atr / price if price > 0 else 0.0
 
     atr_ratio = 0.0
-    recent_atr = atr_series.iloc[-MIN_TREND_LOOKBACK:].dropna()
+    recent_atr = atr_series[-MIN_TREND_LOOKBACK:]
+    recent_atr = recent_atr[np.isfinite(recent_atr)]
     if len(recent_atr) > 0 and atr > 0:
         mean_atr = float(recent_atr.mean())
         if mean_atr > 1e-12:
@@ -245,6 +316,36 @@ def compute_trend_features_for_window(
         "trend_atr_norm": float(atr_norm),
         "trend_atr_ratio": float(atr_ratio),
     }
+
+
+def compute_trend_features_sliding_batch(
+    closes: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    *,
+    lookback: int = MIN_TREND_LOOKBACK,
+    on_progress: Callable[[int, int], None] | None = None,
+    progress_stride: int = 2000,
+) -> list[dict[str, float]]:
+    """Compute per-tick trend features using fixed-size sliding windows."""
+    n = len(closes)
+    out = [_zero_trend_features() for _ in range(n)]
+    if n <= lookback:
+        return out
+
+    total = n - lookback
+    for offset, i in enumerate(range(lookback, n)):
+        start = i - lookback
+        out[i] = compute_trend_features_for_window(
+            closes[start : i + 1],
+            highs[start : i + 1],
+            lows[start : i + 1],
+        )
+        if on_progress is not None and progress_stride > 0:
+            processed = offset + 1
+            if processed == total or processed % progress_stride == 0:
+                on_progress(processed, total)
+    return out
 
 
 def compute_trend_features_from_ticks(

@@ -121,6 +121,10 @@ AGENTS.md.old
 cleanup_audit.md
 PHASE1_VALIDATION_REPORT.md
 tests/post_refactor_validation_report.md
+docs/birth-stage-forensics-report.md
+
+# Local simulation / replay scratch data
+simulation_data/
 
 # Birth Certificate v2 runtime (regenerated locally after training)
 state/lumina_birth_certificate.json
