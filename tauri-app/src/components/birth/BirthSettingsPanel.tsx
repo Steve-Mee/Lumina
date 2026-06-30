@@ -21,7 +21,8 @@ interface BirthSettingsPanelProps {
 export function BirthSettingsPanel({ className, initial }: BirthSettingsPanelProps) {
   const status = useBirthStore((s) => s.status);
   const uiPhase = useBirthStore((s) => s.uiPhase);
-  const locked = uiPhase === "running";
+  const needsAttention = Boolean(status?.progress?.needs_attention);
+  const locked = uiPhase === "running" && !needsAttention;
   const showLockedSummary = locked;
   const [draft, setDraft] = useState<BirthSettingsPayload>({
     training_trades: initial?.training_trades ?? 25000,
@@ -48,6 +49,10 @@ export function BirthSettingsPanel({ className, initial }: BirthSettingsPanelPro
         </h4>
         {locked ? (
           <span className="font-mono text-[9px] text-amber-300/90 uppercase">Locked during run</span>
+        ) : needsAttention ? (
+          <span className="font-mono text-[9px] text-orange-300/90 uppercase">
+            Unlocked — review settings before retry
+          </span>
         ) : null}
       </div>
       {showLockedSummary ? (

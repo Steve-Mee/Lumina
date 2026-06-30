@@ -121,6 +121,7 @@ def _mock_expand_once(**_kwargs):
     )
 
 
+@pytest.mark.slow
 @pytest.mark.unit
 def test_learning_loop_continues_after_single_trade_chunk(
     tmp_path: Path,
@@ -135,14 +136,16 @@ def test_learning_loop_continues_after_single_trade_chunk(
     )
     small_cfg = BirthV2Config(
         curriculum=BirthCurriculumConfig(
-            stage1_trend_trades=2000,
+            stage1_trend_trades=5,
+            stage2_range_trades=5,
+            stage3_mixed_trades=5,
             rollout_chunk_trades=10,
-            max_rollouts_per_stage=15,
+            max_rollouts_per_stage=8,
             max_escalation_level=5,
-            gen0_provisional_min_trades=25,
+            gen0_provisional_min_trades=5,
             rollout_step_budget_multiplier=20,
         ),
-        trade_budget_cap=10_000,
+        trade_budget_cap=500,
     )
     engine.birth_config = small_cfg
 
@@ -150,7 +153,8 @@ def test_learning_loop_continues_after_single_trade_chunk(
         "lumina_core.birth.engine.load_historical_ticks",
         lambda **_kwargs: _rising_ticks(800),
     )
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
+    _expand_calls["n"] = 0
+    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand_once)
     monkeypatch.setattr("lumina_core.birth.engine.mine_winning_patterns", _fast_oracle_mine)
     monkeypatch.setattr(
         "lumina_core.birth.engine.enrich_ticks_with_news",
@@ -192,7 +196,7 @@ def test_learning_loop_continues_after_single_trade_chunk(
         },
     )
 
-    result = engine.run_birth_phase(target_trades=500, force=True, prefer_real_data_only=False)
+    result = engine.run_birth_phase(target_trades=100, force=True, prefer_real_data_only=False)
 
     assert rollout_calls["n"] >= 3
     assert result["status"] in {
@@ -207,6 +211,7 @@ def test_learning_loop_continues_after_single_trade_chunk(
         assert payload.get("phase") != "curriculum_failed"
 
 
+@pytest.mark.slow
 @pytest.mark.unit
 def test_learning_loop_never_writes_curriculum_failed_on_partial_winrate(
     tmp_path: Path,

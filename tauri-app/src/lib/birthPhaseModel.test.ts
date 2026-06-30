@@ -4,17 +4,23 @@ import type { BirthStatusPayload } from "@/lib/birthClient";
 import {
   buildCompactMilestones,
   buildMilestones,
+  extractBirthSessionHud,
   extractPpoProgress,
   extractSimProgress,
   extractStageScorecard,
+  formatBirthSessionStartedLabel,
   isBirthCertificateFailed,
   isBirthComplete,
   isBirthFailed,
+  isBirthEngineActive,
   isBirthInterrupted,
+  isBirthProgressPayloadActive,
   isBirthRunning,
   isBirthStageStalled,
   resolveActiveMilestone,
   resolveBirthHeadline,
+  resolveBirthSessionStartedAtMs,
+  resolveLiveBirthElapsedSec,
 } from "@/lib/birthPhaseModel";
 
 describe("birthPhaseModel", () => {
@@ -22,8 +28,36 @@ describe("birthPhaseModel", () => {
     expect(resolveActiveMilestone({ stage: "detected" }, "running")).toBe("dna");
   });
 
-  it("maps loading_data to fitness milestone", () => {
-    expect(resolveActiveMilestone({ stage: "loading_data" }, "running")).toBe("fitness");
+  it("maps loading_data with loading_history phase to dna milestone", () => {
+    expect(
+      resolveActiveMilestone({ stage: "loading_data", phase: "loading_history" }, "running"),
+    ).toBe("dna");
+  });
+
+  it("maps enriching_regimes phase to fitness milestone", () => {
+    expect(
+      resolveActiveMilestone({ stage: "loading_data", phase: "enriching_regimes" }, "running"),
+    ).toBe("fitness");
+  });
+
+  it("uses progress message during enriching_regimes", () => {
+    const milestones = buildMilestones(
+      { stage: "loading_data", phase: "enriching_regimes" },
+      "running",
+    );
+    expect(
+      resolveBirthHeadline(milestones, "running", {
+        stage: "loading_data",
+        phase: "enriching_regimes",
+        message: "Regime map bouwen: 2,000/63,940 ticks (64,000 totaal)",
+      }),
+    ).toBe("Regime map bouwen: 2,000/63,940 ticks (64,000 totaal)");
+  });
+
+  it("maps loading_data to fitness milestone when ticks are ready", () => {
+    expect(
+      resolveActiveMilestone({ stage: "historical_loaded", phase: "ticks_ready" }, "running"),
+    ).toBe("fitness");
   });
 
   it("maps parallel_simulation to strategies milestone", () => {
@@ -64,6 +98,20 @@ describe("birthPhaseModel", () => {
     expect(milestones.find((m) => m.id === "awakening")?.state).toBe("pending");
   });
 
+  it("uses progress message during loading_history", () => {
+    const milestones = buildMilestones(
+      { stage: "loading_data", phase: "loading_history" },
+      "running",
+    );
+    expect(
+      resolveBirthHeadline(milestones, "running", {
+        stage: "loading_data",
+        phase: "loading_history",
+        message: "Historische data laden: chunk 3/62 (1200 bars)",
+      }),
+    ).toBe("Historische data laden: chunk 3/62 (1200 bars)");
+  });
+
   it("uses awakening headline when birth is complete", () => {
     const milestones = buildMilestones({ stage: "completed" }, "completed");
     expect(resolveBirthHeadline(milestones, "completed", { stage: "completed" }, true)).toBe(
@@ -82,6 +130,25 @@ describe("birthPhaseModel", () => {
     expect(
       isBirthCertificateFailed({ status: "running", certificate_ok: false }),
     ).toBe(false);
+  });
+
+  it("does not treat idle detected progress as certificate failed when cert is missing", () => {
+    expect(
+      isBirthCertificateFailed({
+        status: "idle",
+        certificate_ok: false,
+        progress: { stage: "detected", phase: "detected" },
+      }),
+    ).toBe(false);
+  });
+
+  it("detects active progress during historical load", () => {
+    expect(
+      isBirthEngineActive({
+        status: "idle",
+        progress: { stage: "loading_data", phase: "loading_history" },
+      }),
+    ).toBe(true);
   });
 
   it("detects birth completion from status and artifacts", () => {
@@ -274,5 +341,75 @@ describe("birthPhaseModel", () => {
     const ppo = extractPpoProgress({ ppo_steps_cumulative: 12000, ppo_batch_count: 3 });
     expect(ppo.steps).toBe(12000);
     expect(ppo.label).toContain("batch 3");
+  });
+
+  it("extracts session HUD during loading with patterns and session start", () => {
+    const startSec = 1_700_000_000;
+    const hud = extractBirthSessionHud({
+      stage: "loading_data",
+      phase: "loading_history",
+      message: "Birth Phase: historische ticks laden…",
+      birth_start_time: startSec,
+      elapsed_sec: 120,
+      patterns_mined: 0,
+      learning_attempt: 0,
+      timestamp: "2026-06-28T08:42:00.000Z",
+    });
+    expect(hud).not.toBeNull();
+    expect(hud?.preCurriculum).toBe(true);
+    expect(hud?.patternsMined).toBe(0);
+    expect(hud?.learningAttempt).toBe(0);
+    expect(hud?.sessionStartedAtMs).toBe(startSec * 1000);
+    expect(hud?.sessionStartedLabel).toBe(formatBirthSessionStartedLabel(startSec * 1000));
+    expect(isBirthProgressPayloadActive({ stage: "loading_data", phase: "loading_history" })).toBe(
+      true,
+    );
+  });
+
+  it("derives session start from elapsed_sec when birth_start_time missing", () => {
+    const ts = Date.parse("2026-06-28T08:42:00.000Z");
+    const startMs = resolveBirthSessionStartedAtMs({
+      timestamp: "2026-06-28T08:42:00.000Z",
+      elapsed_sec: 180,
+    });
+    expect(startMs).toBe(ts - 180_000);
+  });
+
+  it("does not treat progress timestamp as session start when elapsed_sec is zero", () => {
+    const startMs = resolveBirthSessionStartedAtMs({
+      timestamp: "2026-06-28T08:42:00.000Z",
+      elapsed_sec: 0,
+    });
+    expect(startMs).toBeNull();
+  });
+
+  it("resolves live elapsed from birth_start_time between polls", () => {
+    const startSec = Math.floor(Date.now() / 1000) - 125;
+    const elapsed = resolveLiveBirthElapsedSec(
+      {
+        stage: "training_running",
+        phase: "policy_init",
+        birth_start_time: startSec,
+        elapsed_sec: 0,
+      },
+      undefined,
+      Date.now(),
+    );
+    expect(elapsed).not.toBeNull();
+    expect(elapsed!).toBeGreaterThanOrEqual(125);
+  });
+
+  it("shows session HUD with live counters before curriculum stage is set", () => {
+    const hud = extractBirthSessionHud({
+      stage: "training_running",
+      phase: "policy_init",
+      patterns_mined: 512,
+      learning_attempt: 5,
+      birth_start_time: 1_700_000_000,
+      elapsed_sec: 240,
+    });
+    expect(hud?.patternsMined).toBe(512);
+    expect(hud?.learningAttempt).toBe(5);
+    expect(hud?.preCurriculum).toBe(true);
   });
 });

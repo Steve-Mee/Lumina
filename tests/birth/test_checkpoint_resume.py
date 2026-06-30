@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from lumina_core.birth.buffer_persist import save_buffer
 from lumina_core.birth.checkpoint import save_checkpoint
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
+from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass
 from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.pattern_miner import PatternMineResult
 from lumina_core.birth.sim_runner import SimRolloutResult
@@ -78,20 +81,30 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trainer = _FakePpoTrainer()
+    stop_event = threading.Event()
+    curriculum = BirthCurriculumConfig(
+        rollout_chunk_trades=5,
+        max_rollouts_per_stage=3,
+        gen0_provisional_min_trades=5,
+        oracle_patterns_per_stage=50,
+        checkpoint_interval_sec=60,
+        stage1_trend_trades=100,
+        certified_stage_stall_wall_sec=300,
+        meta_controller_enabled=False,
+    )
+    (tmp_path / "config.yaml").write_text(
+        yaml.safe_dump({"birth_v2": {"trade_budget_cap": 500, "curriculum": {}}}),
+        encoding="utf-8",
+    )
     engine = LuminaBirthEngine(
         runtime=SimpleNamespace(),
         ppo_trainer=trainer,
         market_data_service=SimpleNamespace(),
         workspace_root=tmp_path,
+        stop_event=stop_event,
     )
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(
-            rollout_chunk_trades=5,
-            max_rollouts_per_stage=3,
-            gen0_provisional_min_trades=5,
-            oracle_patterns_per_stage=50,
-            checkpoint_interval_sec=60,
-        ),
+        curriculum=curriculum,
         trade_budget_cap=500,
     )
 
@@ -100,6 +113,26 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
     policy_path = tmp_path / "state" / "birth_policy.zip"
     policy_path.parent.mkdir(parents=True, exist_ok=True)
     policy_path.write_bytes(b"policy")
+
+    stage1_result = evaluate_stage_pass(
+        CurriculumStage.STAGE1_TREND,
+        trades=100,
+        wins=50,
+        hold_signals=0,
+        total_signals=100,
+        constitution_violations=0,
+        target_trades=100,
+        cfg=curriculum,
+        allow_provisional=False,
+    )
+    assert stage1_result.passed
+    from lumina_core.birth.stage_pass_receipt import receipt_from_stage_result
+
+    stage1_receipt = receipt_from_stage_result(
+        CurriculumStage.STAGE1_TREND,
+        stage1_result,
+        cfg=curriculum,
+    )
 
     save_checkpoint(
         tmp_path,
@@ -119,16 +152,25 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
             "patterns_mined": 25,
             "stages_passed": ["stage1_trend"],
             "buffer_size": len(trajectories),
+            "curriculum_stage_scope": "stage2_range",
         },
         buffer_path=buffer_path,
         data_manifest={"train_hash": "seed", "preflight_ok": True},
         phase="stage2_range",
+        stage_pass_receipts=[stage1_receipt.to_dict()],
     )
 
     restored_trades: list[int] = []
+    tick = {"value": 1_000_000.0}
+
+    def _fake_time() -> float:
+        return tick["value"]
 
     def _capture_rollout(**kwargs) -> SimRolloutResult:
+        tick["value"] += 400.0
         restored_trades.append(kwargs.get("target_trades", 0))
+        if len(restored_trades) >= 6:
+            stop_event.set()
         return SimRolloutResult(
             trades=2,
             wins=1,
@@ -164,6 +206,7 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
         ),
     )
     monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _capture_rollout)
+    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
     monkeypatch.setattr(
         "lumina_core.birth.engine.evaluate_holdout_certificate",
         lambda **_kwargs: {"certificate_passed": False, "failure_reasons": ["oos_sharpe:0/0.35"]},

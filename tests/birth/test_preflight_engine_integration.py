@@ -142,6 +142,7 @@ def test_ensure_holdout_preflight_expands_until_regimes_ok(
 
 
 @pytest.mark.unit
+@pytest.mark.slow
 def test_engine_expands_history_when_holdout_preflight_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

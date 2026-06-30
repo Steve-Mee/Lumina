@@ -36,6 +36,9 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0020 | Stage 1 intra-curriculum easy→hard | Accepted | 2026-06-27 | [0020-stage1-intra-curriculum.md](./0020-stage1-intra-curriculum.md) |
 | 0021 | Birth meta controller (learning observation & recovery SSOT) | Accepted | 2026-06-27 | [0021-birth-meta-controller.md](./0021-birth-meta-controller.md) |
 | 0022 | Meta self-eval strategy probe | Accepted | 2026-06-27 | [0022-meta-self-eval-strategy-probe.md](./0022-meta-self-eval-strategy-probe.md) |
+| 0023 | Birth plateau evolution escalator | Accepted | 2026-06-27 | [0023-birth-plateau-evolution-escalator.md](./0023-birth-plateau-evolution-escalator.md) |
+| 0024 | Lumina attention notifications | Accepted | 2026-06-27 | [0024-lumina-attention-notifications.md](./0024-lumina-attention-notifications.md) |
+| 0025 | Lumina milestone notifications | Accepted | 2026-06-28 | [0025-lumina-milestone-notifications.md](./0025-lumina-milestone-notifications.md) |
 
 ## Legacy notitie
 

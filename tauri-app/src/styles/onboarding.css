@@ -234,6 +234,8 @@
 
 .onboarding-cta {
 
+  cursor: var(--lumina-cursor-interactive);
+
   background: linear-gradient(
 
     135deg,
@@ -284,7 +286,7 @@
 
   opacity: 0.55;
 
-  cursor: not-allowed;
+  cursor: var(--lumina-cursor-disabled);
 
 }
 

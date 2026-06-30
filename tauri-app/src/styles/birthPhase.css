@@ -499,6 +499,37 @@
   border-left: 1px solid color-mix(in srgb, var(--lumina-cyan) 15%, transparent);
 }
 
+.birth-diagnostics-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--lumina-void) 88%, transparent);
+}
+
+.birth-diagnostics-milestones__summary {
+  cursor: pointer;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--lumina-cyan) 70%, white);
+  list-style: none;
+}
+
+.birth-diagnostics-milestones__summary::-webkit-details-marker {
+  display: none;
+}
+
+.birth-control-dock {
+  box-shadow: 0 8px 32px color-mix(in srgb, black 45%, transparent);
+}
+
+.birth-control-dock__stop {
+  border: 1px solid color-mix(in srgb, var(--destructive) 45%, transparent);
+  background: color-mix(in srgb, var(--destructive) 22%, transparent);
+}
+
 .birth-diagnostics-tab {
   flex: 1;
   padding: 0.4rem 0.6rem;
@@ -586,6 +617,261 @@
   font-size: 0.5625rem;
   line-height: 1.5;
   color: color-mix(in srgb, var(--lumina-cyan) 55%, var(--muted-foreground));
+}
+
+/* Cockpit-first mission control */
+
+.birth-mission-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.birth-mission-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+@media (min-width: 1024px) {
+  .birth-mission-grid {
+    grid-template-columns:
+      minmax(120px, 14%)
+      minmax(280px, 36%)
+      minmax(320px, 1fr);
+    gap: 0.75rem;
+  }
+}
+
+.birth-mission-grid > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.birth-mission-grid > .birth-mission-control,
+.birth-mission-grid > section[aria-label="Birth mission control"],
+.birth-mission-grid > .birth-stage-intel-column,
+.birth-mission-grid > section[aria-label="Birth stage intelligence"] {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.birth-helix-accent-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+  background:
+    radial-gradient(
+      ellipse 80% 70% at 50% 40%,
+      color-mix(in srgb, var(--lumina-cyan) 14%, transparent),
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--lumina-void) 88%, transparent);
+}
+
+.birth-helix-accent {
+  max-height: 200px;
+  min-height: 140px;
+  width: 100%;
+  pointer-events: none;
+}
+
+@media (min-width: 1024px) {
+  .birth-helix-accent-wrap .birth-helix-accent {
+    height: auto;
+    max-height: min(72vh, 520px);
+    width: 100%;
+    aspect-ratio: 3 / 4;
+  }
+}
+
+.birth-command-bar {
+  backdrop-filter: blur(12px);
+}
+
+.birth-command-bar__top {
+  min-height: 2.75rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--lumina-cyan) 35%, transparent) transparent;
+}
+
+.birth-command-bar__top::-webkit-scrollbar {
+  height: 4px;
+}
+
+.birth-command-bar__top::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lumina-cyan) 35%, transparent);
+}
+
+.birth-command-bar__actions {
+  flex-wrap: nowrap;
+  gap: 0.75rem;
+}
+
+.birth-command-bar__action-group {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.birth-command-bar__action-btn {
+  flex-shrink: 0;
+}
+
+.birth-command-bar__milestones {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.birth-command-bar__milestones::-webkit-scrollbar {
+  display: none;
+}
+
+.birth-milestone-track-wrap--bar {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.birth-milestone-track-wrap--bar::-webkit-scrollbar {
+  display: none;
+}
+
+.birth-milestone--bar.birth-milestone--active {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 40%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 8%, transparent);
+}
+
+.birth-milestone--bar.birth-milestone--complete {
+  border-color: color-mix(in srgb, oklch(0.72 0.18 155) 35%, transparent);
+}
+
+.birth-mission-control {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+}
+
+.birth-mission-control__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.birth-stage-intel-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+}
+
+.birth-stage-intel-column__body {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: color-mix(in srgb, var(--lumina-cyan) 55%, transparent)
+    color-mix(in srgb, var(--lumina-void) 80%, transparent);
+}
+
+.birth-stage-intel-column__body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.birth-stage-intel-column__body::-webkit-scrollbar-track {
+  background: color-mix(in srgb, white 6%, transparent);
+  border-radius: 999px;
+}
+
+.birth-stage-intel-column__body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lumina-cyan) 50%, transparent);
+}
+
+.birth-detail-scroll {
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--lumina-cyan) 35%, transparent) transparent;
+}
+
+.birth-detail-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.birth-detail-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lumina-cyan) 35%, transparent);
+}
+
+.birth-stage-details__toggle {
+  cursor: pointer;
+}
+
+.birth-stage-details__toggle:hover {
+  background: color-mix(in srgb, white 4%, transparent);
+}
+
+.birth-metrics-strip--embedded {
+  flex-shrink: 0;
+}
+
+.birth-status-line {
+  min-height: 1.25rem;
+}
+
+.birth-phase-screen.onboarding-shell--form {
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.birth-kpi-tile {
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
+  padding: 0.5rem 0.625rem;
+}
+
+.birth-kpi-tile:has(.text-cyan-200) {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 22%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 4%, transparent);
+}
+
+.birth-kpi-tile__value {
+  line-height: 1.2;
+}
+
+.birth-advanced-section__toggle {
+  cursor: pointer;
+}
+
+.birth-advanced-section__toggle:hover {
+  background: color-mix(in srgb, white 4%, transparent);
+}
+
+.birth-advanced-panel .birth-logs-panel__pre {
+  max-height: 12rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

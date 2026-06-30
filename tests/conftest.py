@@ -15,6 +15,7 @@ behaviour is delivered via fixtures and hooks.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -208,6 +209,8 @@ def _disable_birth_meta_controller_for_root_birth_tests(
         kwargs.setdefault("meta_controller_enabled", False)
         kwargs.setdefault("adaptation_enabled", False)
         kwargs.setdefault("wall_behavior", "strict")
+        kwargs.setdefault("plateau_detection_enabled", False)
+        kwargs.setdefault("stall_remediation_enabled", False)
         return _orig_curriculum(*args, **kwargs)
 
     def _load_without_meta(workspace_root=None):
@@ -215,6 +218,8 @@ def _disable_birth_meta_controller_for_root_birth_tests(
         cfg.curriculum.meta_controller_enabled = False
         cfg.curriculum.adaptation_enabled = False
         cfg.curriculum.wall_behavior = "strict"
+        cfg.curriculum.plateau_detection_enabled = False
+        cfg.curriculum.stall_remediation_enabled = False
         return cfg
 
     monkeypatch.setattr(birth_config, "BirthCurriculumConfig", _curriculum_with_meta_off)
@@ -237,11 +242,11 @@ def _disable_birth_meta_controller_for_root_birth_tests(
     )
     monkeypatch.setattr(
         "lumina_core.birth.engine.enrich_ticks_for_sim",
-        lambda ticks: ticks,
+        lambda ticks, **_kwargs: ticks,
     )
     monkeypatch.setattr(
         "lumina_core.birth.data_expansion.enrich_ticks_for_sim",
-        lambda ticks: ticks,
+        lambda ticks, **_kwargs: ticks,
     )
 
 

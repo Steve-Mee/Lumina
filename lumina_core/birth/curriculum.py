@@ -216,7 +216,10 @@ def stage_pass_trades(stage: CurriculumStage, cfg: BirthCurriculumConfig) -> int
     target = stage_trade_target(stage, cfg)
     if target <= 0:
         return 50
-    return max(50, min(target, max(100, target // 10)))
+    pct = max(0.05, min(1.0, float(cfg.stage_pass_trade_pct)))
+    floor = max(50, int(cfg.stage_pass_min_trades))
+    computed = max(floor, int(round(float(target) * pct)))
+    return max(50, min(target, computed))
 
 
 def stage_progress_pct(stage_trades: int, cfg: BirthCurriculumConfig, *, stage: CurriculumStage) -> float:

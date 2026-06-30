@@ -43,8 +43,8 @@ def test_tauri_birth_phase_surface_has_stop() -> None:
     birth_screen = (root / "tauri-app" / "src" / "components" / "birth" / "BirthPhaseScreen.tsx").read_text(
         encoding="utf-8"
     )
-    diagnostics = (root / "tauri-app" / "src" / "components" / "birth" / "BirthDiagnosticsDrawer.tsx").read_text(
+    control_dock = (root / "tauri-app" / "src" / "components" / "birth" / "BirthControlDock.tsx").read_text(
         encoding="utf-8"
     )
-    assert "stopBirth" in birth_screen
-    assert "Stop birth phase" in diagnostics
+    assert "handleStopBirth" in birth_screen
+    assert "Stop birth" in control_dock

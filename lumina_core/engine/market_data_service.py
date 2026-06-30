@@ -18,6 +18,7 @@ from websockets.exceptions import ConnectionClosed
 from .errors import ErrorSeverity, LuminaError, log_structured
 from .tape_reading_agent import TapeReadingAgent
 from lumina_core.first_boot_ui import HISTORICAL_BAR_LIMIT_SAFETY_CAP
+from lumina_core.order_gatekeeper import is_stale_contract_symbol, roll_stale_contract_symbol
 from lumina_core.sla_config import market_data_latency_sla_ms
 
 from .lumina_engine import LuminaEngine
@@ -343,6 +344,73 @@ class MarketDataIngestService:
             dt = dt.astimezone(timezone.utc)
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    @staticmethod
+    def _utc_day_floor(dt: datetime) -> datetime:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def _resolve_historical_instrument(self, instrument: str, app: Any) -> str:
+        normalized = self._normalize_symbol(instrument)
+        rolled = roll_stale_contract_symbol(normalized)
+        if rolled != normalized:
+            app.logger.warning(
+                "birth.history.stale_contract_roll from=%s to=%s",
+                normalized,
+                rolled,
+            )
+        return rolled
+
+    @staticmethod
+    def _merge_bars_into(
+        merged: list[dict[str, Any]],
+        bars: list[dict[str, Any]],
+        *,
+        seen_epoch: set[int],
+        seen_time: set[str],
+        target_cap: int | None,
+    ) -> None:
+        for bar in bars:
+            if target_cap is not None and len(merged) >= target_cap:
+                return
+            ep = bar.get("epoch")
+            ts_raw = bar.get("timestamp") or bar.get("time")
+            if isinstance(ep, (int, float)):
+                ek = int(ep)
+                if ek in seen_epoch:
+                    continue
+                seen_epoch.add(ek)
+            elif ts_raw is not None:
+                tk = str(ts_raw)
+                if tk in seen_time:
+                    continue
+                seen_time.add(tk)
+            merged.append(bar)
+
+    @staticmethod
+    def _sort_and_cap_bars(bars: list[dict[str, Any]], target_cap: int | None) -> list[dict[str, Any]]:
+        if not bars:
+            return []
+
+        def _bar_sort_key(b: dict[str, Any]) -> tuple[int, float, str]:
+            ep = b.get("epoch")
+            if isinstance(ep, (int, float)):
+                return (0, float(ep), "")
+            ts_raw = b.get("timestamp") or b.get("time")
+            if ts_raw is not None:
+                try:
+                    return (1, float(pd.to_datetime(ts_raw).value), "")
+                except Exception:
+                    return (2, 0.0, str(ts_raw))
+            return (3, 0.0, "")
+
+        sorted_bars = sorted(bars, key=_bar_sort_key)
+        if target_cap is not None:
+            return sorted_bars[:target_cap]
+        return sorted_bars
+
     def _post_historical_bars(
         self,
         *,
@@ -387,14 +455,14 @@ class MarketDataIngestService:
         limit: int | None,
         on_chunk: Callable[..., None] | None = None,
     ) -> list[dict[str, Any]]:
-        """Load 1-min bars from CrossTrade, paginating with ``from``/``to`` windows.
+        """Load 1-min bars from CrossTrade with daysBack-first and day-aligned pagination.
 
-        A single huge ``daysBack`` + ``limit`` request can stall or hit provider timeouts
-        (CrossTrade recommends smaller ranges). We step forward in UTC windows and cap
-        each request's ``limit``.
+        CrossTrade accepts ISO-8601 UTC for ``from``/``to`` but NT8 backends are more reliable
+        with midnight-aligned windows. Expired contract symbols are rolled to the next quarter.
         """
         app = self._app()
-        instrument = self._normalize_symbol(instrument)
+        requested_instrument = self._normalize_symbol(instrument)
+        instrument = self._resolve_historical_instrument(requested_instrument, app)
         token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
         uncapped = limit is None
         if uncapped:
@@ -404,17 +472,19 @@ class MarketDataIngestService:
             target_cap = max(1, min(int(limit), HISTORICAL_BAR_LIMIT_SAFETY_CAP))
             limit_label = str(target_cap)
         days_back_i = max(1, int(days_back))
+        per_chunk_limit = 8_000
 
         log_structured(
             LuminaError(
                 severity=ErrorSeverity.RECOVERABLE_LEARNING,
                 code="INFO_PRINT_LEGACY",
                 message=(
-                    f"[v21.6] Loading {limit_label} real 1-min OHLC bars for {instrument} "
-                    f"(last {days_back_i} days, paginated)..."
+                    f"[v21.7] Loading {limit_label} real 1-min OHLC bars for {instrument} "
+                    f"(last {days_back_i} days, requested={requested_instrument})..."
                 ),
                 context={
                     "instrument": instrument,
+                    "requested_instrument": requested_instrument,
                     "limit": target_cap,
                     "days_back": days_back_i,
                     "uncapped": uncapped,
@@ -422,25 +492,81 @@ class MarketDataIngestService:
             )
         )
 
+        merged: list[dict[str, Any]] = []
+        seen_epoch: set[int] = set()
+        seen_time: set[str] = set()
+
+        def _emit_chunk(
+            *,
+            chunk_index: int,
+            chunk_total: int,
+            chunk_bars: int,
+            chunk_phase: str = "fetch",
+        ) -> None:
+            if on_chunk is None:
+                return
+            try:
+                on_chunk(
+                    chunk_index=chunk_index,
+                    chunk_total=chunk_total,
+                    bars_merged=len(merged),
+                    chunk_bars=chunk_bars,
+                    chunk_phase=chunk_phase,
+                )
+            except Exception:
+                app.logger.warning("birth.history.on_chunk_failed", exc_info=True)
+
+        # 1) daysBack-only (CrossTrade docs default; avoids from/to parse failures on some NT8 hosts).
+        simple_limit = min(per_chunk_limit, target_cap if target_cap is not None else per_chunk_limit)
+        payload_days_back = {
+            "instrument": instrument,
+            "periodType": "minute",
+            "period": 1,
+            "daysBack": days_back_i,
+            "limit": max(100, simple_limit),
+        }
+        app.logger.info(
+            "Historical bars daysBack-first instrument=%s daysBack=%s limit=%s",
+            instrument,
+            days_back_i,
+            payload_days_back["limit"],
+        )
+        days_back_bars = self._post_historical_bars(
+            instrument=instrument,
+            token=token,
+            payload=payload_days_back,
+            app=app,
+        )
+        if days_back_bars:
+            self._merge_bars_into(
+                merged,
+                days_back_bars,
+                seen_epoch=seen_epoch,
+                seen_time=seen_time,
+                target_cap=target_cap,
+            )
+            _emit_chunk(chunk_index=1, chunk_total=1, chunk_bars=len(days_back_bars))
+            short_window = days_back_i <= 7
+            preflight_probe = target_cap is not None and target_cap <= 1_000
+            cap_satisfied = target_cap is not None and len(merged) >= target_cap
+            if merged and (short_window or preflight_probe or cap_satisfied):
+                return self._sort_and_cap_bars(merged, target_cap)
+
+        # 2) Day-aligned UTC pagination (midnight boundaries per CrossTrade examples).
         utc_now = datetime.now(timezone.utc)
-        range_start = utc_now - timedelta(days=days_back_i)
-        # ~4 calendar days of 1-min bars stays under common per-request caps; RTH-only is lower.
+        range_start = self._utc_day_floor(utc_now - timedelta(days=days_back_i))
+        range_end = self._utc_day_floor(utc_now) + timedelta(days=1)
         chunk_days = 4
-        per_chunk_limit = 8_000
         max_chunks = max(1, min(256, (days_back_i // chunk_days) + 48))
 
         windows: list[tuple[datetime, datetime]] = []
         cursor = range_start
-        while cursor < utc_now and len(windows) < max_chunks:
-            nxt = min(cursor + timedelta(days=chunk_days), utc_now)
+        while cursor < range_end and len(windows) < max_chunks:
+            nxt = min(cursor + timedelta(days=chunk_days), range_end)
             if nxt <= cursor:
                 break
             windows.append((cursor, nxt))
             cursor = nxt
-
-        merged: list[dict[str, Any]] = []
-        seen_epoch: set[int] = set()
-        seen_time: set[str] = set()
 
         for idx, (win_from, win_to) in enumerate(windows):
             if target_cap is not None and len(merged) >= target_cap:
@@ -466,54 +592,26 @@ class MarketDataIngestService:
                 chunk_limit,
             )
             bars = self._post_historical_bars(instrument=instrument, token=token, payload=payload, app=app)
-            if on_chunk is not None:
-                try:
-                    on_chunk(
-                        chunk_index=idx + 1,
-                        chunk_total=len(windows),
-                        bars_merged=len(merged) + len(bars),
-                        chunk_bars=len(bars),
-                        chunk_phase="fetch",
-                    )
-                except Exception:
-                    app.logger.warning("birth.history.on_chunk_failed", exc_info=True)
-            for bar in bars:
-                ep = bar.get("epoch")
-                ts_raw = bar.get("timestamp") or bar.get("time")
-                if isinstance(ep, (int, float)):
-                    ek = int(ep)
-                    if ek in seen_epoch:
-                        continue
-                    seen_epoch.add(ek)
-                elif ts_raw is not None:
-                    tk = str(ts_raw)
-                    if tk in seen_time:
-                        continue
-                    seen_time.add(tk)
-                merged.append(bar)
-                if target_cap is not None and len(merged) >= target_cap:
-                    break
+            _emit_chunk(
+                chunk_index=idx + 1,
+                chunk_total=len(windows),
+                chunk_bars=len(bars),
+            )
+            before = len(merged)
+            self._merge_bars_into(
+                merged,
+                bars,
+                seen_epoch=seen_epoch,
+                seen_time=seen_time,
+                target_cap=target_cap,
+            )
+            if len(merged) > before and target_cap is not None and len(merged) >= target_cap:
+                break
 
         if merged:
+            return self._sort_and_cap_bars(merged, target_cap)
 
-            def _bar_sort_key(b: dict[str, Any]) -> tuple[int, float, str]:
-                ep = b.get("epoch")
-                if isinstance(ep, (int, float)):
-                    return (0, float(ep), "")
-                ts_raw = b.get("timestamp") or b.get("time")
-                if ts_raw is not None:
-                    try:
-                        return (1, float(pd.to_datetime(ts_raw).value), "")
-                    except Exception:
-                        return (2, 0.0, str(ts_raw))
-                return (3, 0.0, "")
-
-            merged.sort(key=_bar_sort_key)
-            if target_cap is not None:
-                return merged[:target_cap]
-            return merged
-
-        # Fallback: single bounded request (legacy path) for providers that ignore from/to.
+        # 3) Legacy single-shot daysBack fallback (smaller limit for provider timeouts).
         fallback_limit = min(8_000, target_cap if target_cap is not None else HISTORICAL_BAR_LIMIT_SAFETY_CAP)
         payload_fb = {
             "instrument": instrument,
@@ -523,21 +621,31 @@ class MarketDataIngestService:
             "limit": fallback_limit,
         }
         app.logger.warning(
-            "birth.history.paginated_empty fallback=daysBack limit=%s daysBack=%s",
+            "birth.history.paginated_empty fallback=daysBack limit=%s daysBack=%s instrument=%s",
             fallback_limit,
             days_back_i,
+            instrument,
         )
         fallback_bars = self._post_historical_bars(
             instrument=instrument, token=token, payload=payload_fb, app=app
         )
-        if not fallback_bars:
-            app.logger.error(
-                "birth.history.load_failed instrument=%s days_back=%s limit=%s (0 bars after paginated+fallback)",
-                instrument,
-                days_back_i,
-                target_cap,
-            )
-        return fallback_bars
+        if fallback_bars:
+            return self._sort_and_cap_bars(fallback_bars, target_cap)
+
+        stale_hint = ""
+        if requested_instrument != instrument:
+            stale_hint = f" (rolled from stale {requested_instrument})"
+        elif is_stale_contract_symbol(requested_instrument):
+            stale_hint = f" (contract {requested_instrument} appears expired)"
+        app.logger.error(
+            "birth.history.load_failed instrument=%s days_back=%s limit=%s%s "
+            "(0 bars after daysBack+paginated+fallback; check Crosstrade token, NT8 connection, instrument)",
+            instrument,
+            days_back_i,
+            target_cap,
+            stale_hint,
+        )
+        return []
 
     def load_historical_ohlc_for_symbol(self, instrument: str, days_back: int = 3, limit: int = 5000) -> pd.DataFrame:
         bars = self._fetch_historical_bars(instrument=instrument, days_back=days_back, limit=limit)

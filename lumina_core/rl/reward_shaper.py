@@ -114,6 +114,21 @@ def compute_expectancy_reward(
     return reward, components
 
 
+def hold_action_penalty(
+    *,
+    is_hold: bool,
+    regime: str,
+    plateau_active: bool,
+    coeff: float = 0.002,
+) -> float:
+    """Small penalty for HOLD in trend regime during plateau recovery."""
+    if not plateau_active or not is_hold:
+        return 0.0
+    if "TREND" not in str(regime or "").upper():
+        return 0.0
+    return -abs(float(coeff))
+
+
 def compute_legacy_reward(
     *,
     net_pnl: float,

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
-from lumina_core.birth.curriculum import CurriculumStage, stage_pass_trades
+from lumina_core.birth.curriculum import CurriculumStage, stage_pass_trades, stage_trade_target
 
 CURRICULUM_STAGE_COUNT = 3
 
@@ -14,6 +14,7 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "curriculum_stage",
     "stage_trades",
     "stage_target_trades",
+    "stage_training_budget_trades",
     "stage_wins",
     "stage_winrate",
     "stage_hold_ratio",
@@ -35,6 +36,8 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "is_advancing",
     "patterns_mined",
     "learning_attempt",
+    "birth_start_time",
+    "elapsed_sec",
     "exploration_active",
     "oracle_wins",
     "escalation_level",
@@ -79,6 +82,25 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "meta_self_eval_committed_strategy",
     "meta_self_eval_best_velocity_delta",
     "meta_self_eval_probes_completed",
+    "trade_budget_cap",
+    "trade_budget_remaining",
+    "trade_budget_source",
+    "terminal_stall_reason",
+    "evolution_phase",
+    "evolution_step",
+    "evolution_step_label",
+    "evolution_actions_remaining",
+    "plateau_elapsed_sec",
+    "trades_beyond_gate",
+    "plateau_forced_recoveries_count",
+    "plateau_best_winrate",
+    "needs_attention",
+    "attention_reason_code",
+    "attention_summary",
+    "attention_recommended_actions",
+    "attention_notified_at",
+    "constitution_violations_session",
+    "constitution_violations_cumulative",
 )
 
 
@@ -88,9 +110,16 @@ class PassCriteria:
     label: str
     target_trades: int
     metric_label: str
+    training_budget_trades: int = 0
     metric_target: float | None = None
     metric_min: float | None = None
     metric_max: float | None = None
+
+
+def _pass_gate_label(*, pass_gate: int, training_budget: int, metric: str) -> str:
+    if training_budget > pass_gate:
+        return f">={pass_gate} pass gate ({training_budget} budget) · {metric}"
+    return f">={pass_gate} · {metric}"
 
 
 def curriculum_index_for_stage(stage: CurriculumStage) -> int:
@@ -123,21 +152,33 @@ def pass_criteria_for_stage(
 ) -> PassCriteria:
     if cfg is not None:
         required = stage_pass_trades(stage, cfg)
+        training_budget = stage_trade_target(stage, cfg)
     else:
-        required = max(50, min(100, max(1, int(target_trades))))
+        training_budget = max(1, int(target_trades))
+        required = max(50, min(100, training_budget))
     if stage == CurriculumStage.STAGE1_TREND:
         return PassCriteria(
             id="trend_winrate",
-            label=f">={required} trades · winrate >=45%",
+            label=_pass_gate_label(
+                pass_gate=required,
+                training_budget=training_budget,
+                metric="winrate >=45%",
+            ),
             target_trades=required,
+            training_budget_trades=training_budget,
             metric_label="Winrate",
             metric_target=0.45,
         )
     if stage == CurriculumStage.STAGE2_RANGE:
         return PassCriteria(
             id="range_roundtrip",
-            label=f">={required} trades · position-flat 30–70% on range ticks",
+            label=_pass_gate_label(
+                pass_gate=required,
+                training_budget=training_budget,
+                metric="position-flat 30–70% on range ticks",
+            ),
             target_trades=required,
+            training_budget_trades=training_budget,
             metric_label="Position flat",
             metric_min=0.30,
             metric_max=0.70,
@@ -145,8 +186,13 @@ def pass_criteria_for_stage(
     if stage == CurriculumStage.STAGE3_MIXED:
         return PassCriteria(
             id="mixed_constitution",
-            label=f">={required} trades · 0 constitution violations",
+            label=_pass_gate_label(
+                pass_gate=required,
+                training_budget=training_budget,
+                metric="0 constitution violations",
+            ),
             target_trades=required,
+            training_budget_trades=training_budget,
             metric_label="Violations",
             metric_target=0.0,
         )
@@ -313,6 +359,22 @@ def enrich_progress_scorecard(payload: dict[str, Any]) -> dict[str, Any]:
     if phase:
         merged.setdefault("sub_phase", phase)
         merged.setdefault("sub_phase_label", human_sub_phase(phase))
+
+    cap = max(0, int(merged.get("trade_budget_cap") or merged.get("target_trades") or 0))
+    cumulative = max(0, int(merged.get("cumulative_trades") or merged.get("trades_done") or 0))
+    if cap > 0:
+        merged["trade_budget_cap"] = cap
+        merged["trade_budget_remaining"] = max(0, cap - cumulative)
+    merged.setdefault("trade_budget_source", "")
+
+    session_violations = merged.get("constitution_violations_session")
+    cumulative_violations = merged.get("constitution_violations_cumulative")
+    legacy_violations = merged.get("constitution_violations")
+    if session_violations is None and legacy_violations is not None:
+        merged["constitution_violations_session"] = int(legacy_violations)
+    if cumulative_violations is None and legacy_violations is not None:
+        merged["constitution_violations_cumulative"] = int(legacy_violations)
+
     return merged
 
 
@@ -437,6 +499,7 @@ def build_scorecard_payload(
         "constitution_violations": int(constitution_violations),
         "is_advancing": bool(is_advancing),
         "stage_target_trades": int(required),
+        "stage_training_budget_trades": int(criteria.training_budget_trades),
     }
     if blocker_metric:
         payload["stage_blocker_metric"] = blocker_metric

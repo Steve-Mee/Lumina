@@ -103,6 +103,50 @@
     0 10px 28px -12px var(--lumina-glow-halo);
 }
 
+/* App-wide interactive affordance — cursor + hover glow for clickable controls */
+.lumina-interactive {
+  cursor: var(--lumina-cursor-interactive);
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 180ms ease,
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
+.lumina-interactive:disabled,
+.lumina-interactive[aria-disabled="true"] {
+  cursor: var(--lumina-cursor-disabled);
+  opacity: 0.55;
+}
+
+@media (hover: hover) {
+  .lumina-interactive:not(.command-btn):not(.onboarding-cta):hover:not(:disabled):not([aria-disabled="true"]) {
+    box-shadow: var(--lumina-hover-glow);
+    transform: translateY(var(--lumina-hover-lift));
+  }
+
+  .lumina-interactive--ghost:not(.command-btn):hover:not(:disabled):not([aria-disabled="true"]) {
+    border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 35%, transparent);
+    box-shadow:
+      0 0 14px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 25%, transparent),
+      inset 0 0 0 1px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 12%, transparent);
+  }
+
+  .lumina-interactive--danger:not(.command-btn):hover:not(:disabled):not([aria-disabled="true"]) {
+    border-color: color-mix(in srgb, var(--status-warn) 55%, transparent);
+    box-shadow: 0 0 20px color-mix(in srgb, var(--status-warn) 35%, transparent);
+  }
+}
+
+.command-btn,
+.onboarding-cta,
+.deck-tab-chip.lumina-interactive,
+.hud-nerve-tap.lumina-interactive {
+  cursor: var(--lumina-cursor-interactive);
+}
+
 .lumina-glass:focus-within:not(.lumina-glass--interactive),
 .lumina-glass:focus-visible:not(.lumina-glass--interactive) {
   border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 45%, transparent);

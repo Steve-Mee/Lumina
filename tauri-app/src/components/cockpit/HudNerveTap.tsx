@@ -73,7 +73,7 @@ export function HudNerveTap({
         type="button"
         data-mode={mode}
         className={cn(
-          "hud-nerve-tap relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border",
+          "hud-nerve-tap lumina-interactive relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full border",
           engineAlive ? "hud-nerve-tap--alive" : "hud-nerve-tap--dormant",
           !apiKeyConfigured && "opacity-45",
         )}

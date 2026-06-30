@@ -51,36 +51,28 @@ $backupTargets = @(
     "journal\simulator",
     "lumina_os\logs",
     "lumina_os\state\metrics.db",
-    "lumina_agents\ppo\lumina_ppo_policy.zip",
-    "lumina_agents\ppo\lumina_ppo_policy_practice.zip",
-    "state\lumina_birth_completed.flag",
-    "state\lumina_birth_practice_completed.flag",
-    "state\first_boot_completed.flag",
-    "state\ppo_policy_metadata.json",
-    "state\lumina_birth_progress.json",
-    "state\lumina_birth_checkpoint.json",
-    "state\first_boot_progress.json"
+    "lumina_agents\ppo"
 )
 
 foreach ($item in $backupTargets) {
     Backup-Path -RelativePath $item
 }
 
-$wipeDirectories = @(
-    "logs",
-    "journal\simulator",
-    "lumina_os\logs"
-)
+$pythonCmd = $null
+foreach ($candidate in @("py", "python")) {
+    if (Get-Command $candidate -ErrorAction SilentlyContinue) {
+        $pythonCmd = $candidate
+        break
+    }
+}
+if (-not $pythonCmd) {
+    throw "Python not found on PATH (tried py, python)."
+}
 
-foreach ($relativeDir in $wipeDirectories) {
-    $fullDir = Join-Path $repoRoot $relativeDir
-    if (-not (Test-Path -LiteralPath $fullDir)) {
-        New-Item -ItemType Directory -Path $fullDir -Force | Out-Null
-        continue
-    }
-    Get-ChildItem -LiteralPath $fullDir -Force -ErrorAction SilentlyContinue | ForEach-Object {
-        Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
-    }
+$env:PYTHONPATH = $repoRoot
+& $pythonCmd -m lumina_launcher.core.birth_reset --workspace $repoRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "Birth training reset failed (exit $LASTEXITCODE)."
 }
 
 $stateDir = Join-Path $repoRoot "state"
@@ -89,7 +81,8 @@ $preserveStateFiles = @(
     "lumina_setup_status.json",
     "hardware_snapshot.json",
     "launcher_admin_password.json",
-    "model_catalog_state.json"
+    "model_catalog_state.json",
+    "first_boot_user_configured.flag"
 )
 if (-not (Test-Path -LiteralPath $stateDir)) {
     New-Item -ItemType Directory -Path $stateDir -Force | Out-Null
@@ -101,31 +94,8 @@ Get-ChildItem -LiteralPath $stateDir -Force -ErrorAction SilentlyContinue | ForE
     Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-$deleteTargets = @(
-    "lumina_os\state\metrics.db",
-    "lumina_agents\ppo\lumina_ppo_policy.zip",
-    "lumina_agents\ppo\lumina_ppo_policy_practice.zip",
-    "state\lumina_birth_completed.flag",
-    "state\lumina_birth_practice_completed.flag",
-    "state\first_boot_completed.flag",
-    "state\ppo_policy_metadata.json",
-    "state\lumina_birth_progress.json",
-    "state\lumina_birth_checkpoint.json",
-    "state\first_boot_progress.json",
-    "state\monitoring_debug_training_process.json",
-    "state\trade_reconciler_status.json",
-    "state\hardware_profile.json"
-)
-
-foreach ($relativePath in $deleteTargets) {
-    $fullPath = Join-Path $repoRoot $relativePath
-    if (Test-Path -LiteralPath $fullPath) {
-        Remove-Item -LiteralPath $fullPath -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
 Write-Host ""
 Write-Host "LUMINA full reset completed." -ForegroundColor Green
 Write-Host "Backup saved to: $backupRoot"
-Write-Host "State/log/history cleared and first-boot policy artifacts removed (setup-state preserved)."
+Write-Host "Birth training state cleared via Python SSOT (setup-state preserved)."
 Write-Host ""

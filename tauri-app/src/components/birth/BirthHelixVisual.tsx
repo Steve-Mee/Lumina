@@ -856,7 +856,7 @@ export function BirthHelixVisual({
   }
 
   return (
-    <div className={cn("relative h-full w-full", minHeightClass, className)} aria-hidden>
+    <div className={cn("relative flex h-full w-full items-center justify-center", minHeightClass, className)} aria-hidden>
       <Suspense
         fallback={
           <div className={cn("flex h-full items-center justify-center", minHeightClass)}>

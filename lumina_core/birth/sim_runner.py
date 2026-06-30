@@ -83,6 +83,8 @@ def run_policy_rollout(
     stall_probe_steps: int | None = None,
     exploration_steps: int | None = None,
     escalation_level: int = 0,
+    hold_cap_ratio: float | None = None,
+    plateau_active: bool = False,
     on_progress: Callable[[dict[str, Any]], None] | None = None,
     reward_override: BirthRewardConfig | None = None,
 ) -> SimRolloutResult:
@@ -108,6 +110,7 @@ def run_policy_rollout(
         trade_mode="birth",
         max_steps=max_steps or max(5000, target_trades * 80),
         reward=reward_override or load_birth_v2_config(workspace_root).reward,
+        plateau_active=bool(plateau_active),
     )
     env = RLTradingEnvironment(runtime, enriched, config=cfg)
     env.set_birth_context(workspace_root=workspace_root, constitution_guard=guard)
@@ -193,6 +196,12 @@ def run_policy_rollout(
         else:
             exploration_active = False
             action = _predict_action(policy, obs)
+            if hold_cap_ratio is not None and total_signals > 0:
+                side_preview = int(np.clip(np.round(action[0]), 0, 2))
+                if side_preview == 0 and _hold_ratio(hold_signals, total_signals) >= float(hold_cap_ratio):
+                    exploration_active = True
+                    action = _exploration_action(exploration_steps_used)
+                    exploration_steps_used += 1
 
         idx = min(env._idx, len(enriched) - 1)
         tick_regime = str(enriched[idx].get("regime", "NEUTRAL")).upper()

@@ -15,14 +15,15 @@ import {
   buildMilestones,
   isBirthComplete,
   isBirthCertificateFailed,
+  isBirthEngineActive,
   isBirthFailed,
   isBirthInterrupted,
-  isBirthRunning,
   isBirthStageStalled,
   resolveBirthHeadline,
   type BirthMilestone,
 } from "@/lib/birthPhaseModel";
 import { shouldAutoResumeBirth } from "@/lib/birthRecoveryModel";
+import { stopBirth } from "@/lib/runtimeClient";
 
 export type BirthUiPhase =
   | "idle"
@@ -31,6 +32,35 @@ export type BirthUiPhase =
   | "error"
   | "certificate_failed"
   | "stage_stalled";
+
+export type BirthSurface = "genesis" | "running" | "recovery";
+
+function resolveBirthSurface(
+  uiPhase: BirthUiPhase,
+  current: BirthSurface,
+  payload: BirthStatusPayload,
+  genesisPinned: boolean,
+): BirthSurface {
+  if (uiPhase === "certificate_failed" || uiPhase === "stage_stalled" || uiPhase === "error") {
+    return "recovery";
+  }
+  if (uiPhase === "finale") {
+    return "running";
+  }
+  if (genesisPinned || (uiPhase === "idle" && isBirthInterrupted(payload))) {
+    return "genesis";
+  }
+  if (uiPhase === "running" || isBirthEngineActive(payload)) {
+    return "running";
+  }
+  if (uiPhase === "idle") {
+    return "genesis";
+  }
+  if (current === "recovery" && uiPhase === "idle") {
+    return "genesis";
+  }
+  return current;
+}
 
 function recoveryFailureUiPhase(status: BirthStatusPayload | null): BirthUiPhase {
   if (status == null) {
@@ -50,9 +80,13 @@ interface BirthState {
   milestones: BirthMilestone[];
   headline: string;
   uiPhase: BirthUiPhase;
+  birthSurface: BirthSurface;
+  genesisPinned: boolean;
   pollError: string | null;
   targetTrades: number;
   setTargetTrades: (n: number) => void;
+  setBirthSurface: (surface: BirthSurface) => void;
+  beginBirthRun: () => void;
   applyStatus: (payload: BirthStatusPayload) => void;
   poll: () => Promise<BirthStatusPayload | null>;
   bootstrapSession: (context: {
@@ -64,6 +98,7 @@ interface BirthState {
   resumeStalledStage: () => Promise<boolean>;
   expandAndRetryStalledStage: () => Promise<boolean>;
   reuseDataBirth: () => Promise<boolean>;
+  stopBirthRun: () => Promise<boolean>;
   beginFinale: () => void;
   reset: () => void;
 }
@@ -73,10 +108,22 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   milestones: buildMilestones(undefined, "idle"),
   headline: "Organism is being born…",
   uiPhase: "idle",
+  birthSurface: "genesis",
+  genesisPinned: false,
   pollError: null,
   targetTrades: 25000,
 
   setTargetTrades: (n) => set({ targetTrades: n }),
+
+  setBirthSurface: (surface) => set({ birthSurface: surface }),
+
+  beginBirthRun: () =>
+    set({
+      uiPhase: "running",
+      birthSurface: "running",
+      genesisPinned: false,
+      pollError: null,
+    }),
 
   applyStatus: (payload) => {
     const milestones = buildMilestones(payload.progress, payload.status);
@@ -96,19 +143,22 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       uiPhase = "finale";
     } else if (isBirthStageStalled(payload)) {
       uiPhase = "stage_stalled";
-    } else if (isBirthRunning(payload)) {
-      uiPhase = "running";
+    } else if (isBirthEngineActive(payload)) {
+      uiPhase = get().genesisPinned ? "idle" : "running";
     } else if (isBirthFailed(payload)) {
       uiPhase = "error";
     } else if (isBirthInterrupted(payload)) {
       uiPhase = "idle";
     }
 
+    const birthSurface = resolveBirthSurface(uiPhase, get().birthSurface, payload, get().genesisPinned);
+
     set({
       status: payload,
       milestones,
       headline,
       uiPhase,
+      birthSurface,
       pollError: null,
     });
   },
@@ -134,15 +184,21 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       return false;
     }
 
-    if (isBirthRunning(status) || isBirthComplete(status)) {
+    if (isBirthEngineActive(status) || isBirthComplete(status)) {
+      if (isBirthEngineActive(status)) {
+        set({ uiPhase: "running", birthSurface: "running", pollError: null });
+      }
       return true;
     }
 
     if (!shouldAutoResumeBirth(status, appSurfaceReason)) {
+      if (isBirthInterrupted(status) || String(status.status ?? "").toLowerCase() === "idle") {
+        set({ birthSurface: "genesis", uiPhase: "idle" });
+      }
       return false;
     }
 
-    set({ uiPhase: "running", pollError: null });
+    get().beginBirthRun();
     try {
       await startBirthSessionContinue(targetTrades);
       await get().poll();
@@ -157,7 +213,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   retryBirth: async (options) => {
-    set({ uiPhase: "running", pollError: null });
+    set({ uiPhase: "running", birthSurface: "running", pollError: null });
     try {
       const response = await retryBirthSession(get().targetTrades, options);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -182,7 +238,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   resumeBirth: async () => {
-    set({ uiPhase: "running", pollError: null });
+    set({ uiPhase: "running", birthSurface: "running", pollError: null });
     try {
       const response = await resumeBirthSession(get().targetTrades);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -204,7 +260,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   resumeStalledStage: async () => {
-    set({ uiPhase: "running", pollError: null });
+    set({ uiPhase: "running", birthSurface: "running", pollError: null });
     try {
       const response = await resumeStalledStageSession(get().targetTrades);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -226,7 +282,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   expandAndRetryStalledStage: async () => {
-    set({ uiPhase: "running", pollError: null });
+    set({ uiPhase: "running", birthSurface: "running", pollError: null });
     try {
       const response = await expandAndRetryStalledStageSession(get().targetTrades);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -248,7 +304,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   reuseDataBirth: async () => {
-    set({ uiPhase: "running", pollError: null });
+    set({ uiPhase: "running", birthSurface: "running", pollError: null });
     try {
       const response = await reuseDataBirthSession(get().targetTrades);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -269,6 +325,22 @@ export const useBirthStore = create<BirthState>((set, get) => ({
     }
   },
 
+  stopBirthRun: async () => {
+    set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
+    try {
+      await stopBirth();
+      const payload = await fetchBirthStatusTyped();
+      get().applyStatus(payload);
+      set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
+      return true;
+    } catch (err) {
+      set({
+        pollError: err instanceof Error ? err.message : "Birth stop failed",
+      });
+      return false;
+    }
+  },
+
   beginFinale: () => set({ uiPhase: "finale" }),
 
   reset: () =>
@@ -277,6 +349,8 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       milestones: buildMilestones(undefined, "idle"),
       headline: "Organism is being born…",
       uiPhase: "idle",
+      birthSurface: "genesis",
+      genesisPinned: false,
       pollError: null,
     }),
 }));

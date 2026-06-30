@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { PanelLoader } from "@/components/cockpit/PanelLoader";
 import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
-import { luminaSurfaceMutedClass } from "@/lib/glassGlowTaxonomy";
+import { luminaSurfaceMutedClass, luminaInteractiveClass } from "@/lib/glassGlowTaxonomy";
 import { BotConfigForm } from "@/components/config/BotConfigForm";
 import { Button } from "@/components/ui/button";
 import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceContext";
@@ -86,6 +86,7 @@ function SettingsTabBar({
             type="button"
             onClick={() => onSelect(key)}
             className={cn(
+              luminaInteractiveClass("ghost"),
               "relative rounded-md px-3 py-1.5 font-mono text-[10px] tracking-wide uppercase transition-colors",
               active
                 ? mode === "REAL"

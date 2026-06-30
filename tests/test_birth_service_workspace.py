@@ -632,16 +632,167 @@ def test_get_status_exposes_trade_and_ppo_progress_from_file(tmp_path: Path) -> 
 
 
 @pytest.mark.unit
-def test_stop_birth_sets_pause_flag_when_progress_active(tmp_path: Path) -> None:
+def test_stop_birth_sets_pause_flag_when_progress_active(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
-    svc = BirthService()
-    svc.configure_workspace(tmp_path)
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     (tmp_path / "state" / "lumina_birth_progress.json").write_text(
         '{"stage": "training_running", "timestamp": "2099-01-01T00:00:00+00:00"}',
         encoding="utf-8",
     )
+    monkeypatch.setattr(BirthService, "reconcile_orphaned_birth_progress", lambda self: False)
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
     result = svc.stop_birth()
-    assert result["status"] == "stopping"
-    assert svc.pause_flag_path.exists()
+    assert result["status"] in {"stopping", "stopped"}
+    progress = svc._load_progress()
+    assert progress.get("user_initiated_stop") is True
+    assert progress.get("phase") == "restart_required"
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_configure_workspace_auto_resumes_retryable_stage_stalled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    ws = tmp_path / "repo"
+    state = ws / "state"
+    state.mkdir(parents=True)
+    (state / "lumina_birth_progress.json").write_text(
+        json.dumps(
+            {
+                "stage": "stage_stalled",
+                "phase": "stage_stalled",
+                "retryable": True,
+                "message": "winrate 23.6% < 45%",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_checkpoint.json").write_text(
+        json.dumps({"phase": "stage_stalled", "version": 3}),
+        encoding="utf-8",
+    )
+    calls = {"n": 0}
+
+    def _fake_resume(target_trades: int | None = None) -> dict[str, str]:
+        _ = target_trades
+        calls["n"] += 1
+        return {"status": "started"}
+
+    svc = BirthService()
+    monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    svc.configure_workspace(ws)
+    assert calls["n"] == 1
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_auto_resume_allowed_for_plateau_evolution_phase(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    ws = tmp_path / "repo"
+    state = ws / "state"
+    state.mkdir(parents=True)
+    (state / "lumina_birth_progress.json").write_text(
+        json.dumps(
+            {
+                "stage": "training_running",
+                "phase": "plateau_evolution",
+                "retryable": True,
+                "needs_attention": True,
+                "terminal_stall_reason": "plateau_evolution_exhausted",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_checkpoint.json").write_text(
+        json.dumps({"phase": "plateau_evolution", "version": 3}),
+        encoding="utf-8",
+    )
+    calls = {"n": 0}
+
+    def _fake_resume(target_trades: int | None = None) -> dict[str, str]:
+        _ = target_trades
+        calls["n"] += 1
+        return {"status": "started"}
+
+    svc = BirthService()
+    monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    svc.configure_workspace(ws)
+    assert calls["n"] == 1
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_auto_resume_blocked_for_needs_attention(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    ws = tmp_path / "repo"
+    state = ws / "state"
+    state.mkdir(parents=True)
+    (state / "lumina_birth_progress.json").write_text(
+        json.dumps(
+            {
+                "stage": "stage_stalled",
+                "phase": "stage_stalled",
+                "retryable": False,
+                "needs_attention": True,
+                "terminal_stall_reason": "stall_remediation_exhausted",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_checkpoint.json").write_text(
+        json.dumps({"phase": "stage_stalled", "version": 3}),
+        encoding="utf-8",
+    )
+    calls = {"n": 0}
+
+    def _fake_resume(target_trades: int | None = None) -> dict[str, str]:
+        _ = target_trades
+        calls["n"] += 1
+        return {"status": "started"}
+
+    svc = BirthService()
+    monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    svc.configure_workspace(ws)
+    assert calls["n"] == 0
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_auto_resume_blocked_for_plateau_exhausted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    ws = tmp_path / "repo"
+    state = ws / "state"
+    state.mkdir(parents=True)
+    (state / "lumina_birth_progress.json").write_text(
+        json.dumps(
+            {
+                "stage": "stage_stalled",
+                "phase": "stage_stalled",
+                "retryable": True,
+                "terminal_stall_reason": "plateau_evolution_exhausted",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_checkpoint.json").write_text(
+        json.dumps({"phase": "stage_stalled", "version": 3}),
+        encoding="utf-8",
+    )
+    calls = {"n": 0}
+
+    def _fake_resume(target_trades: int | None = None) -> dict[str, str]:
+        _ = target_trades
+        calls["n"] += 1
+        return {"status": "started"}
+
+    svc = BirthService()
+    monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    svc.configure_workspace(ws)
+    assert calls["n"] == 0
     BirthService._instance = None  # type: ignore[attr-defined]

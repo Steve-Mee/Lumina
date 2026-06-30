@@ -34,12 +34,39 @@ const birthActivateSource = readFileSync(
 
 
 
-const birthDiagnosticsSource = readFileSync(
-
-  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthDiagnosticsDrawer.tsx"),
-
+const birthGenesisDeckSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthGenesisDeck.tsx"),
   "utf8",
+);
 
+const birthControlDockSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthControlDock.tsx"),
+  "utf8",
+);
+
+const birthCommandBarSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthCommandBar.tsx"),
+  "utf8",
+);
+
+const birthMissionControlSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthMissionControl.tsx"),
+  "utf8",
+);
+
+const birthStageIntelSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthStageIntelColumn.tsx"),
+  "utf8",
+);
+
+const birthAdvancedPanelSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthAdvancedPanel.tsx"),
+  "utf8",
+);
+
+const birthPhaseCssSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../styles/birthPhase.css"),
+  "utf8",
 );
 
 
@@ -106,54 +133,71 @@ const onboardingWizardSource = readFileSync(
 
 describe("onboarding surface contracts", () => {
 
-  it("Birth finale keeps telemetry in diagnostics drawer not T1 viewport", () => {
-
+  it("Birth finale shows mission control and command deck entry on main screen", () => {
     expect(birthPhaseSource).toContain("Birth complete");
-
-    expect(birthPhaseSource).toContain("Enter command deck");
-
     expect(birthPhaseSource).not.toContain("CheckCircle2");
-
     expect(birthPhaseSource).not.toContain("birth-finale-hero");
-
-    expect(birthPhaseSource).toContain("defaultOpen={awakening}");
-
+    expect(birthPhaseSource).toContain("BirthMissionControl");
+    expect(birthCommandBarSource).toContain("Enter command deck");
+    expect(birthPhaseSource).toContain("onEnterDeck={enterCommandDeck}");
   });
 
 
 
-  it("BirthPhaseScreen HUD is floating copy without glass overlay", () => {
-
-    const heroBlock =
-
-      birthPhaseSource.split("birth-phase-hero")[1]?.split("showRecovery")[0] ?? "";
-
-    expect(heroBlock).toContain("birth-phase-hud");
-
-    expect(heroBlock).not.toContain("lumina-glass--overlay");
-
-    expect(heroBlock).not.toContain("Settings2");
-
+  it("Birth running uses mission control dashboard on main viewport", () => {
+    expect(birthPhaseSource).toContain("birth-mission-shell");
+    expect(birthPhaseSource).toContain("BirthMissionControl");
+    expect(birthPhaseSource).toContain("onboarding-shell--form");
+    expect(birthMissionControlSource).toContain("BirthMetricsStrip");
+    expect(birthMissionControlSource).toContain("embedded");
+    expect(birthMissionControlSource).not.toContain("BirthMilestoneTrack");
+    expect(birthCommandBarSource).toContain('variant="bar"');
+    expect(birthPhaseSource).not.toContain("BirthDiagnosticsDrawer");
   });
 
 
 
-  it("BirthPhaseScreen keeps T3 diagnostics content out of hero viewport", () => {
+  it("Birth mission control uses viewport-fixed layout with three-column grid", () => {
+    expect(birthPhaseCssSource).toContain(".birth-mission-grid > *");
+    expect(birthPhaseCssSource).toContain("min-height: 0");
+    expect(birthPhaseCssSource).toMatch(
+      /\.birth-mission-grid[\s\S]*@media \(min-width: 1024px\)[\s\S]*grid-template-columns:[\s\S]*minmax\(120px, 14%\)[\s\S]*minmax\(280px, 36%\)[\s\S]*minmax\(320px, 1fr\)/,
+    );
+    expect(birthPhaseCssSource).toContain(".birth-stage-intel-column__body");
+    expect(birthPhaseCssSource).toMatch(/\.birth-stage-intel-column__body[\s\S]*overflow-y:\s*auto/);
+    expect(birthPhaseSource).toContain("BirthStageIntelColumn");
+    expect(birthMissionControlSource).toContain("overflow-hidden");
+    expect(birthMissionControlSource).not.toContain("birth-mission-control__scroll");
+  });
 
-    expect(birthPhaseSource).toContain("birth-phase-ops");
 
-    expect(birthPhaseSource).toContain("BirthDiagnosticsDrawer");
 
-    const heroBlock =
+  it("Birth stage intel column shows scorecard and controlled advanced panel", () => {
+    expect(birthMissionControlSource).not.toContain("BirthStageDetailsPanel");
+    expect(birthStageIntelSource).toContain("BirthStageScorecard");
+    expect(birthStageIntelSource).toContain("BirthAdvancedPanel");
+    expect(birthStageIntelSource).toContain("controlled={running}");
+    expect(birthMissionControlSource).toContain("BirthBlockerAlert");
+    expect(birthAdvancedPanelSource).toContain("controlled?: boolean");
+    expect(birthAdvancedPanelSource).toContain("birth-advanced-panel--controlled");
+  });
 
-      birthPhaseSource.split("birth-phase-hero")[1]?.split("showRecovery")[0] ?? "";
 
-    expect(heroBlock).not.toContain("BirthMetricsStrip");
 
-    expect(heroBlock).not.toContain("BirthMilestoneTrack");
+  it("Birth helix accent column centers helix vertically on large screens", () => {
+    expect(birthPhaseCssSource).toMatch(/\.birth-helix-accent-wrap[\s\S]*align-items:\s*center/);
+    expect(birthPhaseCssSource).toMatch(/\.birth-helix-accent-wrap[\s\S]*justify-content:\s*center/);
+    expect(birthPhaseCssSource).toContain(".birth-stage-intel-column__body::-webkit-scrollbar-track");
+  });
 
-    expect(heroBlock).toContain("BirthPhasePulse");
 
+
+  it("Birth command bar exposes stop and inline advanced toggles", () => {
+    expect(birthPhaseSource).toContain("BirthCommandBar");
+    expect(birthCommandBarSource).toContain("BirthControlDock");
+    expect(birthControlDockSource).toContain("Stop birth");
+    expect(birthCommandBarSource).toContain("Logs");
+    expect(birthCommandBarSource).not.toContain("Telemetry");
   });
 
 
@@ -166,50 +210,28 @@ describe("onboarding surface contracts", () => {
 
     expect(birthPhaseSource).toContain("overflow-hidden");
 
-    expect(birthPhaseSource).toContain("birth-phase-helix-stage");
+    expect(birthPhaseSource).toContain("birth-mission-grid");
 
   });
 
 
 
-  it("BirthDiagnosticsDrawer portals overlay to document body", () => {
+  it("Birth advanced panels stay inline in stage intel column", () => {
 
-    expect(birthDiagnosticsSource).toContain("createPortal");
+    expect(birthStageIntelSource).toContain("BirthAdvancedPanel");
 
-    expect(birthDiagnosticsSource).toContain("document.body");
-
-    expect(birthDiagnosticsSource).toContain("backdrop-blur-md");
+    expect(birthAdvancedPanelSource).toContain("BirthLogsPanel");
 
   });
 
 
 
-  it("Birth running ops zone has no persistent stop control", () => {
-
-    expect(birthPhaseSource).not.toMatch(/birth-phase-ops[\s\S]*Stop birth phase/);
-
-    expect(birthDiagnosticsSource).toContain("Stop birth phase");
-
-    expect(birthDiagnosticsSource).toContain("Activity");
-
-    expect(birthDiagnosticsSource).toContain("Telemetry");
-
-  });
-
-
-
-  it("BirthActivateStep default deck shows one slider outside collapsed genesis panel", () => {
-
-    expect(birthActivateSource).toContain("Genesis parameters");
-
-    expect(birthActivateSource).toContain("genesisOpen");
-
-    const defaultDeck = birthActivateSource.split("{genesisOpen ?")[0] ?? "";
-
+  it("BirthGenesisDeck default deck shows one slider outside collapsed genesis panel", () => {
+    expect(birthGenesisDeckSource).toContain("Genesis parameters");
+    expect(birthGenesisDeckSource).toContain("genesisOpen");
+    const defaultDeck = birthGenesisDeckSource.split("{genesisOpen ?")[0] ?? "";
     const sliderCount = (defaultDeck.match(/<BirthHoloSlider/g) ?? []).length;
-
     expect(sliderCount).toBe(1);
-
   });
 
 
@@ -340,7 +362,7 @@ describe("onboarding surface contracts", () => {
 
     expect(onboardingWizardSource).toContain("minimal={isBirthStep}");
 
-    expect(birthActivateSource).toContain("birth-activation-progress");
+    expect(birthGenesisDeckSource).toContain("birth-activation-progress");
 
     expect(onboardingWizardSource).toContain("onboarding-birth-column");
 

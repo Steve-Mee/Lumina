@@ -38,11 +38,20 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 deck-overlay-scrim lumina-glass lumina-glass--overlay data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "fixed inset-0 z-[100] deck-overlay-scrim lumina-glass lumina-glass--overlay data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className,
       )}
       {...props}
     />
+  );
+}
+
+function dialogContentClassName(className?: string): string {
+  const withoutZIndex = className?.replace(/\bz-\[[^\]]+\]/g, "").replace(/\bz-\d+\b/g, "").trim();
+  return cn(
+    "lumina-glass lumina-glass--overlay fixed top-1/2 left-1/2 z-[101] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl text-sm text-foreground shadow-2xl outline-none",
+    withoutZIndex,
+    "z-[101]",
   );
 }
 
@@ -58,10 +67,7 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
-        className={cn(
-          "lumina-glass lumina-glass--overlay fixed top-1/2 left-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl text-sm text-foreground shadow-2xl outline-none",
-          className,
-        )}
+        className={dialogContentClassName(className)}
         {...props}
       >
         <motion.div

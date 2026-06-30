@@ -4,6 +4,11 @@ telegram:
   chat_id: ${TELEGRAM_CHAT_ID}
   waking_hour_start: 8
   waking_hour_end: 22
+  attention_alerts_enabled: true
+  attention_dedupe_sec: 1800
+  attention_critical_bypass_quiet_hours: true
+  milestone_alerts_enabled: true
+  milestone_bypass_quiet_hours: true
 participant_id: LUMINA_Steve
 sim:
   aggressive_evolution: true
@@ -80,7 +85,7 @@ models:
   meta: qwen3.5:9b
   grok_trader_1b: qwen3.5-35b
 trading:
-  instrument: MES JUN26
+  instrument: MES SEP26
   risk_profile: Balanced
   news_avoidance_pre_minutes: 10
   news_avoidance_post_minutes: 5
@@ -237,6 +242,8 @@ birth_v2:
     stage1_trend_trades: 2000
     stage2_range_trades: 3000
     stage3_mixed_trades: 5000
+    stage_pass_trade_pct: 0.10
+    stage_pass_min_trades: 100
     stage4_polish_ppo_steps: 50000
     rollout_chunk_trades: 250
     oracle_scan_stride: 5
@@ -244,7 +251,7 @@ birth_v2:
     oracle_max_hold_bars: 120
     data_expansion_steps: [90, 180, 365, 730]
     stagnation_rollouts_before_expand: 5
-    max_rollouts_per_stage: 999999
+    max_rollouts_per_stage: 500
     gen0_provisional_min_trades: 25
     allow_provisional_pass: false
     certified_max_rollouts_per_stage: 200
@@ -275,6 +282,24 @@ birth_v2:
     meta_self_eval_min_velocity_gain: 0.003
     meta_self_eval_velocity_floor: 0.002
     meta_self_eval_cooldown_rollouts: 20
+    plateau_detection_enabled: true
+    plateau_winrate_gap: 0.10
+    plateau_trades_beyond_gate_multiplier: 10
+    plateau_max_wall_sec: 7200
+    plateau_max_evolution_steps: 8
+    plateau_evolution_rollouts_per_step: 12
+    max_forced_recoveries_per_plateau: 12
+    plateau_save_best_policy: true
+    plateau_oracle_distill_top_pct: 0.25
+    phoenix_reset_min_full_cycles: 3
+    phoenix_reset_max_winrate: 0.30
+    hold_trap_hold_ratio_threshold: 0.55
+    hold_trap_winrate_gap: 0.10
+    hold_trap_recovery_hold_cap: 0.40
+    stall_remediation_enabled: true
+    stall_remediation_max_cycles: 3
+    stall_remediation_max_steps: 5
+    stall_remediation_rollouts_per_step: 12
   reward:
     enabled: true
     expectancy_coeff: 0.5
@@ -298,7 +323,7 @@ birth_v2:
     min_holdout_trades: 50
   prefer_real_data_only: true
   max_real_days: 90
-  trade_budget_cap: 10000
+  trade_budget_cap: 25000
   ppo_update_timesteps: 25000
   chunk_size: 50000
 first_boot:

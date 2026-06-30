@@ -10,6 +10,8 @@ from typing import Any
 
 from lumina_core.birth.stage_scorecard import SCORECARD_PRESERVE_KEYS, enrich_progress_scorecard
 
+_PHASES_NO_STAGES_PRESERVE = frozenset({"stage_stalled", "curriculum_learning"})
+
 
 def read_birth_progress(workspace_root: Path | str) -> dict[str, Any]:
     root = Path(workspace_root)
@@ -54,9 +56,19 @@ def write_birth_progress(
         "progress_pct": round(max(0.0, min(100.0, float(progress_pct))), 2),
         "elapsed_sec": round(max(0.0, time.time() - birth_start_time), 2) if birth_start_time > 0 else 0.0,
     }
+    if birth_start_time > 0:
+        payload["birth_start_time"] = float(birth_start_time)
+    elif prev.get("birth_start_time"):
+        payload["birth_start_time"] = float(prev["birth_start_time"])
     if prev.get("elapsed_sec") and birth_start_time <= 0:
         payload["elapsed_sec"] = prev.get("elapsed_sec", 0.0)
     for key in SCORECARD_PRESERVE_KEYS:
+        if (
+            key == "stages_passed"
+            and str(phase).strip().lower() in _PHASES_NO_STAGES_PRESERVE
+            and key not in extra
+        ):
+            continue
         if key not in extra and key in prev:
             payload[key] = prev[key]
     payload.update(extra)

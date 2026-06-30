@@ -8,6 +8,7 @@ from lumina_core.rl.reward_shaper import (
     TradeCloseContext,
     compute_expectancy_reward,
     compute_legacy_reward,
+    hold_action_penalty,
 )
 
 
@@ -119,3 +120,10 @@ def test_legacy_reward_matches_net_pnl_minus_portfolio_terms() -> None:
         var_es_penalty=1.0,
     )
     assert reward == pytest.approx(10.0 - 0.02 + 0.025 - 1.0)
+
+
+@pytest.mark.unit
+def test_hold_action_penalty_during_plateau_trend() -> None:
+    assert hold_action_penalty(is_hold=True, regime="TREND_UP", plateau_active=True) < 0
+    assert hold_action_penalty(is_hold=True, regime="TREND_UP", plateau_active=False) == 0.0
+    assert hold_action_penalty(is_hold=False, regime="TREND_UP", plateau_active=True) == 0.0

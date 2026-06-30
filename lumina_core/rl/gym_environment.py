@@ -17,6 +17,7 @@ from lumina_core.rl.reward_shaper import (
     TradeCloseContext,
     compute_expectancy_reward,
     compute_legacy_reward,
+    hold_action_penalty,
     trend_features_from_tick,
     update_trade_stats,
 )
@@ -49,6 +50,8 @@ class RLConfig:
     drawdown_penalty_coeff: float = 0.2
     sharpe_bonus_coeff: float = 0.05
     reward: BirthRewardConfig = field(default_factory=BirthRewardConfig)
+    plateau_active: bool = False
+    hold_penalty_coeff: float = 0.002
 
 
 class RLTradingEnvironment(gym.Env):
@@ -363,6 +366,15 @@ class RLTradingEnvironment(gym.Env):
 
         if blocked_by_capital_preservation:
             reward -= 5.0
+
+        if side_bucket == 0 and self.config.plateau_active:
+            tick_regime = str(row.get("regime", "NEUTRAL"))
+            reward += hold_action_penalty(
+                is_hold=True,
+                regime=tick_regime,
+                plateau_active=True,
+                coeff=float(self.config.hold_penalty_coeff),
+            )
 
         self._idx += 1
         terminated = self._idx >= min(len(self.data) - 1, self.config.max_steps)

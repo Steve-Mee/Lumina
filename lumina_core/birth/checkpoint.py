@@ -69,12 +69,22 @@ def save_checkpoint(
     data_manifest: dict[str, Any] | None = None,
     phase: str | None = None,
     remediation_attempt: int = 0,
+    stage_pass_receipts: list[dict[str, Any]] | None = None,
 ) -> None:
     manifest = dict(data_manifest or {})
     metrics = dict(stage_metrics or {})
     if stages_passed and "stages_passed" not in metrics:
         metrics["stages_passed"] = list(stages_passed)
     quality = quality_score_from_manifest(manifest, metrics)
+    receipts_payload: list[dict[str, Any]] = []
+    if stage_pass_receipts is not None:
+        receipts_payload = [dict(r) for r in stage_pass_receipts]
+    else:
+        existing = read_checkpoint_payload(workspace_root)
+        if isinstance(existing, dict):
+            raw_receipts = existing.get("stage_pass_receipts")
+            if isinstance(raw_receipts, list):
+                receipts_payload = [dict(r) for r in raw_receipts if isinstance(r, dict)]
     payload: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": CHECKPOINT_VERSION,
@@ -82,6 +92,7 @@ def save_checkpoint(
         "ppo_steps": int(ppo_steps),
         "training_mode": str(training_mode).strip().lower(),
         "stages_passed": list(stages_passed),
+        "stage_pass_receipts": receipts_payload,
         "curriculum_stage": str(curriculum_stage or ""),
         "policy_path": str(policy_path or ""),
         "buffer_path": str(buffer_path or ""),
@@ -112,6 +123,7 @@ def load_checkpoint_state(workspace_root: Path | str) -> dict[str, Any]:
         "cumulative_trades": max(0, int(payload.get("cumulative_trades", 0) or 0)),
         "ppo_steps": max(0, int(payload.get("ppo_steps", 0) or 0)),
         "stages_passed": list(payload.get("stages_passed") or []),
+        "stage_pass_receipts": list(payload.get("stage_pass_receipts") or []),
         "curriculum_stage": str(payload.get("curriculum_stage", "") or ""),
         "training_mode": str(payload.get("training_mode", "") or ""),
         "policy_path": str(payload.get("policy_path", "") or ""),

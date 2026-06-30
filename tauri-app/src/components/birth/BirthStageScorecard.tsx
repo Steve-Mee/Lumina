@@ -99,10 +99,10 @@ export function BirthStageScorecard({
   if (!scorecard) return null;
 
   const compact = variant === "compact";
-  const metricDetail = `${formatMetricValue(scorecard)} ${formatMetricTarget(scorecard)}`.trim();
+  const metricDetail = `${formatMetricValue(scorecard!)} ${formatMetricTarget(scorecard!)}`.trim();
   const heartbeatLabel =
-    scorecard.heartbeatSec != null
-      ? `Updated ${scorecard.heartbeatSec}s ago`
+    scorecard!.heartbeatSec != null
+      ? `Updated ${scorecard!.heartbeatSec}s ago`
       : "Awaiting update";
 
   if (compact) {
@@ -113,19 +113,22 @@ export function BirthStageScorecard({
           className,
         )}
       >
-        {scorecard.stageLabel} · {scorecard.tradesDone}/{scorecard.tradesRequired} trades
-        {scorecard.metricValue != null ? ` · ${scorecard.metricLabel} ${formatMetricValue(scorecard)}` : ""}
-        {scorecard.learningAttempt > 0 ? ` · attempt ${scorecard.learningAttempt}` : ""}
-        {scorecard.explorationActive ? " · explore" : ""}
-        {scorecard.stageWallRemainingSec != null
-          ? ` · wall ${Math.ceil(scorecard.stageWallRemainingSec / 60)}m`
+        {scorecard!.stageLabel} · {scorecard!.tradesDone}/{scorecard!.tradesRequired} trades
+        {scorecard!.metricValue != null
+          ? ` · ${scorecard!.metricLabel} ${formatMetricValue(scorecard!)}`
           : ""}
-        {showAdaptationHud(scorecard) && scorecard.volumeGateStatus
-          ? ` · gate ${scorecard.volumeGateStatus}`
+        {scorecard!.learningAttempt > 0 ? ` · attempt ${scorecard!.learningAttempt}` : ""}
+        {scorecard!.patternsMined > 0
+          ? ` · ${scorecard!.patternsMined.toLocaleString()} patterns`
           : ""}
-        {scorecard.retriesThisStage > 0
-          ? ` · adapt ${scorecard.retriesThisStage}`
+        {scorecard!.explorationActive ? " · explore" : ""}
+        {scorecard!.stageWallRemainingSec != null
+          ? ` · wall ${Math.ceil(scorecard!.stageWallRemainingSec / 60)}m`
           : ""}
+        {showAdaptationHud(scorecard!) && scorecard!.volumeGateStatus
+          ? ` · gate ${scorecard!.volumeGateStatus}`
+          : ""}
+        {scorecard!.retriesThisStage > 0 ? ` · adapt ${scorecard!.retriesThisStage}` : ""}
       </p>
     );
   }
@@ -139,65 +142,99 @@ export function BirthStageScorecard({
     >
       <div className="space-y-0.5">
         <p className="font-mono text-xs font-medium tracking-wide text-foreground">
-          {scorecard.stageLabel}
+          {scorecard!.stageLabel}
         </p>
         <p className="font-mono text-[10px] text-muted-foreground">
-          Goal: {scorecard.goalLabel}
+          Goal: {scorecard!.goalLabel}
         </p>
-        {scorecard.provisionalPass ? (
+        {scorecard!.provisionalPass ? (
           <p className="font-mono text-[10px] text-amber-300">Provisional pass (practice only)</p>
         ) : null}
       </div>
 
-      {scorecard.blockerDetail ? (
+      {scorecard!.blockerDetail ? (
         <div className="rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1.5">
           <p className="font-mono text-[10px] tracking-wide text-amber-200/90 uppercase">
-            {scorecard.blockerLabel ?? "Blocking metric"}
+            {scorecard!.blockerLabel ?? "Blocking metric"}
           </p>
-          <p className="mt-0.5 font-mono text-xs text-amber-100">{scorecard.blockerDetail}</p>
+          <p className="mt-0.5 font-mono text-xs text-amber-100">{scorecard!.blockerDetail}</p>
         </div>
       ) : null}
 
-      {showAdaptationHud(scorecard) ? (
+      {Boolean(progress?.needs_attention) ? (
+        <div className="rounded border border-violet-500/35 bg-violet-950/20 px-2 py-1.5">
+          <p className="font-mono text-[10px] tracking-wide text-violet-200/90 uppercase">
+            Attention required
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-violet-100">
+            {String(progress?.attention_summary ?? "Lumina needs operator review.")}
+          </p>
+        </div>
+      ) : null}
+
+      {scorecard!.evolutionPhase && scorecard!.evolutionPhase !== "none" ? (
+        <div className="rounded border border-orange-500/35 bg-orange-950/20 px-2 py-1.5">
+          <p className="font-mono text-[10px] tracking-wide text-orange-200/90 uppercase">
+            Learning plateau
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-orange-100">
+            {scorecard!.evolutionStepLabel ??
+              `Evolution ${scorecard!.evolutionPhase.replace(/_/g, " ")}`}
+            {scorecard!.evolutionStep != null && scorecard!.evolutionActionsRemaining != null
+              ? ` · step ${scorecard!.evolutionStep}/${scorecard!.evolutionStep + scorecard!.evolutionActionsRemaining}`
+              : ""}
+          </p>
+          {scorecard!.plateauElapsedSec != null ? (
+            <p className="mt-0.5 font-mono text-[10px] text-orange-200/75">
+              Plateau clock: {Math.ceil(scorecard!.plateauElapsedSec / 60)}m elapsed
+              {scorecard!.tradesBeyondGate != null
+                ? ` · ${scorecard!.tradesBeyondGate.toLocaleString()} trades beyond gate`
+                : ""}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showAdaptationHud(scorecard!) ? (
         <div className="rounded border border-violet-500/25 bg-violet-950/15 px-2 py-1.5">
           <p className="font-mono text-[10px] tracking-wide text-violet-200/90 uppercase">
             Adaptive recovery
           </p>
           <div className="mt-1 space-y-0.5 font-mono text-[10px] text-violet-100/90">
-            {scorecard.volumeGateStatus ? (
+            {scorecard!.volumeGateStatus ? (
               <p>
                 Volume gate:{" "}
                 <span
                   className={
-                    scorecard.volumeGateStatus === "PASSED"
+                    scorecard!.volumeGateStatus === "PASSED"
                       ? "text-emerald-300"
                       : "text-cyan-200"
                   }
                 >
-                  {scorecard.volumeGateStatus}
+                  {scorecard!.volumeGateStatus}
                 </span>
               </p>
             ) : null}
-            <p>Winrate trend: {formatTrendSlope(scorecard.winrateTrendSlope)}</p>
-            {scorecard.retriesThisStage > 0 ? (
+            <p>Winrate trend: {formatTrendSlope(scorecard!.winrateTrendSlope)}</p>
+            {scorecard!.retriesThisStage > 0 ? (
               <p>
-                Auto-retries this stage: {scorecard.retriesThisStage}
-                {scorecard.maxStageRetries != null ? ` / ${scorecard.maxStageRetries}` : ""}
+                Auto-retries this stage: {scorecard!.retriesThisStage}
+                {scorecard!.maxStageRetries != null ? ` / ${scorecard!.maxStageRetries}` : ""}
               </p>
             ) : null}
-            {scorecard.adaptationTier != null && scorecard.maxAdaptationTiers != null ? (
+            {scorecard!.adaptationTier != null && scorecard!.maxAdaptationTiers != null ? (
               <p>
-                Escalation tier: {scorecard.adaptationTier + 1}/{scorecard.maxAdaptationTiers}
+                Escalation tier: {scorecard!.adaptationTier + 1}/{scorecard!.maxAdaptationTiers}
               </p>
             ) : null}
-            {scorecard.autoRecoveryActive ? (
+            {scorecard!.autoRecoveryActive ? (
               <p className="text-emerald-300">Auto-recovery active</p>
             ) : null}
-            {scorecard.escalationLevel != null && scorecard.escalationLevel > 0 ? (
-              <p>Exploration level: L{scorecard.escalationLevel}</p>
+            {scorecard!.escalationLevel != null && scorecard!.escalationLevel > 0 ? (
+              <p>Exploration level: L{scorecard!.escalationLevel}</p>
             ) : null}
-            {scorecard.lastAdaptationSummary ? (
-              <p className="text-violet-200/80">Last: {scorecard.lastAdaptationSummary}</p>
+            {scorecard!.lastAdaptationSummary ? (
+              <p className="text-violet-200/80">Last: {scorecard!.lastAdaptationSummary}</p>
             ) : null}
           </div>
         </div>
@@ -205,50 +242,46 @@ export function BirthStageScorecard({
 
       <ProgressBar
         label="Stage trades"
-        value={scorecard.tradesPct}
+        value={scorecard!.tradesPct}
         detail={
-          scorecard.tradesRequired > 0
-            ? `${scorecard.tradesDone.toLocaleString()} / ${scorecard.tradesRequired.toLocaleString()}`
-            : `${scorecard.tradesDone.toLocaleString()}`
+          scorecard!.tradesRequired > 0
+            ? `${scorecard!.tradesDone.toLocaleString()} / ${scorecard!.tradesRequired.toLocaleString()}`
+            : `${scorecard!.tradesDone.toLocaleString()}`
         }
       />
 
-      {scorecard.passCriteriaId !== "polish_complete" ? (
+      {scorecard!.passCriteriaId !== "polish_complete" ? (
         <ProgressBar
-          label={scorecard.metricLabel}
-          value={scorecard.metricPct}
+          label={scorecard!.metricLabel}
+          value={scorecard!.metricPct}
           detail={metricDetail}
         />
       ) : null}
 
-      {(scorecard.passCriteriaId === "range_hold_ratio" ||
-        scorecard.passCriteriaId === "range_roundtrip") ? (
+      {(scorecard!.passCriteriaId === "range_hold_ratio" ||
+        scorecard!.passCriteriaId === "range_roundtrip") ? (
         <p className="font-mono text-[10px] text-muted-foreground">
-          {scorecard.passCriteriaId === "range_roundtrip" ? "Position flat band" : "Range hold band"}:{" "}
-          {scorecard.metricMin != null ? `${(scorecard.metricMin * 100).toFixed(0)}%` : "30%"}
+          {scorecard!.passCriteriaId === "range_roundtrip" ? "Position flat band" : "Range hold band"}:{" "}
+          {scorecard!.metricMin != null ? `${(scorecard!.metricMin * 100).toFixed(0)}%` : "30%"}
           {" – "}
-          {scorecard.metricMax != null ? `${(scorecard.metricMax * 100).toFixed(0)}%` : "70%"}
-          {scorecard.passCriteriaId === "range_roundtrip" &&
-          scorecard.stageRangeRoundTrips != null
-            ? ` · round trips ${scorecard.stageRangeRoundTrips.toLocaleString()}`
+          {scorecard!.metricMax != null ? `${(scorecard!.metricMax * 100).toFixed(0)}%` : "70%"}
+          {scorecard!.passCriteriaId === "range_roundtrip" &&
+          scorecard!.stageRangeRoundTrips != null
+            ? ` · round trips ${scorecard!.stageRangeRoundTrips.toLocaleString()}`
             : ""}
         </p>
       ) : null}
 
       <div className="space-y-1 font-mono text-[10px] text-muted-foreground">
         <p>
-          Sub-phase: {scorecard.subPhaseLabel}
-          {scorecard.learningAttempt > 0 ? ` · attempt ${scorecard.learningAttempt}` : ""}
-          {scorecard.explorationActive ? " · exploration" : ""}
-          {scorecard.stageWallRemainingSec != null
-            ? ` · wall ${Math.ceil(scorecard.stageWallRemainingSec / 60)}m left`
+          Sub-phase: {scorecard!.subPhaseLabel}
+          {scorecard!.explorationActive ? " · exploration" : ""}
+          {scorecard!.stageWallRemainingSec != null
+            ? ` · wall ${Math.ceil(scorecard!.stageWallRemainingSec / 60)}m left`
             : ""}
         </p>
-        {scorecard.patternsMined > 0 ? (
-          <p>Patterns: {scorecard.patternsMined.toLocaleString()} mined</p>
-        ) : null}
-        <p className={healthClass(scorecard.health)}>
-          {heartbeatLabel} · {scorecard.healthHint}
+        <p className={healthClass(scorecard!.health)}>
+          {heartbeatLabel} · {scorecard!.healthHint}
         </p>
       </div>
     </div>

@@ -44,6 +44,10 @@ _MONTHS = {
     "DEC": 12,
 }
 
+# CME-style quarterly roots (MES/ES/NQ/MNQ) roll MAR → JUN → SEP → DEC.
+_QUARTERLY_MONTH_CODES = ("MAR", "JUN", "SEP", "DEC")
+_MONTH_CODE_BY_NUM = {num: code for code, num in _MONTHS.items()}
+
 
 _LOG = get_logger("lumina.trading.gate")
 _MODES_REQUIRING_EQUITY_SNAPSHOT = frozenset({"real", "paper", "sim_real_guard"})
@@ -296,6 +300,27 @@ def is_stale_contract_symbol(symbol: str, *, now_utc: datetime | None = None) ->
     # Calendar-aware expiry approximation (3rd Friday of contract month, CME style futures).
     expiry_utc = _third_friday(int(year), int(month))
     return now > expiry_utc
+
+
+def roll_stale_contract_symbol(symbol: str, *, now_utc: datetime | None = None) -> str:
+    """Return the next quarterly contract when *symbol* is stale; otherwise unchanged."""
+    normalized = str(symbol or "").strip().upper()
+    root, month, year = _parse_contract_symbol(normalized)
+    if root is None or month is None or year is None:
+        return normalized
+
+    now = now_utc or datetime.now(timezone.utc)
+    if now <= _third_friday(int(year), int(month)):
+        return normalized
+
+    month_code = _MONTH_CODE_BY_NUM.get(int(month))
+    if month_code not in _QUARTERLY_MONTH_CODES:
+        return normalized
+
+    idx = _QUARTERLY_MONTH_CODES.index(month_code)
+    next_code = _QUARTERLY_MONTH_CODES[(idx + 1) % len(_QUARTERLY_MONTH_CODES)]
+    next_year = int(year) + (1 if next_code == "MAR" else 0)
+    return f"{root} {next_code}{next_year % 100:02d}"
 
 
 def session_guard_allows_trading(engine: Any) -> tuple[bool, str]:

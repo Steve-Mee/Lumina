@@ -19,6 +19,8 @@ export interface BirthProgressPayload {
   data_days_loaded?: number;
   expansion_step?: number;
   learning_attempt?: number;
+  birth_start_time?: number;
+  elapsed_sec?: number;
   stage_trades?: number;
   stage_wins?: number;
   stage_winrate?: number;
@@ -74,6 +76,30 @@ export interface BirthProgressPayload {
   adaptation_enabled?: boolean;
   wall_behavior?: string;
   escalation_level?: number;
+  user_initiated_stop?: boolean;
+  retryable?: boolean;
+  trade_budget_remaining?: number;
+  trade_budget_cap?: number;
+  terminal_stall_reason?: string;
+  evolution_phase?: string;
+  evolution_step?: number;
+  evolution_step_label?: string;
+  evolution_actions_remaining?: number;
+  plateau_elapsed_sec?: number;
+  trades_beyond_gate?: number;
+  plateau_forced_recoveries_count?: number;
+  plateau_best_winrate?: number;
+  needs_attention?: boolean;
+  attention_reason_code?: string;
+  attention_summary?: string;
+  attention_recommended_actions?: string[];
+  attention_notified_at?: string;
+  constitution_violations_session?: number;
+  constitution_violations_cumulative?: number;
+  loading_chunk?: number;
+  chunk_total?: number;
+  bars_loaded?: number;
+  chunk_phase?: string;
 }
 
 export interface BirthCertificatePayload {
@@ -290,6 +316,15 @@ export async function clearBirthForExtraTraining(): Promise<Record<string, unkno
   const base = resolveBackendBaseUrl();
   const response = await fetch(`${base}/api/birth/extra-training`, { method: "POST" });
   if (!response.ok) throw new Error(`Extra training HTTP ${response.status}`);
+  return response.json();
+}
+
+export async function wipeAllBirthData(): Promise<Record<string, unknown>> {
+  const base = resolveBackendBaseUrl();
+  const response = await luminaFetch(`${base}/api/birth/wipe-all?confirm=true`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readHttpErrorDetail(response));
+  }
   return response.json();
 }
 

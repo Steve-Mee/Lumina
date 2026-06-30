@@ -33,7 +33,17 @@ const MILESTONE_META: Record<
     label: "Regime map",
     headline: "Building regime map…",
     stages: ["loading_data", "historical_loaded", "synthetic_top_up"],
-    phases: ["loading_history", "loading_history_failed", "ticks_ready"],
+    phases: [
+      "loading_history",
+      "loading_history_failed",
+      "enriching_news",
+      "enriching_regimes",
+      "train_holdout_split",
+      "holdout_preflight",
+      "holdout_preflight_expansion",
+      "policy_init",
+      "ticks_ready",
+    ],
   },
   strategies: {
     label: "Curriculum training",
@@ -80,6 +90,26 @@ export function resolveActiveMilestone(
     return "awakening";
   }
 
+  if (
+    phase === "loading_history" ||
+    stage === "detected" ||
+    stage === "pipeline_boot" ||
+    stage === "checkpoint_available"
+  ) {
+    return "dna";
+  }
+
+  if (
+    phase === "enriching_news" ||
+    phase === "enriching_regimes" ||
+    phase === "train_holdout_split" ||
+    phase === "holdout_preflight" ||
+    phase === "holdout_preflight_expansion" ||
+    phase === "policy_init"
+  ) {
+    return "fitness";
+  }
+
   for (let i = BIRTH_MILESTONE_ORDER.length - 1; i >= 0; i -= 1) {
     const id = BIRTH_MILESTONE_ORDER[i]!;
     const meta = MILESTONE_META[id];
@@ -94,7 +124,7 @@ export function resolveActiveMilestone(
     return "strategies";
   }
   if (phase.includes("loading") || stage.includes("loading") || stage.includes("historical")) {
-    return "fitness";
+    return stage === "historical_loaded" || phase === "ticks_ready" ? "fitness" : "dna";
   }
 
   return "dna";
@@ -167,6 +197,36 @@ export function resolveBirthHeadline(
     return "Birth Certificate thresholds not met — review OOS metrics and retry";
   }
   const phase = normalizeToken(progress?.phase);
+  if (
+    phase === "loading_history" ||
+    phase === "enriching_news" ||
+    phase === "enriching_regimes" ||
+    phase === "train_holdout_split" ||
+    phase === "holdout_preflight" ||
+    phase === "holdout_preflight_expansion" ||
+    phase === "policy_init"
+  ) {
+    const msg = String(progress?.message ?? "").trim();
+    if (msg) {
+      return msg;
+    }
+    if (phase === "loading_history") {
+      const chunk = Number(
+        (progress as Record<string, unknown> | undefined)?.loading_chunk ??
+          (progress as Record<string, unknown> | undefined)?.chunk_index ??
+          0,
+      );
+      const total = Number(progress?.chunk_total ?? 0);
+      if (chunk > 0 && total > 0) {
+        return `Loading real history (${chunk}/${total} chunks)…`;
+      }
+      return "Loading real market history…";
+    }
+    if (phase === "enriching_regimes") {
+      return "Building regime map…";
+    }
+    return "Preparing birth training data…";
+  }
   if (phase === "oos_evaluation") {
     const sharpe = Number(progress?.oos_metrics?.oos_sharpe ?? 0);
     return `OOS Sharpe evaluation (${sharpe.toFixed(2)})…`;
@@ -218,6 +278,9 @@ export function resolveBirthPhaseCopy(
   if (active?.id === "fitness") {
     return "Fitness landscape loading — historical and synthetic lanes merging.";
   }
+  if (active?.id === "dna") {
+    return "Real market history loading — preflight and tick cache warming.";
+  }
   return "Neural lattice forming — DNA, strategies, and policy in parallel.";
 }
 
@@ -239,6 +302,60 @@ export function isBirthRunning(payload: BirthStatusPayload): boolean {
   return status === "running" || status === "started" || status === "active";
 }
 
+/** Progress stages that mean the birth engine is actively preparing or training. */
+const BIRTH_ACTIVE_PROGRESS_STAGES = new Set([
+  "detected",
+  "loading_data",
+  "training_running",
+  "pipeline_boot",
+  "historical_loaded",
+  "synthetic_top_up",
+  "parallel_simulation",
+  "ppo_training",
+  "curriculum_research",
+  "curriculum_learning",
+  "data_expansion",
+]);
+
+const BIRTH_ACTIVE_PROGRESS_PHASES = new Set([
+  "detected",
+  "loading_history",
+  "enriching_news",
+  "enriching_regimes",
+  "train_holdout_split",
+  "holdout_preflight",
+  "holdout_preflight_expansion",
+  "policy_init",
+  "ticks_ready",
+  "curriculum_stage",
+  "curriculum_learning",
+  "curriculum_research",
+  "data_expansion",
+  "parallel_simulation",
+  "ppo_training",
+  "ppo_polish",
+  "oos_evaluation",
+]);
+
+export function isBirthProgressActive(payload: BirthStatusPayload): boolean {
+  if (isBirthInterrupted(payload)) {
+    return false;
+  }
+  const stage = normalizeToken(payload.progress?.stage);
+  const phase = normalizeToken(payload.progress?.phase);
+  if (stage === "interrupted" || stage === "completed" || stage === "failed") {
+    return false;
+  }
+  if (phase === "restart_required" || phase === "paused") {
+    return false;
+  }
+  return BIRTH_ACTIVE_PROGRESS_STAGES.has(stage) || BIRTH_ACTIVE_PROGRESS_PHASES.has(phase);
+}
+
+export function isBirthEngineActive(payload: BirthStatusPayload): boolean {
+  return isBirthRunning(payload) || isBirthProgressActive(payload);
+}
+
 export function isBirthInterrupted(payload: BirthStatusPayload): boolean {
   const status = normalizeToken(payload.status);
   const stage = normalizeToken(payload.progress?.stage);
@@ -246,7 +363,7 @@ export function isBirthInterrupted(payload: BirthStatusPayload): boolean {
 }
 
 export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
-  if (isBirthRunning(payload)) {
+  if (isBirthEngineActive(payload)) {
     return false;
   }
   if (isBirthStageStalled(payload)) {
@@ -344,6 +461,12 @@ export interface StageScorecardModel {
   lastAdaptationReason: string | null;
   lastAdaptationChunk: number | null;
   lastAdaptationSummary: string | null;
+  evolutionPhase: string | null;
+  evolutionStep: number | null;
+  evolutionStepLabel: string | null;
+  evolutionActionsRemaining: number | null;
+  plateauElapsedSec: number | null;
+  tradesBeyondGate: number | null;
 }
 
 const STALE_WORKING_SEC = 120;
@@ -381,6 +504,131 @@ function resolveScorecardHealth(
   return {
     health: "stale",
     healthHint: "Possible stall — check logs if metrics unchanged for 10+ min",
+  };
+}
+
+const BIRTH_TERMINAL_PROGRESS_STAGES = new Set([
+  "completed",
+  "failed",
+  "interrupted",
+  "stage_stalled",
+  "practice_completed",
+]);
+
+export interface BirthSessionHudModel {
+  sessionStartedAtMs: number | null;
+  sessionStartedLabel: string;
+  patternsMined: number;
+  learningAttempt: number;
+  elapsedSec: number | null;
+  preCurriculum: boolean;
+  subPhaseLabel: string;
+}
+
+export function resolveBirthSessionStartedAtMs(
+  progress: BirthProgressPayload | undefined,
+): number | null {
+  if (!progress) return null;
+  const direct = Number(progress.birth_start_time ?? 0);
+  if (direct > 0) {
+    return direct > 1e12 ? direct : direct * 1000;
+  }
+  const ts = parseProgressTimestamp(progress);
+  const elapsed = Number(progress.elapsed_sec ?? NaN);
+  if (ts != null && Number.isFinite(elapsed) && elapsed > 0) {
+    return ts - elapsed * 1000;
+  }
+  return null;
+}
+
+export function resolveLiveBirthElapsedSec(
+  progress: BirthProgressPayload | undefined,
+  statusElapsedSeconds?: number,
+  nowMs: number = Date.now(),
+): number | null {
+  if (!progress) {
+    return statusElapsedSeconds != null && statusElapsedSeconds >= 0
+      ? Math.floor(statusElapsedSeconds)
+      : null;
+  }
+
+  const startMs = resolveBirthSessionStartedAtMs(progress);
+  const progressElapsed = Number(progress.elapsed_sec ?? NaN);
+  const serverElapsed = Math.max(
+    Number.isFinite(progressElapsed) && progressElapsed >= 0 ? progressElapsed : 0,
+    statusElapsedSeconds != null && statusElapsedSeconds >= 0
+      ? Math.floor(statusElapsedSeconds)
+      : 0,
+  );
+
+  if (startMs != null) {
+    const liveElapsed = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+    return Math.max(serverElapsed, liveElapsed);
+  }
+
+  return serverElapsed > 0 ? serverElapsed : null;
+}
+
+export function formatBirthSessionStartedLabel(startMs: number | null): string {
+  if (startMs == null) return "syncing…";
+  return new Intl.DateTimeFormat("nl-NL", {
+    dateStyle: "short",
+    timeStyle: "medium",
+  }).format(new Date(startMs));
+}
+
+function resolveSessionSubPhaseLabel(progress: BirthProgressPayload): string {
+  const explicit = String(progress.sub_phase_label ?? "").trim();
+  if (explicit) return explicit;
+  const phase = normalizeToken(progress.phase);
+  if (phase === "loading_history") return "Historical data load";
+  if (phase === "enriching_news") return "News enrichment";
+  if (phase === "enriching_regimes") return "Regime map";
+  if (phase === "train_holdout_split") return "Train/holdout split";
+  if (phase === "holdout_preflight" || phase === "holdout_preflight_expansion") {
+    return "Holdout preflight";
+  }
+  if (phase === "policy_init" || phase === "ticks_ready") return "Policy init";
+  const message = String(progress.message ?? "").trim();
+  if (message) return message.length > 96 ? `${message.slice(0, 93)}…` : message;
+  return String(progress.phase ?? progress.stage ?? "Birth preparation").replace(/_/g, " ");
+}
+
+export function isBirthProgressPayloadActive(
+  progress: BirthProgressPayload | undefined,
+): boolean {
+  if (!progress) return false;
+  const stage = normalizeToken(progress.stage);
+  const phase = normalizeToken(progress.phase);
+  if (BIRTH_TERMINAL_PROGRESS_STAGES.has(stage)) return false;
+  if (phase === "restart_required" || phase === "paused" || phase === "certificate_failed") {
+    return false;
+  }
+  return BIRTH_ACTIVE_PROGRESS_STAGES.has(stage) || BIRTH_ACTIVE_PROGRESS_PHASES.has(phase);
+}
+
+export function extractBirthSessionHud(
+  progress: BirthProgressPayload | undefined,
+): BirthSessionHudModel | null {
+  if (!isBirthProgressPayloadActive(progress) || !progress) {
+    return null;
+  }
+  const scorecard = extractStageScorecard(progress);
+  const curriculumStage = String(progress.curriculum_stage ?? "").trim();
+  const startMs = resolveBirthSessionStartedAtMs(progress);
+  const elapsedRaw = Number(progress.elapsed_sec ?? NaN);
+  const patternsFromProgress = Math.max(0, Number(progress.patterns_mined ?? 0));
+  const patternsFromScorecard = Math.max(0, Number(scorecard?.patternsMined ?? 0));
+  const attemptFromProgress = Math.max(0, Number(progress.learning_attempt ?? 0));
+  const attemptFromScorecard = Math.max(0, Number(scorecard?.learningAttempt ?? 0));
+  return {
+    sessionStartedAtMs: startMs,
+    sessionStartedLabel: formatBirthSessionStartedLabel(startMs),
+    patternsMined: Math.max(patternsFromProgress, patternsFromScorecard),
+    learningAttempt: Math.max(attemptFromProgress, attemptFromScorecard),
+    elapsedSec: Number.isFinite(elapsedRaw) && elapsedRaw >= 0 ? elapsedRaw : null,
+    preCurriculum: !curriculumStage,
+    subPhaseLabel: resolveSessionSubPhaseLabel(progress),
   };
 }
 
@@ -722,6 +970,27 @@ export function extractStageScorecard(
     blockerDetail,
     provisionalPass: Boolean(progress?.provisional_pass),
     ...extractAdaptationFields(progress),
+    evolutionPhase: String(progress?.evolution_phase ?? "").trim() || null,
+    evolutionStep:
+      progress?.evolution_step != null && Number.isFinite(Number(progress.evolution_step))
+        ? Math.max(0, Number(progress.evolution_step))
+        : null,
+    evolutionStepLabel: String(progress?.evolution_step_label ?? "").trim() || null,
+    evolutionActionsRemaining:
+      progress?.evolution_actions_remaining != null &&
+      Number.isFinite(Number(progress.evolution_actions_remaining))
+        ? Math.max(0, Number(progress.evolution_actions_remaining))
+        : null,
+    plateauElapsedSec:
+      progress?.plateau_elapsed_sec != null &&
+      Number.isFinite(Number(progress.plateau_elapsed_sec))
+        ? Math.max(0, Number(progress.plateau_elapsed_sec))
+        : null,
+    tradesBeyondGate:
+      progress?.trades_beyond_gate != null &&
+      Number.isFinite(Number(progress.trades_beyond_gate))
+        ? Math.max(0, Number(progress.trades_beyond_gate))
+        : null,
   };
 }
 

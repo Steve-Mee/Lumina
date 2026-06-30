@@ -1,4 +1,5 @@
 import type { BirthProgressPayload, BirthStatusPayload } from "@/lib/birthClient";
+import { isBirthEngineActive } from "@/lib/birthPhaseModel";
 
 export type BirthRecoveryKind =
   | "history_unavailable"
@@ -81,6 +82,12 @@ export function shouldAutoResumeBirth(
   if (!status) {
     return false;
   }
+  if (isBirthEngineActive(status)) {
+    return false;
+  }
+  if (status.progress?.user_initiated_stop === true) {
+    return false;
+  }
   const topStatus = norm(status.status);
   if (topStatus === "running" || topStatus === "started" || topStatus === "active") {
     return false;
@@ -89,6 +96,9 @@ export function shouldAutoResumeBirth(
     return true;
   }
   const recovery = detectBirthRecoveryKind(status);
+  if (recovery === "stage_stalled" && status.progress?.retryable !== false) {
+    return true;
+  }
   if (recovery === "checkpoint_available" || recovery === "simulation_stall") {
     return true;
   }

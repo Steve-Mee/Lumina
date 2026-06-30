@@ -66,7 +66,7 @@ async function runBirthAction(
       toast.error(String(result.message ?? `Birth action failed (${status || "unknown"})`));
       return;
     }
-    useBirthStore.setState({ uiPhase: "running", pollError: null });
+    useBirthStore.setState({ uiPhase: "running", birthSurface: "running", pollError: null });
     await useBirthStore.getState().poll();
     toast.success(label);
   } catch (err) {
@@ -182,7 +182,7 @@ export function BirthRecoveryPanel({
               variant="ghost"
               onClick={() =>
                 void runBirthAction("Fresh birth started", () =>
-                  startBirthSession({ targetTrades, force: true }),
+                  retryBirthSession(targetTrades, { wipe: true }),
                 )
               }
             >
@@ -232,7 +232,7 @@ export function BirthRecoveryPanel({
                       toast.error(String(result.message ?? "Reuse data failed"));
                       return;
                     }
-                    useBirthStore.setState({ uiPhase: "running", pollError: null });
+                    useBirthStore.setState({ uiPhase: "running", birthSurface: "running", pollError: null });
                     await useBirthStore.getState().poll();
                     toast.success("Reusing data manifest from checkpoint");
                   } catch (err) {

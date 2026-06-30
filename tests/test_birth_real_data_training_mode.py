@@ -157,7 +157,7 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
     )
     monkeypatch.setattr(
         "lumina_core.birth.engine.enrich_ticks_for_sim",
-        lambda ticks: ticks,
+        lambda ticks, **_kwargs: ticks,
     )
     result = engine.run_birth_phase(prefer_real_data_only=False, practice_mode=True)
     assert result["training_mode"] == "practice"

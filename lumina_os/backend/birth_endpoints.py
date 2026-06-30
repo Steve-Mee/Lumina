@@ -90,6 +90,19 @@ async def stop_birth() -> dict[str, Any]:
     return birth_service.stop_birth()
 
 
+@router.post("/wipe-all")
+async def wipe_all_birth_data(
+    confirm: bool = Query(False),
+) -> dict[str, Any]:
+    """Remove all birth training artifacts (progress, checkpoint, caches, policies)."""
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Set confirm=true to wipe all birth data",
+        )
+    return birth_service.wipe_all_birth_data()
+
+
 @router.post("/extra-training")
 async def extra_training() -> dict[str, Any]:
     """Clear birth completion artifacts so operator can run extra training."""

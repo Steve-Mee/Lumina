@@ -4,20 +4,28 @@ import pytest
 
 from tests.birth.preflight_helpers import patch_holdout_preflight_ok
 
+_ENGINE_SHIM_SKIP_SUFFIXES = (
+    "test_meta_controller",
+    "test_meta_self_eval",
+    "test_stage1_stagnation",
+    "test_plateau_escalator",
+    "test_stall_remediation",
+)
 
-def _requests_meta_controller_tests(request: pytest.FixtureRequest) -> bool:
+
+def _skip_birth_engine_shims(request: pytest.FixtureRequest) -> bool:
     if request.node.get_closest_marker("meta_controller") is not None:
         return True
     module_name = getattr(request.module, "__name__", "")
-    return module_name.endswith(("test_meta_controller", "test_meta_self_eval"))
+    return module_name.endswith(_ENGINE_SHIM_SKIP_SUFFIXES)
 
 
 @pytest.fixture(autouse=True)
 def _disable_birth_meta_controller_for_unit_tests(
     monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
 ) -> None:
-    """Meta-controller self-eval loops exceed the 15s unit-test timeout budget."""
-    if _requests_meta_controller_tests(request):
+    """Keep heavy birth engine paths bounded in unit tests."""
+    if _skip_birth_engine_shims(request):
         return
 
     import lumina_core.birth.config as birth_config
@@ -29,6 +37,8 @@ def _disable_birth_meta_controller_for_unit_tests(
         kwargs.setdefault("meta_controller_enabled", False)
         kwargs.setdefault("adaptation_enabled", False)
         kwargs.setdefault("wall_behavior", "strict")
+        kwargs.setdefault("plateau_detection_enabled", False)
+        kwargs.setdefault("stall_remediation_enabled", False)
         return _orig_curriculum(*args, **kwargs)
 
     def _load_without_meta(workspace_root=None):
@@ -36,6 +46,8 @@ def _disable_birth_meta_controller_for_unit_tests(
         cfg.curriculum.meta_controller_enabled = False
         cfg.curriculum.adaptation_enabled = False
         cfg.curriculum.wall_behavior = "strict"
+        cfg.curriculum.plateau_detection_enabled = False
+        cfg.curriculum.stall_remediation_enabled = False
         return cfg
 
     monkeypatch.setattr(birth_config, "BirthCurriculumConfig", _curriculum_with_meta_off)
@@ -58,11 +70,11 @@ def _disable_birth_meta_controller_for_unit_tests(
     )
     monkeypatch.setattr(
         "lumina_core.birth.engine.enrich_ticks_for_sim",
-        lambda ticks: ticks,
+        lambda ticks, **_kwargs: ticks,
     )
     monkeypatch.setattr(
         "lumina_core.birth.data_expansion.enrich_ticks_for_sim",
-        lambda ticks: ticks,
+        lambda ticks, **_kwargs: ticks,
     )
 
 

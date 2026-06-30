@@ -8,6 +8,7 @@ import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { modeLabelClass, drawerBadgeClass, type DrawerBadgeVariant } from "@/lib/modePresentation";
 import { panelCrossfadeWith, transitionOrNone } from "@/lib/motionPresets";
 import { selectCurrentMode, useCoreStore } from "@/store/coreStore";
+import { luminaInteractiveClass } from "@/lib/glassGlowTaxonomy";
 import { cn } from "@/lib/utils";
 
 export interface DrawerSection<TTab extends string = string> {
@@ -61,7 +62,7 @@ export function SubsystemsDrawerTrigger({
       data-mode={operatorMode}
       onClick={onClick}
       className={cn(
-        "deck-tab-chip lumina-glass lumina-glass--panel inline-flex h-8 items-center gap-1.5 px-2.5 font-mono text-[10px] tracking-wide text-muted-foreground uppercase transition-colors lumina-glow-edge hover:text-foreground",
+        "deck-tab-chip lumina-interactive lumina-glass lumina-glass--panel inline-flex h-8 items-center gap-1.5 px-2.5 font-mono text-[10px] tracking-wide text-muted-foreground uppercase transition-colors lumina-glow-edge hover:text-foreground",
         className,
       )}
     >
@@ -143,7 +144,10 @@ export function SubsystemsDrawer<TTab extends string>({
               <button
                 type="button"
                 aria-label="Close"
-                className="rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-foreground"
+                className={cn(
+                  luminaInteractiveClass("ghost"),
+                  "rounded-md p-1.5 text-muted-foreground hover:bg-white/5 hover:text-foreground",
+                )}
                 onClick={() => onOpenChange(false)}
               >
                 <X className="size-4" />
@@ -185,6 +189,7 @@ export function SubsystemsDrawer<TTab extends string>({
                           <button
                             type="button"
                             className={cn(
+                              luminaInteractiveClass("ghost"),
                               "flex w-full items-center justify-between rounded-md px-2 py-2 text-left font-mono text-[10px] tracking-wide uppercase transition-colors hover:bg-white/5 lumina-glass--panel",
                               active
                                 ? "deck-accent-text bg-white/5"

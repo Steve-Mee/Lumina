@@ -46,12 +46,14 @@ class BirthCurriculumConfig:
     stage1_trend_trades: int = 2000
     stage2_range_trades: int = 3000
     stage3_mixed_trades: int = 5000
+    stage_pass_trade_pct: float = 0.10
+    stage_pass_min_trades: int = 100
     stage4_polish_ppo_steps: int = 50_000
     rollout_step_budget_multiplier: int = 40
     stall_probe_steps: int = 5000
     exploration_steps: int = 2000
     rollout_chunk_trades: int = 250
-    max_rollouts_per_stage: int = 999_999
+    max_rollouts_per_stage: int = 500
     max_escalation_level: int = 5
     gen0_provisional_min_trades: int = 25
     oracle_scan_stride: int = 5
@@ -111,6 +113,24 @@ class BirthCurriculumConfig:
     meta_self_eval_min_velocity_gain: float = 0.003
     meta_self_eval_velocity_floor: float = 0.002
     meta_self_eval_cooldown_rollouts: int = 20
+    plateau_detection_enabled: bool = True
+    plateau_winrate_gap: float = 0.10
+    plateau_trades_beyond_gate_multiplier: int = 10
+    plateau_max_wall_sec: int = 7200
+    plateau_max_evolution_steps: int = 8
+    plateau_evolution_rollouts_per_step: int = 12
+    max_forced_recoveries_per_plateau: int = 12
+    plateau_save_best_policy: bool = True
+    plateau_oracle_distill_top_pct: float = 0.25
+    phoenix_reset_min_full_cycles: int = 3
+    phoenix_reset_max_winrate: float = 0.30
+    hold_trap_hold_ratio_threshold: float = 0.55
+    hold_trap_winrate_gap: float = 0.10
+    hold_trap_recovery_hold_cap: float = 0.40
+    stall_remediation_enabled: bool = True
+    stall_remediation_max_cycles: int = 3
+    stall_remediation_max_steps: int = 5
+    stall_remediation_rollouts_per_step: int = 12
 
 
 @dataclass(slots=True)
@@ -162,6 +182,42 @@ def _parse_expansion_steps(raw: Any) -> tuple[int, ...]:
     return (90, 180, 365, 730)
 
 
+def resolve_trade_budget_cap(raw: dict[str, Any]) -> tuple[int, str]:
+    """Resolve global birth trade budget; prefer birth_v2, else first_boot.training_trades."""
+    section = raw.get("birth_v2")
+    first_boot = raw.get("first_boot")
+    fb_trades = 0
+    if isinstance(first_boot, dict):
+        fb_trades = max(0, _coerce_int(first_boot.get("training_trades"), 0))
+
+    if isinstance(section, dict) and section.get("trade_budget_cap") is not None:
+        cap = max(500, _coerce_int(section.get("trade_budget_cap"), 10_000))
+        return cap, "birth_v2.trade_budget_cap"
+
+    if fb_trades > 0:
+        return max(500, fb_trades), "first_boot.training_trades"
+
+    return 10_000, "default"
+
+
+def resolve_effective_trade_budget(
+    raw: dict[str, Any],
+    *,
+    target_trades: int | None = None,
+) -> tuple[int, str]:
+    """Priority: explicit start arg > birth_v2.trade_budget_cap > first_boot.training_trades."""
+    if target_trades is not None:
+        try:
+            from lumina_core.first_boot_ui import normalize_first_boot_training_trades
+
+            normalized = normalize_first_boot_training_trades(int(target_trades))
+            if normalized > 0:
+                return normalized, "start_arg.target_trades"
+        except (TypeError, ValueError):
+            pass
+    return resolve_trade_budget_cap(raw)
+
+
 def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Config:
     root = Path(workspace_root or Path.cwd())
     cfg_path = root / "config.yaml"
@@ -196,12 +252,17 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         stage1_trend_trades=_coerce_int(cur_raw.get("stage1_trend_trades"), 2000),
         stage2_range_trades=_coerce_int(cur_raw.get("stage2_range_trades"), 3000),
         stage3_mixed_trades=_coerce_int(cur_raw.get("stage3_mixed_trades"), 5000),
+        stage_pass_trade_pct=max(
+            0.05,
+            min(1.0, _coerce_float(cur_raw.get("stage_pass_trade_pct"), 0.10)),
+        ),
+        stage_pass_min_trades=max(50, _coerce_int(cur_raw.get("stage_pass_min_trades"), 100)),
         stage4_polish_ppo_steps=_coerce_int(cur_raw.get("stage4_polish_ppo_steps"), 50_000),
         rollout_step_budget_multiplier=_coerce_int(cur_raw.get("rollout_step_budget_multiplier"), 40),
         stall_probe_steps=_coerce_int(cur_raw.get("stall_probe_steps"), 5000),
         exploration_steps=_coerce_int(cur_raw.get("exploration_steps"), 2000),
         rollout_chunk_trades=_coerce_int(cur_raw.get("rollout_chunk_trades"), 250),
-        max_rollouts_per_stage=_coerce_int(cur_raw.get("max_rollouts_per_stage"), 999_999),
+        max_rollouts_per_stage=_coerce_int(cur_raw.get("max_rollouts_per_stage"), 500),
         max_escalation_level=_coerce_int(cur_raw.get("max_escalation_level"), 5),
         gen0_provisional_min_trades=_coerce_int(cur_raw.get("gen0_provisional_min_trades"), 25),
         oracle_scan_stride=_coerce_int(cur_raw.get("oracle_scan_stride"), 5),
@@ -324,6 +385,51 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         meta_self_eval_cooldown_rollouts=max(
             0, _coerce_int(cur_raw.get("meta_self_eval_cooldown_rollouts"), 20)
         ),
+        plateau_detection_enabled=bool(cur_raw.get("plateau_detection_enabled", True)),
+        plateau_winrate_gap=max(0.01, _coerce_float(cur_raw.get("plateau_winrate_gap"), 0.10)),
+        plateau_trades_beyond_gate_multiplier=max(
+            1, _coerce_int(cur_raw.get("plateau_trades_beyond_gate_multiplier"), 10)
+        ),
+        plateau_max_wall_sec=max(300, _coerce_int(cur_raw.get("plateau_max_wall_sec"), 7200)),
+        plateau_max_evolution_steps=max(
+            1, min(12, _coerce_int(cur_raw.get("plateau_max_evolution_steps"), 8))
+        ),
+        plateau_evolution_rollouts_per_step=max(
+            1, _coerce_int(cur_raw.get("plateau_evolution_rollouts_per_step"), 12)
+        ),
+        max_forced_recoveries_per_plateau=max(
+            1, _coerce_int(cur_raw.get("max_forced_recoveries_per_plateau"), 12)
+        ),
+        plateau_save_best_policy=bool(cur_raw.get("plateau_save_best_policy", True)),
+        plateau_oracle_distill_top_pct=max(
+            0.05,
+            min(0.50, _coerce_float(cur_raw.get("plateau_oracle_distill_top_pct"), 0.25)),
+        ),
+        phoenix_reset_min_full_cycles=max(
+            1, _coerce_int(cur_raw.get("phoenix_reset_min_full_cycles"), 3)
+        ),
+        phoenix_reset_max_winrate=max(
+            0.05, min(0.50, _coerce_float(cur_raw.get("phoenix_reset_max_winrate"), 0.30))
+        ),
+        hold_trap_hold_ratio_threshold=max(
+            0.40, min(0.90, _coerce_float(cur_raw.get("hold_trap_hold_ratio_threshold"), 0.55))
+        ),
+        hold_trap_winrate_gap=max(
+            0.01, _coerce_float(cur_raw.get("hold_trap_winrate_gap"), 0.10)
+        ),
+        hold_trap_recovery_hold_cap=max(
+            0.20, min(0.70, _coerce_float(cur_raw.get("hold_trap_recovery_hold_cap"), 0.40))
+        ),
+        stall_remediation_enabled=bool(cur_raw.get("stall_remediation_enabled", True)),
+        stall_remediation_max_cycles=max(
+            1, _coerce_int(cur_raw.get("stall_remediation_max_cycles"), 3)
+        ),
+        stall_remediation_max_steps=max(
+            1, min(8, _coerce_int(cur_raw.get("stall_remediation_max_steps"), 5))
+        ),
+        stall_remediation_rollouts_per_step=max(
+            1, _coerce_int(cur_raw.get("stall_remediation_rollouts_per_step"), 12)
+        ),
     )
 
     news = BirthNewsConfig(
@@ -352,6 +458,9 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
     except Exception:
         thresholds = BirthCertificateThresholds()
 
+    trade_budget_cap, budget_source = resolve_trade_budget_cap(raw)
+    logger.info("birth.budget cap=%s source=%s", trade_budget_cap, budget_source)
+
     return BirthV2Config(
         curriculum=curriculum,
         news=news,
@@ -362,5 +471,5 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         max_real_days=max(30, min(3650, _coerce_int(section.get("max_real_days"), 90))),
         ppo_update_timesteps=max(1000, _coerce_int(section.get("ppo_update_timesteps"), 25_000)),
         chunk_size=max(2500, _coerce_int(section.get("chunk_size"), 50_000)),
-        trade_budget_cap=max(500, _coerce_int(section.get("trade_budget_cap"), 10_000)),
+        trade_budget_cap=trade_budget_cap,
     )

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 interface BirthMilestoneTrackProps {
   milestones: BirthMilestone[];
   upcomingCount?: number;
-  variant?: "default" | "drawer";
+  variant?: "default" | "drawer" | "bar";
   className?: string;
 }
 
@@ -20,15 +20,16 @@ export function BirthMilestoneTrack({
 }: BirthMilestoneTrackProps) {
   const reducedMotion = usePrefersReducedMotion();
   const drawer = variant === "drawer";
+  const bar = variant === "bar";
 
   return (
-    <div className={cn("birth-milestone-track-wrap", className)}>
+    <div className={cn("birth-milestone-track-wrap", bar && "birth-milestone-track-wrap--bar", className)}>
       <ol
         className={cn(
           "birth-milestone-track",
-          drawer
-            ? "flex flex-col gap-2"
-            : "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-6",
+          bar && "birth-milestone-track--bar flex flex-nowrap items-center gap-1.5",
+          drawer && "flex flex-col gap-2",
+          !bar && !drawer && "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-6",
         )}
         aria-label="Birth milestones"
       >
@@ -36,29 +37,36 @@ export function BirthMilestoneTrack({
           <motion.li
             key={milestone.id}
             className={cn(
-              "birth-milestone flex items-center gap-2",
-              drawer ? "birth-milestone--drawer rounded-md px-2 py-1.5 text-xs" : "text-sm",
+              "birth-milestone flex shrink-0 items-center gap-2",
+              bar && "birth-milestone--bar rounded-full border border-white/10 px-2 py-0.5 text-[10px]",
+              drawer && "birth-milestone--drawer rounded-md px-2 py-1.5 text-xs",
+              !bar && !drawer && "text-sm",
               milestone.state === "active" && "birth-milestone--active",
               milestone.state === "complete" && "birth-milestone--complete",
             )}
-            initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+            initial={reducedMotion ? false : { opacity: 0, y: bar ? 0 : 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: reducedMotion ? 0 : index * 0.08, duration: 0.35 }}
+            transition={{ delay: reducedMotion ? 0 : index * 0.05, duration: 0.25 }}
           >
             <span
-              className="birth-milestone-dot flex size-6 shrink-0 items-center justify-center rounded-full border border-white/15"
+              className={cn(
+                "birth-milestone-dot flex shrink-0 items-center justify-center rounded-full border border-white/15",
+                bar ? "size-4" : "size-6",
+              )}
               data-state={milestone.state}
             >
               {milestone.state === "complete" ? (
-                <Check className="size-3.5 text-emerald-300" aria-hidden />
+                <Check className={cn(bar ? "size-2.5" : "size-3.5", "text-emerald-300")} aria-hidden />
               ) : (
-                <span className="size-2 rounded-full bg-current opacity-60" />
+                <span className="size-1.5 rounded-full bg-current opacity-60" />
               )}
             </span>
             <span
               className={cn(
-                "leading-snug",
-                drawer ? "font-mono text-[10px] tracking-wide" : "max-w-[11rem] text-sm",
+                "leading-snug whitespace-nowrap",
+                bar && "font-mono tracking-wide",
+                drawer && "font-mono text-[10px] tracking-wide",
+                !bar && !drawer && "max-w-[11rem] text-sm",
                 milestone.state === "pending" && "text-muted-foreground",
                 milestone.state === "active" && "text-foreground font-medium",
                 milestone.state === "complete" && "text-emerald-200/90",
@@ -68,8 +76,13 @@ export function BirthMilestoneTrack({
             </span>
           </motion.li>
         ))}
+        {bar && upcomingCount > 0 ? (
+          <li className="shrink-0 font-mono text-[10px] tracking-wide text-muted-foreground whitespace-nowrap">
+            +{upcomingCount}
+          </li>
+        ) : null}
       </ol>
-      {upcomingCount > 0 ? (
+      {!bar && upcomingCount > 0 ? (
         <p className="mt-2 font-mono text-[10px] text-muted-foreground">
           ··· +{upcomingCount} upcoming
         </p>

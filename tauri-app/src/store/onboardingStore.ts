@@ -340,6 +340,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       }
 
       useBirthStore.getState().setTargetTrades(draft.training.training_trades);
+      useBirthStore.getState().beginBirthRun();
       const result = await startBirth(draft.training.training_trades);
 
       if (result.status === "already_completed") {
@@ -370,6 +371,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       }
 
       await get().refresh();
+      await useBirthStore.getState().poll();
       set({ phase: "birth", activating: false, birthPhaseCommitted: true });
       return true;
     } catch (err) {

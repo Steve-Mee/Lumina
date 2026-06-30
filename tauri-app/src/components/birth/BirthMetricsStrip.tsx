@@ -1,15 +1,20 @@
 import type { BirthProgressPayload } from "@/lib/birthClient";
 import {
+  extractBirthSessionHud,
   extractPpoProgress,
   extractSimProgress,
   extractStageScorecard,
 } from "@/lib/birthPhaseModel";
 import { cn } from "@/lib/utils";
 
+import { BirthSessionTelemetry } from "@/components/birth/BirthSessionTelemetry";
+import { useLiveBirthElapsedSec } from "@/hooks/useLiveBirthElapsedSec";
+
 interface BirthMetricsStripProps {
   progress: BirthProgressPayload | undefined;
   elapsedSeconds?: number;
   message?: string;
+  embedded?: boolean;
   className?: string;
 }
 
@@ -69,25 +74,87 @@ export function BirthMetricsStrip({
   progress,
   elapsedSeconds,
   message,
+  embedded = false,
   className,
 }: BirthMetricsStripProps) {
   const sim = extractSimProgress(progress);
   const ppo = extractPpoProgress(progress);
   const scorecard = extractStageScorecard(progress);
+  const sessionHud = extractBirthSessionHud(progress);
+  const liveElapsedSec = useLiveBirthElapsedSec(progress, elapsedSeconds);
   const overallPct = Number(progress?.progress_pct ?? sim.pct);
   const subPhase = String(progress?.sub_phase ?? progress?.phase ?? "").toLowerCase();
+  const loadingHistory = subPhase === "loading_history";
+  const enrichingRegimes = subPhase === "enriching_regimes";
+  const loadingChunk = Number(progress?.loading_chunk ?? 0);
+  const loadingTotal = Number(progress?.chunk_total ?? 0);
+  const historyPct =
+    loadingHistory && loadingTotal > 0
+      ? Math.min(100, Math.max(0, (loadingChunk / loadingTotal) * 100))
+      : overallPct;
+  const regimePct =
+    enrichingRegimes && loadingTotal > 0
+      ? Math.min(100, Math.max(0, (loadingChunk / loadingTotal) * 100))
+      : overallPct;
   const showPpoBatch =
     subPhase === "ppo_training" ||
     subPhase === "curriculum_learning" ||
     subPhase === "curriculum_research";
 
   const elapsedLabel =
-    elapsedSeconds != null && elapsedSeconds > 0
-      ? `${Math.floor(elapsedSeconds / 60)}m ${Math.floor(elapsedSeconds % 60)}s`
+    liveElapsedSec != null && liveElapsedSec >= 0
+      ? `${Math.floor(liveElapsedSec / 60)}m ${Math.floor(liveElapsedSec % 60)}s`
       : null;
 
   return (
-    <div className={cn("birth-metrics-strip space-y-4 rounded-lg border border-white/8 p-3", className)}>
+    <div
+      className={cn(
+        "birth-metrics-strip rounded-lg border border-white/8",
+        embedded ? "birth-metrics-strip--embedded space-y-2 p-2" : "space-y-4 p-3",
+        className,
+      )}
+    >
+      {loadingHistory ? (
+        <>
+          <ProgressBar
+            label="Historical data load"
+            value={historyPct}
+            detail={
+              loadingTotal > 0 && loadingChunk > 0
+                ? `Chunk ${loadingChunk}/${loadingTotal} · ${Number(progress?.bars_loaded ?? 0).toLocaleString()} bars`
+                : `${overallPct.toFixed(1)}% overall`
+            }
+          />
+          {!embedded ? (
+            <ProgressBar
+              label="Overall progress"
+              value={overallPct}
+              detail={`${overallPct.toFixed(1)}%`}
+            />
+          ) : null}
+        </>
+      ) : enrichingRegimes ? (
+        <>
+          <ProgressBar
+            label="Regime map"
+            value={regimePct}
+            detail={
+              loadingTotal > 0 && loadingChunk > 0
+                ? `${loadingChunk.toLocaleString()}/${loadingTotal.toLocaleString()} ticks`
+                : `${overallPct.toFixed(1)}% overall`
+            }
+          />
+          {!embedded ? (
+            <ProgressBar
+              label="Overall progress"
+              value={overallPct}
+              detail={`${overallPct.toFixed(1)}%`}
+            />
+          ) : null}
+        </>
+      ) : embedded && showPpoBatch && ppo.steps > 0 ? (
+        <ProgressBar label="PPO batch" value={overallPct} detail={ppo.label} />
+      ) : (
       <ProgressBar
         label={scorecard ? "Stage trades" : "Simulation trades"}
         value={sim.pct}
@@ -97,32 +164,39 @@ export function BirthMetricsStrip({
             : `${sim.done.toLocaleString()} trades`
         }
       />
-      {scorecard && scorecard.passCriteriaId !== "polish_complete" ? (
+      )}
+      {!embedded && scorecard && scorecard.passCriteriaId !== "polish_complete" ? (
         <ProgressBar
           label={scorecard.metricLabel}
           value={scorecard.metricPct}
           detail={formatPassMetricDetail(scorecard)}
         />
       ) : null}
-      {showPpoBatch && ppo.steps > 0 ? (
+      {!embedded && showPpoBatch && ppo.steps > 0 ? (
         <ProgressBar label="PPO batch" value={overallPct} detail={ppo.label} />
-      ) : !scorecard && ppo.steps > 0 ? (
+      ) : !embedded && !scorecard && ppo.steps > 0 ? (
         <ProgressBar label="PPO refinement" value={overallPct} detail={ppo.label} />
-      ) : !scorecard ? (
+      ) : !embedded && !loadingHistory && !enrichingRegimes && !scorecard ? (
         <ProgressBar
           label="Overall progress"
           value={overallPct}
           detail={`${overallPct.toFixed(1)}%`}
         />
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-2 font-mono text-[10px] text-muted-foreground">
-        {elapsedLabel ? <span className="shrink-0">Elapsed {elapsedLabel}</span> : <span />}
-        {message ? (
-          <span className="min-w-0 max-w-full truncate text-cyan-200/70" title={message}>
+      {sessionHud ? (
+        <BirthSessionTelemetry hud={sessionHud} elapsedSec={liveElapsedSec} className="px-0.5" />
+      ) : elapsedLabel ? (
+        <div className="font-mono text-[10px] text-muted-foreground">
+          Elapsed {elapsedLabel}
+        </div>
+      ) : null}
+      {message ? (
+        <div className="birth-status-line font-mono text-[10px] text-muted-foreground">
+          <span className="block truncate text-right text-cyan-200/70" title={message}>
             {message}
           </span>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

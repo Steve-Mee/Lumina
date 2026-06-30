@@ -40,8 +40,6 @@ interface BirthDiagnosticsDrawerProps {
   settingsInitial?: Partial<BirthSettingsPayload>;
   trainingLogs?: PPOEvolutionMetric[];
   trainingConnected?: boolean;
-  showStop?: boolean;
-  onStop?: () => void;
   className?: string;
 }
 
@@ -57,14 +55,13 @@ export function BirthDiagnosticsDrawer({
   settingsInitial,
   trainingLogs = [],
   trainingConnected = false,
-  showStop = false,
-  onStop,
   className,
 }: BirthDiagnosticsDrawerProps) {
   const reducedMotion = usePrefersReducedMotion();
   const modeMotion = useOnboardingModeMotion();
   const [open, setOpen] = useState(defaultOpen);
   const [panel, setPanel] = useState<DiagnosticsPanel>("progress");
+  const [milestonesExpanded, setMilestonesExpanded] = useState(false);
   const showTraining = running || trainingLogs.length > 0 || trainingConnected;
   const compactMilestones = buildCompactMilestones(progress, birthStatus?.status ?? "idle");
 
@@ -166,11 +163,6 @@ export function BirthDiagnosticsDrawer({
                         {finale && birthStatus ? (
                           <BirthCompletionSummary status={birthStatus} />
                         ) : null}
-                        <BirthMilestoneTrack
-                          milestones={compactMilestones.items}
-                          upcomingCount={compactMilestones.upcomingCount}
-                          variant="drawer"
-                        />
                         {(running || finale) && progress ? (
                           <>
                             <BirthStageScorecard progress={progress} />
@@ -181,6 +173,23 @@ export function BirthDiagnosticsDrawer({
                             />
                           </>
                         ) : null}
+                        <details
+                          className="birth-diagnostics-milestones"
+                          open={milestonesExpanded}
+                          onToggle={(event) =>
+                            setMilestonesExpanded((event.currentTarget as HTMLDetailsElement).open)
+                          }
+                        >
+                          <summary className="birth-diagnostics-milestones__summary">
+                            Milestone track
+                          </summary>
+                          <BirthMilestoneTrack
+                            milestones={compactMilestones.items}
+                            upcomingCount={compactMilestones.upcomingCount}
+                            variant="drawer"
+                            className="mt-3"
+                          />
+                        </details>
                       </div>
                     ) : null}
                     {panel === "training" ? (
@@ -207,19 +216,17 @@ export function BirthDiagnosticsDrawer({
                     {panel === "logs" ? <BirthLogsPanel /> : null}
                   </div>
 
-                  {showStop && onStop ? (
-                    <div className="birth-diagnostics-footer border-t border-white/5 px-4 py-3">
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        className="w-full font-mono text-[10px] tracking-wide uppercase"
-                        onClick={onStop}
-                      >
-                        Stop birth phase
-                      </Button>
-                    </div>
-                  ) : null}
+                  <div className="birth-diagnostics-footer border-t border-white/5 px-4 py-3">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="w-full font-mono text-[10px] tracking-wide uppercase"
+                      onClick={() => setOpen(false)}
+                    >
+                      Sluiten
+                    </Button>
+                  </div>
                 </motion.aside>
               </>
             ) : null}

@@ -44,7 +44,7 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "deck-tab-trigger inline-flex h-7 items-center justify-center rounded-md px-3 font-mono text-[10px] tracking-[0.14em] whitespace-nowrap uppercase transition-all",
+        "deck-tab-trigger lumina-interactive lumina-interactive--ghost inline-flex h-7 items-center justify-center rounded-md px-3 font-mono text-[10px] tracking-[0.14em] whitespace-nowrap uppercase transition-all",
         "text-muted-foreground hover:bg-white/5",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400/40",
         "disabled:pointer-events-none disabled:opacity-50",

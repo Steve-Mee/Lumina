@@ -162,6 +162,11 @@ class FirstBootManager:
         first_boot["allow_minimal_synthetic_fallback"] = bool(allow_minimal_synthetic_fallback)
         first_boot["force_training"] = True
         first_boot["birth_phase"] = True
+        birth_v2 = self._ensure_mapping(cfg, "birth_v2")
+        normalized_trades = normalize_first_boot_training_trades(training_trades)
+        birth_v2["trade_budget_cap"] = normalized_trades
+        birth_v2["max_real_days"] = max(30, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS))
+        birth_v2["prefer_real_data_only"] = bool(prefer_real_data_only)
         if require_real_simulator_data is not None:
             evolution = self._ensure_mapping(cfg, "evolution")
             neuro = self._ensure_mapping(evolution, "neuroevolution")
@@ -337,3 +342,10 @@ class FirstBootManager:
                 path.unlink(missing_ok=True)
             except Exception:
                 logger.warning("first_boot.clear_progress_runtime_state_failed path=%s", path, exc_info=True)
+
+    def clear_all_birth_artifacts(self) -> list[str]:
+        """Remove all birth training artifacts while preserving setup/genesis user config."""
+        from lumina_launcher.core.birth_reset import clear_birth_training_state
+
+        result = clear_birth_training_state(self.workspace_root)
+        return result.removed

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import Any
 
-from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contract_symbol
+from lumina_core.order_gatekeeper import enforce_pre_trade_gate, is_stale_contract_symbol, roll_stale_contract_symbol
 from lumina_core.agent_orchestration.schemas import TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC
 
 
@@ -173,6 +173,11 @@ def test_is_stale_contract_symbol_detects_expired_month() -> None:
 def test_is_stale_contract_symbol_allows_current_or_future_month() -> None:
     assert is_stale_contract_symbol("MES JUN26", now_utc=datetime(2026, 4, 15, tzinfo=timezone.utc)) is False
     assert is_stale_contract_symbol("MES DEC27", now_utc=datetime(2026, 4, 15, tzinfo=timezone.utc)) is False
+
+
+def test_roll_stale_contract_symbol_from_jun_to_sep() -> None:
+    now = datetime(2026, 6, 27, tzinfo=timezone.utc)
+    assert roll_stale_contract_symbol("MES JUN26", now_utc=now) == "MES SEP26"
 
 
 def test_enforce_pre_trade_gate_blocks_stale_contract_in_sim_mode(monkeypatch) -> None:

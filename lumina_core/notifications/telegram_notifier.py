@@ -274,6 +274,23 @@ class TelegramNotifier:
             return True
         return self._send_telegram_message(f"Veto window expired for DNA {dna_id}. Proceeding.")
 
+    def send_attention_alert(self, title: str, body: str, *, severity: str = "high") -> bool:
+        """Send a general Lumina attention alert (ADR-0024)."""
+        if not self._api_token or not self._chat_id:
+            logger.warning("Telegram attention alert skipped: credentials missing.")
+            return False
+        sev = str(severity or "high").strip().upper()
+        message = f"LUMINA ATTENTION [{sev}] — {title}\n\n{body}"
+        return self._send_telegram_message(message)
+
+    def send_milestone_alert(self, title: str, body: str) -> bool:
+        """Send a positive birth milestone alert (ADR-0025)."""
+        if not self._api_token or not self._chat_id:
+            logger.warning("Telegram milestone alert skipped: credentials missing.")
+            return False
+        message = f"LUMINA MILESTONE — {title}\n\n{body}"
+        return self._send_telegram_message(message)
+
     def _send_telegram_message(self, message: str, dna_id: str | None = None) -> bool:
         del dna_id
         if not self._api_token or not self._chat_id:

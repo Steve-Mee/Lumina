@@ -30,6 +30,22 @@ export function luminaSurfaceMutedClass(...extra: Array<string | false | null | 
   return cn("lumina-surface-muted", ...extra);
 }
 
+export type LuminaInteractiveVariant = "default" | "danger" | "ghost";
+
+const INTERACTIVE_VARIANT_CLASS: Record<LuminaInteractiveVariant, string> = {
+  default: "lumina-interactive",
+  danger: "lumina-interactive lumina-interactive--danger",
+  ghost: "lumina-interactive lumina-interactive--ghost",
+};
+
+/** Clickable control affordance — Lumina cursor + hover glow. */
+export function luminaInteractiveClass(
+  variant: LuminaInteractiveVariant = "default",
+  ...extra: Array<string | false | null | undefined>
+): string {
+  return cn(INTERACTIVE_VARIANT_CLASS[variant], ...extra);
+}
+
 /** Panel surfaces must not combine ambient glow with glass. */
 export function assertPanelGlowLevel(level: LuminaGlowLevel): LuminaGlowLevel {
   if (level === "ambient") {

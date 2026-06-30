@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
+
+import numpy as np
 
 from lumina_core.rl.trend_features import (
     MIN_TREND_LOOKBACK,
-    compute_trend_features_from_ticks,
+    compute_trend_features_sliding_batch,
     regime_from_strength,
 )
 
@@ -28,14 +30,43 @@ def _apply_zero_trend_defaults(tick: dict[str, Any]) -> None:
     tick.setdefault("trend_atr_ratio", 0.0)
 
 
-def enrich_ticks_for_sim(ticks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not ticks:
-        return ticks
+def _extract_ohlc_arrays(ticks: list[dict[str, Any]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    n = len(ticks)
+    closes = np.empty(n, dtype=np.float64)
+    highs = np.empty(n, dtype=np.float64)
+    lows = np.empty(n, dtype=np.float64)
     for i, tick in enumerate(ticks):
         try:
-            price = float(tick.get("last", 0.0) or 0.0)
+            close = float(tick.get("close", tick.get("last", 0.0)) or 0.0)
         except (TypeError, ValueError):
-            continue
+            close = 0.0
+        if close <= 0:
+            close = 0.0
+        try:
+            high = float(tick.get("high", close) or close)
+        except (TypeError, ValueError):
+            high = close
+        try:
+            low = float(tick.get("low", close) or close)
+        except (TypeError, ValueError):
+            low = close
+        closes[i] = close
+        highs[i] = max(high, close)
+        lows[i] = min(low, close)
+    return closes, highs, lows
+
+
+def enrich_ticks_for_sim(
+    ticks: list[dict[str, Any]],
+    *,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> list[dict[str, Any]]:
+    if not ticks:
+        return ticks
+
+    closes, highs, lows = _extract_ohlc_arrays(ticks)
+    for i, tick in enumerate(ticks):
+        price = closes[i]
         if price <= 0:
             continue
         bid = float(tick.get("bid", price - 0.125) or price - 0.125)
@@ -43,16 +74,22 @@ def enrich_ticks_for_sim(ticks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         spread = max(0.25, ask - bid)
         tick["imbalance"] = max(0.5, min(2.0, 1.0 + (ask - bid) / spread * 0.15))
         tick["bar_index"] = i
-
         if i < MIN_TREND_LOOKBACK:
             tick["regime"] = str(tick.get("regime", "NEUTRAL"))
             _apply_zero_trend_defaults(tick)
-            continue
 
-        window = ticks[max(0, i - MIN_TREND_LOOKBACK) : i + 1]
-        features = compute_trend_features_from_ticks(window)
-        tick.update(features)
-        tick["regime"] = regime_from_strength(float(features.get("trend_regime_strength", 0.0) or 0.0))
+    feature_rows = compute_trend_features_sliding_batch(
+        closes,
+        highs,
+        lows,
+        on_progress=on_progress,
+    )
+    for i in range(MIN_TREND_LOOKBACK, len(ticks)):
+        if closes[i] <= 0:
+            continue
+        tick = ticks[i]
+        tick.update(feature_rows[i])
+        tick["regime"] = regime_from_strength(float(feature_rows[i].get("trend_regime_strength", 0.0) or 0.0))
     return ticks
 
 

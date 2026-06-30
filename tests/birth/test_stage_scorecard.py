@@ -38,8 +38,22 @@ def test_pass_criteria_stage1_trend() -> None:
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE1_TREND, target_trades=2000)
     assert criteria.id == "trend_winrate"
     assert criteria.target_trades == 100
+    assert criteria.training_budget_trades == 2000
     assert criteria.metric_target == 0.45
+    assert "pass gate" in criteria.label
+    assert "2000 budget" in criteria.label
     assert "45%" in criteria.label
+
+
+@pytest.mark.unit
+def test_pass_criteria_stage1_trend_with_cfg() -> None:
+    from lumina_core.birth.config import BirthCurriculumConfig
+
+    cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
+    criteria = pass_criteria_for_stage(CurriculumStage.STAGE1_TREND, cfg=cfg)
+    assert criteria.target_trades == 200
+    assert criteria.training_budget_trades == 2000
+    assert ">=200 pass gate (2000 budget)" in criteria.label
 
 
 @pytest.mark.unit
@@ -121,6 +135,23 @@ def test_enrich_progress_scorecard_infers_pass_criteria() -> None:
 
 
 @pytest.mark.unit
+def test_enrich_progress_scorecard_adds_budget_fields() -> None:
+    enriched = enrich_progress_scorecard(
+        {
+            "curriculum_stage": "stage1_trend",
+            "cumulative_trades": 11_074,
+            "target_trades": 25_000,
+            "trade_budget_source": "birth_v2.trade_budget_cap",
+            "terminal_stall_reason": "winrate 23.6% < 45%",
+        }
+    )
+    assert enriched["trade_budget_cap"] == 25_000
+    assert enriched["trade_budget_remaining"] == 13_926
+    assert enriched["trade_budget_source"] == "birth_v2.trade_budget_cap"
+    assert enriched["terminal_stall_reason"] == "winrate 23.6% < 45%"
+
+
+@pytest.mark.unit
 def test_build_scorecard_payload_stage1_with_cfg_uses_stage_pass_trades() -> None:
     from lumina_core.birth.config import BirthCurriculumConfig
 
@@ -141,7 +172,8 @@ def test_build_scorecard_payload_stage1_with_cfg_uses_stage_pass_trades() -> Non
         cfg=cfg,
     )
     assert payload["stage_target_trades"] == 200
-    assert "200 trades" in payload["pass_criteria_label"]
+    assert payload["stage_training_budget_trades"] == 2000
+    assert ">=200 pass gate (2000 budget)" in payload["pass_criteria_label"]
 
 
 @pytest.mark.unit

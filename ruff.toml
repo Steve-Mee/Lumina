@@ -19,3 +19,4 @@ extend-exclude = [
 "scripts/discover_telegram_chat_id.py" = ["E402"]
 "scripts/send_telegram_test.py" = ["E402"]
 "scripts/send_milestone_test.py" = ["E402"]
+"scripts/birth_stage_forensics.py" = ["E402"]

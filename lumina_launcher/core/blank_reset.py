@@ -8,56 +8,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-
-PRESERVED_STATE_FILES = (
-    "lumina_setup_complete.json",
-    "lumina_setup_status.json",
-    "hardware_snapshot.json",
-    "launcher_admin_password.json",
-    "model_catalog_state.json",
+from lumina_launcher.core.birth_reset import (
+    BIRTH_DELETE_TARGETS,
+    BIRTH_WIPE_DIRECTORIES,
+    PRESERVED_STATE_FILES,
+    clear_birth_training_state,
 )
 
-WIPE_DIRECTORIES = (
-    "logs",
-    "journal/simulator",
-    "lumina_os/logs",
-)
+WIPE_DIRECTORIES = BIRTH_WIPE_DIRECTORIES
+DELETE_TARGETS = BIRTH_DELETE_TARGETS
 
 BACKUP_TARGETS = (
     "state",
     "logs",
     "journal/simulator",
     "lumina_os/logs",
-    "lumina_os/state/metrics.db",
-    "lumina_agents/ppo/lumina_ppo_policy.zip",
-    "lumina_agents/ppo/lumina_ppo_policy_practice.zip",
-    "state/lumina_birth_completed.flag",
-    "state/lumina_birth_practice_completed.flag",
-    "state/first_boot_completed.flag",
-    "state/ppo_policy_metadata.json",
-    "state/lumina_birth_progress.json",
-    "state/first_boot_progress.json",
-    "state/lumina_birth_checkpoint.json",
-    "state/first_boot_checkpoint.json",
-    "state/first_boot_user_configured.flag",
-)
-
-DELETE_TARGETS = (
-    "lumina_os/state/metrics.db",
-    "lumina_agents/ppo/lumina_ppo_policy.zip",
-    "lumina_agents/ppo/lumina_ppo_policy_practice.zip",
-    "state/lumina_birth_completed.flag",
-    "state/lumina_birth_practice_completed.flag",
-    "state/first_boot_completed.flag",
-    "state/lumina_birth_progress.json",
-    "state/first_boot_progress.json",
-    "state/lumina_birth_checkpoint.json",
-    "state/first_boot_checkpoint.json",
-    "state/first_boot_pause_requested",
-    "state/first_boot_user_configured.flag",
-    "state/ppo_policy_metadata.json",
-    "state/monitoring_debug_training_process.json",
-    "state/trade_reconciler_status.json",
+    *BIRTH_DELETE_TARGETS,
 )
 
 
@@ -86,18 +52,6 @@ def _backup_targets(workspace_root: Path, backup_root: Path) -> None:
         _copy_with_parents(src, backup_root / relative)
 
 
-def _wipe_directory_contents(path: Path) -> list[str]:
-    removed: list[str] = []
-    path.mkdir(parents=True, exist_ok=True)
-    for child in list(path.iterdir()):
-        if child.is_dir():
-            shutil.rmtree(child, ignore_errors=True)
-        else:
-            child.unlink(missing_ok=True)
-        removed.append(str(child))
-    return removed
-
-
 def _wipe_state_selective(state_dir: Path) -> tuple[list[str], list[str]]:
     removed: list[str] = []
     preserved: list[str] = []
@@ -113,20 +67,6 @@ def _wipe_state_selective(state_dir: Path) -> tuple[list[str], list[str]]:
             child.unlink(missing_ok=True)
         removed.append(str(child))
     return removed, preserved
-
-
-def _delete_targets(workspace_root: Path) -> list[str]:
-    removed: list[str] = []
-    for relative in DELETE_TARGETS:
-        target = workspace_root / relative
-        if not target.exists():
-            continue
-        if target.is_dir():
-            shutil.rmtree(target, ignore_errors=True)
-        else:
-            target.unlink(missing_ok=True)
-        removed.append(str(target))
-    return removed
 
 
 def run_post_setup_blank_reset(
@@ -150,12 +90,10 @@ def run_post_setup_blank_reset(
     backup_root.mkdir(parents=True, exist_ok=True)
     _backup_targets(root, backup_root)
 
-    removed_paths: list[str] = []
-    for relative in WIPE_DIRECTORIES:
-        removed_paths.extend(_wipe_directory_contents(root / relative))
+    birth_result = clear_birth_training_state(root, wipe_logs=True, wipe_journal=True)
+    removed_paths: list[str] = list(birth_result.removed)
     state_removed, state_preserved = _wipe_state_selective(root / "state")
     removed_paths.extend(state_removed)
-    removed_paths.extend(_delete_targets(root))
 
     return BlankResetResult(
         success=True,

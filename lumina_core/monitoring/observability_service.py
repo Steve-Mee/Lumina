@@ -675,6 +675,8 @@ class ObservabilityService:
 
         logger.warning("[ALERT][%s] %s – %s", severity.upper(), title, message)
 
+        self._maybe_attention_telegram(alert_type=alert_type, title=title, message=message, severity=severity)
+
         if not self.webhook.enabled or not self.webhook.url:
             return
 
@@ -702,6 +704,37 @@ class ObservabilityService:
                     logger.error("Webhook delivery failed: HTTP %d", resp.status)
         except Exception as exc:
             logger.error("Webhook delivery error: %s", exc)
+
+    def _maybe_attention_telegram(
+        self,
+        *,
+        alert_type: str,
+        title: str,
+        message: str,
+        severity: str,
+    ) -> None:
+        """Mirror critical observability alerts to Telegram attention channel."""
+        try:
+            from lumina_core.notifications.attention_events import (
+                real_daily_loss_event,
+                real_kill_switch_event,
+                real_websocket_down_event,
+            )
+            from lumina_core.notifications.attention_notifier import notify_attention
+
+            key = str(alert_type or "").strip().lower()
+            event = None
+            if "kill_switch" in key:
+                event = real_kill_switch_event(detail=message)
+            elif "daily_loss" in key:
+                event = real_daily_loss_event(detail=message)
+            elif "websocket" in key:
+                event = real_websocket_down_event(detail=message)
+            if event is None:
+                return
+            notify_attention(event)
+        except Exception as exc:
+            logger.debug("observability.attention_telegram_skipped: %s", exc)
 
     def _build_webhook_payload(
         self,
