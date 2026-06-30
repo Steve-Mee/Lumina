@@ -205,7 +205,7 @@ def curate_buffer_bottom_half(buffer: Any) -> int:
         new_priorities = [p for i, p in enumerate(priorities) if i not in remove_indices]
     removed = len(trajectories) - len(new_trajectories)
     trajectories[:] = new_trajectories
-    if new_priorities:
+    if new_priorities and isinstance(priorities, list):
         priorities[:] = new_priorities
     return removed
 
@@ -226,6 +226,6 @@ def curate_buffer_top_quartile(buffer: Any, *, keep_pct: float = 0.25) -> int:
         new_priorities = [p for i, p in enumerate(priorities) if i in keep_indices]
     removed = len(trajectories) - len(new_trajectories)
     trajectories[:] = new_trajectories
-    if new_priorities:
+    if new_priorities and isinstance(priorities, list):
         priorities[:] = new_priorities
     return removed
