@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { resolveWizardPhaseHeader } from "@/lib/luminaPhasePresentation";
 import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import { stepFade, transitionOrNone } from "@/lib/motionPresets";
 import { cn } from "@/lib/utils";
@@ -99,6 +101,7 @@ export function OnboardingWizard() {
   if (!payload || !payload.backend.reachable) {
     return (
       <OnboardingShell>
+        <LuminaPhaseHeader {...resolveWizardPhaseHeader("backend")} variant="hero" />
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
           <BackendStep
             reachable={false}
@@ -203,11 +206,17 @@ export function OnboardingWizard() {
   const railStep = smartStepActive ? ("ollama" as OnboardingStepId) : currentStep;
 
   const isBirthStep = currentStep === "birth";
+  const phaseHeader = resolveWizardPhaseHeader(currentStep, activating);
 
   return (
     <OnboardingShell
       className={cn("onboarding-shell--form", isBirthStep && "onboarding-shell--birth")}
     >
+      <LuminaPhaseHeader
+        {...phaseHeader}
+        variant={isBirthStep ? "compact" : "hero"}
+        className="relative z-20 shrink-0"
+      />
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",

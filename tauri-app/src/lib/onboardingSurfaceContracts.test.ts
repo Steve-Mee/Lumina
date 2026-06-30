@@ -39,6 +39,11 @@ const birthGenesisDeckSource = readFileSync(
   "utf8",
 );
 
+const genesisMaturityLadderSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/GenesisMaturityLadder.tsx"),
+  "utf8",
+);
+
 const birthControlDockSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthControlDock.tsx"),
   "utf8",
@@ -131,6 +136,23 @@ const onboardingWizardSource = readFileSync(
 
 
 
+const cockpitShellSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/cockpit/CockpitShell.tsx"),
+  "utf8",
+);
+
+const luminaPhaseHeaderSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../components/shared/LuminaPhaseHeader.tsx"),
+  "utf8",
+);
+
+const luminaPhaseHeaderCssSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "../styles/luminaPhaseHeader.css"),
+  "utf8",
+);
+
+
+
 describe("onboarding surface contracts", () => {
 
   it("Birth finale shows mission control and command deck entry on main screen", () => {
@@ -216,6 +238,29 @@ describe("onboarding surface contracts", () => {
 
 
 
+  it("Birth genesis uses mission shell grid with helix glow stage and charter panel", () => {
+    expect(birthPhaseSource).toContain("birth-mission-shell");
+    expect(birthPhaseSource).toContain("birth-genesis-grid");
+    expect(birthPhaseSource).toContain("birth-genesis-helix-stage");
+    expect(birthPhaseSource).toContain("birth-activation-helix-arena");
+    expect(birthPhaseSource).toContain("birth-genesis-panel");
+    expect(birthPhaseSource).toContain("LuminaPhaseHeader");
+    expect(birthPhaseSource).toContain("resolveBirthScreenPhaseHeader");
+    expect(birthPhaseSource).not.toMatch(/genesisMode[\s\S]*BirthCinematicLayout/);
+    expect(birthCommandBarSource).not.toMatch(/mode === "genesis"[\s\S]*BirthControlDock/);
+    expect(birthCommandBarSource).not.toContain("headline");
+    expect(birthCommandBarSource).toMatch(
+      /showMilestoneRail\s*=\s*mode === "running" \|\| mode === "finale"/,
+    );
+    expect(birthGenesisDeckSource).toContain("showStartButton={false}");
+    expect(birthPhaseCssSource).toContain(".birth-genesis-grid");
+    expect(birthPhaseCssSource).toMatch(/\.birth-genesis-grid[\s\S]*minmax\(120px, 14%\)/);
+    expect(birthPhaseCssSource).toContain(".birth-genesis-tab-panel");
+    expect(birthPhaseCssSource).toContain(".birth-genesis-panel__hero");
+  });
+
+
+
   it("Birth advanced panels stay inline in stage intel column", () => {
 
     expect(birthStageIntelSource).toContain("BirthAdvancedPanel");
@@ -226,12 +271,26 @@ describe("onboarding surface contracts", () => {
 
 
 
-  it("BirthGenesisDeck default deck shows one slider outside collapsed genesis panel", () => {
-    expect(birthGenesisDeckSource).toContain("Genesis parameters");
-    expect(birthGenesisDeckSource).toContain("genesisOpen");
-    const defaultDeck = birthGenesisDeckSource.split("{genesisOpen ?")[0] ?? "";
-    const sliderCount = (defaultDeck.match(/<BirthHoloSlider/g) ?? []).length;
-    expect(sliderCount).toBe(1);
+  it("BirthGenesisDeck uses tabs for goals and parameters without page scroll", () => {
+    expect(birthGenesisDeckSource).toContain('value="doelen"');
+    expect(birthGenesisDeckSource).toContain('value="parameters"');
+    expect(birthGenesisDeckSource).not.toContain("genesisOpen");
+    expect(birthGenesisDeckSource).not.toContain("birth-activation-title");
+    expect(birthGenesisDeckSource).toContain("stage1_winrate_pass_threshold");
+    expect(birthGenesisDeckSource).toContain("require_real_simulator_data");
+    expect(birthGenesisDeckSource).toContain("Max Historical Days");
+    expect(birthGenesisDeckSource).toContain("firstBootSizing");
+    expect(birthGenesisDeckSource).toContain("FIRST_BOOT_MAX_REAL_DAYS");
+    expect(birthGenesisDeckSource).toContain("handleTrainingTradesChange");
+    expect(birthGenesisDeckSource).toContain("linkMaxRealDaysToTrainingTrades");
+    expect(birthGenesisDeckSource).toContain("FIRST_BOOT_MIN_REAL_DAYS");
+    const heroSection = birthGenesisDeckSource.split("birth-genesis-panel__tabs")[0] ?? "";
+    expect(heroSection).toContain("Training Trades");
+    expect(heroSection).toContain("GenesisWinrateGateBlock");
+    expect(birthGenesisDeckSource).toContain("GenesisMaturityGoalsPreview");
+    expect(genesisMaturityLadderSource).toContain("genesis-maturity-goals");
+    expect(birthPhaseCssSource).toContain(".genesis-maturity-goals");
+    expect(birthGenesisDeckSource).toContain("birth-genesis-tab-panel");
   });
 
 
@@ -248,7 +307,8 @@ describe("onboarding surface contracts", () => {
 
   it("CommandHud exposes Save & Start when engine is off", () => {
 
-    expect(commandHudSource).toContain("saveAndStart");
+    expect(commandHudSource).toContain("realTradingEligible");
+    expect(commandHudSource).toContain("MaturityProgressStrip");
 
     expect(commandHudSource).toContain("HudNerveTap");
 
@@ -400,6 +460,15 @@ describe("onboarding surface contracts", () => {
 
     expect(onboardingShellSource).toContain("onboarding-shell--form");
 
+  });
+
+  it("Lumina phase header is mounted on wizard, birth, and deck surfaces", () => {
+    expect(luminaPhaseHeaderSource).toContain("lumina-phase-header__title");
+    expect(luminaPhaseHeaderCssSource).toContain(".lumina-phase-header__eyebrow");
+    expect(onboardingWizardSource).toContain("LuminaPhaseHeader");
+    expect(onboardingWizardSource).toContain("resolveWizardPhaseHeader");
+    expect(birthPhaseSource).toContain("LuminaPhaseHeader");
+    expect(cockpitShellSource).toContain("resolveDeckPhaseHeader");
   });
 
 });

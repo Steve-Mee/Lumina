@@ -39,6 +39,9 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0023 | Birth plateau evolution escalator | Accepted | 2026-06-27 | [0023-birth-plateau-evolution-escalator.md](./0023-birth-plateau-evolution-escalator.md) |
 | 0024 | Lumina attention notifications | Accepted | 2026-06-27 | [0024-lumina-attention-notifications.md](./0024-lumina-attention-notifications.md) |
 | 0025 | Lumina milestone notifications | Accepted | 2026-06-28 | [0025-lumina-milestone-notifications.md](./0025-lumina-milestone-notifications.md) |
+| 0026 | Post-birth Evolution Proof gate | Accepted | 2026-06-27 | [0026-evolution-proof-gate.md](./0026-evolution-proof-gate.md) |
+| 0027 | Lumina maturation ladder | Accepted | 2026-06-27 | [0027-lumina-maturation-ladder.md](./0027-lumina-maturation-ladder.md) |
+| 0028 | Operator notification matrix | Accepted | 2026-06-27 | [0028-lumina-operator-notification-matrix.md](./0028-lumina-operator-notification-matrix.md) |
 
 ## Legacy notitie
 

@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
-from lumina_core.birth.curriculum import CurriculumStage, stage_pass_trades, stage_trade_target
+from lumina_core.birth.curriculum import (
+    CurriculumStage,
+    stage1_winrate_pass_threshold,
+    stage_pass_trades,
+    stage_trade_target,
+)
 
 CURRICULUM_STAGE_COUNT = 3
 
@@ -99,6 +104,10 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "attention_summary",
     "attention_recommended_actions",
     "attention_notified_at",
+    "user_initiated_stop",
+    "prior_stage",
+    "prior_phase",
+    "retryable",
     "constitution_violations_session",
     "constitution_violations_cumulative",
 )
@@ -157,17 +166,18 @@ def pass_criteria_for_stage(
         training_budget = max(1, int(target_trades))
         required = max(50, min(100, training_budget))
     if stage == CurriculumStage.STAGE1_TREND:
+        wr_gate = stage1_winrate_pass_threshold(cfg)
         return PassCriteria(
             id="trend_winrate",
             label=_pass_gate_label(
                 pass_gate=required,
                 training_budget=training_budget,
-                metric="winrate >=45%",
+                metric=f"winrate >={wr_gate:.0%}",
             ),
             target_trades=required,
             training_budget_trades=training_budget,
             metric_label="Winrate",
-            metric_target=0.45,
+            metric_target=wr_gate,
         )
     if stage == CurriculumStage.STAGE2_RANGE:
         return PassCriteria(
@@ -389,6 +399,7 @@ def compute_stage_blocker(
     range_flat_ratio: float,
     range_round_trips: int,
     range_total_signals: int,
+    cfg: BirthCurriculumConfig | None = None,
 ) -> tuple[str | None, float | None, str | None]:
     """Return (blocker_metric_id, blocker_value, human pass/block reason)."""
     trades = max(0, int(stage_trades))
@@ -397,8 +408,13 @@ def compute_stage_blocker(
         if trades < required:
             return (None, None, None)
         winrate = float(wins) / float(max(1, trades))
-        if winrate < 0.45:
-            return ("winrate", round(winrate, 4), f"winrate {winrate:.1%} < 45%")
+        wr_gate = stage1_winrate_pass_threshold(cfg) if cfg is not None else 0.45
+        if winrate < wr_gate:
+            return (
+                "winrate",
+                round(winrate, 4),
+                f"winrate {winrate:.1%} < {wr_gate:.0%}",
+            )
         return (None, None, None)
     if stage == CurriculumStage.STAGE2_RANGE:
         if trades < required:

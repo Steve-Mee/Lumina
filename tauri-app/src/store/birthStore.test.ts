@@ -102,4 +102,29 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().birthSurface).toBe("genesis");
     expect(useBirthStore.getState().genesisPinned).toBe(true);
   });
+
+  it("returnToGenesis pins genesis surface and clears certificate overlay uiPhase", () => {
+    useBirthStore.getState().applyStatus({
+      status: "certificate_failed",
+      certificate_ok: false,
+      progress: { stage: "failed", phase: "certificate_failed" },
+    } as BirthStatusPayload);
+    expect(useBirthStore.getState().uiPhase).toBe("certificate_failed");
+
+    useBirthStore.getState().returnToGenesis();
+
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().genesisPinned).toBe(true);
+  });
+
+  it("idle not_started maps to genesis surface after applyStatus", () => {
+    useBirthStore.getState().applyStatus({
+      status: "idle",
+      certificate_ok: false,
+      progress: { stage: "not_started" },
+    } as BirthStatusPayload);
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+  });
 });

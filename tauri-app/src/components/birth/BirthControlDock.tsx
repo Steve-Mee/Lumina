@@ -20,6 +20,8 @@ interface BirthControlDockProps {
   checkpointAvailable?: boolean;
   busy?: boolean;
   inline?: boolean;
+  /** When false, genesis mode omits Start birth (e.g. deck uses BirthLaunchButton). */
+  showStartButton?: boolean;
   onStop?: () => void;
   onStart?: () => void;
   onWipe?: () => void;
@@ -32,6 +34,7 @@ export function BirthControlDock({
   checkpointAvailable = false,
   busy = false,
   inline = false,
+  showStartButton = true,
   onStop,
   onStart,
   onWipe,
@@ -73,15 +76,17 @@ export function BirthControlDock({
           </Button>
         ) : (
           <>
-            <Button
-              type="button"
-              className="onboarding-cta lumina-interactive min-w-[140px] py-2 font-mono text-[10px] tracking-wide uppercase"
-              disabled={busy}
-              onClick={onStart}
-            >
-              <Play className="size-3.5" aria-hidden />
-              Start birth
-            </Button>
+            {showStartButton ? (
+              <Button
+                type="button"
+                className="onboarding-cta lumina-interactive min-w-[140px] py-2 font-mono text-[10px] tracking-wide uppercase"
+                disabled={busy}
+                onClick={onStart}
+              >
+                <Play className="size-3.5" aria-hidden />
+                Start birth
+              </Button>
+            ) : null}
             {checkpointAvailable ? (
               <Button
                 type="button"
@@ -89,12 +94,12 @@ export function BirthControlDock({
                 size="sm"
                 className={cn(
                   luminaInteractiveClass("default"),
-                  "min-w-[140px] font-mono text-[10px] tracking-wide uppercase",
+                  "birth-control-dock__action inline-flex min-w-[140px] items-center justify-center gap-2 font-mono text-[10px] tracking-wide uppercase",
                 )}
                 disabled={busy}
                 onClick={onResumeCheckpoint}
               >
-                <RotateCcw className="size-3.5" aria-hidden />
+                <RotateCcw className="size-3.5 shrink-0" aria-hidden />
                 Hervat checkpoint
               </Button>
             ) : null}
@@ -104,12 +109,12 @@ export function BirthControlDock({
               size="sm"
               className={cn(
                 luminaInteractiveClass("danger"),
-                "min-w-[140px] border-red-500/40 font-mono text-[10px] tracking-wide text-red-200 uppercase hover:bg-red-950/30",
+                "birth-control-dock__action inline-flex min-w-[140px] items-center justify-center gap-2 border-red-500/40 font-mono text-[10px] tracking-wide text-red-200 uppercase hover:bg-red-950/30",
               )}
               disabled={busy}
               onClick={() => setWipeStep(1)}
             >
-              <Trash2 className="size-3.5" aria-hidden />
+              <Trash2 className="size-3.5 shrink-0" aria-hidden />
               Wis birth-data
             </Button>
           </>

@@ -144,6 +144,46 @@ def should_enter_plateau(ctx: PlateauEnterContext, *, cfg: BirthCurriculumConfig
     return True
 
 
+def sanitize_plateau_best_snapshot(
+    state: PlateauState,
+    *,
+    cfg: BirthCurriculumConfig,
+    stage_trades: int,
+    stage_wins: int,
+) -> None:
+    """Drop statistically meaningless best-policy spikes; re-anchor to current winrate."""
+    min_trades = max(1, int(getattr(cfg, "plateau_best_policy_min_trades", 200)))
+    if state.best_winrate_at_trade > 0 and state.best_winrate_at_trade < min_trades:
+        logger.warning(
+            "birth.plateau.best_snapshot_cleared stale_trades=%s min=%s winrate=%.1f%%",
+            state.best_winrate_at_trade,
+            min_trades,
+            state.best_winrate * 100.0,
+        )
+        state.best_winrate = 0.0
+        state.best_winrate_at_trade = 0
+        state.best_policy_path = ""
+    if stage_trades >= min_trades:
+        current_wr = float(stage_wins) / float(max(1, stage_trades))
+        if current_wr > state.best_winrate:
+            state.best_winrate = current_wr
+            state.best_winrate_at_trade = int(stage_trades)
+
+
+def is_valid_best_policy_snapshot(
+    state: PlateauState,
+    *,
+    cfg: BirthCurriculumConfig,
+) -> bool:
+    min_trades = max(1, int(getattr(cfg, "plateau_best_policy_min_trades", 200)))
+    path = str(state.best_policy_path or "").strip()
+    return (
+        bool(path)
+        and state.best_winrate_at_trade >= min_trades
+        and state.best_winrate > 0.0
+    )
+
+
 def enter_plateau(
     state: PlateauState,
     *,
@@ -280,6 +320,39 @@ def should_advance_evolution_step(
     return True
 
 
+def should_force_advance_evolution_step(
+    state: PlateauState,
+    *,
+    cfg: BirthCurriculumConfig,
+    current_winrate: float,
+) -> bool:
+    """Time-box fallback: force next evolution action after max rollouts without lift."""
+    if not state.active or state.evolution_step <= 0:
+        return False
+    max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
+    if state.evolution_rollouts_this_step < max_rollouts:
+        return False
+    if current_winrate > state.winrate_at_step_start + float(cfg.velocity_stall_epsilon):
+        return False
+    return True
+
+
+def should_trigger_plateau_evolution_step(
+    state: PlateauState,
+    *,
+    cfg: BirthCurriculumConfig,
+    current_winrate: float,
+    allow_start: bool = True,
+) -> bool:
+    if not state.active:
+        return False
+    if allow_start and should_start_evolution_step(state):
+        return True
+    if should_advance_evolution_step(state, cfg=cfg, current_winrate=current_winrate):
+        return True
+    return should_force_advance_evolution_step(state, cfg=cfg, current_winrate=current_winrate)
+
+
 def evolution_ladder_blocked_reason(
     state: PlateauState,
     *,
@@ -299,8 +372,14 @@ def evolution_ladder_blocked_reason(
         return "recovery_blocked_budget_or_exhausted"
     if state.evolution_step <= 0:
         return None
-    if state.evolution_rollouts_this_step < int(cfg.plateau_evolution_rollouts_per_step):
-        return f"awaiting_rollouts {state.evolution_rollouts_this_step}/{cfg.plateau_evolution_rollouts_per_step}"
+    max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
+    min_rollouts = int(cfg.plateau_evolution_rollouts_per_step)
+    if state.evolution_rollouts_this_step < min_rollouts:
+        return f"awaiting_rollouts {state.evolution_rollouts_this_step}/{min_rollouts}"
+    if state.evolution_rollouts_this_step < max_rollouts:
+        if current_winrate > state.winrate_at_step_start + float(cfg.velocity_stall_epsilon):
+            return "winrate_improving"
+        return f"awaiting_force_advance {state.evolution_rollouts_this_step}/{max_rollouts}"
     if current_winrate > state.winrate_at_step_start + float(cfg.velocity_stall_epsilon):
         return "winrate_improving"
     return None
@@ -385,8 +464,11 @@ def maybe_update_best_winrate(
 ) -> bool:
     if not cfg.plateau_save_best_policy:
         return False
+    min_trades = max(1, int(getattr(cfg, "plateau_best_policy_min_trades", 200)))
+    if stage_trades < min_trades:
+        return False
     winrate = float(stage_wins) / float(max(1, stage_trades))
-    if stage_trades < 1 or winrate <= state.best_winrate:
+    if winrate <= state.best_winrate:
         return False
     state.best_winrate = winrate
     state.best_winrate_at_trade = int(stage_trades)
@@ -426,6 +508,7 @@ def progress_fields(
     else:
         phase = f"step_{state.evolution_step}"
     remaining = max(0, int(cfg.plateau_max_evolution_steps) - int(state.evolution_step))
+    max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
     label = ACTION_LABELS.get(action, action.value)
     if state.evolution_step > 0 and state.best_winrate > 0:
         label = f"{label} (best winrate {state.best_winrate:.1%})"
@@ -439,6 +522,9 @@ def progress_fields(
         "plateau_forced_recoveries_count": int(state.forced_recoveries_count),
         "plateau_best_winrate": round(float(state.best_winrate), 6),
         "plateau_full_recovery_cycles": int(state.full_recovery_cycles),
+        "plateau_evolution_rollouts_this_step": int(state.evolution_rollouts_this_step),
+        "plateau_evolution_rollouts_per_step": int(cfg.plateau_evolution_rollouts_per_step),
+        "plateau_evolution_rollouts_max": max_rollouts,
     }
 
 

@@ -644,6 +644,294 @@
   }
 }
 
+/* Genesis cockpit — helix glow + charter panel (matches mission shell rhythm) */
+
+.birth-genesis-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: minmax(160px, 32vh) minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+@media (min-width: 1024px) {
+  .birth-genesis-grid {
+    grid-template-columns: minmax(120px, 14%) minmax(360px, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+.birth-genesis-grid > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.birth-genesis-helix-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  isolation: isolate;
+}
+
+.birth-genesis-helix-stage .birth-activation-stage-inner {
+  flex: 1;
+  min-height: 0;
+}
+
+.birth-genesis-helix-stage .birth-activation-helix-slot {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+}
+
+.birth-genesis-helix-stage .birth-helix-accent {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-height: 10rem;
+  aspect-ratio: auto;
+}
+
+@media (min-width: 1024px) {
+  .birth-genesis-helix-stage .birth-helix-accent {
+    min-height: 0;
+    max-height: 100%;
+    width: 100%;
+    aspect-ratio: auto;
+  }
+}
+
+.birth-genesis-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.birth-genesis-panel__layout {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.birth-genesis-panel__hero {
+  flex-shrink: 0;
+  padding: 0.85rem 1rem 0.65rem;
+}
+
+.birth-genesis-panel__hero.birth-activation-deck-inner {
+  flex: none;
+  min-height: min-content;
+  overflow-x: clip;
+}
+
+.birth-genesis-panel__tabs {
+  min-height: 0;
+  padding-inline: 1rem;
+}
+
+.birth-genesis-tab-panel {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 88%, transparent);
+}
+
+.birth-genesis-tab-panel__body {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.birth-genesis-tab-list {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+  border-radius: 0.65rem 0.65rem 0 0;
+  background: color-mix(in srgb, var(--lumina-void) 94%, transparent);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, white 4%, transparent);
+}
+
+.birth-genesis-tab-list[data-slot="tabs-list"] {
+  display: grid !important;
+  width: 100%;
+  max-width: none;
+  height: auto;
+}
+
+.birth-genesis-tab-list [data-slot="tabs-trigger"] {
+  display: inline-flex;
+  width: 100%;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-radius: 0.45rem;
+  border: 1px solid color-mix(in srgb, white 8%, transparent);
+  background: color-mix(in srgb, white 3%, transparent);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--foreground) 55%, transparent);
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.birth-genesis-tab-list [data-slot="tabs-trigger"]:hover {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 22%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 6%, transparent);
+  color: color-mix(in srgb, var(--lumina-cyan) 82%, white);
+}
+
+.birth-genesis-tab-list [data-slot="tabs-trigger"][data-state="active"] {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 38%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+  color: color-mix(in srgb, var(--lumina-cyan) 92%, white);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--lumina-cyan) 10%, transparent),
+    0 0 16px color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+}
+
+.birth-genesis-tab-content {
+  min-height: 0;
+  flex: 1 1 0%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.65rem 0.75rem;
+}
+
+.birth-genesis-tab-content[data-state="active"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.birth-genesis-tab-content--doelen[data-state="active"] {
+  justify-content: flex-start;
+}
+
+.genesis-maturity-goals {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.35rem 0.5rem 0.5rem;
+}
+
+.genesis-maturity-goals__title {
+  margin: 0;
+}
+
+.genesis-maturity-goals__list {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.genesis-maturity-goals__item {
+  max-width: 22rem;
+  line-height: 1.45;
+  text-wrap: balance;
+}
+
+.genesis-maturity-goals__footnote {
+  margin: 0.75rem 0 0;
+  max-width: 22rem;
+  line-height: 1.45;
+  text-wrap: balance;
+}
+
+.birth-genesis-tab-panel__content {
+  width: 100%;
+  max-width: 28rem;
+}
+
+.birth-genesis-tab-panel__slider {
+  text-align: left;
+}
+
+.birth-genesis-tab-panel__slider .birth-holo-slider__header {
+  text-align: left;
+}
+
+.birth-genesis-tab-panel__chips {
+  align-items: center;
+  width: 100%;
+}
+
+.birth-genesis-tab-panel__chips .birth-holo-chip {
+  width: 100%;
+  max-width: 24rem;
+}
+
+.birth-genesis-panel__actions .birth-control-dock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.625rem;
+}
+
+.birth-genesis-panel__actions .birth-control-dock__action {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  line-height: 1;
+}
+
+.birth-genesis-panel__actions .birth-control-dock__action svg {
+  margin: 0;
+}
+
+.birth-genesis-panel__inner {
+  align-items: stretch;
+  text-align: left;
+  flex: none;
+  min-height: min-content;
+}
+
+.birth-genesis-panel__inner .birth-launch-btn {
+  align-self: center;
+}
+
+.birth-genesis-panel__actions {
+  flex-shrink: 0;
+  padding: 0.65rem 1rem 0.85rem;
+  border-top: 1px solid color-mix(in srgb, white 8%, transparent);
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--lumina-void) 92%, transparent),
+    color-mix(in srgb, var(--lumina-void) 72%, transparent)
+  );
+}
+
 .birth-mission-grid > * {
   min-height: 0;
   overflow: hidden;

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
 import { logCoreEvent } from "@/lib/coreEventLogger";
+import { postAttentionReport } from "@/lib/notificationsClient";
 import {
   REAL_SAFE_MODE_THRESHOLD_MS,
   shouldArmSafeModeTimer,
@@ -100,6 +101,16 @@ export function useRealSafeModeMonitor(): void {
           reconnect_attempt: state.reconnectAttempt,
           last_error: state.lastError,
         });
+        void postAttentionReport({
+          reason_code: "real_safe_mode",
+          detail:
+            state.lastError ??
+            "Telemetry lost while REAL mode selected — trading blocked until reconnect.",
+          context: {
+            connection_status: state.connectionStatus,
+            fallback_mode: state.fallbackMode,
+          },
+        }).catch(() => undefined);
       }
     }, REAL_SAFE_MODE_THRESHOLD_MS);
 

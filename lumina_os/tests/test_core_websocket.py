@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 import pytest
 
@@ -263,9 +264,13 @@ def test_post_core_mode_updates_live_telemetry(
     monkeypatch.setenv("EVOLUTION_LOG_PATH", str(state_dir / "evolution_log.jsonl"))
 
     client = TestClient(app)
-    response = client.post("/api/core/mode", json={"mode": "real"})
+    with patch(
+        "lumina_core.maturity.maturation_progress.maturation_eligible_for_real",
+        return_value=(True, []),
+    ):
+        response = client.post("/api/core/mode", json={"mode": "real"})
     assert response.status_code == 200
-    assert response.json() == {"ok": True, "mode": "real"}
+    assert response.json() == {"ok": True, "mode": "real", "blockers": []}
 
     live = client.get("/api/core/live")
     assert live.status_code == 200

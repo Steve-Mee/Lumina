@@ -250,6 +250,8 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             "artifacts_label": "Artifacts OK" if artifacts_ok else "Artifacts missing",
             "certificate_ok": certificate_ok,
             "certificate_reason": certificate_reason,
+            "evolution_proof_ok": birth_service.evolution_proof_ok(),
+            "real_trading_eligible": birth_service.real_trading_eligible(),
         },
         "intelligence": intelligence_payload,
         "model_catalog": _model_catalog_payload(hardware, model_service),
@@ -409,6 +411,7 @@ class ConfigureTraining(BaseModel):
     max_real_days: int = Field(default=56, ge=30, le=3650)
     allow_minimal_synthetic_fallback: bool = False
     require_real_simulator_data: bool = True
+    stage1_winrate_pass_threshold: float | None = Field(default=None, ge=0.35, le=0.45)
 
 
 class ConfigureRequest(BaseModel):

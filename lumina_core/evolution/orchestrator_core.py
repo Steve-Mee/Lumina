@@ -614,6 +614,28 @@ class EvolutionOrchestrator:
                     promoted=promoted,
                     reason=gate_reason,
                 )
+                try:
+                    from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
+                    from lumina_core.maturity.milestone_hooks import (
+                        hook_promotion_gate_passed,
+                        hook_shadow_validation_passed,
+                    )
+
+                    workspace = resolve_birth_workspace_root()
+                    if shadow_passed:
+                        hook_shadow_validation_passed(
+                            workspace,
+                            shadow_status=shadow_status,
+                            dna_hash=winner_dna.hash,
+                        )
+                    if bool(promotion_gate.get("promoted", False)):
+                        hook_promotion_gate_passed(
+                            workspace,
+                            mode=mode,
+                            dna_hash=winner_dna.hash,
+                        )
+                except Exception:
+                    pass
         else:
             promoted = bool(signed and generation_ok)
 
@@ -648,6 +670,19 @@ class EvolutionOrchestrator:
                     constitutional_violations,
                 )
                 promoted = False
+                try:
+                    from lumina_core.notifications.attention_events import constitution_violation_event
+                    from lumina_core.notifications.operator_notifier import notify_problem
+                    from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
+
+                    notify_problem(
+                        constitution_violation_event(
+                            detail="; ".join(constitutional_violations) or "Promotion blocked."
+                        ),
+                        workspace_root=resolve_birth_workspace_root(),
+                    )
+                except Exception:
+                    pass
             elif guard_result.warn_violations:
                 logger.warning(
                     "ConstitutionalGuard WARN dna=%s mode=%s warns=%s",
@@ -1292,6 +1327,18 @@ class EvolutionOrchestrator:
             promoted=promoted,
             reason=reason,
         )
+        if not promoted and reason:
+            try:
+                from lumina_core.notifications.attention_events import evolution_approval_pending_event
+                from lumina_core.notifications.operator_notifier import notify_problem
+                from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
+
+                notify_problem(
+                    evolution_approval_pending_event(dna_id=dna_hash, detail=reason),
+                    workspace_root=resolve_birth_workspace_root(),
+                )
+            except Exception:
+                pass
 
     def _run_shadow_validation_gate(
         self,

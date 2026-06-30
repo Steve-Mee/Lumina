@@ -683,3 +683,10 @@
   background: color-mix(in srgb, var(--lumina-cyan) 85%, white);
   pointer-events: none;
 }
+
+/* Genesis charter panel — hero is fixed height; deck-inner must not flex-fill parent */
+.birth-genesis-panel__hero.birth-activation-deck-inner {
+  flex: none;
+  min-height: min-content;
+  overflow-x: clip;
+}

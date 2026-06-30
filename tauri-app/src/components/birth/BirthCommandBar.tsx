@@ -12,7 +12,6 @@ import { cn } from "@/lib/utils";
 
 interface BirthCommandBarProps {
   mode: BirthControlMode | "finale";
-  headline?: string;
   milestones?: BirthMilestone[];
   progress?: BirthProgressPayload;
   status?: string;
@@ -103,7 +102,6 @@ function RunningAdvancedActions({
 
 export function BirthCommandBar({
   mode,
-  headline,
   milestones: _milestones = [],
   progress,
   status = "idle",
@@ -120,8 +118,7 @@ export function BirthCommandBar({
   className,
 }: BirthCommandBarProps) {
   const compactMilestones = buildCompactMilestones(progress, status);
-  const showMilestoneRail =
-    mode === "running" || mode === "finale" || compactMilestones.items.length > 0;
+  const showMilestoneRail = mode === "running" || mode === "finale";
 
   return (
     <header
@@ -132,28 +129,13 @@ export function BirthCommandBar({
       role="banner"
     >
       <div className="birth-command-bar__accent deck-panel-accent absolute inset-x-0 top-0 h-px origin-left" />
-      <div className="birth-command-bar__top flex items-center gap-3 px-3 py-2 md:px-4">
-        <p className="min-w-0 flex-1 truncate font-mono text-[11px] tracking-wide text-cyan-200/90 md:text-xs">
-          {headline ?? "Birth Phase"}
-        </p>
+      <div className="birth-command-bar__top flex items-center justify-end gap-3 px-3 py-2 md:px-4">
         {mode === "running" ? (
           <RunningAdvancedActions
             advancedOpen={advancedOpen}
             onToggleAdvanced={onToggleAdvanced}
             busy={busy}
             onStop={onStop}
-          />
-        ) : null}
-        {mode === "genesis" ? (
-          <BirthControlDock
-            mode="genesis"
-            checkpointAvailable={checkpointAvailable}
-            busy={busy}
-            onStart={onStart}
-            onWipe={onWipe}
-            onResumeCheckpoint={onResumeCheckpoint}
-            inline
-            className="shrink-0 border-0 bg-transparent p-0 shadow-none backdrop-blur-none"
           />
         ) : null}
         {mode === "finale" ? (

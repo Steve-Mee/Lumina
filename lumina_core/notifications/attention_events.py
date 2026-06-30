@@ -272,3 +272,38 @@ def setup_incomplete_event(*, detail: str = "") -> AttentionEvent:
         recommended_actions=("Complete Lumina setup wizard.",),
         dedupe_key="ops:setup_incomplete",
     )
+
+
+def evolution_proof_failed_attention_event(*, reasons: list[str]) -> AttentionEvent:
+    detail = "; ".join(str(r) for r in reasons[:5]) or "Evolution Proof gate not passed."
+    return AttentionEvent(
+        category=AttentionCategory.BIRTH,
+        severity=AttentionSeverity.HIGH,
+        reason_code="evolution_proof_failed",
+        title="Evolution Proof failed",
+        summary=detail,
+        recommended_actions=(
+            "REAL remains blocked until Evolution Proof passes.",
+            "Review OOS metrics and birth certificate in Lumina.",
+        ),
+        context={"failure_reason": detail},
+        retryable=True,
+        dedupe_key="birth:evolution_proof_failed",
+    )
+
+
+def real_trading_blocked_event(*, blockers: list[str], source: str = "command_deck") -> AttentionEvent:
+    detail = "; ".join(blockers[:6]) or "Maturation ladder incomplete."
+    return AttentionEvent(
+        category=AttentionCategory.REAL,
+        severity=AttentionSeverity.HIGH,
+        reason_code="real_trading_blocked",
+        title="REAL mode blocked",
+        summary=detail,
+        recommended_actions=(
+            "Complete Apprenticeship (SIM stability) and Proving Ground (promotion gate).",
+            "Check GET /api/maturity/progress for blockers.",
+        ),
+        context={"blockers": detail, "source": source},
+        dedupe_key=f"real:blocked:{source}",
+    )

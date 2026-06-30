@@ -473,7 +473,7 @@ def generate_stability_report(limit: int = 0) -> dict[str, Any]:
     latest_path = sim_summaries[-1].path if sim_summaries else None
     latest_ts = sim_summaries[-1].timestamp.isoformat() if sim_summaries else None
 
-    return {
+    report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "status": "GREEN" if ready else "RED",
         "ready_for_real": ready,
@@ -492,6 +492,20 @@ def generate_stability_report(limit: int = 0) -> dict[str, Any]:
         "latest_summary_ts": latest_ts,
         "summary_paths": [item.path for item in sim_summaries],
     }
+
+    if ready:
+        try:
+            from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
+            from lumina_core.maturity.milestone_hooks import hook_sim_real_guard_stable
+
+            hook_sim_real_guard_stable(
+                resolve_birth_workspace_root(),
+                consecutive_green_days=consecutive_green_days,
+            )
+        except Exception:
+            pass
+
+    return report
 
 
 def _status_token(ok: bool, *, color: bool = False) -> str:

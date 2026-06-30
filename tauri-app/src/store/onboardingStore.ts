@@ -54,6 +54,8 @@ export interface OnboardingDraft {
     prefer_real_data_only: boolean;
     max_real_days: number;
     allow_minimal_synthetic_fallback: boolean;
+    require_real_simulator_data: boolean;
+    stage1_winrate_pass_threshold: number;
   };
 }
 
@@ -116,6 +118,8 @@ const defaultDraft = (): OnboardingDraft => ({
     prefer_real_data_only: true,
     max_real_days: 56,
     allow_minimal_synthetic_fallback: false,
+    require_real_simulator_data: true,
+    stage1_winrate_pass_threshold: 0.45,
   },
 });
 
@@ -178,6 +182,13 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
           max_real_days: Number((payload.defaults.first_boot as Record<string, unknown>).max_real_days ?? 56),
           allow_minimal_synthetic_fallback: Boolean(
             (payload.defaults.first_boot as Record<string, unknown>).allow_minimal_synthetic_fallback ?? false,
+          ),
+          require_real_simulator_data: Boolean(
+            (payload.defaults.first_boot as Record<string, unknown>).require_real_simulator_data ?? true,
+          ),
+          stage1_winrate_pass_threshold: Number(
+            (payload.defaults.birth_v2 as Record<string, unknown> | undefined)
+              ?.stage1_winrate_pass_threshold ?? 0.45,
           ),
         },
         credentials: mergeCredentialsIntoDraft(get().draft.credentials, {
@@ -293,7 +304,8 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       training: {
         ...draft.training,
         allow_minimal_synthetic_fallback: draft.training.allow_minimal_synthetic_fallback,
-        require_real_simulator_data: draft.training.prefer_real_data_only,
+        require_real_simulator_data: draft.training.require_real_simulator_data,
+        stage1_winrate_pass_threshold: draft.training.stage1_winrate_pass_threshold,
       },
       selected_model_key: draft.selected_model_key || undefined,
     };

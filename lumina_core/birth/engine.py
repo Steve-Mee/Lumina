@@ -101,22 +101,25 @@ from lumina_core.birth.plateau_escalator import (
     PlateauEnterContext,
     PlateauState,
     begin_evolution_step,
+    build_plateau_audit,
     can_force_never_stop_recovery,
     detect_hold_trap,
     enter_plateau,
     increment_evolution_rollout,
+    is_valid_best_policy_snapshot,
     maybe_update_best_winrate,
     progress_fields as plateau_progress_fields,
     record_evolution_outcome,
     record_forced_recovery,
     remediation_is_exhausted,
     reset_plateau_for_new_cycle,
-    should_advance_evolution_step,
+    sanitize_plateau_best_snapshot,
     should_block_plateau_recovery,
     should_enter_plateau,
+    should_force_advance_evolution_step,
     should_phoenix_reset,
-    should_start_evolution_step,
     should_terminal_plateau_stall,
+    should_trigger_plateau_evolution_step,
 )
 from lumina_core.birth.stage_scorecard import (
     build_scorecard_payload,
@@ -429,6 +432,19 @@ class BirthPhaseEngineV2:
         except Exception as exc:
             logger.warning("birth.milestone_notify_failed: %s", exc)
 
+    def _notify_attention(self, event: Any) -> None:
+        try:
+            from lumina_core.notifications.operator_notifier import notify_problem
+
+            notify_problem(event, workspace_root=self.workspace_root)
+        except Exception as exc:
+            logger.warning("birth.attention_notify_failed: %s", exc)
+
+    def _notify_history_unavailable(self, detail: str) -> None:
+        from lumina_core.notifications.attention_events import birth_history_unavailable_event
+
+        self._notify_attention(birth_history_unavailable_event(detail=detail))
+
     def _restore_buffer_from_checkpoint(self, state: dict[str, Any]) -> None:
         buffer_file = str(state.get("buffer_path", "") or "").strip()
         if buffer_file and Path(buffer_file).is_file():
@@ -699,6 +715,7 @@ class BirthPhaseEngineV2:
                     },
                     retryable=True,
                 )
+                self._notify_history_unavailable(preflight.message or "Holdout preflight failed.")
                 return {
                     "status": "history_unavailable",
                     "total_trades": 0,
@@ -753,6 +770,7 @@ class BirthPhaseEngineV2:
                 },
                 retryable=True,
             )
+            self._notify_history_unavailable(preflight.message or "Holdout preflight exhausted.")
             return {
                 "status": "history_unavailable",
                 "total_trades": 0,
@@ -982,7 +1000,54 @@ class BirthPhaseEngineV2:
         register_birth_gen0_dna(self.workspace_root, certificate)
         update_bible_after_birth(self.workspace_root, certificate, eval_result)
 
-        from lumina_core.notifications.milestone_events import birth_certificate_issued_event
+        from lumina_core.birth.evolution_proof_gate import (
+            EvolutionProofConfig,
+            record_and_evaluate_at_certificate,
+        )
+        from lumina_core.notifications.milestone_events import (
+            birth_certificate_issued_event,
+            evolution_proof_failed_event,
+            evolution_proof_passed_event,
+        )
+
+        birth_exit_wr = float(
+            eval_result.get("training_winrate", eval_result.get("winrate", 0.0)) or 0.0
+        )
+        curriculum_cfg = self.birth_config.curriculum
+        proof_cfg = EvolutionProofConfig(
+            min_trades=int(curriculum_cfg.evolution_proof_min_trades),
+            min_winrate_lift=float(curriculum_cfg.evolution_proof_min_winrate_lift),
+            polish_oos_winrate_min=float(curriculum_cfg.evolution_proof_polish_oos_winrate_min),
+        )
+        proof_result = record_and_evaluate_at_certificate(
+            self.workspace_root,
+            eval_result=eval_result,
+            birth_exit_winrate=birth_exit_wr,
+            cfg=proof_cfg,
+        )
+        if proof_result.passed:
+            self._notify_milestone(
+                evolution_proof_passed_event(
+                    oos_winrate=float(proof_result.polish_oos_winrate or 0.0),
+                    lift=proof_result.winrate_lift,
+                )
+            )
+            from lumina_core.maturity.milestone_hooks import hook_evolution_proof_passed
+
+            hook_evolution_proof_passed(
+                self.workspace_root,
+                oos_winrate=float(proof_result.polish_oos_winrate or 0.0),
+                lift=proof_result.winrate_lift,
+            )
+        else:
+            self._notify_milestone(
+                evolution_proof_failed_event(reasons=list(proof_result.reasons))
+            )
+            from lumina_core.notifications.attention_events import evolution_proof_failed_attention_event
+
+            self._notify_attention(
+                evolution_proof_failed_attention_event(reasons=list(proof_result.reasons))
+            )
 
         self._notify_milestone(
             birth_certificate_issued_event(
@@ -991,6 +1056,13 @@ class BirthPhaseEngineV2:
                 cumulative_trades=self.cumulative_trades,
                 ppo_steps=self.ppo_steps,
             )
+        )
+        from lumina_core.maturity.milestone_hooks import hook_birth_certificate_issued
+
+        hook_birth_certificate_issued(
+            self.workspace_root,
+            cumulative_trades=self.cumulative_trades,
+            stages_passed=list(self._stages_passed),
         )
 
         write_birth_progress(
@@ -1140,11 +1212,27 @@ class BirthPhaseEngineV2:
             )
 
             if resume:
+                resume_metrics = dict(checkpoint_state.get("stage_metrics") or {})
+                proof_passed: bool | None = None
+                try:
+                    from lumina_core.birth.evolution_proof_gate import (
+                        load_evolution_proof_record,
+                    )
+
+                    proof_record = load_evolution_proof_record(self.workspace_root)
+                    if proof_record:
+                        proof_passed = bool(proof_record.get("passed"))
+                except Exception:
+                    proof_passed = None
                 seed_milestones_from_birth_state(
                     stages_passed=list(self._stages_passed),
                     phase=checkpoint_phase or str(progress_snapshot.get("phase", "") or ""),
                     training_mode=training_mode,
                     workspace_root=self.workspace_root,
+                    plateau_active=bool(resume_metrics.get("plateau_active")),
+                    evolution_step=int(resume_metrics.get("plateau_evolution_step", 0) or 0),
+                    hold_trap_detected=bool(progress_snapshot.get("hold_trap_detected")),
+                    evolution_proof_passed=proof_passed,
                 )
             else:
                 get_milestone_notifier(workspace_root=self.workspace_root).reset_notified()
@@ -1175,6 +1263,25 @@ class BirthPhaseEngineV2:
                 resumed=resume,
             )
         )
+        from lumina_core.maturity.milestone_hooks import hook_birth_started
+
+        hook_birth_started(
+            self.workspace_root,
+            training_mode=training_mode,
+            trade_budget=cfg.trade_budget_cap,
+            resumed=resume,
+        )
+        wr_threshold = float(cfg.curriculum.stage1_winrate_pass_threshold)
+        wr_recommended = float(cfg.curriculum.stage1_winrate_recommended)
+        if wr_threshold < wr_recommended - 0.001:
+            try:
+                from lumina_core.notifications.milestone_events import birth_gate_warning_event
+
+                self._notify_milestone(
+                    birth_gate_warning_event(threshold=wr_threshold, recommended=wr_recommended)
+                )
+            except Exception as exc:
+                logger.debug("birth.milestone_gate_warning_failed: %s", exc)
 
         ticks: list[dict[str, Any]] = []
         split: Any = None
@@ -1300,6 +1407,7 @@ class BirthPhaseEngineV2:
                 birth_start_time=self.birth_start_time,
                 retryable=True,
             )
+            self._notify_history_unavailable("Geen historische data beschikbaar.")
             return {"status": "history_unavailable", "total_trades": 0, "ppo_steps": 0, "training_mode": "certified"}
 
         if split is None:
@@ -1999,6 +2107,8 @@ class BirthPhaseEngineV2:
         winrate_stagnation_count = 0
         wall_budget_exhausted = False
         winrate_history: list[float] = []
+        budget_milestones_notified: set[int] = set()
+        hold_trap_milestone_sent = False
         reward_history: list[float] = []
         low_velocity_attempts = 0
         strong_recovery_mode = False
@@ -2109,6 +2219,13 @@ class BirthPhaseEngineV2:
                 cur_cfg.exploration_chunk_size,
                 cur_cfg.exploration_chunk_size * 2,
             )
+        if plateau_state.active:
+            sanitize_plateau_best_snapshot(
+                plateau_state,
+                cfg=cur_cfg,
+                stage_trades=stage_trades,
+                stage_wins=stage_wins,
+            )
         last_stage_trades = -1
         stagnation_count = 0
         chunk_budget = max(5_000, cur_cfg.rollout_chunk_trades * cur_cfg.rollout_step_budget_multiplier)
@@ -2197,7 +2314,20 @@ class BirthPhaseEngineV2:
                 _rebuild_intra_pools(active_stage_ticks)
             escalation_level = min(cur_cfg.max_escalation_level, escalation_level + 2)
             strong_recovery_mode = True
-            return f"phoenix reset (buffer curated, removed {removed})"
+            detail = f"phoenix reset (buffer curated, removed {removed})"
+            try:
+                from lumina_core.notifications.milestone_events import phoenix_reset_event
+
+                self._notify_milestone(
+                    phoenix_reset_event(
+                        cycle=plateau_state.full_recovery_cycles,
+                        winrate=float(stage_wins) / float(max(1, stage_trades)),
+                        detail=detail,
+                    )
+                )
+            except Exception as exc:
+                logger.debug("birth.milestone_phoenix_failed: %s", exc)
+            return detail
 
         def _observe_snapshot() -> tuple[Any, StallDetectionResult]:
             return meta_controller.observe(
@@ -2321,6 +2451,32 @@ class BirthPhaseEngineV2:
                     required=required,
                     cfg=cur_cfg,
                 )
+            )
+            scorecard.update(
+                build_plateau_audit(
+                    plateau_state,
+                    stage_trades=current_stage_trades,
+                    required=required,
+                    cfg=cur_cfg,
+                    progress=scorecard,
+                    remediation_exhausted=remediation_is_exhausted(
+                        remediation_active=remediation_state.active,
+                        remediation_step=remediation_state.remediation_step,
+                        remediation_cycle=remediation_state.remediation_cycle,
+                        cfg=cur_cfg,
+                    ),
+                    trade_budget_remaining=max(0, trade_budget_cap - self.cumulative_trades),
+                )
+            )
+            scorecard["stall_remediation_cycle"] = int(remediation_state.remediation_cycle)
+            scorecard["stall_remediation_step"] = int(remediation_state.remediation_step)
+            scorecard["stall_remediation_max_steps"] = int(cur_cfg.stall_remediation_max_steps)
+            scorecard["stall_remediation_max_cycles"] = int(cur_cfg.stall_remediation_max_cycles)
+            scorecard["stage1_winrate_gate"] = float(
+                getattr(cur_cfg, "stage1_winrate_pass_threshold", 0.45)
+            )
+            scorecard["stage1_winrate_recommended"] = float(
+                getattr(cur_cfg, "stage1_winrate_recommended", 0.45)
             )
             if cur_cfg.meta_controller_enabled:
                 scorecard.update(meta_controller.scorecard_fields(meta_last_plan))
@@ -2612,6 +2768,7 @@ class BirthPhaseEngineV2:
                 / float(max(1, stage_range_total_signals)),
                 range_round_trips=stage_range_round_trips,
                 range_total_signals=stage_range_total_signals,
+                cfg=cur_cfg,
             )
             if not blocker_metric:
                 return None
@@ -2795,6 +2952,19 @@ class BirthPhaseEngineV2:
                     stage_trades=stage_trades,
                     stage_wins=stage_wins,
                 )
+                try:
+                    from lumina_core.notifications.milestone_events import (
+                        stall_remediation_cycle_event,
+                    )
+
+                    self._notify_milestone(
+                        stall_remediation_cycle_event(
+                            cycle=remediation_state.remediation_cycle,
+                            max_cycles=int(cur_cfg.stall_remediation_max_cycles),
+                        )
+                    )
+                except Exception as exc:
+                    logger.debug("birth.milestone_remediation_cycle_failed: %s", exc)
                 plateau_state.active = False
                 plateau_state.evolution_step = 0
                 plateau_state.forced_recoveries_count = 0
@@ -2892,7 +3062,162 @@ class BirthPhaseEngineV2:
                 phase="stall_remediation",
                 message=f"Stall remediation advanced: {detail}",
             )
+            try:
+                from lumina_core.notifications.milestone_events import (
+                    stall_remediation_step_event,
+                )
+
+                self._notify_milestone(
+                    stall_remediation_step_event(
+                        cycle=remediation_state.remediation_cycle,
+                        step=remediation_state.remediation_step,
+                        max_steps=int(cur_cfg.stall_remediation_max_steps),
+                        action=action.value if action else "",
+                        detail=detail,
+                        winrate=current_winrate,
+                    )
+                )
+            except Exception as exc:
+                logger.debug("birth.milestone_remediation_step_failed: %s", exc)
             return remediation_state.remediation_step >= int(cur_cfg.stall_remediation_max_steps)
+
+        def _apply_plateau_evolution_action(action: EvolutionAction) -> str:
+            nonlocal intra_state
+            if action == EvolutionAction.EXPAND_DATA:
+                _maybe_expand_data()
+                return "expanded data window"
+            if action == EvolutionAction.POLICY_ROLLBACK:
+                if not is_valid_best_policy_snapshot(plateau_state, cfg=cur_cfg):
+                    return "rollback skipped — no valid best policy snapshot (min trades)"
+                rollback_path = str(plateau_state.best_policy_path or "").strip()
+                if rollback_path and Path(rollback_path).is_file():
+                    self.current_policy = self._create_birth_policy(
+                        allow_load_existing=True,
+                        policy_path=rollback_path,
+                    )
+                    return f"rollback to {plateau_state.best_winrate:.1%} winrate"
+                return "rollback skipped — no best policy snapshot"
+            if action == EvolutionAction.INTRA_EASY_ONLY:
+                if intra_state is not None:
+                    intra_state.hard_pct = 0.0
+                    intra_state.easy_trades = 0
+                    intra_state.easy_wins = 0
+                    intra_state.easy_winrate_history.clear()
+                    _rebuild_intra_pools(active_stage_ticks)
+                return "intra stage1 easy-only pool"
+            if action == EvolutionAction.FRESH_POLICY:
+                self.current_policy = self._create_birth_policy(allow_load_existing=False)
+                return "fresh policy (buffer/oracle retained)"
+            if action == EvolutionAction.ORACLE_DISTILL:
+                return _apply_oracle_distill()
+            if action == EvolutionAction.PHOENIX_RESET:
+                return _apply_phoenix_reset()
+            return ""
+
+        def _finalize_plateau_evolution_step(
+            *,
+            action: EvolutionAction,
+            detail: str,
+            failure_key: str,
+            forced_advance: bool = False,
+        ) -> None:
+            nonlocal attempt
+            current_winrate = float(stage_wins) / float(max(1, stage_trades))
+            record_evolution_outcome(
+                plateau_state,
+                action=action,
+                stage_trades=stage_trades,
+                stage_wins=stage_wins,
+                detail=detail,
+            )
+            attempt = 0
+            self._persist_checkpoint(
+                training_mode=training_mode,
+                curriculum_stage=stage.value,
+                policy_path=str(self.final_policy_path),
+                phase="plateau_evolution",
+                stage_metrics=_stage_metrics_payload(),
+            )
+            forced_suffix = " (forced advance)" if forced_advance else ""
+            _write_progress(
+                phase="plateau_evolution",
+                message=(
+                    f"Plateau evolution step {plateau_state.evolution_step}/"
+                    f"{cur_cfg.plateau_max_evolution_steps}: {detail}{forced_suffix}"
+                ),
+            )
+            logger.info(
+                "birth.plateau.evolution_applied step=%s action=%s detail=%s failure=%s forced=%s",
+                plateau_state.evolution_step,
+                action.value,
+                detail,
+                failure_key,
+                forced_advance,
+            )
+            try:
+                from lumina_core.notifications.milestone_events import plateau_evolution_step_event
+
+                self._notify_milestone(
+                    plateau_evolution_step_event(
+                        step=plateau_state.evolution_step,
+                        max_steps=int(cur_cfg.plateau_max_evolution_steps),
+                        action=action.value,
+                        detail=f"{detail}{forced_suffix}",
+                        winrate=current_winrate,
+                    )
+                )
+            except Exception as exc:
+                logger.debug("birth.milestone_evolution_notify_failed: %s", exc)
+            if forced_advance:
+                try:
+                    from lumina_core.notifications.milestone_events import (
+                        plateau_evolution_forced_advance_event,
+                    )
+
+                    self._notify_milestone(
+                        plateau_evolution_forced_advance_event(
+                            step=plateau_state.evolution_step,
+                            max_steps=int(cur_cfg.plateau_max_evolution_steps),
+                            action=action.value,
+                            winrate=current_winrate,
+                        )
+                    )
+                except Exception as exc:
+                    logger.debug("birth.milestone_forced_advance_notify_failed: %s", exc)
+
+        def _maybe_advance_plateau_evolution_in_loop() -> bool:
+            """Advance plateau evolution between rollouts (mirrors remediation loop)."""
+            nonlocal attempt
+            if not plateau_state.active or allow_provisional:
+                return False
+            current_winrate = float(stage_wins) / float(max(1, stage_trades))
+            forced = should_force_advance_evolution_step(
+                plateau_state,
+                cfg=cur_cfg,
+                current_winrate=current_winrate,
+            )
+            if not should_trigger_plateau_evolution_step(
+                plateau_state,
+                cfg=cur_cfg,
+                current_winrate=current_winrate,
+                allow_start=False,
+            ):
+                return False
+            action = begin_evolution_step(
+                plateau_state,
+                stage_trades=stage_trades,
+                stage_wins=stage_wins,
+            )
+            if action == EvolutionAction.TERMINAL:
+                return False
+            detail = _apply_plateau_evolution_action(action)
+            _finalize_plateau_evolution_step(
+                action=action,
+                detail=detail,
+                failure_key="stage1_winrate",
+                forced_advance=forced,
+            )
+            return True
 
         def _resolve_terminal_stall(pending: dict[str, Any]) -> dict[str, Any] | None:
             """None => continue loop; dict => terminal stall result."""
@@ -2931,6 +3256,20 @@ class BirthPhaseEngineV2:
                         plateau_state.best_winrate * 100.0,
                         stage_trades,
                     )
+                    try:
+                        from lumina_core.notifications.milestone_events import (
+                            best_policy_updated_event,
+                        )
+
+                        self._notify_milestone(
+                            best_policy_updated_event(
+                                winrate=plateau_state.best_winrate,
+                                stage_trades=stage_trades,
+                                policy_path=str(snapshot_path),
+                            )
+                        )
+                    except Exception as exc:
+                        logger.debug("birth.milestone_best_policy_failed: %s", exc)
 
         def _maybe_detect_plateau(*, stage_trades: int, stage_wins: int) -> None:
             if plateau_state.active or allow_provisional:
@@ -2950,6 +3289,25 @@ class BirthPhaseEngineV2:
                     stage_trades=stage_trades,
                     stage_wins=stage_wins,
                 )
+                sanitize_plateau_best_snapshot(
+                    plateau_state,
+                    cfg=cur_cfg,
+                    stage_trades=stage_trades,
+                    stage_wins=stage_wins,
+                )
+                wr = float(stage_wins) / float(max(1, stage_trades))
+                try:
+                    from lumina_core.notifications.milestone_events import plateau_entered_event
+
+                    self._notify_milestone(
+                        plateau_entered_event(
+                            stage_trades=stage_trades,
+                            winrate=wr,
+                            pass_target=pass_metric_target,
+                        )
+                    )
+                except Exception as exc:
+                    logger.debug("birth.milestone_plateau_enter_failed: %s", exc)
                 _try_plateau_evolution(failure_key="stage1_winrate")
 
         def _effective_max_rollouts() -> int:
@@ -2991,6 +3349,7 @@ class BirthPhaseEngineV2:
                 range_flat_ratio=range_flat_ratio,
                 range_round_trips=stage_range_round_trips,
                 range_total_signals=stage_range_total_signals,
+                cfg=cur_cfg,
             )
             return {
                 "failure_key": failure_key,
@@ -3005,11 +3364,16 @@ class BirthPhaseEngineV2:
             if not plateau_state.active or allow_provisional:
                 return False
             current_winrate = float(stage_wins) / float(max(1, stage_trades))
-            should_start = should_start_evolution_step(plateau_state)
-            if not should_start and not should_advance_evolution_step(
+            forced = should_force_advance_evolution_step(
                 plateau_state,
                 cfg=cur_cfg,
                 current_winrate=current_winrate,
+            )
+            if not should_trigger_plateau_evolution_step(
+                plateau_state,
+                cfg=cur_cfg,
+                current_winrate=current_winrate,
+                allow_start=True,
             ):
                 return False
             action = begin_evolution_step(
@@ -3019,80 +3383,13 @@ class BirthPhaseEngineV2:
             )
             if action == EvolutionAction.TERMINAL:
                 return False
-            detail = ""
-            if action == EvolutionAction.EXPAND_DATA:
-                _maybe_expand_data()
-                detail = "expanded data window"
-            elif action == EvolutionAction.POLICY_ROLLBACK:
-                rollback_path = str(plateau_state.best_policy_path or "").strip()
-                if rollback_path and Path(rollback_path).is_file():
-                    self.current_policy = self._create_birth_policy(
-                        allow_load_existing=True,
-                        policy_path=rollback_path,
-                    )
-                    detail = f"rollback to {plateau_state.best_winrate:.1%} winrate"
-                else:
-                    detail = "rollback skipped — no best policy snapshot"
-            elif action == EvolutionAction.INTRA_EASY_ONLY:
-                if intra_state is not None:
-                    intra_state.hard_pct = 0.0
-                    intra_state.easy_trades = 0
-                    intra_state.easy_wins = 0
-                    intra_state.easy_winrate_history.clear()
-                    _rebuild_intra_pools(active_stage_ticks)
-                detail = "intra stage1 easy-only pool"
-            elif action == EvolutionAction.FRESH_POLICY:
-                self.current_policy = self._create_birth_policy(allow_load_existing=False)
-                detail = "fresh policy (buffer/oracle retained)"
-            elif action == EvolutionAction.ORACLE_DISTILL:
-                detail = _apply_oracle_distill()
-            elif action == EvolutionAction.PHOENIX_RESET:
-                detail = _apply_phoenix_reset()
-            record_evolution_outcome(
-                plateau_state,
+            detail = _apply_plateau_evolution_action(action)
+            _finalize_plateau_evolution_step(
                 action=action,
-                stage_trades=stage_trades,
-                stage_wins=stage_wins,
                 detail=detail,
+                failure_key=failure_key,
+                forced_advance=forced,
             )
-            attempt = 0
-            self._persist_checkpoint(
-                training_mode=training_mode,
-                curriculum_stage=stage.value,
-                policy_path=str(self.final_policy_path),
-                phase="plateau_evolution",
-                stage_metrics=_stage_metrics_payload(),
-            )
-            _write_progress(
-                phase="plateau_evolution",
-                message=(
-                    f"Plateau evolution step {plateau_state.evolution_step}/"
-                    f"{cur_cfg.plateau_max_evolution_steps}: {detail}"
-                ),
-            )
-            logger.info(
-                "birth.plateau.evolution_applied step=%s action=%s detail=%s failure=%s",
-                plateau_state.evolution_step,
-                action.value,
-                detail,
-                failure_key,
-            )
-            try:
-                from lumina_core.notifications.milestone_events import plateau_evolution_step_event
-                from lumina_core.notifications.milestone_notifier import notify_milestone
-
-                notify_milestone(
-                    plateau_evolution_step_event(
-                        step=plateau_state.evolution_step,
-                        max_steps=int(cur_cfg.plateau_max_evolution_steps),
-                        action=action.value,
-                        detail=detail,
-                        winrate=current_winrate,
-                    ),
-                    workspace_root=self.workspace_root,
-                )
-            except Exception as exc:
-                logger.debug("birth.milestone_evolution_notify_failed: %s", exc)
             return True
 
         def _should_terminal_stall_in_adaptive() -> bool:
@@ -3373,6 +3670,14 @@ class BirthPhaseEngineV2:
             if stall_pending is not None:
                 if _try_adaptive_stall_recovery(failure_key=failure_key):
                     continue
+                current_wr = float(stage_wins) / float(max(1, stage_trades))
+                if plateau_state.active and should_trigger_plateau_evolution_step(
+                    plateau_state,
+                    cfg=cur_cfg,
+                    current_winrate=current_wr,
+                    allow_start=False,
+                ) and _try_plateau_evolution(failure_key=failure_key):
+                    continue
                 if _force_never_stop_recovery(failure_key=failure_key):
                     continue
                 if plateau_state.active and _try_plateau_evolution(failure_key=failure_key):
@@ -3532,6 +3837,15 @@ class BirthPhaseEngineV2:
                         if _try_adaptive_stall_recovery(failure_key=force_failure_key):
                             attempt = 0
                             continue
+                        force_wr = float(stage_wins) / float(max(1, stage_trades))
+                        if plateau_state.active and should_trigger_plateau_evolution_step(
+                            plateau_state,
+                            cfg=cur_cfg,
+                            current_winrate=force_wr,
+                            allow_start=False,
+                        ) and _try_plateau_evolution(failure_key=force_failure_key):
+                            attempt = 0
+                            continue
                         if _force_never_stop_recovery(failure_key=force_failure_key):
                             attempt = 0
                             continue
@@ -3674,6 +3988,36 @@ class BirthPhaseEngineV2:
                         ),
                         escalation_delta=1,
                         rationale="hold_trap_forced_explore",
+                        snapshot=pre_snap,
+                    )
+                    if not hold_trap_milestone_sent:
+                        hold_trap_milestone_sent = True
+                        try:
+                            from lumina_core.notifications.milestone_events import (
+                                hold_trap_detected_event,
+                            )
+
+                            self._notify_milestone(
+                                hold_trap_detected_event(
+                                    hold_ratio=current_hold,
+                                    winrate=current_wr,
+                                )
+                            )
+                        except Exception as exc:
+                            logger.debug("birth.milestone_hold_trap_failed: %s", exc)
+                elif (
+                    pre_plan.primary == RecoveryStrategy.HOLD
+                    and _meta_self_eval_phase_str() == "exhausted"
+                    and plateau_state.active
+                ):
+                    pre_plan = MetaActionPlan(
+                        primary=RecoveryStrategy.EXPLORE_BOOST,
+                        explore_steps=max(
+                            base_explore_steps,
+                            int(cur_cfg.exploration_steps) * 4,
+                        ),
+                        escalation_delta=1,
+                        rationale="meta_exhausted_forced_explore",
                         snapshot=pre_snap,
                     )
                 if pre_plan.mine:
@@ -4020,7 +4364,7 @@ class BirthPhaseEngineV2:
             if (
                 stage == CurriculumStage.STAGE1_TREND
                 and stage_trades >= required
-                and (current_winrate < 0.45 or current_hold_ratio > 0.85)
+                and (current_winrate < pass_metric_target or current_hold_ratio > 0.85)
             ):
                 if abs(current_winrate - last_winrate) < 0.01 and abs(
                     current_hold_ratio - last_hold_ratio
@@ -4083,8 +4427,47 @@ class BirthPhaseEngineV2:
                 escalation_level = min(escalation_level + 1, cur_cfg.max_escalation_level - 1)
 
             attempt += 1
+            for pct in (50, 75, 90):
+                if (
+                    pct not in budget_milestones_notified
+                    and effective_trade_budget_cap > 0
+                    and self.cumulative_trades * 100 // effective_trade_budget_cap >= pct
+                ):
+                    budget_milestones_notified.add(pct)
+                    try:
+                        from lumina_core.notifications.milestone_events import (
+                            trade_budget_milestone_event,
+                        )
+
+                        self._notify_milestone(
+                            trade_budget_milestone_event(
+                                pct=pct,
+                                cumulative_trades=self.cumulative_trades,
+                                cap=effective_trade_budget_cap,
+                            )
+                        )
+                    except Exception as exc:
+                        logger.debug("birth.milestone_budget_failed: %s", exc)
+            if winrate_history:
+                prior_mean = sum(winrate_history) / float(len(winrate_history))
+                if current_winrate >= prior_mean + 0.02:
+                    try:
+                        from lumina_core.notifications.milestone_events import (
+                            learning_breakthrough_event,
+                        )
+
+                        self._notify_milestone(
+                            learning_breakthrough_event(
+                                winrate=current_winrate,
+                                prior_mean=prior_mean,
+                                delta=current_winrate - prior_mean,
+                            )
+                        )
+                    except Exception as exc:
+                        logger.debug("birth.milestone_breakthrough_failed: %s", exc)
             if plateau_state.active:
                 increment_evolution_rollout(plateau_state)
+                _maybe_advance_plateau_evolution_in_loop()
             if remediation_state.active:
                 increment_remediation_rollout(remediation_state)
                 if _maybe_advance_stall_remediation_in_loop():

@@ -285,6 +285,192 @@ def plateau_evolution_step_event(
     )
 
 
+def plateau_evolution_forced_advance_event(
+    *,
+    step: int,
+    max_steps: int,
+    action: str,
+    winrate: float,
+) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id=f"plateau_evolution_forced_advance_{step}",
+        category=MilestoneCategory.BIRTH,
+        title=f"Forced evolution advance {step}/{max_steps}",
+        summary=f"Time-box triggered {action}. Winrate {winrate:.1%}.",
+        context={"evolution_step": step, "action": action, "winrate": f"{winrate:.1%}"},
+        dedupe_key=f"plateau_evolution:forced:{step}",
+    )
+
+
+def plateau_entered_event(
+    *,
+    stage_trades: int,
+    winrate: float,
+    pass_target: float,
+) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id="plateau_entered",
+        category=MilestoneCategory.BIRTH,
+        title="Learning plateau detected",
+        summary=(
+            f"Plateau entered at {stage_trades:,} trades, winrate {winrate:.1%} "
+            f"(target {pass_target:.0%}). Evolution ladder starting."
+        ),
+        context={
+            "trades": int(stage_trades),
+            "winrate": f"{winrate:.1%}",
+            "pass_target": f"{pass_target:.0%}",
+        },
+    )
+
+
+def hold_trap_detected_event(*, hold_ratio: float, winrate: float) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id="hold_trap_detected",
+        category=MilestoneCategory.BIRTH,
+        title="Hold trap detected",
+        summary=f"Hold ratio {hold_ratio:.0%} with winrate {winrate:.1%}. Forcing explore boost.",
+        context={"hold_ratio": f"{hold_ratio:.0%}", "winrate": f"{winrate:.1%}"},
+    )
+
+
+def stall_remediation_step_event(
+    *,
+    cycle: int,
+    step: int,
+    max_steps: int,
+    action: str,
+    detail: str,
+    winrate: float,
+) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id=f"stall_remediation_c{cycle}_s{step}",
+        category=MilestoneCategory.BIRTH,
+        title=f"Stall remediation {cycle}/{step}",
+        summary=f"{action}: {detail}. Winrate {winrate:.1%}.",
+        context={
+            "cycle": cycle,
+            "step": step,
+            "max_steps": max_steps,
+            "action": action,
+            "winrate": f"{winrate:.1%}",
+        },
+        dedupe_key=f"stall_remediation:{cycle}:{step}:{action}",
+    )
+
+
+def stall_remediation_cycle_event(*, cycle: int, max_cycles: int) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id=f"stall_remediation_cycle_{cycle}",
+        category=MilestoneCategory.BIRTH,
+        title=f"Stall remediation cycle {cycle}/{max_cycles}",
+        summary=f"Starting remediation cycle {cycle} of {max_cycles}.",
+        context={"cycle": cycle, "max_cycles": max_cycles},
+        dedupe_key=f"stall_remediation:cycle:{cycle}",
+    )
+
+
+def phoenix_reset_event(*, cycle: int, winrate: float, detail: str) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id=f"phoenix_reset_{cycle}",
+        category=MilestoneCategory.BIRTH,
+        title="Phoenix reset",
+        summary=f"Phoenix reset (cycle {cycle}): {detail}. Winrate {winrate:.1%}.",
+        context={"cycle": cycle, "winrate": f"{winrate:.1%}", "detail": detail},
+        dedupe_key=f"phoenix_reset:{cycle}",
+    )
+
+
+def learning_breakthrough_event(
+    *,
+    winrate: float,
+    prior_mean: float,
+    delta: float,
+) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id="learning_breakthrough",
+        category=MilestoneCategory.BIRTH,
+        title="Learning breakthrough",
+        summary=(
+            f"Winrate lifted to {winrate:.1%} (+{delta:.1%} vs recent mean {prior_mean:.1%})."
+        ),
+        context={
+            "winrate": f"{winrate:.1%}",
+            "prior_mean": f"{prior_mean:.1%}",
+            "delta": f"{delta:.1%}",
+        },
+    )
+
+
+def trade_budget_milestone_event(*, pct: int, cumulative_trades: int, cap: int) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id=f"trade_budget_{pct}",
+        category=MilestoneCategory.BIRTH,
+        title=f"Trade budget {pct}%",
+        summary=f"{cumulative_trades:,} / {cap:,} trades ({pct}% of budget).",
+        context={
+            "cumulative_trades": int(cumulative_trades),
+            "trade_budget_cap": int(cap),
+            "pct": int(pct),
+        },
+        dedupe_key=f"trade_budget:{pct}",
+    )
+
+
+def best_policy_updated_event(
+    *,
+    winrate: float,
+    stage_trades: int,
+    policy_path: str,
+) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id="best_policy_updated",
+        category=MilestoneCategory.BIRTH,
+        title="Best policy snapshot saved",
+        summary=f"New best winrate {winrate:.1%} at {stage_trades:,} trades.",
+        context={
+            "winrate": f"{winrate:.1%}",
+            "trades": int(stage_trades),
+            "policy_path": policy_path,
+        },
+        dedupe_key=f"best_policy:{stage_trades}:{round(winrate, 4)}",
+    )
+
+
+def evolution_proof_passed_event(*, oos_winrate: float, lift: float | None) -> MilestoneEvent:
+    lift_str = f"{lift:.1%}" if lift is not None else "n/a"
+    return MilestoneEvent(
+        milestone_id="evolution_proof_passed",
+        category=MilestoneCategory.BIRTH,
+        title="Evolution Proof passed",
+        summary=f"Post-birth fitness confirmed. OOS winrate {oos_winrate:.1%}, lift {lift_str}.",
+        context={"oos_winrate": f"{oos_winrate:.1%}", "lift": lift_str},
+    )
+
+
+def evolution_proof_failed_event(*, reasons: list[str]) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id="evolution_proof_failed",
+        category=MilestoneCategory.BIRTH,
+        title="Evolution Proof failed",
+        summary="Continue refinement before REAL. " + "; ".join(reasons[:3]),
+        context={"reasons": "; ".join(reasons)},
+    )
+
+
+def birth_gate_warning_event(*, threshold: float, recommended: float) -> MilestoneEvent:
+    return MilestoneEvent(
+        milestone_id="birth_gate_warning",
+        category=MilestoneCategory.BIRTH,
+        title="Birth winrate gate below recommended",
+        summary=(
+            f"Stage 1 gate set to {threshold:.0%} (recommended {recommended:.0%}). "
+            "REAL requires Evolution Proof + OOS ≥48%."
+        ),
+        context={"threshold": f"{threshold:.0%}", "recommended": f"{recommended:.0%}"},
+    )
+
+
 def practice_birth_completed_event(
     *,
     cumulative_trades: int,
@@ -317,15 +503,27 @@ def milestone_ids_for_stage(stage: str) -> str | None:
 __all__ = [
     "MilestoneCategory",
     "MilestoneEvent",
+    "best_policy_updated_event",
     "birth_certificate_issued_event",
+    "birth_gate_warning_event",
     "birth_started_event",
     "curriculum_stage4_polish_passed_event",
     "curriculum_stage_passed_event",
+    "evolution_proof_failed_event",
+    "evolution_proof_passed_event",
     "history_loaded_event",
+    "hold_trap_detected_event",
+    "learning_breakthrough_event",
     "milestone_ids_for_stage",
     "oos_evaluation_passed_event",
+    "phoenix_reset_event",
+    "plateau_entered_event",
+    "plateau_evolution_forced_advance_event",
     "plateau_evolution_step_event",
     "practice_birth_completed_event",
     "refinement_started_event",
     "regime_map_ready_event",
+    "stall_remediation_cycle_event",
+    "stall_remediation_step_event",
+    "trade_budget_milestone_event",
 ]

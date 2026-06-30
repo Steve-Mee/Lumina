@@ -119,8 +119,16 @@ class BirthCurriculumConfig:
     plateau_max_wall_sec: int = 7200
     plateau_max_evolution_steps: int = 8
     plateau_evolution_rollouts_per_step: int = 12
+    plateau_evolution_max_rollouts_per_step: int = 24
     max_forced_recoveries_per_plateau: int = 12
     plateau_save_best_policy: bool = True
+    plateau_best_policy_min_trades: int = 200
+    stage1_winrate_pass_threshold: float = 0.45
+    stage1_winrate_pass_floor: float = 0.35
+    stage1_winrate_recommended: float = 0.45
+    evolution_proof_min_trades: int = 500
+    evolution_proof_min_winrate_lift: float = 0.05
+    evolution_proof_polish_oos_winrate_min: float = 0.45
     plateau_oracle_distill_top_pct: float = 0.25
     phoenix_reset_min_full_cycles: int = 3
     phoenix_reset_max_winrate: float = 0.30
@@ -397,10 +405,38 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         plateau_evolution_rollouts_per_step=max(
             1, _coerce_int(cur_raw.get("plateau_evolution_rollouts_per_step"), 12)
         ),
+        plateau_evolution_max_rollouts_per_step=max(
+            1, _coerce_int(cur_raw.get("plateau_evolution_max_rollouts_per_step"), 24)
+        ),
         max_forced_recoveries_per_plateau=max(
             1, _coerce_int(cur_raw.get("max_forced_recoveries_per_plateau"), 12)
         ),
         plateau_save_best_policy=bool(cur_raw.get("plateau_save_best_policy", True)),
+        plateau_best_policy_min_trades=max(
+            50, _coerce_int(cur_raw.get("plateau_best_policy_min_trades"), 200)
+        ),
+        stage1_winrate_pass_threshold=max(
+            0.20,
+            min(0.60, _coerce_float(cur_raw.get("stage1_winrate_pass_threshold"), 0.45)),
+        ),
+        stage1_winrate_pass_floor=max(
+            0.20,
+            min(0.50, _coerce_float(cur_raw.get("stage1_winrate_pass_floor"), 0.35)),
+        ),
+        stage1_winrate_recommended=max(
+            0.20,
+            min(0.60, _coerce_float(cur_raw.get("stage1_winrate_recommended"), 0.45)),
+        ),
+        evolution_proof_min_trades=max(
+            50, _coerce_int(cur_raw.get("evolution_proof_min_trades"), 500)
+        ),
+        evolution_proof_min_winrate_lift=max(
+            0.01, _coerce_float(cur_raw.get("evolution_proof_min_winrate_lift"), 0.05)
+        ),
+        evolution_proof_polish_oos_winrate_min=max(
+            0.20,
+            min(0.60, _coerce_float(cur_raw.get("evolution_proof_polish_oos_winrate_min"), 0.45)),
+        ),
         plateau_oracle_distill_top_pct=max(
             0.05,
             min(0.50, _coerce_float(cur_raw.get("plateau_oracle_distill_top_pct"), 0.25)),

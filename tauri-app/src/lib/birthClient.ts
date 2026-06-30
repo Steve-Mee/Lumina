@@ -89,6 +89,16 @@ export interface BirthProgressPayload {
   trades_beyond_gate?: number;
   plateau_forced_recoveries_count?: number;
   plateau_best_winrate?: number;
+  plateau_evolution_rollouts_this_step?: number;
+  plateau_evolution_rollouts_max?: number;
+  stall_remediation_cycle?: number;
+  stall_remediation_step?: number;
+  stall_remediation_max_steps?: number;
+  stall_remediation_max_cycles?: number;
+  recommended_recovery_action?: string;
+  hold_trap_detected?: boolean;
+  stage1_winrate_gate?: number;
+  stage1_winrate_recommended?: number;
   needs_attention?: boolean;
   attention_reason_code?: string;
   attention_summary?: string;
@@ -334,6 +344,8 @@ export interface BirthSettingsPayload {
   max_real_days: number;
   allow_minimal_synthetic_fallback: boolean;
   require_real_simulator_data: boolean;
+  /** Stage 1 winrate pass gate (0.35–0.45). Default 0.45. */
+  stage1_winrate_pass_threshold?: number;
 }
 
 export async function saveBirthSettings(body: BirthSettingsPayload): Promise<Record<string, unknown>> {

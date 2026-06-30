@@ -25,6 +25,8 @@ from backend.core_websocket import router as core_ws_router
 from backend.core_websocket import set_observability_service as set_core_ws_obs_service
 from backend.evolution_endpoints import router as evolution_router
 from backend.birth_endpoints import router as birth_router
+from backend.maturity_endpoints import router as maturity_router
+from backend.notifications_endpoints import router as notifications_router
 from backend.setup_endpoints import router as setup_router
 from backend.config_endpoints import router as config_router
 from backend.runtime_endpoints import router as runtime_router
@@ -163,6 +165,8 @@ set_evolution_obs_service(_obs)
 app.include_router(monitoring_router)
 app.include_router(evolution_router)
 app.include_router(birth_router)
+app.include_router(maturity_router)
+app.include_router(notifications_router)
 app.include_router(setup_router)
 app.include_router(config_router)
 app.include_router(runtime_router)

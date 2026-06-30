@@ -362,6 +362,16 @@ export function isBirthInterrupted(payload: BirthStatusPayload): boolean {
   return status === "interrupted" || stage === "interrupted";
 }
 
+/** Setup complete but birth never started — missing certificate is expected, not a failure. */
+export function isBirthPendingGenesis(payload: BirthStatusPayload): boolean {
+  const status = normalizeToken(payload.status);
+  if (status !== "idle" && status !== "wiped") {
+    return false;
+  }
+  const stage = normalizeToken(payload.progress?.stage);
+  return stage === "not_started" || stage === "";
+}
+
 export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
   if (isBirthEngineActive(payload)) {
     return false;
@@ -369,14 +379,25 @@ export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
   if (isBirthStageStalled(payload)) {
     return false;
   }
+  if (isBirthPendingGenesis(payload)) {
+    return false;
+  }
   const status = normalizeToken(payload.status);
   const stage = normalizeToken(payload.progress?.stage);
   const phase = normalizeToken(payload.progress?.phase);
-  return (
-    status === "certificate_failed" ||
-    (stage === "failed" && phase === "certificate_failed") ||
-    payload.certificate_ok === false
-  );
+  if (status === "certificate_failed") {
+    return true;
+  }
+  if (stage === "failed" && phase === "certificate_failed") {
+    return true;
+  }
+  if (phase === "certificate_failed" || phase === "certificate_remediation") {
+    return true;
+  }
+  if (payload.certificate_ok === false) {
+    return status === "completed";
+  }
+  return false;
 }
 
 export function isBirthFailed(payload: BirthStatusPayload): boolean {
@@ -467,6 +488,16 @@ export interface StageScorecardModel {
   evolutionActionsRemaining: number | null;
   plateauElapsedSec: number | null;
   tradesBeyondGate: number | null;
+  evolutionRolloutsThisStep: number | null;
+  evolutionRolloutsMax: number | null;
+  stallRemediationCycle: number | null;
+  stallRemediationStep: number | null;
+  stallRemediationMaxSteps: number | null;
+  stallRemediationMaxCycles: number | null;
+  recommendedRecoveryAction: string | null;
+  holdTrapDetected: boolean;
+  stage1WinrateGate: number | null;
+  stage1WinrateRecommended: number | null;
 }
 
 const STALE_WORKING_SEC = 120;
@@ -990,6 +1021,49 @@ export function extractStageScorecard(
       progress?.trades_beyond_gate != null &&
       Number.isFinite(Number(progress.trades_beyond_gate))
         ? Math.max(0, Number(progress.trades_beyond_gate))
+        : null,
+    evolutionRolloutsThisStep:
+      progress?.plateau_evolution_rollouts_this_step != null &&
+      Number.isFinite(Number(progress.plateau_evolution_rollouts_this_step))
+        ? Math.max(0, Number(progress.plateau_evolution_rollouts_this_step))
+        : null,
+    evolutionRolloutsMax:
+      progress?.plateau_evolution_rollouts_max != null &&
+      Number.isFinite(Number(progress.plateau_evolution_rollouts_max))
+        ? Math.max(0, Number(progress.plateau_evolution_rollouts_max))
+        : null,
+    stallRemediationCycle:
+      progress?.stall_remediation_cycle != null &&
+      Number.isFinite(Number(progress.stall_remediation_cycle))
+        ? Math.max(0, Number(progress.stall_remediation_cycle))
+        : null,
+    stallRemediationStep:
+      progress?.stall_remediation_step != null &&
+      Number.isFinite(Number(progress.stall_remediation_step))
+        ? Math.max(0, Number(progress.stall_remediation_step))
+        : null,
+    stallRemediationMaxSteps:
+      progress?.stall_remediation_max_steps != null &&
+      Number.isFinite(Number(progress.stall_remediation_max_steps))
+        ? Math.max(0, Number(progress.stall_remediation_max_steps))
+        : null,
+    stallRemediationMaxCycles:
+      progress?.stall_remediation_max_cycles != null &&
+      Number.isFinite(Number(progress.stall_remediation_max_cycles))
+        ? Math.max(0, Number(progress.stall_remediation_max_cycles))
+        : null,
+    recommendedRecoveryAction:
+      String(progress?.recommended_recovery_action ?? "").trim() || null,
+    holdTrapDetected: Boolean(progress?.hold_trap_detected),
+    stage1WinrateGate:
+      progress?.stage1_winrate_gate != null &&
+      Number.isFinite(Number(progress.stage1_winrate_gate))
+        ? Number(progress.stage1_winrate_gate)
+        : null,
+    stage1WinrateRecommended:
+      progress?.stage1_winrate_recommended != null &&
+      Number.isFinite(Number(progress.stage1_winrate_recommended))
+        ? Number(progress.stage1_winrate_recommended)
         : null,
   };
 }

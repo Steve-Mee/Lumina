@@ -13,10 +13,13 @@ from lumina_core.birth.plateau_escalator import (
     action_for_step,
     can_force_never_stop_recovery,
     detect_hold_trap,
+    maybe_update_best_winrate,
     should_advance_evolution_step,
     should_block_plateau_recovery,
+    should_force_advance_evolution_step,
     should_start_evolution_step,
     should_terminal_plateau_stall,
+    should_trigger_plateau_evolution_step,
 )
 from lumina_core.birth.stall_remediation import curate_buffer_top_quartile
 
@@ -164,3 +167,96 @@ def test_can_force_never_stop_while_forced_budget_remains() -> None:
     assert can_force_never_stop_recovery(state, cfg=_cfg(max_forced_recoveries_per_plateau=12)) is True
     state.forced_recoveries_count = 12
     assert can_force_never_stop_recovery(state, cfg=_cfg(max_forced_recoveries_per_plateau=12)) is False
+
+
+@pytest.mark.unit
+def test_force_advance_after_max_rollouts_without_lift() -> None:
+    cfg = _cfg(
+        plateau_evolution_rollouts_per_step=12,
+        plateau_evolution_max_rollouts_per_step=24,
+    )
+    state = PlateauState(
+        active=True,
+        evolution_step=1,
+        evolution_rollouts_this_step=24,
+        winrate_at_step_start=0.268,
+    )
+    assert should_force_advance_evolution_step(state, cfg=cfg, current_winrate=0.268) is True
+    assert should_advance_evolution_step(state, cfg=cfg, current_winrate=0.268) is True
+    assert should_trigger_plateau_evolution_step(state, cfg=cfg, current_winrate=0.268) is True
+
+
+@pytest.mark.unit
+def test_force_advance_blocked_when_winrate_improving() -> None:
+    cfg = _cfg(plateau_evolution_max_rollouts_per_step=24)
+    state = PlateauState(
+        active=True,
+        evolution_step=1,
+        evolution_rollouts_this_step=24,
+        winrate_at_step_start=0.268,
+    )
+    assert should_force_advance_evolution_step(state, cfg=cfg, current_winrate=0.30) is False
+
+
+@pytest.mark.unit
+def test_maybe_update_best_winrate_requires_min_trades() -> None:
+    cfg = _cfg(plateau_best_policy_min_trades=200, plateau_save_best_policy=True)
+    state = PlateauState(active=True, best_winrate=0.40)
+    assert (
+        maybe_update_best_winrate(
+            state,
+            stage_trades=42,
+            stage_wins=20,
+            policy_path="/tmp/best.zip",
+            cfg=cfg,
+        )
+        is False
+    )
+    assert (
+        maybe_update_best_winrate(
+            state,
+            stage_trades=250,
+            stage_wins=120,
+            policy_path="/tmp/best.zip",
+            cfg=cfg,
+        )
+        is True
+    )
+    assert state.best_winrate == pytest.approx(0.48)
+
+
+@pytest.mark.unit
+def test_sanitize_plateau_best_snapshot_clears_early_spike() -> None:
+    from lumina_core.birth.plateau_escalator import sanitize_plateau_best_snapshot
+
+    cfg = _cfg(plateau_best_policy_min_trades=200)
+    state = PlateauState(
+        active=True,
+        best_winrate=0.476,
+        best_winrate_at_trade=42,
+        best_policy_path="/tmp/spike.zip",
+    )
+    sanitize_plateau_best_snapshot(
+        state,
+        cfg=cfg,
+        stage_trades=6113,
+        stage_wins=1638,
+    )
+    assert state.best_winrate_at_trade >= 200
+    assert state.best_winrate == pytest.approx(1638 / 6113, rel=1e-4)
+    assert state.best_policy_path == ""
+
+
+@pytest.mark.unit
+def test_is_valid_best_policy_snapshot() -> None:
+    from lumina_core.birth.plateau_escalator import is_valid_best_policy_snapshot
+
+    cfg = _cfg(plateau_best_policy_min_trades=200)
+    assert not is_valid_best_policy_snapshot(
+        PlateauState(best_winrate=0.47, best_winrate_at_trade=42, best_policy_path="/x.zip"),
+        cfg=cfg,
+    )
+    assert is_valid_best_policy_snapshot(
+        PlateauState(best_winrate=0.47, best_winrate_at_trade=250, best_policy_path="/x.zip"),
+        cfg=cfg,
+    )

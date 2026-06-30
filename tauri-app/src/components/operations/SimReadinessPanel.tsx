@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { TrainingControlBar } from "@/components/operations/TrainingControlBar";
 import { fetchStabilityReport, type StabilityReport } from "@/lib/opsClient";
-import { goLiveReal, runOvernightSim } from "@/lib/runtimeClient";
+import { runOvernightSim } from "@/lib/runtimeClient";
 import {
   ANNEX_CHART_AXIS_TICK,
   ANNEX_CHART_COLORS,
@@ -44,8 +44,6 @@ export function SimReadinessPanel({ className }: { className?: string }) {
   const [report, setReport] = useState<StabilityReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [runningSim, setRunningSim] = useState(false);
-  const [realConfirm, setRealConfirm] = useState(false);
-  const [goingLive, setGoingLive] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -170,30 +168,10 @@ export function SimReadinessPanel({ className }: { className?: string }) {
 
       {isGreen ? (
         <div className={cn("p-3", distressPanelClass("warn"))}>
-          <label className="flex items-start gap-2 text-xs text-amber-100/90">
-            <input
-              type="checkbox"
-              className="mt-0.5"
-              checked={realConfirm}
-              onChange={(e) => setRealConfirm(e.target.checked)}
-            />
-            I confirm switch to REAL mode (writes .env — restart engine after)
-          </label>
-          <Button
-            type="button"
-            size="sm"
-            variant="command-primary"
-            disabled={!realConfirm || goingLive}
-            onClick={() => {
-              setGoingLive(true);
-              void goLiveReal()
-                .then((r) => toast.success(r.message))
-                .catch((e) => toast.error(e instanceof Error ? e.message : "Go-live failed"))
-                .finally(() => setGoingLive(false));
-            }}
-          >
-            Switch to REAL Mode
-          </Button>
+          <p className="text-xs text-emerald-100/90">
+            SIM stability GREEN — use the Command Deck mode switch (REAL toggle) after maturation
+            gates pass. Standalone go-live from this panel is deprecated.
+          </p>
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">

@@ -1,0 +1,154 @@
+.lumina-phase-header {
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.lumina-phase-header__accent {
+  opacity: 0.85;
+}
+
+.lumina-phase-header__glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      ellipse 70% 120% at 50% -20%,
+      color-mix(in srgb, var(--lumina-phase-accent, var(--lumina-cyan)) 22%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 40% 80% at 50% 100%,
+      color-mix(in srgb, var(--lumina-phase-accent, var(--lumina-cyan)) 8%, transparent),
+      transparent 72%
+    );
+}
+
+.lumina-phase-header__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+}
+
+.lumina-phase-header__eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.58rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--lumina-phase-accent, var(--lumina-cyan)) 72%, transparent);
+  margin: 0;
+}
+
+.lumina-phase-header__title {
+  margin: 0;
+  font-size: clamp(1.15rem, 2.4vw, 1.65rem);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  line-height: 1.12;
+  background: linear-gradient(
+    135deg,
+    var(--lumina-phase-accent, var(--lumina-cyan)),
+    color-mix(in srgb, var(--lumina-phase-accent, var(--lumina-cyan)) 58%, white)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-wrap: balance;
+}
+
+.lumina-phase-header__status {
+  margin: 0;
+  max-width: min(42rem, 92vw);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: clamp(0.58rem, 1vw, 0.68rem);
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--lumina-phase-accent, var(--lumina-cyan)) 58%, var(--foreground) 42%);
+  opacity: 0.92;
+  text-wrap: balance;
+}
+
+.lumina-phase-header__rule {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: min(12rem, 42%);
+  height: 1px;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--lumina-phase-accent, var(--lumina-cyan)) 55%, transparent),
+    transparent
+  );
+  opacity: 0.75;
+}
+
+.lumina-phase-header--hero {
+  padding: 1.35rem 1rem 1.1rem;
+}
+
+.lumina-phase-header--hero .lumina-phase-header__title {
+  font-size: clamp(1.35rem, 3vw, 2rem);
+}
+
+.lumina-phase-header--strip {
+  padding: 0.72rem 1rem 0.62rem;
+}
+
+.lumina-phase-header--compact {
+  padding: 0.55rem 0.75rem 0.48rem;
+}
+
+.lumina-phase-header--compact .lumina-phase-header__eyebrow {
+  font-size: 0.52rem;
+  letter-spacing: 0.2em;
+}
+
+.lumina-phase-header--compact .lumina-phase-header__title {
+  font-size: clamp(1rem, 2vw, 1.35rem);
+}
+
+.lumina-phase-header--compact .lumina-phase-header__status {
+  display: none;
+}
+
+.lumina-phase-header--cyan {
+  --lumina-phase-accent: var(--lumina-cyan);
+}
+
+.lumina-phase-header--violet {
+  --lumina-phase-accent: var(--cockpit-glow-accent, #a78bfa);
+}
+
+.lumina-phase-header--emerald {
+  --lumina-phase-accent: #34d399;
+}
+
+.lumina-phase-header--amber {
+  --lumina-phase-accent: #fbbf24;
+}
+
+.lumina-phase-header--rose {
+  --lumina-phase-accent: #fb7185;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .lumina-phase-header__rule {
+    animation: lumina-phase-rule-pulse 4.5s ease-in-out infinite;
+  }
+}
+
+@keyframes lumina-phase-rule-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    width: min(9rem, 34%);
+  }
+  50% {
+    opacity: 0.9;
+    width: min(14rem, 48%);
+  }
+}

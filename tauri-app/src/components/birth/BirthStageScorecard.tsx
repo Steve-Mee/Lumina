@@ -184,6 +184,21 @@ export function BirthStageScorecard({
               ? ` · step ${scorecard!.evolutionStep}/${scorecard!.evolutionStep + scorecard!.evolutionActionsRemaining}`
               : ""}
           </p>
+          {scorecard!.evolutionRolloutsThisStep != null &&
+          scorecard!.evolutionRolloutsMax != null ? (
+            <p className="mt-0.5 font-mono text-[10px] text-orange-200/75">
+              Rollouts this step: {scorecard!.evolutionRolloutsThisStep}/
+              {scorecard!.evolutionRolloutsMax}
+            </p>
+          ) : null}
+          {scorecard!.recommendedRecoveryAction ? (
+            <p className="mt-0.5 font-mono text-[10px] text-orange-200/75">
+              Recommended: {scorecard!.recommendedRecoveryAction.replace(/_/g, " ")}
+            </p>
+          ) : null}
+          {scorecard!.holdTrapDetected ? (
+            <p className="mt-0.5 font-mono text-[10px] text-amber-300/90">Hold trap active</p>
+          ) : null}
           {scorecard!.plateauElapsedSec != null ? (
             <p className="mt-0.5 font-mono text-[10px] text-orange-200/75">
               Plateau clock: {Math.ceil(scorecard!.plateauElapsedSec / 60)}m elapsed
@@ -192,6 +207,42 @@ export function BirthStageScorecard({
                 : ""}
             </p>
           ) : null}
+        </div>
+      ) : null}
+
+      {scorecard!.stallRemediationCycle != null && scorecard!.stallRemediationCycle > 0 ? (
+        <div className="rounded border border-violet-500/35 bg-violet-950/20 px-2 py-1.5">
+          <p className="font-mono text-[10px] tracking-wide text-violet-200/90 uppercase">
+            Stall remediation
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-violet-100">
+            Cycle {scorecard!.stallRemediationCycle}
+            {scorecard!.stallRemediationMaxCycles != null
+              ? `/${scorecard!.stallRemediationMaxCycles}`
+              : ""}
+            {scorecard!.stallRemediationStep != null
+              ? ` · step ${scorecard!.stallRemediationStep}${
+                  scorecard!.stallRemediationMaxSteps != null
+                    ? `/${scorecard!.stallRemediationMaxSteps}`
+                    : ""
+                }`
+              : ""}
+          </p>
+        </div>
+      ) : null}
+
+      {scorecard!.stage1WinrateGate != null &&
+      scorecard!.stage1WinrateRecommended != null &&
+      scorecard!.stage1WinrateGate < scorecard!.stage1WinrateRecommended - 0.001 ? (
+        <div className="rounded border border-amber-500/35 bg-amber-950/20 px-2 py-1.5">
+          <p className="font-mono text-[10px] tracking-wide text-amber-200/90 uppercase">
+            Winrate gate below recommended
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-amber-100">
+            Gate {(scorecard!.stage1WinrateGate * 100).toFixed(0)}% · recommended{" "}
+            {(scorecard!.stage1WinrateRecommended * 100).toFixed(0)}% · REAL needs Evolution Proof
+            + OOS ≥48%
+          </p>
         </div>
       ) : null}
 

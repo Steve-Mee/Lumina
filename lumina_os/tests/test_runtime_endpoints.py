@@ -84,6 +84,9 @@ def test_runtime_training_pause_resume(client: TestClient, tmp_path: Path) -> No
 
 def test_runtime_go_live_requires_ready(client: TestClient) -> None:
     with patch(
+        "lumina_core.maturity.maturation_progress.maturation_eligible_for_real",
+        return_value=(True, []),
+    ), patch(
         "lumina_core.engine.sim_stability_checker.generate_stability_report",
         return_value={"READY_FOR_REAL": False},
     ):
@@ -101,6 +104,9 @@ def test_runtime_go_live_writes_env(client: TestClient, tmp_path: Path, monkeypa
 
     with patch("backend.runtime_endpoints._REPO_ROOT", tmp_path):
         with patch(
+            "lumina_core.maturity.maturation_progress.maturation_eligible_for_real",
+            return_value=(True, []),
+        ), patch(
             "lumina_core.engine.sim_stability_checker.generate_stability_report",
             return_value={"READY_FOR_REAL": True, "consecutive_green_days": 5},
         ):

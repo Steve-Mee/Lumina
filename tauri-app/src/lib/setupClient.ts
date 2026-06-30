@@ -64,6 +64,7 @@ export interface ConfigurePayload {
     max_real_days: number;
     allow_minimal_synthetic_fallback?: boolean;
     require_real_simulator_data?: boolean;
+    stage1_winrate_pass_threshold?: number;
   };
   selected_model_key?: string;
 }

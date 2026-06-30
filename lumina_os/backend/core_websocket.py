@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 from backend.adaptive_intelligence_snapshot import (
@@ -67,6 +67,7 @@ class OperatorModeRequest(BaseModel):
 class OperatorModeResponse(BaseModel):
     ok: bool = True
     mode: str
+    blockers: list[str] = Field(default_factory=list)
 
 
 def set_observability_service(service: Any) -> None:
@@ -314,8 +315,32 @@ async def get_core_live() -> dict[str, Any]:
 
 @router.post("/api/core/mode", response_model=OperatorModeResponse)
 async def post_core_mode(body: OperatorModeRequest) -> OperatorModeResponse:
-    """Accept operator mode selection from the command deck (v1 in-memory override)."""
+    """Accept operator mode selection from the command deck (fail-closed for REAL)."""
     global _operator_mode_override
+
+    if body.mode == "real":
+        from lumina_launcher.services.birth_service import birth_service
+        from lumina_core.maturity.maturation_progress import maturation_eligible_for_real
+        from lumina_core.maturity.milestone_hooks import hook_real_trading_live
+
+        eligible, blockers = maturation_eligible_for_real(birth_service.workspace_root)
+        if not eligible:
+            try:
+                from lumina_core.notifications.attention_events import real_trading_blocked_event
+                from lumina_core.notifications.operator_notifier import notify_problem
+
+                notify_problem(
+                    real_trading_blocked_event(blockers=blockers, source="command_deck"),
+                    workspace_root=birth_service.workspace_root,
+                )
+            except Exception:
+                pass
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "REAL blocked by maturation ladder", "blockers": blockers},
+            )
+        hook_real_trading_live(birth_service.workspace_root, mode="real")
+
     _operator_mode_override = body.mode
     logger.info("Operator mode override set to %s", body.mode)
     return OperatorModeResponse(mode=body.mode)

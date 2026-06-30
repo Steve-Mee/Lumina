@@ -203,6 +203,22 @@ def extract_env_diagnostics(env_values: dict[str, str] | None = None) -> dict[st
     }
 
 
+def _extract_birth_v2_defaults(config: dict[str, Any]) -> dict[str, Any]:
+    birth_v2 = config.get("birth_v2") if isinstance(config.get("birth_v2"), dict) else {}
+    curriculum = (
+        birth_v2.get("curriculum") if isinstance(birth_v2.get("curriculum"), dict) else {}
+    )
+    return {
+        "stage1_winrate_pass_threshold": float(
+            curriculum.get("stage1_winrate_pass_threshold", 0.45)
+        ),
+        "stage1_winrate_recommended": float(
+            curriculum.get("stage1_winrate_recommended", 0.45)
+        ),
+        "stage1_winrate_pass_floor": float(curriculum.get("stage1_winrate_pass_floor", 0.35)),
+    }
+
+
 def extract_config_defaults(
     config: dict[str, Any],
     *,
@@ -239,7 +255,11 @@ def extract_config_defaults(
             "training_trades": first_boot.get("training_trades", 25000),
             "prefer_real_data_only": first_boot.get("prefer_real_data_only", True),
             "max_real_days": first_boot.get("max_real_days", 56),
+            "allow_minimal_synthetic_fallback": first_boot.get(
+                "allow_minimal_synthetic_fallback", False
+            ),
         },
+        "birth_v2": _extract_birth_v2_defaults(config),
         "risk_controller": {
             "real_capital_safety_threshold_usd": risk_controller.get(
                 "real_capital_safety_threshold_usd", 1000.0

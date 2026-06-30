@@ -142,6 +142,27 @@ describe("birthPhaseModel", () => {
     ).toBe(false);
   });
 
+  it("does not treat idle not_started as certificate failed when cert is missing", () => {
+    expect(
+      isBirthCertificateFailed({
+        status: "idle",
+        certificate_ok: false,
+        certificate_reason: "missing_or_invalid_certificate",
+        progress: { stage: "not_started", trades_done: 0, target_trades: 5000 },
+      }),
+    ).toBe(false);
+  });
+
+  it("treats completed without certificate as certificate failed", () => {
+    expect(
+      isBirthCertificateFailed({
+        status: "completed",
+        certificate_ok: false,
+        progress: { stage: "completed", phase: "certificate_failed" },
+      }),
+    ).toBe(true);
+  });
+
   it("detects active progress during historical load", () => {
     expect(
       isBirthEngineActive({

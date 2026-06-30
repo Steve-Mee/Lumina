@@ -1,7 +1,8 @@
-"""Send a one-off Lumina milestone Telegram test alert."""
+"""Send a one-off Lumina milestone or maturation Telegram test alert."""
 
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -17,12 +18,34 @@ try:
 except ImportError:
     pass
 
+from lumina_core.maturity.milestone_hooks import try_record_milestone  # noqa: E402
 from lumina_core.notifications.milestone_events import MilestoneCategory, MilestoneEvent  # noqa: E402
 from lumina_core.notifications.milestone_notifier import get_milestone_notifier  # noqa: E402
 from lumina_core.notifications.telegram_notifier import TelegramNotifier  # noqa: E402
 
+MATURATION_IDS = (
+    "genesis_contract_signed",
+    "birth_started",
+    "birth_certificate_issued",
+    "deck_unlocked",
+    "evolution_proof_passed",
+    "first_sim_order_placed",
+    "sim_real_guard_stable",
+    "promotion_gate_passed",
+    "human_real_approval",
+    "real_trading_live",
+)
+
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Send Lumina Telegram test alert")
+    parser.add_argument(
+        "--maturation",
+        choices=MATURATION_IDS,
+        help="Send maturation ladder test milestone (records JSON + Telegram)",
+    )
+    args = parser.parse_args()
+
     notifier = TelegramNotifier()
     token_ok = bool(notifier._api_token)
     chat_ok = bool(notifier._chat_id)
@@ -34,6 +57,12 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    if args.maturation:
+        get_milestone_notifier(workspace_root=ROOT).reset_notified()
+        try_record_milestone(ROOT, args.maturation, metadata={"test": True})
+        print(f"maturation_test_recorded id={args.maturation}")
+        return 0
 
     milestone = get_milestone_notifier(workspace_root=ROOT)
     milestone.reset_notified()

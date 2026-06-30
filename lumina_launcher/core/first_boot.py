@@ -126,12 +126,27 @@ class FirstBootManager:
             max_real_days = resolve_default_max_real_days(training_trades)
         else:
             max_real_days = max(FIRST_BOOT_MIN_REAL_DAYS, int(raw_max_days))
+        birth_v2 = cfg.get("birth_v2", {}) if isinstance(cfg.get("birth_v2"), dict) else {}
+        curriculum = (
+            birth_v2.get("curriculum", {})
+            if isinstance(birth_v2.get("curriculum"), dict)
+            else {}
+        )
         return {
             "training_trades": training_trades,
             "prefer_real_data_only": bool(section.get("prefer_real_data_only", True)),
             "max_real_days": max_real_days,
             "allow_minimal_synthetic_fallback": bool(section.get("allow_minimal_synthetic_fallback", False)),
             "require_real_simulator_data": bool(neuro.get("require_real_simulator_data", True)),
+            "stage1_winrate_pass_threshold": float(
+                curriculum.get("stage1_winrate_pass_threshold", 0.45)
+            ),
+            "stage1_winrate_recommended": float(
+                curriculum.get("stage1_winrate_recommended", 0.45)
+            ),
+            "stage1_winrate_pass_floor": float(
+                curriculum.get("stage1_winrate_pass_floor", 0.35)
+            ),
         }
 
     def save_settings(self, training_trades: int) -> None:
@@ -151,6 +166,7 @@ class FirstBootManager:
         max_real_days: int,
         allow_minimal_synthetic_fallback: bool,
         require_real_simulator_data: bool | None = None,
+        stage1_winrate_pass_threshold: float | None = None,
         mark_user_configured: bool = False,
     ) -> None:
         # BIRTH ENGINE 2026-05-17
@@ -167,6 +183,12 @@ class FirstBootManager:
         birth_v2["trade_budget_cap"] = normalized_trades
         birth_v2["max_real_days"] = max(30, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS))
         birth_v2["prefer_real_data_only"] = bool(prefer_real_data_only)
+        if stage1_winrate_pass_threshold is not None:
+            curriculum = self._ensure_mapping(birth_v2, "curriculum")
+            floor = float(curriculum.get("stage1_winrate_pass_floor", 0.35))
+            recommended = float(curriculum.get("stage1_winrate_recommended", 0.45))
+            clamped = max(floor, min(recommended, float(stage1_winrate_pass_threshold)))
+            curriculum["stage1_winrate_pass_threshold"] = round(clamped, 4)
         if require_real_simulator_data is not None:
             evolution = self._ensure_mapping(cfg, "evolution")
             neuro = self._ensure_mapping(evolution, "neuroevolution")

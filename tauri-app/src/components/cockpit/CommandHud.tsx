@@ -46,7 +46,8 @@ import {
   stopAllActivities,
   stopEngine,
 } from "@/lib/runtimeClient";
-import { helpFor } from "@/lib/helpTexts";
+import { fetchMaturationProgress, postApproveReal } from "@/lib/maturationClient";
+import { MaturityProgressStrip } from "@/components/cockpit/MaturityProgressStrip";
 import {
   springLuxury,
 } from "@/lib/motionPresets";
@@ -122,11 +123,13 @@ function ModeSwitch({
   reportedMode,
   syncStatus,
   onSelect,
+  realEligible,
 }: {
   mode: TradingMode;
   reportedMode: TradingMode | null;
   syncStatus: "idle" | "pending" | "error";
   onSelect: (mode: TradingMode) => void;
+  realEligible: boolean;
 }) {
   const modeMotion = useModeMotion();
   const pillMotion = mode === "REAL" ? springLuxury : modeMotion;
@@ -178,7 +181,13 @@ function ModeSwitch({
               variant="command-ghost"
               aria-pressed={active}
               title={modeSwitchTooltip(option)}
-              onClick={() => onSelect(option)}
+              onClick={() => {
+                if (option === "REAL" && !realEligible) {
+                  return;
+                }
+                onSelect(option);
+              }}
+              disabled={option === "REAL" && !realEligible}
               className={cn(
                 "relative h-9 min-w-[64px] font-mono text-[11px] tracking-[0.18em] uppercase transition-colors",
                 modeSwitchActivePillClass(option, active),
@@ -215,6 +224,8 @@ export function CommandHud({ className }: CommandHudProps) {
   const [pauseTradingAck, setPauseTradingAck] = useState(false);
   const runtime = useRuntimeStatusPoll();
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [realTradingEligible, setRealTradingEligible] = useState(false);
+  const [realTradingBlockers, setRealTradingBlockers] = useState<string[]>([]);
   const { transition, startTransition, completeTransition } = useDeckTransition();
   const prevRegimeRef = useRef<string | null>(null);
 
@@ -332,11 +343,31 @@ export function CommandHud({ className }: CommandHudProps) {
     pulseHint,
   ]);
 
+  useEffect(() => {
+    void fetchMaturationProgress()
+      .then((payload) => {
+        setRealTradingEligible(Boolean(payload.real_trading_eligible));
+        setRealTradingBlockers(
+          Array.isArray(payload.real_trading_blockers) ? payload.real_trading_blockers : [],
+        );
+      })
+      .catch(() => {
+        setRealTradingEligible(false);
+        setRealTradingBlockers([]);
+      });
+  }, []);
+
   const handleModeSelect = (mode: TradingMode) => {
     if (mode === currentMode) {
       return;
     }
     if (mode === "REAL") {
+      if (!realTradingEligible) {
+        toast.error(
+          "REAL blocked — complete Awakening (certificate + Evolution Proof) and later maturation phases.",
+        );
+        return;
+      }
       setRealConfirmOpen(true);
       return;
     }
@@ -345,18 +376,24 @@ export function CommandHud({ className }: CommandHudProps) {
   };
 
   const confirmRealMode = () => {
-    startTransition({ kind: "modeSwitch", targetMode: "REAL" });
-    setOperatorMode("REAL");
-    setRealConfirmOpen(false);
-    if (!sessionStorage.getItem("lumina.realOpsHintShown")) {
-      sessionStorage.setItem("lumina.realOpsHintShown", "1");
-      toast.info("REAL Ops tab unlocked in Intelligence deck", {
-        action: {
-          label: "Open REAL Ops",
-          onClick: () => useDeckPanelStore.getState().setActiveRightTab("realOps"),
-        },
+    void postApproveReal()
+      .then(() => {
+        startTransition({ kind: "modeSwitch", targetMode: "REAL" });
+        setOperatorMode("REAL");
+        setRealConfirmOpen(false);
+        if (!sessionStorage.getItem("lumina.realOpsHintShown")) {
+          sessionStorage.setItem("lumina.realOpsHintShown", "1");
+          toast.info("REAL Ops tab unlocked in Intelligence deck", {
+            action: {
+              label: "Open REAL Ops",
+              onClick: () => useDeckPanelStore.getState().setActiveRightTab("realOps"),
+            },
+          });
+        }
+      })
+      .catch((err) => {
+        toast.error(err instanceof Error ? err.message : "REAL approval failed");
       });
-    }
   };
 
   const toggleEngine = () => {
@@ -544,9 +581,11 @@ export function CommandHud({ className }: CommandHudProps) {
               reportedMode={reportedMode}
               syncStatus={modeSyncStatus}
               onSelect={handleModeSelect}
+              realEligible={realTradingEligible}
             />
           </div>
         </div>
+        <MaturityProgressStrip className="mt-2" />
       </header>
 
       <Dialog open={realConfirmOpen} onOpenChange={setRealConfirmOpen}>
@@ -554,16 +593,37 @@ export function CommandHud({ className }: CommandHudProps) {
           <DialogHeader>
             <DialogTitle className={realDialogTitleClass()}>Enable REAL Mode?</DialogTitle>
             <DialogDescription className={cn("leading-relaxed", realDialogBodyClass())}>
-              REAL mode engages live capital protection: conservative sizing, fail-closed
-              safeguards, and EOD flatten rules. Confirm only after safety gate checks are
-              green and you accept capital risk.
+              {realTradingEligible ? (
+                <>
+                  REAL mode engages live capital protection: conservative sizing, fail-closed
+                  safeguards, and EOD flatten rules. Confirm only after safety gate checks are
+                  green and you accept capital risk.
+                </>
+              ) : (
+                <>
+                  REAL is blocked until maturation gates pass. Complete Playground → Apprenticeship
+                  → Proving Ground first.
+                  {realTradingBlockers.length > 0 ? (
+                    <ul className="mt-2 list-inside list-disc text-xs">
+                      {realTradingBlockers.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button type="button" variant="command-ghost" onClick={() => setRealConfirmOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" variant="command-primary" onClick={confirmRealMode}>
+            <Button
+              type="button"
+              variant="command-primary"
+              disabled={!realTradingEligible}
+              onClick={confirmRealMode}
+            >
               Confirm REAL
             </Button>
           </DialogFooter>

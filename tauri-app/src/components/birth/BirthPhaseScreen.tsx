@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import { BirthCommandBar } from "@/components/birth/BirthCommandBar";
 import type { BirthAdvancedSection } from "@/components/birth/BirthAdvancedPanel";
 import { BirthCompletionSummary } from "@/components/birth/BirthCompletionSummary";
-import { BirthCinematicLayout } from "@/components/birth/BirthCinematicLayout";
 import { BirthFailureOverlayShell } from "@/components/birth/BirthFailureOverlayShell";
 import { BirthGenesisDeck } from "@/components/birth/BirthGenesisDeck";
 import { BirthMissionControl } from "@/components/birth/BirthMissionControl";
@@ -16,6 +15,7 @@ import { BirthRecoveryPanel } from "@/components/birth/BirthRecoveryPanel";
 import { BirthRemediationBar } from "@/components/birth/BirthRemediationBar";
 import { BirthStageScorecard } from "@/components/birth/BirthStageScorecard";
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
 import { ModeTransitionVeil } from "@/components/cockpit/ModeTransitionVeil";
 import { Button } from "@/components/ui/button";
 import { useBirthPhaseMonitor } from "@/hooks/useBirthPhaseMonitor";
@@ -25,6 +25,7 @@ import { usePPOEvolution } from "@/hooks/usePPOEvolution";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { detectBirthRecoveryKind, hasBirthCheckpointProgress, shouldAutoResumeBirth } from "@/lib/birthRecoveryModel";
 import { isBirthEngineActive, isBirthInterrupted, isBirthStageStalled, resolveBirthPhaseCopy } from "@/lib/birthPhaseModel";
+import { resolveBirthScreenPhaseHeader } from "@/lib/luminaPhasePresentation";
 import { transitionOrNone, springBirthLuxury } from "@/lib/motionPresets";
 import {
   distressPanelClass,
@@ -65,7 +66,8 @@ export function BirthPhaseScreen() {
   const resumeStalledStage = useBirthStore((s) => s.resumeStalledStage);
   const expandAndRetryStalledStage = useBirthStore((s) => s.expandAndRetryStalledStage);
   const targetTrades = useBirthStore((s) => s.targetTrades);
-  const setPhase = useOnboardingStore((s) => s.setPhase);
+  const genesisPinned = useBirthStore((s) => s.genesisPinned);
+  const returnToGenesis = useBirthStore((s) => s.returnToGenesis);
   const activateBirth = useOnboardingStore((s) => s.activateBirth);
   const activating = useOnboardingStore((s) => s.activating);
   const onboardingError = useOnboardingStore((s) => s.error);
@@ -82,7 +84,7 @@ export function BirthPhaseScreen() {
   const veiledMilestonesRef = useRef<Set<string>>(new Set());
   const { transition, startTransition, completeTransition } = useDeckTransition();
   const awakening = uiPhase === "finale";
-  const certificateFailed = uiPhase === "certificate_failed";
+  const certificateFailed = uiPhase === "certificate_failed" && !genesisPinned;
   const stageStalledActive =
     !awakening &&
     !recoveryDismissed &&
@@ -111,7 +113,11 @@ export function BirthPhaseScreen() {
     prefer_real_data_only: trainingDraft.prefer_real_data_only,
     max_real_days: trainingDraft.max_real_days,
     allow_minimal_synthetic_fallback: trainingDraft.allow_minimal_synthetic_fallback,
-    require_real_simulator_data: trainingDraft.prefer_real_data_only,
+    require_real_simulator_data: trainingDraft.require_real_simulator_data,
+    stage1_winrate_pass_threshold:
+      status?.progress?.stage1_winrate_gate != null
+        ? Number(status.progress.stage1_winrate_gate)
+        : 0.45,
   };
 
   const helixActivating = running || awakening;
@@ -228,6 +234,17 @@ export function BirthPhaseScreen() {
   };
 
   const missionMode = birthSurface === "running" && (running || awakening);
+  const phaseHeader = resolveBirthScreenPhaseHeader({
+    genesisMode,
+    missionMode,
+    awakening,
+    activating,
+    interrupted,
+    certificateFailed,
+    stageStalledActive,
+    milestones,
+    phaseSubtitle,
+  });
 
   const enterCommandDeck = () => {
     setRealPreviewActive(true);
@@ -361,60 +378,52 @@ export function BirthPhaseScreen() {
         animate={{ opacity: transition.active ? 0.35 : 1 }}
         transition={transitionOrNone(reducedMotion, birthMotion)}
       >
+        <LuminaPhaseHeader {...phaseHeader} variant="strip" className="relative z-20" />
         {genesisMode ? (
-          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-            <BirthCommandBar
-              mode="genesis"
-              headline={
-                activating
-                  ? "Activation sequence engaged"
-                  : interrupted
-                    ? "Birth gestopt — kies volgende actie"
-                    : "Neural Genesis — awaiting activation"
-              }
-              milestones={milestones}
-              progress={status?.progress}
-              status={status?.status ?? "idle"}
-              checkpointAvailable={checkpointAvailable}
-              busy={controlBusy || activating}
-              onStart={handleStartBirth}
-              onWipe={handleWipeBirthData}
-              onResumeCheckpoint={handleResumeCheckpoint}
-            />
-            <div className="min-h-0 flex-1 overflow-hidden px-2 pb-4 md:px-6">
-              <BirthCinematicLayout
-                className="min-h-0 h-full"
-                stage={
-                  <div className="birth-activation-stage-inner birth-helix-accent-wrap pointer-events-none">
-                    <div className="birth-activation-helix-slot birth-helix-accent">
-                      <Suspense
-                        fallback={
-                          <div className="flex h-full min-h-0 flex-1 items-center justify-center">
-                            <BirthOrganismVisual className="size-48 opacity-80" />
-                          </div>
-                        }
-                      >
-                        <BirthHelixVisual
-                          ceremonyMode
-                          activating={activating}
-                          primed={activating}
-                          trainingTrades={trainingDraft.training_trades}
-                          className="h-full min-h-0 w-full max-w-md"
-                        />
-                      </Suspense>
-                    </div>
+          <div className="birth-mission-shell relative flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="birth-genesis-grid min-h-0 flex-1 overflow-hidden p-3 md:p-4">
+              <div
+                className={cn(
+                  "birth-genesis-helix-stage birth-activation-helix-arena birth-helix-accent-wrap pointer-events-none min-h-0",
+                  activating && "birth-activation-helix-arena--charge",
+                )}
+              >
+                <div className="birth-activation-stage-inner min-h-0 flex-1">
+                  <div className="birth-activation-helix-slot birth-helix-accent min-h-0 flex-1">
+                    <Suspense
+                      fallback={
+                        <div className="flex h-full min-h-0 flex-1 items-center justify-center">
+                          <BirthOrganismVisual className="size-48 opacity-80" />
+                        </div>
+                      }
+                    >
+                      <BirthHelixVisual
+                        ceremonyMode
+                        activating={activating}
+                        primed={activating}
+                        trainingTrades={trainingDraft.training_trades}
+                        className="h-full min-h-0 w-full max-w-full"
+                      />
+                    </Suspense>
                   </div>
-                }
-                deck={
-                  <BirthGenesisDeck
-                    training={trainingDraft}
-                    activating={activating}
-                    error={onboardingError}
-                    onChangeTraining={(patch) => updateDraft({ training: { ...trainingDraft, ...patch } })}
-                    onActivate={() => void handleStartBirth()}
-                  />
-                }
-              />
+                </div>
+              </div>
+              <section
+                className="birth-genesis-panel lumina-glass lumina-glass--overlay flex min-h-0 flex-col overflow-hidden"
+                aria-label="Neural genesis charter"
+              >
+                <BirthGenesisDeck
+                  training={trainingDraft}
+                  activating={activating}
+                  checkpointAvailable={checkpointAvailable}
+                  busy={controlBusy}
+                  error={onboardingError}
+                  onChangeTraining={(patch) => updateDraft({ training: { ...trainingDraft, ...patch } })}
+                  onActivate={() => void handleStartBirth()}
+                  onWipe={handleWipeBirthData}
+                  onResumeCheckpoint={handleResumeCheckpoint}
+                />
+              </section>
             </div>
           </div>
         ) : missionMode ? (
@@ -427,7 +436,6 @@ export function BirthPhaseScreen() {
           >
             <BirthCommandBar
               mode={awakening ? "finale" : "running"}
-              headline={awakening ? "Birth complete" : headline}
               milestones={milestones}
               progress={status?.progress}
               status={status?.status ?? "idle"}
@@ -537,12 +545,9 @@ export function BirthPhaseScreen() {
                   },
                   {
                     id: "setup",
-                    label: "Return to setup",
+                    label: "Return to Genesis",
                     variant: "ghost",
-                    onClick: () => {
-                      useBirthStore.getState().reset();
-                      setPhase("wizard");
-                    },
+                    onClick: returnToGenesis,
                   },
                 ]}
               />
@@ -673,12 +678,9 @@ export function BirthPhaseScreen() {
                 type="button"
                 variant="ghost"
                 className="text-muted-foreground"
-                onClick={() => {
-                  useBirthStore.getState().reset();
-                  setPhase("wizard");
-                }}
+                onClick={returnToGenesis}
               >
-                Return to setup
+                Return to Genesis
               </Button>
             </div>
           </div>

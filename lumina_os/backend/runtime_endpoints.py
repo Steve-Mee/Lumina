@@ -191,6 +191,15 @@ async def go_live_real(
 
     from lumina_core.engine.sim_stability_checker import generate_stability_report
     from lumina_launcher.core.config_manager import ConfigManager
+    from lumina_launcher.services.birth_service import birth_service
+    from lumina_core.maturity.maturation_progress import maturation_eligible_for_real
+
+    eligible, blockers = maturation_eligible_for_real(birth_service.workspace_root)
+    if not eligible:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": "Maturation ladder not complete for REAL", "blockers": blockers},
+        )
 
     report = generate_stability_report()
     if not bool(report.get("READY_FOR_REAL")):

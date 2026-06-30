@@ -279,13 +279,14 @@ class BirthService:
     def artifacts_ok(self) -> bool:
         from lumina_core.birth.birth_certificate import validate_certificate_artifacts
         from lumina_core.birth.config import load_birth_v2_config
+        from lumina_core.birth.evolution_proof_gate import evolution_proof_passed
 
         thresholds = load_birth_v2_config(self.workspace_root).certificate_thresholds
         ok, _reason, _cert = validate_certificate_artifacts(
             self.workspace_root,
             thresholds=thresholds,
         )
-        return ok and self.policy_path.is_file()
+        return ok and self.policy_path.is_file() and evolution_proof_passed(self.workspace_root)
 
     def certificate_ok(self) -> bool:
         from lumina_core.birth.birth_certificate import validate_certificate_artifacts
@@ -297,6 +298,23 @@ class BirthService:
             thresholds=thresholds,
         )
         return ok
+
+    def evolution_proof_ok(self) -> bool:
+        from lumina_core.birth.evolution_proof_gate import evolution_proof_passed
+
+        return evolution_proof_passed(self.workspace_root)
+
+    def real_trading_eligible(self) -> bool:
+        from lumina_core.maturity.maturation_progress import maturation_eligible_for_real
+
+        ok, _blockers = maturation_eligible_for_real(self.workspace_root)
+        return ok
+
+    def real_trading_blockers(self) -> list[str]:
+        from lumina_core.maturity.maturation_progress import maturation_eligible_for_real
+
+        _ok, blockers = maturation_eligible_for_real(self.workspace_root)
+        return blockers
 
     def _load_saved_birth_settings(self) -> dict[str, Any]:
         config_path = self.workspace_root / "config.yaml"
@@ -480,6 +498,16 @@ class BirthService:
             except Exception as e:
                 self._error = str(e)
                 logger.exception("Birth Phase failed: %s", e)
+                try:
+                    from lumina_core.notifications.attention_events import birth_error_event
+                    from lumina_core.notifications.operator_notifier import notify_problem
+
+                    notify_problem(
+                        birth_error_event(detail=str(e)),
+                        workspace_root=self.workspace_root,
+                    )
+                except Exception as notify_exc:
+                    logger.warning("birth.error_attention_failed: %s", notify_exc)
             finally:
                 self._clear_runner_lock()
 
@@ -987,6 +1015,16 @@ class BirthService:
                 self.pause_flag_path.unlink()
         except OSError:
             logger.warning("birth.user_stop.pause_clear_failed", exc_info=True)
+        try:
+            from lumina_core.notifications.attention_events import birth_interrupted_event
+            from lumina_core.notifications.operator_notifier import notify_problem
+
+            notify_problem(
+                birth_interrupted_event(detail=str(payload.get("message", "") or "")),
+                workspace_root=self.workspace_root,
+            )
+        except Exception as exc:
+            logger.warning("birth.interrupted_attention_failed: %s", exc)
 
     def reconcile_orphaned_birth_progress(self) -> bool:
         """Mark on-disk active progress as interrupted when no live Birth runner exists."""
@@ -1026,6 +1064,16 @@ class BirthService:
             except OSError:
                 logger.warning("birth.reconcile.write_failed path=%s", path, exc_info=True)
         logger.info("birth.reconcile_orphaned prior_stage=%s workspace=%s", stage, self.workspace_root)
+        try:
+            from lumina_core.notifications.attention_events import birth_interrupted_event
+            from lumina_core.notifications.operator_notifier import notify_problem
+
+            notify_problem(
+                birth_interrupted_event(detail=str(payload.get("message", "") or "")),
+                workspace_root=self.workspace_root,
+            )
+        except Exception as exc:
+            logger.warning("birth.reconcile_attention_failed: %s", exc)
         return True
 
     def _progress_indicates_running(self, progress: Dict[str, Any]) -> bool:

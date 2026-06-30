@@ -243,6 +243,17 @@ def should_gen0_soft_pass(
     return buffer_size >= 256
 
 
+def stage1_winrate_pass_threshold(cfg: BirthCurriculumConfig) -> float:
+    """SSOT for stage1 trend winrate graduation gate (clamped to floor)."""
+    floor = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35))
+    threshold = float(getattr(cfg, "stage1_winrate_pass_threshold", 0.45))
+    return max(floor, min(0.60, threshold))
+
+
+def stage1_winrate_recommended(cfg: BirthCurriculumConfig) -> float:
+    return float(getattr(cfg, "stage1_winrate_recommended", 0.45))
+
+
 def evaluate_stage_pass(
     stage: CurriculumStage,
     *,
@@ -275,8 +286,9 @@ def evaluate_stage_pass(
     message = ""
 
     if stage == CurriculumStage.STAGE1_TREND:
-        passed = trades >= required and winrate >= 0.45
-        message = f"trend winrate={winrate:.2%} trades={trades}/{required}"
+        wr_gate = stage1_winrate_pass_threshold(cfg) if cfg is not None else 0.45
+        passed = trades >= required and winrate >= wr_gate
+        message = f"trend winrate={winrate:.2%} trades={trades}/{required} gate={wr_gate:.0%}"
     elif stage == CurriculumStage.STAGE2_RANGE:
         if range_total_signals >= 50:
             metric = range_flat_ratio

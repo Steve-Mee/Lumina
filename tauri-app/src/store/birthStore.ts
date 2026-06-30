@@ -99,6 +99,7 @@ interface BirthState {
   expandAndRetryStalledStage: () => Promise<boolean>;
   reuseDataBirth: () => Promise<boolean>;
   stopBirthRun: () => Promise<boolean>;
+  returnToGenesis: () => void;
   beginFinale: () => void;
   reset: () => void;
 }
@@ -138,7 +139,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
     if (get().uiPhase === "finale") {
       /* keep finale until parent transitions */
     } else if (isBirthCertificateFailed(payload)) {
-      uiPhase = "certificate_failed";
+      uiPhase = get().genesisPinned ? "idle" : "certificate_failed";
     } else if (isBirthComplete(payload)) {
       uiPhase = "finale";
     } else if (isBirthStageStalled(payload)) {
@@ -148,6 +149,8 @@ export const useBirthStore = create<BirthState>((set, get) => ({
     } else if (isBirthFailed(payload)) {
       uiPhase = "error";
     } else if (isBirthInterrupted(payload)) {
+      uiPhase = "idle";
+    } else if (get().genesisPinned) {
       uiPhase = "idle";
     }
 
@@ -342,6 +345,15 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   beginFinale: () => set({ uiPhase: "finale" }),
+
+  returnToGenesis: () => {
+    set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
+    const status = get().status;
+    if (status) {
+      get().applyStatus(status);
+      set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
+    }
+  },
 
   reset: () =>
     set({

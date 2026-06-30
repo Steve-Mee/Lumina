@@ -4,6 +4,8 @@ import { toast } from "sonner";
 
 import { OrganismEnvelopeProvider } from "@/context/OrganismEnvelopeContext";
 import { CommandHud } from "@/components/cockpit/CommandHud";
+import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
+import { resolveDeckPhaseHeader } from "@/lib/luminaPhasePresentation";
 import { DeckBlockingOverlay } from "@/components/cockpit/DeckBlockingOverlay";
 import { PPOEvolutionProvider } from "@/context/PPOEvolutionContext";
 import { AdaptiveIntelligenceProvider } from "@/context/AdaptiveIntelligenceContext";
@@ -89,6 +91,11 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
 
         <PPOEvolutionProvider>
           <AdaptiveIntelligenceProvider>
+            <LuminaPhaseHeader
+              {...resolveDeckPhaseHeader(operatorMode)}
+              variant="strip"
+              className="relative z-20 shrink-0"
+            />
             <CommandHud />
             <DeckBlockingOverlay />
 

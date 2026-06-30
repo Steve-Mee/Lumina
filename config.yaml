@@ -9,6 +9,17 @@ telegram:
   attention_critical_bypass_quiet_hours: true
   milestone_alerts_enabled: true
   milestone_bypass_quiet_hours: true
+  notification_matrix:
+    maturation: true
+    birth_milestones: true
+    birth_attention: true
+    real_safety: true
+    evolution: true
+    ops: true
+  quiet_hours:
+    start: '23:00'
+    end: 07:00
+    tz: Europe/Brussels
 participant_id: LUMINA_Steve
 sim:
   aggressive_evolution: true
@@ -17,6 +28,7 @@ sim:
   kelly_fraction: 1.0
   bible_base_winrate: 0.55
   max_mutation_depth: radical
+  max_total_open_risk: 3000.0
 real:
   aggressive_evolution: false
   approval_required: true
@@ -31,7 +43,7 @@ real:
   kelly_fraction: 0.25
   bible_base_winrate: 0.55
   max_mutation_depth: conservative
-hardware_profile: light
+hardware_profile: sweet
 reconcile_fills: true
 reconciliation_method: websocket
 reconciliation_timeout_seconds: 15
@@ -47,8 +59,8 @@ xai:
 inference:
   primary_provider: ollama
   provider_order:
-  - vllm
   - ollama
+  - vllm
   - grok_remote
   max_tokens: 1200
   temperature: 0.65
@@ -71,7 +83,7 @@ setup:
   allow_force_tier: false
 vllm:
   host: http://localhost:8000
-  model_name: qwen3.5-35b
+  model_name: qwen3.5-9b
 ollama:
   base_url: http://localhost:11434
   temperature: 0.65
@@ -80,7 +92,7 @@ ollama:
   num_ctx: 16384
 models:
   vision: qwen2.5-vl:7b
-  reasoning: qwen3.5:4b
+  reasoning: qwen3.5:9b
   reflector: qwen2.5:3b
   meta: qwen3.5:9b
   grok_trader_1b: qwen3.5-35b
@@ -190,7 +202,7 @@ security:
     - true
 evolution:
   enabled: true
-  approval_required: true
+  approval_required: false
   sandbox_mutations: true
   reality_gap_penalty_coeff: 0.15
   meta_swarm:
@@ -242,14 +254,18 @@ birth_v2:
     stage1_trend_trades: 2000
     stage2_range_trades: 3000
     stage3_mixed_trades: 5000
-    stage_pass_trade_pct: 0.10
+    stage_pass_trade_pct: 0.1
     stage_pass_min_trades: 100
     stage4_polish_ppo_steps: 50000
     rollout_chunk_trades: 250
     oracle_scan_stride: 5
     oracle_patterns_per_stage: 5000
     oracle_max_hold_bars: 120
-    data_expansion_steps: [90, 180, 365, 730]
+    data_expansion_steps:
+    - 90
+    - 180
+    - 365
+    - 730
     stagnation_rollouts_before_expand: 5
     max_rollouts_per_stage: 500
     gen0_provisional_min_trades: 25
@@ -259,12 +275,12 @@ birth_v2:
     stage1_winrate_stagnation_rollouts: 8
     intra_stage1_enabled: true
     intra_initial_hard_pct: 0.15
-    intra_max_hard_pct: 0.70
+    intra_max_hard_pct: 0.7
     intra_hard_pct_step: 0.05
-    intra_easy_winrate_target: 0.50
+    intra_easy_winrate_target: 0.5
     intra_easy_stability_window: 3
-    intra_easy_percentile: 0.40
-    intra_hard_percentile: 0.40
+    intra_easy_percentile: 0.4
+    intra_hard_percentile: 0.4
     intra_pool_size_multiplier: 4
     meta_controller_enabled: true
     meta_reward_tweak_step: 0.05
@@ -273,7 +289,7 @@ birth_v2:
     meta_improving_velocity_multiplier: 1.5
     meta_review_interval_rollouts: 5
     meta_explore_decay_improving: 0.65
-    meta_explore_decay_stall: 0.50
+    meta_explore_decay_stall: 0.5
     meta_intra_ramp_on_improving: true
     meta_self_eval_enabled: true
     meta_self_eval_min_stall_attempts: 32
@@ -283,19 +299,27 @@ birth_v2:
     meta_self_eval_velocity_floor: 0.002
     meta_self_eval_cooldown_rollouts: 20
     plateau_detection_enabled: true
-    plateau_winrate_gap: 0.10
+    plateau_winrate_gap: 0.1
     plateau_trades_beyond_gate_multiplier: 10
     plateau_max_wall_sec: 7200
     plateau_max_evolution_steps: 8
     plateau_evolution_rollouts_per_step: 12
+    plateau_evolution_max_rollouts_per_step: 24
+    plateau_best_policy_min_trades: 200
+    stage1_winrate_pass_threshold: 0.35
+    stage1_winrate_pass_floor: 0.35
+    stage1_winrate_recommended: 0.45
+    evolution_proof_min_trades: 500
+    evolution_proof_min_winrate_lift: 0.05
+    evolution_proof_polish_oos_winrate_min: 0.45
     max_forced_recoveries_per_plateau: 12
     plateau_save_best_policy: true
     plateau_oracle_distill_top_pct: 0.25
     phoenix_reset_min_full_cycles: 3
-    phoenix_reset_max_winrate: 0.30
+    phoenix_reset_max_winrate: 0.3
     hold_trap_hold_ratio_threshold: 0.55
-    hold_trap_winrate_gap: 0.10
-    hold_trap_recovery_hold_cap: 0.40
+    hold_trap_winrate_gap: 0.1
+    hold_trap_recovery_hold_cap: 0.4
     stall_remediation_enabled: true
     stall_remediation_max_cycles: 3
     stall_remediation_max_steps: 5
@@ -306,14 +330,14 @@ birth_v2:
     quality_win_bonus_coeff: 0.25
     loss_asymmetry_coeff: 1.25
     volatility_penalty_coeff: 0.15
-    trend_align_bonus_coeff: 0.10
+    trend_align_bonus_coeff: 0.1
     min_risk_usd: 25.0
     reward_clip: 5.0
   news:
     primary: finnhub
     enable_cache: true
     cache_path: state/birth_news_cache.json
-  holdout_pct: 0.20
+  holdout_pct: 0.2
   certificate_thresholds:
     min_oos_winrate: 0.48
     min_oos_sharpe: 0.35
@@ -322,14 +346,14 @@ birth_v2:
     min_regimes: 3
     min_holdout_trades: 50
   prefer_real_data_only: true
-  max_real_days: 90
+  max_real_days: 500
   trade_budget_cap: 25000
   ppo_update_timesteps: 25000
   chunk_size: 50000
 first_boot:
   training_trades: 25000
   prefer_real_data_only: true
-  max_real_days: 56
+  max_real_days: 500
   birth_phase: true
   allow_minimal_synthetic_fallback: false
   ppo_progress_interval: 5000

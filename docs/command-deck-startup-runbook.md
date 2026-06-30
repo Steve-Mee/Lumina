@@ -10,7 +10,25 @@
 
 ## One-line summary
 
-**Setup once → train birth until artifacts exist → then Command Deck every time you restart.**
+**Setup once → sign Genesis Maturity Charter → train Birth until artifacts exist → grow through maturation phases → REAL only when ladder complete.**
+
+---
+
+## Maturation ladder (Genesis → REAL)
+
+| Phase | Operator action | Blocks REAL? |
+|-------|-----------------|--------------|
+| **Genesis** | Set training trades, winrate gate (35–45%), data policy on Neural Genesis deck; ACTIVATE BIRTH | No |
+| **Birth** | Historical curriculum runs (BRO-v1) | No |
+| **Awakening** | Birth Certificate v2 + Evolution Proof (ADR-0026) | Yes |
+| **Playground** | NT sim orders; first sim order milestone | No |
+| **Apprenticeship** | `sim_real_guard` + 5-day SIM stability (`READY_FOR_REAL`) | Yes |
+| **Proving Ground** | Shadow validation + PromotionGate pass | Yes |
+| **REAL** | Command Deck REAL toggle after `POST /api/maturity/approve-real` | — |
+
+Progress SSOT: `state/lumina_maturity_progress.json` · API: `GET /api/maturity/progress`
+
+The Command Deck **Maturity strip** shows current phase and blocking reasons. SIM Readiness (Evolution tab) shows stability criteria; use the deck REAL toggle — not the deprecated standalone go-live button.
 
 ---
 
@@ -50,6 +68,7 @@ The backend function `resolve_app_surface()` in `lumina_launcher/core/onboarding
 2. **Backend wins on refresh** — If client phase is stale, `useDeckLifecycleGuard` redirects to birth or wizard when the backend says so.
 3. **Interrupted ≠ failed** — Interrupted birth is recoverable; the app returns to Birth Phase, not the setup wizard.
 4. **Deck entry is explicit** — After birth completes, the operator confirms **Enter Command Deck** in the cinematic flow (welcome overlay may follow).
+5. **REAL is fail-closed** — Command Deck REAL toggle requires maturation milestones (certificate, Evolution Proof, SIM stability, promotion gate). Backend rejects `POST /api/core/mode` with `mode=real` until `maturation_eligible_for_real()` passes.
 
 ---
 
@@ -63,6 +82,7 @@ The backend function `resolve_app_surface()` in `lumina_launcher/core/onboarding
 | Birth restarts from scratch | No checkpoint / fresh `-PartialBirth` reset | Use recovery panel; check birth logs |
 | Birth certificate failed / Retry does nothing | Stale completion flag without valid v2 cert, or old client retry path | Use **Retry birth** in Command Deck (calls `POST /api/birth/retry`: clears stale artifacts, fresh certified start). Deck stays blocked until `certificate_ok: true`. |
 | Stale `curriculum_failed` / `trades=1` while birth runs | Old backend bytecode or stale `state/lumina_birth_progress.json` | **Restart backend** after BRO deploy (`birth.engine.version=BRO-v1` in logs). Retry birth; expect phases `curriculum_research` / `curriculum_learning`, rising `patterns_mined`. |
+| REAL toggle greyed out on deck | Maturation ladder incomplete | Check `GET /api/maturity/progress` → `real_trading_blockers`; complete Apprenticeship (SIM stability) and Proving Ground (shadow/promotion) |
 | Always lands on deck after reset | Artifacts still on disk | Run full dev reset script without `-PartialBirth` |
 
 ---
@@ -100,7 +120,38 @@ Key fields:
 | `birth.status` | string | `idle`, `running`, `interrupted`, `error`, `completed`, … |
 | `required_steps` | string[] | Pending onboarding steps |
 
+```http
+GET /api/maturity/progress
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `current_phase` | string | `genesis` … `real` |
+| `real_trading_eligible` | boolean | Unified fail-closed REAL gate |
+| `real_trading_blockers` | string[] | Human-readable missing milestones |
+
 Full contract: [lumina-core-api-contracts.md](lumina-core-api-contracts.md) §10.
+
+---
+
+## Telegram notification expectations (ADR-0028)
+
+Configure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env` or `config.yaml`.
+
+| Channel | Prefix | Examples |
+|---------|--------|----------|
+| Milestone | `LUMINA MILESTONE —` | Birth stage pass, maturation phase advance |
+| Attention | `LUMINA ATTENTION [SEVERITY] —` | Stall, cert fail, Evolution Proof failed, REAL blocked, safe mode |
+
+Category toggles: `telegram.notification_matrix` in `config.yaml` (`maturation`, `birth_milestones`, `birth_attention`, `real_safety`, `evolution`, `ops`).
+
+Test manually:
+```powershell
+python scripts/send_milestone_test.py
+python scripts/send_milestone_test.py --maturation genesis_contract_signed
+```
+
+Client-reported REAL safe mode: `POST /api/notifications/attention` with `reason_code: real_safe_mode`.
 
 ---
 
@@ -108,5 +159,7 @@ Full contract: [lumina-core-api-contracts.md](lumina-core-api-contracts.md) §10
 
 - ADR: [adr/0011-tauri-lifecycle-gate-ssot.md](adr/0011-tauri-lifecycle-gate-ssot.md)
 - ADR: [adr/0017-birth-research-oracle.md](adr/0017-birth-research-oracle.md) (BRO-v1 never-stop curriculum)
+- ADR: [adr/0027-lumina-maturation-ladder.md](adr/0027-lumina-maturation-ladder.md)
+- ADR: [adr/0028-lumina-operator-notification-matrix.md](adr/0028-lumina-operator-notification-matrix.md)
 - Client phase mapping: `tauri-app/src/lib/onboardingPhase.ts`
 - Python SSOT: `lumina_launcher/core/onboarding.py` → `resolve_app_surface()`

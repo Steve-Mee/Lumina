@@ -129,6 +129,10 @@ class MilestoneNotifier:
         phase: str,
         training_mode: str,
         workspace_root: Path | str | None = None,
+        plateau_active: bool = False,
+        evolution_step: int = 0,
+        hold_trap_detected: bool = False,
+        evolution_proof_passed: bool | None = None,
     ) -> None:
         """Mark milestones as already notified on checkpoint resume (no Telegram send)."""
         if workspace_root is not None:
@@ -149,6 +153,17 @@ class MilestoneNotifier:
 
         if str(training_mode).strip().lower() == "practice" and phase_norm == "practice_completed":
             seeded.add("practice_birth_completed")
+
+        if plateau_active:
+            seeded.add("plateau_entered")
+        for step in range(1, max(0, int(evolution_step)) + 1):
+            seeded.add(f"plateau_evolution_step_{step}")
+        if hold_trap_detected:
+            seeded.add("hold_trap_detected")
+        if evolution_proof_passed is True:
+            seeded.add("evolution_proof_passed")
+        elif evolution_proof_passed is False:
+            seeded.add("evolution_proof_failed")
 
         with self._lock:
             current = self._load_notified()
@@ -213,12 +228,20 @@ def seed_milestones_from_birth_state(
     phase: str,
     training_mode: str,
     workspace_root: Path | str | None = None,
+    plateau_active: bool = False,
+    evolution_step: int = 0,
+    hold_trap_detected: bool = False,
+    evolution_proof_passed: bool | None = None,
 ) -> None:
     get_milestone_notifier(workspace_root=workspace_root).seed_from_birth_state(
         stages_passed=stages_passed,
         phase=phase,
         training_mode=training_mode,
         workspace_root=workspace_root,
+        plateau_active=plateau_active,
+        evolution_step=evolution_step,
+        hold_trap_detected=hold_trap_detected,
+        evolution_proof_passed=evolution_proof_passed,
     )
 
 

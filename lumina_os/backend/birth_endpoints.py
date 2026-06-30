@@ -52,6 +52,8 @@ def _enrich_status(payload: dict[str, Any]) -> dict[str, Any]:
     payload["artifacts_ok"] = birth_service.artifacts_ok()
     payload["certificate_ok"] = cert_ok
     payload["certificate_reason"] = cert_reason
+    payload["evolution_proof_ok"] = birth_service.evolution_proof_ok()
+    payload["real_trading_eligible"] = birth_service.real_trading_eligible()
     payload["certificate"] = cert.model_dump(mode="json") if cert is not None else None
     payload["artifacts_label"] = (
         "Birth Certificate v2 OK" if payload["artifacts_ok"] else "Certificate or policy missing"
@@ -199,6 +201,7 @@ class BirthSettingsRequest(BaseModel):
     max_real_days: int = Field(ge=30, le=3650)
     allow_minimal_synthetic_fallback: bool = False
     require_real_simulator_data: bool = True
+    stage1_winrate_pass_threshold: float | None = Field(default=None, ge=0.35, le=0.45)
 
 
 @router.post("/settings")
@@ -219,6 +222,7 @@ async def save_birth_settings(body: BirthSettingsRequest) -> dict[str, Any]:
         max_real_days=body.max_real_days,
         allow_minimal_synthetic_fallback=body.allow_minimal_synthetic_fallback,
         require_real_simulator_data=body.require_real_simulator_data,
+        stage1_winrate_pass_threshold=body.stage1_winrate_pass_threshold,
         mark_user_configured=True,
     )
     return {"ok": True, "settings": manager.read_settings()}

@@ -374,6 +374,25 @@ class OperationsService:
                     hypothetical_fill_observability=round(float(hypothetical_fill_obs), 4),
                     est_latency_ms=round(est_latency_ms, 1),
                 )
+                try:
+                    from lumina_core.maturity.milestone_hooks import try_record_milestone
+
+                    workspace = getattr(self.engine.config, "workspace_root", None) or getattr(
+                        self.app, "workspace_root", None
+                    )
+                    if workspace and str(trade_mode).lower() in {"sim", "sim_real_guard"}:
+                        try_record_milestone(
+                            workspace,
+                            "first_sim_order_placed",
+                            metadata={"action": action, "qty": int(qty), "mode": trade_mode},
+                        )
+                        try_record_milestone(
+                            workspace,
+                            "sim_mirror_api_ok",
+                            metadata={"broker": type(brk).__name__},
+                        )
+                except Exception:
+                    pass
                 return True
             app.logger.error(f"Order failed {result.status} ({result.message})")
             return False

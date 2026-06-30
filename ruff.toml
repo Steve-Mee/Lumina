@@ -20,3 +20,4 @@ extend-exclude = [
 "scripts/send_telegram_test.py" = ["E402"]
 "scripts/send_milestone_test.py" = ["E402"]
 "scripts/birth_stage_forensics.py" = ["E402"]
+"scripts/force_plateau_evolution_step.py" = ["E402"]

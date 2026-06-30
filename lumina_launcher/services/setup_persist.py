@@ -219,15 +219,24 @@ def persist_tauri_quick_config(
     config_manager.save_yaml_config(config_payload)
     steps.append({"name": "runtime_mode", "success": True, "message": f"Mode and risk config saved ({mode_value})"})
 
+    gate_raw = training.get("stage1_winrate_pass_threshold")
+    gate_threshold = float(gate_raw) if gate_raw is not None else None
     first_boot_manager.save_full_settings(
         training_trades=int(training["training_trades"]),
         prefer_real_data_only=bool(training.get("prefer_real_data_only", True)),
         max_real_days=int(training.get("max_real_days", 56)),
         allow_minimal_synthetic_fallback=bool(training.get("allow_minimal_synthetic_fallback", False)),
         require_real_simulator_data=bool(training.get("require_real_simulator_data", True)),
+        stage1_winrate_pass_threshold=gate_threshold,
         mark_user_configured=True,
     )
     steps.append({"name": "first_boot_config", "success": True, "message": "Birth training settings saved"})
+    try:
+        from lumina_core.maturity.milestone_hooks import try_record_milestone
+
+        try_record_milestone(workspace_root, "genesis_contract_signed")
+    except Exception:
+        pass
 
     recommended = model_service.get_recommended(
         ram_gb=snapshot.ram_gb,

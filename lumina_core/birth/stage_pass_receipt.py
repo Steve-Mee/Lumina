@@ -11,6 +11,7 @@ from lumina_core.birth.curriculum import (
     CurriculumStage,
     StageResult,
     evaluate_stage_pass,
+    stage1_winrate_pass_threshold,
     stage_pass_trades,
 )
 from lumina_core.birth.stage_scorecard import pass_criteria_for_stage, parse_curriculum_stage
@@ -37,6 +38,7 @@ class StagePassReceipt:
     passed_at: str
     engine_version: str
     message: str = ""
+    winrate_gate: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -60,6 +62,11 @@ class StagePassReceipt:
                 passed_at=str(raw.get("passed_at", "") or ""),
                 engine_version=str(raw.get("engine_version", "") or ""),
                 message=str(raw.get("message", "") or ""),
+                winrate_gate=(
+                    float(raw["winrate_gate"])
+                    if raw.get("winrate_gate") is not None
+                    else None
+                ),
             )
         except (TypeError, ValueError):
             return None
@@ -96,6 +103,11 @@ def receipt_from_stage_result(
         passed_at=datetime.now(timezone.utc).isoformat(),
         engine_version=BRO_ENGINE_VERSION,
         message=str(result.message or ""),
+        winrate_gate=(
+            float(criteria.metric_target)
+            if stage == CurriculumStage.STAGE1_TREND and criteria.metric_target is not None
+            else None
+        ),
     )
 
 
@@ -264,7 +276,8 @@ def build_stage_pass_audit(
     if stages_passed and not stage_pass_receipts:
         mismatch = True
         detail_parts.append("stages_passed_without_receipts")
-    if stage == CurriculumStage.STAGE1_TREND and live_winrate is not None and live_winrate < 0.45:
+    wr_gate = stage1_winrate_pass_threshold(cfg)
+    if stage == CurriculumStage.STAGE1_TREND and live_winrate is not None and live_winrate < wr_gate:
         if CurriculumStage.STAGE1_TREND.value in stages_passed:
             mismatch = True
             detail_parts.append(
