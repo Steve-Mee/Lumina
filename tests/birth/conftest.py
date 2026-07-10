@@ -98,6 +98,8 @@ def _disable_birth_meta_controller_for_unit_tests(
 
     for rollout_site in (
         "lumina_core.birth.stage_training_loop.run_policy_rollout",
+        "lumina_core.birth.curriculum_stage_handler.run_policy_rollout",
+        "lumina_core.birth.sim_runner.run_policy_rollout",
         "lumina_core.birth.certificate_pipeline.run_policy_rollout",
         "lumina_core.birth.certificate_evaluator.run_policy_rollout",
     ):

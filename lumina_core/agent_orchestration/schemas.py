@@ -418,6 +418,98 @@ class AgentMetaProposalPayload(BaseModel):
     timestamp: str | None = None
 
 
+#
+# Birth Curriculum bounded context (thin orchestrator + dedicated handlers).
+# Per ADR-0001: central bus, explicit contracts, fail-closed on violation.
+# CurriculumOrchestrator must only emit/receive via EventBus.
+#
+
+
+class BirthCurriculumStarted(BaseModel):
+    """Payload when a birth curriculum run begins."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    curriculum_id: str = Field(min_length=1)
+    stages: list[str]
+    target_trades_cap: int = Field(ge=0)
+    practice_mode: bool = False
+    timestamp: str | None = None
+
+
+class BirthCurriculumStageRequested(BaseModel):
+    """Command-like fact: orchestrator requests a stage to begin execution."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: str
+    stage_index: int = Field(ge=0)
+    target: int = Field(ge=0)
+    stage_progress_pct: float = 0.0
+    training_mode: str
+    prefer_real: bool
+
+
+class BirthCurriculumStageStarted(BaseModel):
+    """Stage execution has begun (handler confirmed)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: str
+    stage_index: int
+    required_trades: int
+    timestamp: str | None = None
+
+
+class BirthCurriculumStageCompleted(BaseModel):
+    """Stage finished. Pass/fail + receipt details. Strict for gate integrity."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: str
+    passed: bool
+    trades: int = Field(ge=0)
+    wins: int = Field(ge=0)
+    hold_ratio: float
+    provisional: bool = False
+    message: str = ""
+    receipt: dict[str, Any] | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
+
+
+class BirthCurriculumStageAborted(BaseModel):
+    """Terminal abort of curriculum or stage (fail-closed)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stage: str | None = None
+    reason: str  # e.g. "constitution_violation", "terminal_stall", "evolution_exhausted"
+    detail: dict[str, Any] = Field(default_factory=dict)
+    violations: int = 0
+
+
+class BirthPlateauEntered(BaseModel):
+    """Plateau escalation signal."""
+
+    model_config = ConfigDict(extra="allow")
+
+    stage: str
+    winrate: float
+    trades_at_detection: int
+    evolution_step: int = 0
+
+
+class BirthPhoenixCycle(BaseModel):
+    """Phoenix loop cycle marker."""
+
+    model_config = ConfigDict(extra="allow")
+
+    cycle: int
+    reason: str
+    action: str | None = None
+    preserve_cache: bool = True
+
+
 class GateEntryPayload(BaseModel):
     """Minimal root event marking that an order intent has entered the authoritative admission chain."""
 
@@ -454,6 +546,13 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "meta.community.knowledge": CommunityKnowledgeSnippet,
     "inference.llm.decision_context": LLMDecisionContext,
     "inference.adaptive_intelligence.state": AdaptiveIntelligenceState,
+    "birth.curriculum.started": BirthCurriculumStarted,
+    "birth.curriculum.stage.requested": BirthCurriculumStageRequested,
+    "birth.curriculum.stage.started": BirthCurriculumStageStarted,
+    "birth.curriculum.stage.completed": BirthCurriculumStageCompleted,
+    "birth.curriculum.aborted": BirthCurriculumStageAborted,
+    "birth.plateau.entered": BirthPlateauEntered,
+    "birth.phoenix.cycle": BirthPhoenixCycle,
 }
 
 # Topics that must use registry models only, hard validation on publish_validated,
@@ -473,6 +572,10 @@ CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
         "evolution.shadow.verdict",
         "evolution.promotion.decision",
         "safety.constitution.audit",
+        # Birth curriculum critical boundaries (ADR-0001 + constitution fail-closed):
+        # Any schema violation on stage completion or abort must hard-fail the birth run.
+        "birth.curriculum.stage.completed",
+        "birth.curriculum.aborted",
         # Phase 2 Slice 20: Downstream execution lineage now under the same strict critical contract
         # as the pre-trade gates and Final Arbitration. Schema violations on fill events will
         # now raise (fail-closed) instead of being swallowed.

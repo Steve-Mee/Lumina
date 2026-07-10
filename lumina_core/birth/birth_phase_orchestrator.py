@@ -507,6 +507,8 @@ def run_birth_phase(
         host._accumulate_constitution_violations_before_stage_reset()
 
         stage_progress_pct = 27.0 + (stage_index / total_stages) * 53.0
+        # Note: direct path still supported. Preferred long-term: host.start_event_driven_curriculum()
+        # which uses the thin CurriculumOrchestrator + dedicated handlers over central EventBus.
         stage_error = host._run_stage_research_loop(
             stage=stage,
             stage_index=stage_index,

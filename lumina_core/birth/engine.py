@@ -17,6 +17,9 @@ from lumina_core.birth.config import (
     BirthCurriculumConfig,
     load_birth_v2_config,
 )
+from lumina_core.birth.constitution_enforcer import ConstitutionEnforcer
+from lumina_core.birth.curriculum_orchestrator import CurriculumOrchestrator
+from lumina_core.birth.curriculum_stage_handler import create_and_attach_stage_handler
 from lumina_core.birth.curriculum import (
     CurriculumStage,
     Stage1IntraCurriculumState,
@@ -127,9 +130,29 @@ class BirthPhaseEngineV2:
         self._active_stage_metrics: dict[str, Any] = {}
         self._hardware_profile_payload: dict[str, Any] | None = None
         event_bus = getattr(runtime, "event_bus", None)
+        if event_bus is None:
+            # Ensure birth always has a bus for event-driven orchestration and fail-closed.
+            from lumina_core.agent_orchestration.event_bus import EventBus as _EventBus
+
+            event_bus = _EventBus()
         self._constitution_guard = BirthConstitutionGuard(event_bus=event_bus, mode="birth")
         self._constitution_violations_cumulative = 0
         self._trade_budget_source = "birth_v2.trade_budget_cap"
+
+        # Central EventBus wiring for thin curriculum orchestration (ADR-0001)
+        self.event_bus = event_bus
+        self._curriculum_orchestrator: CurriculumOrchestrator | None = None
+        self._constitution_enforcer: ConstitutionEnforcer | None = None
+        self._stage_handler: Any | None = None
+        try:
+            self._curriculum_orchestrator = CurriculumOrchestrator(self.event_bus)
+            self._constitution_enforcer = ConstitutionEnforcer(self.event_bus)
+            self._constitution_enforcer.attach()
+            # Attach dedicated stage execution handler (owns the moved curriculum logic)
+            self._stage_handler = create_and_attach_stage_handler(self.event_bus, self)
+        except Exception:
+            logger.warning("birth.event_bus wiring for CurriculumOrchestrator failed; falling back to direct path")
+            self._curriculum_orchestrator = None
 
         self.completion_flag_path = self.workspace_root / "state" / "lumina_birth_completed.flag"
         self.legacy_completion_flag_path = self.workspace_root / "state" / "first_boot_completed.flag"
@@ -461,6 +484,29 @@ class BirthPhaseEngineV2:
         policy_path: str,
         phase: str,
     ) -> None:
+        # Fail-closed: any constitution violation blocks graduation.
+        if getattr(self._constitution_guard, "violations", 0) > 0:
+            if self.event_bus is not None:
+                try:
+                    from lumina_core.agent_orchestration.schemas import ConstitutionViolation
+
+                    v = ConstitutionViolation(
+                        principle_name="birth_constitution_guard",
+                        severity="critical",
+                        description="violations_detected_on_graduation_attempt",
+                        mode="birth",
+                    )
+                    self.event_bus.publish_validated(
+                        topic="safety.constitution.violation",
+                        producer="birth.engine",
+                        payload=v.model_dump(mode="json"),
+                    )
+                except Exception:
+                    pass
+            raise RuntimeError(
+                f"FAIL-CLOSED: cannot graduate {stage.value} with constitution violations"
+            )
+
         if self._pending_stage_pass_receipt is not None:
             self._stage_pass_receipts.append(self._pending_stage_pass_receipt)
             self._pending_stage_pass_receipt = None
@@ -879,5 +925,37 @@ class BirthPhaseEngineV2:
             prefer_real=prefer_real,
             start_price=start_price,
         )
+
+    # --- New event-driven curriculum orchestration (thin, fail-closed) ---
+
+    def get_curriculum_orchestrator(self) -> CurriculumOrchestrator | None:
+        """Return the thin event-only CurriculumOrchestrator if wired."""
+        return self._curriculum_orchestrator
+
+    def start_event_driven_curriculum(self, *, stages: list[str] | None = None) -> str | None:
+        """Kick off curriculum using the thin orchestrator + dedicated handlers.
+
+        Returns curriculum_id or None if not wired.
+        All heavy logic (plateau, phoenix, intra, remediation) executes inside
+        handlers that publish strict events back to the orchestrator.
+        """
+        orch = self._curriculum_orchestrator
+        if orch is None:
+            return None
+        from lumina_core.birth.curriculum import ordered_stages as _ordered
+
+        stage_list = stages or [s.value for s in _ordered()]
+        cap = int(getattr(self.birth_config, "trade_budget_cap", 1_000_000))
+        practice = False
+        try:
+            cid = orch.start_curriculum(
+                stages=stage_list,
+                target_trades_cap=cap,
+                practice_mode=practice,
+            )
+            return cid
+        except Exception as exc:
+            logger.exception("event-driven curriculum start failed: %s", exc)
+            return None
 
 

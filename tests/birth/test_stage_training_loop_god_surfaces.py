@@ -1,4 +1,8 @@
-"""AST guards for stage_training_loop god surface baseline (phase 1C)."""
+"""Tests for stage_training_loop after full event-bus decomposition.
+
+The monolithic procedural logic has been deleted and replaced by
+event emissions + dedicated handlers. This file is now a thin shim.
+"""
 
 from __future__ import annotations
 
@@ -9,21 +13,20 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[2]
 _STAGE_LOOP = _ROOT / "lumina_core" / "birth" / "stage_training_loop.py"
 
-# Baseline 2026-07-04 after phase 1C extract.
-# +2: respect auto_expand_on_adaptation in plateau evolution + stuck escape.
-_STAGE_LOOP_LINE_BASELINE = 3352
-
 
 @pytest.mark.unit
-def test_stage_training_loop_loc_at_or_below_baseline() -> None:
-    line_count = len(_STAGE_LOOP.read_text(encoding="utf-8").splitlines())
-    assert line_count <= _STAGE_LOOP_LINE_BASELINE, (
-        f"stage_training_loop.py has {line_count} lines (baseline <= {_STAGE_LOOP_LINE_BASELINE})"
-    )
-
-
-@pytest.mark.unit
-def test_stage_training_loop_exports_run_function() -> None:
+def test_stage_training_loop_is_now_thin_after_decomposition() -> None:
+    """After Prompt 1 decomposition the god module must be small."""
     text = _STAGE_LOOP.read_text(encoding="utf-8")
-    assert "def run_stage_research_loop(" in text
-    assert "host._emit_birth_progress" in text or "host._write_progress" in text
+    line_count = len(text.splitlines())
+    assert line_count < 150, f"stage_training_loop.py still too large: {line_count}"
+    assert "def run_stage_research_loop(" in text  # thin shim still exports for compat
+    # No longer contains the old internal god orchestration strings
+    assert "_apply_plateau_evolution" not in text
+    assert "while True:" not in text or text.count("while True:") < 2  # only incidental
+
+
+@pytest.mark.unit
+def test_stage_training_loop_emits_to_bus() -> None:
+    text = _STAGE_LOOP.read_text(encoding="utf-8")
+    assert "birth.curriculum.stage.requested" in text or "publish" in text

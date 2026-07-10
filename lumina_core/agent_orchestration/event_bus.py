@@ -20,6 +20,13 @@ from pydantic import BaseModel, ValidationError
 from lumina_core.agent_orchestration.schemas import (
     CRITICAL_EVENT_BUS_TOPICS,
     AgentReflection,
+    BirthCurriculumStageAborted,
+    BirthCurriculumStageCompleted,
+    BirthCurriculumStageRequested,
+    BirthCurriculumStageStarted,
+    BirthCurriculumStarted,
+    BirthPhoenixCycle,
+    BirthPlateauEntered,
     CommunityKnowledgeSnippet,
     ConstitutionAudit,
     ConstitutionViolation,
@@ -40,6 +47,13 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "AgentReflection",
+    "BirthCurriculumStageAborted",
+    "BirthCurriculumStageCompleted",
+    "BirthCurriculumStageRequested",
+    "BirthCurriculumStageStarted",
+    "BirthCurriculumStarted",
+    "BirthPhoenixCycle",
+    "BirthPlateauEntered",
     "CommunityKnowledgeSnippet",
     "ConstitutionAudit",
     "ConstitutionViolation",
