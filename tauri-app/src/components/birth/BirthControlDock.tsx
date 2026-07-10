@@ -1,30 +1,32 @@
-import { useState } from "react";
-import { OctagonPause, Play, RotateCcw, Trash2 } from "lucide-react";
+import { Loader2, OctagonPause, Play, RotateCcw, Trash2 } from "lucide-react";import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import type { BirthWipeResult } from "@/lib/birthClient";
+import { traceBirthWipe } from "@/lib/birthWipeTrace";
 import { cn } from "@/lib/utils";
 import { luminaInteractiveClass } from "@/lib/glassGlowTaxonomy";
+import { useBirthUiStore, type WipeConfirmKind } from "@/store/birthUiStore";
 
 export type BirthControlMode = "running" | "genesis";
+
+const RESUME_CHECKPOINT_HINT =
+  "Ga verder bij laatste stage/PPO-steps. Data-prep kan kort opnieuw draaien; curriculum wordt niet gewist.";
 
 interface BirthControlDockProps {
   mode: BirthControlMode;
   checkpointAvailable?: boolean;
   busy?: boolean;
+  /** Birth launch sequencing — separate from busy for clearer wipe-block feedback. */
+  activating?: boolean;
+  /** Show Stop birth on genesis surface while backend engine is still live. */
+  engineLive?: boolean;
   inline?: boolean;
   /** When false, genesis mode omits Start birth (e.g. deck uses BirthLaunchButton). */
   showStartButton?: boolean;
-  onStop?: () => void;
+  onStop?: () => void | Promise<void>;
   onStart?: () => void;
-  onWipe?: () => void;
+  /** @deprecated Wipe confirm runs via BirthConfirmHost + birthUiStore */
+  onWipe?: () => Promise<BirthWipeResult>;
   onResumeCheckpoint?: () => void;
   className?: string;
 }
@@ -33,170 +35,201 @@ export function BirthControlDock({
   mode,
   checkpointAvailable = false,
   busy = false,
+  activating = false,
+  engineLive = false,
   inline = false,
   showStartButton = true,
-  onStop,
   onStart,
-  onWipe,
   onResumeCheckpoint,
   className,
 }: BirthControlDockProps) {
-  const [stopOpen, setStopOpen] = useState(false);
-  const [wipeStep, setWipeStep] = useState(0);
+  const wipeConfirmWiping = useBirthUiStore((s) => s.wipeConfirmWiping);
+  const openWipeConfirm = useBirthUiStore((s) => s.openWipeConfirm);
+  const openStopConfirm = useBirthUiStore((s) => s.openStopConfirm);
 
-  const closeWipe = () => setWipeStep(0);
+  const wipeBlocked = busy || activating || wipeConfirmWiping;
+  const stopBlocked = busy;
+
+  const handleStopClick = () => {
+    if (busy) {
+      toast.info("Even wachten — een andere birth-actie is bezig.");
+      return;
+    }
+    openStopConfirm();
+  };
+
+  const handleWipeClick = (kind: WipeConfirmKind) => {
+    traceBirthWipe("ui.wipe_button.click", {
+      mode,
+      kind,
+      busy,
+      activating,
+      wiping: wipeConfirmWiping,
+      engineLive,
+      wipeBlocked,
+    });
+
+    if (wipeConfirmWiping) {
+      traceBirthWipe("ui.wipe_button.blocked", { reason: "wiping", kind }, "warn");
+      toast.info("Wissen is al bezig…");
+      return;
+    }
+    if (activating) {
+      traceBirthWipe("ui.wipe_button.blocked", { reason: "activating", kind }, "warn");
+      toast.info("Birth wordt gestart — wis birth-data zodra de sequentie klaar is.");
+      return;
+    }
+    if (busy) {
+      traceBirthWipe("ui.wipe_button.blocked", { reason: "busy", kind }, "warn");
+      toast.info("Even wachten — een andere birth-actie is bezig.");
+      return;
+    }
+    openWipeConfirm(kind);
+  };
+
+  const stopButtonClass = cn(
+    luminaInteractiveClass("danger"),
+    "birth-control-dock__stop inline-flex min-w-[100px] items-center justify-center gap-2 font-mono text-[10px] tracking-wide uppercase",
+    inline && "h-8 border-red-500/45 bg-red-950/20 text-red-200 hover:bg-red-950/35",
+    stopBlocked && "cursor-not-allowed opacity-70",
+  );
+
+  const stopButton = (
+    <Button
+      type="button"
+      variant={inline ? "outline" : "destructive"}
+      size="sm"
+      className={stopButtonClass}
+      aria-busy={false}
+      onClick={handleStopClick}
+    >
+      <OctagonPause className="size-3.5 shrink-0" aria-hidden />
+      <span>Stop birth</span>
+    </Button>
+  );
 
   return (
-    <>
-      <div
-        className={cn(
-          "birth-control-dock pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md",
-          className,
-        )}
-        role="toolbar"
-        aria-label="Birth phase controls"
-      >
-        {mode === "running" ? (
+    <div
+      className={cn(
+        "birth-control-dock pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md",
+        className,
+      )}
+      role="toolbar"
+      aria-label="Birth phase controls"
+    >
+      {mode === "running" ? (
+        stopButton
+      ) : (
+        <>
+          {engineLive ? stopButton : null}
+          {showStartButton ? (
+            <Button
+              type="button"
+              className="onboarding-cta lumina-interactive inline-flex min-w-[140px] items-center justify-center gap-2 py-2 font-mono text-[10px] tracking-wide uppercase"
+              onClick={() => {
+                if (busy) {
+                  toast.info("Even wachten — een andere birth-actie is bezig.");
+                  return;
+                }
+                onStart?.();
+              }}
+            >
+              <Play className="size-3.5 shrink-0" aria-hidden />
+              <span>Start birth</span>
+            </Button>
+          ) : null}
+          {checkpointAvailable ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className={cn(
+                luminaInteractiveClass("default"),
+                "birth-control-dock__action inline-flex min-w-[140px] items-center justify-center gap-2 font-mono text-[10px] tracking-wide uppercase",
+                busy && "cursor-not-allowed opacity-70",
+              )}
+              title={RESUME_CHECKPOINT_HINT}
+              aria-describedby="birth-resume-checkpoint-hint"
+              onClick={() => {
+                if (busy) {
+                  toast.info("Even wachten — een andere birth-actie is bezig.");
+                  return;
+                }
+                onResumeCheckpoint?.();
+              }}
+            >
+              <RotateCcw className="size-3.5 shrink-0" aria-hidden />
+              Hervat checkpoint
+            </Button>
+          ) : null}
           <Button
             type="button"
-            variant={inline ? "outline" : "destructive"}
+            variant="outline"
             size="sm"
             className={cn(
               luminaInteractiveClass("danger"),
-              "birth-control-dock__stop min-w-[100px] font-mono text-[10px] tracking-wide uppercase",
-              inline &&
-                "h-8 border-red-500/45 bg-red-950/20 text-red-200 hover:bg-red-950/35",
-              busy && "opacity-70",
+              "birth-control-dock__action inline-flex min-w-[140px] items-center justify-center gap-2 border-red-500/40 font-mono text-[10px] tracking-wide text-red-200 uppercase hover:bg-red-950/30",
+              wipeBlocked && "cursor-not-allowed opacity-70",
             )}
-            aria-busy={busy}
-            onClick={() => setStopOpen(true)}
+            aria-busy={wipeConfirmWiping}
+            title={
+              activating
+                ? "Birth wordt gestart — wis birth-data zodra de sequentie klaar is."
+                : busy
+                  ? "Even wachten — een andere birth-actie is bezig."
+                  : "Checkpoint, PPO en voortgang wissen — tick cache blijft behouden"
+            }
+            onPointerDown={() => {
+              traceBirthWipe(
+                "ui.wipe_button.pointerdown",
+                { mode, kind: "reset", busy, activating, wiping: wipeConfirmWiping },
+                "debug",
+              );
+            }}
+            onClick={() => handleWipeClick("reset")}
           >
-            <OctagonPause className="size-3.5" aria-hidden />
-            Stop birth
-          </Button>
-        ) : (
-          <>
-            {showStartButton ? (
-              <Button
-                type="button"
-                className="onboarding-cta lumina-interactive min-w-[140px] py-2 font-mono text-[10px] tracking-wide uppercase"
-                disabled={busy}
-                onClick={onStart}
-              >
-                <Play className="size-3.5" aria-hidden />
-                Start birth
-              </Button>
-            ) : null}
-            {checkpointAvailable ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className={cn(
-                  luminaInteractiveClass("default"),
-                  "birth-control-dock__action inline-flex min-w-[140px] items-center justify-center gap-2 font-mono text-[10px] tracking-wide uppercase",
-                )}
-                disabled={busy}
-                onClick={onResumeCheckpoint}
-              >
-                <RotateCcw className="size-3.5 shrink-0" aria-hidden />
-                Hervat checkpoint
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn(
-                luminaInteractiveClass("danger"),
-                "birth-control-dock__action inline-flex min-w-[140px] items-center justify-center gap-2 border-red-500/40 font-mono text-[10px] tracking-wide text-red-200 uppercase hover:bg-red-950/30",
-              )}
-              disabled={busy}
-              onClick={() => setWipeStep(1)}
-            >
-              <Trash2 className="size-3.5 shrink-0" aria-hidden />
-              Wis birth-data
-            </Button>
-          </>
-        )}
-      </div>
-
-      <Dialog open={stopOpen} onOpenChange={setStopOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Birth training stoppen?</DialogTitle>
-            <DialogDescription>
-              De huidige run wordt gestopt. Je checkpoint blijft bewaard — kies daarna Start birth
-              of Wis birth-data voor een schone run.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={() => setStopOpen(false)}>
-              Annuleren
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={busy}
-              onClick={() => {
-                setStopOpen(false);
-                onStop?.();
-              }}
-            >
-              Stop birth
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={wipeStep > 0}
-        onOpenChange={(open) => {
-          if (!open) {
-            closeWipe();
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {wipeStep === 1 ? "Alle birth-data wissen?" : "Bevestig volledige wipe"}
-            </DialogTitle>
-            <DialogDescription>
-              {wipeStep === 1 ? (
-                <>
-                  Verwijdert progress, checkpoint, caches en policies. Genesis-instellingen en setup
-                  blijven behouden.
-                </>
-              ) : (
-                <>Dit kan niet ongedaan worden gemaakt. Start daarna opnieuw met Start birth.</>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={closeWipe}>
-              Annuleren
-            </Button>
-            {wipeStep === 1 ? (
-              <Button type="button" variant="destructive" onClick={() => setWipeStep(2)}>
-                Doorgaan
-              </Button>
+            {wipeConfirmWiping ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
             ) : (
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={busy}
-                onClick={() => {
-                  closeWipe();
-                  onWipe?.();
-                }}
-              >
-                Wis alles
-              </Button>
+              <Trash2 className="size-3.5 shrink-0" aria-hidden />
             )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+            Wis birth-data
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(
+              luminaInteractiveClass("danger"),
+              "birth-control-dock__action inline-flex min-w-[140px] items-center justify-center gap-2 border-red-600/55 bg-red-950/25 font-mono text-[10px] tracking-wide text-red-100 uppercase hover:bg-red-950/45",
+              wipeBlocked && "cursor-not-allowed opacity-70",
+            )}
+            aria-busy={wipeConfirmWiping}
+            title={
+              activating
+                ? "Birth wordt gestart — wis birth-data zodra de sequentie klaar is."
+                : busy
+                  ? "Even wachten — een andere birth-actie is bezig."
+                  : "Alle birth-data permanent wissen, inclusief tick cache en enrichment"
+            }
+            onPointerDown={() => {
+              traceBirthWipe(
+                "ui.wipe_button.pointerdown",
+                { mode, kind: "full", busy, activating, wiping: wipeConfirmWiping },
+                "debug",
+              );
+            }}
+            onClick={() => handleWipeClick("full")}
+          >
+            {wipeConfirmWiping ? (
+              <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <Trash2 className="size-3.5 shrink-0" aria-hidden />
+            )}
+            Volledige wipe
+          </Button>
+        </>
+      )}
+    </div>
   );
 }

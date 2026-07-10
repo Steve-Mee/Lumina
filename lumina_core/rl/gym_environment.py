@@ -18,6 +18,7 @@ from lumina_core.rl.reward_shaper import (
     compute_expectancy_reward,
     compute_legacy_reward,
     hold_action_penalty,
+    range_patience_step_reward,
     trend_features_from_tick,
     update_trade_stats,
 )
@@ -52,6 +53,7 @@ class RLConfig:
     reward: BirthRewardConfig = field(default_factory=BirthRewardConfig)
     plateau_active: bool = False
     hold_penalty_coeff: float = 0.002
+    range_patience_active: bool = False
 
 
 class RLTradingEnvironment(gym.Env):
@@ -374,6 +376,15 @@ class RLTradingEnvironment(gym.Env):
                 regime=tick_regime,
                 plateau_active=True,
                 coeff=float(self.config.hold_penalty_coeff),
+            )
+
+        if self.config.range_patience_active and self.trade_mode == "birth":
+            tick_regime = str(row.get("regime", "NEUTRAL"))
+            reward += range_patience_step_reward(
+                regime=tick_regime,
+                position_flat=int(self._position) == 0,
+                trade_closed=bool(trade_closed),
+                cfg=self._reward_cfg(),
             )
 
         self._idx += 1

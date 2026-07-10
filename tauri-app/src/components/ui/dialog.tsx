@@ -38,7 +38,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-[100] deck-overlay-scrim lumina-glass lumina-glass--overlay data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "fixed inset-0 z-[130] deck-overlay-scrim lumina-glass lumina-glass--overlay data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className,
       )}
       {...props}
@@ -47,11 +47,12 @@ function DialogOverlay({
 }
 
 function dialogContentClassName(className?: string): string {
+  const zMatch = className?.match(/\bz-\[[^\]]+\]|\bz-\d+\b/);
   const withoutZIndex = className?.replace(/\bz-\[[^\]]+\]/g, "").replace(/\bz-\d+\b/g, "").trim();
   return cn(
-    "lumina-glass lumina-glass--overlay fixed top-1/2 left-1/2 z-[101] w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl text-sm text-foreground shadow-2xl outline-none",
+    "lumina-glass lumina-glass--overlay fixed top-1/2 left-1/2 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl text-sm text-foreground shadow-2xl outline-none",
     withoutZIndex,
-    "z-[101]",
+    zMatch?.[0] ?? "z-[131]",
   );
 }
 
@@ -72,7 +73,7 @@ function DialogContent({
       >
         <motion.div
           className="grid gap-4 p-6"
-          initial={{ opacity: 0, scale: 0.95 }}
+          initial={false}
           animate={{ opacity: 1, scale: 1 }}
           transition={modeMotion}
         >

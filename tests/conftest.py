@@ -236,11 +236,11 @@ def _disable_birth_meta_controller_for_root_birth_tests(
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.save_buffer",
+        "lumina_core.birth.checkpoint_coordinator.save_buffer",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_for_sim",
+        "lumina_core.birth.data_pipeline.enrich_ticks_for_sim",
         lambda ticks, **_kwargs: ticks,
     )
     monkeypatch.setattr(

@@ -18,6 +18,12 @@ from lumina_launcher.services.birth_service import (
 from tests.birth.test_certificate_fast_path import _seed_certificate_failed_checkpoint
 
 birth_service_module = importlib.import_module("lumina_launcher.services.birth_service")
+birth_runner_module = importlib.import_module("lumina_launcher.services.birth_runner")
+birth_runner_start_module = importlib.import_module("lumina_launcher.services.birth_runner_start")
+birth_runner_wipe_module = importlib.import_module("lumina_launcher.services.birth_runner_wipe")
+birth_status_enricher_module = importlib.import_module(
+    "lumina_launcher.services.birth_status_enricher"
+)
 
 
 @pytest.mark.unit
@@ -124,11 +130,11 @@ def test_retry_birth_wipe_clears_stale_flag_and_starts_with_force(
     svc.completed_flag.write_text("done", encoding="utf-8")
     calls: list[dict[str, object]] = []
 
-    def _fake_start(**kwargs: object) -> dict[str, str]:
+    def _fake_start(_svc: BirthService, **kwargs: object) -> dict[str, str]:
         calls.append(dict(kwargs))
         return {"status": "started", "message": "ok"}
 
-    monkeypatch.setattr(svc, "start_birth", _fake_start)
+    monkeypatch.setattr(birth_runner_start_module, "start_birth", _fake_start)
     result = svc.retry_birth(target_trades=10000, wipe=True)
     assert result["status"] == "started"
     assert not svc.completed_flag.exists()
@@ -148,11 +154,11 @@ def test_retry_birth_preserves_checkpoint_on_certificate_failed(
     _seed_certificate_failed_checkpoint(tmp_path)
     calls: list[dict[str, object]] = []
 
-    def _fake_start(**kwargs: object) -> dict[str, str]:
+    def _fake_start(_svc: BirthService, **kwargs: object) -> dict[str, str]:
         calls.append(dict(kwargs))
         return {"status": "started", "message": "ok"}
 
-    monkeypatch.setattr(svc, "start_birth", _fake_start)
+    monkeypatch.setattr(birth_runner_start_module, "start_birth", _fake_start)
     monkeypatch.setattr(
         "lumina_launcher.core.first_boot.FirstBootManager.clear_stale_for_certified_retry",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not wipe")),
@@ -206,10 +212,14 @@ def test_get_status_stage_stalled_from_progress_file(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_get_status_certificate_failed_without_completion_flag(tmp_path: Path) -> None:
+def test_get_status_certificate_failed_without_completion_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
     svc.configure_workspace(tmp_path)
+    monkeypatch.setattr(svc, "_maybe_execute_autonomous_recovery", lambda: None)
+    monkeypatch.setattr(svc, "_maybe_auto_resume_stalled_birth", lambda: None)
     svc.progress_file.parent.mkdir(parents=True, exist_ok=True)
     svc.progress_file.write_text(
         json.dumps(
@@ -235,11 +245,8 @@ def test_get_status_includes_launcher_setup(tmp_path: Path, monkeypatch: pytest.
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
     svc.configure_workspace(tmp_path)
-    import sys
-
-    birth_module = sys.modules["lumina_launcher.services.birth_service"]
     monkeypatch.setattr(
-        birth_module,
+        birth_status_enricher_module,
         "launcher_setup_status_payload",
         lambda workspace_root: {
             "setup_complete": False,
@@ -290,8 +297,8 @@ def test_preflight_historical_data_does_not_raise_name_error(
             self.market_data_service = _FakeMds()
             self.runtime_context = SimpleNamespace(app=None)
 
-    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
 
     ok, msg = svc._preflight_historical_data(30)
     assert isinstance(ok, bool)
@@ -329,14 +336,14 @@ def test_start_birth_wires_container_dependencies(monkeypatch: pytest.MonkeyPatc
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
 
-    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
-    monkeypatch.setattr(birth_service_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "LuminaBirthEngine", _FakeEngine)
 
-    def _preflight_ok(_days: int) -> tuple[bool, str]:
+    def _preflight_ok(_svc: BirthService, _days: int) -> tuple[bool, str]:
         return True, ""
 
-    monkeypatch.setattr(svc, "_preflight_historical_data", _preflight_ok)
+    monkeypatch.setattr(birth_runner_start_module, "preflight_historical_data", _preflight_ok)
 
     result = svc.start_birth(
         target_trades=9000, force=True, practice_mode=False, explicit_user_start=True
@@ -387,10 +394,14 @@ def test_start_birth_uses_saved_target_when_request_omits_target(
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
 
-    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
-    monkeypatch.setattr(birth_service_module, "LuminaBirthEngine", _FakeEngine)
-    monkeypatch.setattr(svc, "_preflight_historical_data", lambda _days: (True, ""))
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "preflight_historical_data",
+        lambda _svc, _days: (True, ""),
+    )
 
     result = svc.start_birth(
         target_trades=None, force=True, practice_mode=False, explicit_user_start=True
@@ -434,10 +445,14 @@ def test_start_birth_uses_configured_ppo_update_timesteps(
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
 
-    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
-    monkeypatch.setattr(birth_service_module, "LuminaBirthEngine", _FakeEngine)
-    monkeypatch.setattr(svc, "_preflight_historical_data", lambda _days: (True, ""))
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "preflight_historical_data",
+        lambda _svc, _days: (True, ""),
+    )
 
     result = svc.start_birth(
         target_trades=None, force=True, practice_mode=False, explicit_user_start=True
@@ -479,9 +494,9 @@ def test_start_birth_practice_forces_non_real_data_mode(monkeypatch: pytest.Monk
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
 
-    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
-    monkeypatch.setattr(birth_service_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "LuminaBirthEngine", _FakeEngine)
 
     result = svc.start_birth(
         target_trades=10000, force=True, practice_mode=True, explicit_user_start=True
@@ -525,10 +540,14 @@ def test_start_birth_continue_training_reuses_existing_policy(monkeypatch: pytes
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
 
-    monkeypatch.setattr(birth_service_module, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr(birth_service_module, "_bind_headless_runtime_app", lambda _c: None)
-    monkeypatch.setattr(birth_service_module, "LuminaBirthEngine", _FakeEngine)
-    monkeypatch.setattr(svc, "_preflight_historical_data", lambda _days: (True, ""))
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "preflight_historical_data",
+        lambda _svc, _days: (True, ""),
+    )
 
     result = svc.start_birth(
         target_trades=10000,
@@ -579,6 +598,65 @@ def test_reconcile_orphaned_marks_interrupted(tmp_path: Path) -> None:
     assert reconciled.get("stage") == "interrupted"
     assert reconciled.get("phase") == "restart_required"
     assert reconciled.get("prior_stage") == "loading_data"
+    assert "Hervat checkpoint" in str(reconciled.get("message", ""))
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_reconcile_orphaned_skips_attention_when_checkpoint_exists(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    stale_ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    orphan = {
+        "timestamp": stale_ts,
+        "stage": "training_running",
+        "phase": "curriculum_learning",
+        "target_trades": 25000,
+        "trades_done": 140,
+        "ppo_steps": 1500,
+    }
+    (tmp_path / "state" / "lumina_birth_progress.json").write_text(
+        json.dumps(orphan, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    (tmp_path / "state" / "lumina_birth_checkpoint.json").write_text(
+        json.dumps(
+            {
+                "version": 3,
+                "ppo_steps": 1500,
+                "cumulative_trades": 140,
+                "curriculum_stage": "stage1_trend",
+                "phase": "curriculum_learning",
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    reconciled = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
+    assert reconciled.get("stage") == "interrupted"
+    assert not reconciled.get("needs_attention")
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_sanitize_running_progress_strips_stale_attention(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    progress = {
+        "phase": "curriculum_learning",
+        "stage": "training_running",
+        "needs_attention": True,
+        "attention_summary": "Vorige Birth Phase gestopt",
+        "attention_reason_code": "birth_interrupted",
+        "user_initiated_stop": True,
+    }
+    sanitized = svc._sanitize_running_progress(progress)
+    assert "needs_attention" not in sanitized
+    assert "attention_summary" not in sanitized
+    assert sanitized.get("user_initiated_stop") is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -596,6 +674,8 @@ def test_get_status_idle_not_running_for_orphan_progress(tmp_path: Path) -> None
 
 @pytest.mark.unit
 def test_get_status_exposes_trade_and_ppo_progress_from_file(tmp_path: Path) -> None:
+    import os
+
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
     svc.configure_workspace(tmp_path)
@@ -614,7 +694,7 @@ def test_get_status_exposes_trade_and_ppo_progress_from_file(tmp_path: Path) -> 
     }
     svc.progress_file.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
     svc.runner_lock_path.write_text(
-        json.dumps({"runner": "file_progress", "pid": "unknown"}, ensure_ascii=True),
+        json.dumps({"runner": "file_progress", "pid": os.getpid()}, ensure_ascii=True),
         encoding="utf-8",
     )
 
@@ -764,11 +844,56 @@ def test_auto_resume_blocked_for_needs_attention(tmp_path: Path, monkeypatch: py
 
 
 @pytest.mark.unit
+def test_auto_resume_allowed_for_plateau_exhausted_when_autonomous(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    ws = tmp_path / "repo"
+    state = ws / "state"
+    state.mkdir(parents=True)
+    (ws / "config.yaml").write_text(
+        "birth_v2:\n  curriculum:\n    autonomous_recovery_enabled: true\n",
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_progress.json").write_text(
+        json.dumps(
+            {
+                "stage": "stage_stalled",
+                "phase": "stage_stalled",
+                "retryable": True,
+                "terminal_stall_reason": "plateau_evolution_exhausted",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_checkpoint.json").write_text(
+        json.dumps({"phase": "stage_stalled", "version": 3}),
+        encoding="utf-8",
+    )
+    calls = {"n": 0}
+
+    def _fake_resume(target_trades: int | None = None) -> dict[str, str]:
+        _ = target_trades
+        calls["n"] += 1
+        return {"status": "started"}
+
+    svc = BirthService()
+    monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    svc.configure_workspace(ws)
+    assert calls["n"] == 1
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
 def test_auto_resume_blocked_for_plateau_exhausted(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     ws = tmp_path / "repo"
     state = ws / "state"
     state.mkdir(parents=True)
+    (ws / "config.yaml").write_text(
+        "birth_v2:\n  curriculum:\n    autonomous_recovery_enabled: false\n",
+        encoding="utf-8",
+    )
     (state / "lumina_birth_progress.json").write_text(
         json.dumps(
             {

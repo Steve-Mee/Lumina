@@ -94,7 +94,8 @@ The current Windows test machine is not a reliable target for native vLLM servin
 
 ## Launcher and model management
 
-- The Streamlit launcher now includes a first-run setup wizard for fresh machines.
+- Primary operator UI is the Tauri-based Neural Command Deck (`tauri-app/`). See ADR-0016 (Streamlit UI retirement).
+- The launcher (`lumina_launcher/`) provides supporting services, first-boot/setup, model management and process control. Any remaining Streamlit references are historical.
 - Hardware is classified into `light`, `sweet`, and `beast`, and the UI explains what is required to move up a tier.
 - The setup wizard recommends a Qwen3.5 model using the local hardware snapshot.
 - Model upgrades are driven by `lumina_model_catalog.json`, which means future Lumina-tested Qwen variants can be exposed through normal app updates.

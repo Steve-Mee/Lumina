@@ -79,17 +79,17 @@ def test_adaptive_recovery_not_blocked_when_over_initial_budget_cap(
             rollout_steps=200,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
     monkeypatch.setattr(engine, "_stop_requested", lambda: rollout_calls["n"] >= 25)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
     )
 

@@ -72,6 +72,7 @@ export interface OnboardingPayload {
     real: Record<string, unknown>;
     evolution: Record<string, unknown>;
     first_boot: Record<string, unknown>;
+    birth_v2?: Record<string, unknown>;
     risk_controller: Record<string, unknown>;
   };
   smart_setup_running: boolean;

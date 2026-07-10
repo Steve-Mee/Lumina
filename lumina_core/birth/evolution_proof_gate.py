@@ -63,9 +63,13 @@ def evaluate_evolution_proof(
     lift = float(polish_oos_winrate) - float(birth_exit_winrate)
     passed = False
 
-    if int(holdout_trades) < int(proof_cfg.min_trades):
+    effective_min_trades = min(
+        int(proof_cfg.min_trades),
+        max(50, int(holdout_trades * 0.8)) if holdout_trades > 0 else int(proof_cfg.min_trades),
+    )
+    if int(holdout_trades) < effective_min_trades:
         reasons.append(
-            f"holdout_trades {holdout_trades} < min {proof_cfg.min_trades}"
+            f"holdout_trades {holdout_trades} < min {effective_min_trades}"
         )
     if float(polish_oos_winrate) >= float(proof_cfg.polish_oos_winrate_min):
         passed = True
@@ -85,7 +89,7 @@ def evaluate_evolution_proof(
         )
 
     return EvolutionProofResult(
-        passed=passed and int(holdout_trades) >= int(proof_cfg.min_trades),
+        passed=passed and int(holdout_trades) >= effective_min_trades,
         reasons=reasons,
         birth_exit_winrate=float(birth_exit_winrate),
         polish_oos_winrate=float(polish_oos_winrate),

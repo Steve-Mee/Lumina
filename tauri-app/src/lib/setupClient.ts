@@ -150,31 +150,6 @@ export async function fetchSmartSetupProgress(): Promise<{
   return apiFetch("/api/setup/smart-setup/progress");
 }
 
-export type BirthStartStatus = "started" | "rejected" | "already_running" | "already_completed";
-
-export interface BirthStartResponse {
-  status: BirthStartStatus;
-  message?: string;
-  target_trades?: number;
-}
-
-export function isBirthStartSuccessful(status: BirthStartStatus): boolean {
-  return status === "started" || status === "already_running";
-}
-
-export async function startBirth(targetTrades: number): Promise<BirthStartResponse> {
-  const base = resolveBackendBaseUrl();
-  const params = new URLSearchParams({
-    explicit_user_start: "true",
-    target_trades: String(targetTrades),
-  });
-  const response = await luminaFetch(`${base}/api/birth/start?${params}`, { method: "POST" });
-  if (!response.ok) {
-    throw new Error(await readHttpErrorDetail(response));
-  }
-  return response.json() as Promise<BirthStartResponse>;
-}
-
 export type {
   BirthProgressPayload,
   BirthStatusPayload,

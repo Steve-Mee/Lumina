@@ -85,7 +85,7 @@ def test_run_birth_phase_loads_and_applies_hardware_profile(
     }
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.ensure_first_boot_hardware_profile",
+        "lumina_core.birth.birth_phase_orchestrator.ensure_first_boot_hardware_profile",
         lambda workspace_root: calls.append("ensure") or payload,
     )
     monkeypatch.setattr(
@@ -98,7 +98,7 @@ def test_run_birth_phase_loads_and_applies_hardware_profile(
         raise RuntimeError("stop_after_hardware")
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.read_birth_progress",
+        "lumina_core.birth.birth_phase_orchestrator.read_birth_progress",
         _stop_after_hardware,
     )
 

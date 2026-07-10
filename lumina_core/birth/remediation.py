@@ -271,3 +271,128 @@ def manifest_train_hash_matches(
     saved = str(saved_manifest.get("train_hash", "") or "").strip()
     current = str(current_hash or "").strip()
     return bool(saved and current and saved == current)
+
+
+class ResumeCacheTier(str, Enum):
+    T0 = "T0"
+    T1 = "T1"
+    T2 = "T2"
+    T3 = "T3"
+    T4 = "T4"
+
+
+@dataclass(slots=True)
+class ResumeCacheDecision:
+    tier: ResumeCacheTier
+    reason: str
+    skip_load: bool = False
+    skip_split: bool = False
+    skip_enrich: bool = True
+    repair_manifest: bool = False
+    resume_message: str = ""
+
+
+def classify_cache_resume_tier(
+    *,
+    checkpoint_manifest: dict[str, Any],
+    cache_manifest: dict[str, Any] | None,
+    cached_ticks: list[dict[str, Any]],
+    cached_split: Any | None,
+    cached_train_hash: str,
+    holdout_pct: float,
+    enrich_version: str,
+) -> ResumeCacheDecision:
+    """Classify resume cache tier (T0–T4) for fail-closed data-prep decisions."""
+    if not cached_ticks or cached_split is None:
+        return ResumeCacheDecision(
+            tier=ResumeCacheTier.T4,
+            reason="missing_cache_files",
+            resume_message="Checkpoint hervat — data opnieuw voorbereid (curriculum gaat verder, geen wipe).",
+        )
+
+    manifest = dict(cache_manifest or {})
+    manifest_holdout = float(manifest.get("holdout_pct", holdout_pct) or holdout_pct)
+    if abs(manifest_holdout - float(holdout_pct)) > 1e-6:
+        return ResumeCacheDecision(
+            tier=ResumeCacheTier.T4,
+            reason="holdout_pct_changed",
+            resume_message=(
+                "Checkpoint hervat — holdout-config gewijzigd; data opnieuw voorbereid "
+                "(curriculum gaat verder, geen wipe)."
+            ),
+        )
+
+    cache_train_hash = str(manifest.get("train_hash", "") or cached_train_hash or "").strip()
+    hash_matches_checkpoint = manifest_train_hash_matches(
+        current_hash=cached_train_hash,
+        saved_manifest=checkpoint_manifest,
+    )
+    hash_matches_cache_file = bool(
+        cache_train_hash and cached_train_hash and cache_train_hash == cached_train_hash
+    )
+    cache_enrich_version = str(manifest.get("enrich_version", enrich_version) or enrich_version).strip()
+    enrich_version_match = cache_enrich_version == str(enrich_version).strip()
+
+    if hash_matches_checkpoint and enrich_version_match:
+        return ResumeCacheDecision(
+            tier=ResumeCacheTier.T0,
+            reason="full_cache_hit",
+            skip_load=True,
+            skip_split=True,
+            skip_enrich=True,
+            resume_message="Checkpoint hervat — cached data geladen (curriculum gaat verder).",
+        )
+
+    if hash_matches_cache_file and not hash_matches_checkpoint:
+        return ResumeCacheDecision(
+            tier=ResumeCacheTier.T1,
+            reason="manifest_repair",
+            skip_load=True,
+            skip_split=True,
+            skip_enrich=True,
+            repair_manifest=True,
+            resume_message="Checkpoint hervat — cache hersteld (curriculum gaat verder).",
+        )
+
+    if hash_matches_checkpoint and not enrich_version_match:
+        return ResumeCacheDecision(
+            tier=ResumeCacheTier.T2,
+            reason="enrich_version_mismatch",
+            skip_load=True,
+            skip_split=True,
+            skip_enrich=False,
+            resume_message=(
+                "Checkpoint hervat — regime-map herberekend (algo update); "
+                "curriculum gaat verder."
+            ),
+        )
+
+    if hash_matches_checkpoint:
+        return ResumeCacheDecision(
+            tier=ResumeCacheTier.T3,
+            reason="partial_cache_inconsistency",
+            resume_message=(
+                "Checkpoint hervat — data opnieuw voorbereid (curriculum gaat verder, geen wipe)."
+            ),
+        )
+
+    checkpoint_count = int(checkpoint_manifest.get("train_tick_count", 0) or 0)
+    cache_count = len(getattr(cached_split, "train", []) or [])
+    if checkpoint_count > 0 and cache_count > 0 and checkpoint_count != cache_count:
+        return ResumeCacheDecision(
+            tier=ResumeCacheTier.T4,
+            reason="train_cardinality_changed",
+            resume_message=(
+                "Checkpoint hervat — nieuwe marktdata gedetecteerd; holdout opnieuw berekend "
+                "(curriculum gaat verder, geen wipe)."
+            ),
+        )
+
+    return ResumeCacheDecision(
+        tier=ResumeCacheTier.T4,
+        reason="train_hash_mismatch",
+        resume_message=(
+            "Checkpoint hervat — nieuwe marktdata gedetecteerd; holdout opnieuw berekend "
+            "(curriculum gaat verder, geen wipe)."
+        ),
+    )

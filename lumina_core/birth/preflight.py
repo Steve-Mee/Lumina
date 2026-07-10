@@ -82,9 +82,12 @@ def data_manifest_from_split(
     days_loaded: int,
     real_data_pct: float,
     train_hash: str = "",
+    raw_ticks_hash: str = "",
+    enrich_version: str = "",
+    holdout_pct: float = 0.0,
 ) -> dict[str, Any]:
     holdout_regimes = sorted(regime_labels(split.holdout))
-    return {
+    manifest: dict[str, Any] = {
         "days_loaded": int(days_loaded),
         "train_hash": str(train_hash or ""),
         "holdout_regimes": holdout_regimes,
@@ -96,3 +99,10 @@ def data_manifest_from_split(
         "ticks_cache_path": "",
         "split_cache_path": "",
     }
+    if raw_ticks_hash:
+        manifest["raw_ticks_hash"] = str(raw_ticks_hash)
+    if enrich_version:
+        manifest["enrich_version"] = str(enrich_version)
+    if holdout_pct > 0:
+        manifest["holdout_pct"] = float(holdout_pct)
+    return manifest

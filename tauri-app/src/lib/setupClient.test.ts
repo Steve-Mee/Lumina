@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_LUMINA_API_KEY_LS_KEY } from "@/lib/monitoringClient";
-import { isBirthStartSuccessful } from "@/lib/setupClient";
+import { isBirthStartSuccessful } from "@/lib/birthClient";
 
 describe("isBirthStartSuccessful", () => {
   it("accepts started and already_running", () => {

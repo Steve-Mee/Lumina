@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
@@ -17,6 +18,9 @@ class CurriculumStage(str, Enum):
     STAGE2_RANGE = "stage2_range"
     STAGE3_MIXED = "stage3_mixed"
     STAGE4_POLISH = "stage4_polish"
+    STAGE5_PROFIT_VAL = "stage5_profit_val"
+    STAGE6_RISK_DISCIPLINE = "stage6_risk_discipline"
+    STAGE7_HOLDOUT_PROFILE = "stage7_holdout_profile"
 
 
 @dataclass(slots=True)
@@ -46,6 +50,13 @@ def filter_ticks_for_stage(stage: CurriculumStage, ticks: list[dict[str, Any]]) 
         return [t for t in ticks if "TREND" in str(t.get("regime", "")).upper()]
     if stage == CurriculumStage.STAGE2_RANGE:
         return [t for t in ticks if str(t.get("regime", "NEUTRAL")).upper() in {"NEUTRAL", "RANGING"}]
+    if stage in {
+        CurriculumStage.STAGE3_MIXED,
+        CurriculumStage.STAGE5_PROFIT_VAL,
+        CurriculumStage.STAGE6_RISK_DISCIPLINE,
+        CurriculumStage.STAGE7_HOLDOUT_PROFILE,
+    }:
+        return list(ticks)
     return list(ticks)
 
 
@@ -201,6 +212,133 @@ def stage1_intra_state_from_metrics(metrics: dict[str, Any], *, default_hard_pct
     )
 
 
+@dataclass(slots=True)
+class Stage2IntraCurriculumState:
+    hard_pct: float = 0.15
+    easy_flat_bars: int = 0
+    easy_range_signals: int = 0
+    easy_flat_ratio_history: list[float] = field(default_factory=list)
+
+
+def stage2_range_patience_score(tick: dict[str, Any]) -> float:
+    """Higher score = calmer range tick (easier to stay flat)."""
+    adx = float(tick.get("trend_adx_14", 0.0) or 0.0)
+    strength = abs(float(tick.get("trend_regime_strength", 0.0) or 0.0))
+    atr_norm = float(tick.get("trend_atr_norm", 0.0) or 0.0)
+    return max(0.0, 1.0 - adx * 0.02) * 0.50 + max(0.0, 1.0 - strength) * 0.35 + max(0.0, 1.0 - atr_norm) * 0.15
+
+
+def split_stage2_range_ticks(
+    ticks: list[dict[str, Any]],
+    *,
+    easy_percentile: float = 0.40,
+    hard_percentile: float = 0.40,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    """Split range ticks: easy = calm range (patience-friendly), hard = marginal."""
+    range_ticks = [
+        dict(t)
+        for t in ticks
+        if str(t.get("regime", "NEUTRAL")).upper() in {"NEUTRAL", "RANGING"}
+        or "RANGE" in str(t.get("regime", "")).upper()
+    ]
+    if not range_ticks:
+        return [], [], {"easy_count": 0, "hard_count": 0, "total": 0}
+
+    scored = [(stage2_range_patience_score(t), t) for t in range_ticks]
+    scored.sort(key=lambda item: item[0])
+    scores = [s for s, _ in scored]
+    easy_pct = max(0.05, min(0.80, float(easy_percentile)))
+    hard_pct = max(0.05, min(0.80, float(hard_percentile)))
+    easy_cutoff, hard_cutoff = _percentile_cutoffs(scores, easy_pct, hard_pct)
+
+    easy_pool: list[dict[str, Any]] = []
+    hard_pool: list[dict[str, Any]] = []
+    for score, tick in scored:
+        tick["_intra_difficulty"] = "hard"
+        if score >= easy_cutoff:
+            tick["_intra_difficulty"] = "easy"
+            easy_pool.append(tick)
+        else:
+            hard_pool.append(tick)
+
+    if not easy_pool and hard_pool:
+        easy_pool = [dict(hard_pool[-1])]
+        easy_pool[0]["_intra_difficulty"] = "easy"
+    if not hard_pool and easy_pool:
+        hard_pool = [dict(easy_pool[0])]
+        hard_pool[0]["_intra_difficulty"] = "hard"
+
+    meta = {
+        "easy_count": len(easy_pool),
+        "hard_count": len(hard_pool),
+        "total": len(range_ticks),
+        "easy_cutoff": easy_cutoff,
+        "hard_cutoff": hard_cutoff,
+    }
+    return easy_pool, hard_pool, meta
+
+
+def sample_intra_stage2_pool(
+    easy_ticks: list[dict[str, Any]],
+    hard_ticks: list[dict[str, Any]],
+    state: Stage2IntraCurriculumState,
+    *,
+    pool_size: int,
+    rng: random.Random,
+) -> list[dict[str, Any]]:
+    return sample_intra_stage1_pool(
+        easy_ticks,
+        hard_ticks,
+        Stage1IntraCurriculumState(hard_pct=state.hard_pct),
+        pool_size=pool_size,
+        rng=rng,
+    )
+
+
+def update_stage2_intra_state(
+    state: Stage2IntraCurriculumState,
+    *,
+    chunk_flat_bars: int,
+    chunk_range_signals: int,
+    cfg: BirthCurriculumConfig,
+) -> float:
+    state.easy_flat_bars += max(0, int(chunk_flat_bars))
+    state.easy_range_signals += max(0, int(chunk_range_signals))
+
+    if chunk_range_signals > 0:
+        chunk_flat = float(chunk_flat_bars) / float(chunk_range_signals)
+        state.easy_flat_ratio_history.append(chunk_flat)
+        window = max(1, int(cfg.intra_stage2_easy_stability_window))
+        if len(state.easy_flat_ratio_history) > window:
+            state.easy_flat_ratio_history = state.easy_flat_ratio_history[-window:]
+
+    target = float(cfg.intra_stage2_easy_flat_target)
+    stability = max(1, int(cfg.intra_stage2_easy_stability_window))
+    if (
+        len(state.easy_flat_ratio_history) >= stability
+        and all(ratio >= target for ratio in state.easy_flat_ratio_history[-stability:])
+    ):
+        step = float(cfg.intra_stage2_hard_pct_step)
+        max_hard = float(cfg.intra_stage2_max_hard_pct)
+        state.hard_pct = min(max_hard, state.hard_pct + step)
+        state.easy_flat_ratio_history.clear()
+
+    return state.hard_pct
+
+
+def stage2_intra_state_from_metrics(metrics: dict[str, Any], *, default_hard_pct: float) -> Stage2IntraCurriculumState:
+    history_raw = metrics.get("intra_stage2_easy_flat_ratio_history")
+    history: list[float] = []
+    if isinstance(history_raw, list):
+        history = [float(x) for x in history_raw if isinstance(x, (int, float))]
+    return Stage2IntraCurriculumState(
+        hard_pct=float(metrics.get("intra_stage2_hard_pct", default_hard_pct) or default_hard_pct),
+        easy_flat_bars=max(0, int(metrics.get("intra_stage2_easy_flat_bars", 0) or 0)),
+        easy_range_signals=max(0, int(metrics.get("intra_stage2_easy_range_signals", 0) or 0)),
+        easy_flat_ratio_history=history,
+    )
+
+
 def stage_trade_target(stage: CurriculumStage, cfg: BirthCurriculumConfig) -> int:
     if stage == CurriculumStage.STAGE1_TREND:
         return cfg.stage1_trend_trades
@@ -208,6 +346,12 @@ def stage_trade_target(stage: CurriculumStage, cfg: BirthCurriculumConfig) -> in
         return cfg.stage2_range_trades
     if stage == CurriculumStage.STAGE3_MIXED:
         return cfg.stage3_mixed_trades
+    if stage == CurriculumStage.STAGE5_PROFIT_VAL:
+        return int(getattr(cfg, "stage5_profit_val_trades", 3000))
+    if stage == CurriculumStage.STAGE6_RISK_DISCIPLINE:
+        return int(getattr(cfg, "stage6_risk_discipline_trades", 2000))
+    if stage == CurriculumStage.STAGE7_HOLDOUT_PROFILE:
+        return int(getattr(cfg, "stage7_holdout_profile_trades", 4000))
     return 0
 
 
@@ -273,6 +417,8 @@ def evaluate_stage_pass(
     oracle_patterns: int = 0,
     buffer_size: int = 0,
     oracle_soft_min_patterns: int = 100,
+    stage_val_sharpe: float = 0.0,
+    stage_val_max_drawdown_pct: float = 100.0,
 ) -> StageResult:
     winrate = float(wins) / float(max(1, trades))
     hold_ratio = float(hold_signals) / float(max(1, total_signals))
@@ -314,6 +460,42 @@ def evaluate_stage_pass(
     elif stage == CurriculumStage.STAGE3_MIXED:
         passed = trades >= required and constitution_violations == 0
         message = f"mixed violations={constitution_violations} trades={trades}/{required}"
+    elif stage == CurriculumStage.STAGE5_PROFIT_VAL:
+        wr_gate = float(getattr(cfg, "runway_stage5_winrate_pass", 0.40) if cfg else 0.40)
+        hold_cap = float(getattr(cfg, "runway_stage5_hold_ratio_max", 0.55) if cfg else 0.55)
+        passed = (
+            trades >= required
+            and winrate >= wr_gate
+            and hold_ratio <= hold_cap
+            and constitution_violations == 0
+        )
+        message = (
+            f"runway5 winrate={winrate:.2%} hold={hold_ratio:.1%} "
+            f"trades={trades}/{required} gate={wr_gate:.0%}"
+        )
+    elif stage == CurriculumStage.STAGE6_RISK_DISCIPLINE:
+        wr_gate = float(getattr(cfg, "runway_stage6_winrate_min", 0.42) if cfg else 0.42)
+        sharpe_min = float(getattr(cfg, "runway_stage6_sharpe_min", 0.20) if cfg else 0.20)
+        dd_max = float(getattr(cfg, "runway_stage6_drawdown_max_pct", 12.0) if cfg else 12.0)
+        passed = (
+            trades >= required
+            and winrate >= wr_gate
+            and float(stage_val_sharpe) >= sharpe_min
+            and float(stage_val_max_drawdown_pct) <= dd_max
+            and constitution_violations == 0
+        )
+        message = (
+            f"runway6 winrate={winrate:.2%} sharpe={stage_val_sharpe:.2f} "
+            f"dd={stage_val_max_drawdown_pct:.1f}% trades={trades}/{required}"
+        )
+    elif stage == CurriculumStage.STAGE7_HOLDOUT_PROFILE:
+        wr_gate = float(getattr(cfg, "runway_stage7_winrate_min", 0.45) if cfg else 0.45)
+        passed = (
+            trades >= required
+            and winrate >= wr_gate
+            and constitution_violations == 0
+        )
+        message = f"runway7 winrate={winrate:.2%} trades={trades}/{required} gate={wr_gate:.0%}"
     elif stage == CurriculumStage.STAGE4_POLISH:
         passed = True
         message = "polish complete"
@@ -364,3 +546,32 @@ def ordered_stages() -> list[CurriculumStage]:
         CurriculumStage.STAGE3_MIXED,
         CurriculumStage.STAGE4_POLISH,
     ]
+
+
+def dynamic_stages(workspace_root: Path | str | None = None) -> list[dict[str, Any]]:
+    """Post-gen0 self-authored milestones (M16+) for evolution orchestration."""
+    if workspace_root is None:
+        return []
+    from lumina_core.evolution.meta_milestones import dynamic_stage_specs
+
+    return dynamic_stage_specs(workspace_root)
+
+
+def ordered_runway_stages() -> list[CurriculumStage]:
+    return [
+        CurriculumStage.STAGE5_PROFIT_VAL,
+        CurriculumStage.STAGE6_RISK_DISCIPLINE,
+        CurriculumStage.STAGE7_HOLDOUT_PROFILE,
+    ]
+
+
+def is_runway_stage(stage: CurriculumStage) -> bool:
+    return stage in ordered_runway_stages()
+
+
+def is_core_curriculum_stage(stage: CurriculumStage) -> bool:
+    return stage in {
+        CurriculumStage.STAGE1_TREND,
+        CurriculumStage.STAGE2_RANGE,
+        CurriculumStage.STAGE3_MIXED,
+    }

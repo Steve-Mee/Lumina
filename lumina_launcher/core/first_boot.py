@@ -366,8 +366,8 @@ class FirstBootManager:
                 logger.warning("first_boot.clear_progress_runtime_state_failed path=%s", path, exc_info=True)
 
     def clear_all_birth_artifacts(self) -> list[str]:
-        """Remove all birth training artifacts while preserving setup/genesis user config."""
+        """Remove birth training artifacts; preserve setup/genesis user config."""
         from lumina_launcher.core.birth_reset import clear_birth_training_state
 
-        result = clear_birth_training_state(self.workspace_root)
+        result = clear_birth_training_state(self.workspace_root, wipe_genesis=False)
         return result.removed

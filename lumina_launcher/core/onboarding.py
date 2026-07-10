@@ -248,7 +248,7 @@ def extract_config_defaults(
             "max_mutation_depth": real.get("max_mutation_depth", "conservative"),
         },
         "evolution": {
-            "approval_required": evolution.get("approval_required", True),
+            "approval_required": evolution.get("approval_required", False),
             "aggressive_evolution": sim.get("aggressive_evolution", True),
         },
         "first_boot": {

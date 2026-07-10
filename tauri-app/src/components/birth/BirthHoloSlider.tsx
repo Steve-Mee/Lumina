@@ -10,6 +10,8 @@ interface BirthHoloSliderProps {
   onChange: (value: number) => void;
   disabled?: boolean;
   className?: string;
+  /** Shown as native tooltip on hover — keeps layout compact without extra lines. */
+  hint?: string;
 }
 
 export function BirthHoloSlider({
@@ -22,11 +24,12 @@ export function BirthHoloSlider({
   onChange,
   disabled = false,
   className,
+  hint,
 }: BirthHoloSliderProps) {
   const pct = ((value - min) / (max - min)) * 100;
 
   return (
-    <div className={cn("birth-holo-slider", className)}>
+    <div className={cn("birth-holo-slider", className)} title={hint}>
       <div className="birth-holo-slider__header">
         <span className="birth-holo-slider__label">{label}</span>
         <span className="birth-holo-slider__value">{format(value)}</span>
@@ -45,6 +48,7 @@ export function BirthHoloSlider({
           step={step}
           value={value}
           disabled={disabled}
+          aria-label={label}
           onChange={(e) => onChange(Number(e.target.value))}
         />
       </div>

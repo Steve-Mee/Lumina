@@ -86,13 +86,13 @@ def test_certified_start_sets_training_mode_certified(tmp_path: Path, monkeypatc
         ),
         trade_budget_cap=500,
     )
-    monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", lambda **_kwargs: _ticks())
+    monkeypatch.setattr("lumina_core.birth.data_pipeline.load_historical_ticks", lambda **_kwargs: _ticks())
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: _fake_rollout(),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         lambda **_kwargs: {
             "certificate_passed": True,
             "real_data_pct": 99.0,
@@ -128,7 +128,7 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
         ),
         trade_budget_cap=500,
     )
-    monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", lambda **_kwargs: _ticks(50))
+    monkeypatch.setattr("lumina_core.birth.data_pipeline.load_historical_ticks", lambda **_kwargs: _ticks(50))
 
     def _mock_expand(**_kwargs) -> DataExpansionResult:
         ticks = _ticks(50)
@@ -144,9 +144,9 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
             exhausted=True,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: _fake_rollout(
             trades=50,
             wins=25,
@@ -156,7 +156,7 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
         ),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_for_sim",
+        "lumina_core.birth.data_pipeline.enrich_ticks_for_sim",
         lambda ticks, **_kwargs: ticks,
     )
     result = engine.run_birth_phase(prefer_real_data_only=False, practice_mode=True)

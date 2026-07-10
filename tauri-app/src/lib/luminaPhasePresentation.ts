@@ -77,6 +77,7 @@ export interface BirthScreenPhaseInput {
   activating: boolean;
   interrupted: boolean;
   certificateFailed: boolean;
+  certificateOverlayActive?: boolean;
   stageStalledActive: boolean;
   milestones: BirthMilestone[];
   phaseSubtitle: string;
@@ -120,8 +121,8 @@ export function resolveBirthScreenPhaseHeader(
   if (input.certificateFailed) {
     return {
       eyebrow: "Birth Protocol",
-      title: "Birth Certificate",
-      status: input.phaseSubtitle,
+      title: "Certificate",
+      status: input.certificateOverlayActive ? "Diagnostics below" : input.phaseSubtitle,
       tone: "rose",
     };
   }

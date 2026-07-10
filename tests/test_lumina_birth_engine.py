@@ -160,15 +160,15 @@ def test_engine_continues_research_on_rollout_stall(tmp_path: Path, monkeypatch:
     )
     ticks = _rising_historical_ticks(800)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.load_historical_ticks",
+        "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: ticks,
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda rows, **_kwargs: rows,
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: PatternMineResult(
             patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}}] * 150,
             wins=150,
@@ -204,13 +204,13 @@ def test_engine_continues_research_on_rollout_stall(tmp_path: Path, monkeypatch:
             exhausted=False,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand_once)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand_once)
     monkeypatch.setattr(
         "lumina_core.birth.buffer_persist.save_buffer",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         lambda **_kwargs: {"certificate_passed": False},
     )
 
@@ -232,7 +232,7 @@ def test_engine_continues_research_on_rollout_stall(tmp_path: Path, monkeypatch:
             constitution_blocks=0,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _stalled_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _stalled_rollout)
     engine.birth_config = BirthV2Config(
         curriculum=BirthCurriculumConfig(
             max_rollouts_per_stage=3,
@@ -284,15 +284,15 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
     )
     ticks = _rising_historical_ticks(800)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.load_historical_ticks",
+        "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: ticks,
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda rows, **_kwargs: rows,
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: PatternMineResult(
             patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}}] * 120,
             wins=120,
@@ -314,9 +314,9 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
             exhausted=False,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         lambda **_kwargs: {
             "certificate_passed": True,
             "real_data_pct": 99.0,
@@ -330,7 +330,7 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
         },
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: SimRolloutResult(
             trades=100,
             wins=55,

@@ -7,13 +7,15 @@ import { mapAppPhase, resolvePhaseOnRefreshError, markPayloadBackendUnreachable,
 import { hydrateBotConfigDraftFromPayload } from "@/lib/botConfigDraft";
 import {
   fetchOnboardingStatus,
-  isBirthStartSuccessful,
   postConfigure,
   postCredentials,
-  startBirth,
   startSmartSetup,
   type ConfigurePayload,
 } from "@/lib/setupClient";
+import {
+  isBirthStartSuccessful,
+  startBirth,
+} from "@/lib/birthClient";
 import { mergeCredentialsIntoDraft } from "@/lib/credentialsPrefill";
 import { persistMonitoringApiKey, resolveMonitoringApiKey } from "@/lib/monitoringClient";
 import {

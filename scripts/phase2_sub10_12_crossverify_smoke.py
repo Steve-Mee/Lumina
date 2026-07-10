@@ -102,10 +102,9 @@ if __name__ == "__main__":
     sub11()
     import lumina_core.runtime_workers as rw
 
-    print(
-        "IMPORT_OK",
-        hasattr(rw, "RlBiasApplier"),
-        hasattr(rw, "PriceDupeResolver"),
-        hasattr(rw, "SupervisorPhaseStateMachine"),
-    )
+    import_ok_rl = hasattr(rw, "RlBiasApplier")
+    import_ok_price = hasattr(rw, "PriceDupeResolver")
+    import_ok_sm = hasattr(rw, "SupervisorPhaseStateMachine")
+    print("IMPORT_OK", import_ok_rl, import_ok_price, import_ok_sm)
+    assert import_ok_rl and import_ok_price and import_ok_sm, "Expected class re-exports on runtime_workers for sub10/11/12 compat"
     print("PHASE2_ALL_MANUAL_SMOKES_OK")

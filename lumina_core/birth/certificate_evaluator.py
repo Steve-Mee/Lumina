@@ -10,6 +10,14 @@ from lumina_core.birth.birth_certificate import BirthCertificateThresholds
 from lumina_core.birth.sim_runner import run_policy_rollout
 
 
+def sharpe_from_pnl(pnl_series: list[float]) -> float:
+    return _sharpe_from_pnl(pnl_series)
+
+
+def max_drawdown_pct(pnl_series: list[float], *, equity: float = 50_000.0) -> float:
+    return _max_drawdown_pct(pnl_series, equity=equity)
+
+
 def _sharpe_from_pnl(pnl_series: list[float]) -> float:
     if len(pnl_series) < 5:
         return 0.0

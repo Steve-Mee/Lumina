@@ -119,10 +119,31 @@ class AttentionNotifier:
     def _write_progress_attention(self, event: AttentionEvent) -> None:
         if event.category.value != "birth":
             return
+        if event.reason_code == "birth_interrupted":
+            from lumina_core.birth.checkpoint import read_checkpoint_payload
+
+            if read_checkpoint_payload(self._workspace_root):
+                logger.debug(
+                    "attention.skip_progress_write reason=recoverable_checkpoint reason_code=%s",
+                    event.reason_code,
+                )
+                return
         try:
-            from lumina_core.birth.progress import read_birth_progress, write_birth_progress
+            from lumina_core.birth.progress import (
+                merge_birth_progress_extra,
+                read_birth_progress,
+                write_birth_progress,
+            )
 
             prev = read_birth_progress(self._workspace_root)
+            attention_fields = {
+                "needs_attention": True,
+                "attention_reason_code": event.reason_code,
+                "attention_summary": event.summary,
+                "attention_recommended_actions": list(event.recommended_actions),
+                "attention_notified_at": datetime.now(timezone.utc).isoformat(),
+            }
+            merged = merge_birth_progress_extra(prev, attention_fields)
             write_birth_progress(
                 self._workspace_root,
                 stage=str(prev.get("stage", "attention") or "attention"),
@@ -135,11 +156,7 @@ class AttentionNotifier:
                 target_trades=int(prev.get("target_trades", 0) or 0),
                 ppo_steps=int(prev.get("ppo_steps", 0) or 0),
                 birth_start_time=float(prev.get("birth_start_time", 0) or 0),
-                needs_attention=True,
-                attention_reason_code=event.reason_code,
-                attention_summary=event.summary,
-                attention_recommended_actions=list(event.recommended_actions),
-                attention_notified_at=datetime.now(timezone.utc).isoformat(),
+                **merged,
             )
         except Exception as exc:
             logger.warning("attention.progress_write_failed: %s", exc)

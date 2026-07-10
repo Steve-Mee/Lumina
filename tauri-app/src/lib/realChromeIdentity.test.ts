@@ -16,6 +16,14 @@ const commandHudSource = readFileSync(
 
 );
 
+const modeSwitchSource = readFileSync(
+
+  join(dirname(fileURLToPath(import.meta.url)), "../components/cockpit/ModeSwitch.tsx"),
+
+  "utf8",
+
+);
+
 const stageSource = readFileSync(
 
   join(dirname(fileURLToPath(import.meta.url)), "../components/decision/DecisionTheaterStage.tsx"),
@@ -116,11 +124,13 @@ describe("REAL chrome identity", () => {
 
 
 
-  it("uses mode presentation helpers in CommandHud", () => {
+  it("uses mode presentation helpers in ModeSwitch", () => {
 
-    expect(commandHudSource).toContain("modeSwitchShellClass");
+    expect(modeSwitchSource).toContain("modeSwitchShellClass");
 
-    expect(commandHudSource).toContain("modeSwitchActivePillClass");
+    expect(modeSwitchSource).toContain("modeSwitchActivePillClass");
+
+    expect(commandHudSource).toContain("ModeSwitch");
 
   });
 

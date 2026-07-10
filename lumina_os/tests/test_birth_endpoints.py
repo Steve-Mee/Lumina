@@ -30,6 +30,33 @@ def _reset_birth_service(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 @pytest.mark.unit
+def test_enrich_status_merges_checkpoint_oos_metrics(
+    _reset_birth_service: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _reset_birth_service.workspace_root = tmp_path
+    progress = {
+        "phase": "certificate_failed",
+        "failure_reasons": ["oos_winrate:0.31/0.48"],
+    }
+    monkeypatch.setattr(
+        be,
+        "load_checkpoint_state",
+        lambda _root: {
+            "oos_metrics": {
+                "oos_winrate": 0.31,
+                "oos_sharpe": -5.62,
+                "oos_max_drawdown_pct": 25.46,
+            }
+        },
+    )
+    payload = be._enrich_status_full({"status": "certificate_failed", "progress": progress})
+    oos = payload.get("oos_metrics")
+    assert isinstance(oos, dict)
+    assert oos.get("oos_winrate") == 0.31
+    assert oos.get("oos_sharpe") == -5.62
+
+
+@pytest.mark.unit
 def test_enrich_status_artifacts_missing(_reset_birth_service: MagicMock, tmp_path: Path) -> None:
     _reset_birth_service.workspace_root = tmp_path
     payload = be._enrich_status({"status": "idle"})
@@ -45,6 +72,32 @@ def test_enrich_status_artifacts_ok(_reset_birth_service: MagicMock, tmp_path: P
     payload = be._enrich_status({"status": "completed"})
     assert payload["artifacts_ok"] is True
     assert "Certificate" in payload["artifacts_label"] or payload["artifacts_label"] == "Birth Certificate v2 OK"
+
+
+@pytest.mark.unit
+def test_enrich_status_full_exposes_genesis_charter(
+    _reset_birth_service: MagicMock, tmp_path: Path
+) -> None:
+    _reset_birth_service.workspace_root = tmp_path
+    state = tmp_path / "state"
+    state.mkdir(parents=True)
+    (state / "lumina_genesis_charter.json").write_text(
+        json.dumps(
+            {
+                "training_trades": 9000,
+                "stage1_winrate_pass_threshold": 0.42,
+                "max_real_days": 60,
+                "prefer_real_data_only": False,
+                "rationale": {},
+                "auto_charter": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    payload = be._enrich_status_full({"status": "idle"})
+    charter = payload.get("genesis_charter")
+    assert isinstance(charter, dict)
+    assert charter.get("training_trades") == 9000
 
 
 @pytest.mark.unit
@@ -130,6 +183,17 @@ async def test_resume_stalled_stage_delegates(_reset_birth_service: MagicMock) -
     _reset_birth_service.resume_stalled_stage.assert_called_once_with(target_trades=25000)
     assert result["status"] == "started"
     assert result.get("start_acknowledged") is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_autonomous_recovery_delegates(_reset_birth_service: MagicMock) -> None:
+    _reset_birth_service.execute_autonomous_recovery.return_value = {"status": "started", "message": "ok"}
+    _reset_birth_service.get_status.return_value = {"status": "running", "progress": {}}
+
+    result = await be.autonomous_recovery(target_trades=25000)
+    _reset_birth_service.execute_autonomous_recovery.assert_called_once_with(target_trades=25000)
+    assert result["status"] == "started"
 
 
 @pytest.mark.unit

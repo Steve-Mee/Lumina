@@ -1,4 +1,5 @@
 import type { BirthStatusPayload } from "@/lib/birthClient";
+import { distressPanelClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 
 interface BirthRemediationBarProps {
@@ -12,6 +13,23 @@ export function BirthRemediationBar({ status, className }: BirthRemediationBarPr
   const max = Number(status?.remediation_max ?? progress?.remediation_max ?? 0);
   const phase = String(progress?.phase ?? status?.checkpoint_phase ?? "").toLowerCase();
   const running = String(status?.status ?? "").toLowerCase() === "running";
+  const runwayPhase = String(status?.runway_phase ?? progress?.runway_phase ?? "").trim();
+
+  const remediationExhausted = max > 0 && attempt >= max;
+  const runwayResume =
+    phase === "certificate_failed" && (Boolean(runwayPhase) || remediationExhausted);
+
+  if (runwayResume) {
+    const label = runwayPhase ? `Runway resume: ${runwayPhase} → S8` : "Runway resume: S5 → S8";
+    return (
+      <div className={cn("birth-info-callout rounded-md px-3 py-2", className)}>
+        <p className="birth-info-callout__text text-[10px] uppercase tracking-wide">{label}</p>
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          Continue learning re-enters the certificate runway without resetting S1–S3.
+        </p>
+      </div>
+    );
+  }
 
   if (!max || attempt <= 0) {
     return null;
@@ -28,8 +46,8 @@ export function BirthRemediationBar({ status, className }: BirthRemediationBarPr
   const action = String((progress as Record<string, unknown> | undefined)?.remediation_action ?? "");
 
   return (
-    <div className={cn("rounded-md border border-amber-500/30 bg-black/30 px-3 py-2", className)}>
-      <div className="flex items-center justify-between gap-2 text-[10px] font-mono uppercase tracking-wide text-amber-100/90">
+    <div className={cn("rounded-md px-3 py-2", distressPanelClass("warn"), className)}>
+      <div className="birth-distress-callout__title flex items-center justify-between gap-2 tracking-wide">
         <span>Certificate remediation</span>
         <span>
           {attempt}/{max}

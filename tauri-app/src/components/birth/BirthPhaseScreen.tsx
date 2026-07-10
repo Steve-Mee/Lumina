@@ -23,8 +23,20 @@ import { useDeckTransition } from "@/hooks/useDeckTransition";
 import { useOnboardingModeMotion } from "@/hooks/useOnboardingModeMotion";
 import { usePPOEvolution } from "@/hooks/usePPOEvolution";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
-import { detectBirthRecoveryKind, hasBirthCheckpointProgress, shouldAutoResumeBirth } from "@/lib/birthRecoveryModel";
-import { isBirthEngineActive, isBirthInterrupted, isBirthStageStalled, resolveBirthPhaseCopy } from "@/lib/birthPhaseModel";
+import {
+  detectBirthRecoveryKind,
+  isBirthCheckpointResumable,
+  shouldAutoResumeBirth,
+} from "@/lib/birthRecoveryModel";
+import { resolveCertificateFailureSubtitle } from "@/lib/birthCertificateDiagnostics";
+import {
+  isBirthCertificateFailed,
+  isBirthEngineActive,
+  isBirthEngineLive,
+  isBirthInterrupted,
+  isBirthStageStalled,
+  resolveBirthPhaseCopy,
+} from "@/lib/birthPhaseModel";
 import { resolveBirthScreenPhaseHeader } from "@/lib/luminaPhasePresentation";
 import { transitionOrNone, springBirthLuxury } from "@/lib/motionPresets";
 import {
@@ -34,14 +46,16 @@ import {
   warnOverlayTitleClass,
 } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
+import { traceBirthWipe } from "@/lib/birthWipeTrace";
 import {
   clearBirthForExtraTraining,
   startBirthSession,
   startBirthSessionContinue,
-  wipeAllBirthData,
   type BirthSettingsPayload,
+  type BirthWipeResult,
 } from "@/lib/birthClient";
-import { useBirthStore } from "@/store/birthStore";
+import { isTransientPollWarning, useBirthStore } from "@/store/birthStore";
+import { useBirthUiStore } from "@/store/birthUiStore";
 import { useOnboardingStore } from "@/store/onboardingStore";
 
 const BirthHelixVisual = lazy(() =>
@@ -65,9 +79,12 @@ export function BirthPhaseScreen() {
   const reuseDataBirth = useBirthStore((s) => s.reuseDataBirth);
   const resumeStalledStage = useBirthStore((s) => s.resumeStalledStage);
   const expandAndRetryStalledStage = useBirthStore((s) => s.expandAndRetryStalledStage);
+  const executeRecommendedRecovery = useBirthStore((s) => s.executeRecommendedRecovery);
+  const autonomousMode = useBirthUiStore((s) => s.autonomousMode);
   const targetTrades = useBirthStore((s) => s.targetTrades);
   const genesisPinned = useBirthStore((s) => s.genesisPinned);
   const returnToGenesis = useBirthStore((s) => s.returnToGenesis);
+  const openWipeConfirm = useBirthUiStore((s) => s.openWipeConfirm);
   const activateBirth = useOnboardingStore((s) => s.activateBirth);
   const activating = useOnboardingStore((s) => s.activating);
   const onboardingError = useOnboardingStore((s) => s.error);
@@ -88,18 +105,23 @@ export function BirthPhaseScreen() {
   const stageStalledActive =
     !awakening &&
     !recoveryDismissed &&
+    !genesisPinned &&
     (uiPhase === "stage_stalled" || isBirthStageStalled(status));
   const recoveryOverlayActive = certificateFailed || stageStalledActive;
   const failed = uiPhase === "error" || certificateFailed;
   const running = (uiPhase === "running" || isBirthEngineActive(status ?? { status: "idle" })) && !stageStalledActive;
+  const engineActive = status != null && (status.live === true || isBirthEngineActive(status));
   const genesisMode =
-    birthSurface === "genesis" && !awakening && !recoveryOverlayActive && !failed;
-  const checkpointAvailable = hasBirthCheckpointProgress(status?.progress);
+    birthSurface === "genesis" && !awakening && !recoveryOverlayActive && !failed && !engineActive;
+  const engineLive = (genesisMode || engineActive) && status != null && isBirthEngineLive(status);
+  const checkpointAvailable = isBirthCheckpointResumable(status);
   const { logs, connected } = usePPOEvolution(!failed && !awakening && !genesisMode);
   const recoveryKind = detectBirthRecoveryKind(status);
   const interrupted = status != null && isBirthInterrupted(status);
+  const certificateFailedPinned =
+    genesisPinned && status != null && isBirthCertificateFailed(status);
   const showRecovery =
-    birthSurface === "recovery" &&
+    (birthSurface === "genesis" || birthSurface === "recovery") &&
     (Boolean(recoveryKind) || interrupted) &&
     !recoveryDismissed &&
     !failed &&
@@ -138,6 +160,12 @@ export function BirthPhaseScreen() {
   );
 
   useEffect(() => {
+    if (engineActive || activating) {
+      setRecoveryDismissed(false);
+    }
+  }, [engineActive, activating]);
+
+  useEffect(() => {
     if (!running || failed || awakening) {
       return;
     }
@@ -156,10 +184,10 @@ export function BirthPhaseScreen() {
     }
   }, [milestones, running, failed, awakening]);
 
-  const handleStopBirth = () => {
+  const handleStopBirth = (): Promise<void> => {
     setControlBusy(true);
     setAdvancedOpen(null);
-    void useBirthStore
+    return useBirthStore
       .getState()
       .stopBirthRun()
       .then((ok) => {
@@ -188,32 +216,34 @@ export function BirthPhaseScreen() {
       .finally(() => setControlBusy(false));
   };
 
-  const handleWipeBirthData = () => {
+  const handleWipeBirthData = async (): Promise<BirthWipeResult> => {
+    traceBirthWipe("screen.wipe.start", {
+      genesisMode,
+      engineLive,
+      controlBusy,
+      activating,
+      checkpointAvailable,
+    });
     setControlBusy(true);
-    void wipeAllBirthData()
-      .then(() => poll())
-      .then((status) => {
-        useBirthStore.getState().reset();
-        const payload = status ?? useBirthStore.getState().status;
-        const topStatus = String(payload?.status ?? "").toLowerCase();
-        const progress = payload?.progress;
-        const hasCheckpoint =
-          Number(progress?.cumulative_trades ?? progress?.trades_done ?? 0) > 0 ||
-          Number(progress?.ppo_steps ?? progress?.ppo_steps_cumulative ?? 0) > 0;
-        if ((topStatus !== "idle" && topStatus !== "wiped") || hasCheckpoint) {
-          toast.error("Wipe voltooid maar status is niet schoon — herstart de backend en probeer opnieuw.");
-          return;
-        }
-        toast.success("Alle birth-data gewist — klaar voor schone start");
-      })
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Wipe failed"))
-      .finally(() => setControlBusy(false));
+    try {
+      const result = await useBirthStore.getState().wipeBirthData();
+      traceBirthWipe("screen.wipe.done", { ok: result.ok, error: result.error });
+      if (result.ok) {
+        toast.success(result.message ?? "Alle birth-data gewist — klaar voor schone start.");
+      } else if (result.error) {
+        toast.error(result.error);
+      }
+      return result;
+    } finally {
+      setControlBusy(false);
+      traceBirthWipe("screen.wipe.finally", { controlBusy: false });
+    }
   };
 
   const handleResumeCheckpoint = () => {
     setControlBusy(true);
     useBirthStore.getState().beginBirthRun();
-    void startBirthSession({ targetTrades, continueTraining: true })
+    void startBirthSession({ targetTrades, continueTraining: true, reuseData: true })
       .then(async () => {
         setBirthSurface("running");
         await poll();
@@ -233,7 +263,7 @@ export function BirthPhaseScreen() {
       .catch((e) => toast.error(e instanceof Error ? e.message : "Extra training failed"));
   };
 
-  const missionMode = birthSurface === "running" && (running || awakening);
+  const missionMode = (birthSurface === "running" || engineActive) && (running || awakening);
   const phaseHeader = resolveBirthScreenPhaseHeader({
     genesisMode,
     missionMode,
@@ -241,6 +271,7 @@ export function BirthPhaseScreen() {
     activating,
     interrupted,
     certificateFailed,
+    certificateOverlayActive: certificateFailed,
     stageStalledActive,
     milestones,
     phaseSubtitle,
@@ -338,7 +369,7 @@ export function BirthPhaseScreen() {
 
   const handleReviewGenesisSettings = () => {
     setRecoveryDismissed(true);
-    useBirthStore.getState().setBirthSurface("genesis");
+    returnToGenesis();
     setAdvancedOpen("settings");
     toast.info("Review genesis settings, save, then use Expand & retry.");
   };
@@ -355,18 +386,143 @@ export function BirthPhaseScreen() {
   const tradeBudgetRemaining = Number(status?.progress?.trade_budget_remaining ?? NaN);
   const tradeBudgetCap = Number(status?.progress?.trade_budget_cap ?? status?.progress?.target_trades ?? 0);
   const terminalStallReason = String(status?.progress?.terminal_stall_reason ?? "").trim();
+  const stallDiagnostics = status?.progress?.stall_diagnostics;
+  const provisionalGraduation = Boolean(status?.progress?.provisional_graduation);
+  const evolutionExhausted =
+    terminalStallReason === "plateau_evolution_exhausted" ||
+    terminalStallReason === "stall_remediation_exhausted";
+  const resumePlateauRisk = Boolean(status?.resume_plateau_risk);
   const needsAttention = Boolean(status?.progress?.needs_attention);
   const attentionSummary = String(status?.progress?.attention_summary ?? "").trim();
   const constitutionSession = Number(status?.progress?.constitution_violations_session ?? NaN);
   const constitutionCumulative = Number(status?.progress?.constitution_violations_cumulative ?? NaN);
 
-  const certificateFailureDetail =
-    (Array.isArray(status?.failure_reasons) && status.failure_reasons.length > 0
-      ? status.failure_reasons.join(" · ")
-      : null) ||
-    status?.message ||
-    status?.certificate_reason ||
-    "Review OOS metrics below and choose a recovery action.";
+  useEffect(() => {
+    if (!autonomousMode || !certificateFailed || retrying || activating || engineActive) {
+      return;
+    }
+    setRetrying(true);
+    void retryBirth()
+      .then((ok) => {
+        if (ok) {
+          toast.info("Autonomous certificate remediation started");
+        }
+      })
+      .finally(() => setRetrying(false));
+  }, [autonomousMode, certificateFailed, retrying, activating, engineActive, retryBirth]);
+
+  useEffect(() => {
+    if (!autonomousMode || !stageStalledActive || retrying || activating || engineActive) {
+      return;
+    }
+    const pending =
+      status?.progress?.autonomous_recovery_pending === true ||
+      (stalledRetryable && !needsAttention);
+    if (!pending) {
+      return;
+    }
+    setRetrying(true);
+    void executeRecommendedRecovery()
+      .then((ok) => {
+        if (ok) {
+          toast.info("Autonomous recovery dispatched");
+        }
+      })
+      .finally(() => setRetrying(false));
+  }, [
+    autonomousMode,
+    stageStalledActive,
+    stalledRetryable,
+    needsAttention,
+    status?.progress?.autonomous_recovery_pending,
+    retrying,
+    activating,
+    engineActive,
+    executeRecommendedRecovery,
+  ]);
+
+  useEffect(() => {
+    if (!autonomousMode || !awakening || activating) {
+      return;
+    }
+    if (status?.artifacts_ok !== true) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      enterCommandDeck();
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [autonomousMode, awakening, activating, status?.artifacts_ok]);
+
+  const stalledRecoveryActions = evolutionExhausted
+    ? [
+        {
+          id: "reset_keep_cache",
+          label: "Reset birth (tick cache behouden)",
+          loadingLabel: "Resetten…",
+          variant: "primary" as const,
+          onClick: () => openWipeConfirm("reset"),
+        },
+        {
+          id: "genesis",
+          label: "Review genesis settings",
+          variant: "secondary" as const,
+          onClick: handleReviewGenesisSettings,
+        },
+        {
+          id: "wipe_full",
+          label: "Volledige wipe (incl. tick cache)",
+          variant: "outline" as const,
+          onClick: () => openWipeConfirm("full"),
+        },
+        {
+          id: "forensics",
+          label: "Copy forensics cmd",
+          variant: "outline" as const,
+          onClick: handleCopyForensicsCommand,
+        },
+        {
+          id: "dismiss",
+          label: "Dismiss",
+          variant: "ghost" as const,
+          onClick: () => setRecoveryDismissed(true),
+        },
+      ]
+    : [
+        {
+          id: "expand",
+          label: "Expand & retry",
+          loadingLabel: "Starting…",
+          variant: "primary" as const,
+          onClick: handleExpandAndRetryStalledStage,
+        },
+        {
+          id: "genesis",
+          label: "Review genesis settings",
+          variant: "secondary" as const,
+          onClick: handleReviewGenesisSettings,
+        },
+        {
+          id: "retry",
+          label: "Retry stage",
+          variant: "secondary" as const,
+          onClick: handleResumeStalledStage,
+        },
+        {
+          id: "forensics",
+          label: "Copy forensics cmd",
+          variant: "outline" as const,
+          onClick: handleCopyForensicsCommand,
+        },
+        {
+          id: "dismiss",
+          label: "Dismiss",
+          variant: "ghost" as const,
+          onClick: () => setRecoveryDismissed(true),
+        },
+      ];
+
+  const certificateFailureDetail = resolveCertificateFailureSubtitle(status);
 
   return (
     <OnboardingShell className="birth-phase-screen birth-phase-screen--cinematic onboarding-shell--form">
@@ -379,6 +535,17 @@ export function BirthPhaseScreen() {
         transition={transitionOrNone(reducedMotion, birthMotion)}
       >
         <LuminaPhaseHeader {...phaseHeader} variant="strip" className="relative z-20" />
+        {certificateFailedPinned ? (
+          <p
+            className={cn(
+              "birth-distress-callout relative z-20 mx-4 mb-2 shrink-0 rounded-lg px-3 py-2 text-xs",
+              warnOverlayPanelClass(),
+            )}
+          >
+            Certificate not passed — backend still reports failure. Use Continue learning or Reuse
+            data &amp; retry from recovery actions.
+          </p>
+        ) : null}
         {genesisMode ? (
           <div className="birth-mission-shell relative flex min-h-0 flex-1 flex-col overflow-hidden">
             <div className="birth-genesis-grid min-h-0 flex-1 overflow-hidden p-3 md:p-4">
@@ -416,12 +583,17 @@ export function BirthPhaseScreen() {
                   training={trainingDraft}
                   activating={activating}
                   checkpointAvailable={checkpointAvailable}
+                  birthStatus={status}
                   busy={controlBusy}
+                  engineLive={engineLive}
                   error={onboardingError}
                   onChangeTraining={(patch) => updateDraft({ training: { ...trainingDraft, ...patch } })}
                   onActivate={() => void handleStartBirth()}
                   onWipe={handleWipeBirthData}
+                  onStop={handleStopBirth}
                   onResumeCheckpoint={handleResumeCheckpoint}
+                  resumePlateauRisk={resumePlateauRisk}
+                  resumePlateauRiskTrades={status?.resume_plateau_risk_trades ?? null}
                 />
               </section>
             </div>
@@ -493,6 +665,21 @@ export function BirthPhaseScreen() {
               />
             </div>
           </div>
+        ) : engineActive ? (
+          <div className="birth-mission-shell relative flex min-h-0 flex-1 flex-col overflow-hidden p-3 md:p-4">
+            <BirthMissionControl
+              headline={headline}
+              subtitle={phaseSubtitle}
+              milestones={milestones}
+              progress={status?.progress}
+              status={status}
+              elapsedSeconds={status?.elapsed_seconds}
+              progressMessage={status?.progress?.message ?? status?.message}
+              finale={false}
+              running
+              className="min-h-0 flex-1"
+            />
+          </div>
         ) : (
         <motion.div
           className="birth-phase-hero relative flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -517,7 +704,7 @@ export function BirthPhaseScreen() {
         {certificateFailed ? (
           <BirthFailureOverlayShell
             className="birth-phase-certificate-overlay z-40"
-            title="Birth Certificate thresholds not met"
+            title="Certificate not passed"
             subtitle={certificateFailureDetail}
             error={pollError}
             actions={
@@ -565,16 +752,16 @@ export function BirthPhaseScreen() {
             meta={
               <>
                 {stalledBlocker ? (
-                  <p className="mt-2 rounded border border-amber-500/30 bg-amber-950/20 px-3 py-2 font-mono text-xs text-amber-100">
+                  <p className="birth-distress-callout birth-distress-callout__body mt-2 rounded px-3 py-2 text-xs">
                     Blocker: {stalledBlocker}
                   </p>
                 ) : null}
                 {(terminalStallReason === "plateau_evolution_exhausted" ||
                   terminalStallReason === "stall_remediation_exhausted") ? (
                   <p className="mt-2 rounded border border-orange-500/30 bg-orange-950/20 px-3 py-2 font-mono text-xs text-orange-100">
-                    Learning plateau: evolution and auto-remediation exhausted. Review genesis
-                    settings (data window, reward), then Expand &amp; retry — wipe is unlikely to
-                    help without config changes.
+                    Learning plateau: evolution and auto-remediation exhausted. Use Wis
+                    birth-data (tick cache may be kept) for a clean restart via Genesis — checkpoint
+                    resume will re-trigger plateau without quarantine.
                   </p>
                 ) : null}
                 {needsAttention && attentionSummary ? (
@@ -582,10 +769,23 @@ export function BirthPhaseScreen() {
                     {attentionSummary}
                   </p>
                 ) : null}
+                {provisionalGraduation ? (
+                  <p className="birth-info-callout birth-info-callout__text mt-2 rounded px-3 py-2 text-xs">
+                    Provisional graduation recorded — partial DNA seeded for Evolution. Retry or
+                    continue via Expand &amp; retry.
+                  </p>
+                ) : null}
                 {terminalStallReason && terminalStallReason !== "plateau_evolution_exhausted" ? (
                   <p className="mt-2 font-mono text-[10px] text-muted-foreground">
                     Stall reason: {terminalStallReason}
                   </p>
+                ) : null}
+                {stallDiagnostics != null ? (
+                  <pre className="mt-2 max-h-32 overflow-auto rounded border border-border/40 bg-black/30 p-2 font-mono text-[10px] text-muted-foreground">
+                    {typeof stallDiagnostics === "string"
+                      ? stallDiagnostics
+                      : JSON.stringify(stallDiagnostics, null, 2)}
+                  </pre>
                 ) : null}
                 {Number.isFinite(tradeBudgetRemaining) && tradeBudgetCap > 0 ? (
                   <p className="mt-2 font-mono text-[10px] text-muted-foreground">
@@ -600,57 +800,39 @@ export function BirthPhaseScreen() {
                   </p>
                 ) : null}
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {needsAttention
-                    ? "Telegram alert sent — manual review required before retry."
-                    : stalledAutoResume
-                      ? "Auto-resume is active — the engine will retry automatically when the app or service restarts."
-                      : stalledRetryable
-                        ? "Manual action required — use Expand & retry or Review genesis settings below."
-                        : "Recovery is not automatic for this stall state."}
+                  {autonomousMode
+                    ? "Organism autonomy active — recovery runs without operator input."
+                    : needsAttention
+                      ? "Telegram alert sent — manual review required before retry."
+                      : stalledAutoResume
+                        ? "Auto-resume is active — the engine will retry automatically when the app or service restarts."
+                        : stalledRetryable
+                          ? "Manual action required — use Expand & retry or Review genesis settings below."
+                          : "Recovery is not automatic for this stall state."}
                 </p>
               </>
             }
             error={pollError}
                 actions={
-              <BirthRecoveryActionBar
-                loading={retrying}
-                actions={[
-                  {
-                    id: "expand",
-                    label: "Expand & retry",
-                    loadingLabel: "Starting…",
-                    variant: "primary",
-                    onClick: handleExpandAndRetryStalledStage,
-                  },
-                  {
-                    id: "genesis",
-                    label: "Review genesis settings",
-                    variant: "secondary",
-                    onClick: handleReviewGenesisSettings,
-                  },
-                  {
-                    id: "retry",
-                    label: "Retry stage",
-                    variant: "secondary",
-                    onClick: handleResumeStalledStage,
-                  },
-                  {
-                    id: "forensics",
-                    label: "Copy forensics cmd",
-                    variant: "outline",
-                    onClick: handleCopyForensicsCommand,
-                  },
-                  {
-                    id: "dismiss",
-                    label: "Dismiss",
-                    variant: "ghost",
-                    onClick: () => setRecoveryDismissed(true),
-                  },
-                ]}
-              />
+              autonomousMode ? (
+                <p className="birth-info-callout__subtle text-center">
+                  Telemetry only — autonomous recovery in progress
+                </p>
+              ) : (
+                <BirthRecoveryActionBar
+                  loading={retrying}
+                  actions={stalledRecoveryActions}
+                />
+              )
             }
           >
-            <BirthStageScorecard progress={status?.progress} />
+            <BirthStageScorecard
+              progress={status?.progress}
+              birthRunning={running}
+              birthStatus={status?.status}
+              resumePlateauRisk={resumePlateauRisk}
+              resumePlateauRiskTrades={status?.resume_plateau_risk_trades ?? null}
+            />
             <p className="text-center text-xs text-muted-foreground">
               Adaptive tier {adaptationTier + 1}/{maxAdaptationTiers} · retries {stalledRetries}/
               {maxStageRetries}
@@ -690,7 +872,9 @@ export function BirthPhaseScreen() {
           <p
             className={cn(
               "relative z-30 mx-auto mb-3 max-w-md shrink-0 px-4 text-center text-xs",
-              distressPanelClass("warn"),
+              isTransientPollWarning(pollError)
+                ? "text-muted-foreground"
+                : distressPanelClass("warn"),
             )}
           >
             {pollError}

@@ -52,6 +52,12 @@ def start_runtime_services(
     """Start all runtime workers from a single engine-driven bootstrap call."""
     if enforce_birth_guard:
         _assert_birth_phase_completed()
+        try:
+            from lumina_core.maturity.autopilot import start_maturation_autopilot
+
+            start_maturation_autopilot(_WORKSPACE_ROOT)
+        except Exception as exc:
+            _log.warning("maturation.autopilot.start_failed: %s", exc)
     app = getattr(supervisor_loop_fn, "__self__", None)
     engine = getattr(app, "engine", None)
     container = getattr(app, "container", None)

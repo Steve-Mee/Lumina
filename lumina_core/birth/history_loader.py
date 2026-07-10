@@ -58,6 +58,7 @@ def load_historical_ticks(
                 limit=limit,
                 ticks_per_bar=4,
                 on_chunk=on_chunk,
+                prefer_daysback_only=True,
             )
             if isinstance(rows, list):
                 return normalize_tick_rows(rows, source_label="real_historical")

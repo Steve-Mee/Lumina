@@ -15,16 +15,13 @@ export function BirthBlockerAlert({ progress, className }: BirthBlockerAlertProp
 
   return (
     <div
-      className={cn(
-        "birth-blocker-alert shrink-0 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-1.5",
-        className,
-      )}
+      className={cn("birth-blocker-alert birth-distress-callout shrink-0 rounded-md px-3 py-1.5", className)}
       role="status"
     >
-      <p className="font-mono text-[10px] tracking-wide text-amber-200/90 uppercase">
+      <p className="birth-distress-callout__title tracking-wide">
         {scorecard.blockerLabel ?? "Blocking metric"}
       </p>
-      <p className="mt-0.5 truncate font-mono text-xs text-amber-100" title={scorecard.blockerDetail}>
+      <p className="birth-distress-callout__body mt-0.5 truncate" title={scorecard.blockerDetail}>
         {scorecard.blockerDetail}
       </p>
     </div>

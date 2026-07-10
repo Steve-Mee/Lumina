@@ -41,6 +41,9 @@ pytest_*.txt
 .cursor/settings.json
 .cursor/plans/
 .grok/
+agent-tools/
+terminals/
+mcps/
 
 # Tauri updater signing keys (generated in Guided Setup)
 state/lumina-tauri-signing.key
@@ -165,6 +168,8 @@ frontend/node_modules/
 tauri-app/node_modules/
 tauri-app/dist/
 tauri-app/src-tauri/target/
+tauri-app/src-tauri/target-agent-build/
+tauri-app/.cargo-target/
 tauri-app/src-tauri/gen/
 tauri-app/.vscode/
 tauri-app/node_modules/.vite/

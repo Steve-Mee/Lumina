@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import json
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
 from lumina_core.birth.stage_scorecard import SCORECARD_PRESERVE_KEYS, enrich_progress_scorecard
@@ -26,6 +28,31 @@ def read_birth_progress(workspace_root: Path | str) -> dict[str, Any]:
         if isinstance(payload, dict):
             return payload
     return {}
+
+
+_STAGE_BLOCKER_PRESERVE_KEYS: frozenset[str] = frozenset(
+    {"stage_blocker_metric", "stage_blocker_value", "pass_reason"}
+)
+
+
+def merge_birth_progress_extra(*parts: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Merge progress extra dicts with last-wins semantics.
+
+    Never pass multiple ``**dict`` unpacks with overlapping keys to
+    ``write_birth_progress`` — PEP 448 raises TypeError. Merge here first.
+    """
+    merged: dict[str, Any] = {}
+    for part in parts:
+        if part:
+            merged.update(part)
+    return merged
+
+
+def _atomic_write_text(path: Path, encoded: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path.write_text(encoded, encoding="utf-8")
+    os.replace(tmp_path, path)
 
 
 def write_birth_progress(
@@ -62,6 +89,27 @@ def write_birth_progress(
         payload["birth_start_time"] = float(prev["birth_start_time"])
     if prev.get("elapsed_sec") and birth_start_time <= 0:
         payload["elapsed_sec"] = prev.get("elapsed_sec", 0.0)
+    new_stage = extra.get("curriculum_stage")
+    prev_stage = prev.get("curriculum_stage")
+    stage_changed = (
+        new_stage is not None
+        and prev_stage is not None
+        and str(new_stage).strip() != str(prev_stage).strip()
+    )
+    _OOS_PRESERVE_KEYS: frozenset[str] = frozenset(
+        {
+            "oos_metrics",
+            "failure_reasons",
+            "remediation_attempt",
+            "remediation_max",
+            "data_manifest",
+            "retryable",
+            "certificate_ok",
+            "runway_phase",
+            "micro_oos_probe",
+            "birth_exit_winrate",
+        }
+    )
     for key in SCORECARD_PRESERVE_KEYS:
         if (
             key == "stages_passed"
@@ -69,6 +117,11 @@ def write_birth_progress(
             and key not in extra
         ):
             continue
+        if stage_changed and key in _STAGE_BLOCKER_PRESERVE_KEYS:
+            continue
+        if key not in extra and key in prev:
+            payload[key] = prev[key]
+    for key in _OOS_PRESERVE_KEYS:
         if key not in extra and key in prev:
             payload[key] = prev[key]
     payload.update(extra)
@@ -77,7 +130,6 @@ def write_birth_progress(
     for rel in ("state/lumina_birth_progress.json", "state/first_boot_progress.json"):
         path = root / rel
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(encoded, encoding="utf-8")
+            _atomic_write_text(path, encoded)
         except OSError:
             pass

@@ -9,7 +9,10 @@ from types import SimpleNamespace
 import pytest
 
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
+from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.engine import BirthPhaseEngineV2
+from lumina_core.birth.purged_split import purged_train_holdout_split
+from lumina_core.birth.sim_runner import SimRolloutResult
 
 
 class _FakePpoTrainer:
@@ -78,6 +81,39 @@ def _seed_progress_only_cert_fail(tmp_path: Path) -> None:
     )
 
 
+def _mock_preflight_expand(**_kwargs) -> DataExpansionResult:
+    ticks = _ticks(1200)
+    split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+    return DataExpansionResult(
+        train_ticks=list(split.train),
+        holdout_ticks=list(split.holdout),
+        all_ticks=ticks,
+        split=split,
+        days_back=90,
+        step_index=0,
+        real_data_pct=99.0,
+        exhausted=True,
+    )
+
+
+def _mock_rollout(**_kwargs) -> SimRolloutResult:
+    return SimRolloutResult(
+        trades=10,
+        wins=5,
+        hold_signals=0,
+        total_signals=10,
+        total_pnl=5.0,
+        trajectories=[
+            {"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.1]}} for i in range(100)
+        ],
+        pnl_series=[1.0] * 10,
+        constitution_violations=0,
+        regimes_seen={"TREND_UP", "TREND_DOWN", "NEUTRAL"},
+        partial_complete=True,
+        rollout_steps=200,
+    )
+
+
 @pytest.mark.unit
 def test_engine_resume_progress_only_skips_curriculum(
     tmp_path: Path,
@@ -92,7 +128,10 @@ def test_engine_resume_progress_only_skips_curriculum(
         workspace_root=tmp_path,
     )
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(max_certificate_remediation_attempts=2),
+        curriculum=BirthCurriculumConfig(
+            max_certificate_remediation_attempts=2,
+            certificate_runway_enabled=False,
+        ),
         trade_budget_cap=500,
     )
 
@@ -119,32 +158,20 @@ def test_engine_resume_progress_only_skips_curriculum(
             "holdout_trades": 60,
         }
 
-    monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", lambda **_kwargs: _ticks(1200))
+    monkeypatch.setattr("lumina_core.birth.data_pipeline.load_historical_ticks", lambda **_kwargs: _ticks(1200))
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.certificate_pipeline.enrich_ticks_with_news",
         lambda ticks, **_kwargs: ticks,
     )
     monkeypatch.setattr(BirthPhaseEngineV2, "_run_stage_research_loop", _spy_stage_loop)
-    monkeypatch.setattr("lumina_core.birth.engine.evaluate_holdout_certificate", _mock_eval)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate", _mock_eval)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
-        lambda **_kwargs: __import__(
-            "lumina_core.birth.sim_runner", fromlist=["SimRolloutResult"]
-        ).SimRolloutResult(
-            trades=10,
-            wins=5,
-            hold_signals=0,
-            total_signals=10,
-            total_pnl=5.0,
-            trajectories=[
-                {"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.1]}} for i in range(100)
-            ],
-            pnl_series=[1.0] * 10,
-            constitution_violations=0,
-            regimes_seen={"TREND_UP", "TREND_DOWN", "NEUTRAL"},
-            partial_complete=True,
-            rollout_steps=200,
-        ),
+        "lumina_core.birth.certificate_pipeline.run_policy_rollout",
+        _mock_rollout,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.expand_birth_data",
+        _mock_preflight_expand,
     )
     reconstruct_calls: list[bool] = []
 
@@ -156,7 +183,7 @@ def test_engine_resume_progress_only_skips_curriculum(
         return ok
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.reconstruct_checkpoint_from_progress",
+        "lumina_core.birth.birth_phase_orchestrator.reconstruct_checkpoint_from_progress",
         _spy_reconstruct,
     )
 

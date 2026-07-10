@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
+from lumina_core.birth.curriculum import CurriculumStage, stage1_winrate_pass_threshold, stage_trade_target
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.plateau_escalator")
@@ -61,6 +62,7 @@ class PlateauState:
     evolution_history: list[dict[str, Any]] = field(default_factory=list)
     winrate_at_step_start: float = 0.0
     full_recovery_cycles: int = 0
+    evolution_noop_count: int = 0
 
     def to_metrics(self) -> dict[str, Any]:
         return {
@@ -76,6 +78,7 @@ class PlateauState:
             "plateau_evolution_history": list(self.evolution_history),
             "plateau_winrate_at_step_start": round(float(self.winrate_at_step_start), 6),
             "plateau_full_recovery_cycles": int(self.full_recovery_cycles),
+            "plateau_evolution_noop_count": int(self.evolution_noop_count),
         }
 
     @classmethod
@@ -100,6 +103,7 @@ class PlateauState:
             else [],
             winrate_at_step_start=float(metrics.get("plateau_winrate_at_step_start", 0) or 0),
             full_recovery_cycles=int(metrics.get("plateau_full_recovery_cycles", 0) or 0),
+            evolution_noop_count=int(metrics.get("plateau_evolution_noop_count", 0) or 0),
         )
 
 
@@ -112,6 +116,30 @@ def plateau_max_trades_beyond_gate(required: int, cfg: BirthCurriculumConfig) ->
     return int(required) * mult
 
 
+def should_trades_beyond_gate_hard_stop(
+    stage_trades: int,
+    required: int,
+    cfg: BirthCurriculumConfig,
+) -> bool:
+    """Force terminal when stage trades exceed pass gate by configured multiplier."""
+    return plateau_trades_beyond_gate(stage_trades, required) >= plateau_max_trades_beyond_gate(
+        required, cfg
+    )
+
+
+def evolution_ladder_exhausted(state: PlateauState) -> bool:
+    """True when all real evolution actions (expand→phoenix) have been applied."""
+    return state.evolution_step >= len(EVOLUTION_STEP_ACTIONS)
+
+
+def evolution_actions_completed(state: PlateauState) -> int:
+    return min(int(state.evolution_step), len(EVOLUTION_STEP_ACTIONS))
+
+
+def evolution_phantom_steps(state: PlateauState) -> int:
+    return max(0, int(state.evolution_step) - len(EVOLUTION_STEP_ACTIONS))
+
+
 @dataclass(slots=True)
 class PlateauEnterContext:
     stage_trades: int
@@ -121,10 +149,152 @@ class PlateauEnterContext:
     velocity_stall_attempts: int
     meta_self_eval_phase: str
     pass_metric_target: float = 0.45
+    plateau_quarantine_active: bool = False
+    stage: CurriculumStage = CurriculumStage.STAGE1_TREND
+
+
+def plateau_min_stage_trades(stage: CurriculumStage, cfg: BirthCurriculumConfig) -> int:
+    """Minimum stage trades before plateau detection (fraction of full budget)."""
+    from lumina_core.birth.curriculum import stage_pass_trades
+
+    target = stage_trade_target(stage, cfg)
+    pct = float(getattr(cfg, "plateau_min_stage_trades_pct", 0.25))
+    floor = stage_pass_trades(stage, cfg)
+    return max(floor, int(round(float(target) * max(0.05, min(1.0, pct)))))
+
+
+def apply_plateau_quarantine_on_resume(
+    *,
+    cfg: BirthCurriculumConfig,
+    stage_trades: int,
+) -> dict[str, Any]:
+    """Grace period after checkpoint resume — blocks instant plateau re-entry."""
+    return {
+        "plateau_quarantine_active": True,
+        "plateau_quarantine_rollouts_remaining": int(cfg.plateau_quarantine_rollouts),
+        "plateau_quarantine_trades_remaining": int(cfg.plateau_quarantine_min_trades),
+        "plateau_quarantine_trades_at_resume": int(stage_trades),
+    }
+
+
+def is_plateau_quarantine_blocking(
+    *,
+    quarantine_rollouts_remaining: int,
+    quarantine_trades_at_resume: int,
+    stage_trades: int,
+    quarantine_min_trades: int,
+) -> bool:
+    if int(quarantine_rollouts_remaining) > 0:
+        return True
+    new_trades = max(0, int(stage_trades) - int(quarantine_trades_at_resume))
+    return new_trades < int(quarantine_min_trades)
+
+
+def update_plateau_quarantine_after_rollout(
+    quarantine: dict[str, Any],
+    *,
+    stage_trades: int,
+) -> bool:
+    """Decrement quarantine; return True while plateau entry remains blocked."""
+    if not quarantine.get("plateau_quarantine_active"):
+        return False
+    rem = int(quarantine.get("plateau_quarantine_rollouts_remaining", 0) or 0)
+    if rem > 0:
+        quarantine["plateau_quarantine_rollouts_remaining"] = rem - 1
+    trades_at = int(quarantine.get("plateau_quarantine_trades_at_resume", 0) or 0)
+    min_new = int(quarantine.get("plateau_quarantine_trades_remaining", 0) or 0)
+    new_trades = max(0, int(stage_trades) - trades_at)
+    rollouts_done = int(quarantine.get("plateau_quarantine_rollouts_remaining", 0) or 0) <= 0
+    trades_done = new_trades >= min_new
+    if rollouts_done and trades_done:
+        quarantine["plateau_quarantine_active"] = False
+        return False
+    return True
+
+
+def rolling_winrate_last_n_trades(
+    *,
+    stage_trades: int,
+    stage_wins: int,
+    wins_at_trade: dict[int, int],
+    window: int = 500,
+) -> float:
+    """Winrate over the last ``window`` stage trades (uses rollout milestone snapshots)."""
+    trades = int(stage_trades)
+    wins = int(stage_wins)
+    if trades <= 0:
+        return 0.0
+    if trades <= window:
+        return float(wins) / float(trades)
+    boundary = trades - window
+    baseline_trades = max((t for t in wins_at_trade if t <= boundary), default=0)
+    baseline_wins = int(wins_at_trade.get(baseline_trades, 0))
+    delta_trades = trades - baseline_trades
+    if delta_trades <= 0:
+        return float(wins) / float(trades)
+    return float(wins - baseline_wins) / float(delta_trades)
+
+
+def revert_evolution_step_on_noop(state: PlateauState) -> None:
+    """Undo ladder advance when an evolution action did not apply."""
+    if state.evolution_step > 0:
+        state.evolution_step -= 1
+    state.evolution_rollouts_this_step = 0
+
+
+def quarantine_trades_remaining(
+    quarantine: dict[str, Any],
+    *,
+    stage_trades: int,
+) -> int:
+    """New trades still required before quarantine ends."""
+    if not quarantine.get("plateau_quarantine_active"):
+        return 0
+    trades_at = int(quarantine.get("plateau_quarantine_trades_at_resume", 0) or 0)
+    min_new = int(quarantine.get("plateau_quarantine_trades_remaining", 0) or 0)
+    new_trades = max(0, int(stage_trades) - trades_at)
+    return max(0, min_new - new_trades)
+
+
+def quarantine_progress_payload(
+    quarantine: dict[str, Any],
+    *,
+    stage_trades: int,
+    cfg: BirthCurriculumConfig,
+) -> dict[str, Any]:
+    """Progress fields for quarantine UI (computed remaining trades)."""
+    payload = dict(quarantine)
+    if not quarantine.get("plateau_quarantine_active"):
+        payload["plateau_quarantine_trades_new"] = 0
+        payload["plateau_quarantine_trades_remaining_count"] = 0
+        payload["plateau_quarantine_blocking"] = False
+        return payload
+    trades_at = int(quarantine.get("plateau_quarantine_trades_at_resume", 0) or 0)
+    min_new = int(
+        quarantine.get("plateau_quarantine_trades_remaining", cfg.plateau_quarantine_min_trades)
+        or cfg.plateau_quarantine_min_trades
+    )
+    new_trades = max(0, int(stage_trades) - trades_at)
+    payload["plateau_quarantine_trades_new"] = new_trades
+    payload["plateau_quarantine_trades_remaining_count"] = max(0, min_new - new_trades)
+    payload["plateau_quarantine_blocking"] = is_plateau_quarantine_blocking(
+        quarantine_rollouts_remaining=int(
+            quarantine.get("plateau_quarantine_rollouts_remaining", 0) or 0
+        ),
+        quarantine_trades_at_resume=trades_at,
+        stage_trades=int(stage_trades),
+        quarantine_min_trades=min_new,
+    )
+    return payload
 
 
 def should_enter_plateau(ctx: PlateauEnterContext, *, cfg: BirthCurriculumConfig) -> bool:
     if not cfg.plateau_detection_enabled:
+        return False
+    if ctx.plateau_quarantine_active:
+        return False
+    min_trades = plateau_min_stage_trades(ctx.stage, cfg)
+    if ctx.stage_trades < min_trades:
         return False
     if ctx.stage_trades < ctx.required:
         return False
@@ -132,13 +302,13 @@ def should_enter_plateau(ctx: PlateauEnterContext, *, cfg: BirthCurriculumConfig
     gap = float(cfg.plateau_winrate_gap)
     if winrate >= float(ctx.pass_metric_target) - gap:
         return False
+    beyond = plateau_trades_beyond_gate(ctx.stage_trades, ctx.required)
+    beyond_met = beyond >= plateau_max_trades_beyond_gate(ctx.required, cfg)
     slope = abs(float(ctx.winrate_trend_slope or 0.0))
-    if slope >= float(cfg.velocity_stall_epsilon):
+    if not beyond_met and slope >= float(cfg.velocity_stall_epsilon):
         return False
     exhausted = str(ctx.meta_self_eval_phase or "").strip().lower() == "exhausted"
     velocity_met = ctx.velocity_stall_attempts >= int(cfg.velocity_stall_attempt_threshold)
-    beyond = plateau_trades_beyond_gate(ctx.stage_trades, ctx.required)
-    beyond_met = beyond >= plateau_max_trades_beyond_gate(ctx.required, cfg)
     if not (exhausted or velocity_met or beyond_met):
         return False
     return True
@@ -252,12 +422,18 @@ def should_block_plateau_recovery(
     cfg: BirthCurriculumConfig,
     remediation_exhausted: bool,
     trade_budget_remaining: int,
+    stage_trades: int = 0,
+    required: int = 0,
 ) -> bool:
     """True when adaptive/never-stop recovery must stop (budget-gated never-stop)."""
     if not state.active or not cfg.plateau_detection_enabled:
         return False
+    if required > 0 and should_trades_beyond_gate_hard_stop(stage_trades, required, cfg):
+        return True
     if state.evolution_step < int(cfg.plateau_max_evolution_steps):
         return False
+    if evolution_ladder_exhausted(state):
+        return True
     if cfg.stall_remediation_enabled and not remediation_exhausted:
         return False
     if int(trade_budget_remaining) > 0:
@@ -276,17 +452,21 @@ def should_terminal_plateau_stall(
     trade_budget_remaining: int | None = None,
     now: float | None = None,
 ) -> bool:
-    del stage_trades, required, meta_self_eval_phase
+    del meta_self_eval_phase
     if not state.active or not cfg.plateau_detection_enabled:
         return False
     if trade_budget_remaining is not None and int(trade_budget_remaining) <= 0:
         return True
+    if should_trades_beyond_gate_hard_stop(stage_trades, required, cfg):
+        return True
     if state.evolution_step < int(cfg.plateau_max_evolution_steps):
         return False
-    if cfg.stall_remediation_enabled and not remediation_exhausted:
-        return False
+    if should_trades_beyond_gate_hard_stop(stage_trades, required, cfg):
+        return True
     elapsed = plateau_elapsed_sec(state, now=now)
     if elapsed >= float(cfg.plateau_max_wall_sec):
+        return True
+    if evolution_ladder_exhausted(state):
         return True
     return remediation_exhausted
 
@@ -305,17 +485,98 @@ def should_start_evolution_step(state: PlateauState) -> bool:
     return state.active and state.evolution_step <= 0
 
 
+_PLATEAU_GAP_PROGRESS_MIN = 0.25
+
+
+def winrate_improvement_blocks_ladder(
+    state: PlateauState,
+    *,
+    current_winrate: float,
+    cfg: BirthCurriculumConfig,
+    pass_target: float,
+) -> bool:
+    """True when winrate lift is meaningful enough to defer the next evolution step."""
+    if state.evolution_step <= 0:
+        return False
+    delta = float(current_winrate) - float(state.winrate_at_step_start)
+    if delta <= float(cfg.velocity_stall_epsilon):
+        return False
+    meaningful_delta = float(getattr(cfg, "plateau_evolution_meaningful_delta", 0.01))
+    gap_to_gate = max(0.0, float(pass_target) - float(state.winrate_at_step_start))
+    if gap_to_gate <= 0.0:
+        return True
+    progress_ratio = delta / gap_to_gate
+    return delta >= meaningful_delta and progress_ratio >= _PLATEAU_GAP_PROGRESS_MIN
+
+
+def sanitize_phantom_evolution_steps(state: PlateauState) -> bool:
+    """Cap evolution counter after checkpoint resume (legacy runs reached step 38+)."""
+    cap = len(EVOLUTION_STEP_ACTIONS)
+    if state.evolution_step <= cap:
+        return False
+    logger.warning(
+        "birth.plateau.sanitize_phantom_steps step=%s capped=%s",
+        state.evolution_step,
+        cap,
+    )
+    state.evolution_step = cap
+    state.evolution_rollouts_this_step = 0
+    return True
+
+
+def sanitize_stuck_plateau_evolution(
+    state: PlateauState,
+    *,
+    cfg: BirthCurriculumConfig,
+    current_winrate: float,
+    pass_target: float | None = None,
+) -> bool:
+    """Unblock ladder when a checkpoint resumed with excessive rollouts on one step."""
+    if not state.active or state.evolution_step <= 0:
+        return False
+    max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
+    if state.evolution_rollouts_this_step <= max_rollouts * 2:
+        return False
+    target = float(pass_target if pass_target is not None else stage1_winrate_pass_threshold(cfg))
+    if winrate_improvement_blocks_ladder(
+        state,
+        current_winrate=current_winrate,
+        cfg=cfg,
+        pass_target=target,
+    ):
+        return False
+    state.evolution_rollouts_this_step = max(max_rollouts * 3, state.evolution_rollouts_this_step)
+    logger.info(
+        "birth.plateau.sanitize_stuck_evolution rollouts=%s max=%s winrate=%.2f%%",
+        state.evolution_rollouts_this_step,
+        max_rollouts,
+        current_winrate * 100.0,
+    )
+    return True
+
+
 def should_advance_evolution_step(
     state: PlateauState,
     *,
     cfg: BirthCurriculumConfig,
     current_winrate: float,
+    pass_target: float | None = None,
+    ppo_steps_since_step_start: int = 0,
 ) -> bool:
     if not state.active or state.evolution_step <= 0:
         return False
+    min_ppo = int(getattr(cfg, "plateau_evolution_min_ppo_steps_between_steps", 0))
+    if min_ppo > 0 and int(ppo_steps_since_step_start) < min_ppo:
+        return False
     if state.evolution_rollouts_this_step < int(cfg.plateau_evolution_rollouts_per_step):
         return False
-    if current_winrate > state.winrate_at_step_start + float(cfg.velocity_stall_epsilon):
+    target = float(pass_target if pass_target is not None else stage1_winrate_pass_threshold(cfg))
+    if winrate_improvement_blocks_ladder(
+        state,
+        current_winrate=current_winrate,
+        cfg=cfg,
+        pass_target=target,
+    ):
         return False
     return True
 
@@ -325,14 +586,31 @@ def should_force_advance_evolution_step(
     *,
     cfg: BirthCurriculumConfig,
     current_winrate: float,
+    pass_target: float | None = None,
+    ppo_steps_since_step_start: int = 0,
 ) -> bool:
     """Time-box fallback: force next evolution action after max rollouts without lift."""
     if not state.active or state.evolution_step <= 0:
         return False
+    max_noops = max(1, int(getattr(cfg, "plateau_evolution_max_noops_per_step", 3)))
+    if state.evolution_noop_count >= max_noops:
+        return True
     max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
+    if state.evolution_rollouts_this_step >= max_rollouts * 3:
+        return True
+    min_ppo = int(getattr(cfg, "plateau_evolution_min_ppo_steps_between_steps", 0))
+    if min_ppo > 0 and int(ppo_steps_since_step_start) < min_ppo:
+        if state.evolution_rollouts_this_step < max_rollouts * 3:
+            return False
     if state.evolution_rollouts_this_step < max_rollouts:
         return False
-    if current_winrate > state.winrate_at_step_start + float(cfg.velocity_stall_epsilon):
+    target = float(pass_target if pass_target is not None else stage1_winrate_pass_threshold(cfg))
+    if winrate_improvement_blocks_ladder(
+        state,
+        current_winrate=current_winrate,
+        cfg=cfg,
+        pass_target=target,
+    ):
         return False
     return True
 
@@ -343,14 +621,30 @@ def should_trigger_plateau_evolution_step(
     cfg: BirthCurriculumConfig,
     current_winrate: float,
     allow_start: bool = True,
+    pass_target: float | None = None,
+    ppo_steps_since_step_start: int = 0,
 ) -> bool:
     if not state.active:
         return False
+    if evolution_ladder_exhausted(state):
+        return False
     if allow_start and should_start_evolution_step(state):
         return True
-    if should_advance_evolution_step(state, cfg=cfg, current_winrate=current_winrate):
+    if should_advance_evolution_step(
+        state,
+        cfg=cfg,
+        current_winrate=current_winrate,
+        pass_target=pass_target,
+        ppo_steps_since_step_start=ppo_steps_since_step_start,
+    ):
         return True
-    return should_force_advance_evolution_step(state, cfg=cfg, current_winrate=current_winrate)
+    return should_force_advance_evolution_step(
+        state,
+        cfg=cfg,
+        current_winrate=current_winrate,
+        pass_target=pass_target,
+        ppo_steps_since_step_start=ppo_steps_since_step_start,
+    )
 
 
 def evolution_ladder_blocked_reason(
@@ -360,6 +654,9 @@ def evolution_ladder_blocked_reason(
     current_winrate: float,
     remediation_exhausted: bool,
     trade_budget_remaining: int,
+    stage_trades: int,
+    required: int,
+    pass_target: float | None = None,
 ) -> str | None:
     if not state.active:
         return "plateau_inactive"
@@ -368,19 +665,28 @@ def evolution_ladder_blocked_reason(
         cfg=cfg,
         remediation_exhausted=remediation_exhausted,
         trade_budget_remaining=trade_budget_remaining,
+        stage_trades=stage_trades,
+        required=required,
     ):
         return "recovery_blocked_budget_or_exhausted"
     if state.evolution_step <= 0:
         return None
     max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
     min_rollouts = int(cfg.plateau_evolution_rollouts_per_step)
+    target = float(pass_target if pass_target is not None else stage1_winrate_pass_threshold(cfg))
+    blocks = winrate_improvement_blocks_ladder(
+        state,
+        current_winrate=current_winrate,
+        cfg=cfg,
+        pass_target=target,
+    )
     if state.evolution_rollouts_this_step < min_rollouts:
         return f"awaiting_rollouts {state.evolution_rollouts_this_step}/{min_rollouts}"
     if state.evolution_rollouts_this_step < max_rollouts:
-        if current_winrate > state.winrate_at_step_start + float(cfg.velocity_stall_epsilon):
+        if blocks:
             return "winrate_improving"
         return f"awaiting_force_advance {state.evolution_rollouts_this_step}/{max_rollouts}"
-    if current_winrate > state.winrate_at_step_start + float(cfg.velocity_stall_epsilon):
+    if state.evolution_rollouts_this_step < max_rollouts * 3 and blocks:
         return "winrate_improving"
     return None
 
@@ -398,6 +704,38 @@ def detect_hold_trap(
     gap = float(getattr(cfg, "hold_trap_winrate_gap", 0.10))
     threshold = float(getattr(cfg, "hold_trap_hold_ratio_threshold", 0.55))
     return hold_ratio > threshold and winrate < float(pass_metric_target) - gap
+
+
+def detect_over_trading_trap(
+    *,
+    range_flat_ratio: float,
+    range_round_trips: int,
+    required: int,
+    velocity_stall: bool,
+    cfg: BirthCurriculumConfig,
+) -> bool:
+    """Stage 2: policy churns on range ticks (flat position far below pass band)."""
+    if not velocity_stall:
+        return False
+    flat_threshold = float(getattr(cfg, "over_trading_flat_threshold", 0.30))
+    if range_flat_ratio >= flat_threshold:
+        return False
+    min_trips = max(3, required // 10)
+    trip_multiplier = float(getattr(cfg, "over_trading_round_trip_multiplier", 2.0))
+    return range_round_trips >= int(min_trips * trip_multiplier)
+
+
+def adaptation_stuck_escape_allowed(
+    *,
+    escapes_used: int,
+    max_escapes: int,
+    trade_budget_remaining: int,
+) -> bool:
+    """True when adaptation-stuck recovery may force a phoenix escape."""
+    cap = int(max_escapes)
+    if cap <= 0:
+        return False
+    return int(escapes_used) < cap and int(trade_budget_remaining) > 0
 
 
 def should_phoenix_reset(state: PlateauState, *, cfg: BirthCurriculumConfig, winrate: float) -> bool:
@@ -420,7 +758,14 @@ def begin_evolution_step(
     stage_trades: int,
     stage_wins: int,
 ) -> EvolutionAction:
-    state.evolution_step += 1
+    if evolution_ladder_exhausted(state):
+        return EvolutionAction.TERMINAL
+    next_step = int(state.evolution_step) + 1
+    next_action = action_for_step(next_step)
+    if next_action == EvolutionAction.TERMINAL:
+        state.evolution_step = len(EVOLUTION_STEP_ACTIONS)
+        return EvolutionAction.TERMINAL
+    state.evolution_step = next_step
     state.evolution_rollouts_this_step = 0
     state.winrate_at_step_start = float(stage_wins) / float(max(1, stage_trades))
     action = action_for_step(state.evolution_step)
@@ -440,16 +785,25 @@ def record_evolution_outcome(
     stage_trades: int,
     stage_wins: int,
     detail: str = "",
+    applied: bool = True,
+    rolling_winrate_500: float | None = None,
 ) -> None:
     winrate = float(stage_wins) / float(max(1, stage_trades))
+    rolling = (
+        float(rolling_winrate_500)
+        if rolling_winrate_500 is not None
+        else winrate
+    )
     state.evolution_history.append(
         {
             "timestamp": time.time(),
             "step": int(state.evolution_step),
             "action": action.value,
             "winrate": round(winrate, 6),
+            "rolling_winrate_500": round(rolling, 6),
             "trades": int(stage_trades),
             "detail": str(detail or ""),
+            "applied": bool(applied),
         }
     )
 
@@ -507,7 +861,10 @@ def progress_fields(
         phase = "exhausted"
     else:
         phase = f"step_{state.evolution_step}"
-    remaining = max(0, int(cfg.plateau_max_evolution_steps) - int(state.evolution_step))
+    actions_total = len(EVOLUTION_STEP_ACTIONS)
+    actions_completed = evolution_actions_completed(state)
+    phantom_steps = evolution_phantom_steps(state)
+    remaining = max(0, actions_total - actions_completed)
     max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
     label = ACTION_LABELS.get(action, action.value)
     if state.evolution_step > 0 and state.best_winrate > 0:
@@ -516,6 +873,9 @@ def progress_fields(
         "evolution_phase": phase,
         "evolution_step": int(state.evolution_step),
         "evolution_step_label": label,
+        "evolution_actions_total": actions_total,
+        "evolution_actions_completed": actions_completed,
+        "evolution_phantom_steps": phantom_steps,
         "evolution_actions_remaining": remaining,
         "plateau_elapsed_sec": round(plateau_elapsed_sec(state, now=now), 2),
         "trades_beyond_gate": plateau_trades_beyond_gate(stage_trades, required),
@@ -564,6 +924,9 @@ def build_plateau_audit(
         current_winrate=winrate,
         remediation_exhausted=remediation_exhausted,
         trade_budget_remaining=int(budget_remaining),
+        stage_trades=stage_trades,
+        required=required,
+        pass_target=pass_target,
     )
     hold_trap = detect_hold_trap(
         hold_ratio=hold_ratio,
@@ -572,9 +935,20 @@ def build_plateau_audit(
         velocity_stall=velocity_stall,
         cfg=cfg,
     )
+    range_flat_ratio = float(progress.get("stage_range_flat_ratio", 0) or 0)
+    range_round_trips = int(progress.get("stage_range_round_trips", 0) or 0)
+    over_trading = detect_over_trading_trap(
+        range_flat_ratio=range_flat_ratio,
+        range_round_trips=range_round_trips,
+        required=required,
+        velocity_stall=velocity_stall,
+        cfg=cfg,
+    )
     recommended = "continue_evolution"
     if hold_trap:
         recommended = "explore_boost_anti_hold"
+    elif over_trading:
+        recommended = "range_patience_recovery"
     elif state.best_policy_path:
         recommended = "policy_rollback"
     if should_phoenix_reset(state, cfg=cfg, winrate=winrate):
@@ -594,6 +968,7 @@ def build_plateau_audit(
         "full_recovery_cycles": state.full_recovery_cycles,
         "live_winrate": round(winrate, 6),
         "hold_trap_detected": hold_trap,
+        "over_trading_detected": over_trading,
         "evolution_ladder_blocked_reason": blocked,
         "recommended_recovery_action": recommended,
         "terminal_plateau_recommended": terminal,

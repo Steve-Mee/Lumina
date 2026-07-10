@@ -717,20 +717,86 @@
   overflow: hidden;
 }
 
+.birth-genesis-panel__body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .birth-genesis-panel__hero {
-  flex-shrink: 0;
-  padding: 0.85rem 1rem 0.65rem;
+  flex: 0 0 auto;
+  padding: 0.55rem 1rem 0.45rem;
 }
 
 .birth-genesis-panel__hero.birth-activation-deck-inner {
-  flex: none;
-  min-height: min-content;
-  overflow-x: clip;
+  flex: 0 0 auto;
+}
+
+.birth-genesis-slider-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .birth-genesis-slider-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.65rem;
+  }
+}
+
+.birth-genesis-slider-card {
+  border-radius: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 22%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 90%, var(--lumina-cyan) 6%);
+  padding: 0.5rem 0.6rem 0.4rem;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent);
+}
+
+.birth-genesis-panel__hero .birth-activation-primary-param {
+  opacity: 1;
+}
+
+.birth-genesis-slider-card .birth-holo-slider {
+  margin-bottom: 0;
+}
+
+.birth-genesis-slider-card .birth-holo-slider--genesis-card .birth-holo-slider__header {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  margin-bottom: 0.4rem;
+}
+
+.birth-genesis-slider-card .birth-holo-slider--genesis-card .birth-holo-slider__label {
+  font-size: 0.5625rem;
+  letter-spacing: 0.12em;
+  line-height: 1.25;
+  color: color-mix(in srgb, var(--lumina-cyan) 82%, white);
+}
+
+.birth-genesis-slider-card .birth-holo-slider--genesis-card .birth-holo-slider__value {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.birth-genesis-slider-card .birth-holo-slider__track-wrap {
+  height: 1.5rem;
+  border-radius: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 85%, transparent);
 }
 
 .birth-genesis-panel__tabs {
+  display: flex;
   min-height: 0;
+  flex: 1 1 0%;
+  flex-direction: column;
   padding-inline: 1rem;
+  overflow: hidden;
 }
 
 .birth-genesis-tab-panel {
@@ -811,12 +877,10 @@
 }
 
 .birth-genesis-tab-content {
-  min-height: 0;
   flex: 1 1 0%;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 0.65rem 0.75rem;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.45rem 0.65rem 0.55rem;
 }
 
 .birth-genesis-tab-content[data-state="active"] {
@@ -911,25 +975,135 @@
 }
 
 .birth-genesis-panel__inner {
-  align-items: stretch;
+  align-items: center;
   text-align: left;
   flex: none;
   min-height: min-content;
 }
 
-.birth-genesis-panel__inner .birth-launch-btn {
-  align-self: center;
-}
-
 .birth-genesis-panel__actions {
-  flex-shrink: 0;
-  padding: 0.65rem 1rem 0.85rem;
+  position: relative;
+  z-index: 10;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.5rem 1rem max(0.65rem, env(safe-area-inset-bottom, 0px));
   border-top: 1px solid color-mix(in srgb, white 8%, transparent);
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--lumina-void) 92%, transparent),
-    color-mix(in srgb, var(--lumina-void) 72%, transparent)
+    color-mix(in srgb, var(--lumina-void) 98%, transparent),
+    color-mix(in srgb, var(--lumina-void) 92%, transparent)
   );
+  box-shadow: 0 -8px 24px color-mix(in srgb, var(--lumina-void) 65%, transparent);
+}
+
+.birth-genesis-status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.birth-genesis-status-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.3rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, white 12%, transparent);
+  padding: 0.2rem 0.55rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  cursor: default;
+}
+
+.birth-genesis-status-chip__meta {
+  opacity: 0.85;
+  font-size: 0.5rem;
+}
+
+.birth-genesis-status-chip__truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14rem;
+}
+
+.birth-genesis-status-chip--live {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 35%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
+  color: color-mix(in srgb, var(--lumina-cyan) 90%, white);
+}
+
+.birth-genesis-status-chip--warn {
+  border-color: color-mix(in srgb, #f59e0b 40%, transparent);
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: color-mix(in srgb, #fde68a 92%, white);
+}
+
+.birth-genesis-status-chip--checkpoint {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 28%, transparent);
+  background: color-mix(in srgb, white 4%, transparent);
+  color: color-mix(in srgb, var(--foreground) 88%, white);
+}
+
+.birth-genesis-goals-details,
+.birth-genesis-hints-details {
+  border-radius: 0.45rem;
+  border: 1px solid color-mix(in srgb, white 8%, transparent);
+  background: color-mix(in srgb, white 2%, transparent);
+}
+
+.birth-genesis-goals-details__summary,
+.birth-genesis-hints-details summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.35rem 0.5rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.5625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--foreground) 75%, white);
+}
+
+.birth-genesis-goals-details__summary::-webkit-details-marker,
+.birth-genesis-hints-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.birth-genesis-goals-details[open] .genesis-maturity-goals__list,
+.birth-genesis-hints-details[open] ul {
+  margin: 0;
+  padding: 0 0.5rem 0.45rem;
+  list-style: disc;
+  list-style-position: inside;
+}
+
+.birth-genesis-hints-details ul {
+  font-size: 0.625rem;
+  color: color-mix(in srgb, #fde68a 88%, white);
+}
+
+.birth-genesis-tab-panel__chips--compact .birth-holo-chip {
+  font-size: 0.5625rem;
+  padding: 0.25rem 0.45rem;
+}
+
+.birth-genesis-engine-live-banner {
+  margin-bottom: 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 28%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 8%, var(--lumina-void) 88%);
+  padding: 0.45rem 0.65rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--lumina-cyan) 88%, white);
 }
 
 .birth-mission-grid > * {
@@ -1170,5 +1344,128 @@
   .birth-phase-pulse__core {
     animation: none;
   }
+}
+
+/* Birth confirm modals — portaled to #lumina-overlay-root (SIM tokens + viewport center) */
+.birth-portaled-dialog-scope {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  color: var(--foreground);
+}
+
+.birth-portaled-dialog__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 0;
+  cursor: default;
+  border: none;
+}
+
+.birth-portaled-dialog__panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  width: min(calc(100vw - 2rem), 28rem);
+  max-height: min(90vh, 40rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+}
+
+.birth-portaled-dialog__close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+}
+
+.birth-portaled-dialog__footer {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .birth-portaled-dialog__footer {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
+
+.birth-portaled-dialog__footer [data-slot="button"] {
+  min-width: 7.5rem;
+}
+
+.birth-portaled-dialog__footer .birth-portaled-dialog__danger {
+  border-color: color-mix(in srgb, #ef4444 45%, transparent);
+  background: color-mix(in srgb, #ef4444 18%, transparent);
+  color: color-mix(in srgb, #fecaca 92%, white);
+}
+
+.birth-portaled-dialog__footer .birth-portaled-dialog__danger:hover:not(:disabled) {
+  background: color-mix(in srgb, #ef4444 28%, transparent);
+}
+
+.birth-portaled-dialog__footer .birth-portaled-dialog__ghost {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 22%, transparent);
+  color: color-mix(in srgb, var(--lumina-cyan) 85%, white);
+}
+
+.birth-portaled-dialog__footer .birth-portaled-dialog__ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+}
+
+.birth-portaled-dialog__footer .birth-portaled-dialog__success {
+  min-width: 9rem;
+}
+
+.birth-distress-callout {
+  border: 1px solid var(--status-warn-border);
+  background: var(--status-warn-bg);
+}
+
+.birth-distress-callout__title {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--status-warn-fg) 90%, transparent);
+}
+
+.birth-distress-callout__body {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  color: var(--status-warn-fg);
+}
+
+.birth-info-callout {
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 30%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
+}
+
+.birth-info-callout__text {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  color: color-mix(in srgb, var(--lumina-cyan) 85%, white);
+}
+
+.birth-info-callout__subtle {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: color-mix(in srgb, var(--lumina-cyan) 65%, transparent);
+}
+
+.birth-completion-summary--ok {
+  border: 1px solid color-mix(in srgb, #34d399 30%, transparent);
+  background: color-mix(in srgb, #064e3b 35%, transparent);
+}
+
+.birth-completion-summary--fail {
+  border: 1px solid var(--status-warn-border);
+  background: var(--status-warn-bg);
 }
 

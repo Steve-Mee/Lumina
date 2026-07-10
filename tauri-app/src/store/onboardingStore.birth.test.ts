@@ -14,15 +14,19 @@ vi.mock("@/lib/setupClient", () => ({
   fetchOnboardingStatus: vi.fn(),
   postConfigure: vi.fn(),
   postCredentials: vi.fn(),
-  startBirth: vi.fn(),
   startSmartSetup: vi.fn(),
   fetchDeckCredentialsPrefill: vi.fn(),
   fetchAndHydrateDeckApiKey: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("@/lib/birthClient", () => ({
+  startBirth: vi.fn(),
   isBirthStartSuccessful: (status: string) =>
     status === "started" || status === "already_running",
 }));
 
-import { fetchOnboardingStatus, postConfigure, startBirth } from "@/lib/setupClient";
+import { fetchOnboardingStatus, postConfigure } from "@/lib/setupClient";
+import { startBirth } from "@/lib/birthClient";
 import { toast } from "sonner";
 
 const basePayload = {

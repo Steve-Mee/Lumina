@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Settings } from "lucide-react";
-import { motion } from "framer-motion";
 import { useShallow } from "zustand/react/shallow";
 
 import { useAdaptiveIntelligenceContext } from "@/context/AdaptiveIntelligenceContext";
@@ -9,6 +8,7 @@ import { BotConfigurationDialog } from "@/components/cockpit/BotConfigurationDia
 import { HudOrganismCenter } from "@/components/cockpit/HudOrganismCenter";
 import { HudNerveTap } from "@/components/cockpit/HudNerveTap";
 import { LaunchNinjaTraderButton } from "@/components/cockpit/LaunchNinjaTraderButton";
+import { ModeSwitch } from "@/components/cockpit/ModeSwitch";
 import { ModeTransitionVeil } from "@/components/cockpit/ModeTransitionVeil";
 import { PresenceRail } from "@/components/cockpit/PresenceRail";
 import { TrainingMonitorTrigger } from "@/components/cockpit/TrainingMonitorTrigger";
@@ -22,35 +22,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useCommandHudActions } from "@/hooks/useCommandHudActions";
 import { useDeckTransition } from "@/hooks/useDeckTransition";
-import { handleRuntimeError } from "@/lib/runtimeErrorToast";
-import {
-  modeSwitchShellClass,
-  modeSwitchActivePillClass,
-  modeSwitchActivePillMotionClass,
-  modeSwitchTooltip,
-  realDialogBodyClass,
-  realDialogTitleClass,
-} from "@/lib/modePresentation";
+import { realDialogBodyClass, realDialogTitleClass } from "@/lib/modePresentation";
+import { helpFor } from "@/lib/helpTexts";
 import { cn } from "@/lib/utils";
 import {
   aggregateIntegrity,
   deriveCitadelWallsFromInputs,
 } from "@/lib/riskCitadelMetrics";
-import { useRuntimeStatusPoll, refreshRuntimeStatus } from "@/hooks/useRuntimeStatusPoll";
-import {
-  emergencyStop,
-  flattenPositions,
-  pauseTradingSafely,
-  startEngine,
-  stopAllActivities,
-  stopEngine,
-} from "@/lib/runtimeClient";
-import { fetchMaturationProgress, postApproveReal } from "@/lib/maturationClient";
+import { useRuntimeStatusPoll } from "@/hooks/useRuntimeStatusPoll";
+
+import { fetchMaturationProgress } from "@/lib/maturationClient";
 import { MaturityProgressStrip } from "@/components/cockpit/MaturityProgressStrip";
-import {
-  springLuxury,
-} from "@/lib/motionPresets";
+
 import {
   resolveHudAnnexHintCopy,
   resolveHudHeroLayout,
@@ -59,8 +44,7 @@ import {
   resolveOverflowItems,
   type HudOverflowItem,
 } from "@/lib/hudOverflowLayout";
-import { useModeMotion } from "@/hooks/useModeMotion";
-import { toast } from "sonner";
+
 import {
   selectConnectionStatus,
   selectCurrentMode,
@@ -70,7 +54,6 @@ import {
   selectReportedMode,
   useCoreStore,
   type ConnectionStatus,
-  type TradingMode,
 } from "@/store/coreStore";
 import { useDeckPanelStore } from "@/store/deckPanelStore";
 import { selectApiKeyConfigured, useApiKeyStore } from "@/store/apiKeyStore";
@@ -118,105 +101,6 @@ function connectionVitality(status: ConnectionStatus, fallback: boolean): number
   }
 }
 
-function ModeSwitch({
-  mode,
-  reportedMode,
-  syncStatus,
-  onSelect,
-  realEligible,
-}: {
-  mode: TradingMode;
-  reportedMode: TradingMode | null;
-  syncStatus: "idle" | "pending" | "error";
-  onSelect: (mode: TradingMode) => void;
-  realEligible: boolean;
-}) {
-  const modeMotion = useModeMotion();
-  const pillMotion = mode === "REAL" ? springLuxury : modeMotion;
-  const showSyncDot = syncStatus === "pending" || syncStatus === "error";
-  const showMismatch =
-    reportedMode !== null && reportedMode !== mode && syncStatus !== "pending";
-
-  return (
-    <div className="relative flex flex-col items-end gap-0.5">
-      {(showMismatch || showSyncDot) && (
-        <span
-          className={cn(
-            "absolute -top-1 -right-1 size-2 rounded-full",
-            syncStatus === "error" ? "bg-red-400" : "bg-[#c9b896]",
-          )}
-          title={
-            syncStatus === "error"
-              ? "Mode sync failed — local override active"
-              : syncStatus === "pending"
-                ? "Mode sync in progress"
-                : "Backend reports different mode"
-          }
-          aria-label={
-            syncStatus === "error"
-              ? "Mode sync error"
-              : syncStatus === "pending"
-                ? "Mode syncing"
-                : "Mode mismatch with backend"
-          }
-        />
-      )}
-      <motion.div
-        layout
-        className={cn(
-          "relative flex rounded-lg border p-0.5 lumina-glow-edge",
-          modeSwitchShellClass(mode),
-        )}
-        transition={modeMotion}
-        role="group"
-        aria-label="Trading mode"
-      >
-        {(["SIM", "REAL"] as const).map((option) => {
-          const active = mode === option;
-          return (
-            <Button
-              key={option}
-              type="button"
-              size="sm"
-              variant="command-ghost"
-              aria-pressed={active}
-              title={modeSwitchTooltip(option)}
-              onClick={() => {
-                if (option === "REAL" && !realEligible) {
-                  return;
-                }
-                onSelect(option);
-              }}
-              disabled={option === "REAL" && !realEligible}
-              className={cn(
-                "relative h-9 min-w-[64px] font-mono text-[11px] tracking-[0.18em] uppercase transition-colors",
-                modeSwitchActivePillClass(option, active),
-                !active && option === "REAL" && "text-slate-500/60 hover:text-slate-300/80",
-                !active && option === "SIM" && "text-muted-foreground/70 hover:text-foreground",
-              )}
-            >
-              {active ? (
-                <motion.span
-                  layoutId="mode-pill"
-                  className={cn(
-                    "absolute inset-0 rounded-md",
-                    modeSwitchActivePillMotionClass(option),
-                  )}
-                  transition={pillMotion}
-                />
-              ) : null}
-              <span className="relative z-[1]">{option}</span>
-            </Button>
-          );
-        })}
-      </motion.div>
-      <span className="font-mono text-[9px] tracking-[0.14em] text-muted-foreground/70 uppercase">
-        {modeSwitchTooltip(mode)}
-      </span>
-    </div>
-  );
-}
-
 export function CommandHud({ className }: CommandHudProps) {
   const [realConfirmOpen, setRealConfirmOpen] = useState(false);
   const [safetyConfirmOpen, setSafetyConfirmOpen] = useState(false);
@@ -226,19 +110,17 @@ export function CommandHud({ className }: CommandHudProps) {
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [realTradingEligible, setRealTradingEligible] = useState(false);
   const [realTradingBlockers, setRealTradingBlockers] = useState<string[]>([]);
-  const { transition, startTransition, completeTransition } = useDeckTransition();
+  const { transition, completeTransition } = useDeckTransition();
   const prevRegimeRef = useRef<string | null>(null);
 
   const currentMode = useCoreStore(selectCurrentMode);
   const reportedMode = useCoreStore(selectReportedMode);
   const modeSyncStatus = useCoreStore(selectModeSyncStatus);
-  const setOperatorMode = useCoreStore((state) => state.setOperatorMode);
   const liveMetrics = useCoreStore(selectLiveMetrics);
   const connectionStatus = useCoreStore(selectConnectionStatus);
   const fallbackMode = useCoreStore(selectFallbackMode);
   const apiKeyConfigured = useApiKeyStore(selectApiKeyConfigured);
   const botConfigDirty = useBotConfigStore((s) => s.isDirty);
-  const saveBotConfig = useBotConfigStore((s) => s.save);
   const organismEnvelope = useOrganismEnvelope();
   const hudPrefs = useHudLayoutPrefsStore((s) => s.prefs);
   const hydrateHudPrefs = useHudLayoutPrefsStore((s) => s.hydrate);
@@ -357,79 +239,24 @@ export function CommandHud({ className }: CommandHudProps) {
       });
   }, []);
 
-  const handleModeSelect = (mode: TradingMode) => {
-    if (mode === currentMode) {
-      return;
-    }
-    if (mode === "REAL") {
-      if (!realTradingEligible) {
-        toast.error(
-          "REAL blocked — complete Awakening (certificate + Evolution Proof) and later maturation phases.",
-        );
-        return;
-      }
-      setRealConfirmOpen(true);
-      return;
-    }
-    startTransition({ kind: "modeSwitch", targetMode: mode });
-    setOperatorMode(mode);
-  };
-
-  const confirmRealMode = () => {
-    void postApproveReal()
-      .then(() => {
-        startTransition({ kind: "modeSwitch", targetMode: "REAL" });
-        setOperatorMode("REAL");
-        setRealConfirmOpen(false);
-        if (!sessionStorage.getItem("lumina.realOpsHintShown")) {
-          sessionStorage.setItem("lumina.realOpsHintShown", "1");
-          toast.info("REAL Ops tab unlocked in Intelligence deck", {
-            action: {
-              label: "Open REAL Ops",
-              onClick: () => useDeckPanelStore.getState().setActiveRightTab("realOps"),
-            },
-          });
-        }
-      })
-      .catch((err) => {
-        toast.error(err instanceof Error ? err.message : "REAL approval failed");
-      });
-  };
-
-  const toggleEngine = () => {
-    void (runtime?.alive
-      ? stopEngine()
-          .then((r) => {
-            toast.success(r.message);
-            void refreshRuntimeStatus();
-          })
-          .catch(handleRuntimeError)
-      : startEngine()
-          .then((r) => {
-            toast.success(r.message);
-            void refreshRuntimeStatus();
-          })
-          .catch(handleRuntimeError));
-  };
-
-  const saveAndStart = () => {
-    void (async () => {
-      if (botConfigDirty()) {
-        const ok = await saveBotConfig();
-        if (!ok) {
-          toast.error("Save bot config before starting engine");
-          return;
-        }
-        toast.success("Bot configuration saved");
-      }
-      return startEngine()
-        .then((r) => {
-          toast.success(r.message);
-          void refreshRuntimeStatus();
-        })
-        .catch(handleRuntimeError);
-    })();
-  };
+  const engineAlive = Boolean(runtime?.alive);
+  const {
+    handleModeSelect,
+    confirmRealMode,
+    toggleEngine,
+    saveAndStart,
+    handleNerveActivate,
+    pauseLiveTrading,
+    flatten,
+    emergencyStopAction,
+    stopAll,
+  } = useCommandHudActions({
+    currentMode,
+    runtimeAlive: engineAlive,
+    realTradingEligible,
+    onRealConfirmOpen: () => setRealConfirmOpen(true),
+    onRealConfirmed: () => setRealConfirmOpen(false),
+  });
 
   const renderOverflowItem = (item: HudOverflowItem) => {
     switch (item.id) {
@@ -490,16 +317,6 @@ export function CommandHud({ className }: CommandHudProps) {
       default:
         return null;
     }
-  };
-
-  const engineAlive = Boolean(runtime?.alive);
-
-  const handleNerveActivate = () => {
-    if (botConfigDirty()) {
-      saveAndStart();
-      return;
-    }
-    toggleEngine();
   };
 
   return (
@@ -674,12 +491,7 @@ export function CommandHud({ className }: CommandHudProps) {
                 variant="command-ghost"
                 disabled={!pauseTradingAck}
                 onClick={() => {
-                  void pauseTradingSafely()
-                    .then((r) => {
-                      toast.success(r.message);
-                      void refreshRuntimeStatus();
-                    })
-                    .catch(handleRuntimeError);
+                  pauseLiveTrading();
                   setSafetyConfirmOpen(false);
                 }}
               >
@@ -690,9 +502,7 @@ export function CommandHud({ className }: CommandHudProps) {
               type="button"
               variant="command-ghost"
               onClick={() => {
-                void flattenPositions()
-                  .then(() => toast.success("Positions flattened"))
-                  .catch(handleRuntimeError);
+                flatten();
                 setSafetyConfirmOpen(false);
               }}
             >
@@ -704,9 +514,7 @@ export function CommandHud({ className }: CommandHudProps) {
               data-intent="danger"
               disabled={currentMode === "REAL" && !realSafetyAck}
               onClick={() => {
-                void emergencyStop()
-                  .then(() => toast.success("Emergency stop executed"))
-                  .catch(handleRuntimeError);
+                emergencyStopAction();
                 setSafetyConfirmOpen(false);
               }}
             >
@@ -718,9 +526,7 @@ export function CommandHud({ className }: CommandHudProps) {
               data-intent="danger"
               disabled={currentMode === "REAL" && !realSafetyAck}
               onClick={() => {
-                void stopAllActivities()
-                  .then((r) => toast.success(r.message))
-                  .catch(handleRuntimeError);
+                stopAll();
                 setSafetyConfirmOpen(false);
               }}
             >

@@ -9,6 +9,7 @@ import {
   extractSimProgress,
   extractStageScorecard,
   formatBirthSessionStartedLabel,
+  formatGenesisCheckpointSummary,
   isBirthCertificateFailed,
   isBirthComplete,
   isBirthFailed,
@@ -21,6 +22,7 @@ import {
   resolveBirthHeadline,
   resolveBirthSessionStartedAtMs,
   resolveLiveBirthElapsedSec,
+  shouldShowBirthAttentionBanner,
 } from "@/lib/birthPhaseModel";
 
 describe("birthPhaseModel", () => {
@@ -196,10 +198,26 @@ describe("birthPhaseModel", () => {
     expect(isBirthInterrupted({ status: "interrupted" })).toBe(true);
   });
 
-  it("detects stage stalled while status is running", () => {
+  it("ignores stale stage_stalled progress while engine is active", () => {
     expect(
       isBirthStageStalled({
         status: "running",
+        live: true,
+        progress: { phase: "stage_stalled", stage: "loading_data" },
+      }),
+    ).toBe(false);
+    expect(
+      isBirthStageStalled({
+        status: "running",
+        progress: { phase: "loading_history", stage: "loading_data" },
+      }),
+    ).toBe(false);
+  });
+
+  it("detects stage stalled when engine is not active", () => {
+    expect(
+      isBirthStageStalled({
+        status: "stage_stalled",
         progress: { phase: "stage_stalled" },
       }),
     ).toBe(true);
@@ -432,5 +450,79 @@ describe("birthPhaseModel", () => {
     expect(hud?.patternsMined).toBe(512);
     expect(hud?.learningAttempt).toBe(5);
     expect(hud?.preCurriculum).toBe(true);
+  });
+
+  it("hides stale birth_interrupted attention while birth is running", () => {
+    const progress = {
+      needs_attention: true,
+      attention_reason_code: "birth_interrupted",
+      attention_summary: "Vorige sessie onderbroken",
+    };
+    expect(shouldShowBirthAttentionBanner(progress, { birthRunning: true })).toBe(false);
+    expect(shouldShowBirthAttentionBanner(progress, { birthStatus: "running" })).toBe(false);
+    expect(shouldShowBirthAttentionBanner(progress, { birthRunning: false })).toBe(true);
+  });
+
+  it("formats genesis checkpoint summary from resumable status", () => {
+    const summary = formatGenesisCheckpointSummary({
+      status: "interrupted",
+      checkpoint_resumable: true,
+      curriculum_stage: "stage1_trend",
+      checkpoint_ppo_steps: 1500,
+      checkpoint_stage_trades: 140,
+      progress: { stage_target_trades: 200 },
+    });
+    expect(summary).toContain("stage1 trend");
+    expect(summary).toMatch(/1[,.]?500 PPO steps/);
+    expect(summary).toContain("140/200");
+  });
+
+  it("returns null genesis summary when checkpoint is not resumable", () => {
+    expect(
+      formatGenesisCheckpointSummary({
+        status: "interrupted",
+        checkpoint_resumable: false,
+        progress: { ppo_steps: 900000, cumulative_trades: 6377 },
+      }),
+    ).toBeNull();
+  });
+
+  it("detects adaptation cycling when max tier and metrics frozen", () => {
+    const nowMs = Date.now();
+    const scorecard = extractStageScorecard(
+      {
+        timestamp: new Date(nowMs - 5_000).toISOString(),
+        curriculum_stage: "stage1_trend",
+        phase: "curriculum_learning",
+        stage_trades: 847,
+        stage_target_trades: 200,
+        stage_winrate: 0.296,
+        pass_criteria_id: "trend_winrate",
+        pass_metric_target: 0.4,
+        auto_recovery_active: true,
+        adaptation_tier: 3,
+        max_adaptation_tiers: 4,
+        is_advancing: false,
+      },
+      nowMs,
+    );
+    expect(scorecard?.adaptationCycling).toBe(true);
+    expect(scorecard?.healthHint).toContain("Recovery cycling");
+    expect(scorecard?.health).not.toBe("advancing");
+  });
+
+  it("shows manifest cache days alongside expansion target", () => {
+    const scorecard = extractStageScorecard({
+      timestamp: new Date().toISOString(),
+      curriculum_stage: "stage1_trend",
+      phase: "curriculum_learning",
+      stage_trades: 847,
+      stage_target_trades: 200,
+      data_days_loaded: 730,
+      data_manifest: { days_loaded: 71 },
+      pass_criteria_id: "trend_winrate",
+    });
+    expect(scorecard?.dataDaysLoaded).toBe(730);
+    expect(scorecard?.dataManifestDaysLoaded).toBe(71);
   });
 });

@@ -84,6 +84,8 @@ def run_policy_rollout(
     exploration_steps: int | None = None,
     escalation_level: int = 0,
     hold_cap_ratio: float | None = None,
+    position_flat_cap: float | None = None,
+    range_patience_active: bool = False,
     plateau_active: bool = False,
     on_progress: Callable[[dict[str, Any]], None] | None = None,
     reward_override: BirthRewardConfig | None = None,
@@ -111,6 +113,7 @@ def run_policy_rollout(
         max_steps=max_steps or max(5000, target_trades * 80),
         reward=reward_override or load_birth_v2_config(workspace_root).reward,
         plateau_active=bool(plateau_active),
+        range_patience_active=bool(range_patience_active),
     )
     env = RLTradingEnvironment(runtime, enriched, config=cfg)
     env.set_birth_context(workspace_root=workspace_root, constitution_guard=guard)
@@ -195,6 +198,11 @@ def run_policy_rollout(
             exploration_steps_used += 1
         else:
             exploration_active = False
+            idx_preview = min(env._idx, len(enriched) - 1)
+            tick_regime_preview = str(enriched[idx_preview].get("regime", "NEUTRAL")).upper()
+            is_range_preview = (
+                tick_regime_preview in {"NEUTRAL", "RANGING"} or "RANGE" in tick_regime_preview
+            )
             action = _predict_action(policy, obs)
             if hold_cap_ratio is not None and total_signals > 0:
                 side_preview = int(np.clip(np.round(action[0]), 0, 2))
@@ -202,6 +210,11 @@ def run_policy_rollout(
                     exploration_active = True
                     action = _exploration_action(exploration_steps_used)
                     exploration_steps_used += 1
+            if position_flat_cap is not None and range_total_signals > 50 and is_range_preview:
+                current_flat_ratio = float(range_flat_bars) / float(max(1, range_total_signals))
+                side_preview = int(np.clip(np.round(action[0]), 0, 2))
+                if current_flat_ratio < float(position_flat_cap) and side_preview != 0:
+                    action = np.array([0.0, 0.5, 0.0075, 0.013], dtype=np.float32)
 
         idx = min(env._idx, len(enriched) - 1)
         tick_regime = str(enriched[idx].get("regime", "NEUTRAL")).upper()

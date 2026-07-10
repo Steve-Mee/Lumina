@@ -23,6 +23,8 @@ import {
 } from "@/store/coreStore";
 import { Toaster } from "sonner";
 
+import { BirthConfirmHost } from "@/components/birth/BirthConfirmHost";
+
 const LivingCore = lazy(() =>
   import("@/components/LivingCore").then((module) => ({
     default: module.LivingCore,
@@ -211,6 +213,7 @@ export default function App() {
           )
         }
       </OnboardingGate>
+      <BirthConfirmHost />
       <Toaster
         theme="dark"
         position="top-right"

@@ -43,8 +43,8 @@ def test_history_chunk_callback_reads_chunk_index(tmp_path: Path) -> None:
     def _capture_write(root, **kwargs):
         captured.append(kwargs)
 
-    with patch("lumina_core.birth.engine.load_historical_ticks", side_effect=_fake_load):
-        with patch("lumina_core.birth.engine.write_birth_progress", side_effect=_capture_write):
+    with patch("lumina_core.birth.data_pipeline.load_historical_ticks", side_effect=_fake_load):
+        with patch("lumina_core.birth.birth_phase_orchestrator.write_birth_progress", side_effect=_capture_write):
             with patch.object(engine, "_stop_requested", return_value=False):
                 with patch.object(engine, "_generate_synthetic_ticks", return_value=[]):
                     # Invoke the inner callback factory like run_birth_phase does.

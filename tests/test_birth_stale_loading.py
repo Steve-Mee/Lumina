@@ -53,7 +53,7 @@ def test_training_active_from_state_ignores_orphan_stage(tmp_path: Path) -> None
 
 
 @pytest.mark.unit
-def test_pulse_active_when_runner_lock_during_loading_data(tmp_path: Path) -> None:
+def test_pulse_stale_when_runner_lock_has_no_pid(tmp_path: Path) -> None:
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     lock = tmp_path / "state" / "birth_runner.json"
     lock.write_text("{}", encoding="utf-8")
@@ -64,8 +64,26 @@ def test_pulse_active_when_runner_lock_during_loading_data(tmp_path: Path) -> No
         birth_running=False,
         workspace_root=tmp_path,
     )
-    assert pulse == "active"
+    assert pulse == "stale"
     assert birth_runner_lock_exists(tmp_path)
+    assert birth_runner_lock_active(tmp_path) is False
+
+
+@pytest.mark.unit
+def test_pulse_active_when_runner_lock_has_valid_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    lock = tmp_path / "state" / "birth_runner.json"
+    lock.write_text(f'{{"pid": {os.getpid()}}}', encoding="utf-8")
+    stale_ts = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    progress = {"stage": "loading_data", "timestamp": stale_ts}
+    pulse = resolve_birth_training_pulse(
+        progress,
+        birth_running=False,
+        workspace_root=tmp_path,
+    )
+    assert pulse == "active"
     assert birth_runner_lock_active(tmp_path)
 
 

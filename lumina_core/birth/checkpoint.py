@@ -55,6 +55,43 @@ def can_resume_checkpoint(
     return True
 
 
+def default_completion_flag_paths(workspace_root: Path | str) -> tuple[Path, Path]:
+    root = Path(workspace_root)
+    return (
+        root / "state" / "lumina_birth_completed.flag",
+        root / "state" / "first_boot_completed.flag",
+    )
+
+
+def is_checkpoint_resumable(
+    workspace_root: Path | str,
+    *,
+    training_mode: str = "certified",
+) -> bool:
+    """True when a on-disk checkpoint can resume curriculum (SSOT for UI resume button)."""
+    root = Path(workspace_root)
+    if not can_resume_checkpoint(
+        root,
+        training_mode=training_mode,
+        completion_flag_paths=default_completion_flag_paths(root),
+    ):
+        return False
+    payload = read_checkpoint_payload(root)
+    if not payload:
+        return False
+    curriculum_stage = str(payload.get("curriculum_stage", "") or "").strip()
+    if not curriculum_stage:
+        return False
+    cumulative = max(0, int(payload.get("cumulative_trades", 0) or 0))
+    ppo_steps = max(0, int(payload.get("ppo_steps", 0) or 0))
+    if cumulative <= 0 and ppo_steps <= 0:
+        return False
+    policy_path = str(payload.get("policy_path", "") or "").strip()
+    if policy_path and not Path(policy_path).is_file():
+        return False
+    return True
+
+
 def save_checkpoint(
     workspace_root: Path | str,
     *,
@@ -70,21 +107,21 @@ def save_checkpoint(
     phase: str | None = None,
     remediation_attempt: int = 0,
     stage_pass_receipts: list[dict[str, Any]] | None = None,
+    oos_metrics: dict[str, Any] | None = None,
 ) -> None:
     manifest = dict(data_manifest or {})
     metrics = dict(stage_metrics or {})
     if stages_passed and "stages_passed" not in metrics:
         metrics["stages_passed"] = list(stages_passed)
     quality = quality_score_from_manifest(manifest, metrics)
+    existing = read_checkpoint_payload(workspace_root)
     receipts_payload: list[dict[str, Any]] = []
     if stage_pass_receipts is not None:
         receipts_payload = [dict(r) for r in stage_pass_receipts]
-    else:
-        existing = read_checkpoint_payload(workspace_root)
-        if isinstance(existing, dict):
-            raw_receipts = existing.get("stage_pass_receipts")
-            if isinstance(raw_receipts, list):
-                receipts_payload = [dict(r) for r in raw_receipts if isinstance(r, dict)]
+    elif isinstance(existing, dict):
+        raw_receipts = existing.get("stage_pass_receipts")
+        if isinstance(raw_receipts, list):
+            receipts_payload = [dict(r) for r in raw_receipts if isinstance(r, dict)]
     payload: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "version": CHECKPOINT_VERSION,
@@ -102,6 +139,10 @@ def save_checkpoint(
         "phase": str(phase or ""),
         "remediation_attempt": int(remediation_attempt),
     }
+    if oos_metrics is not None:
+        payload["oos_metrics"] = dict(oos_metrics)
+    elif isinstance(existing, dict) and isinstance(existing.get("oos_metrics"), dict):
+        payload["oos_metrics"] = dict(existing["oos_metrics"])
     encoded = json.dumps(payload, ensure_ascii=True, indent=2)
     for path in checkpoint_paths(workspace_root):
         try:
@@ -133,6 +174,11 @@ def load_checkpoint_state(workspace_root: Path | str) -> dict[str, Any]:
         "quality_score": float(payload.get("quality_score", 0.0) or 0.0),
         "phase": str(payload.get("phase", "") or ""),
         "remediation_attempt": max(0, int(payload.get("remediation_attempt", 0) or 0)),
+        "oos_metrics": (
+            dict(payload["oos_metrics"])
+            if isinstance(payload.get("oos_metrics"), dict)
+            else {}
+        ),
     }
 
 
@@ -199,3 +245,14 @@ def reset_adaptation_budget_for_manual_resume(workspace_root: Path | str) -> boo
             adaptation_history=metrics.get("adaptation_history"),
         )
     return True
+
+
+def apply_plateau_quarantine_on_checkpoint_resume(
+    *,
+    cfg: Any,
+    stage_trades: int,
+) -> dict[str, Any]:
+    """SSOT entry: grace period after checkpoint resume (delegates to plateau escalator)."""
+    from lumina_core.birth.plateau_escalator import apply_plateau_quarantine_on_resume
+
+    return apply_plateau_quarantine_on_resume(cfg=cfg, stage_trades=stage_trades)

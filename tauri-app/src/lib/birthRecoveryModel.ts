@@ -14,6 +14,11 @@ function norm(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+export function isBirthCheckpointResumable(status: BirthStatusPayload | null | undefined): boolean {
+  return status?.checkpoint_resumable === true;
+}
+
+/** @deprecated Use isBirthCheckpointResumable(status) — progress trade counts are not a resume signal. */
 export function hasBirthCheckpointProgress(
   progress: BirthProgressPayload | undefined,
 ): boolean {
@@ -99,10 +104,24 @@ export function shouldAutoResumeBirth(
   if (recovery === "stage_stalled" && status.progress?.retryable !== false) {
     return true;
   }
+  if (status.progress?.autonomous_recovery_pending === true) {
+    return true;
+  }
+  const terminal = norm(status.progress?.terminal_stall_reason);
+  if (terminal === "phoenix_cycle" && status.progress?.retryable !== false) {
+    return true;
+  }
+  if (
+    (terminal === "plateau_evolution_exhausted" || terminal === "stall_remediation_exhausted") &&
+    status.progress?.retryable !== false &&
+    status.progress?.needs_attention !== true
+  ) {
+    return true;
+  }
   if (recovery === "checkpoint_available" || recovery === "simulation_stall") {
     return true;
   }
-  if (appSurfaceReason === "birth_error" && hasBirthCheckpointProgress(status.progress)) {
+  if (appSurfaceReason === "birth_error" && isBirthCheckpointResumable(status)) {
     return true;
   }
   return false;
@@ -128,4 +147,51 @@ export function checkpointTradeCount(progress: BirthProgressPayload | undefined)
   }
   const raw = progress as Record<string, unknown>;
   return Number(raw.checkpoint_trades ?? progress.cumulative_trades ?? progress.trades_done ?? 0);
+}
+
+export type BirthWipeVerifyInput = {
+  apiStatus: string;
+  apiCheckpointResumable?: boolean;
+  polledStatus: BirthStatusPayload | null | undefined;
+};
+
+export type BirthWipeVerifyResult = { ok: true } | { ok: false; error: string };
+
+const WIPE_STATUS_NOT_CLEAN_ERROR =
+  "Wipe voltooid maar status is niet schoon — herstart de backend en probeer opnieuw.";
+const WIPE_CHECKPOINT_STILL_RESUMABLE_ERROR =
+  "Wipe voltooid maar checkpoint is nog resumeerbaar — herstart de backend en probeer opnieuw.";
+const WIPE_STATUS_UNVERIFIED_ERROR =
+  "Wipe voltooid maar status kon niet worden geverifieerd — herstart de backend en probeer opnieuw.";
+
+/** Verify wipe succeeded using API response and a fresh status poll (before store reset). */
+export function verifyBirthWipeSucceeded(input: BirthWipeVerifyInput): BirthWipeVerifyResult {
+  const apiStatus = norm(input.apiStatus);
+  const apiClean = apiStatus === "wiped" && input.apiCheckpointResumable !== true;
+  const polled = input.polledStatus;
+
+  if (!polled) {
+    return apiClean ? { ok: true } : { ok: false, error: WIPE_STATUS_UNVERIFIED_ERROR };
+  }
+
+  if (polled.checkpoint_resumable === true || input.apiCheckpointResumable === true) {
+    return { ok: false, error: WIPE_CHECKPOINT_STILL_RESUMABLE_ERROR };
+  }
+
+  const topStatus = norm(polled.status);
+  if (topStatus === "idle" || topStatus === "wiped") {
+    return { ok: true };
+  }
+
+  if (
+    apiClean &&
+    (topStatus === "running" ||
+      topStatus === "interrupted" ||
+      topStatus === "stopping" ||
+      topStatus === "started")
+  ) {
+    return { ok: true };
+  }
+
+  return { ok: false, error: WIPE_STATUS_NOT_CLEAN_ERROR };
 }

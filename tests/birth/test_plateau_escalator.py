@@ -11,15 +11,21 @@ from lumina_core.birth.plateau_escalator import (
     EvolutionAction,
     PlateauState,
     action_for_step,
+    build_plateau_audit,
     can_force_never_stop_recovery,
     detect_hold_trap,
+    evolution_ladder_blocked_reason,
     maybe_update_best_winrate,
+    sanitize_stuck_plateau_evolution,
     should_advance_evolution_step,
     should_block_plateau_recovery,
     should_force_advance_evolution_step,
     should_start_evolution_step,
     should_terminal_plateau_stall,
     should_trigger_plateau_evolution_step,
+    revert_evolution_step_on_noop,
+    rolling_winrate_last_n_trades,
+    winrate_improvement_blocks_ladder,
 )
 from lumina_core.birth.stall_remediation import curate_buffer_top_quartile
 
@@ -28,7 +34,7 @@ def _cfg(**overrides: object) -> BirthCurriculumConfig:
     base = dict(
         plateau_detection_enabled=True,
         plateau_winrate_gap=0.10,
-        plateau_trades_beyond_gate_multiplier=10,
+        plateau_trades_beyond_gate_multiplier=3,
         plateau_max_wall_sec=7200,
         plateau_max_evolution_steps=8,
         plateau_evolution_rollouts_per_step=12,
@@ -38,6 +44,7 @@ def _cfg(**overrides: object) -> BirthCurriculumConfig:
         stall_remediation_enabled=True,
         stall_remediation_max_cycles=3,
         stall_remediation_max_steps=5,
+        plateau_evolution_min_ppo_steps_between_steps=0,
     )
     base.update(overrides)
     return BirthCurriculumConfig(**base)
@@ -45,11 +52,11 @@ def _cfg(**overrides: object) -> BirthCurriculumConfig:
 
 @pytest.mark.unit
 def test_meta_exhausted_beyond_gate_does_not_terminal_before_evolution() -> None:
-    cfg = _cfg(plateau_max_evolution_steps=8)
+    cfg = _cfg(plateau_max_evolution_steps=8, plateau_trades_beyond_gate_multiplier=10)
     state = PlateauState(active=True, evolution_step=0, plateau_started_at=time.time() - 9000)
     assert should_terminal_plateau_stall(
         state,
-        stage_trades=6113,
+        stage_trades=500,
         required=200,
         cfg=cfg,
         meta_self_eval_phase="exhausted",
@@ -111,6 +118,37 @@ def test_detect_hold_trap() -> None:
 
 
 @pytest.mark.unit
+def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
+    """Stage 3 pass gate metric is violations (0); hold-trap must use winrate target."""
+    from lumina_core.birth.curriculum import CurriculumStage
+    from lumina_core.birth.stage_scorecard import learning_metric_target, pass_criteria_for_stage
+
+    cfg = _cfg()
+    criteria = pass_criteria_for_stage(CurriculumStage.STAGE3_MIXED, cfg=cfg)
+    learning_target = learning_metric_target(
+        CurriculumStage.STAGE3_MIXED,
+        cfg=cfg,
+        pass_criteria=criteria,
+    )
+    assert criteria.metric_target == 0.0
+    assert learning_target == pytest.approx(0.45)
+    assert detect_hold_trap(
+        hold_ratio=0.80,
+        winrate=0.34,
+        pass_metric_target=learning_target,
+        velocity_stall=True,
+        cfg=cfg,
+    )
+    assert not detect_hold_trap(
+        hold_ratio=0.80,
+        winrate=0.34,
+        pass_metric_target=float(criteria.metric_target or 0.0),
+        velocity_stall=True,
+        cfg=cfg,
+    )
+
+
+@pytest.mark.unit
 def test_curate_buffer_top_quartile() -> None:
     class _Buf:
         trajectories = [
@@ -149,7 +187,7 @@ def test_terminal_only_when_evolution_and_budget_exhausted() -> None:
         meta_self_eval_phase="exhausted",
         remediation_exhausted=False,
         trade_budget_remaining=18_887,
-    ) is False
+    ) is True
 
 
 @pytest.mark.unit
@@ -187,15 +225,75 @@ def test_force_advance_after_max_rollouts_without_lift() -> None:
 
 
 @pytest.mark.unit
-def test_force_advance_blocked_when_winrate_improving() -> None:
-    cfg = _cfg(plateau_evolution_max_rollouts_per_step=24)
+def test_force_advance_blocked_when_winrate_meaningfully_improving() -> None:
+    cfg = _cfg(
+        plateau_evolution_max_rollouts_per_step=24,
+        stage1_winrate_pass_threshold=0.35,
+        stage1_winrate_pass_floor=0.35,
+    )
     state = PlateauState(
         active=True,
         evolution_step=1,
         evolution_rollouts_this_step=24,
         winrate_at_step_start=0.268,
     )
-    assert should_force_advance_evolution_step(state, cfg=cfg, current_winrate=0.30) is False
+    assert should_force_advance_evolution_step(
+        state, cfg=cfg, current_winrate=0.30, pass_target=0.35
+    ) is False
+
+
+@pytest.mark.unit
+def test_micro_improvement_does_not_block_ladder() -> None:
+    cfg = _cfg(
+        plateau_evolution_max_rollouts_per_step=24,
+        stage1_winrate_pass_threshold=0.35,
+        stage1_winrate_pass_floor=0.35,
+    )
+    state = PlateauState(
+        active=True,
+        evolution_step=1,
+        evolution_rollouts_this_step=24,
+        winrate_at_step_start=0.227,
+    )
+    assert winrate_improvement_blocks_ladder(
+        state, current_winrate=0.246, cfg=cfg, pass_target=0.35
+    ) is False
+    assert should_force_advance_evolution_step(
+        state, cfg=cfg, current_winrate=0.246, pass_target=0.35
+    ) is True
+
+
+@pytest.mark.unit
+def test_safety_valve_forces_advance_after_triple_max_rollouts() -> None:
+    cfg = _cfg(
+        plateau_evolution_max_rollouts_per_step=24,
+        stage1_winrate_pass_threshold=0.35,
+        stage1_winrate_pass_floor=0.35,
+    )
+    state = PlateauState(
+        active=True,
+        evolution_step=1,
+        evolution_rollouts_this_step=496,
+        winrate_at_step_start=0.227,
+    )
+    assert should_force_advance_evolution_step(
+        state, cfg=cfg, current_winrate=0.246, pass_target=0.35
+    ) is True
+
+
+@pytest.mark.unit
+def test_sanitize_stuck_plateau_evolution_caps_rollouts() -> None:
+    cfg = _cfg(plateau_evolution_max_rollouts_per_step=24)
+    state = PlateauState(
+        active=True,
+        evolution_step=1,
+        evolution_rollouts_this_step=496,
+        winrate_at_step_start=0.227,
+    )
+    assert sanitize_stuck_plateau_evolution(
+        state, cfg=cfg, current_winrate=0.246, pass_target=0.35
+    ) is True
+    assert state.evolution_rollouts_this_step >= 72
 
 
 @pytest.mark.unit
@@ -260,3 +358,81 @@ def test_is_valid_best_policy_snapshot() -> None:
         PlateauState(best_winrate=0.47, best_winrate_at_trade=250, best_policy_path="/x.zip"),
         cfg=cfg,
     )
+
+
+@pytest.mark.unit
+def test_revert_evolution_step_on_noop_undoes_ladder() -> None:
+    state = PlateauState(active=True, evolution_step=3, evolution_rollouts_this_step=8)
+    revert_evolution_step_on_noop(state)
+    assert state.evolution_step == 2
+    assert state.evolution_rollouts_this_step == 0
+
+
+@pytest.mark.unit
+def test_force_advance_after_max_noops() -> None:
+    cfg = _cfg(plateau_evolution_max_noops_per_step=3)
+    state = PlateauState(active=True, evolution_step=1, evolution_noop_count=3)
+    assert should_force_advance_evolution_step(state, cfg=cfg, current_winrate=0.28) is True
+
+
+@pytest.mark.unit
+def test_min_ppo_steps_blocks_advance() -> None:
+    cfg = _cfg(
+        plateau_evolution_rollouts_per_step=12,
+        plateau_evolution_min_ppo_steps_between_steps=50_000,
+    )
+    state = PlateauState(
+        active=True,
+        evolution_step=1,
+        evolution_rollouts_this_step=12,
+        winrate_at_step_start=0.268,
+    )
+    assert should_advance_evolution_step(
+        state,
+        cfg=cfg,
+        current_winrate=0.268,
+        ppo_steps_since_step_start=1000,
+    ) is False
+    assert should_advance_evolution_step(
+        state,
+        cfg=cfg,
+        current_winrate=0.268,
+        ppo_steps_since_step_start=50_000,
+    ) is True
+
+
+@pytest.mark.unit
+def test_rolling_winrate_last_n_trades() -> None:
+    wins_at = {0: 0, 100: 0, 600: 200}
+    wr = rolling_winrate_last_n_trades(
+        stage_trades=600,
+        stage_wins=200,
+        wins_at_trade=wins_at,
+        window=500,
+    )
+    assert wr == pytest.approx(0.4, rel=1e-4)
+
+
+@pytest.mark.unit
+def test_evolution_ladder_blocked_reason_accepts_stage_trades() -> None:
+    cfg = _cfg()
+    state = PlateauState(active=True, evolution_step=1, evolution_rollouts_this_step=0)
+    blocked = evolution_ladder_blocked_reason(
+        state,
+        cfg=cfg,
+        current_winrate=0.30,
+        remediation_exhausted=True,
+        trade_budget_remaining=40_000,
+        stage_trades=847,
+        required=200,
+    )
+    assert blocked is not None
+    audit = build_plateau_audit(
+        state,
+        stage_trades=847,
+        required=200,
+        cfg=cfg,
+        progress={"stage_winrate": 0.30, "stage_hold_ratio": 0.76},
+    )
+    assert "evolution_ladder_blocked_reason" in audit
+

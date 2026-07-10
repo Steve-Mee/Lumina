@@ -1,12 +1,17 @@
 import type { BirthProgressPayload } from "@/lib/birthClient";
 import {
   extractStageScorecard,
+  shouldShowBirthAttentionBanner,
   type StageScorecardModel,
 } from "@/lib/birthPhaseModel";
 import { cn } from "@/lib/utils";
 
 interface BirthStageScorecardProps {
   progress: BirthProgressPayload | undefined;
+  birthStatus?: string;
+  birthRunning?: boolean;
+  resumePlateauRisk?: boolean;
+  resumePlateauRiskTrades?: number | null;
   variant?: "default" | "compact";
   className?: string;
 }
@@ -92,6 +97,10 @@ function ProgressBar({
 
 export function BirthStageScorecard({
   progress,
+  birthStatus,
+  birthRunning = false,
+  resumePlateauRisk = false,
+  resumePlateauRiskTrades = null,
   variant = "default",
   className,
 }: BirthStageScorecardProps) {
@@ -147,21 +156,114 @@ export function BirthStageScorecard({
         <p className="font-mono text-[10px] text-muted-foreground">
           Goal: {scorecard!.goalLabel}
         </p>
+        {scorecard!.regimeDistributionSummary ? (
+          <p className="font-mono text-[10px] text-muted-foreground">
+            Regime mix: {scorecard!.regimeDistributionSummary}
+          </p>
+        ) : null}
         {scorecard!.provisionalPass ? (
           <p className="font-mono text-[10px] text-amber-300">Provisional pass (practice only)</p>
         ) : null}
+        {scorecard!.stagePassGateTrades != null &&
+        scorecard!.stageBudgetTrades != null ? (
+          <p className="font-mono text-[10px] text-muted-foreground">
+            Pass gate {scorecard!.stagePassGateTrades.toLocaleString()} · Budget{" "}
+            {scorecard!.stageBudgetTrades.toLocaleString()}
+            {scorecard!.plateauMinStageTrades != null
+              ? ` · Plateau after ${scorecard!.plateauMinStageTrades.toLocaleString()}`
+              : ""}
+          </p>
+        ) : null}
+        {scorecard!.rollingWinrate500 != null && scorecard!.tradesDone >= 50 ? (
+          <p className="font-mono text-[10px] text-muted-foreground">
+            Rolling winrate (500 trades): {(scorecard!.rollingWinrate500 * 100).toFixed(1)}%
+          </p>
+        ) : null}
+        {scorecard!.dataDaysLoaded != null && scorecard!.dataDaysLoaded > 0 ? (
+          <p className="font-mono text-[10px] text-muted-foreground/80">
+            {scorecard!.dataManifestDaysLoaded != null &&
+            scorecard!.dataManifestDaysLoaded > 0 &&
+            scorecard!.dataManifestDaysLoaded !== scorecard!.dataDaysLoaded
+              ? `${scorecard!.dataManifestDaysLoaded} days in cache · expansion target ${scorecard!.dataDaysLoaded} days · `
+              : `${scorecard!.dataDaysLoaded} days historical window loaded · `}
+            sim runs at hardware speed
+            {scorecard!.wallClockTradesPerMin != null
+              ? ` (~${scorecard!.wallClockTradesPerMin.toLocaleString()} trades/min)`
+              : ""}
+            , not calendar time.
+          </p>
+        ) : null}
       </div>
 
-      {scorecard!.blockerDetail ? (
-        <div className="rounded border border-amber-500/30 bg-amber-950/20 px-2 py-1.5">
-          <p className="font-mono text-[10px] tracking-wide text-amber-200/90 uppercase">
-            {scorecard!.blockerLabel ?? "Blocking metric"}
+      {scorecard!.adaptationCycling ? (
+        <div className="birth-distress-callout rounded px-2 py-1.5">
+          <p className="birth-distress-callout__title tracking-wide">
+            Recovery cycling
           </p>
-          <p className="mt-0.5 font-mono text-xs text-amber-100">{scorecard!.blockerDetail}</p>
+          <p className="birth-distress-callout__body mt-0.5">
+            Adaptatie draait zonder nieuwe trades — plateau/evolution of reset volgt. Stop en
+            reset birth (tick cache behouden) als dit lang aanhoudt.
+          </p>
         </div>
       ) : null}
 
-      {Boolean(progress?.needs_attention) ? (
+      {resumePlateauRisk ? (
+        <div className="birth-distress-callout rounded px-2 py-1.5">
+          <p className="birth-distress-callout__title tracking-wide">
+            Checkpoint resume risk
+          </p>
+          <p className="birth-distress-callout__body mt-0.5">
+            Hervatten zonder reset kan plateau opnieuw triggeren
+            {resumePlateauRiskTrades != null
+              ? ` (${resumePlateauRiskTrades.toLocaleString()} stage trades geladen)`
+              : ""}
+            . Gebruik Reset birth (tick cache behouden) voor een schone herstart.
+          </p>
+        </div>
+      ) : null}
+
+      {scorecard!.plateauQuarantineActive ? (
+        <div className="rounded border border-cyan-500/35 bg-cyan-950/25 px-2 py-1.5">
+          <p className="font-mono text-[10px] tracking-wide text-cyan-200/90 uppercase">
+            Plateau quarantine
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-cyan-100">
+            Resume grace — plateau detection paused
+            {scorecard!.plateauQuarantineRolloutsRemaining != null
+              ? ` · ${scorecard!.plateauQuarantineRolloutsRemaining} rollouts`
+              : ""}
+            {scorecard!.plateauQuarantineTradesRemainingCount != null &&
+            scorecard!.plateauQuarantineTradesRemainingCount > 0
+              ? ` · ${scorecard!.plateauQuarantineTradesRemainingCount} trades remaining`
+              : scorecard!.plateauQuarantineTradesRemaining != null
+                ? ` · ${scorecard!.plateauQuarantineTradesRemaining} new trades`
+                : ""}
+          </p>
+        </div>
+      ) : null}
+
+      {scorecard!.evolutionLastActionDetail ? (
+        <div className="rounded border border-violet-500/25 bg-violet-950/15 px-2 py-1.5">
+          <p className="font-mono text-[10px] tracking-wide text-violet-200/90 uppercase">
+            Last evolution action
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-violet-100">
+            {scorecard!.evolutionLastActionApplied ? "Applied" : "Skipped (no-op)"}:{" "}
+            {scorecard!.evolutionLastActionDetail}
+          </p>
+        </div>
+      ) : null}
+
+      {scorecard!.blockerDetail ? (
+        <div className="birth-distress-callout rounded px-2 py-1.5">
+          <p className="birth-distress-callout__title tracking-wide">
+            {scorecard!.blockerLabel ?? "Blocking metric"}
+          </p>
+          <p className="birth-distress-callout__body mt-0.5">{scorecard!.blockerDetail}</p>
+        </div>
+      ) : null}
+
+      {shouldShowBirthAttentionBanner(progress, { birthRunning, birthStatus }) ? (
         <div className="rounded border border-violet-500/35 bg-violet-950/20 px-2 py-1.5">
           <p className="font-mono text-[10px] tracking-wide text-violet-200/90 uppercase">
             Attention required
@@ -180,8 +282,16 @@ export function BirthStageScorecard({
           <p className="mt-0.5 font-mono text-xs text-orange-100">
             {scorecard!.evolutionStepLabel ??
               `Evolution ${scorecard!.evolutionPhase.replace(/_/g, " ")}`}
-            {scorecard!.evolutionStep != null && scorecard!.evolutionActionsRemaining != null
-              ? ` · step ${scorecard!.evolutionStep}/${scorecard!.evolutionStep + scorecard!.evolutionActionsRemaining}`
+            {scorecard!.evolutionActionsTotal != null &&
+            scorecard!.evolutionActionsCompleted != null
+              ? ` · actions ${scorecard!.evolutionActionsCompleted}/${scorecard!.evolutionActionsTotal}`
+              : scorecard!.evolutionStep != null &&
+                  scorecard!.evolutionActionsRemaining != null
+                ? ` · step ${scorecard!.evolutionStep}/${scorecard!.evolutionStep + scorecard!.evolutionActionsRemaining}`
+                : ""}
+            {scorecard!.evolutionPhantomSteps != null &&
+            scorecard!.evolutionPhantomSteps > 0
+              ? ` · phantom ${scorecard!.evolutionPhantomSteps}`
               : ""}
           </p>
           {scorecard!.evolutionRolloutsThisStep != null &&
@@ -231,14 +341,15 @@ export function BirthStageScorecard({
         </div>
       ) : null}
 
-      {scorecard!.stage1WinrateGate != null &&
+      {scorecard!.passCriteriaId === "trend_winrate" &&
+      scorecard!.stage1WinrateGate != null &&
       scorecard!.stage1WinrateRecommended != null &&
       scorecard!.stage1WinrateGate < scorecard!.stage1WinrateRecommended - 0.001 ? (
-        <div className="rounded border border-amber-500/35 bg-amber-950/20 px-2 py-1.5">
-          <p className="font-mono text-[10px] tracking-wide text-amber-200/90 uppercase">
+        <div className="birth-distress-callout rounded px-2 py-1.5">
+          <p className="birth-distress-callout__title tracking-wide">
             Winrate gate below recommended
           </p>
-          <p className="mt-0.5 font-mono text-xs text-amber-100">
+          <p className="birth-distress-callout__body mt-0.5">
             Gate {(scorecard!.stage1WinrateGate * 100).toFixed(0)}% · recommended{" "}
             {(scorecard!.stage1WinrateRecommended * 100).toFixed(0)}% · REAL needs Evolution Proof
             + OOS ≥48%

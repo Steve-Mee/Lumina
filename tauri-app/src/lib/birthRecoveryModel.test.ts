@@ -1,55 +1,43 @@
 import { describe, expect, it } from "vitest";
 
 import type { BirthStatusPayload } from "@/lib/birthClient";
-import { shouldAutoResumeBirth } from "@/lib/birthRecoveryModel";
+import { shouldAutoResumeBirth, verifyBirthWipeSucceeded } from "@/lib/birthRecoveryModel";
 
-describe("shouldAutoResumeBirth", () => {
-  it("skips auto-resume when user_initiated_stop is set", () => {
-    const status = {
-      status: "interrupted",
-      progress: { stage: "interrupted", user_initiated_stop: true },
-    } as BirthStatusPayload;
-    expect(shouldAutoResumeBirth(status, "birth_interrupted")).toBe(false);
+describe("verifyBirthWipeSucceeded", () => {
+  it("accepts stale running poll when API already confirmed wipe", () => {
+    const result = verifyBirthWipeSucceeded({
+      apiStatus: "wiped",
+      apiCheckpointResumable: false,
+      polledStatus: {
+        status: "running",
+        checkpoint_resumable: false,
+      } as BirthStatusPayload,
+    });
+    expect(result.ok).toBe(true);
   });
 
-  it("skips auto-resume when progress indicates active historical load", () => {
-    const status = {
-      status: "idle",
-      progress: { stage: "loading_data", phase: "loading_history" },
-    } as BirthStatusPayload;
-    expect(shouldAutoResumeBirth(status)).toBe(false);
-  });
-
-  it("allows auto-resume for interrupted without user stop flag", () => {
-    const status = {
-      status: "interrupted",
-      progress: { stage: "interrupted" },
-    } as BirthStatusPayload;
-    expect(shouldAutoResumeBirth(status, "birth_interrupted")).toBe(true);
-  });
-
-  it("allows auto-resume for retryable stage_stalled", () => {
-    const status = {
+  it("auto-resumes phoenix_cycle stalls when retryable", () => {
+    const ok = shouldAutoResumeBirth({
       status: "stage_stalled",
       progress: {
-        stage: "stage_stalled",
         phase: "stage_stalled",
+        terminal_stall_reason: "phoenix_cycle",
         retryable: true,
+        needs_attention: false,
       },
-    } as BirthStatusPayload;
-    expect(shouldAutoResumeBirth(status)).toBe(true);
+    } as BirthStatusPayload);
+    expect(ok).toBe(true);
   });
 
-  it("skips auto-resume for stage_stalled when user stopped", () => {
-    const status = {
-      status: "stage_stalled",
-      progress: {
-        stage: "stage_stalled",
-        phase: "stage_stalled",
-        retryable: true,
-        user_initiated_stop: true,
-      },
-    } as BirthStatusPayload;
-    expect(shouldAutoResumeBirth(status)).toBe(false);
+  it("rejects when checkpoint remains resumable after wipe", () => {
+    const result = verifyBirthWipeSucceeded({
+      apiStatus: "wiped",
+      apiCheckpointResumable: false,
+      polledStatus: {
+        status: "idle",
+        checkpoint_resumable: true,
+      } as BirthStatusPayload,
+    });
+    expect(result.ok).toBe(false);
   });
 });

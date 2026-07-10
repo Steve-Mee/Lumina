@@ -105,14 +105,14 @@ export function BirthCommandBar({
   milestones: _milestones = [],
   progress,
   status = "idle",
-  checkpointAvailable = false,
+  checkpointAvailable: _checkpointAvailable = false,
   busy = false,
   advancedOpen = null,
   onToggleAdvanced,
   onStop,
-  onStart,
-  onWipe,
-  onResumeCheckpoint,
+  onStart: _onStart,
+  onWipe: _onWipe,
+  onResumeCheckpoint: _onResumeCheckpoint,
   onEnterDeck,
   onExtraTraining,
   className,
@@ -123,7 +123,7 @@ export function BirthCommandBar({
   return (
     <header
       className={cn(
-        "birth-command-bar pointer-events-auto relative lumina-glass lumina-glass--panel shrink-0 border-b border-white/10",
+        "birth-command-bar pointer-events-auto relative z-30 lumina-glass lumina-glass--panel shrink-0 border-b border-white/10",
         className,
       )}
       role="banner"

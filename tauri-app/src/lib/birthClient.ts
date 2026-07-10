@@ -1,160 +1,22 @@
 import { resolveBackendBaseUrl } from "@/lib/setupClient";
+import { traceBirthWipe } from "@/lib/birthWipeTrace";
 import { luminaFetch, readHttpErrorDetail } from "@/lib/httpClient";
+import type {
+  BirthSettingsPayload,
+  BirthStatusPayload,
+  BirthWipeApiResponse,
+  StartBirthSessionOptions,
+} from "@/lib/birth/birthClientTypes";
 
-export interface BirthProgressPayload {
-  stage?: string;
-  phase?: string;
-  progress_pct?: number;
-  trades_done?: number;
-  target_trades?: number;
-  stage_target_trades?: number;
-  cumulative_trades?: number;
-  total_trades?: number;
-  rollout_trades?: number;
-  rollout_steps?: number;
-  hold_ratio?: number;
-  exploration_active?: boolean;
-  patterns_mined?: number;
-  oracle_wins?: number;
-  data_days_loaded?: number;
-  expansion_step?: number;
-  learning_attempt?: number;
-  birth_start_time?: number;
-  elapsed_sec?: number;
-  stage_trades?: number;
-  stage_wins?: number;
-  stage_winrate?: number;
-  stage_hold_ratio?: number;
-  curriculum_index?: number;
-  curriculum_total?: number;
-  stages_passed?: string[];
-  pass_criteria_id?: string;
-  pass_criteria_label?: string;
-  pass_metric_label?: string;
-  pass_metric_target?: number;
-  pass_metric_min?: number;
-  pass_metric_max?: number;
-  stage_display_name?: string;
-  sub_phase?: string;
-  sub_phase_label?: string;
-  constitution_violations?: number;
-  is_advancing?: boolean;
-  timestamp?: string;
-  ppo_steps?: number;
-  ppo_steps_cumulative?: number;
-  ppo_batch_count?: number;
-  message?: string;
-  curriculum_stage?: string;
-  certificate_ok?: boolean;
-  oos_metrics?: Record<string, unknown>;
-  failure_reasons?: string[];
-  quality_score?: number;
-  remediation_attempt?: number;
-  remediation_max?: number;
-  remediation_action?: string;
-  stage_wall_remaining_sec?: number;
-  stage_range_hold_signals?: number;
-  stage_range_total_signals?: number;
-  stage_range_flat_bars?: number;
-  stage_range_round_trips?: number;
-  stage_range_flat_ratio?: number;
-  stage_blocker_metric?: string;
-  stage_blocker_value?: number;
-  pass_reason?: string;
-  provisional_pass?: boolean;
-  data_manifest?: Record<string, unknown>;
-  actual_real_days_loaded?: number;
-  regimes_covered?: string[];
-  volume_gate_status?: string;
-  winrate_trend_slope?: number;
-  last_adaptation?: Record<string, unknown>;
-  retries_this_stage?: number;
-  adaptation_tier?: number;
-  max_adaptation_tiers?: number;
-  max_stage_retries?: number;
-  auto_recovery_active?: boolean;
-  adaptation_enabled?: boolean;
-  wall_behavior?: string;
-  escalation_level?: number;
-  user_initiated_stop?: boolean;
-  retryable?: boolean;
-  trade_budget_remaining?: number;
-  trade_budget_cap?: number;
-  terminal_stall_reason?: string;
-  evolution_phase?: string;
-  evolution_step?: number;
-  evolution_step_label?: string;
-  evolution_actions_remaining?: number;
-  plateau_elapsed_sec?: number;
-  trades_beyond_gate?: number;
-  plateau_forced_recoveries_count?: number;
-  plateau_best_winrate?: number;
-  plateau_evolution_rollouts_this_step?: number;
-  plateau_evolution_rollouts_max?: number;
-  stall_remediation_cycle?: number;
-  stall_remediation_step?: number;
-  stall_remediation_max_steps?: number;
-  stall_remediation_max_cycles?: number;
-  recommended_recovery_action?: string;
-  hold_trap_detected?: boolean;
-  stage1_winrate_gate?: number;
-  stage1_winrate_recommended?: number;
-  needs_attention?: boolean;
-  attention_reason_code?: string;
-  attention_summary?: string;
-  attention_recommended_actions?: string[];
-  attention_notified_at?: string;
-  constitution_violations_session?: number;
-  constitution_violations_cumulative?: number;
-  loading_chunk?: number;
-  chunk_total?: number;
-  bars_loaded?: number;
-  chunk_phase?: string;
-}
-
-export interface BirthCertificatePayload {
-  version?: string;
-  oos_winrate?: number;
-  oos_sharpe?: number;
-  oos_max_drawdown_pct?: number;
-  real_data_pct?: number;
-  constitution_violations?: number;
-  regimes_covered?: string[];
-}
-
-export interface BirthStatusPayload {
-  status: string;
-  message?: string;
-  start_acknowledged?: boolean;
-  error?: string;
-  progress?: BirthProgressPayload;
-  progress_pct?: number;
-  artifacts_ok?: boolean;
-  certificate_ok?: boolean;
-  certificate_reason?: string;
-  certificate?: BirthCertificatePayload | null;
-  curriculum_stage?: string;
-  oos_metrics?: Record<string, unknown>;
-  failure_reasons?: string[];
-  quality_score?: number;
-  remediation_attempt?: number;
-  remediation_max?: number;
-  checkpoint_phase?: string;
-  checkpoint_quality_score?: number;
-  engine_version?: string;
-  fast_path_eligible?: boolean;
-  data_manifest?: Record<string, unknown>;
-  elapsed_seconds?: number;
-  adaptive_intelligence?: Record<string, unknown>;
-}
-
-export interface StartBirthSessionOptions {
-  targetTrades: number;
-  practiceMode?: boolean;
-  continueTraining?: boolean;
-  force?: boolean;
-  reuseData?: boolean;
-}
+export type {
+  BirthCertificatePayload,
+  BirthProgressPayload,
+  BirthSettingsPayload,
+  BirthStatusPayload,
+  BirthWipeApiResponse,
+  BirthWipeResult,
+  StartBirthSessionOptions,
+} from "@/lib/birth/birthClientTypes";
 
 function isNotFoundError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -182,9 +44,24 @@ async function postBirthMutation(
   return response.json() as Promise<BirthStatusPayload>;
 }
 
-export async function fetchBirthStatusTyped(): Promise<BirthStatusPayload> {
+export async function stopBirthSession(): Promise<Record<string, unknown>> {
   const base = resolveBackendBaseUrl();
-  const response = await luminaFetch(`${base}/api/birth/status`);
+  const response = await luminaFetch(`${base}/api/birth/stop`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readHttpErrorDetail(response));
+  }
+  return response.json();
+}
+
+export async function fetchBirthStatusTyped(options?: {
+  signal?: AbortSignal;
+  connectTimeout?: number;
+}): Promise<BirthStatusPayload> {
+  const base = resolveBackendBaseUrl();
+  const response = await luminaFetch(`${base}/api/birth/status`, {
+    signal: options?.signal,
+    connectTimeout: options?.connectTimeout ?? 30_000,
+  } as RequestInit);
   if (!response.ok) throw new Error(await readHttpErrorDetail(response));
   return response.json() as Promise<BirthStatusPayload>;
 }
@@ -220,6 +97,24 @@ export async function startBirthSessionContinue(
   targetTrades: number,
 ): Promise<Record<string, unknown>> {
   return startBirthSession({ targetTrades, continueTraining: true });
+}
+
+export interface BirthStartResponse {
+  status: BirthStartStatus;
+  message?: string;
+  target_trades?: number;
+}
+
+export async function startBirth(targetTrades: number): Promise<BirthStartResponse> {
+  const params = new URLSearchParams({
+    explicit_user_start: "true",
+    target_trades: String(targetTrades),
+  });
+  const response = await luminaFetch(`${resolveBackendBaseUrl()}/api/birth/start?${params}`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await readHttpErrorDetail(response));
+  }
+  return response.json() as Promise<BirthStartResponse>;
 }
 
 export type BirthStartStatus = "started" | "rejected" | "already_running" | "already_completed";
@@ -277,6 +172,20 @@ export async function resumeStalledStageSession(targetTrades: number): Promise<B
   }
 }
 
+export async function autonomousRecoverySession(
+  targetTrades: number,
+): Promise<BirthStatusPayload> {
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  try {
+    return await postBirthMutation("/api/birth/autonomous-recovery", params);
+  } catch (err) {
+    if (!isNotFoundError(err)) {
+      throw err;
+    }
+    return resumeStalledStageSession(targetTrades);
+  }
+}
+
 export async function expandAndRetryStalledStageSession(
   targetTrades: number,
 ): Promise<BirthStatusPayload> {
@@ -329,23 +238,43 @@ export async function clearBirthForExtraTraining(): Promise<Record<string, unkno
   return response.json();
 }
 
-export async function wipeAllBirthData(): Promise<Record<string, unknown>> {
+export async function wipeAllBirthData(options?: {
+  preserveTickCache?: boolean;
+}): Promise<BirthWipeApiResponse> {
+  const preserveTickCache = Boolean(options?.preserveTickCache);
   const base = resolveBackendBaseUrl();
-  const response = await luminaFetch(`${base}/api/birth/wipe-all?confirm=true`, { method: "POST" });
-  if (!response.ok) {
-    throw new Error(await readHttpErrorDetail(response));
+  const url = `${base}/api/birth/wipe-all?confirm=true&preserve_tick_cache=${preserveTickCache ? "true" : "false"}`;
+  traceBirthWipe("client.wipe.http_start", { url, method: "POST" });
+  const startedAt = performance.now();
+  try {
+    const response = await luminaFetch(url, { method: "POST" });
+    const elapsedMs = Math.round(performance.now() - startedAt);
+    traceBirthWipe("client.wipe.http_response", {
+      url,
+      ok: response.ok,
+      status: response.status,
+      elapsedMs,
+    }, response.ok ? "info" : "error");
+    if (!response.ok) {
+      const detail = await readHttpErrorDetail(response);
+      traceBirthWipe("client.wipe.http_error_body", { detail }, "error");
+      throw new Error(detail);
+    }
+    const body = (await response.json()) as BirthWipeApiResponse;
+    traceBirthWipe("client.wipe.http_json", {
+      status: body.status,
+      checkpointResumable: body.checkpoint_resumable,
+      removedCount: Array.isArray(body.removed_artifacts) ? body.removed_artifacts.length : undefined,
+    });
+    return body;
+  } catch (e) {
+    traceBirthWipe(
+      "client.wipe.http_exception",
+      { error: e instanceof Error ? e.message : String(e), elapsedMs: Math.round(performance.now() - startedAt) },
+      "error",
+    );
+    throw e;
   }
-  return response.json();
-}
-
-export interface BirthSettingsPayload {
-  training_trades: number;
-  prefer_real_data_only: boolean;
-  max_real_days: number;
-  allow_minimal_synthetic_fallback: boolean;
-  require_real_simulator_data: boolean;
-  /** Stage 1 winrate pass gate (0.35–0.45). Default 0.45. */
-  stage1_winrate_pass_threshold?: number;
 }
 
 export async function saveBirthSettings(body: BirthSettingsPayload): Promise<Record<string, unknown>> {

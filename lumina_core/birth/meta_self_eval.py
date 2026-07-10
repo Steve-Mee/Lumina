@@ -184,6 +184,10 @@ def select_winner(
         if r.combined_at_end > floor and r.velocity_delta >= min_gain
     ]
     if not candidates:
-        return None
+        positive = [r for r in results if r.velocity_delta >= min_gain and r.velocity_delta > 0.0]
+        if not positive:
+            return None
+        positive.sort(key=lambda r: (r.velocity_delta, r.combined_at_end), reverse=True)
+        return positive[0].strategy
     candidates.sort(key=lambda r: (r.velocity_delta, r.combined_at_end), reverse=True)
     return candidates[0].strategy

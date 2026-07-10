@@ -180,15 +180,22 @@ def birth_runner_lock_exists(workspace_root: Path | str | None) -> bool:
 
 
 def birth_runner_lock_active(workspace_root: Path | str | None) -> bool:
-    """True when birth_runner.json exists and its PID (if any) is still alive."""
+    """True when birth_runner.json exists and its PID (if any) is still alive.
+
+    Special-case: if "runner" == "file_progress" the lock is considered active
+    (used for cross-process / file-driven progress monitoring without a live PID).
+    """
     payload = read_birth_runner_lock(workspace_root)
     if payload is None:
         return False
+    runner = str(payload.get("runner", "") or "").strip().lower()
+    if runner == "file_progress":
+        return True
     raw_pid = payload.get("pid")
     try:
         pid = int(raw_pid)
     except (TypeError, ValueError):
-        return True
+        return False
     return _pid_alive(pid)
 
 

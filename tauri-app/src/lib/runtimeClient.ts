@@ -1,3 +1,4 @@
+import { stopBirthSession } from "@/lib/birthClient";
 import { resolveBackendBaseUrl } from "@/lib/setupClient";
 import { resolveMonitoringApiKey } from "@/lib/monitoringClient";
 
@@ -83,11 +84,9 @@ export async function resetFirstBoot(phrase: string): Promise<{ ok: boolean }> {
   return runtimeFetch(`/api/runtime/reset-first-boot?phrase=${encoded}`, { method: "POST" });
 }
 
+/** @deprecated Prefer `stopBirthSession` from `@/lib/birthClient` (Tauri-safe HTTP). */
 export async function stopBirth(): Promise<Record<string, unknown>> {
-  const base = resolveBackendBaseUrl();
-  const response = await fetch(`${base}/api/birth/stop`, { method: "POST" });
-  if (!response.ok) throw new Error(`Birth stop HTTP ${response.status}`);
-  return response.json();
+  return stopBirthSession();
 }
 
 export async function startBirthContinue(targetTrades: number): Promise<Record<string, unknown>> {

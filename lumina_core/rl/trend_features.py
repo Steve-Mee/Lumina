@@ -9,6 +9,7 @@ import pandas as pd
 
 MIN_TREND_LOOKBACK = 60
 DEFAULT_TREND_ADX_THRESHOLD = 23.0
+ENRICH_VERSION = "trend_features_v1"
 SLOPE_PERIODS = (5, 15, 30, 60)
 ADX_PERIODS = (7, 14, 21)
 ATR_PERIOD = 14
@@ -254,35 +255,30 @@ def _numpy_adx_last(
     return val if np.isfinite(val) else 0.0
 
 
-def compute_trend_features_for_window(
-    closes: Sequence[float],
-    highs: Sequence[float],
-    lows: Sequence[float],
+def _build_trend_feature_dict(
     *,
+    price: float,
+    w_close: np.ndarray,
+    w_high: np.ndarray,
+    w_low: np.ndarray,
+    w_tr: np.ndarray,
+    slopes_at_index: dict[int, float],
     trend_adx_threshold: float = DEFAULT_TREND_ADX_THRESHOLD,
 ) -> dict[str, float]:
-    close_arr = np.asarray(closes, dtype=np.float64)
-    high_arr = np.asarray(highs, dtype=np.float64)
-    low_arr = np.asarray(lows, dtype=np.float64)
-    if len(close_arr) < 2:
-        return _zero_trend_features()
-
-    price = float(close_arr[-1])
     if price <= 0:
         return _zero_trend_features()
 
-    tr = _numpy_true_range(high_arr, low_arr, close_arr)
-    atr_series = _numpy_rolling_mean(tr, ATR_PERIOD)
+    atr_series = _numpy_rolling_mean(w_tr, ATR_PERIOD)
     atr = float(atr_series[-1]) if len(atr_series) else 0.0
     if not np.isfinite(atr):
         atr = 0.0
 
-    adx_raw = {period: _numpy_adx_last(high_arr, low_arr, tr, period) for period in ADX_PERIODS}
-    slopes_raw = {period: linear_regression_slope(close_arr, period) for period in SLOPE_PERIODS}
-    mean_price = float(np.mean(close_arr[-60:])) if len(close_arr) >= 1 else price
-
-    slope_norm = {period: _normalize_slope(slopes_raw[period], mean_price) for period in SLOPE_PERIODS}
-    direction, duration_norm = trend_persistence(close_arr)
+    adx_raw = {period: _numpy_adx_last(w_high, w_low, w_tr, period) for period in ADX_PERIODS}
+    mean_price = float(np.mean(w_close[-60:])) if len(w_close) >= 1 else price
+    slope_norm = {
+        period: _normalize_slope(slopes_at_index.get(period, 0.0), mean_price) for period in SLOPE_PERIODS
+    }
+    direction, duration_norm = trend_persistence(w_close)
 
     atr_norm = atr / price if price > 0 else 0.0
 
@@ -318,7 +314,66 @@ def compute_trend_features_for_window(
     }
 
 
-def compute_trend_features_sliding_batch(
+def _precompute_slopes(closes: np.ndarray) -> dict[int, np.ndarray]:
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    n = len(closes)
+    out: dict[int, np.ndarray] = {}
+    for period in SLOPE_PERIODS:
+        arr = np.zeros(n, dtype=np.float64)
+        if n < period:
+            out[period] = arr
+            continue
+        windows = sliding_window_view(closes, period)
+        x = np.arange(period, dtype=np.float64)
+        x_mean = x.mean()
+        denom = float(np.sum((x - x_mean) ** 2))
+        if denom <= 1e-12:
+            out[period] = arr
+            continue
+        y_mean = windows.mean(axis=1)
+        numer = np.sum((x - x_mean) * (windows - y_mean[:, None]), axis=1)
+        valid = np.all(windows > 0, axis=1)
+        slopes = np.zeros(windows.shape[0], dtype=np.float64)
+        slopes[valid] = numer[valid] / denom
+        arr[period - 1 :] = slopes
+        out[period] = arr
+    return out
+
+
+def compute_trend_features_for_window(
+    closes: Sequence[float],
+    highs: Sequence[float],
+    lows: Sequence[float],
+    *,
+    trend_adx_threshold: float = DEFAULT_TREND_ADX_THRESHOLD,
+) -> dict[str, float]:
+    close_arr = np.asarray(closes, dtype=np.float64)
+    high_arr = np.asarray(highs, dtype=np.float64)
+    low_arr = np.asarray(lows, dtype=np.float64)
+    if len(close_arr) < 2:
+        return _zero_trend_features()
+
+    price = float(close_arr[-1])
+    if price <= 0:
+        return _zero_trend_features()
+
+    tr = _numpy_true_range(high_arr, low_arr, close_arr)
+    slopes_at_index = {
+        period: linear_regression_slope(close_arr, period) for period in SLOPE_PERIODS
+    }
+    return _build_trend_feature_dict(
+        price=price,
+        w_close=close_arr,
+        w_high=high_arr,
+        w_low=low_arr,
+        w_tr=tr,
+        slopes_at_index=slopes_at_index,
+        trend_adx_threshold=trend_adx_threshold,
+    )
+
+
+def compute_trend_features_sliding_batch_reference(
     closes: np.ndarray,
     highs: np.ndarray,
     lows: np.ndarray,
@@ -327,7 +382,7 @@ def compute_trend_features_sliding_batch(
     on_progress: Callable[[int, int], None] | None = None,
     progress_stride: int = 2000,
 ) -> list[dict[str, float]]:
-    """Compute per-tick trend features using fixed-size sliding windows."""
+    """Reference O(n*lookback) sliding batch — used for golden equivalence tests."""
     n = len(closes)
     out = [_zero_trend_features() for _ in range(n)]
     if n <= lookback:
@@ -344,6 +399,49 @@ def compute_trend_features_sliding_batch(
         if on_progress is not None and progress_stride > 0:
             processed = offset + 1
             if processed == total or processed % progress_stride == 0:
+                on_progress(processed, total)
+    return out
+
+
+def compute_trend_features_sliding_batch(
+    closes: np.ndarray,
+    highs: np.ndarray,
+    lows: np.ndarray,
+    *,
+    lookback: int = MIN_TREND_LOOKBACK,
+    on_progress: Callable[[int, int], None] | None = None,
+    progress_stride: int = 2000,
+) -> list[dict[str, float]]:
+    """Compute per-tick trend features using fixed-size sliding windows (O(n) slopes + TR)."""
+    n = len(closes)
+    out = [_zero_trend_features() for _ in range(n)]
+    if n <= lookback:
+        return out
+
+    tr_full = _numpy_true_range(highs, lows, closes)
+    slopes_pre = _precompute_slopes(closes)
+    effective_stride = progress_stride if n <= 100_000 else max(progress_stride, 5000)
+    total = n - lookback
+
+    for offset, i in enumerate(range(lookback, n)):
+        w_start = i - lookback
+        w_close = closes[w_start : i + 1]
+        w_high = highs[w_start : i + 1]
+        w_low = lows[w_start : i + 1]
+        w_tr = tr_full[w_start : i + 1]
+        price = float(closes[i])
+        slopes_at_index = {period: float(slopes_pre[period][i]) for period in SLOPE_PERIODS}
+        out[i] = _build_trend_feature_dict(
+            price=price,
+            w_close=w_close,
+            w_high=w_high,
+            w_low=w_low,
+            w_tr=w_tr,
+            slopes_at_index=slopes_at_index,
+        )
+        if on_progress is not None and effective_stride > 0:
+            processed = offset + 1
+            if processed == total or processed % effective_stride == 0:
                 on_progress(processed, total)
     return out
 

@@ -7,6 +7,7 @@ import pytest
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.stall_remediation import (
     HUMAN_GATE_REASON,
+    PHOENIX_CYCLE_REASON,
     StallRemediationAction,
     StallRemediationState,
     action_for_step,
@@ -95,3 +96,8 @@ def test_curate_buffer_removes_half() -> None:
 @pytest.mark.unit
 def test_human_gate_reason_constant() -> None:
     assert HUMAN_GATE_REASON == "stall_remediation_exhausted"
+
+
+@pytest.mark.unit
+def test_phoenix_cycle_reason_constant() -> None:
+    assert PHOENIX_CYCLE_REASON == "phoenix_cycle"

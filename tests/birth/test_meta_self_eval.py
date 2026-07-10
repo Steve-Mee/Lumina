@@ -163,6 +163,30 @@ def test_winner_by_velocity_delta() -> None:
 
 
 @pytest.mark.unit
+def test_select_winner_fallback_without_velocity_floor() -> None:
+    cfg = _cfg()
+    results = [
+        StrategyProbeResult(
+            strategy="pattern_inject_aggressive",
+            rollouts=12,
+            velocity_start=-62.795515,
+            velocity_end=0.000259,
+            velocity_delta=62.795774,
+            combined_at_end=0.000259,
+        ),
+        StrategyProbeResult(
+            strategy="explore_reduce",
+            rollouts=12,
+            velocity_start=7.8e-05,
+            velocity_end=-8.3e-05,
+            velocity_delta=-0.000162,
+            combined_at_end=-8.3e-05,
+        ),
+    ]
+    assert select_winner(results, cfg) == "pattern_inject_aggressive"
+
+
+@pytest.mark.unit
 def test_no_winner_exhausted_suggests_provisional() -> None:
     ctrl = _controller(meta_self_eval_rollouts_per_strategy=1)
     snap = _stalled_snap()

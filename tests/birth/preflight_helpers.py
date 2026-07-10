@@ -24,4 +24,7 @@ def patch_holdout_preflight_ok(monkeypatch: pytest.MonkeyPatch) -> None:
             message="Holdout preflight OK",
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.assess_split_preflight", _ok_preflight)
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.assess_split_preflight",
+        _ok_preflight,
+    )

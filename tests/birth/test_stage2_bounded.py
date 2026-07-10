@@ -103,14 +103,14 @@ def test_stage2_hold_stagnation_increases_exploration(
             range_total_signals=100,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _stagnant_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _stagnant_rollout)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")))
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")))
 
     with pytest.raises(RuntimeError, match="bounded_rollouts"):
         engine._run_stage_research_loop(
@@ -167,9 +167,9 @@ def test_stage2_wall_budget_triggers_provisional_pass(
     def _advance_time(_: float) -> None:
         tick["value"] += 400.0
 
-    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: (
             _advance_time(0),
             SimRolloutResult(
@@ -190,12 +190,12 @@ def test_stage2_wall_budget_triggers_provisional_pass(
         )[1],
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")))
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")))
 
     result = engine._run_stage_research_loop(
         stage=CurriculumStage.STAGE2_RANGE,
@@ -251,9 +251,9 @@ def test_certified_wall_budget_exhausted_does_not_provisional_pass(
     def _advance_time(_: float) -> None:
         tick["value"] += 400.0
 
-    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: (
             _advance_time(0),
             SimRolloutResult(
@@ -274,7 +274,7 @@ def test_certified_wall_budget_exhausted_does_not_provisional_pass(
         )[1],
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(
@@ -285,7 +285,7 @@ def test_certified_wall_budget_exhausted_does_not_provisional_pass(
         ),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
     )
 

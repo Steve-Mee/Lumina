@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -31,7 +32,10 @@ def test_resolve_birth_training_pulse_stale_when_old_timestamp() -> None:
 @pytest.mark.unit
 def test_progress_is_recently_active_uses_longer_window_for_ppo(tmp_path: Path) -> None:
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
-    (tmp_path / "state" / "birth_runner.json").write_text("{}", encoding="utf-8")
+    runner_payload = {"runner": "file_progress", "pid": "unknown"}
+    (tmp_path / "state" / "birth_runner.json").write_text(
+        json.dumps(runner_payload), encoding="utf-8"
+    )
     ts = (datetime.now(timezone.utc) - timedelta(seconds=45)).isoformat()
     progress = {"stage": "ppo_training", "timestamp": ts}
     assert (

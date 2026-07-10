@@ -1,7 +1,13 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 import type { BirthStatusPayload } from "@/lib/birthClient";
-import { useBirthStore } from "@/store/birthStore";
+import {
+  isBirthPollInFlight,
+  isTransientHeavyBirthPhase,
+  isTransientPollWarning,
+  TRANSIENT_POLL_WARNING,
+  useBirthStore,
+} from "@/store/birthStore";
 
 vi.mock("@/lib/birthClient", () => ({
   fetchBirthStatusTyped: vi.fn(),
@@ -13,6 +19,8 @@ vi.mock("@/lib/birthClient", () => ({
   resumeBirthSession: vi.fn(),
   reuseDataBirthSession: vi.fn(),
   startBirthSessionContinue: vi.fn(),
+  stopBirthSession: vi.fn(),
+  wipeAllBirthData: vi.fn(),
 }));
 
 vi.mock("@/lib/runtimeClient", () => ({
@@ -25,8 +33,10 @@ const stageStalledStatus = {
 } as BirthStatusPayload;
 
 describe("birthStore stage_stalled recovery", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     useBirthStore.getState().reset();
+    const { fetchBirthStatusTyped } = await import("@/lib/birthClient");
+    vi.mocked(fetchBirthStatusTyped).mockReset();
   });
 
   it("maps stage_stalled status to uiPhase stage_stalled and recovery surface", () => {
@@ -72,15 +82,21 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().uiPhase).toBe("stage_stalled");
   });
 
-  it("stopBirthRun returns to genesis while backend progress is still active", async () => {
-    const { fetchBirthStatusTyped } = await import("@/lib/birthClient");
-    const { stopBirth } = await import("@/lib/runtimeClient");
+  it("stopBirthRun pins genesis when poll confirms engine stopped", async () => {
+    const { fetchBirthStatusTyped, stopBirthSession } = await import("@/lib/birthClient");
 
-    vi.mocked(stopBirth).mockResolvedValueOnce({ status: "stopping" });
-    vi.mocked(fetchBirthStatusTyped).mockResolvedValueOnce({
-      status: "running",
-      progress: { stage: "curriculum_stage", phase: "ppo_training" },
-    } as BirthStatusPayload);
+    vi.mocked(stopBirthSession).mockResolvedValueOnce({ status: "stopped" });
+    vi.mocked(fetchBirthStatusTyped)
+      .mockResolvedValueOnce({
+        status: "running",
+        live: true,
+        progress: { stage: "curriculum_stage", phase: "ppo_training" },
+      } as BirthStatusPayload)
+      .mockResolvedValue({
+        status: "idle",
+        live: false,
+        progress: { stage: "interrupted", user_initiated_stop: true },
+      } as BirthStatusPayload);
 
     useBirthStore.getState().beginBirthRun();
     const ok = await useBirthStore.getState().stopBirthRun();
@@ -89,6 +105,48 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().uiPhase).toBe("idle");
     expect(useBirthStore.getState().birthSurface).toBe("genesis");
     expect(useBirthStore.getState().genesisPinned).toBe(true);
+  });
+
+  it("stopBirthRun does not pin genesis when engine stays live", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fetchBirthStatusTyped, stopBirthSession } = await import("@/lib/birthClient");
+
+      vi.mocked(stopBirthSession).mockResolvedValueOnce({ status: "stopping" });
+      vi.mocked(fetchBirthStatusTyped).mockResolvedValue({
+        status: "running",
+        live: true,
+        progress: { stage: "curriculum_stage", phase: "ppo_training" },
+      } as BirthStatusPayload);
+
+      useBirthStore.getState().beginBirthRun();
+      const stopPromise = useBirthStore.getState().stopBirthRun();
+      await vi.advanceTimersByTimeAsync(35_000);
+      const ok = await stopPromise;
+
+      expect(ok).toBe(false);
+      expect(useBirthStore.getState().genesisPinned).toBe(false);
+      expect(useBirthStore.getState().pollError).toMatch(/engine/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bootstrapSession respects genesisPinned and does not force running surface", async () => {
+    const { fetchBirthStatusTyped } = await import("@/lib/birthClient");
+    vi.mocked(fetchBirthStatusTyped).mockResolvedValueOnce({
+      status: "running",
+      progress: { stage: "training_running", phase: "ppo_training" },
+    } as BirthStatusPayload);
+
+    useBirthStore.setState({ genesisPinned: true, uiPhase: "idle", birthSurface: "genesis" });
+    const ok = await useBirthStore.getState().bootstrapSession({
+      targetTrades: 25000,
+    });
+
+    expect(ok).toBe(false);
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
   });
 
   it("applyStatus keeps genesis surface when engine is still shutting down", () => {
@@ -118,6 +176,22 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().genesisPinned).toBe(true);
   });
 
+  it("returnToGenesis keeps genesis surface when backend still reports stage_stalled", () => {
+    useBirthStore.getState().applyStatus(stageStalledStatus);
+    expect(useBirthStore.getState().uiPhase).toBe("stage_stalled");
+    expect(useBirthStore.getState().birthSurface).toBe("recovery");
+
+    useBirthStore.getState().returnToGenesis();
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().genesisPinned).toBe(true);
+
+    useBirthStore.getState().applyStatus(stageStalledStatus);
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().genesisPinned).toBe(true);
+  });
+
   it("idle not_started maps to genesis surface after applyStatus", () => {
     useBirthStore.getState().applyStatus({
       status: "idle",
@@ -126,5 +200,96 @@ describe("birthStore stage_stalled recovery", () => {
     } as BirthStatusPayload);
     expect(useBirthStore.getState().uiPhase).toBe("idle");
     expect(useBirthStore.getState().birthSurface).toBe("genesis");
+  });
+
+  it("applyStatus prioritizes running uiPhase when engine is live despite stale stall progress", () => {
+    useBirthStore.getState().beginBirthRun();
+    useBirthStore.getState().applyStatus({
+      status: "running",
+      live: true,
+      progress: { phase: "stage_stalled", stage: "loading_data" },
+    } as BirthStatusPayload);
+
+    expect(useBirthStore.getState().uiPhase).toBe("running");
+    expect(useBirthStore.getState().birthSurface).toBe("running");
+  });
+
+  it("detects transient heavy birth phases during regime map build", () => {
+    expect(
+      isTransientHeavyBirthPhase({
+        status: "running",
+        progress: { stage: "loading_data", phase: "enriching_regimes" },
+      } as BirthStatusPayload),
+    ).toBe(true);
+    expect(
+      isTransientHeavyBirthPhase({
+        status: "running",
+        progress: { stage: "training_running", phase: "curriculum_stage" },
+      } as BirthStatusPayload),
+    ).toBe(false);
+  });
+
+  it("suppresses pollError for transient failures until the third consecutive miss", async () => {
+    const { fetchBirthStatusTyped } = await import("@/lib/birthClient");
+    useBirthStore.getState().applyStatus({
+      status: "running",
+      progress: { stage: "loading_data", phase: "enriching_regimes" },
+    } as BirthStatusPayload);
+
+    vi.mocked(fetchBirthStatusTyped).mockRejectedValue("connection lost");
+
+    await useBirthStore.getState().poll();
+    expect(useBirthStore.getState().pollError).toBeNull();
+
+    await useBirthStore.getState().poll();
+    expect(useBirthStore.getState().pollError).toBeNull();
+
+    await useBirthStore.getState().poll();
+    expect(useBirthStore.getState().pollError).toBe(TRANSIENT_POLL_WARNING);
+    expect(isTransientPollWarning(useBirthStore.getState().pollError)).toBe(true);
+  });
+
+  it("surfaces non-transient poll failures immediately", async () => {
+    const { fetchBirthStatusTyped } = await import("@/lib/birthClient");
+    useBirthStore.getState().applyStatus({
+      status: "idle",
+      progress: { stage: "not_started" },
+    } as BirthStatusPayload);
+
+    vi.mocked(fetchBirthStatusTyped).mockRejectedValueOnce(new Error("HTTP 503"));
+
+    await useBirthStore.getState().poll();
+    expect(useBirthStore.getState().pollError).toBe("HTTP 503");
+  });
+
+  it("pollFresh waits for in-flight poll then fetches updated status", async () => {
+    const { fetchBirthStatusTyped } = await import("@/lib/birthClient");
+    let resolveFirst!: (value: BirthStatusPayload) => void;
+    const firstPromise = new Promise<BirthStatusPayload>((resolve) => {
+      resolveFirst = resolve;
+    });
+
+    vi.mocked(fetchBirthStatusTyped)
+      .mockImplementationOnce(() => firstPromise)
+      .mockResolvedValueOnce({
+        status: "idle",
+        checkpoint_resumable: false,
+        progress: { stage: "not_started" },
+      } as BirthStatusPayload);
+
+    const inFlightPoll = useBirthStore.getState().poll();
+    expect(isBirthPollInFlight()).toBe(true);
+
+    const freshPromise = useBirthStore.getState().pollFresh();
+    resolveFirst({
+      status: "interrupted",
+      checkpoint_resumable: true,
+      progress: { stage: "interrupted" },
+    } as BirthStatusPayload);
+    await inFlightPoll;
+
+    const fresh = await freshPromise;
+    expect(fresh?.status).toBe("idle");
+    expect(vi.mocked(fetchBirthStatusTyped)).toHaveBeenCalledTimes(2);
   });
 });

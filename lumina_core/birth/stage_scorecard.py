@@ -8,6 +8,7 @@ from typing import Any
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import (
     CurriculumStage,
+    is_runway_stage,
     stage1_winrate_pass_threshold,
     stage_pass_trades,
     stage_trade_target,
@@ -95,6 +96,9 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "evolution_step",
     "evolution_step_label",
     "evolution_actions_remaining",
+    "evolution_actions_total",
+    "evolution_actions_completed",
+    "evolution_phantom_steps",
     "plateau_elapsed_sec",
     "trades_beyond_gate",
     "plateau_forced_recoveries_count",
@@ -110,6 +114,16 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "retryable",
     "constitution_violations_session",
     "constitution_violations_cumulative",
+    "oos_metrics",
+    "failure_reasons",
+    "remediation_attempt",
+    "remediation_max",
+    "data_manifest",
+    "retryable",
+    "certificate_ok",
+    "runway_phase",
+    "micro_oos_probe",
+    "birth_exit_winrate",
 )
 
 
@@ -132,15 +146,20 @@ def _pass_gate_label(*, pass_gate: int, training_budget: int, metric: str) -> st
 
 
 def curriculum_index_for_stage(stage: CurriculumStage) -> int:
-    if stage == CurriculumStage.STAGE1_TREND:
-        return 1
-    if stage == CurriculumStage.STAGE2_RANGE:
-        return 2
-    if stage == CurriculumStage.STAGE3_MIXED:
-        return 3
-    if stage == CurriculumStage.STAGE4_POLISH:
-        return 4
-    return 0
+    mapping = {
+        CurriculumStage.STAGE1_TREND: 1,
+        CurriculumStage.STAGE2_RANGE: 2,
+        CurriculumStage.STAGE3_MIXED: 3,
+        CurriculumStage.STAGE5_PROFIT_VAL: 5,
+        CurriculumStage.STAGE6_RISK_DISCIPLINE: 6,
+        CurriculumStage.STAGE7_HOLDOUT_PROFILE: 7,
+        CurriculumStage.STAGE4_POLISH: 8,
+    }
+    return mapping.get(stage, 0)
+
+
+def runway_curriculum_total() -> int:
+    return 7
 
 
 def stage_display_name(stage: CurriculumStage) -> str:
@@ -148,7 +167,10 @@ def stage_display_name(stage: CurriculumStage) -> str:
         CurriculumStage.STAGE1_TREND: "Trend",
         CurriculumStage.STAGE2_RANGE: "Range patience",
         CurriculumStage.STAGE3_MIXED: "Mixed regimes",
-        CurriculumStage.STAGE4_POLISH: "PPO polish",
+        CurriculumStage.STAGE5_PROFIT_VAL: "Runway profit",
+        CurriculumStage.STAGE6_RISK_DISCIPLINE: "Runway risk",
+        CurriculumStage.STAGE7_HOLDOUT_PROFILE: "Runway generalize",
+        CurriculumStage.STAGE4_POLISH: "Polish & certificate",
     }
     return names.get(stage, stage.value.replace("_", " ").title())
 
@@ -206,6 +228,50 @@ def pass_criteria_for_stage(
             metric_label="Violations",
             metric_target=0.0,
         )
+    if stage == CurriculumStage.STAGE5_PROFIT_VAL:
+        wr = float(getattr(cfg, "runway_stage5_winrate_pass", 0.40) if cfg else 0.40)
+        hold = float(getattr(cfg, "runway_stage5_hold_ratio_max", 0.55) if cfg else 0.55)
+        return PassCriteria(
+            id="runway_profit_val",
+            label=_pass_gate_label(
+                pass_gate=required,
+                training_budget=training_budget,
+                metric=f"val WR >={wr:.0%} · hold ≤{hold:.0%}",
+            ),
+            target_trades=required,
+            training_budget_trades=training_budget,
+            metric_label="Val winrate",
+            metric_target=wr,
+        )
+    if stage == CurriculumStage.STAGE6_RISK_DISCIPLINE:
+        sharpe = float(getattr(cfg, "runway_stage6_sharpe_min", 0.20) if cfg else 0.20)
+        dd = float(getattr(cfg, "runway_stage6_drawdown_max_pct", 12.0) if cfg else 12.0)
+        return PassCriteria(
+            id="runway_risk",
+            label=_pass_gate_label(
+                pass_gate=required,
+                training_budget=training_budget,
+                metric=f"Sharpe >={sharpe:.2f} · DD ≤{dd:.0f}%",
+            ),
+            target_trades=required,
+            training_budget_trades=training_budget,
+            metric_label="Val Sharpe",
+            metric_target=sharpe,
+        )
+    if stage == CurriculumStage.STAGE7_HOLDOUT_PROFILE:
+        wr = float(getattr(cfg, "runway_stage7_winrate_min", 0.45) if cfg else 0.45)
+        return PassCriteria(
+            id="runway_holdout_profile",
+            label=_pass_gate_label(
+                pass_gate=required,
+                training_budget=training_budget,
+                metric=f"profile WR >={wr:.0%} · EP OOS probe",
+            ),
+            target_trades=required,
+            training_budget_trades=training_budget,
+            metric_label="Profile winrate",
+            metric_target=wr,
+        )
     return PassCriteria(
         id="polish_complete",
         label="Final PPO buffer polish",
@@ -239,9 +305,7 @@ def compute_advancing(
     stale_after_sec: float = 120.0,
 ) -> bool:
     has_delta = stage_trades > prev_stage_trades or patterns_mined > prev_patterns_mined
-    if has_delta:
-        return True
-    return elapsed_since_snapshot_sec <= stale_after_sec
+    return bool(has_delta)
 
 
 def parse_curriculum_stage(value: str) -> CurriculumStage | None:
@@ -363,7 +427,8 @@ def enrich_progress_scorecard(payload: dict[str, Any]) -> dict[str, Any]:
         merged.setdefault("stage_display_name", stage_display_name(stage))
     if not merged.get("curriculum_index"):
         merged["curriculum_index"] = curriculum_index_for_stage(stage)
-    merged.setdefault("curriculum_total", CURRICULUM_STAGE_COUNT)
+    total = runway_curriculum_total() if is_runway_stage(stage) else CURRICULUM_STAGE_COUNT
+    merged.setdefault("curriculum_total", total)
 
     phase = str(merged.get("sub_phase") or merged.get("phase") or "").strip().lower()
     if phase:
@@ -377,6 +442,12 @@ def enrich_progress_scorecard(payload: dict[str, Any]) -> dict[str, Any]:
         merged["trade_budget_remaining"] = max(0, cap - cumulative)
     merged.setdefault("trade_budget_source", "")
 
+    regime_dist = merged.get("regime_distribution")
+    if isinstance(regime_dist, dict) and regime_dist:
+        dominant = max(regime_dist.items(), key=lambda item: float(item[1] or 0.0))
+        merged["regime_dominant"] = str(dominant[0])
+        merged["regime_distribution_summary"] = format_regime_distribution_summary(regime_dist)
+
     session_violations = merged.get("constitution_violations_session")
     cumulative_violations = merged.get("constitution_violations_cumulative")
     legacy_violations = merged.get("constitution_violations")
@@ -384,8 +455,50 @@ def enrich_progress_scorecard(payload: dict[str, Any]) -> dict[str, Any]:
         merged["constitution_violations_session"] = int(legacy_violations)
     if cumulative_violations is None and legacy_violations is not None:
         merged["constitution_violations_cumulative"] = int(legacy_violations)
+    if stage == CurriculumStage.STAGE3_MIXED and session_violations is not None:
+        merged["constitution_violations"] = int(session_violations)
 
     return merged
+
+
+def compute_regime_distribution(ticks: list[dict[str, Any]]) -> dict[str, float]:
+    """Regime label distribution for birth forensics (diagnose-only)."""
+    counts = {"TREND_UP": 0.0, "TREND_DOWN": 0.0, "NEUTRAL": 0.0}
+    for tick in ticks:
+        label = str(tick.get("regime", "NEUTRAL") or "NEUTRAL").strip().upper()
+        if label not in counts:
+            label = "NEUTRAL"
+        counts[label] += 1.0
+    total = sum(counts.values())
+    if total <= 0:
+        return {key: 0.0 for key in counts}
+    return {key: round(value / total, 4) for key, value in counts.items()}
+
+
+def format_regime_distribution_summary(distribution: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for label in ("TREND_UP", "NEUTRAL", "TREND_DOWN"):
+        pct = float(distribution.get(label, 0.0) or 0.0)
+        if pct <= 0:
+            continue
+        parts.append(f"{label.replace('_', ' ').title()} {pct * 100:.0f}%")
+    return " · ".join(parts) if parts else ""
+
+
+def learning_metric_target(
+    stage: CurriculumStage,
+    *,
+    cfg: BirthCurriculumConfig | None = None,
+    pass_criteria: PassCriteria | None = None,
+) -> float:
+    """Winrate target for hold-trap / plateau recovery (not stage pass gates)."""
+    if stage == CurriculumStage.STAGE1_TREND:
+        return stage1_winrate_pass_threshold(cfg)
+    if stage == CurriculumStage.STAGE3_MIXED:
+        return float(getattr(cfg, "stage1_winrate_recommended", 0.45) if cfg is not None else 0.45)
+    if pass_criteria is not None and pass_criteria.metric_target is not None:
+        return float(pass_criteria.metric_target)
+    return 0.45
 
 
 def compute_stage_blocker(
@@ -445,6 +558,49 @@ def compute_stage_blocker(
                 f"violations {constitution_violations} > 0",
             )
         return (None, None, None)
+    if stage == CurriculumStage.STAGE5_PROFIT_VAL:
+        if trades < required:
+            return (None, None, None)
+        winrate = float(wins) / float(max(1, trades))
+        wr_gate = float(getattr(cfg, "runway_stage5_winrate_pass", 0.40) if cfg else 0.40)
+        hold_cap = float(getattr(cfg, "runway_stage5_hold_ratio_max", 0.55) if cfg else 0.55)
+        if winrate < wr_gate:
+            return ("winrate", round(winrate, 4), f"val winrate {winrate:.1%} < {wr_gate:.0%}")
+        if hold_ratio > hold_cap:
+            return ("hold", round(hold_ratio, 4), f"hold {hold_ratio:.1%} > {hold_cap:.0%}")
+        if constitution_violations > 0:
+            return (
+                "constitution_violations",
+                float(constitution_violations),
+                f"violations {constitution_violations} > 0",
+            )
+        return (None, None, None)
+    if stage == CurriculumStage.STAGE6_RISK_DISCIPLINE:
+        if trades < required:
+            return (None, None, None)
+        winrate = float(wins) / float(max(1, trades))
+        wr_gate = float(getattr(cfg, "runway_stage6_winrate_min", 0.42) if cfg else 0.42)
+        if winrate < wr_gate:
+            return ("winrate", round(winrate, 4), f"val winrate {winrate:.1%} < {wr_gate:.0%}")
+        return (None, None, None)
+    if stage == CurriculumStage.STAGE7_HOLDOUT_PROFILE:
+        if trades < required:
+            return (None, None, None)
+        winrate = float(wins) / float(max(1, trades))
+        wr_gate = float(getattr(cfg, "runway_stage7_winrate_min", 0.45) if cfg else 0.45)
+        if winrate < wr_gate:
+            return (
+                "winrate",
+                round(winrate, 4),
+                f"profile winrate {winrate:.1%} < {wr_gate:.0%}",
+            )
+        if constitution_violations > 0:
+            return (
+                "constitution_violations",
+                float(constitution_violations),
+                f"violations {constitution_violations} > 0",
+            )
+        return (None, None, None)
     return (None, None, None)
 
 
@@ -495,6 +651,7 @@ def build_scorecard_payload(
         range_flat_ratio=range_flat_ratio,
         range_round_trips=int(stage_range_round_trips),
         range_total_signals=int(stage_range_total_signals),
+        cfg=cfg,
     )
     payload: dict[str, Any] = {
         "stage_wins": wins,
@@ -520,8 +677,11 @@ def build_scorecard_payload(
     if blocker_metric:
         payload["stage_blocker_metric"] = blocker_metric
         payload["stage_blocker_value"] = blocker_value
-    if pass_reason:
         payload["pass_reason"] = pass_reason
+    else:
+        payload["stage_blocker_metric"] = None
+        payload["stage_blocker_value"] = None
+        payload["pass_reason"] = None
     if provisional_pass:
         payload["provisional_pass"] = True
     return payload

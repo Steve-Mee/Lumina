@@ -90,7 +90,7 @@ export function PresenceRail({
         >
           <Icon
             className="presence-rail__mode-icon size-3 shrink-0"
-aria-label={tagline}
+            title={tagline}
           />
         </motion.div>
       </AnimatePresence>

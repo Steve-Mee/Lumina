@@ -1,9 +1,12 @@
 import { lazy, Suspense, useState } from "react";
+import { toast } from "sonner";
 
 import { BirthCinematicLayout } from "@/components/birth/BirthCinematicLayout";
 import { BirthGenesisDeck } from "@/components/birth/BirthGenesisDeck";
 import { BirthOrganismVisual } from "@/components/birth/BirthOrganismVisual";
+import { traceBirthWipe } from "@/lib/birthWipeTrace";
 import type { OnboardingDraft } from "@/store/onboardingStore";
+import { useBirthStore } from "@/store/birthStore";
 
 const BirthHelixVisual = lazy(() =>
   import("@/components/birth/BirthHelixVisual").then((module) => ({
@@ -30,7 +33,25 @@ export function BirthActivateStep({
 }: BirthActivateStepProps) {
   const [helixPrimed, _setHelixPrimed] = useState(false);
   const [sequencing, _setSequencing] = useState(false);
+  const [controlBusy, setControlBusy] = useState(false);
   const helixCharged = helixPrimed || sequencing || activating;
+
+  const handleWipeBirthData = async () => {
+    traceBirthWipe("wizard.wipe.start", { activating, controlBusy });
+    setControlBusy(true);
+    try {
+      const result = await useBirthStore.getState().wipeBirthData();
+      traceBirthWipe("wizard.wipe.done", { ok: result.ok, error: result.error });
+      if (result.ok) {
+        toast.success(result.message ?? "Alle birth-data gewist — klaar voor schone start.");
+      } else if (result.error) {
+        toast.error(result.error);
+      }
+      return result;
+    } finally {
+      setControlBusy(false);
+    }
+  };
 
   const caption =
     activating
@@ -70,9 +91,11 @@ export function BirthActivateStep({
     <BirthGenesisDeck
       training={draft.training}
       activating={activating}
+      busy={controlBusy}
       error={error}
       onChangeTraining={onChangeTraining}
       onActivate={onActivate}
+      onWipe={handleWipeBirthData}
     />
   );
 

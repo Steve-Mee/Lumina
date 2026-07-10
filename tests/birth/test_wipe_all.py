@@ -8,7 +8,12 @@ import pytest
 
 from lumina_launcher.core.birth_reset import clear_birth_training_state
 from lumina_launcher.core.first_boot import FirstBootManager
+import importlib
+
 from lumina_launcher.services.birth_service import BirthService
+
+birth_runner_start_module = importlib.import_module("lumina_launcher.services.birth_runner_start")
+birth_runner_wipe_module = importlib.import_module("lumina_launcher.services.birth_runner_wipe")
 
 
 @pytest.fixture(autouse=True)
@@ -67,7 +72,7 @@ def workspace(tmp_path: Path) -> Path:
 
 
 def test_clear_birth_training_state_removes_full_checklist(workspace: Path) -> None:
-    result = clear_birth_training_state(workspace)
+    result = clear_birth_training_state(workspace, wipe_genesis=True)
 
     assert result.success is True
     assert not (workspace / "state" / "lumina_birth_progress.json").exists()
@@ -80,8 +85,8 @@ def test_clear_birth_training_state_removes_full_checklist(workspace: Path) -> N
     assert not (workspace / "journal" / "simulator" / "lumina_birth_training_1.json").exists()
     assert not (workspace / "logs" / "lumina_full_log.csv").exists()
     assert not (workspace / "lumina_os" / "state" / "metrics.db").exists()
-    assert (workspace / "state" / "first_boot_user_configured.flag").exists()
-    assert (workspace / "state" / "lumina_setup_complete.json").exists()
+    assert not (workspace / "state" / "first_boot_user_configured.flag").exists()
+    assert not (workspace / "state" / "lumina_setup_complete.json").exists()
 
 
 def test_clear_all_birth_artifacts_delegates_to_ssot(workspace: Path) -> None:
@@ -91,6 +96,7 @@ def test_clear_all_birth_artifacts_delegates_to_ssot(workspace: Path) -> None:
     assert not (workspace / "state" / "lumina_birth_progress.json").exists()
     assert not (workspace / "state" / "lumina_birth_ticks_cache.jsonl").exists()
     assert not (workspace / "state" / "lumina_birth_buffer.jsonl").exists()
+    assert (workspace / "state" / "lumina_setup_complete.json").exists()
     assert len(removed) > 0
 
 
@@ -100,6 +106,7 @@ def test_wipe_all_birth_data_service(workspace: Path) -> None:
     svc._result = {"status": "completed", "message": "done"}
     result = svc.wipe_all_birth_data()
     assert result["status"] == "wiped"
+    assert result["checkpoint_resumable"] is False
     assert not (workspace / "state" / "lumina_birth_progress.json").exists()
     status = svc.get_status()
     assert status["status"] == "idle"
@@ -112,7 +119,11 @@ def test_retry_birth_wipe_parity_with_wipe_all(workspace: Path) -> None:
     svc._result = {"status": "certificate_failed"}
 
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(svc, "start_birth", lambda **kwargs: {"status": "started"})
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "start_birth",
+        lambda _svc, **kwargs: {"status": "started"},
+    )
     try:
         result = svc.retry_birth(target_trades=10000, wipe=True)
     finally:
@@ -125,6 +136,31 @@ def test_retry_birth_wipe_parity_with_wipe_all(workspace: Path) -> None:
     assert svc._result is None
 
 
+def test_wipe_all_birth_data_with_orphan_runner_lock(workspace: Path) -> None:
+    svc = BirthService()
+    svc.configure_workspace(workspace)
+    lock = workspace / "state" / "birth_runner.json"
+    lock.write_text("{}", encoding="utf-8")
+
+    result = svc.wipe_all_birth_data()
+
+    assert result["status"] == "wiped"
+    assert not lock.exists()
+    assert not (workspace / "state" / "lumina_birth_progress.json").exists()
+
+
+def test_clear_birth_training_state_removes_birth_best_policies(workspace: Path) -> None:
+    ppo = workspace / "lumina_agents" / "ppo"
+    _touch(ppo / "birth_best_stage1_trend.zip", "zip")
+    _touch(ppo / "birth_best_stage2_range.zip", "zip")
+
+    result = clear_birth_training_state(workspace, wipe_genesis=False)
+
+    assert result.success is True
+    assert not (ppo / "birth_best_stage1_trend.zip").exists()
+    assert not (ppo / "birth_best_stage2_range.zip").exists()
+
+
 def test_wipe_rejected_when_thread_still_running(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     svc = BirthService()
     svc.configure_workspace(workspace)
@@ -134,8 +170,47 @@ def test_wipe_rejected_when_thread_still_running(workspace: Path, monkeypatch: p
             return True
 
     svc._thread = _AliveThread()  # type: ignore[assignment]
-    monkeypatch.setattr(svc, "stop_birth", lambda **kwargs: {"status": "stopping"})
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "stop_birth",
+        lambda _svc, **kwargs: {"status": "stopping"},
+    )
 
     result = svc.wipe_all_birth_data()
     assert result["status"] == "rejected"
     assert (workspace / "state" / "lumina_birth_progress.json").exists()
+
+
+def test_clear_orphan_runner_lock_for_wipe_clears_lock_without_pid(workspace: Path) -> None:
+    svc = BirthService()
+    svc.configure_workspace(workspace)
+    lock = workspace / "state" / "birth_runner.json"
+    lock.write_text("{}", encoding="utf-8")
+
+    svc._clear_orphan_runner_lock_for_wipe()
+
+    assert not lock.exists()
+
+
+def test_ensure_birth_stopped_rejects_when_runner_still_live(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = BirthService()
+    svc.configure_workspace(workspace)
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "stop_birth",
+        lambda _svc, **kwargs: {"status": "stopped"},
+    )
+    monkeypatch.setattr(svc, "_clear_orphan_runner_lock_for_wipe", lambda: None)
+    monkeypatch.setattr(
+        birth_runner_wipe_module,
+        "birth_training_is_live",
+        lambda *args, **kwargs: True,
+    )
+
+    result = svc._ensure_birth_stopped_for_wipe(join_timeout=0.05)
+
+    assert result is not None
+    assert result["status"] == "rejected"
+    assert "runner" in result["message"].lower() or "lock" in result["message"].lower()

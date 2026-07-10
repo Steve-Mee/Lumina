@@ -47,15 +47,70 @@ def register_birth_gen0_dna(workspace_root: Path | str, certificate: BirthCertif
     logger.info("birth.dna_handoff.registered lineage=%s", lineage)
 
 
+def register_partial_birth_dna(
+    workspace_root: Path | str,
+    *,
+    curriculum_stage: str,
+    stage_trades: int,
+    stage_winrate: float,
+    oos_proxy_winrate: float | None,
+    policy_path: str,
+    stall_reason: str,
+) -> None:
+    """Seed provisional gen-0 DNA when birth stalls but has learnable signal."""
+    root = Path(workspace_root)
+    registry = DNARegistry(
+        jsonl_path=root / "state" / "dna_registry.jsonl",
+        sqlite_path=root / "state" / "dna_registry.sqlite3",
+    )
+    if registry.get_latest_dna(version="active") is not None:
+        logger.info("birth.dna_handoff.partial_skip_active_exists")
+        return
+    proxy = float(oos_proxy_winrate if oos_proxy_winrate is not None else stage_winrate)
+    fitness = max(float(stage_winrate), proxy)
+    lineage = f"birth_partial_{curriculum_stage}_{stage_trades}"
+    content = {
+        "candidate_name": "birth_v2_partial",
+        "birth_certificate_version": "provisional",
+        "oos_winrate": proxy,
+        "oos_sharpe": fitness,
+        "regime_focus": [],
+        "curriculum_stage": curriculum_stage,
+        "stall_reason": stall_reason,
+        "policy_path": policy_path,
+        "graduation_tier": "provisional",
+    }
+    dna = PolicyDNA.create(
+        prompt_id="birth_v2_partial",
+        version="active",
+        content=content,
+        fitness_score=fitness,
+        generation=0,
+        lineage_hash=lineage[:16],
+        mutation_rate=0.0,
+    )
+    registry.register_dna(dna)
+    logger.info(
+        "birth.dna_handoff.partial_registered stage=%s fitness=%.4f reason=%s",
+        curriculum_stage,
+        fitness,
+        stall_reason,
+    )
+
+
 def resolve_birth_gen0_dna(registry: DNARegistry) -> PolicyDNA | None:
     """Return active gen-0 DNA registered from Birth Certificate v2, if any."""
     active = registry.get_latest_dna(version="active")
     if active is None:
         return None
-    if str(getattr(active, "prompt_id", "") or "") == "birth_v2_certificate":
+    if str(getattr(active, "prompt_id", "") or "") in {
+        "birth_v2_certificate",
+        "birth_v2_partial",
+    }:
         return active
     content = active.content if isinstance(active.content, dict) else {}
-    if str(content.get("candidate_name", "") or "") == "birth_v2_certificate":
+    candidate = str(content.get("candidate_name", "") or "")
+    if candidate in {"birth_v2_certificate", "birth_v2_partial"}:
         return active
     if int(getattr(active, "generation", -1) or -1) == 0 and content.get("birth_certificate_version") == "2.0":
         return active

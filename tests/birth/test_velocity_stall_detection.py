@@ -125,6 +125,22 @@ def test_certificate_thresholds_unchanged_after_detect_stall(tmp_path: Path) -> 
 
 
 @pytest.mark.unit
+def test_detect_stall_skips_increment_with_insufficient_history(tmp_path: Path) -> None:
+    engine = _engine(tmp_path)
+    cfg = _cfg(velocity_stall_attempt_threshold=3, velocity_stall_min_history_samples=5)
+    short = [0.40, 0.40, 0.40, 0.40]
+
+    result = engine._detect_stall(
+        winrate_history=short,
+        reward_history=short,
+        low_velocity_attempts=0,
+        cfg=cfg,
+    )
+    assert result.low_velocity_attempts == 0
+    assert result.combined_velocity == 0.0
+
+
+@pytest.mark.unit
 def test_enrich_adaptation_payload_exposes_velocity_fields() -> None:
     payload = enrich_adaptation_payload(
         stage_trades=2000,

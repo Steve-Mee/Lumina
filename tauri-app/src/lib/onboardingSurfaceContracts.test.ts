@@ -256,7 +256,16 @@ describe("onboarding surface contracts", () => {
     expect(birthPhaseCssSource).toContain(".birth-genesis-grid");
     expect(birthPhaseCssSource).toMatch(/\.birth-genesis-grid[\s\S]*minmax\(120px, 14%\)/);
     expect(birthPhaseCssSource).toContain(".birth-genesis-tab-panel");
-    expect(birthPhaseCssSource).toContain(".birth-genesis-panel__hero");
+    expect(birthGenesisDeckSource).toContain("birth-genesis-slider-card");
+    expect(birthPhaseCssSource).toContain(".birth-genesis-slider-card");
+    expect(birthPhaseCssSource).toContain(".birth-genesis-panel__body");
+    expect(birthPhaseCssSource).toContain(".birth-genesis-status-chips");
+    expect(birthPhaseCssSource).toMatch(/\.birth-genesis-panel__actions[\s\S]*flex-shrink:\s*0|flex:\s*0\s*0\s*auto/);
+    expect(birthGenesisDeckSource).toContain("BirthGenesisStatusChips");
+    expect(birthGenesisDeckSource).toContain("birth-genesis-panel__body");
+    expect(birthGenesisDeckSource).toContain("BirthGenesisStatusChips");
+    expect(genesisMaturityLadderSource).toContain("birth-genesis-goals-details");
+    expect(birthGenesisDeckSource).not.toContain("birth-genesis-panel__scroll");
   });
 
 
@@ -290,7 +299,7 @@ describe("onboarding surface contracts", () => {
     expect(birthGenesisDeckSource).toContain("GenesisMaturityGoalsPreview");
     expect(genesisMaturityLadderSource).toContain("genesis-maturity-goals");
     expect(birthPhaseCssSource).toContain(".genesis-maturity-goals");
-    expect(birthGenesisDeckSource).toContain("birth-genesis-tab-panel");
+    expect(birthGenesisDeckSource).toContain("birth-genesis-hints-details");
   });
 
 
@@ -413,6 +422,7 @@ describe("onboarding surface contracts", () => {
     expect(birthActivateSource).toContain("birth-activation-hud");
 
     expect(birthActivateSource).toContain("birth-activation-helix-slot");
+    expect(birthActivateSource).toContain("onWipe={handleWipeBirthData}");
 
     expect(onboardingWizardSource).toContain("onboarding-shell--birth");
 

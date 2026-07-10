@@ -93,15 +93,15 @@ def test_post_gate_chunk_target_uses_rollout_chunk_not_one(
         captured.append(int(kwargs.get("target_trades", 0) or 0))
         raise RuntimeError("bounded_after_first_rollout")
 
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _capture_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _capture_rollout)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
     )
 
@@ -191,18 +191,18 @@ def test_adaptive_recovery_does_not_write_stage_stalled_progress(
             rollout_steps=200,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
-    monkeypatch.setattr("lumina_core.birth.engine.write_birth_progress", _track_write)
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.birth_phase_orchestrator.write_birth_progress", _track_write)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
     monkeypatch.setattr(engine, "_stop_requested", lambda: rollout_calls["n"] >= 20)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
     )
 

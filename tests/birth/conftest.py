@@ -65,17 +65,43 @@ def _disable_birth_meta_controller_for_unit_tests(
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.save_buffer",
+        "lumina_core.birth.checkpoint_coordinator.save_buffer",
         lambda *_args, **_kwargs: "",
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_for_sim",
+        "lumina_core.birth.data_pipeline.enrich_ticks_for_sim",
         lambda ticks, **_kwargs: ticks,
     )
     monkeypatch.setattr(
         "lumina_core.birth.data_expansion.enrich_ticks_for_sim",
         lambda ticks, **_kwargs: ticks,
     )
+
+    from lumina_core.birth.sim_runner import SimRolloutResult
+
+    def _default_rollout(**_kwargs: object) -> SimRolloutResult:
+        return SimRolloutResult(
+            trades=10,
+            wins=5,
+            hold_signals=0,
+            total_signals=10,
+            total_pnl=5.0,
+            trajectories=[
+                {"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.1]}} for i in range(100)
+            ],
+            pnl_series=[1.0] * 10,
+            constitution_violations=0,
+            regimes_seen={"TREND_UP", "TREND_DOWN", "NEUTRAL"},
+            partial_complete=True,
+            rollout_steps=200,
+        )
+
+    for rollout_site in (
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
+        "lumina_core.birth.certificate_pipeline.run_policy_rollout",
+        "lumina_core.birth.certificate_evaluator.run_policy_rollout",
+    ):
+        monkeypatch.setattr(rollout_site, _default_rollout)
 
 
 def _requests_no_preflight_bypass(request: pytest.FixtureRequest) -> bool:

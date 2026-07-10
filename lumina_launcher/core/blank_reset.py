@@ -57,6 +57,13 @@ def _wipe_state_selective(state_dir: Path) -> tuple[list[str], list[str]]:
     preserved: list[str] = []
     state_dir.mkdir(parents=True, exist_ok=True)
     keep = set(PRESERVED_STATE_FILES)
+    keep.update(Path(relative).name for relative in (
+        "state/lumina_setup_complete.json",
+        "state/lumina_setup_status.json",
+        "state/first_boot_user_configured.flag",
+        "state/lumina_daytrading_bible.json",
+        "state/lumina_birth_cache_manifest.json",
+    ))
     for child in list(state_dir.iterdir()):
         if child.name in keep:
             preserved.append(str(child))
@@ -90,7 +97,12 @@ def run_post_setup_blank_reset(
     backup_root.mkdir(parents=True, exist_ok=True)
     _backup_targets(root, backup_root)
 
-    birth_result = clear_birth_training_state(root, wipe_logs=True, wipe_journal=True)
+    birth_result = clear_birth_training_state(
+        root,
+        wipe_logs=True,
+        wipe_journal=True,
+        wipe_genesis=False,
+    )
     removed_paths: list[str] = list(birth_result.removed)
     state_removed, state_preserved = _wipe_state_selective(root / "state")
     removed_paths.extend(state_removed)

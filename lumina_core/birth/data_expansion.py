@@ -29,6 +29,19 @@ def default_expansion_steps() -> list[int]:
     return [90, 180, 365, 730]
 
 
+def expansion_ladder_at_max(
+    current_step: int,
+    expansion_steps: list[int] | None = None,
+    *,
+    has_train_ticks: bool,
+) -> bool:
+    """True when the expansion ladder is saturated and train ticks are already loaded."""
+    steps = list(expansion_steps if expansion_steps is not None else default_expansion_steps())
+    if not steps or not has_train_ticks:
+        return False
+    return int(current_step) >= len(steps)
+
+
 def expand_birth_data(
     *,
     market_data_service: Any,

@@ -24,6 +24,18 @@ class _FakePpoTrainer:
         return {"policy": "updated"}
 
 
+def _stagnation_curriculum(**kwargs: object) -> BirthCurriculumConfig:
+    """Isolate wall/adaptation semantics from phoenix/plateau autonomous recovery."""
+    base = {
+        "autonomous_recovery_enabled": False,
+        "phoenix_loop_enabled": False,
+        "plateau_detection_enabled": False,
+        "stall_remediation_enabled": False,
+    }
+    base.update(kwargs)
+    return BirthCurriculumConfig(**base)
+
+
 def _trend_ticks(n: int = 600) -> list[dict]:
     ticks: list[dict] = []
     price = 5000.0
@@ -90,15 +102,15 @@ def test_stage1_winrate_stagnation_escalates_exploration(
             rollout_steps=200,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _low_winrate_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _low_winrate_rollout)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
     )
 
@@ -135,7 +147,7 @@ def test_stage1_wall_stagnation_aborts_before_max_rollouts(
         workspace_root=tmp_path,
     )
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(
+        curriculum=_stagnation_curriculum(
             stage1_trend_trades=100,
             rollout_chunk_trades=20,
             stage1_winrate_stagnation_rollouts=2,
@@ -158,9 +170,9 @@ def test_stage1_wall_stagnation_aborts_before_max_rollouts(
     def _advance_time(_: float) -> None:
         tick["value"] += 400.0
 
-    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: (
             _advance_time(0),
             SimRolloutResult(
@@ -179,13 +191,13 @@ def test_stage1_wall_stagnation_aborts_before_max_rollouts(
         )[1],
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
     )
 
@@ -229,7 +241,7 @@ def test_stage1_adaptive_stall_records_adaptation_before_terminal(
         workspace_root=tmp_path,
     )
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(
+        curriculum=_stagnation_curriculum(
             stage1_trend_trades=100,
             rollout_chunk_trades=20,
             stage1_winrate_stagnation_rollouts=2,
@@ -241,6 +253,7 @@ def test_stage1_adaptive_stall_records_adaptation_before_terminal(
             max_stage_retries=1,
             exploration_chunk_size=8,
             auto_expand_on_adaptation=False,
+            max_adaptation_stuck_escapes=0,
         ),
         trade_budget_cap=500,
     )
@@ -277,17 +290,17 @@ def test_stage1_adaptive_stall_records_adaptation_before_terminal(
             rollout_steps=200,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.time.time", _fake_time)
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _rollout)
-    monkeypatch.setattr(engine, "_stop_requested", lambda: rollout_calls["n"] >= 30)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
+    monkeypatch.setattr(engine, "_stop_requested", lambda: rollout_calls["n"] >= 18)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
     )
 

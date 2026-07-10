@@ -230,9 +230,9 @@ def test_metrics_not_restored_when_curriculum_stage_mismatch(
         captured["target"] = int(kwargs.get("target_trades", 0) or 0)  # type: ignore[arg-type]
         raise RuntimeError("stop_after_first_rollout")
 
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_k: SimpleNamespace(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     ticks = [{"last": 5000.0, "regime": "TREND_UP"} for _ in range(200)]

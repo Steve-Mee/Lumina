@@ -12,6 +12,8 @@ from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stall_remediation")
 
+PHOENIX_CYCLE_REASON = "phoenix_cycle"
+# Legacy alias — engine maps exhaustion to phoenix when autonomous recovery is enabled.
 HUMAN_GATE_REASON = "stall_remediation_exhausted"
 
 

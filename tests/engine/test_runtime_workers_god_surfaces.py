@@ -30,6 +30,8 @@ _FORBIDDEN_IN_GOD = [
 
 _THIN_DELEGATE_MARKERS = [
     "PriceDupeResolver",
+    "RlBiasApplier",
+    "SupervisorPhaseStateMachine",
     "RuntimeMonitoringService",
     "VoiceLegacyHandler",
     "PreDreamDaemon",

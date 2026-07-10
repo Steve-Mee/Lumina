@@ -51,7 +51,11 @@ export function BirthStageIntelColumn({
       </header>
       <div className="birth-stage-intel-column__body min-h-0 flex-1 space-y-2 px-3 py-2">
         {showContent && scorecard ? (
-          <BirthStageScorecard progress={progress} />
+          <BirthStageScorecard
+            progress={progress}
+            birthRunning={running}
+            birthStatus={status?.status}
+          />
         ) : showContent && sessionHud ? (
           <div className="birth-stage-prep space-y-2 rounded-lg border border-cyan-500/20 bg-cyan-950/10 p-3">
             <p className="font-mono text-xs font-medium tracking-wide text-foreground">

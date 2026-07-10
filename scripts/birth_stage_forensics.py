@@ -102,6 +102,35 @@ def _budget_forensics(workspace: Path, progress: dict[str, Any], cfg: Any) -> di
     }
 
 
+def _certificate_readiness(
+    progress: dict[str, Any],
+    cfg: Any,
+    *,
+    curriculum_stage: str,
+) -> dict[str, Any]:
+    thresholds = cfg.certificate_thresholds
+    cur_cfg = cfg.curriculum
+    stage_wr = float(progress.get("stage_winrate", 0.0) or 0.0)
+    session_violations = int(
+        progress.get("constitution_violations_session", progress.get("constitution_violations", 0)) or 0
+    )
+    cumulative_violations = int(progress.get("constitution_violations_cumulative", 0) or 0)
+    min_oos = float(thresholds.min_oos_winrate)
+    proof_min = float(cur_cfg.evolution_proof_polish_oos_winrate_min)
+    return {
+        "min_oos_winrate": min_oos,
+        "evolution_proof_oos_min": proof_min,
+        "current_stage_winrate": round(stage_wr, 4),
+        "winrate_gap_to_certificate": round(min_oos - stage_wr, 4),
+        "winrate_gap_to_evolution_proof": round(proof_min - stage_wr, 4),
+        "session_violations": session_violations,
+        "cumulative_violations": cumulative_violations,
+        "stage3_gate_clean": session_violations == 0,
+        "certificate_winrate_at_risk": stage_wr < min_oos,
+        "curriculum_stage": curriculum_stage,
+    }
+
+
 def build_report(workspace: Path, *, log_needles: list[str] | None = None) -> dict[str, Any]:
     cfg = load_birth_v2_config(workspace)
     progress = _load_json(workspace / "state" / "lumina_birth_progress.json")
@@ -177,13 +206,36 @@ def build_report(workspace: Path, *, log_needles: list[str] | None = None) -> di
             "stage_trades": progress.get("stage_trades"),
             "pass_gate": gates.get("stage2_range", {}).get("pass_gate"),
             "position_flat_ratio": round(flat_ratio, 4),
+            "position_flat_target_min": 0.30,
+            "position_flat_target_max": 0.70,
+            "stage_range_round_trips": progress.get("stage_range_round_trips"),
             "pass_reason": progress.get("pass_reason"),
             "strong_recovery_mode": progress.get("strong_recovery_mode"),
             "velocity_stall_attempts": progress.get("velocity_stall_attempts"),
             "meta_primary_strategy": progress.get("meta_primary_strategy"),
             "meta_review_trigger": progress.get("meta_review_trigger"),
             "last_adaptation": progress.get("last_adaptation"),
+            "over_trading_detected": plateau_audit.get("over_trading_detected"),
+            "recommended_recovery_action": plateau_audit.get("recommended_recovery_action"),
+            "intra_stage2_hard_pct": metrics_dict.get("intra_stage2_hard_pct"),
+            "intra_stage2_easy_flat_bars": metrics_dict.get("intra_stage2_easy_flat_bars"),
         },
+        "stage3_health": {
+            "stage_trades": progress.get("stage_trades"),
+            "pass_gate": gates.get("stage3_mixed", {}).get("pass_gate"),
+            "session_violations": progress.get("constitution_violations_session"),
+            "cumulative_violations": progress.get("constitution_violations_cumulative"),
+            "hold_ratio": progress.get("stage_hold_ratio"),
+            "stage_winrate": progress.get("stage_winrate"),
+            "learning_attempt": progress.get("learning_attempt"),
+            "recommended_recovery_action": plateau_audit.get("recommended_recovery_action"),
+            "hold_trap_detected": plateau_audit.get("hold_trap_detected"),
+        },
+        "certificate_readiness": _certificate_readiness(
+            progress,
+            cfg,
+            curriculum_stage=stage,
+        ),
         "budget_forensics": budget_forensics,
         "log_context": log_sections,
     }
@@ -214,6 +266,8 @@ def main() -> None:
         print(f"  {name}: pass_gate={g['pass_gate']}  training_budget={g['training_budget']}")
     print("\nStage 1 estimate:", report.get("stage1_estimate"))
     print("\nStage 2 health:", json.dumps(report.get("stage2_health"), indent=2))
+    print("\nStage 3 health:", json.dumps(report.get("stage3_health"), indent=2))
+    print("\nCertificate readiness:", json.dumps(report.get("certificate_readiness"), indent=2))
     budget = report.get("budget_forensics") or {}
     print("\nBudget forensics:")
     print(json.dumps(budget, indent=2))

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isBirthStartSuccessful, resumeBirthSession, retryBirthSession } from "@/lib/birthClient";
+import { isBirthStartSuccessful, resumeBirthSession, retryBirthSession, stopBirthSession } from "@/lib/birthClient";
 
 const luminaFetch = vi.fn();
 
@@ -60,5 +60,18 @@ describe("birthClient recovery routes", () => {
     expect(luminaFetch).toHaveBeenCalledTimes(2);
     expect(String(luminaFetch.mock.calls[1]?.[0])).toContain("/api/birth/start?");
     expect(String(luminaFetch.mock.calls[1]?.[0])).toContain("continue_training=true");
+  });
+
+  it("stopBirthSession posts to birth stop via luminaFetch", async () => {
+    luminaFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "stopped", message: "ok" }), { status: 200 }),
+    );
+
+    const payload = await stopBirthSession();
+
+    expect(payload.status).toBe("stopped");
+    expect(luminaFetch).toHaveBeenCalledWith("http://127.0.0.1:8000/api/birth/stop", {
+      method: "POST",
+    });
   });
 });

@@ -166,7 +166,64 @@ flowchart LR
 - `admin_endpoints.py` bewaart een backward-compatible exportlaag.
 - `admin_endpoints_core.py` bevat Dash-layout, callbacks en dashboard runtime-start.
 
-### 3.4 Trading engine service split
+### 3.4 Launcher Birth Service split
+
+`lumina_launcher/services/birth_service.py` is de process-wide singleton facade voor Birth Phase start/stop/status. De implementatie is opgesplitst zodat status-mapping, enrichment en thread-lifecycle afzonderlijk testbaar zijn.
+
+```mermaid
+flowchart LR
+    birthFacade[birth_service.py]
+    statusMapper[birth_status_mapper.py]
+    statusEnricher[birth_status_enricher.py]
+    runnerFacade[birth_runner.py]
+    runnerLock[birth_runner_lock.py]
+    runnerStart[birth_runner_start.py]
+    runnerWipe[birth_runner_wipe.py]
+    runnerRecovery[birth_runner_recovery.py]
+    statusDiag[birth_status_diagnostics.py]
+
+    birthFacade --> statusMapper
+    birthFacade --> statusEnricher
+    birthFacade --> runnerFacade
+    statusMapper --> statusEnricher
+    runnerFacade --> runnerLock
+    runnerFacade --> runnerStart
+    runnerFacade --> runnerWipe
+    runnerFacade --> runnerRecovery
+    statusEnricher --> statusDiag
+    runnerStart --> runnerLock
+    runnerWipe --> runnerStart
+    runnerRecovery --> runnerStart
+    runnerRecovery --> runnerWipe
+```
+
+- `birth_service.py` bewaart singleton state, autonomous recovery en eligibility checks (`artifacts_ok`, `certificate_ok`, real-trading gates).
+- `birth_status_mapper.py` mapped durable progress → API status (`resolve_terminal_birth_status`, `get_birth_status`, running-progress sanitize).
+- `birth_status_enricher.py` voegt launcher setup + cert-diagnostics toe (plateau risk extracted to bounded `birth_status_plateau_risk.py` per god-surface guards).
+- `birth_status_plateau_risk.py` bounded owner for resume_plateau_risk_fields (extracted D2-style god guard enforcement).
+- `birth_runner.py` is een dunne re-export facade; tests monkeypatchen `birth_runner` voor `start_birth`/`stop_birth` en `birth_runner_start` voor container/preflight mocks.
+- `birth_runner_lock.py` beheert `birth_runner.json` lock en interrupted-progress persistence.
+- `birth_runner_start.py` bevat historical preflight, thread spawn en cooperative stop.
+- `birth_runner_wipe.py` stopt cross-process runners en wist training artifacts via `birth_reset` SSOT.
+- `birth_runner_recovery.py` bevat retry/resume/expand paden zonder checkpoint-wipe tenzij expliciet gevraagd.
+
+**Importrichtlijn (nieuwe code)**
+
+1. UI/API status → `BirthService.get_status()` of `birth_status_mapper.get_birth_status(svc)`; niet re-implementeren van terminal-phase mapping.
+2. Start/stop/retry → `BirthService` publieke methoden; monkeypatch in tests via `lumina_launcher.services.birth_runner` (lifecycle) en `birth_runner_start` (container/preflight).
+3. Certificate diagnostics merge → `birth_status_diagnostics.merge_certificate_diagnostics`; enrichment via `birth_status_enricher.enrich_birth_status`.
+
+**Frontend birth cluster (phase 3)**
+
+- `tauri-app/src/lib/birthPhaseModel.ts` is een re-export facade; implementatie staat onder `tauri-app/src/lib/birth/`.
+- `birthMilestones.ts` — milestone ladder + headlines.
+- `birthStatusPredicates.ts` — `isBirth*` status guards.
+- `birthStageScorecard.ts` — `extractStageScorecard` + adaptation/plateau velden.
+- `birthSessionHud.ts` — session telemetry HUD extractie.
+- `birthProgressExtract.ts` — sim/PPO progress + genesis checkpoint summary.
+- `store/birthStore.ts` delegeert polling naar `birthPollCoordinator.ts` en surface routing naar `birthSurfaceModel.ts`.
+
+### 3.5 Trading engine service split
 
 `lumina_core/engine/lumina_engine.py` is verder opgesplitst naar een dunnere orchestrator. De engine beheert nu vooral service-compositie en delegatie; state-serialisatie, runtime-counters en snapshot-opbouw zijn uit de kernklasse gehaald.
 
@@ -214,7 +271,7 @@ flowchart LR
 2. PA-summary en candle-pattern helpers op engine-marktdata → importeer `MarketDataDomainService` uit `lumina_core.engine.market_data_domain_service` (niet de ingest-service).
 3. Alleen als je een brede engine-export nodig hebt → `from lumina_core.engine import MarketDataIngestService, MarketDataDomainService` en kies expliciet; vermijd verwarrende korte namen tenzij je `MarketDataService` als alias voor de domain-laag gebruikt (legacy-compat).
 
-### 3.4.1 Resterende overlap en ownership-plan
+### 3.5.1 Resterende overlap en ownership-plan
 
 De overlap tussen `engine/` en bounded contexts is nu via typed ports afgebakend. Ownership per capability is:
 
@@ -226,7 +283,7 @@ De overlap tussen `engine/` en bounded contexts is nu via typed ports afgebakend
 - **Reasoning ownership**: LLM reasoning, policy gateway en contracthandhaving blijven in `lumina_core/reasoning/`.
 - **Orchestration ownership**: typed event contracts en pub/sub-flow blijven in `lumina_core/agent_orchestration/`; engine-blackboard bindingen zijn adapters, niet domeinlogica.
 
-### 3.4.2 EngineServicePorts (hexagonal ownership registry)
+### 3.5.2 EngineServicePorts (hexagonal ownership registry)
 
 `LuminaEngine` krijgt een typed service registry (`services_ports`) als canonical ownership-map:
 
@@ -263,7 +320,7 @@ flowchart LR
 - `experimental` bewaart expliciete ruimte voor emergent lagen zonder `LuminaEngine` API-expansie.
 - De legacy service-facade blijft tijdelijk aanwezig voor migratie, maar nieuwe code gebruikt primair `engine.services_ports`.
 
-### 3.5 State manager component
+### 3.6 State manager component
 
 `lumina_core/state/state_manager.py` centraliseert de kritieke evolutie-state writes zodat JSONL en SQLite ook bij multi-process workloads consistent blijven.
 

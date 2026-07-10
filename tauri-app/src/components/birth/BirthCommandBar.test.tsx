@@ -72,10 +72,12 @@ describe("BirthCommandBar", () => {
 
     expect(birthControlDockSource).not.toContain('className="z-[60]"');
 
-    expect(birthControlDockSource).toMatch(/birth-control-dock__stop[\s\S]*?aria-busy=\{busy\}/);
+    expect(birthControlDockSource).toContain("birth-control-dock__stop");
+    expect(birthControlDockSource).toContain("openStopConfirm");
 
-    expect(birthControlDockSource).toContain("setStopOpen(true)");
-
+    expect(birthControlDockSource).toContain("useBirthUiStore");
+    expect(birthControlDockSource).toContain("openStopConfirm");
+    expect(birthControlDockSource).toContain("openWipeConfirm");
   });
 
 });

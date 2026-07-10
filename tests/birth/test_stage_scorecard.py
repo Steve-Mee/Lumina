@@ -24,7 +24,7 @@ def test_curriculum_index_for_stage() -> None:
     assert curriculum_index_for_stage(CurriculumStage.STAGE1_TREND) == 1
     assert curriculum_index_for_stage(CurriculumStage.STAGE2_RANGE) == 2
     assert curriculum_index_for_stage(CurriculumStage.STAGE3_MIXED) == 3
-    assert curriculum_index_for_stage(CurriculumStage.STAGE4_POLISH) == 4
+    assert curriculum_index_for_stage(CurriculumStage.STAGE4_POLISH) == 8
 
 
 @pytest.mark.unit
@@ -101,7 +101,7 @@ def test_compute_advancing_recent_without_delta() -> None:
             prev_patterns_mined=10,
             elapsed_since_snapshot_sec=30.0,
         )
-        is True
+        is False
     )
 
 
@@ -177,6 +177,33 @@ def test_build_scorecard_payload_stage1_with_cfg_uses_stage_pass_trades() -> Non
 
 
 @pytest.mark.unit
+def test_build_scorecard_pass_reason_uses_cfg_winrate_gate() -> None:
+    from lumina_core.birth.config import BirthCurriculumConfig
+
+    cfg = BirthCurriculumConfig(
+        stage1_trend_trades=2000,
+        stage1_winrate_pass_threshold=0.35,
+        stage1_winrate_pass_floor=0.35,
+    )
+    payload = build_scorecard_payload(
+        stage=CurriculumStage.STAGE1_TREND,
+        curriculum_index=1,
+        stages_passed=[],
+        stage_trades=6214,
+        stage_wins=1543,
+        stage_hold_signals=0,
+        stage_total_signals=6214,
+        constitution_violations=0,
+        target_trades=2000,
+        phase="curriculum_learning",
+        patterns_mined=100,
+        learning_attempt=3,
+        cfg=cfg,
+    )
+    assert payload["pass_reason"] == "winrate 24.8% < 35%"
+
+
+@pytest.mark.unit
 def test_build_scorecard_payload_stage1() -> None:
     payload = build_scorecard_payload(
         stage=CurriculumStage.STAGE1_TREND,
@@ -230,4 +257,54 @@ def test_enrich_adaptation_payload_volume_gate_and_retry_fields() -> None:
     assert payload["winrate_trend_slope"] < 0
     assert payload["adaptation_enabled"] is True
     assert payload["wall_behavior"] == "adaptive"
+
+
+@pytest.mark.unit
+def test_learning_metric_target_stage3_uses_recommended_winrate() -> None:
+    from lumina_core.birth.config import BirthCurriculumConfig
+    from lumina_core.birth.stage_scorecard import learning_metric_target
+
+    cfg = BirthCurriculumConfig(stage1_winrate_recommended=0.45)
+    criteria = pass_criteria_for_stage(CurriculumStage.STAGE3_MIXED, cfg=cfg)
+    assert criteria.metric_target == 0.0
+    assert learning_metric_target(
+        CurriculumStage.STAGE3_MIXED,
+        cfg=cfg,
+        pass_criteria=criteria,
+    ) == pytest.approx(0.45)
+
+
+@pytest.mark.unit
+def test_build_scorecard_payload_clears_blockers_below_volume_gate() -> None:
+    payload = build_scorecard_payload(
+        stage=CurriculumStage.STAGE3_MIXED,
+        curriculum_index=3,
+        stages_passed=["stage1_trend", "stage2_range"],
+        stage_trades=200,
+        stage_wins=70,
+        stage_hold_signals=100,
+        stage_total_signals=500,
+        constitution_violations=0,
+        target_trades=5000,
+        phase="ppo_training",
+        patterns_mined=0,
+        learning_attempt=10,
+    )
+    assert payload["stage_blocker_metric"] is None
+    assert payload["stage_blocker_value"] is None
+    assert payload["pass_reason"] is None
+
+
+@pytest.mark.unit
+def test_enrich_progress_scorecard_stage3_uses_session_violations_for_gate() -> None:
+    enriched = enrich_progress_scorecard(
+        {
+            "curriculum_stage": "stage3_mixed",
+            "constitution_violations": 11_080,
+            "constitution_violations_session": 0,
+            "constitution_violations_cumulative": 11_080,
+        }
+    )
+    assert enriched["constitution_violations"] == 0
+    assert enriched["constitution_violations_cumulative"] == 11_080
 

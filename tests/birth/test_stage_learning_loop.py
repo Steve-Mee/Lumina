@@ -6,6 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
+# run_birth_phase integration can exceed the global 30s limit on cold CI/agents.
+pytestmark = pytest.mark.timeout(120)
+
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
 from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.pattern_miner import PatternMineResult
@@ -144,20 +147,23 @@ def test_learning_loop_continues_after_single_trade_chunk(
             max_escalation_level=5,
             gen0_provisional_min_trades=5,
             rollout_step_budget_multiplier=20,
+            certificate_runway_enabled=False,
+            autonomous_recovery_enabled=False,
+            phoenix_loop_enabled=False,
         ),
         trade_budget_cap=500,
     )
     engine.birth_config = small_cfg
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.load_historical_ticks",
+        "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: _rising_ticks(800),
     )
     _expand_calls["n"] = 0
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand_once)
-    monkeypatch.setattr("lumina_core.birth.engine.mine_winning_patterns", _fast_oracle_mine)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand_once)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.mine_winning_patterns", _fast_oracle_mine)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda ticks, **_kwargs: ticks,
     )
     rollout_calls = {"n": 0}
@@ -180,9 +186,13 @@ def test_learning_loop_continues_after_single_trade_chunk(
             partial_complete=trades < 50,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _chunk_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _chunk_rollout)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.run_policy_rollout",
+        _chunk_rollout,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         lambda **_kwargs: {
             "certificate_passed": True,
             "holdout_trades": 60,
@@ -232,18 +242,21 @@ def test_learning_loop_never_writes_curriculum_failed_on_partial_winrate(
             rollout_chunk_trades=5,
             max_rollouts_per_stage=8,
             gen0_provisional_min_trades=5,
+            certificate_runway_enabled=False,
+            autonomous_recovery_enabled=False,
+            phoenix_loop_enabled=False,
         ),
     )
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.load_historical_ticks",
+        "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: _rising_ticks(400),
     )
     _expand_calls["n"] = 0
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand_once)
-    monkeypatch.setattr("lumina_core.birth.engine.mine_winning_patterns", _fast_oracle_mine)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand_once)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.mine_winning_patterns", _fast_oracle_mine)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda ticks, **_kwargs: ticks,
     )
 
@@ -262,9 +275,13 @@ def test_learning_loop_never_writes_curriculum_failed_on_partial_winrate(
             rollout_steps=500,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _one_trade_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _one_trade_rollout)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.run_policy_rollout",
+        _one_trade_rollout,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         lambda **_kwargs: {"certificate_passed": False},
     )
 

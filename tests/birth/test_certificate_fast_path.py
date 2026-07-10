@@ -8,12 +8,21 @@ from types import SimpleNamespace
 
 import pytest
 
+pytestmark = pytest.mark.timeout(120)
+
 from lumina_core.birth.buffer_persist import save_buffer
 from lumina_core.birth.checkpoint import save_checkpoint
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
+from lumina_core.birth.data_expansion import DataExpansionResult
+from lumina_core.birth.preflight import PreflightReport
+from lumina_core.birth.data_pipeline import train_hash
 from lumina_core.birth.engine import BirthPhaseEngineV2
 from lumina_core.birth.purged_split import purged_train_holdout_split
+import importlib
+
 from lumina_launcher.services.birth_service import BirthService
+
+birth_runner_start_module = importlib.import_module("lumina_launcher.services.birth_runner_start")
 
 
 class _FakePpoTrainer:
@@ -64,6 +73,7 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
     policy_path.write_bytes(b"policy")
     ticks = _ticks(1200)
     split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+    manifest_train_hash = train_hash(split.train)
     save_checkpoint(
         tmp_path,
         cumulative_trades=500,
@@ -79,7 +89,7 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
             "buffer_size": len(trajectories),
         },
         buffer_path=buffer_path,
-        data_manifest={"train_hash": "abc", "preflight_ok": True},
+        data_manifest={"train_hash": manifest_train_hash, "preflight_ok": True},
         phase="certificate_failed",
         remediation_attempt=1,
     )
@@ -96,7 +106,7 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
                     "certificate_passed": False,
                     "failure_reasons": ["holdout_trades:12/50"],
                 },
-                "data_manifest": {"train_hash": "abc", "preflight_ok": True},
+                "data_manifest": {"train_hash": manifest_train_hash, "preflight_ok": True},
             }
         ),
         encoding="utf-8",
@@ -105,6 +115,7 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.timeout(120)
 def test_certificate_failed_resume_uses_remediation_fast_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -118,7 +129,13 @@ def test_certificate_failed_resume_uses_remediation_fast_path(
         workspace_root=tmp_path,
     )
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(max_certificate_remediation_attempts=2),
+        curriculum=BirthCurriculumConfig(
+            max_certificate_remediation_attempts=2,
+            certificate_runway_enabled=False,
+            autonomous_recovery_enabled=False,
+            phoenix_loop_enabled=False,
+            plateau_detection_enabled=False,
+        ),
         trade_budget_cap=500,
     )
 
@@ -145,36 +162,73 @@ def test_certificate_failed_resume_uses_remediation_fast_path(
             "holdout_trades": 60,
         }
 
-    monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", lambda **_kwargs: _ticks(1200))
+    monkeypatch.setattr("lumina_core.birth.data_pipeline.load_historical_ticks", lambda **_kwargs: _ticks(1200))
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
-        lambda ticks, **_kwargs: ticks,
-    )
-    monkeypatch.setattr(BirthPhaseEngineV2, "_run_stage_research_loop", _spy_stage_loop)
-    monkeypatch.setattr("lumina_core.birth.engine.evaluate_holdout_certificate", _mock_eval)
-    monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
-        lambda **_kwargs: __import__(
-            "lumina_core.birth.sim_runner", fromlist=["SimRolloutResult"]
-        ).SimRolloutResult(
-            trades=10,
-            wins=5,
-            hold_signals=0,
-            total_signals=10,
-            total_pnl=5.0,
-            trajectories=[
-                {"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.1]}} for i in range(100)
-            ],
-            pnl_series=[1.0] * 10,
-            constitution_violations=0,
-            regimes_seen={"TREND_UP", "TREND_DOWN", "NEUTRAL"},
-            partial_complete=True,
-            rollout_steps=200,
+        "lumina_core.birth.certificate_pipeline.assess_split_preflight",
+        lambda *_args, **_kwargs: PreflightReport(
+            ok=True,
+            holdout_regimes=("TREND_UP", "TREND_DOWN", "NEUTRAL"),
+            holdout_tick_count=240,
+            holdout_days=5,
+            train_regimes=("TREND_UP", "TREND_DOWN", "NEUTRAL"),
+            estimated_holdout_trades=60,
+            message="ok",
         ),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("unexpected expand")),
+        "lumina_core.birth.certificate_pipeline.enrich_ticks_with_news",
+        lambda ticks, **_kwargs: ticks,
+    )
+    monkeypatch.setattr(BirthPhaseEngineV2, "_run_stage_research_loop", _spy_stage_loop)
+    for eval_site in (
+        "lumina_core.birth.birth_phase_orchestrator.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_evaluator.evaluate_holdout_certificate",
+    ):
+        monkeypatch.setattr(eval_site, _mock_eval)
+    from lumina_core.birth.sim_runner import SimRolloutResult
+
+    _mock_rollout = SimRolloutResult(
+        trades=10,
+        wins=5,
+        hold_signals=0,
+        total_signals=10,
+        total_pnl=5.0,
+        trajectories=[
+            {"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.1]}} for i in range(100)
+        ],
+        pnl_series=[1.0] * 10,
+        constitution_violations=0,
+        regimes_seen={"TREND_UP", "TREND_DOWN", "NEUTRAL"},
+        partial_complete=True,
+        rollout_steps=200,
+    )
+    _rollout_mock = lambda **_kwargs: _mock_rollout
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.run_policy_rollout",
+        _rollout_mock,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_evaluator.run_policy_rollout",
+        _rollout_mock,
+    )
+    def _mock_preflight_expand(**_kwargs) -> DataExpansionResult:
+        ticks = _ticks(1200)
+        split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+        return DataExpansionResult(
+            train_ticks=list(split.train),
+            holdout_ticks=list(split.holdout),
+            all_ticks=ticks,
+            split=split,
+            days_back=90,
+            step_index=0,
+            real_data_pct=99.0,
+            exhausted=True,
+        )
+
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.expand_birth_data",
+        _mock_preflight_expand,
     )
 
     result = engine.run_birth_phase(
@@ -201,11 +255,11 @@ def test_retry_birth_preserves_checkpoint_and_continues_training(
     _seed_certificate_failed_checkpoint(tmp_path)
     calls: list[dict[str, object]] = []
 
-    def _fake_start(**kwargs: object) -> dict[str, str]:
+    def _fake_start(_svc: BirthService, **kwargs: object) -> dict[str, str]:
         calls.append(dict(kwargs))
         return {"status": "started", "message": "ok"}
 
-    monkeypatch.setattr(svc, "start_birth", _fake_start)
+    monkeypatch.setattr(birth_runner_start_module, "start_birth", _fake_start)
     monkeypatch.setattr(
         "lumina_launcher.core.first_boot.FirstBootManager.clear_stale_for_certified_retry",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not wipe")),
@@ -247,11 +301,11 @@ def test_retry_birth_reconstructs_checkpoint_from_progress(
     )
     calls: list[dict[str, object]] = []
 
-    def _fake_start(**kwargs: object) -> dict[str, str]:
+    def _fake_start(_svc: BirthService, **kwargs: object) -> dict[str, str]:
         calls.append(dict(kwargs))
         return {"status": "started", "message": "ok"}
 
-    monkeypatch.setattr(svc, "start_birth", _fake_start)
+    monkeypatch.setattr(birth_runner_start_module, "start_birth", _fake_start)
     monkeypatch.setattr(
         "lumina_launcher.core.first_boot.FirstBootManager.clear_stale_for_certified_retry",
         lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("should not wipe")),

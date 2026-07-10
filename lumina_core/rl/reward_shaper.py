@@ -129,6 +129,29 @@ def hold_action_penalty(
     return -abs(float(coeff))
 
 
+def _is_range_regime(regime: str) -> bool:
+    upper = str(regime or "NEUTRAL").upper()
+    return upper in {"NEUTRAL", "RANGING"} or "RANGE" in upper
+
+
+def range_patience_step_reward(
+    *,
+    regime: str,
+    position_flat: bool,
+    trade_closed: bool,
+    cfg: BirthRewardConfig,
+) -> float:
+    """Birth stage 2 shaping: reward flat exposure, penalize round-trip churn on range ticks."""
+    if not cfg.enabled or not _is_range_regime(regime):
+        return 0.0
+    bonus = 0.0
+    if position_flat:
+        bonus += float(cfg.range_flat_bonus_coeff)
+    if trade_closed:
+        bonus -= float(cfg.range_churn_penalty_coeff)
+    return bonus
+
+
 def compute_legacy_reward(
     *,
     net_pnl: float,

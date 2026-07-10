@@ -4,9 +4,16 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from pathlib import Path
+
 import numpy as np
 
+from lumina_core.birth.enrichment_cache import (
+    finalize_enrichment_cache,
+    try_apply_enrichment_cache,
+)
 from lumina_core.rl.trend_features import (
+    ENRICH_VERSION,
     MIN_TREND_LOOKBACK,
     compute_trend_features_sliding_batch,
     regime_from_strength,
@@ -60,8 +67,19 @@ def enrich_ticks_for_sim(
     ticks: list[dict[str, Any]],
     *,
     on_progress: Callable[[int, int], None] | None = None,
+    workspace_root: Path | str | None = None,
+    raw_ticks_hash: str | None = None,
+    enrich_version: str = ENRICH_VERSION,
 ) -> list[dict[str, Any]]:
     if not ticks:
+        return ticks
+
+    if workspace_root is not None and try_apply_enrichment_cache(
+        workspace_root,
+        ticks,
+        raw_ticks_hash=raw_ticks_hash,
+        enrich_version=enrich_version,
+    ):
         return ticks
 
     closes, highs, lows = _extract_ohlc_arrays(ticks)
@@ -90,6 +108,13 @@ def enrich_ticks_for_sim(
         tick = ticks[i]
         tick.update(feature_rows[i])
         tick["regime"] = regime_from_strength(float(feature_rows[i].get("trend_regime_strength", 0.0) or 0.0))
+    if workspace_root is not None:
+        finalize_enrichment_cache(
+            workspace_root,
+            ticks,
+            raw_ticks_hash=raw_ticks_hash,
+            enrich_version=enrich_version,
+        )
     return ticks
 
 

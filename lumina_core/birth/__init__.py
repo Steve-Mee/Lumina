@@ -9,7 +9,6 @@ from lumina_core.birth.birth_certificate import (
     write_certificate,
 )
 from lumina_core.birth.config import BirthV2Config, load_birth_v2_config
-from lumina_core.birth.engine import BirthPhaseEngineV2
 
 __all__ = [
     "BirthCertificateThresholds",
@@ -22,3 +21,11 @@ __all__ = [
     "validate_certificate_artifacts",
     "write_certificate",
 ]
+
+
+def __getattr__(name: str):
+    if name == "BirthPhaseEngineV2":
+        from lumina_core.birth.engine import BirthPhaseEngineV2
+
+        return BirthPhaseEngineV2
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

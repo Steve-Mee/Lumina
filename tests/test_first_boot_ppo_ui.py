@@ -14,6 +14,7 @@ def test_tauri_birth_phase_shows_ppo_progress() -> None:
 
 def test_tauri_birth_phase_model_tracks_ppo_fields() -> None:
     root = Path(__file__).resolve().parents[1]
-    model_src = (root / "tauri-app" / "src" / "lib" / "birthPhaseModel.ts").read_text(encoding="utf-8")
+    # ppo progress extraction logic lives in the birth/ split (post frontend refactor)
+    model_src = (root / "tauri-app" / "src" / "lib" / "birth" / "birthProgressExtract.ts").read_text(encoding="utf-8")
     assert "ppo" in model_src.lower()
     assert "extractPpoProgress" in model_src

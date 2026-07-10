@@ -6,6 +6,9 @@ from types import SimpleNamespace
 
 import pytest
 
+# Engine loop tests can exceed the global 30s limit on cold CI/agents.
+pytestmark = pytest.mark.timeout(120)
+
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
 from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.pattern_miner import PatternMineResult
@@ -124,22 +127,25 @@ def test_bro_one_trade_rollout_plus_oracle_progresses_stage(
             max_rollouts_per_stage=6,
             gen0_provisional_min_trades=5,
             oracle_patterns_per_stage=200,
+            certificate_runway_enabled=False,
+            autonomous_recovery_enabled=False,
+            phoenix_loop_enabled=False,
         ),
         trade_budget_cap=500,
     )
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.load_historical_ticks",
+        "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: _rising_ticks(900),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda ticks, **_kwargs: ticks,
     )
     _expand_calls["n"] = 0
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand_once)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand_once)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: PatternMineResult(
             patterns=[
                 {"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.1]}, "source": "oracle"}
@@ -166,9 +172,13 @@ def test_bro_one_trade_rollout_plus_oracle_progresses_stage(
             rollout_steps=200,
         )
 
-    monkeypatch.setattr("lumina_core.birth.engine.run_policy_rollout", _one_trade_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _one_trade_rollout)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.run_policy_rollout",
+        _one_trade_rollout,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         lambda **_kwargs: {"certificate_passed": False},
     )
 
@@ -232,12 +242,12 @@ def test_reason_specific_remediation_passes_on_second_attempt(
         }
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         _mock_eval,
     )
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _mock_expand)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: SimRolloutResult(
             trades=10,
             wins=5,
@@ -293,19 +303,19 @@ def test_bro_empty_oracle_returns_history_unavailable(
     )
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.load_historical_ticks",
+        "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: [],
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda ticks, **_kwargs: ticks,
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
         lambda **_kwargs: DataExpansionResult(
             train_ticks=[],
             holdout_ticks=[],
@@ -318,7 +328,7 @@ def test_bro_empty_oracle_returns_history_unavailable(
         ),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: SimRolloutResult(
             trades=0,
             wins=0,

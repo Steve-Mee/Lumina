@@ -84,6 +84,8 @@ class LearningSnapshot:
     pattern_quality: float = 0.0
     learning_health: LearningHealth = LearningHealth.FLAT
     volume_gate_passed: bool = False
+    range_flat_ratio: float = 0.0
+    range_round_trips: int = 0
 
     @property
     def thin_buffer(self) -> bool:
@@ -197,14 +199,38 @@ def detect_stall(
     reward_history: list[float],
     low_velocity_attempts: int,
     cfg: BirthCurriculumConfig,
+    oos_proxy_history: list[float] | None = None,
 ) -> StallDetectionResult:
     """Detect learning stall from combined winrate and reward velocity trends."""
     winrate_velocity = calculate_simple_slope(winrate_history)
     reward_velocity = calculate_simple_slope(reward_history)
-    combined = combined_learning_velocity(winrate_history, reward_history)
+    if oos_proxy_history:
+        from lumina_core.birth.oos_proxy import blended_learning_velocity
+
+        combined = blended_learning_velocity(
+            winrate_history=winrate_history,
+            reward_history=reward_history,
+            oos_proxy_history=oos_proxy_history,
+            cfg=cfg,
+        )
+    else:
+        combined = combined_learning_velocity(winrate_history, reward_history)
 
     threshold = int(cfg.velocity_stall_attempt_threshold)
     epsilon = float(cfg.velocity_stall_epsilon)
+    min_samples = max(3, int(getattr(cfg, "velocity_stall_min_history_samples", 5)))
+    if (
+        len(winrate_history) < min_samples
+        or len(reward_history) < min_samples
+    ):
+        return StallDetectionResult(
+            is_stalled=low_velocity_attempts >= threshold,
+            winrate_velocity=winrate_velocity,
+            reward_velocity=reward_velocity,
+            combined_velocity=combined,
+            low_velocity_attempts=low_velocity_attempts,
+            threshold=threshold,
+        )
     if combined <= epsilon:
         updated_attempts = low_velocity_attempts + 1
     else:
@@ -353,12 +379,16 @@ class BirthMetaController:
         stage: CurriculumStage,
         intra_hard_pct: float | None,
         attempt: int = 0,
+        range_flat_ratio: float = 0.0,
+        range_round_trips: int = 0,
+        oos_proxy_history: list[float] | None = None,
     ) -> tuple[LearningSnapshot, StallDetectionResult]:
         stall = detect_stall(
             winrate_history=winrate_history,
             reward_history=reward_history,
             low_velocity_attempts=low_velocity_attempts,
             cfg=self.cfg,
+            oos_proxy_history=oos_proxy_history,
         )
         quality = _pattern_quality(self.patterns_last_inject, self.oracle_wins_last_inject)
         health = _classify_learning_health(stall.combined_velocity, self.cfg)
@@ -386,6 +416,8 @@ class BirthMetaController:
             pattern_quality=round(quality, 4),
             learning_health=health,
             volume_gate_passed=stage_trades >= required_trades,
+            range_flat_ratio=float(range_flat_ratio),
+            range_round_trips=int(range_round_trips),
         )
         return snap, stall
 
@@ -453,6 +485,23 @@ class BirthMetaController:
             primary = RecoveryStrategy.EXPLORE_BOOST
             escalation_delta = 1
             rationale = "stage2_hold_stagnation"
+        elif snap.stage == CurriculumStage.STAGE2_RANGE and snap.volume_gate_passed:
+            from lumina_core.birth.plateau_escalator import detect_over_trading_trap
+
+            if detect_over_trading_trap(
+                range_flat_ratio=snap.range_flat_ratio,
+                range_round_trips=snap.range_round_trips,
+                required=snap.required_trades,
+                velocity_stall=snap.is_stalled,
+                cfg=self.cfg,
+            ):
+                explore_steps = max(
+                    200,
+                    int(self.cfg.exploration_steps * self.cfg.strong_recovery_explore_fraction),
+                )
+                primary = RecoveryStrategy.EXPLORE_REDUCE
+                escalation_delta = 1
+                rationale = "stage2_over_trading"
         elif (
             snap.stage == CurriculumStage.STAGE1_TREND
             and snap.volume_gate_passed

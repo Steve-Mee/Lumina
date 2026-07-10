@@ -6,6 +6,8 @@ from lumina_core.rl.trend_features import (
     compute_adx,
     compute_atr,
     compute_trend_features_for_window,
+    compute_trend_features_sliding_batch,
+    compute_trend_features_sliding_batch_reference,
     linear_regression_slope,
     regime_from_strength,
     regime_strength_score,
@@ -91,3 +93,23 @@ def test_short_window_returns_zeros() -> None:
     features = compute_trend_features_for_window(closes, highs, lows)
     assert features["trend_regime_strength"] == 0.0
     assert features["trend_slope_60"] == 0.0
+
+
+@pytest.mark.unit
+def test_sliding_batch_matches_reference_implementation() -> None:
+    import numpy as np
+
+    rng = np.random.default_rng(42)
+    n = 320
+    closes = 5000.0 + np.cumsum(rng.normal(0.05, 0.5, size=n))
+    highs = closes + rng.uniform(0.1, 0.8, size=n)
+    lows = closes - rng.uniform(0.1, 0.8, size=n)
+    reference = compute_trend_features_sliding_batch_reference(closes, highs, lows)
+    fast = compute_trend_features_sliding_batch(closes, highs, lows)
+    assert len(reference) == len(fast) == n
+    keys = list(reference[200].keys())
+    tolerances = {"trend_atr_ratio": 1e-3}
+    for i in range(60, n):
+        for key in keys:
+            tol = tolerances.get(key, 5e-4)
+            assert abs(reference[i][key] - fast[i][key]) <= tol, f"i={i} key={key}"

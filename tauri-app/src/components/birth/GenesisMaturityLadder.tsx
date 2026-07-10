@@ -78,10 +78,10 @@ const MATURITY_GOALS: readonly string[] = [
 
 export function GenesisMaturityGoalsPreview({ className }: GenesisMaturityGoalsPreviewProps) {
   return (
-    <div className={cn("genesis-maturity-goals", className)}>
-      <p className="genesis-maturity-goals__title font-mono text-[10px] tracking-[0.14em] text-violet-200/90 uppercase">
-        Volwassenheidsdoelen (REAL)
-      </p>
+    <details className={cn("birth-genesis-goals-details genesis-maturity-goals", className)}>
+      <summary className="birth-genesis-goals-details__summary genesis-maturity-goals__title">
+        REAL-volwassenheidsdoelen ({MATURITY_GOALS.length})
+      </summary>
       <ul className="genesis-maturity-goals__list">
         {MATURITY_GOALS.map((goal) => (
           <li key={goal} className="genesis-maturity-goals__item font-mono text-[10px] text-violet-100/85">
@@ -90,9 +90,9 @@ export function GenesisMaturityGoalsPreview({ className }: GenesisMaturityGoalsP
         ))}
       </ul>
       <p className="genesis-maturity-goals__footnote font-mono text-[9px] text-violet-200/65">
-        Birth winrate gate hierboven is pipeline-validatie — geen REAL-garantie.
+        Birth winrate gate is pipeline-validatie — geen REAL-garantie.
       </p>
-    </div>
+    </details>
   );
 }
 
@@ -116,36 +116,26 @@ export function GenesisWinrateGateBlock({
   gatePct,
   disabled,
   onChange,
+  className,
 }: {
   gatePct: number;
   disabled?: boolean;
   onChange: (pct: number) => void;
+  className?: string;
 }) {
   const warning = gateWarningCopy(gatePct);
   return (
-    <div className="space-y-1">
-      <BirthHoloSlider
-        label="Stage 1 winrate gate"
-        value={gatePct}
-        min={35}
-        max={45}
-        step={1}
-        format={(v) => `${v}%`}
-        disabled={disabled}
-        onChange={onChange}
-      />
-      <p
-        className={cn(
-          "text-xs",
-          warning.tone === "ok"
-            ? "text-emerald-200/90"
-            : warning.tone === "warn"
-              ? "text-amber-200/90"
-              : "text-orange-200/90",
-        )}
-      >
-        {warning.text}
-      </p>
-    </div>
+    <BirthHoloSlider
+      label="Stage 1 winrate gate"
+      value={gatePct}
+      min={35}
+      max={45}
+      step={1}
+      format={(v) => `${v}%`}
+      disabled={disabled}
+      hint={warning.text}
+      className={className}
+      onChange={onChange}
+    />
   );
 }

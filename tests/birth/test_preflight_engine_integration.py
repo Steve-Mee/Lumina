@@ -19,7 +19,7 @@ from lumina_core.birth.purged_split import purged_train_holdout_split
 from lumina_core.birth.sim_runner import SimRolloutResult
 from lumina_core.lumina_birth_engine import LuminaBirthEngine
 
-pytestmark = pytest.mark.no_preflight_bypass
+pytestmark = [pytest.mark.no_preflight_bypass, pytest.mark.timeout(120)]
 
 
 class _FakePpoTrainer:
@@ -124,7 +124,7 @@ def test_ensure_holdout_preflight_expands_until_regimes_ok(
     engine.birth_start_time = 1.0
     ticks = _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True)
     split = purged_train_holdout_split(ticks, holdout_pct=0.2)
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _expand)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _expand)
 
     result = engine._ensure_holdout_preflight(
         ticks=ticks,
@@ -185,21 +185,21 @@ def test_engine_expands_history_when_holdout_preflight_fails(
     )
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_for_sim",
+        "lumina_core.birth.data_pipeline.enrich_ticks_for_sim",
         lambda ticks, **_kwargs: ticks,
     )
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.load_historical_ticks",
+        "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda ticks, **_kwargs: ticks,
     )
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _expand)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _expand)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: PatternMineResult(
             patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}} for _ in range(120)],
             wins=120,
@@ -208,7 +208,7 @@ def test_engine_expands_history_when_holdout_preflight_fails(
         ),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: SimRolloutResult(
             trades=2,
             wins=1,
@@ -224,7 +224,7 @@ def test_engine_expands_history_when_holdout_preflight_fails(
         ),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         lambda **_kwargs: {"certificate_passed": False, "failure_reasons": ["oos_sharpe:0/0.35"]},
     )
 
@@ -255,15 +255,15 @@ def test_engine_fail_closed_when_preflight_expansion_exhausted(
     bad_ticks = _calendar_ticks(days=30, ticks_per_day=5, holdout_neutral_only=True)
 
     monkeypatch.setattr(
-        "lumina_core.birth.engine.load_historical_ticks",
+        "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: bad_ticks,
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda ticks, **_kwargs: ticks,
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.expand_birth_data",
+        "lumina_core.birth.certificate_pipeline.expand_birth_data",
         lambda **_kwargs: DataExpansionResult(
             train_ticks=[],
             holdout_ticks=[],
@@ -353,14 +353,14 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
         phase="certificate_failed",
     )
 
-    monkeypatch.setattr("lumina_core.birth.engine.load_historical_ticks", _load_historical_ticks)
-    monkeypatch.setattr("lumina_core.birth.engine.expand_birth_data", _expand)
+    monkeypatch.setattr("lumina_core.birth.data_pipeline.load_historical_ticks", _load_historical_ticks)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _expand)
     monkeypatch.setattr(
-        "lumina_core.birth.engine.enrich_ticks_with_news",
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
         lambda loaded_ticks, **_kwargs: loaded_ticks,
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.mine_winning_patterns",
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: PatternMineResult(
             patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}} for _ in range(120)],
             wins=120,
@@ -369,7 +369,7 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
         ),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.run_policy_rollout",
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: SimRolloutResult(
             trades=5,
             wins=2,
@@ -385,7 +385,7 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
         ),
     )
     monkeypatch.setattr(
-        "lumina_core.birth.engine.evaluate_holdout_certificate",
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
         lambda **_kwargs: {
             "certificate_passed": False,
             "failure_reasons": ["sharpe:0.0/0.5"],
@@ -407,4 +407,136 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
     assert load_calls == [], "cached ticks should skip load_historical_ticks"
     assert expand_calls == [], "manifest reuse should skip preflight expansion"
     assert result["status"] in {"certificate_failed", "completed", "history_unavailable"}
+
+
+@pytest.mark.unit
+def test_resume_checkpoint_skips_tick_load_without_reuse_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Auto cache reuse on checkpoint resume must not require reuse_data_manifest=True."""
+    ticks = _three_regime_calendar_ticks(days=300, ticks_per_day=10)
+    split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+
+    from lumina_core.birth.tick_cache_persist import save_split_cache, save_ticks_cache
+
+    save_ticks_cache(tmp_path, ticks)
+    save_split_cache(tmp_path, split=split, holdout_pct=0.2)
+
+    load_calls: list[int] = []
+    expand_calls: list[int] = []
+    progress_writes: list[dict] = []
+
+    def _load_historical_ticks(**_kwargs) -> list[dict]:
+        load_calls.append(1)
+        return _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True)
+
+    def _expand(**_kwargs) -> DataExpansionResult:
+        expand_calls.append(1)
+        raise AssertionError("expand_birth_data should not run on resume cache hit")
+
+    def _capture_progress(_root, **kwargs) -> None:
+        progress_writes.append(dict(kwargs))
+
+    trainer = _FakePpoTrainer()
+    v2_engine = BirthPhaseEngineV2(
+        runtime=SimpleNamespace(),
+        ppo_trainer=trainer,
+        market_data_service=SimpleNamespace(),
+        workspace_root=tmp_path,
+    )
+    train_hash = v2_engine._train_hash(split.train)
+    engine = LuminaBirthEngine(
+        runtime=SimpleNamespace(),
+        ppo_trainer=trainer,
+        market_data_service=SimpleNamespace(),
+        workspace_root=tmp_path,
+    )
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(
+            rollout_chunk_trades=5,
+            max_rollouts_per_stage=1,
+            data_expansion_steps=(90, 180),
+        ),
+        trade_budget_cap=200,
+        holdout_pct=0.2,
+        certificate_thresholds=BirthCertificateThresholds(min_holdout_trades=5, min_regimes=3),
+    )
+
+    data_manifest = {
+        "train_hash": train_hash,
+        "preflight_ok": True,
+        "real_data_pct": 99.0,
+        "holdout_regimes": ["NEUTRAL", "TREND_DOWN", "TREND_UP"],
+    }
+
+    from lumina_core.birth.checkpoint import save_checkpoint
+
+    policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_bytes(b"policy")
+
+    save_checkpoint(
+        tmp_path,
+        cumulative_trades=140,
+        ppo_steps=1500,
+        training_mode="certified",
+        stages_passed=[],
+        curriculum_stage="stage1_trend",
+        data_manifest=data_manifest,
+        phase="curriculum_learning",
+        policy_path=str(policy_path),
+    )
+
+    monkeypatch.setattr("lumina_core.birth.data_pipeline.load_historical_ticks", _load_historical_ticks)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _expand)
+    monkeypatch.setattr("lumina_core.birth.birth_phase_orchestrator.write_birth_progress", _capture_progress)
+    monkeypatch.setattr(
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
+        lambda loaded_ticks, **_kwargs: loaded_ticks,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
+        lambda **_kwargs: PatternMineResult(
+            patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}} for _ in range(120)],
+            wins=120,
+            scanned=150,
+            regimes_seen={"TREND_UP", "TREND_DOWN", "NEUTRAL"},
+        ),
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine.BirthPhaseEngineV2._run_stage_research_loop",
+        lambda self, **_kwargs: {
+            "status": "completed",
+            "total_trades": self.cumulative_trades,
+            "ppo_steps": self.ppo_steps,
+        },
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
+        lambda **_kwargs: {
+            "certificate_passed": True,
+            "regimes_covered": ["TREND_UP", "TREND_DOWN", "NEUTRAL"],
+            "oos_sharpe": 0.6,
+            "oos_winrate": 0.55,
+            "holdout_trades": 60,
+            "real_data_pct": 99.0,
+        },
+    )
+
+    result = engine.run_birth_phase(
+        target_trades=100,
+        force=False,
+        prefer_real_data_only=True,
+        reuse_data_manifest=False,
+    )
+
+    assert load_calls == [], "resume cache hit should skip load_historical_ticks"
+    assert expand_calls == [], "resume cache hit should skip preflight expansion"
+    assert progress_writes, "engine should write progress on resume"
+    first_write = progress_writes[0]
+    assert first_write.get("ppo_steps") == 1500
+    assert first_write.get("cumulative_trades") == 140
+    assert first_write.get("needs_attention") is False
+    assert result["status"] in {"completed", "certificate_failed", "history_unavailable"}
 

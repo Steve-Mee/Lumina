@@ -345,6 +345,37 @@ class MarketDataIngestService:
         return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
     @staticmethod
+    def _is_historical_date_format_error(response_text: str) -> bool:
+        """Detect NT8/CrossTrade date parse failures (often DD/MM/YYYY echo in error body)."""
+        text = (response_text or "").lower()
+        return (
+            "date format" in text
+            or "invalid 'from'" in text
+            or "invalid 'to'" in text
+        )
+
+    @staticmethod
+    def _sanitize_historical_payload_dates(payload: dict[str, Any]) -> dict[str, Any]:
+        """Ensure from/to are strict ISO-8601 UTC (never locale DD/MM/YYYY)."""
+        out = dict(payload)
+        for key in ("from", "to"):
+            raw = out.get(key)
+            if raw is None:
+                continue
+            text = str(raw).strip()
+            if not text:
+                continue
+            if "T" in text and text.endswith("Z"):
+                out[key] = text
+                continue
+            try:
+                parsed = pd.to_datetime(text, utc=True)
+                out[key] = MarketDataIngestService._utc_iso_z(parsed.to_pydatetime())
+            except Exception:
+                out[key] = text
+        return out
+
+    @staticmethod
     def _utc_day_floor(dt: datetime) -> datetime:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
@@ -418,20 +449,48 @@ class MarketDataIngestService:
         token: str,
         payload: dict[str, Any],
         app: Any,
+        daysback_fallback: int | None = None,
     ) -> list[dict[str, Any]]:
+        safe_payload = self._sanitize_historical_payload_dates(payload)
         try:
             response = requests.post(
                 "https://app.crosstrade.io/v1/api/market/bars",
                 headers={"Authorization": f"Bearer {token}"},
-                json=payload,
+                json=safe_payload,
                 timeout=(10, 45),
             )
             if response.status_code != 200:
+                body = response.text[:400]
+                if (
+                    daysback_fallback is not None
+                    and daysback_fallback > 0
+                    and ("from" in safe_payload or "to" in safe_payload)
+                    and self._is_historical_date_format_error(body)
+                ):
+                    fallback_payload = {
+                        "instrument": safe_payload.get("instrument", instrument),
+                        "periodType": safe_payload.get("periodType", "minute"),
+                        "period": safe_payload.get("period", 1),
+                        "daysBack": int(daysback_fallback),
+                        "limit": max(100, int(safe_payload.get("limit", 8000) or 8000)),
+                    }
+                    app.logger.warning(
+                        "birth.history.date_format_fallback daysBack=%s instrument=%s",
+                        daysback_fallback,
+                        instrument,
+                    )
+                    return self._post_historical_bars(
+                        instrument=instrument,
+                        token=token,
+                        payload=fallback_payload,
+                        app=app,
+                        daysback_fallback=None,
+                    )
                 log_structured(
                     LuminaError(
                         severity=ErrorSeverity.RECOVERABLE_TRANSIENT,
                         code="MDS_HIST_API_004",
-                        message=f"API error {response.status_code}: {response.text[:400]}",
+                        message=f"API error {response.status_code}: {body}",
                         context={"status_code": response.status_code},
                     )
                 )
@@ -454,6 +513,7 @@ class MarketDataIngestService:
         days_back: int,
         limit: int | None,
         on_chunk: Callable[..., None] | None = None,
+        prefer_daysback_only: bool = False,
     ) -> list[dict[str, Any]]:
         """Load 1-min bars from CrossTrade with daysBack-first and day-aligned pagination.
 
@@ -549,8 +609,17 @@ class MarketDataIngestService:
             short_window = days_back_i <= 7
             preflight_probe = target_cap is not None and target_cap <= 1_000
             cap_satisfied = target_cap is not None and len(merged) >= target_cap
-            if merged and (short_window or preflight_probe or cap_satisfied):
+            if merged and (short_window or preflight_probe or cap_satisfied or prefer_daysback_only):
                 return self._sort_and_cap_bars(merged, target_cap)
+
+        if prefer_daysback_only:
+            if merged:
+                return self._sort_and_cap_bars(merged, target_cap)
+            app.logger.warning(
+                "birth.history.daysback_only_empty instrument=%s days_back=%s",
+                instrument,
+                days_back_i,
+            )
 
         # 2) Day-aligned UTC pagination (midnight boundaries per CrossTrade examples).
         utc_now = datetime.now(timezone.utc)
@@ -591,7 +660,14 @@ class MarketDataIngestService:
                 payload["to"],
                 chunk_limit,
             )
-            bars = self._post_historical_bars(instrument=instrument, token=token, payload=payload, app=app)
+            chunk_days_span = max(1, (win_to - win_from).days)
+            bars = self._post_historical_bars(
+                instrument=instrument,
+                token=token,
+                payload=payload,
+                app=app,
+                daysback_fallback=chunk_days_span,
+            )
             _emit_chunk(
                 chunk_index=idx + 1,
                 chunk_total=len(windows),
@@ -678,6 +754,7 @@ class MarketDataIngestService:
         limit: int | None = 120000,
         ticks_per_bar: int = 4,
         on_chunk: Callable[..., None] | None = None,
+        prefer_daysback_only: bool = False,
     ) -> list[dict[str, Any]]:
         """Load historical bars and expand each bar into pseudo ticks.
 
@@ -692,6 +769,7 @@ class MarketDataIngestService:
                 days_back=days_back,
                 limit=limit,
                 on_chunk=on_chunk,
+                prefer_daysback_only=prefer_daysback_only,
             )
 
             ticks: list[dict[str, Any]] = []

@@ -23,6 +23,9 @@ ORDERED_STAGE_VALUES = (
     CurriculumStage.STAGE1_TREND.value,
     CurriculumStage.STAGE2_RANGE.value,
     CurriculumStage.STAGE3_MIXED.value,
+    CurriculumStage.STAGE5_PROFIT_VAL.value,
+    CurriculumStage.STAGE6_RISK_DISCIPLINE.value,
+    CurriculumStage.STAGE7_HOLDOUT_PROFILE.value,
 )
 
 
