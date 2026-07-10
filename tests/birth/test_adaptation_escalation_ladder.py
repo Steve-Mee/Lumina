@@ -173,21 +173,18 @@ def test_strict_mode_still_terminal_stalls(tmp_path: Path, monkeypatch: pytest.M
             rollout_steps=200,
         )
     monkeypatch.setattr("lumina_core.birth.sim_runner.run_policy_rollout", fake_rollout)
+    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.run_policy_rollout", fake_rollout)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", fake_rollout)
-    monkeypatch.setattr(
-        "lumina_core.birth.pattern_miner.mine_winning_patterns",
-        lambda **_kwargs: __import__(
-            "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
-        ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
-    )
-    monkeypatch.setattr(
-        "lumina_core.birth.data_expansion.expand_birth_data",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
-    )
-    monkeypatch.setattr(
-        "lumina_core.birth.stage_training_loop.expand_birth_data",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
-    )
+    fake_mine = lambda **_kwargs: __import__(
+        "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
+    ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set())
+    monkeypatch.setattr("lumina_core.birth.pattern_miner.mine_winning_patterns", fake_mine)
+    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.mine_winning_patterns", fake_mine)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.mine_winning_patterns", fake_mine)
+    no_expand = lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand"))
+    monkeypatch.setattr("lumina_core.birth.data_expansion.expand_birth_data", no_expand)
+    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.expand_birth_data", no_expand)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", no_expand)
 
     result = engine._run_stage_research_loop(
         stage=CurriculumStage.STAGE1_TREND,

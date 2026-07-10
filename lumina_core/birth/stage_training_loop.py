@@ -63,6 +63,17 @@ def run_stage_research_loop(host: Any, **kwargs: Any) -> dict[str, Any] | None:
         except Exception:
             pass
 
+    # Propagate any monkeypatches done on this compat module (what tests target)
+    # into the handler module that actually hosts the moved function body.
+    # This ensures from-imported names inside the relocated code see the fakes.
+    try:
+        import lumina_core.birth.curriculum_stage_handler as _handler_mod
+        for _name in ("run_policy_rollout", "mine_winning_patterns", "expand_birth_data"):
+            if hasattr(sys.modules[__name__], _name):
+                setattr(_handler_mod, _name, getattr(sys.modules[__name__], _name))
+    except Exception:
+        pass
+
     result = _execute(host, **kwargs)
 
     if bus is not None and stage is not None:
