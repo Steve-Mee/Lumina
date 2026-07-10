@@ -336,7 +336,7 @@ def run_stage_research_loop(
             pass_target=stage1_winrate_pass_threshold(cur_cfg),
         )
         sanitize_phantom_evolution_steps(plateau_state)
-    if metrics_match_stage:
+    if metrics_match_stage and isinstance(stage_metrics, dict):
         for key in (
             "plateau_quarantine_active",
             "plateau_quarantine_rollouts_remaining",

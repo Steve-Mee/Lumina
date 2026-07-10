@@ -128,6 +128,7 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
         ),
         trade_budget_cap=500,
     )
+    monkeypatch.setattr("lumina_core.birth.history_loader.load_historical_ticks", lambda **_kwargs: _ticks(50))
     monkeypatch.setattr("lumina_core.birth.data_pipeline.load_historical_ticks", lambda **_kwargs: _ticks(50))
 
     def _mock_expand(**_kwargs) -> DataExpansionResult:
@@ -144,7 +145,8 @@ def test_practice_with_real_ticks_still_not_certified(tmp_path: Path, monkeypatc
             exhausted=True,
         )
 
-    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand)
+    monkeypatch.setattr("lumina_core.birth.data_expansion.expand_birth_data", _mock_expand)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _mock_expand)
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: _fake_rollout(

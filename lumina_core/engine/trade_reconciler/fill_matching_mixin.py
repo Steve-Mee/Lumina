@@ -5,13 +5,20 @@ from __future__ import annotations
 import logging
 from collections import deque
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from lumina_core.engine.trade_reconciler.schemas import FillEvent, PendingTradeClose
+
+if TYPE_CHECKING:
+    from lumina_core.engine.lumina_engine import LuminaEngine
 
 logger = logging.getLogger(__name__)
 
 
 class FillMatchingMixin:
+    if TYPE_CHECKING:
+        engine: LuminaEngine
+        _recent_fills: deque[FillEvent]
     def _timeout_seconds(self) -> float:
         raw = self.engine.config.reconciliation_timeout_seconds
         return float(15.0 if raw is None else raw)
