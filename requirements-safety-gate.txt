@@ -17,7 +17,7 @@ plotly==6.6.0
 pandas_market_calendars==5.3.2
 matplotlib==3.10.8
 fpdf2==2.8.7
-pillow==12.2.0
+pillow==12.3.0
 ray==2.54.1
 ollama==0.6.1
 gymnasium==1.2.3
