@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from lumina_core.ppo_trainer import PPOTrainer
+
+
+def _stub_stable_baselines3(**attrs: object) -> ModuleType:
+    module = ModuleType("stable_baselines3")
+    for name, value in attrs.items():
+        setattr(module, name, value)
+    return module
 
 
 def _engine_stub() -> SimpleNamespace:
@@ -29,8 +37,9 @@ def test_create_fresh_birth_policy_is_callable() -> None:
 def test_create_fresh_birth_policy_force_reinit_installs_model(tmp_path: Path) -> None:
     trainer = PPOTrainer(engine=_engine_stub(), model_dir=tmp_path / "ppo")
     fake_model = SimpleNamespace(predict=lambda *_a, **_k: (None, None))
+    fake_sb3 = _stub_stable_baselines3(PPO=MagicMock(return_value=fake_model))
 
-    with patch("stable_baselines3.PPO", create=True, return_value=fake_model):
+    with patch.dict(sys.modules, {"stable_baselines3": fake_sb3}):
         with patch.object(PPOTrainer, "_bootstrap_birth_env", return_value=MagicMock()):
             model = trainer.create_fresh_birth_policy(allow_load_existing=False, force_reinit=True)
 
