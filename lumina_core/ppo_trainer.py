@@ -393,8 +393,6 @@ class PPOTrainer:
         force_reinit: bool = False,
     ) -> Any:
         """Initialize or reload the PPO policy used by Birth Phase rollouts."""
-        from stable_baselines3 import PPO
-
         if not force_reinit and allow_load_existing:
             default_path = self.model_dir / "lumina_ppo_policy.zip"
             if default_path.is_file():
@@ -414,6 +412,8 @@ class PPOTrainer:
             active = self._resolve_active_model()
             if active is not None:
                 return active
+
+        from stable_baselines3 import PPO
 
         hyperparams = self._get_training_hyperparams(birth_phase=True)
         env = self._bootstrap_birth_env()

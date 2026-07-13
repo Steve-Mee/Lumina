@@ -30,7 +30,7 @@ def test_create_fresh_birth_policy_force_reinit_installs_model(tmp_path: Path) -
     trainer = PPOTrainer(engine=_engine_stub(), model_dir=tmp_path / "ppo")
     fake_model = SimpleNamespace(predict=lambda *_a, **_k: (None, None))
 
-    with patch("stable_baselines3.PPO", return_value=fake_model):
+    with patch("stable_baselines3.PPO", create=True, return_value=fake_model):
         with patch.object(PPOTrainer, "_bootstrap_birth_env", return_value=MagicMock()):
             model = trainer.create_fresh_birth_policy(allow_load_existing=False, force_reinit=True)
 
