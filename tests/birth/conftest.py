@@ -126,3 +126,22 @@ def _bypass_holdout_preflight_for_engine_integration(
     if _requests_no_preflight_bypass(request):
         return
     patch_holdout_preflight_ok(monkeypatch)
+
+
+@pytest.fixture
+def birth_event_bus():
+    from lumina_core.agent_orchestration.event_bus import EventBus
+
+    return EventBus()
+
+
+@pytest.fixture
+def birth_bus_client(birth_event_bus):
+    from lumina_core.birth.birth_bus_client import BirthBusClient
+    from lumina_core.birth.config import BirthCurriculumConfig, BirthRewardConfig
+
+    return BirthBusClient(
+        birth_event_bus,
+        BirthCurriculumConfig(),
+        BirthRewardConfig(),
+    )

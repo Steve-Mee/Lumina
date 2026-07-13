@@ -27,6 +27,8 @@ def test_stage_training_loop_is_now_thin_after_decomposition() -> None:
 
 
 @pytest.mark.unit
-def test_stage_training_loop_emits_to_bus() -> None:
-    text = _STAGE_LOOP.read_text(encoding="utf-8")
-    assert "birth.curriculum.stage.requested" in text or "publish" in text
+def test_stage_rollout_executor_loc_initial_ceiling() -> None:
+    """Executor extracted from curriculum_stage_handler; bound growth during bus migration."""
+    path = _ROOT / "lumina_core" / "birth" / "stage_rollout_executor.py"
+    line_count = len(path.read_text(encoding="utf-8").splitlines())
+    assert line_count <= 3400, f"stage_rollout_executor.py grew to {line_count} lines"

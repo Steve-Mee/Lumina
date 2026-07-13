@@ -155,6 +155,21 @@ Client-reported REAL safe mode: `POST /api/notifications/attention` with `reason
 
 ---
 
+## CLI vs Command Deck vs headless
+
+| Operator path | Command / action | Runtime behavior |
+|---------------|------------------|------------------|
+| **Command Deck** | Backend `:8000` + Tauri; Start Engine | Full supervisor loop via `ProcessManager` |
+| **CLI daemon loop** | `python -m lumina_launcher --mode sim` or `--mode paper` | Same full supervisor stack; prints PID and exits |
+| **CLI foreground debug** | `python -m lumina_launcher --mode sim --foreground` | Blocking loop in terminal (Ctrl+C stops) |
+| **Headless smoke/CI** | `python -m lumina_launcher --smoke --mode sim --duration 15m` | One-shot `HeadlessRuntime` — **no** live supervisor |
+| **Production headless 24/7** | `python -m lumina_launcher --headless --mode sim` | Full supervisor stack with preflight, SLO, recovery |
+| **Birth status** | `python -m lumina_launcher birth status --json` | Reads `BirthService` / progress file; optional `LUMINA_LAUNCHER_TELEMETRY=1` for JSONL |
+
+Rule: `--smoke` means one-shot validation runtime. `--headless` means continuous 24/7 production supervisor. Omit both for daemon SIM/Paper trading loops via `--mode`.
+
+---
+
 ## Related
 
 - ADR: [adr/0011-tauri-lifecycle-gate-ssot.md](adr/0011-tauri-lifecycle-gate-ssot.md)

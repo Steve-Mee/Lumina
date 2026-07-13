@@ -21,7 +21,7 @@ from lumina_core.agent_orchestration.schemas import (
 # Support monkeypatch strings that expect these names on the module.
 sys.modules[__name__ + ".time"] = time
 
-from .curriculum_stage_handler import run_stage_research_loop as _execute  # noqa: E402
+from .stage_rollout_executor import run_stage_research_loop as _execute  # noqa: E402
 
 # Re-export symbols that tests commonly monkeypatch on the old module path.
 from lumina_core.birth.data_expansion import expand_birth_data  # noqa: E402
@@ -67,10 +67,15 @@ def run_stage_research_loop(host: Any, **kwargs: Any) -> dict[str, Any] | None:
     # into the handler module that actually hosts the moved function body.
     # This ensures from-imported names inside the relocated code see the fakes.
     try:
-        import lumina_core.birth.curriculum_stage_handler as _handler_mod
+        import lumina_core.birth.stage_rollout_executor as _handler_mod
+
+        _compat_mod = sys.modules[__name__]
         for _name in ("run_policy_rollout", "mine_winning_patterns", "expand_birth_data"):
-            if hasattr(sys.modules[__name__], _name):
-                setattr(_handler_mod, _name, getattr(sys.modules[__name__], _name))
+            if hasattr(_compat_mod, _name):
+                setattr(_handler_mod, _name, getattr(_compat_mod, _name))
+        # time is imported in both modules; tests monkeypatch stage_training_loop.time.time.
+        if hasattr(_compat_mod, "time"):
+            _handler_mod.time = _compat_mod.time
     except Exception:
         pass
 

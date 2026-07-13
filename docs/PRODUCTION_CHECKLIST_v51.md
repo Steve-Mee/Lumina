@@ -46,7 +46,7 @@ Cutover to REAL is allowed only when all are true:
 Mandatory command before cutover:
 
 ```powershell
-python -m lumina_launcher --mode=sim --headless --stability-check
+python -m lumina_launcher --mode=sim --smoke --stability-check
 ```
 
 ## 1) All Components Status (Green/Red)
@@ -61,8 +61,8 @@ python -m lumina_launcher --mode=sim --headless --stability-check
 | Evolution UI (v51 Critical #2 carry-over) | GREEN | tests pass and endpoint/UI integration present |
 | Full test suite (`pytest -v --tb=short`) | GREEN | **285 passed, 2 skipped** (includes 24 new headless runtime tests) |
 | Chaos Engineering suite (`python -m pytest tests/chaos_engineering.py -q`) | GREEN | **22 passed** |
-| Live-sim launcher run (paper 15m) command semantic validity | GREEN | `--headless` flag: 345 trades, structured JSON, `broker_status: paper_ok` |
-| Live-broker mocked launcher run semantic validity | GREEN | `--headless --broker=live`: 121 trades, `broker_status: live_connected` |
+| Live-sim launcher run (paper 15m) command semantic validity | GREEN | `--smoke` flag: 345 trades, structured JSON, `broker_status: paper_ok` |
+| Live-broker mocked launcher run semantic validity | GREEN | `--smoke --broker=live`: 121 trades, `broker_status: live_connected` |
 
 ## 2) BrokerBridge Live Readiness
 
@@ -135,7 +135,8 @@ Evidence:
 Fail-closed launch decision: READY FOR PAPER-TO-LIVE TRANSITION.
 
 Resolved blocking gaps (now GREEN):
-1. ✅ Dedicated headless CLI entrypoint: `--headless` flag on `lumina_launcher` delegates to `lumina_core/runtime/headless_runtime.py`.
+1. ✅ Dedicated smoke CLI entrypoint: `--smoke` flag on `lumina_launcher` delegates to `lumina_core/runtime/headless_runtime.py`.
+1b. ✅ Production headless: `--headless` runs continuous 24/7 `HeadlessProductionOrchestrator` with preflight, SLO, recovery.
 	- `HeadlessRuntime.run()` produces structured JSON via stdout **and** `state/last_run_summary.json`.
 	- Graceful fallback when ApplicationContainer cannot fully init (e.g. offline inference engine, missing TTS).
 2. ✅ Production runbook command pair validated with live JSON outputs (see Section 7).
@@ -155,12 +156,12 @@ Proof artifacts (generated from exact headless validation commands):
 2. `state/last_run_summary_live_5m.json`
 
 Snapshot summary:
-- Paper validation (`--duration=15m --broker=paper --headless`):
+- Paper validation (`--duration=15m --broker=paper --smoke`):
 	- `total_trades=345`
 	- `pnl_realized=-3371.45`
 	- `broker_status=paper_ok`
 	- `risk_events=0`, `var_breach_count=0`
-- Live-mock validation (`--duration=5m --broker=live --headless`):
+- Live-mock validation (`--duration=5m --broker=live --smoke`):
 	- `total_trades=121`
 	- `pnl_realized=-1219.6`
 	- `broker_status=live_connected`
@@ -190,9 +191,9 @@ Executed in exact requested order:
 - Result: **22 passed**.
 
 3) `python -m lumina_launcher --mode=paper --duration=15m --broker=paper`
-- Result: legacy path (no `--headless`). Superseded by command 4.
+- Result: legacy path (no `--smoke`). Superseded by command 4.
 
-4) `python -m lumina_launcher --mode=paper --duration=15m --broker=paper --headless`
+4) `python -m lumina_launcher --mode=paper --duration=15m --broker=paper --smoke`
 ```json
 {
 	"schema_version": "1.0",
@@ -216,7 +217,7 @@ Executed in exact requested order:
 }
 ```
 
-5) `python -m lumina_launcher --mode=paper --duration=5m --broker=live --headless`
+5) `python -m lumina_launcher --mode=paper --duration=5m --broker=live --smoke`
 ```json
 {
 	"schema_version": "1.0",
@@ -243,7 +244,7 @@ Executed in exact requested order:
 Nightly aggressive SIM learning command:
 
 ```powershell
-python -m lumina_launcher --mode=sim --headless --duration=60
+python -m lumina_launcher --mode=sim --smoke --duration=60
 ```
 
 ## 9) Final Blocker Fix Validation (April 8, 2026 22:54–22:55 UTC)

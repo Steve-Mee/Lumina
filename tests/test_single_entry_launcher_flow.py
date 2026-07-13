@@ -11,13 +11,13 @@ from lumina_launcher.core.onboarding import resolve_app_surface
 
 
 def test_main_module_prints_usage_without_streamlit(capsys: pytest.CaptureFixture[str]) -> None:
-    from lumina_launcher.__main__ import main
+    from lumina_launcher.cli.dispatch import main
 
-    code = main()
+    code = main([])
     captured = capsys.readouterr()
     assert code == 0
     assert "Command Deck" in captured.out
-    assert "streamlit" not in captured.out.lower()
+    assert "Autonomous SIM/Paper loop" in captured.out
 
 
 def test_resolve_app_surface_returns_known_values() -> None:
@@ -91,7 +91,6 @@ def test_birth_actions_requires_explicit_start(tmp_path: Path) -> None:
 
     ok, msg = start_birth_training(
         birth_service=birth_service,
-        backend_client=None,
         workspace_root=tmp_path,
         target_trades=25_000,
         explicit_user_start=False,

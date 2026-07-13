@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +9,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from lumina_launcher.core.process_manager import ProcessManager
+from lumina_launcher.runtime.spawn import start_headless_daemon
 
 router = APIRouter(prefix="/api/runtime", tags=["runtime"])
 
@@ -103,30 +101,18 @@ async def run_overnight_sim(
     if pm.is_process_alive():
         raise HTTPException(status_code=409, detail="Stop the running engine before overnight SIM")
 
-    cmd = [
-        sys.executable,
-        "-m",
-        "lumina_launcher",
-        "--headless",
-        "--mode=sim",
-        f"--duration={duration_minutes}",
-        "--overnight-sim",
-        "--stability-check",
-    ]
-    env = os.environ.copy()
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            cwd=str(_REPO_ROOT),
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to launch overnight SIM: {exc}") from exc
+    result = start_headless_daemon(
+        _REPO_ROOT,
+        _RUNTIME_ENTRY,
+        "sim",
+        duration_minutes=duration_minutes,
+        extra_argv=["--overnight-sim", "--stability-check"],
+    )
+    if not result.ok:
+        raise HTTPException(status_code=500, detail=result.message)
     return {
         "ok": True,
-        "pid": proc.pid,
+        "pid": result.pid,
         "message": f"Overnight SIM started ({duration_minutes}m)",
     }
 

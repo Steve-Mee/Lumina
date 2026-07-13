@@ -31,6 +31,7 @@ from backend.setup_endpoints import router as setup_router
 from backend.config_endpoints import router as config_router
 from backend.runtime_endpoints import router as runtime_router
 from backend.ppo_websocket import router as ppo_ws_router
+from backend.ninjatrader_websocket import router as ninjatrader_ws_router
 from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
 from backend.evolution_endpoints import set_security_module as set_evolution_security_module
 from lumina_core.broker.broker_bridge import broker_factory
@@ -172,6 +173,7 @@ app.include_router(config_router)
 app.include_router(runtime_router)
 app.include_router(core_ws_router)
 app.include_router(ppo_ws_router)
+app.include_router(ninjatrader_ws_router)
 
 app.add_middleware(LuminaEmbeddedUIMiddleware, dist_dir=_UI_DIST)
 if (_UI_DIST / "index.html").is_file():

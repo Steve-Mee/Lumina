@@ -367,3 +367,41 @@ At the end of Rollout B, record exactly one of these decisions:
 - `GO_TO_ROLLOUT_C`
 - `REPEAT_ROLLOUT_B`
 - `ROLLBACK_TO_SIM_ONLY`
+
+## NinjaTrader Native Bridge Lane (Optional)
+
+Use this section when validating `broker.live_provider=ninjatrader` instead of CrossTrade during Rollout B or a dedicated SIM staging window.
+
+### Environment (SIM lane, native bridge)
+
+```powershell
+$env:TRADE_MODE = "sim"
+$env:BROKER_BACKEND = "live"
+$env:BROKER_LIVE_PROVIDER = "ninjatrader"
+$env:NINJATRADER_ENABLED = "true"
+$env:LUMINA_NT8_API_KEY = "<nt8-addon-key>"
+$env:ENABLE_SIM_REAL_GUARD = "false"
+```
+
+Ensure `config.yaml` contains:
+
+```yaml
+broker:
+  backend: live
+  live_provider: ninjatrader
+  ninjatrader:
+    enabled: true
+    account_name: "Sim101"
+```
+
+### Validation steps
+
+1. Start Core backend + engine with the env above.
+2. Launch NinjaTrader 8 via Command Deck; enable the LUMINA NT8 Add-on.
+3. Verify `ninjatrader.connected: true` in `WS /ws/core/live` telemetry.
+4. Place a sim order; confirm fill in logs and reconciler audit.
+5. Kill the NinjaTrader process; confirm fail-closed (new orders blocked) within one telemetry interval.
+
+### REAL / sim_real_guard
+
+Do not enable native bridge REAL execution without [ADR-0029](../adr/0029-ninjatrader-native-bridge.md) acceptance and explicit `broker.ninjatrader.enabled=true` operator sign-off. Account name in config must match the NT8 connected account exactly.

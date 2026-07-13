@@ -17,36 +17,12 @@ from lumina_os.backend import birth_endpoints
 
 
 @pytest.mark.unit
-def test_start_birth_training_prefers_backend_when_reachable() -> None:
-    backend = MagicMock()
-    backend.is_backend_reachable.return_value = True
-    backend.start_birth_sync.return_value = {"status": "started", "message": "via backend"}
-    birth = MagicMock()
-
-    ok, msg = start_birth_training(
-        birth_service=birth,
-        backend_client=backend,
-        workspace_root=Path("."),
-        target_trades=25_000,
-        explicit_user_start=True,
-    )
-
-    assert ok is True
-    assert "backend" in msg.lower()
-    backend.start_birth_sync.assert_called_once()
-    birth.start_birth.assert_not_called()
-
-
-@pytest.mark.unit
-def test_start_birth_training_falls_back_to_local_when_backend_down() -> None:
-    backend = MagicMock()
-    backend.is_backend_reachable.return_value = False
+def test_start_birth_training_uses_birth_service() -> None:
     birth = MagicMock()
     birth.start_birth.return_value = {"status": "started", "message": "local"}
 
     ok, msg = start_birth_training(
         birth_service=birth,
-        backend_client=backend,
         workspace_root=Path("."),
         target_trades=25_000,
         explicit_user_start=True,
@@ -54,7 +30,19 @@ def test_start_birth_training_falls_back_to_local_when_backend_down() -> None:
 
     assert ok is True
     birth.start_birth.assert_called_once()
-    backend.start_birth_sync.assert_not_called()
+
+
+@pytest.mark.unit
+def test_start_birth_training_requires_explicit_start() -> None:
+    birth = MagicMock()
+    ok, msg = start_birth_training(
+        birth_service=birth,
+        workspace_root=Path("."),
+        target_trades=25_000,
+        explicit_user_start=False,
+    )
+    assert ok is False
+    birth.start_birth.assert_not_called()
 
 
 @pytest.mark.unit

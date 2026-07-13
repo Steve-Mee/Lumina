@@ -170,6 +170,7 @@ def test_stage1_wall_stagnation_aborts_before_max_rollouts(
     def _advance_time(_: float) -> None:
         tick["value"] += 400.0
 
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.run_policy_rollout",
@@ -254,6 +255,7 @@ def test_stage1_adaptive_stall_records_adaptation_before_terminal(
             exploration_chunk_size=8,
             auto_expand_on_adaptation=False,
             max_adaptation_stuck_escapes=0,
+            stagnation_rollouts_before_expand=999,
         ),
         trade_budget_cap=500,
     )
@@ -290,6 +292,7 @@ def test_stage1_adaptive_stall_records_adaptation_before_terminal(
             rollout_steps=200,
         )
 
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
     monkeypatch.setattr(engine, "_stop_requested", lambda: rollout_calls["n"] >= 18)

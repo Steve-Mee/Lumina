@@ -10,6 +10,7 @@ export type {
   AdaptiveIntelligenceWsBlock,
   CoreLiveTelemetry,
   FortressSnapshot,
+  NinjaTraderTelemetry,
   PerformanceSnapshot,
   RealOpsSnapshot,
   TelemetryFrame,

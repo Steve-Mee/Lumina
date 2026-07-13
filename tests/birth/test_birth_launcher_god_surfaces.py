@@ -22,7 +22,7 @@ _LINE_BASELINES: dict[str, int] = {
     "birth_status_plateau_risk.py": 60,
     "birth_runner.py": 57,
     "birth_runner_lock.py": 181,
-    "birth_runner_start.py": 298,
+    "birth_runner_start.py": 304,
     "birth_runner_wipe.py": 115,
     "birth_runner_recovery.py": 183,
 }

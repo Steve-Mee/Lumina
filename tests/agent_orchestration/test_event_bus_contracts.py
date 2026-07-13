@@ -14,6 +14,7 @@ from lumina_core.agent_orchestration.schemas import (
     MetaAgentThought,
     RiskVerdict,
     TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
+    validate_registered_event_payload,
 )
 from lumina_core.engine.agent_blackboard import AgentBlackboard
 
@@ -371,3 +372,65 @@ def test_blackboard_publish_with_payload_model_rejects_invalid_payload_fail_clos
         )
 
     assert received == []
+
+
+@pytest.mark.unit
+def test_event_bus_unsubscribe_stops_delivery() -> None:
+    bus = EventBus()
+    received: list[str] = []
+
+    def _handler(event: object) -> None:
+        topic = getattr(event, "topic", "")
+        received.append(str(topic))
+
+    token = bus.subscribe("legacy.custom.topic", _handler)
+    bus.publish(topic="legacy.custom.topic", producer="test", payload={"x": 1})
+    bus.unsubscribe(token)
+    bus.publish(topic="legacy.custom.topic", producer="test", payload={"x": 2})
+    assert received == ["legacy.custom.topic"]
+
+
+@pytest.mark.unit
+def test_history_within_hours_skips_malformed_timestamp() -> None:
+    from lumina_core.agent_orchestration.event_bus import DomainEvent
+
+    bus = EventBus()
+    bus.publish(topic="legacy.custom.topic", producer="test", payload={"ok": True})
+    with bus._lock:
+        dq = bus._history["legacy.custom.topic"]
+        dq.append(
+            DomainEvent(
+                topic="legacy.custom.topic",
+                producer="test",
+                payload={"bad": True},
+                timestamp="not-a-timestamp",
+            )
+        )
+    recent = bus.history_within_hours("legacy.custom.topic", within_hours=24)
+    assert any(e.payload.get("ok") for e in recent)
+    assert not any(e.payload.get("bad") for e in recent)
+
+
+@pytest.mark.unit
+def test_validate_registered_event_payload_critical_missing_registry_raises() -> None:
+    from lumina_core.agent_orchestration import schemas as schema_mod
+
+    original = dict(schema_mod.EVENT_BUS_TOPIC_MODELS)
+    topic = "birth.curriculum.stage.completed"
+    try:
+        patched = dict(schema_mod.EVENT_BUS_TOPIC_MODELS)
+        patched.pop(topic, None)
+        schema_mod.EVENT_BUS_TOPIC_MODELS = patched
+        with pytest.raises(ValueError, match="missing from EVENT_BUS_TOPIC_MODELS"):
+            validate_registered_event_payload(
+                topic,
+                {
+                    "stage": "stage1_trend",
+                    "passed": True,
+                    "trades": 10,
+                    "wins": 5,
+                    "hold_ratio": 0.1,
+                },
+            )
+    finally:
+        schema_mod.EVENT_BUS_TOPIC_MODELS = original

@@ -80,18 +80,12 @@ export interface StageScorecardModel {
   dataDaysLoaded: number | null;
   dataManifestDaysLoaded: number | null;
   adaptationCycling: boolean;
+  autonomousRecoveryRatePct: number | null;
   regimeDistributionSummary: string | null;
 }
 
 const STALE_WORKING_SEC = 120;
 const STALE_WARN_SEC = 600;
-
-function parseProgressTimestamp(progress: BirthProgressPayload | undefined): number | null {
-  const raw = progress?.timestamp;
-  if (!raw) return null;
-  const ms = Date.parse(raw);
-  return Number.isFinite(ms) ? ms : null;
-}
 
 function resolveAdaptationCycling(
   progress: BirthProgressPayload | undefined,
@@ -250,6 +244,7 @@ function extractAdaptationFields(progress: BirthProgressPayload | undefined): {
   lastAdaptationReason: string | null;
   lastAdaptationChunk: number | null;
   lastAdaptationSummary: string | null;
+  autonomousRecoveryRatePct: number | null;
 } {
   const rawGate = String(progress?.volume_gate_status ?? "").trim().toUpperCase();
   const volumeGateStatus =
@@ -319,6 +314,11 @@ function extractAdaptationFields(progress: BirthProgressPayload | undefined): {
     lastAdaptationReason,
     lastAdaptationChunk,
     lastAdaptationSummary,
+    autonomousRecoveryRatePct:
+      progress?.autonomous_recovery_rate_pct != null &&
+      Number.isFinite(Number(progress.autonomous_recovery_rate_pct))
+        ? Number(progress.autonomous_recovery_rate_pct)
+        : null,
   };
 }
 

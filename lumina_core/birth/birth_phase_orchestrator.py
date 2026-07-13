@@ -40,6 +40,33 @@ from lumina_core.logging_utils import get_logger
 logger = get_logger("lumina.birth.birth_phase_orchestrator")
 
 
+def _certificate_fast_path_eligible(
+    host: Any,
+    progress_snapshot: dict[str, Any],
+    checkpoint_state: dict[str, Any],
+) -> bool:
+    """Gate certificate fast-path via EventBus when available."""
+    bus = getattr(host, "event_bus", None)
+    if bus is None:
+        return should_fast_path_remediation_from_state(progress_snapshot, checkpoint_state)
+    from lumina_core.agent_orchestration.schemas import BirthCertificateRemediationRequested
+
+    request = BirthCertificateRemediationRequested(
+        progress_snapshot=dict(progress_snapshot),
+        checkpoint_state=dict(checkpoint_state),
+        fast_path_eligible=False,
+    )
+    bus.publish(
+        topic="birth.certificate.remediation.requested",
+        producer="birth.birth_phase_orchestrator",
+        payload=request.model_dump(mode="json"),
+    )
+    latest = bus.latest("birth.certificate.remediation.requested")
+    if latest is not None and latest.producer == "birth.remediation_handler":
+        return bool(latest.payload.get("fast_path_eligible", False))
+    return should_fast_path_remediation_from_state(progress_snapshot, checkpoint_state)
+
+
 def run_birth_phase(
     host: Any,
     *,
@@ -101,7 +128,7 @@ def run_birth_phase(
         not force
         and not practice_mode
         and not read_checkpoint_payload(host.workspace_root)
-        and should_fast_path_remediation_from_state(progress_snapshot, existing_checkpoint)
+        and _certificate_fast_path_eligible(host, progress_snapshot, existing_checkpoint)
     ):
         policy_hint = str(host.final_policy_path)
         reconstruct_checkpoint_from_progress(
@@ -361,7 +388,7 @@ def run_birth_phase(
     if (
         not practice_mode
         and resume
-        and should_fast_path_remediation_from_state(progress_snapshot, checkpoint_state)
+        and _certificate_fast_path_eligible(host, progress_snapshot, checkpoint_state)
     ):
         if cfg.curriculum.certificate_runway_enabled:
             write_birth_progress(

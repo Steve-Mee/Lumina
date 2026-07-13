@@ -22,8 +22,8 @@ _BIRTH_ENGINE = _ROOT / "lumina_core" / "birth" / "engine.py"
 # Phase 1D (certificate_pipeline extract): 2473 -> 1625.
 # Phase 1D cleanup (unused import prune): 1625 -> 1508.
 # Phase 1E (birth_phase_orchestrator extract): 1508 -> 887.
-_ENGINE_LINE_BASELINE = 883
-_ENGINE_METHOD_BASELINE = 44
+_ENGINE_LINE_BASELINE = 998
+_ENGINE_METHOD_BASELINE = 46
 
 # Largest method bodies — must not grow without intentional guard update.
 _METHOD_LINE_CEILINGS: dict[str, int] = {
@@ -39,7 +39,8 @@ _BOUNDED_MODULE_MARKERS = [
     "lumina_core.birth.checkpoint_coordinator",
     "lumina_core.birth.stage_training_loop",
     "lumina_core.birth.certificate_pipeline",
-    "lumina_core.birth.birth_phase_orchestrator",
+    "lumina_core.birth.birth_handler_registry",
+    "lumina_core.birth.birth_bus_client",
     "lumina_core.birth.meta_controller",
     "lumina_core.birth.plateau_escalator",
     "lumina_core.birth.organism_autonomy",

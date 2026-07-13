@@ -209,18 +209,24 @@ def start_birth(
                     workspace_root=svc.workspace_root,
                     stop_event=svc._stop_requested,
                 )
-                svc._result = engine.run_birth_phase(
-                    target_trades=resolved_target,
-                    max_real_days=resolved_max_real_days,
-                    prefer_real_data_only=resolved_prefer_real_data_only,
-                    chunk_size=50000,
-                    ppo_update_timesteps=resolved_ppo_update_timesteps,
-                    force=force,
-                    practice_mode=bool(practice_mode),
-                    reuse_existing_policy=bool(reuse_existing_policy),
-                    reuse_data_manifest=bool(reuse_data),
-                    expand_data=bool(expand_data),
-                )
+                container.register_birth_reload_host(engine)
+                container.start_config_hot_reload()
+                try:
+                    svc._result = engine.run_birth_phase(
+                        target_trades=resolved_target,
+                        max_real_days=resolved_max_real_days,
+                        prefer_real_data_only=resolved_prefer_real_data_only,
+                        chunk_size=50000,
+                        ppo_update_timesteps=resolved_ppo_update_timesteps,
+                        force=force,
+                        practice_mode=bool(practice_mode),
+                        reuse_existing_policy=bool(reuse_existing_policy),
+                        reuse_data_manifest=bool(reuse_data),
+                        expand_data=bool(expand_data),
+                    )
+                finally:
+                    container.stop_config_hot_reload()
+                    container.clear_birth_reload_host(engine)
             finally:
                 os.chdir(previous_cwd)
                 if previous_cfg:

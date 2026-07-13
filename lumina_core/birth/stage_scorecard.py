@@ -363,6 +363,10 @@ def enrich_adaptation_payload(
     meta_reward_tweak_active: bool = False,
     meta_review_trigger: str = "",
     meta_explore_multiplier: float = 1.0,
+    wall_triggers_total: int = 0,
+    autonomous_recovery_attempts: int = 0,
+    autonomous_recovery_successes: int = 0,
+    autonomous_recovery_rate_pct: float = 0.0,
 ) -> dict[str, Any]:
     last_adaptation = adaptation_history[-1] if adaptation_history else {}
     adaptive_active = (
@@ -397,6 +401,10 @@ def enrich_adaptation_payload(
         "meta_reward_tweak_active": bool(meta_reward_tweak_active),
         "meta_review_trigger": str(meta_review_trigger),
         "meta_explore_multiplier": round(float(meta_explore_multiplier), 4),
+        "wall_triggers_total": int(wall_triggers_total),
+        "autonomous_recovery_attempts": int(autonomous_recovery_attempts),
+        "autonomous_recovery_successes": int(autonomous_recovery_successes),
+        "autonomous_recovery_rate_pct": round(float(autonomous_recovery_rate_pct), 2),
     }
 
 

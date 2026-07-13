@@ -44,8 +44,10 @@ _REQUIRED_ENV_SECRETS: tuple[str, ...] = (
     "XAI_API_KEY",
     "LUMINA_JWT_SECRET_KEY",
 )
-# Keys that must be present only when broker_backend == "live".
-_LIVE_REQUIRED_ENV: tuple[str, ...] = ("CROSSTRADE_TOKEN",)
+# Keys that must be present only when broker_backend == "live" and live_provider == "crosstrade".
+_LIVE_CROSSTRADE_REQUIRED_ENV: tuple[str, ...] = ("CROSSTRADE_TOKEN",)
+# Keys required for ninjatrader live provider in realish modes.
+_LIVE_NINJATRADER_REQUIRED_ENV: tuple[str, ...] = ("LUMINA_NT8_API_KEY",)
 
 
 def _looks_like_placeholder(value: Any) -> bool:
@@ -67,6 +69,13 @@ def _normalize_mode(value: Any, default: str) -> str:
 def _normalize_broker_backend(value: Any, default: str) -> str:
     text = str(value or "").strip().lower()
     if text in {"paper", "live"}:
+        return text
+    return default
+
+
+def _normalize_live_provider(value: Any, default: str = "crosstrade") -> str:
+    text = str(value or "").strip().lower()
+    if text in {"crosstrade", "ninjatrader"}:
         return text
     return default
 
@@ -136,6 +145,16 @@ class ConfigLoader:
             pass
 
     @classmethod
+    def validate_dict(cls, cfg: dict[str, Any], *, raise_on_error: bool = True) -> bool:
+        """Validate a parsed config dict without persisting it to the process cache."""
+        prior = cls._cache
+        cls._cache = dict(cfg)
+        try:
+            return cls.validate_startup(raise_on_error=raise_on_error)
+        finally:
+            cls._cache = prior
+
+    @classmethod
     def section(cls, *keys: str, default: Any = None) -> Any:
         """Retrieve a nested value by key path.
 
@@ -194,6 +213,22 @@ class ConfigLoader:
         return trade_mode, broker_mode
 
     @classmethod
+    def _resolve_live_provider(cls, cfg: dict[str, Any]) -> str:
+        env_provider = str(os.getenv("BROKER_LIVE_PROVIDER", "")).strip().lower()
+        if env_provider in {"crosstrade", "ninjatrader"}:
+            return env_provider
+        broker = cfg.get("broker") if isinstance(cfg.get("broker"), dict) else {}
+        return _normalize_live_provider(broker.get("live_provider"), "crosstrade")
+
+    @classmethod
+    def _ninjatrader_enabled(cls, cfg: dict[str, Any]) -> bool:
+        if str(os.getenv("NINJATRADER_ENABLED", "")).strip().lower() == "true":
+            return True
+        broker = cfg.get("broker") if isinstance(cfg.get("broker"), dict) else {}
+        nt = broker.get("ninjatrader") if isinstance(broker.get("ninjatrader"), dict) else {}
+        return bool(nt.get("enabled", False))
+
+    @classmethod
     def validate_startup(cls, *, raise_on_error: bool = True) -> bool:
         """Validate config.yaml + env vars at process startup.
 
@@ -230,6 +265,8 @@ class ConfigLoader:
 
         # 2. Live-broker secrets (only when broker is live)
         trade_mode, broker_mode = cls._resolve_runtime_modes(cfg)
+        live_provider = cls._resolve_live_provider(cfg)
+        ninjatrader_enabled = cls._ninjatrader_enabled(cfg)
 
         # 2a. Dark-launch feature flag for SIM_REAL_GUARD.
         sim_real_guard_enabled = str(os.getenv("ENABLE_SIM_REAL_GUARD", "false")).strip().lower() == "true"
@@ -244,10 +281,21 @@ class ConfigLoader:
         if trade_mode in {"sim", "sim_real_guard", "real"} and broker_mode != "live":
             errors.append(f"Invalid mode matrix: trade_mode={trade_mode} requires broker_backend=live")
 
+        if live_provider == "ninjatrader" and not ninjatrader_enabled:
+            errors.append("broker.live_provider=ninjatrader requires broker.ninjatrader.enabled=true")
+
         # 2c. Live-broker secrets when a live backend is active.
         hard_secret_mode = (trade_mode == "real") or strict_secret_hygiene
         if broker_mode == "live":
-            for var in _LIVE_REQUIRED_ENV:
+            if live_provider == "crosstrade":
+                required_env = _LIVE_CROSSTRADE_REQUIRED_ENV
+            else:
+                required_env = (
+                    _LIVE_NINJATRADER_REQUIRED_ENV
+                    if trade_mode in {"sim_real_guard", "real"}
+                    else ()
+                )
+            for var in required_env:
                 val = os.getenv(var, "")
                 if not val:
                     if hard_secret_mode:

@@ -38,7 +38,6 @@ def test_start_birth_requires_explicit_flag(tmp_path: Path) -> None:
 
     ok, msg = start_birth_training(
         birth_service=birth_service,
-        backend_client=None,
         workspace_root=tmp_path,
         target_trades=25_000,
         explicit_user_start=False,
@@ -56,7 +55,6 @@ def test_start_birth_with_explicit_flag_calls_service(tmp_path: Path) -> None:
 
     ok, msg = start_birth_training(
         birth_service=birth_service,
-        backend_client=None,
         workspace_root=tmp_path,
         target_trades=25_000,
         explicit_user_start=True,

@@ -56,6 +56,8 @@ from lumina_core.monitoring.adaptive_intelligence_tracker import AdaptiveIntelli
 from lumina_core.rl import RLTradingEnvironment
 from lumina_core.runtime_context import RuntimeContext
 
+from lumina_core.container.config_hot_reload import ConfigHotReloadSupport
+
 
 @dataclass(slots=True)
 class TTSConfig:
@@ -103,7 +105,7 @@ class ConfigService:
 
 
 @dataclass(slots=True)
-class ApplicationContainer:
+class ApplicationContainer(ConfigHotReloadSupport):
     """
     Dependency Injection Container: manages all services and eliminates global state.
 
@@ -169,6 +171,8 @@ class ApplicationContainer:
     primary_instrument: str = field(default="", init=False)
     _adaptive_intelligence_last_published_signature: tuple[Any, ...] | None = field(default=None, init=False)
     _smart_setup_service: Any = field(default=None, init=False)
+    _config_reloader: Any = field(default=None, init=False)
+    _birth_reload_host: Any = field(default=None, init=False)
 
     @property
     def smart_setup_service(self) -> Any:
@@ -326,11 +330,16 @@ class ApplicationContainer:
 
         ConfigLoader.validate_startup(raise_on_error=True)
 
-        if str(getattr(self.config, "broker_backend", "paper")).strip().lower() == "live" and not (
-            self.config.broker_crosstrade_api_key or self.config.crosstrade_token
-        ):
-            self.logger.error("Config validation failed: CROSSTRADE_TOKEN missing")
-            raise ValueError("CROSSTRADE_TOKEN not found in .env or config.yaml")
+        if str(getattr(self.config, "broker_backend", "paper")).strip().lower() == "live":
+            live_provider = str(getattr(self.config, "broker_live_provider", "crosstrade") or "crosstrade").strip().lower()
+            if live_provider == "crosstrade" and not (
+                self.config.broker_crosstrade_api_key or self.config.crosstrade_token
+            ):
+                self.logger.error("Config validation failed: CROSSTRADE_TOKEN missing")
+                raise ValueError("CROSSTRADE_TOKEN not found in .env or config.yaml")
+            if live_provider == "ninjatrader" and not bool(getattr(self.config, "ninjatrader_enabled", False)):
+                self.logger.error("Config validation failed: ninjatrader bridge not enabled")
+                raise ValueError("broker.ninjatrader.enabled must be true when broker.live_provider=ninjatrader")
 
         configured_symbols = [str(s).strip().upper() for s in self.config.swarm_symbols]
         allowed_roots = set(self.config.supported_swarm_roots)

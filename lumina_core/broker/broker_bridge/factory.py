@@ -9,6 +9,14 @@ from lumina_core.broker.broker_bridge.base import BrokerBridge
 from lumina_core.broker.broker_bridge.cross_trade_broker import CrossTradeBroker
 from lumina_core.broker.broker_bridge.paper_broker import PaperBroker
 
+
+def _resolve_live_provider(config: Any) -> str:
+    provider = str(getattr(config, "broker_live_provider", "crosstrade") or "crosstrade").strip().lower()
+    if provider not in {"crosstrade", "ninjatrader"}:
+        return "crosstrade"
+    return provider
+
+
 def broker_factory(
     config: Any | None = None, engine: Any | None = None, logger: logging.Logger | None = None
 ) -> BrokerBridge:
@@ -26,6 +34,25 @@ def broker_factory(
             )
         if trade_mode not in {"sim", "sim_real_guard", "real"}:
             raise ValueError(f"broker_backend=live requires trade_mode in sim/sim_real_guard/real, got {trade_mode!r}")
+
+        provider = _resolve_live_provider(config)
+        if provider == "ninjatrader":
+            from lumina_core.broker.ninjatrader.broker import NinjaTraderBroker
+            from lumina_core.broker.ninjatrader.bridge_service import get_ninjatrader_bridge_service
+
+            bridge = get_ninjatrader_bridge_service(
+                configured_account=str(getattr(config, "ninjatrader_account_name", "Sim101") or "Sim101"),
+                trade_mode=trade_mode,
+                ninjatrader_enabled=bool(getattr(config, "ninjatrader_enabled", False)),
+            )
+            return NinjaTraderBroker(
+                configured_account=str(getattr(config, "ninjatrader_account_name", "Sim101") or "Sim101"),
+                ninjatrader_enabled=bool(getattr(config, "ninjatrader_enabled", False)),
+                logger=logger,
+                engine=engine,
+                bridge_service=bridge,
+            )
+
         api_key = str(
             getattr(config, "broker_crosstrade_api_key", None) or getattr(config, "crosstrade_token", "") or ""
         ).strip()

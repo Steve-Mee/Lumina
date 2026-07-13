@@ -1,4 +1,4 @@
-"""Birth phase actions shared by API and tests (no Streamlit)."""
+"""Birth phase actions shared by tests (BirthService-only; no HTTP client)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from typing import Any
 
 from lumina_core.first_boot_progress import resolve_birth_training_pulse
 from lumina_launcher.core.first_boot import FirstBootManager
-from lumina_launcher.services.backend_client import BackendClient
 from lumina_launcher.services.birth_service import BirthService
 
 
@@ -31,27 +30,14 @@ def persist_first_boot_settings(
     )
 
 
-def _backend_is_reachable(backend_client: BackendClient | None) -> bool:
-    if backend_client is None:
-        return False
-    return bool(backend_client.is_backend_reachable())
-
-
 def _resolve_birth_status_payload(
     *,
     birth_service: BirthService | None,
-    backend_client: BackendClient | None,
     workspace_root: Path,
 ) -> dict[str, Any]:
-    if _backend_is_reachable(backend_client):
-        payload = backend_client.get_birth_status_sync()  # type: ignore[union-attr]
-        if not payload.get("error"):
-            return payload
     if birth_service is not None:
         birth_service.configure_workspace(workspace_root)
         return birth_service.get_status()
-    if backend_client is not None:
-        return backend_client.get_birth_status_sync()
     return {}
 
 
@@ -63,14 +49,12 @@ def _birth_status_is_running(status_payload: dict[str, Any]) -> bool:
 def resolve_command_center_birth_flags(
     *,
     birth_service: BirthService | None,
-    backend_client: BackendClient | None,
     workspace_root: Path,
     process_alive: bool,
     progress: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     status_payload = _resolve_birth_status_payload(
         birth_service=birth_service,
-        backend_client=backend_client,
         workspace_root=workspace_root,
     )
     thread_running = bool(birth_service.is_running()) if birth_service is not None else False
@@ -95,7 +79,6 @@ def resolve_command_center_birth_flags(
 def start_birth_training(
     *,
     birth_service: BirthService | None,
-    backend_client: BackendClient | None,
     workspace_root: Path,
     target_trades: int,
     force: bool = False,
@@ -103,26 +86,9 @@ def start_birth_training(
     continue_training: bool = False,
     explicit_user_start: bool = False,
 ) -> tuple[bool, str]:
-    """Start Birth Phase via FastAPI when reachable; fallback to in-process BirthService."""
+    """Start Birth Phase via in-process BirthService."""
     if not explicit_user_start:
         return False, "Start Birth Phase vereist een expliciete klik op Start (of Retry/Practice)."
-
-    if _backend_is_reachable(backend_client):
-        payload = backend_client.start_birth_sync(  # type: ignore[union-attr]
-            target_trades=int(target_trades),
-            force=bool(force),
-            practice_mode=bool(practice_mode),
-            explicit_user_start=True,
-            continue_training=bool(continue_training),
-        )
-        if payload.get("error"):
-            detail = str(payload.get("detail", "") or "").strip()
-            return False, f"Backend: {payload.get('error')}" + (f" — {detail}" if detail else "")
-        status = str(payload.get("status", "")).strip().lower()
-        message = str(payload.get("message", "") or "").strip()
-        if status in {"started", "already_running"}:
-            return True, message or "Birth Phase gestart via backend."
-        return False, message or f"Backend weigerde start ({status or 'unknown'})."
 
     if birth_service is not None:
         birth_service.configure_workspace(workspace_root)
@@ -136,43 +102,29 @@ def start_birth_training(
         status = str(result.get("status", "")).strip().lower()
         message = str(result.get("message", "") or "").strip()
         if status in {"started", "already_running"}:
-            return True, message or "Birth Phase gestart (lokaal, backend offline)."
+            return True, message or "Birth Phase gestart."
         return False, message or f"Birth Phase kon niet starten ({status or 'unknown'})."
 
-    return False, "Geen BirthService of backend-client beschikbaar."
+    return False, "Geen BirthService beschikbaar."
 
 
 def stop_birth_training(
     *,
     first_boot_manager: FirstBootManager,
     birth_service: BirthService | None,
-    backend_client: BackendClient | None,
     process_manager: Any | None,
     progress: dict[str, Any],
     stage: str,
 ) -> tuple[bool, str]:
-    """Stop Birth Phase thread, backend birth, and legacy runtime."""
+    """Stop Birth Phase thread and legacy runtime."""
     from lumina_core.first_boot_progress import progress_is_recently_active
 
     messages: list[str] = []
     any_action = False
     progress_active = progress_is_recently_active(progress, stage=stage)
     birth_thread_running = birth_service is not None and birth_service.is_running()
-    backend_reachable = _backend_is_reachable(backend_client)
 
-    if backend_reachable:
-        payload = backend_client.stop_birth_sync()  # type: ignore[union-attr]
-        if not payload.get("error"):
-            status = str(payload.get("status", "") or "").strip().lower()
-            message = str(payload.get("message", "") or "").strip()
-            if status in {"stopped", "stopping"}:
-                any_action = True
-            if message:
-                messages.append(message)
-        elif progress_active:
-            detail = str(payload.get("detail", "") or payload.get("error", "") or "").strip()
-            messages.append(f"Backend stop: {detail}" if detail else "Backend stop mislukt.")
-    elif birth_service is not None and (birth_thread_running or progress_active or birth_service.is_stopping()):
+    if birth_service is not None and (birth_thread_running or progress_active or birth_service.is_stopping()):
         result = birth_service.stop_birth()
         status = str(result.get("status", "") or "").strip().lower()
         message = str(result.get("message", "") or "").strip()

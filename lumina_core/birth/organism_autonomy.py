@@ -17,10 +17,6 @@ from lumina_core.birth.death_spiral_guard import (
 from lumina_core.birth.phoenix_loop import (
     PHOENIX_CYCLE_REASON,
     PhoenixLoopState,
-    PhoenixNoveltyAction,
-    begin_phoenix_cycle,
-    build_phoenix_checkpoint_patch,
-    can_start_phoenix,
     select_phoenix_novelty,
 )
 from lumina_core.logging_utils import get_logger
@@ -90,6 +86,12 @@ def map_recommended_to_service_action(recommended: str) -> str:
     return mapping.get(action, "resume_stalled_stage")
 
 
+def _phoenix_eligible(cfg: BirthCurriculumConfig, autonomy_state: OrganismAutonomyState) -> bool:
+    if not cfg.phoenix_loop_enabled:
+        return False
+    return autonomy_state.phoenix.phoenix_count < max(1, int(cfg.phoenix_max_cycles))
+
+
 def evaluate_terminal_stall(
     *,
     cfg: BirthCurriculumConfig,
@@ -152,8 +154,11 @@ def evaluate_terminal_stall(
             message="Provisional graduation granted — evolution deferred path.",
         )
 
-    if can_start_phoenix(autonomy_state.phoenix, cfg=cfg) and (
-        remediation_cycles_exhausted or plateau_exhausted or stall_reason in {
+    if _phoenix_eligible(cfg, autonomy_state) and (
+        remediation_cycles_exhausted
+        or plateau_exhausted
+        or stall_reason
+        in {
             "plateau_evolution_exhausted",
             "stall_remediation_exhausted",
             PHOENIX_CYCLE_REASON,
@@ -168,34 +173,27 @@ def evaluate_terminal_stall(
             autonomy_state.phoenix,
             cfg=cfg,
             circuit_breaker=widen or circuit_breaker,
-        )
+        ).value
         if consume_novelty_budget(autonomy_state.death_spiral) or widen:
-            begin_phoenix_cycle(
-                autonomy_state.phoenix,
-                novelty=novelty,
-                stall_reason=stall_reason,
-            )
             reset_after_novelty(autonomy_state.death_spiral, cfg=cfg)
             autonomy_state.autonomous_recovery_count += 1
-            patch = build_phoenix_checkpoint_patch(
-                novelty=novelty,
-                curriculum_stage=curriculum_stage,
-                cfg=cfg,
-            )
             service_action = map_recommended_to_service_action(
-                "widen_horizon" if novelty == PhoenixNoveltyAction.WIDEN_HORIZON else recommended
+                "widen_horizon" if novelty == "widen_horizon" else recommended
             )
-            if novelty in {PhoenixNoveltyAction.EXPAND_DATA, PhoenixNoveltyAction.WIDEN_HORIZON}:
+            if novelty in {"expand_data", "widen_horizon"}:
                 service_action = "expand_and_retry"
+            metrics = autonomy_state.to_metrics()
+            metrics["phoenix_novelty"] = novelty
+            metrics["curriculum_stage"] = curriculum_stage
             return AutonomyDecision(
                 dispatch=RecoveryDispatch.PHOENIX_RESUME,
                 needs_attention=False,
                 retryable=True,
                 stall_reason=PHOENIX_CYCLE_REASON,
                 recommended_action=service_action,
-                checkpoint_patch=patch,
-                autonomy_metrics=autonomy_state.to_metrics(),
-                message=f"Phoenix cycle {autonomy_state.phoenix.phoenix_count}: {novelty.value}",
+                checkpoint_patch=None,
+                autonomy_metrics=metrics,
+                message=f"Phoenix cycle requested: {novelty}",
             )
 
     if recommended:
@@ -219,3 +217,13 @@ def evaluate_terminal_stall(
         autonomy_metrics=autonomy_state.to_metrics(),
         message="Autonomous resume after stall.",
     )
+
+
+__all__ = [
+    "AutonomyDecision",
+    "OrganismAutonomyState",
+    "PHOENIX_CYCLE_REASON",
+    "RecoveryDispatch",
+    "evaluate_terminal_stall",
+    "map_recommended_to_service_action",
+]

@@ -26,6 +26,18 @@ birth_status_enricher_module = importlib.import_module(
 )
 
 
+class _BirthRunnerFakeContainerMixin:
+    def register_birth_reload_host(self, host: object) -> None:
+        self.birth_reload_host = host
+
+    def start_config_hot_reload(self) -> None:
+        return None
+
+    def clear_birth_reload_host(self, host: object | None = None) -> None:
+        if host is None or getattr(self, "birth_reload_host", None) is host:
+            self.birth_reload_host = None
+
+
 @pytest.mark.unit
 def test_resolve_birth_workspace_root_defaults_to_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LUMINA_WORKSPACE_ROOT", raising=False)
@@ -291,7 +303,7 @@ def test_preflight_historical_data_does_not_raise_name_error(
         def load_historical_ohlc_extended(self, **_kwargs: object) -> list[dict[str, int]]:
             return [{"t": 1}]
 
-    class _FakeContainer:
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
             self.market_data_service = _FakeMds()
@@ -328,7 +340,7 @@ def test_start_birth_wires_container_dependencies(monkeypatch: pytest.MonkeyPatc
             captured["run_kwargs"] = kwargs
             return {"status": "history_unavailable", "message": "no data", "total_trades": 0}
 
-    class _FakeContainer:
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
             self.ppo_trainer = object()
@@ -386,7 +398,7 @@ def test_start_birth_uses_saved_target_when_request_omits_target(
             captured["run_kwargs"] = kwargs
             return {"status": "history_unavailable", "message": "no data", "total_trades": 0}
 
-    class _FakeContainer:
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
             self.ppo_trainer = object()
@@ -437,7 +449,7 @@ def test_start_birth_uses_configured_ppo_update_timesteps(
             captured["run_kwargs"] = kwargs
             return {"status": "history_unavailable", "message": "no data", "total_trades": 0}
 
-    class _FakeContainer:
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
             self.ppo_trainer = object()
@@ -486,7 +498,7 @@ def test_start_birth_practice_forces_non_real_data_mode(monkeypatch: pytest.Monk
             captured["run_kwargs"] = kwargs
             return {"status": "practice_completed", "total_trades": 2500}
 
-    class _FakeContainer:
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
             self.ppo_trainer = object()
@@ -532,7 +544,7 @@ def test_start_birth_continue_training_reuses_existing_policy(monkeypatch: pytes
             captured["run_kwargs"] = kwargs
             return {"status": "completed", "total_trades": 10_000}
 
-    class _FakeContainer:
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
             self.ppo_trainer = object()

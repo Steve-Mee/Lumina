@@ -111,3 +111,19 @@ def test_defensive_behavior_with_none_engine():
     message = " ".join(str(arg) for arg in warn.call_args[0])
     assert "APERTURE_REGRESSION_DETECTED" in message
     assert "defensive_none_engine_test" in message
+
+
+def test_aperture_guard_publishes_constitution_violation_in_strict_mode():
+    from lumina_core.agent_orchestration.event_bus import EventBus
+
+    bus = EventBus()
+    engine = FakeEngine(trade_mode="real", event_bus=bus)
+    with pytest.raises(LuminaError):
+        enforce_no_bypass_in_strict_mode(
+            engine=engine,
+            bypass_id="coverage_test_bypass",
+            caller="test_aperture_publish",
+        )
+    event = bus.latest("safety.constitution.violation")
+    assert event is not None
+    assert "coverage_test_bypass" in str(event.payload.get("detail", ""))

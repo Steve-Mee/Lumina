@@ -33,7 +33,12 @@ def _print_command_deck_instructions() -> None:
     print("     npm install")
     print("     npm run tauri dev")
     print("")
-    print("Headless runtime (no UI): python -m lumina_launcher --headless")
+    print("Headless runtime (one-shot, no supervisor loop):")
+    print("  python -m lumina_launcher --smoke --mode sim --duration 15m")
+    print("")
+    print("Autonomous SIM/Paper loop (daemon, prints PID):")
+    print("  python -m lumina_launcher --mode sim")
+    print("  python -m lumina_launcher --mode paper")
     print("")
 
 

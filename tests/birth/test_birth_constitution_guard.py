@@ -47,3 +47,44 @@ def test_birth_constitution_guard_publishes_event_on_violation() -> None:
     assert call_kwargs["payload"]["principle_name"] == "birth_constitution_guard"
     assert call_kwargs["payload"]["severity"] == "warning"
     assert call_kwargs["payload"]["mode"] == "birth"
+
+
+@pytest.mark.unit
+def test_birth_constitution_guard_allows_valid_entry() -> None:
+    guard = BirthConstitutionGuard()
+    ok, reason = guard.check_entry(
+        tick={},
+        side=1,
+        stop_pct=0.005,
+        equity=50_000.0,
+    )
+    assert ok is True
+    assert reason == ""
+    assert guard.violations == 0
+
+
+@pytest.mark.unit
+def test_birth_constitution_guard_reset_clears_state() -> None:
+    guard = BirthConstitutionGuard()
+    guard.check_entry(tick={"news_window_active": 1.0}, side=1, stop_pct=0.005, equity=50_000.0)
+    guard.reset()
+    assert guard.violations == 0
+    assert guard.violation_reasons == []
+
+
+@pytest.mark.unit
+def test_birth_constitution_guard_blocks_invalid_stop() -> None:
+    guard = BirthConstitutionGuard()
+    ok, reason = guard.check_entry(tick={}, side=1, stop_pct=0.0, equity=50_000.0)
+    assert ok is False
+    assert reason == "invalid_stop"
+
+
+@pytest.mark.unit
+def test_birth_constitution_guard_hold_side_skips_checks() -> None:
+    guard = BirthConstitutionGuard()
+    ok, reason = guard.check_entry(
+        tick={"news_window_active": 1.0}, side=0, stop_pct=0.0, equity=50_000.0
+    )
+    assert ok is True
+    assert guard.violations == 0

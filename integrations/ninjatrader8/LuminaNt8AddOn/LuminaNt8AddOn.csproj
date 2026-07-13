@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>LuminaNt8AddOn</RootNamespace>
+    <AssemblyName>LuminaNt8AddOn</AssemblyName>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+  <!-- Reference NinjaTrader.Core.dll from local NT8 installation when building. -->
+  <ItemGroup>
+    <Reference Include="NinjaTrader.Core">
+      <HintPath>$(NINJATRADER8_BIN)\NinjaTrader.Core.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+</Project>

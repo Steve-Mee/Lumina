@@ -398,6 +398,13 @@ export function BirthStageScorecard({
             {scorecard!.lastAdaptationSummary ? (
               <p className="text-violet-200/80">Last: {scorecard!.lastAdaptationSummary}</p>
             ) : null}
+            {scorecard!.autonomousRecoveryRatePct != null &&
+            scorecard!.autonomousRecoveryRatePct > 0 ? (
+              <p>
+                Autonomous recovery rate:{" "}
+                {scorecard!.autonomousRecoveryRatePct.toFixed(0)}%
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

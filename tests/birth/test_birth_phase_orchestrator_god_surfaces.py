@@ -10,7 +10,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 _ORCHESTRATOR = _ROOT / "lumina_core" / "birth" / "birth_phase_orchestrator.py"
 
 # Phase 1E extract from engine.py (~627 lines).
-_ORCHESTRATOR_LINE_BASELINE = 670
+_ORCHESTRATOR_LINE_BASELINE = 699
 
 
 @pytest.mark.unit

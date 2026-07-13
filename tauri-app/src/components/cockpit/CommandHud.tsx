@@ -8,6 +8,7 @@ import { BotConfigurationDialog } from "@/components/cockpit/BotConfigurationDia
 import { HudOrganismCenter } from "@/components/cockpit/HudOrganismCenter";
 import { HudNerveTap } from "@/components/cockpit/HudNerveTap";
 import { LaunchNinjaTraderButton } from "@/components/cockpit/LaunchNinjaTraderButton";
+import { NinjaTraderStatusPill } from "@/components/cockpit/NinjaTraderStatusPill";
 import { ModeSwitch } from "@/components/cockpit/ModeSwitch";
 import { ModeTransitionVeil } from "@/components/cockpit/ModeTransitionVeil";
 import { PresenceRail } from "@/components/cockpit/PresenceRail";
@@ -393,6 +394,7 @@ export function CommandHud({ className }: CommandHudProps) {
                 </div>
               }
             />
+            <NinjaTraderStatusPill className="hidden sm:inline-flex" />
             <ModeSwitch
               mode={currentMode}
               reportedMode={reportedMode}

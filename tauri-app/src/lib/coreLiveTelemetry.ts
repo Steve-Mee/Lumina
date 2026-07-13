@@ -19,6 +19,13 @@ export type { FortressSnapshot } from "@/lib/fortressTypes";
 export type { PerformanceSnapshot } from "@/lib/performanceTypes";
 export type { RealOpsSnapshot } from "@/lib/realOpsTypes";
 
+export interface NinjaTraderTelemetry {
+  connected: boolean;
+  account: string;
+  last_bar_ts: string | null;
+  state: string;
+}
+
 export interface CoreLiveTelemetry {
   mode: string;
   equity: number | null;
@@ -26,6 +33,7 @@ export interface CoreLiveTelemetry {
   risk_level: string;
   active_mutations: ActiveMutation[];
   source_ts: string | null;
+  ninjatrader?: NinjaTraderTelemetry | null;
   adaptive_intelligence?: AdaptiveIntelligenceWsBlock | null;
   live_trading?: LiveTradingSnapshot | null;
   fortress?: FortressSnapshot | null;
@@ -80,6 +88,19 @@ function parseActiveMutation(value: unknown): ActiveMutation | null {
   };
 }
 
+function parseNinjaTraderTelemetry(value: unknown): NinjaTraderTelemetry | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    connected: value.connected === true,
+    account: typeof value.account === "string" ? value.account : "",
+    last_bar_ts:
+      typeof value.last_bar_ts === "string" ? value.last_bar_ts : null,
+    state: typeof value.state === "string" ? value.state : "disconnected",
+  };
+}
+
 export function parseTelemetryPayload(value: unknown): CoreLiveTelemetry | null {
   if (!isRecord(value)) {
     return null;
@@ -97,6 +118,7 @@ export function parseTelemetryPayload(value: unknown): CoreLiveTelemetry | null 
   const fortress = parseFortressSnapshot(value.fortress);
   const performance = parsePerformanceSnapshot(value.performance);
   const realOps = parseRealOpsSnapshot(value.real_ops);
+  const ninjatrader = parseNinjaTraderTelemetry(value.ninjatrader);
 
   return {
     mode: typeof value.mode === "string" ? value.mode : "unknown",
@@ -112,6 +134,7 @@ export function parseTelemetryPayload(value: unknown): CoreLiveTelemetry | null 
     active_mutations,
     source_ts:
       typeof value.source_ts === "string" ? value.source_ts : null,
+    ninjatrader,
     adaptive_intelligence:
       adaptiveBlock && typeof adaptiveBlock === "object"
         ? (adaptiveBlock as AdaptiveIntelligenceWsBlock)

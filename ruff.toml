@@ -33,6 +33,7 @@ extend-exclude = [
 "scripts/fix_generation_runner.py" = ["E402"]
 "scripts/fix_smart_setup_split.py" = ["E402"]
 "scripts/patch_orchestrator_core.py" = ["E402"]
+"scripts/migrate_stage_rollout_executor.py" = ["E402"]
 "tests/birth/test_bro_engine_integration.py" = ["E402"]
 "tests/birth/test_certificate_fast_path.py" = ["E402", "E731"]
 "tests/birth/test_stage_learning_loop.py" = ["E402"]

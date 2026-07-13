@@ -12,6 +12,7 @@ BASELINE_PATH = ROOT / "state" / "golden_path_baseline.json"
 TEST_TARGETS = [
     "tests/test_trade_mode_golden_paths.py",
     "tests/test_order_path_regression.py",
+    "tests/birth/test_autonomous_loop_golden_paths.py",
 ]
 
 

@@ -24,6 +24,18 @@ def _trend_ticks(n: int) -> list[dict]:
     return [{"price": 5000.0 + i * 0.1, "regime": "TREND_UP"} for i in range(n)]
 
 
+def _ladder_curriculum(**kwargs: object) -> BirthCurriculumConfig:
+    """Isolate adaptation ladder from phoenix/plateau autonomous recovery."""
+    base = {
+        "autonomous_recovery_enabled": False,
+        "phoenix_loop_enabled": False,
+        "plateau_detection_enabled": False,
+        "stall_remediation_enabled": False,
+    }
+    base.update(kwargs)
+    return BirthCurriculumConfig(**base)
+
+
 @pytest.mark.unit
 def test_adaptive_ladder_advances_tier_without_terminal_stall(
     tmp_path: Path,
@@ -36,7 +48,7 @@ def test_adaptive_ladder_advances_tier_without_terminal_stall(
         workspace_root=tmp_path,
     )
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(
+        curriculum=_ladder_curriculum(
             stage1_trend_trades=100,
             rollout_chunk_trades=20,
             stage1_winrate_stagnation_rollouts=2,
@@ -49,6 +61,7 @@ def test_adaptive_ladder_advances_tier_without_terminal_stall(
             max_adaptation_tiers=4,
             auto_expand_on_adaptation=False,
             exploration_chunk_size=8,
+            meta_controller_enabled=False,
         ),
         trade_budget_cap=5000,
     )
@@ -81,7 +94,7 @@ def test_adaptive_ladder_advances_tier_without_terminal_stall(
     def _stop_after_budgeted_rollouts() -> bool:
         return rollout_calls["n"] >= 25
 
-    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.sim_runner.run_policy_rollout", _rollout)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
@@ -94,6 +107,10 @@ def test_adaptive_ladder_advances_tier_without_terminal_stall(
     )
     monkeypatch.setattr(
         "lumina_core.birth.data_expansion.expand_birth_data",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.stage_rollout_executor.expand_birth_data",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
     )
     monkeypatch.setattr(
@@ -136,7 +153,7 @@ def test_strict_mode_still_terminal_stalls(tmp_path: Path, monkeypatch: pytest.M
         workspace_root=tmp_path,
     )
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(
+        curriculum=_ladder_curriculum(
             stage1_trend_trades=100,
             rollout_chunk_trades=20,
             stage1_winrate_stagnation_rollouts=2,
@@ -157,9 +174,10 @@ def test_strict_mode_still_terminal_stalls(tmp_path: Path, monkeypatch: pytest.M
         tick["value"] += 400.0
         return tick["value"]
 
-    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
-    fake_rollout = lambda **_kwargs: SimRolloutResult(
+    def _fake_rollout(**_kwargs) -> SimRolloutResult:
+        return SimRolloutResult(
             trades=15,
             wins=2,
             hold_signals=92,
@@ -172,19 +190,26 @@ def test_strict_mode_still_terminal_stalls(tmp_path: Path, monkeypatch: pytest.M
             partial_complete=True,
             rollout_steps=200,
         )
-    monkeypatch.setattr("lumina_core.birth.sim_runner.run_policy_rollout", fake_rollout)
-    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.run_policy_rollout", fake_rollout)
-    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", fake_rollout)
-    fake_mine = lambda **_kwargs: __import__(
-        "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
-    ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set())
-    monkeypatch.setattr("lumina_core.birth.pattern_miner.mine_winning_patterns", fake_mine)
-    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.mine_winning_patterns", fake_mine)
-    monkeypatch.setattr("lumina_core.birth.stage_training_loop.mine_winning_patterns", fake_mine)
-    no_expand = lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand"))
-    monkeypatch.setattr("lumina_core.birth.data_expansion.expand_birth_data", no_expand)
-    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.expand_birth_data", no_expand)
-    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", no_expand)
+
+    monkeypatch.setattr("lumina_core.birth.sim_runner.run_policy_rollout", _fake_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.run_policy_rollout", _fake_rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _fake_rollout)
+
+    def _fake_mine(**_kwargs):
+        return __import__(
+            "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
+        ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set())
+
+    monkeypatch.setattr("lumina_core.birth.pattern_miner.mine_winning_patterns", _fake_mine)
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.mine_winning_patterns", _fake_mine)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.mine_winning_patterns", _fake_mine)
+
+    def _no_expand(**_kwargs):
+        raise AssertionError("no expand")
+
+    monkeypatch.setattr("lumina_core.birth.data_expansion.expand_birth_data", _no_expand)
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.expand_birth_data", _no_expand)
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _no_expand)
 
     result = engine._run_stage_research_loop(
         stage=CurriculumStage.STAGE1_TREND,
@@ -238,7 +263,7 @@ def test_tier_three_triggers_data_expand_when_enabled(
         workspace_root=tmp_path,
     )
     engine.birth_config = BirthV2Config(
-        curriculum=BirthCurriculumConfig(
+        curriculum=_ladder_curriculum(
             stage1_trend_trades=100,
             rollout_chunk_trades=20,
             stage1_winrate_stagnation_rollouts=2,
@@ -250,6 +275,7 @@ def test_tier_three_triggers_data_expand_when_enabled(
             max_stage_retries=1,
             max_adaptation_tiers=4,
             auto_expand_on_adaptation=True,
+            meta_controller_enabled=False,
         ),
         trade_budget_cap=5000,
     )
@@ -296,8 +322,9 @@ def test_tier_three_triggers_data_expand_when_enabled(
             rollout_steps=200,
         )
 
-    monkeypatch.setattr("lumina_core.birth.curriculum_stage_handler.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
+    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.expand_birth_data", _expand)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _expand)
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.mine_winning_patterns",

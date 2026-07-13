@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lumina.local/schemas/ninjatrader/v1/connection_status.json",
+  "title": "NinjaTraderConnectionStatusFrame",
+  "allOf": [{ "$ref": "base_frame.json" }],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "type", "correlation_id", "ts", "state"],
+  "properties": {
+    "schema_version": { "type": "string", "const": "1.0" },
+    "type": { "type": "string", "const": "connection_status" },
+    "correlation_id": { "type": "string", "minLength": 1 },
+    "ts": { "type": "string" },
+    "state": { "type": "string", "enum": ["connected", "reconnecting", "disconnected", "error"] },
+    "account_name": { "type": "string" },
+    "connection_name": { "type": "string" },
+    "ninjatrader_version": { "type": "string" }
+  }
+}

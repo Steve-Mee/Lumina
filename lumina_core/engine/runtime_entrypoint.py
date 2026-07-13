@@ -1,3 +1,16 @@
+"""Lumina runtime entrypoint.
+
+Routing:
+  --smoke              One-shot HeadlessRuntime CI/smoke validation
+  --headless           Continuous 24/7 HeadlessProductionOrchestrator
+
+Recommended 24/7 production invocation::
+
+    LUMINA_ENTRYPOINT_ARGS="--headless --mode real" python watchdog.py
+
+Optional production config override via ``LUMINA_HEADLESS_PRODUCTION_JSON`` (JSON object).
+Enable dual telemetry with ``LUMINA_LAUNCHER_TELEMETRY=1`` and ``monitoring.webhook`` in config.yaml.
+"""
 from __future__ import annotations
 import logging
 
@@ -26,6 +39,8 @@ from lumina_core.evolution.simulator_data_support import require_real_simulator_
 from lumina_core.risk.session_guard import SessionGuard
 from lumina_core.engine.sim_stability_checker import format_stability_report, generate_stability_report
 from lumina_core.runtime.headless_runtime import HeadlessRuntime, parse_duration_minutes
+from lumina_core.runtime.headless_production import HeadlessProductionOrchestrator
+from lumina_core.runtime.production_config import load_production_section
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -112,11 +127,16 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--headless",
         action="store_true",
-        help="SIM only: run one-shot HeadlessRuntime (CI/smoke). Default SIM uses full bootstrap like REAL.",
+        help="Continuous 24/7 production headless runtime (full supervisor stack).",
+    )
+    parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="One-shot HeadlessRuntime smoke/CI validation (replaces legacy --headless --duration).",
     )
     parser.add_argument("--sim-only", action="store_true", help="Force SIM runtime behavior.")
     parser.add_argument("--real-safe", action="store_true", help="Force REAL runtime with safety gates.")
-    parser.add_argument("--duration", default="15m", help="Headless simulated duration (e.g. 15m, 1h).")
+    parser.add_argument("--duration", default="15m", help="Smoke simulated duration (e.g. 15m, 1h). Requires --smoke.")
     parser.add_argument("--broker", choices=["paper", "live"], default="paper", help="Headless broker backend.")
     parser.add_argument("--aggressive-sim", action="store_true", help="Enable aggressive SIM profile in headless mode.")
     parser.add_argument("--overnight-sim", action="store_true", help="Enable overnight SIM profile in headless mode.")
@@ -164,6 +184,54 @@ def _test_readiness_bypass_enabled(args: argparse.Namespace) -> bool:
     return str(os.getenv("LUMINA_TEST_MODE", "false")).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _smoke_mode_requested(args: argparse.Namespace) -> bool:
+    """Return True when one-shot smoke path should run."""
+    if bool(getattr(args, "smoke", False)):
+        return True
+    # Deprecation shim: --headless --duration without --smoke → smoke for one release cycle.
+    if bool(getattr(args, "headless", False)) and not bool(getattr(args, "smoke", False)):
+        duration = str(getattr(args, "duration", "15m") or "15m").strip()
+        if duration and duration != "15m":
+            logging.warning(
+                "DEPRECATED: --headless --duration without --smoke runs smoke path. "
+                "Use --smoke for CI validation or --headless alone for 24/7 production."
+            )
+            return True
+    return bool(getattr(args, "stability_check", False)) and not bool(getattr(args, "headless", False))
+
+
+def _load_production_cfg_override() -> dict | None:
+    raw = str(os.getenv("LUMINA_HEADLESS_PRODUCTION_JSON", "") or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        logging.warning("Invalid LUMINA_HEADLESS_PRODUCTION_JSON; ignoring override")
+        return None
+
+
+def _run_headless_production(*, mode: str, run_human_loop: bool = False) -> int:
+    """Continuous 24/7 production headless runtime."""
+    normalized = str(mode or "sim").strip().lower()
+    if normalized == "paper":
+        normalized = "sim"
+    override = _load_production_cfg_override()
+    base_cfg = load_production_section()
+    prod_cfg = {**base_cfg, **override} if override else None
+    logging.info(
+        "runtime_entrypoint: routing --headless to HeadlessProductionOrchestrator mode=%s",
+        normalized,
+    )
+    orchestrator = HeadlessProductionOrchestrator(
+        mode=normalized,
+        run_human_loop=run_human_loop,
+        prod_cfg=prod_cfg,
+    )
+    return int(orchestrator.run())
+
+
 def _bind_runtime_module(container: ApplicationContainer, runtime_module) -> None:
     container.bind_runtime_module(runtime_module)
 
@@ -200,19 +268,12 @@ def _bind_headless_runtime_app(container: ApplicationContainer) -> None:
     container.runtime_context.app = stub
 
 
-def _run_real_runtime(*, run_human_loop: bool = False) -> int:
-    container = create_application_container()
-    runtime_module = sys.modules.get("__main__")
-    if runtime_module is not None:
-        _bind_runtime_module(container, runtime_module)
-
-    print(f"LUMINA runtime started (Mode: {container.config.trade_mode.upper()})")
-    print(f"Swarm active on symbols: {', '.join(container.swarm_symbols)}")
-
+def _start_live_runtime(container: ApplicationContainer, *, run_human_loop: bool = False) -> int:
+    """Bootstrap long-running runtime services and optional config hot-reload watcher."""
     from lumina_core.logging_utils import flush_logger_handlers
 
     container.logger.info(
-        f"RUNTIME_PRE_BOOTSTRAP,bound_app={bool(runtime_module is not None)},"
+        f"RUNTIME_PRE_BOOTSTRAP,bound_app={bool(getattr(container, 'runtime_context', None) is not None)},"
         f"trade_mode={getattr(container.config, 'trade_mode', '')},"
         f"broker_backend={getattr(container.config, 'broker_backend', '')}"
     )
@@ -226,11 +287,28 @@ def _run_real_runtime(*, run_human_loop: bool = False) -> int:
 
         threading.Thread(target=container.analysis_service.run_main_loop, daemon=True).start()
 
+    container.start_config_hot_reload()
     container.operations_service.run_forever_loop()
     return 0
 
 
+def _run_real_runtime(*, run_human_loop: bool = False) -> int:
+    container = create_application_container()
+    runtime_module = sys.modules.get("__main__")
+    if runtime_module is not None:
+        _bind_runtime_module(container, runtime_module)
+
+    print(f"LUMINA runtime started (Mode: {container.config.trade_mode.upper()})")
+    print(f"Swarm active on symbols: {', '.join(container.swarm_symbols)}")
+
+    return _start_live_runtime(container, run_human_loop=run_human_loop)
+
+
 def _run_headless_sim(args: argparse.Namespace, *, mode_label: str = "sim") -> int:
+    logging.info(
+        "runtime_entrypoint: routing --smoke to HeadlessRuntime mode=%s",
+        mode_label,
+    )
     normalized_label = (
         "sim" if str(mode_label).strip().lower() not in {"paper", "sim"} else str(mode_label).strip().lower()
     )
@@ -615,6 +693,7 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
     should_check_first_boot = (
         resolved_mode in {"sim", "real"}
         and not bool(args.headless)
+        and not _smoke_mode_requested(args)
         and not bool(args.stability_check)
     )
     first_boot_ran = False
@@ -638,14 +717,21 @@ def run_with_mode(mode_hint: str, argv: Sequence[str] | None = None) -> int:
     if resolved_mode == "nightly":
         return _run_nightly()
 
+    if _smoke_mode_requested(args):
+        requested_mode = str(args.mode).strip().lower()
+        headless_mode_label = "paper" if requested_mode == "paper" else resolved_mode
+        if headless_mode_label == "real":
+            headless_mode_label = "sim"
+        return _run_headless_sim(args, mode_label=headless_mode_label)
+
+    if bool(args.headless):
+        return _run_headless_production(
+            mode=resolved_mode,
+            run_human_loop=bool(args.run_human_loop),
+        )
+
     # SIM / Paper: full runtime (bootstrap + supervisor + swarm dashboard) — same stack as REAL.
-    # Risk caps come from config.yaml `sim:` vs `real:` via trade_mode in .env (paper/sim/sim_real_guard).
-    # Use `--headless` only for CI/smoke one-shot HeadlessRuntime (no live supervisor loop).
     if resolved_mode == "sim":
-        if bool(args.headless):
-            requested_mode = str(args.mode).strip().lower()
-            headless_mode_label = "paper" if requested_mode == "paper" else "sim"
-            return _run_headless_sim(args, mode_label=headless_mode_label)
         os.environ.setdefault("LUMINA_ENFORCE_ENV_RUNTIME_MODE", "true")
         return _run_real_runtime(run_human_loop=bool(args.run_human_loop))
 

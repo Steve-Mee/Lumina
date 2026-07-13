@@ -49,6 +49,12 @@ reconciliation_method: websocket
 reconciliation_timeout_seconds: 15
 broker:
   backend: live
+  live_provider: crosstrade
+  ninjatrader:
+    enabled: false
+    websocket_path: /ws/ninjatrader/v1
+    account_name: Sim101
+    instruments: []
   crosstrade:
     api_key: ${CROSSTRADE_TOKEN}
     websocket_url: wss://app.crosstrade.io/ws/stream
@@ -276,7 +282,7 @@ birth_v2:
     phoenix_widen_data_after_cycles: 3
     death_spiral_repeat_threshold: 4
     death_spiral_novelty_budget: 3
-    stall_remediation_max_cycles: 99
+    stall_remediation_max_cycles: 3
     max_adaptation_stuck_escapes: 3
     graduation_mode: evolution_deferred
     provisional_oos_floor: 0.35
@@ -358,7 +364,6 @@ birth_v2:
     intra_stage2_easy_percentile: 0.4
     intra_stage2_hard_percentile: 0.4
     stall_remediation_enabled: true
-    stall_remediation_max_cycles: 3
     stall_remediation_max_steps: 5
     stall_remediation_rollouts_per_step: 12
     certificate_runway_enabled: true
@@ -522,3 +527,32 @@ headless:
   simulation_seed: 51
   historical_days_back: null
   historical_limit: null
+  production:
+    heartbeat_interval_s: 15
+    slo_eval_interval_s: 30
+    reconciliation_interval_s: 10
+    max_in_process_recovery_attempts: 3
+    max_process_restarts_per_hour: 6
+    safe_restart_exit_code: 42
+    preflight:
+      require_birth_certificate: true
+      require_broker_connect: true
+      require_broker_connect_sim: false
+      require_reconciler_healthy: true
+      require_reconciler_healthy_sim: false
+    slo:
+      supervisor_tick_stale_s: 120
+      reconcile_pending_max: 0
+      websocket_heartbeat_max_s: 60
+      daily_loss_usd: -800
+      heartbeat_stale_s: 45
+      reconciler_status_stale_s: 120
+      deferred_restart_max_s: 3600
+      daemon_dead_max: 0
+      consecutive_losses_max: 5
+      startup_grace_s: 180
+    deferred_restart_alert_s: 300
+runtime_config:
+  hot_reload:
+    enabled: true
+    debounce_ms: 500

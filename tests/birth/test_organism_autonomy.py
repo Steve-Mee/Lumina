@@ -116,3 +116,62 @@ def test_evaluate_terminal_stall_disabled_needs_attention() -> None:
     )
     assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
     assert decision.needs_attention is True
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_provisional_graduate() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "plateau_evolution_exhausted"},
+        curriculum_stage="stage1_trend",
+        stage_trades=600,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.40,
+        plateau_exhausted=True,
+    )
+    assert decision.dispatch == RecoveryDispatch.PROVISIONAL_GRADUATE
+    assert "provisional" in decision.message.lower()
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_continue_loop_with_recommended_action() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled"},
+        curriculum_stage="stage1_trend",
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+        recommended_recovery_action="expand_data",
+    )
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
+    assert decision.recommended_action == "expand_and_retry"
+    assert autonomy.autonomous_recovery_count == 1
+
+
+@pytest.mark.unit
+def test_organism_autonomy_state_metrics_roundtrip() -> None:
+    original = OrganismAutonomyState(
+        phoenix=PhoenixLoopState(phoenix_count=2),
+        death_spiral=DeathSpiralState(),
+        last_recommended_action="expand_data",
+        autonomous_recovery_count=5,
+    )
+    metrics = original.to_metrics()
+    restored = OrganismAutonomyState.from_metrics(metrics)
+    assert restored.autonomous_recovery_count == 5
+    assert restored.last_recommended_action == "expand_data"
+    assert restored.phoenix.phoenix_count == 2
+
+
+@pytest.mark.unit
+def test_organism_autonomy_state_from_metrics_empty() -> None:
+    restored = OrganismAutonomyState.from_metrics(None)
+    assert restored.autonomous_recovery_count == 0
+    assert restored.phoenix.phoenix_count == 0

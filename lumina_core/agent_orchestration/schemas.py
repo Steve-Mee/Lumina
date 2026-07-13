@@ -508,6 +508,148 @@ class BirthPhoenixCycle(BaseModel):
     reason: str
     action: str | None = None
     preserve_cache: bool = True
+    checkpoint_patch: dict[str, Any] | None = None
+
+
+class BirthStageRolloutSnapshot(BaseModel):
+    """Rollout tick signal consumed by birth SRP handlers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = Field(min_length=1)
+    signal: str = Field(min_length=1)
+    stage: str
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class BirthMetaPlan(BaseModel):
+    """Meta-controller decision plan for a correlated rollout signal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = Field(min_length=1)
+    trigger: str = ""
+    plan: dict[str, Any] = Field(default_factory=dict)
+
+
+class BirthPlateauEvolutionStep(BaseModel):
+    """Plateau evolution ladder step applied or requested."""
+
+    model_config = ConfigDict(extra="allow")
+
+    correlation_id: str = ""
+    stage: str
+    evolution_step: int = Field(ge=0)
+    action: str
+    detail: str = ""
+    entered: bool = False
+
+
+class BirthPlateauTrapDetected(BaseModel):
+    """Over-trading trap fact for meta-controller consumption."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    stage: str
+    detected: bool
+    range_flat_ratio: float = 0.0
+    range_round_trips: int = 0
+
+
+class BirthStallRemediationCycle(BaseModel):
+    """Stall remediation cycle started."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    cycle: int = Field(ge=1)
+    max_cycles: int = Field(ge=1)
+    winrate_at_start: float = 0.0
+
+
+class BirthStallRemediationStep(BaseModel):
+    """Stall remediation step advanced."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    cycle: int = Field(ge=1)
+    step: int = Field(ge=1)
+    max_steps: int = Field(ge=1)
+    action: str | None = None
+    detail: str = ""
+
+
+class BirthAutonomyDecision(BaseModel):
+    """Organism autonomy recovery dispatch."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    dispatch: str
+    needs_attention: bool = False
+    retryable: bool = True
+    stall_reason: str = ""
+    recommended_action: str = ""
+    checkpoint_patch: dict[str, Any] | None = None
+    autonomy_metrics: dict[str, Any] = Field(default_factory=dict)
+    message: str = ""
+
+
+class BirthCertificateRemediationRequested(BaseModel):
+    """Certificate fast-path remediation gate signal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    progress_snapshot: dict[str, Any] = Field(default_factory=dict)
+    checkpoint_state: dict[str, Any] = Field(default_factory=dict)
+    fast_path_eligible: bool = False
+
+
+class BirthWallTriggered(BaseModel):
+    """Wall or stall trigger detected during certified birth research."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    stage: str
+    trigger_type: str
+    failure_key: str
+    elapsed_stage_sec: float = 0.0
+    constitution_violations: int = 0
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class BirthAdaptationApplied(BaseModel):
+    """Autonomous adaptation recovery applied after a wall trigger."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    stage: str
+    reason: str
+    adaptation_tier: int = 0
+    retries_this_stage: int = 0
+    chunk_target: int = 0
+    escalation_level: int = 0
+    parameter_patch: dict[str, Any] = Field(default_factory=dict)
+    dispatch: str = "continue_loop"
+    autonomous: bool = True
+    recovery_kind: str = ""
+
+
+class BirthAutonomyRecoveryMetrics(BaseModel):
+    """Rolling autonomous recovery success metrics for birth stage."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    stage: str
+    wall_triggers_total: int = 0
+    recovery_attempts: int = 0
+    recovery_successes: int = 0
+    autonomous_recovery_rate_pct: float = 0.0
 
 
 class GateEntryPayload(BaseModel):
@@ -520,6 +662,38 @@ class GateEntryPayload(BaseModel):
     proposed_risk: float
     mode: str
     order_side: str | None = None
+
+
+class RuntimeConfigReloaded(BaseModel):
+    """Published after a successful runtime config hot-reload."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config_path: str
+    changed_sections: list[str] = Field(default_factory=list)
+    timestamp: str = ""
+
+
+class RuntimeConfigReloadFailed(BaseModel):
+    """Published when runtime config hot-reload is rejected (validation or immutable fields)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config_path: str
+    reason: str
+    validation_errors: list[str] = Field(default_factory=list)
+    immutable_fields: list[str] = Field(default_factory=list)
+    timestamp: str = ""
+
+
+class RuntimeConfigReloadRequested(BaseModel):
+    """In-process nudge to reload config from disk without waiting for file watcher debounce."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config_path: str = ""
+    source: str = "manual"
+    timestamp: str = ""
 
 
 EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
@@ -553,6 +727,20 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "birth.curriculum.aborted": BirthCurriculumStageAborted,
     "birth.plateau.entered": BirthPlateauEntered,
     "birth.phoenix.cycle": BirthPhoenixCycle,
+    "birth.stage.rollout.snapshot": BirthStageRolloutSnapshot,
+    "birth.meta.plan": BirthMetaPlan,
+    "birth.plateau.evolution.step": BirthPlateauEvolutionStep,
+    "birth.plateau.trap.detected": BirthPlateauTrapDetected,
+    "birth.stall.remediation.cycle": BirthStallRemediationCycle,
+    "birth.stall.remediation.step": BirthStallRemediationStep,
+    "birth.autonomy.decision": BirthAutonomyDecision,
+    "birth.certificate.remediation.requested": BirthCertificateRemediationRequested,
+    "birth.wall.triggered": BirthWallTriggered,
+    "birth.adaptation.applied": BirthAdaptationApplied,
+    "birth.autonomy.recovery.metrics": BirthAutonomyRecoveryMetrics,
+    "runtime.config.reloaded": RuntimeConfigReloaded,
+    "runtime.config.reload_failed": RuntimeConfigReloadFailed,
+    "runtime.config.reload_requested": RuntimeConfigReloadRequested,
 }
 
 # Topics that must use registry models only, hard validation on publish_validated,

@@ -242,6 +242,8 @@ class CoreLiveTelemetryReader:
             state_dir=self._state_dir,
         )
 
+        ninjatrader_block = _build_ninjatrader_telemetry_block()
+
         return {
             "mode": mode.lower() if mode else "unknown",
             "equity": equity,
@@ -254,7 +256,18 @@ class CoreLiveTelemetryReader:
             "fortress": fortress_block,
             "performance": performance_block,
             "real_ops": real_ops_block,
+            "ninjatrader": ninjatrader_block,
         }
+
+
+def _build_ninjatrader_telemetry_block() -> dict[str, Any]:
+    try:
+        from lumina_core.broker.ninjatrader.bridge_service import get_ninjatrader_bridge_service
+
+        state = get_ninjatrader_bridge_service().get_connection_state()
+        return state.to_telemetry_dict()
+    except Exception:
+        return {"connected": False, "account": "", "last_bar_ts": None, "state": "disconnected"}
 
 
 def _coerce_float(value: Any) -> float | None:

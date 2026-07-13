@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from lumina_core.config_loader import ConfigLoader
 from lumina_launcher.core.config_manager import ConfigManager
 from lumina_launcher.services.setup_persist import _ensure_mapping, resolve_mode_matrix
 
@@ -89,4 +90,5 @@ def persist_bot_config(
         evolution_section["approval_required"] = bool(evolution["approval_required"])
 
     config_manager.save_yaml_config(config_payload)
+    ConfigLoader.invalidate()
     return config_payload

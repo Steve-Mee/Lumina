@@ -220,6 +220,41 @@ jobs:
           fail_ci_if_error: false
 
   # ─────────────────────────────────────────────────────────────────────────
+  # 5b. Birth autonomy / Event Bus / safety module coverage (85% gate)
+  # ─────────────────────────────────────────────────────────────────────────
+  module-coverage-85:
+    name: Module Coverage 85% (birth autonomy / bus / safety)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: unit-tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install core + dev dependencies
+        run: |
+          pip install --quiet -r requirements-core.txt -r requirements-trading.txt -r requirements-dev.txt
+
+      - name: Prepare isolated state directories
+        run: mkdir -p $LUMINA_STATE_DIR $LUMINA_LOGS_DIR reports
+
+      - name: Run module coverage gate
+        run: python scripts/validation/check_module_coverage.py --fail-under 85
+
+      - name: Upload module coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: module-coverage-85
+          path: reports/module_coverage.xml
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────
   # 6. Nightly full suite (scheduled)
   # ─────────────────────────────────────────────────────────────────────────
   nightly-full:

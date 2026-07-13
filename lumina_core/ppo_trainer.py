@@ -336,6 +336,119 @@ class PPOTrainer:
             trade_mode=trade_mode,
         )
 
+    def _resolve_intelligence_tier(self) -> str:
+        try:
+            from lumina_core.adaptive_intelligence import AdaptiveIntelligenceManager
+
+            tier = str(AdaptiveIntelligenceManager().get_status().tier or "standard").strip().lower()
+            if tier in {"high", "standard", "light"}:
+                return tier
+        except Exception:
+            self.logger.debug("ppo.intelligence_tier_fallback", exc_info=True)
+        return "standard"
+
+    def _get_training_hyperparams(self, *, birth_phase: bool = False) -> dict[str, Any]:
+        """Tier-aware PPO hyperparameters (birth phase uses extra exploration)."""
+        tier = self._resolve_intelligence_tier()
+        hyperparams: dict[str, Any] = {
+            "learning_rate": 3e-4,
+            "n_steps": 1024,
+            "batch_size": 256,
+            "gamma": 0.995,
+            "gae_lambda": 0.95,
+            "clip_range": 0.2,
+            "ent_coef": 0.01,
+            "vf_coef": 0.5,
+        }
+        if tier == "high":
+            hyperparams["ent_coef"] = 0.005
+            hyperparams["learning_rate"] = 2e-4
+        elif tier == "light":
+            hyperparams["ent_coef"] = 0.03
+            hyperparams["n_steps"] = 512
+        if birth_phase:
+            hyperparams["ent_coef"] = float(hyperparams["ent_coef"]) * 1.5
+        return hyperparams
+
+    def _bootstrap_birth_env(self) -> RLTradingEnvironment:
+        """Minimal RL env so SB3 PPO gets valid observation/action spaces during birth init."""
+        price = 5000.0
+        stub_rows = [
+            {
+                "timestamp": "",
+                "last": price,
+                "close": price,
+                "bid": price - 0.125,
+                "ask": price + 0.125,
+                "volume": 100,
+            }
+            for _ in range(200)
+        ]
+        return RLTradingEnvironment(self.engine, stub_rows, config=self._build_rl_config())
+
+    def create_fresh_birth_policy(
+        self,
+        *,
+        allow_load_existing: bool = True,
+        force_reinit: bool = False,
+    ) -> Any:
+        """Initialize or reload the PPO policy used by Birth Phase rollouts."""
+        from stable_baselines3 import PPO
+
+        if not force_reinit and allow_load_existing:
+            default_path = self.model_dir / "lumina_ppo_policy.zip"
+            if default_path.is_file():
+                loaded = self.load_weights(str(default_path))
+                if loaded is not None:
+                    self.logger.info(
+                        "ppo.birth.load_existing",
+                        extra={
+                            "event_data": {
+                                "event": "ppo.birth.load_existing",
+                                "path": str(default_path),
+                                "tier": self._resolve_intelligence_tier(),
+                            }
+                        },
+                    )
+                    return loaded
+            active = self._resolve_active_model()
+            if active is not None:
+                return active
+
+        hyperparams = self._get_training_hyperparams(birth_phase=True)
+        env = self._bootstrap_birth_env()
+        model = PPO(
+            policy="MlpPolicy",
+            env=env,
+            verbose=0,
+            device=_resolve_ppo_device(),
+            **hyperparams,
+        )
+        self.engine.set_rl_policy(model)
+        self.logger.info(
+            "ppo.birth.fresh_policy",
+            extra={
+                "event_data": {
+                    "event": "ppo.birth.fresh_policy",
+                    "tier": self._resolve_intelligence_tier(),
+                    "force_reinit": bool(force_reinit),
+                }
+            },
+        )
+        return model
+
+    def save_final_birth_policy(self, path: str) -> None:
+        """Persist the active birth policy to the certificate/practice target path."""
+        self.save_weights(path)
+
+    def final_birth_polish(self, buffer: Any, *, timesteps: int = 50_000) -> Any:
+        """Final birth polish pass over the trajectory buffer."""
+        return self.update_from_buffer(
+            buffer=buffer,
+            timesteps=int(timesteps),
+            birth_phase=True,
+        )
+
     def train(
         self,
         simulator_data: list[dict[str, Any]],
@@ -345,6 +458,7 @@ class PPOTrainer:
         dna_hash: str | None = None,
         report_first_boot_progress: bool = False,
         ppo_progress_interval: int | None = None,
+        birth_phase: bool = False,
     ) -> str:
         from stable_baselines3 import PPO
 
@@ -391,13 +505,7 @@ class PPOTrainer:
             env=env,
             verbose=0,
             device=_resolve_ppo_device(),
-            learning_rate=3e-4,
-            n_steps=1024,
-            batch_size=256,
-            gamma=0.995,
-            gae_lambda=0.95,
-            clip_range=0.2,
-            ent_coef=0.005,
+            **self._get_training_hyperparams(birth_phase=birth_phase),
         )
         heartbeat = _ppo_heartbeat_callbacks()
         callbacks: list[Any] = list(heartbeat)
@@ -527,6 +635,7 @@ class PPOTrainer:
         *,
         buffer: Any,
         timesteps: int = 25_000,
+        birth_phase: bool = False,
     ) -> Any:
         """Train PPO from trajectory snapshots and return latest active model."""
         rows = self._trajectory_buffer_to_rows(buffer)
@@ -543,12 +652,14 @@ class PPOTrainer:
                 "event_data": {
                     "rows": len(rows),
                     "timesteps": int(timesteps),
+                    "birth_phase": bool(birth_phase),
                 }
             },
         )
         self.train(
             rows,
             total_timesteps=max(1_000, _scale_timesteps_for_device(int(timesteps))),
+            birth_phase=birth_phase,
         )
         updated = self._resolve_active_model()
         if updated is None:

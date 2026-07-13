@@ -219,6 +219,42 @@ class EngineConfig(BaseModel):
     crosstrade_fill_poll_url: str = Field(
         default_factory=lambda: str(os.getenv("CROSSTRADE_FILL_POLL_URL", "")).strip()
     )
+    broker_live_provider: str = Field(
+        default_factory=lambda: (
+            str(
+                os.getenv("BROKER_LIVE_PROVIDER")
+                or _config_yaml_nested("crosstrade", "broker", "live_provider")
+                or "crosstrade"
+            )
+            .strip()
+            .lower()
+        )
+    )
+    ninjatrader_enabled: bool = Field(
+        default_factory=lambda: (
+            str(os.getenv("NINJATRADER_ENABLED", "")).strip().lower() == "true"
+            or bool(_config_yaml_nested(False, "broker", "ninjatrader", "enabled"))
+        )
+    )
+    ninjatrader_account_name: str = Field(
+        default_factory=lambda: str(
+            os.getenv("NINJATRADER_ACCOUNT")
+            or _config_yaml_nested("Sim101", "broker", "ninjatrader", "account_name")
+            or "Sim101"
+        ).strip()
+    )
+    ninjatrader_websocket_path: str = Field(
+        default_factory=lambda: str(
+            os.getenv("NINJATRADER_WEBSOCKET_PATH")
+            or _config_yaml_nested("/ws/ninjatrader/v1", "broker", "ninjatrader", "websocket_path")
+            or "/ws/ninjatrader/v1"
+        ).strip()
+    )
+    ninjatrader_nt8_api_key: str | None = Field(
+        default_factory=lambda: (
+            str(os.getenv("LUMINA_NT8_API_KEY") or "").strip() or None
+        )
+    )
 
     trade_mode: str = Field(
         default_factory=lambda: (

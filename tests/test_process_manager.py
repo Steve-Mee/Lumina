@@ -8,7 +8,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from lumina_launcher.core.process_manager import ProcessManager, resolve_runtime_python
+from lumina_launcher.core.process_manager import ProcessManager
+from lumina_launcher.runtime.spawn import resolve_runtime_python
 
 
 @pytest.fixture
@@ -58,7 +59,7 @@ def test_is_process_alive_no_state(temp_dirs):
 def test_is_process_alive_clears_stale_state_file(temp_dirs):
     root, runtime = temp_dirs
     pm = ProcessManager(root, runtime)
-    pm._save_process_state(44320, ["python", "runtime_entrypoint.py", "--mode", "auto"])
+    pm._save_process_state(44320, ["python", "runtime_entrypoint.py", "--mode", "auto"], mode="auto")
     assert pm.process_state_path.exists()
 
     with patch.object(pm, "_pid_is_alive", return_value=False):
@@ -90,7 +91,7 @@ def test_start_bot_uses_passed_mode(mock_popen, temp_dirs):
     proc = MagicMock(pid=4242)
     proc.poll.return_value = None
     mock_popen.return_value = proc
-    with patch("lumina_launcher.core.process_manager.resolve_runtime_python", return_value="python"):
+    with patch("lumina_launcher.runtime.spawn.resolve_runtime_python", return_value="python"):
         with patch.object(pm, "_pid_is_alive", return_value=True):
             with patch.object(pm, "is_process_alive", return_value=False):
                 with patch("lumina_launcher.core.process_manager.time.sleep", return_value=None):
@@ -104,13 +105,13 @@ def test_start_bot_uses_passed_mode(mock_popen, temp_dirs):
 
 def test_resolve_runtime_python_prefers_sys_executable(temp_dirs):
     root, _ = temp_dirs
-    with patch("lumina_launcher.core.process_manager.os.getenv", return_value=""):
-        with patch("lumina_launcher.core.process_manager._python_has_module") as mock_has_module:
+    with patch("lumina_launcher.runtime.spawn.os.getenv", return_value=""):
+        with patch("lumina_launcher.runtime.spawn._python_has_module") as mock_has_module:
             def _check(candidate: str, module_name: str, *, cwd: Path) -> bool:
                 return candidate == "C:/venv/python.exe" and module_name == "dotenv"
 
             mock_has_module.side_effect = _check
-            with patch("lumina_launcher.core.process_manager.sys.executable", "C:/venv/python.exe"):
+            with patch("lumina_launcher.runtime.spawn.sys.executable", "C:/venv/python.exe"):
                 resolved = resolve_runtime_python(root)
     assert resolved == "C:/venv/python.exe"
 
@@ -125,7 +126,7 @@ def test_start_bot_fails_when_process_exits_immediately(mock_popen, temp_dirs):
     proc = MagicMock(pid=9876)
     proc.poll.return_value = 1
     mock_popen.return_value = proc
-    with patch("lumina_launcher.core.process_manager.resolve_runtime_python", return_value="python"):
+    with patch("lumina_launcher.runtime.spawn.resolve_runtime_python", return_value="python"):
         with patch.object(pm, "is_process_alive", return_value=False):
             with patch("lumina_launcher.core.process_manager.time.sleep", return_value=None):
                 success, msg = pm.start_bot(mode="auto")

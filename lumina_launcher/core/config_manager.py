@@ -10,6 +10,8 @@ from typing import Any
 
 import yaml
 
+from lumina_core.config.atomic_yaml import atomic_write_yaml
+
 
 class ConfigManager:
     def __init__(self, env_path: Path, config_path: Path):
@@ -53,7 +55,4 @@ class ConfigManager:
         return payload if isinstance(payload, dict) else {}
 
     def save_yaml_config(self, data: dict[str, Any]) -> None:
-        self.config_path.write_text(
-            yaml.safe_dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False),
-            encoding="utf-8",
-        )
+        atomic_write_yaml(self.config_path, data)

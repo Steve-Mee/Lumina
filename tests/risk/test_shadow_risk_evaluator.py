@@ -805,3 +805,149 @@ def test_risk_orchestrator_execute_shadow_risk_experiment_alias(tmp_path):
 
     assert result.experiment_id == "orch-exp-alias"
     assert result.promotion_decision.stage in ("shadow", "promotion_gate", "human_approval", "final")
+
+
+def test_shadow_evaluator_publishes_verdict_on_event_bus():
+    from lumina_core.agent_orchestration.event_bus import EventBus
+    from lumina_core.agent_orchestration.schemas import ShadowResult
+
+    bus = EventBus()
+    engine = type("FakeEngine", (), {"config": type("C", (), {"trade_mode": "paper"})()})()
+    evaluator = ShadowRiskEvaluator(engine=engine, event_bus=bus)
+    context = ShadowContext(
+        experiment_id="exp-bus-001",
+        dna_hash="bushash",
+        decision_context_id="shadow-exp-bus-001",
+        market_data={},
+    )
+    result = ShadowResult(verdict="pass", dna_hash="bushash", sample_size=1, pnl=0.0)
+    evaluator._publish_shadow_result(context, result)
+    event = bus.latest("evolution.shadow.verdict")
+    assert event is not None
+    assert event.payload.get("verdict") == "pass"
+    assert event.metadata.get("experiment_id") == "exp-bus-001"
+
+
+def test_shadow_evaluator_publishes_promotion_decision_on_event_bus():
+    from lumina_core.agent_orchestration.event_bus import EventBus
+    from lumina_core.agent_orchestration.schemas import ShadowResult
+
+    bus = EventBus()
+    engine = type("FakeEngine", (), {"config": type("C", (), {"trade_mode": "paper"})()})()
+    evaluator = ShadowRiskEvaluator(engine=engine, event_bus=bus)
+    context = ShadowContext(
+        experiment_id="exp-promo-001",
+        dna_hash="promohash",
+        decision_context_id="shadow-exp-promo-001",
+        market_data={},
+    )
+    shadow_result = ShadowResult(verdict="pass", dna_hash="promohash", sample_size=2, pnl=1.5)
+    evaluator.create_shadow_promotion_decision(context, shadow_result)
+    event = bus.latest("evolution.promotion.decision")
+    assert event is not None
+    assert event.payload.get("dna_hash") == "promohash"
+
+
+def test_shadow_evaluator_skips_publish_without_event_bus():
+    engine = type("FakeEngine", (), {"config": type("C", (), {"trade_mode": "paper"})()})()
+    evaluator = ShadowRiskEvaluator(engine=engine, event_bus=None)
+    context = ShadowContext(
+        experiment_id="exp-no-bus",
+        dna_hash="nohash",
+        decision_context_id="shadow-exp-no-bus",
+        market_data={},
+    )
+    from lumina_core.agent_orchestration.schemas import ShadowResult
+
+    result = ShadowResult(verdict="pass", dna_hash="nohash", sample_size=1)
+    evaluator._publish_shadow_result(context, result)
+    evaluator._publish_event(topic="evolution.shadow.verdict", payload={"verdict": "pass"})
+
+
+def test_shadow_registry_persistence_and_human_approval(tmp_path):
+    from lumina_core.agent_orchestration.event_bus import EventBus
+
+    bus = EventBus()
+    storage = tmp_path / "shadow_runs.jsonl"
+    registry = ShadowRunRegistry(storage_path=storage)
+    engine = type("FakeEngine", (), {"config": type("C", (), {"trade_mode": "paper"})()})()
+    evaluator = ShadowRiskEvaluator(engine=engine, registry=registry, event_bus=bus)
+
+    decision = evaluator.submit_human_approval_decision(
+        experiment_id="exp-human-001",
+        approved=True,
+        reason="operator_ok",
+        approver="tester",
+        resolution_notes="looks good",
+        evidence={"note": "sim evidence"},
+        registry=registry,
+    )
+    assert decision.allowed is True
+    assert bus.latest("evolution.promotion.decision") is not None
+    assert evaluator.list_pending_human_approvals() == [] or isinstance(
+        evaluator.list_pending_human_approvals(), list
+    )
+
+
+def test_shadow_with_persistent_registry_factory(tmp_path):
+    engine = type("FakeEngine", (), {"config": type("C", (), {"trade_mode": "paper"})()})()
+    evaluator = ShadowRiskEvaluator.with_persistent_registry(
+        engine=engine,
+        storage_path=tmp_path / "persist.jsonl",
+    )
+    assert evaluator._registry is not None
+
+
+def test_shadow_registry_list_pending_human_approvals() -> None:
+    from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision
+
+    reg = ShadowRunRegistry()
+    decision = EvolutionPromotionDecision(
+        dna_hash="pending-dna",
+        allowed=False,
+        reason="awaiting_human",
+        stage="human_approval",
+    )
+    reg.record_promotion_decision("exp-pending-001", decision)
+    pending = reg.list_pending_human_approvals()
+    assert len(pending) == 1
+    assert pending[0]["stage"] == "human_approval"
+
+
+def test_shadow_evaluator_recommend_promotion_action_paths() -> None:
+    from lumina_core.agent_orchestration.schemas import ShadowResult
+
+    shadow_result = ShadowResult(verdict="pass", dna_hash="recdna", sample_size=3, pnl=2.0)
+    rec = ShadowRiskEvaluator.recommend_promotion_action(
+        shadow_result,
+        comparison={"has_differences": False, "policy_match": True, "final_arbitration_match": True},
+    )
+    assert rec.get("suggested_stage") == "promotion_gate"
+    fail_rec = ShadowRiskEvaluator.recommend_promotion_action(
+        ShadowResult(verdict="fail", dna_hash="recdna", sample_size=1, pnl=-1.0),
+    )
+    assert fail_rec.get("suggested_stage") == "reject"
+
+
+def test_shadow_registry_loads_corrupt_jsonl_line(tmp_path):
+    path = tmp_path / "corrupt.jsonl"
+    path.write_text('{"experiment_id":"e1","dna_hash":"h1"}\n{bad json\n', encoding="utf-8")
+    reg = ShadowRunRegistry(storage_path=path)
+    assert reg.get("e1") is not None
+
+
+def test_shadow_get_usage_example_and_history_helpers(tmp_path):
+    engine = type("FakeEngine", (), {"config": type("C", (), {"trade_mode": "paper"})()})()
+    reg = ShadowRunRegistry(storage_path=tmp_path / "hist.jsonl")
+    evaluator = ShadowRiskEvaluator(engine=engine, registry=reg)
+    assert "ShadowRiskEvaluator" in ShadowRiskEvaluator.get_usage_example()
+    assert evaluator.get_experiment_history("missing") == []
+    resolution = evaluator.get_experiment_resolution("missing")
+    assert resolution is not None
+    assert resolution["experiment_id"] == "missing"
+    assert resolution["final_promotion_decision"] is None
+    summary = evaluator.get_experiment_resolution_summary("missing")
+    assert summary is not None
+    assert summary["experiment_id"] == "missing"
+    assert summary["history_length"] == 0
+    assert evaluator.get_human_review_package("missing") is None

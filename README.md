@@ -69,7 +69,10 @@ python scripts/bootstrap_lumina.py
 - Monitoring telemetry: `state/monitoring_*.json(l)`; backend-metrics via FastAPI (`/api/monitoring/health`, `/api/monitoring/metrics/json`, `/api/monitoring/adaptive-intelligence/*`). Zie `lumina_os/README.md` en `docs/command-deck-startup-runbook.md`.
 - Status na setup: `state/lumina_setup_complete.json`, `state/lumina_setup_status.json`.
 - Modelcatalogus: `lumina_model_catalog.json`.
-- Headless runtime (geen UI): `python -m lumina_launcher --headless`.
+- Headless smoke (CI): `python -m lumina_launcher --smoke --mode sim --duration 15m`
+- Production headless (24/7): `python -m lumina_launcher --headless --mode sim`
+- Autonomous SIM/Paper loop (daemon, geen UI): `python -m lumina_launcher --mode sim` of `--mode paper`
+- Birth status (CLI): `python -m lumina_launcher birth status --json`
 
 ### Handmatig / tweede machine
 

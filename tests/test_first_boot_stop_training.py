@@ -25,7 +25,6 @@ def test_stop_birth_training_calls_birth_service(tmp_path: Path) -> None:
     ok, msg = stop_birth_training(
         first_boot_manager=manager,
         birth_service=birth_service,
-        backend_client=None,
         process_manager=process_manager,
         progress={"stage": "training_running"},
         stage="training_running",

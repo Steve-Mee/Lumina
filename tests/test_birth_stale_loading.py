@@ -105,19 +105,17 @@ def test_pulse_stale_when_runner_pid_dead(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_command_center_flags_use_backend_running(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_command_center_flags_use_birth_service_running(tmp_path: Path) -> None:
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     (tmp_path / "state" / "birth_runner.json").write_text("{}", encoding="utf-8")
-    backend = MagicMock()
-    backend.is_backend_reachable.return_value = True
-    backend.get_birth_status_sync.return_value = {"status": "running", "progress": {"stage": "loading_data"}}
     birth = MagicMock()
-    birth.is_running.return_value = False
+    birth.is_running.return_value = True
     birth.is_stopping.return_value = False
+    birth.configure_workspace = MagicMock()
+    birth.get_status.return_value = {"status": "running", "progress": {"stage": "loading_data"}}
 
     flags = resolve_command_center_birth_flags(
         birth_service=birth,
-        backend_client=backend,
         workspace_root=tmp_path,
         process_alive=False,
         progress={"stage": "loading_data", "timestamp": datetime.now(timezone.utc).isoformat()},
@@ -127,21 +125,19 @@ def test_command_center_flags_use_backend_running(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.unit
-def test_command_center_flags_idle_when_backend_not_running(tmp_path: Path) -> None:
-    backend = MagicMock()
-    backend.is_backend_reachable.return_value = True
-    backend.get_birth_status_sync.return_value = {
+def test_command_center_flags_idle_when_not_running(tmp_path: Path) -> None:
+    birth = MagicMock()
+    birth.is_running.return_value = False
+    birth.is_stopping.return_value = False
+    birth.configure_workspace = MagicMock()
+    birth.get_status.return_value = {
         "status": "interrupted",
         "orphaned": True,
         "progress": {"stage": "interrupted", "phase": "restart_required"},
     }
-    birth = MagicMock()
-    birth.is_running.return_value = False
-    birth.is_stopping.return_value = False
 
     flags = resolve_command_center_birth_flags(
         birth_service=birth,
-        backend_client=backend,
         workspace_root=tmp_path,
         process_alive=False,
         progress={"stage": "interrupted", "phase": "restart_required"},

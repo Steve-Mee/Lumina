@@ -298,6 +298,7 @@ def main(argv: list[str] | None = None) -> int:
     if bool(getattr(container.config, "use_human_main_loop", False)):
         threading.Thread(target=container.analysis_service.run_main_loop, daemon=True).start()
 
+    container.start_config_hot_reload()
     container.operations_service.run_forever_loop()
     return 0
 

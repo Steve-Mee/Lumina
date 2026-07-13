@@ -5,9 +5,9 @@ from __future__ import annotations
 import pytest
 
 from lumina_core.birth.config import BirthCurriculumConfig
+from lumina_core.birth.phoenix_loop import PHOENIX_CYCLE_REASON
 from lumina_core.birth.stall_remediation import (
     HUMAN_GATE_REASON,
-    PHOENIX_CYCLE_REASON,
     StallRemediationAction,
     StallRemediationState,
     action_for_step,

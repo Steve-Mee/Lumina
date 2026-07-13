@@ -1,6 +1,5 @@
 """Launcher-facing service facades."""
 
-from .backend_client import BackendClient
 from .hardware_service import HardwareService
 from .model_service import ModelService
 from .birth_service import BirthService, birth_service, configure_birth_workspace
@@ -15,7 +14,6 @@ from .tauri_signing_service import TauriSigningResult, TauriSigningService
 from .ppo_realtime import PPORealtimeTailer, ppo_realtime_tailer
 
 __all__ = [
-    "BackendClient",
     "HardwareService",
     "ModelService",
     "BirthService",

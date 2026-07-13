@@ -88,10 +88,9 @@ export function PresenceRail({
           transition={transitionOrNone(reducedMotion, modeMotion)}
           className="flex min-w-0 shrink-0 items-center gap-1.5"
         >
-          <Icon
-            className="presence-rail__mode-icon size-3 shrink-0"
-            title={tagline}
-          />
+          <span title={tagline} className="inline-flex shrink-0">
+            <Icon className="presence-rail__mode-icon size-3 shrink-0" aria-hidden />
+          </span>
         </motion.div>
       </AnimatePresence>
 

@@ -448,6 +448,7 @@ class BirthMetaController:
         wall_budget_exhausted: bool,
         winrate_stagnation_count: int,
         hold_stagnation_count: int,
+        over_trading_trap: bool = False,
     ) -> MetaActionPlan:
         if not self.enabled:
             return MetaActionPlan(
@@ -486,15 +487,7 @@ class BirthMetaController:
             escalation_delta = 1
             rationale = "stage2_hold_stagnation"
         elif snap.stage == CurriculumStage.STAGE2_RANGE and snap.volume_gate_passed:
-            from lumina_core.birth.plateau_escalator import detect_over_trading_trap
-
-            if detect_over_trading_trap(
-                range_flat_ratio=snap.range_flat_ratio,
-                range_round_trips=snap.range_round_trips,
-                required=snap.required_trades,
-                velocity_stall=snap.is_stalled,
-                cfg=self.cfg,
-            ):
+            if over_trading_trap:
                 explore_steps = max(
                     200,
                     int(self.cfg.exploration_steps * self.cfg.strong_recovery_explore_fraction),

@@ -141,11 +141,29 @@ def test_broker_factory_live_allows_sim() -> None:
     cfg = SimpleNamespace(
         broker_backend="live",
         trade_mode="sim",
+        broker_live_provider="crosstrade",
         crosstrade_token="test-token",
         crosstrade_account="DEMO5042070",
     )
     broker = broker_factory(config=cfg, engine=None, logger=None)
     assert isinstance(broker, CrossTradeBroker)
+
+
+def test_broker_factory_live_selects_ninjatrader() -> None:
+    from lumina_core.broker.ninjatrader.broker import NinjaTraderBroker
+    from lumina_core.broker.ninjatrader.bridge_service import reset_ninjatrader_bridge_service
+
+    reset_ninjatrader_bridge_service()
+    cfg = SimpleNamespace(
+        broker_backend="live",
+        trade_mode="sim",
+        broker_live_provider="ninjatrader",
+        ninjatrader_enabled=True,
+        ninjatrader_account_name="Sim101",
+    )
+    broker = broker_factory(config=cfg, engine=None, logger=None)
+    assert isinstance(broker, NinjaTraderBroker)
+    reset_ninjatrader_bridge_service()
 
 
 def test_paper_broker_submit_order_and_fill_tracking(monkeypatch: pytest.MonkeyPatch) -> None:

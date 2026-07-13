@@ -28,6 +28,7 @@ from lumina_core.engine.sim_stability_checker import (
     generate_stability_report,
 )
 from lumina_core.engine.stress_suite_runner import StressSuiteRunner
+from lumina_core.runtime.headless_telemetry import HeadlessTelemetry
 
 logger = logging.getLogger("lumina.headless")
 
@@ -601,6 +602,9 @@ class HeadlessRuntime:
         """
         cfg = _load_headless_config()
 
+        telemetry = HeadlessTelemetry(mode=str(mode).strip().lower(), container=self._container)
+        telemetry.begin(run_id=f"smoke-{mode}")
+
         started_at = datetime.now(timezone.utc).isoformat()
         seed = _resolve_simulation_seed(cfg)
         duration_minutes = float(duration_minutes)
@@ -687,6 +691,11 @@ class HeadlessRuntime:
             summary_err["stress_ready_for_real_gate"] = bool(
                 summary_err["stress_report"].get("stress_ready_for_real_gate", False)
             )
+            summary_err["telemetry"] = {
+                **telemetry.smoke_summary(),
+                "status": "error",
+            }
+            telemetry.end(status="error", exit_code=1)
             summary_path = _resolve_summary_path(cfg)
             archive_enabled = _resolve_summary_archive_enabled(cfg)
             archive_dir = _resolve_summary_archive_dir(cfg)
@@ -815,6 +824,14 @@ class HeadlessRuntime:
             rendered = format_stability_report(stability_report, color=True)
             self._logger.info("\n%s", rendered)
             print(rendered, flush=True)
+
+        smoke_status = "ok" if summary.get("READY_FOR_REAL") or summary.get("stability_status") != "FAIL" else "fail"
+        summary["telemetry"] = {
+            **telemetry.smoke_summary(),
+            "status": smoke_status,
+            "observability_alerts": observability_alerts,
+        }
+        telemetry.end(status=smoke_status, exit_code=0 if smoke_status == "ok" else 1)
 
         summary_path = _resolve_summary_path(cfg)
         archive_enabled = _resolve_summary_archive_enabled(cfg)

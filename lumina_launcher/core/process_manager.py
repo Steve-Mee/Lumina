@@ -6,60 +6,21 @@ Extracted from the original monolithic launcher. Operator UI is the Tauri Comman
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import subprocess
-import sys
 import time
-import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
 import psutil  # type: ignore[import]
 
-from lumina_launcher.observability import log_event, timed_event
+from lumina_launcher.telemetry.events import log_event, timed_event
+from lumina_launcher.telemetry.hooks import emit_launcher_event
 
 logger = logging.getLogger(__name__)
-
-
-def _python_has_module(python_cmd: str, module_name: str, *, cwd: Path) -> bool:
-    try:
-        result = subprocess.run(
-            [python_cmd, "-c", f"import {module_name}"],
-            cwd=str(cwd),
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=4,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
-
-
-def resolve_runtime_python(launcher_root: Path) -> str:
-    """Select a Python interpreter that can start runtime_entrypoint safely."""
-    env_python = os.getenv("LUMINA_PYTHON", "").strip()
-    candidates: list[str] = []
-    if env_python:
-        candidates.append(env_python)
-    candidates.append(sys.executable)
-    venv_python = launcher_root / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    if venv_python.exists():
-        candidates.append(str(venv_python))
-    candidates.append("python")
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        normalized = candidate.strip()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        if _python_has_module(normalized, "dotenv", cwd=launcher_root):
-            return normalized
-    logger.warning("No Python interpreter with python-dotenv found; falling back to plain 'python'")
-    return "python"
 
 
 class ProcessManager:
@@ -131,7 +92,12 @@ class ProcessManager:
         if not cmdline_raw:
             return False
         norm = self._normalize_process_cmdline(cmdline_raw)
-        return "python -m lumina_launcher --headless" in norm or "python -m lumina_launcher --stability-check" in norm
+        return (
+            "python -m lumina_launcher --headless" in norm
+            or "python -m lumina_launcher --smoke" in norm
+            or "python -m lumina_launcher --stability-check" in norm
+            or ("runtime_entrypoint.py" in norm and ("--headless" in norm or "--smoke" in norm))
+        )
 
     def _enumerate_backend_pids(self) -> list[int]:
         collected: list[int] = []
@@ -171,20 +137,20 @@ class ProcessManager:
         if not self.process_state_path.exists():
             return {}
         try:
-            import json
             return json.loads(self.process_state_path.read_text(encoding="utf-8"))
         except Exception:
             return {}
 
-    def _save_process_state(self, pid: int, command: list[str]) -> None:
-        self.process_state_path.parent.mkdir(parents=True, exist_ok=True)
-        import json
-        payload = {
-            "pid": int(pid),
-            "started_at": datetime.now().isoformat(timespec="seconds"),
-            "command": command,
-        }
-        self.process_state_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    def _save_process_state(self, pid: int, command: list[str], *, mode: str, kind: str = "loop") -> None:
+        from lumina_launcher.runtime.spawn import save_process_state
+
+        save_process_state(
+            self.launcher_root,
+            pid=pid,
+            command=command,
+            mode=mode,
+            kind=kind,
+        )
 
     def _clear_process_state(self) -> None:
         try:
@@ -236,14 +202,22 @@ class ProcessManager:
         return result
 
     def start_bot(self, mode: str = "auto") -> tuple[bool, str]:
-        if not self.runtime_entry.exists():
-            return False, f"Runtime entry not found: {self.runtime_entry}"
+        entry = self.runtime_entry if self.runtime_entry.is_absolute() else self.launcher_root / self.runtime_entry
+        if not entry.exists():
+            return False, f"Runtime entry not found: {entry}"
         if self.is_process_alive():
             return True, "Bot is already running"
 
         normalized_mode = str(mode or "auto").strip().lower() or "auto"
+        from lumina_launcher.runtime.spawn import build_runtime_command, resolve_runtime_python
+
+        command = build_runtime_command(
+            self.launcher_root,
+            self.runtime_entry,
+            normalized_mode,
+            headless=False,
+        )
         runtime_python = resolve_runtime_python(self.launcher_root)
-        command = [runtime_python, str(self.runtime_entry), "--mode", normalized_mode]
         env = os.environ.copy()
         env.setdefault("PYTHONUNBUFFERED", "1")
 
@@ -260,7 +234,7 @@ class ProcessManager:
                     stdout=subprocess.DEVNULL,
                     stderr=stderr_handle,
                 )
-            self._save_process_state(proc.pid, command)
+            self._save_process_state(proc.pid, command, mode=normalized_mode)
             stderr_handle.flush()
             time.sleep(1.0)
             self._alive_cache = None
@@ -277,7 +251,12 @@ class ProcessManager:
                 )
                 detail = f" Runtime stderr: {failure_tail}" if failure_tail else " Check logs/launcher_runtime_stderr.log."
                 return False, f"Runtime stopped immediately after start.{detail}"
-            log_event("launcher.proc.started", pid=proc.pid, mode=normalized_mode, python=runtime_python)
+            emit_launcher_event(
+                "launcher.loop.started",
+                pid=proc.pid,
+                mode=normalized_mode,
+                python=runtime_python,
+            )
             return True, f"Bot started (pid={proc.pid})"
         except FileNotFoundError:
             return False, "Python interpreter not found. Check LUMINA_PYTHON env var."
@@ -318,7 +297,7 @@ class ProcessManager:
 
             self._clear_process_state()
             self._alive_cache = None
-            log_event("launcher.proc.stopped", pids=",".join(str(pid) for pid in target_pids))
+            emit_launcher_event("launcher.loop.stopped", pids=",".join(str(pid) for pid in target_pids))
             return True, "Bot stopped"
         except Exception as exc:
             log_event("launcher.proc.stop_failed", level=logging.ERROR, error=str(exc))

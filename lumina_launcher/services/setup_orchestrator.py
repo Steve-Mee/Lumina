@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 from lumina_core.config_loader import ConfigLoader
+from lumina_core.config.atomic_yaml import atomic_write_yaml
 from lumina_core.engine.model_catalog import ModelDescriptor
 from lumina_core.logging_utils import get_logger
 from lumina_launcher.services import setup_detector
@@ -40,10 +41,7 @@ def apply_intelligence_mode(service: SmartSetupService, force_high: bool) -> Non
         intelligence = {}
         payload["intelligence"] = intelligence
     intelligence["mode"] = "force_high" if force_high else "auto"
-    config_path.write_text(
-        yaml.safe_dump(payload, sort_keys=False, allow_unicode=False),
-        encoding="utf-8",
-    )
+    atomic_write_yaml(config_path, payload)
     ConfigLoader.invalidate()
     logger.info("smart_setup.intelligence_mode mode=%s", intelligence["mode"])
 

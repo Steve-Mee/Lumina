@@ -39,10 +39,9 @@ from lumina_core.birth.data_pipeline import (
     train_hash,
 )
 from lumina_core.birth.progress_reporter import BirthProgressReporter
-from lumina_core.birth.meta_controller import (
-    StallDetectionResult,
-    detect_stall,
-)
+from lumina_core.birth.birth_bus_client import BirthBusClient
+from lumina_core.birth.birth_handler_registry import BirthHandlerRegistry
+from lumina_core.birth.meta_controller import StallDetectionResult
 from lumina_core.birth.progress import (
     read_birth_progress,
     write_birth_progress,
@@ -144,10 +143,24 @@ class BirthPhaseEngineV2:
         self._curriculum_orchestrator: CurriculumOrchestrator | None = None
         self._constitution_enforcer: ConstitutionEnforcer | None = None
         self._stage_handler: Any | None = None
+        self._birth_handler_registry: BirthHandlerRegistry | None = None
+        self._birth_bus_client: BirthBusClient | None = None
         try:
             self._curriculum_orchestrator = CurriculumOrchestrator(self.event_bus)
             self._constitution_enforcer = ConstitutionEnforcer(self.event_bus)
             self._constitution_enforcer.attach()
+            self._birth_handler_registry = BirthHandlerRegistry(
+                self.event_bus,
+                self.birth_config.curriculum,
+                self.birth_config.reward,
+            )
+            self._birth_handler_registry.attach_all()
+            self._birth_bus_client = BirthBusClient(
+                self.event_bus,
+                self.birth_config.curriculum,
+                self.birth_config.reward,
+                registry=self._birth_handler_registry,
+            )
             # Attach dedicated stage execution handler (owns the moved curriculum logic)
             self._stage_handler = create_and_attach_stage_handler(self.event_bus, self)
         except Exception:
@@ -764,8 +777,22 @@ class BirthPhaseEngineV2:
         reward_history: list[float],
         low_velocity_attempts: int,
         cfg: BirthCurriculumConfig,
+        stage: CurriculumStage = CurriculumStage.STAGE1_TREND,
     ) -> StallDetectionResult:
-        """Detect learning stall from combined winrate and reward velocity trends."""
+        """Detect learning stall via EventBus meta handler."""
+        client = self._birth_bus_client
+        if client is not None:
+            if self._birth_handler_registry is not None:
+                self._birth_handler_registry.sync_birth_cfg(cfg, self.birth_config.reward)
+            client.cfg = cfg
+            return client.detect_stall(
+                stage,
+                winrate_history=winrate_history,
+                reward_history=reward_history,
+                low_velocity_attempts=low_velocity_attempts,
+            )
+        from lumina_core.birth.meta_controller import detect_stall
+
         return detect_stall(
             winrate_history=winrate_history,
             reward_history=reward_history,
@@ -958,4 +985,14 @@ class BirthPhaseEngineV2:
             logger.exception("event-driven curriculum start failed: %s", exc)
             return None
 
-
+    def reload_birth_config(self) -> None:
+        """Hot-reload birth_v2 section from workspace config.yaml."""
+        self.birth_config = load_birth_v2_config(self.workspace_root)
+        if self._birth_handler_registry is not None:
+            self._birth_handler_registry.sync_birth_cfg(
+                self.birth_config.curriculum,
+                self.birth_config.reward,
+            )
+        if self._birth_bus_client is not None:
+            self._birth_bus_client.cfg = self.birth_config.curriculum
+        logger.info("birth.config.hot_reload workspace=%s", self.workspace_root)

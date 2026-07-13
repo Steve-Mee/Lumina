@@ -142,3 +142,40 @@ def test_validate_startup_prefers_env_mode_and_broker_over_config(monkeypatch: p
     )
 
     assert ConfigLoader.validate_startup(raise_on_error=True) is True
+
+
+def test_validate_startup_rejects_ninjatrader_without_enabled_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setattr(
+        ConfigLoader,
+        "get",
+        classmethod(
+            lambda cls: {
+                "mode": "sim",
+                "broker": {"backend": "live", "live_provider": "ninjatrader", "ninjatrader": {"enabled": False}},
+            }
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="ninjatrader.enabled=true"):
+        ConfigLoader.validate_startup(raise_on_error=True)
+
+
+def test_validate_startup_accepts_ninjatrader_sim_lane(monkeypatch: pytest.MonkeyPatch) -> None:
+    _set_required_env(monkeypatch)
+    monkeypatch.setattr(
+        ConfigLoader,
+        "get",
+        classmethod(
+            lambda cls: {
+                "mode": "sim",
+                "broker": {
+                    "backend": "live",
+                    "live_provider": "ninjatrader",
+                    "ninjatrader": {"enabled": True, "account_name": "Sim101"},
+                },
+            }
+        ),
+    )
+
+    assert ConfigLoader.validate_startup(raise_on_error=True) is True

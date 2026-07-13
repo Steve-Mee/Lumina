@@ -178,7 +178,9 @@ class ShadowRunRegistry:
                 by_experiment[base_id].append(run)
 
         for exp_id, decisions in by_experiment.items():
-            # Find the latest decision
+            resolved_stages = {d.get("stage") for d in decisions}
+            if resolved_stages & {"final", "reject"}:
+                continue
             latest = max(decisions, key=lambda d: d.get("timestamp", ""))
             if latest.get("stage") == "human_approval":
                 pending.append(latest)
@@ -208,11 +210,20 @@ class ShadowRiskEvaluator:
         )
     """
 
-    def __init__(self, engine: Any, registry: ShadowRunRegistry | None = None):
+    def __init__(
+        self,
+        engine: Any,
+        registry: ShadowRunRegistry | None = None,
+        *,
+        event_bus: Any | None = None,
+    ):
         self.engine = engine
         self._shadow_orchestrator: Optional[RiskOrchestrator] = None
         self._isolation_enforced = True  # Permanent guard
         self._registry: ShadowRunRegistry | None = registry
+        self._event_bus = (
+            event_bus if event_bus is not None else getattr(engine, "event_bus", None)
+        )
 
         # Hard isolation: shadow must never run in a way that could reach live broker paths
         # We treat shadow as its own strict "experiment-only" context.
@@ -223,6 +234,31 @@ class ShadowRiskEvaluator:
             caller="ShadowRiskEvaluator.__init__",
             reason="ShadowRiskEvaluator must never share mutable live risk state or reach broker paths",
         )
+
+    def _publish_event(
+        self,
+        *,
+        topic: str,
+        payload: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        bus = self._event_bus
+        if bus is None or not hasattr(bus, "publish_validated"):
+            logger.debug("shadow_event_bus_unavailable topic=%s", topic)
+            return
+        try:
+            bus.publish_validated(
+                topic=topic,
+                producer="shadow_risk_evaluator",
+                payload=payload,
+                metadata=metadata,
+            )
+        except Exception as exc:
+            logger.warning(
+                "shadow_event_publish_failed topic=%s error=%s",
+                topic,
+                exc,
+            )
 
     @classmethod
     def with_persistent_registry(
@@ -348,32 +384,25 @@ class ShadowRiskEvaluator:
         decision_trace: dict[str, Any] | None = None,
     ) -> None:
         """Publish using the pre-existing typed contract, with optional rich trace."""
-        try:
-            from lumina_core.agent_orchestration.schemas import ShadowResult as _ShadowResult
-            from lumina_core.agent_orchestration.event_bus import publish_validated  # type: ignore
-
-            payload = {
-                "verdict": result.verdict,
-                "dna_hash": result.dna_hash,
-                "sample_size": result.sample_size,
-                "pnl": result.pnl,
-                "experiment_id": context.experiment_id,
-                "shadow_decision_context_id": context.decision_context_id,
-                "error": error,
-            }
-            if decision_trace:
-                payload["decision_trace"] = decision_trace
-
-            publish_validated(
-                topic="evolution.shadow.verdict",
-                payload=payload,
-                payload_model=_ShadowResult,
-            )
-        except Exception:
-            logger.warning(
-                "shadow_result_publish_failed",
-                extra={"experiment_id": context.experiment_id, "error": "publish_failed"},
-            )
+        payload = {
+            "verdict": result.verdict,
+            "dna_hash": result.dna_hash,
+            "sample_size": result.sample_size,
+            "pnl": result.pnl,
+        }
+        metadata: dict[str, Any] = {
+            "experiment_id": context.experiment_id,
+            "shadow_decision_context_id": context.decision_context_id,
+        }
+        if error:
+            metadata["error"] = error
+        if decision_trace:
+            metadata["decision_trace"] = decision_trace
+        self._publish_event(
+            topic="evolution.shadow.verdict",
+            payload=payload,
+            metadata=metadata,
+        )
 
     # ------------------------------------------------------------------
     # Next Narrow Increment: Real Risk Logic + Basic Replay Support
@@ -651,15 +680,11 @@ class ShadowRiskEvaluator:
         )
 
         # Publish the promotion decision (best-effort)
-        try:
-            from lumina_core.agent_orchestration.event_bus import publish_validated
-            publish_validated(
-                topic="evolution.promotion.decision",
-                payload=decision,
-                payload_model=_EvolutionPromotionDecision,
-            )
-        except Exception:
-            logger.warning("shadow_promotion_decision_publish_failed", extra={"experiment_id": context.experiment_id})
+        self._publish_event(
+            topic="evolution.promotion.decision",
+            payload=decision.model_dump(mode="json"),
+            metadata={"experiment_id": context.experiment_id},
+        )
 
         # Record in registry if available (for pending human approval queries etc.)
         reg = getattr(self, "_registry", None)
@@ -1185,24 +1210,19 @@ evaluator.submit_human_approval_decision(
         )
 
         # Attach richer human context (we enrich the published payload)
-        payload = decision.model_dump() if hasattr(decision, "model_dump") else decision.dict()
+        metadata: dict[str, Any] = {"experiment_id": experiment_id}
         if approver:
-            payload["approver"] = approver
+            metadata["approver"] = approver
         if resolution_notes:
-            payload["resolution_notes"] = resolution_notes
+            metadata["resolution_notes"] = resolution_notes
         if evidence:
-            payload["evidence"] = evidence
-        payload["experiment_id"] = experiment_id
+            metadata["evidence"] = evidence
 
-        try:
-            from lumina_core.agent_orchestration.event_bus import publish_validated
-            publish_validated(
-                topic="evolution.promotion.decision",
-                payload=payload,
-                payload_model=_EvolutionPromotionDecision,
-            )
-        except Exception:
-            logger.warning("human_approval_decision_publish_failed", extra={"experiment_id": experiment_id})
+        self._publish_event(
+            topic="evolution.promotion.decision",
+            payload=decision.model_dump(mode="json"),
+            metadata=metadata,
+        )
 
         # Record the final decision properly (including richer context)
         if reg is not None:

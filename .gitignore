@@ -34,6 +34,10 @@ tsc_errors.txt
 _patch_*.py
 .pytest_*.txt
 pytest_*.txt
+scan_out.txt
+tmp_build_handler.py
+tmp_stage_loop_source.py
+_run_fast_tests.bat
 
 # IDE / local AI tooling (machine-specific; skills/rules in repo are tracked separately)
 .vscode/

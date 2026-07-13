@@ -596,24 +596,28 @@ Add section to [sim_real_guard_rollout_b_staging_runbook.md](requests/sim_real_g
 ### 10.1 `config.yaml` Block (Planned)
 
 ```yaml
-ninjatrader:
-  enabled: true
-  websocket_path: /ws/ninjatrader/v1
-  account_name: "Sim101"
-  instruments:
-    - "MES 06-26"
-  reconnect_backoff_ms: 1000
-  max_reconnect_ms: 30000
-  bar_throttle_ms: 1000
-  tick_enabled: false
+broker:
+  backend: live                    # paper | live (canonical mode matrix)
+  live_provider: ninjatrader       # crosstrade | ninjatrader (default: crosstrade)
+  ninjatrader:
+    enabled: false                 # explicit opt-in promotion gate
+    websocket_path: /ws/ninjatrader/v1
+    account_name: "Sim101"
+    instruments:
+      - "MES 06-26"
+    reconnect_backoff_ms: 1000
+    max_reconnect_ms: 30000
+    bar_throttle_ms: 1000
+    tick_enabled: false
 ```
 
 ### 10.2 Environment Variables
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `BROKER_BACKEND` | `paper` | `paper` \| `crosstrade` \| `ninjatrader` |
-| `LUMINA_NT8_API_KEY` | — | Add-on authentication |
+| `BROKER_BACKEND` | `paper` | `paper` \| `live` (unchanged mode matrix) |
+| `BROKER_LIVE_PROVIDER` | `crosstrade` | `crosstrade` \| `ninjatrader` when `BROKER_BACKEND=live` |
+| `LUMINA_NT8_API_KEY` | — | Add-on authentication (required for ninjatrader in realish modes) |
 | `NINJATRADER8_PATH` | — | Path to `NinjaTrader.exe` (Tauri launcher) |
 | `LUMINA_BACKEND_URL` | `http://127.0.0.1:8000` | Core REST/WS base URL for Add-on |
 
@@ -636,12 +640,12 @@ Stored in `%APPDATA%\LUMINA\nt8-addon.json` (not committed):
 ### 11.1 Feature Flag
 
 ```
-BROKER_BACKEND=crosstrade   # current production path
-BROKER_BACKEND=ninjatrader  # native bridge (after Phase 3+)
-BROKER_BACKEND=paper        # offline / dev
+BROKER_BACKEND=paper                          # offline / dev
+BROKER_BACKEND=live + BROKER_LIVE_PROVIDER=crosstrade   # current production path
+BROKER_BACKEND=live + BROKER_LIVE_PROVIDER=ninjatrader  # native bridge (after Phase 3+)
 ```
 
-Factory in `broker_bridge.py` selects implementation at engine startup.
+`broker_factory` in [`factory.py`](../lumina_core/broker/broker_bridge/factory.py) selects the live provider when `broker.backend=live`. The canonical mode matrix (`trade_mode` ↔ `broker.backend`) is unchanged — see [ADR-0029](adr/0029-ninjatrader-native-bridge.md).
 
 ### 11.2 Parallel Run (SIM)
 
