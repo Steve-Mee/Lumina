@@ -12,7 +12,7 @@ from lumina_core.birth.pattern_miner import PatternMineResult
 from lumina_core.birth.purged_split import purged_train_holdout_split
 from lumina_core.birth.sim_runner import SimRolloutResult, run_policy_rollout
 from lumina_core.birth.tick_enricher import enrich_ticks_for_sim
-from lumina_core.lumina_birth_engine import LuminaBirthEngine
+from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct after facade delete
 
 from tests.birth.preflight_helpers import patch_holdout_preflight_ok
 

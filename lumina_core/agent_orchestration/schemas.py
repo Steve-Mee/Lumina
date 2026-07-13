@@ -229,6 +229,58 @@ class ConstitutionAudit(BaseModel):
     summary: str | None = None
 
 
+# -------------------------------------------------------------------
+# Architecture Meta (next evolution layer) — typed contracts
+# -------------------------------------------------------------------
+
+class ArchHealthSnapshotPayload(BaseModel):
+    """Observable snapshot for architecture health (used by meta controller)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    god_file_count: int = 0
+    boundary_violations: int = 0
+    pydantic_model_count: int = 0
+    ruff_violations_core: int = 0
+    avg_module_loc: float = 0.0
+    todo_density: float = 0.0
+    total_core_loc: int = 0
+    arch_health_score: float = 5.0
+    timestamp: str | None = None
+
+
+class ArchMutationProposalPayload(BaseModel):
+    """Contract for an architecture mutation proposal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str
+    mutation_type: str
+    target_file: str
+    description: str = ""
+    diff: str = ""
+    expected_delta: float = 0.0
+    rationale: str = ""
+    before_score: float = 5.0
+    constitution_passed: bool = False
+    sandbox_passed: bool = False
+    decision_context_id: str = ""
+
+
+class ArchPromotionDecisionPayload(BaseModel):
+    """Human gate outcome for arch proposal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str
+    approved: bool
+    approver: str = ""
+    reason: str = ""
+    timestamp: str = ""
+    health_delta: float = 0.0
+
+
+
 class AdaptiveIntelligenceState(BaseModel):
     """Typed contract for adaptive intelligence runtime status."""
 

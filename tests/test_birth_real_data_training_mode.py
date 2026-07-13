@@ -12,7 +12,7 @@ from lumina_core.birth.checkpoint import can_resume_checkpoint
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
 from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.purged_split import purged_train_holdout_split
-from lumina_core.lumina_birth_engine import LuminaBirthEngine
+from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct after facade delete
 
 
 class _FakePpoTrainer:

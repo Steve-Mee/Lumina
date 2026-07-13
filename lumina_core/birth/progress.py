@@ -17,16 +17,15 @@ _PHASES_NO_STAGES_PRESERVE = frozenset({"stage_stalled", "curriculum_learning"})
 
 def read_birth_progress(workspace_root: Path | str) -> dict[str, Any]:
     root = Path(workspace_root)
-    for rel in ("state/lumina_birth_progress.json", "state/first_boot_progress.json"):
-        path = root / rel
-        if not path.is_file():
-            continue
+    # Canonical only (legacy first_boot read kept in first_boot_progress.py + callers for compat)
+    path = root / "state" / "lumina_birth_progress.json"
+    if path.is_file():
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                return payload
         except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(payload, dict):
-            return payload
+            pass
     return {}
 
 
@@ -127,9 +126,9 @@ def write_birth_progress(
     payload.update(extra)
     payload = enrich_progress_scorecard(payload)
     encoded = json.dumps(payload, ensure_ascii=True, indent=2)
-    for rel in ("state/lumina_birth_progress.json", "state/first_boot_progress.json"):
-        path = root / rel
-        try:
-            _atomic_write_text(path, encoded)
-        except OSError:
-            pass
+    # Write canonical only. Legacy dual write removed for radical simplicity.
+    path = root / "state" / "lumina_birth_progress.json"
+    try:
+        _atomic_write_text(path, encoded)
+    except OSError:
+        pass

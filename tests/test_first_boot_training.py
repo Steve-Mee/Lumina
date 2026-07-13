@@ -183,7 +183,7 @@ def test_runtime_first_boot_rejects_ok_status_below_requested_volume(
             return {"status": "completed", "total_trades": 67_501, "policy_path": str(policy_path)}
 
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr("lumina_core.lumina_birth_engine.LuminaBirthEngine", _FakeBirthEngine)
+    monkeypatch.setattr("lumina_core.birth.engine.BirthPhaseEngineV2", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
     assert rc == 1
     assert not flag_path.exists()
@@ -239,7 +239,7 @@ def test_runtime_first_boot_writes_flag_on_success(monkeypatch: pytest.MonkeyPat
             return {"status": "completed", "total_trades": 100_000, "policy_path": str(policy_path)}
 
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr("lumina_core.lumina_birth_engine.LuminaBirthEngine", _FakeBirthEngine)
+    monkeypatch.setattr("lumina_core.birth.engine.BirthPhaseEngineV2", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
     assert rc == 0
     assert flag_path.exists()
@@ -293,7 +293,7 @@ def test_runtime_first_boot_success_message_mentions_real_data_completion(
             return {"status": "completed", "total_trades": 100_000, "policy_path": str(policy_path)}
 
     monkeypatch.setattr(runtime_entrypoint, "ApplicationContainer", _FakeContainer)
-    monkeypatch.setattr("lumina_core.lumina_birth_engine.LuminaBirthEngine", _FakeBirthEngine)
+    monkeypatch.setattr("lumina_core.birth.engine.BirthPhaseEngineV2", _FakeBirthEngine)
     rc = runtime_entrypoint._run_first_boot_training()
     out = capsys.readouterr().out
     assert rc == 0

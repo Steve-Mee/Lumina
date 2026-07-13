@@ -14,13 +14,12 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[2]
 _LAUNCHER_BIRTH = _ROOT / "lumina_launcher" / "services"
 
-# Baselines captured 2026-07-04 after phase 2A/2B splits.
+# Baselines captured 2026-07-04 after phase 2A/2B splits; birth_runner facade removed 2026-07-13.
 _LINE_BASELINES: dict[str, int] = {
-    "birth_service.py": 487,
+    "birth_service.py": 520,
     "birth_status_mapper.py": 351,
     "birth_status_enricher.py": 149,
     "birth_status_plateau_risk.py": 60,
-    "birth_runner.py": 57,
     "birth_runner_lock.py": 181,
     "birth_runner_start.py": 304,
     "birth_runner_wipe.py": 115,
@@ -48,18 +47,6 @@ def test_launcher_birth_module_loc_at_or_below_baseline(filename: str, baseline:
         f"{filename} has {line_count} lines (baseline <= {baseline}); "
         "extract to bounded modules instead of growing the god file"
     )
-
-
-@pytest.mark.unit
-def test_birth_runner_facade_reexports_submodules() -> None:
-    source = _source("birth_runner.py")
-    for marker in (
-        "birth_runner_lock",
-        "birth_runner_start",
-        "birth_runner_wipe",
-        "birth_runner_recovery",
-    ):
-        assert marker in source, f"birth_runner.py should re-export from {marker}"
 
 
 @pytest.mark.unit

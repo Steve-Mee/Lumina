@@ -491,7 +491,7 @@ from lumina_launcher.services.setup_schemas import (
     SmartSetupResult,
     SubprocessStepResult,
 )
-from lumina_launcher.services.workspace_root import resolve_birth_workspace_root
+from lumina_launcher.core.workspace_root import resolve_birth_workspace_root  # direct (services reexport deleted)
 
 __all__ = [
     "HardwareInspector",

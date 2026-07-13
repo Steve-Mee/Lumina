@@ -56,15 +56,16 @@ def _write_first_boot_progress(stage: str, message: str, **extra: object) -> Non
     from lumina_core.birth.stage_scorecard import enrich_progress_scorecard
 
     prev: dict[str, object] = {}
-    for progress_path in (FIRST_BOOT_PROGRESS_PATH, FIRST_BOOT_LEGACY_PROGRESS_PATH):
-        if not progress_path.exists():
-            continue
+    # Canonical lumina_birth only (legacy first_boot read for compat elsewhere)
+    if FIRST_BOOT_PROGRESS_PATH.exists():
         try:
-            prev = json.loads(progress_path.read_text(encoding="utf-8"))
-            if isinstance(prev, dict):
-                break
+            prev = json.loads(FIRST_BOOT_PROGRESS_PATH.read_text(encoding="utf-8"))
+            if not isinstance(prev, dict):
+                prev = {}
         except Exception:
             prev = {}
+    else:
+        prev = {}
     payload: dict[str, object] = dict(prev)
     payload["timestamp"] = datetime.now().isoformat()
     payload["stage"] = str(stage).strip().lower()
@@ -76,7 +77,7 @@ def _write_first_boot_progress(stage: str, message: str, **extra: object) -> Non
         FIRST_BOOT_PROGRESS_PATH.parent.mkdir(parents=True, exist_ok=True)
         encoded = json.dumps(payload, ensure_ascii=True)
         FIRST_BOOT_PROGRESS_PATH.write_text(encoded, encoding="utf-8")
-        FIRST_BOOT_LEGACY_PROGRESS_PATH.write_text(encoded, encoding="utf-8")
+        # Legacy dual write removed for radical simplicity
     except Exception:
         logging.exception("first_boot.progress_write_failed")
 
@@ -533,7 +534,7 @@ def _run_first_boot_training() -> int:
     )
     if not birth_phase_enabled:
         logging.warning("first_boot.birth_phase=false is ignored; LuminaBirthEngine is mandatory for first boot.")
-    from lumina_core.lumina_birth_engine import LuminaBirthEngine
+    from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine
 
     engine = LuminaBirthEngine(
         runtime=container.engine,

@@ -5,7 +5,7 @@ import pytest
 from lumina_core.agent_orchestration import AgentBlackboard, EventBus
 from lumina_core.engine.agent_blackboard import AgentBlackboard as EngineAgentBlackboard
 from lumina_core.engine.lumina_engine import LuminaEngine as EngineLuminaEngine
-from lumina_core.engine.risk_orchestrator import RiskOrchestrator as EngineRiskOrchestrator
+from lumina_core.risk.orchestration import RiskOrchestrator as CanonicalRiskOrchestrator
 from lumina_core.risk import HardRiskController, RiskLimits, RiskState, risk_limits_from_config
 from lumina_core.risk.orchestration import RiskOrchestrator
 from lumina_core.risk.risk_allocator import RiskAllocatorMixin
@@ -34,8 +34,9 @@ def test_risk_context_exports_mixins() -> None:
 
 
 @pytest.mark.unit
-def test_risk_context_orchestrator_is_canonical_and_engine_module_reexports() -> None:
-    assert RiskOrchestrator is EngineRiskOrchestrator
+def test_risk_context_orchestrator_is_canonical() -> None:
+    # Engine re-export removed for radical simplicity; canonical lives in lumina_core.risk
+    assert RiskOrchestrator is CanonicalRiskOrchestrator
 
 
 @pytest.mark.unit

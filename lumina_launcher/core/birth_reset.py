@@ -279,7 +279,7 @@ def main() -> int:
     """CLI entry for operator scripts (e.g. reset_lumina_blank_state.ps1)."""
     import argparse
 
-    from lumina_launcher.services.workspace_root import resolve_birth_workspace_root
+    from lumina_launcher.core.workspace_root import resolve_birth_workspace_root  # direct (services reexport deleted)
 
     parser = argparse.ArgumentParser(description="Clear Birth Phase training artifacts.")
     parser.add_argument(

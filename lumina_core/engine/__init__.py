@@ -21,8 +21,8 @@ from .engine_config import EngineConfig
 from .lumina_engine import LuminaEngine
 from lumina_core.reasoning.local_inference_engine import LocalInferenceEngine
 from .market_data_manager import MarketDataManager
-from .market_data_domain_service import MarketDataDomainService, MarketDataService
 from .market_data_service import MarketDataIngestService
+# MarketDataDomainService / MarketDataService thin layer removed for radical simplicity (helpers inlined)
 from .memory_service import MemoryService
 from .operations_service import OperationsService
 from .dream_state_manager import DreamStateManager
@@ -68,8 +68,7 @@ __all__ = [
     "DreamState",
     "BibleEngine",
     "MarketDataManager",
-    "MarketDataDomainService",
-    "MarketDataService",
+    # MarketDataDomainService/MarketDataService removed (simplicity)
     "MarketDataIngestService",
     "DreamStateManager",
     "ExecutionService",

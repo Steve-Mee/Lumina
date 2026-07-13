@@ -14,14 +14,15 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[2]
 _BIRTH_SERVICE = _ROOT / "lumina_launcher" / "services" / "birth_service.py"
 
-# Baseline captured 2026-07-04; phase 2A extract: ~1332 -> 487 (target <600).
-_SERVICE_LINE_BASELINE = 487
+# Baseline captured 2026-07-04; runner facade collapsed into direct submodule imports.
+_SERVICE_LINE_BASELINE = 520
 _SERVICE_METHOD_BASELINE = 56
 
 _BOUNDED_MODULE_MARKERS = [
     "birth_status_mapper",
     "birth_status_enricher",
-    "birth_runner",
+    "birth_runner_start",
+    "birth_runner_lock",
 ]
 
 

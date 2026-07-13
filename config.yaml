@@ -227,6 +227,14 @@ evolution:
     dream_count: 4000
     horizon_days: 7
     drawdown_limit_ratio: 0.02
+  # Architecture meta (next evolution layer) — radically simple, default OFF
+  architecture_meta:
+    enabled: false
+    max_proposals_per_scan: 2
+    max_patch_lines: 80
+    min_health_delta: 0.15
+    sandbox_timeout_s: 60
+    require_human_approval: true
     commit_hints_to_bible: true
     apply_risk_nudges: true
     risk_nudge_modes:

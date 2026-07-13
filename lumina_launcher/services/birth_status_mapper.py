@@ -236,7 +236,7 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
         )
 
     if progress_indicates_running(svc, progress):
-        from lumina_launcher.services.birth_runner import read_runner_lock
+        from lumina_launcher.services.birth_runner_lock import read_runner_lock
 
         runner_meta = read_runner_lock(svc) or {}
         return _enricher.enrich_birth_status(

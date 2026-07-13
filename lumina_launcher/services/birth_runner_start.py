@@ -20,7 +20,7 @@ from lumina_core.first_boot_ui import (
     resolve_default_max_real_days,
 )
 from lumina_core.logging_utils import get_logger
-from lumina_core.lumina_birth_engine import LuminaBirthEngine
+from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct (thin facade deleted for simplicity)
 from lumina_core.order_gatekeeper import is_stale_contract_symbol, roll_stale_contract_symbol
 from lumina_launcher.services.birth_runner_lock import (
     clear_runner_lock,

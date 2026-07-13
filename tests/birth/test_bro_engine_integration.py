@@ -14,7 +14,7 @@ from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.pattern_miner import PatternMineResult
 from lumina_core.birth.purged_split import PurgedSplit
 from lumina_core.birth.sim_runner import SimRolloutResult
-from lumina_core.lumina_birth_engine import LuminaBirthEngine
+from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct after facade delete
 
 
 class _FakePpoTrainer:

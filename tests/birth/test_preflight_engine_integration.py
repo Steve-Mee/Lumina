@@ -17,7 +17,7 @@ from lumina_core.birth.pattern_miner import PatternMineResult
 from lumina_core.birth.preflight import assess_split_preflight
 from lumina_core.birth.purged_split import purged_train_holdout_split
 from lumina_core.birth.sim_runner import SimRolloutResult
-from lumina_core.lumina_birth_engine import LuminaBirthEngine
+from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct after facade delete
 
 pytestmark = [pytest.mark.no_preflight_bypass, pytest.mark.timeout(120)]
 

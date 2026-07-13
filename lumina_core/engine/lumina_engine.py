@@ -32,7 +32,7 @@ from .engine_config import EngineConfig
 from .economic_truth import EconomicTruth
 from .execution_service import ExecutionService
 from .market_data_manager import MarketDataManager
-from .market_data_domain_service import MarketDataDomainService
+# market_data_domain_service removed for radical simplicity (inline helpers)
 from .runtime_state import EngineAccountState, EngineMemoryState, EnginePerformanceState, EnginePositionState
 from .technical_analysis_service import TechnicalAnalysisService
 from .valuation_engine import ValuationEngine
@@ -108,7 +108,7 @@ class LuminaEngine:
     economic_truth: EconomicTruth = field(default_factory=EconomicTruth)
     mode_risk_profile: dict[str, float] = field(default_factory=dict)
     dream_state_manager: DreamStateManager | None = None
-    market_domain_service: MarketDataDomainService | None = None
+    # market_domain_service removed (thin delegation inlined to analysis_helpers)
     technical_analysis_service: TechnicalAnalysisService | None = None
     risk_orchestrator: RiskOrchestrator | None = None
     execution_service: ExecutionService | None = None
@@ -160,8 +160,7 @@ class LuminaEngine:
         # Compose engine responsibilities into narrow services.
         if self.dream_state_manager is None:
             self.dream_state_manager = DreamStateManager(engine=cast(Any, self), dream_state=self.dream_state)
-        if self.market_domain_service is None:
-            self.market_domain_service = MarketDataDomainService(engine=cast(Any, self))
+        # (market_domain_service removed for simplicity; helpers called directly)
         if self.technical_analysis_service is None:
             self.technical_analysis_service = TechnicalAnalysisService(engine=cast(Any, self))
         if self.risk_orchestrator is None:
@@ -257,14 +256,14 @@ class LuminaEngine:
         )
 
     def detect_candle_patterns(self, df, tf: str = "1min") -> dict[str, str]:
-        if self.market_domain_service is None:
-            return {}
-        return self.market_domain_service.detect_candle_patterns(df, tf)
+        from .analysis_helpers import detect_candle_patterns as _detect  # direct for simplicity
+        return _detect(df, tf)
 
     def generate_price_action_summary(self) -> str:
-        if self.market_domain_service is None:
-            return ""
-        return self.market_domain_service.generate_price_action_summary()
+        from .analysis_helpers import generate_price_action_summary as _summary
+        ohlc = getattr(getattr(self, "market_data", None), "copy_ohlc", lambda: None)()
+        tfs = getattr(getattr(self, "config", None), "timeframes", None)
+        return _summary(ohlc, tfs)
 
     def detect_market_regime(self, df) -> str:
         if self.technical_analysis_service is None:

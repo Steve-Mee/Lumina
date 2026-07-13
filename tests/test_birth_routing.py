@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lumina_core.lumina_birth_engine import LuminaBirthEngine
+from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct after facade delete
 from lumina_launcher.core.birth_actions import start_birth_training
 from lumina_launcher.services.birth_service import BirthService
 from lumina_os.backend import birth_endpoints

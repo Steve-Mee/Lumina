@@ -3,7 +3,7 @@
 from .hardware_service import HardwareService
 from .model_service import ModelService
 from .birth_service import BirthService, birth_service, configure_birth_workspace
-from .workspace_root import resolve_birth_workspace_root
+from lumina_launcher.core.workspace_root import resolve_birth_workspace_root  # reexport kept in __init__ for compat, source moved
 from .smart_setup_service import (
     SmartSetupOptions,
     SmartSetupService,

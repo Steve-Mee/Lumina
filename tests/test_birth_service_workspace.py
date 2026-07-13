@@ -18,7 +18,6 @@ from lumina_launcher.services.birth_service import (
 from tests.birth.test_certificate_fast_path import _seed_certificate_failed_checkpoint
 
 birth_service_module = importlib.import_module("lumina_launcher.services.birth_service")
-birth_runner_module = importlib.import_module("lumina_launcher.services.birth_runner")
 birth_runner_start_module = importlib.import_module("lumina_launcher.services.birth_runner_start")
 birth_runner_wipe_module = importlib.import_module("lumina_launcher.services.birth_runner_wipe")
 birth_status_enricher_module = importlib.import_module(

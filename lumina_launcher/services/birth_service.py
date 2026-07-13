@@ -15,9 +15,39 @@ from typing import Any, Dict, Optional
 
 from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES
 from lumina_core.logging_utils import get_logger
-from lumina_launcher.services import birth_runner, birth_status_enricher, birth_status_mapper
+from lumina_launcher.services import birth_status_enricher, birth_status_mapper
+# birth_runner reexport collapsed; direct submodules below for radical simplicity
+from .birth_runner_start import (
+    load_saved_birth_settings,
+    preflight_historical_data,
+    start_birth,
+    stop_birth,
+)
+from .birth_runner_recovery import (
+    expand_and_retry_stalled_stage,
+    is_stage_stalled_recovery_eligible,
+    resume_birth,
+    resume_stalled_stage,
+    retry_birth,
+    reuse_data_birth,
+)
+from .birth_runner_lock import (
+    clear_orphan_runner_lock_for_wipe,
+    clear_runner_lock,
+    clear_stale_runner_lock,
+    mark_user_stopped_progress,
+    read_runner_lock,
+    reconcile_orphaned_birth_progress,
+    reset_in_memory_birth_state,
+    write_runner_lock,
+)
+from .birth_runner_wipe import (
+    ensure_birth_stopped_for_wipe,
+    wipe_all_birth_data,
+    wipe_birth_training_artifacts,
+)
 from lumina_launcher.services.birth_status_mapper import resolve_terminal_birth_status
-from lumina_launcher.services.workspace_root import resolve_birth_workspace_root
+from lumina_launcher.core.workspace_root import resolve_birth_workspace_root  # direct (services reexport deleted)
 
 logger = get_logger(__name__)
 
@@ -328,10 +358,10 @@ class BirthService:
         return blockers
 
     def _load_saved_birth_settings(self) -> dict[str, Any]:
-        return birth_runner.load_saved_birth_settings(self)
+        return load_saved_birth_settings(self)
 
     def _preflight_historical_data(self, max_real_days: int) -> tuple[bool, str]:
-        return birth_runner.preflight_historical_data(self, max_real_days)
+        return preflight_historical_data(self, max_real_days)
 
     def start_birth(
         self,
@@ -343,7 +373,7 @@ class BirthService:
         reuse_data: bool = False,
         expand_data: bool = False,
     ) -> Dict[str, Any]:
-        return birth_runner.start_birth(
+        return start_birth(
             self,
             target_trades=target_trades,
             force=force,
@@ -361,7 +391,7 @@ class BirthService:
         return birth_status_mapper.resolve_elapsed_seconds_from_progress(progress)
 
     def _is_stage_stalled_recovery_eligible(self) -> bool:
-        return birth_runner.is_stage_stalled_recovery_eligible(self)
+        return is_stage_stalled_recovery_eligible(self)
 
     def get_status(self) -> Dict[str, Any]:
         return birth_status_mapper.get_birth_status(self)
@@ -373,7 +403,7 @@ class BirthService:
         return self._stop_requested.is_set()
 
     def stop_birth(self, join_timeout: float = 15.0) -> Dict[str, Any]:
-        return birth_runner.stop_birth(self, join_timeout=join_timeout)
+        return stop_birth(self, join_timeout=join_timeout)
 
     def checkpoint_resumable(self) -> bool:
         if self.is_running():
@@ -388,7 +418,7 @@ class BirthService:
         join_timeout: float = 30.0,
         preserve_tick_cache: bool = False,
     ) -> Dict[str, Any]:
-        return birth_runner.wipe_all_birth_data(
+        return wipe_all_birth_data(
             self,
             join_timeout=join_timeout,
             preserve_tick_cache=preserve_tick_cache,
@@ -401,16 +431,16 @@ class BirthService:
         return self.progress_file.exists() or self.legacy_progress_file.exists()
 
     def _reset_in_memory_birth_state(self) -> None:
-        birth_runner.reset_in_memory_birth_state(self)
+        reset_in_memory_birth_state(self)
 
     def _clear_orphan_runner_lock_for_wipe(self) -> None:
-        birth_runner.clear_orphan_runner_lock_for_wipe(self)
+        clear_orphan_runner_lock_for_wipe(self)
 
     def _ensure_birth_stopped_for_wipe(self, *, join_timeout: float) -> Dict[str, Any] | None:
-        return birth_runner.ensure_birth_stopped_for_wipe(self, join_timeout=join_timeout)
+        return ensure_birth_stopped_for_wipe(self, join_timeout=join_timeout)
 
     def _wipe_birth_training_artifacts(self, *, join_timeout: float = 30.0) -> Dict[str, Any] | None:
-        return birth_runner.wipe_birth_training_artifacts(self, join_timeout=join_timeout)
+        return wipe_birth_training_artifacts(self, join_timeout=join_timeout)
 
     def is_completed(self) -> bool:
         if not self.completed_flag.exists():
@@ -418,19 +448,19 @@ class BirthService:
         return self.certificate_ok()
 
     def retry_birth(self, target_trades: int | None = None, *, wipe: bool = False) -> Dict[str, Any]:
-        return birth_runner.retry_birth(self, target_trades=target_trades, wipe=wipe)
+        return retry_birth(self, target_trades=target_trades, wipe=wipe)
 
     def resume_stalled_stage(self, target_trades: int | None = None) -> Dict[str, Any]:
-        return birth_runner.resume_stalled_stage(self, target_trades=target_trades)
+        return resume_stalled_stage(self, target_trades=target_trades)
 
     def expand_and_retry_stalled_stage(self, target_trades: int | None = None) -> Dict[str, Any]:
-        return birth_runner.expand_and_retry_stalled_stage(self, target_trades=target_trades)
+        return expand_and_retry_stalled_stage(self, target_trades=target_trades)
 
     def resume_birth(self, target_trades: int | None = None) -> Dict[str, Any]:
-        return birth_runner.resume_birth(self, target_trades=target_trades)
+        return resume_birth(self, target_trades=target_trades)
 
     def reuse_data_birth(self, target_trades: int | None = None) -> Dict[str, Any]:
-        return birth_runner.reuse_data_birth(self, target_trades=target_trades)
+        return reuse_data_birth(self, target_trades=target_trades)
 
     def reset_birth(self) -> None:
         for f in [self.completed_flag, self.checkpoint_file]:
@@ -457,25 +487,25 @@ class BirthService:
         return birth_status_mapper.progress_timestamp_age_sec(progress)
 
     def _mark_user_stopped_progress(self) -> None:
-        birth_runner.mark_user_stopped_progress(self)
+        mark_user_stopped_progress(self)
 
     def reconcile_orphaned_birth_progress(self) -> bool:
-        return birth_runner.reconcile_orphaned_birth_progress(self)
+        return reconcile_orphaned_birth_progress(self)
 
     def _progress_indicates_running(self, progress: Dict[str, Any]) -> bool:
         return birth_status_mapper.progress_indicates_running(self, progress)
 
     def _write_runner_lock(self) -> None:
-        birth_runner.write_runner_lock(self)
+        write_runner_lock(self)
 
     def _read_runner_lock(self) -> Dict[str, Any] | None:
-        return birth_runner.read_runner_lock(self)
+        return read_runner_lock(self)
 
     def _clear_stale_runner_lock(self) -> None:
-        birth_runner.clear_stale_runner_lock(self)
+        clear_stale_runner_lock(self)
 
     def _clear_runner_lock(self) -> None:
-        birth_runner.clear_runner_lock(self)
+        clear_runner_lock(self)
 
 
 def configure_birth_workspace(workspace_root: Path | str | None = None) -> Path:

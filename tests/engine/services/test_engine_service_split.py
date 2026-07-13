@@ -8,7 +8,7 @@ import pytest
 from lumina_core.engine.dream_state import DreamState
 from lumina_core.engine.dream_state_manager import DreamStateManager
 from lumina_core.engine.execution_service import ExecutionService
-from lumina_core.engine.market_data_domain_service import MarketDataDomainService
+from lumina_core.engine.analysis_helpers import generate_price_action_summary
 from lumina_core.engine.regime_detector import RegimeDetector as EngineRegimeDetector
 from lumina_core.engine.technical_analysis_service import TechnicalAnalysisService
 from lumina_core.risk.orchestration import RiskOrchestrator
@@ -60,14 +60,8 @@ def test_market_data_domain_service_generates_summary() -> None:
             },
         ]
     )
-    engine = SimpleNamespace(
-        market_data=SimpleNamespace(copy_ohlc=lambda: rows),
-        config=SimpleNamespace(timeframes={"1min": 60}),
-    )
-    service = MarketDataDomainService(engine=engine)
-
-    # wanneer
-    summary = service.generate_price_action_summary()
+    # Domain service removed; test the helper directly (inlined for simplicity)
+    summary = generate_price_action_summary(rows, {"1min": 60})
 
     # dan
     assert isinstance(summary, str)
