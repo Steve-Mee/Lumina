@@ -367,6 +367,12 @@ class PromotionPolicy:
             veto_blocked=veto_blocked,
         )
         risk_flags = list(shadow_twin.get("risk_flags", []) or [])
+        twin_rec = bool(shadow_twin.get("recommendation", False))
+        twin_conf = float(shadow_twin.get("confidence", 0.0) or 0.0)
+
+        # Primary auto-approval signal from twin (birth/SIM first, REAL only after gate)
+        # If twin recommends + clean flags, we carry this as strong signal into gate/guard.
+        # (Hard PromotionGate + shadow still apply for REAL; twin is necessary input.)
 
         # === Phase 2 Deliverable 5 (Aperture Hardening) — Second independent call site ===
         # In addition to the proactive call inside the ApprovalTwin, the official
@@ -436,10 +442,11 @@ class PromotionPolicy:
         record["shadow_total_pnl"] = shadow_total_pnl
         record["updated_at"] = utcnow()
         record["shadow_decision"] = {
-            "recommendation": bool(shadow_twin.get("recommendation", False)),
-            "confidence": float(shadow_twin.get("confidence", 0.0) or 0.0),
+            "recommendation": twin_rec,
+            "confidence": twin_conf,
             "risk_flags": risk_flags,
             "explanation": str(shadow_twin.get("explanation", "")),
+            "twin_primary_auto": bool(twin_rec and len(risk_flags) == 0),
         }
         if gate_decision_payload is not None:
             record["promotion_gate"] = gate_decision_payload
@@ -455,4 +462,10 @@ class PromotionPolicy:
             "shadow_days_target": target_days,
             "shadow_total_pnl": shadow_total_pnl,
             "promotion_gate": gate_decision_payload or {},
+            # Twin as primary auto-approval layer signal (used by guard + callers)
+            "twin_recommendation": twin_rec,
+            "twin_confidence": twin_conf,
+            "twin_risk_flags": risk_flags,
+            # NOTE: caller must have already AND-ed with ConstitutionalGuard.veto_unless_constitutional
+            # (twin is never allowed to bypass constitution, sandbox or aperture).
         }

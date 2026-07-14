@@ -164,14 +164,22 @@ def run_single_generation(
     winner_dna = next((item for item in candidates if item.hash == winner_hash), candidates[0])
     winner_fitness = float(selected.get("score", float("-inf")))
 
+    # Twin is primary auto-approval layer. For birth/SIM it can auto (when clean + above thresh).
+    # REAL path still funnels through guard + shadow + PromotionGate.
     twin_decision: dict[str, Any] = {
-        "recommendation": mode != "real",
+        "recommendation": True,
         "confidence": 0.9,
         "risk_flags": [],
-        "explanation": "sim/paper path uses guard-only approval",
+        "explanation": "sim/paper default (twin primary layer decides)",
     }
-    if mode == "real":
+    if str(mode).strip().lower() in ("real", "paper"):
         twin_decision = orchestrator._approval_twin.evaluate_dna_promotion(winner_dna)
+    else:
+        # For pure sim/birth, proactively consult twin for the auto-approval signal
+        try:
+            twin_decision = orchestrator._approval_twin.evaluate_dna_promotion(winner_dna)
+        except Exception:
+            pass
 
     # Dedicated shadow runner for REAL promotion validation.
     shadow_runner: Any = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
@@ -182,6 +190,29 @@ def run_single_generation(
     twin_confidence = float(twin_decision.get("confidence", 0.0) or 0.0)
     twin_risk_flags = [str(x) for x in list(twin_decision.get("risk_flags", []) or [])]
     signed_confidence = twin_confidence if str(mode).strip().lower() == "real" else 0.9
+
+    # Explicit fail-closed: re-assert twin rec subordination to constitution right after twin consult.
+    # The ApprovalTwin output is a signal, never a bypass. This (plus the later pre-promotion guard)
+    # ensures even a fully tricked twin cannot promote bad DNA.
+    try:
+        cg = getattr(orchestrator, "_constitutional_guard", None)
+        if cg is not None:
+            twin_rec = bool(twin_decision.get("recommendation", False))
+            if not cg.veto_unless_constitutional(
+                dna_content=getattr(winner_dna, "content", winner_dna),
+                mode=mode,
+                current_recommendation=twin_rec,
+            ):
+                twin_decision = dict(twin_decision)
+                twin_decision["recommendation"] = False
+                rf = list(twin_decision.get("risk_flags", []) or [])
+                if "constitution_veto_post_twin" not in rf:
+                    rf.append("constitution_veto_post_twin")
+                twin_decision["risk_flags"] = rf
+                twin_risk_flags = [str(x) for x in rf]
+    except Exception:
+        twin_decision = {"recommendation": False, "confidence": 0.0, "risk_flags": ["guard_error_post_twin"]}
+        twin_risk_flags = ["guard_error_post_twin"]
 
     # Guard: REAL uses twin confidence (0–1 or 0–100) for ultra zero-touch floor + shadow.
     signed = orchestrator._guard.has_signed_approval(
@@ -289,6 +320,10 @@ def run_single_generation(
     # The ConstitutionalGuard is the single authoritative safety gate.
     # It checks all 15 principles, writes an audit record, and is
     # fail-closed: any unexpected error blocks promotion.
+    #
+    # Twin recommendation (even high-confidence) is always ignored if this fails.
+    # This is an explicit defense-in-depth path that makes it impossible for a tricked twin
+    # to promote DNA that violates the Trading Constitution, sandbox rules, or aperture.
     constitutional_violations: list[str] = []
     if promoted:
         guard_result = orchestrator._constitutional_guard.check_pre_promotion(

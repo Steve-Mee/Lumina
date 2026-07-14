@@ -280,6 +280,31 @@ class ArchPromotionDecisionPayload(BaseModel):
     health_delta: float = 0.0
 
 
+class TwinDecisionEvent(BaseModel):
+    """ApprovalTwin promotion evaluation (ADR-0031)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    dna_hash: str
+    recommendation: bool
+    confidence: float = Field(ge=0.0, le=1.0)
+    risk_flags: list[str] = Field(default_factory=list)
+    explanation: str = ""
+    call: str = "evaluate_dna_promotion"
+
+
+class TwinTrainingUpdateEvent(BaseModel):
+    """ApprovalTwin RLHF-light training metrics (ADR-0031)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    records_processed: int = Field(ge=0)
+    updates: int = Field(ge=0)
+    avg_prediction_error: float = 0.0
+    reward: float = 0.0
+    training_steps: int = Field(ge=0, default=0)
+
+
 
 class AdaptiveIntelligenceState(BaseModel):
     """Typed contract for adaptive intelligence runtime status."""
@@ -764,6 +789,8 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "evolution.proposal.created": EvolutionProposal,
     "evolution.shadow.verdict": ShadowResult,
     "evolution.promotion.decision": EvolutionPromotionDecision,
+    "evolution.twin.decision": TwinDecisionEvent,
+    "evolution.twin.training_update": TwinTrainingUpdateEvent,
     "evolution.risk_config.mutation": RiskConfigMutationProposal,
     "safety.constitution.violation": ConstitutionViolation,
     "safety.constitution.audit": ConstitutionAudit,

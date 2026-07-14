@@ -112,3 +112,67 @@ pass_reason
 # pass_reason
 # wall_budget_exhausted
 ```
+
+## 8. Perfect Birth Phase Success Metrics (KPI Dashboard)
+
+After certificate issuance and during sustained autonomous runs (autonomy loops, recovery, twin gates), track these **measurable success metrics** to decide when Birth Phase is "perfect" and we can graduate to **Phase 2** (advanced wall triggers, dynamic spawning, REAL broker with twin gate).
+
+| Metric (KPI) | Definition / Source | Target (initial) | Min samples / window | How to observe |
+|--------------|---------------------|------------------|----------------------|----------------|
+| Twin accuracy vs Steve | % agreement: twin recommendation (score >= threshold on features) matches Steve label (APPROVE/VETO) from registry. `compute_steve_agreement_pct` + `monitoring_twin_training.jsonl` (twin_steve_agreement_pct). Complements avg_error. | >= 80% | >=30 labels (rolling) | `python -m lumina_launcher twin metrics`<br>`tail state/monitoring_twin_training.jsonl`<br>`GET /api/monitoring/...` |
+| Autonomy (never-stop) recovery success | `autonomous_recovery_rate_pct` = successes/attempts from `WallAdaptationState` + `BirthAutonomyRecoveryMetrics` (via progress/checkpoint/bus). Includes twin-assisted CONTINUE + phoenix + adaptation. | >= 85% | >=8 attempts (recent stages) | Birth progress JSON `autonomous_recovery_rate_pct`<br>`grep autonomous_recovery` logs<br>Bus topic birth.autonomy.recovery.metrics |
+| % auto-approved decisions | `autonomy_level_pct` = (auto_approved_total / decisions_total) * 100. From `AutonomySnapshot` / `compute_autonomy_snapshot` on `monitoring_twin_decisions.jsonl` (high-conf >=0.80 + rec + no risk). | >= 60% | >=20 decisions (24h) | `lumina_core/runtime/runtime_twin_oversight`<br>`monitoring_autonomy_metrics.jsonl`<br>oversight_status() |
+| Shadow / twin alignment | % cases where twin rec consistent with shadow outcome (pnl>0 implies rec, or evaluate_shadow_promotion verdict). New `record_shadow_twin_alignment_monitoring` + `monitoring_shadow_twin_alignment.jsonl`. | >= 75% | >=5-10 shadow events | `state/monitoring_shadow_twin_alignment.jsonl`<br>Perfect Birth KPIs in /ops-data |
+| Supporting (fail-closed) | autonomous_recovery_count rising; human `needs_attention`/TERMINAL_NOTIFY=0 in window; constitution_violations=0 during autonomy; OOS stable vs cert floors. | 0 violations; count ↑ | Sustained period | `lumina_birth_progress.json` (autonomy_*, constitution_violations)<br>certificate + scorecard |
+
+**New JSONL / monitoring files**:
+- `state/monitoring_twin_training.jsonl` (now carries twin_steve_agreement_pct)
+- `state/monitoring_autonomy_metrics.jsonl`
+- `state/monitoring_shadow_twin_alignment.jsonl`
+
+## 9. Declaring Birth Phase "Done" — Move to Phase 2
+
+**Conjunction gate** (ALL must be true for the `perfect_birth_sustained_hours` or equivalent evidence volume):
+
+- Valid `state/lumina_birth_certificate.json` (constitution_violations==0 + meets thresholds + real_data_pct high).
+- Twin accuracy vs Steve >= 80% (N>=30 recent Steve labels).
+- Autonomous recovery success rate >=85% (min 8 attempts observed, count non-decreasing).
+- Auto-approved decisions >=60% (24h, >=20 decisions).
+- Shadow/twin alignment >=75%.
+- Zero new FATAL constitution violations in the autonomy window.
+- No `TERMINAL_NOTIFY_ONLY` (i.e. human gate required) dispatches in last 48h.
+- Post-certificate OOS metrics stable (no >~3% degradation on key winrate/sharpe).
+
+**How to declare + unlock Phase 2**:
+1. Operator runs the full runbook (steps 1-8) on practice + live data profile.
+2. Confirm KPIs via CLI / curl / progress JSON + logs (transcribe).
+3. `echo $(date -Iseconds) > state/perfect_birth_complete.flag`
+4. (Optional) Set in config or marker: birth perfect complete.
+5. **Phase 2 enabled**: advanced/dynamic wall triggers, dynamic organism spawning, REAL broker integration paths with explicit twin gate (still fully subordinated to constitution + shadow aperture + PromotionGate).
+
+**Verification commands**:
+```powershell
+python -m lumina_launcher twin metrics
+curl -H "X-API-Key: ..." http://127.0.0.1:8000/api/monitoring/ops-data | jq '.perfect_birth_kpis'
+Get-Content state/lumina_birth_progress.json | ConvertFrom-Json | Select autonomy*, oos*, constitution*
+grep -iE "(twin.*(agree|accuracy|steve)|autonomous_recovery|shadow.*align|perfect_birth)" logs/lumina_full_log.csv | tail -20
+```
+See also: `GET /api/birth/status`, maturity milestones (now includes `perfect_birth_autonomy_proven`).
+
+**Log markers (add to previous)**:
+```
+twin_steve_agreement_pct
+autonomous_recovery_rate_pct
+autonomy_level_pct
+shadow_twin_aligned
+perfect_birth
+```
+
+Once declared, the organism has proven **Perfect Birth**: high-fidelity Steve twin + reliable never-stop autonomy + coherent shadow layer. Proceed to Phase 2 work.
+
+## Related docs (updated)
+
+- ADR-0031 (approval-twin-event-bus), ADR-0032 (approval-twin-human-replacement)
+- LUMINA_BIRTH_ADAPTIVE_WALL_RETRY_DESIGN.md
+- maturation_progress.py (milestones)
+- Full architecture + AGI_SAFETY (constitution always wins)

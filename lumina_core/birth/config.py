@@ -191,6 +191,15 @@ class BirthCurriculumConfig:
     death_spiral_repeat_threshold: int = 4
     death_spiral_novelty_budget: int = 3
 
+    # Perfect Birth Phase success criteria (measurable KPIs for graduation to Phase 2)
+    perfect_birth_min_twin_steve_agreement_pct: float = 80.0
+    perfect_birth_min_autonomous_recovery_rate_pct: float = 85.0
+    perfect_birth_min_auto_approved_pct: float = 60.0
+    perfect_birth_min_shadow_twin_alignment_pct: float = 75.0
+    perfect_birth_min_samples_labels: int = 30
+    perfect_birth_min_recovery_attempts: int = 8
+    perfect_birth_sustained_hours: int = 48
+
 
 @dataclass(slots=True)
 class BirthV2Config:
@@ -636,6 +645,28 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
             1, _coerce_int(cur_raw.get("stall_remediation_rollouts_per_step"), 12)
         ),
         autonomous_recovery_enabled=bool(cur_raw.get("autonomous_recovery_enabled", True)),
+        # Perfect Birth KPIs (fall back to conservative defaults)
+        perfect_birth_min_twin_steve_agreement_pct=_coerce_float(
+            cur_raw.get("perfect_birth_min_twin_steve_agreement_pct"), 80.0
+        ),
+        perfect_birth_min_autonomous_recovery_rate_pct=_coerce_float(
+            cur_raw.get("perfect_birth_min_autonomous_recovery_rate_pct"), 85.0
+        ),
+        perfect_birth_min_auto_approved_pct=_coerce_float(
+            cur_raw.get("perfect_birth_min_auto_approved_pct"), 60.0
+        ),
+        perfect_birth_min_shadow_twin_alignment_pct=_coerce_float(
+            cur_raw.get("perfect_birth_min_shadow_twin_alignment_pct"), 75.0
+        ),
+        perfect_birth_min_samples_labels=max(
+            5, _coerce_int(cur_raw.get("perfect_birth_min_samples_labels"), 30)
+        ),
+        perfect_birth_min_recovery_attempts=max(
+            1, _coerce_int(cur_raw.get("perfect_birth_min_recovery_attempts"), 8)
+        ),
+        perfect_birth_sustained_hours=max(
+            1, _coerce_int(cur_raw.get("perfect_birth_sustained_hours"), 48)
+        ),
         phoenix_loop_enabled=bool(cur_raw.get("phoenix_loop_enabled", True)),
         phoenix_max_cycles=max(1, _coerce_int(cur_raw.get("phoenix_max_cycles"), 12)),
         phoenix_widen_data_after_cycles=max(

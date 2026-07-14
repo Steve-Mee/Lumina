@@ -179,6 +179,9 @@ violations = []
 score = 0.0
 
 # 6. Constitutional screening (fail-closed).
+# LAST LINE OF DEFENSE: even if a tricked twin or upstream selection approved the DNA,
+# the sandbox worker *always* re-runs the full TradingConstitution audit before any fitness.
+# Violations here make passed=False regardless of twin recommendation.
 try:
     from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
     found = TRADING_CONSTITUTION.audit(dna_content, mode=mode, raise_on_fatal=False)

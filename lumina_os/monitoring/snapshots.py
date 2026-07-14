@@ -178,6 +178,9 @@ def monitoring_paths() -> dict[str, str]:
         "reasoning_latency": str(state / "monitoring_reasoning_latency.jsonl"),
         "model_load_times": str(state / "monitoring_model_load_times.jsonl"),
         "twin_training": str(state / "monitoring_twin_training.jsonl"),
+        "twin_accuracy": str(state / "monitoring_twin_training.jsonl"),  # includes twin_steve_agreement_pct
+        "autonomy_metrics": str(state / "monitoring_autonomy_metrics.jsonl"),
+        "shadow_twin_alignment": str(state / "monitoring_shadow_twin_alignment.jsonl"),
         "first_boot_progress": str(state / "lumina_birth_progress.json"),
         "runtime_metrics": str(state / "monitoring_runtime_metrics.json"),
         "config_yaml": str(repo / "config.yaml"),

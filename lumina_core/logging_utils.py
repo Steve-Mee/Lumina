@@ -405,3 +405,142 @@ def record_reasoning_latency_monitoring(
     if daily_pnl is not None:
         payload["daily_pnl"] = float(daily_pnl)
     _append_jsonl(_monitoring_state_path("monitoring_reasoning_latency.jsonl"), payload)
+
+
+# =============================================================================
+# Autonomy snapshot + Perfect Birth Phase metrics (added for measurable success KPIs)
+# Implements referenced-but-missing compute_autonomy_snapshot + recorders.
+# Used by RuntimeTwinOversight and birth autonomy observability.
+# =============================================================================
+
+def classify_twin_decision_outcome(*, recommendation: bool, score: float, risk_flags: list[str] | None = None) -> str:
+    """Classify twin outcome for autonomy calculations (matches runtime_twin_oversight._classify_outcome)."""
+    conf = float(score or 0.0)
+    risks = list(risk_flags or [])
+    _AUTO_CONF = 0.80
+    if conf >= _AUTO_CONF:
+        if recommendation and not risks:
+            return "auto_approved"
+        if not recommendation:
+            return "veto"
+    return "deferred"
+
+
+def compute_autonomy_snapshot(window_hours: int = 24) -> dict[str, Any]:
+    """Compute rolling AutonomySnapshot dict from monitoring_twin_decisions.jsonl.
+
+    Respects LUMINA_WORKSPACE_ROOT for test isolation. Filters to recent window.
+    Returns keys matching AutonomySnapshot + autonomy_level_pct.
+    """
+    path = _monitoring_state_path("monitoring_twin_decisions.jsonl")
+    decisions_total = 0
+    auto_approved_total = 0
+    veto_total = 0
+    deferred_total = 0
+
+    if not path.exists():
+        return {
+            "decisions_total": 0,
+            "auto_approved_total": 0,
+            "veto_total": 0,
+            "deferred_total": 0,
+            "autonomy_level_pct": 0.0,
+        }
+
+    try:
+        lines = path.read_text(encoding="utf-8").strip().splitlines()
+        cutoff = None
+        if window_hours and window_hours > 0:
+            from datetime import datetime, timedelta, timezone as _tz
+            cutoff = datetime.now(_tz.utc) - timedelta(hours=int(window_hours))
+
+        for raw in lines:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                row = json.loads(raw)
+            except Exception:
+                continue
+
+            ts_raw = str(row.get("timestamp", "") or "").strip()
+            if cutoff and ts_raw:
+                try:
+                    ts = datetime.fromisoformat(ts_raw.replace("Z", "+00:00"))
+                    if ts.tzinfo is None:
+                        ts = ts.replace(tzinfo=_tz.utc)
+                    if ts < cutoff:
+                        continue
+                except Exception:
+                    pass  # include if unparsable
+
+            outcome = str(row.get("outcome", "") or "").strip().lower()
+            if not outcome:
+                # Fallback classify using available fields
+                rec = bool(row.get("recommendation", False))
+                sc = float(row.get("score", row.get("confidence", 0.0)) or 0.0)
+                rf = row.get("risk_flags") or []
+                outcome = classify_twin_decision_outcome(recommendation=rec, score=sc, risk_flags=list(rf) if isinstance(rf, list) else [])
+
+            decisions_total += 1
+            if outcome == "auto_approved":
+                auto_approved_total += 1
+            elif outcome == "veto":
+                veto_total += 1
+            else:
+                deferred_total += 1
+    except Exception:
+        pass
+
+    denom = max(1, decisions_total)
+    autonomy_level_pct = round((auto_approved_total / denom) * 100.0, 2)
+    return {
+        "decisions_total": int(decisions_total),
+        "auto_approved_total": int(auto_approved_total),
+        "veto_total": int(veto_total),
+        "deferred_total": int(deferred_total),
+        "autonomy_level_pct": float(autonomy_level_pct),
+    }
+
+
+def record_autonomy_metrics_monitoring(autonomy: dict[str, Any]) -> None:
+    """Append hourly/rollup autonomy metrics (used by RuntimeTwinOversight.maybe_record_autonomy_rollup)."""
+    payload: dict[str, Any] = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    if isinstance(autonomy, dict):
+        payload.update(autonomy)
+    _append_jsonl(_monitoring_state_path("monitoring_autonomy_metrics.jsonl"), payload)
+
+
+def record_twin_steve_accuracy_monitoring(*, agreement_pct: float, samples: int, avg_error: float | None = None) -> None:
+    """Record twin vs Steve label agreement % (core 'twin accuracy vs Steve' KPI for Perfect Birth Phase)."""
+    payload = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "twin_steve_agreement_pct": round(float(agreement_pct or 0.0), 2),
+        "samples": int(samples or 0),
+    }
+    if avg_error is not None:
+        payload["avg_prediction_error"] = float(avg_error)
+    _append_jsonl(_monitoring_state_path("monitoring_twin_training.jsonl"), payload)
+
+
+def record_shadow_twin_alignment_monitoring(
+    *,
+    aligned: bool,
+    shadow_pnl: float,
+    twin_recommendation: bool,
+    confidence: float | None = None,
+    dna_hash: str = "",
+) -> None:
+    """Record alignment between twin decision and shadow outcome (for shadow/twin alignment KPI)."""
+    payload = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "aligned": bool(aligned),
+        "shadow_pnl": float(shadow_pnl or 0.0),
+        "twin_recommendation": bool(twin_recommendation),
+        "dna_hash": str(dna_hash or "")[:64],
+    }
+    if confidence is not None:
+        payload["confidence"] = float(confidence)
+    _append_jsonl(_monitoring_state_path("monitoring_shadow_twin_alignment.jsonl"), payload)

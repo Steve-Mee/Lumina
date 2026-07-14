@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig, BirthRewardConfig
-from lumina_core.birth.curriculum import CurriculumStage
+from lumina_core.birth.curriculum import CurriculumStage, graduation_requires_clean_constitution
 from lumina_core.birth.meta_self_eval import (
     ProvisionalFallbackResult,
     SelfEvalPhase,
@@ -86,6 +86,7 @@ class LearningSnapshot:
     volume_gate_passed: bool = False
     range_flat_ratio: float = 0.0
     range_round_trips: int = 0
+    constitution_violations: int = 0
 
     @property
     def thin_buffer(self) -> bool:
@@ -279,7 +280,12 @@ def _recovery_from_str(strategy: str) -> RecoveryStrategy:
 
 @dataclass(slots=True)
 class BirthMetaController:
-    """Observe birth learning signals and recommend recovery / curriculum adjustments."""
+    """Observe birth learning signals and recommend recovery / curriculum adjustments.
+
+    approval_twin (optional): ApprovalTwinAgent used as primary auto-approval signal
+    for evolution steps / policy candidates during birth. Calls are best-effort and
+    emit to EventBus.
+    """
 
     cfg: BirthCurriculumConfig
     baseline_reward: BirthRewardConfig
@@ -292,6 +298,7 @@ class BirthMetaController:
     rollouts_since_review: int = 0
     self_eval: SelfEvalState = field(default_factory=SelfEvalState)
     self_eval_history: list[dict[str, Any]] = field(default_factory=list)
+    approval_twin: Any | None = field(default=None)  # Proactive twin (ApprovalTwinAgent) for birth auto-approval + bus events
 
     def __post_init__(self) -> None:
         self.active_reward = replace(self.baseline_reward)
@@ -382,6 +389,7 @@ class BirthMetaController:
         range_flat_ratio: float = 0.0,
         range_round_trips: int = 0,
         oos_proxy_history: list[float] | None = None,
+        constitution_violations: int = 0,
     ) -> tuple[LearningSnapshot, StallDetectionResult]:
         stall = detect_stall(
             winrate_history=winrate_history,
@@ -418,8 +426,34 @@ class BirthMetaController:
             volume_gate_passed=stage_trades >= required_trades,
             range_flat_ratio=float(range_flat_ratio),
             range_round_trips=int(range_round_trips),
+            constitution_violations=max(0, int(constitution_violations)),
         )
         return snap, stall
+
+    def _constitution_remediation_plan(self, snap: LearningSnapshot) -> MetaActionPlan | None:
+        if snap.constitution_violations <= 0 or not snap.volume_gate_passed:
+            return None
+        if not graduation_requires_clean_constitution(snap.stage):
+            return None
+        reward_tweak = self._apply_reward_tweak(snap)
+        if reward_tweak is None:
+            step = float(self.cfg.meta_reward_tweak_step)
+            cap = float(self.cfg.meta_max_expectancy_coeff)
+            new_coeff = min(cap, self.active_reward.expectancy_coeff + step)
+            if new_coeff > self.active_reward.expectancy_coeff:
+                reward_tweak = replace(self.active_reward, expectancy_coeff=new_coeff)
+        explore_steps = max(
+            200,
+            int(self.cfg.exploration_steps * self.cfg.strong_recovery_explore_fraction),
+        )
+        return MetaActionPlan(
+            primary=RecoveryStrategy.EXPLORE_REDUCE,
+            secondary=(RecoveryStrategy.REWARD_SHAPING_TWEAK,),
+            explore_steps=explore_steps,
+            reward_tweak=reward_tweak,
+            rationale="constitution_remediation",
+            snapshot=snap,
+        )
 
     def _apply_reward_tweak(self, snap: LearningSnapshot) -> BirthRewardConfig | None:
         if snap.learning_health == LearningHealth.IMPROVING:
@@ -456,6 +490,10 @@ class BirthMetaController:
                 explore_steps=base_explore_steps,
                 snapshot=snap,
             )
+
+        constitution_plan = self._constitution_remediation_plan(snap)
+        if constitution_plan is not None:
+            return constitution_plan
 
         explore_steps = base_explore_steps
         explore_fraction: float | None = None
@@ -523,6 +561,35 @@ class BirthMetaController:
     def decide_after_rollout(self, snap: LearningSnapshot) -> MetaActionPlan:
         if not self.enabled:
             return _hold_plan(snap, "meta_controller_disabled")
+
+        constitution_plan = self._constitution_remediation_plan(snap)
+        if constitution_plan is not None:
+            return constitution_plan
+
+        # Proactive twin call (primary auto-approval layer) — best effort.
+        # Triggers TwinDecisionEvent on bus when a usable DNA-like context exists.
+        # In birth we synthesize a minimal PolicyDNA proxy from snapshot for scoring.
+        if self.approval_twin is not None:
+            try:
+                from lumina_core.evolution.dna_registry import PolicyDNA
+                proxy_content = {
+                    "birth_stage": getattr(snap, "stage", None),
+                    "winrate": float(getattr(snap, "winrate_velocity", 0.0) or 0.0),
+                    "trades": int(getattr(snap, "stage_trades", 0) or 0),
+                }
+                proxy_dna = PolicyDNA.create(
+                    prompt_id="birth_meta_proxy",
+                    version="birth",
+                    content=proxy_content,
+                    fitness_score=float(snap.winrate_velocity or 0.5),
+                    generation=0,
+                    mutation_rate=0.05,
+                    lineage_hash="birth",
+                )
+                _ = self.approval_twin.evaluate_dna_promotion(proxy_dna)
+                # Twin signal only. Real DNA paths always enforce via ConstitutionalGuard + sandbox (see ADR-0032 + constitution invariant 1).
+            except Exception:
+                pass  # never break meta decision
 
         if snap.learning_health == LearningHealth.IMPROVING and snap.volume_gate_passed:
             reward_tweak = self._apply_reward_tweak(snap)
@@ -639,6 +706,10 @@ class BirthMetaController:
     def decide_periodic_review(self, snap: LearningSnapshot) -> MetaActionPlan:
         if not self.enabled:
             return _hold_plan(snap, "meta_controller_disabled")
+
+        constitution_plan = self._constitution_remediation_plan(snap)
+        if constitution_plan is not None:
+            return constitution_plan
 
         if snap.learning_health == LearningHealth.IMPROVING:
             secondary: list[RecoveryStrategy] = []

@@ -56,6 +56,7 @@ def test_maturation_eligible_for_real_all_milestones(tmp_path: Path) -> None:
         "evolution_proof_passed",
         "sim_real_guard_stable",
         "promotion_gate_passed",
+        "perfect_birth_autonomy_proven",
     ):
         record_maturation_milestone(tmp_path, mid)
 

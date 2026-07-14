@@ -32,6 +32,7 @@ from lumina_core.birth.curriculum import (
     should_gen0_soft_pass,
 )
 from lumina_core.birth.certificate_pipeline import BirthCertificatePipeline
+from lumina_core.birth.graduation_result import GraduationResult
 from lumina_core.birth.checkpoint_coordinator import BirthCheckpointCoordinator
 from lumina_core.birth.data_pipeline import (
     BirthDataPipeline,
@@ -496,9 +497,10 @@ class BirthPhaseEngineV2:
         curriculum_stage: str,
         policy_path: str,
         phase: str,
-    ) -> None:
+    ) -> GraduationResult:
         # Fail-closed: any constitution violation blocks graduation.
-        if getattr(self._constitution_guard, "violations", 0) > 0:
+        violations = int(getattr(self._constitution_guard, "violations", 0) or 0)
+        if violations > 0:
             if self.event_bus is not None:
                 try:
                     from lumina_core.agent_orchestration.schemas import ConstitutionViolation
@@ -516,8 +518,9 @@ class BirthPhaseEngineV2:
                     )
                 except Exception:
                     pass
-            raise RuntimeError(
-                f"FAIL-CLOSED: cannot graduate {stage.value} with constitution violations"
+            return GraduationResult(
+                ok=False,
+                reason=f"constitution_violations_pending:{violations}",
             )
 
         if self._pending_stage_pass_receipt is not None:
@@ -546,6 +549,7 @@ class BirthPhaseEngineV2:
             policy_path=policy_path,
             phase=phase,
         )
+        return GraduationResult(ok=True, reason="graduated")
 
     def _apply_checkpoint_stage_metrics(self, checkpoint_state: dict[str, Any]) -> dict[str, Any]:
         metrics = checkpoint_state.get("stage_metrics")

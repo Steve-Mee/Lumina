@@ -22,10 +22,14 @@ from pathlib import Path
 import pytest
 
 from lumina_core.safety.constitutional_guard import ConstitutionalGuard
+from lumina_core.safety.sandboxed_executor import SandboxedMutationExecutor
 from lumina_core.safety.trading_constitution import (
     TRADING_CONSTITUTION,
     ConstitutionalViolationError,
 )
+from lumina_core.evolution.approval_twin_agent import ApprovalTwinAgent
+from lumina_core.evolution.dna_registry import PolicyDNA
+from lumina_core.evolution.steve_values_registry import SteveValuesRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -365,3 +369,106 @@ class TestConstitutionalGuardRedTeam:
         assert result["blocked"] is True
         assert result["expected_hit"] is True
         assert not result["missed_violations"]
+
+
+# ---------------------------------------------------------------------------
+# Tricked Twin Red-Team Attacks (new for "twin can never bypass" hardening)
+# These prove that even when the twin heuristic/LLM is adversarially fed DNA
+# that would score high on features (safety words + good fitness), the twin
+# itself now refuses (via internal constitution check) and all downstream
+# gates (guard, sandbox, promotion) still block.
+# ---------------------------------------------------------------------------
+
+
+def _make_tricked_dna() -> tuple[str, PolicyDNA]:
+    """DNA that tricks twin features (contains safety/constitution words, good fitness, low mut)
+    but fatally violates multiple principles (naked orders + high risk + bypasses).
+    """
+    evil = {
+        "mutation_depth": "conservative",
+        "fitness_score": 2.5,
+        "mutation_rate": 0.05,
+        "hyperparam_suggestion": {
+            "max_risk_percent": 50.0,  # fatal in REAL
+            "drawdown_kill_percent": 30.0,  # >25 fatal
+            "daily_loss_cap": 0.0,
+        },
+        "disable_risk_controller": True,
+        "bypass_order_gatekeeper": True,
+        "disable_circuit_breaker": True,
+        "content": "risk guard constitution stop cooldown safety first",  # tricks feature extraction
+    }
+    content_str = json.dumps(evil)
+    dna = PolicyDNA.create(
+        prompt_id="tricked_twin_redteam",
+        version="evil",
+        content=content_str,
+        fitness_score=2.5,
+        generation=1,
+        mutation_rate=0.05,
+        lineage_hash="GENESIS",
+    )
+    return content_str, dna
+
+
+@pytest.mark.unit
+class TestTrickedTwinAttacks:
+    """Red-team scenarios where the twin is deliberately tricked."""
+
+    def test_twin_itself_refuses_tricked_dna(self, tmp_path: Path) -> None:
+        registry = SteveValuesRegistry(
+            sqlite_path=tmp_path / "v.sqlite3",
+            jsonl_path=tmp_path / "v.jsonl",
+        )
+        twin = ApprovalTwinAgent(registry=registry, model_path=tmp_path / "twin.json")
+        _, dna = _make_tricked_dna()
+        res = twin.evaluate_dna_promotion(dna)
+        assert res["recommendation"] is False, "Twin must refuse DNA with fatal constitution violations"
+        assert any("constitution" in str(f) for f in res.get("risk_flags", [])), res.get("risk_flags")
+
+    def test_twin_shadow_path_also_refuses(self, tmp_path: Path) -> None:
+        registry = SteveValuesRegistry(
+            sqlite_path=tmp_path / "v.sqlite3",
+            jsonl_path=tmp_path / "v.jsonl",
+        )
+        twin = ApprovalTwinAgent(registry=registry, model_path=tmp_path / "twin.json")
+        _, dna = _make_tricked_dna()
+        res = twin.evaluate_shadow_promotion(dna=dna, shadow_total_pnl=10.0, veto_blocked=False)
+        assert res["recommendation"] is False
+
+    def test_direct_constitution_still_blocks_tricked_payload(self) -> None:
+        content, _ = _make_tricked_dna()
+        violations = TRADING_CONSTITUTION.audit(content, mode="real", raise_on_fatal=False)
+        fatals = [v for v in violations if v.severity == "fatal"]
+        assert len(fatals) >= 3
+        assert any("no_naked_orders" in v.principle_name or "capital_preservation" in v.principle_name for v in fatals)
+
+    def test_guard_blocks_tricked_dna_pre_mutation_and_pre_promotion(self) -> None:
+        guard = ConstitutionalGuard()
+        content, _ = _make_tricked_dna()
+        pre = guard.check_pre_mutation(content, mode="real", raise_on_fatal=False)
+        assert not pre.passed
+        pre2 = guard.check_pre_promotion(content, mode="real", raise_on_fatal=False)
+        assert not pre2.passed
+
+    def test_sandbox_rejects_tricked_twin_approved_dna(self) -> None:
+        # Even if twin (mocked) "approved", sandbox (which re-audits) must fail the result
+        _, dna = _make_tricked_dna()
+        exec_ = SandboxedMutationExecutor(always_sandbox=True)
+        res = exec_.evaluate(dna_content=json.dumps(dna.content) if not isinstance(dna.content, str) else dna.content, mode="real")
+        assert res.passed is False or res.violations, "Sandbox must surface constitution violations from tricked payload"
+
+    def test_mock_tricked_twin_does_not_allow_promotion_flow(self, tmp_path: Path) -> None:
+        """Integration-style: mock twin to like evil DNA; drive a tiny flow and assert guard still kills it."""
+        registry = SteveValuesRegistry(sqlite_path=tmp_path / "v.sqlite3", jsonl_path=tmp_path / "v.jsonl")
+        twin = ApprovalTwinAgent(registry=registry, model_path=tmp_path / "m.json")
+        content, dna = _make_tricked_dna()
+
+        # Force the twin to "like" it (simulate a tricked backend before our internal check; the check must still win)
+        # After hardening the internal check always wins, so we just verify the outcome.
+        res = twin.evaluate_dna_promotion(dna)
+        assert res["recommendation"] is False
+
+        # The authoritative guard must also block (defense in depth)
+        guard = ConstitutionalGuard()
+        assert not guard.check_pre_promotion(content, mode="real", raise_on_fatal=False).passed

@@ -39,6 +39,7 @@ REAL_ELIGIBILITY_MILESTONES: tuple[str, ...] = (
     "evolution_proof_passed",
     "sim_real_guard_stable",
     "promotion_gate_passed",
+    "perfect_birth_autonomy_proven",  # Perfect Birth Phase graduation (twin accuracy + autonomy + alignment KPIs met)
 )
 
 MILESTONE_LABELS: dict[str, str] = {
@@ -47,6 +48,7 @@ MILESTONE_LABELS: dict[str, str] = {
     "sim_real_guard_stable": "SIM stability READY_FOR_REAL (5-day green streak)",
     "promotion_gate_passed": "Promotion gate passed (shadow validation)",
     "human_real_approval": "Operator REAL approval recorded",
+    "perfect_birth_autonomy_proven": "Perfect Birth Phase complete (twin vs Steve accuracy + never-stop recovery + auto-approval + shadow alignment)",
 }
 
 MILESTONE_TO_PHASE: dict[str, MaturationPhase] = {
@@ -54,6 +56,7 @@ MILESTONE_TO_PHASE: dict[str, MaturationPhase] = {
     "birth_started": MaturationPhase.BIRTH,
     "birth_certificate_issued": MaturationPhase.AWAKENING,
     "evolution_proof_passed": MaturationPhase.AWAKENING,
+    "perfect_birth_autonomy_proven": MaturationPhase.AWAKENING,
     "deck_unlocked": MaturationPhase.PLAYGROUND,
     "first_sim_order_placed": MaturationPhase.PLAYGROUND,
     "sim_mirror_api_ok": MaturationPhase.PLAYGROUND,

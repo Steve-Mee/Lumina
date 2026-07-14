@@ -98,6 +98,7 @@ def evaluate_terminal_stall(
     autonomy_state: OrganismAutonomyState,
     pending: dict[str, Any],
     curriculum_stage: str,
+    approval_twin: Any = None,
     stage_trades: int,
     required: int,
     constitution_violations: int,
@@ -111,6 +112,13 @@ def evaluate_terminal_stall(
         stall_reason = str(
             pending.get("terminal_stall_reason") or pending.get("blocker_reason") or "stage_stalled"
         )
+        if approval_twin is not None:
+            try:
+                from lumina_core.evolution.dna_registry import PolicyDNA
+                dna = PolicyDNA.create("birth_autonomy", "terminal", {"stage": curriculum_stage}, 0.3, 0, 0.0, "auto")
+                _ = approval_twin.evaluate_dna_promotion(dna)
+            except Exception:
+                pass
         return AutonomyDecision(
             dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
             needs_attention=True,
@@ -153,6 +161,70 @@ def evaluate_terminal_stall(
             autonomy_metrics=autonomy_state.to_metrics(),
             message="Provisional graduation granted — evolution deferred path.",
         )
+
+    # === Twin as default in birth-phase autonomy loops when confidence high ===
+    # When the ApprovalTwin (trained on Steve labels) is confident, it replaces the
+    # human gate. This is the primary 24/7 evolution path.
+    if approval_twin is not None:
+        try:
+            from lumina_core.evolution.dna_registry import PolicyDNA
+
+            proxy = PolicyDNA.create(
+                prompt_id="birth_autonomy_twin_gate",
+                version="autonomy",
+                content={
+                    "stage": curriculum_stage,
+                    "stall_reason": stall_reason,
+                    "fitness": fitness_signal,
+                    "trades": stage_trades,
+                },
+                fitness_score=float(fitness_signal),
+                generation=0,
+                mutation_rate=0.03,
+                lineage_hash="birth-autonomy",
+            )
+            twin_res = approval_twin.evaluate_dna_promotion(proxy)
+            t_conf = float(twin_res.get("confidence", 0.0) or 0.0)
+            t_rec = bool(twin_res.get("recommendation", False))
+            t_risks = list(twin_res.get("risk_flags", []) or [])
+            high_conf = t_conf >= 0.80
+
+            # Explicit fail-closed subordination of twin: respect constitution_violations already
+            # accumulated from BirthConstitutionGuard / trading constitution in this stage.
+            # Twin judgment never overrides a detected constitutional violation.
+            if t_rec and int(constitution_violations or 0) > 0:
+                t_rec = False
+                if "prior_constitution_violations" not in t_risks:
+                    t_risks.append("prior_constitution_violations")
+                high_conf = False
+
+            # Note: the proxy DNA here is synthetic (birth stage metadata). Real trading DNA
+            # mutations are always routed through ConstitutionalGuard.check_pre_* + SandboxedMutationExecutor
+            # regardless of any twin recommendation (see mutation_pipeline / generation_runner / orchestrator).
+
+            if high_conf and t_rec and len(t_risks) == 0:
+                autonomy_state.autonomous_recovery_count += 1
+                return AutonomyDecision(
+                    dispatch=RecoveryDispatch.CONTINUE_LOOP,
+                    needs_attention=False,
+                    retryable=True,
+                    stall_reason=stall_reason,
+                    recommended_action=map_recommended_to_service_action(recommended or "resume_stalled_stage"),
+                    autonomy_metrics=autonomy_state.to_metrics(),
+                    message=f"Twin high-conf autonomous approval (conf={t_conf:.2%})",
+                )
+            if high_conf and not t_rec:
+                return AutonomyDecision(
+                    dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+                    needs_attention=True,
+                    retryable=False,
+                    stall_reason=stall_reason,
+                    message=f"Twin high-conf veto (conf={t_conf:.2%}) — operator attention required.",
+                )
+        except Exception:
+            # Never break autonomy on twin error; fall through to cfg logic
+            pass
+    # ================================================================================
 
     if _phoenix_eligible(cfg, autonomy_state) and (
         remediation_cycles_exhausted

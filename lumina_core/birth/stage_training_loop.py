@@ -63,19 +63,21 @@ def run_stage_research_loop(host: Any, **kwargs: Any) -> dict[str, Any] | None:
         except Exception:
             pass
 
-    # Propagate any monkeypatches done on this compat module (what tests target)
-    # into the handler module that actually hosts the moved function body.
-    # This ensures from-imported names inside the relocated code see the fakes.
+    # Propagate monkeypatches from this compat module into stage_loop_rollout
+    # (where the loop body lives after the stage_rollout_executor split).
     try:
-        import lumina_core.birth.stage_rollout_executor as _handler_mod
+        import lumina_core.birth.stage_loop_rollout as _handler_mod
+        import lumina_core.birth.stage_rollout_executor as _facade_mod
 
         _compat_mod = sys.modules[__name__]
         for _name in ("run_policy_rollout", "mine_winning_patterns", "expand_birth_data"):
             if hasattr(_compat_mod, _name):
-                setattr(_handler_mod, _name, getattr(_compat_mod, _name))
-        # time is imported in both modules; tests monkeypatch stage_training_loop.time.time.
+                _fake = getattr(_compat_mod, _name)
+                setattr(_handler_mod, _name, _fake)
+                setattr(_facade_mod, _name, _fake)
         if hasattr(_compat_mod, "time"):
             _handler_mod.time = _compat_mod.time
+            _facade_mod.time = _compat_mod.time
     except Exception:
         pass
 

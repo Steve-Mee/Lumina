@@ -67,8 +67,12 @@ def test_constitution_blocks_stage3_adaptation() -> None:
         stage=CurriculumStage.STAGE3_MIXED,
         constitution_violations=1,
     )
-    assert not constitution_blocks_adaptation(
+    assert constitution_blocks_adaptation(
         stage=CurriculumStage.STAGE1_TREND,
+        constitution_violations=5,
+    )
+    assert not constitution_blocks_adaptation(
+        stage=CurriculumStage.STAGE4_POLISH,
         constitution_violations=5,
     )
 

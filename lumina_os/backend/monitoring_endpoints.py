@@ -343,11 +343,20 @@ async def get_ops_data(
         except (OSError, json.JSONDecodeError):
             shadow = {}
     daily_pnl = _load_jsonl_file(state / "monitoring_daily_pnl.jsonl", limit=30)
+    # Perfect Birth Phase KPIs (twin accuracy vs Steve, autonomy, alignment)
+    twin_accuracy = _load_jsonl_file(state / "monitoring_twin_training.jsonl", limit=5)
+    autonomy_rollup = _load_jsonl_file(state / "monitoring_autonomy_metrics.jsonl", limit=5)
+    shadow_align = _load_jsonl_file(state / "monitoring_shadow_twin_alignment.jsonl", limit=10)
     return {
         "twin_decisions": twin,
         "gate_rejections": gate,
         "shadow_runs": shadow,
         "daily_pnl_trend": daily_pnl,
+        "perfect_birth_kpis": {
+            "twin_accuracy_latest": twin_accuracy,
+            "autonomy_rollup_latest": autonomy_rollup,
+            "shadow_twin_alignment_latest": shadow_align,
+        },
     }
 
 

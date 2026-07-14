@@ -9,6 +9,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _EXECUTOR = _ROOT / "lumina_core" / "birth" / "stage_rollout_executor.py"
+_ROLLOUT = _ROOT / "lumina_core" / "birth" / "stage_loop_rollout.py"
 
 _FORBIDDEN_MODULES: set[str] = set()
 
@@ -40,7 +41,9 @@ def test_stage_rollout_executor_avoids_forbidden_orchestration_imports() -> None
 
 @pytest.mark.unit
 def test_stage_rollout_executor_uses_bus_client() -> None:
-    text = _EXECUTOR.read_text(encoding="utf-8")
+    wrapper = _EXECUTOR.read_text(encoding="utf-8")
+    assert "stage_loop_rollout" in wrapper
+    text = _ROLLOUT.read_text(encoding="utf-8")
     assert "BirthBusClient" in text
     assert "wall_evaluate_trigger" in text
     assert "adaptation_try_recovery" in text

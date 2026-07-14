@@ -4,7 +4,22 @@ from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from typing import Any
 
+from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.evolution_guard import EvolutionGuard
+
+
+def _constitutional_test_dna(*, dna_hash: str = "abc123") -> PolicyDNA:
+    return PolicyDNA.create(
+        prompt_id="evolution_guard_test",
+        version=dna_hash,
+        content={
+            "hyperparam_suggestion": {"max_risk_percent": 1.0, "drawdown_kill_percent": 8.0},
+            "mutation_depth": "conservative",
+            "approval_required": True,
+        },
+        fitness_score=1.0,
+        generation=0,
+    )
 
 
 @dataclass
@@ -53,7 +68,7 @@ def test_real_mode_requires_approval_twin_recommendation() -> None:
     guard = EvolutionGuard(confidence_threshold=0.85)
     shadow_runner = _MockShadowRunner()
     twin = _MockTwin()
-    dna = type("DNA", (), {"hash": "abc123"})()
+    dna = _constitutional_test_dna(dna_hash="abc123")
 
     assert guard.requires_approval_twin(mode="real") is True
     # Without shadow_runner, dna, approval_twin – must return False in REAL mode
@@ -106,7 +121,7 @@ def test_real_mode_signed_approval_consults_twin_when_recommendation_missing() -
     guard = EvolutionGuard(confidence_threshold=0.85)
     twin = _Twin()
     shadow_runner = _MockShadowRunner()
-    dna = type("DNA", (), {"hash": "xyz"})()
+    dna = _constitutional_test_dna(dna_hash="xyz")
 
     result = guard.has_signed_approval(
         mode="real",

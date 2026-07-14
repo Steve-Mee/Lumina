@@ -248,6 +248,85 @@ class ConstitutionalGuard:
         return self._constitution
 
     # ------------------------------------------------------------------
+    # Twin subordination helpers (explicit fail-closed paths)
+    # ------------------------------------------------------------------
+
+    def veto_unless_constitutional(
+        self,
+        *,
+        dna_content: str | dict | Any,
+        mode: str,
+        current_recommendation: bool = True,
+    ) -> bool:
+        """Return False (veto) if the DNA has any FATAL constitutional violation.
+
+        This is the explicit integration point for ApprovalTwinAgent and callers:
+        effective = twin_recommendation and guard.veto_unless_constitutional(...)
+
+        - Normalizes str/dict/PolicyDNA-like content.
+        - Always fail-closed: exception during check or any fatal -> False.
+        - Mode-aware (REAL stricter).
+        - Does not raise; returns boolean for easy AND-ing with twin output.
+        """
+        try:
+            content_str: str
+            if isinstance(dna_content, str):
+                content_str = dna_content
+            elif isinstance(dna_content, dict):
+                import json as _json
+                content_str = _json.dumps(dna_content, sort_keys=True)
+            else:
+                # PolicyDNA or other object with .content
+                raw = getattr(dna_content, "content", dna_content)
+                if isinstance(raw, (dict, list)):
+                    import json as _json
+                    content_str = _json.dumps(raw, sort_keys=True)
+                else:
+                    content_str = str(raw or "")
+
+            # Use the authoritative check (pre_mutation is sufficient and lightweight)
+            result = self.check_pre_mutation(content_str, mode=mode, raise_on_fatal=False)
+            if not result.passed:
+                return False
+            return bool(current_recommendation)
+        except Exception:
+            # Fail-closed: any problem evaluating the guard for the twin path blocks.
+            logger.error("ConstitutionalGuard.veto_unless_constitutional unexpected error (fail-closed) — blocking")
+            return False
+
+    def check_twin_recommendation(
+        self,
+        *,
+        dna_content: str | dict | Any,
+        mode: str,
+        twin_recommendation: bool,
+        twin_risk_flags: list[str] | None = None,
+    ) -> GuardResult:
+        """Run full pre-promotion style check and return a GuardResult whose .passed is the
+        AND of constitution pass and (twin_recommendation only if constitution passes).
+
+        Useful for logging/audit paths that want the full GuardResult shape including
+        twin context. The returned result always reflects constitution reality first.
+        """
+        # First get the raw constitutional result (authoritative)
+        content_for_check = dna_content
+        if not isinstance(content_for_check, str):
+            try:
+                import json as _json
+                if isinstance(content_for_check, dict):
+                    content_for_check = _json.dumps(content_for_check, sort_keys=True)
+                else:
+                    raw = getattr(content_for_check, "content", content_for_check)
+                    content_for_check = _json.dumps(raw, sort_keys=True) if isinstance(raw, dict) else str(raw or "")
+            except Exception:
+                content_for_check = str(dna_content or "")
+
+        base = self.check_pre_promotion(content_for_check, mode=mode, raise_on_fatal=False)
+
+        # Return constitution truth; twin AND is applied via veto_ helpers by callers.
+        return base
+
+    # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 

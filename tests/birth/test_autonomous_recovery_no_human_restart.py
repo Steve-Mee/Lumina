@@ -79,7 +79,7 @@ def test_adaptive_stall_never_calls_human_resume_apis(
             rollout_steps=200,
         )
 
-    monkeypatch.setattr("lumina_core.birth.stage_rollout_executor.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.stage_loop_rollout.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
     monkeypatch.setattr(engine, "_stop_requested", lambda: rollout_calls["n"] >= 18)

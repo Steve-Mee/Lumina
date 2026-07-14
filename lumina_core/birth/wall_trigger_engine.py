@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
-from lumina_core.birth.curriculum import CurriculumStage
+from lumina_core.birth.curriculum import CurriculumStage, graduation_requires_clean_constitution
 from lumina_core.birth.plateau_escalator import should_trades_beyond_gate_hard_stop
 from lumina_core.birth.stage_scorecard import compute_stage_blocker
 
@@ -25,8 +25,8 @@ def constitution_blocks_adaptation(
     stage: CurriculumStage,
     constitution_violations: int,
 ) -> bool:
-    """Stage 3 mixed gate fails on any constitution violation."""
-    return stage == CurriculumStage.STAGE3_MIXED and constitution_violations > 0
+    """Stages 1–3 require zero constitution violations before adaptation."""
+    return graduation_requires_clean_constitution(stage) and constitution_violations > 0
 
 
 def evaluate_certified_stall(
@@ -52,6 +52,37 @@ def evaluate_certified_stall(
     """Evaluate certified stage stall (stagnation + wall time)."""
     if allow_provisional or stage_trades < required:
         return WallTriggerResult(triggered=False)
+
+    blocked = constitution_blocks_adaptation(
+        stage=stage,
+        constitution_violations=constitution_violations,
+    )
+    if blocked and stage_trades >= required:
+        blocker_metric, blocker_value, blocker_reason = compute_stage_blocker(
+            stage,
+            stage_trades=stage_trades,
+            stage_wins=stage_wins,
+            hold_ratio=hold_ratio,
+            required=required,
+            constitution_violations=constitution_violations,
+            range_flat_ratio=range_flat_ratio,
+            range_round_trips=range_round_trips,
+            range_total_signals=range_total_signals,
+            cfg=cfg,
+        )
+        pending = {
+            "failure_key": failure_key,
+            "blocker_metric": blocker_metric or "constitution_violations",
+            "blocker_value": blocker_value if blocker_value is not None else float(constitution_violations),
+            "blocker_reason": blocker_reason or f"violations {constitution_violations} > 0",
+        }
+        return WallTriggerResult(
+            triggered=True,
+            trigger_type="constitution_stall",
+            failure_key=failure_key,
+            pending=pending,
+            constitution_blocked=True,
+        )
 
     blocker_metric, blocker_value, blocker_reason = compute_stage_blocker(
         stage,

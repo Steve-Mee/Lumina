@@ -398,6 +398,22 @@ def stage1_winrate_recommended(cfg: BirthCurriculumConfig) -> float:
     return float(getattr(cfg, "stage1_winrate_recommended", 0.45))
 
 
+def graduation_requires_clean_constitution(stage: CurriculumStage) -> bool:
+    return stage in {
+        CurriculumStage.STAGE1_TREND,
+        CurriculumStage.STAGE2_RANGE,
+        CurriculumStage.STAGE3_MIXED,
+    }
+
+
+def constitution_blocks_graduation(
+    *,
+    stage: CurriculumStage,
+    constitution_violations: int,
+) -> bool:
+    return graduation_requires_clean_constitution(stage) and constitution_violations > 0
+
+
 def evaluate_stage_pass(
     stage: CurriculumStage,
     *,
@@ -433,8 +449,15 @@ def evaluate_stage_pass(
 
     if stage == CurriculumStage.STAGE1_TREND:
         wr_gate = stage1_winrate_pass_threshold(cfg) if cfg is not None else 0.45
-        passed = trades >= required and winrate >= wr_gate
-        message = f"trend winrate={winrate:.2%} trades={trades}/{required} gate={wr_gate:.0%}"
+        passed = (
+            trades >= required
+            and winrate >= wr_gate
+            and constitution_violations == 0
+        )
+        message = (
+            f"trend winrate={winrate:.2%} trades={trades}/{required} "
+            f"gate={wr_gate:.0%} constitution_violations={constitution_violations}"
+        )
     elif stage == CurriculumStage.STAGE2_RANGE:
         if range_total_signals >= 50:
             metric = range_flat_ratio
@@ -444,17 +467,24 @@ def evaluate_stage_pass(
                 trades >= required
                 and 0.30 <= metric <= 0.70
                 and range_round_trips >= min_round_trips
+                and constitution_violations == 0
             )
             message = (
                 f"{metric_label}_ratio={metric:.2%} round_trips={range_round_trips} "
-                f"trades={trades}/{required} (range_ticks={range_total_signals})"
+                f"trades={trades}/{required} constitution_violations={constitution_violations} "
+                f"(range_ticks={range_total_signals})"
             )
         else:
             metric = hold_ratio
             metric_label = "hold"
-            passed = trades >= required and 0.30 <= metric <= 0.70
+            passed = (
+                trades >= required
+                and 0.30 <= metric <= 0.70
+                and constitution_violations == 0
+            )
             message = (
                 f"{metric_label}_ratio={metric:.2%} trades={trades}/{required} "
+                f"constitution_violations={constitution_violations} "
                 f"(range_ticks={range_total_signals})"
             )
     elif stage == CurriculumStage.STAGE3_MIXED:

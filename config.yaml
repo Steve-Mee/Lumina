@@ -287,6 +287,14 @@ birth_v2:
     autonomous_recovery_enabled: true
     phoenix_loop_enabled: true
     phoenix_max_cycles: 12
+    # Perfect Birth Phase measurable success criteria (used for graduation decision to Phase 2)
+    perfect_birth_min_twin_steve_agreement_pct: 80.0
+    perfect_birth_min_autonomous_recovery_rate_pct: 85.0
+    perfect_birth_min_auto_approved_pct: 60.0
+    perfect_birth_min_shadow_twin_alignment_pct: 75.0
+    perfect_birth_min_samples_labels: 30
+    perfect_birth_min_recovery_attempts: 8
+    perfect_birth_sustained_hours: 48
     phoenix_widen_data_after_cycles: 3
     death_spiral_repeat_threshold: 4
     death_spiral_novelty_budget: 3

@@ -43,6 +43,17 @@ def register_birth_gen0_dna(workspace_root: Path | str, certificate: BirthCertif
         lineage_hash=lineage,
         mutation_rate=0.0,
     )
+    # Proactive twin evaluation (primary auto layer) — emits TwinDecisionEvent to bus.
+    # Birth gen0 is high-signal; twin rec logged for audit.
+    try:
+        # caller may pass twin via closure or we use global orchestrator twin
+        from lumina_core.evolution.orchestrator_core import EvolutionOrchestrator
+        twin = getattr(EvolutionOrchestrator(), "_approval_twin", None)
+        if twin is not None:
+            _ = twin.evaluate_dna_promotion(dna)
+            # Twin is judgment provider only. Constitution, sandbox and aperture guards are never bypassed (explicit fail-closed in twin + callers).
+    except Exception:
+        pass
     registry.register_dna(dna)
     logger.info("birth.dna_handoff.registered lineage=%s", lineage)
 
@@ -89,6 +100,14 @@ def register_partial_birth_dna(
         lineage_hash=lineage[:16],
         mutation_rate=0.0,
     )
+    try:
+        from lumina_core.evolution.orchestrator_core import EvolutionOrchestrator
+        twin = getattr(EvolutionOrchestrator(), "_approval_twin", None)
+        if twin is not None:
+            _ = twin.evaluate_dna_promotion(dna)
+            # Twin is judgment provider only. Constitution, sandbox and aperture guards are never bypassed (explicit fail-closed in twin + callers).
+    except Exception:
+        pass
     registry.register_dna(dna)
     logger.info(
         "birth.dna_handoff.partial_registered stage=%s fitness=%.4f reason=%s",

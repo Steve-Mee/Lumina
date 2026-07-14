@@ -76,6 +76,19 @@ class EvolutionGuard:
                 logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_guard.py:74")
                 recommendation = False
 
+        if recommendation:
+            # Explicit fail-closed: twin rec is always subordinate to constitution.
+            # Use the guard helper (cheap) so a tricked twin cannot open a REAL zero-touch path.
+            try:
+                from lumina_core.safety.constitutional_guard import ConstitutionalGuard
+                g = ConstitutionalGuard()
+                if not g.veto_unless_constitutional(
+                    dna_content=dna, mode=mode or "real", current_recommendation=recommendation
+                ):
+                    recommendation = False
+            except Exception:
+                recommendation = False  # fail-closed on any guard resolution error
+
         if not recommendation:
             return False
 
@@ -116,12 +129,18 @@ class EvolutionGuard:
             return False
         try:
             result = approval_twin.evaluate_dna_promotion(dna)
+            rec = bool(result.get("recommendation", False)) if isinstance(result, dict) else False
         except Exception:
             logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_guard.py:116")
             return False
-        if isinstance(result, dict):
-            return bool(result.get("recommendation", False))
-        return False
+
+        # Explicit fail-closed subordination (twin output is never authoritative by itself)
+        try:
+            from lumina_core.safety.constitutional_guard import ConstitutionalGuard
+            g = ConstitutionalGuard()
+            return bool(g.veto_unless_constitutional(dna_content=dna, mode="real", current_recommendation=rec))
+        except Exception:
+            return False  # fail-closed
 
     def should_trigger_telegram(
         self,
@@ -235,7 +254,14 @@ class EvolutionGuard:
         if not shadow_ok:
             return False
 
-        if _normalize_mode(mode) == "real" and not bool(approval_twin_recommendation):
+        # Twin (ApprovalTwinAgent) is the primary auto-approval layer:
+        # - birth/SIM: auto when rec=True (twin already enforces its threshold + empty risk_flags)
+        # - REAL: required (twin rec + later full PromotionGate + shadow)
+        m = _normalize_mode(mode)
+        twin_rec = bool(approval_twin_recommendation) if approval_twin_recommendation is not None else True
+        if m in ("real", "sim", "birth") and not twin_rec:
+            # For birth/SIM the twin decision is the default auto gate (phase allows).
+            # REAL additionally requires hard gates downstream.
             return False
         return True
 

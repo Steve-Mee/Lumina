@@ -113,7 +113,7 @@ class EvolutionOrchestrator:
         self._registry = DNARegistry()
         self._guard = _compat().EvolutionGuard()
         self._values_registry = SteveValuesRegistry()
-        self._approval_twin = ApprovalTwinAgent(registry=self._values_registry)
+        self._approval_twin = ApprovalTwinAgent(registry=self._values_registry, event_bus=None)
         self._veto_registry = VetoRegistry()
         self._veto_window = VetoWindow(veto_registry=self._veto_registry, window_seconds=1800)
         self._telegram_notifier = TelegramNotifier(veto_registry=self._veto_registry)
@@ -150,6 +150,9 @@ class EvolutionOrchestrator:
 
     def bind_promotion_event_bus(self, event_bus: EventBus | None) -> None:
         self._promotion_policy = PromotionPolicy(owner=self, logger=logger, event_bus=event_bus)
+        # Also wire the ApprovalTwin so it can publish TwinDecisionEvent / TwinTrainingUpdateEvent
+        if hasattr(self, "_approval_twin") and hasattr(self._approval_twin, "bind_event_bus"):
+            self._approval_twin.bind_event_bus(event_bus)
 
     def bind_market_data_service(self, market_data_service: Any | None) -> None:
         self._market_data_service = market_data_service
@@ -816,6 +819,17 @@ class EvolutionOrchestrator:
                 twin_result = self._approval_twin.evaluate_dna_promotion(generated_dna)
                 twin_recommendation = bool(twin_result.get("recommendation", False))
                 twin_risk_flags = [str(flag) for flag in list(twin_result.get("risk_flags", []) or [])]
+                # Explicit fail-closed: constitution always wins over twin (defense against tricked twin)
+                try:
+                    if not self._constitutional_guard.veto_unless_constitutional(
+                        dna_content=getattr(generated_dna, "content", generated_dna),
+                        mode=mode,
+                        current_recommendation=twin_recommendation,
+                    ):
+                        twin_recommendation = False
+                        twin_risk_flags.append("constitution_veto_on_generated")
+                except Exception:
+                    twin_recommendation = False
 
             if not self._guard.generated_strategy_survives(
                 mode=mode,

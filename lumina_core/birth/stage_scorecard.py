@@ -536,6 +536,12 @@ def compute_stage_blocker(
                 round(winrate, 4),
                 f"winrate {winrate:.1%} < {wr_gate:.0%}",
             )
+        if constitution_violations > 0:
+            return (
+                "constitution_violations",
+                float(constitution_violations),
+                f"violations {constitution_violations} > 0",
+            )
         return (None, None, None)
     if stage == CurriculumStage.STAGE2_RANGE:
         if trades < required:
@@ -555,6 +561,12 @@ def compute_stage_blocker(
             label = "hold"
         if metric < 0.30 or metric > 0.70:
             return (label, round(metric, 4), f"{label} {metric:.1%} outside 30–70%")
+        if constitution_violations > 0:
+            return (
+                "constitution_violations",
+                float(constitution_violations),
+                f"violations {constitution_violations} > 0",
+            )
         return (None, None, None)
     if stage == CurriculumStage.STAGE3_MIXED:
         if trades < required:

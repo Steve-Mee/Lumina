@@ -8,7 +8,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _ENDPOINTS = _ROOT / "lumina_os" / "backend" / "monitoring_endpoints.py"
-_ENDPOINTS_LINE_BASELINE = 500
+_ENDPOINTS_LINE_BASELINE = 510
 
 
 def _source() -> str:

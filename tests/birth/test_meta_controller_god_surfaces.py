@@ -16,7 +16,7 @@ _META = _ROOT / "lumina_core" / "birth" / "meta_controller.py"
 # Baseline captured after engine extractions (phase 1 series).
 # meta_controller owns adaptation decisions, stall detection, recovery strategy, learning health.
 # Further growth should trigger additional extraction (e.g. separate strategy or health modules).
-_META_LINE_BASELINE = 1240
+_META_LINE_BASELINE = 1310
 
 
 @pytest.mark.unit

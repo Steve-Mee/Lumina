@@ -20,6 +20,12 @@ def _enum_val(value: Any) -> str:
     return value.value if hasattr(value, "value") else str(value)
 
 
+def reward_config_to_dict(reward: BirthRewardConfig | None) -> dict[str, Any] | None:
+    if reward is None:
+        return None
+    return asdict(reward)
+
+
 def serialize_learning_snapshot(snap: LearningSnapshot) -> dict[str, Any]:
     return {
         "winrate_history": list(snap.winrate_history),
@@ -164,6 +170,7 @@ def deserialize_meta_plan(data: dict[str, Any]) -> MetaActionPlan:
 __all__ = [
     "deserialize_learning_snapshot",
     "deserialize_meta_plan",
+    "reward_config_to_dict",
     "serialize_learning_snapshot",
     "serialize_meta_plan",
 ]
