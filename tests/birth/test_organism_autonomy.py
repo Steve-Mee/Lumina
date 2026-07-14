@@ -175,3 +175,117 @@ def test_organism_autonomy_state_from_metrics_empty() -> None:
     restored = OrganismAutonomyState.from_metrics(None)
     assert restored.autonomous_recovery_count == 0
     assert restored.phoenix.phoenix_count == 0
+
+
+class _TwinStub:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+        self.calls = 0
+
+    def evaluate_dna_promotion(self, _dna: object) -> dict[str, object]:
+        self.calls += 1
+        return self.payload
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_twin_high_conf_approval() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _TwinStub({"confidence": 0.92, "recommendation": True, "risk_flags": []})
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled", "blocker_metric": "trend_winrate", "blocker_value": 0.4},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+        recommended_recovery_action="expand_data",
+    )
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
+    assert "Twin high-conf autonomous approval" in decision.message
+    assert twin.calls == 1
+    assert autonomy.autonomous_recovery_count == 1
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_twin_high_conf_veto() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _TwinStub({"confidence": 0.95, "recommendation": False, "risk_flags": []})
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled", "blocker_metric": "trend_winrate", "blocker_value": 0.4},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.needs_attention is True
+    assert "Twin high-conf veto" in decision.message
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_twin_subordinates_constitution_violations() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _TwinStub({"confidence": 0.95, "recommendation": True, "risk_flags": []})
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled", "blocker_metric": "trend_winrate", "blocker_value": 0.4},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=200,
+        required=500,
+        constitution_violations=2,
+        fitness_signal=0.30,
+        recommended_recovery_action="expand_data",
+    )
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
+    assert decision.recommended_action == "expand_and_retry"
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_disabled_returns_notify_only_with_twin_present() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _TwinStub({"confidence": 0.5, "recommendation": True, "risk_flags": []})
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(autonomous_recovery_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled"},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=100,
+        required=200,
+        constitution_violations=0,
+        fitness_signal=0.2,
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.needs_attention is True
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_twin_error_falls_through_to_recommended() -> None:
+    class _BrokenTwin:
+        def evaluate_dna_promotion(self, _dna: object) -> dict[str, object]:
+            raise RuntimeError("twin offline")
+
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled", "blocker_metric": "trend_winrate", "blocker_value": 0.4},
+        curriculum_stage="stage1_trend",
+        approval_twin=_BrokenTwin(),
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+        recommended_recovery_action="phoenix_reset",
+    )
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
+    assert decision.recommended_action == "phoenix_recovery"
