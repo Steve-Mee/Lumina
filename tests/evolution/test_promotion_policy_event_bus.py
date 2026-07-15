@@ -157,6 +157,14 @@ def test_run_shadow_validation_gate_publishes_violation_when_gate_raises(monkeyp
     assert events[0].payload["dna_hash"] == dna.hash
     assert "evidence_unavailable" in events[0].payload["detail"]
 
+    # Shadow/promotion topics published for Twin observe (even when gate fails)
+    shadow_events = event_bus.history("evolution.shadow.verdict", limit=5)
+    promo_events = event_bus.history("evolution.promotion.decision", limit=5)
+    assert len(shadow_events) >= 1
+    assert shadow_events[0].payload.get("dna_hash") == dna.hash
+    assert len(promo_events) >= 1
+    assert promo_events[0].payload.get("allowed") is False
+
 
 @pytest.mark.unit
 def test_container_binding_wires_orchestrator_promotion_policy_event_bus(monkeypatch: pytest.MonkeyPatch) -> None:

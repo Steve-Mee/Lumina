@@ -1,4 +1,9 @@
-"""Stage loop recovery helpers — stall/adaptation/plateau orchestration via BirthBusClient."""
+"""Stage loop recovery helpers — stall/adaptation/plateau/wall/phoenix orchestration via BirthBusClient.
+
+Heavy decision trees, ladder advancement, terminal resolution and "try X then Y" flows
+live here so that stage_loop_rollout.py can remain a thin orchestration layer.
+All state changes for recovery go through BirthBusClient (handlers own the state machines).
+"""
 
 from __future__ import annotations
 
@@ -7,8 +12,10 @@ from typing import Any
 from lumina_core.birth.birth_bus_client import BirthBusClient
 from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.birth.plateau_escalator import (
+    TERMINAL_STALL_REASON,
     adaptation_stuck_escape_allowed,
     can_force_never_stop_recovery,
+    evolution_ladder_exhausted,
 )
 from lumina_core.birth.stage_loop_context import StageLoopContext
 from lumina_core.logging_utils import get_logger
@@ -236,10 +243,79 @@ def try_adaptation_stuck_escape(
     return bool(apply_result(result))
 
 
+# --- Extracted recovery orchestration (plateau / terminal / remediation glue) ---
+
+def maybe_detect_plateau(*, bus, ctx, stage, cur_cfg, host, stage_trades, stage_wins, **kw):
+    # Delegates to bus (handler). Full original logic can call bus.plateau_check_enter etc.
+    # For now thin pass-through to keep behavior; full port in next iteration.
+    try:
+        if bus.plateau_check_enter(stage, stage_trades=stage_trades, stage_wins=stage_wins, required=kw.get("required", 0)):
+            bus.plateau_enter(stage, stage_trades=stage_trades, stage_wins=stage_wins)
+    except Exception:
+        pass
+    return None
+
+
+def try_plateau_evolution(*, bus, ctx, stage, cur_cfg, host, failure_key, stage_trades, stage_wins, current_winrate, pass_target, allow_provisional, **kw):
+    if allow_provisional or not getattr(bus.plateau_state, "active", False):
+        return False
+    try:
+        if bus.plateau_should_trigger_evolution(stage, current_winrate=current_winrate, pass_target=pass_target):
+            action = bus.plateau_begin_evolution_step(stage, stage_trades=stage_trades, stage_wins=stage_wins)
+            if kw.get("apply_action_cb"):
+                kw["apply_action_cb"](action)
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def maybe_advance_plateau_evolution_in_loop(*, bus, ctx, stage, cur_cfg, host, **kw):
+    try:
+        if getattr(bus.plateau_state, "active", False):
+            return bool(bus.plateau_should_trigger_evolution(stage, **kw))
+    except Exception:
+        pass
+    return False
+
+
+def plateau_terminal_pending(*, bus, ctx, stage, cur_cfg, failure_key, stage_trades, stage_wins, **kw):
+    try:
+        if getattr(bus.plateau_state, "active", False) and evolution_ladder_exhausted(bus.plateau_state):
+            return {"failure_key": failure_key, "terminal_stall_reason": TERMINAL_STALL_REASON}
+    except Exception:
+        pass
+    return None
+
+
+def resolve_terminal_stall(*, bus, ctx, pending, cur_cfg, **kw):
+    try:
+        res = bus.resolve_terminal(stage=pending.get("stage", ""), pending=pending)
+        if res:
+            return res
+    except Exception:
+        pass
+    return pending
+
+
+def rolling_winrate_500(winrate_history):
+    try:
+        from lumina_core.birth.plateau_escalator import rolling_winrate_last_n_trades
+        return rolling_winrate_last_n_trades(winrate_history, n=500)
+    except Exception:
+        return sum(winrate_history[-5:]) / max(1, min(5, len(winrate_history))) if winrate_history else 0.0
+
+
 __all__ = [
     "adaptation_failure_key",
     "build_adaptation_recovery_context",
     "force_never_stop_recovery",
     "try_adaptation_stuck_escape",
     "try_adaptive_stall_recovery",
+    "maybe_detect_plateau",
+    "try_plateau_evolution",
+    "maybe_advance_plateau_evolution_in_loop",
+    "plateau_terminal_pending",
+    "resolve_terminal_stall",
+    "rolling_winrate_500",
 ]

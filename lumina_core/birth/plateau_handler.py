@@ -246,6 +246,34 @@ class PlateauHandler:
                 )
             elif signal == "plateau_get_state":
                 self._set_response(cid, "state", self.state.to_metrics())
+            elif signal == "plateau_try_evolution":
+                # Composite: check + begin + basic record. Returns action info for orchestrator.
+                current_wr = float(ctx.get("current_winrate", 0.0))
+                pass_target = float(ctx.get("pass_target", 0.0))
+                should = should_trigger_plateau_evolution_step(
+                    self.state,
+                    cfg=self.cfg,
+                    current_winrate=current_wr,
+                    allow_start=bool(ctx.get("allow_start", True)),
+                    pass_target=pass_target,
+                )
+                action = None
+                if should:
+                    action = begin_evolution_step(
+                        self.state,
+                        stage_trades=int(ctx.get("stage_trades", 0)),
+                        stage_wins=int(ctx.get("stage_wins", 0)),
+                    )
+                    if action and action != EvolutionAction.TERMINAL:
+                        self._set_response(cid, "evolution", {
+                            "action": action.value if hasattr(action, "value") else str(action),
+                            "applied": True,
+                        })
+                        return
+                self._set_response(cid, "evolution", {"action": None, "applied": False})
+            elif signal == "resolve_terminal_stall":
+                # Placeholder rich response; actual terminal shape built in recovery glue
+                self._set_response(cid, "terminal", {"handled": True})
         except Exception as exc:
             logger.warning("plateau_handler.signal_failed signal=%s: %s", signal, exc)
             self._set_response(cid, "error", str(exc))

@@ -283,16 +283,27 @@ def record_twin_decision_monitoring(
     risk_flags: list[str],
     explanation: str,
     source: str = "approval_twin",
+    mode: str = "",
+    outcome: str | None = None,
 ) -> None:
+    flags = list(risk_flags or [])
+    classified = outcome if outcome is not None else classify_twin_decision_outcome(
+        recommendation=bool(recommendation),
+        score=float(score),
+        risk_flags=flags,
+    )
     payload = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "source": str(source),
         "dna_hash": str(dna_hash),
         "score": float(score),
         "recommendation": bool(recommendation),
-        "risk_flags": list(risk_flags),
+        "risk_flags": flags,
         "explanation": str(explanation),
+        "outcome": str(classified),
     }
+    if mode:
+        payload["mode"] = str(mode)
     _append_jsonl(_monitoring_state_path("monitoring_twin_decisions.jsonl"), payload)
 
 

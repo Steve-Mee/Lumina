@@ -305,11 +305,18 @@ class _TwinStub:
     def __init__(self, recommendation: bool = True) -> None:
         self.recommendation = recommendation
         self.calls = 0
+        # Safety-gate REAL path requires full_auto judgment authority.
+        self.mode = "full_auto"
 
     def evaluate_dna_promotion(self, _dna: PolicyDNA) -> dict[str, object]:
         self.calls += 1
+        rec = bool(self.recommendation)
         return {
-            "recommendation": bool(self.recommendation),
+            "recommendation": rec,
+            "effective_recommendation": rec,
+            "executable": True,
+            "mode": "full_auto",
+            "authority": "execute_judgment",
             "confidence": 0.97,
             "explanation": "stub",
             "risk_flags": [],
@@ -319,9 +326,13 @@ class _TwinStub:
         self, *, dna: PolicyDNA, shadow_total_pnl: float, veto_blocked: bool
     ) -> dict[str, object]:
         base = self.evaluate_dna_promotion(dna)
+        rec = bool(base["recommendation"] and shadow_total_pnl > 0.0 and not veto_blocked)
         return {
             **base,
-            "recommendation": bool(base["recommendation"] and shadow_total_pnl > 0.0 and not veto_blocked),
+            "recommendation": rec,
+            "effective_recommendation": rec,
+            "executable": True,
+            "mode": "full_auto",
             "shadow_total_pnl": float(shadow_total_pnl),
             "veto_blocked": bool(veto_blocked),
         }

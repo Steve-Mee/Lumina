@@ -53,6 +53,7 @@ Regels (v51 CAPITAL PRESERVATION FIRST):
             "Capital preservation > profit growth",
             "Skip low-confidence trades",
             "Avoid news windows aggressively",
+            "Approval Twin internalizes operator approve/veto values; never bypasses capital gates",
         ],
     },
 }

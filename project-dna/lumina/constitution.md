@@ -7,8 +7,9 @@ This document defines the non-negotiable laws of the Lumina project. Everything 
 ## Fundamental Invariants
 
 1. **Kapitaalbehoud is heilig in REAL mode**
-   - Geen enkele mutatie, strategie of proces mag REAL kapitaal in gevaar brengen zonder expliciete shadow deployment + human approval gates.
+   - Geen enkele mutatie, strategie of proces mag REAL kapitaal in gevaar brengen zonder expliciete shadow deployment + **approval gates**.
    - Fail-closed is de default in alle REAL-paden.
+   - **Clarification (2026-07, ADR-0032):** de *gates* blijven verplicht. De *judgment* binnen begrensde lagen (birth/SIM/autonomy) mag geleverd worden door de getrainde **Approval Twin** i.p.v. een permanente menselijke bottleneck. De Twin mag constitution, sandbox, risk shadow aperture of REAL PromotionGate **niet** omzeilen.
 
 2. **Evolution is the primary mechanism of improvement**
    - We verbeteren door kleine, meetbare, traceerbare stappen — niet door grote rewrites of heroïsche fixes.
@@ -76,4 +77,4 @@ python scripts/phase3_track_c_gate_verify.py
 
 ---
 
-*Laatste update: 2026-06-11 (Evidence Contract; invariant #7 unchanged since 2026-06-04 D5)*
+*Laatste update: 2026-07-15 (invariant #1 judgment/Twin clarification per ADR-0032; #2–#7 unchanged; Evidence Contract 2026-06-11)*

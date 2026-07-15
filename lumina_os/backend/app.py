@@ -24,6 +24,7 @@ from backend.monitoring_endpoints import router as monitoring_router, set_observ
 from backend.core_websocket import router as core_ws_router
 from backend.core_websocket import set_observability_service as set_core_ws_obs_service
 from backend.evolution_endpoints import router as evolution_router
+from backend.twin_endpoints import router as twin_router
 from backend.birth_endpoints import router as birth_router
 from backend.maturity_endpoints import router as maturity_router
 from backend.notifications_endpoints import router as notifications_router
@@ -34,6 +35,7 @@ from backend.ppo_websocket import router as ppo_ws_router
 from backend.ninjatrader_websocket import router as ninjatrader_ws_router
 from backend.evolution_endpoints import set_observability_service as set_evolution_obs_service
 from backend.evolution_endpoints import set_security_module as set_evolution_security_module
+from backend.twin_endpoints import set_security_module as set_twin_security_module
 from lumina_core.broker.broker_bridge import broker_factory
 from lumina_core.broker.broker_bridge import Order
 from lumina_core.engine.engine_config import EngineConfig
@@ -139,6 +141,7 @@ SECURITY_CONFIG = FULL_CONFIG.get("security", {})
 # Initialize security module
 SECURITY = get_security_module(SECURITY_CONFIG)
 set_evolution_security_module(SECURITY)
+set_twin_security_module(SECURITY)
 
 # Validate dangerous configs at startup
 validator = SECURITY["config_validator"]
@@ -165,6 +168,7 @@ set_core_ws_obs_service(_obs)
 set_evolution_obs_service(_obs)
 app.include_router(monitoring_router)
 app.include_router(evolution_router)
+app.include_router(twin_router)
 app.include_router(birth_router)
 app.include_router(maturity_router)
 app.include_router(notifications_router)

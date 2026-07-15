@@ -42,10 +42,20 @@ class _MockShadowRunner:
 
 
 class _MockTwin:
-    """Minimal approval twin that always approves."""
+    """Minimal approval twin that always approves (full_auto authority)."""
+
+    mode: str = "full_auto"
 
     def evaluate_dna_promotion(self, _dna: Any) -> dict:
-        return {"recommendation": True, "confidence": 0.95}
+        return {
+            "recommendation": True,
+            "effective_recommendation": True,
+            "executable": True,
+            "mode": "full_auto",
+            "authority": "execute_judgment",
+            "confidence": 0.95,
+            "risk_flags": [],
+        }
 
 
 def test_can_mutate_only_in_sim_and_paper() -> None:
@@ -100,23 +110,53 @@ def test_real_mode_requires_approval_twin_recommendation() -> None:
 
 def test_resolve_approval_twin_recommendation_from_agent_dict() -> None:
     class _Twin:
+        mode = "full_auto"
+
         def evaluate_dna_promotion(self, _dna):
-            return {"recommendation": True, "confidence": 0.93}
+            return {
+                "recommendation": True,
+                "effective_recommendation": True,
+                "executable": True,
+                "mode": "full_auto",
+                "confidence": 0.93,
+            }
+
+    class _ShadowTwin:
+        mode = "shadow"
+
+        def evaluate_dna_promotion(self, _dna):
+            return {
+                "recommendation": True,
+                "effective_recommendation": False,
+                "executable": False,
+                "mode": "shadow",
+                "confidence": 0.93,
+            }
 
     guard = EvolutionGuard()
 
     assert guard.resolve_approval_twin_recommendation(approval_twin=_Twin(), dna={"hash": "abc"}) is True
+    assert guard.resolve_approval_twin_recommendation(approval_twin=_ShadowTwin(), dna={"hash": "abc"}) is False
     assert guard.resolve_approval_twin_recommendation(approval_twin=None, dna={"hash": "abc"}) is False
 
 
 def test_real_mode_signed_approval_consults_twin_when_recommendation_missing() -> None:
     class _Twin:
+        mode = "full_auto"
+
         def __init__(self) -> None:
             self.calls = 0
 
         def evaluate_dna_promotion(self, _dna: Any) -> dict:
             self.calls += 1
-            return {"recommendation": True, "confidence": 0.97}
+            return {
+                "recommendation": True,
+                "effective_recommendation": True,
+                "executable": True,
+                "mode": "full_auto",
+                "confidence": 0.97,
+                "risk_flags": [],
+            }
 
     guard = EvolutionGuard(confidence_threshold=0.85)
     twin = _Twin()
@@ -161,8 +201,17 @@ def test_real_mode_signed_approval_blocks_below_zero_touch_twin_floor() -> None:
 
 def test_real_mode_signed_approval_blocks_non_empty_twin_risk_flags() -> None:
     class _TwinFlags:
+        mode = "full_auto"
+
         def evaluate_dna_promotion(self, _dna: Any) -> dict:
-            return {"recommendation": True, "confidence": 0.99, "risk_flags": ["SIZE"]}
+            return {
+                "recommendation": True,
+                "effective_recommendation": True,
+                "executable": True,
+                "mode": "full_auto",
+                "confidence": 0.99,
+                "risk_flags": ["SIZE"],
+            }
 
     guard = EvolutionGuard()
     twin = _TwinFlags()
@@ -180,6 +229,43 @@ def test_real_mode_signed_approval_blocks_non_empty_twin_risk_flags() -> None:
             dna=dna,
             shadow_runner=shadow_runner,
             twin_risk_flags=["SIZE"],
+        )
+        is False
+    )
+
+
+def test_real_mode_signed_approval_blocks_shadow_mode_twin() -> None:
+    """Shadow mode twin cannot open REAL zero-touch even with high conf approve."""
+
+    class _ShadowTwin:
+        mode = "shadow"
+
+        def evaluate_dna_promotion(self, _dna: Any) -> dict:
+            return {
+                "recommendation": True,
+                "effective_recommendation": False,
+                "executable": False,
+                "mode": "shadow",
+                "confidence": 0.99,
+                "risk_flags": [],
+            }
+
+    guard = EvolutionGuard()
+    twin = _ShadowTwin()
+    shadow_runner = _MockShadowRunner()
+    dna = _constitutional_test_dna(dna_hash="shadow_block")
+
+    assert (
+        guard.has_signed_approval(
+            mode="real",
+            confidence=0.99,
+            candidate_fitness=2.5,
+            current_fitness=1.0,
+            approval_twin_recommendation=True,
+            approval_twin=twin,
+            dna=dna,
+            shadow_runner=shadow_runner,
+            twin_risk_flags=[],
         )
         is False
     )

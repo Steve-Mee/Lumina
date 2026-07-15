@@ -46,12 +46,15 @@
 
 ## ✨ Waarom Lumina anders is
 
+- 🧬 **Approval Twin (human replacement *judgment*)** — user-trained mimic van de operator (approve/veto); primary auto-approval in birth/SIM wanneer high-conf + clean. **Core unique differentiator** — niet generieke RL. Twin omzeilt nooit constitution, sandbox, shadow of REAL PromotionGate ([ADR 0031](docs/adr/0031-approval-twin-event-bus.md), [ADR 0032](docs/adr/0032-approval-twin-human-replacement-layer.md)). Train: `python -m lumina_launcher twin review|train|metrics`.
 - 🛡️ **Trading Constitution + ConstitutionalGuard** — machine-enforceable regels (15 principes) vóór mutatie, in de sandbox en vóór promotie. Geen “gentlemen’s agreement”.
-- 🌑 **Shadow deployment + verplichte human approval** — radicale DNA-mutaties eerst in het donker valideren; REAL volgt pas na governance en bewijs ([ADR 0002](docs/adr/0002-shadow-deployment-human-approval.md)).
+- 🌑 **Shadow deployment + approval gates** — radicale DNA-mutaties eerst in het donker valideren; judgment mag Twin zijn in birth/SIM; REAL blijft multi-gate (shadow + constitution + PromotionGate) ([ADR 0002](docs/adr/0002-shadow-deployment-human-approval.md), [ADR 0032](docs/adr/0032-approval-twin-human-replacement-layer.md)).
 - 🗨️ **AgentBlackboard + centrale Event Bus** — gepubliceerde domein-events en contracts i.p.v. een mengelmoes aan directe calls; schaalbaar en auditbaar ([ADR 0001](docs/adr/0001-bounded-contexts-central-event-bus.md)).
 - 📉 **Purged cross-validation, order book replay, reality-gap penalty** — backtests die lekken en roze bril actief bestrijden ([ADR 0004](docs/adr/0004-backtest-realism-purged-cv-orderbook-replay-reality-gap.md)).
 - 📐 **Bounded contexts in `lumina_core/`** — risk, trading engine, evolution, safety en agent orchestration als expliciete domeinen, geen tweeledige “god module”.
 - 💰 **Dynamic Kelly + volledig cost model** — position sizing en breakeven die rekening houden met volatiliteit en echte kosten, niet alleen PnL op papier.
+
+Living direction: [`docs/roadmap.md`](docs/roadmap.md) (v5.2.x wave). Historical analyses under `docs/history/` are snapshots only.
 
 ---
 

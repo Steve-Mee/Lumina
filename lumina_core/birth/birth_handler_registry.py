@@ -22,18 +22,27 @@ class BirthHandlerRegistry:
         event_bus: EventBus,
         curriculum_cfg: BirthCurriculumConfig,
         reward_cfg: BirthRewardConfig,
+        *,
+        approval_twin: Any | None = None,
     ) -> None:
         self.bus = event_bus
         self.curriculum_cfg = curriculum_cfg
         self.reward_cfg = reward_cfg
+        self.approval_twin = approval_twin
         self._responses: dict[str, dict[str, Any]] = {}
         self.meta = MetaControllerHandler(
-            event_bus, curriculum_cfg, reward_cfg, registry=self
+            event_bus,
+            curriculum_cfg,
+            reward_cfg,
+            registry=self,
+            approval_twin=approval_twin,
         )
         self.plateau = PlateauHandler(event_bus, curriculum_cfg, registry=self)
         self.remediation = RemediationHandler(event_bus, curriculum_cfg, registry=self)
         self.phoenix = PhoenixHandler(event_bus, curriculum_cfg, registry=self)
-        self.autonomy = OrganismAutonomyHandler(event_bus, curriculum_cfg, registry=self)
+        self.autonomy = OrganismAutonomyHandler(
+            event_bus, curriculum_cfg, registry=self, approval_twin=approval_twin
+        )
         self.wall_adaptation = WallAdaptationHandler(event_bus, curriculum_cfg, registry=self)
         self._attached = False
 
@@ -85,7 +94,19 @@ class BirthHandlerRegistry:
         self.sync_curriculum_cfg(curriculum)
         from lumina_core.birth.meta_controller import BirthMetaController
 
-        self.meta.controller = BirthMetaController(curriculum, reward)
+        twin = getattr(self, "approval_twin", None) or getattr(self.meta, "approval_twin", None)
+        self.meta.controller = BirthMetaController(curriculum, reward, approval_twin=twin)
+        self.meta.approval_twin = twin
+        if hasattr(self.autonomy, "approval_twin"):
+            self.autonomy.approval_twin = twin
+
+    def bind_approval_twin(self, approval_twin: Any | None) -> None:
+        """Late-bind ApprovalTwin after bus wiring (orchestrator/container)."""
+        self.approval_twin = approval_twin
+        self.meta.approval_twin = approval_twin
+        if hasattr(self.meta, "controller") and self.meta.controller is not None:
+            self.meta.controller.approval_twin = approval_twin
+        self.autonomy.approval_twin = approval_twin
 
 
 __all__ = ["BirthHandlerRegistry"]

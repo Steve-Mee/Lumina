@@ -25,6 +25,15 @@ from .promotion_gate import (
     PromotionCriterion,
     PromotionCriterionResult,
 )
+from .twin_mode_promotion_gate import (
+    TwinModePromotionGate,
+    TwinModePromotionEvidence,
+    TwinModePromotionDecision,
+    TwinModeController,
+    apply_mode_authority,
+    canonicalize_twin_mode,
+)
+from .twin_metrics_store import TwinMetricsStore
 
 __all__ = [
     "DNARegistry",
@@ -67,4 +76,11 @@ __all__ = [
     "PromotionGateDecision",
     "PromotionCriterion",
     "PromotionCriterionResult",
+    "TwinModePromotionGate",
+    "TwinModePromotionEvidence",
+    "TwinModePromotionDecision",
+    "TwinModeController",
+    "apply_mode_authority",
+    "canonicalize_twin_mode",
+    "TwinMetricsStore",
 ]

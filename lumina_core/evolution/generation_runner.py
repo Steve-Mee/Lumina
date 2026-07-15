@@ -41,6 +41,14 @@ def run_single_generation(
     base_metrics: dict[str, Any],
     sim_days: int,
 ) -> GenerationResult:
+    # Fail-closed twin mode checkpoint: auto-demote on metric breach; optional auto-promote.
+    try:
+        twin = getattr(orchestrator, "_approval_twin", None)
+        if twin is not None and hasattr(twin, "sync_mode_from_controller"):
+            twin.sync_mode_from_controller()
+    except Exception:
+        logger.debug("twin.sync_mode_from_controller failed at generation start", exc_info=True)
+
     top_dna, active_dna = resolve_initial_top_and_active_dna(
         orchestrator, base_metrics=base_metrics
     )
@@ -168,6 +176,9 @@ def run_single_generation(
     # REAL path still funnels through guard + shadow + PromotionGate.
     twin_decision: dict[str, Any] = {
         "recommendation": True,
+        "effective_recommendation": False,  # fail-closed until twin evaluate stamps authority
+        "executable": False,
+        "mode": "shadow",
         "confidence": 0.9,
         "risk_flags": [],
         "explanation": "sim/paper default (twin primary layer decides)",
@@ -194,33 +205,49 @@ def run_single_generation(
     # Explicit fail-closed: re-assert twin rec subordination to constitution right after twin consult.
     # The ApprovalTwin output is a signal, never a bypass. This (plus the later pre-promotion guard)
     # ensures even a fully tricked twin cannot promote bad DNA.
+    # Mode authority: consumers use effective_recommendation (shadow/assisted cannot sole-auto).
+    def _twin_effective_rec(decision: dict[str, Any]) -> bool:
+        if "effective_recommendation" in decision:
+            return bool(decision.get("effective_recommendation", False))
+        # Legacy twin without mode fields — fail-closed (not executable)
+        return False
+
     try:
         cg = getattr(orchestrator, "_constitutional_guard", None)
         if cg is not None:
-            twin_rec = bool(twin_decision.get("recommendation", False))
+            twin_rec = _twin_effective_rec(twin_decision)
             if not cg.veto_unless_constitutional(
                 dna_content=getattr(winner_dna, "content", winner_dna),
                 mode=mode,
-                current_recommendation=twin_rec,
+                current_recommendation=twin_rec or bool(twin_decision.get("recommendation", False)),
             ):
                 twin_decision = dict(twin_decision)
                 twin_decision["recommendation"] = False
+                twin_decision["effective_recommendation"] = False
+                twin_decision["executable"] = False
                 rf = list(twin_decision.get("risk_flags", []) or [])
                 if "constitution_veto_post_twin" not in rf:
                     rf.append("constitution_veto_post_twin")
                 twin_decision["risk_flags"] = rf
                 twin_risk_flags = [str(x) for x in rf]
     except Exception:
-        twin_decision = {"recommendation": False, "confidence": 0.0, "risk_flags": ["guard_error_post_twin"]}
+        twin_decision = {
+            "recommendation": False,
+            "effective_recommendation": False,
+            "executable": False,
+            "confidence": 0.0,
+            "risk_flags": ["guard_error_post_twin"],
+        }
         twin_risk_flags = ["guard_error_post_twin"]
 
     # Guard: REAL uses twin confidence (0–1 or 0–100) for ultra zero-touch floor + shadow.
+    # Shadow/assisted modes yield effective_recommendation=False → no zero-touch auto.
     signed = orchestrator._guard.has_signed_approval(
         confidence=signed_confidence,
         candidate_fitness=winner_fitness,
         current_fitness=previous_fitness,
         mode=mode,
-        approval_twin_recommendation=bool(twin_decision.get("recommendation", False)),
+        approval_twin_recommendation=_twin_effective_rec(twin_decision),
         approval_twin=orchestrator._approval_twin,
         dna=winner_dna,
         shadow_runner=shadow_runner,

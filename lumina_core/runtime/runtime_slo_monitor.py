@@ -60,6 +60,11 @@ class RuntimeSloMonitor:
         self._slo = self.prod_cfg.get("slo") if isinstance(self.prod_cfg.get("slo"), dict) else {}
         self._started_at = started_at if started_at is not None else time.time()
 
+    def update_prod_cfg(self, prod_cfg: dict[str, Any]) -> None:
+        """Refresh SLO thresholds after config hot-reload."""
+        self.prod_cfg = dict(prod_cfg or {})
+        self._slo = self.prod_cfg.get("slo") if isinstance(self.prod_cfg.get("slo"), dict) else {}
+
     def _parse_timestamp_age_s(self, payload: dict[str, Any]) -> float | None:
         ts = str(payload.get("timestamp") or payload.get("evaluated_at") or "")
         if not ts:

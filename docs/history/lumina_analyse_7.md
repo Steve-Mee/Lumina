@@ -1,3 +1,6 @@
+﻿> **HISTORICAL SNAPSHOT — not living SSOT.**
+> Captured for audit. Current direction: [`docs/roadmap.md`](../roadmap.md), Twin: [ADR-0032](../adr/0032-approval-twin-human-replacement-layer.md).
+> Pre-Twin “mandatory human approval forever” wording is superseded for *judgment* (gates remain).
 # Lumina — Extreem grondige codebase-analyse (panel van 5 experts)
 
 **Scope:** volledige workspace `NinjaTraderAI_Bot` (Lumina v5, Python 3.13+), incl. `lumina_core/`, `lumina_os/`, `lumina_bible/`, `lumina_agents/`, `scripts/`, `tests/`, `docs/`, runtime (`lumina_runtime.py`, `watchdog.py`), configuratie en CI.

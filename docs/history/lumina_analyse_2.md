@@ -1,3 +1,6 @@
+﻿> **HISTORICAL SNAPSHOT — not living SSOT.**
+> Captured for audit. Current direction: [`docs/roadmap.md`](../roadmap.md), Twin: [ADR-0032](../adr/0032-approval-twin-human-replacement-layer.md).
+> Pre-Twin “mandatory human approval forever” wording is superseded for *judgment* (gates remain).
 # Lumina v50 — Professionele Expert Codebase Analyse
 **Datum:** 8 april 2026  
 **Geanalyseerde versie:** v50 "Living Organism" (post-refactor, canonical branch)  

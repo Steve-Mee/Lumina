@@ -1,5 +1,7 @@
 # Adaptive Wall Retry — Progress
 
+> **Scope note:** Narrow feature log for adaptive wall / never-stall work — **not** the product roadmap. Living direction: [`roadmap.md`](roadmap.md).
+
 **Last updated:** 2026-06-25  
 **Current phase:** Never-Stall + Recovery UI complete  
 **Overall status:** DONE

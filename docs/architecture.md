@@ -64,7 +64,7 @@ LUMINA gebruikt **bounded contexts** als domeingrenzen onder `lumina_core/` (zie
 | Context | Verantwoordelijkheid | Primaire paden | Opmerking |
 |---------|---------------------|----------------|-----------|
 | **Safety** | Constitutionele principes, sandboxed uitvoering, promotion gates | [`lumina_core/safety/`](../lumina_core/safety/) | Fail-closed; REAL strengst |
-| **Evolution** | DNA, orchestratie, shadow runs, fitness | [`lumina_core/evolution/`](../lumina_core/evolution/) | SIM kan agressiever; REAL vereist shadow + approval waar van toepassing |
+| **Evolution** | DNA, orchestratie, shadow runs, fitness, **Approval Twin** | [`lumina_core/evolution/`](../lumina_core/evolution/) | Twin = primary judgment in birth/SIM (ADR-0031/32); REAL requires shadow + multi-gate; see [roadmap §6](roadmap.md) |
 | **Trading Engine** | Kern trading: engine, marktdata, operaties, valuation | [`lumina_core/trading_engine/`](../lumina_core/trading_engine/), [`lumina_core/engine/`](../lumina_core/engine/) | `engine/` is composition root + compat-laag; nieuwe domeinlogica gaat naar bounded contexts |
 | **Risk Management** | Risk gates, allocatie, Kelly-achtige begrenzing | [`lumina_core/risk/`](../lumina_core/risk/) | Via mixins/engine geïntegreerd; canoniek onder `risk/` |
 | **Agent Orchestration** | Event bus, engine↔blackboard bindingen | [`lumina_core/agent_orchestration/`](../lumina_core/agent_orchestration/) | Pub/sub en bindings centraliseren |
@@ -115,6 +115,7 @@ flowchart LR
 - `mutation_pipeline.py` bevat candidate-generatie + bootstrap via een protocolgestuurde pipeline.
 - `promotion_policy.py` bevat shadow-run policy, veto-window checks en promotion-statusafhandeling.
 - `evolution_orchestrator.py` blijft import-stabiel voor bestaande callers en test monkeypatches.
+- **`approval_twin_agent.py`** — Approval Twin (human replacement *judgment*; ADR-0031/0032). Primary auto-approval in birth/SIM when high-conf + clean; never bypasses constitution/sandbox/PromotionGate. See [roadmap §6](roadmap.md).
 
 ### 3.2 Self-evolution meta-agent componenten
 

@@ -42,6 +42,11 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0026 | Post-birth Evolution Proof gate | Accepted | 2026-06-27 | [0026-evolution-proof-gate.md](./0026-evolution-proof-gate.md) |
 | 0027 | Lumina maturation ladder | Accepted | 2026-06-27 | [0027-lumina-maturation-ladder.md](./0027-lumina-maturation-ladder.md) |
 | 0028 | Operator notification matrix | Accepted | 2026-06-27 | [0028-lumina-operator-notification-matrix.md](./0028-lumina-operator-notification-matrix.md) |
+| 0029 | NinjaTrader native bridge | Accepted | — | [0029-ninjatrader-native-bridge.md](./0029-ninjatrader-native-bridge.md) |
+| 0030 | Architecture Meta-Controller (sandboxed self-improvement of architecture) | Accepted | 2026-07-13 | [0030-architecture-meta-controller.md](./0030-architecture-meta-controller.md) |
+| 0031 | Approval Twin on Event Bus + primary auto-approval | Accepted | 2026-07-13 | [0031-approval-twin-event-bus.md](./0031-approval-twin-event-bus.md) |
+| 0032 | Approval Twin as Human Replacement Layer | Accepted | 2026-07-14 | [0032-approval-twin-human-replacement-layer.md](./0032-approval-twin-human-replacement-layer.md) |
+| 0033 | Trading Code Evolution Prototype (sandbox + Twin + constitution) | Accepted | 2026-07-15 | [0033-trading-code-evolution-prototype.md](./0033-trading-code-evolution-prototype.md) |
 
 ## Legacy notitie
 

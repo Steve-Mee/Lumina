@@ -63,21 +63,39 @@ def run_stage_research_loop(host: Any, **kwargs: Any) -> dict[str, Any] | None:
         except Exception:
             pass
 
-    # Propagate monkeypatches from this compat module into stage_loop_rollout
-    # (where the loop body lives after the stage_rollout_executor split).
+    # Propagate monkeypatches from this compat module into all modules that
+    # bind run_policy_rollout / mine / expand by name (session + mixins).
     try:
+        import lumina_core.birth.stage_loop_data_ops as _data_ops_mod
+        import lumina_core.birth.stage_loop_iteration as _iter_mod
         import lumina_core.birth.stage_loop_rollout as _handler_mod
+        import lumina_core.birth.stage_loop_rollout_cycle as _cycle_mod
+        import lumina_core.birth.stage_loop_session as _session_mod
         import lumina_core.birth.stage_rollout_executor as _facade_mod
 
         _compat_mod = sys.modules[__name__]
+        _targets = (
+            _handler_mod,
+            _facade_mod,
+            _session_mod,
+            _iter_mod,
+            _cycle_mod,
+            _data_ops_mod,
+        )
         for _name in ("run_policy_rollout", "mine_winning_patterns", "expand_birth_data"):
             if hasattr(_compat_mod, _name):
                 _fake = getattr(_compat_mod, _name)
-                setattr(_handler_mod, _name, _fake)
-                setattr(_facade_mod, _name, _fake)
+                for _mod in _targets:
+                    if hasattr(_mod, _name) or _name in (
+                        "run_policy_rollout",
+                        "mine_winning_patterns",
+                        "expand_birth_data",
+                    ):
+                        setattr(_mod, _name, _fake)
         if hasattr(_compat_mod, "time"):
-            _handler_mod.time = _compat_mod.time
-            _facade_mod.time = _compat_mod.time
+            for _mod in _targets:
+                if hasattr(_mod, "time"):
+                    _mod.time = _compat_mod.time
     except Exception:
         pass
 

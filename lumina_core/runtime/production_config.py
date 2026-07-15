@@ -37,3 +37,28 @@ def resolve_slo_live_path() -> Path:
 
 def resolve_reconciliation_report_path() -> Path:
     return Path("state/runtime_reconciliation_report.json")
+
+
+def resolve_engine_state_paths() -> tuple[Path, ...]:
+    """Candidate engine state files used for checkpoint age observability."""
+    return (
+        Path("state/lumina_sim_state.json"),
+        Path("lumina_sim_state.json"),
+        Path("state/lumina_engine_state.json"),
+    )
+
+
+def force_checkpoint_on_shutdown(prod_cfg: dict[str, Any] | None = None) -> bool:
+    cfg = prod_cfg if prod_cfg is not None else load_production_section()
+    raw = cfg.get("force_checkpoint_on_shutdown", True)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def checkpoint_status_enabled(prod_cfg: dict[str, Any] | None = None) -> bool:
+    cfg = prod_cfg if prod_cfg is not None else load_production_section()
+    raw = cfg.get("checkpoint_status_enabled", True)
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}

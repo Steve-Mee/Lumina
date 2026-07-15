@@ -10,6 +10,13 @@ Dit is het centrale log voor significante veranderingen aan de Project DNA zelf.
 
 ## Recente Entries (samenvatting)
 
+### 2026-07-15 (Living docs alignment — Approval Twin + Phase 2 Autonomy)
+- Roadmap bumped to **v5.2.x wave**: Twin as human replacement *judgment*, modularization honesty, Phase 2 Autonomy pillars, secure self-code evolution vision.
+- DNA: `current-status`, agent-context export, north-star, architecture §3.4, constitution #1 clarification (gates remain; Twin may supply judgment).
+- Historical snapshots bannered under `docs/history/` + versioned v51/v52 runbooks — not living SSOT.
+- Formal log: `evolution/log/2026-07-15-docs-alignment-approval-twin-phase2.md`.
+- ADRs already accepted: 0030 (Architecture Meta), 0031 (Twin Event Bus), 0032 (Human Replacement Layer).
+
 ### 2026-06-11 (Birth Phase v2 remediation — certificate integrity + SSOT)
 - PR-A: Removed regime inflation in certificate evaluator; `integrity_version: 2`; `min_holdout_trades`; ConstitutionViolation Event Bus in birth guard.
 - PR-B: `lumina_birth_engine.py` stripped to façade; V2 checkpoint/resume; `observation_builder` 32-dim SSOT (ADR-0015); shared `history_loader`.

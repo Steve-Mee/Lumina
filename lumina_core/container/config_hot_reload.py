@@ -83,6 +83,54 @@ class ConfigHotReloadSupport:
             )
 
         changed_sections = _changed_top_level_sections(prior_cfg, parsed)
+
+        # Fail-closed twin oversight: block auto_approve_real and unsafe twin threshold decreases.
+        try:
+            from lumina_core.runtime.runtime_twin_oversight import RuntimeTwinOversight
+
+            live_mode = str(getattr(self.config, "trade_mode", "") or "sim")
+            verdict = RuntimeTwinOversight.get().audit_config_reload(
+                changed_sections,
+                parsed,
+                mode=live_mode,
+            )
+            if not verdict.allowed:
+                blocked = list(verdict.blocked_fields or [])
+                self.logger.warning(
+                    "CONFIG_RELOAD_TWIN_REJECTED,source=%s,reason=%s,fields=%s,path=%s",
+                    source,
+                    verdict.reason,
+                    ",".join(blocked),
+                    path,
+                )
+                try:
+                    RuntimeTwinOversight.get().record_runtime_event(
+                        "config_reload_blocked",
+                        {"reason": verdict.reason, "blocked_fields": blocked, "source": source},
+                    )
+                except Exception:
+                    pass
+                return RuntimeConfigReloadResult(
+                    applied=False,
+                    rejected_reason=str(verdict.reason or "twin_oversight_blocked"),
+                    immutable_fields=blocked,
+                )
+        except Exception as exc:
+            # Fail-closed on audit infrastructure errors for real-ish modes only.
+            live_mode = str(getattr(self.config, "trade_mode", "") or "sim").strip().lower()
+            if live_mode in {"real", "live", "sim_real_guard"}:
+                self.logger.warning(
+                    "CONFIG_RELOAD_TWIN_AUDIT_FAILED,source=%s,detail=%s,path=%s",
+                    source,
+                    exc,
+                    path,
+                )
+                return RuntimeConfigReloadResult(
+                    applied=False,
+                    rejected_reason=f"twin_audit_error:{type(exc).__name__}",
+                )
+            self.logger.debug("CONFIG_RELOAD_TWIN_AUDIT_SKIPPED detail=%s", exc, exc_info=True)
+
         ConfigLoader.invalidate()
         new_config = self.config_service.load()
         self.config = new_config

@@ -46,6 +46,11 @@ def _print_usage() -> None:
         "Birth Phase status:\n"
         "  python -m lumina_launcher birth status --json\n"
         "\n"
+        "Approval Twin train (local labels + light RLHF):\n"
+        "  python -m lumina_launcher twin metrics\n"
+        "  python -m lumina_launcher twin review --limit 5\n"
+        "  python -m lumina_launcher twin train\n"
+        "\n"
         "First install:\n"
         "  python scripts/bootstrap_lumina.py\n"
         "\n"
@@ -140,6 +145,12 @@ def main(argv: list[str] | None = None) -> int:
             return run_birth_watch(interval_sec=max(1, int(args.interval)))
         print("Unknown birth subcommand.", file=sys.stderr)
         return 2
+
+    if raw[0] == "twin":
+        from lumina_launcher.twin_cli import main as twin_main
+
+        # twin_cli.main expects subcommand first (review|train|metrics)
+        return twin_main(raw[1:] if len(raw) > 1 else ["metrics"])
 
     args = parse_argv(raw)
 

@@ -86,7 +86,25 @@ def wire_swarm(container: "ApplicationContainer") -> None:
 
 def bind_evolution_promotion_event_bus(container: "ApplicationContainer") -> None:
     from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
+    from lumina_core.runtime.runtime_twin_oversight import RuntimeTwinOversight
 
     orchestrator = EvolutionOrchestrator()
     orchestrator.bind_promotion_event_bus(container.event_bus)
     orchestrator.bind_market_data_service(container.market_data_service)
+
+    # RuntimeTwinOversight subscribes to evolution.twin.decision for autonomy telemetry.
+    # Twin itself binds via orchestrator.bind_promotion_event_bus → ApprovalTwinAgent.bind_event_bus.
+    mode = "sim"
+    try:
+        cfg_mode = getattr(getattr(container, "config", None), "mode", None) or getattr(
+            getattr(container, "engine", None), "mode", None
+        )
+        if cfg_mode:
+            mode = str(cfg_mode)
+    except Exception:
+        mode = "sim"
+    try:
+        RuntimeTwinOversight.get().bind(container.event_bus, mode=mode)
+    except Exception:
+        # Observability only — never block container bootstrap.
+        pass

@@ -389,11 +389,79 @@ The `ConstitutionalGuard` is wired into `EvolutionOrchestrator` at two points:
 LUMINA voegt een extra promotion gate toe via `EvolutionRolloutFramework`:
 
 1. **Shadow-first in REAL mode**: geen REAL promotie zonder geslaagde shadow-validatie.
-2. **Radicale mutaties**: verplicht expliciete human approval in REAL/PAPER.
+2. **Radicale mutaties**: verplicht **approval gates** in REAL/PAPER (judgment may be the trained **Approval Twin** in birth/SIM/autonomy when high-conf + clean; see [ADR-0032](adr/0032-approval-twin-human-replacement-layer.md)).
 3. **A/B context**: geselecteerde variant wordt vergeleken met de A/B baseline.
 4. **Audit trail**: iedere rollout-beslissing wordt gelogd naar `state/evolution_rollout_history.jsonl`; governance/security-critical approvals additionally flow through canonical hash-chained streams.
 
-Deze laag is fail-closed: als shadow of human approval niet voldoet, wordt promotie geblokkeerd.
+Deze laag is fail-closed: als shadow of approval gates niet voldoen, wordt promotie geblokkeerd.
+
+**Twin clarification (2026-07):** The Approval Twin replaces human *judgment* inside bounded layers so the organism can evolve 24/7. It does **not** replace Constitution, sandbox, risk shadow aperture, or REAL `PromotionGate` ([ADR-0031](adr/0031-approval-twin-event-bus.md), [ADR-0032](adr/0032-approval-twin-human-replacement-layer.md)). Living roadmap: [roadmap.md](roadmap.md) §6.
+
+---
+
+## Layer 6: Trading Code Evolution Sandbox (v1, evaluate-only)
+
+**ADR:** [0033-trading-code-evolution-prototype.md](adr/0033-trading-code-evolution-prototype.md)  
+**Package:** `lumina_core/code_evolution/`  
+**Sandbox:** `lumina_core/safety/sandboxed_code_executor.py`
+
+First safe prototype for **trading-related code** self-evolution (orthogonal to DNA JSON mutation and architecture_meta).
+
+### Pipeline (fail-closed)
+
+```
+CodeEvolutionController.propose (fixed catalog, default disabled)
+        │
+        ▼
+CodeEvolutionConstitution.check_pre_mutation
+        │ passed
+        ▼
+ConstitutionalGuard (optional DNA-proxy screen)
+        │ passed
+        ▼
+ApprovalTwinAgent.evaluate_code_proposal  (mode-aware; never sole-apply)
+        │ no hard veto
+        ▼
+SandboxedCodeExecutor (subprocess: tmpdir, secrets stripped, timeout, AST probe)
+        │
+        ▼
+Audit stream evolution.code_mutation + Event Bus + reversible journal
+        │
+        └── try_apply_live → ALWAYS applied=False in v1
+```
+
+### v1 operators only
+
+| Operator | Target | Notes |
+|----------|--------|-------|
+| `parameter_tweak` | `sandbox.params` | Whitelist catalog; hard min/max/rel-delta; **not** risk keys |
+| `add_simple_indicator` | `sandbox.indicator` | Pure `indicator(series)` templates; AST-safe |
+| `strategy_snippet_adjust` | `sandbox.strategy_snippet` | Pure `generated_strategy(context)` snippets |
+
+### Hard guarantees
+
+- Default **disabled** (`evolution.code_evolution.enabled: false`).
+- **No live tree / REAL apply** in v1.
+- Twin cannot bypass constitution or sandbox.
+- Forbidden: full files, risk/broker/order_gatekeeper paths, capital risk keys.
+- Reversibility: `state/code_evolution/pending/<id>/{before_snapshot,REVERT}.json`.
+
+### Usage
+
+```python
+from lumina_core.code_evolution import run_code_evolution_dry_cycle
+from lumina_core.evolution.approval_twin_agent import ApprovalTwinAgent
+
+twin = ApprovalTwinAgent(mode="shadow")
+result = run_code_evolution_dry_cycle(enabled=True, twin=twin, seed="demo")
+# result["decisions"][*]["applied"] is always False in v1
+```
+
+### Tests
+
+```bash
+pytest tests/code_evolution/ -q --tb=short
+```
 
 ---
 
@@ -443,6 +511,7 @@ Architecture decisions live under `docs/adr/`. **Prefer the canonical `000x` ser
 |-------|---------------|----------------------------------|
 | Trading constitution, sandboxed mutation executor, constitutional guardrails | [0003](adr/0003-trading-constitution-sandboxed-mutation-executor.md) | [ADR-001](adr/ADR-001-constitutional-principles.md) · [ADR-004](adr/ADR-004-agi-safety-system.md) |
 | Shadow deployment + mandatory human approval for radical mutations | [0002](adr/0002-shadow-deployment-human-approval.md) | — |
+| Trading code evolution sandbox (evaluate-only prototype) | [0033](adr/0033-trading-code-evolution-prototype.md) | — |
 | Canonical audit/hash-chain unification | [ADR-0042](adr/ADR-0042-canonical-audit-logger.md) | — |
 
 ---

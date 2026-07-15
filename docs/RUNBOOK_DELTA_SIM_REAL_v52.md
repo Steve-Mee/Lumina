@@ -1,3 +1,6 @@
+﻿> **HISTORICAL SNAPSHOT — not living SSOT.**
+> Captured for audit. Current direction: [`docs/roadmap.md`](roadmap.md), Twin: [ADR-0032](adr/0032-approval-twin-human-replacement-layer.md).
+> Pre-Twin “mandatory human approval forever” wording is superseded for *judgment* (gates remain).
 # RUNBOOK DELTA v52 - SIM vs REAL Safety Split
 
 Date: 2026-04-09  

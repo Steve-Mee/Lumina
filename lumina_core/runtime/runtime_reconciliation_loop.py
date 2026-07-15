@@ -55,6 +55,12 @@ class RuntimeReconciliationLoop:
         slo = self.prod_cfg.get("slo") if isinstance(self.prod_cfg.get("slo"), dict) else {}
         self._reconciler_stale_s = float(slo.get("reconciler_status_stale_s", 120) or 120)
 
+    def update_prod_cfg(self, prod_cfg: dict[str, Any]) -> None:
+        """Refresh reconciliation thresholds after config hot-reload."""
+        self.prod_cfg = dict(prod_cfg or {})
+        slo = self.prod_cfg.get("slo") if isinstance(self.prod_cfg.get("slo"), dict) else {}
+        self._reconciler_stale_s = float(slo.get("reconciler_status_stale_s", 120) or 120)
+
     def _reconciler_status_age_s(self) -> float | None:
         path = _reconciler_status_path()
         if not path.exists():

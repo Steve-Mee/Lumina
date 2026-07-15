@@ -1,3 +1,5 @@
+﻿> **HISTORICAL SNAPSHOT — not living SSOT.**
+> Captured for audit. Current direction: `docs/roadmap.md`, Twin: ADR-0032. Prefer living docs under `docs/` and `project-dna/lumina/`.
 # Hoe pas je de Grok-Code Refactor toe op je bestaande Lumina project?
 
 Dit document bevat **stapsgewijze instructies** om de volledige refactor toe te passen op je huidige `Lumina` repository.

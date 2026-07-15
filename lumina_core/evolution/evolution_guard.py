@@ -68,13 +68,33 @@ class EvolutionGuard:
             return False
 
         recommendation = approval_twin_recommendation
+        twin_mode = str(getattr(approval_twin, "mode", "shadow") or "shadow").strip().lower()
+        if twin_mode in {"advisory", "active"}:
+            twin_mode = "assisted" if twin_mode == "advisory" else "full_auto"
         if recommendation is None:
             try:
                 result = approval_twin.evaluate_dna_promotion(dna)
-                recommendation = bool(result.get("recommendation", False) if isinstance(result, dict) else False)
+                if isinstance(result, dict):
+                    # Prefer mode-gated effective_recommendation (fail-closed)
+                    if "effective_recommendation" in result:
+                        recommendation = bool(result.get("effective_recommendation", False))
+                    else:
+                        recommendation = False
+                    twin_mode = str(result.get("mode") or twin_mode)
+                    if twin_mode in {"advisory", "active"}:
+                        twin_mode = "assisted" if twin_mode == "advisory" else "full_auto"
+                else:
+                    recommendation = False
             except Exception:
                 logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_guard.py:74")
                 recommendation = False
+        elif recommendation is True:
+            # Explicit True still requires full_auto mode on the twin (fail-closed)
+            pass
+
+        # REAL zero-touch requires full_auto twin judgment authority (fail-closed)
+        if twin_mode != "full_auto":
+            return False
 
         if recommendation:
             # Explicit fail-closed: twin rec is always subordinate to constitution.
@@ -129,7 +149,13 @@ class EvolutionGuard:
             return False
         try:
             result = approval_twin.evaluate_dna_promotion(dna)
-            rec = bool(result.get("recommendation", False)) if isinstance(result, dict) else False
+            if not isinstance(result, dict):
+                return False
+            # Mode-gated: only effective_recommendation may count as approve signal
+            if "effective_recommendation" in result:
+                rec = bool(result.get("effective_recommendation", False))
+            else:
+                rec = False
         except Exception:
             logging.exception("Unhandled broad exception fallback in lumina_core/evolution/evolution_guard.py:116")
             return False

@@ -280,6 +280,53 @@ class ArchPromotionDecisionPayload(BaseModel):
     health_delta: float = 0.0
 
 
+class CodeMutationProposalPayload(BaseModel):
+    """Typed contract for sandboxed trading-code evolution proposals (ADR-0033)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str
+    operator: str
+    target: str
+    description: str = ""
+    estimated_loc: int = Field(default=0, ge=0)
+    decision_context_id: str = ""
+    constitution_passed: bool = False
+    sandbox_passed: bool = False
+
+
+class CodeSandboxResultPayload(BaseModel):
+    """Sandbox evaluation outcome for a code-evolution proposal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str
+    passed: bool
+    score: float = 0.0
+    violations: list[str] = Field(default_factory=list)
+    input_hash: str = ""
+    output_hash: str = ""
+    timed_out: bool = False
+    error: str = ""
+    mode: str = "sim"
+
+
+class CodeEvolutionDecisionPayload(BaseModel):
+    """Final pipeline decision for a code-evolution proposal (evaluate-only v1)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str
+    constitution_passed: bool = False
+    twin_recommendation: bool = False
+    twin_effective: bool = False
+    sandbox_passed: bool = False
+    applied: bool = False
+    reason: str = ""
+    violations: list[str] = Field(default_factory=list)
+    timestamp: str = ""
+
+
 class TwinDecisionEvent(BaseModel):
     """ApprovalTwin promotion evaluation (ADR-0031)."""
 
@@ -304,6 +351,39 @@ class TwinTrainingUpdateEvent(BaseModel):
     reward: float = 0.0
     training_steps: int = Field(ge=0, default=0)
 
+
+class TwinShadowObservationEvent(BaseModel):
+    """Non-blocking Twin observe of shadow/promotion/constitution outcomes (ADR-0031 finish).
+
+    Observability only — never critical. Twin records agreement/disagreement without
+    mutating gate decisions.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    dna_hash: str = ""
+    source_topic: str
+    twin_recommendation: bool
+    observed_allowed_or_pass: bool
+    agreed: bool
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    risk_flags: list[str] = Field(default_factory=list)
+    explanation: str = ""
+
+
+class TwinModePromotionEvent(BaseModel):
+    """ApprovalTwin judgment-mode promotion evaluation (shadow → assisted → full_auto)."""
+
+    model_config = ConfigDict(extra="allow")
+
+    current_mode: str
+    target_mode: str
+    promoted: bool
+    fail_reasons: list[str] = Field(default_factory=list)
+    reason: str = ""
+    agreement_pct: float = 0.0
+    false_positive_pct: float = 100.0
+    samples: int = Field(ge=0, default=0)
 
 
 class AdaptiveIntelligenceState(BaseModel):
@@ -791,7 +871,12 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "evolution.promotion.decision": EvolutionPromotionDecision,
     "evolution.twin.decision": TwinDecisionEvent,
     "evolution.twin.training_update": TwinTrainingUpdateEvent,
+    "evolution.twin.shadow_observation": TwinShadowObservationEvent,
+    "evolution.twin.mode_promotion": TwinModePromotionEvent,
     "evolution.risk_config.mutation": RiskConfigMutationProposal,
+    "evolution.code.proposal.created": CodeMutationProposalPayload,
+    "evolution.code.sandbox.result": CodeSandboxResultPayload,
+    "evolution.code.decision": CodeEvolutionDecisionPayload,
     "safety.constitution.violation": ConstitutionViolation,
     "safety.constitution.audit": ConstitutionAudit,
     "meta.agent.reflection": AgentReflection,

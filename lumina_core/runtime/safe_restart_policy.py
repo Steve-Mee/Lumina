@@ -50,6 +50,10 @@ class SafeRestartPolicy:
         if not self.prod_cfg:
             self.prod_cfg = load_production_section()
 
+    def update_prod_cfg(self, prod_cfg: dict[str, Any]) -> None:
+        """Refresh production thresholds after config hot-reload."""
+        self.prod_cfg = dict(prod_cfg or {})
+
     @staticmethod
     def _norm_mode(mode: str) -> str:
         m = str(mode or "").strip().lower()

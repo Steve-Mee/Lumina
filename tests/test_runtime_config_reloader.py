@@ -137,6 +137,31 @@ def test_apply_config_reload_applies_safe_sim_overlay(monkeypatch: pytest.Monkey
 
 
 @pytest.mark.unit
+def test_apply_config_reload_rejects_twin_blocked_auto_approve(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _write_cfg(tmp_path, _valid_base_cfg())
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LUMINA_CONFIG", str(tmp_path / "config.yaml"))
+    monkeypatch.setenv("LUMINA_MODE", "sim")
+    monkeypatch.setenv("TRADE_MODE", "sim")
+    monkeypatch.setenv("BROKER_BACKEND", "live")
+    ConfigLoader.invalidate()
+
+    prior = ConfigService().load()
+    container = _minimal_reload_container(config=prior)
+
+    mutated = _valid_base_cfg()
+    mutated["evolution"] = {"auto_approve_real": True}
+    atomic_write_yaml(tmp_path / "config.yaml", mutated)
+
+    result = container.apply_config_reload(source="test")
+    assert result.applied is False
+    assert result.rejected_reason == "twin_oversight_blocked"
+    assert "auto_approve_real" in result.immutable_fields
+
+
+@pytest.mark.unit
 def test_birth_handler_registry_sync_birth_cfg() -> None:
     bus = EventBus()
     curriculum = BirthCurriculumConfig(stage1_trend_trades=1111)

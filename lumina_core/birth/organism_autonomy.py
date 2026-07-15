@@ -165,9 +165,17 @@ def evaluate_terminal_stall(
     # === Twin as default in birth-phase autonomy loops when confidence high ===
     # When the ApprovalTwin (trained on Steve labels) is confident, it replaces the
     # human gate. This is the primary 24/7 evolution path.
+    # Mode authority: shadow never sole-executes; promotion only via TwinModePromotionGate.
     if approval_twin is not None:
         try:
             from lumina_core.evolution.dna_registry import PolicyDNA
+
+            # Fail-closed mode checkpoint (auto-demote on metric breach before judgment).
+            if hasattr(approval_twin, "sync_mode_from_controller"):
+                try:
+                    approval_twin.sync_mode_from_controller()
+                except Exception:
+                    pass
 
             proxy = PolicyDNA.create(
                 prompt_id="birth_autonomy_twin_gate",
@@ -185,15 +193,24 @@ def evaluate_terminal_stall(
             )
             twin_res = approval_twin.evaluate_dna_promotion(proxy)
             t_conf = float(twin_res.get("confidence", 0.0) or 0.0)
-            t_rec = bool(twin_res.get("recommendation", False))
+            t_raw = bool(twin_res.get("recommendation", False))
+            # Mode authority: use effective_recommendation for auto paths (shadow never executes)
+            t_executable = bool(twin_res.get("executable", False))
+            t_rec = bool(twin_res.get("effective_recommendation", False))
+            if "effective_recommendation" not in twin_res:
+                # Legacy twin without mode authority — fail-closed to non-executable
+                t_rec = False
+                t_executable = False
             t_risks = list(twin_res.get("risk_flags", []) or [])
+            twin_mode = str(twin_res.get("mode") or getattr(approval_twin, "mode", "shadow") or "shadow")
             high_conf = t_conf >= 0.80
 
             # Explicit fail-closed subordination of twin: respect constitution_violations already
             # accumulated from BirthConstitutionGuard / trading constitution in this stage.
             # Twin judgment never overrides a detected constitutional violation.
-            if t_rec and int(constitution_violations or 0) > 0:
+            if (t_rec or t_raw) and int(constitution_violations or 0) > 0:
                 t_rec = False
+                t_executable = False
                 if "prior_constitution_violations" not in t_risks:
                     t_risks.append("prior_constitution_violations")
                 high_conf = False
@@ -202,7 +219,22 @@ def evaluate_terminal_stall(
             # mutations are always routed through ConstitutionalGuard.check_pre_* + SandboxedMutationExecutor
             # regardless of any twin recommendation (see mutation_pipeline / generation_runner / orchestrator).
 
-            if high_conf and t_rec and len(t_risks) == 0:
+            # Assisted / shadow: twin veto may block (fail-closed); only full_auto may sole-CONTINUE.
+            if high_conf and not t_raw:
+                return AutonomyDecision(
+                    dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+                    needs_attention=True,
+                    retryable=False,
+                    stall_reason=stall_reason,
+                    message=(
+                        f"Twin high-conf veto (conf={t_conf:.2%}, mode={twin_mode}) "
+                        "— operator attention required."
+                    ),
+                )
+            if high_conf and t_raw and not t_executable:
+                # Propose only / assisted approve — do not sole-auto; fall through to other recovery.
+                pass
+            elif high_conf and t_rec and t_executable and len(t_risks) == 0:
                 autonomy_state.autonomous_recovery_count += 1
                 return AutonomyDecision(
                     dispatch=RecoveryDispatch.CONTINUE_LOOP,
@@ -211,15 +243,10 @@ def evaluate_terminal_stall(
                     stall_reason=stall_reason,
                     recommended_action=map_recommended_to_service_action(recommended or "resume_stalled_stage"),
                     autonomy_metrics=autonomy_state.to_metrics(),
-                    message=f"Twin high-conf autonomous approval (conf={t_conf:.2%})",
-                )
-            if high_conf and not t_rec:
-                return AutonomyDecision(
-                    dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
-                    needs_attention=True,
-                    retryable=False,
-                    stall_reason=stall_reason,
-                    message=f"Twin high-conf veto (conf={t_conf:.2%}) — operator attention required.",
+                    message=(
+                        f"Twin high-conf autonomous approval "
+                        f"(conf={t_conf:.2%}, mode={twin_mode})"
+                    ),
                 )
         except Exception:
             # Never break autonomy on twin error; fall through to cfg logic

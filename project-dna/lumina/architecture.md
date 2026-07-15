@@ -62,8 +62,11 @@ Lumina gebruikt expliciete **bounded contexts** onder `lumina_core/` (zie ADR 00
 - 15 onveranderlijke principes.
 - Drie-fasen fail-closed model.
 
-### 3.4 Shadow Deployment + Human Approval
-- Radicale mutaties nooit direct in REAL zonder gates.
+### 3.4 Shadow Deployment + Approval Gates (incl. Approval Twin)
+- Radicale mutaties nooit direct in REAL zonder gates (shadow + constitution + PromotionGate).
+- **Approval Twin** (ADR-0031/0032) is de primary *judgment* signal for birth/SIM/autonomy when high-conf + clean — a user-trained human replacement layer, not a gate bypass.
+- REAL remains multi-layer: Twin may recommend; sandbox, constitution, shadow aperture and PromotionGate still decide.
+- Living detail: `docs/roadmap.md` §6.
 
 ### 3.5 Fail-Closed Design
 - Bij twijfel = reject.

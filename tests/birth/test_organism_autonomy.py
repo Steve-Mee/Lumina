@@ -181,6 +181,11 @@ class _TwinStub:
     def __init__(self, payload: dict[str, object]) -> None:
         self.payload = payload
         self.calls = 0
+        self.sync_calls = 0
+
+    def sync_mode_from_controller(self) -> str:
+        self.sync_calls += 1
+        return str(self.payload.get("mode") or "shadow")
 
     def evaluate_dna_promotion(self, _dna: object) -> dict[str, object]:
         self.calls += 1
@@ -190,7 +195,16 @@ class _TwinStub:
 @pytest.mark.unit
 def test_evaluate_terminal_stall_twin_high_conf_approval() -> None:
     autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
-    twin = _TwinStub({"confidence": 0.92, "recommendation": True, "risk_flags": []})
+    twin = _TwinStub(
+        {
+            "confidence": 0.92,
+            "recommendation": True,
+            "effective_recommendation": True,
+            "executable": True,
+            "mode": "full_auto",
+            "risk_flags": [],
+        }
+    )
     decision = evaluate_terminal_stall(
         cfg=_cfg(phoenix_loop_enabled=False),
         autonomy_state=autonomy,
@@ -206,13 +220,55 @@ def test_evaluate_terminal_stall_twin_high_conf_approval() -> None:
     assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
     assert "Twin high-conf autonomous approval" in decision.message
     assert twin.calls == 1
+    assert twin.sync_calls == 1
     assert autonomy.autonomous_recovery_count == 1
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_shadow_mode_twin_does_not_sole_auto() -> None:
+    """Shadow mode proposes but does not execute CONTINUE from twin alone."""
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _TwinStub(
+        {
+            "confidence": 0.95,
+            "recommendation": True,
+            "effective_recommendation": False,
+            "executable": False,
+            "mode": "shadow",
+            "risk_flags": [],
+        }
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled", "blocker_metric": "trend_winrate", "blocker_value": 0.4},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+        recommended_recovery_action="expand_data",
+    )
+    # Falls through to non-twin recovery path (recommended action), not twin auto message
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
+    assert "Twin high-conf autonomous approval" not in decision.message
+    assert decision.recommended_action == "expand_and_retry"
 
 
 @pytest.mark.unit
 def test_evaluate_terminal_stall_twin_high_conf_veto() -> None:
     autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
-    twin = _TwinStub({"confidence": 0.95, "recommendation": False, "risk_flags": []})
+    twin = _TwinStub(
+        {
+            "confidence": 0.95,
+            "recommendation": False,
+            "effective_recommendation": False,
+            "executable": False,
+            "mode": "assisted",
+            "risk_flags": [],
+        }
+    )
     decision = evaluate_terminal_stall(
         cfg=_cfg(phoenix_loop_enabled=False),
         autonomy_state=autonomy,
@@ -289,3 +345,36 @@ def test_evaluate_terminal_stall_twin_error_falls_through_to_recommended() -> No
     )
     assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
     assert decision.recommended_action == "phoenix_recovery"
+
+
+@pytest.mark.unit
+def test_organism_autonomy_handler_passes_twin_on_bus() -> None:
+    """Birth bus path must inject approval_twin (was dropped before ADR-0031 finish)."""
+    from lumina_core.agent_orchestration.event_bus import EventBus
+    from lumina_core.birth.birth_bus_client import BirthBusClient
+    from lumina_core.birth.config import BirthRewardConfig
+    from lumina_core.birth.curriculum import CurriculumStage
+
+    twin = _TwinStub({"confidence": 0.91, "recommendation": True, "risk_flags": []})
+    bus = EventBus()
+    client = BirthBusClient(
+        bus,
+        _cfg(phoenix_loop_enabled=False),
+        BirthRewardConfig(),
+        approval_twin=twin,
+    )
+    assert client.registry.autonomy.approval_twin is twin
+    assert client.registry.meta.approval_twin is twin
+    assert client.registry.meta.controller.approval_twin is twin
+
+    decision = client.autonomy_evaluate_terminal_stall(
+        CurriculumStage.STAGE1_TREND,
+        pending={"terminal_stall_reason": "stage_stalled", "blocker_metric": "trend_winrate", "blocker_value": 0.4},
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+        recommended_recovery_action="expand_data",
+    )
+    assert twin.calls >= 1
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP

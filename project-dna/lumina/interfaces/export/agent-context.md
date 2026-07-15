@@ -1,7 +1,8 @@
 # Lumina — Current Status
 
-**Last Updated**: 2026-06-25  
-**Owner**: Guardian + Human
+**Last Updated**: 2026-07-15  
+**Owner**: Guardian + Human  
+**Note**: Export of living `project-dna/lumina/current-status.md` for agent context.
 
 ---
 
@@ -9,16 +10,30 @@
 
 | Metric                    | Current Score | Trend     | Target     | Notes |
 |---------------------------|---------------|-----------|------------|-------|
-| Overall DNA Health        | 9.71/10       | ↑         | ≥ 9.3      | Improving |
+| Overall DNA Health        | 9.71/10       | ↑         | ≥ 9.3      | Pre-July baseline; re-measure after docs wave |
 | Truth Density (avg)       | 9.43          | ↑         | ≥ 9.0      | Strong |
 | Structural Health         | 10.0/10       | Stable    | 10.0       | GREEN |
 | Aperture Integrity        | 10.0/10       | GREEN     | 10.0       | All FATAL bypasses eliminated |
 | North Star (90-day)       | Sustained     | -         | Sustained  | 7/7 aperture window |
 
 **Current Focus Areas**:
-- Campaign maintenance & daily forcing
-- Parent hypothesis falsification (target: 2026-08-29)
-- Further decomposition of remaining god surfaces
+- **Approval Twin** as core differentiator (human replacement *judgment* in SIM/birth)
+- Perfect Birth KPIs → unlock **Phase 2 Autonomy**
+- Continued modularization of residual god surfaces
+- Living docs SSOT (`docs/roadmap.md` v5.2.x wave)
+
+---
+
+## Unique Differentiator — Approval Twin
+
+**Status**: Core shipped (ADR-0031, ADR-0032).
+
+- User-trained mimic of operator approve/veto (`SteveValuesRegistry` → train CLI).
+- Primary auto-approval signal for birth/SIM/autonomy when high-conf + clean.
+- **Never** bypasses Constitution, sandbox, risk shadow, or REAL PromotionGate.
+- Train: `python -m lumina_launcher twin review|train|metrics`
+
+SSOT: `docs/roadmap.md` §6 · `docs/adr/0032-approval-twin-human-replacement-layer.md`
 
 ---
 
@@ -28,83 +43,73 @@
 
 - `aperture_guard` functions as **permanent regression detector**.
 - Live broker (CrossTrade) lineage wiring completed.
-- No structural bypasses remain in source, tests or active documentation.
+- No structural bypasses remain in source, tests or **living** documentation.
 
-**Key Reference**: `evolution/log/2026-05-31-elon-musk-first-principles-trading-system-analysis.md`
-
+**Key Reference**: `evolution/log/2026-05-31-elon-musk-first-principles-trading-system-analysis.md`  
 **Risk**: Any regression here has the highest impact on the entire mission.
 
 ---
 
 ## Current Phase Progress
 
-### Phase 2 — D2 (Runtime Workers & Pre-Dream Decomposition)
-- **Status**: Largely complete (Sub4 – Sub24)
-- Major bounded components extracted: `PaperTradeExecutor`, `PaperSimulator`, `EODForceCloseService`, `PreDreamDaemon`, `LivePositionManager`, `RealCloseDetector`, `RlBiasApplier`, `SupervisorPhaseStateMachine`, `PriceDupeResolver`
-- Remaining god surfaces: `runtime_workers` (voice/legacy, bootstrap, monitoring) and parts of `pre_dream`
+### v5.2.x wave — Twin + Modularization
+- **Approval Twin**: Event Bus + primary auto-approval paths + CLI training (accepted ADRs).
+- **Modularization**: thin orchestrators, birth package, bounded evolution/risk extractions ongoing.
+- **Never-stall / adaptive wall**: engine + recovery UI baseline complete.
 
-**Next high-leverage step**: Extract `voice/legacy` as bounded `VoiceLegacyHandler`
+### Perfect Birth → Phase 2 Autonomy
+- **Status**: KPIs defined; conjunction gate not auto-declared.
+- Unlock: `docs/birth-phase-live-validation-runbook.md` §8–9.
+- Phase 2 pillars (planned): dynamic wall triggers, self-adaptive parameters, never-stop at scale, dynamic spawn without restart.
 
-### Phase 3 — D3 / D4
-- **D3**: Daily Guardian forcing + rich aperture reporting active
-- **D4 (Genuine Campaign)**: Longer multi-day/scale evidence achieved (25 proposals, 8 unsafe caught at 100%)
-- Genuine D4 evidence tooling available (`scripts/phase3_d4_genuine_evidence.py`)
+### Earlier campaign work (May–June 2026) — closed context
+- Phase 2 D2 runtime decomposition (largely complete; residual gods remain)
+- Phase 3 D3/D4 Guardian forcing + genuine campaign evidence
+- Historical detail: `evolution/log/` (not forward roadmap)
 
 ---
 
 ## Top Evolutionary Debt (Current Reality)
 
-See full details in `current-reality/evolutionary-debt.md`.
-
 **Highest remaining items**:
-1. Remaining god surfaces in `runtime_workers` and `pre_dream`
-2. Full shadow deployment hardening for risk-affecting mutations (practical coverage achieved, but not yet 100% guaranteed)
-3. Further strengthening of live broker lineage + typed subscribers
+1. Residual god surfaces (`runtime_workers`, `pre_dream`, related)
+2. Phase 2 Autonomy implementation (after Perfect Birth evidence)
+3. Secure self-code evolution vision (sandbox + Twin + Constitution)
+4. Full shadow deployment hardening edge cases for risk-affecting mutations
 
 ---
 
 ## Active Priorities (Next 30–60 days)
 
-1. **Daily campaign discipline** — `scripts/phase3_campaign_daily.py`
-2. **Parent hypothesis falsification** at campaign end (2026-08-29)
-3. Continue D2 decomposition on remaining god surfaces (voice/legacy recommended)
-4. Keep Guardian daily execution healthy and Aperture dimension as forcing function
-5. Maintain high Truth Density across Project DNA files
+1. Twin training discipline + Perfect Birth KPI observation
+2. Modularization of remaining high-blast god surfaces
+3. Keep Aperture Integrity GREEN (daily Guardian)
+4. Design/ADR for Phase 2 Autonomy when Perfect Birth nears
+5. Maintain living SSOT: `docs/roadmap.md` + current-status + this export
 
 ---
 
-## Recent Milestones (May–June 2026)
+## Recent Milestones
 
-- **2026-06-13**: Sub12 (`PriceDupeResolver`) completed + tests green
-- **2026-06-11**: D2 Sub18–24 + pre-dream program close-out
-- **2026-06-07**: Longer genuine D4 campaign evidence (25 proposals)
-- **2026-06-06**: Live broker (CrossTrade) lineage wiring complete
-- **2026-06-04**: Phase 0 doc sync + perfection remediation plan executed
-- **2026-05-31**: All 4 FATAL aperture bypasses eliminated (Phase 1.3.4)
+- **2026-07-15**: Living docs alignment — Twin + Phase 2 Autonomy + historical snapshot banners
+- **2026-07-13/14**: ADR-0031, ADR-0032 (Approval Twin)
+- **2026-07-13**: ADR-0030 Architecture Meta-Controller
+- **2026-06**: Birth Phase v2, never-stall, modularization, aperture campaign
 
 ---
 
 ## Key Documents (Quick Reference)
 
-| Document                              | Purpose                              | When to read |
-|---------------------------------------|--------------------------------------|--------------|
-| `constitution.md`                     | Non-negotiable invariants            | Before touching risk/safety/capital paths |
-| `north-star.md`                       | Core mission & principles            | Always |
-| `self-improvement-protocol.md`        | How to evolve the DNA                | Before any meta-change |
-| `evolutionary-debt.md`                | Current biggest limitations          | When planning large refactors |
-| `aperture-hardening-mission-control.md` | Progress vs original 90-day plan   | Before working on aperture/risk |
-| `anti-patterns.md`                    | What to avoid                        | During architecture decisions |
-| `decision-framework.md`               | How to make hard decisions           | Medium/Large meta-changes |
+| Document | Purpose | When to read |
+|----------|---------|--------------|
+| `docs/roadmap.md` | Living product/capability roadmap | Always for direction |
+| `constitution.md` | Non-negotiable invariants | Before risk/safety/capital paths |
+| `north-star.md` | Core mission & principles | Always |
+| ADR-0031 / 0032 | Approval Twin | Before touching approval/autonomy |
+| `self-improvement-protocol.md` | How to evolve the DNA | Before any meta-change |
+| `evolutionary-debt.md` | Current biggest limitations | Large refactors |
+| `docs/history/` | **Historical snapshots only** | Never as SSOT |
 
 ---
 
-## How to Update This File
-
-- Update the **Last Updated** date
-- Keep sections short and scannable
-- Move detailed historical logs to `evolution/log/`
-- This file should be readable in under 60 seconds
-
----
-
-**End of Current Status**
+**End of Current Status (agent-context export)**

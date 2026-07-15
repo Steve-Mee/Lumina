@@ -26,7 +26,10 @@ reports/
 docs/sbom.json
 pip_audit_report.json
 
-# Local debug / CI log scratch files
+# Local refactor extraction scratch (canonical code lives in lumina_core/birth/)
+scripts/_extract_stage_loop*.py
+scripts/_split_*.py
+
 tmp_*.log
 tmp_*.txt
 tmp_test_subset.txt

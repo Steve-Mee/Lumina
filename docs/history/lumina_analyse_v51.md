@@ -1,3 +1,6 @@
+﻿> **HISTORICAL SNAPSHOT — not living SSOT.**
+> Captured for audit. Current direction: [`docs/roadmap.md`](../roadmap.md), Twin: [ADR-0032](../adr/0032-approval-twin-human-replacement-layer.md).
+> Pre-Twin “mandatory human approval forever” wording is superseded for *judgment* (gates remain).
 # Lumina Codebase Analyse v51 — Officieel Kanon (Extreem Grondig)
 
 **Versie:** v51 Transition-Ready Organism  

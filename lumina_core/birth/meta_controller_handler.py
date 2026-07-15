@@ -40,12 +40,14 @@ class MetaControllerHandler:
         reward: BirthRewardConfig,
         *,
         registry: Any | None = None,
+        approval_twin: Any | None = None,
     ) -> None:
         if event_bus is None:
             raise ValueError("MetaControllerHandler requires EventBus")
         self.bus = event_bus
         self.cfg = cfg
-        self.controller = BirthMetaController(cfg, reward)
+        self.approval_twin = approval_twin
+        self.controller = BirthMetaController(cfg, reward, approval_twin=approval_twin)
         self._registry = registry
         self._token: str | None = None
         self._trap_token: str | None = None

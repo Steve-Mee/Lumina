@@ -211,6 +211,25 @@ evolution:
   approval_required: false
   sandbox_mutations: true
   reality_gap_penalty_coeff: 0.15
+  # Approval Twin judgment authority ladder: shadow → assisted → full_auto
+  approval_twin:
+    mode: shadow  # shadow | assisted | full_auto (aliases: advisory, active)
+    mode_promotion:
+      auto_promote_when_ready: false
+      min_samples_assisted: 30
+      min_agreement_pct_assisted: 80.0
+      max_false_positive_pct_assisted: 10.0
+      min_risk_flags_caught_assisted: 0
+      min_samples_full_auto: 50
+      min_agreement_pct_full_auto: 90.0
+      max_false_positive_pct_full_auto: 5.0
+      min_risk_flags_caught_full_auto: 1
+      demote_agreement_floor_pct: 70.0
+      demote_false_positive_ceiling_pct: 20.0
+      require_constitution_adherence_100: true
+      audit_path: state/twin_mode_promotion_audit.jsonl
+      mode_state_path: state/approval_twin_mode.json
+      metrics_path: state/monitoring_twin_mode_metrics.jsonl
   meta_swarm:
     enabled: true
   ohlc_reality_stress_enabled: true
@@ -240,6 +259,12 @@ evolution:
     risk_nudge_modes:
     - sim
     - paper
+  # Trading code evolution (ADR-0033) — evaluate-only sandbox prototype, default OFF
+  code_evolution:
+    enabled: false
+    max_proposals_per_cycle: 1
+    sandbox_timeout_s: 30
+    require_twin: true
   shadow_validation:
     min_days: 3
     max_days: 7
@@ -550,6 +575,9 @@ headless:
     max_in_process_recovery_attempts: 3
     max_process_restarts_per_hour: 6
     safe_restart_exit_code: 42
+    force_checkpoint_on_shutdown: true
+    checkpoint_status_enabled: true
+    stall_consecutive_ticks: 2
     preflight:
       require_birth_certificate: true
       require_broker_connect: true

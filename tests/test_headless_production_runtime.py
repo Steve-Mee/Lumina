@@ -197,6 +197,24 @@ class TestHeadlessTelemetry:
         assert summary["alert_count"] == 1
         assert summary["mode"] == "sim"
 
+    def test_alert_dual_writes_local_jsonl(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "state").mkdir()
+        telemetry = HeadlessTelemetry(mode="sim")
+        telemetry.alert("local sink", alert_type="unit_test", data={"k": 1})
+        alerts = tmp_path / "state" / "runtime_alerts.jsonl"
+        assert alerts.exists()
+        row = json.loads(alerts.read_text(encoding="utf-8").strip().splitlines()[-1])
+        assert row["alert_type"] == "unit_test"
+        assert row["message"] == "local sink"
+
+    def test_end_is_idempotent(self) -> None:
+        telemetry = HeadlessTelemetry(mode="sim")
+        telemetry.begin()
+        telemetry.end(status="ok", exit_code=0)
+        telemetry.end(status="ok", exit_code=0)
+        assert telemetry.smoke_summary()["mode"] == "sim"
+
 
 class TestNeverStopRecovery:
     def test_restarts_dead_daemon_thread(self) -> None:
@@ -254,6 +272,122 @@ class TestNeverStopRecovery:
         result = recovery.tick()
         assert "supervisor-loop" in result.blocked
         assert policy.restart_requested() or result.escalated
+
+    def test_stall_signals_reconciler_after_threshold(self) -> None:
+        registry = RuntimeDaemonRegistry.get()
+        keep_alive = threading.Event()
+
+        def _alive_worker() -> None:
+            keep_alive.wait(2.0)
+
+        thread = threading.Thread(target=_alive_worker, daemon=True, name="trade-reconciler")
+        thread.start()
+        registry.register("trade-reconciler", thread, target_factory=lambda: None)
+
+        start_fn = MagicMock()
+        stop_fn = MagicMock()
+        container = SimpleNamespace(trade_reconciler=SimpleNamespace(stop=stop_fn, start=start_fn))
+        policy = SafeRestartPolicy(mode="sim", prod_cfg={"max_in_process_recovery_attempts": 5, "stall_consecutive_ticks": 2})
+        recovery = NeverStopRecovery(
+            mode="sim",
+            container=container,
+            restart_policy=policy,
+            prod_cfg={"max_in_process_recovery_attempts": 5, "stall_consecutive_ticks": 2},
+        )
+
+        r1 = recovery.tick(stall_signals=("reconciler_status_stale:200s>120s",))
+        assert r1.stalled_daemons == ()
+        with patch("lumina_core.runtime.never_stop_recovery.start_daemon") as start_daemon_mock:
+            start_daemon_mock.return_value = threading.Thread(target=lambda: None, daemon=True)
+            r2 = recovery.tick(stall_signals=("reconciler_status_stale:200s>120s",))
+            assert "trade-reconciler" in r2.stalled_daemons
+            assert "trade-reconciler" in r2.restarted
+            stop_fn.assert_called()
+            start_daemon_mock.assert_called()
+        keep_alive.set()
+
+    def test_stall_supervisor_real_requests_process_restart(self) -> None:
+        registry = RuntimeDaemonRegistry.get()
+        keep_alive = threading.Event()
+
+        def _alive_worker() -> None:
+            keep_alive.wait(2.0)
+
+        thread = threading.Thread(target=_alive_worker, daemon=True, name="supervisor-loop")
+        thread.start()
+        registry.register("supervisor-loop", thread, target_factory=lambda: None)
+
+        container = SimpleNamespace(trade_reconciler=None)
+        policy = SafeRestartPolicy(mode="real", prod_cfg={"max_in_process_recovery_attempts": 5, "stall_consecutive_ticks": 1})
+        recovery = NeverStopRecovery(
+            mode="real",
+            container=container,
+            restart_policy=policy,
+            prod_cfg={"max_in_process_recovery_attempts": 5, "stall_consecutive_ticks": 1},
+        )
+        result = recovery.tick(stall_signals=("supervisor_tick_stale:200s>120s",))
+        assert "supervisor-loop" in result.stalled_daemons or "supervisor-loop" in result.blocked
+        assert policy.restart_requested()
+        keep_alive.set()
+
+
+class TestHeadlessProductionOrchestratorLifecycle:
+    def test_graceful_shutdown_saves_state_and_stops_hot_reload(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from lumina_core.runtime.headless_production import HeadlessProductionOrchestrator
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "state").mkdir()
+
+        save_state = MagicMock()
+        stop_hot_reload = MagicMock()
+        container = SimpleNamespace(
+            engine=SimpleNamespace(save_state=save_state),
+            stop_config_hot_reload=stop_hot_reload,
+            observability_service=None,
+            event_bus=None,
+        )
+        telemetry = HeadlessTelemetry(mode="sim")
+        orch = HeadlessProductionOrchestrator(mode="sim", prod_cfg={"force_checkpoint_on_shutdown": True})
+        code = orch._graceful_shutdown(
+            container=container,
+            telemetry=telemetry,
+            status="interrupted",
+            exit_code=0,
+            reason="unit_test",
+        )
+        assert code == 0
+        save_state.assert_called_once()
+        stop_hot_reload.assert_called_once()
+        status_path = tmp_path / "state" / "headless_runtime_status.json"
+        assert status_path.exists()
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+        assert payload["phase"] == "stopped"
+        assert payload.get("shutdown_reason") == "unit_test"
+
+    def test_refresh_prod_cfg_updates_slo_monitor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from lumina_core.runtime.headless_production import HeadlessProductionOrchestrator
+
+        monkeypatch.setattr(
+            "lumina_core.runtime.headless_production.load_production_section",
+            lambda: {"heartbeat_interval_s": 7, "slo": {"supervisor_tick_stale_s": 99}},
+        )
+        orch = HeadlessProductionOrchestrator(mode="sim", prod_cfg={"heartbeat_interval_s": 15})
+        policy = SafeRestartPolicy(mode="sim", prod_cfg=orch.prod_cfg)
+        monitor = RuntimeSloMonitor(mode="sim", prod_cfg=orch.prod_cfg)
+        recon = RuntimeReconciliationLoop(mode="sim", container=SimpleNamespace(), restart_policy=policy, prod_cfg=orch.prod_cfg)
+        recovery = NeverStopRecovery(mode="sim", container=SimpleNamespace(), restart_policy=policy, prod_cfg=orch.prod_cfg)
+        orch._refresh_prod_cfg(
+            restart_policy=policy,
+            slo_monitor=monitor,
+            reconciliation=recon,
+            recovery=recovery,
+            source="test",
+        )
+        assert orch.prod_cfg["heartbeat_interval_s"] == 7
+        assert monitor._slo.get("supervisor_tick_stale_s") == 99  # noqa: SLF001
+        assert orch._interval("heartbeat_interval_s", 15) == 7.0
 
 
 class TestWatchdogRateLimit:

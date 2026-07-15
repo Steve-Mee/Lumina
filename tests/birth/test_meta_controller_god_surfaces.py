@@ -12,6 +12,7 @@ import pytest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _META = _ROOT / "lumina_core" / "birth" / "meta_controller.py"
+_META_TYPES = _ROOT / "lumina_core" / "birth" / "meta_controller_types.py"
 
 # Baseline captured after engine extractions (phase 1 series).
 # meta_controller owns adaptation decisions, stall detection, recovery strategy, learning health.
@@ -31,8 +32,9 @@ def test_meta_controller_loc_at_or_below_baseline() -> None:
 @pytest.mark.unit
 def test_meta_controller_exports_key_symbols() -> None:
     text = _META.read_text(encoding="utf-8")
+    types_text = _META_TYPES.read_text(encoding="utf-8")
     # Core owners referenced by birth/engine and other birth surfaces
-    assert "class AdaptationDecision" in text
-    assert "class StallDetectionResult" in text or "detect_stall" in text
+    assert "class AdaptationDecision" in types_text
+    assert "class StallDetectionResult" in types_text or "detect_stall" in text
     assert "get_adaptation_decision" in text
     assert "LearningHealth" in text or "LearningSnapshot" in text

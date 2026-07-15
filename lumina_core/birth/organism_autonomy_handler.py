@@ -29,6 +29,7 @@ class OrganismAutonomyHandler:
         cfg: BirthCurriculumConfig,
         *,
         registry: Any | None = None,
+        approval_twin: Any | None = None,
     ) -> None:
         if event_bus is None:
             raise ValueError("OrganismAutonomyHandler requires EventBus")
@@ -39,6 +40,7 @@ class OrganismAutonomyHandler:
             death_spiral=DeathSpiralState(),
         )
         self._registry = registry
+        self.approval_twin = approval_twin
         self._token: str | None = None
 
     def attach(self) -> str:
@@ -115,6 +117,7 @@ class OrganismAutonomyHandler:
                     autonomy_state=self.state,
                     pending=pending,
                     curriculum_stage=snap_evt.stage,
+                    approval_twin=self.approval_twin,
                     stage_trades=int(ctx.get("stage_trades", 0)),
                     required=int(ctx.get("required", 0)),
                     constitution_violations=int(ctx.get("constitution_violations", 0)),

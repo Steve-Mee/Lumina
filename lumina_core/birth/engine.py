@@ -150,10 +150,12 @@ class BirthPhaseEngineV2:
             self._curriculum_orchestrator = CurriculumOrchestrator(self.event_bus)
             self._constitution_enforcer = ConstitutionEnforcer(self.event_bus)
             self._constitution_enforcer.attach()
+            approval_twin = self._resolve_approval_twin()
             self._birth_handler_registry = BirthHandlerRegistry(
                 self.event_bus,
                 self.birth_config.curriculum,
                 self.birth_config.reward,
+                approval_twin=approval_twin,
             )
             self._birth_handler_registry.attach_all()
             self._birth_bus_client = BirthBusClient(
@@ -161,7 +163,14 @@ class BirthPhaseEngineV2:
                 self.birth_config.curriculum,
                 self.birth_config.reward,
                 registry=self._birth_handler_registry,
+                approval_twin=approval_twin,
             )
+            # Twin EventBus subscriptions (shadow observe) when orchestrator twin is present
+            if approval_twin is not None and hasattr(approval_twin, "bind_event_bus"):
+                try:
+                    approval_twin.bind_event_bus(self.event_bus)
+                except Exception:
+                    logger.debug("birth.twin_bind_event_bus_failed", exc_info=True)
             # Attach dedicated stage execution handler (owns the moved curriculum logic)
             self._stage_handler = create_and_attach_stage_handler(self.event_bus, self)
         except Exception:
@@ -174,6 +183,23 @@ class BirthPhaseEngineV2:
         self.practice_policy_path = self.workspace_root / "lumina_agents" / "ppo" / "lumina_ppo_policy_practice.zip"
         self.pause_flag_path = self.workspace_root / "state" / "first_boot_pause_requested"
         self.practice_completed_flag_path = self.workspace_root / "state" / "lumina_birth_practice_completed.flag"
+
+    def _resolve_approval_twin(self) -> Any | None:
+        """Best-effort ApprovalTwin for birth auto-judgment (ADR-0031/0032).
+
+        Prefer engine-attached twin; fall back to EvolutionOrchestrator singleton.
+        Fail-closed: missing twin is OK (autonomy falls back to human notify paths).
+        """
+        for attr in ("approval_twin", "_approval_twin"):
+            twin = getattr(self, attr, None)
+            if twin is not None:
+                return twin
+        try:
+            from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
+
+            return getattr(EvolutionOrchestrator(), "_approval_twin", None)
+        except Exception:
+            return None
 
     def _load_workspace_yaml(self) -> dict[str, Any]:
         cfg_path = self.workspace_root / "config.yaml"
@@ -938,6 +964,8 @@ class BirthPhaseEngineV2:
         prefer_real: bool,
         start_price: float,
     ) -> dict[str, Any] | None:
+        # Recovery (plateau / remediation / wall+adaptation / phoenix) is now in handlers via BirthBusClient.
+        # run_stage_research_loop is thin orchestration.
         from lumina_core.birth.stage_training_loop import run_stage_research_loop
 
         return run_stage_research_loop(

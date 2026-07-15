@@ -1,3 +1,12 @@
+"""Lumina Bible — append-only knowledge stream for evolved strategy rules.
+
+LUMINA's durable differentiator is not generic RL alone: it is the
+**Approval Twin** (user-trained human replacement *judgment*, ADR-0031/0032)
+combined with Constitution + sandbox + shadow gates. Rules appended here are
+winners or community knowledge that survived that stack (e.g. ``shadow_twin_ok``).
+
+This module stores *what was learned*; it does not replace safety gates.
+"""
 from __future__ import annotations
 import logging
 
@@ -44,7 +53,12 @@ class BibleEntry:
 
 
 class LuminaBible:
-    """Append-only knowledge base for generated strategy rules."""
+    """Append-only knowledge base for generated strategy rules.
+
+    Downstream of evolution: DNA that passes Twin judgment + shadow/constitution
+    gates can be recorded as durable organism knowledge. Twin never writes here
+    by itself to promote REAL capital paths.
+    """
 
     def __init__(self, *, path: Path | str = Path("state/lumina_bible_generated_strategies.jsonl")) -> None:
         self.path = Path(path)
@@ -121,7 +135,11 @@ class LuminaBible:
         generation: int = 0,
         lineage_hash: str = "COMMUNITY",
     ) -> BibleEntry:
-        """Append vetted external / community knowledge (post shadow + twin)."""
+        """Append vetted external / community knowledge (post shadow + Approval Twin).
+
+        Default ``vetting=shadow_twin_ok`` signals the core differentiator path:
+        operator-aligned Twin judgment plus shadow — not unvetted copy-paste.
+        """
         with self._lock:
             record = {
                 "timestamp": _utcnow(),

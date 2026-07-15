@@ -45,12 +45,15 @@ class BirthBusClient:
         reward_cfg: BirthRewardConfig,
         *,
         registry: BirthHandlerRegistry | None = None,
+        approval_twin: Any | None = None,
     ) -> None:
         self.bus = event_bus
         self.cfg = curriculum_cfg
         self.registry = registry or BirthHandlerRegistry(
-            event_bus, curriculum_cfg, reward_cfg
+            event_bus, curriculum_cfg, reward_cfg, approval_twin=approval_twin
         )
+        if approval_twin is not None and hasattr(self.registry, "bind_approval_twin"):
+            self.registry.bind_approval_twin(approval_twin)
         if not self.registry._attached:
             self.registry.attach_all()
 
@@ -384,6 +387,20 @@ class BirthBusClient:
         cid = self.emit("phoenix_begin_cycle", stage, ctx)
         patch = self._resp(cid).get("patch")
         return patch if isinstance(patch, dict) else None
+
+    # --- High-level recovery orchestration facades (for thin rollout) ---
+    def plateau_try_evolution(self, stage: CurriculumStage, **ctx: Any) -> dict[str, Any]:
+        cid = self.emit("plateau_try_evolution", stage, ctx)
+        return dict(self._resp(cid).get("evolution", {}))
+
+    def remediation_try_advance(self, stage: CurriculumStage, **ctx: Any) -> dict[str, Any]:
+        cid = self.emit("remediation_try_advance", stage, ctx)
+        return dict(self._resp(cid).get("remediation", {}))
+
+    def resolve_terminal(self, stage: CurriculumStage, **ctx: Any) -> dict[str, Any] | None:
+        cid = self.emit("resolve_terminal_stall", stage, ctx)
+        raw = self._resp(cid).get("terminal")
+        return dict(raw) if isinstance(raw, dict) else None
 
     @staticmethod
     def _kwargs_to_snapshot(stage: CurriculumStage, kwargs: dict[str, Any]) -> LearningSnapshot:

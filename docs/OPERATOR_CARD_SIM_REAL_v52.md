@@ -1,3 +1,6 @@
+﻿> **HISTORICAL SNAPSHOT — not living SSOT.**
+> Captured for audit. Current direction: [`docs/roadmap.md`](roadmap.md), Twin: [ADR-0032](adr/0032-approval-twin-human-replacement-layer.md).
+> Pre-Twin “mandatory human approval forever” wording is superseded for *judgment* (gates remain).
 # OPERATOR CARD - SIM vs REAL v52
 
 1. Pre-check: run safety gate -> python -m pytest -m safety_gate -q (must be green).

@@ -9,9 +9,11 @@ import { AdaptiveIntelligenceHistoryPanel } from "@/components/intelligence/Adap
 import { AdaptiveIntelligenceRecentEvents } from "@/components/intelligence/AdaptiveIntelligenceRecentEvents";
 import { AdaptiveIntelligenceStatusCard } from "@/components/intelligence/AdaptiveIntelligenceStatusCard";
 import { CommunityPanel } from "@/components/operations/CommunityPanel";
+import { ApprovalTwinTrainPanel } from "@/components/operations/ApprovalTwinTrainPanel";
 import { EvolutionApprovalsPanel } from "@/components/operations/EvolutionApprovalsPanel";
 import { LiveActivityPanel } from "@/components/operations/LiveActivityPanel";
 import { RealOperationsPanel } from "@/components/operations/RealOperationsPanel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DECK_LOADING_COPY } from "@/lib/deckLoadingCopy";
 import { INTELLIGENCE_DECK_TAB_SUBTITLES } from "@/lib/intelligenceDeckNav";
 import { panelCrossfadeWith, transitionOrNone } from "@/lib/motionPresets";
@@ -159,7 +161,18 @@ export function IntelligenceTabContent({
       return (
         <motion.div key="evolutionApprovals" {...motionProps}>
           <AnnexTabContent tab="evolutionApprovals">
-            <EvolutionApprovalsPanel className="p-2" />
+            <Tabs defaultValue="twin" className="flex min-h-0 flex-1 flex-col p-2">
+              <TabsList className="shrink-0">
+                <TabsTrigger value="twin">Twin train</TabsTrigger>
+                <TabsTrigger value="proposals">Proposals</TabsTrigger>
+              </TabsList>
+              <TabsContent value="twin" className="mt-2 min-h-0 flex-1 overflow-y-auto">
+                <ApprovalTwinTrainPanel />
+              </TabsContent>
+              <TabsContent value="proposals" className="mt-2 min-h-0 flex-1 overflow-y-auto">
+                <EvolutionApprovalsPanel />
+              </TabsContent>
+            </Tabs>
           </AnnexTabContent>
         </motion.div>
       );

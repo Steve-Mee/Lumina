@@ -367,12 +367,18 @@ class PromotionPolicy:
             veto_blocked=veto_blocked,
         )
         risk_flags = list(shadow_twin.get("risk_flags", []) or [])
-        twin_rec = bool(shadow_twin.get("recommendation", False))
+        twin_raw = bool(shadow_twin.get("recommendation", False))
+        # Mode authority: twin_primary_auto only when executable (full_auto)
+        if "effective_recommendation" in shadow_twin:
+            twin_rec = bool(shadow_twin.get("effective_recommendation", False))
+        else:
+            twin_rec = False  # fail-closed without mode fields
+        twin_executable = bool(shadow_twin.get("executable", False))
+        twin_mode = str(shadow_twin.get("mode") or getattr(self._owner._approval_twin, "mode", "shadow"))
         twin_conf = float(shadow_twin.get("confidence", 0.0) or 0.0)
 
-        # Primary auto-approval signal from twin (birth/SIM first, REAL only after gate)
-        # If twin recommends + clean flags, we carry this as strong signal into gate/guard.
-        # (Hard PromotionGate + shadow still apply for REAL; twin is necessary input.)
+        # Primary auto-approval signal from twin (only when mode allows execute_judgment).
+        # Hard PromotionGate + shadow still apply for REAL; twin is necessary input.
 
         # === Phase 2 Deliverable 5 (Aperture Hardening) — Second independent call site ===
         # In addition to the proactive call inside the ApprovalTwin, the official
@@ -442,16 +448,33 @@ class PromotionPolicy:
         record["shadow_total_pnl"] = shadow_total_pnl
         record["updated_at"] = utcnow()
         record["shadow_decision"] = {
-            "recommendation": twin_rec,
+            "recommendation": twin_raw,
+            "effective_recommendation": twin_rec,
+            "executable": twin_executable,
+            "mode": twin_mode,
             "confidence": twin_conf,
             "risk_flags": risk_flags,
             "explanation": str(shadow_twin.get("explanation", "")),
-            "twin_primary_auto": bool(twin_rec and len(risk_flags) == 0),
+            "twin_primary_auto": bool(twin_rec and twin_executable and len(risk_flags) == 0),
         }
         if gate_decision_payload is not None:
             record["promotion_gate"] = gate_decision_payload
         shadow_runs[dna.hash] = record
         self.save_shadow_runs(shadow_runs)
+
+        # Best-effort bus publish so ApprovalTwin can observe DNA shadow/promotion (ADR-0001/0031).
+        # Critical topics: validation errors must not break the gate decision path.
+        self._publish_shadow_and_promotion_events(
+            dna_hash=str(dna.hash),
+            shadow_passed=bool(shadow_passed),
+            promote_now=bool(shadow_passed),
+            shadow_total_pnl=float(shadow_total_pnl),
+            sample_size=len(daily_pnl),
+            veto_blocked=bool(veto_blocked),
+            twin_rec=bool(twin_rec),
+            risk_flags=list(risk_flags),
+        )
+
         return {
             "promote_now": shadow_passed,
             "veto_blocked": veto_blocked,
@@ -464,8 +487,74 @@ class PromotionPolicy:
             "promotion_gate": gate_decision_payload or {},
             # Twin as primary auto-approval layer signal (used by guard + callers)
             "twin_recommendation": twin_rec,
+            "twin_raw_recommendation": twin_raw,
+            "twin_executable": twin_executable,
+            "twin_mode": twin_mode,
             "twin_confidence": twin_conf,
             "twin_risk_flags": risk_flags,
             # NOTE: caller must have already AND-ed with ConstitutionalGuard.veto_unless_constitutional
             # (twin is never allowed to bypass constitution, sandbox or aperture).
         }
+
+    def _publish_shadow_and_promotion_events(
+        self,
+        *,
+        dna_hash: str,
+        shadow_passed: bool,
+        promote_now: bool,
+        shadow_total_pnl: float,
+        sample_size: int,
+        veto_blocked: bool,
+        twin_rec: bool,
+        risk_flags: list[str],
+    ) -> None:
+        """Publish typed shadow/promotion bus events for Twin observe (fail-soft)."""
+        if self._event_bus is None:
+            return
+        try:
+            from lumina_core.agent_orchestration.schemas import (
+                EvolutionPromotionDecision,
+                ShadowResult,
+            )
+
+            verdict = "pass" if shadow_passed else ("fail" if not veto_blocked else "fail")
+            if not shadow_passed and sample_size <= 0:
+                verdict = "pending"
+            shadow_payload = ShadowResult(
+                verdict=verdict,  # type: ignore[arg-type]
+                dna_hash=str(dna_hash),
+                sample_size=int(max(0, sample_size)),
+                pnl=float(shadow_total_pnl),
+            ).model_dump(mode="json")
+            self._event_bus.publish_validated(
+                topic="evolution.shadow.verdict",
+                producer="evolution.promotion_policy",
+                payload=shadow_payload,
+                metadata={"dna_hash": str(dna_hash), "veto_blocked": bool(veto_blocked)},
+            )
+
+            reason_parts = []
+            if not shadow_passed:
+                reason_parts.append("shadow_failed" if not veto_blocked else "veto_blocked")
+            if risk_flags:
+                reason_parts.append("risk_flags:" + ",".join(str(x) for x in risk_flags[:6]))
+            if not twin_rec:
+                reason_parts.append("twin_reject")
+            reason = ";".join(reason_parts) if reason_parts else "shadow_and_twin_ok"
+            promo_payload = EvolutionPromotionDecision(
+                dna_hash=str(dna_hash),
+                allowed=bool(promote_now),
+                reason=reason or "promotion_evaluated",
+                stage="shadow",
+                mode="REAL",
+                evidence_ref=None,
+            ).model_dump(mode="json")
+            self._event_bus.publish_validated(
+                topic="evolution.promotion.decision",
+                producer="evolution.promotion_policy",
+                payload=promo_payload,
+                metadata={"dna_hash": str(dna_hash)},
+            )
+        except Exception:
+            # Observability only — never fail the promotion gate path.
+            self._logger.debug("promotion_policy.bus_publish_shadow_promo_failed", exc_info=True)

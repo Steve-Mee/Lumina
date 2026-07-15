@@ -1,3 +1,5 @@
+﻿> **HISTORICAL SNAPSHOT — not living SSOT.**
+> Captured for audit. Current direction: `docs/roadmap.md`, Twin: ADR-0032. Prefer living docs under `docs/` and `project-dna/lumina/`.
 # Finale Lijst van Aangepaste Bestanden – 100% Perfect Refactor
 
 ## Nieuwe bestanden (7)
