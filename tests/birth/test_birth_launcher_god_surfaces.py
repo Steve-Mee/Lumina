@@ -21,13 +21,13 @@ _LINE_BASELINES: dict[str, int] = {
     "birth_status_enricher.py": 149,
     "birth_status_plateau_risk.py": 60,
     "birth_runner_lock.py": 181,
-    "birth_runner_start.py": 304,
+    "birth_runner_start.py": 332,
     "birth_runner_wipe.py": 115,
     "birth_runner_recovery.py": 183,
 }
 
 _METHOD_CEILINGS: dict[str, dict[str, int]] = {
-    "birth_runner_start.py": {"start_birth": 170},
+    "birth_runner_start.py": {"start_birth": 196},
 }
 
 

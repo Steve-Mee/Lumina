@@ -67,6 +67,7 @@ def test_enabled_scaffold_proposes_and_publishes() -> None:
         require_perfect_birth_flag=False,
         require_twin_for_apply=False,
         allow_sim_scaffold=True,
+        execution_mode="apply",
     )
     orch = Phase2AutonomyOrchestrator(
         features=features,
@@ -96,6 +97,7 @@ def test_apply_param_with_twin() -> None:
         self_adaptive_params_enabled=True,
         require_perfect_birth_flag=False,
         require_twin_for_apply=True,
+        execution_mode="apply",
     )
     state = WallAdaptationState(effective_winrate_window=12, effective_reward_window=12)
     orch = Phase2AutonomyOrchestrator(
@@ -125,6 +127,7 @@ def test_instance_adapt_apply_payload() -> None:
         instance_adapt_enabled=True,
         require_perfect_birth_flag=False,
         require_twin_for_apply=False,
+        execution_mode="apply",
     )
     orch = Phase2AutonomyOrchestrator(features=features, mode="sim")
     decision = orch.evaluate_instance_adapt(

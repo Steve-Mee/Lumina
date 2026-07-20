@@ -49,6 +49,19 @@ def hook_birth_started(
     )
 
 
+def hook_perfect_birth_autonomy_proven(
+    workspace_root: Path | str,
+    *,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    """Slice C: Perfect Birth conjunction passed (Phase 2 unlock evidence)."""
+    try_record_milestone(
+        workspace_root,
+        "perfect_birth_autonomy_proven",
+        metadata=dict(metadata or {}),
+    )
+
+
 def hook_birth_certificate_issued(
     workspace_root: Path | str,
     *,

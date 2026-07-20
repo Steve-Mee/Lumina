@@ -46,6 +46,17 @@ from lumina_core.birth.phase2_autonomy.instance_adapter import (
     materialize_instance_adapt_payload,
     propose_instance_adapt,
 )
+from lumina_core.birth.phase2_autonomy.execution_mode import (
+    Phase2ExecutionMode,
+    evaluate_pillar_promotion,
+    normalize_execution_mode,
+)
+from lumina_core.birth.phase2_autonomy.metrics import (
+    compute_phase2_metrics_snapshot,
+    load_phase2_recent_decisions,
+    phase2_status_payload,
+    record_phase2_decision_monitoring,
+)
 from lumina_core.birth.phase2_autonomy.orchestrator import (
     Phase2AutonomyOrchestrator,
     build_orchestrator_from_cfg,
@@ -63,6 +74,7 @@ __all__ = [
     "FORBIDDEN_PARAM_KEYS",
     "Phase2AutonomyFeatures",
     "Phase2AutonomyOrchestrator",
+    "Phase2ExecutionMode",
     "Phase2GateReason",
     "Phase2GateResult",
     "Phase2InstanceAdaptProposal",
@@ -73,10 +85,16 @@ __all__ = [
     "apply_param_proposal_to_state",
     "apply_wall_adjustment_to_thresholds",
     "build_orchestrator_from_cfg",
+    "compute_phase2_metrics_snapshot",
     "evaluate_phase2_gate",
+    "evaluate_pillar_promotion",
+    "load_phase2_recent_decisions",
     "materialize_instance_adapt_payload",
+    "normalize_execution_mode",
+    "phase2_status_payload",
     "propose_dynamic_wall_adjustment",
     "propose_instance_adapt",
     "propose_param_adjustment",
+    "record_phase2_decision_monitoring",
     "validate_param_changes",
 ]

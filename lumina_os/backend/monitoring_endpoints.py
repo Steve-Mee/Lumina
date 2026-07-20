@@ -347,6 +347,7 @@ async def get_ops_data(
     twin_accuracy = _load_jsonl_file(state / "monitoring_twin_training.jsonl", limit=5)
     autonomy_rollup = _load_jsonl_file(state / "monitoring_autonomy_metrics.jsonl", limit=5)
     shadow_align = _load_jsonl_file(state / "monitoring_shadow_twin_alignment.jsonl", limit=10)
+    phase2_recent = _load_jsonl_file(state / "monitoring_phase2_autonomy.jsonl", limit=20)
     # First-class Twin observability rollup (agreement/calibration/mode progress)
     twin_observability: dict[str, Any] = {}
     try:
@@ -371,6 +372,13 @@ async def get_ops_data(
         }
     except Exception:
         twin_observability = {}
+    phase2_metrics: dict[str, Any] = {}
+    try:
+        from lumina_core.birth.phase2_autonomy.metrics import compute_phase2_metrics_snapshot
+
+        phase2_metrics = compute_phase2_metrics_snapshot(window_hours=24)
+    except Exception:
+        phase2_metrics = {"empty": True, "phase2_proposals_total": 0}
     return {
         "twin_decisions": twin,
         "gate_rejections": gate,
@@ -381,8 +389,11 @@ async def get_ops_data(
             "autonomy_rollup_latest": autonomy_rollup,
             "shadow_twin_alignment_latest": shadow_align,
             "twin_observability": twin_observability,
+            "phase2_autonomy": phase2_metrics,
         },
         "twin_observability": twin_observability,
+        "phase2_autonomy": phase2_metrics,
+        "phase2_decisions_recent": phase2_recent,
     }
 
 

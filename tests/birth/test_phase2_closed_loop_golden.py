@@ -47,6 +47,7 @@ def _phase2_cfg(**kwargs: Any) -> BirthCurriculumConfig:
         phase2_require_perfect_birth_flag=False,
         phase2_allow_sim_scaffold=True,
         phase2_require_twin_for_apply=True,
+        phase2_execution_mode="apply",
     )
     base.update(kwargs)
     return BirthCurriculumConfig(**base)

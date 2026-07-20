@@ -435,9 +435,11 @@ class WallAdaptationHandler:
         # Merge Phase 2 instance spawn flags into plan outcomes (in-process only)
         spawn_plateau = bool(plan.spawn_plateau)
         spawn_phoenix = bool(plan.spawn_phoenix_reset)
-        inst = p2.get("instance") if isinstance(p2.get("instance"), dict) else {}
-        if inst.get("applied") and isinstance(inst.get("apply_payload"), dict):
-            payload = inst["apply_payload"]
+        inst_raw = p2.get("instance")
+        inst: dict[str, Any] = inst_raw if isinstance(inst_raw, dict) else {}
+        apply_payload = inst.get("apply_payload")
+        if inst.get("applied") and isinstance(apply_payload, dict):
+            payload = apply_payload
             spawn_plateau = spawn_plateau or bool(payload.get("spawn_plateau"))
             spawn_phoenix = spawn_phoenix or bool(payload.get("spawn_phoenix_reset"))
 
@@ -490,10 +492,12 @@ class WallAdaptationHandler:
                 )
 
         # Phase 2 param apply may already have mutated state; surface in patch_dict
-        param_info = p2.get("param") if isinstance(p2.get("param"), dict) else {}
-        if param_info.get("applied") and isinstance(param_info.get("apply_payload"), dict):
-            changes = param_info["apply_payload"].get("changes") or {}
-            if changes:
+        param_raw = p2.get("param")
+        param_info: dict[str, Any] = param_raw if isinstance(param_raw, dict) else {}
+        param_payload = param_info.get("apply_payload")
+        if param_info.get("applied") and isinstance(param_payload, dict):
+            changes = param_payload.get("changes") or {}
+            if isinstance(changes, dict) and changes:
                 patch_dict = {**patch_dict, **{f"phase2_{k}": v for k, v in changes.items()}}
 
         publish_adaptation_applied(

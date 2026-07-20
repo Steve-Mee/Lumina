@@ -329,6 +329,10 @@ birth_v2:
     phase2_allow_sim_scaffold: false
     phase2_require_twin_for_apply: true
     phase2_perfect_birth_flag_path: state/perfect_birth_complete.flag
+    phase2_require_perfect_birth_evidence: true
+    phase2_recheck_perfect_birth_kpis: false
+    # observe = propose+audit only; shadow = counterfactual; apply = mutate when gated
+    phase2_execution_mode: observe
     phoenix_widen_data_after_cycles: 3
     death_spiral_repeat_threshold: 4
     death_spiral_novelty_budget: 3

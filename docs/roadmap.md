@@ -179,7 +179,10 @@ ADR’s: [0031](adr/0031-approval-twin-event-bus.md), [0032](adr/0032-approval-t
 
 ## 7. Phase 2 Autonomy (gepland)
 
-**Status:** 🔜 foundation + **Slice A closed loop** — **niet** claimen als productief af. Ontgrendeling na Perfect Birth conjunction gate ([birth runbook](birth-phase-live-validation-runbook.md) §8–9). ADR: [0034](adr/0034-phase2-autonomy-foundation.md).
+**Status:** 🔜 foundation + closed loop + truth + **Perfect Birth SSOT (C)** + **observe/shadow/apply (D)** — **niet** claimen als productief af. ADR: [0034](adr/0034-phase2-autonomy-foundation.md).  
+**Observe:** `python -m lumina_launcher birth phase2-status` · `state/monitoring_phase2_autonomy.jsonl`  
+**Unlock:** `python scripts/validation/declare_perfect_birth.py` (flag + evidence; hollow flag rejected)  
+**Mode:** `phase2_execution_mode: observe|shadow|apply` (default observe)
 
 | Pilaar | Doel | Nu |
 |--------|------|-----|

@@ -97,18 +97,35 @@ def evaluate_phase2_gate(
             message=f"Phase 2 pillar disabled: {pillar_key}",
         )
 
+    # Perfect Birth unlock: flag + evidence (Slice C); SIM scaffold may bypass
     unlocked = features.perfect_birth_unlocked()
-    if features.require_perfect_birth_flag and not unlocked:
+    unlock_detail = "flag_present" if unlocked else "flag_missing"
+    if features.require_perfect_birth_flag:
         if not (features.allow_sim_scaffold and _is_sim_like(mode)):
-            return Phase2GateResult(
-                allowed=False,
-                reason=Phase2GateReason.PERFECT_BIRTH_REQUIRED.value,
-                pillar=pillar_key,
-                message=(
-                    f"Missing perfect birth flag at {features.perfect_birth_path()} "
-                    "(set phase2_allow_sim_scaffold for SIM-only scaffold)"
+            ok, unlock_detail = features.perfect_birth_unlock_status(
+                recheck=bool(
+                    require_apply_path and getattr(features, "recheck_perfect_birth_kpis", False)
                 ),
             )
+            if not ok:
+                reason = (
+                    Phase2GateReason.PERFECT_BIRTH_EVIDENCE.value
+                    if "evidence" in unlock_detail or "recheck" in unlock_detail
+                    else Phase2GateReason.PERFECT_BIRTH_REQUIRED.value
+                )
+                return Phase2GateResult(
+                    allowed=False,
+                    reason=reason,
+                    pillar=pillar_key,
+                    message=(
+                        f"Perfect Birth unlock failed ({unlock_detail}) at "
+                        f"{features.perfect_birth_path()} "
+                        "(declare via scripts/validation/declare_perfect_birth.py "
+                        "or set phase2_allow_sim_scaffold for SIM scaffold)"
+                    ),
+                    details={"unlock_detail": unlock_detail},
+                )
+            unlocked = True
 
     if require_apply_path and _is_real_like(mode):
         return Phase2GateResult(

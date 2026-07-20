@@ -55,6 +55,23 @@ Introduce birth-scoped package `lumina_core/birth/phase2_autonomy/` with:
    - Instance pillar → merges `spawn_plateau` / `spawn_phoenix_reset` into adaptation response; optional `sync_curriculum_cfg`
    - REAL mode apply is hard-rejected (`risk_surface`)
 
+9. **Slice B truth layer (2026-07-20):**
+   - Canonical audit: `state/monitoring_phase2_autonomy.jsonl` via `record_phase2_decision_monitoring`
+   - Rolling metrics: `compute_phase2_metrics_snapshot` (`phase2_proposals_total`, `phase2_apply_rate_pct`, reject reasons, by pillar)
+   - Ops: `GET /api/monitoring/ops-data` → `phase2_autonomy`; twin oversight status includes same block
+   - CLI: `python -m lumina_launcher birth phase2-status [--json] [--window-hours 24]`
+
+10. **Slice C Perfect Birth SSOT (2026-07-20):**
+    - `evaluate_perfect_birth_conjunction` + `declare_perfect_birth` (`lumina_core/birth/perfect_birth_gate.py`)
+    - CLI: `python scripts/validation/declare_perfect_birth.py` writes flag **and** evidence JSON only if KPIs pass
+    - Phase 2 gate requires evidence sidecar (`passed=true`) unless SIM scaffold
+    - Maturity milestone `perfect_birth_autonomy_proven` on successful declare
+
+11. **Slice D execution modes (2026-07-20):**
+    - `phase2_execution_mode`: `observe` (default) | `shadow` | `apply`
+    - Only `apply` mutates; `shadow` records counterfactual payloads + `shadow_would_apply` in audit
+    - Promotion helper: `evaluate_pillar_promotion` / `compute_shadow_evidence_from_rows`
+
 ## Scope and limitations (v1 foundation)
 
 | In scope | Out of scope |

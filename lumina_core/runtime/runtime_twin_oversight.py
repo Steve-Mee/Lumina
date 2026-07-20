@@ -285,6 +285,15 @@ class RuntimeTwinOversight:
         # Explicit Perfect Birth Phase fields (for dashboards / runbook queries)
         status.setdefault("twin_steve_agreement_pct", round(snap.twin_steve_agreement_pct, 2))
         status.setdefault("shadow_twin_alignment_pct", round(snap.shadow_twin_alignment_pct, 2))
+        # Phase 2 Autonomy truth layer (Slice B) — read-only metrics
+        try:
+            from lumina_core.birth.phase2_autonomy.metrics import (
+                compute_phase2_metrics_snapshot,
+            )
+
+            status["phase2_autonomy"] = compute_phase2_metrics_snapshot(window_hours=24)
+        except Exception:
+            status["phase2_autonomy"] = {"empty": True, "phase2_proposals_total": 0}
         return status
 
 

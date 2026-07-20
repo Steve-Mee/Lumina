@@ -45,6 +45,7 @@ def _print_usage() -> None:
         "\n"
         "Birth Phase status:\n"
         "  python -m lumina_launcher birth status --json\n"
+        "  python -m lumina_launcher birth phase2-status\n"
         "\n"
         "Approval Twin train (local labels + light RLHF):\n"
         "  python -m lumina_launcher twin metrics\n"
@@ -136,13 +137,22 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if raw[0] == "birth":
-        from lumina_launcher.birth.status_cli import run_birth_status, run_birth_watch
+        from lumina_launcher.birth.status_cli import (
+            run_birth_status,
+            run_birth_watch,
+            run_phase2_status,
+        )
 
         args = parse_argv(raw)
         if args.birth_command == "status":
             return run_birth_status(as_json=bool(args.json))
         if args.birth_command == "watch":
             return run_birth_watch(interval_sec=max(1, int(args.interval)))
+        if args.birth_command == "phase2-status":
+            return run_phase2_status(
+                as_json=bool(getattr(args, "json", False)),
+                window_hours=int(getattr(args, "window_hours", 24) or 24),
+            )
         print("Unknown birth subcommand.", file=sys.stderr)
         return 2
 

@@ -209,6 +209,10 @@ class BirthCurriculumConfig:
     phase2_allow_sim_scaffold: bool = False
     phase2_require_twin_for_apply: bool = True
     phase2_perfect_birth_flag_path: str = "state/perfect_birth_complete.flag"
+    phase2_require_perfect_birth_evidence: bool = True
+    phase2_recheck_perfect_birth_kpis: bool = False
+    # observe | shadow | apply — default observe (no mutation until promoted)
+    phase2_execution_mode: str = "observe"
 
 
 @dataclass(slots=True)
@@ -693,6 +697,17 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
             cur_raw.get("phase2_perfect_birth_flag_path", "state/perfect_birth_complete.flag")
             or "state/perfect_birth_complete.flag"
         ),
+        phase2_require_perfect_birth_evidence=bool(
+            cur_raw.get("phase2_require_perfect_birth_evidence", True)
+        ),
+        phase2_recheck_perfect_birth_kpis=bool(
+            cur_raw.get("phase2_recheck_perfect_birth_kpis", False)
+        ),
+        phase2_execution_mode=str(
+            cur_raw.get("phase2_execution_mode", "observe") or "observe"
+        )
+        .strip()
+        .lower(),
         phoenix_loop_enabled=bool(cur_raw.get("phoenix_loop_enabled", True)),
         phoenix_max_cycles=max(1, _coerce_int(cur_raw.get("phoenix_max_cycles"), 12)),
         phoenix_widen_data_after_cycles=max(
