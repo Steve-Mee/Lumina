@@ -200,6 +200,16 @@ class BirthCurriculumConfig:
     perfect_birth_min_recovery_attempts: int = 8
     perfect_birth_sustained_hours: int = 48
 
+    # Phase 2 Autonomy foundation (ADR-0034) — all default OFF / fail-closed
+    phase2_autonomy_enabled: bool = False
+    phase2_dynamic_wall_enabled: bool = False
+    phase2_self_adaptive_params_enabled: bool = False
+    phase2_instance_adapt_enabled: bool = False
+    phase2_require_perfect_birth_flag: bool = True
+    phase2_allow_sim_scaffold: bool = False
+    phase2_require_twin_for_apply: bool = True
+    phase2_perfect_birth_flag_path: str = "state/perfect_birth_complete.flag"
+
 
 @dataclass(slots=True)
 class BirthV2Config:
@@ -666,6 +676,22 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         ),
         perfect_birth_sustained_hours=max(
             1, _coerce_int(cur_raw.get("perfect_birth_sustained_hours"), 48)
+        ),
+        # Phase 2 Autonomy foundation — fail-closed defaults
+        phase2_autonomy_enabled=bool(cur_raw.get("phase2_autonomy_enabled", False)),
+        phase2_dynamic_wall_enabled=bool(cur_raw.get("phase2_dynamic_wall_enabled", False)),
+        phase2_self_adaptive_params_enabled=bool(
+            cur_raw.get("phase2_self_adaptive_params_enabled", False)
+        ),
+        phase2_instance_adapt_enabled=bool(cur_raw.get("phase2_instance_adapt_enabled", False)),
+        phase2_require_perfect_birth_flag=bool(
+            cur_raw.get("phase2_require_perfect_birth_flag", True)
+        ),
+        phase2_allow_sim_scaffold=bool(cur_raw.get("phase2_allow_sim_scaffold", False)),
+        phase2_require_twin_for_apply=bool(cur_raw.get("phase2_require_twin_for_apply", True)),
+        phase2_perfect_birth_flag_path=str(
+            cur_raw.get("phase2_perfect_birth_flag_path", "state/perfect_birth_complete.flag")
+            or "state/perfect_birth_complete.flag"
         ),
         phoenix_loop_enabled=bool(cur_raw.get("phoenix_loop_enabled", True)),
         phoenix_max_cycles=max(1, _coerce_int(cur_raw.get("phoenix_max_cycles"), 12)),

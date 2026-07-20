@@ -58,9 +58,10 @@ SSOT: `docs/roadmap.md` §6 · `docs/adr/0032-approval-twin-human-replacement-la
 - **Never-stall / adaptive wall**: engine + recovery UI baseline complete.
 
 ### Perfect Birth → Phase 2 Autonomy
-- **Status**: KPIs defined; conjunction gate not auto-declared.
-- Unlock: `docs/birth-phase-live-validation-runbook.md` §8–9.
-- Phase 2 pillars (planned): dynamic wall triggers, self-adaptive parameters, never-stop at scale, dynamic spawn without restart.
+- **Status**: KPIs defined; conjunction gate not auto-declared. **Foundation scaffold** landed (ADR-0034).
+- Unlock: `docs/birth-phase-live-validation-runbook.md` §8–9 + `state/perfect_birth_complete.flag`.
+- Phase 2 pillars (gated, default OFF): dynamic wall proposals, self-adaptive birth params, never-stop at scale, in-process instance adapt.
+- Code: `lumina_core/birth/phase2_autonomy/` — fail-closed multi-gate (Twin + Constitution + Perfect Birth).
 
 ### Earlier campaign work (May–June 2026) — closed context
 - Phase 2 D2 runtime decomposition (largely complete; residual gods remain)
@@ -73,7 +74,7 @@ SSOT: `docs/roadmap.md` §6 · `docs/adr/0032-approval-twin-human-replacement-la
 
 **Highest remaining items**:
 1. Residual god surfaces (`runtime_workers`, `pre_dream`, related)
-2. Phase 2 Autonomy implementation (after Perfect Birth evidence)
+2. Phase 2 Autonomy pillar enablement (after Perfect Birth evidence; foundation = ADR-0034)
 3. Secure self-code evolution vision (sandbox + Twin + Constitution)
 4. Full shadow deployment hardening edge cases for risk-affecting mutations
 

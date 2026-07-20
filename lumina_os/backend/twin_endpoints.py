@@ -284,9 +284,15 @@ async def twin_train(
 @router.get("/metrics")
 async def twin_metrics(
     x_api_key: Optional[str] = Header(None),
+    decision_window: int = 200,
+    series_limit: int = 30,
 ) -> dict[str, Any]:
+    """Twin training + durable observability (agreement series, calibration, mode progress)."""
     _verify_api_key(x_api_key, require_admin=False)
-    out = _service().metrics()
+    out = _service().metrics(
+        decision_window=max(1, min(2000, int(decision_window))),
+        series_limit=max(1, min(90, int(series_limit))),
+    )
     out.setdefault("local_only", True)
     return out
 

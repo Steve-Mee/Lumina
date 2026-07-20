@@ -294,6 +294,8 @@ export function BirthMissionControl({
 
               message={progressMessage}
 
+              twinObservability={status?.twin_observability ?? null}
+
               embedded
 
             />

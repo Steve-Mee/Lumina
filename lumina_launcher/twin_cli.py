@@ -6,6 +6,7 @@ rlhf_light_update, surface metrics.
 
 Usage:
   python -m lumina_launcher twin review --limit 5
+  python -m lumina_launcher twin review --list-only --limit 5
   python -m lumina_launcher twin train
   python -m lumina_launcher twin metrics
   python -m lumina_launcher twin mode
@@ -38,12 +39,74 @@ def _print_metrics(svc: TwinTrainingService | None = None) -> None:
     print(f"  false_positives: {m.get('false_positives', 'n/a')} ({m.get('false_positive_pct', 'n/a')}%)")
     print(f"  false_negatives: {m.get('false_negatives', 'n/a')}")
     print(f"  risk_flags_caught: {m.get('risk_flags_caught', 'n/a')}")
+    print(f"  risk_flags_missed: {m.get('risk_flags_missed', 'n/a')} ({m.get('risk_flags_missed_pct', 'n/a')}%)")
+    print(f"  risk_flags_catch_rate_pct: {m.get('risk_flags_catch_rate_pct', 'n/a')}")
     print(f"  constitution_adherence_pct: {m.get('constitution_adherence_pct', 'n/a')}")
     print(f"  mode_samples: {m.get('mode_samples', 'n/a')}")
+    rolling = m.get("rolling_agreement") or {}
+    if rolling:
+        print(
+            "  rolling_agreement: "
+            f"w20={rolling.get('w20', 'n/a')} "
+            f"w50={rolling.get('w50', 'n/a')} "
+            f"w100={rolling.get('w100', 'n/a')}"
+        )
+    calib = m.get("calibration") or {}
+    if calib:
+        print(
+            "  calibration: "
+            f"scored={calib.get('scored_samples', 0)} "
+            f"high_conf_agree={calib.get('high_conf_agreement_pct', 'n/a')} "
+            f"mean_abs_err={calib.get('mean_abs_calibration_error', 'n/a')}"
+        )
+    conf = m.get("confidence_distribution") or {}
+    if conf:
+        print(
+            "  confidence_distribution: "
+            f"n={conf.get('n', 0)} "
+            f"lt_50={conf.get('lt_50', 0)} "
+            f"b50_60={conf.get('b50_60', 0)} "
+            f"b60_80={conf.get('b60_80', 0)} "
+            f"gte_80={conf.get('gte_80', 0)}"
+        )
+    outcomes = m.get("outcome_counts") or {}
+    if outcomes:
+        print(
+            "  outcome_counts: "
+            f"auto_approved={outcomes.get('auto_approved', 0)} "
+            f"veto={outcomes.get('veto', 0)} "
+            f"deferred={outcomes.get('deferred', 0)} "
+            f"other={outcomes.get('other', 0)}"
+        )
+    print(f"  decisions_total (window): {m.get('decisions_total', 'n/a')}")
+    risk_top = m.get("risk_flag_top") or {}
+    if risk_top:
+        top_bits = ", ".join(f"{k}={v}" for k, v in list(risk_top.items())[:5])
+        print(f"  risk_flag_top: {top_bits}")
+    series = m.get("agreement_over_time") or []
+    if series:
+        tail = series[-3:]
+        bits = ", ".join(f"{p.get('period')}={p.get('agreement_pct')}%" for p in tail)
+        print(f"  agreement_over_time (last periods): {bits}")
     readiness = m.get("mode_readiness") or {}
     if readiness:
         print(f"  readiness.assisted: {readiness.get('assisted')}")
         print(f"  readiness.full_auto: {readiness.get('full_auto')}")
+    progress = m.get("mode_promotion_progress") or {}
+    prog = progress.get("progress") if isinstance(progress, dict) else None
+    if isinstance(prog, dict):
+        for target in ("assisted", "full_auto"):
+            t = prog.get(target) or {}
+            if not isinstance(t, dict):
+                continue
+            samples = t.get("samples") or {}
+            agree = t.get("agreement") or {}
+            print(
+                f"  promote.{target}: ready={t.get('ready')} "
+                f"samples={samples.get('current')}/{samples.get('required')} "
+                f"agree={agree.get('current')}/{agree.get('required')} "
+                f"fails={t.get('fail_reasons')}"
+            )
     print(f"  local_only: {m.get('local_only', True)}")
 
 
@@ -61,12 +124,31 @@ def run_twin_train() -> int:
     return 0
 
 
-def run_twin_review(*, limit: int = 5) -> int:
+def run_twin_review(*, limit: int = 5, list_only: bool = False) -> int:
     svc = TwinTrainingService()
     decisions = svc.list_review_queue(limit=limit)
     if not decisions:
         print("No recent twin decisions found (state/monitoring_twin_decisions.jsonl empty).")
         print("Run some evolution/birth activity or use 'twin train' first.")
+        return 0
+
+    if list_only:
+        print(f"Review queue ({len(decisions)} item(s), high-stakes first; unlabeled only):")
+        for i, d in enumerate(decisions, 1):
+            dna = str(d.get("dna_hash", "unknown"))
+            score = d.get("score", d.get("confidence", 0.0))
+            rec = d.get("recommendation", False)
+            expl = str(d.get("explanation", ""))[:110]
+            risks = d.get("risk_flags", [])
+            stakes = str(d.get("stakes") or "routine")
+            try:
+                score_disp = f"{float(score):.2%}"
+            except (TypeError, ValueError):
+                score_disp = str(score)
+            print(f"[{i}] dna={dna[:16]}... score={score_disp} rec={rec} stakes={stakes}")
+            print(f"    risks={risks}")
+            print(f"    {expl}")
+        print("(list-only: no labels recorded)")
         return 0
 
     print(f"Reviewing {len(decisions)} twin decision(s) (high-stakes first; unlabeled only).")
@@ -160,15 +242,18 @@ def main(argv: list[str] | None = None) -> int:
     cmd = args[0] if args else "metrics"
     if cmd == "review":
         limit = 5
+        list_only = False
         for a in args[1:]:
-            if a.startswith("--limit="):
+            if a in ("--list-only", "--list", "-l"):
+                list_only = True
+            elif a.startswith("--limit="):
                 try:
                     limit = max(1, int(a.split("=", 1)[1]))
                 except Exception:
                     pass
             elif a.isdigit():
                 limit = max(1, int(a))
-        return run_twin_review(limit=limit)
+        return run_twin_review(limit=limit, list_only=list_only)
     if cmd == "train":
         return run_twin_train()
     if cmd == "metrics":

@@ -56,6 +56,67 @@ def _tail_jsonl(path: Path, limit: int = 20) -> list[dict[str, Any]]:
         return []
 
 
+def compute_confidence_distribution(
+    decisions: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Bucket twin decision scores for birth/operator observability.
+
+    Buckets: lt_50 | b50_60 | b60_80 | gte_80 | n (total scored rows).
+    Aligns with high-conf autonomy band (gte_80 == conf >= 0.80).
+    """
+    buckets = {"lt_50": 0, "b50_60": 0, "b60_80": 0, "gte_80": 0, "n": 0}
+    for item in decisions:
+        score = _score_of(item)
+        if score is None:
+            continue
+        buckets["n"] += 1
+        if score < 0.50:
+            buckets["lt_50"] += 1
+        elif score < 0.60:
+            buckets["b50_60"] += 1
+        elif score < HIGH_CONF_THRESHOLD:
+            buckets["b60_80"] += 1
+        else:
+            buckets["gte_80"] += 1
+    return buckets
+
+
+def compute_decision_outcome_counts(
+    decisions: list[dict[str, Any]],
+) -> dict[str, int]:
+    """Count outcome labels (auto_approved / veto / deferred / other)."""
+    counts: dict[str, int] = {"auto_approved": 0, "veto": 0, "deferred": 0, "other": 0}
+    for item in decisions:
+        outcome = str(item.get("outcome") or "").strip().lower()
+        if outcome in counts:
+            counts[outcome] += 1
+        elif outcome:
+            counts["other"] += 1
+        else:
+            counts["other"] += 1
+    return counts
+
+
+def compute_risk_flag_counts(
+    decisions: list[dict[str, Any]],
+    *,
+    top_n: int = 10,
+) -> dict[str, int]:
+    """Top risk_flag frequencies from recent twin decisions."""
+    tallies: dict[str, int] = {}
+    for item in decisions:
+        flags = item.get("risk_flags") or []
+        if not isinstance(flags, list):
+            continue
+        for flag in flags:
+            key = str(flag or "").strip()
+            if not key:
+                continue
+            tallies[key] = tallies.get(key, 0) + 1
+    ordered = sorted(tallies.items(), key=lambda kv: (-kv[1], kv[0]))
+    return {k: v for k, v in ordered[: max(1, int(top_n))]}
+
+
 def decision_to_answer(decision: DecisionKind, notes: str = "") -> str:
     note = str(notes or "").strip()
     if decision == "approve":
@@ -248,6 +309,8 @@ class TwinTrainingService:
                     steve_approve=steve_approve,
                     risk_flags=list(risk_flags or []),
                     dna_hash=dna,
+                    twin_confidence=twin_score,
+                    steve_label=answer[:64],
                 )
             except Exception:
                 pass
@@ -479,7 +542,12 @@ class TwinTrainingService:
             return []
         return []
 
-    def metrics(self) -> dict[str, Any]:
+    def metrics(
+        self,
+        *,
+        decision_window: int = 200,
+        series_limit: int = 30,
+    ) -> dict[str, Any]:
         latest: dict[str, Any] = {}
         items = _tail_jsonl(self.training_path, limit=1)
         if items:
@@ -518,6 +586,56 @@ class TwinTrainingService:
         if not isinstance(durable, dict):
             durable = {}
 
+        # Rich observability from durable TwinMetricsStore (agreement series, calib, progress)
+        obs: dict[str, Any] = {}
+        current_mode = str(
+            mode_status.get("mode")
+            or mode_metrics.get("mode")
+            or getattr(self.twin, "mode", "shadow")
+            or "shadow"
+        )
+        try:
+            store = getattr(self.twin, "metrics_store", None)
+            if store is not None and hasattr(store, "observability_bundle"):
+                obs = dict(
+                    store.observability_bundle(
+                        current_mode=current_mode,
+                        series_limit=max(1, int(series_limit)),
+                        decision_limit=max(100, int(decision_window) * 3),
+                    )
+                    or {}
+                )
+                # Prefer store durable metrics when available (includes missed flags etc.)
+                durable_from_obs = obs.get("durable_metrics")
+                if isinstance(durable_from_obs, dict) and durable_from_obs:
+                    durable = durable_from_obs
+        except Exception:
+            obs = {}
+
+        recent_decisions = _tail_jsonl(self.decisions_path, limit=max(1, int(decision_window)))
+        confidence_distribution = compute_confidence_distribution(recent_decisions)
+        outcome_counts = compute_decision_outcome_counts(recent_decisions)
+        risk_flag_top = compute_risk_flag_counts(recent_decisions, top_n=10)
+
+        calibration = obs.get("calibration") if isinstance(obs.get("calibration"), dict) else {}
+        rolling = obs.get("rolling_agreement") if isinstance(obs.get("rolling_agreement"), dict) else {}
+        mode_progress = (
+            obs.get("mode_promotion_progress")
+            if isinstance(obs.get("mode_promotion_progress"), dict)
+            else {}
+        )
+
+        # Prefer durable Steve-label agreement when present
+        steve_agree = durable.get("steve_label_agreement_pct")
+        if steve_agree is None or (
+            isinstance(steve_agree, (int, float)) and float(steve_agree) == 0.0
+            and int(durable.get("steve_label_samples") or 0) == 0
+        ):
+            steve_agree = latest.get(
+                "twin_steve_agreement_pct",
+                latest.get("agreement_pct", agreement),
+            )
+
         return {
             "avg_prediction_error": latest.get(
                 "avg_prediction_error", model.get("last_avg_error", None)
@@ -528,10 +646,7 @@ class TwinTrainingService:
             ),
             "threshold": model.get("threshold", 0.6),
             "last_avg_error": model.get("last_avg_error", None),
-            "twin_steve_agreement_pct": latest.get(
-                "twin_steve_agreement_pct",
-                latest.get("agreement_pct", agreement),
-            ),
+            "twin_steve_agreement_pct": steve_agree,
             "samples": latest.get("samples", None),
             "labels_total_recent_cap": len(labels_sample),
             "model_path": str(self.model_path),
@@ -539,18 +654,38 @@ class TwinTrainingService:
             "training_path": str(self.training_path),
             "local_only": True,
             # Shadow mode / promotion gate metrics
-            "mode": mode_status.get("mode") or mode_metrics.get("mode") or getattr(self.twin, "mode", "shadow"),
-            "authority": mode_status.get("authority") or mode_metrics.get("authority"),
+            "mode": current_mode,
+            "authority": mode_status.get("authority")
+            or mode_metrics.get("authority")
+            or mode_progress.get("authority"),
             "twin_agreement_pct": durable.get("agreement_pct", mode_metrics.get("agreement_pct")),
             "false_positives": durable.get("false_positives"),
             "false_positive_pct": durable.get("false_positive_pct"),
             "false_negatives": durable.get("false_negatives"),
             "risk_flags_caught": durable.get("risk_flags_caught"),
             "risk_flags_caught_pct": durable.get("risk_flags_caught_pct"),
+            "risk_flags_missed": durable.get("risk_flags_missed"),
+            "risk_flags_missed_pct": durable.get("risk_flags_missed_pct"),
+            "risk_flags_catch_rate_pct": durable.get("risk_flags_catch_rate_pct"),
             "constitution_adherence_pct": durable.get("constitution_adherence_pct"),
             "mode_samples": durable.get("samples"),
             "mode_readiness": mode_status.get("readiness"),
             "mode_metrics": durable,
+            # Birth / operator observability (decisions window)
+            "decisions_total": len(recent_decisions),
+            "decision_window": max(1, int(decision_window)),
+            "confidence_distribution": confidence_distribution,
+            "outcome_counts": outcome_counts,
+            "risk_flag_top": risk_flag_top,
+            # First-class Twin observability (agreement over time, calibration, promotion)
+            "rolling_agreement": rolling,
+            "agreement_over_time": list(obs.get("agreement_over_time") or []),
+            "calibration": {
+                **(calibration if isinstance(calibration, dict) else {}),
+                "last_avg_error": model.get("last_avg_error", None),
+            },
+            "mode_promotion_progress": mode_progress,
+            "promotion_audit_tail": list(obs.get("promotion_audit_tail") or []),
         }
 
     def promote_mode(self, target: str) -> dict[str, Any]:
@@ -561,5 +696,17 @@ class TwinTrainingService:
 
     def mode_status(self) -> dict[str, Any]:
         if hasattr(self.twin, "mode_status"):
-            return self.twin.mode_status()
-        return {"mode": getattr(self.twin, "mode", "shadow")}
+            out = dict(self.twin.mode_status() or {})
+        else:
+            out = {"mode": getattr(self.twin, "mode", "shadow")}
+        # Attach read-only promotion progress for Command Deck / birth
+        try:
+            store = getattr(self.twin, "metrics_store", None)
+            if store is not None and hasattr(store, "mode_promotion_progress"):
+                out["mode_promotion_progress"] = store.mode_promotion_progress(
+                    current_mode=str(out.get("mode") or "shadow"),
+                )
+        except Exception:
+            pass
+        out.setdefault("local_only", True)
+        return out

@@ -1,11 +1,35 @@
 import { resolveBackendBaseUrl } from "@/lib/setupClient";
 import { resolveMonitoringApiKey, monitoringFetch } from "@/lib/monitoringClient";
 
+export interface TwinObservabilityOps {
+  mode?: string;
+  authority?: string;
+  twin_steve_agreement_pct?: number | null;
+  twin_agreement_pct?: number | null;
+  rolling_agreement?: Record<string, number | null | undefined>;
+  agreement_over_time?: Array<Record<string, unknown>>;
+  risk_flags_caught?: number | null;
+  risk_flags_missed?: number | null;
+  risk_flags_catch_rate_pct?: number | null;
+  calibration?: Record<string, unknown>;
+  mode_promotion_progress?: Record<string, unknown>;
+  mode_samples?: number | null;
+  reward?: number | null;
+  avg_prediction_error?: number | null;
+}
+
 export interface OpsData {
   twin_decisions: Array<Record<string, unknown>>;
   gate_rejections: Array<Record<string, unknown>>;
   shadow_runs: Record<string, unknown>;
   daily_pnl_trend: Array<Record<string, unknown>>;
+  twin_observability?: TwinObservabilityOps;
+  perfect_birth_kpis?: {
+    twin_accuracy_latest?: Array<Record<string, unknown>>;
+    autonomy_rollup_latest?: Array<Record<string, unknown>>;
+    shadow_twin_alignment_latest?: Array<Record<string, unknown>>;
+    twin_observability?: TwinObservabilityOps;
+  };
 }
 
 export interface StabilityReport {

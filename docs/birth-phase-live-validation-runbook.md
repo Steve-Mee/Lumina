@@ -152,7 +152,13 @@ After certificate issuance and during sustained autonomous runs (autonomy loops,
 
 **Verification commands**:
 ```powershell
+# Fast SIM Approval Twin validation (shadow mode; no REAL; harness + CLI)
+python scripts/validation/run_sim_birth_twin_validation.py --harness-only
+# Optional bounded practice birth with Twin bound:
+# python scripts/validation/run_sim_birth_twin_validation.py --practice-birth --target-trades 2000 --timeout-sec 900
+
 python -m lumina_launcher twin metrics
+python -m lumina_launcher twin review --list-only --limit 5
 curl -H "X-API-Key: ..." http://127.0.0.1:8000/api/monitoring/ops-data | jq '.perfect_birth_kpis'
 Get-Content state/lumina_birth_progress.json | ConvertFrom-Json | Select autonomy*, oos*, constitution*
 grep -iE "(twin.*(agree|accuracy|steve)|autonomous_recovery|shadow.*align|perfect_birth)" logs/lumina_full_log.csv | tail -20

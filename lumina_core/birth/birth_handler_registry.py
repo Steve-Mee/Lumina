@@ -8,6 +8,7 @@ from lumina_core.agent_orchestration.event_bus import EventBus
 from lumina_core.birth.config import BirthCurriculumConfig, BirthRewardConfig
 from lumina_core.birth.meta_controller_handler import MetaControllerHandler
 from lumina_core.birth.organism_autonomy_handler import OrganismAutonomyHandler
+from lumina_core.birth.phase2_autonomy import build_orchestrator_from_cfg
 from lumina_core.birth.phoenix_handler import PhoenixHandler
 from lumina_core.birth.plateau_handler import PlateauHandler
 from lumina_core.birth.remediation_handler import RemediationHandler
@@ -24,12 +25,20 @@ class BirthHandlerRegistry:
         reward_cfg: BirthRewardConfig,
         *,
         approval_twin: Any | None = None,
+        mode: str = "sim",
     ) -> None:
         self.bus = event_bus
         self.curriculum_cfg = curriculum_cfg
         self.reward_cfg = reward_cfg
         self.approval_twin = approval_twin
+        self._mode = str(mode or "sim")
         self._responses: dict[str, dict[str, Any]] = {}
+        self.phase2 = build_orchestrator_from_cfg(
+            curriculum_cfg,
+            event_bus=event_bus,
+            approval_twin=approval_twin,
+            mode=self._mode,
+        )
         self.meta = MetaControllerHandler(
             event_bus,
             curriculum_cfg,
@@ -43,7 +52,12 @@ class BirthHandlerRegistry:
         self.autonomy = OrganismAutonomyHandler(
             event_bus, curriculum_cfg, registry=self, approval_twin=approval_twin
         )
-        self.wall_adaptation = WallAdaptationHandler(event_bus, curriculum_cfg, registry=self)
+        self.wall_adaptation = WallAdaptationHandler(
+            event_bus,
+            curriculum_cfg,
+            registry=self,
+            phase2_orchestrator=self.phase2,
+        )
         self._attached = False
 
     def set_response(self, correlation_id: str, key: str, value: Any) -> None:
@@ -87,6 +101,16 @@ class BirthHandlerRegistry:
         self.phoenix.cfg = cfg
         self.autonomy.cfg = cfg
         self.wall_adaptation.cfg = cfg
+        # Rebuild Phase 2 orchestrator only when master flag is on (zero cost when off)
+        self.phase2 = build_orchestrator_from_cfg(
+            cfg,
+            event_bus=self.bus,
+            approval_twin=self.approval_twin,
+            mode=self._mode,
+        )
+        self.wall_adaptation._phase2 = self.phase2
+        if self.phase2 is not None:
+            self.phase2.cfg = cfg
 
     def sync_birth_cfg(self, curriculum: BirthCurriculumConfig, reward: BirthRewardConfig) -> None:
         """Refresh curriculum + reward refs across birth EventBus handlers."""
@@ -99,6 +123,8 @@ class BirthHandlerRegistry:
         self.meta.approval_twin = twin
         if hasattr(self.autonomy, "approval_twin"):
             self.autonomy.approval_twin = twin
+        if self.phase2 is not None:
+            self.phase2.approval_twin = twin
 
     def bind_approval_twin(self, approval_twin: Any | None) -> None:
         """Late-bind ApprovalTwin after bus wiring (orchestrator/container)."""
@@ -107,6 +133,8 @@ class BirthHandlerRegistry:
         if hasattr(self.meta, "controller") and self.meta.controller is not None:
             self.meta.controller.approval_twin = approval_twin
         self.autonomy.approval_twin = approval_twin
+        if self.phase2 is not None:
+            self.phase2.approval_twin = approval_twin
 
 
 __all__ = ["BirthHandlerRegistry"]

@@ -38,6 +38,7 @@ class WallAdaptationHandler:
         cfg: BirthCurriculumConfig,
         *,
         registry: Any | None = None,
+        phase2_orchestrator: Any | None = None,
     ) -> None:
         if event_bus is None:
             raise ValueError("WallAdaptationHandler requires EventBus")
@@ -48,6 +49,7 @@ class WallAdaptationHandler:
             effective_reward_window=int(cfg.reward_trend_window),
         )
         self._registry = registry
+        self._phase2 = phase2_orchestrator
         self._token: str | None = None
 
     def attach(self) -> str:
@@ -108,6 +110,9 @@ class WallAdaptationHandler:
         self, cid: str, stage_name: str, ctx: dict[str, Any]
     ) -> None:
         stage = self._parse_stage(stage_name)
+        phase2_meta, eval_cfg = self._phase2_wall_closed_loop(cid, stage_name, ctx)
+        wr_stag = int(ctx.get("winrate_stagnation_count", 0))
+        hold_stag = int(ctx.get("hold_stagnation_count", 0))
         result = evaluate_wall_trigger(
             stage=stage,
             stage_trades=int(ctx.get("stage_trades", 0)),
@@ -119,8 +124,8 @@ class WallAdaptationHandler:
             range_round_trips=int(ctx.get("range_round_trips", 0)),
             range_total_signals=int(ctx.get("range_total_signals", 0)),
             elapsed_stage_sec=float(ctx.get("elapsed_stage_sec", 0.0)),
-            winrate_stagnation_count=int(ctx.get("winrate_stagnation_count", 0)),
-            hold_stagnation_count=int(ctx.get("hold_stagnation_count", 0)),
+            winrate_stagnation_count=wr_stag,
+            hold_stagnation_count=hold_stag,
             wall_budget_exhausted=bool(ctx.get("wall_budget_exhausted", False)),
             allow_provisional=bool(ctx.get("allow_provisional", False)),
             failure_key=str(ctx.get("failure_key", "")),
@@ -129,10 +134,12 @@ class WallAdaptationHandler:
             last_adaptation_stage_trades=int(
                 ctx.get("last_adaptation_stage_trades", self.state.last_adaptation_stage_trades)
             ),
-            cfg=self.cfg,
+            cfg=eval_cfg,
         )
         if not result.triggered:
             self._set_response(cid, "trigger", None)
+            if phase2_meta:
+                self._set_response(cid, "phase2_wall", phase2_meta)
             return
 
         self.state.wall_triggers_total += 1
@@ -148,6 +155,7 @@ class WallAdaptationHandler:
             context={
                 "pending": result.pending,
                 "constitution_blocked": result.constitution_blocked,
+                "phase2_wall": phase2_meta or {},
             },
         )
         self._set_response(
@@ -159,8 +167,86 @@ class WallAdaptationHandler:
                 "failure_key": result.failure_key,
                 "pending": result.pending,
                 "constitution_blocked": result.constitution_blocked,
+                "phase2_wall": phase2_meta or {},
             },
         )
+
+    def _phase2_wall_closed_loop(
+        self, cid: str, stage_name: str, ctx: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, BirthCurriculumConfig]:
+        """When Phase 2 wall pillar is gated-allow, evaluate with effective thresholds.
+
+        Fail-closed: any gate reject → return base cfg (identical to pre-Phase-2).
+        Still a single wall engine — only cfg thresholds are shadow-replaced.
+        """
+        from dataclasses import replace
+
+        orch = self._phase2
+        if orch is None or not getattr(orch, "is_active", lambda: False)():
+            return None, self.cfg
+        try:
+            # Prefer registry twin if orchestrator twin not bound yet
+            if getattr(orch, "approval_twin", None) is None and self._registry is not None:
+                twin = getattr(self._registry, "approval_twin", None)
+                if twin is not None:
+                    orch.approval_twin = twin
+            decision = orch.evaluate_dynamic_wall(
+                correlation_id=cid,
+                stage=stage_name,
+                stage_trades=int(ctx.get("stage_trades", 0)),
+                required=int(ctx.get("required", 0)),
+                winrate_slope=float(ctx.get("winrate_slope", 0.0)),
+                winrate_stagnation_count=int(ctx.get("winrate_stagnation_count", 0)),
+                hold_stagnation_count=int(ctx.get("hold_stagnation_count", 0)),
+                elapsed_stage_sec=float(ctx.get("elapsed_stage_sec", 0.0)),
+                regime=str(ctx.get("regime", "") or "") or None,
+                constitution_violations=int(ctx.get("constitution_violations", 0)),
+                apply=True,
+            )
+            meta = decision.to_dict()
+            if not decision.applied or not decision.apply_payload:
+                return meta, self.cfg
+            payload = decision.apply_payload
+            eval_cfg = replace(
+                self.cfg,
+                certified_stage_stall_wall_sec=max(
+                    300,
+                    int(
+                        payload.get(
+                            "effective_stall_wall_sec",
+                            self.cfg.certified_stage_stall_wall_sec,
+                        )
+                    ),
+                ),
+                stage1_winrate_stagnation_rollouts=max(
+                    1,
+                    int(
+                        payload.get(
+                            "effective_winrate_stagnation_rollouts",
+                            self.cfg.stage1_winrate_stagnation_rollouts,
+                        )
+                    ),
+                ),
+                stage2_hold_stagnation_rollouts=max(
+                    1,
+                    int(
+                        payload.get(
+                            "effective_hold_stagnation_rollouts",
+                            self.cfg.stage2_hold_stagnation_rollouts,
+                        )
+                    ),
+                ),
+            )
+            meta["thresholds_applied"] = True
+            meta["effective_cfg"] = {
+                "certified_stage_stall_wall_sec": eval_cfg.certified_stage_stall_wall_sec,
+                "stage1_winrate_stagnation_rollouts": eval_cfg.stage1_winrate_stagnation_rollouts,
+                "stage2_hold_stagnation_rollouts": eval_cfg.stage2_hold_stagnation_rollouts,
+            }
+            return meta, eval_cfg
+        except Exception as exc:
+            logger.debug("phase2 wall closed-loop best-effort failed: %s", exc)
+            return None, self.cfg
 
     def _meta_plan_from_ctx(self, ctx: dict[str, Any]) -> Any | None:
         if not self.cfg.meta_controller_enabled or self._registry is None:
@@ -216,6 +302,15 @@ class WallAdaptationHandler:
             meta_plan=meta_plan,
             learning_health=learning_health,
         )
+        phase2_extra = self._phase2_recovery_closed_loop(
+            cid,
+            stage_name,
+            ctx,
+            learning_health=learning_health,
+            stage_trades=stage_trades,
+            required=required,
+            constitution_blocked=constitution_blocked,
+        )
         self._publish_apply_result(
             cid,
             stage_name,
@@ -223,6 +318,7 @@ class WallAdaptationHandler:
             current_winrate=current_winrate,
             stage_trades=stage_trades,
             original_rollout_chunk=original_rollout_chunk,
+            phase2_extra=phase2_extra,
         )
 
     def _handle_never_stop(self, cid: str, stage_name: str, ctx: dict[str, Any]) -> None:
@@ -233,6 +329,15 @@ class WallAdaptationHandler:
             rollout_chunk_trades=int(ctx.get("rollout_chunk_trades", 0)),
             terminal_blocked=bool(ctx.get("terminal_blocked", False)),
         )
+        phase2_extra = self._phase2_recovery_closed_loop(
+            cid,
+            stage_name,
+            ctx,
+            learning_health=str(ctx.get("learning_health", "flat")),
+            stage_trades=int(ctx.get("stage_trades", 0)),
+            required=int(ctx.get("required", 0)),
+            constitution_blocked=bool(ctx.get("constitution_blocked", False)),
+        )
         self._publish_apply_result(
             cid,
             stage_name,
@@ -240,7 +345,80 @@ class WallAdaptationHandler:
             current_winrate=float(ctx.get("current_winrate", 0.0)),
             stage_trades=int(ctx.get("stage_trades", 0)),
             original_rollout_chunk=int(ctx.get("original_rollout_chunk", 0)),
+            phase2_extra=phase2_extra,
         )
+
+    def _phase2_recovery_closed_loop(
+        self,
+        cid: str,
+        stage_name: str,
+        ctx: dict[str, Any],
+        *,
+        learning_health: str,
+        stage_trades: int,
+        required: int,
+        constitution_blocked: bool,
+    ) -> dict[str, Any]:
+        """Gated param + instance adapt; mutates WallAdaptationState when allowed."""
+        orch = self._phase2
+        if orch is None or not getattr(orch, "is_active", lambda: False)():
+            return {}
+        if getattr(orch, "approval_twin", None) is None and self._registry is not None:
+            twin = getattr(self._registry, "approval_twin", None)
+            if twin is not None:
+                orch.approval_twin = twin
+        viol = int(ctx.get("constitution_violations", 1 if constitution_blocked else 0))
+        out: dict[str, Any] = {}
+        tier = int(ctx.get("adaptation_tier", self.state.adaptation_tier) or 0)
+        retries = int(ctx.get("retries_this_stage", self.state.retries_this_stage) or 0)
+        try:
+            param_dec = orch.evaluate_param_adjustment(
+                correlation_id=cid,
+                stage=stage_name,
+                learning_health=learning_health,
+                current_winrate_window=int(self.state.effective_winrate_window),
+                current_reward_window=int(self.state.effective_reward_window),
+                adaptation_tier=tier,
+                post_volume_gate=stage_trades >= max(1, required),
+                constitution_violations=viol,
+                wall_state=self.state,
+                apply=True,
+            )
+            out["param"] = param_dec.to_dict()
+        except Exception as exc:
+            logger.debug("phase2 param closed-loop failed: %s", exc)
+            out["param"] = {"error": str(exc)}
+        try:
+            inst_dec = orch.evaluate_instance_adapt(
+                correlation_id=cid,
+                stage=stage_name,
+                adaptation_tier=tier,
+                retries_this_stage=retries,
+                plateau_active=bool(ctx.get("plateau_active", False)),
+                phoenix_eligible=bool(ctx.get("phoenix_eligible", True)),
+                learning_health=learning_health,
+                stall_reason=str(ctx.get("failure_key", "") or ""),
+                constitution_violations=viol,
+                apply=True,
+            )
+            out["instance"] = inst_dec.to_dict()
+            # Optional in-process cfg refresh (no process restart)
+            if (
+                inst_dec.applied
+                and inst_dec.apply_payload.get("refresh_handler_cfg")
+                and self._registry is not None
+                and hasattr(self._registry, "sync_curriculum_cfg")
+            ):
+                try:
+                    self._registry.sync_curriculum_cfg(self.cfg)
+                    out["instance_cfg_refreshed"] = True
+                except Exception as exc:
+                    logger.debug("phase2 instance cfg refresh failed: %s", exc)
+                    out["instance_cfg_refreshed"] = False
+        except Exception as exc:
+            logger.debug("phase2 instance closed-loop failed: %s", exc)
+            out["instance"] = {"error": str(exc)}
+        return out
 
     def _publish_apply_result(
         self,
@@ -251,12 +429,29 @@ class WallAdaptationHandler:
         current_winrate: float = 0.0,
         stage_trades: int = 0,
         original_rollout_chunk: int = 0,
+        phase2_extra: dict[str, Any] | None = None,
     ) -> None:
+        p2 = phase2_extra or {}
+        # Merge Phase 2 instance spawn flags into plan outcomes (in-process only)
+        spawn_plateau = bool(plan.spawn_plateau)
+        spawn_phoenix = bool(plan.spawn_phoenix_reset)
+        inst = p2.get("instance") if isinstance(p2.get("instance"), dict) else {}
+        if inst.get("applied") and isinstance(inst.get("apply_payload"), dict):
+            payload = inst["apply_payload"]
+            spawn_plateau = spawn_plateau or bool(payload.get("spawn_plateau"))
+            spawn_phoenix = spawn_phoenix or bool(payload.get("spawn_phoenix_reset"))
+
         if not plan.applied or plan.decision is None:
             self._set_response(
                 cid,
                 "adaptation",
-                {"applied": False, "dispatch": plan.dispatch},
+                {
+                    "applied": False,
+                    "dispatch": plan.dispatch,
+                    "phase2": p2,
+                    "spawn_plateau": spawn_plateau,
+                    "spawn_phoenix_reset": spawn_phoenix,
+                },
             )
             return
 
@@ -293,6 +488,13 @@ class WallAdaptationHandler:
                 self.state.effective_reward_window = int(
                     plan.parameter_patch.reward_trend_window
                 )
+
+        # Phase 2 param apply may already have mutated state; surface in patch_dict
+        param_info = p2.get("param") if isinstance(p2.get("param"), dict) else {}
+        if param_info.get("applied") and isinstance(param_info.get("apply_payload"), dict):
+            changes = param_info["apply_payload"].get("changes") or {}
+            if changes:
+                patch_dict = {**patch_dict, **{f"phase2_{k}": v for k, v in changes.items()}}
 
         publish_adaptation_applied(
             self.bus,
@@ -336,10 +538,11 @@ class WallAdaptationHandler:
                 "mine": plan.mine,
                 "mine_aggressive": plan.mine_aggressive,
                 "expand_data": plan.expand_data,
-                "spawn_plateau": plan.spawn_plateau,
-                "spawn_phoenix_reset": plan.spawn_phoenix_reset,
+                "spawn_plateau": spawn_plateau,
+                "spawn_phoenix_reset": spawn_phoenix,
                 "parameter_patch": patch_dict,
                 "state": self.state.to_metrics(),
+                "phase2": p2,
             },
         )
 

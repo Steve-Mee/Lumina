@@ -13,7 +13,7 @@ jsonschema-specifications==2025.9.1
 # opentelemetry-*  →  see requirements-core.txt
 
 # MCP protocol client
-mcp==1.27.0
+mcp==1.28.1
 
 # Misc format support
 ijson==3.5.0

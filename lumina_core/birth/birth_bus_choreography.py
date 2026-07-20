@@ -23,6 +23,10 @@ TOPIC_CERT_REMEDIATION = "birth.certificate.remediation.requested"
 TOPIC_WALL_TRIGGERED = "birth.wall.triggered"
 TOPIC_ADAPTATION_APPLIED = "birth.adaptation.applied"
 TOPIC_AUTONOMY_RECOVERY_METRICS = "birth.autonomy.recovery.metrics"
+TOPIC_PHASE2_WALL_PROPOSAL = "birth.phase2.wall.proposal"
+TOPIC_PHASE2_PARAM_PROPOSAL = "birth.phase2.param.proposal"
+TOPIC_PHASE2_INSTANCE_PROPOSAL = "birth.phase2.instance.proposal"
+TOPIC_PHASE2_GATE_RESULT = "birth.phase2.gate.result"
 
 
 def latest_for_correlation(
@@ -181,12 +185,115 @@ def publish_recovery_metrics(
     )
 
 
+def publish_phase2_wall_proposal(
+    bus: EventBus,
+    *,
+    producer: str,
+    correlation_id: str,
+    stage: str,
+    proposal: dict[str, Any],
+) -> DomainEvent:
+    from lumina_core.agent_orchestration.schemas import BirthPhase2WallProposal
+
+    payload = BirthPhase2WallProposal(
+        correlation_id=correlation_id,
+        stage=stage,
+        proposal=dict(proposal or {}),
+    )
+    return bus.publish(
+        topic=TOPIC_PHASE2_WALL_PROPOSAL,
+        producer=producer,
+        payload=payload.model_dump(mode="json"),
+        metadata={"correlation_id": correlation_id},
+    )
+
+
+def publish_phase2_param_proposal(
+    bus: EventBus,
+    *,
+    producer: str,
+    correlation_id: str,
+    stage: str,
+    proposal: dict[str, Any],
+) -> DomainEvent:
+    from lumina_core.agent_orchestration.schemas import BirthPhase2ParamProposal
+
+    payload = BirthPhase2ParamProposal(
+        correlation_id=correlation_id,
+        stage=stage,
+        proposal=dict(proposal or {}),
+    )
+    return bus.publish(
+        topic=TOPIC_PHASE2_PARAM_PROPOSAL,
+        producer=producer,
+        payload=payload.model_dump(mode="json"),
+        metadata={"correlation_id": correlation_id},
+    )
+
+
+def publish_phase2_instance_proposal(
+    bus: EventBus,
+    *,
+    producer: str,
+    correlation_id: str,
+    stage: str,
+    proposal: dict[str, Any],
+) -> DomainEvent:
+    from lumina_core.agent_orchestration.schemas import BirthPhase2InstanceProposal
+
+    payload = BirthPhase2InstanceProposal(
+        correlation_id=correlation_id,
+        stage=stage,
+        proposal=dict(proposal or {}),
+    )
+    return bus.publish(
+        topic=TOPIC_PHASE2_INSTANCE_PROPOSAL,
+        producer=producer,
+        payload=payload.model_dump(mode="json"),
+        metadata={"correlation_id": correlation_id},
+    )
+
+
+def publish_phase2_gate_result(
+    bus: EventBus,
+    *,
+    producer: str,
+    correlation_id: str,
+    stage: str,
+    gate: dict[str, Any],
+) -> DomainEvent:
+    from lumina_core.agent_orchestration.schemas import BirthPhase2GateResult
+
+    g = dict(gate or {})
+    payload = BirthPhase2GateResult(
+        correlation_id=correlation_id,
+        stage=stage,
+        allowed=bool(g.get("allowed", False)),
+        reason=str(g.get("reason", "") or ""),
+        pillar=str(g.get("pillar", "") or ""),
+        message=str(g.get("message", "") or ""),
+        twin_confidence=float(g.get("twin_confidence", 0.0) or 0.0),
+        twin_mode=str(g.get("twin_mode", "") or ""),
+        details=dict(g.get("details") or {}) if isinstance(g.get("details"), dict) else {},
+    )
+    return bus.publish(
+        topic=TOPIC_PHASE2_GATE_RESULT,
+        producer=producer,
+        payload=payload.model_dump(mode="json"),
+        metadata={"correlation_id": correlation_id},
+    )
+
+
 __all__ = [
     "TOPIC_ADAPTATION_APPLIED",
     "TOPIC_AUTONOMY_DECISION",
     "TOPIC_AUTONOMY_RECOVERY_METRICS",
     "TOPIC_CERT_REMEDIATION",
     "TOPIC_META_PLAN",
+    "TOPIC_PHASE2_GATE_RESULT",
+    "TOPIC_PHASE2_INSTANCE_PROPOSAL",
+    "TOPIC_PHASE2_PARAM_PROPOSAL",
+    "TOPIC_PHASE2_WALL_PROPOSAL",
     "TOPIC_PHOENIX_CYCLE",
     "TOPIC_PLATEAU_ENTERED",
     "TOPIC_PLATEAU_EVOLUTION",
@@ -197,6 +304,10 @@ __all__ = [
     "TOPIC_WALL_TRIGGERED",
     "latest_for_correlation",
     "publish_adaptation_applied",
+    "publish_phase2_gate_result",
+    "publish_phase2_instance_proposal",
+    "publish_phase2_param_proposal",
+    "publish_phase2_wall_proposal",
     "publish_recovery_metrics",
     "publish_snapshot",
     "publish_wall_triggered",

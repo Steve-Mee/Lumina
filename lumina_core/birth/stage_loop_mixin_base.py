@@ -54,6 +54,8 @@ if TYPE_CHECKING:
         chunk_trades_snapshot: int
         plateau_state: Any
         wa_state: Any
+        meta_message_suffix: str
+        pass_metric_target: float
 else:
 
     class StageLoopMixinBase:

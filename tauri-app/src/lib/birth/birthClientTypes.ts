@@ -202,6 +202,32 @@ export interface BirthStatusPayload {
   genesis_charter?: Record<string, unknown>;
   meta_milestones?: Array<Record<string, unknown>>;
   autonomy_metrics?: Record<string, unknown> | null;
+  /** Approval Twin observability during birth (mode, agreement, risk, promotion). */
+  twin_observability?: TwinObservabilityPayload | null;
+}
+
+/** Compact Twin KPIs attached to birth status for operator visibility. */
+export interface TwinObservabilityPayload {
+  mode?: string;
+  authority?: string;
+  twin_steve_agreement_pct?: number | null;
+  twin_agreement_pct?: number | null;
+  rolling_agreement_w20?: number | null;
+  rolling_agreement_w50?: number | null;
+  risk_flags_caught?: number | null;
+  risk_flags_missed?: number | null;
+  risk_flags_catch_rate_pct?: number | null;
+  high_conf_agreement_pct?: number | null;
+  mean_abs_calibration_error?: number | null;
+  mode_samples?: number | null;
+  mode_promotion_progress?: {
+    assisted_ready?: boolean;
+    full_auto_ready?: boolean;
+    assisted_fail_reasons?: string[];
+    full_auto_fail_reasons?: string[];
+    samples?: number;
+  } | null;
+  local_only?: boolean;
 }
 
 export interface StartBirthSessionOptions {

@@ -14,6 +14,13 @@ _ROLLOUT = _BIRTH / "stage_loop_rollout.py"
 _SESSION = _BIRTH / "stage_loop_session.py"
 _RECOVERY = _BIRTH / "stage_loop_recovery.py"
 _RECOVERY_MIXIN = _BIRTH / "stage_loop_recovery_mixin.py"
+_RECOVERY_TERMINAL = _BIRTH / "stage_loop_recovery_terminal.py"
+_RECOVERY_REMEDIATION = _BIRTH / "stage_loop_recovery_remediation.py"
+_RECOVERY_ADAPTATION = _BIRTH / "stage_loop_recovery_adaptation.py"
+_ROLLOUT_CYCLE = _BIRTH / "stage_loop_rollout_cycle.py"
+_ROLLOUT_PRE = _BIRTH / "stage_loop_rollout_pre.py"
+_ROLLOUT_POST = _BIRTH / "stage_loop_rollout_post.py"
+_ROLLOUT_TAIL = _BIRTH / "stage_loop_rollout_tail.py"
 _PLATEAU = _BIRTH / "plateau_evolution_handler.py"
 _CONTEXT = _BIRTH / "stage_loop_context.py"
 
@@ -58,6 +65,28 @@ def test_stage_loop_recovery_exports_adaptation_helpers() -> None:
 def test_recovery_and_plateau_mixins_exist() -> None:
     assert "class StageLoopRecoveryMixin" in _RECOVERY_MIXIN.read_text(encoding="utf-8")
     assert "class PlateauEvolutionMixin" in _PLATEAU.read_text(encoding="utf-8")
+    for path, cls in (
+        (_RECOVERY_TERMINAL, "StageLoopRecoveryTerminalMixin"),
+        (_RECOVERY_REMEDIATION, "StageLoopRecoveryRemediationMixin"),
+        (_RECOVERY_ADAPTATION, "StageLoopRecoveryAdaptationMixin"),
+    ):
+        assert path.is_file(), path.name
+        assert f"class {cls}" in path.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_rollout_cycle_phase_mixins_exist() -> None:
+    assert "class StageLoopRolloutCycleMixin" in _ROLLOUT_CYCLE.read_text(encoding="utf-8")
+    for path, cls in (
+        (_ROLLOUT_PRE, "StageLoopRolloutPreMixin"),
+        (_ROLLOUT_POST, "StageLoopRolloutPostMixin"),
+        (_ROLLOUT_TAIL, "StageLoopRolloutTailMixin"),
+    ):
+        assert path.is_file(), path.name
+        assert f"class {cls}" in path.read_text(encoding="utf-8")
+    # Cycle façade should stay thin orchestrator (not the 749-line method god)
+    cycle_kb = _ROLLOUT_CYCLE.stat().st_size / 1024
+    assert cycle_kb < 20, f"stage_loop_rollout_cycle.py too large: {cycle_kb:.1f} KB"
 
 
 @pytest.mark.unit

@@ -11,6 +11,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 _EXECUTOR = _ROOT / "lumina_core" / "birth" / "stage_rollout_executor.py"
 _ROLLOUT = _ROOT / "lumina_core" / "birth" / "stage_loop_rollout.py"
 _RECOVERY_MIXIN = _ROOT / "lumina_core" / "birth" / "stage_loop_recovery_mixin.py"
+_RECOVERY_TERMINAL = _ROOT / "lumina_core" / "birth" / "stage_loop_recovery_terminal.py"
+_RECOVERY_ADAPTATION = _ROOT / "lumina_core" / "birth" / "stage_loop_recovery_adaptation.py"
 
 _FORBIDDEN_MODULES: set[str] = set()
 
@@ -46,9 +48,13 @@ def test_stage_rollout_executor_uses_bus_client() -> None:
     assert "stage_loop_rollout" in wrapper
     rollout = _ROLLOUT.read_text(encoding="utf-8")
     recovery = _RECOVERY_MIXIN.read_text(encoding="utf-8")
+    terminal = _RECOVERY_TERMINAL.read_text(encoding="utf-8")
+    adaptation = _RECOVERY_ADAPTATION.read_text(encoding="utf-8")
+    recovery_surface = recovery + terminal + adaptation
     assert "run_stage_research_loop" in rollout
-    assert "wall_evaluate_trigger" in recovery
-    assert "adaptation_try_recovery" in recovery
-    assert "from lumina_core.birth.organism_autonomy import evaluate_terminal_stall" not in recovery
-    assert "get_adaptation_decision" not in recovery
-    assert "begin_remediation_cycle" not in recovery
+    assert "wall_evaluate_trigger" in recovery_surface
+    assert "adaptation_try_recovery" in recovery_surface
+    assert "from lumina_core.birth.organism_autonomy import evaluate_terminal_stall" not in recovery_surface
+    assert "get_adaptation_decision" not in recovery_surface
+    assert "begin_remediation_cycle" not in recovery_surface
+    assert "StageLoopRecoveryTerminalMixin" in recovery or "StageLoopRecoveryTerminalMixin" in terminal

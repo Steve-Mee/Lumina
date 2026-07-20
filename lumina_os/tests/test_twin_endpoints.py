@@ -58,6 +58,12 @@ def test_twin_metrics(client: TestClient) -> None:
     body = r.json()
     assert body.get("local_only") is True
     assert "threshold" in body
+    # First-class Twin observability contract
+    assert "rolling_agreement" in body
+    assert "agreement_over_time" in body
+    assert "calibration" in body
+    assert "mode_promotion_progress" in body
+    assert "risk_flags_missed" in body
 
 
 def test_twin_review_queue(client: TestClient) -> None:

@@ -9,7 +9,7 @@ export const INTELLIGENCE_DECK_TAB_SUBTITLES: Record<RightDeckTab, string> = {
   adaptive: "Live policy stack & transition history",
   performance: "Equity curve, P&L & session KPIs",
   realOps: "REAL capital preservation & exposure",
-  evolutionApprovals: "Twin train + open challenger proposals",
+  evolutionApprovals: "Train Twin · label · metrics · proposals",
   liveActivity: "Engine status & log tail",
   monitor: "Health, twin, shadow & training metrics",
   community: "Trader league & global wisdom",

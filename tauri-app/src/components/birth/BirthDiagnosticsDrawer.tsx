@@ -170,6 +170,7 @@ export function BirthDiagnosticsDrawer({
                               progress={progress}
                               elapsedSeconds={elapsedSeconds}
                               message={progressMessage}
+                              twinObservability={birthStatus?.twin_observability ?? null}
                             />
                           </>
                         ) : null}

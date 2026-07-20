@@ -16,6 +16,7 @@ export type {
   BirthWipeApiResponse,
   BirthWipeResult,
   StartBirthSessionOptions,
+  TwinObservabilityPayload,
 } from "@/lib/birth/birthClientTypes";
 
 function isNotFoundError(err: unknown): boolean {

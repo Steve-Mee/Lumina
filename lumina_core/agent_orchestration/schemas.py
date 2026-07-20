@@ -809,6 +809,52 @@ class BirthAutonomyRecoveryMetrics(BaseModel):
     autonomous_recovery_rate_pct: float = 0.0
 
 
+class BirthPhase2WallProposal(BaseModel):
+    """Phase 2 dynamic wall threshold proposal (ADR-0034)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    stage: str = ""
+    proposal: dict[str, Any] = Field(default_factory=dict)
+
+
+class BirthPhase2ParamProposal(BaseModel):
+    """Phase 2 self-adaptive birth param proposal (ADR-0034)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    stage: str = ""
+    proposal: dict[str, Any] = Field(default_factory=dict)
+
+
+class BirthPhase2InstanceProposal(BaseModel):
+    """Phase 2 in-process instance adapt proposal (ADR-0034)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    stage: str = ""
+    proposal: dict[str, Any] = Field(default_factory=dict)
+
+
+class BirthPhase2GateResult(BaseModel):
+    """Phase 2 multi-gate evaluation result (ADR-0034)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    correlation_id: str = ""
+    stage: str = ""
+    allowed: bool = False
+    reason: str = ""
+    pillar: str = ""
+    message: str = ""
+    twin_confidence: float = 0.0
+    twin_mode: str = ""
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 class GateEntryPayload(BaseModel):
     """Minimal root event marking that an order intent has entered the authoritative admission chain."""
 
@@ -902,6 +948,10 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "birth.wall.triggered": BirthWallTriggered,
     "birth.adaptation.applied": BirthAdaptationApplied,
     "birth.autonomy.recovery.metrics": BirthAutonomyRecoveryMetrics,
+    "birth.phase2.wall.proposal": BirthPhase2WallProposal,
+    "birth.phase2.param.proposal": BirthPhase2ParamProposal,
+    "birth.phase2.instance.proposal": BirthPhase2InstanceProposal,
+    "birth.phase2.gate.result": BirthPhase2GateResult,
     "runtime.config.reloaded": RuntimeConfigReloaded,
     "runtime.config.reload_failed": RuntimeConfigReloadFailed,
     "runtime.config.reload_requested": RuntimeConfigReloadRequested,

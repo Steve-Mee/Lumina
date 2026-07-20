@@ -64,7 +64,7 @@ Documentatie-, governance- en release-rails (architecture overview, CONTRIBUTING
 | **P0** | Modularisatie: resterende god-oppervlakken → bounded contexts | 🔄 | v5.2–5.3 | [0001](adr/0001-bounded-contexts-central-event-bus.md), [0008](adr/0008-lumina-engine-service-decomposition.md), [0009](adr/0009-thin-engine-orchestrator-and-app-shim-removal.md) | LUMINA Core |
 | **P0** | REAL: broker-connectiviteit, reconciliatie, production-runbooks | 🔜 | v5.2–5.3 | *ADR gepland* | LUMINA Core |
 | **P0** | PromotionGate REAL: purged/cpcv + reality gap + stress DD + significantie | ✅ | v5.2.x | [0007](adr/0007-promotion-gate-real-mode.md) | LUMINA Core |
-| **P1** | **Phase 2 Autonomy** (wall triggers, self-adaptive params, never-stop, dynamic spawn) | 🔜 | v5.3+ | birth runbook §8–9; *ADR bij implementatie* | LUMINA Core |
+| **P1** | **Phase 2 Autonomy** (wall triggers, self-adaptive params, never-stop, dynamic spawn) | 🔜 foundation | v5.3+ | birth runbook §8–9; [ADR-0034](adr/0034-phase2-autonomy-foundation.md) | LUMINA Core |
 | **P1** | Architecture Meta-Controller (sandbox + human marker) | 🔜 | v5.3+ | [0030](adr/0030-architecture-meta-controller.md) | LUMINA Core |
 | **P1** | Test suite: markers, timeouts, isolated fixtures | 🔄 | v5.2–5.3 | [0005](adr/0005-test-suite-overhaul-markers-timeouts-isolated-fixtures.md) | LUMINA Core |
 | **P1** | Event Bus: strikte payload-validatie op kritieke topics | 🔄 | v5.2–5.3 | [0001](adr/0001-bounded-contexts-central-event-bus.md), [ADR-003](adr/ADR-003-event-bus-contract.md) | LUMINA Core |
@@ -179,14 +179,16 @@ ADR’s: [0031](adr/0031-approval-twin-event-bus.md), [0032](adr/0032-approval-t
 
 ## 7. Phase 2 Autonomy (gepland)
 
-**Status:** 🔜 — **niet** claimen als af. Ontgrendeling na Perfect Birth conjunction gate ([birth runbook](birth-phase-live-validation-runbook.md) §8–9).
+**Status:** 🔜 foundation + **Slice A closed loop** — **niet** claimen als productief af. Ontgrendeling na Perfect Birth conjunction gate ([birth runbook](birth-phase-live-validation-runbook.md) §8–9). ADR: [0034](adr/0034-phase2-autonomy-foundation.md).
 
 | Pilaar | Doel | Nu |
 |--------|------|-----|
-| **Advanced / dynamic wall triggers** | Slimmere stage-walls die zich aan regime en progressie aanpassen | Adaptive wall retry + never-stall ladder in birth (basis) |
-| **Self-adaptive parameters** | Parameters die zich binnen bounds bijstellen zonder herstart | Deels via adaptation tiers; full self-adaptive catalog nog open |
+| **Advanced / dynamic wall triggers** | Slimmere stage-walls die zich aan regime en progressie aanpassen | **Closed loop (gated):** effective thresholds into `evaluate_wall_trigger` when apply allowed; default OFF |
+| **Self-adaptive parameters** | Parameters die zich binnen bounds bijstellen zonder herstart | **Closed loop (gated):** catalog apply → `WallAdaptationState` on recovery; default OFF |
 | **Never-stop recovery** | Stalls → autonome recovery (twin-assisted CONTINUE, phoenix, data expand) op schaal | Engine + recovery UI aanwezig; schaal/KPI-targets in Perfect Birth |
-| **Dynamic spawning without restart** | Nieuwe organism/agent-instanties spawnen zonder process-restart | Nog te ontwerpen/ADR’en |
+| **Dynamic spawning without restart** | In-process instance adapt zonder process-restart | **Closed loop (gated):** spawn_plateau/phoenix/cfg refresh flags; geen OS spawn |
+
+**Defaults:** alle `phase2_*` flags **false** (fail-closed). Apply-pad eist Perfect Birth flag + Twin (tenzij expliciete SIM scaffold).
 
 **REAL-paden** in Phase 2 blijven twin-gated **én** constitution + shadow + PromotionGate. Twin is noodzakelijke input, geen solo veto-overrule van kapitaalregels.
 

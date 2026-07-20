@@ -347,6 +347,30 @@ async def get_ops_data(
     twin_accuracy = _load_jsonl_file(state / "monitoring_twin_training.jsonl", limit=5)
     autonomy_rollup = _load_jsonl_file(state / "monitoring_autonomy_metrics.jsonl", limit=5)
     shadow_align = _load_jsonl_file(state / "monitoring_shadow_twin_alignment.jsonl", limit=10)
+    # First-class Twin observability rollup (agreement/calibration/mode progress)
+    twin_observability: dict[str, Any] = {}
+    try:
+        from lumina_core.evolution.twin_training_service import TwinTrainingService
+
+        m = TwinTrainingService().metrics(decision_window=100, series_limit=14)
+        twin_observability = {
+            "mode": m.get("mode"),
+            "authority": m.get("authority"),
+            "twin_steve_agreement_pct": m.get("twin_steve_agreement_pct"),
+            "twin_agreement_pct": m.get("twin_agreement_pct"),
+            "rolling_agreement": m.get("rolling_agreement"),
+            "agreement_over_time": m.get("agreement_over_time"),
+            "risk_flags_caught": m.get("risk_flags_caught"),
+            "risk_flags_missed": m.get("risk_flags_missed"),
+            "risk_flags_catch_rate_pct": m.get("risk_flags_catch_rate_pct"),
+            "calibration": m.get("calibration"),
+            "mode_promotion_progress": m.get("mode_promotion_progress"),
+            "mode_samples": m.get("mode_samples"),
+            "reward": m.get("reward"),
+            "avg_prediction_error": m.get("avg_prediction_error"),
+        }
+    except Exception:
+        twin_observability = {}
     return {
         "twin_decisions": twin,
         "gate_rejections": gate,
@@ -356,7 +380,9 @@ async def get_ops_data(
             "twin_accuracy_latest": twin_accuracy,
             "autonomy_rollup_latest": autonomy_rollup,
             "shadow_twin_alignment_latest": shadow_align,
+            "twin_observability": twin_observability,
         },
+        "twin_observability": twin_observability,
     }
 
 

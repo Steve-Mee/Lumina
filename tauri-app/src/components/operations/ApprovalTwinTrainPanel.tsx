@@ -1,17 +1,28 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Brain, Dumbbell, RefreshCw } from "lucide-react";
+import { Brain, Dumbbell, RefreshCw, Shield } from "lucide-react";
 
 import { ApiKeySetupCallout } from "@/components/cockpit/ApiKeySetupCallout";
+import { DeckMetricTile } from "@/components/cockpit/DeckMetricTile";
+import { DeckSection } from "@/components/cockpit/DeckSection";
 import { Button } from "@/components/ui/button";
 import { selectApiKeyConfigured, useApiKeyStore } from "@/store/apiKeyStore";
 import {
   fetchTwinLabels,
   fetchTwinMetrics,
-  fetchTwinReviewQueue,
+  fetchTwinMode,
+  fetchTwinReviewQueueFull,
+  formatCalibrationSummary,
+  formatConfidenceDistribution,
+  formatRollingAgreement,
+  formatTwinNum,
+  formatTwinPct,
+  isModeReady,
   postGymAnswer,
   postTwinLabel,
+  postTwinPromote,
   postTwinTrain,
+  promotionRatio,
   startGymSession,
   twinScoreOf,
   type GymProposal,
@@ -19,20 +30,22 @@ import {
   type TwinDecision,
   type TwinLabelRecord,
   type TwinMetrics,
+  type TwinModeStatus,
+  type TwinModeTarget,
   type TwinReviewItem,
 } from "@/lib/twinClient";
 import { cn } from "@/lib/utils";
 
-function fmtPct(v: number | null | undefined): string {
-  if (v == null || Number.isNaN(Number(v))) return "—";
-  const n = Number(v);
-  if (n <= 1.5) return `${(n * 100).toFixed(1)}%`;
-  return `${n.toFixed(1)}%`;
-}
-
-function fmtNum(v: number | null | undefined, digits = 3): string {
-  if (v == null || Number.isNaN(Number(v))) return "—";
-  return Number(v).toFixed(digits);
+function readinessFailReasons(value: unknown): string[] {
+  if (!value || typeof value !== "object") return [];
+  const rec = value as Record<string, unknown>;
+  if (Array.isArray(rec.fail_reasons)) {
+    return rec.fail_reasons.map(String).filter(Boolean);
+  }
+  if (typeof rec.reason === "string" && rec.reason.trim()) {
+    return [rec.reason.trim()];
+  }
+  return [];
 }
 
 export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
@@ -40,10 +53,14 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<TwinMetrics | null>(null);
+  const [modeStatus, setModeStatus] = useState<TwinModeStatus | null>(null);
   const [queue, setQueue] = useState<TwinReviewItem[]>([]);
+  const [highStakesCount, setHighStakesCount] = useState(0);
   const [labels, setLabels] = useState<TwinLabelRecord[]>([]);
+  const [includeLabeled, setIncludeLabeled] = useState(false);
   const [modifyNotes, setModifyNotes] = useState<Record<string, string>>({});
   const [activeModify, setActiveModify] = useState<string | null>(null);
+  const [feedbackNotes, setFeedbackNotes] = useState<Record<string, string>>({});
 
   // Approval Gym (practice drills — does not promote DNA)
   const [gymSession, setGymSession] = useState<GymSession | null>(null);
@@ -53,20 +70,23 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [m, q, l] = await Promise.all([
+      const [m, mode, q, l] = await Promise.all([
         fetchTwinMetrics(),
-        fetchTwinReviewQueue(15),
+        fetchTwinMode().catch(() => null),
+        fetchTwinReviewQueueFull(15, { includeLabeled }),
         fetchTwinLabels(25),
       ]);
       setMetrics(m);
-      setQueue(q);
+      setModeStatus(mode);
+      setQueue(q.items);
+      setHighStakesCount(q.high_stakes_count ?? 0);
       setLabels(l);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load Twin training data");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeLabeled]);
 
   useEffect(() => {
     void refresh();
@@ -81,7 +101,10 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
     const key = `${dna}:${decision}`;
     setBusyKey(key);
     try {
-      const notes = decision === "modify" ? (modifyNotes[dna] ?? "").trim() : "";
+      const notes =
+        decision === "modify"
+          ? (modifyNotes[dna] ?? "").trim()
+          : (feedbackNotes[dna] ?? "").trim();
       const score = twinScoreOf(item);
       await postTwinLabel({
         decision,
@@ -96,7 +119,9 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
           : [],
         train_now: true,
       });
-      toast.success(`Recorded ${decision.toUpperCase()} — light RLHF applied locally`);
+      const verb =
+        decision === "reject" ? "VETO" : decision === "approve" ? "APPROVE" : "MODIFY";
+      toast.success(`Recorded ${verb} — light RLHF applied locally`);
       setActiveModify(null);
       await refresh();
     } catch (err) {
@@ -109,11 +134,37 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
   const handleTrain = async () => {
     setBusyKey("train");
     try {
-      await postTwinTrain(250);
-      toast.success("Twin retrained from local SteveValues registry");
+      const res = await postTwinTrain(250);
+      const steps = res.metrics?.training_steps ?? metrics?.training_steps;
+      toast.success(
+        steps != null
+          ? `Twin retrained from local registry (steps: ${steps})`
+          : "Twin retrained from local SteveValues registry",
+      );
       await refresh();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Train failed");
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handlePromote = async (target: TwinModeTarget) => {
+    setBusyKey(`promote:${target}`);
+    try {
+      const res = await postTwinPromote(target);
+      toast.success(
+        res.mode
+          ? `Twin mode promoted to ${res.mode}`
+          : `Twin mode promote → ${target} accepted`,
+      );
+      await refresh();
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : `Promote to ${target} blocked by gate (fail-closed)`,
+      );
     } finally {
       setBusyKey(null);
     }
@@ -158,7 +209,9 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
         session_id: gymSession.session_id,
         train_now: true,
       });
-      toast.success(`Gym ${decision.toUpperCase()} recorded (practice only)`);
+      const verb =
+        decision === "reject" ? "VETO" : decision === "approve" ? "APPROVE" : "MODIFY";
+      toast.success(`Gym ${verb} recorded (practice only)`);
       setGymModifyOpen(false);
       setGymNotes("");
       const next = gymIndex + 1;
@@ -183,13 +236,45 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
   const currentDrill: GymProposal | null =
     gymSession && gymSession.proposals[gymIndex] ? gymSession.proposals[gymIndex] : null;
 
+  const mode = String(modeStatus?.mode ?? metrics?.mode ?? "shadow");
+  const authority = String(modeStatus?.authority ?? metrics?.authority ?? "—");
+  const readiness = modeStatus?.readiness ?? metrics?.mode_readiness ?? null;
+  const modeProgress =
+    modeStatus?.mode_promotion_progress ?? metrics?.mode_promotion_progress ?? null;
+  const assistedProgress = modeProgress?.progress?.assisted;
+  const fullAutoProgress = modeProgress?.progress?.full_auto;
+  const assistedReady =
+    isModeReady(readiness?.assisted) || Boolean(assistedProgress?.ready);
+  const fullAutoReady =
+    isModeReady(readiness?.full_auto) || Boolean(fullAutoProgress?.ready);
+  const assistedReasons =
+    readinessFailReasons(readiness?.assisted).length > 0
+      ? readinessFailReasons(readiness?.assisted)
+      : (assistedProgress?.fail_reasons ?? []).map(String);
+  const fullAutoReasons =
+    readinessFailReasons(readiness?.full_auto).length > 0
+      ? readinessFailReasons(readiness?.full_auto)
+      : (fullAutoProgress?.fail_reasons ?? []).map(String);
+  const riskTop = metrics?.risk_flag_top ?? {};
+  const riskTopEntries = Object.entries(riskTop).slice(0, 6);
+  const confLine = formatConfidenceDistribution(metrics?.confidence_distribution);
+  const rollingLine = formatRollingAgreement(metrics?.rolling_agreement);
+  const calibLine = formatCalibrationSummary(metrics?.calibration);
+  const agreementSeries = (metrics?.agreement_over_time ?? []).slice(-5);
+  const localOnly = metrics?.local_only !== false;
+
   return (
     <div className={cn("space-y-4 overflow-y-auto p-1", className)}>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Brain className="size-4 text-violet-300/90" />
         <h3 className="font-mono text-[11px] tracking-[0.14em] text-violet-200/90 uppercase">
           Approval Twin train
         </h3>
+        {localOnly ? (
+          <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[9px] tracking-wider text-emerald-200/90 uppercase">
+            Local only
+          </span>
+        ) : null}
         <Button
           type="button"
           size="xs"
@@ -213,32 +298,269 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
       </div>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        Label past Twin decisions so the local model learns your risk style. Data stays on disk
-        (SteveValues registry + twin model). Twin only covers routine high-conf judgment —
-        constitution, shadow aperture, and REAL PromotionGate stay hard gates.
+        Review Twin decisions, label as you would (approve / veto / modify), and retrain the
+        local model. Data stays on disk (SteveValues registry + twin model). Twin judgment never
+        bypasses constitution, shadow aperture, or REAL PromotionGate.
       </p>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <MetricTile label="Reward" value={fmtNum(metrics?.reward)} />
-        <MetricTile label="Avg error" value={fmtNum(metrics?.avg_prediction_error)} />
-        <MetricTile label="Steps" value={String(metrics?.training_steps ?? "—")} />
-        <MetricTile
-          label="vs Steve"
-          value={
-            metrics?.twin_steve_agreement_pct != null
-              ? `${Number(metrics.twin_steve_agreement_pct).toFixed(1)}%`
-              : "—"
-          }
-        />
-      </div>
+      {/* ── Metrics ──────────────────────────────────────────────── */}
+      <DeckSection title="Twin metrics" icon={Brain}>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <DeckMetricTile
+            label="vs Steve"
+            value={
+              metrics?.twin_steve_agreement_pct != null
+                ? formatTwinPct(metrics.twin_steve_agreement_pct)
+                : "—"
+            }
+          />
+          <DeckMetricTile
+            label="Mode agree"
+            value={
+              metrics?.twin_agreement_pct != null
+                ? formatTwinPct(metrics.twin_agreement_pct)
+                : "—"
+            }
+          />
+          <DeckMetricTile
+            label="Rolling w50"
+            value={
+              metrics?.rolling_agreement?.w50 != null
+                ? formatTwinPct(metrics.rolling_agreement.w50)
+                : "—"
+            }
+          />
+          <DeckMetricTile label="Reward" value={formatTwinNum(metrics?.reward)} />
+          <DeckMetricTile
+            label="Avg error"
+            value={formatTwinNum(metrics?.avg_prediction_error)}
+          />
+          <DeckMetricTile
+            label="High-conf agree"
+            value={
+              metrics?.calibration?.high_conf_agreement_pct != null
+                ? formatTwinPct(metrics.calibration.high_conf_agreement_pct)
+                : "—"
+            }
+          />
+          <DeckMetricTile
+            label="Calib |err|"
+            value={formatTwinNum(metrics?.calibration?.mean_abs_calibration_error)}
+          />
+          <DeckMetricTile
+            label="Risk caught"
+            value={
+              metrics?.risk_flags_caught != null
+                ? `${metrics.risk_flags_caught}${
+                    metrics.risk_flags_catch_rate_pct != null
+                      ? ` (${formatTwinPct(metrics.risk_flags_catch_rate_pct)})`
+                      : ""
+                  }`
+                : "—"
+            }
+          />
+          <DeckMetricTile
+            label="Risk missed"
+            value={
+              metrics?.risk_flags_missed != null
+                ? `${metrics.risk_flags_missed}${
+                    metrics.risk_flags_missed_pct != null
+                      ? ` (${formatTwinPct(metrics.risk_flags_missed_pct)})`
+                      : ""
+                  }`
+                : "—"
+            }
+          />
+          <DeckMetricTile
+            label="False + %"
+            value={
+              metrics?.false_positive_pct != null
+                ? formatTwinPct(metrics.false_positive_pct)
+                : "—"
+            }
+          />
+          <DeckMetricTile
+            label="Steps"
+            value={String(metrics?.training_steps ?? "—")}
+          />
+          <DeckMetricTile
+            label="Labels"
+            value={String(metrics?.labels_total_recent_cap ?? "—")}
+          />
+        </div>
+        <p className="mt-2 font-mono text-[10px] text-muted-foreground">
+          Rolling: {rollingLine}
+        </p>
+        <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+          Calibration: {calibLine}
+        </p>
+        <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+          Confidence hist: {confLine}
+        </p>
+        {agreementSeries.length > 0 ? (
+          <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+            Agree over time:{" "}
+            {agreementSeries
+              .map(
+                (p) =>
+                  `${p.period ?? "?"} ${
+                    p.agreement_pct != null ? formatTwinPct(p.agreement_pct) : "—"
+                  }`,
+              )
+              .join(" · ")}
+          </p>
+        ) : null}
+        {riskTopEntries.length > 0 ? (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <span className="font-mono text-[9px] tracking-wider text-muted-foreground uppercase">
+              Risk flags
+            </span>
+            {riskTopEntries.map(([flag, count]) => (
+              <span
+                key={flag}
+                className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] text-amber-100/90"
+              >
+                {flag}×{count}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            No risk flags in recent decision window.
+          </p>
+        )}
+        {metrics?.outcome_counts ? (
+          <p className="mt-1 font-mono text-[10px] text-muted-foreground">
+            Outcomes: auto {metrics.outcome_counts.auto_approved ?? 0} · veto{" "}
+            {metrics.outcome_counts.veto ?? 0} · deferred{" "}
+            {metrics.outcome_counts.deferred ?? 0} · other{" "}
+            {metrics.outcome_counts.other ?? 0}
+            {metrics.decisions_total != null
+              ? ` · window ${metrics.decisions_total}`
+              : ""}
+          </p>
+        ) : null}
+      </DeckSection>
+
+      {/* ── Judgment mode ────────────────────────────────────────── */}
+      <DeckSection title="Judgment mode" icon={Shield}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded bg-violet-500/20 px-2 py-0.5 font-mono text-[10px] tracking-wider text-violet-100 uppercase">
+            {mode}
+          </span>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            authority: {authority}
+          </span>
+          <span
+            className={cn(
+              "rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider",
+              assistedReady
+                ? "bg-emerald-500/15 text-emerald-200"
+                : "bg-muted/40 text-muted-foreground",
+            )}
+          >
+            assisted {assistedReady ? "ready" : "gated"}
+          </span>
+          <span
+            className={cn(
+              "rounded px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider",
+              fullAutoReady
+                ? "bg-emerald-500/15 text-emerald-200"
+                : "bg-muted/40 text-muted-foreground",
+            )}
+          >
+            full_auto {fullAutoReady ? "ready" : "gated"}
+          </span>
+        </div>
+        <p className="mt-1.5 text-[10px] text-muted-foreground">
+          Promote only when measurable gates pass (agreement, FP rate, constitution, samples).
+          Fail-closed — blocked promotions show why.
+        </p>
+        {assistedProgress || fullAutoProgress ? (
+          <div className="mt-2 space-y-1.5">
+            {(
+              [
+                ["assisted", assistedProgress],
+                ["full_auto", fullAutoProgress],
+              ] as const
+            ).map(([label, prog]) => {
+              if (!prog) return null;
+              const sampleR = promotionRatio(prog.samples);
+              const agreeR = promotionRatio(prog.agreement);
+              const fpR = promotionRatio(prog.false_positive);
+              return (
+                <div key={label} className="space-y-0.5">
+                  <p className="font-mono text-[9px] tracking-wider text-muted-foreground uppercase">
+                    {label} progress · samples {(sampleR * 100).toFixed(0)}% · agree{" "}
+                    {(agreeR * 100).toFixed(0)}% · fp room {(fpR * 100).toFixed(0)}%
+                  </p>
+                  <div className="flex h-1.5 gap-0.5 overflow-hidden rounded bg-muted/40">
+                    <div
+                      className="bg-violet-400/80 transition-all"
+                      style={{ width: `${sampleR * 33.3}%` }}
+                      title="samples"
+                    />
+                    <div
+                      className="bg-emerald-400/80 transition-all"
+                      style={{ width: `${agreeR * 33.3}%` }}
+                      title="agreement"
+                    />
+                    <div
+                      className="bg-cyan-400/70 transition-all"
+                      style={{ width: `${fpR * 33.3}%` }}
+                      title="fp room"
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        {!assistedReady && assistedReasons.length > 0 ? (
+          <p className="mt-1 font-mono text-[9px] text-amber-200/75">
+            assisted gates: {assistedReasons.slice(0, 4).join("; ")}
+          </p>
+        ) : null}
+        {!fullAutoReady && fullAutoReasons.length > 0 ? (
+          <p className="mt-0.5 font-mono text-[9px] text-amber-200/75">
+            full_auto gates: {fullAutoReasons.slice(0, 4).join("; ")}
+          </p>
+        ) : null}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="xs"
+            variant="secondary"
+            disabled={busyKey !== null || mode === "assisted" || mode === "full_auto"}
+            title={
+              assistedReady
+                ? "Promote to assisted when gates pass"
+                : assistedReasons[0] ?? "Gate not ready (still allowed to try — server is SSOT)"
+            }
+            onClick={() => void handlePromote("assisted")}
+          >
+            Promote assisted
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="secondary"
+            disabled={busyKey !== null || mode === "full_auto"}
+            title={
+              fullAutoReady
+                ? "Promote to full_auto when gates pass"
+                : fullAutoReasons[0] ?? "Gate not ready (still allowed to try — server is SSOT)"
+            }
+            onClick={() => void handlePromote("full_auto")}
+          >
+            Promote full_auto
+          </Button>
+        </div>
+      </DeckSection>
 
       {/* ── Approval Gym ─────────────────────────────────────────── */}
-      <section className="space-y-2">
-        <div className="flex items-center gap-2">
-          <Dumbbell className="size-3.5 text-cyan-300/80" />
-          <h4 className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
-            Approval Gym
-          </h4>
+      <DeckSection title="Approval Gym" icon={Dumbbell}>
+        <div className="mb-2 flex items-center gap-2">
           {!gymSession ? (
             <Button
               type="button"
@@ -268,7 +590,7 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
         </p>
 
         {currentDrill ? (
-          <article className="lumina-surface-muted rounded-lg border border-cyan-500/20 p-3">
+          <article className="lumina-surface-muted mt-2 rounded-lg border border-cyan-500/20 p-3">
             <div className="flex items-center gap-2">
               <p className="font-mono text-[10px] text-cyan-200/90">
                 Drill {gymIndex + 1} / {gymSession?.proposals.length ?? 0}
@@ -290,7 +612,7 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
                 : currentDrill.dna_hash}
             </p>
             <p className="mt-1 text-[11px] text-muted-foreground">
-              est. conf {fmtPct(currentDrill.estimated_confidence)}
+              est. conf {formatTwinPct(currentDrill.estimated_confidence)}
             </p>
             <p className="mt-2 text-[11px] leading-relaxed text-foreground/85">
               {currentDrill.summary}
@@ -343,7 +665,7 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
                   disabled={busyKey !== null}
                   onClick={() => void submitGymAnswer(currentDrill, "reject")}
                 >
-                  Reject
+                  Veto
                 </Button>
                 <Button
                   type="button"
@@ -358,15 +680,32 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
             )}
           </article>
         ) : null}
-      </section>
+      </DeckSection>
 
-      <section className="space-y-2">
-        <h4 className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
-          Review queue
-        </h4>
-        <p className="text-[10px] text-muted-foreground">
-          High-stakes first (risk flags or score below 80%). Already-labeled DNA is hidden by
-          default so only new judgments train the Twin.
+      {/* ── Review queue ─────────────────────────────────────────── */}
+      <DeckSection title="Review queue">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+            <input
+              type="checkbox"
+              className="size-3 rounded border-border"
+              checked={includeLabeled}
+              onChange={(e) => {
+                setLoading(true);
+                setIncludeLabeled(e.target.checked);
+              }}
+            />
+            Show already labeled
+          </label>
+          {highStakesCount > 0 ? (
+            <span className="font-mono text-[10px] text-amber-200/80">
+              {highStakesCount} high-stakes in view
+            </span>
+          ) : null}
+        </div>
+        <p className="mb-2 text-[10px] text-muted-foreground">
+          High-stakes first (risk flags or score below 80%). Label as Steve would; optional
+          feedback notes train nuance. Already-labeled DNA is hidden by default.
         </p>
         {loading && queue.length === 0 ? (
           <p className="text-xs text-muted-foreground">Loading decisions…</p>
@@ -390,9 +729,10 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
             <article
               key={`${dna}-${idx}`}
               className={cn(
-                "lumina-surface-muted rounded-lg p-3",
+                "lumina-surface-muted mb-2 rounded-lg p-3",
                 isHighStakes && "border border-amber-500/35",
                 isRoutine && "opacity-90",
+                item.already_labeled && "border border-border/50",
               )}
             >
               <div className="flex flex-wrap items-center gap-2">
@@ -408,10 +748,23 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
                     Routine
                   </span>
                 )}
+                {item.already_labeled ? (
+                  <span className="rounded bg-muted/50 px-1.5 py-0.5 font-mono text-[9px] tracking-wider text-muted-foreground uppercase">
+                    Labeled
+                  </span>
+                ) : null}
+                {item.outcome ? (
+                  <span className="font-mono text-[9px] text-muted-foreground">
+                    outcome: {String(item.outcome)}
+                  </span>
+                ) : null}
               </div>
               <p className="mt-1 text-[11px] text-muted-foreground">
-                score {score != null ? fmtPct(score) : "—"} · rec={" "}
+                score {score != null ? formatTwinPct(score) : "—"} · rec={" "}
                 {String(item.recommendation ?? "—")}
+                {item.timestamp
+                  ? ` · ${String(item.timestamp).slice(0, 19)}`
+                  : ""}
               </p>
               {Array.isArray(item.risk_flags) && item.risk_flags.length > 0 ? (
                 <p className="mt-0.5 font-mono text-[10px] text-amber-200/80">
@@ -419,7 +772,7 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
                 </p>
               ) : null}
               {item.explanation ? (
-                <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-[11px] leading-relaxed text-foreground/80">
                   {String(item.explanation)}
                 </p>
               ) : null}
@@ -454,44 +807,53 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
                   </div>
                 </div>
               ) : (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="xs"
-                    disabled={busyKey !== null}
-                    onClick={() => void submitLabel(item, "approve")}
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="secondary"
-                    disabled={busyKey !== null}
-                    onClick={() => void submitLabel(item, "reject")}
-                  >
-                    Reject
-                  </Button>
-                  <Button
-                    type="button"
-                    size="xs"
-                    variant="ghost"
-                    disabled={busyKey !== null}
-                    onClick={() => setActiveModify(dna)}
-                  >
-                    Modify…
-                  </Button>
+                <div className="mt-2 space-y-2">
+                  <input
+                    type="text"
+                    className="w-full rounded-md border border-border/50 bg-background/30 px-2 py-1 text-[11px]"
+                    placeholder="Optional feedback note (approve/veto)"
+                    value={feedbackNotes[dna] ?? ""}
+                    onChange={(e) =>
+                      setFeedbackNotes((prev) => ({ ...prev, [dna]: e.target.value }))
+                    }
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="xs"
+                      disabled={busyKey !== null}
+                      onClick={() => void submitLabel(item, "approve")}
+                    >
+                      Approve
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="secondary"
+                      disabled={busyKey !== null}
+                      onClick={() => void submitLabel(item, "reject")}
+                    >
+                      Veto
+                    </Button>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      disabled={busyKey !== null}
+                      onClick={() => setActiveModify(dna)}
+                    >
+                      Modify…
+                    </Button>
+                  </div>
                 </div>
               )}
             </article>
           );
         })}
-      </section>
+      </DeckSection>
 
-      <section className="space-y-2">
-        <h4 className="font-mono text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
-          Label history (local audit)
-        </h4>
+      {/* ── Label history ────────────────────────────────────────── */}
+      <DeckSection title="Label history (local audit)">
         {labels.length === 0 ? (
           <p className="text-xs text-muted-foreground">No Steve labels yet.</p>
         ) : (
@@ -501,29 +863,26 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
                 key={`${row.timestamp}-${row.context_dna_hash}-${idx}`}
                 className="rounded-md border border-border/40 px-2 py-1.5 font-mono text-[10px] text-muted-foreground"
               >
-                <span className="text-violet-200/90">{row.steve_antwoord}</span>
-                {" · "}
-                {row.context_dna_hash.slice(0, 12)}
-                {" · conf "}
-                {fmtNum(row.confidence_score, 2)}
-                {" · "}
-                {row.timestamp.slice(0, 19)}
+                <div className="flex flex-wrap gap-x-2">
+                  <span className="text-violet-200/90">{row.steve_antwoord}</span>
+                  <span>
+                    {row.context_dna_hash.length > 14
+                      ? `${row.context_dna_hash.slice(0, 12)}…`
+                      : row.context_dna_hash}
+                  </span>
+                  <span>conf {formatTwinNum(row.confidence_score, 2)}</span>
+                  <span>{row.timestamp.slice(0, 19)}</span>
+                </div>
+                {row.vraag ? (
+                  <p className="mt-0.5 line-clamp-2 text-[9px] text-muted-foreground/80">
+                    {row.vraag}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>
         )}
-      </section>
-    </div>
-  );
-}
-
-function MetricTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="lumina-surface-muted rounded-md px-2 py-1.5">
-      <p className="font-mono text-[9px] tracking-[0.1em] text-muted-foreground uppercase">
-        {label}
-      </p>
-      <p className="mt-0.5 font-mono text-sm text-foreground/90">{value}</p>
+      </DeckSection>
     </div>
   );
 }

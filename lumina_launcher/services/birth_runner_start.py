@@ -209,6 +209,34 @@ def start_birth(
                     workspace_root=svc.workspace_root,
                     stop_event=svc._stop_requested,
                 )
+                # Explicit Approval Twin bind (ADR-0031/0032): container already
+                # constructed EvolutionOrchestrator via bind_evolution_promotion_event_bus.
+                # Fail-closed: missing twin is OK (autonomy falls back to notify paths).
+                try:
+                    from lumina_core.evolution.evolution_orchestrator import EvolutionOrchestrator
+
+                    twin = getattr(EvolutionOrchestrator(), "_approval_twin", None)
+                    if twin is not None:
+                        engine.approval_twin = twin
+                        engine._approval_twin = twin  # noqa: SLF001 — intentional dual attr
+                        if hasattr(engine, "_birth_handler_registry") and hasattr(
+                            engine._birth_handler_registry, "bind_approval_twin"
+                        ):
+                            engine._birth_handler_registry.bind_approval_twin(twin)
+                        if hasattr(twin, "bind_event_bus") and getattr(engine, "event_bus", None) is not None:
+                            try:
+                                twin.bind_event_bus(engine.event_bus)
+                            except Exception:
+                                logger.debug("birth.twin_bind_event_bus_failed", exc_info=True)
+                        twin_mode = str(getattr(twin, "mode", "shadow") or "shadow")
+                        logger.info(
+                            "birth.twin.bound mode=%s executable=false path=orchestrator",
+                            twin_mode,
+                        )
+                    else:
+                        logger.info("birth.twin.unbound reason=orchestrator_missing_twin")
+                except Exception:
+                    logger.debug("birth.twin.bind_failed", exc_info=True)
                 container.register_birth_reload_host(engine)
                 container.start_config_hot_reload()
                 try:

@@ -320,6 +320,46 @@ export function SystemMonitorPanel({ className }: SystemMonitorPanelProps) {
 
           <DeckSection title="ApprovalTwin (recent)">
 
+            {(() => {
+              const twinObs =
+                ops.twin_observability ??
+                ops.perfect_birth_kpis?.twin_observability ??
+                null;
+              if (!twinObs) return null;
+              const rolling = twinObs.rolling_agreement ?? {};
+              const w50 = rolling.w50;
+              const agree =
+                twinObs.twin_steve_agreement_pct ?? twinObs.twin_agreement_pct;
+              return (
+                <div className="mb-2 grid grid-cols-2 gap-2">
+                  <DeckMetricTile
+                    label="Mode"
+                    value={String(twinObs.mode ?? "shadow")}
+                  />
+                  <DeckMetricTile
+                    label="vs Steve"
+                    value={
+                      agree != null && Number.isFinite(Number(agree))
+                        ? `${Number(agree).toFixed(1)}%`
+                        : "—"
+                    }
+                  />
+                  <DeckMetricTile
+                    label="Rolling w50"
+                    value={
+                      w50 != null && Number.isFinite(Number(w50))
+                        ? `${Number(w50).toFixed(1)}%`
+                        : "—"
+                    }
+                  />
+                  <DeckMetricTile
+                    label="Risk c/m"
+                    value={`${twinObs.risk_flags_caught ?? 0}/${twinObs.risk_flags_missed ?? 0}`}
+                  />
+                </div>
+              );
+            })()}
+
             {ops.twin_decisions.length === 0 ? (
 
               <p className="text-xs text-muted-foreground">No twin decisions yet.</p>

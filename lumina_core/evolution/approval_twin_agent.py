@@ -546,6 +546,7 @@ class ApprovalTwinAgent:
                 dna_hash=str(dna_hash or ""),
                 mode=self._mode,
                 constitution_fatal=bool(constitution_fatal),
+                twin_confidence=float(confidence) if confidence is not None else None,
             )
         except Exception:
             pass
@@ -710,6 +711,8 @@ class ApprovalTwinAgent:
         steve_approve: bool,
         risk_flags: list[str] | None = None,
         dna_hash: str = "",
+        twin_confidence: float | None = None,
+        steve_label: str = "",
     ) -> None:
         """Record human label vs twin proposal for promotion evidence."""
         if twin_recommendation is None:
@@ -723,6 +726,8 @@ class ApprovalTwinAgent:
                 dna_hash=str(dna_hash or ""),
                 mode=self._mode,
                 constitution_fatal=False,
+                twin_confidence=twin_confidence,
+                steve_label=str(steve_label or ""),
             )
         except Exception:
             pass
@@ -1121,6 +1126,7 @@ class ApprovalTwinAgent:
                     dna_hash=str(dna_hash or ""),
                     mode=self._mode,
                     constitution_fatal=bool(constitution_fatal),
+                    twin_confidence=float(confidence),
                 )
             except Exception:
                 pass

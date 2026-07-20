@@ -1,10 +1,11 @@
-import type { BirthProgressPayload } from "@/lib/birthClient";
+import type { BirthProgressPayload, TwinObservabilityPayload } from "@/lib/birthClient";
 import {
   extractBirthSessionHud,
   extractPpoProgress,
   extractSimProgress,
   extractStageScorecard,
 } from "@/lib/birthPhaseModel";
+import { formatTwinPct } from "@/lib/twinClient";
 import { cn } from "@/lib/utils";
 
 import { BirthSessionTelemetry } from "@/components/birth/BirthSessionTelemetry";
@@ -15,7 +16,13 @@ interface BirthMetricsStripProps {
   elapsedSeconds?: number;
   message?: string;
   embedded?: boolean;
+  twinObservability?: TwinObservabilityPayload | null;
   className?: string;
+}
+
+function formatTwinAgree(v: number | null | undefined): string {
+  if (v == null || Number.isNaN(Number(v))) return "—";
+  return formatTwinPct(Number(v));
 }
 
 function ProgressBar({
@@ -75,6 +82,7 @@ export function BirthMetricsStrip({
   elapsedSeconds,
   message,
   embedded = false,
+  twinObservability = null,
   className,
 }: BirthMetricsStripProps) {
   const sim = extractSimProgress(progress);
@@ -188,6 +196,33 @@ export function BirthMetricsStrip({
       ) : elapsedLabel ? (
         <div className="font-mono text-[10px] text-muted-foreground">
           Elapsed {elapsedLabel}
+        </div>
+      ) : null}
+      {twinObservability ? (
+        <div
+          className="rounded border border-violet-500/20 bg-violet-500/5 px-2 py-1.5 font-mono text-[10px] text-violet-100/90"
+          title="Approval Twin observability (judgment layer — never bypasses capital gates)"
+        >
+          <span className="tracking-wider text-violet-200/70 uppercase">Twin</span>
+          {" · "}
+          mode {String(twinObservability.mode ?? "shadow")}
+          {" · "}
+          Steve {formatTwinAgree(twinObservability.twin_steve_agreement_pct ?? twinObservability.twin_agreement_pct)}
+          {" · "}
+          roll w50 {formatTwinAgree(twinObservability.rolling_agreement_w50)}
+          {" · "}
+          risk {twinObservability.risk_flags_caught ?? 0}c/
+          {twinObservability.risk_flags_missed ?? 0}m
+          {twinObservability.mode_promotion_progress ? (
+            <>
+              {" · "}
+              assisted{" "}
+              {twinObservability.mode_promotion_progress.assisted_ready ? "ready" : "gated"}
+              {" · "}
+              full_auto{" "}
+              {twinObservability.mode_promotion_progress.full_auto_ready ? "ready" : "gated"}
+            </>
+          ) : null}
         </div>
       ) : null}
       {message ? (
