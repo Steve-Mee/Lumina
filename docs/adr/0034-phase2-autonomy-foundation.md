@@ -72,6 +72,12 @@ Introduce birth-scoped package `lumina_core/birth/phase2_autonomy/` with:
     - Only `apply` mutates; `shadow` records counterfactual payloads + `shadow_would_apply` in audit
     - Promotion helper: `evaluate_pillar_promotion` / `compute_shadow_evidence_from_rows`
 
+12. **Slice E delete pass (2026-07-20):**
+    - Closed-loop wiring extracted to `handler_hooks.py` (WallAdaptationHandler stays thin)
+    - Instance validation SSOT via `validate_instance_proposal` (no dual forbidden lists)
+    - Public `__init__` surface slimmed; stage_loop must not import phase2
+    - Explicit non-goals documented on package + this ADR
+
 ## Scope and limitations (v1 foundation)
 
 | In scope | Out of scope |

@@ -88,21 +88,20 @@ class Phase2AutonomyOrchestrator:
         apply: bool,
         gate_allowed: bool,
         mutate_payload: dict[str, Any],
-    ) -> tuple[bool, dict[str, Any], bool, str]:
-        """Return (applied, payload, shadow_would_apply, effective_reason_suffix).
+    ) -> tuple[bool, dict[str, Any], bool]:
+        """Return (applied, payload, shadow_would_apply).
 
         Only APPLY mode mutates when gate allows. SHADOW records counterfactual.
         OBSERVE never mutates.
         """
         if not apply or not gate_allowed:
-            return False, {}, False, ""
+            return False, {}, False
         em = self.execution_mode()
         if should_mutate(em):
-            return True, dict(mutate_payload), False, ""
+            return True, dict(mutate_payload), False
         if should_record_counterfactual(em):
-            return False, dict(mutate_payload), True, "shadow_would_apply"
-        # observe
-        return False, {}, False, "execution_mode_observe"
+            return False, dict(mutate_payload), True
+        return False, {}, False
 
     def _audit_decision(
         self,
@@ -208,7 +207,7 @@ class Phase2AutonomyOrchestrator:
                 base_hold_stagnation_rollouts=hold_stag,
                 proposal=proposal,
             )
-        applied, apply_payload, shadow_would, _ = self._resolve_apply(
+        applied, apply_payload, shadow_would = self._resolve_apply(
             apply=apply,
             gate_allowed=bool(gate.allowed),
             mutate_payload=mutate_payload,
@@ -282,7 +281,7 @@ class Phase2AutonomyOrchestrator:
                         "effective_reward_window": wall_state.effective_reward_window,
                     }
                 )
-        applied, apply_payload, shadow_would, _ = self._resolve_apply(
+        applied, apply_payload, shadow_would = self._resolve_apply(
             apply=apply,
             gate_allowed=bool(gate.allowed),
             mutate_payload=mutate_payload,
@@ -334,7 +333,6 @@ class Phase2AutonomyOrchestrator:
             phoenix_eligible=phoenix_eligible,
             learning_health=learning_health,
             stall_reason=stall_reason,
-            cfg=self.cfg,
         )
         self._publish_proposal(
             pillar=Phase2Pillar.INSTANCE_ADAPT,
@@ -357,7 +355,7 @@ class Phase2AutonomyOrchestrator:
         mutate_payload: dict[str, Any] = {}
         if apply and gate.allowed:
             mutate_payload = materialize_instance_adapt_payload(proposal)
-        applied, apply_payload, shadow_would, _ = self._resolve_apply(
+        applied, apply_payload, shadow_would = self._resolve_apply(
             apply=apply,
             gate_allowed=bool(gate.allowed),
             mutate_payload=mutate_payload,

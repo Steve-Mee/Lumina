@@ -43,11 +43,10 @@ def propose_instance_adapt(
     phoenix_eligible: bool = False,
     learning_health: str = "flat",
     stall_reason: str = "",
-    cfg: Any | None = None,
 ) -> Phase2InstanceAdaptProposal:
     """Propose a single in-process adapt action based on recovery context.
 
-    Pure function — no side effects.
+    Pure function — no side effects. No OS/process surfaces.
     """
     health = str(learning_health or "flat").strip().lower()
     stall = str(stall_reason or "").strip().lower()

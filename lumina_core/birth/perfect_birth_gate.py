@@ -365,8 +365,7 @@ def declare_perfect_birth(
     measured = kpis or gather_perfect_birth_kpis(root)
     result = evaluate_perfect_birth_conjunction(measured, thresholds=thr)
 
-    flag_path = root / flag_rel if not Path(flag_rel).is_absolute() else Path(flag_rel)
-    # Prefer workspace-relative under root/state
+    flag_path = Path(flag_rel)
     if not flag_path.is_absolute():
         flag_path = root / flag_rel
     evidence_path = evidence_path_for_flag(flag_path)

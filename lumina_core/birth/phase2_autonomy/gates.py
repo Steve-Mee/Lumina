@@ -13,6 +13,7 @@ from lumina_core.birth.phase2_autonomy.contracts import (
     Phase2WallAdjustmentProposal,
 )
 from lumina_core.birth.phase2_autonomy.features import Phase2AutonomyFeatures
+from lumina_core.birth.phase2_autonomy.instance_adapter import validate_instance_proposal
 from lumina_core.birth.phase2_autonomy.param_catalog import (
     FORBIDDEN_PARAM_KEYS,
     validate_param_changes,
@@ -303,17 +304,12 @@ def _validate_proposal(
                 f"Param bound violations: {', '.join(violations)}",
             )
     if isinstance(proposal, Phase2InstanceAdaptProposal):
-        action = str(proposal.action or "").strip().lower()
-        forbidden_surfaces = ("broker", "real", "order", "capital", "live_session")
-        if any(s in action for s in forbidden_surfaces):
+        # Single SSOT for instance risk surfaces (Slice E: no dual validation)
+        violations = validate_instance_proposal(proposal)
+        if violations:
             return (
                 Phase2GateReason.RISK_SURFACE.value,
-                f"Instance adapt action touches forbidden surface: {action}",
-            )
-        if proposal.risk_touching:
-            return (
-                Phase2GateReason.RISK_SURFACE.value,
-                "Instance adapt marked risk_touching — refused in Phase 2 foundation",
+                f"Instance adapt rejected: {', '.join(violations)}",
             )
     if isinstance(proposal, Phase2WallAdjustmentProposal):
         mult = float(proposal.stall_wall_sec_multiplier)
