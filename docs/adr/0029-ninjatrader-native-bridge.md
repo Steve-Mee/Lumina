@@ -40,9 +40,14 @@ The canonical mode matrix (`paper` → `broker_backend=paper`; `sim`/`sim_real_g
 2. **Direct NT8 orders from engine** — Rejected; bypasses `BrokerBridge` and admission chain.
 3. **Immediate CrossTrade removal** — Rejected; no production evidence for native bridge stability.
 
+## Wire protocol note
+
+The **broker façade, admission chain, and `live_provider` selector** in this ADR remain in force. The **WebSocket wire protocol** sketched here and in early integration drafts is **superseded by ADR-0035** (gRPC Execution Fabric: Fabric hosts server, Brain is client). See [0035-execution-fabric-grpc.md](0035-execution-fabric-grpc.md).
+
 ## Links
 
 - [ninjatrader-integration.md](../ninjatrader-integration.md)
+- [ADR-0035: Execution Fabric gRPC](0035-execution-fabric-grpc.md)
 - [ADR-0007: PromotionGate](0007-promotion-gate-real-mode.md)
 - [ADR-0003: Trading Constitution](0003-trading-constitution-sandboxed-mutation-executor.md)
 - [sim_real_guard_rollout_b_staging_runbook.md](../requests/sim_real_guard_rollout_b_staging_runbook.md)

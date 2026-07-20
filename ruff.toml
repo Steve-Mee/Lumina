@@ -6,7 +6,8 @@ extend-exclude = [
   "logs",
   "state",
   "journal",
-  "lumina_vector_db"
+  "lumina_vector_db",
+  "lumina_core/broker/ninjatrader/generated",
 ]
 
 [lint.per-file-ignores]

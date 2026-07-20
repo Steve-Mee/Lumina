@@ -1,20 +1,22 @@
-// Skeleton — WebSocket client for Core /ws/ninjatrader/v1.
+// OBSOLETE — WebSocket client to Core /ws/ninjatrader/v1 is superseded by ADR-0035.
+// Execution Fabric hosts gRPC on the NT side; Brain is the gRPC client.
+// Kept as a stub so existing project layout does not break; do not implement.
 
 using System;
 
 namespace LuminaNt8AddOn
 {
+    [Obsolete("Superseded by Fabric gRPC host (ADR-0035). Do not use.")]
     public sealed class LuminaWebSocketClient
     {
         public void Connect()
         {
-            // TODO: open ws://127.0.0.1:8000/ws/ninjatrader/v1, send auth frame within 5s.
-            throw new NotImplementedException("Implement per docs/ninjatrader-integration.md Phase 1");
+            throw new NotSupportedException(
+                "WebSocket bridge superseded by Execution Fabric gRPC. See docs/adr/0035-execution-fabric-grpc.md");
         }
 
         public void Disconnect()
         {
-            // TODO: clean WebSocket close on NT shutdown.
         }
     }
 }

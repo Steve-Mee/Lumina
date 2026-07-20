@@ -47,6 +47,8 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0031 | Approval Twin on Event Bus + primary auto-approval | Accepted | 2026-07-13 | [0031-approval-twin-event-bus.md](./0031-approval-twin-event-bus.md) |
 | 0032 | Approval Twin as Human Replacement Layer | Accepted | 2026-07-14 | [0032-approval-twin-human-replacement-layer.md](./0032-approval-twin-human-replacement-layer.md) |
 | 0033 | Trading Code Evolution Prototype (sandbox + Twin + constitution) | Accepted | 2026-07-15 | [0033-trading-code-evolution-prototype.md](./0033-trading-code-evolution-prototype.md) |
+| 0034 | Phase 2 autonomy foundation | Accepted | — | [0034-phase2-autonomy-foundation.md](./0034-phase2-autonomy-foundation.md) |
+| 0035 | Execution Fabric gRPC (supersedes WS wire protocol) | Accepted | 2026-07-20 | [0035-execution-fabric-grpc.md](./0035-execution-fabric-grpc.md) |
 
 ## Legacy notitie
 

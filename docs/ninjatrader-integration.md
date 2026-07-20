@@ -1,10 +1,11 @@
 # NinjaTrader 8 Integration — Architecture & Implementation Plan
 
-> **Version:** 0.1 (planned)  
-> **Status:** Forward-looking specification — **not yet implemented**  
-> **Scope:** Native NT8 Add-on communicating with LUMINA The Core over WebSocket  
+> **Version:** 0.2 (Execution Fabric)  
+> **Status:** Wire protocol **gRPC** per [ADR-0035](adr/0035-execution-fabric-grpc.md) — Phase 0 foundation landed; full Fabric in progress  
+> **Scope:** Native NT8 **Execution Fabric** (gRPC server in Add-on) + Python Brain client  
 > **Audience:** Backend engineers, NT8/C# developers, operators, security reviewers  
-> **Companion:** [lumina-core-architecture.md](lumina-core-architecture.md), [lumina-core-api-contracts.md](lumina-core-api-contracts.md)
+> **Companion:** [lumina-core-architecture.md](lumina-core-architecture.md), [execution-fabric-phase0.md](execution-fabric-phase0.md), Blueprint v1.1  
+> **Supersession:** Planned WebSocket `/ws/ninjatrader/v1` is **not** the production wire protocol. JSON schemas under `docs/schemas/ninjatrader/v1/` are **legacy**. SSOT contract: `protos/lumina/execution/v1/fabric.proto`.
 
 ---
 
@@ -49,16 +50,16 @@ The Add-on connects **only to The Core**, never to the Tauri Command Deck direct
 ### 1.3 Target State
 
 ```
-NinjaTrader 8 Add-on  ←→  WS /ws/ninjatrader/v1  ←→  NinjaTraderBridgeService
-                                                          ↓
-                                                     Event Bus
-                                                          ↓
-                                                     LuminaEngine
-                                                          ↓
-                                              WS /ws/core/live → Command Deck
+NinjaTrader 8 Fabric (gRPC server :50051)
+        ↑↓ localhost gRPC (TradingStream, GetAccountState, …)
+NinjaTraderBroker / FabricGrpcClient
+        ↓
+   Event Bus → LuminaEngine
+        ↓
+   WS /ws/core/live → Command Deck  (operator telemetry only)
 ```
 
-CrossTrade remains an **optional fallback** during migration (`BROKER_BACKEND=crosstrade`). The native bridge becomes the preferred path for lower latency, direct fill reconciliation, and richer market-data telemetry.
+CrossTrade remains the **default** live provider until Fabric SIM criteria pass (`broker.live_provider=crosstrade`). Enable Fabric with `broker.live_provider=ninjatrader` + `broker.ninjatrader.enabled=true` after Phase 0 gates.
 
 ---
 
@@ -695,13 +696,15 @@ During migration:
 
 ### Implementation Checklist (Summary)
 
-- [ ] Phase 0: JSON Schema + ADR
-- [ ] Phase 1: Read-only Add-on + WS endpoint
-- [ ] Phase 2: Market data pipeline
-- [ ] Phase 3: Sim order round-trip
-- [ ] Phase 4: REAL guarded + constitution tests
-- [ ] Phase 5: Command Deck UX + chart path
+- [x] PR-A: ADR-0035 + `fabric.proto` + Python codegen + contract tests
+- [ ] PR-B: Python `FabricGrpcClient` + broker wiring (mockable)
+- [ ] PR-C: C# Fabric gRPC host POC (PlaceOrder SIM + heartbeat)
+- [ ] PR-D: Safety MVP (watchdog, Safe Mode, chaos matrix)
+- [ ] PR-E: Hardening, metrics, runbooks, Command Deck status
+- [ ] REAL: Separate promotion ADR only after SIM evidence
+
+See [execution-fabric-phase0.md](execution-fabric-phase0.md) for Phase 0 gates.
 
 ---
 
-*This document describes planned work. No NT8 Add-on or `/ws/ninjatrader/v1` endpoint exists in the repository at the time of writing.*
+*Historical sections below still describe the superseded WebSocket design for reference. Prefer ADR-0035 + Blueprint v1.1 + proto SSOT for new work.*

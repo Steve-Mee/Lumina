@@ -12,3 +12,8 @@ APScheduler==3.11.1
 
 # -- Broker/exchange connectivity -------------------------------------------
 python-telegram-bot==22.5
+
+# -- Execution Fabric (gRPC client to NT8 Fabric server) --------------------
+# protobuf must stay <7 for xai-sdk / opentelemetry / streamlit compatibility.
+grpcio==1.73.1
+protobuf==5.29.5
