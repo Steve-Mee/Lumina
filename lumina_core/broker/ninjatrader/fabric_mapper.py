@@ -116,6 +116,27 @@ def cancel_to_brain_message(
     )
 
 
+def modify_to_brain_message(
+    *,
+    client_order_id: str = "",
+    nt_order_id: str = "",
+    quantity: int = 0,
+    price: float = 0.0,
+    stop_price: float = 0.0,
+    correlation_id: str = "",
+) -> fabric_pb2.BrainMessage:
+    return fabric_pb2.BrainMessage(
+        modify_order=fabric_pb2.ModifyOrderCommand(
+            client_order_id=str(client_order_id or ""),
+            nt_order_id=str(nt_order_id or ""),
+            quantity=int(quantity or 0),
+            price=float(price or 0.0),
+            stop_price=float(stop_price or 0.0),
+            correlation_id=correlation_id or str(uuid.uuid4()),
+        )
+    )
+
+
 def auth_hello_message(
     *,
     token: str,

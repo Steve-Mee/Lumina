@@ -7,8 +7,8 @@ using Lumina.Execution.V1;
 namespace Lumina.Execution.Fabric.Execution
 {
     /// <summary>
-    /// In-memory SIM gateway for Phase 0 E2E without NinjaTrader.Core.
-    /// Market orders fill immediately at a synthetic price.
+    /// In-memory SIM gateway. Market orders fill immediately; limit/stop stay WORKING
+    /// so protected-order and cancel-on-disconnect policies can be tested.
     /// </summary>
     public sealed class SimOrderGateway : IOrderGateway
     {
@@ -29,6 +29,9 @@ namespace Lumina.Execution.Fabric.Execution
         public string AccountName { get; }
         public double Balance { get; private set; }
         public double Equity { get; private set; }
+
+        /// <summary>When true, limit orders also fill immediately (legacy Phase 0 behaviour).</summary>
+        public bool FillAllImmediately { get; set; }
 
         public AccountMetrics GetAccountMetrics()
         {
@@ -59,21 +62,17 @@ namespace Lumina.Execution.Fabric.Execution
             if (command.Quantity <= 0 || command.Action == OrderAction.Unspecified ||
                 string.IsNullOrWhiteSpace(command.Instrument))
             {
-                return new[]
-                {
-                    new OrderEvent
-                    {
-                        ClientOrderId = command.ClientOrderId ?? "",
-                        NtOrderId = ntId,
-                        State = OrderState.Rejected,
-                        RejectionReason = "invalid_order_fields",
-                        Instrument = command.Instrument ?? "",
-                        Action = command.Action,
-                        CorrelationId = command.CorrelationId ?? "",
-                        TimestampUnixMs = now,
-                    },
-                };
+                return new[] { RejectEvent(command, ntId, "invalid_order_fields", now) };
             }
+
+            if (command.ReduceOnly && WouldIncreaseExposure(command.Instrument, command.Action, command.Quantity))
+            {
+                return new[] { RejectEvent(command, ntId, "reduce_only_violation", now) };
+            }
+
+            var isMarket = command.OrderType == OrderType.Market ||
+                           command.OrderType == OrderType.Unspecified ||
+                           FillAllImmediately;
 
             var working = new WorkingOrder
             {
@@ -83,7 +82,7 @@ namespace Lumina.Execution.Fabric.Execution
                 Action = command.Action,
                 Quantity = command.Quantity,
                 FilledQty = 0,
-                OrderType = command.OrderType,
+                OrderType = command.OrderType == OrderType.Unspecified ? OrderType.Market : command.OrderType,
                 Price = command.Price,
                 StopPrice = command.StopPrice,
                 State = OrderState.Working,
@@ -91,54 +90,104 @@ namespace Lumina.Execution.Fabric.Execution
                 ReduceOnly = command.ReduceOnly,
             };
 
-            // Phase 0 SIM: market (and for simplicity all types) fill immediately.
+            if (!isMarket)
+            {
+                _working[working.ClientOrderId] = working;
+                return new[]
+                {
+                    new OrderEvent
+                    {
+                        ClientOrderId = working.ClientOrderId,
+                        NtOrderId = ntId,
+                        State = OrderState.Working,
+                        Instrument = command.Instrument,
+                        Action = command.Action,
+                        LeavesQty = command.Quantity,
+                        CorrelationId = command.CorrelationId ?? "",
+                        TimestampUnixMs = now,
+                    },
+                };
+            }
+
             var fillPrice = command.Price > 0 ? command.Price : 21000.0 + (_seq % 50) * 0.25;
-            working.FilledQty = command.Quantity;
-            working.State = OrderState.Filled;
-            // Do not keep filled orders in working book.
             ApplyFill(command.Instrument, command.Action, command.Quantity, fillPrice, now);
 
-            var submitted = new OrderEvent
+            return new[]
             {
-                ClientOrderId = working.ClientOrderId,
-                NtOrderId = ntId,
-                State = OrderState.Working,
-                Instrument = command.Instrument,
-                Action = command.Action,
-                LeavesQty = command.Quantity,
-                CorrelationId = command.CorrelationId ?? "",
-                TimestampUnixMs = now,
+                new OrderEvent
+                {
+                    ClientOrderId = working.ClientOrderId,
+                    NtOrderId = ntId,
+                    State = OrderState.Working,
+                    Instrument = command.Instrument,
+                    Action = command.Action,
+                    LeavesQty = command.Quantity,
+                    CorrelationId = command.CorrelationId ?? "",
+                    TimestampUnixMs = now,
+                },
+                new OrderEvent
+                {
+                    ClientOrderId = working.ClientOrderId,
+                    NtOrderId = ntId,
+                    State = OrderState.Filled,
+                    FilledQty = command.Quantity,
+                    AvgFillPrice = fillPrice,
+                    Instrument = command.Instrument,
+                    Action = command.Action,
+                    LeavesQty = 0,
+                    CorrelationId = command.CorrelationId ?? "",
+                    TimestampUnixMs = now,
+                },
             };
-            var filled = new OrderEvent
-            {
-                ClientOrderId = working.ClientOrderId,
-                NtOrderId = ntId,
-                State = OrderState.Filled,
-                FilledQty = command.Quantity,
-                AvgFillPrice = fillPrice,
-                Instrument = command.Instrument,
-                Action = command.Action,
-                LeavesQty = 0,
-                CorrelationId = command.CorrelationId ?? "",
-                TimestampUnixMs = now,
-            };
-            return new[] { submitted, filled };
         }
 
         public IReadOnlyList<OrderEvent> CancelOrder(CancelOrderCommand command)
         {
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var found = FindAndRemoveWorking(command?.ClientOrderId, command?.NtOrderId);
+            if (found == null)
+            {
+                return new[]
+                {
+                    new OrderEvent
+                    {
+                        ClientOrderId = command?.ClientOrderId ?? "",
+                        NtOrderId = command?.NtOrderId ?? "",
+                        State = OrderState.Rejected,
+                        RejectionReason = "order_not_found",
+                        CorrelationId = command?.CorrelationId ?? "",
+                        TimestampUnixMs = now,
+                    },
+                };
+            }
+
+            return new[]
+            {
+                new OrderEvent
+                {
+                    ClientOrderId = found.ClientOrderId,
+                    NtOrderId = found.NtOrderId,
+                    State = OrderState.Cancelled,
+                    Instrument = found.Instrument,
+                    Action = found.Action,
+                    CorrelationId = command?.CorrelationId ?? "",
+                    TimestampUnixMs = now,
+                },
+            };
+        }
+
+        public IReadOnlyList<OrderEvent> ModifyOrder(ModifyOrderCommand command)
+        {
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             WorkingOrder? found = null;
             if (!string.IsNullOrWhiteSpace(command?.ClientOrderId) &&
-                _working.TryRemove(command!.ClientOrderId, out var byClient))
+                _working.TryGetValue(command!.ClientOrderId, out var byClient))
             {
                 found = byClient;
             }
             else if (!string.IsNullOrWhiteSpace(command?.NtOrderId))
             {
-                var pair = _working.FirstOrDefault(kv => kv.Value.NtOrderId == command!.NtOrderId);
-                if (pair.Value != null && _working.TryRemove(pair.Key, out var byNt))
-                    found = byNt;
+                found = _working.Values.FirstOrDefault(w => w.NtOrderId == command!.NtOrderId);
             }
 
             if (found == null)
@@ -157,18 +206,27 @@ namespace Lumina.Execution.Fabric.Execution
                 };
             }
 
-            found.State = OrderState.Cancelled;
+            if (command!.Quantity > 0)
+                found.Quantity = command.Quantity;
+            if (command.Price > 0)
+                found.Price = command.Price;
+            if (command.StopPrice > 0)
+                found.StopPrice = command.StopPrice;
+            found.State = OrderState.Working;
+
             return new[]
             {
                 new OrderEvent
                 {
                     ClientOrderId = found.ClientOrderId,
                     NtOrderId = found.NtOrderId,
-                    State = OrderState.Cancelled,
+                    State = OrderState.Working,
                     Instrument = found.Instrument,
                     Action = found.Action,
-                    CorrelationId = command?.CorrelationId ?? "",
+                    LeavesQty = found.Quantity - found.FilledQty,
+                    CorrelationId = command.CorrelationId ?? "",
                     TimestampUnixMs = now,
+                    RejectionReason = "modified",
                 },
             };
         }
@@ -209,7 +267,6 @@ namespace Lumina.Execution.Fabric.Execution
                 events.AddRange(PlaceOrder(place));
             }
 
-            // Cancel any residual working.
             events.AddRange(CancelNonProtected("flatten"));
             if (events.Count == 0)
             {
@@ -250,15 +307,71 @@ namespace Lumina.Execution.Fabric.Execution
             return events;
         }
 
+        private WorkingOrder? FindAndRemoveWorking(string? clientOrderId, string? ntOrderId)
+        {
+            if (!string.IsNullOrWhiteSpace(clientOrderId) &&
+                _working.TryRemove(clientOrderId!, out var byClient))
+            {
+                return byClient;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ntOrderId))
+            {
+                var pair = _working.FirstOrDefault(kv => kv.Value.NtOrderId == ntOrderId);
+                if (pair.Value != null && _working.TryRemove(pair.Key, out var byNt))
+                    return byNt;
+            }
+
+            return null;
+        }
+
+        private static OrderEvent RejectEvent(PlaceOrderCommand command, string ntId, string reason, long now)
+        {
+            return new OrderEvent
+            {
+                ClientOrderId = command.ClientOrderId ?? "",
+                NtOrderId = ntId,
+                State = OrderState.Rejected,
+                RejectionReason = reason,
+                Instrument = command.Instrument ?? "",
+                Action = command.Action,
+                CorrelationId = command.CorrelationId ?? "",
+                TimestampUnixMs = now,
+            };
+        }
+
+        private bool WouldIncreaseExposure(string instrument, OrderAction action, int qty)
+        {
+            _positions.TryGetValue(instrument, out var existing);
+            var net = 0;
+            if (existing != null)
+            {
+                net = string.Equals(existing.Side, "SHORT", StringComparison.OrdinalIgnoreCase) ||
+                      string.Equals(existing.Side, "SELL", StringComparison.OrdinalIgnoreCase)
+                    ? -Math.Abs(existing.Quantity)
+                    : Math.Abs(existing.Quantity);
+            }
+
+            var delta = action == OrderAction.Buy ? qty : -qty;
+            var newNet = net + delta;
+            // Reduce-only: |newNet| must be strictly smaller, or same sign exit only.
+            if (net == 0)
+                return true; // opening is not reduce
+            if (Math.Sign(net) == Math.Sign(newNet) && Math.Abs(newNet) >= Math.Abs(net))
+                return true;
+            if (Math.Sign(net) != Math.Sign(newNet) && Math.Abs(newNet) > 0 && Math.Abs(delta) > Math.Abs(net))
+                return true; // flip beyond flat
+            return false;
+        }
+
         private void ApplyFill(string instrument, OrderAction action, int qty, double price, long now)
         {
             lock (_gate)
             {
                 _positions.TryGetValue(instrument, out var existing);
-                var net = existing?.Quantity ?? 0;
+                var net = 0;
                 if (existing != null)
                 {
-                    // Normalize to signed qty: long positive.
                     if (string.Equals(existing.Side, "SHORT", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(existing.Side, "SELL", StringComparison.OrdinalIgnoreCase))
                     {
@@ -288,7 +401,6 @@ namespace Lumina.Execution.Fabric.Execution
                     };
                 }
 
-                // Toy P&amp;L: mark equity slightly.
                 Equity = Balance + newNet * 0.25;
             }
         }

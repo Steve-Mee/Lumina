@@ -1,5 +1,6 @@
 using System;
 using Grpc.Core;
+using Lumina.Execution.Fabric.Audit;
 using Lumina.Execution.Fabric.Execution;
 using Lumina.Execution.Fabric.Grpc;
 using Lumina.Execution.Fabric.Safety;
@@ -9,7 +10,7 @@ namespace Lumina.Execution.Fabric
 {
     /// <summary>
     /// Hosts the Execution Fabric gRPC server on localhost (ADR-0035).
-    /// Safety watchdog runs independently of the Brain process.
+    /// Safety watchdog + audit log run independently of the Brain process.
     /// </summary>
     public sealed class FabricGrpcHost : IDisposable
     {
@@ -19,6 +20,7 @@ namespace Lumina.Execution.Fabric
         private Server? _server;
         private SafeModeStateMachine? _safeMode;
         private HeartbeatWatchdog? _watchdog;
+        private FabricAuditLog? _audit;
         private ExecutionFabricService? _service;
         private bool _started;
 
@@ -32,6 +34,7 @@ namespace Lumina.Execution.Fabric
         public bool IsRunning => _started;
         public SafeModeStateMachine? SafeMode => _safeMode;
         public IOrderGateway Gateway => _gateway;
+        public string? AuditPath => _audit?.FilePath;
 
         public void Start()
         {
@@ -47,6 +50,14 @@ namespace Lumina.Execution.Fabric
             _safeMode = new SafeModeStateMachine();
             var sessions = new SessionHub();
             var idempotency = new IdempotencyStore();
+            var rateLimiter = new OrderRateLimiter(_config.MaxOrdersPerMinute);
+            _audit = new FabricAuditLog(_config.AuditLogPath);
+            _audit.Record("host_start", "fabric_grpc_host_starting", new
+            {
+                host = _config.BindHost,
+                port = _config.BindPort,
+                account = _gateway.AccountName,
+            });
 
             ExecutionFabricService? serviceRef = null;
             _watchdog = new HeartbeatWatchdog(
@@ -56,6 +67,7 @@ namespace Lumina.Execution.Fabric
                 {
                     var events = _gateway.CancelNonProtected(reason);
                     serviceRef?.PublishOrderEvents(events);
+                    _audit?.Record("watchdog_cancel", reason, new { cancelled = events.Count });
                     Log($"watchdog cancel non-protected: {reason} count={events.Count}");
                 },
                 onFlatten: reason =>
@@ -66,6 +78,7 @@ namespace Lumina.Execution.Fabric
                         CorrelationId = Guid.NewGuid().ToString("D"),
                     });
                     serviceRef?.PublishOrderEvents(events);
+                    _audit?.Record("watchdog_flatten", reason, new { events = events.Count });
                     Log($"watchdog flatten: {reason} events={events.Count}");
                 },
                 onAlert: alert =>
@@ -81,6 +94,8 @@ namespace Lumina.Execution.Fabric
                 _watchdog,
                 idempotency,
                 sessions,
+                rateLimiter,
+                _audit,
                 _log);
             serviceRef = _service;
 
@@ -91,7 +106,7 @@ namespace Lumina.Execution.Fabric
             };
             _server.Start();
             _started = true;
-            Log($"gRPC listening on {_config.BindHost}:{_config.BindPort} account={_gateway.AccountName}");
+            Log($"gRPC listening on {_config.BindHost}:{_config.BindPort} account={_gateway.AccountName} audit={_audit.FilePath}");
         }
 
         public void Stop()
@@ -100,6 +115,7 @@ namespace Lumina.Execution.Fabric
                 return;
             try
             {
+                _audit?.Record("host_stop", "fabric_grpc_host_stopping", null);
                 _watchdog?.Dispose();
                 _server?.ShutdownAsync().GetAwaiter().GetResult();
             }
@@ -112,6 +128,8 @@ namespace Lumina.Execution.Fabric
                 _watchdog = null;
                 _server = null;
                 _service = null;
+                _audit?.Dispose();
+                _audit = null;
                 _started = false;
                 Log("gRPC host stopped");
             }

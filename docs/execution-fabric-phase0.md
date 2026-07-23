@@ -20,12 +20,13 @@ E2E order placement from Python Brain → Fabric gRPC → NinjaTrader **SIM**, p
 | Bridge/broker wiring | Python | `attach_fabric_client`, factory injects client (PR-B) |
 | C# gRPC host POC | NT8 / SimHost | `Lumina.Execution.Fabric` + SimHost PlaceOrder SIM (PR-C) |
 | Basic heartbeat timeout cancel | Fabric Safety | Watchdog cancel + SAFE_MODE in C# host (PR-C) |
+| Safety MVP | Fabric + Python | Audit log, StateSync, modify, chaos tests (PR-D) |
 
 ## Automated gates (repo)
 
 ```text
 python scripts/generate_fabric_proto.py
-pytest tests/broker/test_fabric_proto_contract.py tests/broker/test_fabric_client.py tests/broker/test_fabric_mapper.py -q
+pytest tests/broker/test_fabric_proto_contract.py tests/broker/test_fabric_client.py tests/broker/test_fabric_mapper.py tests/broker/test_fabric_chaos.py -q
 dotnet build integrations/ninjatrader8/Lumina.Execution.Fabric.sln -c Release
 ```
 

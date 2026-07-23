@@ -308,6 +308,35 @@ class FabricGrpcClient:
         msg = mapper.flatten_to_brain_message(instrument=instrument, correlation_id=corr, emergency=emergency)
         return self._send_and_wait(msg, wait_key=corr, timeout_seconds=timeout_seconds)
 
+    def modify_order_sync(
+        self,
+        *,
+        client_order_id: str = "",
+        nt_order_id: str = "",
+        quantity: int = 0,
+        price: float = 0.0,
+        stop_price: float = 0.0,
+        correlation_id: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        if not self.is_connected:
+            return {"type": "error", "code": "DISCONNECTED", "message": "Fabric not connected"}
+        corr = correlation_id or str(uuid.uuid4())
+        msg = mapper.modify_to_brain_message(
+            client_order_id=client_order_id,
+            nt_order_id=nt_order_id,
+            quantity=quantity,
+            price=price,
+            stop_price=stop_price,
+            correlation_id=corr,
+        )
+        return self._send_and_wait(
+            msg,
+            wait_key=corr,
+            alt_keys=(client_order_id,) if client_order_id else (),
+            timeout_seconds=timeout_seconds,
+        )
+
     def get_account_state(self) -> tuple[AccountInfo | None, list[Position], str]:
         """Unary GetAccountState. Returns (account, positions, error_code)."""
         stub = self._stub
@@ -477,14 +506,22 @@ class FabricGrpcClient:
                 if msg.state_sync.account.account_name:
                     self._account_name = msg.state_sync.account.account_name
                 self._safe_mode = int(msg.state_sync.safe_mode)
+            logger.info(
+                "Fabric StateSync hash=%s safe_mode=%s orders=%s positions=%s",
+                msg.state_sync.state_hash,
+                msg.state_sync.safe_mode,
+                len(msg.state_sync.open_orders),
+                len(msg.state_sync.positions),
+            )
             return
 
         if which == "safety_alert":
             logger.warning(
-                "Fabric SafetyAlert type=%s severity=%s msg=%s",
+                "Fabric SafetyAlert type=%s severity=%s msg=%s action=%s",
                 msg.safety_alert.alert_type,
                 msg.safety_alert.severity,
                 msg.safety_alert.message,
+                msg.safety_alert.recommended_action,
             )
 
     def _heartbeat_loop(self) -> None:

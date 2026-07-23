@@ -21,6 +21,8 @@ namespace Lumina.Execution.Fabric.Execution
 
         IReadOnlyList<OrderEvent> CancelOrder(CancelOrderCommand command);
 
+        IReadOnlyList<OrderEvent> ModifyOrder(ModifyOrderCommand command);
+
         IReadOnlyList<OrderEvent> Flatten(FlattenCommand command);
 
         /// <summary>Cancel all non-protected working orders (disconnect / timeout policy).</summary>

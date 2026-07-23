@@ -19,8 +19,10 @@ namespace Lumina.Execution.Fabric
         public bool FlattenOnTimeout { get; set; } = true;
         public bool BindLocalhostOnly { get; set; } = true;
         public int MaxPositionSize { get; set; } = 10;
-        public double DailyLossLimit { get; set; } = 0; // 0 = disabled in Phase 0
+        public double DailyLossLimit { get; set; } = 0; // 0 = disabled
         public int MaxOrdersPerMinute { get; set; } = 60;
+        /// <summary>Optional path for append-only fabric-audit.jsonl (default %APPDATA%\LUMINA\).</summary>
+        public string? AuditLogPath { get; set; }
 
         public string ResolveToken()
         {

@@ -60,12 +60,17 @@ Or use unit tests with an in-process mock server (`tests/broker/test_fabric_clie
 }
 ```
 
-## Safety (server-side)
+## Safety (server-side) — PR-D MVP
 
 - Heartbeat timeout (default 5s) → cancel non-protected working orders → **SAFE_MODE**
 - After flatten grace (default 15s) → emergency flatten (SIM gateway)
-- Brain stream close → same disconnect policy
-- `client_order_id` idempotency (at-most-once place)
+- Brain stream close (last session) → same disconnect policy
+- Auth success → **StateSync** snapshot (`state_hash`) for reconciliation
+- Limit/stop orders stay WORKING; market fills immediately (SIM)
+- Protected orders skipped by cancel-on-disconnect; reduce-only enforced on SIM
+- Order rate limit (`MaxOrdersPerMinute`) + max position size
+- Append-only audit: `%APPDATA%\LUMINA\fabric-audit.jsonl`
+- Operator runbook: [execution-fabric-operator.md](../../../docs/runbooks/execution-fabric-operator.md)
 - Localhost-only bind enforced when `BindLocalhostOnly=true`
 
 ## Deploy to NinjaTrader 8

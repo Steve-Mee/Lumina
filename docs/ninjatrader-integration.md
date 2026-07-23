@@ -697,10 +697,10 @@ During migration:
 ### Implementation Checklist (Summary)
 
 - [x] PR-A: ADR-0035 + `fabric.proto` + Python codegen + contract tests
-- [ ] PR-B: Python `FabricGrpcClient` + broker wiring (mockable)
-- [ ] PR-C: C# Fabric gRPC host POC (PlaceOrder SIM + heartbeat)
-- [ ] PR-D: Safety MVP (watchdog, Safe Mode, chaos matrix)
-- [ ] PR-E: Hardening, metrics, runbooks, Command Deck status
+- [x] PR-B: Python `FabricGrpcClient` + broker wiring (mockable)
+- [x] PR-C: C# Fabric gRPC host POC (PlaceOrder SIM + heartbeat)
+- [x] PR-D: Safety MVP (audit, StateSync, modify, chaos matrix, operator runbook)
+- [ ] PR-E: Hardening, metrics, Command Deck status, live NT gateway
 - [ ] REAL: Separate promotion ADR only after SIM evidence
 
 See [execution-fabric-phase0.md](execution-fabric-phase0.md) for Phase 0 gates.

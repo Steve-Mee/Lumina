@@ -67,6 +67,8 @@ class NinjaTraderBridgeService:
         self._account: AccountInfo = AccountInfo(balance=0.0, equity=0.0)
         self._positions: list[Position] = []
         self._pending_commands: dict[str, _CommandWaiter] = {}
+        self._safety_alerts: list[dict[str, Any]] = []
+        self._last_state_hash: str = ""
 
     def set_trade_mode(self, mode: str) -> None:
         with self._lock:
@@ -404,6 +406,17 @@ class NinjaTraderBridgeService:
                 timeout_seconds=timeout,
             )
 
+        if frame_type == "modify_order":
+            return fabric.modify_order_sync(
+                client_order_id=str(frame.get("client_order_id", "")),
+                nt_order_id=str(frame.get("order_id", frame.get("nt_order_id", ""))),
+                quantity=int(frame.get("quantity") or 0),
+                price=float(frame.get("price") or 0.0),
+                stop_price=float(frame.get("stop_price") or 0.0),
+                correlation_id=corr,
+                timeout_seconds=timeout,
+            )
+
         return {
             "type": "error",
             "code": "UNSUPPORTED",
@@ -453,17 +466,48 @@ class NinjaTraderBridgeService:
         if which == "auth_result" and getattr(msg.auth_result, "ok", False):
             with self._lock:
                 self._connection.state = "connected"
+        if which == "state_sync":
+            with self._lock:
+                self._last_state_hash = str(getattr(msg.state_sync, "state_hash", "") or "")
+                if self._connection.state == "degraded":
+                    # Reconciled after reconnect — allow orders only if Fabric left SAFE.
+                    pass
         if which == "safety_alert":
             alert = msg.safety_alert
+            alert_dict = {
+                "alert_type": int(alert.alert_type),
+                "severity": int(alert.severity),
+                "message": str(alert.message),
+                "recommended_action": str(alert.recommended_action),
+                "correlation_id": str(alert.correlation_id),
+            }
+            with self._lock:
+                self._safety_alerts.append(alert_dict)
+                if len(self._safety_alerts) > 200:
+                    self._safety_alerts = self._safety_alerts[-100:]
+            logger.warning(
+                "Fabric SafetyAlert type=%s msg=%s",
+                alert.alert_type,
+                alert.message,
+            )
             if alert.alert_type in (
                 fabric_pb2.SAFETY_ALERT_TYPE_SAFE_MODE_ENTERED,
                 fabric_pb2.SAFETY_ALERT_TYPE_HEARTBEAT_TIMEOUT,
                 fabric_pb2.SAFETY_ALERT_TYPE_NT_CONNECTION_LOST,
+                fabric_pb2.SAFETY_ALERT_TYPE_FLATTEN_ISSUED,
             ):
                 with self._lock:
                     # Degraded: block new orders via connection state policy.
                     if self._connection.state == "connected":
                         self._connection.state = "degraded"
+
+    def get_safety_alerts(self) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(self._safety_alerts)
+
+    def get_last_state_hash(self) -> str:
+        with self._lock:
+            return self._last_state_hash
 
     def get_fills(self) -> list[Fill]:
         with self._lock:

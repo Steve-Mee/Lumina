@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using Grpc.Core;
+using Lumina.Execution.Fabric.Audit;
 using Lumina.Execution.Fabric.Execution;
 using Lumina.Execution.Fabric.Safety;
 using Lumina.Execution.V1;
@@ -9,7 +12,7 @@ using Lumina.Execution.V1;
 namespace Lumina.Execution.Fabric.Grpc
 {
     /// <summary>
-    /// Fabric gRPC service implementation (server side).
+    /// Fabric gRPC service — Safety MVP (PR-D): state sync, audit, rate limit, modify, disconnect matrix.
     /// </summary>
     public sealed class ExecutionFabricService : ExecutionFabric.ExecutionFabricBase
     {
@@ -19,6 +22,8 @@ namespace Lumina.Execution.Fabric.Grpc
         private readonly HeartbeatWatchdog _watchdog;
         private readonly IdempotencyStore _idempotency;
         private readonly SessionHub _sessions;
+        private readonly OrderRateLimiter _rateLimiter;
+        private readonly FabricAuditLog? _audit;
         private readonly Action<string>? _log;
         private readonly object _streamWriteGate = new object();
 
@@ -29,6 +34,8 @@ namespace Lumina.Execution.Fabric.Grpc
             HeartbeatWatchdog watchdog,
             IdempotencyStore idempotency,
             SessionHub sessions,
+            OrderRateLimiter rateLimiter,
+            FabricAuditLog? audit = null,
             Action<string>? log = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -37,6 +44,8 @@ namespace Lumina.Execution.Fabric.Grpc
             _watchdog = watchdog ?? throw new ArgumentNullException(nameof(watchdog));
             _idempotency = idempotency ?? throw new ArgumentNullException(nameof(idempotency));
             _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
+            _rateLimiter = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
+            _audit = audit;
             _log = log;
         }
 
@@ -48,6 +57,7 @@ namespace Lumina.Execution.Fabric.Grpc
             var sessionId = Guid.NewGuid().ToString("D");
             var authenticated = false;
             _sessions.Register(sessionId, responseStream);
+            _audit?.Record("session_open", "trading_stream_started", new { session_id = sessionId });
 
             try
             {
@@ -66,9 +76,12 @@ namespace Lumina.Execution.Fabric.Grpc
             finally
             {
                 _sessions.Unregister(sessionId);
-                if (authenticated)
+                _audit?.Record("session_close", "trading_stream_ended", new { session_id = sessionId, authenticated });
+
+                // Disconnect policy only when no Brain sessions remain (multi-session safe).
+                if (authenticated && _sessions.SessionCount == 0)
                 {
-                    Log($"session {sessionId} disconnected — applying disconnect policy");
+                    Log($"last session {sessionId} disconnected — applying disconnect policy");
                     ApplyDisconnectPolicy("brain_stream_closed");
                 }
             }
@@ -88,16 +101,17 @@ namespace Lumina.Execution.Fabric.Grpc
                 Instrument = request?.Instrument ?? "",
                 CorrelationId = request?.CorrelationId ?? "",
                 Code = "NOT_IMPLEMENTED",
-                Message = "Historical data deferred past Phase 0",
+                Message = "Historical data deferred past Phase 1",
             });
         }
 
         public override Task<RiskParametersAck> SetRiskParameters(RiskParameters request, ServerCallContext context)
         {
+            _audit?.Record("set_risk_parameters", "phase1_accept_echo", request);
             return Task.FromResult(new RiskParametersAck
             {
                 Accepted = true,
-                Message = "accepted_phase0_noop",
+                Message = "accepted_echo",
                 Applied = request ?? new RiskParameters(),
             });
         }
@@ -119,6 +133,12 @@ namespace Lumina.Execution.Fabric.Grpc
         {
             if (alert == null)
                 return;
+            _audit?.Record("safety_alert", alert.Message, new
+            {
+                type = alert.AlertType.ToString(),
+                severity = alert.Severity.ToString(),
+                recommended = alert.RecommendedAction,
+            });
             _sessions.Broadcast(new FabricMessage { SafetyAlert = alert });
         }
 
@@ -127,12 +147,20 @@ namespace Lumina.Execution.Fabric.Grpc
             if (events == null)
                 return;
             foreach (var evt in events)
+            {
+                _audit?.Record("order_event", evt.RejectionReason ?? evt.State.ToString(), new
+                {
+                    client_order_id = evt.ClientOrderId,
+                    nt_order_id = evt.NtOrderId,
+                    state = evt.State.ToString(),
+                    instrument = evt.Instrument,
+                });
                 _sessions.Broadcast(new FabricMessage { OrderEvent = evt });
+            }
         }
 
         private async Task WriteSafeAsync(IServerStreamWriter<FabricMessage> stream, FabricMessage message)
         {
-            // Serialize stream writes for this session.
             Task writeTask;
             lock (_streamWriteGate)
             {
@@ -150,8 +178,13 @@ namespace Lumina.Execution.Fabric.Grpc
             switch (brain.PayloadCase)
             {
                 case BrainMessage.PayloadOneofCase.AuthHello:
-                    replies.Add(HandleAuth(brain.AuthHello, ref authenticated, sessionId));
+                {
+                    var authOk = false;
+                    replies.AddRange(HandleAuth(brain.AuthHello, sessionId, out authOk));
+                    if (authOk)
+                        authenticated = true;
                     break;
+                }
 
                 case BrainMessage.PayloadOneofCase.Heartbeat:
                     if (!authenticated)
@@ -181,16 +214,12 @@ namespace Lumina.Execution.Fabric.Grpc
                     replies.AddRange(HandleCancel(brain.CancelOrder, authenticated));
                     break;
 
-                case BrainMessage.PayloadOneofCase.Flatten:
-                    replies.AddRange(HandleFlatten(brain.Flatten, authenticated));
+                case BrainMessage.PayloadOneofCase.ModifyOrder:
+                    replies.AddRange(HandleModify(brain.ModifyOrder, authenticated));
                     break;
 
-                case BrainMessage.PayloadOneofCase.ModifyOrder:
-                    replies.Add(Reject(
-                        brain.ModifyOrder?.CorrelationId ?? "",
-                        brain.ModifyOrder?.ClientOrderId ?? "",
-                        "NOT_IMPLEMENTED",
-                        "ModifyOrder deferred past Phase 0"));
+                case BrainMessage.PayloadOneofCase.Flatten:
+                    replies.AddRange(HandleFlatten(brain.Flatten, authenticated));
                     break;
 
                 case BrainMessage.PayloadOneofCase.SubscribeMarketData:
@@ -207,20 +236,25 @@ namespace Lumina.Execution.Fabric.Grpc
             return replies;
         }
 
-        private FabricMessage HandleAuth(AuthHello hello, ref bool authenticated, string sessionId)
+        private List<FabricMessage> HandleAuth(AuthHello hello, string sessionId, out bool authenticated)
         {
+            authenticated = false;
             var expected = _config.ResolveToken();
             var provided = hello?.Token ?? "";
             if (string.IsNullOrEmpty(expected))
             {
                 Log("AUTH reject: fabric token not configured");
-                return new FabricMessage
+                _audit?.Record("auth_failed", "TOKEN_NOT_CONFIGURED", null);
+                return new List<FabricMessage>
                 {
-                    AuthResult = new AuthResult
+                    new FabricMessage
                     {
-                        Ok = false,
-                        Code = "TOKEN_NOT_CONFIGURED",
-                        Message = "Set LUMINA_FABRIC_TOKEN (or config AuthToken)",
+                        AuthResult = new AuthResult
+                        {
+                            Ok = false,
+                            Code = "TOKEN_NOT_CONFIGURED",
+                            Message = "Set LUMINA_FABRIC_TOKEN (or config AuthToken)",
+                        },
                     },
                 };
             }
@@ -228,13 +262,17 @@ namespace Lumina.Execution.Fabric.Grpc
             if (!string.Equals(expected, provided, StringComparison.Ordinal))
             {
                 Log("AUTH reject: bad token");
-                return new FabricMessage
+                _audit?.Record("auth_failed", "AUTH_FAILED", new { session_id = sessionId });
+                return new List<FabricMessage>
                 {
-                    AuthResult = new AuthResult
+                    new FabricMessage
                     {
-                        Ok = false,
-                        Code = "AUTH_FAILED",
-                        Message = "Invalid fabric token",
+                        AuthResult = new AuthResult
+                        {
+                            Ok = false,
+                            Code = "AUTH_FAILED",
+                            Message = "Invalid fabric token",
+                        },
                     },
                 };
             }
@@ -245,16 +283,28 @@ namespace Lumina.Execution.Fabric.Grpc
                 _safeMode.ClearToNormal("brain_reauthenticated");
 
             Log($"AUTH ok session={sessionId} account={_gateway.AccountName}");
-            return new FabricMessage
+            _audit?.Record("auth_ok", "authenticated", new
             {
-                AuthResult = new AuthResult
+                session_id = sessionId,
+                account = _gateway.AccountName,
+                mode = hello?.ModeContext,
+            });
+
+            return new List<FabricMessage>
+            {
+                new FabricMessage
                 {
-                    Ok = true,
-                    SessionId = sessionId,
-                    AccountName = _gateway.AccountName,
-                    Code = "OK",
-                    Message = "ok",
+                    AuthResult = new AuthResult
+                    {
+                        Ok = true,
+                        SessionId = sessionId,
+                        AccountName = _gateway.AccountName,
+                        Code = "OK",
+                        Message = "ok",
+                    },
                 },
+                // Initial StateSync for reconciliation (blueprint §5.3).
+                new FabricMessage { StateSync = BuildStateSync() },
             };
         }
 
@@ -263,6 +313,16 @@ namespace Lumina.Execution.Fabric.Grpc
             if (!authenticated)
             {
                 yield return Reject(cmd?.CorrelationId ?? "", cmd?.ClientOrderId ?? "", "UNAUTHENTICATED", "Auth required");
+                yield break;
+            }
+
+            if (_safeMode.State == SafeModeState.FullSafe)
+            {
+                yield return Reject(
+                    cmd?.CorrelationId ?? "",
+                    cmd?.ClientOrderId ?? "",
+                    "FULL_SAFE",
+                    "FULL_SAFE: only human/manual override can place orders");
                 yield break;
             }
 
@@ -284,7 +344,26 @@ namespace Lumina.Execution.Fabric.Grpc
 
             if (_idempotency.TryGet(cmd.ClientOrderId, out var prior))
             {
+                _audit?.Record("place_idempotent_replay", "client_order_id_seen", new { client_order_id = cmd.ClientOrderId });
                 yield return new FabricMessage { OrderEvent = prior };
+                yield break;
+            }
+
+            if (!_rateLimiter.TryAdmit(out var rateReason))
+            {
+                var rateRejected = new OrderEvent
+                {
+                    ClientOrderId = cmd.ClientOrderId,
+                    State = OrderState.Rejected,
+                    RejectionReason = rateReason,
+                    Instrument = cmd.Instrument,
+                    Action = cmd.Action,
+                    CorrelationId = cmd.CorrelationId ?? "",
+                    TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                };
+                _idempotency.Remember(cmd.ClientOrderId, rateRejected);
+                _audit?.Record("place_rejected", rateReason, new { client_order_id = cmd.ClientOrderId });
+                yield return new FabricMessage { OrderEvent = rateRejected };
                 yield break;
             }
 
@@ -301,13 +380,29 @@ namespace Lumina.Execution.Fabric.Grpc
                     TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 };
                 _idempotency.Remember(cmd.ClientOrderId, rejected);
+                _audit?.Record("place_rejected", rejected.RejectionReason, new { client_order_id = cmd.ClientOrderId });
                 yield return new FabricMessage { OrderEvent = rejected };
                 yield break;
             }
 
+            _audit?.Record("place_order", "accepted_for_gateway", new
+            {
+                client_order_id = cmd.ClientOrderId,
+                instrument = cmd.Instrument,
+                qty = cmd.Quantity,
+                protected_flag = cmd.Protected,
+                reduce_only = cmd.ReduceOnly,
+            });
+
             foreach (var evt in _gateway.PlaceOrder(cmd))
             {
                 _idempotency.Remember(cmd.ClientOrderId, evt);
+                _audit?.Record("order_event", evt.State.ToString(), new
+                {
+                    client_order_id = evt.ClientOrderId,
+                    nt_order_id = evt.NtOrderId,
+                    state = evt.State.ToString(),
+                });
                 yield return new FabricMessage { OrderEvent = evt };
             }
         }
@@ -320,8 +415,53 @@ namespace Lumina.Execution.Fabric.Grpc
                 yield break;
             }
 
+            // Cancel is allowed in SAFE_MODE (risk-reducing); blocked only in FULL_SAFE without emergency path.
+            if (_safeMode.State == SafeModeState.FullSafe)
+            {
+                yield return Reject(cmd?.CorrelationId ?? "", cmd?.ClientOrderId ?? "", "FULL_SAFE", "FULL_SAFE blocks cancel without operator");
+                yield break;
+            }
+
+            _audit?.Record("cancel_order", "request", new
+            {
+                client_order_id = cmd?.ClientOrderId,
+                nt_order_id = cmd?.NtOrderId,
+            });
+
             foreach (var evt in _gateway.CancelOrder(cmd ?? new CancelOrderCommand()))
+            {
+                _audit?.Record("order_event", evt.State.ToString(), new { client_order_id = evt.ClientOrderId, state = evt.State.ToString() });
                 yield return new FabricMessage { OrderEvent = evt };
+            }
+        }
+
+        private IEnumerable<FabricMessage> HandleModify(ModifyOrderCommand cmd, bool authenticated)
+        {
+            if (!authenticated)
+            {
+                yield return Reject(cmd?.CorrelationId ?? "", cmd?.ClientOrderId ?? "", "UNAUTHENTICATED", "Auth required");
+                yield break;
+            }
+
+            if (!_safeMode.AcceptsNewOrders)
+            {
+                yield return Reject(cmd?.CorrelationId ?? "", cmd?.ClientOrderId ?? "", "SAFE_MODE", "SAFE_MODE blocks modify");
+                yield break;
+            }
+
+            _audit?.Record("modify_order", "request", new
+            {
+                client_order_id = cmd?.ClientOrderId,
+                qty = cmd?.Quantity,
+                price = cmd?.Price,
+            });
+
+            foreach (var evt in _gateway.ModifyOrder(cmd ?? new ModifyOrderCommand()))
+            {
+                if (!string.IsNullOrEmpty(evt.ClientOrderId))
+                    _idempotency.Remember(evt.ClientOrderId, evt);
+                yield return new FabricMessage { OrderEvent = evt };
+            }
         }
 
         private IEnumerable<FabricMessage> HandleFlatten(FlattenCommand cmd, bool authenticated)
@@ -332,6 +472,18 @@ namespace Lumina.Execution.Fabric.Grpc
                 yield break;
             }
 
+            // Flatten is risk-reducing: allowed in SAFE_MODE; allowed in FULL_SAFE only if emergency.
+            if (_safeMode.State == SafeModeState.FullSafe && !(cmd?.Emergency ?? false))
+            {
+                yield return Reject(cmd?.CorrelationId ?? "", "", "FULL_SAFE", "FULL_SAFE requires emergency flatten flag");
+                yield break;
+            }
+
+            _audit?.Record("flatten", cmd?.Emergency == true ? "emergency" : "normal", new
+            {
+                instrument = cmd?.Instrument,
+            });
+
             foreach (var evt in _gateway.Flatten(cmd ?? new FlattenCommand()))
                 yield return new FabricMessage { OrderEvent = evt };
         }
@@ -339,16 +491,18 @@ namespace Lumina.Execution.Fabric.Grpc
         private void ApplyDisconnectPolicy(string reason)
         {
             _safeMode.EnterSafe(reason);
-            PublishOrderEvents(_gateway.CancelNonProtected(reason));
+            var cancelled = _gateway.CancelNonProtected(reason);
+            PublishOrderEvents(cancelled);
             PublishAlert(new SafetyAlert
             {
                 AlertType = SafetyAlertType.SafeModeEntered,
                 Severity = SafetySeverity.Critical,
-                Message = $"Disconnect policy applied: {reason}",
+                Message = $"Disconnect policy applied: {reason}; cancelled_non_protected={cancelled.Count}",
                 RecommendedAction = "cancel_non_protected",
                 TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 CorrelationId = Guid.NewGuid().ToString("D"),
             });
+            _audit?.Record("disconnect_policy", reason, new { cancelled = cancelled.Count });
         }
 
         private AccountState BuildAccountState()
@@ -364,8 +518,48 @@ namespace Lumina.Execution.Fabric.Grpc
             return state;
         }
 
+        private StateSyncResponse BuildStateSync()
+        {
+            var acct = _gateway.GetAccountMetrics();
+            var positions = _gateway.GetPositions();
+            var orders = _gateway.GetWorkingOrders();
+            var hash = ComputeStateHash(acct, positions, orders);
+            var sync = new StateSyncResponse
+            {
+                Account = acct,
+                SafeMode = _safeMode.State,
+                TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                StateHash = hash,
+            };
+            sync.Positions.AddRange(positions);
+            sync.OpenOrders.AddRange(orders);
+            return sync;
+        }
+
+        private static string ComputeStateHash(
+            AccountMetrics acct,
+            IReadOnlyList<PositionUpdate> positions,
+            IReadOnlyList<WorkingOrder> orders)
+        {
+            var sb = new StringBuilder();
+            sb.Append(acct?.AccountName).Append('|').Append(acct?.Equity).Append('|');
+            foreach (var p in positions)
+                sb.Append(p.Instrument).Append(':').Append(p.Quantity).Append(':').Append(p.Side).Append(';');
+            foreach (var o in orders)
+                sb.Append(o.ClientOrderId).Append(':').Append(o.Quantity).Append(':').Append(o.State).Append(';');
+            using (var sha = SHA256.Create())
+            {
+                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(sb.ToString()));
+                var hex = new StringBuilder(bytes.Length * 2);
+                foreach (var b in bytes)
+                    hex.Append(b.ToString("x2"));
+                return hex.ToString().Substring(0, 16);
+            }
+        }
+
         private FabricMessage Reject(string correlationId, string clientOrderId, string code, string message)
         {
+            _audit?.Record("command_reject", message, new { code, correlation_id = correlationId, client_order_id = clientOrderId });
             return new FabricMessage
             {
                 CommandReject = new CommandReject
