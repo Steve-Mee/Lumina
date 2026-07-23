@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Order, Position
 from lumina_core.broker.ninjatrader.connection_state import NinjaTraderConnectionState
+from lumina_core.broker.ninjatrader.fabric_metrics import FabricClientMetrics
 from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability
 from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction, normalize_trade_mode
 from lumina_core.broker.ninjatrader.schemas import (
@@ -69,6 +71,8 @@ class NinjaTraderBridgeService:
         self._pending_commands: dict[str, _CommandWaiter] = {}
         self._safety_alerts: list[dict[str, Any]] = []
         self._last_state_hash: str = ""
+        self._fabric_safe_mode: str = "UNKNOWN"
+        self.metrics = FabricClientMetrics()
 
     def set_trade_mode(self, mode: str) -> None:
         with self._lock:
@@ -104,6 +108,7 @@ class NinjaTraderBridgeService:
         fabric.set_mode_context(self.trade_mode)
         self.begin_authentication()
         ok = fabric.connect()
+        self.metrics.record_connect(ok=ok)
         if not ok:
             with self._lock:
                 self._connection.state = "error"
@@ -114,6 +119,7 @@ class NinjaTraderBridgeService:
             self._connection.account_name = fabric.account_name or self.configured_account
             self._connection.client_name = fabric.config.client_name
             self._connection.client_version = fabric.config.client_version
+            self._fabric_safe_mode = "NORMAL"
         # Refresh account snapshot when possible.
         account, positions, code = fabric.get_account_state()
         if code == "ok" and account is not None:
@@ -122,6 +128,10 @@ class NinjaTraderBridgeService:
                 self._positions = positions
                 if account.raw.get("account_name"):
                     self._connection.account_name = str(account.raw["account_name"])
+                sm = account.raw.get("safe_mode")
+                if sm is not None:
+                    mode_map = {0: "UNKNOWN", 1: "NORMAL", 2: "SAFE", 3: "FULL_SAFE"}
+                    self._fabric_safe_mode = mode_map.get(int(sm), "UNKNOWN")
         return True
 
     def on_disconnect(self) -> None:
@@ -131,6 +141,7 @@ class NinjaTraderBridgeService:
                 fabric.disconnect()
             except Exception:
                 logger.debug("Fabric disconnect failed", exc_info=True)
+            self.metrics.record_disconnect()
         with self._lock:
             self._connection.state = "disconnected"
             self._send_fn = None
@@ -157,6 +168,18 @@ class NinjaTraderBridgeService:
                 self._connection.account_name = account_name
 
     def get_connection_state(self) -> NinjaTraderConnectionState:
+        fabric = self.get_fabric_client()
+        fabric_target = ""
+        gateway = ""
+        if fabric is not None:
+            fabric_target = fabric.config.target
+            gateway = "fabric"
+            sm = int(getattr(fabric, "safe_mode", 0) or 0)
+            # Proto SafeModeState: 0 UNSPECIFIED, 1 NORMAL, 2 SAFE, 3 FULL_SAFE
+            mode_map = {0: "UNKNOWN", 1: "NORMAL", 2: "SAFE", 3: "FULL_SAFE"}
+            with self._lock:
+                if self._fabric_safe_mode == "UNKNOWN" and sm in mode_map:
+                    self._fabric_safe_mode = mode_map[sm]
         with self._lock:
             return NinjaTraderConnectionState(
                 state=self._connection.state,
@@ -167,6 +190,12 @@ class NinjaTraderBridgeService:
                 session_id=self._session_id,
                 client_name=self._connection.client_name,
                 client_version=self._connection.client_version,
+                safe_mode=self._fabric_safe_mode,
+                fabric_target=fabric_target,
+                gateway=gateway,
+                last_state_hash=self._last_state_hash,
+                recent_alerts=len(self._safety_alerts),
+                metrics=self.metrics.snapshot(),
             )
 
     def handle_inbound(self, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -384,21 +413,27 @@ class NinjaTraderBridgeService:
                 },
             )
             client_order_id = str(frame.get("client_order_id") or f"lumina-{uuid.uuid4()}")
-            return fabric.place_order_sync(
+            t0 = time.perf_counter()
+            result = fabric.place_order_sync(
                 order,
                 client_order_id=client_order_id,
                 correlation_id=corr,
                 timeout_seconds=timeout,
             )
+            rtt_ms = (time.perf_counter() - t0) * 1000.0
+            self.metrics.record_place(ok=str(result.get("type")) != "error", rtt_ms=rtt_ms)
+            return result
 
         if frame_type in {"flatten", "cancel_all", "cancel_order"}:
             if frame_type == "cancel_order":
+                self.metrics.record_cancel()
                 return fabric.cancel_order_sync(
                     client_order_id=str(frame.get("client_order_id", "")),
                     nt_order_id=str(frame.get("order_id", frame.get("nt_order_id", ""))),
                     correlation_id=corr,
                     timeout_seconds=timeout,
                 )
+            self.metrics.record_flatten()
             return fabric.flatten_sync(
                 instrument=str(frame.get("symbol", frame.get("instrument", ""))),
                 correlation_id=corr,
@@ -485,6 +520,12 @@ class NinjaTraderBridgeService:
                 self._safety_alerts.append(alert_dict)
                 if len(self._safety_alerts) > 200:
                     self._safety_alerts = self._safety_alerts[-100:]
+                if alert.alert_type in (
+                    fabric_pb2.SAFETY_ALERT_TYPE_SAFE_MODE_ENTERED,
+                    fabric_pb2.SAFETY_ALERT_TYPE_HEARTBEAT_TIMEOUT,
+                ):
+                    self._fabric_safe_mode = "SAFE"
+            self.metrics.record_safety_alert()
             logger.warning(
                 "Fabric SafetyAlert type=%s msg=%s",
                 alert.alert_type,
@@ -500,6 +541,11 @@ class NinjaTraderBridgeService:
                     # Degraded: block new orders via connection state policy.
                     if self._connection.state == "connected":
                         self._connection.state = "degraded"
+        if which == "heartbeat":
+            sm = int(getattr(msg.heartbeat, "fabric_safe_mode", 0) or 0)
+            mode_map = {0: "UNKNOWN", 1: "NORMAL", 2: "SAFE", 3: "FULL_SAFE"}
+            with self._lock:
+                self._fabric_safe_mode = mode_map.get(sm, "UNKNOWN")
 
     def get_safety_alerts(self) -> list[dict[str, Any]]:
         with self._lock:

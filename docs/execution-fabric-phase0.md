@@ -21,6 +21,7 @@ E2E order placement from Python Brain → Fabric gRPC → NinjaTrader **SIM**, p
 | C# gRPC host POC | NT8 / SimHost | `Lumina.Execution.Fabric` + SimHost PlaceOrder SIM (PR-C) |
 | Basic heartbeat timeout cancel | Fabric Safety | Watchdog cancel + SAFE_MODE in C# host (PR-C) |
 | Safety MVP | Fabric + Python | Audit log, StateSync, modify, chaos tests (PR-D) |
+| Hardening | Fabric + Deck | Metrics, pre-trade risk, NT gateway skeleton, telemetry (PR-E) |
 
 ## Automated gates (repo)
 

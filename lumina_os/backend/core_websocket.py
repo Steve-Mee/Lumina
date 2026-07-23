@@ -267,7 +267,19 @@ def _build_ninjatrader_telemetry_block() -> dict[str, Any]:
         state = get_ninjatrader_bridge_service().get_connection_state()
         return state.to_telemetry_dict()
     except Exception:
-        return {"connected": False, "account": "", "last_bar_ts": None, "state": "disconnected"}
+        return {
+            "connected": False,
+            "account": "",
+            "last_bar_ts": None,
+            "state": "disconnected",
+            "safe_mode": "UNKNOWN",
+            "fabric_target": "",
+            "gateway": "",
+            "session_id": "",
+            "last_state_hash": "",
+            "recent_alerts": 0,
+            "metrics": {},
+        }
 
 
 def _coerce_float(value: Any) -> float | None:

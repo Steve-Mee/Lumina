@@ -90,5 +90,7 @@ Phase 0 still uses **SimOrderGateway** inside the AddOn until the live NT `Accou
 - [x] Auth rejects wrong token
 - [x] PlaceOrder + GetAccountState (SIM)
 - [x] Heartbeat watchdog → SAFE_MODE + cancel
-- [ ] Live NT order submission (PR-D)
-- [ ] Full chaos matrix (PR-D)
+- [x] Metrics + pre-trade risk + StateSync + chaos tests (PR-D/E)
+- [x] `NtOrderGateway` skeleton (`GatewayMode=nt`, fail-closed until Account bound)
+- [ ] Live NT Account bind + order API (post PR-E)
+- [ ] REAL promotion ADR

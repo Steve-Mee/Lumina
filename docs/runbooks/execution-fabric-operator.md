@@ -65,6 +65,35 @@ Get-Content $env:APPDATA\LUMINA\fabric-audit.jsonl -Tail 50
 | Degraded on bridge | `get_safety_alerts()` / logs; reconnect Fabric client |
 | Port in use | Change `--port` and `broker.ninjatrader.fabric.port` |
 
+## Metrics (PR-E)
+
+### Server (C# host)
+
+On host stop, a `metrics_snapshot` line is written to the audit log. Counters include:
+
+- `fabric_place_orders_total` / `fabric_place_rejected_total` / `fabric_place_filled_total`
+- `fabric_safe_mode_entries_total` / `fabric_auth_ok_total`
+- `fabric_place_latency_ms_p50|p95|p99`
+
+### Brain (Python)
+
+`NinjaTraderBridgeService.metrics.snapshot()` and `/ws/core/live` → `ninjatrader.metrics`:
+
+- `fabric_client_place_*`, `fabric_client_rtt_ms_p50|p95|p99`, connect/disconnect/alerts
+
+Command Deck **NT8** pill shows connected / SAFE / degraded and tooltip with `safe_mode` + fabric target.
+
+## Gateway mode
+
+`fabric.json` / config:
+
+```json
+{ "GatewayMode": "sim" }
+```
+
+- **sim** — in-memory SIM fills (default, paper validation)
+- **nt** — `NtOrderGateway` skeleton; **fail-closed until NT Account is bound** (live wiring continues after PR-E)
+
 ## REAL mode
 
-**Not enabled in PR-D.** REAL requires a separate promotion ADR + live NT gateway + human approval.
+**Not enabled in PR-E.** REAL requires a separate promotion ADR + bound NT gateway + human approval.

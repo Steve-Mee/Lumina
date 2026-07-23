@@ -25,6 +25,13 @@ class NinjaTraderConnectionState:
     session_id: str | None = None
     client_name: str = ""
     client_version: str = ""
+    # Execution Fabric extensions (PR-E)
+    safe_mode: str = "UNKNOWN"
+    fabric_target: str = ""
+    gateway: str = ""
+    last_state_hash: str = ""
+    recent_alerts: int = 0
+    metrics: dict[str, object] | None = None
 
     @property
     def is_connected(self) -> bool:
@@ -40,4 +47,11 @@ class NinjaTraderConnectionState:
             "account": self.account_name,
             "last_bar_ts": self.last_bar_ts,
             "state": self.state,
+            "safe_mode": self.safe_mode,
+            "fabric_target": self.fabric_target,
+            "gateway": self.gateway,
+            "session_id": self.session_id or "",
+            "last_state_hash": self.last_state_hash,
+            "recent_alerts": int(self.recent_alerts),
+            "metrics": dict(self.metrics) if self.metrics else {},
         }

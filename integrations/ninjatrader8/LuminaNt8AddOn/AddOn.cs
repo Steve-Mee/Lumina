@@ -70,8 +70,8 @@ namespace LuminaNt8AddOn
             try
             {
                 var config = FabricConfig.LoadDefault();
-                // Phase 0: SIM gateway inside AddOn until NT Account order API is integrated.
-                var gateway = new SimOrderGateway(config.AccountName);
+                // PR-E: GatewayMode sim|nt — NT gateway is fail-closed until Account is bound.
+                var gateway = FabricGrpcHost.CreateGateway(config);
                 _host = new FabricGrpcHost(config, gateway, msg =>
                 {
 #if !FABRIC_STANDALONE

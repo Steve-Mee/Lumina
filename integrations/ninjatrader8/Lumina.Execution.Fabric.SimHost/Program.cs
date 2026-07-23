@@ -48,7 +48,8 @@ namespace Lumina.Execution.Fabric.SimHost
                 Console.WriteLine("[SimHost] WARNING: using default AuthToken=sim-dev-token (dev only)");
             }
 
-            var gateway = new SimOrderGateway(config.AccountName);
+            var gateway = FabricGrpcHost.CreateGateway(config);
+            Console.WriteLine($"[SimHost] gateway={gateway.GatewayKind} account={config.AccountName}");
             using var host = new FabricGrpcHost(config, gateway, msg => Console.WriteLine(msg));
             try
             {

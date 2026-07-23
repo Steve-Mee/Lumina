@@ -60,10 +60,15 @@ broker:
       host: 127.0.0.1
       port: 50051
       auth_token_env: LUMINA_FABRIC_TOKEN
+      # sim (default) | nt (live Account gateway when bound)
+      gateway_mode: sim
       heartbeat_interval_ms: 1000
       heartbeat_timeout_ms: 5000
       flatten_grace_ms: 15000
       bind_localhost_only: true
+      max_position_size: 10
+      max_orders_per_minute: 60
+      daily_loss_limit: 0
   crosstrade:
     api_key: ${CROSSTRADE_TOKEN}
     websocket_url: wss://app.crosstrade.io/ws/stream

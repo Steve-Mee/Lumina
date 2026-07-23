@@ -1,18 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Lumina.Execution.Fabric.Audit;
 using Lumina.Execution.Fabric.Execution;
+using Lumina.Execution.Fabric.Observability;
 using Lumina.Execution.Fabric.Safety;
 using Lumina.Execution.V1;
 
 namespace Lumina.Execution.Fabric.Grpc
 {
     /// <summary>
-    /// Fabric gRPC service — Safety MVP (PR-D): state sync, audit, rate limit, modify, disconnect matrix.
+    /// Fabric gRPC service — Safety + hardening (PR-D/E): risk engine, metrics, state sync, audit.
     /// </summary>
     public sealed class ExecutionFabricService : ExecutionFabric.ExecutionFabricBase
     {
@@ -23,6 +25,8 @@ namespace Lumina.Execution.Fabric.Grpc
         private readonly IdempotencyStore _idempotency;
         private readonly SessionHub _sessions;
         private readonly OrderRateLimiter _rateLimiter;
+        private readonly PreTradeRiskEngine _preTrade;
+        private readonly FabricMetrics _metrics;
         private readonly FabricAuditLog? _audit;
         private readonly Action<string>? _log;
         private readonly object _streamWriteGate = new object();
@@ -35,6 +39,8 @@ namespace Lumina.Execution.Fabric.Grpc
             IdempotencyStore idempotency,
             SessionHub sessions,
             OrderRateLimiter rateLimiter,
+            PreTradeRiskEngine preTrade,
+            FabricMetrics metrics,
             FabricAuditLog? audit = null,
             Action<string>? log = null)
         {
@@ -45,9 +51,13 @@ namespace Lumina.Execution.Fabric.Grpc
             _idempotency = idempotency ?? throw new ArgumentNullException(nameof(idempotency));
             _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
             _rateLimiter = rateLimiter ?? throw new ArgumentNullException(nameof(rateLimiter));
+            _preTrade = preTrade ?? throw new ArgumentNullException(nameof(preTrade));
+            _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
             _audit = audit;
             _log = log;
         }
+
+        public FabricMetrics Metrics => _metrics;
 
         public override async Task TradingStream(
             IAsyncStreamReader<BrainMessage> requestStream,
@@ -244,6 +254,7 @@ namespace Lumina.Execution.Fabric.Grpc
             if (string.IsNullOrEmpty(expected))
             {
                 Log("AUTH reject: fabric token not configured");
+                _metrics.IncAuthFail();
                 _audit?.Record("auth_failed", "TOKEN_NOT_CONFIGURED", null);
                 return new List<FabricMessage>
                 {
@@ -262,6 +273,7 @@ namespace Lumina.Execution.Fabric.Grpc
             if (!string.Equals(expected, provided, StringComparison.Ordinal))
             {
                 Log("AUTH reject: bad token");
+                _metrics.IncAuthFail();
                 _audit?.Record("auth_failed", "AUTH_FAILED", new { session_id = sessionId });
                 return new List<FabricMessage>
                 {
@@ -278,16 +290,18 @@ namespace Lumina.Execution.Fabric.Grpc
             }
 
             authenticated = true;
+            _metrics.IncAuthOk();
             _watchdog.NoteAuthenticatedSession();
             if (_safeMode.State == SafeModeState.Safe)
                 _safeMode.ClearToNormal("brain_reauthenticated");
 
-            Log($"AUTH ok session={sessionId} account={_gateway.AccountName}");
+            Log($"AUTH ok session={sessionId} account={_gateway.AccountName} gateway={_gateway.GatewayKind}");
             _audit?.Record("auth_ok", "authenticated", new
             {
                 session_id = sessionId,
                 account = _gateway.AccountName,
                 mode = hello?.ModeContext,
+                gateway = _gateway.GatewayKind,
             });
 
             return new List<FabricMessage>
@@ -344,6 +358,7 @@ namespace Lumina.Execution.Fabric.Grpc
 
             if (_idempotency.TryGet(cmd.ClientOrderId, out var prior))
             {
+                _metrics.IncIdempotentReplay();
                 _audit?.Record("place_idempotent_replay", "client_order_id_seen", new { client_order_id = cmd.ClientOrderId });
                 yield return new FabricMessage { OrderEvent = prior };
                 yield break;
@@ -351,6 +366,7 @@ namespace Lumina.Execution.Fabric.Grpc
 
             if (!_rateLimiter.TryAdmit(out var rateReason))
             {
+                _metrics.IncPlaceRejected();
                 var rateRejected = new OrderEvent
                 {
                     ClientOrderId = cmd.ClientOrderId,
@@ -367,24 +383,26 @@ namespace Lumina.Execution.Fabric.Grpc
                 yield break;
             }
 
-            if (_config.MaxPositionSize > 0 && cmd.Quantity > _config.MaxPositionSize)
+            if (!_preTrade.TryAdmitPlace(cmd, _gateway, out var riskReason))
             {
+                _metrics.IncPlaceRejected();
                 var rejected = new OrderEvent
                 {
                     ClientOrderId = cmd.ClientOrderId,
                     State = OrderState.Rejected,
-                    RejectionReason = $"max_position_size:{_config.MaxPositionSize}",
+                    RejectionReason = riskReason,
                     Instrument = cmd.Instrument,
                     Action = cmd.Action,
                     CorrelationId = cmd.CorrelationId ?? "",
                     TimestampUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                 };
                 _idempotency.Remember(cmd.ClientOrderId, rejected);
-                _audit?.Record("place_rejected", rejected.RejectionReason, new { client_order_id = cmd.ClientOrderId });
+                _audit?.Record("place_rejected", riskReason, new { client_order_id = cmd.ClientOrderId });
                 yield return new FabricMessage { OrderEvent = rejected };
                 yield break;
             }
 
+            _metrics.IncPlace();
             _audit?.Record("place_order", "accepted_for_gateway", new
             {
                 client_order_id = cmd.ClientOrderId,
@@ -392,16 +410,27 @@ namespace Lumina.Execution.Fabric.Grpc
                 qty = cmd.Quantity,
                 protected_flag = cmd.Protected,
                 reduce_only = cmd.ReduceOnly,
+                correlation_id = cmd.CorrelationId,
             });
 
-            foreach (var evt in _gateway.PlaceOrder(cmd))
+            var sw = Stopwatch.StartNew();
+            var events = _gateway.PlaceOrder(cmd);
+            sw.Stop();
+            _metrics.ObservePlaceLatencyMs(sw.Elapsed.TotalMilliseconds);
+
+            foreach (var evt in events)
             {
                 _idempotency.Remember(cmd.ClientOrderId, evt);
+                if (evt.State == OrderState.Rejected)
+                    _metrics.IncPlaceRejected();
+                else if (evt.State == OrderState.Filled || evt.State == OrderState.PartiallyFilled)
+                    _metrics.IncPlaceFilled();
                 _audit?.Record("order_event", evt.State.ToString(), new
                 {
                     client_order_id = evt.ClientOrderId,
                     nt_order_id = evt.NtOrderId,
                     state = evt.State.ToString(),
+                    correlation_id = evt.CorrelationId,
                 });
                 yield return new FabricMessage { OrderEvent = evt };
             }
@@ -422,6 +451,7 @@ namespace Lumina.Execution.Fabric.Grpc
                 yield break;
             }
 
+            _metrics.IncCancel();
             _audit?.Record("cancel_order", "request", new
             {
                 client_order_id = cmd?.ClientOrderId,
@@ -449,6 +479,7 @@ namespace Lumina.Execution.Fabric.Grpc
                 yield break;
             }
 
+            _metrics.IncModify();
             _audit?.Record("modify_order", "request", new
             {
                 client_order_id = cmd?.ClientOrderId,
@@ -479,6 +510,7 @@ namespace Lumina.Execution.Fabric.Grpc
                 yield break;
             }
 
+            _metrics.IncFlatten();
             _audit?.Record("flatten", cmd?.Emergency == true ? "emergency" : "normal", new
             {
                 instrument = cmd?.Instrument,
@@ -491,6 +523,8 @@ namespace Lumina.Execution.Fabric.Grpc
         private void ApplyDisconnectPolicy(string reason)
         {
             _safeMode.EnterSafe(reason);
+            _metrics.IncSafeMode();
+            _metrics.IncDisconnectPolicy();
             var cancelled = _gateway.CancelNonProtected(reason);
             PublishOrderEvents(cancelled);
             PublishAlert(new SafetyAlert

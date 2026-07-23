@@ -27,6 +27,7 @@ namespace Lumina.Execution.Fabric.Execution
         }
 
         public string AccountName { get; }
+        public string GatewayKind => "sim";
         public double Balance { get; private set; }
         public double Equity { get; private set; }
 

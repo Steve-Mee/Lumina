@@ -24,6 +24,14 @@ export interface NinjaTraderTelemetry {
   account: string;
   last_bar_ts: string | null;
   state: string;
+  /** Fabric safe mode: NORMAL | SAFE | FULL_SAFE | UNKNOWN */
+  safe_mode?: string;
+  fabric_target?: string;
+  gateway?: string;
+  session_id?: string;
+  last_state_hash?: string;
+  recent_alerts?: number;
+  metrics?: Record<string, number | string>;
 }
 
 export interface CoreLiveTelemetry {
@@ -92,12 +100,27 @@ function parseNinjaTraderTelemetry(value: unknown): NinjaTraderTelemetry | null 
   if (!isRecord(value)) {
     return null;
   }
+  const metricsRaw = value.metrics;
+  const metrics =
+    metricsRaw && typeof metricsRaw === "object" && metricsRaw !== null
+      ? (metricsRaw as Record<string, number | string>)
+      : undefined;
   return {
     connected: value.connected === true,
     account: typeof value.account === "string" ? value.account : "",
     last_bar_ts:
       typeof value.last_bar_ts === "string" ? value.last_bar_ts : null,
     state: typeof value.state === "string" ? value.state : "disconnected",
+    safe_mode: typeof value.safe_mode === "string" ? value.safe_mode : undefined,
+    fabric_target:
+      typeof value.fabric_target === "string" ? value.fabric_target : undefined,
+    gateway: typeof value.gateway === "string" ? value.gateway : undefined,
+    session_id: typeof value.session_id === "string" ? value.session_id : undefined,
+    last_state_hash:
+      typeof value.last_state_hash === "string" ? value.last_state_hash : undefined,
+    recent_alerts:
+      typeof value.recent_alerts === "number" ? value.recent_alerts : undefined,
+    metrics,
   };
 }
 

@@ -700,8 +700,8 @@ During migration:
 - [x] PR-B: Python `FabricGrpcClient` + broker wiring (mockable)
 - [x] PR-C: C# Fabric gRPC host POC (PlaceOrder SIM + heartbeat)
 - [x] PR-D: Safety MVP (audit, StateSync, modify, chaos matrix, operator runbook)
-- [ ] PR-E: Hardening, metrics, Command Deck status, live NT gateway
-- [ ] REAL: Separate promotion ADR only after SIM evidence
+- [x] PR-E: Hardening (pre-trade risk, metrics, Deck NT pill, NtOrderGateway skeleton)
+- [ ] PR-F / REAL: Live NT Account bind + promotion ADR after SIM evidence
 
 See [execution-fabric-phase0.md](execution-fabric-phase0.md) for Phase 0 gates.
 

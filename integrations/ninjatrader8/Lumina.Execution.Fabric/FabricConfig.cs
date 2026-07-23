@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
@@ -14,6 +15,8 @@ namespace Lumina.Execution.Fabric
         public string AuthTokenEnv { get; set; } = "LUMINA_FABRIC_TOKEN";
         public string AuthToken { get; set; } = "";
         public string AccountName { get; set; } = "Sim101";
+        /// <summary>Order gateway: "sim" (default) or "nt" (live Account gateway when bound).</summary>
+        public string GatewayMode { get; set; } = "sim";
         public int HeartbeatTimeoutMs { get; set; } = 5000;
         public int FlattenGraceMs { get; set; } = 15000;
         public bool FlattenOnTimeout { get; set; } = true;
@@ -21,8 +24,14 @@ namespace Lumina.Execution.Fabric
         public int MaxPositionSize { get; set; } = 10;
         public double DailyLossLimit { get; set; } = 0; // 0 = disabled
         public int MaxOrdersPerMinute { get; set; } = 60;
+        /// <summary>Per-instrument max absolute position (0/absent = use MaxPositionSize only).</summary>
+        public Dictionary<string, int>? MaxPositionByInstrument { get; set; }
         /// <summary>Optional path for append-only fabric-audit.jsonl (default %APPDATA%\LUMINA\).</summary>
         public string? AuditLogPath { get; set; }
+
+        public bool UseNtGateway =>
+            string.Equals(GatewayMode, "nt", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(GatewayMode, "ninjatrader", StringComparison.OrdinalIgnoreCase);
 
         public string ResolveToken()
         {
