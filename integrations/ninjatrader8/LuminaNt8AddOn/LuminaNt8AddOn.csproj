@@ -4,11 +4,22 @@
     <RootNamespace>LuminaNt8AddOn</RootNamespace>
     <AssemblyName>LuminaNt8AddOn</AssemblyName>
     <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
-  <!-- Reference NinjaTrader.Core.dll from local NT8 installation when building. -->
+
   <ItemGroup>
+    <ProjectReference Include="..\Lumina.Execution.Fabric\Lumina.Execution.Fabric.csproj" />
+  </ItemGroup>
+
+  <!-- Optional NT8 API reference — set NINJATRADER8_BIN to build against real NinjaTrader.Core. -->
+  <ItemGroup Condition="'$(NINJATRADER8_BIN)' != '' And Exists('$(NINJATRADER8_BIN)\NinjaTrader.Core.dll')">
     <Reference Include="NinjaTrader.Core">
       <HintPath>$(NINJATRADER8_BIN)\NinjaTrader.Core.dll</HintPath>
+      <Private>false</Private>
     </Reference>
   </ItemGroup>
+
+  <PropertyGroup Condition="'$(NINJATRADER8_BIN)' == '' Or !Exists('$(NINJATRADER8_BIN)\NinjaTrader.Core.dll')">
+    <DefineConstants>$(DefineConstants);FABRIC_STANDALONE</DefineConstants>
+  </PropertyGroup>
 </Project>

@@ -1,17 +1,51 @@
-// LUMINA Execution Fabric — NT8 AddOn entry point.
-// Wire protocol: gRPC server on localhost (ADR-0035). WebSocket client path is superseded.
+// LUMINA Execution Fabric — NT8 AddOn entry point (ADR-0035 / PR-C).
+// Hosts gRPC Fabric on localhost. When NinjaTrader.Core is unavailable at build time,
+// FABRIC_STANDALONE stubs the AddOnBase lifecycle for compile checks.
+
+using System;
+using Lumina.Execution.Fabric;
+using Lumina.Execution.Fabric.Execution;
+
+#if !FABRIC_STANDALONE
+using NinjaTrader.NinjaScript;
+#endif
 
 namespace LuminaNt8AddOn
 {
-    /// <summary>
-    /// NT8 AddOn entry point. Hosts Execution Fabric gRPC on State.Active (Phase 0 PR-C).
-    /// </summary>
-    public class AddOn : NinjaTrader.NinjaScript.AddOnBase
+#if FABRIC_STANDALONE
+    /// <summary>Compile-time stub when NinjaTrader.Core is not referenced.</summary>
+    public abstract class AddOnBaseStub
     {
-        // TODO(PR-C): FabricGrpcHost _host;
+        protected enum StateKind { SetDefaults, Active, Terminated }
+        protected StateKind State { get; set; }
+        protected string Name { get; set; } = "";
+        protected string Description { get; set; } = "";
+        protected abstract void OnStateChange();
+    }
+#endif
+
+    /// <summary>
+    /// NT8 AddOn entry point. Hosts Execution Fabric gRPC on State.Active.
+    /// Phase 0 uses <see cref="SimOrderGateway"/> until a live NT order gateway is wired (PR-D).
+    /// </summary>
+#if FABRIC_STANDALONE
+    public class AddOn : AddOnBaseStub
+#else
+    public class AddOn : AddOnBase
+#endif
+    {
+        private FabricGrpcHost? _host;
 
         protected override void OnStateChange()
         {
+#if FABRIC_STANDALONE
+            // Standalone: methods still document lifecycle; host started via SimHost for E2E.
+            if (State == StateKind.SetDefaults)
+            {
+                Name = "LUMINA Execution Fabric";
+                Description = "Native gRPC execution plane for LUMINA Brain (localhost only)";
+            }
+#else
             if (State == State.SetDefaults)
             {
                 Name = "LUMINA Execution Fabric";
@@ -19,12 +53,54 @@ namespace LuminaNt8AddOn
             }
             else if (State == State.Active)
             {
-                // TODO(PR-C): start gRPC server on 127.0.0.1:50051, load fabric.json, auth token.
-                // Keep Safety watchdog alive independent of Brain process.
+                StartFabricHost();
             }
             else if (State == State.Terminated)
             {
-                // TODO(PR-C): graceful shutdown; apply disconnect policy (cancel / optional flatten).
+                StopFabricHost();
+            }
+#endif
+        }
+
+        /// <summary>Start Fabric host (also usable from tests / standalone bootstrap).</summary>
+        public void StartFabricHost()
+        {
+            if (_host != null)
+                return;
+            try
+            {
+                var config = FabricConfig.LoadDefault();
+                // Phase 0: SIM gateway inside AddOn until NT Account order API is integrated.
+                var gateway = new SimOrderGateway(config.AccountName);
+                _host = new FabricGrpcHost(config, gateway, msg =>
+                {
+#if !FABRIC_STANDALONE
+                    // Prefer NT Output window when available.
+                    try { NinjaTrader.Code.Output.Process(msg, NinjaTrader.NinjaScript.PrintTo.OutputTab1); }
+                    catch { System.Diagnostics.Debug.WriteLine(msg); }
+#else
+                    System.Diagnostics.Debug.WriteLine(msg);
+#endif
+                });
+                _host.Start();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[LUMINA Fabric] failed to start: " + ex);
+                _host = null;
+                throw;
+            }
+        }
+
+        public void StopFabricHost()
+        {
+            try
+            {
+                _host?.Stop();
+            }
+            finally
+            {
+                _host = null;
             }
         }
     }

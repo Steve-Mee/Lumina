@@ -1,58 +1,89 @@
-# LUMINA Execution Fabric — NT8 Add-on
+# LUMINA Execution Fabric — NT8 Add-on + SIM host
 
-Native NinjaTrader 8 Add-on that hosts the **Execution Fabric** gRPC server on localhost and executes orders against the configured NT account (SIM first).
+Native execution plane for LUMINA Brain (ADR-0035 / Blueprint v1.1).
 
-## Status
+## Projects
 
-| Layer | Status |
-|-------|--------|
-| Proto contract | `protos/lumina/execution/v1/fabric.proto` (SSOT) |
-| ADR | [0035-execution-fabric-grpc.md](../../../docs/adr/0035-execution-fabric-grpc.md) |
-| C# Add-on | Skeleton → gRPC host in Phase 0 (PR-C) |
-| Legacy WebSocket client | Superseded — do not implement WS to Core |
+| Project | Role |
+|---------|------|
+| `Lumina.Execution.Fabric` | gRPC server, safety watchdog, SIM order gateway, idempotency |
+| `Lumina.Execution.Fabric.SimHost` | Standalone console host for Phase 0 E2E **without** NT8 |
+| `LuminaNt8AddOn` | NT8 `AddOnBase` entry; starts Fabric on `State.Active` |
 
-Blueprint: [LUMINA_Execution_Fabric_Blueprint_v1.1_EN.md](../../../project-dna/lumina/evolution/LUMINA_Execution_Fabric_Blueprint_v1.1_EN.md)
+## Build
 
-## Architecture (target)
-
-```
-Python Brain (gRPC client)  →  127.0.0.1:50051  →  This Add-on (gRPC server)
-                                                      ├─ Order execution (NT Account API)
-                                                      ├─ Market data stream
-                                                      └─ Safety & Risk Engine (heartbeat watchdog)
+```powershell
+cd integrations\ninjatrader8
+dotnet build Lumina.Execution.Fabric.sln -c Release
 ```
 
-Brain still enforces Final Arbitration / order gatekeeper **before** calling Fabric. Fabric enforces independent pre-trade and disconnect policies.
+Optional NT8 reference (live AddOn against real `NinjaTrader.Core`):
 
-## Build (planned)
+```powershell
+$env:NINJATRADER8_BIN = "C:\Program Files\NinjaTrader 8\bin"
+dotnet build LuminaNt8AddOn\LuminaNt8AddOn.csproj -c Release
+```
 
-1. Open `LuminaNt8AddOn.csproj` in Visual Studio (net48, NT8 refs).
-2. Set env `NINJATRADER8_BIN` to NT8 binary folder (for `NinjaTrader.Core.dll`).
-3. Add gRPC packages compatible with .NET Framework 4.8 (Phase 0 spike: Grpc.Core or approved host).
-4. Build Release; copy `.dll` to `%USERPROFILE%\Documents\NinjaTrader 8\bin\Custom\AddOns\`.
-5. Restart NinjaTrader 8 and enable **LUMINA Execution Fabric** in Control Center.
+Without `NINJATRADER8_BIN`, the AddOn compiles with `FABRIC_STANDALONE` (lifecycle stub). Use **SimHost** for gRPC E2E.
+
+## Run SIM Fabric (Phase 0)
+
+```powershell
+$env:LUMINA_FABRIC_TOKEN = "test-token"
+.\Lumina.Execution.Fabric.SimHost\bin\Release\net48\Lumina.Execution.Fabric.SimHost.exe --port 50051 --account Sim101
+```
+
+Python Brain (after `pip install grpcio`):
+
+```powershell
+$env:LUMINA_FABRIC_TOKEN = "test-token"
+# broker.live_provider=ninjatrader, fabric host 127.0.0.1:50051
+```
+
+Or use unit tests with an in-process mock server (`tests/broker/test_fabric_client.py`).
 
 ## Configuration
 
-Local config: `%APPDATA%\LUMINA\fabric.json` (not committed):
+`%APPDATA%\LUMINA\fabric.json` (not committed):
 
 ```json
 {
-  "bind_host": "127.0.0.1",
-  "bind_port": 50051,
-  "auth_token_env": "LUMINA_FABRIC_TOKEN",
-  "account_name": "Sim101",
-  "heartbeat_timeout_ms": 5000,
-  "flatten_grace_ms": 15000
+  "BindHost": "127.0.0.1",
+  "BindPort": 50051,
+  "AuthTokenEnv": "LUMINA_FABRIC_TOKEN",
+  "AccountName": "Sim101",
+  "HeartbeatTimeoutMs": 5000,
+  "FlattenGraceMs": 15000,
+  "FlattenOnTimeout": true,
+  "BindLocalhostOnly": true,
+  "MaxPositionSize": 10
 }
 ```
 
-Set `LUMINA_FABRIC_TOKEN` in both the NT process environment and Core `.env`.
+## Safety (server-side)
 
-## Manual checklist (Phase 0)
+- Heartbeat timeout (default 5s) → cancel non-protected working orders → **SAFE_MODE**
+- After flatten grace (default 15s) → emergency flatten (SIM gateway)
+- Brain stream close → same disconnect policy
+- `client_order_id` idempotency (at-most-once place)
+- Localhost-only bind enforced when `BindLocalhostOnly=true`
 
-- [ ] gRPC listens only on `127.0.0.1`
-- [ ] Auth rejects wrong token (fail-closed)
-- [ ] Heartbeat every 1–2s from Brain; Fabric watchdog at 5s
-- [ ] `PlaceOrder` on SIM account with `client_order_id` idempotency
-- [ ] Heartbeat timeout → cancel non-protected working orders + SAFE_MODE
+## Deploy to NinjaTrader 8
+
+1. Build Release with `NINJATRADER8_BIN` set.
+2. Copy `LuminaNt8AddOn.dll`, `Lumina.Execution.Fabric.dll`, and Grpc/Protobuf dependencies into  
+   `%USERPROFILE%\Documents\NinjaTrader 8\bin\Custom\AddOns\`  
+   (or merge per NT dependency policy).
+3. Restart NT8; enable **LUMINA Execution Fabric**.
+4. Set `LUMINA_FABRIC_TOKEN` for the NT process and Brain.
+
+Phase 0 still uses **SimOrderGateway** inside the AddOn until the live NT `Account` order API is wired (PR-D).
+
+## Checklist
+
+- [x] gRPC listens only on `127.0.0.1` (default)
+- [x] Auth rejects wrong token
+- [x] PlaceOrder + GetAccountState (SIM)
+- [x] Heartbeat watchdog → SAFE_MODE + cancel
+- [ ] Live NT order submission (PR-D)
+- [ ] Full chaos matrix (PR-D)

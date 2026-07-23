@@ -18,14 +18,24 @@ E2E order placement from Python Brain → Fabric gRPC → NinjaTrader **SIM**, p
 | Proto contract tests | Tests | `tests/broker/test_fabric_proto_contract.py` green |
 | `FabricGrpcClient` + mapper | Python | Connect + auth + place/flatten via mock server (PR-B) |
 | Bridge/broker wiring | Python | `attach_fabric_client`, factory injects client (PR-B) |
-| C# gRPC host POC | NT8 | PlaceOrder on Sim101 (PR-C) |
-| Basic heartbeat timeout cancel | Fabric Safety | Non-protected working orders cancelled (PR-C/D) |
+| C# gRPC host POC | NT8 / SimHost | `Lumina.Execution.Fabric` + SimHost PlaceOrder SIM (PR-C) |
+| Basic heartbeat timeout cancel | Fabric Safety | Watchdog cancel + SAFE_MODE in C# host (PR-C) |
 
 ## Automated gates (repo)
 
 ```text
 python scripts/generate_fabric_proto.py
-pytest tests/broker/test_fabric_proto_contract.py -q
+pytest tests/broker/test_fabric_proto_contract.py tests/broker/test_fabric_client.py tests/broker/test_fabric_mapper.py -q
+dotnet build integrations/ninjatrader8/Lumina.Execution.Fabric.sln -c Release
+```
+
+### Optional SIM host E2E
+
+```powershell
+$env:LUMINA_FABRIC_TOKEN = "test-token"
+# Terminal A:
+dotnet run --project integrations/ninjatrader8/Lumina.Execution.Fabric.SimHost -c Release -- --port 50051
+# Terminal B: Python FabricGrpcClient connect + place_order (see tests/broker/test_fabric_client.py pattern)
 ```
 
 ## Manual SIM gate (operator)

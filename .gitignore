@@ -263,3 +263,8 @@ state/lumina_sim_state.json
 state/lumina_daytrading_bible.json
 state/.locks/
 coverage.xml
+
+# C# Fabric build outputs
+integrations/ninjatrader8/**/bin/
+integrations/ninjatrader8/**/obj/
+

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>Lumina.Execution.Fabric.SimHost</RootNamespace>
+    <AssemblyName>Lumina.Execution.Fabric.SimHost</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lumina.Execution.Fabric\Lumina.Execution.Fabric.csproj" />
+  </ItemGroup>
+</Project>
