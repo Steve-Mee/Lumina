@@ -39,12 +39,15 @@ def broker_factory(
         if provider == "ninjatrader":
             from lumina_core.broker.ninjatrader.broker import NinjaTraderBroker
             from lumina_core.broker.ninjatrader.bridge_service import get_ninjatrader_bridge_service
+            from lumina_core.broker.ninjatrader.fabric_client import FabricConfig, FabricGrpcClient
 
             bridge = get_ninjatrader_bridge_service(
                 configured_account=str(getattr(config, "ninjatrader_account_name", "Sim101") or "Sim101"),
                 trade_mode=trade_mode,
                 ninjatrader_enabled=bool(getattr(config, "ninjatrader_enabled", False)),
             )
+            fabric_cfg = FabricConfig.from_engine_config(config, mode_context=trade_mode)
+            bridge.attach_fabric_client(FabricGrpcClient(fabric_cfg))
             return NinjaTraderBroker(
                 configured_account=str(getattr(config, "ninjatrader_account_name", "Sim101") or "Sim101"),
                 ninjatrader_enabled=bool(getattr(config, "ninjatrader_enabled", False)),

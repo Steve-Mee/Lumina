@@ -52,9 +52,18 @@ broker:
   live_provider: crosstrade
   ninjatrader:
     enabled: false
+    # Legacy WS path (superseded by Fabric gRPC — ADR-0035).
     websocket_path: /ws/ninjatrader/v1
     account_name: Sim101
     instruments: []
+    fabric:
+      host: 127.0.0.1
+      port: 50051
+      auth_token_env: LUMINA_FABRIC_TOKEN
+      heartbeat_interval_ms: 1000
+      heartbeat_timeout_ms: 5000
+      flatten_grace_ms: 15000
+      bind_localhost_only: true
   crosstrade:
     api_key: ${CROSSTRADE_TOKEN}
     websocket_url: wss://app.crosstrade.io/ws/stream

@@ -252,7 +252,43 @@ class EngineConfig(BaseModel):
     )
     ninjatrader_nt8_api_key: str | None = Field(
         default_factory=lambda: (
-            str(os.getenv("LUMINA_NT8_API_KEY") or "").strip() or None
+            str(os.getenv("LUMINA_FABRIC_TOKEN") or os.getenv("LUMINA_NT8_API_KEY") or "").strip() or None
+        )
+    )
+    # Execution Fabric gRPC (ADR-0035) — Brain connects to Fabric host.
+    ninjatrader_fabric_host: str = Field(
+        default_factory=lambda: str(
+            os.getenv("LUMINA_FABRIC_HOST")
+            or _config_yaml_nested("127.0.0.1", "broker", "ninjatrader", "fabric", "host")
+            or "127.0.0.1"
+        ).strip()
+    )
+    ninjatrader_fabric_port: int = Field(
+        default_factory=lambda: int(
+            os.getenv("LUMINA_FABRIC_PORT")
+            or _config_yaml_nested(50051, "broker", "ninjatrader", "fabric", "port")
+            or 50051
+        )
+    )
+    ninjatrader_fabric_auth_token_env: str = Field(
+        default_factory=lambda: str(
+            os.getenv("LUMINA_FABRIC_TOKEN_ENV")
+            or _config_yaml_nested("LUMINA_FABRIC_TOKEN", "broker", "ninjatrader", "fabric", "auth_token_env")
+            or "LUMINA_FABRIC_TOKEN"
+        ).strip()
+    )
+    fabric_heartbeat_interval_ms: int = Field(
+        default_factory=lambda: int(
+            os.getenv("LUMINA_FABRIC_HEARTBEAT_INTERVAL_MS")
+            or _config_yaml_nested(1000, "broker", "ninjatrader", "fabric", "heartbeat_interval_ms")
+            or 1000
+        )
+    )
+    fabric_heartbeat_timeout_ms: int = Field(
+        default_factory=lambda: int(
+            os.getenv("LUMINA_FABRIC_HEARTBEAT_TIMEOUT_MS")
+            or _config_yaml_nested(5000, "broker", "ninjatrader", "fabric", "heartbeat_timeout_ms")
+            or 5000
         )
     )
 

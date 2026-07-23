@@ -16,7 +16,8 @@ E2E order placement from Python Brain → Fabric gRPC → NinjaTrader **SIM**, p
 | `fabric.proto` SSOT | Contract | `protos/lumina/execution/v1/fabric.proto` |
 | Python codegen | Tooling | `python scripts/generate_fabric_proto.py` produces importable stubs |
 | Proto contract tests | Tests | `tests/broker/test_fabric_proto_contract.py` green |
-| `FabricGrpcClient` skeleton | Python | Connect + auth + heartbeat loop (PR-B) |
+| `FabricGrpcClient` + mapper | Python | Connect + auth + place/flatten via mock server (PR-B) |
+| Bridge/broker wiring | Python | `attach_fabric_client`, factory injects client (PR-B) |
 | C# gRPC host POC | NT8 | PlaceOrder on Sim101 (PR-C) |
 | Basic heartbeat timeout cancel | Fabric Safety | Non-protected working orders cancelled (PR-C/D) |
 

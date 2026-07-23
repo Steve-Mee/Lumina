@@ -1,4 +1,4 @@
-"""Session state and transport for the NinjaTrader WebSocket bridge."""
+"""Session state and transport for the NinjaTrader bridge (Fabric gRPC + legacy WS)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Position
+from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Order, Position
 from lumina_core.broker.ninjatrader.connection_state import NinjaTraderConnectionState
 from lumina_core.broker.ninjatrader.guards import assert_nt_bridge_capability
 from lumina_core.broker.ninjatrader.promotion_gate import NtBridgeAction, normalize_trade_mode
@@ -20,6 +20,9 @@ from lumina_core.broker.ninjatrader.schemas import (
     PositionUpdateFrame,
     parse_inbound_frame,
 )
+
+if TYPE_CHECKING:
+    from lumina_core.broker.ninjatrader.fabric_client import FabricGrpcClient
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +43,7 @@ class _CommandWaiter:
 
 
 class NinjaTraderBridgeService:
-    """Transport-only bridge between Core and the NT8 add-on WebSocket."""
+    """Session + command façade for NT8 via Execution Fabric gRPC (preferred) or legacy WS send_fn."""
 
     def __init__(
         self,
@@ -56,6 +59,7 @@ class NinjaTraderBridgeService:
         self.command_timeout_seconds = float(command_timeout_seconds)
         self._lock = threading.RLock()
         self._send_fn: SendFn | None = None
+        self._fabric: FabricGrpcClient | None = None
         self._connection = NinjaTraderConnectionState()
         self._session_id: str | None = None
         self._fills: list[Fill] = []
@@ -67,6 +71,8 @@ class NinjaTraderBridgeService:
     def set_trade_mode(self, mode: str) -> None:
         with self._lock:
             self.trade_mode = normalize_trade_mode(mode)
+            if self._fabric is not None:
+                self._fabric.set_mode_context(self.trade_mode)
 
     def set_configured_account(self, account: str) -> None:
         with self._lock:
@@ -76,13 +82,59 @@ class NinjaTraderBridgeService:
         with self._lock:
             self._send_fn = send_fn
 
+    def attach_fabric_client(self, client: FabricGrpcClient | None) -> None:
+        """Attach Execution Fabric gRPC client (ADR-0035). Preferred over WS send_fn."""
+        with self._lock:
+            self._fabric = client
+            if client is not None:
+                client.set_mode_context(self.trade_mode)
+                client.set_on_message(self._on_fabric_message)
+
+    def get_fabric_client(self) -> FabricGrpcClient | None:
+        with self._lock:
+            return self._fabric
+
+    def connect_fabric(self) -> bool:
+        """Connect Fabric client and mark bridge session connected on success."""
+        fabric = self.get_fabric_client()
+        if fabric is None:
+            return False
+        fabric.set_mode_context(self.trade_mode)
+        self.begin_authentication()
+        ok = fabric.connect()
+        if not ok:
+            with self._lock:
+                self._connection.state = "error"
+            return False
+        with self._lock:
+            self._session_id = fabric.session_id
+            self._connection.state = "connected"
+            self._connection.account_name = fabric.account_name or self.configured_account
+            self._connection.client_name = fabric.config.client_name
+            self._connection.client_version = fabric.config.client_version
+        # Refresh account snapshot when possible.
+        account, positions, code = fabric.get_account_state()
+        if code == "ok" and account is not None:
+            with self._lock:
+                self._account = account
+                self._positions = positions
+                if account.raw.get("account_name"):
+                    self._connection.account_name = str(account.raw["account_name"])
+        return True
+
     def on_disconnect(self) -> None:
+        fabric = self.get_fabric_client()
+        if fabric is not None:
+            try:
+                fabric.disconnect()
+            except Exception:
+                logger.debug("Fabric disconnect failed", exc_info=True)
         with self._lock:
             self._connection.state = "disconnected"
             self._send_fn = None
             self._session_id = None
             for waiter in self._pending_commands.values():
-                waiter.result = {"type": "error", "code": "DISCONNECTED", "message": "NT8 WebSocket disconnected"}
+                waiter.result = {"type": "error", "code": "DISCONNECTED", "message": "NT8 / Fabric disconnected"}
                 waiter.event.set()
             self._pending_commands.clear()
 
@@ -227,16 +279,23 @@ class NinjaTraderBridgeService:
             waiter.event.set()
 
     def send_command_sync(self, frame: dict[str, Any], *, timeout_seconds: float | None = None) -> dict[str, Any]:
-        """Enqueue an outbound command and wait for ack/error (broker-only entry)."""
+        """Enqueue an outbound command and wait for ack/error (broker-only entry).
+
+        Prefer Execution Fabric gRPC when attached; fall back to legacy WS send_fn.
+        """
         correlation_id = str(frame.get("correlation_id", "") or uuid.uuid4())
         frame["correlation_id"] = correlation_id
+        frame_type = str(frame.get("type", ""))
 
         with self._lock:
             connection = self.get_connection_state()
+            action = (
+                NtBridgeAction.SUBMIT_ORDER
+                if frame_type == "submit_order"
+                else NtBridgeAction.CANCEL
+            )
             allowed, reason = assert_nt_bridge_capability(
-                action=NtBridgeAction.SUBMIT_ORDER
-                if frame.get("type") == "submit_order"
-                else NtBridgeAction.CANCEL,
+                action=action,
                 trade_mode=self.trade_mode,
                 connection=connection,
                 configured_account=self.configured_account,
@@ -249,14 +308,21 @@ class NinjaTraderBridgeService:
                     "message": reason,
                     "correlation_id": correlation_id,
                 }
+            fabric = self._fabric
             send_fn = self._send_fn
-            if send_fn is None:
-                return {
-                    "type": "error",
-                    "code": "DISCONNECTED",
-                    "message": "No active NT8 WebSocket session",
-                    "correlation_id": correlation_id,
-                }
+
+        if fabric is not None:
+            return self._send_via_fabric(frame, fabric=fabric, timeout_seconds=timeout_seconds)
+
+        if send_fn is None:
+            return {
+                "type": "error",
+                "code": "DISCONNECTED",
+                "message": "No active Fabric client or NT8 WebSocket session",
+                "correlation_id": correlation_id,
+            }
+
+        with self._lock:
             waiter = _CommandWaiter()
             self._pending_commands[correlation_id] = waiter
 
@@ -288,6 +354,116 @@ class NinjaTraderBridgeService:
             "message": "No response from NT8",
             "correlation_id": correlation_id,
         }
+
+    def _send_via_fabric(
+        self,
+        frame: dict[str, Any],
+        *,
+        fabric: FabricGrpcClient,
+        timeout_seconds: float | None,
+    ) -> dict[str, Any]:
+        frame_type = str(frame.get("type", ""))
+        corr = str(frame.get("correlation_id", "") or uuid.uuid4())
+        timeout = float(timeout_seconds if timeout_seconds is not None else self.command_timeout_seconds)
+
+        if frame_type == "submit_order":
+            order = Order(
+                symbol=str(frame.get("symbol", "")),
+                side=str(frame.get("side", "BUY")),
+                quantity=int(frame.get("quantity", 1) or 1),
+                order_type=str(frame.get("order_type", "MARKET") or "MARKET"),
+                stop_loss=float(frame.get("stop_loss") or 0.0),
+                take_profit=float(frame.get("take_profit") or 0.0),
+                metadata={
+                    "price": frame.get("price"),
+                    "stop_price": frame.get("stop_price"),
+                    "reduce_only": frame.get("reduce_only"),
+                    "protected": frame.get("protected"),
+                },
+            )
+            client_order_id = str(frame.get("client_order_id") or f"lumina-{uuid.uuid4()}")
+            return fabric.place_order_sync(
+                order,
+                client_order_id=client_order_id,
+                correlation_id=corr,
+                timeout_seconds=timeout,
+            )
+
+        if frame_type in {"flatten", "cancel_all", "cancel_order"}:
+            if frame_type == "cancel_order":
+                return fabric.cancel_order_sync(
+                    client_order_id=str(frame.get("client_order_id", "")),
+                    nt_order_id=str(frame.get("order_id", frame.get("nt_order_id", ""))),
+                    correlation_id=corr,
+                    timeout_seconds=timeout,
+                )
+            return fabric.flatten_sync(
+                instrument=str(frame.get("symbol", frame.get("instrument", ""))),
+                correlation_id=corr,
+                emergency=bool(frame.get("emergency", False)),
+                timeout_seconds=timeout,
+            )
+
+        return {
+            "type": "error",
+            "code": "UNSUPPORTED",
+            "message": f"Unsupported Fabric command type: {frame_type}",
+            "correlation_id": corr,
+        }
+
+    def _on_fabric_message(self, msg: Any) -> None:
+        """Apply Fabric stream events to session fill/account state."""
+        try:
+            from lumina_core.broker.ninjatrader.fabric_client import apply_fabric_message_to_bridge_state
+            from lumina_core.broker.ninjatrader.generated import fabric_pb2
+        except ImportError:
+            return
+
+        def _record_fill(fill: Fill) -> None:
+            with self._lock:
+                if fill.fill_id in self._fill_ids:
+                    return
+                self._fill_ids.add(fill.fill_id)
+                self._fills.append(fill)
+
+        def _set_account(account: AccountInfo) -> None:
+            with self._lock:
+                self._account = account
+
+        def _set_positions(positions: list[Position]) -> None:
+            with self._lock:
+                self._positions = list(positions)
+
+        def _set_meta(**kwargs: Any) -> None:
+            with self._lock:
+                if "account_name" in kwargs and kwargs["account_name"]:
+                    self._connection.account_name = str(kwargs["account_name"])
+                if "session_id" in kwargs and kwargs["session_id"]:
+                    self._session_id = str(kwargs["session_id"])
+
+        apply_fabric_message_to_bridge_state(
+            msg,
+            record_fill=_record_fill,
+            set_account=_set_account,
+            set_positions=_set_positions,
+            set_connection_meta=_set_meta,
+        )
+
+        which = msg.WhichOneof("payload") if hasattr(msg, "WhichOneof") else None
+        if which == "auth_result" and getattr(msg.auth_result, "ok", False):
+            with self._lock:
+                self._connection.state = "connected"
+        if which == "safety_alert":
+            alert = msg.safety_alert
+            if alert.alert_type in (
+                fabric_pb2.SAFETY_ALERT_TYPE_SAFE_MODE_ENTERED,
+                fabric_pb2.SAFETY_ALERT_TYPE_HEARTBEAT_TIMEOUT,
+                fabric_pb2.SAFETY_ALERT_TYPE_NT_CONNECTION_LOST,
+            ):
+                with self._lock:
+                    # Degraded: block new orders via connection state policy.
+                    if self._connection.state == "connected":
+                        self._connection.state = "degraded"
 
     def get_fills(self) -> list[Fill]:
         with self._lock:

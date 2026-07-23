@@ -57,6 +57,14 @@ class NinjaTraderBroker(BrokerBridge):
         state = bridge.get_connection_state()
         if state.is_connected:
             return True
+        # Prefer Execution Fabric gRPC when attached (ADR-0035).
+        if bridge.get_fabric_client() is not None:
+            ok = bridge.connect_fabric()
+            if ok:
+                return True
+            if self.logger is not None:
+                self.logger.warning("NinjaTrader Fabric connect failed")
+            return False
         if self.logger is not None:
             self.logger.warning(
                 "NinjaTrader bridge not connected (state=%s); connect returns False for live provider",
