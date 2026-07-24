@@ -175,6 +175,15 @@ describe("onboarding surface contracts", () => {
     expect(birthMissionControlSource).not.toContain("BirthMilestoneTrack");
     expect(birthCommandBarSource).toContain('variant="bar"');
     expect(birthPhaseSource).not.toContain("BirthDiagnosticsDrawer");
+    // Vault-grade mission panel (parity with Operator vault / Risk envelope)
+    expect(birthMissionControlSource).toContain("risk-envelope-panel__toolbar");
+    expect(birthMissionControlSource).toContain("risk-envelope-status-chip");
+    expect(birthMissionControlSource).toContain("HISTORY");
+    expect(birthMissionControlSource).toContain("REGIME");
+    // No thin engineActive-only mission shell — full chrome while engine live
+    expect(birthPhaseSource).not.toMatch(
+      /engineActive \?[\s\S]*birth-mission-shell[\s\S]*BirthMissionControl[\s\S]*className="min-h-0 flex-1"/,
+    );
   });
 
 
@@ -183,12 +192,13 @@ describe("onboarding surface contracts", () => {
     expect(birthPhaseCssSource).toContain(".birth-mission-grid > *");
     expect(birthPhaseCssSource).toContain("min-height: 0");
     expect(birthPhaseCssSource).toMatch(
-      /\.birth-mission-grid[\s\S]*@media \(min-width: 1024px\)[\s\S]*grid-template-columns:[\s\S]*minmax\(120px, 14%\)[\s\S]*minmax\(280px, 36%\)[\s\S]*minmax\(320px, 1fr\)/,
+      /\.birth-mission-grid[\s\S]*@media \(min-width: 1024px\)[\s\S]*grid-template-columns:[\s\S]*minmax\(100px, 12%\)[\s\S]*minmax\(260px, 34%\)[\s\S]*minmax\(320px, 1fr\)/,
     );
     expect(birthPhaseCssSource).toContain(".birth-stage-intel-column__body");
     expect(birthPhaseCssSource).toMatch(/\.birth-stage-intel-column__body[\s\S]*overflow-y:\s*auto/);
+    expect(birthPhaseCssSource).toMatch(/\.birth-mission-control__body[\s\S]*overflow-y:\s*auto/);
     expect(birthPhaseSource).toContain("BirthStageIntelColumn");
-    expect(birthMissionControlSource).toContain("overflow-hidden");
+    expect(birthMissionControlSource).toContain("overflow-y-auto");
     expect(birthMissionControlSource).not.toContain("birth-mission-control__scroll");
   });
 
@@ -214,11 +224,16 @@ describe("onboarding surface contracts", () => {
 
 
 
-  it("Birth command bar exposes stop and inline advanced toggles", () => {
+  it("Birth command bar exposes tool toggles; stop lives in mission control", () => {
     expect(birthPhaseSource).toContain("BirthCommandBar");
-    expect(birthCommandBarSource).toContain("BirthControlDock");
+    expect(birthCommandBarSource).not.toContain("BirthControlDock");
+    expect(birthMissionControlSource).toContain("BirthControlDock");
+    expect(birthMissionControlSource).toContain("showStopControl");
     expect(birthControlDockSource).toContain("Stop birth");
     expect(birthCommandBarSource).toContain("Logs");
+    expect(birthCommandBarSource).toContain("birth-command-bar__row");
+    expect(birthCommandBarSource).toContain("birth-command-bar__tool-btn");
+    expect(birthCommandBarSource).toContain("buildHudMilestones");
     expect(birthCommandBarSource).not.toContain("Telemetry");
   });
 
@@ -252,20 +267,22 @@ describe("onboarding surface contracts", () => {
     expect(birthCommandBarSource).toMatch(
       /showMilestoneRail\s*=\s*mode === "running" \|\| mode === "finale"/,
     );
-    expect(birthGenesisDeckSource).toContain("showStartButton={false}");
+    // Recovery actions live as vault cards in the Recovery tab (not a cramped dock).
+    expect(birthGenesisDeckSource).toContain("genesis-recovery-action-grid");
+    expect(birthGenesisDeckSource).toContain("BirthLaunchButton");
     expect(birthPhaseCssSource).toContain(".birth-genesis-grid");
     expect(birthPhaseCssSource).toMatch(/\.birth-genesis-grid[\s\S]*minmax\(120px, 14%\)/);
     expect(birthPhaseCssSource).toContain(".birth-genesis-tab-panel");
-    expect(birthGenesisDeckSource).toContain("birth-genesis-slider-card");
-    expect(birthPhaseCssSource).toContain(".birth-genesis-slider-card");
+    expect(birthGenesisDeckSource).toContain("genesis-charter-tile");
+    expect(birthGenesisDeckSource).toContain("risk-envelope-panel__toolbar");
+    expect(birthGenesisDeckSource).toContain("risk-envelope-cta-bar");
     expect(birthPhaseCssSource).toContain(".birth-genesis-panel__body");
     expect(birthPhaseCssSource).toContain(".birth-genesis-status-chips");
-    expect(birthPhaseCssSource).toMatch(/\.birth-genesis-panel__actions[\s\S]*flex-shrink:\s*0|flex:\s*0\s*0\s*auto/);
     expect(birthGenesisDeckSource).toContain("BirthGenesisStatusChips");
     expect(birthGenesisDeckSource).toContain("birth-genesis-panel__body");
-    expect(birthGenesisDeckSource).toContain("BirthGenesisStatusChips");
     expect(genesisMaturityLadderSource).toContain("birth-genesis-goals-details");
     expect(birthGenesisDeckSource).not.toContain("birth-genesis-panel__scroll");
+    expect(birthGenesisDeckSource).not.toContain("birth-genesis-slider-card");
   });
 
 
@@ -280,26 +297,40 @@ describe("onboarding surface contracts", () => {
 
 
 
-  it("BirthGenesisDeck uses tabs for goals and parameters without page scroll", () => {
-    expect(birthGenesisDeckSource).toContain('value="doelen"');
-    expect(birthGenesisDeckSource).toContain('value="parameters"');
+  it("BirthGenesisDeck uses vault-style charter tabs without operator trade sliders", () => {
+    expect(birthGenesisDeckSource).toContain('value="charter"');
+    expect(birthGenesisDeckSource).toContain('value="data"');
     expect(birthGenesisDeckSource).not.toContain("genesisOpen");
     expect(birthGenesisDeckSource).not.toContain("birth-activation-title");
     expect(birthGenesisDeckSource).toContain("stage1_winrate_pass_threshold");
     expect(birthGenesisDeckSource).toContain("require_real_simulator_data");
-    expect(birthGenesisDeckSource).toContain("Max Historical Days");
     expect(birthGenesisDeckSource).toContain("firstBootSizing");
-    expect(birthGenesisDeckSource).toContain("FIRST_BOOT_MAX_REAL_DAYS");
-    expect(birthGenesisDeckSource).toContain("handleTrainingTradesChange");
     expect(birthGenesisDeckSource).toContain("linkMaxRealDaysToTrainingTrades");
-    expect(birthGenesisDeckSource).toContain("FIRST_BOOT_MIN_REAL_DAYS");
-    const heroSection = birthGenesisDeckSource.split("birth-genesis-panel__tabs")[0] ?? "";
-    expect(heroSection).toContain("Training Trades");
-    expect(heroSection).toContain("GenesisWinrateGateBlock");
+    expect(birthGenesisDeckSource).toContain("CharterTile");
+    expect(birthGenesisDeckSource).toContain("Training trades");
+    expect(birthGenesisDeckSource).toContain("Winrate gate");
+    expect(birthGenesisDeckSource).toContain("Historical window");
+    expect(birthGenesisDeckSource).not.toContain("BirthHoloSlider");
+    expect(birthGenesisDeckSource).not.toContain("GenesisWinrateGateBlock");
+    expect(birthGenesisDeckSource).not.toContain("handleTrainingTradesChange");
     expect(birthGenesisDeckSource).toContain("GenesisMaturityGoalsPreview");
     expect(genesisMaturityLadderSource).toContain("genesis-maturity-goals");
     expect(birthPhaseCssSource).toContain(".genesis-maturity-goals");
-    expect(birthGenesisDeckSource).toContain("birth-genesis-hints-details");
+  });
+
+  it("BirthGenesisDeck Recovery tab uses vault action cards with wipe safety path", () => {
+    expect(birthGenesisDeckSource).toContain("genesis-recovery-action-grid");
+    expect(birthGenesisDeckSource).toContain("RecoveryActionCard");
+    expect(birthGenesisDeckSource).toContain("openWipeConfirm");
+    expect(birthGenesisDeckSource).toContain("Wis birth-data");
+    expect(birthGenesisDeckSource).toContain("Volledige wipe");
+    expect(birthGenesisDeckSource).toContain("Resume checkpoint");
+    expect(birthGenesisDeckSource).toContain("sessionInterrupted");
+    expect(birthGenesisDeckSource).toMatch(/showRecoveryTab[\s\S]*sessionInterrupted/);
+    // CTA no longer hosts the cramped control dock.
+    expect(birthGenesisDeckSource).not.toMatch(/genesis-launch-cta[\s\S]*BirthControlDock/);
+    expect(birthPhaseSource).toContain("sessionInterrupted={interrupted}");
+    expect(birthPhaseSource).toContain("showRecovery && !genesisMode");
   });
 
 
@@ -317,7 +348,8 @@ describe("onboarding surface contracts", () => {
   it("CommandHud exposes Save & Start when engine is off", () => {
 
     expect(commandHudSource).toContain("realTradingEligible");
-    expect(commandHudSource).toContain("MaturityProgressStrip");
+    // Ladder lives in CockpitShell chrome (red thread), not buried in CommandHud.
+    expect(commandHudSource).not.toContain("MaturityProgressStrip");
 
     expect(commandHudSource).toContain("HudNerveTap");
 
@@ -432,23 +464,33 @@ describe("onboarding surface contracts", () => {
 
     expect(onboardingWizardSource).toContain("minimal={isBirthStep}");
 
-    expect(birthGenesisDeckSource).toContain("birth-activation-progress");
-
-    expect(onboardingWizardSource).toContain("onboarding-birth-column");
-
-    expect(onboardingWizardSource).toContain("onboarding-birth-viewport");
-
-    expect(onboardingWizardSource).toMatch(/isBirthStep[\s\S]*max-w-none/);
-
-    expect(onboardingWizardSource).toMatch(/isBirthStep[\s\S]*flex-1/);
-
-    expect(onboardingWizardSource).not.toMatch(/isBirthStep[\s\S]*h-full/);
-
-    expect(onboardingWizardSource).not.toMatch(/isBirthStep[\s\S]*justify-end/);
+    // Primary Genesis surface is BirthPhaseScreen vault-style deck (not wizard column).
+    expect(birthGenesisDeckSource).toContain("BirthLaunchButton");
+    expect(birthGenesisDeckSource).toContain("risk-envelope-cta-bar");
+    expect(birthGenesisDeckSource).toContain("genesis-charter-tile-grid");
+    expect(birthGenesisDeckSource).toContain('label="BIRTH"');
+    expect(genesisMaturityLadderSource).toContain("genesis-evolution-pipeline");
+    expect(genesisMaturityLadderSource).not.toContain("<details");
+    // Ladder red thread under phase headers (wizard + birth + deck chrome)
+    expect(onboardingWizardSource).toContain("EvolutionLadderStrip");
+    expect(birthPhaseSource).toContain("EvolutionLadderStrip");
+    expect(cockpitShellSource).toContain("EvolutionLadderStrip");
+    // Chrome is pure pipeline — no meta title / Contract badge noise
+    const ladderStripSource = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../components/shared/EvolutionLadderStrip.tsx"),
+      "utf8",
+    );
+    expect(ladderStripSource).not.toContain("Evolution ladder");
+    expect(ladderStripSource).not.toContain('"Contract"');
+    expect(ladderStripSource).toContain('aria-label="Lumina evolution ladder"');
+    expect(genesisMaturityLadderSource).toContain('id: "setup"');
+    // Goals preview stays in deck; pipeline component itself is chrome-only.
+    expect(birthGenesisDeckSource).toContain("GenesisMaturityGoalsPreview");
+    expect(birthGenesisDeckSource).not.toMatch(/<GenesisMaturityLadder\b/);
+    expect(birthPhaseSource).toContain("birth-genesis-grid");
+    expect(birthPhaseSource).toContain("BirthHelixVisual");
 
     expect(birthActivateSource).toContain("min-h-0 w-full");
-
-    expect(birthActivateSource).toContain("max-w-2xl");
 
   });
 

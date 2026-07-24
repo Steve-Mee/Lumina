@@ -15,6 +15,7 @@ import { BirthRecoveryPanel } from "@/components/birth/BirthRecoveryPanel";
 import { BirthRemediationBar } from "@/components/birth/BirthRemediationBar";
 import { BirthStageScorecard } from "@/components/birth/BirthStageScorecard";
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { EvolutionLadderStrip } from "@/components/shared/EvolutionLadderStrip";
 import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
 import { ModeTransitionVeil } from "@/components/cockpit/ModeTransitionVeil";
 import { Button } from "@/components/ui/button";
@@ -90,6 +91,7 @@ export function BirthPhaseScreen() {
   const onboardingError = useOnboardingStore((s) => s.error);
   const updateDraft = useOnboardingStore((s) => s.updateDraft);
   const completeBirthTransition = useOnboardingStore((s) => s.completeBirthTransition);
+  const enterSetupReview = useOnboardingStore((s) => s.enterSetupReview);
   const reducedMotion = usePrefersReducedMotion();
   const modeMotion = useOnboardingModeMotion();
   const [recoveryDismissed, setRecoveryDismissed] = useState(false);
@@ -108,9 +110,13 @@ export function BirthPhaseScreen() {
     !genesisPinned &&
     (uiPhase === "stage_stalled" || isBirthStageStalled(status));
   const recoveryOverlayActive = certificateFailed || stageStalledActive;
-  const failed = uiPhase === "error" || certificateFailed;
+  // When genesis is pinned, keep the deck accessible even if backend still reports error.
+  const failed = (uiPhase === "error" && !genesisPinned) || certificateFailed;
   const running = (uiPhase === "running" || isBirthEngineActive(status ?? { status: "idle" })) && !stageStalledActive;
-  const engineActive = status != null && (status.live === true || isBirthEngineActive(status));
+  const engineActive =
+    status != null &&
+    !genesisPinned &&
+    (status.live === true || isBirthEngineActive(status));
   const genesisMode =
     birthSurface === "genesis" && !awakening && !recoveryOverlayActive && !failed && !engineActive;
   const engineLive = (genesisMode || engineActive) && status != null && isBirthEngineLive(status);
@@ -192,7 +198,7 @@ export function BirthPhaseScreen() {
       .stopBirthRun()
       .then((ok) => {
         if (ok) {
-          toast.success("Gestopt — kies Start birth of Wis birth-data voor schone run");
+          toast.success("Stopped — choose Start birth or wipe for a clean run");
           return;
         }
         toast.error(useBirthStore.getState().pollError ?? "Stop failed");
@@ -229,7 +235,7 @@ export function BirthPhaseScreen() {
       const result = await useBirthStore.getState().wipeBirthData();
       traceBirthWipe("screen.wipe.done", { ok: result.ok, error: result.error });
       if (result.ok) {
-        toast.success(result.message ?? "Alle birth-data gewist — klaar voor schone start.");
+        toast.success(result.message ?? "All birth data wiped — ready for a clean start.");
       } else if (result.error) {
         toast.error(result.error);
       }
@@ -247,7 +253,7 @@ export function BirthPhaseScreen() {
       .then(async () => {
         setBirthSurface("running");
         await poll();
-        toast.success("Hervat vanaf checkpoint");
+        toast.success("Resumed from checkpoint");
       })
       .catch((e) => toast.error(e instanceof Error ? e.message : "Resume failed"))
       .finally(() => setControlBusy(false));
@@ -263,7 +269,10 @@ export function BirthPhaseScreen() {
       .catch((e) => toast.error(e instanceof Error ? e.message : "Extra training failed"));
   };
 
-  const missionMode = (birthSurface === "running" || engineActive) && (running || awakening);
+  // Full vault mission chrome whenever the engine is live or we are in running/finale —
+  // never drop to a subtitle-only hero mid-birth (regime map / policy init included).
+  const missionMode =
+    (birthSurface === "running" || engineActive) && (running || awakening || engineActive);
   const phaseHeader = resolveBirthScreenPhaseHeader({
     genesisMode,
     missionMode,
@@ -458,8 +467,8 @@ export function BirthPhaseScreen() {
     ? [
         {
           id: "reset_keep_cache",
-          label: "Reset birth (tick cache behouden)",
-          loadingLabel: "Resetten…",
+          label: "Reset birth (keep tick cache)",
+          loadingLabel: "Resetting…",
           variant: "primary" as const,
           onClick: () => openWipeConfirm("reset"),
         },
@@ -471,7 +480,7 @@ export function BirthPhaseScreen() {
         },
         {
           id: "wipe_full",
-          label: "Volledige wipe (incl. tick cache)",
+          label: "Full wipe (including tick cache)",
           variant: "outline" as const,
           onClick: () => openWipeConfirm("full"),
         },
@@ -534,7 +543,17 @@ export function BirthPhaseScreen() {
         animate={{ opacity: transition.active ? 0.35 : 1 }}
         transition={transitionOrNone(reducedMotion, birthMotion)}
       >
-        <LuminaPhaseHeader {...phaseHeader} variant="strip" className="relative z-20" />
+        <LuminaPhaseHeader
+          {...phaseHeader}
+          variant={missionMode ? "compact" : "strip"}
+          className="relative z-20"
+        />
+        <EvolutionLadderStrip
+          className={cn(
+            "relative z-20",
+            missionMode && "evolution-ladder-strip--dense !py-1",
+          )}
+        />
         {certificateFailedPinned ? (
           <p
             className={cn(
@@ -583,6 +602,7 @@ export function BirthPhaseScreen() {
                   training={trainingDraft}
                   activating={activating}
                   checkpointAvailable={checkpointAvailable}
+                  sessionInterrupted={interrupted}
                   birthStatus={status}
                   busy={controlBusy}
                   engineLive={engineLive}
@@ -592,6 +612,7 @@ export function BirthPhaseScreen() {
                   onWipe={handleWipeBirthData}
                   onStop={handleStopBirth}
                   onResumeCheckpoint={handleResumeCheckpoint}
+                  onOpenSetup={() => enterSetupReview("credentials")}
                   resumePlateauRisk={resumePlateauRisk}
                   resumePlateauRiskTrades={status?.resume_plateau_risk_trades ?? null}
                 />
@@ -649,6 +670,8 @@ export function BirthPhaseScreen() {
                 progressMessage={status?.progress?.message ?? status?.message}
                 finale={awakening}
                 running={running}
+                showStopControl
+                controlBusy={controlBusy}
                 className="min-h-0"
               />
               <BirthStageIntelColumn
@@ -665,21 +688,6 @@ export function BirthPhaseScreen() {
               />
             </div>
           </div>
-        ) : engineActive ? (
-          <div className="birth-mission-shell relative flex min-h-0 flex-1 flex-col overflow-hidden p-3 md:p-4">
-            <BirthMissionControl
-              headline={headline}
-              subtitle={phaseSubtitle}
-              milestones={milestones}
-              progress={status?.progress}
-              status={status}
-              elapsedSeconds={status?.elapsed_seconds}
-              progressMessage={status?.progress?.message ?? status?.message}
-              finale={false}
-              running
-              className="min-h-0 flex-1"
-            />
-          </div>
         ) : (
         <motion.div
           className="birth-phase-hero relative flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -692,7 +700,8 @@ export function BirthPhaseScreen() {
         </motion.div>
         )}
 
-        {showRecovery ? (
+        {/* Genesis Recovery tab owns resume/wipe UI — avoid a second messy action strip. */}
+        {showRecovery && !genesisMode ? (
           <BirthRecoveryPanel
             status={status}
             targetTrades={targetTrades}

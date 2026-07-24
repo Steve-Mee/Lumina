@@ -47,7 +47,8 @@ _REQUIRED_ENV_SECRETS: tuple[str, ...] = (
 # Keys that must be present only when broker_backend == "live" and live_provider == "crosstrade".
 _LIVE_CROSSTRADE_REQUIRED_ENV: tuple[str, ...] = ("CROSSTRADE_TOKEN",)
 # Keys required for ninjatrader live provider in realish modes.
-_LIVE_NINJATRADER_REQUIRED_ENV: tuple[str, ...] = ("LUMINA_NT8_API_KEY",)
+# LUMINA_FABRIC_TOKEN is primary (Execution Fabric); LUMINA_NT8_API_KEY is legacy alias.
+_LIVE_NINJATRADER_REQUIRED_ENV: tuple[str, ...] = ("LUMINA_FABRIC_TOKEN", "LUMINA_NT8_API_KEY")
 
 
 def _looks_like_placeholder(value: Any) -> bool:
@@ -289,24 +290,46 @@ class ConfigLoader:
         if broker_mode == "live":
             if live_provider == "crosstrade":
                 required_env = _LIVE_CROSSTRADE_REQUIRED_ENV
+                for var in required_env:
+                    val = os.getenv(var, "")
+                    if not val:
+                        if hard_secret_mode:
+                            errors.append(f"Missing required env var for live broker: {var}")
+                        else:
+                            warnings.append(f"Missing live-broker env var (advisory mode): {var}")
+                    elif _looks_like_placeholder(val):
+                        if hard_secret_mode:
+                            errors.append(f"Placeholder value in live-broker env var {var!r}")
+                        else:
+                            warnings.append(f"Placeholder live-broker env value (advisory mode): {var!r}")
+            elif live_provider == "ninjatrader" and trade_mode in {"sim_real_guard", "real"}:
+                # Either Fabric token or legacy NT8 API key satisfies auth.
+                fabric_tok = str(os.getenv("LUMINA_FABRIC_TOKEN", "") or "").strip()
+                legacy_tok = str(os.getenv("LUMINA_NT8_API_KEY", "") or "").strip()
+                if not fabric_tok and not legacy_tok:
+                    msg = (
+                        "Missing required env var for ninjatrader live broker: "
+                        "LUMINA_FABRIC_TOKEN (or legacy LUMINA_NT8_API_KEY)"
+                    )
+                    if hard_secret_mode:
+                        errors.append(msg)
+                    else:
+                        warnings.append(msg)
+                else:
+                    for var, val in (
+                        ("LUMINA_FABRIC_TOKEN", fabric_tok),
+                        ("LUMINA_NT8_API_KEY", legacy_tok),
+                    ):
+                        if val and _looks_like_placeholder(val):
+                            if hard_secret_mode:
+                                errors.append(f"Placeholder value in live-broker env var {var!r}")
+                            else:
+                                warnings.append(
+                                    f"Placeholder live-broker env value (advisory mode): {var!r}"
+                                )
             else:
-                required_env = (
-                    _LIVE_NINJATRADER_REQUIRED_ENV
-                    if trade_mode in {"sim_real_guard", "real"}
-                    else ()
-                )
-            for var in required_env:
-                val = os.getenv(var, "")
-                if not val:
-                    if hard_secret_mode:
-                        errors.append(f"Missing required env var for live broker: {var}")
-                    else:
-                        warnings.append(f"Missing live-broker env var (advisory mode): {var}")
-                elif _looks_like_placeholder(val):
-                    if hard_secret_mode:
-                        errors.append(f"Placeholder value in live-broker env var {var!r}")
-                    else:
-                        warnings.append(f"Placeholder live-broker env value (advisory mode): {var!r}")
+                # Other live providers / modes: no extra live secrets here.
+                pass
 
         # 2d. Detect placeholder/default API keys in active security config.
         api_keys = {}

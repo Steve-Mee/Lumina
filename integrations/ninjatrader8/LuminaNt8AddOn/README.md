@@ -73,16 +73,34 @@ Or use unit tests with an in-process mock server (`tests/broker/test_fabric_clie
 - Operator runbook: [execution-fabric-operator.md](../../../docs/runbooks/execution-fabric-operator.md)
 - Localhost-only bind enforced when `BindLocalhostOnly=true`
 
+## Token + fabric.json (customers)
+
+```powershell
+# Preferred: Lumina first-boot Credentials step → Generate "NinjaTrader Fabric Token"
+# Or headless:
+powershell -ExecutionPolicy Bypass -File scripts\install_fabric_token.ps1
+```
+
+Installs User env `LUMINA_FABRIC_TOKEN`, workspace `.env`, and `%APPDATA%\LUMINA\fabric.json` (`GatewayMode: sim`).  
+**Restart NinjaTrader** after setting User env. Run **either** SimHost **or** this AddOn on port 50051 — not both.
+
 ## Deploy to NinjaTrader 8
 
-1. Build Release with `NINJATRADER8_BIN` set.
+1. Build Release with `NINJATRADER8_BIN` set:
+
+```powershell
+$env:NINJATRADER8_BIN = "C:\Program Files\NinjaTrader 8\bin"
+dotnet build integrations\ninjatrader8\Lumina.Execution.Fabric.sln -c Release
+```
+
 2. Copy `LuminaNt8AddOn.dll`, `Lumina.Execution.Fabric.dll`, and Grpc/Protobuf dependencies into  
    `%USERPROFILE%\Documents\NinjaTrader 8\bin\Custom\AddOns\`  
    (or merge per NT dependency policy).
 3. Restart NT8; enable **LUMINA Execution Fabric**.
-4. Set `LUMINA_FABRIC_TOKEN` for the NT process and Brain.
+4. Confirm NinjaScript Output shows `gRPC listening` and `AuthToken set = YES`.
 
-Phase 0 still uses **SimOrderGateway** inside the AddOn until the live NT `Account` order API is wired (PR-D).
+AddOn starts real `FabricGrpcHost` with `GatewayMode` from `fabric.json` (default **sim** / `SimOrderGateway`).  
+Switch to `nt` only after `NtOrderGateway` is bound to a live Account.
 
 ## Checklist
 

@@ -13,10 +13,10 @@ interface BirthGenesisStatusChipsProps {
 }
 
 const PLATEAU_TITLE =
-  "Hervatten zonder reset kan plateau opnieuw triggeren. Gebruik Wis birth-data (cache behouden) of Start birth opnieuw.";
+  "Resuming without reset can re-trigger plateau. Prefer wipe birth data (keep cache) or Start birth clean.";
 
 const CHECKPOINT_BASE =
-  "Hervat checkpoint gaat verder waar je stopte; curriculum wordt niet gewist. Data-prep kan kort opnieuw draaien.";
+  "Resume checkpoint continues where you stopped; curriculum is not wiped. Data prep may re-run briefly.";
 
 /**
  * Compact status row — full context in native title tooltips (no scroll blocks).
@@ -39,7 +39,7 @@ export function BirthGenesisStatusChips({
 
   const plateauTitle =
     resumePlateauRiskTrades != null
-      ? `${PLATEAU_TITLE} (${resumePlateauRiskTrades.toLocaleString()} stage trades geladen.)`
+      ? `${PLATEAU_TITLE} (${resumePlateauRiskTrades.toLocaleString()} stage trades loaded.)`
       : PLATEAU_TITLE;
 
   const checkpointTitle = [checkpointSummary, CHECKPOINT_BASE, resumeTierHint]
@@ -53,7 +53,10 @@ export function BirthGenesisStatusChips({
       aria-label="Birth checkpoint status"
     >
       {engineLive ? (
-        <span className="birth-genesis-status-chip birth-genesis-status-chip--live" title="Birth engine draait nog op de achtergrond — stop eerst voordat je wist.">
+        <span
+          className="birth-genesis-status-chip birth-genesis-status-chip--live"
+          title="Birth engine is still running in the background — stop before wiping."
+        >
           <Cpu className="size-3 shrink-0" aria-hidden />
           Engine live
         </span>

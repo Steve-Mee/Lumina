@@ -6,6 +6,8 @@ export interface MapAppPhaseContext {
   priorPhase: AppPhase;
   birthPhaseCommitted: boolean;
   activating: boolean;
+  /** Operator reopened first-boot setup from Birth (credentials / fabric test). */
+  setupReviewActive?: boolean;
 }
 
 function surfaceToPhase(surface: AppSurface): AppPhase {
@@ -51,6 +53,10 @@ export function mapAppPhase(
   payload: OnboardingPayload,
   context: MapAppPhaseContext,
 ): AppPhase {
+  if (context.setupReviewActive) {
+    return "wizard";
+  }
+
   if (context.activating) {
     return context.priorPhase === "loading" ? "wizard" : context.priorPhase;
   }
@@ -107,7 +113,11 @@ export function markPayloadBackendUnreachable(
 export function resolvePhaseOnRefreshError(
   priorPhase: AppPhase,
   lastPayload: OnboardingPayload | null,
+  setupReviewActive = false,
 ): AppPhase {
+  if (setupReviewActive) {
+    return "wizard";
+  }
   if (priorPhase === "loading") {
     return "wizard";
   }

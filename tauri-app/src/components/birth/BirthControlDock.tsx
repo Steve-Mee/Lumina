@@ -89,22 +89,23 @@ export function BirthControlDock({
 
   const stopButtonClass = cn(
     luminaInteractiveClass("danger"),
-    "birth-control-dock__stop inline-flex min-w-[100px] items-center justify-center gap-2 font-mono text-[10px] tracking-wide uppercase",
-    inline && "h-8 border-red-500/45 bg-red-950/20 text-red-200 hover:bg-red-950/35",
+    "birth-control-dock__stop inline-flex items-center justify-center gap-1.5 font-mono text-[10px] tracking-wide uppercase",
+    inline ? "birth-control-dock__stop--panel" : "min-w-[100px] gap-2",
     stopBlocked && "cursor-not-allowed opacity-70",
   );
 
   const stopButton = (
     <Button
       type="button"
-      variant={inline ? "outline" : "destructive"}
+      variant={inline ? "ghost" : "destructive"}
       size="sm"
       className={stopButtonClass}
       aria-busy={false}
+      title="Stop birth training"
       onClick={handleStopClick}
     >
-      <OctagonPause className="size-3.5 shrink-0" aria-hidden />
-      <span>Stop birth</span>
+      <OctagonPause className={cn("shrink-0", inline ? "size-3" : "size-3.5")} aria-hidden />
+      <span className={inline ? "birth-control-dock__stop-label" : undefined}>Stop birth</span>
     </Button>
   );
 
@@ -112,6 +113,7 @@ export function BirthControlDock({
     <div
       className={cn(
         "birth-control-dock pointer-events-auto flex flex-wrap items-center justify-center gap-2 rounded-xl border border-white/10 bg-black/40 px-3 py-2 backdrop-blur-md",
+        inline && "rounded-none border-0 bg-transparent p-0 shadow-none backdrop-blur-none",
         className,
       )}
       role="toolbar"

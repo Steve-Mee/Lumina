@@ -56,12 +56,21 @@ mcps/
 state/lumina-tauri-signing.key
 state/lumina-tauri-signing.key.pub
 
-# Secrets / env
+# Secrets / env (never commit credentials, tokens, or private keys)
 .env
 .env.*
 !.env.*.example
 !.env.example
 deploy/.env*
+*.pem
+*.pfx
+*.p12
+*.key
+!*.key.example
+**/secrets/
+**/credentials/
+# Fabric / NT8 local install artifacts (compiled AddOn deploy output)
+integrations/ninjatrader8/deploy/
 # Local operator overrides (machine-specific broker/models/hardware)
 config.yaml.local
 state/launcher_admin_password.json
@@ -77,6 +86,10 @@ state/llama_cpp_setup.json
 state/launcher_support_events.jsonl
 state/launcher_bot_process.json
 state/core_events.jsonl
+# Fabric link certs / halt flags live under state/ (already ignored), but keep explicit names
+state/fabric_link_certificate.json
+state/fabric_halt.json
+state/ninjatrader_fingerprint.json
 
 # Docker
 docker-compose.override.yml

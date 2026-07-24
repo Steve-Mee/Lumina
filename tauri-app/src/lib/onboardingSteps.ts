@@ -78,6 +78,8 @@ export interface OnboardingPayload {
   smart_setup_running: boolean;
   app_surface: AppSurface;
   app_surface_reason?: string;
+  /** Post-birth Playground gate — false until operator seals Risk Envelope. */
+  sim_envelope_sealed?: boolean;
 }
 
 export const STEP_LABELS: Record<OnboardingStepId, string> = {

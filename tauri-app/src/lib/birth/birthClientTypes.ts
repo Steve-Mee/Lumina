@@ -69,6 +69,10 @@ export interface BirthProgressPayload {
   stall_diagnostics?: string | Record<string, unknown>;
   data_manifest?: Record<string, unknown>;
   actual_real_days_loaded?: number;
+  real_data_pct?: number;
+  synthetic_top_up?: boolean | number;
+  synthetic_ticks?: number;
+  autonomous_recovery_rate_pct?: number;
   regimes_covered?: string[];
   volume_gate_status?: string;
   winrate_trend_slope?: number;

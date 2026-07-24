@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { BirthStatusPayload } from "@/lib/birthClient";
 import {
   buildCompactMilestones,
+  buildHudMilestones,
   buildMilestones,
   extractBirthSessionHud,
   extractPpoProgress,
@@ -374,6 +375,17 @@ describe("birthPhaseModel", () => {
     expect(compact.items.length).toBeLessThanOrEqual(3);
     expect(compact.items.some((m) => m.state === "active")).toBe(true);
     expect(compact.upcomingCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("builds HUD milestones with remaining chips and no +N counter", () => {
+    const hud = buildHudMilestones(
+      { stage: "training_running", phase: "curriculum_learning" },
+      "running",
+    );
+    expect(hud.items.some((m) => m.state === "active")).toBe(true);
+    expect(hud.items.some((m) => m.label === "Birth Certificate v2")).toBe(true);
+    expect(hud.upcomingCount).toBe(0);
+    expect(hud.items.length).toBeGreaterThanOrEqual(3);
   });
 
   it("extracts PPO progress with batch label", () => {

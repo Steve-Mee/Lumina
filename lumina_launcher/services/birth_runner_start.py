@@ -200,10 +200,20 @@ def start_birth(
                 os.chdir(svc.workspace_root)
                 container = ApplicationContainer()
                 _bind_headless_runtime_app(container)
+                ppo_trainer = getattr(container, "ppo_trainer", None)
+                if ppo_trainer is None:
+                    ppo_trainer = getattr(container.engine, "ppo_trainer", None)
+                if not callable(getattr(ppo_trainer, "create_fresh_birth_policy", None)):
+                    raise RuntimeError(
+                        "PPO trainer unbound or incompatible (missing create_fresh_birth_policy); "
+                        "birth cannot mint a policy. Ensure ApplicationContainer wires "
+                        "lumina_core.ppo_trainer.PPOTrainer before starting Birth."
+                    )
                 effective_settings = dict(saved_settings)
                 effective_settings["training_trades"] = int(resolved_target)
                 engine = LuminaBirthEngine(
                     runtime=container.engine,
+                    ppo_trainer=ppo_trainer,
                     market_data_service=container.market_data_service,
                     config={"first_boot": effective_settings},
                     workspace_root=svc.workspace_root,

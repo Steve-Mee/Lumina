@@ -7,9 +7,13 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from backend.setup_endpoints import _services
+from backend.setup_endpoints import _services, _workspace_root
 from lumina_launcher.core.onboarding import extract_config_defaults
 from lumina_launcher.services.bot_config_persist import persist_bot_config
+from lumina_launcher.services.setup_persist import (
+    is_sim_envelope_sealed,
+    write_sim_envelope_sealed,
+)
 
 router = APIRouter(prefix="/api/config", tags=["config"])
 
@@ -28,7 +32,7 @@ class BotConfigEvolution(BaseModel):
 
 
 class BotConfigPreferences(BaseModel):
-    instrument: str = Field(default="ES", min_length=1, max_length=16)
+    instrument: str = Field(default="MES", min_length=1, max_length=16)
     voice_enabled: bool = True
     screen_share_enabled: bool = True
     dashboard_enabled: bool = True
@@ -42,6 +46,8 @@ class BotConfigRequest(BaseModel):
     risk: BotConfigRisk = Field(default_factory=BotConfigRisk)
     evolution: BotConfigEvolution = Field(default_factory=BotConfigEvolution)
     preferences: BotConfigPreferences = Field(default_factory=BotConfigPreferences)
+    # When true, marks post-birth SIM Risk Envelope as sealed (Playground gate).
+    seal_sim_envelope: bool = False
 
 
 @router.post("/bot")
@@ -58,9 +64,14 @@ async def save_bot_config(body: BotConfigRequest) -> dict[str, object]:
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    root = _workspace_root()
+    if body.seal_sim_envelope:
+        write_sim_envelope_sealed(root, sealed=True, source="bot_config_seal")
+
     config = config_manager.load_yaml_config()
     env_values = config_manager.parse_env_file()
     return {
         "success": True,
         "defaults": extract_config_defaults(config, env_values=env_values),
+        "sim_envelope_sealed": is_sim_envelope_sealed(root),
     }

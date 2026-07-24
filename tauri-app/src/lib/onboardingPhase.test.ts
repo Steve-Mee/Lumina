@@ -67,6 +67,26 @@ function coldStart(p: OnboardingPayload): AppPhase {
   });
 }
 
+describe("setup review from Birth", () => {
+  it("forces wizard while setupReviewActive even when app_surface is birth", () => {
+    const p = payload(
+      {
+        setup_complete: true,
+        birth: { status: "idle", artifacts_ok: false },
+      },
+      "birth",
+    );
+    expect(
+      mapAppPhase(p, {
+        priorPhase: "birth",
+        birthPhaseCommitted: false,
+        activating: false,
+        setupReviewActive: true,
+      }),
+    ).toBe("wizard");
+  });
+});
+
 describe("onboardingPhase cold-start matrix (T1–T8)", () => {
   it("T1 fresh install → setup wizard", () => {
     const p = payload(

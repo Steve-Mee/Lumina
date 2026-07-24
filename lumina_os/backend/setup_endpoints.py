@@ -30,9 +30,11 @@ from lumina_launcher.services.hardware_service import HardwareService
 from lumina_launcher.services.model_service import ModelService
 from lumina_launcher.services.setup_persist import (
     build_credentials_env_snapshot,
+    is_sim_envelope_sealed,
     persist_credentials_only,
     persist_tauri_quick_config,
     scan_missing_credentials,
+    seed_sim_runtime_and_mark_setup,
 )
 from lumina_launcher.services.smart_setup_service import SmartSetupOptions, SmartSetupService
 
@@ -145,8 +147,8 @@ def _readiness_summary(
         },
         {
             "id": "configuration",
-            "label": "Quick configuration",
-            "status": "ok" if setup_complete else "missing",
+            "label": "Risk envelope (post-birth)",
+            "status": "ok" if setup_complete else "pending",
         },
         {
             "id": "birth",
@@ -277,6 +279,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         "step_status": step_status,
         "defaults": extract_config_defaults(config, env_values=env_values),
         "smart_setup_running": _smart_setup_running,
+        "sim_envelope_sealed": is_sim_envelope_sealed(root),
         "workspace_root": str(root),
     }
 
@@ -387,6 +390,7 @@ class ConfigureCredentials(BaseModel):
     CROSSTRADE_TOKEN: str = ""
     CROSSTRADE_ACCOUNT: str = ""
     LUMINA_ADMIN_API_KEY: str = ""
+    LUMINA_FABRIC_TOKEN: str = ""
     XAI_API_KEY: str = ""
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
@@ -423,19 +427,150 @@ class ConfigureRequest(BaseModel):
     selected_model_key: str | None = None
 
 
+@router.post("/ready-for-birth")
+async def ready_for_birth() -> dict[str, Any]:
+    """Mark setup complete with SIM defaults when Vault credentials are already present.
+
+    Used when the credentials wizard is skipped (env already configured) so operators
+    can enter Birth without the pre-birth Risk Envelope step.
+    """
+    setup, config_manager, first_boot, _, hardware, model_service = _services()
+    missing = scan_missing_credentials(config_manager)
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Vault incomplete — missing: {', '.join(missing)}",
+        )
+    snapshot = hardware.get_snapshot(refresh=True)
+    steps = seed_sim_runtime_and_mark_setup(
+        workspace_root=_workspace_root(),
+        setup_service=setup,
+        config_manager=config_manager,
+        first_boot_manager=first_boot,
+        model_service=model_service,
+        snapshot=snapshot,
+        force_envelope_unsealed=True,
+    )
+    return {
+        "success": True,
+        "steps": steps,
+        "onboarding": build_onboarding_payload(serving_request=True),
+    }
+
+
 @router.post("/credentials")
 async def save_credentials(body: ConfigureCredentials) -> dict[str, Any]:
-    _, config_manager, _, _, _, _ = _services()
+    setup, config_manager, first_boot, _, hardware, model_service = _services()
     creds = body.model_dump()
-    for key in ("LUMINA_JWT_SECRET_KEY", "CROSSTRADE_TOKEN", "CROSSTRADE_ACCOUNT"):
-        if not str(creds.get(key, "")).strip():
-            raise HTTPException(status_code=400, detail=f"Missing required credential: {key}")
+    # Fabric-first: JWT required; Crosstrade optional emergency feed.
+    if not str(creds.get("LUMINA_JWT_SECRET_KEY", "")).strip():
+        raise HTTPException(status_code=400, detail="Missing required credential: LUMINA_JWT_SECRET_KEY")
     still_missing = persist_credentials_only(config_manager, creds)
+    seed_steps: list[dict[str, Any]] = []
+    if not still_missing:
+        snapshot = hardware.get_snapshot(refresh=True)
+        seed_steps = seed_sim_runtime_and_mark_setup(
+            workspace_root=_workspace_root(),
+            setup_service=setup,
+            config_manager=config_manager,
+            first_boot_manager=first_boot,
+            model_service=model_service,
+            snapshot=snapshot,
+            force_envelope_unsealed=True,
+        )
     return {
         "success": not still_missing,
         "missing": still_missing,
+        "seed_steps": seed_steps,
         "onboarding": build_onboarding_payload(serving_request=True),
     }
+
+
+class FabricConnectionTestRequest(BaseModel):
+    include_safe_mode: bool = True
+    instrument: str = Field(default="MES", min_length=1, max_length=32)
+
+
+@router.post("/fabric-connection-test")
+async def fabric_connection_test(body: FabricConnectionTestRequest | None = None) -> dict[str, Any]:
+    """Run SIM-only Execution Fabric diagnostics (Brain ↔ NT8 Fabric, not CrossTrade)."""
+    from lumina_launcher.services.fabric_connection_diagnostics import (
+        run_fabric_connection_diagnostics,
+    )
+    from lumina_launcher.services.fabric_link_certificate import write_certificate
+
+    req = body or FabricConnectionTestRequest()
+    instrument = str(req.instrument or "MES").strip().upper() or "MES"
+    try:
+        report = run_fabric_connection_diagnostics(
+            include_safe_mode=bool(req.include_safe_mode),
+            instrument=instrument,
+        )
+    except Exception as exc:
+        logger.exception("fabric-connection-test failed")
+        raise HTTPException(status_code=500, detail=f"Fabric diagnostics failed: {exc}") from exc
+    payload = report.to_dict()
+    certified = False
+    if str(payload.get("overall", "")).lower() == "green":
+        token = str(os.getenv("LUMINA_FABRIC_TOKEN") or os.getenv("LUMINA_NT8_API_KEY") or "").strip()
+        write_certificate(
+            overall="green",
+            target=str(payload.get("target") or ""),
+            token=token,
+            workspace_root=_workspace_root(),
+        )
+        certified = True
+    payload["certified"] = certified
+    return payload
+
+
+@router.post("/fabric-bootstrap")
+async def fabric_bootstrap() -> dict[str, Any]:
+    """Zero-touch token + fabric.json + AddOn deploy (idempotent)."""
+    from lumina_launcher.services.fabric_bootstrap import run_fabric_bootstrap
+    from lumina_launcher.services.fabric_link_certificate import (
+        is_fabric_link_green,
+        is_halt_active,
+        read_certificate,
+        read_halt,
+    )
+
+    _, config_manager, _, _, _, _ = _services()
+    root = _workspace_root()
+    result = run_fabric_bootstrap(root, config_manager)
+    ok, reason = is_fabric_link_green(workspace_root=root)
+    result["fabric_link_green"] = ok
+    result["fabric_link_reason"] = reason
+    result["certificate"] = read_certificate(root)
+    result["halt"] = read_halt(root) if is_halt_active(root) else None
+    return result
+
+
+@router.get("/fabric-link-status")
+async def fabric_link_status() -> dict[str, Any]:
+    from lumina_launcher.services.fabric_link_certificate import (
+        is_fabric_link_green,
+        is_halt_active,
+        read_certificate,
+        read_halt,
+    )
+
+    root = _workspace_root()
+    ok, reason = is_fabric_link_green(workspace_root=root)
+    return {
+        "green": ok,
+        "reason": reason,
+        "certificate": read_certificate(root),
+        "halt": read_halt(root) if is_halt_active(root) else None,
+    }
+
+
+@router.post("/fabric-nt-watch")
+async def fabric_nt_watch() -> dict[str, Any]:
+    """Detect NT8 binary changes and re-probe Fabric (fail-closed halt on failure)."""
+    from lumina_launcher.services.ninjatrader_watch import check_ninjatrader_update_and_reprobe
+
+    return check_ninjatrader_update_and_reprobe(_workspace_root())
 
 
 @router.post("/configure")
@@ -445,9 +580,13 @@ async def configure_setup(body: ConfigureRequest) -> dict[str, Any]:
 
     missing = scan_missing_credentials(config_manager)
     creds = body.credentials.model_dump()
-    for key in ("LUMINA_JWT_SECRET_KEY", "CROSSTRADE_TOKEN", "CROSSTRADE_ACCOUNT"):
+    for key in ("LUMINA_JWT_SECRET_KEY", "LUMINA_FABRIC_TOKEN"):
         if not str(creds.get(key, "")).strip() and key in missing:
-            raise HTTPException(status_code=400, detail=f"Missing required credential: {key}")
+            # process env may satisfy FABRIC token after bootstrap
+            if key == "LUMINA_FABRIC_TOKEN" and str(os.getenv("LUMINA_FABRIC_TOKEN", "") or "").strip():
+                continue
+            if key == "LUMINA_JWT_SECRET_KEY":
+                raise HTTPException(status_code=400, detail=f"Missing required credential: {key}")
 
     snapshot = hardware.get_snapshot(refresh=True)
     steps = persist_tauri_quick_config(

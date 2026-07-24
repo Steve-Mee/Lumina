@@ -724,7 +724,7 @@
   color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 65%, transparent);
   background: none;
   border: none;
-  cursor: pointer;
+  cursor: var(--lumina-cursor-interactive);
   padding: 0;
 }
 
@@ -1059,7 +1059,7 @@
 .hud-nerve-tap {
   border-color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 28%, transparent);
   background: color-mix(in srgb, var(--lumina-void) 72%, transparent);
-  cursor: pointer;
+  cursor: var(--lumina-cursor-interactive);
   transition:
     border-color 0.25s ease,
     box-shadow 0.25s ease;
@@ -1152,7 +1152,7 @@
 .hud-organism-center {
   min-width: 4.5rem;
   min-height: 3.25rem;
-  cursor: default;
+  cursor: var(--lumina-cursor-default);
 }
 
 .hud-organism-center__pulse {
@@ -1243,7 +1243,7 @@
   border: 0;
   background: transparent;
   color: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 62%, transparent);
-  cursor: pointer;
+  cursor: var(--lumina-cursor-interactive);
   padding: 0.125rem 0.25rem;
   transition: color 0.2s ease, opacity 0.2s ease;
 }
@@ -2376,6 +2376,143 @@
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--lumina-cyan-dim);
+}
+
+.bot-config-form .risk-envelope-field-card {
+  border-radius: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+  background: color-mix(in srgb, white 3.5%, transparent);
+  padding: 0.55rem 0.65rem 0.6rem;
+}
+
+.bot-config-form .risk-envelope-field-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lumina-cyan-dim);
+}
+
+.bot-config-form .risk-envelope-field-hint {
+  margin-top: 0.3rem;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--foreground) 42%, transparent);
+}
+
+.bot-config-form .risk-envelope-mode-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.45rem;
+}
+
+@media (min-width: 420px) {
+  .bot-config-form .risk-envelope-mode-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.bot-config-form .risk-envelope-mode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border-radius: 0.55rem;
+  border: 1px solid color-mix(in srgb, white 10%, transparent);
+  padding: 0.55rem 0.5rem;
+  text-align: left;
+  background: color-mix(in srgb, white 2%, transparent);
+}
+
+.bot-config-form .risk-envelope-mode-card__title {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.bot-config-form .risk-envelope-mode-card__blurb {
+  font-size: 0.62rem;
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--foreground) 50%, transparent);
+}
+
+.bot-config-form .risk-envelope-mode-card__risk {
+  font-size: 0.55rem;
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--foreground) 38%, transparent);
+}
+
+.bot-config-form .risk-envelope-mode-card--active.risk-envelope-mode-card--sim {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 45%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
+}
+
+.bot-config-form .risk-envelope-mode-card--active.risk-envelope-mode-card--paper {
+  border-color: color-mix(in srgb, #a78bfa 45%, transparent);
+  background: color-mix(in srgb, #a78bfa 10%, transparent);
+}
+
+.bot-config-form .risk-envelope-mutation-card {
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  padding: 0.5rem 0.55rem;
+  text-align: left;
+}
+
+.bot-config-form .risk-envelope-mutation-card--active {
+  border-color: color-mix(in srgb, #a78bfa 40%, transparent);
+  background: color-mix(in srgb, #a78bfa 10%, transparent);
+}
+
+.bot-config-form .risk-envelope-toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  cursor: var(--lumina-cursor-interactive);
+}
+
+.bot-config-form .risk-envelope-slider__track-wrap {
+  position: relative;
+  height: 0.5rem;
+  display: flex;
+  align-items: center;
+}
+
+.bot-config-form .risk-envelope-slider__fill {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  height: 0.28rem;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--lumina-cyan) 50%, transparent),
+    color-mix(in srgb, var(--lumina-cyan) 85%, white)
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bot-config-form .risk-envelope-slider__input {
+  position: relative;
+  z-index: 1;
+}
+
+.bot-config-form .risk-envelope-banner {
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 16%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 7%, transparent);
+  padding: 0.45rem 0.55rem;
+  font-size: 0.7rem;
+}
+
+.bot-config-form .risk-envelope-banner--real {
+  border-color: color-mix(in srgb, oklch(0.65 0.18 25) 40%, transparent);
+  background: color-mix(in srgb, oklch(0.4 0.1 25) 22%, transparent);
 }
 
 .config-range,

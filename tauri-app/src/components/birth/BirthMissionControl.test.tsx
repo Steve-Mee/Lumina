@@ -20,15 +20,28 @@ const birthAdvancedPanelSource = readFileSync(
 );
 
 describe("BirthMissionControl", () => {
-  it("uses a compact status-only body without page scroll on body root", () => {
+  it("uses a constrained body with internal panel scroll (no page scroll)", () => {
     expect(birthMissionControlSource).toContain("birth-mission-control__body");
     expect(birthMissionControlSource).toMatch(
-      /birth-mission-control__body min-h-0 flex-1 overflow-hidden/,
+      /birth-mission-control__body min-h-0 flex-1 overflow-x-hidden overflow-y-auto/,
     );
     expect(birthMissionControlSource).not.toContain("birth-mission-control__scroll");
     expect(birthMissionControlSource).not.toContain("birth-mission-control__primary");
     expect(birthMissionControlSource).toContain("BirthMetricsStrip");
     expect(birthMissionControlSource).toContain("embedded");
+  });
+
+  it("uses vault-grade toolbar and status chips (parity with Operator vault / Risk envelope)", () => {
+    expect(birthMissionControlSource).toContain("birth-mission-control__toolbar");
+    expect(birthMissionControlSource).toContain("risk-envelope-panel__toolbar");
+    expect(birthMissionControlSource).toContain("birth-mission-status-strip");
+    expect(birthMissionControlSource).toContain("risk-envelope-status-chip");
+    expect(birthMissionControlSource).toContain("HISTORY");
+    expect(birthMissionControlSource).toContain("REGIME");
+    expect(birthMissionControlSource).toContain("POLICY");
+    expect(birthMissionControlSource).toContain("LANES");
+    expect(birthMissionControlSource).toContain("Fitness landscape");
+    expect(birthMissionControlSource).toContain("risk-envelope-field-card");
   });
 
   it("uses a two-column KPI grid for the narrower status column", () => {
@@ -45,6 +58,13 @@ describe("BirthMissionControl", () => {
 
   it("keeps blocker alert in the status column", () => {
     expect(birthMissionControlSource).toContain("BirthBlockerAlert");
+  });
+
+  it("hosts Stop birth in the panel toolbar when showStopControl is set", () => {
+    expect(birthMissionControlSource).toContain("showStopControl");
+    expect(birthMissionControlSource).toContain("BirthControlDock");
+    expect(birthMissionControlSource).toContain("birth-control-dock--panel");
+    expect(birthMissionControlSource).toContain("birth-mission-control__toolbar-actions");
   });
 });
 

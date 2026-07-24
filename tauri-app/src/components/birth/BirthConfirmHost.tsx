@@ -91,18 +91,18 @@ export function BirthConfirmHost() {
           toast.success(
             result.message ??
               (preserveTickCache
-                ? "Birth reset — tick cache behouden. Ga verder via Genesis."
-                : "Alle birth-data gewist — klaar voor schone start."),
+                ? "Birth reset — tick cache kept. Continue via Genesis."
+                : "All birth data wiped — ready for a clean start."),
           );
           return;
         }
         const errorMsg =
-          result.error ?? "Wissen mislukt — probeer opnieuw of herstart de backend.";
+          result.error ?? "Wipe failed — try again or restart the backend.";
         setWipeConfirmError(errorMsg);
         toast.error(errorMsg);
       })
       .catch((err: unknown) => {
-        const errorMsg = err instanceof Error ? err.message : "Wissen mislukt — onbekende fout.";
+        const errorMsg = err instanceof Error ? err.message : "Wipe failed — unknown error.";
         traceBirthWipe("ui.wipe_handler.exception", { error: errorMsg }, "error");
         setWipeConfirmError(errorMsg);
         toast.error(errorMsg);
@@ -121,7 +121,7 @@ export function BirthConfirmHost() {
       .stopBirthRun()
       .then((ok) => {
         if (ok) {
-          toast.success("Gestopt — kies Start birth of Wis birth-data voor schone run");
+          toast.success("Stopped — choose Start birth or wipe for a clean run");
           return;
         }
         toast.error(useBirthStore.getState().pollError ?? "Stop failed");
@@ -136,8 +136,8 @@ export function BirthConfirmHost() {
         onOpenChange={handleStopOpenChange}
         shouldBlockDismiss={shouldBlockDismiss}
         onMounted={() => traceBirthWipe("ui.stop_dialog.mounted", { source: "BirthConfirmHost" })}
-        title="Birth training stoppen?"
-        description="De huidige run wordt gestopt. Je checkpoint blijft bewaard — kies daarna Start birth of Wis birth-data voor een schone run."
+        title="Stop birth training?"
+        description="The current run will stop. Your checkpoint is kept — then choose Start birth or wipe for a clean run."
         footer={
           <>
             <Button
@@ -147,7 +147,7 @@ export function BirthConfirmHost() {
               className={cn(luminaInteractiveClass("ghost"), "birth-portaled-dialog__ghost font-mono text-[10px] tracking-wide uppercase")}
               onClick={closeStopConfirm}
             >
-              Annuleren
+              Cancel
             </Button>
             <Button
               type="button"
@@ -181,9 +181,9 @@ export function BirthConfirmHost() {
             <AlertTriangle className="size-5 shrink-0 text-red-400" aria-hidden />
             {wipeConfirmStep === 1
               ? wipeConfirmKind === "full"
-                ? "Alle birth-data permanent wissen?"
-                : "Birth reset — checkpoint wissen?"
-              : "Laatste bevestiging"}
+                ? "Permanently wipe all birth data?"
+                : "Birth reset — wipe checkpoint?"
+              : "Final confirmation"}
           </span>
         }
         description={
@@ -192,39 +192,39 @@ export function BirthConfirmHost() {
               wipeConfirmKind === "full" ? (
                 <>
                   <p className="rounded-lg border border-red-500/40 bg-red-950/30 px-3 py-2 font-medium text-red-100">
-                    Waarschuwing: dit kan niet ongedaan worden gemaakt. Er is geen weg terug —
-                    checkpoint, PPO-policy, tick-caches en voortgang gaan definitief verloren.
+                    Warning: this cannot be undone. Checkpoint, PPO policy, tick caches, and
+                    progress will be permanently lost.
                   </p>
-                  <p>Wordt verwijderd:</p>
+                  <p>Will be removed:</p>
                   <ul className="list-inside list-disc space-y-1 text-foreground/85">
-                    <li>Curriculum-voortgang en stage-checkpoints</li>
-                    <li>PPO-policies en birth-buffers</li>
-                    <li>Tick-caches, split-cache en enrichment cache</li>
-                    <li>Birth-logs en simulator-journal</li>
-                    <li>Genesis charter en setup flags</li>
+                    <li>Curriculum progress and stage checkpoints</li>
+                    <li>PPO policies and birth buffers</li>
+                    <li>Tick caches, split cache, and enrichment cache</li>
+                    <li>Birth logs and simulator journal</li>
+                    <li>Genesis charter and setup flags</li>
                   </ul>
                   <p className="text-xs">
-                    Genesis-instellingen worden ook gewist — je start opnieuw via het Genesis deck.
+                    Genesis settings are wiped too — restart from the Genesis deck.
                   </p>
                 </>
               ) : (
                 <>
                   <p className="rounded-lg border border-red-500/40 bg-red-950/30 px-3 py-2 font-medium text-red-100">
-                    Waarschuwing: dit kan niet ongedaan worden gemaakt. Checkpoint, PPO-policy,
-                    buffers en voortgang gaan definitief verloren.
+                    Warning: this cannot be undone. Checkpoint, PPO policy, buffers, and progress
+                    will be permanently lost.
                   </p>
-                  <p>Wordt verwijderd:</p>
+                  <p>Will be removed:</p>
                   <ul className="list-inside list-disc space-y-1 text-foreground/85">
-                    <li>Curriculum-voortgang en stage-checkpoints</li>
-                    <li>PPO-policies en birth-buffers</li>
-                    <li>Birth-logs en simulator-journal</li>
-                    <li>Genesis charter en setup flags</li>
+                    <li>Curriculum progress and stage checkpoints</li>
+                    <li>PPO policies and birth buffers</li>
+                    <li>Birth logs and simulator journal</li>
+                    <li>Genesis charter and setup flags</li>
                   </ul>
                   <p className="text-xs text-emerald-200/90">
-                    Tick-cache, split-cache en enrichment cache blijven behouden — snellere herstart.
+                    Tick cache, split cache, and enrichment cache are kept — faster restart.
                   </p>
                   <p className="text-xs">
-                    Genesis-instellingen worden gewist — je start opnieuw via het Genesis deck.
+                    Genesis settings are wiped — restart from the Genesis deck.
                   </p>
                 </>
               )
@@ -232,8 +232,8 @@ export function BirthConfirmHost() {
               <>
                 <p className="rounded-lg border border-red-500/40 bg-red-950/30 px-3 py-2 text-red-100">
                   {wipeConfirmKind === "full"
-                    ? "Bevestig dat je alle birth-trainingdata definitief wilt wissen, inclusief tick cache. Na deze actie moet je opnieuw beginnen met Start birth."
-                    : "Bevestig dat je birth wilt resetten (tick cache blijft). Na deze actie moet je opnieuw beginnen via het Genesis deck."}
+                    ? "Confirm permanent wipe of all birth training data, including tick cache. You must start again with Activate birth."
+                    : "Confirm birth reset (tick cache kept). You must start again from the Genesis deck."}
                 </p>
                 {wipeConfirmWiping ? (
                   <p
@@ -242,7 +242,7 @@ export function BirthConfirmHost() {
                     aria-live="polite"
                   >
                     <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
-                    Birth-data wordt gewist en gecontroleerd…
+                    Wiping birth data and verifying…
                   </p>
                 ) : null}
                 {wipeConfirmError ? (
@@ -267,7 +267,7 @@ export function BirthConfirmHost() {
               className={cn(luminaInteractiveClass("ghost"), "birth-portaled-dialog__ghost font-mono text-[10px] tracking-wide uppercase")}
               onClick={closeWipeConfirm}
             >
-              Annuleren
+              Cancel
             </Button>
             {wipeConfirmStep === 1 ? (
               <Button
@@ -280,7 +280,7 @@ export function BirthConfirmHost() {
                   traceBirthWipe("ui.wipe_dialog.step", { step: 2 });
                 }}
               >
-                Ik begrijp het — doorgaan
+                I understand — continue
               </Button>
             ) : (
               <Button
@@ -294,12 +294,12 @@ export function BirthConfirmHost() {
                 {wipeConfirmWiping ? (
                   <>
                     <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
-                    Bezig met wissen…
+                    Wiping…
                   </>
                 ) : wipeConfirmKind === "full" ? (
-                  "Definitief alles wissen"
+                  "Wipe everything permanently"
                 ) : (
-                  "Definitief resetten"
+                  "Confirm reset"
                 )}
               </Button>
             )}
@@ -318,26 +318,26 @@ export function BirthConfirmHost() {
         title={
           <span className="flex items-center gap-2 text-emerald-200">
             <CheckCircle2 className="size-5 shrink-0 text-emerald-400" aria-hidden />
-            Birth-data gewist
+            Birth data wiped
           </span>
         }
         description={
           <div className="space-y-2 pt-1 text-sm text-muted-foreground">
             <p className="text-foreground/90">
               {wipeSuccess?.message ??
-                "Alle birth-trainingdata is verwijderd. De status is gecontroleerd en schoon."}
+                "All birth training data was removed. Status verified clean."}
             </p>
             {wipeSuccess?.removedCount != null && wipeSuccess.removedCount > 0 ? (
               <p className="font-mono text-xs text-emerald-200/80">
-                Controle OK — {wipeSuccess.removedCount.toLocaleString()} artifact
-                {wipeSuccess.removedCount === 1 ? "" : "en"} verwijderd.
+                Check OK — {wipeSuccess.removedCount.toLocaleString()} artifact
+                {wipeSuccess.removedCount === 1 ? "" : "s"} removed.
               </p>
             ) : (
               <p className="font-mono text-xs text-emerald-200/80">
-                Controle OK — geen resterende checkpoint of voortgang gevonden.
+                Check OK — no remaining checkpoint or progress found.
               </p>
             )}
-            <p className="text-xs">Je kunt nu opnieuw starten met Start birth.</p>
+            <p className="text-xs">You can restart with Activate birth.</p>
           </div>
         }
         footer={

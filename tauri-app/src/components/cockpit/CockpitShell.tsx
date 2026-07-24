@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { OrganismEnvelopeProvider } from "@/context/OrganismEnvelopeContext";
 import { CommandHud } from "@/components/cockpit/CommandHud";
+import { EvolutionLadderStrip } from "@/components/shared/EvolutionLadderStrip";
 import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
 import { resolveDeckPhaseHeader } from "@/lib/luminaPhasePresentation";
 import { DeckBlockingOverlay } from "@/components/cockpit/DeckBlockingOverlay";
@@ -96,6 +97,7 @@ export function CockpitShell({ className, children }: CockpitShellProps) {
               variant="strip"
               className="relative z-20 shrink-0"
             />
+            <EvolutionLadderStrip className="relative z-20" showBlockers />
             <CommandHud />
             <DeckBlockingOverlay />
 

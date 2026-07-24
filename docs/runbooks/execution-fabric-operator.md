@@ -12,10 +12,46 @@
 | Audit log | `%APPDATA%\LUMINA\fabric-audit.jsonl` |
 | Config | `%APPDATA%\LUMINA\fabric.json` |
 
+## After install — Operator Vault (zero-touch Fabric)
+
+1. NinjaTrader 8 must be installed (Lumina detects it; offers official download if missing).
+2. Open **Setup & connection** from Birth (or first-boot Credentials).
+3. Lumina **auto-bootstraps**: token, `fabric.json`, AddOn DLL deploy to NT Custom\AddOns.
+4. Click **Run fabric diagnostic** — must be **GREEN** before Genesis (fail-closed).
+5. **Save & seal** unlocks Neural Genesis.
+6. CrossTrade fields are **optional emergency fallback only**.
+
+APIs:
+- `POST /api/setup/fabric-bootstrap`
+- `POST /api/setup/fabric-connection-test` (writes GREEN certificate)
+- `GET /api/setup/fabric-link-status`
+- `POST /api/setup/fabric-nt-watch` (NT update re-probe + halt)
+
+On NinjaTrader update, Lumina re-probes Fabric; failure → **Fabric Halt** (no Birth/trading until GREEN again).
+
+## First-time token (customers)
+
+Use **Generate** for `LUMINA_FABRIC_TOKEN` on the Lumina first-boot **Connection Credentials** step.
+That writes:
+
+| Target | Content |
+|--------|---------|
+| Workspace `.env` | `LUMINA_FABRIC_TOKEN=…` (Brain / Python) |
+| Windows **User** env | same value (NinjaTrader reads after **restart**) |
+| `%APPDATA%\LUMINA\fabric.json` | host defaults only — **no secret value** |
+
+Headless / operator install:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install_fabric_token.ps1
+```
+
+**Single host rule:** only one process may bind `127.0.0.1:50051` (SimHost **or** NT8 AddOn, never both).
+
 ## Start SIM host (no NinjaTrader)
 
 ```powershell
-$env:LUMINA_FABRIC_TOKEN = "<secret>"
+$env:LUMINA_FABRIC_TOKEN = "<secret>"   # or rely on User env after install_fabric_token.ps1
 dotnet run --project integrations/ninjatrader8/Lumina.Execution.Fabric.SimHost -c Release -- --port 50051 --account Sim101
 ```
 
@@ -85,14 +121,45 @@ Command Deck **NT8** pill shows connected / SAFE / degraded and tooltip with `sa
 
 ## Gateway mode
 
-`fabric.json` / config:
+Recommended `fabric.json` (created by onboarding / `install_fabric_token.ps1`):
 
 ```json
-{ "GatewayMode": "sim" }
+{
+  "BindHost": "127.0.0.1",
+  "BindPort": 50051,
+  "AuthTokenEnv": "LUMINA_FABRIC_TOKEN",
+  "AccountName": "Sim101",
+  "GatewayMode": "sim",
+  "HeartbeatTimeoutMs": 5000,
+  "FlattenGraceMs": 15000,
+  "FlattenOnTimeout": true,
+  "BindLocalhostOnly": true,
+  "MaxPositionSize": 2,
+  "MaxOrdersPerMinute": 30,
+  "DailyLossLimit": 0
+}
 ```
 
-- **sim** — in-memory SIM fills (default, paper validation)
+- **sim** — in-memory SIM fills (default, paper validation; use even inside NT until NT gateway is bound)
 - **nt** — `NtOrderGateway` skeleton; **fail-closed until NT Account is bound** (live wiring continues after PR-E)
+
+## Brain config (concept)
+
+```yaml
+broker:
+  backend: live
+  live_provider: ninjatrader
+  ninjatrader:
+    enabled: true
+    account_name: Sim101
+    fabric:
+      host: 127.0.0.1
+      port: 50051
+      auth_token_env: LUMINA_FABRIC_TOKEN
+      gateway_mode: sim
+```
+
+Plus process/User env: `LUMINA_FABRIC_TOKEN`.
 
 ## REAL mode
 

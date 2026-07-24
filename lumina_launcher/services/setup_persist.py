@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 import secrets
+import subprocess
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +18,24 @@ from lumina_core.engine.setup_service import SetupService
 from lumina_launcher.core.config_manager import ConfigManager
 from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_launcher.services.model_service import ModelService
+
+logger = logging.getLogger(__name__)
+
+# Operator defaults for %APPDATA%/LUMINA/fabric.json (never store token value here).
+DEFAULT_FABRIC_JSON: dict[str, Any] = {
+    "BindHost": "127.0.0.1",
+    "BindPort": 50051,
+    "AuthTokenEnv": "LUMINA_FABRIC_TOKEN",
+    "AccountName": "Sim101",
+    "GatewayMode": "sim",
+    "HeartbeatTimeoutMs": 5000,
+    "FlattenGraceMs": 15000,
+    "FlattenOnTimeout": True,
+    "BindLocalhostOnly": True,
+    "MaxPositionSize": 2,
+    "MaxOrdersPerMinute": 30,
+    "DailyLossLimit": 0,
+}
 
 
 def resolve_mode_matrix(selection: str) -> tuple[str, str]:
@@ -55,6 +79,7 @@ def persist_setup_configuration(
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_CHAT_ID",
         "LUMINA_JWT_SECRET_KEY",
+        "LUMINA_FABRIC_TOKEN",
         "TAURI_SIGNING_PRIVATE_KEY_PATH",
     ):
         value = str(credentials.get(key, "")).strip()
@@ -63,6 +88,9 @@ def persist_setup_configuration(
 
     steps: list[dict[str, Any]] = []
     config_manager.write_env_file(env_updates)
+    fabric_token = str(credentials.get("LUMINA_FABRIC_TOKEN", "")).strip()
+    if fabric_token:
+        apply_fabric_token_side_effects(fabric_token)
     steps.append({"name": "env_update", "success": True, "message": "Environment values written"})
     if not str(credentials.get("LUMINA_ADMIN_API_KEY", "")).strip():
         steps.append(
@@ -264,7 +292,109 @@ def persist_tauri_quick_config(
     ok_names = {step.get("name") for step in steps if step.get("success")}
     if required.issubset(ok_names):
         setup_service.mark_complete(hardware=snapshot, model=model)
+        # Defer Playground Risk Envelope seal unless operator already sealed.
+        seal_path = sim_envelope_sealed_path(workspace_root)
+        if not seal_path.is_file() or not is_sim_envelope_sealed(workspace_root):
+            write_sim_envelope_sealed(
+                workspace_root, sealed=False, source="tauri_quick_config"
+            )
     return steps
+
+
+def fabric_json_path() -> Path:
+    """Return %APPDATA%/LUMINA/fabric.json (Windows) or ~/.config/LUMINA/fabric.json."""
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(base) / "LUMINA" / "fabric.json"
+    xdg = os.environ.get("XDG_CONFIG_HOME")
+    if xdg:
+        return Path(xdg) / "LUMINA" / "fabric.json"
+    return Path.home() / ".config" / "LUMINA" / "fabric.json"
+
+
+def write_fabric_json_defaults(*, path: Path | None = None) -> Path:
+    """Write operator fabric.json defaults (no auth token value). Creates parent dirs."""
+    target = path or fabric_json_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(DEFAULT_FABRIC_JSON)
+    # Preserve operator GatewayMode / ports if file already exists.
+    if target.is_file():
+        try:
+            existing = json.loads(target.read_text(encoding="utf-8-sig"))
+            if isinstance(existing, dict):
+                for key in ("GatewayMode", "BindHost", "BindPort", "AccountName", "AuthTokenEnv"):
+                    if key in existing and existing[key] is not None:
+                        payload[key] = existing[key]
+                # Never keep plaintext AuthToken in the onboarding-written file.
+                payload.pop("AuthToken", None)
+        except (OSError, json.JSONDecodeError):
+            logger.warning("Could not merge existing fabric.json; rewriting defaults", exc_info=True)
+    # Write UTF-8 without BOM so C# and Python parsers agree.
+    target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return target
+
+
+def set_user_environment_variable(name: str, value: str) -> bool:
+    """Best-effort set User-level env var so NT8 can read it after process restart.
+
+    On Windows uses .NET Environment.SetEnvironmentVariable User scope via PowerShell.
+    Returns True when the write was attempted successfully.
+    """
+    name = str(name or "").strip()
+    value = str(value or "").strip()
+    if not name or not value:
+        return False
+    # Current process (so Brain/backend in this session can use it immediately).
+    os.environ[name] = value
+    if sys.platform != "win32":
+        return True
+    try:
+        # User scope so new processes (NinjaTrader) inherit the secret.
+        completed = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"[Environment]::SetEnvironmentVariable('{name}', $env:__LUMINA_SET_VAL, 'User')",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "__LUMINA_SET_VAL": value},
+            timeout=15,
+        )
+        if completed.returncode != 0:
+            logger.warning(
+                "User env set failed for %s: rc=%s stderr=%s",
+                name,
+                completed.returncode,
+                (completed.stderr or "").strip()[:400],
+            )
+            return False
+        return True
+    except Exception:
+        logger.warning("User env set failed for %s", name, exc_info=True)
+        return False
+
+
+def apply_fabric_token_side_effects(token: str) -> dict[str, Any]:
+    """Write fabric.json defaults and set User env for LUMINA_FABRIC_TOKEN."""
+    token = str(token or "").strip()
+    result: dict[str, Any] = {"fabric_json": None, "user_env": False}
+    if not token:
+        return result
+    try:
+        path = write_fabric_json_defaults()
+        result["fabric_json"] = str(path)
+    except OSError:
+        logger.exception("Failed to write fabric.json")
+    result["user_env"] = set_user_environment_variable("LUMINA_FABRIC_TOKEN", token)
+    return result
+
+
+def generate_fabric_token() -> str:
+    """Cryptographically strong url-safe token for LUMINA_FABRIC_TOKEN."""
+    return secrets.token_urlsafe(32)
 
 
 def persist_credentials_only(
@@ -278,6 +408,7 @@ def persist_credentials_only(
         "CROSSTRADE_TOKEN",
         "CROSSTRADE_ACCOUNT",
         "LUMINA_JWT_SECRET_KEY",
+        "LUMINA_FABRIC_TOKEN",
         "XAI_API_KEY",
         "TELEGRAM_BOT_TOKEN",
         "TELEGRAM_CHAT_ID",
@@ -287,7 +418,179 @@ def persist_credentials_only(
         if value:
             env_updates[key] = value
     config_manager.write_env_file(env_updates)
+    fabric_token = str(credentials.get("LUMINA_FABRIC_TOKEN", "")).strip()
+    if fabric_token:
+        apply_fabric_token_side_effects(fabric_token)
     return scan_missing_credentials(config_manager)
+
+
+SIM_ENVELOPE_SEALED_FILENAME = "lumina_sim_envelope_sealed.json"
+
+
+def sim_envelope_sealed_path(workspace_root: Path) -> Path:
+    return Path(workspace_root) / "state" / SIM_ENVELOPE_SEALED_FILENAME
+
+
+def is_sim_envelope_sealed(workspace_root: Path) -> bool:
+    """Whether operator sealed post-birth SIM Risk Envelope.
+
+    Legacy installs without the flag are treated as sealed (no lock-out).
+    New vault-complete path writes sealed=false explicitly.
+    """
+    path = sim_envelope_sealed_path(workspace_root)
+    if not path.is_file():
+        return True
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return True
+    if not isinstance(payload, dict):
+        return True
+    return bool(payload.get("sealed", True))
+
+
+def write_sim_envelope_sealed(
+    workspace_root: Path,
+    *,
+    sealed: bool,
+    source: str = "operator",
+) -> None:
+    path = sim_envelope_sealed_path(workspace_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "sealed": bool(sealed),
+        "source": str(source),
+        "updated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def seed_sim_runtime_and_mark_setup(
+    *,
+    workspace_root: Path,
+    setup_service: SetupService,
+    config_manager: ConfigManager,
+    first_boot_manager: FirstBootManager,
+    model_service: ModelService,
+    snapshot: HardwareSnapshot,
+    force_envelope_unsealed: bool = True,
+) -> list[dict[str, Any]]:
+    """After Vault is ready: force SIM runtime defaults and mark setup complete.
+
+    Risk Envelope (capital path) is deferred to post-birth Playground seal.
+    """
+    steps: list[dict[str, Any]] = []
+    if setup_service.is_setup_complete():
+        steps.append(
+            {
+                "name": "setup_already_complete",
+                "success": True,
+                "message": "Setup already complete",
+            }
+        )
+        return steps
+
+    birth_mode_value, birth_backend = resolve_mode_matrix("sim")
+    env_updates: dict[str, str] = {
+        "TRADE_MODE": birth_mode_value,
+        "LUMINA_MODE": birth_mode_value,
+        "BROKER_BACKEND": birth_backend,
+    }
+    env_values = config_manager.parse_env_file()
+    if not str(env_values.get("INSTRUMENT", "") or os.getenv("INSTRUMENT", "")).strip():
+        env_updates["INSTRUMENT"] = "MES"
+    config_manager.write_env_file(env_updates)
+    steps.append(
+        {
+            "name": "env_update",
+            "success": True,
+            "message": "SIM runtime seeded (Birth fail-closed)",
+        }
+    )
+
+    config_payload = config_manager.load_yaml_config()
+    config_payload["mode"] = "sim"
+    broker = _ensure_mapping(config_payload, "broker")
+    broker["backend"] = birth_backend
+    trading = _ensure_mapping(config_payload, "trading")
+    if not str(trading.get("instrument", "")).strip():
+        trading["instrument"] = "MES"
+    config_manager.save_yaml_config(config_payload)
+    steps.append(
+        {
+            "name": "runtime_mode",
+            "success": True,
+            "message": "config.yaml mode=sim (Risk Envelope deferred to Playground)",
+        }
+    )
+
+    # Preserve any prior training targets; seed safe first-boot defaults if empty.
+    first_boot_manager.save_full_settings(
+        training_trades=int(
+            (config_payload.get("first_boot") or {}).get("training_trades", 25000)
+            if isinstance(config_payload.get("first_boot"), dict)
+            else 25000
+        ),
+        prefer_real_data_only=True,
+        max_real_days=int(
+            (config_payload.get("first_boot") or {}).get("max_real_days", 56)
+            if isinstance(config_payload.get("first_boot"), dict)
+            else 56
+        ),
+        allow_minimal_synthetic_fallback=False,
+        require_real_simulator_data=True,
+        mark_user_configured=True,
+    )
+    steps.append(
+        {
+            "name": "first_boot_config",
+            "success": True,
+            "message": "First-boot defaults ready (Genesis can override)",
+        }
+    )
+
+    recommended = model_service.get_recommended(
+        ram_gb=snapshot.ram_gb,
+        gpu_vram_gb=snapshot.gpu_vram_gb,
+        vllm_supported=snapshot.vllm_supported,
+    )
+    model_result = setup_service.apply_recommended_config(hardware=snapshot, model=recommended)
+    steps.append(model_result.to_dict())
+    model_service.save_state(workspace_root / "state" / "model_catalog_state.json", recommended.key)
+
+    ConfigLoader.invalidate()
+    setup_service.save_status(
+        {
+            "steps": steps,
+            "selected_mode": "sim",
+            "selected_model": recommended.key,
+            "hardware_tier": getattr(snapshot, "profile_tier", "unknown"),
+            "source": "vault_complete_sim_seed",
+        }
+    )
+    setup_service.mark_complete(hardware=snapshot, model=recommended)
+    steps.append(
+        {
+            "name": "setup_complete",
+            "success": True,
+            "message": "Setup complete — Birth unlocked (envelope seal later)",
+        }
+    )
+
+    if force_envelope_unsealed:
+        # Only set unsealed when flag file does not already claim sealed=true.
+        path = sim_envelope_sealed_path(workspace_root)
+        if not path.is_file():
+            write_sim_envelope_sealed(workspace_root, sealed=False, source="vault_complete")
+        else:
+            try:
+                existing = json.loads(path.read_text(encoding="utf-8"))
+                if isinstance(existing, dict) and existing.get("sealed") is not True:
+                    write_sim_envelope_sealed(workspace_root, sealed=False, source="vault_complete")
+            except (OSError, json.JSONDecodeError):
+                write_sim_envelope_sealed(workspace_root, sealed=False, source="vault_complete")
+
+    return steps
 
 
 CREDENTIAL_ENV_KEYS: tuple[str, ...] = (
@@ -295,6 +598,7 @@ CREDENTIAL_ENV_KEYS: tuple[str, ...] = (
     "CROSSTRADE_TOKEN",
     "CROSSTRADE_ACCOUNT",
     "LUMINA_ADMIN_API_KEY",
+    "LUMINA_FABRIC_TOKEN",
     "XAI_API_KEY",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
@@ -302,12 +606,19 @@ CREDENTIAL_ENV_KEYS: tuple[str, ...] = (
 
 
 def scan_missing_credentials(config_manager: ConfigManager) -> list[str]:
+    """Required secrets for Fabric-first setup.
+
+    CrossTrade is optional emergency fallback — never hard-required.
+    LUMINA_FABRIC_TOKEN is required for Genesis / operator seal.
+    """
     env_values = config_manager.parse_env_file()
-    required = ("LUMINA_JWT_SECRET_KEY", "CROSSTRADE_TOKEN", "CROSSTRADE_ACCOUNT")
+    required = ("LUMINA_JWT_SECRET_KEY", "LUMINA_FABRIC_TOKEN")
     missing: list[str] = []
     for key in required:
         if not str(env_values.get(key, "")).strip():
-            missing.append(key)
+            # Also accept process env (User scope / session)
+            if not str(os.getenv(key, "") or "").strip():
+                missing.append(key)
     return missing
 
 

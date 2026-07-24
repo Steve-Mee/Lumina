@@ -214,7 +214,7 @@ export function BirthLaunchButton({
       <span className="birth-launch-btn__charge" aria-hidden />
       <span className="birth-launch-btn__glow" aria-hidden />
       <span className="birth-launch-btn__label">
-        <span className="birth-launch-btn__sublabel">Click to activate · hold to prime</span>
+        <span className="birth-launch-btn__sublabel">Hold until the ring completes</span>
         {label}
       </span>
 

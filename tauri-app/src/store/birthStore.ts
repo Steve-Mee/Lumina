@@ -135,7 +135,8 @@ export const useBirthStore = create<BirthState>((set, get) => ({
     } else if (isBirthEngineActive(payload)) {
       uiPhase = get().genesisPinned ? "idle" : "running";
     } else if (isBirthFailed(payload)) {
-      uiPhase = "error";
+      // Respect operator pin: Return to Genesis must not be overwritten by poll.
+      uiPhase = get().genesisPinned ? "idle" : "error";
     } else if (isBirthInterrupted(payload)) {
       uiPhase = "idle";
     } else if (get().genesisPinned) {
@@ -485,7 +486,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
         removedCount === 0
           ? "Geen birth-data gevonden — status is al schoon."
           : String(apiResult.message ?? "").trim() ||
-            "Alle birth-data gewist — klaar voor schone start.";
+            "All birth data wiped — ready for a clean start.";
       traceBirthWipe("store.wipe.success", { removedCount, message });
       return { ok: true, message, removedCount };
     } catch (e) {
@@ -498,12 +499,14 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   beginFinale: () => set({ uiPhase: "finale" }),
 
   returnToGenesis: () => {
+    // Pin first so any applyStatus/poll re-entry honors genesis and stays off error overlays.
     set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
     const status = get().status;
     if (status) {
       get().applyStatus(status);
-      set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
     }
+    // Re-assert pin after applyStatus (failed/error payloads previously forced uiPhase back to error).
+    set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
   },
 
   reset: () => {

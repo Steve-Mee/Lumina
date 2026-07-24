@@ -1,55 +1,34 @@
-// LUMINA Execution Fabric — NT8 AddOn entry point (ADR-0035 / PR-C).
-// Hosts gRPC Fabric on localhost. When NinjaTrader.Core is unavailable at build time,
-// FABRIC_STANDALONE stubs the AddOnBase lifecycle for compile checks.
+// ============================================================
+// LUMINA Execution Fabric — NinjaTrader 8 AddOn host entry
+// Capital Preservation First | Fail-Closed | GatewayMode=sim first
+// ============================================================
 
+#region Using declarations
 using System;
+using System.IO;
 using Lumina.Execution.Fabric;
 using Lumina.Execution.Fabric.Execution;
-
-#if !FABRIC_STANDALONE
 using NinjaTrader.NinjaScript;
-#endif
+#endregion
 
-namespace LuminaNt8AddOn
+namespace NinjaTrader.NinjaScript.AddOns
 {
-#if FABRIC_STANDALONE
-    /// <summary>Compile-time stub when NinjaTrader.Core is not referenced.</summary>
-    public abstract class AddOnBaseStub
-    {
-        protected enum StateKind { SetDefaults, Active, Terminated }
-        protected StateKind State { get; set; }
-        protected string Name { get; set; } = "";
-        protected string Description { get; set; } = "";
-        protected abstract void OnStateChange();
-    }
-#endif
-
     /// <summary>
-    /// NT8 AddOn entry point. Hosts Execution Fabric gRPC on State.Active.
-    /// Phase 0 uses <see cref="SimOrderGateway"/> until a live NT order gateway is wired (PR-D).
+    /// Starts Execution Fabric gRPC host inside NT8 (ADR-0035).
+    /// Prefer GatewayMode=sim until NtOrderGateway is bound to a live Account.
+    /// Config: %APPDATA%\LUMINA\fabric.json — token via LUMINA_FABRIC_TOKEN (User env).
     /// </summary>
-#if FABRIC_STANDALONE
-    public class AddOn : AddOnBaseStub
-#else
-    public class AddOn : AddOnBase
-#endif
+    public class LuminaNt8AddOn : AddOnBase
     {
         private FabricGrpcHost? _host;
+        private bool _hostStarted;
 
         protected override void OnStateChange()
         {
-#if FABRIC_STANDALONE
-            // Standalone: methods still document lifecycle; host started via SimHost for E2E.
-            if (State == StateKind.SetDefaults)
-            {
-                Name = "LUMINA Execution Fabric";
-                Description = "Native gRPC execution plane for LUMINA Brain (localhost only)";
-            }
-#else
             if (State == State.SetDefaults)
             {
+                Description = "LUMINA Execution Fabric — Native gRPC bridge. Capital preservation first.";
                 Name = "LUMINA Execution Fabric";
-                Description = "Native gRPC execution plane for LUMINA Brain (localhost only)";
             }
             else if (State == State.Active)
             {
@@ -59,49 +38,101 @@ namespace LuminaNt8AddOn
             {
                 StopFabricHost();
             }
-#endif
         }
 
-        /// <summary>Start Fabric host (also usable from tests / standalone bootstrap).</summary>
-        public void StartFabricHost()
+        private void StartFabricHost()
         {
-            if (_host != null)
+            if (_hostStarted)
                 return;
+
             try
             {
-                var config = FabricConfig.LoadDefault();
-                // PR-E: GatewayMode sim|nt — NT gateway is fail-closed until Account is bound.
-                var gateway = FabricGrpcHost.CreateGateway(config);
-                _host = new FabricGrpcHost(config, gateway, msg =>
+                var config = LoadFabricConfig();
+                var tokenPresent = !string.IsNullOrWhiteSpace(config.ResolveToken());
+
+                Print("================================================");
+                Print("[FabricHost] LUMINA Execution Fabric starting...");
+                Print("[FabricHost] AccountName      = " + config.AccountName);
+                Print("[FabricHost] Bind             = " + config.BindHost + ":" + config.BindPort);
+                Print("[FabricHost] GatewayMode      = " + config.GatewayMode);
+                Print("[FabricHost] HeartbeatTimeout = " + config.HeartbeatTimeoutMs + " ms");
+                Print("[FabricHost] FlattenOnTimeout = " + config.FlattenOnTimeout);
+                Print("[FabricHost] AuthToken set    = " + (tokenPresent ? "YES" : "NO"));
+                Print("================================================");
+
+                if (!tokenPresent)
                 {
-#if !FABRIC_STANDALONE
-                    // Prefer NT Output window when available.
-                    try { NinjaTrader.Code.Output.Process(msg, NinjaTrader.NinjaScript.PrintTo.OutputTab1); }
-                    catch { System.Diagnostics.Debug.WriteLine(msg); }
-#else
-                    System.Diagnostics.Debug.WriteLine(msg);
-#endif
-                });
+                    Print("[FabricHost] FATAL: LUMINA_FABRIC_TOKEN not set (User env) and no fabric.json AuthToken.");
+                    Print("[FabricHost] Generate the token in Lumina first-boot credentials, then restart NT8.");
+                    return;
+                }
+
+                IOrderGateway gateway = FabricGrpcHost.CreateGateway(config);
+                _host = new FabricGrpcHost(config, gateway, msg => Print(msg));
                 _host.Start();
+                _hostStarted = true;
+                Print("[FabricHost] Host started successfully gateway=" + gateway.GatewayKind
+                      + " audit=" + (_host.AuditPath ?? "(default)"));
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine("[LUMINA Fabric] failed to start: " + ex);
+                Print("[FabricHost] FATAL: " + ex);
+                try
+                {
+                    _host?.Dispose();
+                }
+                catch
+                {
+                    // ignore dispose after failed start
+                }
                 _host = null;
-                throw;
+                _hostStarted = false;
             }
         }
 
-        public void StopFabricHost()
+        private void StopFabricHost()
+        {
+            if (!_hostStarted && _host == null)
+                return;
+
+            try
+            {
+                Print("[FabricHost] Stopping host (Terminated)...");
+                _host?.Stop();
+                _host?.Dispose();
+                _host = null;
+                _hostStarted = false;
+                Print("[FabricHost] Host stopped cleanly.");
+            }
+            catch (Exception ex)
+            {
+                Print("[FabricHost] Error while stopping: " + ex.Message);
+            }
+        }
+
+        private FabricConfig LoadFabricConfig()
         {
             try
             {
-                _host?.Stop();
+                var path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "LUMINA",
+                    "fabric.json");
+
+                if (File.Exists(path))
+                {
+                    Print("[Fabric] Config file found: " + path);
+                    return FabricConfig.LoadFromFile(path);
+                }
+
+                Print("[Fabric] No fabric.json found — using defaults (GatewayMode=sim).");
             }
-            finally
+            catch (Exception ex)
             {
-                _host = null;
+                Print("[Fabric] Could not load config: " + ex.Message + " — using defaults.");
             }
+
+            return new FabricConfig();
         }
     }
 }

@@ -43,15 +43,15 @@ export function resolveWizardPhaseHeader(
     case "credentials":
       return {
         eyebrow: SETUP_EYEBROW,
-        title: "Credentials",
-        status: "Secure operator access",
+        title: "Operator Vault",
+        status: "Seal channels · await link",
         tone: "cyan",
       };
     case "configuration":
       return {
         eyebrow: SETUP_EYEBROW,
-        title: "Configuration",
-        status: "Trading profile & risk envelope",
+        title: "Risk Envelope",
+        status: "Trading profile · capital first",
         tone: "cyan",
       };
     case "birth":

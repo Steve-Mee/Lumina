@@ -1,17 +1,19 @@
+import type { ReactNode } from "react";
 import { FileText, Settings2, Zap } from "lucide-react";
 
 import type { BirthAdvancedSection } from "@/components/birth/BirthAdvancedPanel";
-import { BirthControlDock, type BirthControlMode } from "@/components/birth/BirthControlDock";
 import { BirthMilestoneTrack } from "@/components/birth/BirthMilestoneTrack";
 import { Button } from "@/components/ui/button";
 import type { BirthProgressPayload } from "@/lib/birthClient";
 import type { BirthMilestone } from "@/lib/birthPhaseModel";
-import { buildCompactMilestones } from "@/lib/birthPhaseModel";
+import { buildHudMilestones } from "@/lib/birthPhaseModel";
 import { luminaInteractiveClass } from "@/lib/glassGlowTaxonomy";
 import { cn } from "@/lib/utils";
 
+type BirthCommandBarMode = "running" | "genesis" | "finale";
+
 interface BirthCommandBarProps {
-  mode: BirthControlMode | "finale";
+  mode: BirthCommandBarMode;
   milestones?: BirthMilestone[];
   progress?: BirthProgressPayload;
   status?: string;
@@ -28,73 +30,66 @@ interface BirthCommandBarProps {
   className?: string;
 }
 
+function AdvancedToggleButton({
+  label,
+  active,
+  onClick,
+  icon,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  icon: ReactNode;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={cn(
+        luminaInteractiveClass("ghost"),
+        "birth-command-bar__tool-btn",
+        active && "birth-command-bar__tool-btn--active",
+      )}
+      aria-pressed={active}
+      onClick={onClick}
+    >
+      {icon}
+      <span>{label}</span>
+    </Button>
+  );
+}
+
 function RunningAdvancedActions({
   advancedOpen,
   onToggleAdvanced,
-  busy,
-  onStop,
 }: {
   advancedOpen: BirthAdvancedSection | null;
   onToggleAdvanced?: (section: BirthAdvancedSection | null) => void;
-  busy?: boolean;
-  onStop?: () => void;
 }) {
   const toggle = (section: BirthAdvancedSection) => {
     onToggleAdvanced?.(advancedOpen === section ? null : section);
   };
 
   return (
-    <div className="birth-command-bar__actions flex shrink-0 items-center gap-3">
-      <div className="birth-command-bar__action-group flex shrink-0 flex-nowrap items-center gap-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(
-            luminaInteractiveClass("ghost"),
-            "birth-command-bar__action-btn h-8 gap-1.5 rounded-md border border-white/10 px-2.5 font-mono text-[10px] tracking-wide uppercase",
-            advancedOpen === "logs" && "bg-white/10",
-          )}
-          onClick={() => toggle("logs")}
-        >
-          <FileText className="size-3.5 shrink-0" aria-hidden />
-          <span className="hidden sm:inline">Logs</span>
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(
-            luminaInteractiveClass("ghost"),
-            "birth-command-bar__action-btn h-8 gap-1.5 rounded-md border border-white/10 px-2.5 font-mono text-[10px] tracking-wide uppercase",
-            advancedOpen === "settings" && "bg-white/10",
-          )}
-          onClick={() => toggle("settings")}
-        >
-          <Settings2 className="size-3.5 shrink-0" aria-hidden />
-          <span className="hidden sm:inline">Settings</span>
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className={cn(
-            luminaInteractiveClass("ghost"),
-            "birth-command-bar__action-btn h-8 gap-1.5 rounded-md border border-white/10 px-2.5 font-mono text-[10px] tracking-wide uppercase",
-            advancedOpen === "training" && "bg-white/10",
-          )}
-          onClick={() => toggle("training")}
-        >
-          <Zap className="size-3.5 shrink-0" aria-hidden />
-          <span className="hidden sm:inline">PPO</span>
-        </Button>
-      </div>
-      <BirthControlDock
-        mode="running"
-        busy={busy}
-        onStop={onStop}
-        inline
-        className="border-0 bg-transparent p-0 shadow-none backdrop-blur-none"
+    <div className="birth-command-bar__actions" role="group" aria-label="Birth advanced panels">
+      <AdvancedToggleButton
+        label="Logs"
+        active={advancedOpen === "logs"}
+        onClick={() => toggle("logs")}
+        icon={<FileText className="size-3.5 shrink-0" aria-hidden />}
+      />
+      <AdvancedToggleButton
+        label="Settings"
+        active={advancedOpen === "settings"}
+        onClick={() => toggle("settings")}
+        icon={<Settings2 className="size-3.5 shrink-0" aria-hidden />}
+      />
+      <AdvancedToggleButton
+        label="PPO"
+        active={advancedOpen === "training"}
+        onClick={() => toggle("training")}
+        icon={<Zap className="size-3.5 shrink-0" aria-hidden />}
       />
     </div>
   );
@@ -106,10 +101,10 @@ export function BirthCommandBar({
   progress,
   status = "idle",
   checkpointAvailable: _checkpointAvailable = false,
-  busy = false,
+  busy: _busy = false,
   advancedOpen = null,
   onToggleAdvanced,
-  onStop,
+  onStop: _onStop,
   onStart: _onStart,
   onWipe: _onWipe,
   onResumeCheckpoint: _onResumeCheckpoint,
@@ -117,7 +112,7 @@ export function BirthCommandBar({
   onExtraTraining,
   className,
 }: BirthCommandBarProps) {
-  const compactMilestones = buildCompactMilestones(progress, status);
+  const hudMilestones = buildHudMilestones(progress, status);
   const showMilestoneRail = mode === "running" || mode === "finale";
 
   return (
@@ -127,22 +122,34 @@ export function BirthCommandBar({
         className,
       )}
       role="banner"
+      aria-label="Birth mission HUD"
     >
       <div className="birth-command-bar__accent deck-panel-accent absolute inset-x-0 top-0 h-px origin-left" />
-      <div className="birth-command-bar__top flex items-center justify-end gap-3 px-3 py-2 md:px-4">
+      <div className="birth-command-bar__row min-h-0 px-3 py-1.5 md:px-4">
+        {showMilestoneRail ? (
+          <div className="birth-command-bar__milestones">
+            <BirthMilestoneTrack
+              milestones={hudMilestones.items}
+              upcomingCount={0}
+              variant="bar"
+            />
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
+
         {mode === "running" ? (
           <RunningAdvancedActions
             advancedOpen={advancedOpen}
             onToggleAdvanced={onToggleAdvanced}
-            busy={busy}
-            onStop={onStop}
           />
         ) : null}
+
         {mode === "finale" ? (
-          <div className="birth-command-bar__actions flex shrink-0 flex-nowrap items-center gap-2">
+          <div className="birth-command-bar__actions">
             <Button
               type="button"
-              className="onboarding-cta h-8 min-w-[140px] px-3 py-1 font-mono text-[10px] tracking-wide uppercase"
+              className="onboarding-cta h-7 min-w-[132px] px-3 py-1 font-mono text-[10px] tracking-wide uppercase"
               onClick={onEnterDeck}
             >
               Enter command deck
@@ -153,7 +160,7 @@ export function BirthCommandBar({
               size="sm"
               className={cn(
                 luminaInteractiveClass("ghost"),
-                "h-8 font-mono text-[10px] tracking-wide uppercase text-muted-foreground",
+                "h-7 font-mono text-[10px] tracking-wide uppercase text-muted-foreground",
               )}
               onClick={onExtraTraining}
             >
@@ -162,15 +169,6 @@ export function BirthCommandBar({
           </div>
         ) : null}
       </div>
-      {showMilestoneRail ? (
-        <div className="birth-command-bar__milestones border-t border-white/5 px-3 py-1.5 md:px-4">
-          <BirthMilestoneTrack
-            milestones={compactMilestones.items}
-            upcomingCount={compactMilestones.upcomingCount}
-            variant="bar"
-          />
-        </div>
-      ) : null}
     </header>
   );
 }

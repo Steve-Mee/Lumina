@@ -1,11 +1,10 @@
 import type { OnboardingDraft } from "@/store/onboardingStore";
 
-/** Keys required to pass the credentials wizard step (first boot). */
+/** Keys required to pass the credentials wizard (Fabric-first; CrossTrade optional). */
 export const REQUIRED_WIZARD_CREDENTIAL_KEYS = [
   "LUMINA_JWT_SECRET_KEY",
-  "CROSSTRADE_TOKEN",
-  "CROSSTRADE_ACCOUNT",
   "LUMINA_ADMIN_API_KEY",
+  "LUMINA_FABRIC_TOKEN",
 ] as const;
 
 export const CREDENTIAL_ENV_KEYS = [
@@ -13,6 +12,7 @@ export const CREDENTIAL_ENV_KEYS = [
   "CROSSTRADE_TOKEN",
   "CROSSTRADE_ACCOUNT",
   "LUMINA_ADMIN_API_KEY",
+  "LUMINA_FABRIC_TOKEN",
   "XAI_API_KEY",
   "TELEGRAM_BOT_TOKEN",
   "TELEGRAM_CHAT_ID",

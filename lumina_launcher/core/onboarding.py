@@ -49,7 +49,8 @@ def compute_onboarding_steps(
         "ollama": "done",
         "model": "done",
         "credentials": "done",
-        "configuration": "done" if setup_complete else "pending",
+        # Risk Envelope is post-birth (Playground seal), not a setup wizard wall.
+        "configuration": "done",
         "birth": "done",
     }
 
@@ -73,9 +74,7 @@ def compute_onboarding_steps(
         required.append("credentials")
         step_status["credentials"] = "pending"
 
-    if not setup_complete:
-        required.append("configuration")
-        step_status["configuration"] = "pending"
+    # configuration intentionally omitted from pre-birth wizard (ADR-0027 playground seal).
 
     birth_idle = birth_status in {"idle", "not_started", "", "interrupted", "error"}
     if setup_complete and birth_idle and not birth_ready:
@@ -141,7 +140,8 @@ def should_skip_wizard(
 
 
 def _has_pending_setup_steps(required_steps: list[OnboardingStepId]) -> bool:
-    setup_steps = {"backend", "ollama", "model", "credentials", "configuration"}
+    # configuration is post-birth Risk Envelope — not a pre-birth setup blocker.
+    setup_steps = {"backend", "ollama", "model", "credentials"}
     return any(step in setup_steps for step in required_steps)
 
 

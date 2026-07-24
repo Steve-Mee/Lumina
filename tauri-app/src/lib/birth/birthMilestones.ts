@@ -154,7 +154,7 @@ export interface CompactMilestoneView {
   upcomingCount: number;
 }
 
-/** Show completed + active + next milestone only (max 3 visible). */
+/** Show completed + active + next milestone only (max 3 visible). Drawer / dense surfaces. */
 export function buildCompactMilestones(
   progress: BirthProgressPayload | undefined,
   status: string,
@@ -169,6 +169,23 @@ export function buildCompactMilestones(
   const items = all.slice(start, end);
   const upcomingCount = Math.max(0, all.length - end);
   return { items, upcomingCount };
+}
+
+/**
+ * Mission HUD rail: previous complete + active + all remaining as chips.
+ * Never collapses tail into a "+N" counter — room exists for full labels.
+ */
+export function buildHudMilestones(
+  progress: BirthProgressPayload | undefined,
+  status: string,
+): CompactMilestoneView {
+  const all = buildMilestones(progress, status);
+  const activeIndex = all.findIndex((m) => m.state === "active");
+  if (activeIndex < 0) {
+    return { items: all, upcomingCount: 0 };
+  }
+  const start = Math.max(0, activeIndex - 1);
+  return { items: all.slice(start), upcomingCount: 0 };
 }
 
 export function resolveBirthHeadline(

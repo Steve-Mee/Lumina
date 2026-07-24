@@ -35,7 +35,7 @@ import {
 import { useRuntimeStatusPoll } from "@/hooks/useRuntimeStatusPoll";
 
 import { fetchMaturationProgress } from "@/lib/maturationClient";
-import { MaturityProgressStrip } from "@/components/cockpit/MaturityProgressStrip";
+
 
 import {
   resolveHudAnnexHintCopy,
@@ -404,7 +404,6 @@ export function CommandHud({ className }: CommandHudProps) {
             />
           </div>
         </div>
-        <MaturityProgressStrip className="mt-2" />
       </header>
 
       <Dialog open={realConfirmOpen} onOpenChange={setRealConfirmOpen}>

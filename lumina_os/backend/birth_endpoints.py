@@ -209,6 +209,34 @@ async def start_birth(
     continue_training: bool = Query(False),
     reuse_data: bool = Query(False),
 ) -> dict[str, Any]:
+    # Fail-closed: Fabric link must be GREEN before Birth / Genesis training.
+    try:
+        from lumina_launcher.services.fabric_link_certificate import is_fabric_link_green
+
+        ok, reason = is_fabric_link_green(workspace_root=birth_service.workspace_root)
+        if not ok:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": reason or "FABRIC_LINK_NOT_GREEN",
+                    "message": (
+                        "Fabric diagnostic must be GREEN before Birth. "
+                        "Open Setup & connection → Run fabric diagnostic."
+                    ),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        # If certificate subsystem fails open would be unsafe — block.
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "FABRIC_LINK_NOT_GREEN",
+                "message": "Fabric link certificate unavailable — run Operator Vault diagnostic.",
+            },
+        ) from None
+
     return birth_service.start_birth(
         target_trades=target_trades,
         force=force,

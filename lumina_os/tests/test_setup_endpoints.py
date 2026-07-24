@@ -46,9 +46,11 @@ def test_compute_onboarding_steps_fresh_install() -> None:
     )
     assert "welcome" in required
     assert "credentials" in required
-    assert "configuration" in required
+    # Risk Envelope is post-birth (Playground) — not a pre-birth wizard wall.
+    assert "configuration" not in required
     assert status["credentials"] == "pending"
     assert status["ollama"] == "pending"
+    assert status["configuration"] == "done"
 
 
 @pytest.mark.unit

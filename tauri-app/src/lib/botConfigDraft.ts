@@ -1,4 +1,5 @@
 import type { OnboardingPayload } from "@/lib/onboardingSteps";
+import { DEFAULT_INSTRUMENT_ROOT, normalizeInstrumentRoot } from "@/lib/instrumentsCatalog";
 
 export type MutationDepth = "conservative" | "moderate" | "radical";
 
@@ -43,7 +44,7 @@ export function defaultBotConfigDraft(): BotConfigDraft {
       max_mutation_depth: "radical",
     },
     preferences: {
-      instrument: "ES",
+      instrument: DEFAULT_INSTRUMENT_ROOT,
       voice_enabled: true,
       screen_share_enabled: true,
       dashboard_enabled: true,
@@ -119,7 +120,9 @@ export function hydrateBotConfigDraftFromPayload(
       ),
     },
     preferences: {
-      instrument: String(prior?.preferences?.instrument ?? "ES"),
+      instrument: normalizeInstrumentRoot(
+        String(prior?.preferences?.instrument ?? DEFAULT_INSTRUMENT_ROOT),
+      ),
       voice_enabled: prior?.preferences?.voice_enabled ?? true,
       screen_share_enabled: prior?.preferences?.screen_share_enabled ?? true,
       dashboard_enabled: Boolean(

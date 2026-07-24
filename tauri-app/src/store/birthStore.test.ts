@@ -192,6 +192,32 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().genesisPinned).toBe(true);
   });
 
+  it("returnToGenesis stays on genesis when backend still reports error (PPO/fail)", () => {
+    useBirthStore.getState().applyStatus({
+      status: "error",
+      error: "PPO trainer unbound or incompatible (missing create_fresh_birth_policy)",
+      message: "Birth Phase gefaald",
+      live: false,
+    } as BirthStatusPayload);
+    expect(useBirthStore.getState().uiPhase).toBe("error");
+
+    useBirthStore.getState().returnToGenesis();
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().genesisPinned).toBe(true);
+
+    // Poll re-applies same error payload — must not yank operator off Genesis.
+    useBirthStore.getState().applyStatus({
+      status: "error",
+      error: "PPO trainer unbound or incompatible (missing create_fresh_birth_policy)",
+      message: "Birth Phase gefaald",
+      live: false,
+    } as BirthStatusPayload);
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().genesisPinned).toBe(true);
+  });
+
   it("idle not_started maps to genesis surface after applyStatus", () => {
     useBirthStore.getState().applyStatus({
       status: "idle",

@@ -106,8 +106,15 @@
     --lumina-glow-edge: color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 35%, transparent);
     --lumina-glow-halo: color-mix(in srgb, var(--cockpit-glow-primary, var(--lumina-cyan)) 14%, transparent);
     --lumina-glow-ambient: color-mix(in srgb, var(--cockpit-glow-accent, oklch(0.65 0.2 280)) 8%, transparent);
+    /*
+     * Cursor contract (app-wide, single source of truth):
+     * - default: system arrow for non-interactive chrome
+     * - interactive: system pointer (hand) — no custom reticle (WebView-safe, consistent)
+     * - disabled / wait: system affordances
+     * All interactive surfaces must use var(--lumina-cursor-interactive), never raw mixes.
+     */
     --lumina-cursor-default: default;
-    --lumina-cursor-interactive: url("/cursors/lumina-pointer.svg") 8 4, pointer;
+    --lumina-cursor-interactive: pointer;
     --lumina-cursor-disabled: not-allowed;
     --lumina-cursor-wait: wait;
     --lumina-hover-glow: 0 0 18px color-mix(in srgb, var(--deck-accent, var(--lumina-cyan)) 45%, transparent);
@@ -165,7 +172,48 @@
     @apply bg-background text-foreground;
     line-height: 1.6;
     letter-spacing: 0.01em;
+    cursor: var(--lumina-cursor-default);
     }
+  /*
+   * Global interactive cursor — covers buttons/links/summaries even when a surface
+   * forgets .lumina-interactive. Identity lives in glass + cyan glow, not a custom cursor.
+   */
+  button:not(:disabled):not([aria-disabled="true"]),
+  [role="button"]:not([aria-disabled="true"]):not([disabled]),
+  a[href],
+  summary,
+  label[for],
+  select:not(:disabled),
+  input[type="button"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="range"]:not(:disabled),
+  input[type="file"]:not(:disabled) {
+    cursor: var(--lumina-cursor-interactive);
+  }
+  button:disabled,
+  button[aria-disabled="true"],
+  [role="button"][aria-disabled="true"],
+  [role="button"][disabled],
+  input:disabled,
+  select:disabled {
+    cursor: var(--lumina-cursor-disabled);
+  }
+  /* Tailwind utility bridge → Lumina tokens (one hand cursor everywhere) */
+  .cursor-pointer {
+    cursor: var(--lumina-cursor-interactive);
+  }
+  .cursor-default {
+    cursor: var(--lumina-cursor-default);
+  }
+  .cursor-not-allowed {
+    cursor: var(--lumina-cursor-disabled);
+  }
+  .cursor-wait {
+    cursor: var(--lumina-cursor-wait);
+  }
   #lumina-overlay-root {
     position: fixed;
     inset: 0;
@@ -179,4 +227,21 @@
   html {
     @apply font-sans;
     }
+}
+
+/*
+ * Unlayered interactive cursor safety net (beats Tailwind preflight / layered base).
+ * Ensures orphan buttons (e.g. Setup & connection) always use the hand cursor.
+ */
+button:not(:disabled):not([aria-disabled="true"]),
+[role="button"]:not([aria-disabled="true"]):not([disabled]),
+a[href],
+summary {
+  cursor: var(--lumina-cursor-interactive);
+}
+button:disabled,
+button[aria-disabled="true"],
+[role="button"][aria-disabled="true"],
+[role="button"][disabled] {
+  cursor: var(--lumina-cursor-disabled);
 }

@@ -36,6 +36,26 @@ export async function fetchOnboardingStatus(): Promise<OnboardingPayload> {
   return apiFetch<OnboardingPayload>("/api/setup/onboarding");
 }
 
+export interface FabricConnectionCheck {
+  id: string;
+  title: string;
+  status: "pass" | "fail" | "warn" | "skip";
+  message: string;
+  detail?: string | null;
+  duration_ms?: number;
+}
+
+export interface FabricConnectionTestReport {
+  overall: "green" | "amber" | "red";
+  started_at: string;
+  duration_ms: number;
+  target: string;
+  gateway_mode: string;
+  checks: FabricConnectionCheck[];
+  summary: string;
+  remediation: string[];
+}
+
 export interface ConfigurePayload {
   mode: string;
   credentials: {
@@ -43,6 +63,7 @@ export interface ConfigurePayload {
     CROSSTRADE_TOKEN: string;
     CROSSTRADE_ACCOUNT: string;
     LUMINA_ADMIN_API_KEY?: string;
+    LUMINA_FABRIC_TOKEN?: string;
     XAI_API_KEY?: string;
     TELEGRAM_BOT_TOKEN?: string;
     TELEGRAM_CHAT_ID?: string;
@@ -72,11 +93,79 @@ export interface ConfigurePayload {
 export async function postCredentials(credentials: ConfigurePayload["credentials"]): Promise<{
   success: boolean;
   missing: string[];
+  onboarding?: OnboardingPayload;
 }> {
   return apiFetch("/api/setup/credentials", {
     method: "POST",
     body: JSON.stringify(credentials),
   });
+}
+
+/** Seed SIM defaults + mark setup complete when Vault is ready (no Risk Envelope). */
+export async function postReadyForBirth(): Promise<{
+  success: boolean;
+  steps: Array<{ success?: boolean; message?: string; name?: string }>;
+  onboarding?: OnboardingPayload;
+}> {
+  return apiFetch("/api/setup/ready-for-birth", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+export interface FabricConnectionTestReportExt extends FabricConnectionTestReport {
+  certified?: boolean;
+}
+
+/** SIM-only Brain ↔ NT8 Execution Fabric diagnostics (not CrossTrade). */
+export async function postFabricConnectionTest(options?: {
+  include_safe_mode?: boolean;
+  instrument?: string;
+}): Promise<FabricConnectionTestReportExt> {
+  return apiFetch("/api/setup/fabric-connection-test", {
+    method: "POST",
+    body: JSON.stringify({
+      include_safe_mode: options?.include_safe_mode ?? true,
+      instrument: options?.instrument ?? "MES",
+    }),
+  });
+}
+
+export interface FabricBootstrapResult {
+  token_ready: boolean;
+  token_length: number;
+  fabric_json: string;
+  deploy: {
+    deployed: boolean;
+    source: string | null;
+    destination: string;
+    copied: string[];
+    missing: string[];
+    error: string | null;
+  };
+  gateway_mode: string;
+  fabric_link_green: boolean;
+  fabric_link_reason: string;
+  certificate: Record<string, unknown> | null;
+  halt: Record<string, unknown> | null;
+}
+
+export async function postFabricBootstrap(): Promise<FabricBootstrapResult> {
+  return apiFetch("/api/setup/fabric-bootstrap", { method: "POST", body: "{}" });
+}
+
+export async function fetchFabricLinkStatus(): Promise<{
+  green: boolean;
+  reason: string;
+  certificate: Record<string, unknown> | null;
+  halt: Record<string, unknown> | null;
+}> {
+  return apiFetch("/api/setup/fabric-link-status");
+}
+
+/** Re-probe when NinjaTrader binary changed (fail-closed halt on RED). */
+export async function postFabricNtWatch(): Promise<Record<string, unknown>> {
+  return apiFetch("/api/setup/fabric-nt-watch", { method: "POST", body: "{}" });
 }
 
 export async function postConfigure(body: ConfigurePayload): Promise<{
@@ -105,11 +194,17 @@ export type BotConfigPayload = {
     runtime_trace_interval_sec: number;
     latency_sla_ms: number;
   };
+  /** Marks post-birth SIM Risk Envelope sealed (Playground unlock). */
+  seal_sim_envelope?: boolean;
 };
 
 export async function postBotConfig(
   body: BotConfigPayload,
-): Promise<{ success: boolean; defaults: OnboardingPayload["defaults"] }> {
+): Promise<{
+  success: boolean;
+  defaults: OnboardingPayload["defaults"];
+  sim_envelope_sealed?: boolean | null;
+}> {
   return apiFetch("/api/config/bot", {
     method: "POST",
     body: JSON.stringify(body),

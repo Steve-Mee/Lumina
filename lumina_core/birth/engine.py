@@ -108,7 +108,8 @@ class BirthPhaseEngineV2:
         stop_event: threading.Event | None = None,
     ) -> None:
         self.runtime = runtime
-        self.ppo_trainer = ppo_trainer
+        # Prefer explicit inject; fall back to runtime-bound trainer (launcher/container paths).
+        self.ppo_trainer = ppo_trainer if ppo_trainer is not None else getattr(runtime, "ppo_trainer", None)
         self.market_data_service = market_data_service
         self.config = config or {}
         self.workspace_root = Path(workspace_root)
@@ -319,6 +320,15 @@ class BirthPhaseEngineV2:
                 recommended,
             )
 
+    def _resolve_ppo_trainer(self) -> Any:
+        """Bound PPO trainer used for birth policy minting (fail-closed if unbound)."""
+        trainer = self.ppo_trainer
+        if trainer is None:
+            trainer = getattr(self.runtime, "ppo_trainer", None)
+            if trainer is not None:
+                self.ppo_trainer = trainer
+        return trainer
+
     def _create_birth_policy(
         self,
         *,
@@ -326,22 +336,26 @@ class BirthPhaseEngineV2:
         policy_path: str | None = None,
         force_reinit: bool = False,
     ) -> Any:
-        create = getattr(self.ppo_trainer, "create_fresh_birth_policy", None)
+        trainer = self._resolve_ppo_trainer()
+        create = getattr(trainer, "create_fresh_birth_policy", None)
         if not callable(create):
-            raise RuntimeError("PPO trainer missing create_fresh_birth_policy")
+            raise RuntimeError(
+                "PPO trainer unbound or incompatible (missing create_fresh_birth_policy); "
+                "birth cannot mint a policy."
+            )
         resolved_path = str(policy_path or "").strip()
         if resolved_path:
             candidate = Path(resolved_path)
             if candidate.is_file():
-                load_policy = getattr(self.ppo_trainer, "load_policy", None)
+                load_policy = getattr(trainer, "load_policy", None)
                 if callable(load_policy):
                     load_policy(resolved_path)
-                active = getattr(self.ppo_trainer, "_resolve_active_model", None)
+                active = getattr(trainer, "_resolve_active_model", None)
                 if callable(active):
                     loaded = active()
                     if loaded is not None:
                         return loaded
-                load_weights = getattr(self.ppo_trainer, "load_weights", None)
+                load_weights = getattr(trainer, "load_weights", None)
                 if callable(load_weights):
                     loaded = load_weights(resolved_path)
                     if loaded is not None:

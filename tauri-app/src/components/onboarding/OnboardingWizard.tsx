@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 
 import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { EvolutionLadderStrip } from "@/components/shared/EvolutionLadderStrip";
 import { LuminaPhaseHeader } from "@/components/shared/LuminaPhaseHeader";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { resolveWizardPhaseHeader } from "@/lib/luminaPhasePresentation";
@@ -42,11 +44,18 @@ export function OnboardingWizard() {
   const saveConfiguration = useOnboardingStore((s) => s.saveConfiguration);
   const activateBirth = useOnboardingStore((s) => s.activateBirth);
   const importCredentialsFromEnv = useOnboardingStore((s) => s.importCredentialsFromEnv);
+  const setupReviewActive = useOnboardingStore((s) => s.setupReviewActive);
+  const exitSetupReview = useOnboardingStore((s) => s.exitSetupReview);
   const [savingCredentials, setSavingCredentials] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
   const stepTransition = transitionOrNone(reducedMotion, stepFade);
 
-  const steps = useMemo(() => selectActiveSteps(payload), [payload]);
+  const steps = useMemo(
+    () => selectActiveSteps(payload),
+    // Recompute when review mode toggles (selectActiveSteps reads store flag).
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setupReviewActive is intentional
+    [payload, setupReviewActive],
+  );
   const currentStep = steps[currentStepIndex] ?? steps[0] ?? "welcome";
   const shortPath = steps.length <= 2;
 
@@ -65,7 +74,23 @@ export function OnboardingWizard() {
     setSavingCredentials(true);
     const ok = await saveCredentials();
     setSavingCredentials(false);
-    if (ok) advance();
+    if (ok) {
+      // Operator reopened vault from Birth — return to Genesis after seal.
+      if (useOnboardingStore.getState().setupReviewActive) {
+        useOnboardingStore.getState().exitSetupReview();
+        return;
+      }
+      // When setup is complete, SSOT moves to Birth — no need to advance wizard steps.
+      const surface = useOnboardingStore.getState().payload?.app_surface;
+      const phase = useOnboardingStore.getState().phase;
+      if (phase === "birth" || surface === "birth") {
+        return;
+      }
+      advance();
+      return;
+    }
+    const message = useOnboardingStore.getState().error?.trim() || "Could not seal vault";
+    toast.error(message);
   };
 
   const handleConfigContinue = async () => {
@@ -74,10 +99,12 @@ export function OnboardingWizard() {
   };
 
   useEffect(() => {
+    // Do not kick operators out of setup review back to Birth on refresh SSOT.
+    if (setupReviewActive) return;
     if (payload?.app_surface === "birth") {
       setPhase("birth");
     }
-  }, [payload?.app_surface, setPhase]);
+  }, [payload?.app_surface, setPhase, setupReviewActive]);
 
   useEffect(() => {
     if (smartSetupRunning) {
@@ -88,6 +115,7 @@ export function OnboardingWizard() {
 
   useEffect(() => {
     if (!payload) return;
+    if (setupReviewActive) return;
     if (currentStep !== "credentials") return;
     if (payload.credentials.wizard_required === false) {
       advance();
@@ -96,12 +124,13 @@ export function OnboardingWizard() {
     if (!steps.includes("credentials")) {
       advance();
     }
-  }, [payload, currentStep, steps, advance]);
+  }, [payload, currentStep, steps, advance, setupReviewActive]);
 
   if (!payload || !payload.backend.reachable) {
     return (
       <OnboardingShell>
         <LuminaPhaseHeader {...resolveWizardPhaseHeader("backend")} variant="hero" />
+        <EvolutionLadderStrip className="relative z-20 shrink-0" />
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-4 py-8">
           <BackendStep
             reachable={false}
@@ -114,7 +143,8 @@ export function OnboardingWizard() {
     );
   }
 
-  if (payload.app_surface === "birth") {
+  // When operator reopens setup from Birth, keep rendering the wizard even if SSOT is birth.
+  if (payload.app_surface === "birth" && !setupReviewActive) {
     return null;
   }
 
@@ -162,12 +192,14 @@ export function OnboardingWizard() {
               (payload.workspace_root ? `${payload.workspace_root}/.env` : undefined)
             }
             hasAdminApiKeyInEnv={payload.credentials.has_admin_api_key}
-            wizardRequired={payload.credentials.wizard_required ?? true}
-            skipReason={payload.credentials.skip_reason ?? null}
+            wizardRequired={setupReviewActive ? true : (payload.credentials.wizard_required ?? true)}
+            skipReason={setupReviewActive ? null : (payload.credentials.skip_reason ?? null)}
+            setupReviewActive={setupReviewActive}
             saving={savingCredentials}
             onChange={(credentials) => updateDraft({ credentials })}
             onContinue={() => void handleCredentialsContinue()}
             onImportFromEnv={importCredentialsFromEnv}
+            onBackToGenesis={setupReviewActive ? () => exitSetupReview() : undefined}
           />
         );
       case "configuration":
@@ -206,34 +238,46 @@ export function OnboardingWizard() {
   const railStep = smartStepActive ? ("ollama" as OnboardingStepId) : currentStep;
 
   const isBirthStep = currentStep === "birth";
+  const isCredentialsStep = currentStep === "credentials";
+  const isConfigurationStep = currentStep === "configuration";
+  const isCinematicStep = isBirthStep || isCredentialsStep || isConfigurationStep;
   const phaseHeader = resolveWizardPhaseHeader(currentStep, activating);
 
   return (
     <OnboardingShell
-      className={cn("onboarding-shell--form", isBirthStep && "onboarding-shell--birth")}
+      className={cn(
+        "onboarding-shell--form",
+        isBirthStep && "onboarding-shell--birth",
+        isCredentialsStep && "onboarding-shell--birth credentials-vault-host",
+        isConfigurationStep && "onboarding-shell--birth risk-envelope-host",
+      )}
     >
       <LuminaPhaseHeader
         {...phaseHeader}
-        variant={isBirthStep ? "compact" : "hero"}
+        variant={isCinematicStep ? "strip" : "hero"}
         className="relative z-20 shrink-0"
       />
+      <EvolutionLadderStrip className="relative z-20 shrink-0" />
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          isBirthStep
-            ? "w-full min-h-0 flex-1 overflow-hidden px-4 py-0"
+          isCinematicStep
+            ? "w-full min-h-0 flex-1 overflow-hidden"
             : "items-center overflow-y-auto px-4 py-8",
         )}
       >
         <div
           className={cn(
             "w-full min-h-0",
-            isBirthStep
-              ? "onboarding-birth-column overflow-hidden"
+            isCinematicStep
+              ? "flex min-h-0 flex-1 flex-col overflow-hidden"
               : "flex flex-col items-center",
           )}
         >
-        {currentStep !== "welcome" && payload && (
+        {currentStep !== "welcome" &&
+        currentStep !== "credentials" &&
+        currentStep !== "configuration" &&
+        payload ? (
           <StepProgressRail
             steps={displayStepsDeduped}
             currentStep={railStep}
@@ -241,9 +285,20 @@ export function OnboardingWizard() {
             compact={isBirthStep}
             minimal={isBirthStep}
           />
-        )}
-        {error && currentStep !== "birth" ? (
+        ) : null}
+        {error && currentStep !== "birth" && currentStep !== "credentials" ? (
           <p className={cn("mb-4 max-w-xl rounded-lg p-3 text-center text-sm", distressPanelClass("error"))} role="alert">
+            <span className={warnOverlayBodyClass()}>{error}</span>
+          </p>
+        ) : null}
+        {error && currentStep === "credentials" ? (
+          <p
+            className={cn(
+              "relative z-20 mx-3 mt-2 shrink-0 rounded-lg px-3 py-2 text-center text-xs",
+              distressPanelClass("error"),
+            )}
+            role="alert"
+          >
             <span className={warnOverlayBodyClass()}>{error}</span>
           </p>
         ) : null}
@@ -251,12 +306,13 @@ export function OnboardingWizard() {
           key={currentStep}
           className={cn(
             "w-full",
-            !isBirthStep && "max-w-xl",
+            !isCinematicStep && "max-w-xl",
             currentStep !== "welcome" &&
               currentStep !== "birth" &&
+              currentStep !== "credentials" &&
               "lumina-glass lumina-glass--panel rounded-xl p-4 md:p-6",
-            isBirthStep &&
-              "onboarding-birth-viewport flex min-h-0 max-w-none flex-1 flex-col",
+            isCinematicStep &&
+              "flex min-h-0 max-w-none flex-1 flex-col overflow-hidden",
           )}
           initial={reducedMotion ? false : { opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}

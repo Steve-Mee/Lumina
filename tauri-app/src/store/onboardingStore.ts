@@ -9,6 +9,7 @@ import {
   fetchOnboardingStatus,
   postConfigure,
   postCredentials,
+  postReadyForBirth,
   startSmartSetup,
   type ConfigurePayload,
 } from "@/lib/setupClient";
@@ -32,6 +33,7 @@ export interface OnboardingDraft {
     CROSSTRADE_TOKEN: string;
     CROSSTRADE_ACCOUNT: string;
     LUMINA_ADMIN_API_KEY: string;
+    LUMINA_FABRIC_TOKEN: string;
     XAI_API_KEY: string;
     TELEGRAM_BOT_TOKEN: string;
     TELEGRAM_CHAT_ID: string;
@@ -71,9 +73,13 @@ interface OnboardingState {
   error: string | null;
   activating: boolean;
   birthPhaseCommitted: boolean;
+  /** Operator reopened first-boot setup (credentials / Fabric test) from Birth. */
+  setupReviewActive: boolean;
   smartSetupRunning: boolean;
   refresh: () => Promise<void>;
   setPhase: (phase: AppPhase) => void;
+  enterSetupReview: (preferredStep?: OnboardingStepId) => void;
+  exitSetupReview: () => void;
   completeBirthTransition: () => void;
   setStepIndex: (index: number) => void;
   updateDraft: (patch: Partial<OnboardingDraft>) => void;
@@ -96,6 +102,7 @@ const defaultDraft = (): OnboardingDraft => ({
     CROSSTRADE_TOKEN: "",
     CROSSTRADE_ACCOUNT: "",
     LUMINA_ADMIN_API_KEY: "",
+    LUMINA_FABRIC_TOKEN: "",
     XAI_API_KEY: "",
     TELEGRAM_BOT_TOKEN: "",
     TELEGRAM_CHAT_ID: "",
@@ -133,9 +140,36 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   error: null,
   activating: false,
   birthPhaseCommitted: false,
+  setupReviewActive: false,
   smartSetupRunning: false,
 
   setPhase: (phase) => set({ phase }),
+
+  enterSetupReview: (preferredStep = "credentials") => {
+    const steps = SETUP_REVIEW_STEPS;
+    const preferred = preferredStep;
+    let idx = steps.indexOf(preferred as OnboardingStepId);
+    if (idx < 0) {
+      idx = 0;
+    }
+    set({
+      setupReviewActive: true,
+      birthPhaseCommitted: false,
+      phase: "wizard",
+      currentStepIndex: Math.max(0, idx),
+      error: null,
+    });
+  },
+
+  exitSetupReview: () => {
+    set({
+      setupReviewActive: false,
+      phase: "birth",
+      birthPhaseCommitted: false,
+      error: null,
+    });
+    void get().refresh();
+  },
 
   completeBirthTransition: () => {
     if (typeof window !== "undefined") {
@@ -231,6 +265,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       const priorPhase = get().phase;
       const activating = get().activating;
       const preservedError = get().error;
+      const setupReviewActive = get().setupReviewActive;
       set({
         payload,
         error: activating ? preservedError : null,
@@ -244,6 +279,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
               priorPhase,
               birthPhaseCommitted: get().birthPhaseCommitted,
               activating: false,
+              setupReviewActive,
             }),
       });
     } catch (err) {
@@ -254,7 +290,11 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         lastPayload != null ? markPayloadBackendUnreachable(lastPayload, message) : null;
       set({
         error: message,
-        phase: resolvePhaseOnRefreshError(priorPhase, payloadAfterError ?? lastPayload),
+        phase: resolvePhaseOnRefreshError(
+          priorPhase,
+          payloadAfterError ?? lastPayload,
+          get().setupReviewActive,
+        ),
         payload: payloadAfterError ?? lastPayload,
         currentStepIndex: priorPhase === "loading" ? 0 : get().currentStepIndex,
       });
@@ -282,14 +322,73 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
 
   saveCredentials: async () => {
     const { draft, payload } = get();
-    if (payload?.credentials.wizard_required === false) {
-      return true;
-    }
     try {
-      persistMonitoringApiKey(draft.credentials.LUMINA_ADMIN_API_KEY);
-      const result = await postCredentials(draft.credentials);
-      await get().refresh();
-      return result.success;
+      const applyOnboarding = (next: OnboardingPayload) => {
+        get().hydrateDraftFromPayload(next);
+        const priorPhase = get().phase;
+        set({
+          payload: next,
+          phase: mapAppPhase(next, {
+            priorPhase,
+            birthPhaseCommitted: get().birthPhaseCommitted,
+            activating: false,
+            setupReviewActive: get().setupReviewActive,
+          }),
+        });
+      };
+
+      const jwt = draft.credentials.LUMINA_JWT_SECRET_KEY.trim();
+      const wizardRequired = payload?.credentials.wizard_required !== false;
+      const setupComplete = Boolean(payload?.setup_complete);
+
+      // Persist vault secrets whenever the form has a JWT (active seal / re-seal).
+      // Backend /credentials also seeds SIM + mark_complete on modern backends.
+      if (wizardRequired || jwt) {
+        if (!jwt) {
+          set({ error: "JWT secret is required to seal the vault" });
+          return false;
+        }
+        persistMonitoringApiKey(draft.credentials.LUMINA_ADMIN_API_KEY);
+        const result = await postCredentials(draft.credentials);
+        if (result.onboarding) {
+          applyOnboarding(result.onboarding);
+        } else {
+          await get().refresh();
+        }
+        if (!result.success) {
+          return false;
+        }
+        // Modern backends seed setup on /credentials. Older ones may leave setup incomplete.
+        if (!get().payload?.setup_complete) {
+          try {
+            const ready = await postReadyForBirth();
+            if (ready.onboarding) applyOnboarding(ready.onboarding);
+            else await get().refresh();
+          } catch {
+            // Fallback: classic configure path (pre-lifecycle-v2 backends).
+            return await get().saveConfiguration({ skipRefresh: false });
+          }
+        }
+        return true;
+      }
+
+      // No draft secrets + wizard not required: env already holds vault keys.
+      if (setupComplete) {
+        // Re-open from Birth / review — nothing to write; allow continue.
+        await get().refresh();
+        return true;
+      }
+
+      // First boot with env-configured vault, setup not marked complete yet.
+      try {
+        const ready = await postReadyForBirth();
+        if (ready.onboarding) applyOnboarding(ready.onboarding);
+        else await get().refresh();
+        return ready.success;
+      } catch {
+        // Older backend without /ready-for-birth — use /configure with draft defaults.
+        return await get().saveConfiguration({ skipRefresh: false });
+      }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "Failed to save credentials" });
       return false;
@@ -343,6 +442,27 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     }
     set({ activating: true, error: null, birthPhaseCommitted: true });
     try {
+      // Fail-closed: Fabric diagnostic GREEN required before Genesis.
+      try {
+        const { fetchFabricLinkStatus } = await import("@/lib/setupClient");
+        const link = await fetchFabricLinkStatus();
+        if (!link.green) {
+          const message =
+            "Fabric diagnostic must be GREEN before Birth. Open Setup & connection and run the test.";
+          set({ activating: false, birthPhaseCommitted: false, error: message });
+          toast.error(message);
+          get().enterSetupReview("credentials");
+          return false;
+        }
+      } catch {
+        const message =
+          "Could not verify Fabric link. Open Setup & connection and run Fabric diagnostic.";
+        set({ activating: false, birthPhaseCommitted: false, error: message });
+        toast.error(message);
+        get().enterSetupReview("credentials");
+        return false;
+      }
+
       const { draft } = get();
       const configured = await get().saveConfiguration({ skipRefresh: true });
       if (!configured) {
@@ -401,7 +521,13 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   },
 }));
 
+/** Steps shown when operator reopens setup from Birth (post-install connection & config). */
+export const SETUP_REVIEW_STEPS: OnboardingStepId[] = ["credentials", "configuration"];
+
 export function selectActiveSteps(payload: OnboardingPayload | null): OnboardingStepId[] {
+  if (useOnboardingStore.getState().setupReviewActive) {
+    return SETUP_REVIEW_STEPS;
+  }
   if (!payload) return ["backend"];
   if (payload.wizard_steps.length > 0) return payload.wizard_steps;
   return payload.required_steps;
