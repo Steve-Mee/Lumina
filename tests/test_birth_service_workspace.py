@@ -25,6 +25,11 @@ birth_status_enricher_module = importlib.import_module(
 )
 
 
+def _fake_ppo_trainer() -> SimpleNamespace:
+    """Minimal PPO stub with Birth mint API required by birth_runner_start."""
+    return SimpleNamespace(create_fresh_birth_policy=lambda **_kwargs: object())
+
+
 class _BirthRunnerFakeContainerMixin:
     def register_birth_reload_host(self, host: object) -> None:
         self.birth_reload_host = host
@@ -342,7 +347,7 @@ def test_start_birth_wires_container_dependencies(monkeypatch: pytest.MonkeyPatc
     class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
-            self.ppo_trainer = object()
+            self.ppo_trainer = _fake_ppo_trainer()
             self.market_data_service = object()
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
@@ -400,7 +405,7 @@ def test_start_birth_uses_saved_target_when_request_omits_target(
     class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
-            self.ppo_trainer = object()
+            self.ppo_trainer = _fake_ppo_trainer()
             self.market_data_service = object()
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
@@ -451,7 +456,7 @@ def test_start_birth_uses_configured_ppo_update_timesteps(
     class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
-            self.ppo_trainer = object()
+            self.ppo_trainer = _fake_ppo_trainer()
             self.market_data_service = object()
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
@@ -500,7 +505,7 @@ def test_start_birth_practice_forces_non_real_data_mode(monkeypatch: pytest.Monk
     class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
-            self.ppo_trainer = object()
+            self.ppo_trainer = _fake_ppo_trainer()
             self.market_data_service = object()
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
@@ -546,7 +551,7 @@ def test_start_birth_continue_training_reuses_existing_policy(monkeypatch: pytes
     class _FakeContainer(_BirthRunnerFakeContainerMixin):
         def __init__(self) -> None:
             self.engine = SimpleNamespace()
-            self.ppo_trainer = object()
+            self.ppo_trainer = _fake_ppo_trainer()
             self.market_data_service = object()
             self.runtime_context = SimpleNamespace(app=None)
             self.logger = SimpleNamespace(info=lambda *a, **k: None)
