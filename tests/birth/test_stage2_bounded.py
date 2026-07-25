@@ -138,6 +138,7 @@ def test_stage2_wall_budget_triggers_provisional_pass(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Practice mode: wall budget may provisional-pass. Certified never does."""
     engine = BirthPhaseEngineV2(
         runtime=SimpleNamespace(),
         ppo_trainer=_FakePpoTrainer(),
@@ -195,7 +196,23 @@ def test_stage2_wall_budget_triggers_provisional_pass(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
-    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")))
+    # Plateau evolution may attempt expand; refuse with exhausted empty result.
+    from lumina_core.birth.data_expansion import DataExpansionResult
+    from lumina_core.birth.purged_split import PurgedSplit
+
+    monkeypatch.setattr(
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
+        lambda **_kwargs: DataExpansionResult(
+            train_ticks=[],
+            holdout_ticks=[],
+            all_ticks=[],
+            split=PurgedSplit(train=[], holdout=[], holdout_days=0, train_days=0),
+            days_back=0,
+            step_index=0,
+            real_data_pct=0.0,
+            exhausted=True,
+        ),
+    )
 
     result = engine._run_stage_research_loop(
         stage=CurriculumStage.STAGE2_RANGE,
@@ -205,7 +222,7 @@ def test_stage2_wall_budget_triggers_provisional_pass(
         holdout_ticks=_range_ticks(120),
         target=400,
         stage_progress_pct=40.0,
-        training_mode="certified",
+        training_mode="practice",
         ppo_steps_per_update=1000,
         polish_ppo_timesteps=1000,
         trade_budget_cap=500,

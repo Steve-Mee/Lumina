@@ -67,8 +67,9 @@ def test_pass_criteria_stage2_range() -> None:
 @pytest.mark.unit
 def test_pass_criteria_stage3_mixed() -> None:
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE3_MIXED, target_trades=5000)
-    assert criteria.id == "mixed_constitution"
-    assert criteria.metric_target == 0.0
+    assert criteria.id == "mixed_foundation"
+    assert criteria.metric_target == pytest.approx(0.35)
+    assert criteria.metric_max == pytest.approx(0.70)
 
 
 @pytest.mark.unit
@@ -266,7 +267,7 @@ def test_learning_metric_target_stage3_uses_recommended_winrate() -> None:
 
     cfg = BirthCurriculumConfig(stage1_winrate_recommended=0.45)
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE3_MIXED, cfg=cfg)
-    assert criteria.metric_target == 0.0
+    assert criteria.metric_target == pytest.approx(0.35)
     assert learning_metric_target(
         CurriculumStage.STAGE3_MIXED,
         cfg=cfg,

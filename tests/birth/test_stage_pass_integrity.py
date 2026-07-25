@@ -91,7 +91,7 @@ def test_low_winrate_receipt_fails_re_eval() -> None:
         training_mode="certified",
     )
     assert ok is False
-    assert reason.startswith("re_eval_failed:")
+    assert reason.startswith("stage1_winrate_below_gate")
 
 
 @pytest.mark.unit
@@ -233,7 +233,15 @@ def test_metrics_not_restored_when_curriculum_stage_mismatch(
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.mine_winning_patterns",
-        lambda **_k: SimpleNamespace(patterns=[], wins=0, scanned=0, regimes_seen=set()),
+        lambda **_k: SimpleNamespace(
+            patterns=[],
+            wins=0,
+            scanned=0,
+            regimes_seen=set(),
+            stop_pct=0.0012,
+            target_pct=0.0020,
+            reason="test_stub",
+        ),
     )
     ticks = [{"last": 5000.0, "regime": "TREND_UP"} for _ in range(200)]
     with pytest.raises(RuntimeError, match="stop_after_first_rollout"):

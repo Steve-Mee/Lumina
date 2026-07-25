@@ -119,7 +119,7 @@ def test_detect_hold_trap() -> None:
 
 @pytest.mark.unit
 def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
-    """Stage 3 pass gate metric is violations (0); hold-trap must use winrate target."""
+    """Stage 3 pass floor is WR>=35%; hold-trap still uses recommended learning WR."""
     from lumina_core.birth.curriculum import CurriculumStage
     from lumina_core.birth.stage_scorecard import learning_metric_target, pass_criteria_for_stage
 
@@ -130,7 +130,7 @@ def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
         cfg=cfg,
         pass_criteria=criteria,
     )
-    assert criteria.metric_target == 0.0
+    assert criteria.metric_target == pytest.approx(0.35)
     assert learning_target == pytest.approx(0.45)
     assert detect_hold_trap(
         hold_ratio=0.80,
@@ -139,6 +139,7 @@ def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
         velocity_stall=True,
         cfg=cfg,
     )
+    # Pass-floor target (0.35) with gap 0.10 needs wr < 0.25 — 0.34 does not trip.
     assert not detect_hold_trap(
         hold_ratio=0.80,
         winrate=0.34,

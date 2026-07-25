@@ -18,7 +18,9 @@ def test_birth_constitution_guard_blocks_news_window() -> None:
     )
     assert ok is False
     assert reason == "news_window"
-    assert guard.violations == 1
+    # Soft block: constitution held; does not count as hard graduation violation.
+    assert guard.soft_blocks == 1
+    assert guard.violations == 0
 
 
 @pytest.mark.unit
@@ -32,7 +34,8 @@ def test_birth_constitution_guard_blocks_risk_cap() -> None:
     )
     assert ok is False
     assert reason == "risk_cap"
-    assert guard.violations == 1
+    assert guard.soft_blocks == 1
+    assert guard.violations == 0
 
 
 @pytest.mark.unit
@@ -69,7 +72,9 @@ def test_birth_constitution_guard_reset_clears_state() -> None:
     guard.check_entry(tick={"news_window_active": 1.0}, side=1, stop_pct=0.005, equity=50_000.0)
     guard.reset()
     assert guard.violations == 0
+    assert guard.soft_blocks == 0
     assert guard.violation_reasons == []
+    assert guard.soft_block_reasons == []
 
 
 @pytest.mark.unit
