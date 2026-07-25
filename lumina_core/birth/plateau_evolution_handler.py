@@ -216,6 +216,8 @@ class PlateauEvolutionMixin(StageLoopMixinBase):
             current_winrate=current_winrate,
             pass_target=pass_target,
             ppo_steps_since_step_start=ppo_since,
+            stage_trades=self.stage_trades,
+            required=self.required,
         )
         if not should_trigger_plateau_evolution_step(
             self.plateau_state,
@@ -224,6 +226,8 @@ class PlateauEvolutionMixin(StageLoopMixinBase):
             allow_start=False,
             pass_target=pass_target,
             ppo_steps_since_step_start=ppo_since,
+            stage_trades=self.stage_trades,
+            required=self.required,
         ):
             return False
         action = begin_evolution_step(

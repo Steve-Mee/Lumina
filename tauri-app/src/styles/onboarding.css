@@ -441,14 +441,19 @@
       transparent 65%
     ),
     radial-gradient(
-      ellipse 50% 40% at 12% 100%,
-      color-mix(in srgb, var(--lumina-cyan) 8%, transparent),
+      ellipse 55% 45% at 12% 100%,
+      color-mix(in srgb, var(--lumina-cyan) 10%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 40% 35% at 88% 95%,
+      color-mix(in srgb, var(--cockpit-glow-accent, var(--lumina-cyan)) 6%, transparent),
       transparent 55%
     ),
     linear-gradient(
       180deg,
       var(--lumina-void) 0%,
-      color-mix(in srgb, var(--lumina-void) 88%, #0d1020) 100%
+      color-mix(in srgb, var(--lumina-void) 82%, #0d1428) 100%
     );
 }
 
@@ -456,9 +461,9 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  /* Full width; vertical center of vault block in remaining viewport */
+  /* Full width + fill remaining viewport under header (no black floor band) */
   align-items: stretch;
-  justify-content: center;
+  justify-content: stretch;
   min-height: 0;
   flex: 1 1 0%;
   width: 100%;
@@ -474,14 +479,14 @@
   /* Full horizontal span — no width cap */
   width: 100%;
   max-width: none;
-  /* Soft cap only so block can sit vertically centered with ambient above/below */
-  max-height: calc(100dvh - 5.25rem);
-  min-height: min(36rem, calc(100dvh - 5.25rem));
-  height: min(40rem, calc(100dvh - 5.25rem));
+  /* Fill available height: stage + panel run to bottom (Genesis cockpit feel) */
+  height: 100%;
+  max-height: none;
+  min-height: 0;
   margin-inline: 0;
   margin-block: 0;
   padding: 0.5rem 0.75rem 0.75rem;
-  flex: 0 1 auto;
+  flex: 1 1 0%;
   align-self: stretch;
 }
 
@@ -491,17 +496,11 @@
     grid-template-rows: minmax(0, 1fr);
     width: 100%;
     max-width: none;
-    /* Fill available height under header so no dead black band */
     height: 100%;
     max-height: none;
     min-height: 0;
     flex: 1 1 0%;
     padding: 0.65rem 1rem 0.85rem;
-  }
-
-  /* When grid fills height, screen stretches (no empty floor) */
-  .credentials-vault-screen {
-    justify-content: stretch;
   }
 }
 
@@ -1371,7 +1370,7 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  justify-content: center;
+  justify-content: stretch;
   min-height: 0;
   flex: 1 1 0%;
   width: 100%;
@@ -1384,14 +1383,19 @@
       transparent 65%
     ),
     radial-gradient(
-      ellipse 50% 40% at 88% 100%,
-      color-mix(in srgb, var(--lumina-cyan) 8%, transparent),
+      ellipse 55% 45% at 88% 100%,
+      color-mix(in srgb, var(--lumina-cyan) 10%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 40% 35% at 12% 95%,
+      color-mix(in srgb, var(--cockpit-glow-accent, var(--lumina-cyan)) 6%, transparent),
       transparent 55%
     ),
     linear-gradient(
       180deg,
       var(--lumina-void) 0%,
-      color-mix(in srgb, var(--lumina-void) 88%, #0d1020) 100%
+      color-mix(in srgb, var(--lumina-void) 82%, #0d1428) 100%
     );
 }
 
@@ -1402,13 +1406,14 @@
   gap: 0.75rem;
   width: 100%;
   max-width: none;
-  max-height: calc(100dvh - 5.25rem);
-  min-height: min(36rem, calc(100dvh - 5.25rem));
-  height: min(40rem, calc(100dvh - 5.25rem));
+  /* Fill available height — no 40rem cap / black floor band */
+  height: 100%;
+  max-height: none;
+  min-height: 0;
   margin-inline: 0;
   margin-block: 0;
   padding: 0.5rem 0.75rem 0.75rem;
-  flex: 0 1 auto;
+  flex: 1 1 0%;
   align-self: stretch;
 }
 
@@ -1421,10 +1426,6 @@
     min-height: 0;
     flex: 1 1 0%;
     padding: 0.65rem 1rem 0.85rem;
-  }
-
-  .risk-envelope-screen {
-    justify-content: stretch;
   }
 }
 

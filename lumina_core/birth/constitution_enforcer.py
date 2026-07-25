@@ -26,6 +26,12 @@ TOPIC_VIOLATION = "safety.constitution.violation"
 TOPIC_ABORTED = "birth.curriculum.aborted"
 
 
+# Soft severities: count for audit / stage metrics, do NOT abort the training loop.
+# Hard severities: single fail-closed abort that callers must honor (host stop).
+_SOFT_SEVERITIES = frozenset({"warning", "info", "soft"})
+_HARD_SEVERITIES = frozenset({"critical", "fatal", "error", "hard"})
+
+
 class ConstitutionEnforcer:
     """Dedicated fail-closed constitution handler for the birth bounded context."""
 
@@ -35,6 +41,8 @@ class ConstitutionEnforcer:
         self.bus = event_bus
         self._token: str | None = None
         self._violations: list[dict[str, Any]] = []
+        self._hard_aborted: bool = False
+        self._soft_logged: int = 0
 
     def attach(self) -> str:
         if self._token is None:
@@ -64,6 +72,26 @@ class ConstitutionEnforcer:
             return
 
         self._violations.append(v.model_dump(mode="json"))
+        severity = str(v.severity or "critical").strip().lower()
+
+        # Training feedback (e.g. invalid_stop_pct warning) must not spam ABORT theater.
+        # Hard abort only on explicit hard severities. Certificate still uses guard counts.
+        if severity not in _HARD_SEVERITIES:
+            self._soft_logged += 1
+            if self._soft_logged <= 3 or self._soft_logged % 100 == 0:
+                logger.warning(
+                    "birth.constitution.soft_violation principle=%s severity=%s count=%s detail=%s",
+                    v.principle_name,
+                    severity,
+                    len(self._violations),
+                    (v.description or "")[:120],
+                )
+            return
+
+        # Hard fail-closed: abort at most once until reset (no 3000-line spam).
+        if self._hard_aborted:
+            return
+        self._hard_aborted = True
 
         abort = BirthCurriculumStageAborted(
             stage=None,
@@ -82,13 +110,21 @@ class ConstitutionEnforcer:
             payload=abort.model_dump(mode="json"),
         )
         logger.critical(
-            "CONSTITUTION FAIL-CLOSED: %s (severity=%s) — birth curriculum aborted",
+            "CONSTITUTION FAIL-CLOSED: %s (severity=%s) — birth curriculum aborted (violations=%s)",
             v.principle_name,
             v.severity,
+            len(self._violations),
         )
 
     def violation_count(self) -> int:
         return len(self._violations)
+
+    def is_hard_aborted(self) -> bool:
+        return self._hard_aborted
+
+    def reset_abort_state(self) -> None:
+        """Allow a new hard abort after intentional stage/curriculum reset."""
+        self._hard_aborted = False
 
 
 __all__ = ["ConstitutionEnforcer"]

@@ -152,6 +152,20 @@ class WallAdaptationHandler:
             return
 
         self.state.wall_triggers_total += 1
+        force_flag = bool(ctx.get("force", False))
+        if force_flag or result.trigger_type in {
+            "trades_beyond_gate",
+            "constitution_stall",
+            "adaptation_stuck",
+        }:
+            logger.info(
+                "birth.wall.force trigger=%s stage=%s trades=%s required=%s total_triggers=%s",
+                result.trigger_type,
+                stage_name,
+                int(ctx.get("stage_trades", 0)),
+                int(ctx.get("required", 0)),
+                self.state.wall_triggers_total,
+            )
         publish_wall_triggered(
             self.bus,
             producer="birth.wall_adaptation_handler",

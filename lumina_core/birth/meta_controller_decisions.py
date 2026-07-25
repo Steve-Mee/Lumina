@@ -225,6 +225,21 @@ class MetaControllerDecisionsMixin(MetaControllerMixinBase):
             primary = RecoveryStrategy.DATA_EXPANSION
             expand_data = True
             rationale = "stall_thin_buffer_expand_data"
+        elif (
+            snap.pattern_quality < float(self.cfg.meta_pattern_yield_floor)
+            and int(getattr(snap, "patterns_mined", 0) or 0) <= 0
+            and int(snap.stage_trades) >= max(1, int(snap.required_trades))
+        ):
+            # Anti-thrash: low pattern yield with zero mined patterns = dead inject button.
+            if not snap.data_exhausted:
+                primary = RecoveryStrategy.DATA_EXPANSION
+                expand_data = True
+                secondary.append(RecoveryStrategy.INTRA_EASE)
+                rationale = "stall_empty_patterns_expand"
+            else:
+                primary = RecoveryStrategy.EXPLORE_BOOST
+                secondary.append(RecoveryStrategy.INTRA_EASE)
+                rationale = "stall_empty_patterns_explore"
         elif snap.pattern_quality < float(self.cfg.meta_pattern_yield_floor):
             primary = RecoveryStrategy.PATTERN_INJECT_AGGRESSIVE
             mine = True
@@ -335,6 +350,31 @@ class MetaControllerDecisionsMixin(MetaControllerMixinBase):
             return plan
 
         if snap.learning_health == LearningHealth.DECLINING:
+            # Anti-thrash: pattern inject with zero mined patterns is a dead button.
+            empty_patterns = int(getattr(snap, "patterns_mined", 0) or 0) <= 0
+            past_gate = int(snap.stage_trades) >= max(1, int(snap.required_trades))
+            if empty_patterns and past_gate and not snap.data_exhausted:
+                plan = MetaActionPlan(
+                    primary=RecoveryStrategy.DATA_EXPANSION,
+                    secondary=(RecoveryStrategy.INTRA_EASE,),
+                    expand_data=True,
+                    intra_hard_pct_delta=-float(self.cfg.intra_hard_pct_step),
+                    rationale="periodic_declining_empty_patterns_expand",
+                    snapshot=snap,
+                )
+                self._record_plan(plan)
+                return plan
+            if empty_patterns and past_gate:
+                plan = MetaActionPlan(
+                    primary=RecoveryStrategy.EXPLORE_BOOST,
+                    secondary=(RecoveryStrategy.INTRA_EASE,),
+                    explore_steps_multiplier=min(1.5, float(self.explore_multiplier) * 1.2),
+                    intra_hard_pct_delta=-float(self.cfg.intra_hard_pct_step),
+                    rationale="periodic_declining_empty_patterns_explore",
+                    snapshot=snap,
+                )
+                self._record_plan(plan)
+                return plan
             mine = True
             mine_aggressive = snap.pattern_quality < float(self.cfg.meta_pattern_yield_floor)
             primary = (

@@ -67,8 +67,16 @@ deploy/.env*
 *.p12
 *.key
 !*.key.example
+*.keystore
+*.jks
+*.secret
 **/secrets/
 **/credentials/
+**/service-account*.json
+**/client_secret*.json
+auth.json
+secrets.json
+credentials.json
 # Fabric / NT8 local install artifacts (compiled AddOn deploy output)
 integrations/ninjatrader8/deploy/
 # Local operator overrides (machine-specific broker/models/hardware)

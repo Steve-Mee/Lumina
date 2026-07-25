@@ -78,7 +78,7 @@ class CurriculumOrchestrator:
         )
 
     def _handle_constitution_violation(self, event: DomainEvent) -> None:
-        """Fail-closed enforcement. Constitution violation during birth is terminal."""
+        """Fail-closed on hard violations only; soft (warning) counts without abort spam."""
         try:
             payload = event.typed_payload(ConstitutionViolation)
         except Exception:
@@ -95,6 +95,20 @@ class CurriculumOrchestrator:
             return
 
         self.state.constitution_violations_seen += 1
+        severity = str(payload.severity or "critical").strip().lower()
+        # Match ConstitutionEnforcer: warning/info are training feedback, not terminal.
+        if severity in {"warning", "info", "soft"}:
+            if self.state.constitution_violations_seen <= 3 or self.state.constitution_violations_seen % 100 == 0:
+                logger.warning(
+                    "birth.curriculum soft_constitution_violation principle=%s count=%s",
+                    payload.principle_name,
+                    self.state.constitution_violations_seen,
+                )
+            return
+
+        # Hard abort at most once (true fail-closed; host stop via abort callbacks).
+        if self.state.aborted:
+            return
         self.state.aborted = True
         self.state.abort_reason = "constitution_violation"
 
@@ -151,6 +165,11 @@ class CurriculumOrchestrator:
             payload = event.typed_payload(BirthCurriculumStageAborted)
         except Exception:
             payload = BirthCurriculumStageAborted(reason="unknown", detail=event.payload)
+        # Idempotent: violation handler may already have aborted + invoked callbacks.
+        if self.state.aborted:
+            if not self.state.abort_reason:
+                self.state.abort_reason = payload.reason
+            return
         self.state.aborted = True
         self.state.abort_reason = payload.reason
         self._invoke_abort_callbacks(payload.model_dump(mode="json"))

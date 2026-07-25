@@ -4,7 +4,10 @@ from __future__ import annotations
 from typing import Any
 
 from lumina_core.birth.curriculum import CurriculumStage
-from lumina_core.birth.plateau_escalator import update_plateau_quarantine_after_rollout
+from lumina_core.birth.plateau_escalator import (
+    TERMINAL_STALL_REASON,
+    update_plateau_quarantine_after_rollout,
+)
 from lumina_core.birth.stall_remediation import HUMAN_GATE_REASON
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 from lumina_core.logging_utils import get_logger
@@ -139,6 +142,19 @@ class StageLoopRolloutTailMixin(StageLoopMixinBase):
                 self.attempt = 0
             else:
                 self._maybe_advance_plateau_evolution_in_loop()
+            # Fail-closed: after ladder work, terminal may now be due (compressed wall).
+            terminal_pending = self._plateau_terminal_pending(failure_key=failure_key_rollout)
+            if terminal_pending is not None:
+                logger.warning(
+                    "birth.terminal.hard_stop reason=%s step=%s trades=%s (post_rollout)",
+                    terminal_pending.get("terminal_stall_reason") or TERMINAL_STALL_REASON,
+                    self.plateau_state.evolution_step,
+                    self.stage_trades,
+                )
+                self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
+                stall_result = self._resolve_terminal_stall(terminal_pending)
+                if stall_result is not None:
+                    return stall_result
         if self.remediation_state.active:
             self.bus.remediation_increment_rollout(self.stage)
             if self._maybe_advance_stall_remediation_in_loop():

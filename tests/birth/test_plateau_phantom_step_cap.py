@@ -98,11 +98,28 @@ def test_should_block_recovery_when_ladder_exhausted() -> None:
 
 
 @pytest.mark.unit
-def test_trades_beyond_gate_hard_stop_triggers_terminal() -> None:
+def test_trades_beyond_gate_hard_stop_triggers_terminal_when_ladder_done() -> None:
+    """Raptor v3: hard-stop alone mid-ladder is not terminal; ladder-done is."""
+    from lumina_core.birth.plateau_escalator import EVOLUTION_STEP_ACTIONS
+
     cfg = _cfg(plateau_trades_beyond_gate_multiplier=3)
-    state = PlateauState(active=True, evolution_step=2, plateau_started_at=time.time())
+    mid = PlateauState(active=True, evolution_step=2, plateau_started_at=time.time())
     assert should_terminal_plateau_stall(
-        state,
+        mid,
+        stage_trades=800,
+        required=200,
+        cfg=cfg,
+        meta_self_eval_phase="",
+        remediation_exhausted=False,
+        trade_budget_remaining=5000,
+    ) is False
+    done = PlateauState(
+        active=True,
+        evolution_step=len(EVOLUTION_STEP_ACTIONS),
+        plateau_started_at=time.time(),
+    )
+    assert should_terminal_plateau_stall(
+        done,
         stage_trades=800,
         required=200,
         cfg=cfg,

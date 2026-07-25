@@ -125,10 +125,14 @@ class BirthCurriculumConfig:
     plateau_evolution_min_ppo_steps_between_steps: int = 50_000
     plateau_evolution_max_noops_per_step: int = 3
     plateau_max_wall_sec: int = 7200
+    # Compressed plateau wall when already past trades-beyond-gate hard stop.
+    beyond_gate_plateau_wall_sec: int = 900
     plateau_max_evolution_steps: int = 8
     plateau_evolution_rollouts_per_step: int = 12
     plateau_evolution_max_rollouts_per_step: int = 24
     plateau_evolution_meaningful_delta: float = 0.01
+    # Under hard-stop: force ladder advance after this many rollouts (compressed).
+    beyond_gate_evolution_rollouts_per_step: int = 4
     max_forced_recoveries_per_plateau: int = 12
     max_adaptation_stuck_escapes: int = 3
     policy_swarm_enabled: bool = True
@@ -145,6 +149,9 @@ class BirthCurriculumConfig:
     stage1_winrate_pass_threshold: float = 0.45
     stage1_winrate_pass_floor: float = 0.35
     stage1_winrate_recommended: float = 0.45
+    # Experimental: pass stage1 on rolling window WR (not only lifetime).
+    stage1_use_rolling_pass: bool = True
+    stage1_rolling_pass_window: int = 500
     evolution_proof_min_trades: int = 500
     evolution_proof_min_winrate_lift: float = 0.05
     evolution_proof_polish_oos_winrate_min: float = 0.45
@@ -493,6 +500,9 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
             1, _coerce_int(cur_raw.get("plateau_evolution_max_noops_per_step"), 3)
         ),
         plateau_max_wall_sec=max(300, _coerce_int(cur_raw.get("plateau_max_wall_sec"), 7200)),
+        beyond_gate_plateau_wall_sec=max(
+            120, _coerce_int(cur_raw.get("beyond_gate_plateau_wall_sec"), 900)
+        ),
         plateau_max_evolution_steps=max(
             1, min(12, _coerce_int(cur_raw.get("plateau_max_evolution_steps"), 8))
         ),
@@ -504,6 +514,9 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         ),
         plateau_evolution_meaningful_delta=max(
             0.001, _coerce_float(cur_raw.get("plateau_evolution_meaningful_delta"), 0.01)
+        ),
+        beyond_gate_evolution_rollouts_per_step=max(
+            1, _coerce_int(cur_raw.get("beyond_gate_evolution_rollouts_per_step"), 4)
         ),
         max_forced_recoveries_per_plateau=max(
             1, _coerce_int(cur_raw.get("max_forced_recoveries_per_plateau"), 12)
@@ -547,6 +560,10 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         stage1_winrate_recommended=max(
             0.20,
             min(0.60, _coerce_float(cur_raw.get("stage1_winrate_recommended"), 0.45)),
+        ),
+        stage1_use_rolling_pass=bool(cur_raw.get("stage1_use_rolling_pass", True)),
+        stage1_rolling_pass_window=max(
+            100, _coerce_int(cur_raw.get("stage1_rolling_pass_window"), 500)
         ),
         evolution_proof_min_trades=max(
             50, _coerce_int(cur_raw.get("evolution_proof_min_trades"), 500)

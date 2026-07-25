@@ -147,10 +147,13 @@ class BirthPhaseEngineV2:
         self._stage_handler: Any | None = None
         self._birth_handler_registry: BirthHandlerRegistry | None = None
         self._birth_bus_client: BirthBusClient | None = None
+        self._force_stop_reason: str | None = None
         try:
             self._curriculum_orchestrator = CurriculumOrchestrator(self.event_bus)
             self._constitution_enforcer = ConstitutionEnforcer(self.event_bus)
             self._constitution_enforcer.attach()
+            # True fail-closed: abort event must stop the stage loop, not only log.
+            self._curriculum_orchestrator.on_curriculum_aborted(self._on_curriculum_aborted)
             approval_twin = self._resolve_approval_twin()
             self._birth_handler_registry = BirthHandlerRegistry(
                 self.event_bus,
@@ -249,7 +252,28 @@ class BirthPhaseEngineV2:
         self._constitution_violations_cumulative += int(self._constitution_guard.violations)
         self._constitution_guard.reset()
 
+    def _on_curriculum_aborted(self, abort: dict[str, Any]) -> None:
+        """Honor fail-closed abort: set stop signals so the stage loop exits."""
+        reason = str((abort or {}).get("reason") or "curriculum_aborted")
+        self._force_stop_reason = reason
+        if self.stop_event is not None:
+            self.stop_event.set()
+        try:
+            self.pause_flag_path.parent.mkdir(parents=True, exist_ok=True)
+            self.pause_flag_path.write_text(
+                f"abort:{reason}",
+                encoding="utf-8",
+            )
+        except Exception:
+            logger.debug("birth.abort_pause_flag_write_failed", exc_info=True)
+        logger.critical(
+            "birth.fail_closed.host_stop reason=%s — stage loop will exit",
+            reason,
+        )
+
     def _stop_requested(self) -> bool:
+        if self._force_stop_reason:
+            return True
         if self.stop_event is not None and self.stop_event.is_set():
             return True
         return self.pause_flag_path.exists()

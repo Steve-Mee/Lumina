@@ -58,6 +58,23 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
             trades_beyond_hard_stop = should_trades_beyond_gate_hard_stop(
                 self.stage_trades, self.required, self.cur_cfg
             )
+            # Raptor v3: honor plateau terminal even when wall force never fires.
+            if self.plateau_state.active:
+                plateau_terminal = self._plateau_terminal_pending(failure_key=failure_key)
+                if plateau_terminal is not None:
+                    logger.warning(
+                        "birth.terminal.hard_stop reason=%s step=%s trades=%s wr=%.2f%% beyond=%s",
+                        plateau_terminal.get("terminal_stall_reason"),
+                        self.plateau_state.evolution_step,
+                        self.stage_trades,
+                        float(self.stage_wins) / float(max(1, self.stage_trades)) * 100.0,
+                        trades_beyond_hard_stop,
+                    )
+                    self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
+                    stall_result = self._resolve_terminal_stall(plateau_terminal)
+                    if stall_result is None:
+                        continue
+                    return stall_result
             wall_trigger = self._evaluate_wall_trigger(
                 elapsed_stage_sec=elapsed_stage_sec,
                 failure_key=failure_key,
@@ -97,6 +114,8 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                     current_winrate=current_wr,
                     allow_start=False,
                     pass_target=self._plateau_pass_target(),
+                    stage_trades=self.stage_trades,
+                    required=self.required,
                 ) and self._try_plateau_evolution(failure_key=failure_key):
                     continue
                 if not adaptation_stuck and self._force_never_stop_recovery(failure_key=failure_key):
@@ -143,6 +162,23 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
             stage_val_max_dd = 100.0
             if self.stage_val_pnl:
                 stage_val_sharpe, stage_val_max_dd = risk_metrics_from_pnl(self.stage_val_pnl)
+            rolling_wr: float | None = None
+            if self.stage == CurriculumStage.STAGE1_TREND:
+                try:
+                    from lumina_core.birth.plateau_escalator import rolling_winrate_last_n_trades
+
+                    window = int(getattr(self.cur_cfg, "stage1_rolling_pass_window", 500) or 500)
+                    wins_at = getattr(self, "wins_at_trade_milestones", None)
+                    if not isinstance(wins_at, dict):
+                        wins_at = {}
+                    rolling_wr = rolling_winrate_last_n_trades(
+                        stage_trades=self.stage_trades,
+                        stage_wins=self.stage_wins,
+                        wins_at_trade=wins_at,
+                        window=window,
+                    )
+                except Exception:
+                    rolling_wr = None
             stage_result = evaluate_stage_pass(
                 self.stage,
                 trades=self.stage_trades,
@@ -162,6 +198,7 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                 buffer_size=len(self.host.buffer),
                 stage_val_sharpe=stage_val_sharpe,
                 stage_val_max_drawdown_pct=stage_val_max_dd,
+                rolling_winrate=rolling_wr,
             )
             if stage_result.passed:
                 self.required = stage_pass_trades(self.stage, self.cur_cfg)

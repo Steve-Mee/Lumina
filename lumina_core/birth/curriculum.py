@@ -435,6 +435,7 @@ def evaluate_stage_pass(
     oracle_soft_min_patterns: int = 100,
     stage_val_sharpe: float = 0.0,
     stage_val_max_drawdown_pct: float = 100.0,
+    rolling_winrate: float | None = None,
 ) -> StageResult:
     winrate = float(wins) / float(max(1, trades))
     hold_ratio = float(hold_signals) / float(max(1, total_signals))
@@ -449,14 +450,22 @@ def evaluate_stage_pass(
 
     if stage == CurriculumStage.STAGE1_TREND:
         wr_gate = stage1_winrate_pass_threshold(cfg) if cfg is not None else 0.45
-        passed = (
-            trades >= required
-            and winrate >= wr_gate
-            and constitution_violations == 0
+        use_rolling = bool(getattr(cfg, "stage1_use_rolling_pass", True)) if cfg else True
+        roll_window = int(getattr(cfg, "stage1_rolling_pass_window", 500) or 500) if cfg else 500
+        roll = float(rolling_winrate) if rolling_winrate is not None else winrate
+        lifetime_ok = winrate >= wr_gate
+        rolling_ok = use_rolling and trades >= max(required, roll_window) and roll >= wr_gate
+        wr_ok = lifetime_ok or rolling_ok
+        passed = trades >= required and wr_ok and constitution_violations == 0
+        gate_source = (
+            "lifetime"
+            if lifetime_ok
+            else ("rolling" if rolling_ok else "neither")
         )
         message = (
-            f"trend winrate={winrate:.2%} trades={trades}/{required} "
-            f"gate={wr_gate:.0%} constitution_violations={constitution_violations}"
+            f"trend winrate={winrate:.2%} rolling={roll:.2%} trades={trades}/{required} "
+            f"gate={wr_gate:.0%} source={gate_source} "
+            f"constitution_violations={constitution_violations}"
         )
     elif stage == CurriculumStage.STAGE2_RANGE:
         if range_total_signals >= 50:

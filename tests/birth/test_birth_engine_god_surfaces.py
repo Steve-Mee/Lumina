@@ -23,8 +23,8 @@ _BIRTH_ENGINE = _ROOT / "lumina_core" / "birth" / "engine.py"
 # Phase 1D cleanup (unused import prune): 1625 -> 1508.
 # Phase 1E (birth_phase_orchestrator extract): 1508 -> 887.
 # GraduationResult extracted to graduation_result.py (2026-07); baseline reflects net +4 LOC.
-_ENGINE_LINE_BASELINE = 1044
-_ENGINE_METHOD_BASELINE = 48
+_ENGINE_LINE_BASELINE = 1068
+_ENGINE_METHOD_BASELINE = 49
 
 # Largest method bodies — must not grow without intentional guard update.
 _METHOD_LINE_CEILINGS: dict[str, int] = {

@@ -167,13 +167,34 @@ def apply_plateau_quarantine_on_resume(
     *,
     cfg: BirthCurriculumConfig,
     stage_trades: int,
+    required: int | None = None,
 ) -> dict[str, Any]:
-    """Grace period after checkpoint resume — blocks instant plateau re-entry."""
+    """Grace period after checkpoint resume — blocks instant plateau re-entry.
+
+    When the run is already past the trades-beyond-gate hard stop, quarantine is
+    skipped: recovery (plateau ladder / policy rollback) must start immediately.
+    """
+    req = int(required) if required is not None else 0
+    if req > 0 and should_trades_beyond_gate_hard_stop(int(stage_trades), req, cfg):
+        logger.warning(
+            "birth.plateau.quarantine skipped reason=beyond_hard_stop trades=%s required=%s max_beyond=%s",
+            stage_trades,
+            req,
+            plateau_max_trades_beyond_gate(req, cfg),
+        )
+        return {
+            "plateau_quarantine_active": False,
+            "plateau_quarantine_rollouts_remaining": 0,
+            "plateau_quarantine_trades_remaining": 0,
+            "plateau_quarantine_trades_at_resume": int(stage_trades),
+            "plateau_quarantine_skipped_reason": "beyond_hard_stop",
+        }
     return {
         "plateau_quarantine_active": True,
         "plateau_quarantine_rollouts_remaining": int(cfg.plateau_quarantine_rollouts),
         "plateau_quarantine_trades_remaining": int(cfg.plateau_quarantine_min_trades),
         "plateau_quarantine_trades_at_resume": int(stage_trades),
+        "plateau_quarantine_skipped_reason": "",
     }
 
 
@@ -299,11 +320,18 @@ def should_enter_plateau(ctx: PlateauEnterContext, *, cfg: BirthCurriculumConfig
     if ctx.stage_trades < ctx.required:
         return False
     winrate = float(ctx.stage_wins) / float(max(1, ctx.stage_trades))
-    gap = float(cfg.plateau_winrate_gap)
-    if winrate >= float(ctx.pass_metric_target) - gap:
+    pass_target = float(ctx.pass_metric_target)
+    # Already at/above pass target → graduation path, not plateau recovery.
+    if winrate >= pass_target:
         return False
     beyond = plateau_trades_beyond_gate(ctx.stage_trades, ctx.required)
     beyond_met = beyond >= plateau_max_trades_beyond_gate(ctx.required, cfg)
+    # Dead-zone fix: once past beyond-gate hard stop, always enter plateau
+    # even when winrate is "close" to target (e.g. 39% with gap=10pp → old code
+    # blocked plateau forever between 35–45%). Gap only suppresses *early* entry.
+    gap = float(cfg.plateau_winrate_gap)
+    if not beyond_met and winrate >= pass_target - gap:
+        return False
     slope = abs(float(ctx.winrate_trend_slope or 0.0))
     if not beyond_met and slope >= float(cfg.velocity_stall_epsilon):
         return False
@@ -425,10 +453,19 @@ def should_block_plateau_recovery(
     stage_trades: int = 0,
     required: int = 0,
 ) -> bool:
-    """True when adaptive/never-stop recovery must stop (budget-gated never-stop)."""
+    """True when adaptive/never-stop recovery must stop (budget-gated never-stop).
+
+    Beyond hard-stop alone does NOT block: the evolution ladder must still run.
+    Block only after the ladder is exhausted (or max evolution steps reached).
+    """
     if not state.active or not cfg.plateau_detection_enabled:
         return False
-    if required > 0 and should_trades_beyond_gate_hard_stop(stage_trades, required, cfg):
+    beyond = required > 0 and should_trades_beyond_gate_hard_stop(
+        stage_trades, required, cfg
+    )
+    if beyond and evolution_ladder_exhausted(state):
+        return True
+    if beyond and state.evolution_step >= int(cfg.plateau_max_evolution_steps):
         return True
     if state.evolution_step < int(cfg.plateau_max_evolution_steps):
         return False
@@ -452,18 +489,33 @@ def should_terminal_plateau_stall(
     trade_budget_remaining: int | None = None,
     now: float | None = None,
 ) -> bool:
+    """Terminal when ladder is done, wall elapsed, or budget gone.
+
+    Hard-stop beyond-gate no longer terminals *instantly* — that prevented the
+    recovery ladder from finishing. Under hard-stop we use a compressed wall.
+    """
     del meta_self_eval_phase
     if not state.active or not cfg.plateau_detection_enabled:
         return False
     if trade_budget_remaining is not None and int(trade_budget_remaining) <= 0:
         return True
-    if should_trades_beyond_gate_hard_stop(stage_trades, required, cfg):
-        return True
+    beyond = required > 0 and should_trades_beyond_gate_hard_stop(
+        stage_trades, required, cfg
+    )
+    elapsed = plateau_elapsed_sec(state, now=now)
+    if beyond:
+        compressed_wall = float(
+            getattr(cfg, "beyond_gate_plateau_wall_sec", 900) or 900
+        )
+        if evolution_ladder_exhausted(state):
+            return True
+        if state.evolution_step >= int(cfg.plateau_max_evolution_steps):
+            return True
+        if elapsed >= compressed_wall:
+            return True
+        return False
     if state.evolution_step < int(cfg.plateau_max_evolution_steps):
         return False
-    if should_trades_beyond_gate_hard_stop(stage_trades, required, cfg):
-        return True
-    elapsed = plateau_elapsed_sec(state, now=now)
     if elapsed >= float(cfg.plateau_max_wall_sec):
         return True
     if evolution_ladder_exhausted(state):
@@ -555,6 +607,21 @@ def sanitize_stuck_plateau_evolution(
     return True
 
 
+def _compressed_ladder_active(
+    *,
+    cfg: BirthCurriculumConfig,
+    stage_trades: int = 0,
+    required: int = 0,
+    compress: bool = False,
+) -> bool:
+    """True when evolution must run compressed (beyond hard-stop recovery mode)."""
+    if compress:
+        return True
+    if required > 0 and should_trades_beyond_gate_hard_stop(stage_trades, required, cfg):
+        return True
+    return False
+
+
 def should_advance_evolution_step(
     state: PlateauState,
     *,
@@ -562,13 +629,29 @@ def should_advance_evolution_step(
     current_winrate: float,
     pass_target: float | None = None,
     ppo_steps_since_step_start: int = 0,
+    stage_trades: int = 0,
+    required: int = 0,
+    compress_ladder: bool = False,
 ) -> bool:
     if not state.active or state.evolution_step <= 0:
         return False
+    compressed = _compressed_ladder_active(
+        cfg=cfg,
+        stage_trades=stage_trades,
+        required=required,
+        compress=compress_ladder,
+    )
     min_ppo = int(getattr(cfg, "plateau_evolution_min_ppo_steps_between_steps", 0))
+    if compressed:
+        min_ppo = 0
     if min_ppo > 0 and int(ppo_steps_since_step_start) < min_ppo:
         return False
-    if state.evolution_rollouts_this_step < int(cfg.plateau_evolution_rollouts_per_step):
+    min_rollouts = int(cfg.plateau_evolution_rollouts_per_step)
+    if compressed:
+        min_rollouts = max(
+            1, int(getattr(cfg, "beyond_gate_evolution_rollouts_per_step", 4) or 4)
+        )
+    if state.evolution_rollouts_this_step < min_rollouts:
         return False
     target = float(pass_target if pass_target is not None else stage1_winrate_pass_threshold(cfg))
     if winrate_improvement_blocks_ladder(
@@ -588,6 +671,9 @@ def should_force_advance_evolution_step(
     current_winrate: float,
     pass_target: float | None = None,
     ppo_steps_since_step_start: int = 0,
+    stage_trades: int = 0,
+    required: int = 0,
+    compress_ladder: bool = False,
 ) -> bool:
     """Time-box fallback: force next evolution action after max rollouts without lift."""
     if not state.active or state.evolution_step <= 0:
@@ -595,10 +681,22 @@ def should_force_advance_evolution_step(
     max_noops = max(1, int(getattr(cfg, "plateau_evolution_max_noops_per_step", 3)))
     if state.evolution_noop_count >= max_noops:
         return True
+    compressed = _compressed_ladder_active(
+        cfg=cfg,
+        stage_trades=stage_trades,
+        required=required,
+        compress=compress_ladder,
+    )
     max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
+    if compressed:
+        max_rollouts = max(
+            2, int(getattr(cfg, "beyond_gate_evolution_rollouts_per_step", 4) or 4) * 2
+        )
     if state.evolution_rollouts_this_step >= max_rollouts * 3:
         return True
     min_ppo = int(getattr(cfg, "plateau_evolution_min_ppo_steps_between_steps", 0))
+    if compressed:
+        min_ppo = 0
     if min_ppo > 0 and int(ppo_steps_since_step_start) < min_ppo:
         if state.evolution_rollouts_this_step < max_rollouts * 3:
             return False
@@ -623,6 +721,9 @@ def should_trigger_plateau_evolution_step(
     allow_start: bool = True,
     pass_target: float | None = None,
     ppo_steps_since_step_start: int = 0,
+    stage_trades: int = 0,
+    required: int = 0,
+    compress_ladder: bool = False,
 ) -> bool:
     if not state.active:
         return False
@@ -636,6 +737,9 @@ def should_trigger_plateau_evolution_step(
         current_winrate=current_winrate,
         pass_target=pass_target,
         ppo_steps_since_step_start=ppo_steps_since_step_start,
+        stage_trades=stage_trades,
+        required=required,
+        compress_ladder=compress_ladder,
     ):
         return True
     return should_force_advance_evolution_step(
@@ -644,6 +748,9 @@ def should_trigger_plateau_evolution_step(
         current_winrate=current_winrate,
         pass_target=pass_target,
         ppo_steps_since_step_start=ppo_steps_since_step_start,
+        stage_trades=stage_trades,
+        required=required,
+        compress_ladder=compress_ladder,
     )
 
 

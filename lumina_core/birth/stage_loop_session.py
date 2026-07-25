@@ -25,9 +25,13 @@ from lumina_core.birth.meta_controller import (
     MetaActionPlan,
 )
 from lumina_core.birth.plateau_escalator import (
+    EvolutionAction,
+    enter_plateau,
+    is_valid_best_policy_snapshot,
     sanitize_phantom_evolution_steps,
     sanitize_plateau_best_snapshot,
     sanitize_stuck_plateau_evolution,
+    should_trades_beyond_gate_hard_stop,
 )
 from lumina_core.birth.policy_swarm import PolicySwarmState
 from lumina_core.birth.progress import read_birth_progress
@@ -323,22 +327,83 @@ class StageLoopSession(
             ):
                 if key in self.stage_metrics:
                     self.plateau_quarantine[key] = self.stage_metrics[key]
+            # Restore best-policy snapshot before resume recovery decisions.
+            for bp_key, attr in (
+                ("plateau_best_winrate", "best_winrate"),
+                ("best_winrate", "best_winrate"),
+                ("plateau_best_winrate_at_trade", "best_winrate_at_trade"),
+                ("best_winrate_at_trade", "best_winrate_at_trade"),
+                ("plateau_best_policy_path", "best_policy_path"),
+                ("best_policy_path", "best_policy_path"),
+            ):
+                if bp_key in self.stage_metrics and self.stage_metrics.get(bp_key):
+                    raw = self.stage_metrics[bp_key]
+                    if attr == "best_policy_path":
+                        self.plateau_state.best_policy_path = str(raw or "")
+                    elif attr == "best_winrate":
+                        self.plateau_state.best_winrate = float(raw or 0.0)
+                    elif attr == "best_winrate_at_trade":
+                        self.plateau_state.best_winrate_at_trade = int(raw or 0)
             self.plateau_quarantine.update(
                 apply_plateau_quarantine_on_checkpoint_resume(
                     cfg=self.cur_cfg,
                     stage_trades=self.stage_trades,
+                    required=self.required,
                 )
             )
-            self.low_velocity_attempts = 0
-            self.plateau_state.active = False
-            self.plateau_state.evolution_step = 0
-            self.plateau_state.evolution_rollouts_this_step = 0
-            logger.warning(
-                "birth.plateau.quarantine resume trades=%s rollouts=%s min_trades=%s",
-                self.stage_trades,
-                self.plateau_quarantine.get("plateau_quarantine_rollouts_remaining"),
-                self.plateau_quarantine.get("plateau_quarantine_trades_remaining"),
+            deep_stuck = should_trades_beyond_gate_hard_stop(
+                self.stage_trades, self.required, self.cur_cfg
             )
+            skipped = str(
+                self.plateau_quarantine.get("plateau_quarantine_skipped_reason") or ""
+            )
+            if deep_stuck or skipped == "beyond_hard_stop":
+                # Raptor v2: no quiet grace period when already past hard stop.
+                # Enter plateau and jump straight to policy_rollback when snapshot exists.
+                self.low_velocity_attempts = max(
+                    self.low_velocity_attempts,
+                    int(self.cur_cfg.velocity_stall_attempt_threshold),
+                )
+                enter_plateau(
+                    self.plateau_state,
+                    stage_trades=self.stage_trades,
+                    stage_wins=self.stage_wins,
+                )
+                if is_valid_best_policy_snapshot(self.plateau_state, cfg=self.cur_cfg):
+                    # EVOLUTION_STEP_ACTIONS[1] == POLICY_ROLLBACK (1-based step 2)
+                    self.plateau_state.evolution_step = 1
+                    self.plateau_state.evolution_rollouts_this_step = 0
+                    detail, applied = self._apply_plateau_evolution_action(
+                        EvolutionAction.POLICY_ROLLBACK
+                    )
+                    logger.warning(
+                        "birth.plateau.deep_resume_rollback applied=%s detail=%s trades=%s best_wr=%.2f%%",
+                        applied,
+                        detail,
+                        self.stage_trades,
+                        float(self.plateau_state.best_winrate) * 100.0,
+                    )
+                    if applied:
+                        self.plateau_state.evolution_step = 2
+                        self.plateau_state.evolution_rollouts_this_step = 0
+                else:
+                    self.plateau_state.evolution_step = 0
+                    self.plateau_state.evolution_rollouts_this_step = 0
+                    logger.warning(
+                        "birth.plateau.deep_resume_enter trades=%s (no valid best snapshot for rollback)",
+                        self.stage_trades,
+                    )
+            else:
+                self.low_velocity_attempts = 0
+                self.plateau_state.active = False
+                self.plateau_state.evolution_step = 0
+                self.plateau_state.evolution_rollouts_this_step = 0
+                logger.warning(
+                    "birth.plateau.quarantine resume trades=%s rollouts=%s min_trades=%s",
+                    self.stage_trades,
+                    self.plateau_quarantine.get("plateau_quarantine_rollouts_remaining"),
+                    self.plateau_quarantine.get("plateau_quarantine_trades_remaining"),
+                )
         self.last_stage_trades = -1
         self.stagnation_count = 0
         self.chunk_budget = max(5_000, self.cur_cfg.rollout_chunk_trades * self.cur_cfg.rollout_step_budget_multiplier)

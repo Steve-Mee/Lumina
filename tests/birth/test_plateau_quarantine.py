@@ -25,11 +25,23 @@ def _cfg(**overrides: object) -> BirthCurriculumConfig:
 @pytest.mark.unit
 def test_apply_quarantine_on_resume_sets_grace_fields() -> None:
     cfg = _cfg(plateau_quarantine_rollouts=32, plateau_quarantine_min_trades=500)
-    q = apply_plateau_quarantine_on_resume(cfg=cfg, stage_trades=25_000)
+    # Without required (or not past hard-stop) → grace period applies.
+    q = apply_plateau_quarantine_on_resume(cfg=cfg, stage_trades=250)
     assert q["plateau_quarantine_active"] is True
     assert q["plateau_quarantine_rollouts_remaining"] == 32
     assert q["plateau_quarantine_trades_remaining"] == 500
-    assert q["plateau_quarantine_trades_at_resume"] == 25_000
+    assert q["plateau_quarantine_trades_at_resume"] == 250
+
+
+@pytest.mark.unit
+def test_quarantine_skipped_when_beyond_hard_stop() -> None:
+    cfg = _cfg(plateau_quarantine_rollouts=32, plateau_quarantine_min_trades=500)
+    q = apply_plateau_quarantine_on_resume(
+        cfg=cfg, stage_trades=9_098, required=200
+    )
+    assert q["plateau_quarantine_active"] is False
+    assert q["plateau_quarantine_rollouts_remaining"] == 0
+    assert q.get("plateau_quarantine_skipped_reason") == "beyond_hard_stop"
 
 
 @pytest.mark.unit

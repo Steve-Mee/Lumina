@@ -251,8 +251,13 @@ def apply_plateau_quarantine_on_checkpoint_resume(
     *,
     cfg: Any,
     stage_trades: int,
+    required: int | None = None,
 ) -> dict[str, Any]:
     """SSOT entry: grace period after checkpoint resume (delegates to plateau escalator)."""
     from lumina_core.birth.plateau_escalator import apply_plateau_quarantine_on_resume
 
-    return apply_plateau_quarantine_on_resume(cfg=cfg, stage_trades=stage_trades)
+    return apply_plateau_quarantine_on_resume(
+        cfg=cfg,
+        stage_trades=stage_trades,
+        required=required,
+    )
