@@ -114,9 +114,25 @@ class StageLoopRecoveryRemediationMixin(StageLoopMixinBase):
         )
         if stall_reason != TERMINAL_STALL_REASON:
             return False
+        hard_stop = bool(getattr(self, "_hard_stop_terminal_armed", False))
+        # Raptor v4: after hard-stop, at most one remediation cycle — then finalize.
+        if hard_stop and int(self.remediation_state.remediation_cycle) >= 1:
+            if self.bus.remediation_is_exhausted(self.stage) or not self.remediation_state.active:
+                logger.warning(
+                    "birth.terminal.finalized after_hard_stop_remediation cycle=%s step=%s",
+                    self.remediation_state.remediation_cycle,
+                    self.remediation_state.remediation_step,
+                )
+                return False
         if not self.bus.remediation_should_run(self.stage, plateau_exhausted=True):
             return False
         if self.bus.remediation_can_start(self.stage):
+            if hard_stop and int(self.remediation_state.remediation_cycle) >= 1:
+                logger.warning(
+                    "birth.terminal.finalized block_extra_remediation_cycle cycle=%s",
+                    self.remediation_state.remediation_cycle,
+                )
+                return False
             self.bus.remediation_begin_cycle(
                 self.stage,
                 stage_trades=self.stage_trades,
@@ -139,6 +155,12 @@ class StageLoopRecoveryRemediationMixin(StageLoopMixinBase):
             self.plateau_state.evolution_step = 0
             self.plateau_state.forced_recoveries_count = 0
         if self.bus.remediation_is_exhausted(self.stage):
+            if hard_stop:
+                logger.warning(
+                    "birth.terminal.finalized remediation_exhausted_after_hard_stop cycle=%s",
+                    self.remediation_state.remediation_cycle,
+                )
+                return False
             if self._trade_budget_remaining() > 0 and self.bus.remediation_can_start(self.stage):
                 reset_plateau_for_new_cycle(
                     self.plateau_state,

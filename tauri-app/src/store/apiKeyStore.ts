@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { DEFAULT_LUMINA_API_KEY_LS_KEY } from "@/lib/monitoringClient";
+import { DEFAULT_LUMINA_API_KEY_LS_KEY } from "@/lib/apiKeyConstants";
 
 interface ApiKeyState {
   configured: boolean;

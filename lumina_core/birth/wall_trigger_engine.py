@@ -147,7 +147,12 @@ def evaluate_velocity_stall(
         triggered=True,
         trigger_type="velocity_stall",
         failure_key="velocity_stall",
-        pending={"failure_key": "velocity_stall", "blocker_reason": "velocity_stall"},
+        pending={
+            "failure_key": "velocity_stall",
+            "blocker_metric": "velocity_stall",
+            "blocker_value": float(low_velocity_attempts),
+            "blocker_reason": "velocity_stall",
+        },
     )
 
 
@@ -156,10 +161,20 @@ def evaluate_adaptation_stuck(
     stage_trades: int,
     last_adaptation_stage_trades: int,
     trades_beyond_hard_stop: bool,
+    rollouts_since_last_adaptation: int = 0,
+    min_rollouts_since_adaptation: int = 5,
 ) -> WallTriggerResult:
+    """True only after adaptation left trade-count frozen *and* N train laps ran.
+
+    Raptor v10: without the rollout debounce, every adapt at trades=T immediately
+    re-fires stuck on the next loop top (before rollouts) → death spiral.
+    """
     if not trades_beyond_hard_stop or stage_trades < 1:
         return WallTriggerResult(triggered=False)
     if last_adaptation_stage_trades != stage_trades:
+        return WallTriggerResult(triggered=False)
+    min_r = max(0, int(min_rollouts_since_adaptation))
+    if int(rollouts_since_last_adaptation) < min_r:
         return WallTriggerResult(triggered=False)
     return WallTriggerResult(
         triggered=True,
@@ -167,7 +182,10 @@ def evaluate_adaptation_stuck(
         failure_key="adaptation_stuck",
         pending={
             "failure_key": "adaptation_stuck",
+            "blocker_metric": "adaptation_stuck",
+            "blocker_value": float(stage_trades),
             "blocker_reason": "adaptation_loop_blocked",
+            "rollouts_since_last_adaptation": int(rollouts_since_last_adaptation),
         },
     )
 
@@ -202,17 +220,21 @@ def evaluate_wall_trigger(
     low_velocity_attempts: int,
     last_adaptation_stage_trades: int,
     cfg: BirthCurriculumConfig,
+    rollouts_since_last_adaptation: int = 0,
 ) -> WallTriggerResult:
-    """Unified entry: certified stall takes priority, then adaptation stuck."""
+    """Unified entry: adaptation stuck (debounced) then certified stall."""
     trades_beyond = evaluate_trades_beyond_gate(
         stage_trades=stage_trades,
         required=required,
         cfg=cfg,
     )
+    min_rollouts = int(getattr(cfg, "adaptation_stuck_min_rollouts", 5) or 5)
     stuck = evaluate_adaptation_stuck(
         stage_trades=stage_trades,
         last_adaptation_stage_trades=last_adaptation_stage_trades,
         trades_beyond_hard_stop=trades_beyond and stage_trades >= required,
+        rollouts_since_last_adaptation=int(rollouts_since_last_adaptation),
+        min_rollouts_since_adaptation=max(1, min_rollouts),
     )
     if stuck.triggered:
         return stuck

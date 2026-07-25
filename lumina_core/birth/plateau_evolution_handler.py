@@ -39,11 +39,33 @@ class PlateauEvolutionMixin(StageLoopMixinBase):
     """See StageLoopSession for attributes."""
 
     def _rolling_winrate_500(self) -> float:
-        return rolling_winrate_last_n_trades(
+        chunks = getattr(self, "rolling_trade_chunks", None)
+        result = rolling_winrate_last_n_trades(
             stage_trades=self.stage_trades,
             stage_wins=self.stage_wins,
-            wins_at_trade=self.wins_at_trade_milestones,
+            wins_at_trade=getattr(self, "wins_at_trade_milestones", {}) or {},
+            chunks=chunks if isinstance(chunks, list) else None,
+            return_meta=True,
         )
+        if isinstance(result, tuple):
+            wr, source, covered = result
+            self._rolling_winrate_source = str(source)
+            self._rolling_window_trades_covered = int(covered)
+            return float(wr)
+        return float(result)
+
+    def _rolling_winrate_meta(self) -> tuple[float, str, int]:
+        chunks = getattr(self, "rolling_trade_chunks", None)
+        result = rolling_winrate_last_n_trades(
+            stage_trades=self.stage_trades,
+            stage_wins=self.stage_wins,
+            wins_at_trade=getattr(self, "wins_at_trade_milestones", {}) or {},
+            chunks=chunks if isinstance(chunks, list) else None,
+            return_meta=True,
+        )
+        if isinstance(result, tuple):
+            return float(result[0]), str(result[1]), int(result[2])
+        return float(result), "lifetime_fallback", 0
 
     def _ppo_steps_since_evolution_step(self) -> int:
         return max(0, int(self.host.ppo_steps) - int(self.ppo_steps_at_plateau_evolution_step))
@@ -67,6 +89,7 @@ class PlateauEvolutionMixin(StageLoopMixinBase):
                 return f"rollback to {self.plateau_state.best_winrate:.1%} winrate", True
             return "rollback skipped — no best policy snapshot", False
         if action == EvolutionAction.INTRA_EASY_ONLY:
+            # Stage1: easy-only intra curriculum.
             if self.intra_state is not None:
                 self.intra_state.hard_pct = 0.0
                 self.intra_state.easy_trades = 0
@@ -74,7 +97,35 @@ class PlateauEvolutionMixin(StageLoopMixinBase):
                 self.intra_state.easy_winrate_history.clear()
                 self._rebuild_intra_pools(self.active_stage_ticks)
                 return "intra stage1 easy-only pool", True
-            return "intra easy-only skipped — not stage1", False
+            # Stage2: easy-only range intra if available.
+            if getattr(self, "intra_s2_state", None) is not None:
+                self.intra_s2_state.hard_pct = 0.0
+                if hasattr(self, "_rebuild_intra_pools"):
+                    self._rebuild_intra_pools(self.active_stage_ticks)
+                return "intra stage2 easy-only pool", True
+            # Raptor v12: stage3 has no stage1 intra — substitute skill explore boost
+            # instead of a pure no-op that burns ladder rollouts.
+            from lumina_core.birth.curriculum import CurriculumStage
+
+            if self.stage == CurriculumStage.STAGE3_MIXED:
+                self.strong_recovery_mode = True
+                self.strong_recovery_attempts = int(
+                    getattr(self, "strong_recovery_attempts", 0) or 0
+                ) + 1
+                try:
+                    base_explore = int(getattr(self.cur_cfg, "exploration_steps", 512) or 512)
+                    # Raise chunk exploration so next rollouts actually explore.
+                    self.cur_cfg.exploration_steps = max(base_explore, base_explore * 4)
+                except Exception:
+                    pass
+                logger.info(
+                    "birth.plateau.stage3_skill_explore_boost trades=%s wr=%.2f%% attempts=%s",
+                    self.stage_trades,
+                    float(self.stage_wins) / float(max(1, self.stage_trades)) * 100.0,
+                    self.strong_recovery_attempts,
+                )
+                return "stage3 skill explore-boost (ladder WR recovery)", True
+            return "intra easy-only skipped — no intra curriculum on this stage", False
         if action == EvolutionAction.FRESH_POLICY:
             self.host.current_policy = self.host._create_birth_policy(
                 allow_load_existing=False,
@@ -335,11 +386,16 @@ class PlateauEvolutionMixin(StageLoopMixinBase):
             range_total_signals=self.stage_range_total_signals,
             cfg=self.cur_cfg,
         )
+        # Always populate metric keys (Raptor v9 — no KeyError in finalize).
+        if not blocker_metric:
+            blocker_metric = "plateau_evolution_exhausted"
+            blocker_value = float(self.plateau_state.evolution_step)
+            blocker_reason = TERMINAL_STALL_REASON
         return {
             "failure_key": failure_key,
             "blocker_metric": blocker_metric,
-            "blocker_value": blocker_value,
-            "blocker_reason": TERMINAL_STALL_REASON,
+            "blocker_value": blocker_value if blocker_value is not None else 0.0,
+            "blocker_reason": blocker_reason or TERMINAL_STALL_REASON,
             "terminal_stall_reason": TERMINAL_STALL_REASON,
         }
 

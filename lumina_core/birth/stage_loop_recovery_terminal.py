@@ -42,6 +42,9 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             "force": force,
             "low_velocity_attempts": self.low_velocity_attempts,
             "last_adaptation_stage_trades": self.last_adaptation_stage_trades,
+            "rollouts_since_last_adaptation": int(
+                getattr(self, "rollouts_since_last_adaptation", 0) or 0
+            ),
         }
 
     def _evaluate_wall_trigger(self, 
@@ -80,10 +83,66 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
         *,
         human_gate: bool = False,
     ) -> dict[str, Any]:
-        failure_key = str(pending["failure_key"])
-        blocker_metric = pending["blocker_metric"]
-        blocker_value = pending["blocker_value"]
+        # Raptor v9: never KeyError on incomplete wall/plateau pendings.
+        # Raptor v10: adaptation_stuck is an engineering signal — prefer skill blockers.
+        pending = dict(pending or {})
+        failure_key = str(pending.get("failure_key") or "stage_stalled")
+        blocker_metric = pending.get("blocker_metric")
+        blocker_value = pending.get("blocker_value")
         blocker_reason = pending.get("blocker_reason")
+        engineering_stuck = (
+            failure_key == "adaptation_stuck"
+            or str(blocker_metric or "") == "adaptation_stuck"
+            or str(blocker_reason or "") == "adaptation_loop_blocked"
+        )
+        need_skill_fill = (
+            blocker_metric is None
+            or blocker_value is None
+            or engineering_stuck
+        )
+        if need_skill_fill:
+            try:
+                from lumina_core.birth.stage_scorecard import compute_stage_blocker
+
+                hold_ratio = float(self.stage_hold_signals) / float(
+                    max(1, self.stage_total_signals)
+                )
+                range_flat_ratio = float(self.stage_range_flat_bars) / float(
+                    max(1, self.stage_range_total_signals)
+                )
+                bm, bv, br = compute_stage_blocker(
+                    self.stage,
+                    stage_trades=self.stage_trades,
+                    stage_wins=self.stage_wins,
+                    hold_ratio=hold_ratio,
+                    required=self.required,
+                    constitution_violations=self.host._constitution_guard.violations,
+                    range_flat_ratio=range_flat_ratio,
+                    range_round_trips=self.stage_range_round_trips,
+                    range_total_signals=self.stage_range_total_signals,
+                    cfg=self.cur_cfg,
+                )
+                if engineering_stuck and bm is not None:
+                    pending["engineering_blocker"] = "adaptation_stuck"
+                    blocker_metric = bm
+                    blocker_value = bv if bv is not None else 0.0
+                    blocker_reason = br or blocker_reason
+                else:
+                    if blocker_metric is None:
+                        blocker_metric = bm or failure_key or "stage_stalled"
+                    if blocker_value is None:
+                        blocker_value = bv if bv is not None else 0.0
+                    if not blocker_reason:
+                        blocker_reason = br or failure_key
+            except Exception:
+                blocker_metric = blocker_metric or failure_key or "stage_stalled"
+                blocker_value = 0.0 if blocker_value is None else blocker_value
+                blocker_reason = blocker_reason or failure_key
+        pending["failure_key"] = failure_key
+        pending["blocker_metric"] = blocker_metric
+        pending["blocker_value"] = blocker_value
+        if blocker_reason:
+            pending["blocker_reason"] = blocker_reason
         logger.info(
             "birth.terminal_stall reason=%s cumulative_trades=%s cap=%s "
             "adaptation_tier=%s retries=%s data_exhausted=%s buffer=%s human_gate=%s",

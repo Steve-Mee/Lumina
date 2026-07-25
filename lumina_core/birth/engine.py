@@ -228,12 +228,16 @@ class BirthPhaseEngineV2:
         return False
 
     def _constitution_progress_fields(self) -> dict[str, int]:
+        # Hard only — soft entry blocks must not poison stage pass / HUD graduation gate.
         session = int(self._constitution_guard.violations)
         cumulative = int(self._constitution_violations_cumulative) + session
+        soft = int(getattr(self._constitution_guard, "soft_blocks", 0) or 0)
         return {
             "constitution_violations": cumulative,
             "constitution_violations_session": session,
             "constitution_violations_cumulative": cumulative,
+            "constitution_soft_blocks": soft,
+            "constitution_soft_blocks_session": soft,
         }
 
     def _budget_progress_fields(self, *, terminal_stall_reason: str | None = None) -> dict[str, Any]:

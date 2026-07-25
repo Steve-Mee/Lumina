@@ -6,6 +6,9 @@ import type { MutationDepth, OperationsMode } from "@/lib/botConfigDraft";
 import { mapAppPhase, resolvePhaseOnRefreshError, markPayloadBackendUnreachable, type AppPhase } from "@/lib/onboardingPhase";
 import { hydrateBotConfigDraftFromPayload } from "@/lib/botConfigDraft";
 import {
+  fetchAndHydrateDeckApiKey,
+  fetchDeckCredentialsPrefill,
+  fetchFabricLinkStatus,
   fetchOnboardingStatus,
   postConfigure,
   postCredentials,
@@ -19,10 +22,6 @@ import {
 } from "@/lib/birthClient";
 import { mergeCredentialsIntoDraft } from "@/lib/credentialsPrefill";
 import { persistMonitoringApiKey, resolveMonitoringApiKey } from "@/lib/monitoringClient";
-import {
-  fetchAndHydrateDeckApiKey,
-  fetchDeckCredentialsPrefill,
-} from "@/lib/setupClient";
 import { useBirthStore } from "@/store/birthStore";
 
 export interface OnboardingDraft {
@@ -444,7 +443,6 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     try {
       // Fail-closed: Fabric diagnostic GREEN required before Genesis.
       try {
-        const { fetchFabricLinkStatus } = await import("@/lib/setupClient");
         const link = await fetchFabricLinkStatus();
         if (!link.green) {
           const message =

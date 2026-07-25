@@ -98,11 +98,13 @@ export interface BirthProgressPayload {
   evolution_actions_completed?: number;
   evolution_phantom_steps?: number;
   plateau_elapsed_sec?: number;
+  plateau_active?: boolean;
   trades_beyond_gate?: number;
   plateau_forced_recoveries_count?: number;
   plateau_best_winrate?: number;
   plateau_evolution_rollouts_this_step?: number;
   plateau_evolution_rollouts_max?: number;
+  evolution_ladder_blocked_reason?: string;
   stall_remediation_cycle?: number;
   stall_remediation_step?: number;
   stall_remediation_max_steps?: number;
@@ -123,6 +125,9 @@ export interface BirthProgressPayload {
   plateau_quarantine_trades_remaining_count?: number;
   plateau_quarantine_trades_new?: number;
   rolling_winrate_500?: number;
+  /** true_window | partial_window | lifetime_fallback */
+  rolling_winrate_source?: string;
+  rolling_window_trades_covered?: number;
   sim_ticks_processed_cumulative?: number;
   wall_clock_rollout_sec_avg?: number;
   wall_clock_trades_per_min?: number;

@@ -71,7 +71,8 @@ class StageLoopDataOpsMixin(StageLoopMixinBase):
             self.host.ppo_steps += batch
         return f"oracle distill (removed {removed} low-reward trajectories)"
 
-    def _mine_and_inject(self, *, aggressive: bool = False) -> None:
+    def _mine_and_inject(self, *, aggressive: bool = False) -> int:
+        """Mine oracle patterns into buffer. Returns number of patterns found this call."""
         if self.current_intra_sample_pool:
             pool = list(self.current_intra_sample_pool)
         elif len(self.active_train) > len(self.active_stage_ticks):
@@ -82,6 +83,10 @@ class StageLoopDataOpsMixin(StageLoopMixinBase):
             self.cur_cfg,
             aggressive=aggressive,
         )
+        # Prefer full train universe for harvest (intra pool can be too thin for calib).
+        if len(pool) < 80 and self.active_train:
+            pool = list(self.active_train)
+        hold = max(int(self.cur_cfg.oracle_max_hold_bars), 180)
         mine_result = mine_winning_patterns(
             ticks=pool,
             stage=self.stage,
@@ -89,18 +94,52 @@ class StageLoopDataOpsMixin(StageLoopMixinBase):
             workspace_root=self.host.workspace_root,
             max_patterns=max_patterns,
             scan_stride=scan_stride,
-            max_hold_bars=self.cur_cfg.oracle_max_hold_bars,
+            max_hold_bars=hold,
+            auto_calibrate=True,
         )
-        self.patterns_mined += len(mine_result.patterns)
+        found = len(mine_result.patterns)
+        self.patterns_mined += found
         self.oracle_wins += mine_result.wins
-        self.bus.meta_record_inject(self.stage, 
-            patterns=len(mine_result.patterns),
+        self.oracle_last_scanned = int(mine_result.scanned)
+        self.oracle_last_patterns = found
+        self.oracle_last_stop_pct = float(mine_result.stop_pct)
+        self.oracle_last_target_pct = float(mine_result.target_pct)
+        self.oracle_last_reason = str(mine_result.reason or "")
+        self.bus.meta_record_inject(
+            self.stage,
+            patterns=found,
             oracle_wins=mine_result.wins,
         )
         for pattern in mine_result.patterns:
-            self.host.buffer.add(pattern, priority=3.0 + min(10.0, abs(float(pattern.get("reward", 0.0)))))
-        self.active_stage_ticks = filter_ticks_for_stage(self.stage, self.active_train) or list(self.active_train)
+            self.host.buffer.add(
+                pattern,
+                priority=3.0 + min(10.0, abs(float(pattern.get("reward", 0.0)))),
+            )
+        self.active_stage_ticks = filter_ticks_for_stage(self.stage, self.active_train) or list(
+            self.active_train
+        )
         self._rebuild_intra_pools(self.active_stage_ticks)
+        return found
+
+    def _force_oracle_harvest(self, *, reason: str = "force") -> int:
+        """Mandatory harvest independent of meta thrash (Raptor v4)."""
+        if not getattr(self, "active_train", None) and not getattr(
+            self, "active_stage_ticks", None
+        ):
+            logger.info(
+                "birth.oracle.force_harvest skipped reason=%s detail=ticks_not_ready",
+                reason,
+            )
+            return 0
+        found = self._mine_and_inject(aggressive=True)
+        logger.info(
+            "birth.oracle.force_harvest reason=%s found=%s cumulative=%s last_reason=%s",
+            reason,
+            found,
+            self.patterns_mined,
+            getattr(self, "oracle_last_reason", ""),
+        )
+        return found
 
     def _maybe_expand_data(self) -> bool:
         if self.data_exhausted:

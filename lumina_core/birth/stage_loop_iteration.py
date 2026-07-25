@@ -53,7 +53,8 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
             failure_key = {
                 CurriculumStage.STAGE1_TREND: "stage1_winrate",
                 CurriculumStage.STAGE2_RANGE: "stage2_metric",
-                CurriculumStage.STAGE3_MIXED: "stage3_constitution",
+                # Raptor v9: stage3 is foundation floors (WR/hold), not constitution-only.
+                CurriculumStage.STAGE3_MIXED: "stage3_foundation",
             }.get(self.stage, "stage_metrics")
             trades_beyond_hard_stop = should_trades_beyond_gate_hard_stop(
                 self.stage_trades, self.required, self.cur_cfg
@@ -62,8 +63,9 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
             if self.plateau_state.active:
                 plateau_terminal = self._plateau_terminal_pending(failure_key=failure_key)
                 if plateau_terminal is not None:
+                    self._hard_stop_terminal_armed = True
                     logger.warning(
-                        "birth.terminal.hard_stop reason=%s step=%s trades=%s wr=%.2f%% beyond=%s",
+                        "birth.terminal.requested reason=%s step=%s trades=%s wr=%.2f%% beyond=%s",
                         plateau_terminal.get("terminal_stall_reason"),
                         self.plateau_state.evolution_step,
                         self.stage_trades,
@@ -74,6 +76,11 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                     stall_result = self._resolve_terminal_stall(plateau_terminal)
                     if stall_result is None:
                         continue
+                    logger.warning(
+                        "birth.terminal.finalized reason=%s trades=%s",
+                        plateau_terminal.get("terminal_stall_reason"),
+                        self.stage_trades,
+                    )
                     return stall_result
             wall_trigger = self._evaluate_wall_trigger(
                 elapsed_stage_sec=elapsed_stage_sec,
@@ -89,54 +96,137 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                 trigger_type = str(wall_trigger.get("trigger_type", "certified_stall"))
                 constitution_blocked = bool(wall_trigger.get("constitution_blocked", False))
             if stall_pending is not None:
-                if trades_beyond_hard_stop and self.stage_trades >= self.required and not self.plateau_state.active:
+                beyond_gate = bool(
+                    trades_beyond_hard_stop and self.stage_trades >= self.required
+                )
+                if beyond_gate and not self.plateau_state.active:
                     self._maybe_detect_plateau(stage_trades=self.stage_trades, stage_wins=self.stage_wins)
                 adaptation_stuck = trigger_type == "adaptation_stuck"
+                force_train_lap = False
                 if adaptation_stuck:
                     logger.warning(
-                        "birth.adaptation.loop_blocked trades=%s tier=%s failure=%s",
+                        "birth.adaptation.loop_blocked trades=%s tier=%s failure=%s "
+                        "rollouts_since_adapt=%s",
                         self.stage_trades,
                         self.adaptation_tier,
                         failure_key,
+                        int(getattr(self, "rollouts_since_last_adaptation", 0) or 0),
                     )
                     if self._try_adaptation_stuck_escape(failure_key=failure_key):
                         continue
+                    # Raptor v10: never terminal on first stuck without another train lap.
+                    if self.plateau_state.active and self._try_plateau_evolution(
+                        failure_key=failure_key
+                    ):
+                        self.rollouts_since_last_adaptation = 0
+                        self.last_adaptation_stage_trades = -1
+                        continue
+                    if self._force_never_stop_recovery(failure_key=failure_key):
+                        self.rollouts_since_last_adaptation = 0
+                        self.last_adaptation_stage_trades = -1
+                        continue
+                    if not getattr(self, "_adaptation_stuck_train_grace_used", False):
+                        self._adaptation_stuck_train_grace_used = True
+                        self.rollouts_since_last_adaptation = 0
+                        self.last_adaptation_stage_trades = -1
+                        logger.warning(
+                            "birth.adaptation.stuck_train_grace trades=%s — continue rollouts",
+                            self.stage_trades,
+                        )
+                        continue
+                    force_train_lap = True
+                elif beyond_gate:
+                    # Raptor v11: force wall + beyond-gate must not infinite-recover.
+                    # Plateau awaits rollouts (0/12) while adaptive recovery was
+                    # continue'ing every loop → stage_trades frozen (recovery cycling).
+                    current_wr = float(self.stage_wins) / float(max(1, self.stage_trades))
+                    if self.plateau_state.active and should_trigger_plateau_evolution_step(
+                        self.plateau_state,
+                        cfg=self.cur_cfg,
+                        current_winrate=current_wr,
+                        allow_start=False,
+                        pass_target=self._plateau_pass_target(),
+                        stage_trades=self.stage_trades,
+                        required=self.required,
+                    ) and self._try_plateau_evolution(failure_key=failure_key):
+                        continue
+                    if self.plateau_state.active and evolution_ladder_exhausted(
+                        self.plateau_state
+                    ):
+                        if self._try_evolution_exhausted_remediation(failure_key=failure_key):
+                            continue
+                        plateau_terminal = self._plateau_terminal_pending(
+                            failure_key=failure_key
+                        )
+                        if plateau_terminal is not None:
+                            self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
+                            stall_result = self._resolve_terminal_stall(plateau_terminal)
+                            if stall_result is None:
+                                continue
+                            return stall_result
+                    evo_rollouts = int(
+                        getattr(self.plateau_state, "evolution_rollouts_this_step", 0) or 0
+                    )
+                    evo_need = int(
+                        getattr(self.cur_cfg, "plateau_evolution_rollouts_per_step", 12) or 12
+                    )
+                    logger.warning(
+                        "birth.beyond_gate.force_train_lap trades=%s wr=%.2f%% "
+                        "plateau=%s evo_step=%s rollouts_this_step=%s/%s "
+                        "rollouts_since_adapt=%s — skip recovery spam",
+                        self.stage_trades,
+                        current_wr * 100.0,
+                        bool(self.plateau_state.active),
+                        int(getattr(self.plateau_state, "evolution_step", 0) or 0),
+                        evo_rollouts,
+                        evo_need,
+                        int(getattr(self, "rollouts_since_last_adaptation", 0) or 0),
+                    )
+                    force_train_lap = True
                 elif self._try_adaptive_stall_recovery(
                     failure_key=failure_key,
                     trigger_type=trigger_type,
                     constitution_blocked=constitution_blocked,
                 ):
                     continue
-                current_wr = float(self.stage_wins) / float(max(1, self.stage_trades))
-                if self.plateau_state.active and should_trigger_plateau_evolution_step(
-                    self.plateau_state,
-                    cfg=self.cur_cfg,
-                    current_winrate=current_wr,
-                    allow_start=False,
-                    pass_target=self._plateau_pass_target(),
-                    stage_trades=self.stage_trades,
-                    required=self.required,
-                ) and self._try_plateau_evolution(failure_key=failure_key):
-                    continue
-                if not adaptation_stuck and self._force_never_stop_recovery(failure_key=failure_key):
-                    continue
-                if self.plateau_state.active and self._try_plateau_evolution(failure_key=failure_key):
-                    continue
-                if self.plateau_state.active and evolution_ladder_exhausted(self.plateau_state):
-                    if self._try_evolution_exhausted_remediation(failure_key=failure_key):
+                if not force_train_lap:
+                    current_wr = float(self.stage_wins) / float(max(1, self.stage_trades))
+                    if self.plateau_state.active and should_trigger_plateau_evolution_step(
+                        self.plateau_state,
+                        cfg=self.cur_cfg,
+                        current_winrate=current_wr,
+                        allow_start=False,
+                        pass_target=self._plateau_pass_target(),
+                        stage_trades=self.stage_trades,
+                        required=self.required,
+                    ) and self._try_plateau_evolution(failure_key=failure_key):
                         continue
-                plateau_terminal = self._plateau_terminal_pending(failure_key=failure_key)
-                if plateau_terminal is not None:
+                    if not adaptation_stuck and self._force_never_stop_recovery(
+                        failure_key=failure_key
+                    ):
+                        continue
+                    if self.plateau_state.active and self._try_plateau_evolution(
+                        failure_key=failure_key
+                    ):
+                        continue
+                    if self.plateau_state.active and evolution_ladder_exhausted(
+                        self.plateau_state
+                    ):
+                        if self._try_evolution_exhausted_remediation(failure_key=failure_key):
+                            continue
+                    plateau_terminal = self._plateau_terminal_pending(failure_key=failure_key)
+                    if plateau_terminal is not None:
+                        self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
+                        stall_result = self._resolve_terminal_stall(plateau_terminal)
+                        if stall_result is None:
+                            continue
+                        return stall_result
                     self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
-                    stall_result = self._resolve_terminal_stall(plateau_terminal)
+                    stall_result = self._resolve_terminal_stall(stall_pending)
                     if stall_result is None:
                         continue
                     return stall_result
-                self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
-                stall_result = self._resolve_terminal_stall(stall_pending)
-                if stall_result is None:
-                    continue
-                return stall_result
+                # force_train_lap: fall through to rollout body below
 
             if elapsed_stage_sec >= max(300, int(self.cur_cfg.max_stage_wall_sec)):
                 if (
@@ -162,21 +252,21 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
             stage_val_max_dd = 100.0
             if self.stage_val_pnl:
                 stage_val_sharpe, stage_val_max_dd = risk_metrics_from_pnl(self.stage_val_pnl)
+            # Raptor v12/v13: rolling WR for stage1+stage3; only trust real window.
             rolling_wr: float | None = None
-            if self.stage == CurriculumStage.STAGE1_TREND:
+            if self.stage in (
+                CurriculumStage.STAGE1_TREND,
+                CurriculumStage.STAGE3_MIXED,
+            ):
                 try:
-                    from lumina_core.birth.plateau_escalator import rolling_winrate_last_n_trades
-
+                    wr, source, covered = self._rolling_winrate_meta()
                     window = int(getattr(self.cur_cfg, "stage1_rolling_pass_window", 500) or 500)
-                    wins_at = getattr(self, "wins_at_trade_milestones", None)
-                    if not isinstance(wins_at, dict):
-                        wins_at = {}
-                    rolling_wr = rolling_winrate_last_n_trades(
-                        stage_trades=self.stage_trades,
-                        stage_wins=self.stage_wins,
-                        wins_at_trade=wins_at,
-                        window=window,
-                    )
+                    min_for_pass = min(400, window)
+                    # Do not use lifetime-fallback as a fake "OR rolling" path.
+                    if source in ("true_window", "partial_window") and covered >= min_for_pass:
+                        rolling_wr = float(wr)
+                    else:
+                        rolling_wr = None
                 except Exception:
                     rolling_wr = None
             stage_result = evaluate_stage_pass(
@@ -231,6 +321,11 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                     self.stage,
                     stage_result,
                     cfg=self.cur_cfg,
+                    hold_signals=self.stage_hold_signals,
+                    total_signals=self.stage_total_signals,
+                    range_hold_signals=self.stage_range_hold_signals,
+                    range_total_signals=self.stage_range_total_signals,
+                    range_flat_bars=self.stage_range_flat_bars,
                 )
                 return None
 

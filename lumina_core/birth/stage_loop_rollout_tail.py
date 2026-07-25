@@ -145,8 +145,9 @@ class StageLoopRolloutTailMixin(StageLoopMixinBase):
             # Fail-closed: after ladder work, terminal may now be due (compressed wall).
             terminal_pending = self._plateau_terminal_pending(failure_key=failure_key_rollout)
             if terminal_pending is not None:
+                self._hard_stop_terminal_armed = True
                 logger.warning(
-                    "birth.terminal.hard_stop reason=%s step=%s trades=%s (post_rollout)",
+                    "birth.terminal.requested reason=%s step=%s trades=%s (post_rollout)",
                     terminal_pending.get("terminal_stall_reason") or TERMINAL_STALL_REASON,
                     self.plateau_state.evolution_step,
                     self.stage_trades,
@@ -154,13 +155,24 @@ class StageLoopRolloutTailMixin(StageLoopMixinBase):
                 self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
                 stall_result = self._resolve_terminal_stall(terminal_pending)
                 if stall_result is not None:
+                    logger.warning(
+                        "birth.terminal.finalized reason=%s trades=%s (post_rollout)",
+                        terminal_pending.get("terminal_stall_reason") or TERMINAL_STALL_REASON,
+                        self.stage_trades,
+                    )
                     return stall_result
         if self.remediation_state.active:
             self.bus.remediation_increment_rollout(self.stage)
             if self._maybe_advance_stall_remediation_in_loop():
-                pending = self._plateau_terminal_pending(failure_key="stage1_winrate") or {
-                    "failure_key": "stage1_winrate",
-                    "blocker_metric": "trend_winrate",
+                pending = self._plateau_terminal_pending(
+                    failure_key={
+                        CurriculumStage.STAGE1_TREND: "stage1_winrate",
+                        CurriculumStage.STAGE2_RANGE: "stage2_metric",
+                        CurriculumStage.STAGE3_MIXED: "stage3_foundation",
+                    }.get(self.stage, "stage_metrics")
+                ) or {
+                    "failure_key": "stage_stalled",
+                    "blocker_metric": "stage_stalled",
                     "blocker_value": float(self.stage_wins) / float(max(1, self.stage_trades)),
                     "blocker_reason": HUMAN_GATE_REASON,
                     "terminal_stall_reason": HUMAN_GATE_REASON,

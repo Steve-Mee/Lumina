@@ -11,12 +11,13 @@ interface BirthKpiTileProps {
 }
 
 const TONE_CLASS: Record<BirthKpiTone, string> = {
-  default: "text-foreground",
+  default: "text-cyan-100",
   success: "text-emerald-300",
   warn: "text-amber-300",
   accent: "text-cyan-200",
 };
 
+/** Genesis CharterTile-style KPI — fixed label, mono value, footnote. */
 export function BirthKpiTile({
   label,
   value,
@@ -25,15 +26,23 @@ export function BirthKpiTile({
   className,
 }: BirthKpiTileProps) {
   return (
-    <div className={cn("birth-kpi-tile lumina-glass lumina-glass--panel transition-colors", className)}>
-      <p className="birth-kpi-tile__label font-mono text-[10px] tracking-wide text-muted-foreground uppercase">
-        {label}
-      </p>
-      <p className={cn("birth-kpi-tile__value mt-0.5 font-mono text-base font-semibold tabular-nums", TONE_CLASS[tone])}>
+    <div
+      className={cn(
+        "birth-kpi-tile risk-envelope-field-card flex h-full flex-col",
+        className,
+      )}
+    >
+      <p className="risk-envelope-field-label mb-0.5">{label}</p>
+      <p
+        className={cn(
+          "birth-kpi-tile__value font-mono text-base font-semibold tabular-nums tracking-tight",
+          TONE_CLASS[tone],
+        )}
+      >
         {value}
       </p>
       {detail ? (
-        <p className="birth-kpi-tile__detail mt-0.5 font-mono text-[10px] text-muted-foreground">{detail}</p>
+        <p className="risk-envelope-field-hint mt-auto pt-0.5">{detail}</p>
       ) : null}
     </div>
   );

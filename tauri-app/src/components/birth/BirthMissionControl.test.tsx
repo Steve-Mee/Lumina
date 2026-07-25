@@ -19,6 +19,16 @@ const birthAdvancedPanelSource = readFileSync(
   "utf8",
 );
 
+const birthKpiTileSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "./BirthKpiTile.tsx"),
+  "utf8",
+);
+
+const birthMetricsStripSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "./BirthMetricsStrip.tsx"),
+  "utf8",
+);
+
 describe("BirthMissionControl", () => {
   it("uses a constrained body with internal panel scroll (no page scroll)", () => {
     expect(birthMissionControlSource).toContain("birth-mission-control__body");
@@ -41,11 +51,13 @@ describe("BirthMissionControl", () => {
     expect(birthMissionControlSource).toContain("POLICY");
     expect(birthMissionControlSource).toContain("LANES");
     expect(birthMissionControlSource).toContain("Fitness landscape");
-    expect(birthMissionControlSource).toContain("risk-envelope-field-card");
+    expect(birthKpiTileSource).toContain("risk-envelope-field-card");
+    expect(birthMetricsStripSource).toContain("risk-envelope-field-card");
   });
 
   it("uses a two-column KPI grid for the narrower status column", () => {
-    expect(birthMissionControlSource).toMatch(/birth-kpi-grid[\s\S]*grid-cols-2/);
+    expect(birthMissionControlSource).toContain("birth-kpi-grid");
+    expect(birthMissionControlSource).toContain("birth-intel-field-grid");
     expect(birthMissionControlSource).not.toContain("lg:grid-cols-4");
   });
 
@@ -56,8 +68,10 @@ describe("BirthMissionControl", () => {
     expect(birthMissionControlSource).not.toContain("BirthRemediationBar");
   });
 
-  it("keeps blocker alert in the status column", () => {
-    expect(birthMissionControlSource).toContain("BirthBlockerAlert");
+  it("keeps Fitness landscape compact without duplicate blocker alert", () => {
+    expect(birthMissionControlSource).toContain("Fitness landscape");
+    expect(birthMissionControlSource).not.toContain("BirthBlockerAlert");
+    expect(birthMetricsStripSource).toContain("birth-intel-field-grid");
   });
 
   it("hosts Stop birth in the panel toolbar when showStopControl is set", () => {

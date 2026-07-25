@@ -1,3 +1,4 @@
+import { DEFAULT_LUMINA_API_KEY_LS_KEY } from "@/lib/apiKeyConstants";
 import { resolveBackendBaseUrl } from "@/lib/setupClient";
 import {
   normalizeAdaptiveIntelligenceStatus,
@@ -7,8 +8,9 @@ import {
   type AdaptiveTransitionSummary,
 } from "@/lib/adaptiveIntelligenceTypes";
 import { normalizeLuminaMetricsPayload, type LuminaMetrics } from "@/lib/luminaMetricsModel";
+import { useApiKeyStore } from "@/store/apiKeyStore";
 
-export const DEFAULT_LUMINA_API_KEY_LS_KEY = "lumina_api_key";
+export { DEFAULT_LUMINA_API_KEY_LS_KEY } from "@/lib/apiKeyConstants";
 
 export function resolveMonitoringApiKey(): string | null {
   if (typeof window === "undefined") return null;
@@ -23,9 +25,7 @@ export function persistMonitoringApiKey(apiKey: string): void {
   if (typeof window === "undefined" || !apiKey.trim()) return;
   try {
     localStorage.setItem(DEFAULT_LUMINA_API_KEY_LS_KEY, apiKey.trim());
-    void import("@/store/apiKeyStore").then(({ useApiKeyStore }) => {
-      useApiKeyStore.getState().syncFromStorage();
-    });
+    useApiKeyStore.getState().syncFromStorage();
   } catch {
     // ignore storage failures
   }

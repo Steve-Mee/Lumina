@@ -1,4 +1,8 @@
-"""Hindsight oracle pattern miner for Birth Research Oracle (BRO)."""
+"""Hindsight oracle pattern miner for Birth Research Oracle (BRO).
+
+Stop/target are auto-calibrated to the tick universe. Fixed 0.75%/1.3% stops
+never hit on 1-min MES (median move ~0.15%) and produced permanent patterns=0.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ import numpy as np
 from lumina_core.birth.bible_observation import bible_features_for_tick
 from lumina_core.birth.config import BirthRewardConfig, load_birth_v2_config
 from lumina_core.birth.curriculum import CurriculumStage, filter_ticks_for_stage
+from lumina_core.logging_utils import get_logger
 from lumina_core.rl.observation_builder import build_observation_vector
 from lumina_core.rl.reward_shaper import (
     RewardShapingState,
@@ -19,8 +24,14 @@ from lumina_core.rl.reward_shaper import (
     update_trade_stats,
 )
 
-_DEFAULT_STOP_PCT = 0.0075
-_DEFAULT_TARGET_PCT = 0.013
+logger = get_logger("lumina.birth.pattern_miner")
+
+# Legacy defaults — only used if auto-calib fails and caller forces fixed mode.
+_LEGACY_STOP_PCT = 0.0075
+_LEGACY_TARGET_PCT = 0.013
+# Birth-scale fallbacks (1-min futures): match observed move distribution.
+_BIRTH_FALLBACK_STOP_PCT = 0.0012
+_BIRTH_FALLBACK_TARGET_PCT = 0.0020
 _POINT_VALUE = 5.0  # MES-like SIM scale for oracle PnL ranking
 
 
@@ -30,6 +41,11 @@ class PatternMineResult:
     wins: int
     scanned: int
     regimes_seen: set[str]
+    stop_pct: float = 0.0
+    target_pct: float = 0.0
+    max_hold_bars: int = 0
+    reason: str = ""
+    pool_size: int = 0
 
 
 def _tick_price(tick: dict[str, Any]) -> float:
@@ -37,6 +53,55 @@ def _tick_price(tick: dict[str, Any]) -> float:
         return float(tick.get("last") or tick.get("close") or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def calibrate_oracle_stops(
+    ticks: list[dict[str, Any]],
+    *,
+    max_hold_bars: int = 180,
+    sample_stride: int = 10,
+) -> tuple[float, float]:
+    """Derive stop/target from realized move distribution (fail-closed fallbacks)."""
+    if len(ticks) < 40:
+        return _BIRTH_FALLBACK_STOP_PCT, _BIRTH_FALLBACK_TARGET_PCT
+
+    hold = max(20, int(max_hold_bars))
+    abs_moves: list[float] = []
+    atr_samples: list[float] = []
+    stride = max(1, int(sample_stride))
+    end = len(ticks) - hold - 1
+    for i in range(20, max(21, end), stride):
+        entry = _tick_price(ticks[i])
+        if entry <= 0:
+            continue
+        atr = float(ticks[i].get("trend_atr_norm", 0.0) or 0.0)
+        if atr > 0:
+            # atr_norm is often already a fractional scale; clamp to sane band
+            atr_samples.append(min(0.02, max(0.0003, atr if atr < 0.05 else atr / entry)))
+        peak = 0.0
+        for j in range(i + 1, min(len(ticks), i + hold + 1)):
+            price = _tick_price(ticks[j])
+            if price <= 0:
+                continue
+            peak = max(peak, abs(price - entry) / entry)
+        if peak > 0:
+            abs_moves.append(peak)
+
+    if not abs_moves and not atr_samples:
+        return _BIRTH_FALLBACK_STOP_PCT, _BIRTH_FALLBACK_TARGET_PCT
+
+    if abs_moves:
+        arr = np.asarray(abs_moves, dtype=float)
+        p40 = float(np.percentile(arr, 40))
+        p60 = float(np.percentile(arr, 60))
+        stop = max(0.0004, min(0.008, p40 * 0.85))
+        target = max(stop * 1.25, min(0.015, p60 * 1.05))
+    else:
+        atr_med = float(np.median(np.asarray(atr_samples, dtype=float)))
+        stop = max(0.0004, min(0.008, atr_med * 0.9))
+        target = max(stop * 1.25, min(0.015, atr_med * 1.5))
+
+    return float(stop), float(target)
 
 
 def _simulate_outcome(
@@ -48,14 +113,19 @@ def _simulate_outcome(
     target_pct: float,
     max_hold_bars: int,
 ) -> tuple[float, int] | None:
+    """Path-dependent stop/target; if neither hits, use end-of-horizon PnL (signed)."""
     entry = _tick_price(ticks[entry_idx])
     if entry <= 0:
         return None
     end = min(len(ticks), entry_idx + max_hold_bars + 1)
+    last_j = entry_idx
+    last_price = entry
     for j in range(entry_idx + 1, end):
         price = _tick_price(ticks[j])
         if price <= 0:
             continue
+        last_j = j
+        last_price = price
         if side > 0:
             move = (price - entry) / entry
             if move <= -stop_pct:
@@ -68,7 +138,14 @@ def _simulate_outcome(
                 return -stop_pct * entry * _POINT_VALUE, j
             if move >= target_pct:
                 return target_pct * entry * _POINT_VALUE, j
-    return None
+    if last_j <= entry_idx or last_price <= 0:
+        return None
+    # Horizon exit: signed PnL (only winners kept by caller via min_pnl_usd)
+    if side > 0:
+        pnl = (last_price - entry) * _POINT_VALUE
+    else:
+        pnl = (entry - last_price) * _POINT_VALUE
+    return float(pnl), last_j
 
 
 def mine_winning_patterns(
@@ -80,16 +157,39 @@ def mine_winning_patterns(
     max_patterns: int = 5000,
     min_pnl_usd: float = 0.01,
     scan_stride: int = 5,
-    max_hold_bars: int = 120,
-    stop_pct: float = _DEFAULT_STOP_PCT,
-    target_pct: float = _DEFAULT_TARGET_PCT,
+    max_hold_bars: int = 180,
+    stop_pct: float | None = None,
+    target_pct: float | None = None,
+    auto_calibrate: bool = True,
 ) -> PatternMineResult:
     """Scan historical ticks for hindsight-profitable entries (oracle labeling)."""
     pool = filter_ticks_for_stage(stage, ticks)
     if not pool:
         pool = list(ticks)
     if len(pool) < 30:
-        return PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set())
+        return PatternMineResult(
+            patterns=[],
+            wins=0,
+            scanned=0,
+            regimes_seen=set(),
+            reason="pool_too_small",
+            pool_size=len(pool),
+            max_hold_bars=int(max_hold_bars),
+        )
+
+    hold = max(30, int(max_hold_bars))
+    if auto_calibrate or stop_pct is None or target_pct is None:
+        cal_stop, cal_target = calibrate_oracle_stops(pool, max_hold_bars=hold)
+        use_stop = float(stop_pct) if stop_pct is not None and not auto_calibrate else cal_stop
+        use_target = float(target_pct) if target_pct is not None and not auto_calibrate else cal_target
+    else:
+        use_stop = float(stop_pct)
+        use_target = float(target_pct)
+
+    # Guard against legacy mis-calibration when caller still passes 0.75%/1.3%.
+    if use_stop >= 0.005 and auto_calibrate:
+        cal_stop, cal_target = calibrate_oracle_stops(pool, max_hold_bars=hold)
+        use_stop, use_target = cal_stop, cal_target
 
     enriched: list[dict[str, Any]] = []
     for row in pool:
@@ -108,76 +208,95 @@ def mine_winning_patterns(
     cap = max(1, int(max_patterns))
     reward_cfg: BirthRewardConfig = load_birth_v2_config(workspace_root).reward
     reward_state = RewardShapingState()
+    hits = 0
+    winners = 0
 
-    for i in range(20, len(enriched) - max_hold_bars - 1, stride):
+    for i in range(20, len(enriched) - hold - 1, stride):
         scanned += 1
         for side, signal in ((1, "BUY"), (-1, "SELL")):
             outcome = _simulate_outcome(
                 enriched,
                 i,
                 side,
-                stop_pct=stop_pct,
-                target_pct=target_pct,
-                max_hold_bars=max_hold_bars,
+                stop_pct=use_stop,
+                target_pct=use_target,
+                max_hold_bars=hold,
             )
             if outcome is None:
                 continue
+            hits += 1
             pnl, exit_idx = outcome
             if pnl < min_pnl_usd:
                 continue
+            winners += 1
 
             row = enriched[i]
             regime = str(row.get("regime", "NEUTRAL"))
             regimes_seen.add(regime)
-            obs = build_observation_vector(
-                row=row,
-                engine=runtime,
-                data=enriched,
-                idx=i,
-                position=0,
-                qty=1,
-                entry_price=_tick_price(row),
-                equity=50_000.0,
-                drawdown=0.0,
-                rolling_sharpe=0.0,
-                trade_mode="birth",
-            )
-            exit_row = enriched[min(exit_idx, len(enriched) - 1)]
-            next_obs = build_observation_vector(
-                row=exit_row,
-                engine=runtime,
-                data=enriched,
-                idx=exit_idx,
-                position=side,
-                qty=1,
-                entry_price=_tick_price(row),
-                equity=50_000.0 + pnl,
-                drawdown=0.0,
-                rolling_sharpe=0.0,
-                trade_mode="birth",
-            )
+            try:
+                obs = build_observation_vector(
+                    row=row,
+                    engine=runtime,
+                    data=enriched,
+                    idx=i,
+                    position=0,
+                    qty=1,
+                    entry_price=_tick_price(row),
+                    equity=50_000.0,
+                    drawdown=0.0,
+                    rolling_sharpe=0.0,
+                    trade_mode="birth",
+                )
+                exit_row = enriched[min(exit_idx, len(enriched) - 1)]
+                next_obs = build_observation_vector(
+                    row=exit_row,
+                    engine=runtime,
+                    data=enriched,
+                    idx=exit_idx,
+                    position=side,
+                    qty=1,
+                    entry_price=_tick_price(row),
+                    equity=50_000.0 + pnl,
+                    drawdown=0.0,
+                    rolling_sharpe=0.0,
+                    trade_mode="birth",
+                )
+                obs_list = obs.tolist()
+                next_list = next_obs.tolist()
+            except Exception:
+                # Fail soft: still count pattern with price-only stub for buffer learning.
+                px = _tick_price(row)
+                obs_list = [px, float(side), use_stop, use_target]
+                next_list = [_tick_price(enriched[min(exit_idx, len(enriched) - 1)]), float(side), 0.0, 0.0]
+
             trend_strength, atr_norm = trend_features_from_tick(row)
             if reward_cfg.enabled:
-                ctx = TradeCloseContext(
-                    net_pnl=float(pnl),
-                    equity=50_000.0,
-                    stop_pct=stop_pct,
-                    side=side,
-                    trend_regime_strength=trend_strength,
-                    trend_atr_norm=atr_norm,
-                )
-                reward_state.drawdown = 0.0
-                reward_state.sharpe = 0.0
-                reward, _components = compute_expectancy_reward(ctx, reward_state, reward_cfg)
-                update_trade_stats(reward_state, float(pnl), window=reward_cfg.rolling_trade_window)
+                try:
+                    ctx = TradeCloseContext(
+                        net_pnl=float(pnl),
+                        equity=50_000.0,
+                        stop_pct=use_stop,
+                        side=side,
+                        trend_regime_strength=trend_strength,
+                        trend_atr_norm=atr_norm,
+                    )
+                    reward_state.drawdown = 0.0
+                    reward_state.sharpe = 0.0
+                    reward, _components = compute_expectancy_reward(ctx, reward_state, reward_cfg)
+                    update_trade_stats(reward_state, float(pnl), window=reward_cfg.rolling_trade_window)
+                except Exception:
+                    reward = float(np.clip(pnl / 50.0, -5.0, 5.0))
             else:
-                reward = float(np.clip(pnl / 100.0, -5.0, 5.0))
+                reward = float(np.clip(pnl / 50.0, -5.0, 5.0))
             patterns.append(
                 {
-                    "observation": {"vector": obs.tolist(), "price": _tick_price(row)},
+                    "observation": {"vector": obs_list, "price": _tick_price(row)},
                     "action": {"signal": signal},
                     "reward": reward,
-                    "next_observation": {"vector": next_obs.tolist(), "price": _tick_price(exit_row)},
+                    "next_observation": {
+                        "vector": next_list,
+                        "price": _tick_price(enriched[min(exit_idx, len(enriched) - 1)]),
+                    },
                     "done": True,
                     "pnl": pnl,
                     "regime": regime,
@@ -186,16 +305,54 @@ def mine_winning_patterns(
                 }
             )
             if len(patterns) >= cap:
+                reason = "ok_capped"
+                logger.info(
+                    "birth.oracle.mine scanned=%s patterns=%s wins=%s hits=%s "
+                    "stop=%.4f%% target=%.4f%% hold=%s pool=%s reason=%s",
+                    scanned,
+                    len(patterns),
+                    winners,
+                    hits,
+                    use_stop * 100.0,
+                    use_target * 100.0,
+                    hold,
+                    len(enriched),
+                    reason,
+                )
                 return PatternMineResult(
                     patterns=patterns,
                     wins=len(patterns),
                     scanned=scanned,
                     regimes_seen=regimes_seen,
+                    stop_pct=use_stop,
+                    target_pct=use_target,
+                    max_hold_bars=hold,
+                    reason=reason,
+                    pool_size=len(enriched),
                 )
 
+    reason = "ok" if patterns else ("no_hits" if hits == 0 else "no_winners_above_min_pnl")
+    logger.info(
+        "birth.oracle.mine scanned=%s patterns=%s wins=%s hits=%s "
+        "stop=%.4f%% target=%.4f%% hold=%s pool=%s reason=%s",
+        scanned,
+        len(patterns),
+        winners,
+        hits,
+        use_stop * 100.0,
+        use_target * 100.0,
+        hold,
+        len(enriched),
+        reason,
+    )
     return PatternMineResult(
         patterns=patterns,
         wins=len(patterns),
         scanned=scanned,
         regimes_seen=regimes_seen,
+        stop_pct=use_stop,
+        target_pct=use_target,
+        max_hold_bars=hold,
+        reason=reason,
+        pool_size=len(enriched),
     )

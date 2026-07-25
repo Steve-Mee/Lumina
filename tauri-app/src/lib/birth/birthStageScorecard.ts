@@ -72,6 +72,12 @@ export interface StageScorecardModel {
   plateauQuarantineTradesRemaining: number | null;
   plateauQuarantineTradesRemainingCount: number | null;
   rollingWinrate500: number | null;
+  /** true_window | partial_window | lifetime_fallback */
+  rollingWinrateSource: string | null;
+  rollingWindowTradesCovered: number | null;
+  /** Stage hold ratio (hold_signals/total_signals) — stage3 gate hold≤max */
+  stageHoldRatio: number | null;
+  stageHoldMax: number | null;
   simTicksProcessedCumulative: number | null;
   wallClockRolloutSecAvg: number | null;
   wallClockTradesPerMin: number | null;
@@ -95,8 +101,27 @@ function resolveAdaptationCycling(
   const tier = Math.max(0, Number(progress.adaptation_tier ?? 0));
   const maxTiers = Math.max(1, Number(progress.max_adaptation_tiers ?? 4));
   if (tier < maxTiers - 1) return false;
-  if (progress.is_advancing === true) return false;
   if (heartbeatSec == null || heartbeatSec > STALE_WORKING_SEC) return false;
+  // Raptor v13: do not flag cycling while sim is clearly producing trades.
+  const tpm = Number(progress?.wall_clock_trades_per_min ?? 0);
+  if (Number.isFinite(tpm) && tpm > 50) return false;
+  const msg = String(progress?.message ?? progress?.sub_phase ?? "").toLowerCase();
+  if (msg.includes("ppo batch") || msg.includes("ppo_training") || msg.includes("rollout")) {
+    return false;
+  }
+  const evoRollouts = Number(progress?.plateau_evolution_rollouts_this_step ?? 0);
+  if (Boolean(progress?.plateau_active) && evoRollouts > 0) return false;
+  // Raptor v11: also flag when plateau is waiting for rollouts that never arrive.
+  const awaitingRollouts = String(
+    progress?.evolution_ladder_blocked_reason ?? "",
+  )
+    .toLowerCase()
+    .startsWith("awaiting_rollouts");
+  const plateauFrozen =
+    Boolean(progress?.plateau_active) &&
+    awaitingRollouts &&
+    evoRollouts === 0;
+  if (progress.is_advancing === true && !plateauFrozen) return false;
   return true;
 }
 
@@ -413,7 +438,32 @@ export function extractStageScorecard(
         : progress?.constitution_violations ?? 0,
     );
     metricLabel = "Violations (session)";
+  } else if (passCriteriaId === "mixed_foundation") {
+    // Raptor v7/v8: Mixed winrate is lifetime stage WR (not rolling).
+    if (progress?.stage_winrate != null && Number.isFinite(Number(progress.stage_winrate))) {
+      metricValue = Number(progress.stage_winrate);
+    } else if (
+      progress?.stage_wins !== undefined &&
+      progress?.stage_wins !== null &&
+      sim.done > 0
+    ) {
+      metricValue = Number(progress.stage_wins) / sim.done;
+    }
+    metricLabel = "Mixed winrate (lifetime)";
   }
+
+  const stageHoldRatio =
+    progress?.stage_hold_ratio != null && Number.isFinite(Number(progress.stage_hold_ratio))
+      ? Number(progress.stage_hold_ratio)
+      : progress?.hold_ratio != null && Number.isFinite(Number(progress.hold_ratio))
+        ? Number(progress.hold_ratio)
+        : null;
+  const stageHoldMax =
+    passCriteriaId === "mixed_foundation" && metricMax != null
+      ? metricMax
+      : passCriteriaId === "mixed_foundation"
+        ? 0.7
+        : null;
 
   const ts = parseProgressTimestamp(progress);
   const heartbeatSec = ts != null ? Math.max(0, Math.round((nowMs - ts) / 1000)) : null;
@@ -434,6 +484,16 @@ export function extractStageScorecard(
     if (passReason) {
       blockerDetail = passReason;
       blockerLabel = "Blocking metric";
+      // Raptor v11: surface hold shortfall alongside WR on stage3 foundation.
+      if (
+        passCriteriaId === "mixed_foundation" &&
+        stageHoldRatio != null &&
+        stageHoldMax != null &&
+        stageHoldRatio > stageHoldMax &&
+        !passReason.toLowerCase().includes("hold")
+      ) {
+        blockerDetail = `${passReason} · hold ${(stageHoldRatio * 100).toFixed(0)}% > ${(stageHoldMax * 100).toFixed(0)}%`;
+      }
     } else if (passCriteriaId === "trend_winrate" && metricValue != null && metricTarget != null) {
       if (metricValue < metricTarget) {
         blockerLabel = "Winrate";
@@ -604,6 +664,15 @@ export function extractStageScorecard(
       Number.isFinite(Number(progress.rolling_winrate_500))
         ? Number(progress.rolling_winrate_500)
         : null,
+    rollingWinrateSource:
+      String(progress?.rolling_winrate_source ?? "").trim() || null,
+    rollingWindowTradesCovered:
+      progress?.rolling_window_trades_covered != null &&
+      Number.isFinite(Number(progress.rolling_window_trades_covered))
+        ? Math.max(0, Number(progress.rolling_window_trades_covered))
+        : null,
+    stageHoldRatio,
+    stageHoldMax,
     simTicksProcessedCumulative:
       progress?.sim_ticks_processed_cumulative != null &&
       Number.isFinite(Number(progress.sim_ticks_processed_cumulative))

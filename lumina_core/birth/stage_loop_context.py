@@ -61,6 +61,8 @@ class StageLoopContext:
     adaptation_history: list[dict[str, Any]] = field(default_factory=list)
     last_adaptation_stage_trades: int = -1
     adaptation_stuck_escapes: int = 0
+    rollouts_since_last_adaptation: int = 0
+    rolling_trade_chunks: list[tuple[int, int]] = field(default_factory=list)
     swarm_state: PolicySwarmState = field(default_factory=PolicySwarmState)
     oos_proxy_history: list[float] = field(default_factory=list)
     last_oos_proxy_at_trades: int = 0

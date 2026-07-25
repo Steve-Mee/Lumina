@@ -679,6 +679,8 @@ export function BirthPhaseScreen() {
                 status={status}
                 running={running}
                 finale={awakening}
+                resumePlateauRisk={resumePlateauRisk}
+                resumePlateauRiskTrades={status?.resume_plateau_risk_trades ?? null}
                 advancedOpen={advancedOpen}
                 onToggleAdvanced={setAdvancedOpen}
                 settingsInitial={birthSettingsInitial}

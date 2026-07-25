@@ -132,7 +132,8 @@ class StageLoopSession(
             cfg=self.cur_cfg,
             pass_criteria=self.stage_pass_criteria,
         )
-        self.allow_provisional = self.training_mode == "practice" or self.cur_cfg.allow_provisional_pass
+        # Certified never soft-graduates (config flag alone cannot bypass hard gates).
+        self.allow_provisional = self.training_mode == "practice"
         self.max_rollouts = (
             self.cur_cfg.max_rollouts_per_stage
             if self.allow_provisional
@@ -175,6 +176,19 @@ class StageLoopSession(
         }
         self.ppo_steps_at_plateau_evolution_step = 0
         self.wins_at_trade_milestones: dict[int, int] = {}
+        self.rolling_trade_chunks: list[tuple[int, int]] = []
+        self._rolling_winrate_source = "lifetime_fallback"
+        self._rolling_window_trades_covered = 0
+        self.oracle_last_scanned = 0
+        self.oracle_last_patterns = 0
+        self.oracle_last_stop_pct = 0.0
+        self.oracle_last_target_pct = 0.0
+        self.oracle_last_reason = ""
+        self._hard_stop_terminal_armed = False
+        self.current_intra_sample_pool: list[dict[str, Any]] = []
+        self.active_train: list[dict[str, Any]] = []
+        self.active_stage_ticks: list[dict[str, Any]] = []
+        self._pending_deep_resume_harvest = False
         self.sim_ticks_processed_cumulative = 0
         self.rollout_wall_clock_total_sec = 0.0
         self.rollout_wall_clock_samples = 0
@@ -186,6 +200,8 @@ class StageLoopSession(
         self.adaptation_history: list[dict[str, Any]] = []
         self.last_adaptation_stage_trades = -1
         self.adaptation_stuck_escapes = 0
+        self.rollouts_since_last_adaptation = 0
+        self._adaptation_stuck_train_grace_used = False
         self.swarm_state = PolicySwarmState()
         self.oos_proxy_history: list[float] = []
         self.last_oos_proxy_at_trades = 0
@@ -251,8 +267,36 @@ class StageLoopSession(
             raw_adaptations = self.stage_metrics.get("adaptation_history")
             if isinstance(raw_adaptations, list):
                 self.adaptation_history = [dict(x) for x in raw_adaptations if isinstance(x, dict)]
-            if self.adaptation_history:
-                self.last_adaptation_stage_trades = self.stage_trades
+            # Raptor v10: never force last_adaptation == stage_trades on resume
+            # (that instantly re-arms adaptation_stuck before any train lap).
+            if self.stage_metrics.get("rollouts_since_last_adaptation") is not None:
+                self.rollouts_since_last_adaptation = max(
+                    0,
+                    int(self.stage_metrics.get("rollouts_since_last_adaptation", 0) or 0),
+                )
+            raw_milestones = self.stage_metrics.get("wins_at_trade_milestones")
+            if isinstance(raw_milestones, dict) and raw_milestones:
+                restored: dict[int, int] = {}
+                for k, v in raw_milestones.items():
+                    try:
+                        restored[int(k)] = int(v)
+                    except (TypeError, ValueError):
+                        continue
+                if restored:
+                    self.wins_at_trade_milestones = restored
+            # Seed current point so rolling window can form after ~window new trades.
+            if self.stage_trades > 0 and self.stage_trades not in self.wins_at_trade_milestones:
+                self.wins_at_trade_milestones[self.stage_trades] = self.stage_wins
+            raw_chunks = self.stage_metrics.get("rolling_trade_chunks")
+            if isinstance(raw_chunks, list) and raw_chunks:
+                restored_chunks: list[tuple[int, int]] = []
+                for item in raw_chunks:
+                    try:
+                        if isinstance(item, (list, tuple)) and len(item) >= 2:
+                            restored_chunks.append((int(item[0]), int(item[1])))
+                    except (TypeError, ValueError):
+                        continue
+                self.rolling_trade_chunks = restored_chunks
             if self.stage_metrics.get("escalation_level") is not None:
                 self.escalation_level = max(0, int(self.stage_metrics.get("escalation_level", 0) or 0))
         self.bus.restore_states(
@@ -269,6 +313,19 @@ class StageLoopSession(
         self.adaptation_history = list(self.wa_state.adaptation_history)
         self.last_adaptation_stage_trades = int(self.wa_state.last_adaptation_stage_trades)
         self.adaptation_stuck_escapes = int(self.wa_state.adaptation_stuck_escapes)
+        self.rollouts_since_last_adaptation = max(
+            0,
+            int(getattr(self.wa_state, "rollouts_since_last_adaptation", 0) or 0),
+            int(getattr(self, "rollouts_since_last_adaptation", 0) or 0),
+        )
+        # Resume grace: if adaptation left trades frozen, require fresh train laps.
+        if (
+            self.last_adaptation_stage_trades == self.stage_trades
+            and self.stage_trades >= self.required
+        ):
+            self.rollouts_since_last_adaptation = 0
+            if hasattr(self.wa_state, "rollouts_since_last_adaptation"):
+                self.wa_state.rollouts_since_last_adaptation = 0
         self.prev_progress = read_birth_progress(self.host.workspace_root)
         if str(self.prev_progress.get("curriculum_stage", "") or "").strip().lower() == self.stage.value:
             self.stage_trades = max(0, int(self.prev_progress.get("stage_trades", 0) or 0))
@@ -393,6 +450,7 @@ class StageLoopSession(
                         "birth.plateau.deep_resume_enter trades=%s (no valid best snapshot for rollback)",
                         self.stage_trades,
                     )
+                self._pending_deep_resume_harvest = True
             else:
                 self.low_velocity_attempts = 0
                 self.plateau_state.active = False
@@ -409,6 +467,13 @@ class StageLoopSession(
         self.chunk_budget = max(5_000, self.cur_cfg.rollout_chunk_trades * self.cur_cfg.rollout_step_budget_multiplier)
         self.active_train = list(self.train_ticks)
         self.active_stage_ticks = list(self.stage_ticks)
+        # Raptor v9: harvest only after tick pools exist.
+        if getattr(self, "_pending_deep_resume_harvest", False):
+            self._pending_deep_resume_harvest = False
+            try:
+                self._force_oracle_harvest(reason="deep_resume")
+            except Exception as exc:
+                logger.warning("birth.oracle.force_harvest_failed: %s", exc)
         self.data_exhausted = False
         self.scorecard_snapshot_trades = self.stage_trades
         self.scorecard_snapshot_patterns = self.patterns_mined

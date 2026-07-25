@@ -144,6 +144,22 @@ class AttentionNotifier:
                 "attention_notified_at": datetime.now(timezone.utc).isoformat(),
             }
             merged = merge_birth_progress_extra(prev, attention_fields)
+            # Raptor v9: do not pass keys already set as explicit kwargs.
+            reserved = {
+                "stage",
+                "phase",
+                "message",
+                "progress_pct",
+                "cumulative_trades",
+                "trades_done",
+                "total_trades",
+                "target_trades",
+                "ppo_steps",
+                "birth_start_time",
+                "timestamp",
+                "elapsed_sec",
+            }
+            extra = {k: v for k, v in merged.items() if k not in reserved}
             write_birth_progress(
                 self._workspace_root,
                 stage=str(prev.get("stage", "attention") or "attention"),
@@ -156,7 +172,7 @@ class AttentionNotifier:
                 target_trades=int(prev.get("target_trades", 0) or 0),
                 ppo_steps=int(prev.get("ppo_steps", 0) or 0),
                 birth_start_time=float(prev.get("birth_start_time", 0) or 0),
-                **merged,
+                **extra,
             )
         except Exception as exc:
             logger.warning("attention.progress_write_failed: %s", exc)

@@ -19,6 +19,11 @@ const birthMetricsStripSource = readFileSync(
   "utf8",
 );
 
+const birthFieldCardSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "./BirthFieldCard.tsx"),
+  "utf8",
+);
+
 describe("BirthStageIntelColumn", () => {
   it("renders scorecard only when curriculum stage data exists", () => {
     expect(birthStageIntelSource).toContain("BirthStageScorecard");
@@ -26,6 +31,16 @@ describe("BirthStageIntelColumn", () => {
     expect(birthStageIntelSource).toContain("extractBirthSessionHud");
     expect(birthStageScorecardSource).toContain("extractStageScorecard");
     expect(birthStageScorecardSource).not.toContain("BirthSessionTelemetry");
+  });
+
+  it("uses vault-grade toolbar and status chips", () => {
+    expect(birthStageIntelSource).toContain("risk-envelope-panel__toolbar");
+    expect(birthStageIntelSource).toContain("Stage intelligence");
+    expect(birthStageIntelSource).toContain("risk-envelope-status-chip");
+    expect(birthStageIntelSource).toContain("GATE");
+    expect(birthStageIntelSource).toContain("HEALTH");
+    expect(birthStageIntelSource).toContain("RECOVERY");
+    expect(birthStageIntelSource).toContain("WALL");
   });
 
   it("keeps session telemetry in the status column only", () => {
@@ -37,5 +52,36 @@ describe("BirthStageIntelColumn", () => {
   it("uses the dedicated intel column scroll body", () => {
     expect(birthStageIntelSource).toContain("birth-stage-intel-column__body");
     expect(birthStageIntelSource).not.toContain("birth-mission-control__scroll");
+  });
+});
+
+describe("BirthStageScorecard field parity", () => {
+  it("exposes Stage / Recovery / Evolution tabs with named field cards", () => {
+    expect(birthStageScorecardSource).toContain('value="stage"');
+    expect(birthStageScorecardSource).toContain('value="recovery"');
+    expect(birthStageScorecardSource).toContain('value="evolution"');
+    expect(birthStageScorecardSource).toContain("risk-envelope-tabs");
+    expect(birthStageScorecardSource).toContain("BirthFieldCard");
+    expect(birthStageScorecardSource).toContain('label="Goal"');
+    expect(birthStageScorecardSource).toContain('label="Volume gate"');
+    expect(birthStageScorecardSource).toContain('label="Plateau clock"');
+    expect(birthStageScorecardSource).not.toContain("ProgressBar");
+  });
+
+  it("spans Goal and Blocking metric full width with goal/danger tones", () => {
+    expect(birthStageScorecardSource).toContain("isGoalMet");
+    expect(birthStageScorecardSource).toMatch(
+      /label="Goal"[\s\S]*birth-intel-field-span/,
+    );
+    expect(birthStageScorecardSource).toContain('tone="danger"');
+    expect(birthStageScorecardSource).toContain("Pass gate blocked");
+    expect(birthFieldCardSource).toContain('"danger"');
+    expect(birthFieldCardSource).toContain("data-tone");
+  });
+
+  it("reuses Risk Envelope field-card classes", () => {
+    expect(birthFieldCardSource).toContain("risk-envelope-field-card");
+    expect(birthFieldCardSource).toContain("risk-envelope-field-label");
+    expect(birthFieldCardSource).toContain("risk-envelope-field-hint");
   });
 });

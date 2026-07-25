@@ -32,6 +32,8 @@ scripts/_split_*.py
 
 tmp_*.log
 tmp_*.txt
+tmp_*.json
+tmp_*.md
 tmp_test_subset.txt
 tsc_errors.txt
 _patch_*.py
@@ -41,6 +43,9 @@ scan_out.txt
 tmp_build_handler.py
 tmp_stage_loop_source.py
 _run_fast_tests.bat
+# Local npm/pnpm audit dumps (never commit)
+*-audit*.json
+npm-audit*.json
 
 # IDE / local AI tooling (machine-specific; skills/rules in repo are tracked separately)
 .vscode/

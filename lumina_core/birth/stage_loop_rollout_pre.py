@@ -131,31 +131,67 @@ class StageLoopRolloutPreMixin(StageLoopMixinBase):
                         )
                     except Exception as exc:
                         logger.debug("birth.milestone_hold_trap_failed: %s", exc)
-            elif (
-                self.stage == CurriculumStage.STAGE3_MIXED
-                and self.stage_trades < self.required
-                and current_hold > 0.75
-                and self.low_velocity_attempts
-                >= max(8, int(self.cur_cfg.velocity_stall_attempt_threshold) // 2)
-            ):
-                pre_plan = MetaActionPlan(
-                    primary=RecoveryStrategy.EXPLORE_BOOST,
-                    explore_steps=max(
-                        base_explore_steps,
-                        int(self.cur_cfg.exploration_steps) * 4,
-                    ),
-                    escalation_delta=1,
-                    rationale="stage3_hold_recovery_explore",
-                    snapshot=pre_snap,
+            elif self.stage == CurriculumStage.STAGE3_MIXED:
+                # Raptor v10: hold recovery also beyond pass-gate (was dead zone trades>=required).
+                # Raptor v12: when hold is OK but WR still under floor → skill explore.
+                hold_cap = float(
+                    getattr(self.cur_cfg, "stage3_hold_ratio_max", 0.70) or 0.70
                 )
-                logger.info(
-                    "birth.stage3_hold_recovery stage_trades=%s/%s hold_ratio=%.1f%% "
-                    "velocity_stall_attempts=%s",
-                    self.stage_trades,
-                    self.required,
-                    current_hold * 100.0,
-                    self.low_velocity_attempts,
+                wr_floor = float(
+                    getattr(self.cur_cfg, "stage3_winrate_floor", 0.35) or 0.35
                 )
+                velocity_hot = self.low_velocity_attempts >= max(
+                    8, int(self.cur_cfg.velocity_stall_attempt_threshold) // 2
+                )
+                beyond_or_at_gate = self.stage_trades >= self.required
+                if current_hold > hold_cap and (
+                    beyond_or_at_gate or velocity_hot or current_hold > 0.75
+                ):
+                    pre_plan = MetaActionPlan(
+                        primary=RecoveryStrategy.EXPLORE_BOOST,
+                        explore_steps=max(
+                            base_explore_steps,
+                            int(self.cur_cfg.exploration_steps) * 4,
+                        ),
+                        escalation_delta=1,
+                        rationale="stage3_hold_recovery_explore",
+                        snapshot=pre_snap,
+                    )
+                    logger.info(
+                        "birth.stage3_hold_recovery stage_trades=%s/%s hold_ratio=%.1f%% "
+                        "hold_cap=%.0f%% velocity_stall_attempts=%s",
+                        self.stage_trades,
+                        self.required,
+                        current_hold * 100.0,
+                        hold_cap * 100.0,
+                        self.low_velocity_attempts,
+                    )
+                elif (
+                    current_hold <= hold_cap
+                    and current_wr < wr_floor
+                    and beyond_or_at_gate
+                ):
+                    pre_plan = MetaActionPlan(
+                        primary=RecoveryStrategy.EXPLORE_BOOST,
+                        explore_steps=max(
+                            base_explore_steps,
+                            int(self.cur_cfg.exploration_steps) * 3,
+                        ),
+                        escalation_delta=1,
+                        mine=True,
+                        mine_aggressive=True,
+                        rationale="stage3_wr_recovery_explore",
+                        snapshot=pre_snap,
+                    )
+                    logger.info(
+                        "birth.stage3_wr_recovery stage_trades=%s/%s wr=%.1f%% "
+                        "floor=%.0f%% hold=%.1f%%",
+                        self.stage_trades,
+                        self.required,
+                        current_wr * 100.0,
+                        wr_floor * 100.0,
+                        current_hold * 100.0,
+                    )
             elif (
                 self.stage == CurriculumStage.STAGE2_RANGE
                 and detect_over_trading_trap(

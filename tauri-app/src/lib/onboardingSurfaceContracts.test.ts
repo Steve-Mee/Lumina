@@ -209,7 +209,8 @@ describe("onboarding surface contracts", () => {
     expect(birthStageIntelSource).toContain("BirthStageScorecard");
     expect(birthStageIntelSource).toContain("BirthAdvancedPanel");
     expect(birthStageIntelSource).toContain("controlled={running}");
-    expect(birthMissionControlSource).toContain("BirthBlockerAlert");
+    expect(birthMissionControlSource).not.toContain("BirthBlockerAlert");
+    expect(birthStageIntelSource).toContain("GATE");
     expect(birthAdvancedPanelSource).toContain("controlled?: boolean");
     expect(birthAdvancedPanelSource).toContain("birth-advanced-panel--controlled");
   });

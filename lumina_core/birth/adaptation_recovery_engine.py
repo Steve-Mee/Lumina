@@ -169,6 +169,8 @@ def apply_adaptation_to_state(
     state.retries_this_stage = retries
     state.adaptation_history = history
     state.last_adaptation_stage_trades = int(stage_trades)
+    # Raptor v10: adaptation just applied — allow min train laps before stuck.
+    state.rollouts_since_last_adaptation = 0
     state.recovery_attempts += 1
     state.recovery_successes += 1
     return state, chunk

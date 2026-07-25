@@ -75,6 +75,9 @@ class StageLoopRecoveryAdaptationMixin(StageLoopMixinBase):
         self.adaptation_history = list(wa.adaptation_history)
         self.last_adaptation_stage_trades = int(wa.last_adaptation_stage_trades)
         self.adaptation_stuck_escapes = int(wa.adaptation_stuck_escapes)
+        self.rollouts_since_last_adaptation = max(
+            0, int(getattr(wa, "rollouts_since_last_adaptation", 0) or 0)
+        )
 
     def _apply_bus_adaptation_result(self, result: dict[str, Any]) -> bool:
         if not result.get("applied"):
@@ -170,6 +173,28 @@ class StageLoopRecoveryAdaptationMixin(StageLoopMixinBase):
     ) -> bool:
         if not self.cur_cfg.adaptation_enabled or self.cur_cfg.wall_behavior != "adaptive":
             return False
+        # Raptor v11: beyond hard-stop require min train laps between recoveries.
+        # Prevents recovery cycling that never increments stage_trades.
+        from lumina_core.birth.plateau_escalator import should_trades_beyond_gate_hard_stop
+
+        min_r = max(1, int(getattr(self.cur_cfg, "adaptation_stuck_min_rollouts", 5) or 5))
+        rollouts_since = int(getattr(self, "rollouts_since_last_adaptation", 0) or 0)
+        if (
+            should_trades_beyond_gate_hard_stop(
+                self.stage_trades, self.required, self.cur_cfg
+            )
+            and self.stage_trades >= self.required
+            and rollouts_since < min_r
+        ):
+            logger.info(
+                "birth.adaptation.debounce skip_recovery trades=%s rollouts_since=%s min=%s "
+                "failure=%s",
+                self.stage_trades,
+                rollouts_since,
+                min_r,
+                failure_key,
+            )
+            return False
         self._maybe_extend_trade_budget()
         if self._should_terminal_stall_in_adaptive():
             return False
@@ -188,6 +213,22 @@ class StageLoopRecoveryAdaptationMixin(StageLoopMixinBase):
         if not self.cur_cfg.adaptation_enabled or self.cur_cfg.wall_behavior != "adaptive":
             return False
         if self._should_terminal_stall_in_adaptive():
+            return False
+        # Raptor v6: stop infinite never-stop thrash on constitution_stall when hard
+        # violations are already zero (soft blocks alone must not loop forever).
+        hard_viol = int(getattr(self.host._constitution_guard, "violations", 0) or 0)
+        if (
+            str(failure_key) in {"stage2_metric", "stage1_winrate", "stage3_constitution"}
+            and hard_viol == 0
+            and int(self.adaptation_tier) >= max(1, int(self.cur_cfg.max_adaptation_tiers) - 1)
+            and int(self.retries_this_stage) >= max(1, int(self.cur_cfg.max_stage_retries) - 1)
+        ):
+            logger.warning(
+                "birth.never_stop.cap_exhausted failure=%s tier=%s retries=%s hard_viol=0",
+                failure_key,
+                self.adaptation_tier,
+                self.retries_this_stage,
+            )
             return False
         self._maybe_extend_trade_budget()
         if self.plateau_state.active and not can_force_never_stop_recovery(

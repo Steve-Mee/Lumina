@@ -1756,6 +1756,8 @@
 }
 
 .birth-mission-control .birth-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.4rem;
 }
 
@@ -1824,7 +1826,18 @@
   border: 1px solid color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
 }
 
+.birth-stage-intel-column .risk-envelope-panel__toolbar {
+  padding: 0.4rem 0.7rem;
+  gap: 0.65rem;
+}
+
+.birth-stage-intel-column .risk-envelope-status-strip {
+  padding: 0.3rem 0.65rem 0.1rem;
+}
+
 .birth-stage-intel-column__body {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -1834,6 +1847,71 @@
   scrollbar-width: auto;
   scrollbar-color: color-mix(in srgb, var(--lumina-cyan) 55%, transparent)
     color-mix(in srgb, var(--lumina-void) 80%, transparent);
+}
+
+.birth-stage-scorecard {
+  min-height: 0;
+}
+
+.birth-stage-scorecard__tabs {
+  min-height: 0;
+}
+
+.birth-stage-scorecard__tab-body {
+  min-height: 0;
+  margin-top: 0.35rem;
+  padding-right: 0.15rem;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--lumina-cyan) 45%, transparent)
+    transparent;
+}
+
+.birth-intel-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.birth-intel-field-span {
+  grid-column: 1 / -1;
+}
+
+.birth-field-card .risk-envelope-field-hint {
+  margin-top: 0.25rem;
+}
+
+.birth-field-card[data-tone="ok"] {
+  border-color: color-mix(in srgb, #34d399 35%, transparent);
+  background: color-mix(in srgb, #064e3b 28%, transparent);
+}
+
+.birth-field-card[data-tone="warn"] {
+  border-color: color-mix(in srgb, #fbbf24 38%, transparent);
+  background: color-mix(in srgb, #78350f 22%, transparent);
+}
+
+.birth-field-card[data-tone="danger"] {
+  border-color: color-mix(in srgb, #f43f5e 45%, transparent);
+  background: color-mix(in srgb, #881337 32%, transparent);
+}
+
+.birth-field-card[data-tone="danger"] .risk-envelope-field-label {
+  color: color-mix(in srgb, #fda4af 85%, transparent);
+}
+
+.birth-field-card[data-tone="warn"] .risk-envelope-field-label {
+  color: color-mix(in srgb, #fcd34d 80%, transparent);
+}
+
+.birth-field-card[data-tone="ok"] .risk-envelope-field-label {
+  color: color-mix(in srgb, #6ee7b7 80%, transparent);
+}
+
+@media (max-width: 640px) {
+  .birth-intel-field-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .birth-stage-intel-column__body::-webkit-scrollbar {
@@ -1873,10 +1951,6 @@
   background: color-mix(in srgb, white 4%, transparent);
 }
 
-.birth-metrics-strip--embedded {
-  flex-shrink: 0;
-}
-
 .birth-status-line {
   min-height: 1.25rem;
 }
@@ -1887,10 +1961,8 @@
   overflow: hidden;
 }
 
-.birth-kpi-tile {
-  border-radius: 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 10%, transparent);
-  padding: 0.5rem 0.625rem;
+.birth-kpi-tile.risk-envelope-field-card {
+  padding: 0.45rem 0.55rem 0.5rem;
 }
 
 .birth-kpi-tile:has(.text-cyan-200) {
@@ -1900,6 +1972,17 @@
 
 .birth-kpi-tile__value {
   line-height: 1.2;
+}
+
+.birth-metric-field {
+  padding: 0.4rem 0.5rem 0.45rem;
+}
+
+.birth-metrics-strip--embedded {
+  flex-shrink: 0;
+  border: none;
+  padding: 0;
+  background: transparent;
 }
 
 .birth-advanced-section__toggle {

@@ -216,17 +216,20 @@ def pass_criteria_for_stage(
             metric_max=0.70,
         )
     if stage == CurriculumStage.STAGE3_MIXED:
+        wr_floor = float(getattr(cfg, "stage3_winrate_floor", 0.35) if cfg else 0.35)
+        hold_cap = float(getattr(cfg, "stage3_hold_ratio_max", 0.70) if cfg else 0.70)
         return PassCriteria(
-            id="mixed_constitution",
+            id="mixed_foundation",
             label=_pass_gate_label(
                 pass_gate=required,
                 training_budget=training_budget,
-                metric="0 constitution violations",
+                metric=f"WR>={wr_floor:.0%} · hold≤{hold_cap:.0%} · 0 hard violations",
             ),
             target_trades=required,
             training_budget_trades=training_budget,
-            metric_label="Violations",
-            metric_target=0.0,
+            metric_label="Mixed winrate",
+            metric_target=wr_floor,
+            metric_max=hold_cap,
         )
     if stage == CurriculumStage.STAGE5_PROFIT_VAL:
         wr = float(getattr(cfg, "runway_stage5_winrate_pass", 0.40) if cfg else 0.40)
@@ -521,6 +524,7 @@ def compute_stage_blocker(
     range_round_trips: int,
     range_total_signals: int,
     cfg: BirthCurriculumConfig | None = None,
+    rolling_winrate: float | None = None,
 ) -> tuple[str | None, float | None, str | None]:
     """Return (blocker_metric_id, blocker_value, human pass/block reason)."""
     trades = max(0, int(stage_trades))
@@ -571,6 +575,37 @@ def compute_stage_blocker(
     if stage == CurriculumStage.STAGE3_MIXED:
         if trades < required:
             return (None, None, None)
+        winrate = float(wins) / float(max(1, trades))
+        wr_floor = float(getattr(cfg, "stage3_winrate_floor", 0.35) if cfg else 0.35)
+        hold_cap = float(getattr(cfg, "stage3_hold_ratio_max", 0.70) if cfg else 0.70)
+        roll = float(rolling_winrate) if rolling_winrate is not None else None
+        use_rolling = bool(getattr(cfg, "stage3_use_rolling_pass", True)) if cfg else True
+        lifetime_ok = winrate >= wr_floor
+        rolling_ok = (
+            use_rolling and roll is not None and float(roll) >= wr_floor
+        )
+        if not lifetime_ok and not rolling_ok:
+            if roll is not None:
+                reason = (
+                    f"mixed lifetime {winrate:.1%} / rolling {float(roll):.1%} "
+                    f"< {wr_floor:.0%}"
+                )
+            else:
+                reason = (
+                    f"mixed lifetime {winrate:.1%} < {wr_floor:.0%} "
+                    f"(rolling window still building)"
+                )
+            return (
+                "winrate",
+                round(winrate, 4),
+                reason,
+            )
+        if hold_ratio > hold_cap:
+            return (
+                "hold",
+                round(hold_ratio, 4),
+                f"hold {hold_ratio:.1%} > {hold_cap:.0%}",
+            )
         if constitution_violations > 0:
             return (
                 "constitution_violations",
@@ -646,6 +681,7 @@ def build_scorecard_payload(
     stage_range_round_trips: int = 0,
     provisional_pass: bool = False,
     cfg: BirthCurriculumConfig | None = None,
+    rolling_winrate: float | None = None,
 ) -> dict[str, Any]:
     criteria = pass_criteria_for_stage(stage, cfg=cfg, target_trades=target_trades)
     trades = max(0, int(stage_trades))
@@ -672,6 +708,7 @@ def build_scorecard_payload(
         range_round_trips=int(stage_range_round_trips),
         range_total_signals=int(stage_range_total_signals),
         cfg=cfg,
+        rolling_winrate=rolling_winrate,
     )
     payload: dict[str, Any] = {
         "stage_wins": wins,

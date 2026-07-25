@@ -143,6 +143,13 @@ class WallAdaptationHandler:
             last_adaptation_stage_trades=int(
                 ctx.get("last_adaptation_stage_trades", self.state.last_adaptation_stage_trades)
             ),
+            rollouts_since_last_adaptation=int(
+                ctx.get(
+                    "rollouts_since_last_adaptation",
+                    getattr(self.state, "rollouts_since_last_adaptation", 0),
+                )
+                or 0
+            ),
             cfg=eval_cfg,
         )
         if not result.triggered:

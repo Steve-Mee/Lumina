@@ -56,9 +56,49 @@ def test_adaptation_stuck_detected(cfg: BirthCurriculumConfig) -> None:
         stage_trades=200,
         last_adaptation_stage_trades=200,
         trades_beyond_hard_stop=True,
+        rollouts_since_last_adaptation=5,
+        min_rollouts_since_adaptation=5,
     )
     assert result.triggered is True
     assert result.trigger_type == "adaptation_stuck"
+
+
+@pytest.mark.unit
+def test_adaptation_stuck_not_before_min_rollouts(cfg: BirthCurriculumConfig) -> None:
+    """Raptor v10: no stuck until min train laps after adaptation."""
+    result = evaluate_adaptation_stuck(
+        stage_trades=2000,
+        last_adaptation_stage_trades=2000,
+        trades_beyond_hard_stop=True,
+        rollouts_since_last_adaptation=2,
+        min_rollouts_since_adaptation=5,
+    )
+    assert result.triggered is False
+
+
+@pytest.mark.unit
+def test_adaptation_stuck_after_min_rollouts(cfg: BirthCurriculumConfig) -> None:
+    result = evaluate_adaptation_stuck(
+        stage_trades=2000,
+        last_adaptation_stage_trades=2000,
+        trades_beyond_hard_stop=True,
+        rollouts_since_last_adaptation=5,
+        min_rollouts_since_adaptation=5,
+    )
+    assert result.triggered is True
+    assert result.pending.get("blocker_reason") == "adaptation_loop_blocked"
+
+
+@pytest.mark.unit
+def test_adaptation_stuck_not_when_trades_progressed(cfg: BirthCurriculumConfig) -> None:
+    result = evaluate_adaptation_stuck(
+        stage_trades=2100,
+        last_adaptation_stage_trades=2000,
+        trades_beyond_hard_stop=True,
+        rollouts_since_last_adaptation=20,
+        min_rollouts_since_adaptation=5,
+    )
+    assert result.triggered is False
 
 
 @pytest.mark.unit

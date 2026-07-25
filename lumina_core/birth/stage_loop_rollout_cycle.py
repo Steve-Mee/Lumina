@@ -89,6 +89,19 @@ class StageLoopRolloutCycleMixin(
         self.stage_range_flat_bars += rollout.range_flat_bars
         self.stage_range_round_trips += rollout.range_round_trips
         self.host.cumulative_trades += rollout.trades
+        # Raptor v10: count train laps for adaptation_stuck debounce.
+        self.rollouts_since_last_adaptation = int(
+            getattr(self, "rollouts_since_last_adaptation", 0) or 0
+        ) + 1
+        try:
+            wa = getattr(self, "wa_state", None)
+            if wa is not None and hasattr(wa, "rollouts_since_last_adaptation"):
+                wa.rollouts_since_last_adaptation = self.rollouts_since_last_adaptation
+            bus_wa = getattr(getattr(self, "bus", None), "wall_adaptation_state", None)
+            if bus_wa is not None and hasattr(bus_wa, "rollouts_since_last_adaptation"):
+                bus_wa.rollouts_since_last_adaptation = self.rollouts_since_last_adaptation
+        except Exception:
+            pass
         self._maybe_run_oos_proxy()
         self._maybe_record_and_advance_swarm(
             trades=rollout.trades,
@@ -141,6 +154,22 @@ class StageLoopRolloutCycleMixin(
             self.last_range_flat_ratio = range_flat_ratio
         if rollout.trades > 0:
             self.wins_at_trade_milestones[self.stage_trades] = self.stage_wins
+            # Raptor v13: per-rollout chunks for true last-N rolling WR.
+            chunks = getattr(self, "rolling_trade_chunks", None)
+            if not isinstance(chunks, list):
+                chunks = []
+                self.rolling_trade_chunks = chunks
+            chunks.append((int(rollout.trades), int(rollout.wins)))
+            try:
+                from lumina_core.birth.plateau_escalator import prune_rolling_trade_chunks
+
+                window = int(getattr(self.cur_cfg, "stage1_rolling_pass_window", 500) or 500)
+                self.rolling_trade_chunks = prune_rolling_trade_chunks(
+                    chunks, window=window
+                )
+            except Exception:
+                if len(chunks) > 128:
+                    self.rolling_trade_chunks = chunks[-128:]
         metric_band = range_flat_ratio if self.stage_range_total_signals >= 50 else current_hold_ratio
         current_winrate = float(self.stage_wins) / float(max(1, self.stage_trades))
         if rollout.trades > 0:

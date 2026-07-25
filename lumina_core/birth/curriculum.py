@@ -497,8 +497,28 @@ def evaluate_stage_pass(
                 f"(range_ticks={range_total_signals})"
             )
     elif stage == CurriculumStage.STAGE3_MIXED:
-        passed = trades >= required and constitution_violations == 0
-        message = f"mixed violations={constitution_violations} trades={trades}/{required}"
+        # Foundation floor: mixed regime must retain skill + not pure-hold.
+        wr_floor = float(getattr(cfg, "stage3_winrate_floor", 0.35) if cfg else 0.35)
+        hold_cap = float(getattr(cfg, "stage3_hold_ratio_max", 0.70) if cfg else 0.70)
+        use_rolling = bool(getattr(cfg, "stage3_use_rolling_pass", True)) if cfg else True
+        roll_window = int(getattr(cfg, "stage1_rolling_pass_window", 500) or 500) if cfg else 500
+        roll = float(rolling_winrate) if rolling_winrate is not None else winrate
+        lifetime_ok = winrate >= wr_floor
+        rolling_ok = use_rolling and trades >= min(required, roll_window) and roll >= wr_floor
+        wr_ok = lifetime_ok or rolling_ok
+        hold_ok = hold_ratio <= hold_cap
+        passed = (
+            trades >= required
+            and constitution_violations == 0
+            and wr_ok
+            and hold_ok
+        )
+        wr_source = "lifetime" if lifetime_ok else ("rolling" if rolling_ok else "neither")
+        message = (
+            f"mixed wr={winrate:.2%} rolling={roll:.2%} hold={hold_ratio:.1%} "
+            f"trades={trades}/{required} wr_floor={wr_floor:.0%} hold_cap={hold_cap:.0%} "
+            f"source={wr_source} constitution_violations={constitution_violations}"
+        )
     elif stage == CurriculumStage.STAGE5_PROFIT_VAL:
         wr_gate = float(getattr(cfg, "runway_stage5_winrate_pass", 0.40) if cfg else 0.40)
         hold_cap = float(getattr(cfg, "runway_stage5_hold_ratio_max", 0.55) if cfg else 0.55)
@@ -539,8 +559,12 @@ def evaluate_stage_pass(
         passed = True
         message = "polish complete"
 
+    # Soft / research passes are PRACTICE-only. Certified mode must never graduate
+    # via oracle pattern count alone (Raptor v5 — no backstage graduation).
+    soft_provisional = False
     if allow_provisional and provisional and not passed and trades >= max(1, required // 4):
         passed = True
+        soft_provisional = True
         message = f"{message} gen0_provisional"
 
     if (
@@ -551,6 +575,7 @@ def evaluate_stage_pass(
         and trades >= max(1, required // 4)
     ):
         passed = True
+        soft_provisional = True
         message = f"{message} oracle_soft_pass"
 
     if (
@@ -562,6 +587,7 @@ def evaluate_stage_pass(
         and trades >= 1
     ):
         passed = True
+        soft_provisional = True
         message = f"{message} oracle_gen0_research_pass"
 
     return StageResult(
@@ -571,7 +597,7 @@ def evaluate_stage_pass(
         hold_ratio=hold_ratio,
         passed=passed,
         message=message,
-        provisional=provisional,
+        provisional=bool(provisional) or soft_provisional,
         range_hold_ratio=range_hold_ratio,
         range_flat_ratio=range_flat_ratio,
         range_round_trips=int(range_round_trips),

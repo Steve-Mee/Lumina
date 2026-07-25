@@ -87,6 +87,8 @@ class WallAdaptationState:
     recovery_successes: int = 0
     last_adaptation_stage_trades: int = 0
     adaptation_stuck_escapes: int = 0
+    # Raptor v10: train laps since last adaptation apply (debounce adaptation_stuck).
+    rollouts_since_last_adaptation: int = 0
     effective_winrate_window: int = 12
     effective_reward_window: int = 12
 
@@ -111,6 +113,7 @@ class WallAdaptationState:
             "autonomous_recovery_rate_pct": self.autonomous_recovery_rate_pct,
             "last_adaptation_stage_trades": int(self.last_adaptation_stage_trades),
             "adaptation_stuck_escapes": int(self.adaptation_stuck_escapes),
+            "rollouts_since_last_adaptation": int(self.rollouts_since_last_adaptation),
             "effective_winrate_trend_window": int(self.effective_winrate_window),
             "effective_reward_trend_window": int(self.effective_reward_window),
         }
@@ -140,6 +143,9 @@ class WallAdaptationState:
             ),
             adaptation_stuck_escapes=int(
                 metrics.get("adaptation_stuck_escapes", 0) or 0
+            ),
+            rollouts_since_last_adaptation=max(
+                0, int(metrics.get("rollouts_since_last_adaptation", 0) or 0)
             ),
             effective_winrate_window=int(
                 metrics.get(

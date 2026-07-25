@@ -47,6 +47,27 @@ class StageLoopProgressMixin(StageLoopMixinBase):
         payload["adaptation_tier"] = int(self.adaptation_tier)
         payload["adaptation_history"] = list(self.adaptation_history)
         payload["escalation_level"] = int(self.escalation_level)
+        payload["rollouts_since_last_adaptation"] = int(
+            getattr(self, "rollouts_since_last_adaptation", 0) or 0
+        )
+        payload["last_adaptation_stage_trades"] = int(
+            getattr(self, "last_adaptation_stage_trades", -1) or -1
+        )
+        # Raptor v12/v13: persist rolling milestones + chunks.
+        wins_at = getattr(self, "wins_at_trade_milestones", None)
+        if isinstance(wins_at, dict) and wins_at:
+            items = sorted(
+                ((int(k), int(v)) for k, v in wins_at.items() if int(k) > 0),
+                key=lambda kv: kv[0],
+            )
+            if len(items) > 64:
+                items = items[-64:]
+            payload["wins_at_trade_milestones"] = {str(k): v for k, v in items}
+        chunks = getattr(self, "rolling_trade_chunks", None)
+        if isinstance(chunks, list) and chunks:
+            payload["rolling_trade_chunks"] = [
+                [int(t), int(w)] for t, w in chunks[-128:] if int(t) > 0
+            ]
         payload["curriculum_stage_scope"] = self.stage.value
         if self.intra_state is not None:
             payload["intra_stage1_hard_pct"] = round(float(self.intra_state.hard_pct), 4)
@@ -103,6 +124,22 @@ class StageLoopProgressMixin(StageLoopMixinBase):
         current_stage_trades = self.stage_trades + chunk_trades
         elapsed_snapshot = max(0.0, time.time() - self.scorecard_snapshot_at)
         constitution_fields = self.host._constitution_progress_fields()
+        rolling_for_scorecard: float | None = None
+        rolling_source = "lifetime_fallback"
+        rolling_covered = 0
+        try:
+            rolling_for_scorecard, rolling_source, rolling_covered = self._rolling_winrate_meta()
+        except Exception:
+            try:
+                rolling_for_scorecard = float(self._rolling_winrate_500())
+            except Exception:
+                rolling_for_scorecard = None
+        # Blocker/pass skill: only treat rolling as independent when not lifetime-fallback.
+        rolling_for_blocker = (
+            rolling_for_scorecard
+            if rolling_source in ("true_window", "partial_window")
+            else None
+        )
         scorecard = build_scorecard_payload(
             stage=self.stage,
             curriculum_index=self.stage_index + 1,
@@ -124,6 +161,7 @@ class StageLoopProgressMixin(StageLoopMixinBase):
             stage_range_round_trips=self.stage_range_round_trips,
             provisional_pass=self.gen0_provisional,
             cfg=self.cur_cfg,
+            rolling_winrate=rolling_for_blocker,
         )
         wa_metrics = self.bus.adaptation_recovery_metrics(self.stage)
         adaptation_fields = enrich_adaptation_payload(
@@ -191,7 +229,25 @@ class StageLoopProgressMixin(StageLoopMixinBase):
         scorecard["stage_pass_gate_trades"] = int(self.required)
         scorecard["stage_budget_trades"] = int(self.target)
         scorecard["plateau_min_stage_trades"] = int(plateau_min_stage_trades(self.stage, self.cur_cfg))
-        scorecard["rolling_winrate_500"] = round(self._rolling_winrate_500(), 6)
+        try:
+            r_wr, r_src, r_cov = self._rolling_winrate_meta()
+            scorecard["rolling_winrate_500"] = round(float(r_wr), 6)
+            scorecard["rolling_winrate_source"] = str(r_src)
+            scorecard["rolling_window_trades_covered"] = int(r_cov)
+        except Exception:
+            scorecard["rolling_winrate_500"] = round(self._rolling_winrate_500(), 6)
+            scorecard["rolling_winrate_source"] = str(
+                getattr(self, "_rolling_winrate_source", rolling_source) or "lifetime_fallback"
+            )
+            scorecard["rolling_window_trades_covered"] = int(
+                getattr(self, "_rolling_window_trades_covered", rolling_covered) or 0
+            )
+        scorecard["rollouts_since_last_adaptation"] = int(
+            getattr(self, "rollouts_since_last_adaptation", 0) or 0
+        )
+        scorecard["last_adaptation_stage_trades"] = int(
+            getattr(self, "last_adaptation_stage_trades", -1) or -1
+        )
         scorecard.update(
             quarantine_progress_payload(
                 self.plateau_quarantine,
@@ -242,6 +298,16 @@ class StageLoopProgressMixin(StageLoopMixinBase):
             gen0_provisional=self.gen0_provisional,
             patterns_mined=self.patterns_mined,
             oracle_wins=self.oracle_wins,
+            oracle_last_scanned=int(getattr(self, "oracle_last_scanned", 0) or 0),
+            oracle_last_patterns=int(getattr(self, "oracle_last_patterns", 0) or 0),
+            oracle_last_stop_pct=round(float(getattr(self, "oracle_last_stop_pct", 0.0) or 0.0), 6),
+            oracle_last_target_pct=round(
+                float(getattr(self, "oracle_last_target_pct", 0.0) or 0.0), 6
+            ),
+            oracle_last_reason=str(getattr(self, "oracle_last_reason", "") or ""),
+            display_winrate_scope="stage_current",
+            training_mode=str(self.training_mode),
+            allow_provisional=bool(self.allow_provisional),
             data_days_loaded=self.data_days_loaded,
             expansion_step=self.expansion_step,
             stage_wall_remaining_sec=max(

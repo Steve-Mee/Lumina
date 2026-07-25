@@ -42,6 +42,15 @@ class StagePassReceipt:
     engine_version: str
     message: str = ""
     winrate_gate: float | None = None
+    # Raptor v8: persist stage2/3 metrics so integrity re-eval does not amnesia.
+    hold_ratio: float = 0.0
+    range_flat_ratio: float = 0.0
+    range_round_trips: int = 0
+    range_total_signals: int = 0
+    range_hold_signals: int = 0
+    range_flat_bars: int = 0
+    hold_signals: int = 0
+    total_signals: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -70,6 +79,14 @@ class StagePassReceipt:
                     if raw.get("winrate_gate") is not None
                     else None
                 ),
+                hold_ratio=float(raw.get("hold_ratio", 0.0) or 0.0),
+                range_flat_ratio=float(raw.get("range_flat_ratio", 0.0) or 0.0),
+                range_round_trips=max(0, int(raw.get("range_round_trips", 0) or 0)),
+                range_total_signals=max(0, int(raw.get("range_total_signals", 0) or 0)),
+                range_hold_signals=max(0, int(raw.get("range_hold_signals", 0) or 0)),
+                range_flat_bars=max(0, int(raw.get("range_flat_bars", 0) or 0)),
+                hold_signals=max(0, int(raw.get("hold_signals", 0) or 0)),
+                total_signals=max(0, int(raw.get("total_signals", 0) or 0)),
             )
         except (TypeError, ValueError):
             return None
@@ -91,10 +108,39 @@ def receipt_from_stage_result(
     result: StageResult,
     *,
     cfg: BirthCurriculumConfig,
+    hold_signals: int | None = None,
+    total_signals: int | None = None,
+    range_hold_signals: int | None = None,
+    range_total_signals: int | None = None,
+    range_flat_bars: int | None = None,
 ) -> StagePassReceipt:
     required = stage_pass_trades(stage, cfg)
     criteria = pass_criteria_for_stage(stage, cfg=cfg)
     winrate = float(result.wins) / float(max(1, result.trades))
+    hold_ratio = float(result.hold_ratio)
+    tot = int(total_signals) if total_signals is not None else max(1, int(result.trades) * 20)
+    holds = (
+        int(hold_signals)
+        if hold_signals is not None
+        else int(round(hold_ratio * tot))
+    )
+    range_flat = float(result.range_flat_ratio)
+    range_rt = int(result.range_round_trips)
+    range_total = (
+        int(range_total_signals)
+        if range_total_signals is not None
+        else (max(50, int(result.trades) * 10) if range_flat > 0 or range_rt > 0 else 0)
+    )
+    range_flat_b = (
+        int(range_flat_bars)
+        if range_flat_bars is not None
+        else int(round(range_flat * max(1, range_total))) if range_total else 0
+    )
+    range_hold = (
+        int(range_hold_signals)
+        if range_hold_signals is not None
+        else int(round(float(result.range_hold_ratio) * max(1, range_total))) if range_total else 0
+    )
     return StagePassReceipt(
         stage=stage.value,
         trades=int(result.trades),
@@ -108,10 +154,31 @@ def receipt_from_stage_result(
         message=str(result.message or ""),
         winrate_gate=(
             float(criteria.metric_target)
-            if stage == CurriculumStage.STAGE1_TREND and criteria.metric_target is not None
+            if stage in {CurriculumStage.STAGE1_TREND, CurriculumStage.STAGE3_MIXED}
+            and criteria.metric_target is not None
             else None
         ),
+        hold_ratio=round(hold_ratio, 6),
+        range_flat_ratio=round(range_flat, 6),
+        range_round_trips=range_rt,
+        range_total_signals=range_total,
+        range_hold_signals=range_hold,
+        range_flat_bars=range_flat_b,
+        hold_signals=holds,
+        total_signals=tot,
     )
+
+
+_SOFT_PASS_MARKERS = (
+    "oracle_soft_pass",
+    "gen0_provisional",
+    "oracle_gen0_research_pass",
+)
+
+
+def receipt_message_is_soft_pass(message: str) -> bool:
+    text = str(message or "").lower()
+    return any(marker in text for marker in _SOFT_PASS_MARKERS)
 
 
 def verify_stage_pass_receipt(
@@ -126,25 +193,89 @@ def verify_stage_pass_receipt(
         return False, "missing_receipt"
     if receipt.stage != stage.value:
         return False, f"receipt_stage_mismatch expected={stage.value} got={receipt.stage}"
+    mode = str(training_mode).strip().lower()
+    # Certified: never accept provisional/soft oracle graduation.
     provisional_ok = bool(allow_provisional) if allow_provisional is not None else (
-        str(training_mode).strip().lower() == "practice" or cfg.allow_provisional_pass
+        mode == "practice"
     )
+    if mode == "certified":
+        provisional_ok = False
     if receipt.provisional and not provisional_ok:
         return False, "provisional_not_allowed_in_certified_mode"
+    if mode == "certified" and receipt_message_is_soft_pass(receipt.message):
+        return False, "soft_oracle_pass_not_allowed_in_certified_mode"
+    # Stage1: hard winrate gate must hold for certified (and any non-provisional receipt).
+    if stage == CurriculumStage.STAGE1_TREND and not provisional_ok:
+        wr_gate = float(
+            receipt.winrate_gate
+            if receipt.winrate_gate is not None
+            else stage1_winrate_pass_threshold(cfg)
+        )
+        if float(receipt.winrate) < wr_gate:
+            return False, f"stage1_winrate_below_gate wr={receipt.winrate:.4f} gate={wr_gate:.4f}"
+    # Prefer stored range/hold metrics (Raptor v8). Parse legacy messages as fallback.
+    hold_ratio = float(getattr(receipt, "hold_ratio", 0.0) or 0.0)
+    range_flat = float(getattr(receipt, "range_flat_ratio", 0.0) or 0.0)
+    range_rt = int(getattr(receipt, "range_round_trips", 0) or 0)
+    range_total = int(getattr(receipt, "range_total_signals", 0) or 0)
+    range_hold = int(getattr(receipt, "range_hold_signals", 0) or 0)
+    range_flat_bars = int(getattr(receipt, "range_flat_bars", 0) or 0)
+    hold_signals = int(getattr(receipt, "hold_signals", 0) or 0)
+    total_signals = int(getattr(receipt, "total_signals", 0) or 0)
+    if range_total <= 0 and "range_flat_ratio=" in str(receipt.message):
+        # Legacy receipts: parse flat ratio + round_trips from message.
+        import re
+
+        m_flat = re.search(r"range_flat_ratio=([0-9.]+)%", receipt.message)
+        m_rt = re.search(r"round_trips=(\d+)", receipt.message)
+        m_ticks = re.search(r"range_ticks=(\d+)", receipt.message)
+        if m_flat:
+            range_flat = float(m_flat.group(1)) / 100.0
+        if m_rt:
+            range_rt = int(m_rt.group(1))
+        if m_ticks:
+            range_total = int(m_ticks.group(1))
+        elif range_flat > 0:
+            range_total = max(50, int(receipt.trades) * 10)
+        range_flat_bars = int(round(range_flat * max(1, range_total)))
+    if total_signals <= 0:
+        total_signals = max(1, int(receipt.trades) * 20)
+    if hold_signals <= 0 and hold_ratio > 0:
+        hold_signals = int(round(hold_ratio * total_signals))
+    if hold_ratio <= 0 and total_signals > 0 and hold_signals > 0:
+        hold_ratio = float(hold_signals) / float(total_signals)
+    # Stage3: derive hold from winrate message if needed
+    if stage == CurriculumStage.STAGE3_MIXED and hold_ratio <= 0 and "hold=" in receipt.message:
+        import re
+
+        m_hold = re.search(r"hold=([0-9.]+)%", receipt.message)
+        if m_hold:
+            hold_ratio = float(m_hold.group(1)) / 100.0
+            hold_signals = int(round(hold_ratio * total_signals))
+
     reeval = evaluate_stage_pass(
         stage,
         trades=receipt.trades,
         wins=receipt.wins,
-        hold_signals=0,
-        total_signals=max(1, receipt.trades),
+        hold_signals=max(0, hold_signals),
+        total_signals=max(1, total_signals),
+        range_hold_signals=max(0, range_hold),
+        range_total_signals=max(0, range_total),
+        range_flat_bars=max(0, range_flat_bars),
+        range_round_trips=max(0, range_rt),
         constitution_violations=0,
         target_trades=receipt.required_trades,
         cfg=cfg,
-        provisional=receipt.provisional,
+        provisional=False if not provisional_ok else receipt.provisional,
         allow_provisional=provisional_ok,
+        oracle_patterns=0 if not provisional_ok else 10_000,
+        buffer_size=0 if not provisional_ok else 10_000,
+        rolling_winrate=float(receipt.winrate),
     )
     if not reeval.passed:
         return False, f"re_eval_failed:{reeval.message}"
+    if not provisional_ok and receipt_message_is_soft_pass(reeval.message):
+        return False, "re_eval_soft_pass_rejected"
     return True, "ok"
 
 

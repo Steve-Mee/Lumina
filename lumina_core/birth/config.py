@@ -71,6 +71,10 @@ class BirthCurriculumConfig:
     checkpoint_interval_sec: int = 600
     max_certificate_remediation_attempts: int = 5
     allow_provisional_pass: bool = False
+    # Stage3 mixed foundation floors (birth baseline before evolution / OOS cert).
+    stage3_winrate_floor: float = 0.35
+    stage3_hold_ratio_max: float = 0.70
+    stage3_use_rolling_pass: bool = True
     certified_max_rollouts_per_stage: int = 200
     certified_stage_stall_wall_sec: int = 14_400
     adaptation_enabled: bool = True
@@ -135,6 +139,8 @@ class BirthCurriculumConfig:
     beyond_gate_evolution_rollouts_per_step: int = 4
     max_forced_recoveries_per_plateau: int = 12
     max_adaptation_stuck_escapes: int = 3
+    # Raptor v10: min rollouts after an adaptation before adaptation_stuck can fire.
+    adaptation_stuck_min_rollouts: int = 5
     policy_swarm_enabled: bool = True
     policy_swarm_variants: int = 3
     policy_swarm_rollouts_per_variant: int = 4
@@ -371,6 +377,15 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
             cur_raw.get("max_certificate_remediation_attempts"), 5
         ),
         allow_provisional_pass=bool(cur_raw.get("allow_provisional_pass", False)),
+        stage3_winrate_floor=max(
+            0.20,
+            min(0.55, _coerce_float(cur_raw.get("stage3_winrate_floor"), 0.35)),
+        ),
+        stage3_hold_ratio_max=max(
+            0.40,
+            min(0.95, _coerce_float(cur_raw.get("stage3_hold_ratio_max"), 0.70)),
+        ),
+        stage3_use_rolling_pass=bool(cur_raw.get("stage3_use_rolling_pass", True)),
         certified_max_rollouts_per_stage=_coerce_int(
             cur_raw.get("certified_max_rollouts_per_stage"), 200
         ),
@@ -523,6 +538,9 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         ),
         max_adaptation_stuck_escapes=max(
             1, _coerce_int(cur_raw.get("max_adaptation_stuck_escapes"), 3)
+        ),
+        adaptation_stuck_min_rollouts=max(
+            1, min(20, _coerce_int(cur_raw.get("adaptation_stuck_min_rollouts"), 5))
         ),
         policy_swarm_enabled=bool(cur_raw.get("policy_swarm_enabled", True)),
         policy_swarm_variants=max(

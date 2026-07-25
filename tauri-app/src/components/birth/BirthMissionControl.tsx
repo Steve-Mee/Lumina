@@ -3,7 +3,6 @@ import type { BirthMilestone } from "@/lib/birthPhaseModel";
 import { extractBirthSessionHud, extractStageScorecard } from "@/lib/birthPhaseModel";
 import { cn } from "@/lib/utils";
 
-import { BirthBlockerAlert } from "@/components/birth/BirthBlockerAlert";
 import { BirthCompletionSummary } from "@/components/birth/BirthCompletionSummary";
 import { BirthControlDock } from "@/components/birth/BirthControlDock";
 import { BirthKpiTile } from "@/components/birth/BirthKpiTile";
@@ -290,7 +289,7 @@ export function BirthMissionControl({
             </p>
           ) : null}
 
-          <div className="birth-kpi-grid grid shrink-0 grid-cols-2 gap-1.5">
+          <div className="birth-kpi-grid birth-intel-field-grid shrink-0">
             <BirthKpiTile
               label="Overall"
               value={`${overallPct.toFixed(1)}%`}
@@ -331,8 +330,10 @@ export function BirthMissionControl({
           </div>
 
           {(running || finale) && progress ? (
-            <div className="birth-mission-metrics-card risk-envelope-field-card shrink-0 space-y-2 p-2">
-              <p className="risk-envelope-field-label mb-0">Fitness landscape</p>
+            <div className="birth-mission-metrics-card birth-section-card shrink-0 space-y-1.5">
+              <p className="font-mono text-[0.55rem] tracking-[0.14em] text-cyan-200/80 uppercase">
+                Fitness landscape
+              </p>
               <BirthMetricsStrip
                 progress={progress}
                 elapsedSeconds={elapsedSeconds}
@@ -342,8 +343,6 @@ export function BirthMissionControl({
               />
             </div>
           ) : null}
-
-          {(running || finale) && progress ? <BirthBlockerAlert progress={progress} /> : null}
         </div>
       </div>
     </section>

@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         strong_recovery_mode: bool
         strong_recovery_attempts: int
         last_adaptation_stage_trades: int
+        rollouts_since_last_adaptation: int
         effective_trade_budget_cap: int
         last_oos_proxy_at_trades: int
         last_stage_trades: int
