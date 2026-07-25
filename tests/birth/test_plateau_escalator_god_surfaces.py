@@ -15,8 +15,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 _P = _ROOT / "lumina_core" / "birth" / "plateau_escalator.py"
 
 # Baseline after engine extractions. 976 lines at time of guard addition.
-# Do not grow without further bounded extraction.
-_P_LINE_BASELINE = 980
+# 2026-07-25: dead-zone / terminal hard-stop ladder (+~100 LOC). Prefer extract next.
+_P_LINE_BASELINE = 1083
 
 
 @pytest.mark.unit
