@@ -317,6 +317,25 @@ class MultiDaySimRunner:
             if shadow_mode:
                 hypothetical_fills = list(backtest.get("fills", []) or [])
         elif real_market_data and real_ticks:
+            from lumina_core.hybrid_quarantine import (
+                MULTI_DAY_SIM,
+                log_quarantine,
+                require_true_backtest,
+            )
+
+            strict = require_true_backtest()
+            log_quarantine(MULTI_DAY_SIM, strict=strict, detail="tick_proxy_path")
+            if strict:
+                return SimResult(
+                    dna_hash=variant.hash,
+                    day_count=days,
+                    avg_pnl=0.0,
+                    max_drawdown_ratio=0.0,
+                    regime_fit_bonus=0.0,
+                    fitness=float("-inf"),
+                    shadow_mode=shadow_mode,
+                    hypothetical_fills=None,
+                )
             # Tick-bar proxy daily PnL (not broker economic_pnl)
             pnl_values = self._calculate_tick_proxy_daily_pnl(real_ticks, days, baseline_equity, variant, rng)
             for day_idx, day_pnl in enumerate(pnl_values):
@@ -340,6 +359,25 @@ class MultiDaySimRunner:
                         )
                     )
         else:
+            from lumina_core.hybrid_quarantine import (
+                MULTI_DAY_SIM,
+                log_quarantine,
+                require_true_backtest,
+            )
+
+            strict = require_true_backtest()
+            log_quarantine(MULTI_DAY_SIM, strict=strict, detail="rng_heuristic_path")
+            if strict:
+                return SimResult(
+                    dna_hash=variant.hash,
+                    day_count=days,
+                    avg_pnl=0.0,
+                    max_drawdown_ratio=0.0,
+                    regime_fit_bonus=0.0,
+                    fitness=float("-inf"),
+                    shadow_mode=shadow_mode,
+                    hypothetical_fills=None,
+                )
             # Original random perturbation logic (backwards compatible)
             for day_index in range(1, days + 1):
                 day_pnl = base_pnl * (1.0 + rng.uniform(-0.2, 0.2))

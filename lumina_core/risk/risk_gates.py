@@ -186,6 +186,18 @@ class RiskGatesMixin:
             logger.info("Kill-switch is not engaged, no reset needed")
             return True
 
+        from lumina_core.hybrid_quarantine import (
+            KILL_SWITCH_AUTH,
+            log_quarantine,
+            require_kill_switch_reset_authorization,
+        )
+
+        strict = require_kill_switch_reset_authorization()
+        log_quarantine(KILL_SWITCH_AUTH, strict=strict, detail="reset_kill_switch")
+        if strict and not str(authorization_code or "").strip():
+            logger.error("Kill-switch reset rejected: authorization_code required")
+            return False
+
         logger.warning(f"Resetting kill-switch. Previous reason: {self.state.kill_switch_reason}")
         self.state.kill_switch_engaged = False
         self.state.kill_switch_reason = ""

@@ -103,6 +103,8 @@ setup:
 vllm:
   host: http://localhost:8000
   model_name: qwen3.5-9b
+  # Hybrid quarantine: when true, start_vllm_server fails if host unhealthy (no process spawn).
+  manage_lifecycle: false
 ollama:
   base_url: http://localhost:11434
   temperature: 0.65
@@ -318,11 +320,9 @@ birth_v2:
     stagnation_rollouts_before_expand: 5
     max_rollouts_per_stage: 500
     gen0_provisional_min_trades: 25
-    # Certified graduation must use hard gates only (no oracle_soft_pass backdoor).
     allow_provisional_pass: false
-    # Stage3 mixed: foundation floor before evolution / OOS certificate.
     stage3_winrate_floor: 0.35
-    stage3_hold_ratio_max: 0.70
+    stage3_hold_ratio_max: 0.7
     stage3_use_rolling_pass: true
     autonomous_recovery_enabled: true
     phoenix_loop_enabled: true
@@ -405,6 +405,23 @@ birth_v2:
     stage1_winrate_pass_threshold: 0.45
     stage1_winrate_pass_floor: 0.35
     stage1_winrate_recommended: 0.45
+    stage1_edgescore_enabled: true
+    stage1_entropy_floor: 0.05
+    stage1_hold_ratio_min: 0.05
+    stage1_hold_ratio_max: 0.85
+    stage1_expectancy_floor: -0.15
+    starship_entropy_life_support_enabled: true
+    starship_swarm_first_enabled: true
+    starship_exploration_burst_multiplier: 2.5
+    starship_certified_plateau_max_evolution_steps: 4
+    starship_stall_after_swarm_only: true
+    starship_champion_freeze_enabled: true
+    starship_champion_edgescore_gap: 0.02
+    starship_entropy_required_after_ppo_steps: 500
+    starship_twin_continue_when_full_auto: true
+    stage2_edgescore_enabled: true
+    stage3_edgescore_enabled: true
+    policy_swarm_min_trades: 20
     evolution_proof_min_trades: 150
     evolution_proof_min_winrate_lift: 0.05
     evolution_proof_polish_oos_winrate_min: 0.45
@@ -625,3 +642,14 @@ runtime_config:
   hot_reload:
     enabled: true
     debounce_ms: 500
+# Wave A hybrid quarantine — defaults preserve legacy stub/heuristic outcomes.
+# Strict=true enables fail-closed behavior. See docs/hybrid-quarantine.md.
+hybrid_quarantine:
+  # SIM/PAPER bulk strict profile (also: env LUMINA_HYBRID_STRICT=1). Never auto-applies in REAL.
+  apply_strict_in_sim: false
+  require_true_backtest: false
+  require_trace_verdict: false
+  require_real_patch_apply: false
+  require_reset_authorization: false
+  handler_terminal_passthrough: true
+  manage_lifecycle: false

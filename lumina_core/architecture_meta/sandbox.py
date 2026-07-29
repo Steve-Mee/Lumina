@@ -180,6 +180,18 @@ class ArchitectureMutationSandbox:
           - use difflib or subprocess(['patch', ...])
           - run ruff + health scanner on the patched tree
         """
+        from lumina_core.hybrid_quarantine import (
+            ARCH_PATCH_APPLY,
+            log_quarantine,
+            require_real_patch_apply,
+        )
+
+        strict = require_real_patch_apply()
+        log_quarantine(ARCH_PATCH_APPLY, strict=strict, detail=f"target={target}")
+        if strict:
+            # Fail-closed: do not invent optimistic health deltas.
+            return False, before
+
         # Simulate success for whitelisted + non-empty diff. Real delta computed by caller scanner.
         # For now return a modest positive improvement so tests and dry-runs work.
         # In integration the real health scanner will be invoked post-apply.
