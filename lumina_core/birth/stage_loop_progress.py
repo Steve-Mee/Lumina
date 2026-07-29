@@ -100,6 +100,63 @@ class StageLoopProgressMixin(StageLoopMixinBase):
         payload["plateau_min_stage_trades"] = plateau_min_stage_trades(self.stage, self.cur_cfg)
         payload["stage_pass_gate_trades"] = self.required
         payload["stage_budget_trades"] = self.target
+        # Starship champion / swarm persistence (resume-safe + poison sanitize).
+        try:
+            from lumina_core.birth.starship_birth import sanitize_edgescore_champion
+
+            best, at_trade, cleared = sanitize_edgescore_champion(
+                best_edgescore=float(getattr(self, "best_edgescore", 0.0) or 0.0),
+                best_edgescore_at_trade=int(
+                    getattr(self, "best_edgescore_at_trade", 0) or 0
+                ),
+                best_winrate=float(getattr(self.plateau_state, "best_winrate", 0.0) or 0.0),
+                required=int(self.required),
+                cfg=self.cur_cfg,
+            )
+            self.best_edgescore = best
+            self.best_edgescore_at_trade = at_trade
+            if cleared:
+                self.best_edgescore_policy_path = ""
+        except Exception as exc:
+            logger.debug("birth.starship.champion_sanitize_metrics_failed: %s", exc)
+        payload["best_edgescore"] = round(float(getattr(self, "best_edgescore", 0.0) or 0.0), 6)
+        payload["best_edgescore_at_trade"] = int(
+            getattr(self, "best_edgescore_at_trade", 0) or 0
+        )
+        payload["best_edgescore_policy_path"] = str(
+            getattr(self, "best_edgescore_policy_path", "") or ""
+        )
+        payload["swarm_retearnament_used"] = bool(getattr(self, "swarm_retearnament_used", False))
+        payload["swarm_rejected_no_lift"] = bool(
+            getattr(self, "swarm_rejected_no_lift", False)
+            or getattr(self.swarm_state, "rejected_no_lift", False)
+        )
+        tournament_lift_ok = bool(
+            getattr(
+                self,
+                "swarm_tournament_lift_ok",
+                getattr(self, "swarm_edgescore_lift_ok", False),
+            )
+        )
+        tournament_at_start = round(
+            float(
+                getattr(
+                    self,
+                    "swarm_tournament_at_start",
+                    getattr(self, "swarm_edgescore_at_start", -1.0),
+                )
+            ),
+            6,
+        )
+        payload["swarm_tournament_lift_ok"] = tournament_lift_ok
+        payload["swarm_tournament_at_start"] = tournament_at_start
+        # Legacy aliases for older UI / checkpoints.
+        payload["swarm_edgescore_lift_ok"] = tournament_lift_ok
+        payload["swarm_edgescore_at_start"] = tournament_at_start
+        payload["swarm_champion_accepted"] = bool(
+            getattr(self, "swarm_champion_accepted", False)
+            or getattr(self.swarm_state, "champion_accepted", False)
+        )
         return payload
 
     def _maybe_periodic_checkpoint(self, phase: str) -> None:
@@ -134,12 +191,26 @@ class StageLoopProgressMixin(StageLoopMixinBase):
                 rolling_for_scorecard = float(self._rolling_winrate_500())
             except Exception:
                 rolling_for_scorecard = None
-        # Blocker/pass skill: only treat rolling as independent when not lifetime-fallback.
-        rolling_for_blocker = (
-            rolling_for_scorecard
-            if rolling_source in ("true_window", "partial_window")
-            else None
+        from lumina_core.birth.starship_birth import (
+            gate_rolling_winrate,
+            hygiene_wr_telemetry,
+            rolling_wr_pass_eligible,
         )
+
+        roll_window = int(getattr(self.cur_cfg, "stage1_rolling_pass_window", 500) or 500)
+        # Align with live stage pass: trusted source AND covered >= min(400, window).
+        rolling_for_blocker = gate_rolling_winrate(
+            rolling_wr=rolling_for_scorecard,
+            source=rolling_source,
+            covered=rolling_covered,
+            window=roll_window,
+        )
+        rolling_eligible = rolling_wr_pass_eligible(
+            source=rolling_source,
+            covered=rolling_covered,
+            window=roll_window,
+        )
+        entropy_for_blocker = self._resolve_policy_entropy()
         scorecard = build_scorecard_payload(
             stage=self.stage,
             curriculum_index=self.stage_index + 1,
@@ -162,6 +233,10 @@ class StageLoopProgressMixin(StageLoopMixinBase):
             provisional_pass=self.gen0_provisional,
             cfg=self.cur_cfg,
             rolling_winrate=rolling_for_blocker,
+            rolling_winrate_display=rolling_for_scorecard,
+            rolling_wr_eligible=rolling_eligible,
+            policy_entropy=entropy_for_blocker,
+            ppo_steps=int(getattr(self.host, "ppo_steps", 0) or 0),
         )
         wa_metrics = self.bus.adaptation_recovery_metrics(self.stage)
         adaptation_fields = enrich_adaptation_payload(
@@ -226,6 +301,110 @@ class StageLoopProgressMixin(StageLoopMixinBase):
         scorecard["stage1_winrate_recommended"] = float(
             getattr(self.cur_cfg, "stage1_winrate_recommended", 0.45)
         )
+        try:
+            from lumina_core.birth.starship_birth import (
+                compute_expectancy_proxy,
+                policy_entropy_alive,
+            )
+
+            entropy = self._resolve_policy_entropy()
+            scorecard["policy_entropy"] = (
+                round(float(entropy), 6) if entropy is not None else None
+            )
+            scorecard["entropy_alive"] = bool(
+                policy_entropy_alive(
+                    entropy,
+                    cfg=self.cur_cfg,
+                    ppo_steps=int(getattr(self.host, "ppo_steps", 0) or 0),
+                )
+            )
+            scorecard["starship_exploration_burst_active"] = bool(
+                getattr(self, "starship_exploration_burst_active", False)
+            )
+            exp_proxy = compute_expectancy_proxy(
+                wins=self.stage_wins,
+                trades=current_stage_trades,
+                rolling_winrate=rolling_for_blocker,
+            )
+            scorecard["expectancy_proxy"] = round(float(exp_proxy), 6)
+            edgescore_on = bool(
+                getattr(self.cur_cfg, "stage1_edgescore_enabled", False)
+                or getattr(self.cur_cfg, "stage2_edgescore_enabled", False)
+                or getattr(self.cur_cfg, "stage3_edgescore_enabled", False)
+            )
+            if edgescore_on:
+                from lumina_core.birth.starship_birth import (
+                    is_edgescore_champion_eligible,
+                    sanitize_edgescore_champion,
+                )
+
+                edge_score = float(self._current_edgescore())
+                scorecard["edgescore"] = round(edge_score, 4)
+                # Live sanitize: drop early/noise champions before freeze can re-arm.
+                plateau_wr = float(getattr(self.plateau_state, "best_winrate", 0.0) or 0.0)
+                best, at_trade, cleared = sanitize_edgescore_champion(
+                    best_edgescore=float(getattr(self, "best_edgescore", 0.0) or 0.0),
+                    best_edgescore_at_trade=int(
+                        getattr(self, "best_edgescore_at_trade", 0) or 0
+                    ),
+                    best_winrate=plateau_wr,
+                    required=int(self.required),
+                    cfg=self.cur_cfg,
+                )
+                self.best_edgescore = best
+                self.best_edgescore_at_trade = at_trade
+                if cleared:
+                    self.best_edgescore_policy_path = ""
+                # Champion freeze tracker — only after pass-gate volume (no early noise).
+                eligible = is_edgescore_champion_eligible(
+                    stage_trades=int(current_stage_trades),
+                    required=int(self.required),
+                    cfg=self.cur_cfg,
+                )
+                if (
+                    eligible
+                    and edge_score > float(getattr(self, "best_edgescore", 0.0) or 0.0)
+                ):
+                    self.best_edgescore = edge_score
+                    self.best_edgescore_at_trade = int(current_stage_trades)
+                    # Snapshot champion weights when EdgeScore improves (not only plateau WR).
+                    champion_dir = self.host.workspace_root / "lumina_agents" / "ppo"
+                    champion_dir.mkdir(parents=True, exist_ok=True)
+                    champ_path = champion_dir / f"birth_champion_edgescore_{self.stage.value}.zip"
+                    save_fn = getattr(self.host.ppo_trainer, "save_final_birth_policy", None)
+                    if callable(save_fn):
+                        try:
+                            save_fn(str(champ_path))
+                            if champ_path.is_file():
+                                self.best_edgescore_policy_path = str(champ_path)
+                        except Exception as exc:
+                            logger.debug("birth.starship.champion_save_failed: %s", exc)
+                    if not str(getattr(self, "best_edgescore_policy_path", "") or "").strip():
+                        best_path = str(
+                            getattr(self.plateau_state, "best_policy_path", "") or ""
+                        ).strip()
+                        if best_path:
+                            self.best_edgescore_policy_path = best_path
+            scorecard["swarm_tournament_lift_ok"] = bool(
+                getattr(
+                    self,
+                    "swarm_tournament_lift_ok",
+                    getattr(self, "swarm_edgescore_lift_ok", False),
+                )
+            )
+            scorecard["swarm_edgescore_lift_ok"] = scorecard["swarm_tournament_lift_ok"]
+            scorecard["swarm_rejected_no_lift"] = bool(
+                getattr(self, "swarm_rejected_no_lift", False)
+                or getattr(self.swarm_state, "rejected_no_lift", False)
+            )
+            scorecard["best_edgescore"] = round(
+                float(getattr(self, "best_edgescore", 0.0) or 0.0), 4
+            )
+            scorecard["best_edgescore_at_trade"] = int(
+                getattr(self, "best_edgescore_at_trade", 0) or 0
+            )
+        except Exception as exc:
+            logger.debug("birth.starship.scorecard_fields_failed: %s", exc)
         scorecard["stage_pass_gate_trades"] = int(self.required)
         scorecard["stage_budget_trades"] = int(self.target)
         scorecard["plateau_min_stage_trades"] = int(plateau_min_stage_trades(self.stage, self.cur_cfg))
@@ -235,13 +414,38 @@ class StageLoopProgressMixin(StageLoopMixinBase):
             scorecard["rolling_winrate_source"] = str(r_src)
             scorecard["rolling_window_trades_covered"] = int(r_cov)
         except Exception:
-            scorecard["rolling_winrate_500"] = round(self._rolling_winrate_500(), 6)
+            r_wr = rolling_for_scorecard
+            r_src = rolling_source
+            r_cov = rolling_covered
+            if r_wr is not None:
+                scorecard["rolling_winrate_500"] = round(float(r_wr), 6)
+            else:
+                scorecard["rolling_winrate_500"] = round(self._rolling_winrate_500(), 6)
             scorecard["rolling_winrate_source"] = str(
-                getattr(self, "_rolling_winrate_source", rolling_source) or "lifetime_fallback"
+                getattr(self, "_rolling_winrate_source", r_src) or "lifetime_fallback"
             )
             scorecard["rolling_window_trades_covered"] = int(
-                getattr(self, "_rolling_window_trades_covered", rolling_covered) or 0
+                getattr(self, "_rolling_window_trades_covered", r_cov) or 0
             )
+        lifetime_wr = float(self.stage_wins) / float(max(1, current_stage_trades))
+        if self.stage.value == "stage3_mixed":
+            hygiene_floor = float(getattr(self.cur_cfg, "stage3_winrate_floor", 0.35))
+        else:
+            hygiene_floor = float(getattr(self.cur_cfg, "stage1_winrate_pass_floor", 0.35))
+        scorecard.update(
+            hygiene_wr_telemetry(
+                lifetime_wr=lifetime_wr,
+                rolling_wr=(
+                    float(scorecard["rolling_winrate_500"])
+                    if scorecard.get("rolling_winrate_500") is not None
+                    else None
+                ),
+                rolling_source=str(scorecard.get("rolling_winrate_source") or ""),
+                rolling_covered=int(scorecard.get("rolling_window_trades_covered") or 0),
+                floor=hygiene_floor,
+                window=roll_window,
+            )
+        )
         scorecard["rollouts_since_last_adaptation"] = int(
             getattr(self, "rollouts_since_last_adaptation", 0) or 0
         )
@@ -309,6 +513,20 @@ class StageLoopProgressMixin(StageLoopMixinBase):
             training_mode=str(self.training_mode),
             allow_provisional=bool(self.allow_provisional),
             data_days_loaded=self.data_days_loaded,
+            requested_days=int(self.host._data_manifest.get("requested_days", 0) or 0) or None,
+            actual_calendar_days=int(
+                self.host._data_manifest.get("actual_calendar_days", 0) or 0
+            )
+            or None,
+            requested_instrument=str(
+                self.host._data_manifest.get("requested_instrument", "") or ""
+            )
+            or None,
+            resolved_instrument=str(
+                self.host._data_manifest.get("resolved_instrument", "") or ""
+            )
+            or None,
+            rolled=self.host._data_manifest.get("rolled"),
             expansion_step=self.expansion_step,
             stage_wall_remaining_sec=max(
                 0, int(self.cur_cfg.max_stage_wall_sec) - int(elapsed_stage_sec)
@@ -321,10 +539,59 @@ class StageLoopProgressMixin(StageLoopMixinBase):
             )
             if self.intra_state and self.intra_state.easy_trades > 0
             else None,
-            needs_attention=False,
-            attention_summary="",
-            attention_reason_code="",
-            attention_recommended_actions=[],
+            needs_attention=bool(
+                (
+                    getattr(self, "swarm_rejected_no_lift", False)
+                    or getattr(self.swarm_state, "rejected_no_lift", False)
+                )
+                and not bool(
+                    getattr(self, "swarm_champion_accepted", False)
+                    or getattr(self.swarm_state, "champion_accepted", False)
+                )
+            ),
+            attention_summary=(
+                "Swarm tournament produced no tournament lift — champion frozen; accept or wipe."
+                if (
+                    (
+                        getattr(self, "swarm_rejected_no_lift", False)
+                        or getattr(self.swarm_state, "rejected_no_lift", False)
+                    )
+                    and not bool(
+                        getattr(self, "swarm_champion_accepted", False)
+                        or getattr(self.swarm_state, "champion_accepted", False)
+                    )
+                )
+                else ""
+            ),
+            attention_reason_code=(
+                (
+                    str(getattr(self, "swarm_fail_reason_code", "") or "").strip()
+                    or "swarm_no_tournament_lift"
+                )
+                if (
+                    (
+                        getattr(self, "swarm_rejected_no_lift", False)
+                        or getattr(self.swarm_state, "rejected_no_lift", False)
+                    )
+                    and not bool(
+                        getattr(self, "swarm_champion_accepted", False)
+                        or getattr(self.swarm_state, "champion_accepted", False)
+                    )
+                )
+                else ""
+            ),
+            attention_recommended_actions=(
+                ["accept_champion", "wipe_and_retry"]
+                if (
+                    getattr(self, "swarm_rejected_no_lift", False)
+                    or getattr(self.swarm_state, "rejected_no_lift", False)
+                )
+                and not bool(
+                    getattr(self, "swarm_champion_accepted", False)
+                    or getattr(self.swarm_state, "champion_accepted", False)
+                )
+                else []
+            ),
             user_initiated_stop=False,
             extra_parts=(progress_extra,),
         )

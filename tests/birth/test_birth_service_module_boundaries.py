@@ -34,6 +34,20 @@ def test_resolve_terminal_birth_status_reexported() -> None:
 
 
 @pytest.mark.unit
+def test_resolve_terminal_birth_status_error_phase() -> None:
+    status, message = resolve_terminal_birth_status(
+        {
+            "stage": "error",
+            "phase": "error",
+            "last_error": "got multiple values for keyword argument 'curriculum_stage'",
+            "message": "Birth failed",
+        }
+    )
+    assert status == "error"
+    assert "curriculum_stage" in message
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("method_name,target", list(_DELEGATING_METHODS.items()))
 def test_birth_service_methods_delegate(method_name: str, target: str) -> None:
     source = inspect.getsource(getattr(BirthService, method_name))

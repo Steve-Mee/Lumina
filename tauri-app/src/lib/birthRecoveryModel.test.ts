@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { BirthStatusPayload } from "@/lib/birthClient";
-import { shouldAutoResumeBirth, verifyBirthWipeSucceeded } from "@/lib/birthRecoveryModel";
+import {
+  detectBirthRecoveryKind,
+  shouldAutoResumeBirth,
+  verifyBirthWipeSucceeded,
+} from "@/lib/birthRecoveryModel";
 
 describe("verifyBirthWipeSucceeded", () => {
   it("accepts stale running poll when API already confirmed wipe", () => {
@@ -27,6 +31,28 @@ describe("verifyBirthWipeSucceeded", () => {
       },
     } as BirthStatusPayload);
     expect(ok).toBe(true);
+  });
+
+  it("does not auto-resume interrupted sessions — operator chooses Resume/Wipe", () => {
+    expect(
+      shouldAutoResumeBirth({
+        status: "interrupted",
+        live: false,
+        checkpoint_resumable: true,
+        progress: { stage: "paused", user_initiated_stop: true },
+      } as BirthStatusPayload),
+    ).toBe(false);
+  });
+
+  it("detects checkpoint recovery when resumable and not live", () => {
+    expect(
+      detectBirthRecoveryKind({
+        status: "idle",
+        live: false,
+        checkpoint_resumable: true,
+        progress: { stage: "training_running", phase: "curriculum_learning" },
+      } as BirthStatusPayload),
+    ).toBe("checkpoint_available");
   });
 
   it("rejects when checkpoint remains resumable after wipe", () => {

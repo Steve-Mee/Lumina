@@ -46,7 +46,11 @@ export function detectBirthRecoveryKind(
   if (topStatus === "stage_stalled") {
     return "stage_stalled";
   }
-  if (topStatus === "interrupted") {
+  if (
+    topStatus === "interrupted" ||
+    topStatus === "paused" ||
+    status.progress?.user_initiated_stop === true
+  ) {
     return "session_interrupted";
   }
 
@@ -64,6 +68,16 @@ export function detectBirthRecoveryKind(
   }
   if (phase === "stage_stalled" || stage === "stage_stalled") {
     return "stage_stalled";
+  }
+  // Checkpoint on disk + no live engine → offer Resume/Wipe (stage name may still be training_*).
+  if (
+    isBirthCheckpointResumable(status) &&
+    status.live !== true &&
+    topStatus !== "running" &&
+    topStatus !== "started" &&
+    topStatus !== "active"
+  ) {
+    return "checkpoint_available";
   }
   if (stage === "checkpoint_available") {
     return "checkpoint_available";
@@ -97,10 +111,19 @@ export function shouldAutoResumeBirth(
   if (topStatus === "running" || topStatus === "started" || topStatus === "active") {
     return false;
   }
-  if (topStatus === "interrupted" || appSurfaceReason === "birth_interrupted") {
-    return true;
+  // Interrupted / checkpoint after restart: land on Genesis Recovery so the operator
+  // can choose Resume or Wipe. Do not silently continue_training.
+  if (
+    topStatus === "interrupted" ||
+    topStatus === "paused" ||
+    appSurfaceReason === "birth_interrupted"
+  ) {
+    return false;
   }
   const recovery = detectBirthRecoveryKind(status);
+  if (recovery === "session_interrupted" || recovery === "checkpoint_available") {
+    return false;
+  }
   if (recovery === "stage_stalled" && status.progress?.retryable !== false) {
     return true;
   }
@@ -118,11 +141,11 @@ export function shouldAutoResumeBirth(
   ) {
     return true;
   }
-  if (recovery === "checkpoint_available" || recovery === "simulation_stall") {
+  if (recovery === "simulation_stall") {
     return true;
   }
   if (appSurfaceReason === "birth_error" && isBirthCheckpointResumable(status)) {
-    return true;
+    return false;
   }
   return false;
 }

@@ -16,9 +16,19 @@ export function resolveBirthSurface(
   current: BirthSurface,
   payload: BirthStatusPayload,
   genesisPinned: boolean,
+  runPinned: boolean = false,
 ): BirthSurface {
-  if (genesisPinned) {
+  // Operator stop pin always wins.
+  if (genesisPinned && !runPinned) {
     return "genesis";
+  }
+  // Raptor v14: sticky resume/start — do not flash Genesis while engine cold-starts
+  // (polls often report interrupted/idle for 10–40s before live).
+  if (runPinned && uiPhase !== "error" && uiPhase !== "certificate_failed") {
+    if (uiPhase === "stage_stalled") {
+      return "recovery";
+    }
+    return "running";
   }
   if (payload.live === true || isBirthEngineActive(payload)) {
     return "running";

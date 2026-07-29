@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable
 
 from lumina_core.birth.curriculum import CurriculumStage
@@ -171,27 +172,61 @@ class StageLoopRolloutPreMixin(StageLoopMixinBase):
                     and current_wr < wr_floor
                     and beyond_or_at_gate
                 ):
-                    pre_plan = MetaActionPlan(
-                        primary=RecoveryStrategy.EXPLORE_BOOST,
-                        explore_steps=max(
-                            base_explore_steps,
-                            int(self.cur_cfg.exploration_steps) * 3,
-                        ),
-                        escalation_delta=1,
-                        mine=True,
-                        mine_aggressive=True,
-                        rationale="stage3_wr_recovery_explore",
-                        snapshot=pre_snap,
-                    )
-                    logger.info(
-                        "birth.stage3_wr_recovery stage_trades=%s/%s wr=%.1f%% "
-                        "floor=%.0f%% hold=%.1f%%",
-                        self.stage_trades,
-                        self.required,
-                        current_wr * 100.0,
-                        wr_floor * 100.0,
-                        current_hold * 100.0,
-                    )
+                    # Raptor v14: low-hold + low-WR → selectivity, not more random explore.
+                    if current_hold < 0.40:
+                        pre_plan = MetaActionPlan(
+                            primary=RecoveryStrategy.EXPLORE_REDUCE,
+                            explore_steps=max(
+                                200,
+                                int(
+                                    self.cur_cfg.exploration_steps
+                                    * float(
+                                        getattr(
+                                            self.cur_cfg,
+                                            "strong_recovery_explore_fraction",
+                                            0.35,
+                                        )
+                                        or 0.35
+                                    )
+                                ),
+                            ),
+                            escalation_delta=1,
+                            mine=True,
+                            mine_aggressive=True,
+                            rationale="stage3_wr_recovery_selectivity",
+                            snapshot=pre_snap,
+                        )
+                        logger.info(
+                            "birth.stage3_wr_recovery_selectivity stage_trades=%s/%s "
+                            "wr=%.1f%% floor=%.0f%% hold=%.1f%%",
+                            self.stage_trades,
+                            self.required,
+                            current_wr * 100.0,
+                            wr_floor * 100.0,
+                            current_hold * 100.0,
+                        )
+                    else:
+                        pre_plan = MetaActionPlan(
+                            primary=RecoveryStrategy.EXPLORE_BOOST,
+                            explore_steps=max(
+                                base_explore_steps,
+                                int(self.cur_cfg.exploration_steps) * 3,
+                            ),
+                            escalation_delta=1,
+                            mine=True,
+                            mine_aggressive=True,
+                            rationale="stage3_wr_recovery_explore",
+                            snapshot=pre_snap,
+                        )
+                        logger.info(
+                            "birth.stage3_wr_recovery stage_trades=%s/%s wr=%.1f%% "
+                            "floor=%.0f%% hold=%.1f%%",
+                            self.stage_trades,
+                            self.required,
+                            current_wr * 100.0,
+                            wr_floor * 100.0,
+                            current_hold * 100.0,
+                        )
             elif (
                 self.stage == CurriculumStage.STAGE2_RANGE
                 and detect_over_trading_trap(
@@ -329,37 +364,85 @@ class StageLoopRolloutPreMixin(StageLoopMixinBase):
         ):
             position_flat_cap = float(self.cur_cfg.over_trading_recovery_flat_target)
             range_patience_active = True
-        if (
-            self.plateau_state.best_policy_path
-            and is_valid_best_policy_snapshot(self.plateau_state, cfg=self.cur_cfg)
-            and self.attempt - self.last_policy_rollback_attempt
-            >= int(self.cur_cfg.policy_rollback_cooldown_rollouts)
-        ):
+        edge_champ_path = str(getattr(self, "best_edgescore_policy_path", "") or "").strip()
+        plateau_champ_ok = bool(self.plateau_state.best_policy_path) and is_valid_best_policy_snapshot(
+            self.plateau_state, cfg=self.cur_cfg
+        )
+        edge_champ_ok = bool(edge_champ_path) and Path(edge_champ_path).is_file()
+        cooldown_ok = self.attempt - self.last_policy_rollback_attempt >= int(
+            self.cur_cfg.policy_rollback_cooldown_rollouts
+        )
+        if (plateau_champ_ok or edge_champ_ok) and cooldown_ok:
             live_wr = float(self.stage_wins) / float(max(1, self.stage_trades))
             rollback_wr_gap = live_wr + float(self.cur_cfg.policy_rollback_winrate_gap) < (
                 self.plateau_state.best_winrate
             )
-            should_rollback = rollback_wr_gap and (
-                self.strong_recovery_mode
+            # Starship champion freeze: EdgeScore drop triggers rollback only for
+            # eligible (min-trades) champions — never early noise.
+            from lumina_core.birth.starship_birth import is_edgescore_champion_eligible
+
+            champion_freeze = bool(
+                getattr(self.cur_cfg, "starship_champion_freeze_enabled", True)
+            ) and not bool(self.allow_provisional)
+            live_edge = 0.0
+            best_edge = float(getattr(self, "best_edgescore", 0.0) or 0.0)
+            edge_gap = float(getattr(self.cur_cfg, "starship_champion_edgescore_gap", 0.02))
+            rollback_edge_gap = False
+            champ_eligible = is_edgescore_champion_eligible(
+                stage_trades=int(getattr(self, "best_edgescore_at_trade", 0) or 0),
+                required=int(self.required),
+                cfg=self.cur_cfg,
+            )
+            if champion_freeze and best_edge > 0.0 and champ_eligible:
+                try:
+                    live_edge = float(self._current_edgescore())
+                    rollback_edge_gap = live_edge + edge_gap < best_edge
+                except Exception:
+                    rollback_edge_gap = False
+            should_rollback = (
+                rollback_edge_gap
                 or (
-                    self.stage == CurriculumStage.STAGE3_MIXED
-                    and self.stage_trades < self.required
-                    and pre_rollout_hold > 0.75
+                    rollback_wr_gap
+                    and plateau_champ_ok
+                    and (
+                        self.strong_recovery_mode
+                        or champion_freeze
+                        or (
+                            self.stage == CurriculumStage.STAGE3_MIXED
+                            and self.stage_trades < self.required
+                            and pre_rollout_hold > 0.75
+                        )
+                    )
                 )
             )
             if should_rollback:
-                detail, applied = self._apply_plateau_evolution_action(
-                    EvolutionAction.POLICY_ROLLBACK
-                )
+                detail, applied = "", False
+                if plateau_champ_ok:
+                    detail, applied = self._apply_plateau_evolution_action(
+                        EvolutionAction.POLICY_ROLLBACK
+                    )
+                if (
+                    champion_freeze
+                    and edge_champ_ok
+                    and rollback_edge_gap
+                ):
+                    self.host.current_policy = self.host._create_birth_policy(
+                        allow_load_existing=True,
+                        policy_path=edge_champ_path,
+                    )
+                    applied = True
+                    detail = f"{detail}; champion_freeze edgescore".lstrip("; ").strip()
                 if applied:
                     self.last_policy_rollback_attempt = self.attempt
                 logger.info(
-                    "birth.policy_rollback_auto_applied detail=%s applied=%s live_wr=%.2f%% best=%.2f%% "
-                    "stage=%s hold_ratio=%.1f%%",
+                    "birth.policy_rollback_auto_applied detail=%s applied=%s live_wr=%.2f%% "
+                    "best=%.2f%% live_edge=%.3f best_edge=%.3f stage=%s hold_ratio=%.1f%%",
                     detail,
                     applied,
                     live_wr * 100.0,
                     self.plateau_state.best_winrate * 100.0,
+                    live_edge,
+                    best_edge,
                     self.stage.value,
                     pre_rollout_hold * 100.0,
                 )

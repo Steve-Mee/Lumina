@@ -89,3 +89,60 @@ def test_at_or_above_pass_target_never_enters_plateau() -> None:
         stage=CurriculumStage.STAGE1_TREND,
     )
     assert should_enter_plateau(ctx, cfg=cfg) is False
+
+
+@pytest.mark.unit
+def test_wall_exhausted_hygiene_fail_enters_plateau_without_beyond_gate() -> None:
+    """Starship: wall + sub-35% hygiene must enter theater (no vanity-45% wait)."""
+    cfg = _cfg(
+        plateau_winrate_gap=0.10,
+        plateau_trades_beyond_gate_multiplier=3,
+        plateau_min_stage_trades_pct=0.25,
+        stage1_trend_trades=2000,
+        stage_pass_trade_pct=0.10,
+        stage1_edgescore_enabled=True,
+        stage1_winrate_pass_floor=0.35,
+        velocity_stall_attempt_threshold=99,
+    )
+    ctx = PlateauEnterContext(
+        stage_trades=500,
+        stage_wins=167,  # 33.4%
+        required=200,
+        winrate_trend_slope=0.0006,
+        velocity_stall_attempts=13,
+        meta_self_eval_phase="idle",
+        pass_metric_target=0.45,
+        plateau_quarantine_active=False,
+        stage=CurriculumStage.STAGE1_TREND,
+        wall_budget_exhausted=True,
+        meta_learning_health="flat",
+        skill_failing=True,
+    )
+    assert should_enter_plateau(ctx, cfg=cfg) is True
+
+
+@pytest.mark.unit
+def test_flat_health_beyond_zero_hygiene_fail_enters_plateau() -> None:
+    cfg = _cfg(
+        plateau_min_stage_trades_pct=0.25,
+        stage1_trend_trades=2000,
+        stage_pass_trade_pct=0.10,
+        stage1_edgescore_enabled=True,
+        stage1_winrate_pass_floor=0.35,
+        velocity_stall_attempt_threshold=99,
+    )
+    ctx = PlateauEnterContext(
+        stage_trades=500,
+        stage_wins=165,
+        required=200,
+        winrate_trend_slope=0.0,
+        velocity_stall_attempts=0,
+        meta_self_eval_phase="idle",
+        pass_metric_target=0.45,
+        plateau_quarantine_active=False,
+        stage=CurriculumStage.STAGE1_TREND,
+        wall_budget_exhausted=False,
+        meta_learning_health="flat",
+        skill_failing=True,
+    )
+    assert should_enter_plateau(ctx, cfg=cfg) is True

@@ -51,6 +51,15 @@ class StagePassReceipt:
     range_flat_bars: int = 0
     hold_signals: int = 0
     total_signals: int = 0
+    # Starship: EdgeScore integrity fields.
+    edgescore: float | None = None
+    policy_entropy: float | None = None
+    stage_total_pnl: float | None = None
+    # Hygiene evidence: rolling may alone satisfy EdgeScore hygiene when eligible.
+    rolling_winrate: float | None = None
+    rolling_winrate_source: str | None = None
+    rolling_window_trades_covered: int | None = None
+    hygiene_wr_source: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -87,6 +96,39 @@ class StagePassReceipt:
                 range_flat_bars=max(0, int(raw.get("range_flat_bars", 0) or 0)),
                 hold_signals=max(0, int(raw.get("hold_signals", 0) or 0)),
                 total_signals=max(0, int(raw.get("total_signals", 0) or 0)),
+                edgescore=(
+                    float(raw["edgescore"]) if raw.get("edgescore") is not None else None
+                ),
+                policy_entropy=(
+                    float(raw["policy_entropy"])
+                    if raw.get("policy_entropy") is not None
+                    else None
+                ),
+                stage_total_pnl=(
+                    float(raw["stage_total_pnl"])
+                    if raw.get("stage_total_pnl") is not None
+                    else None
+                ),
+                rolling_winrate=(
+                    float(raw["rolling_winrate"])
+                    if raw.get("rolling_winrate") is not None
+                    else None
+                ),
+                rolling_winrate_source=(
+                    str(raw["rolling_winrate_source"])
+                    if raw.get("rolling_winrate_source") is not None
+                    else None
+                ),
+                rolling_window_trades_covered=(
+                    max(0, int(raw["rolling_window_trades_covered"]))
+                    if raw.get("rolling_window_trades_covered") is not None
+                    else None
+                ),
+                hygiene_wr_source=(
+                    str(raw["hygiene_wr_source"])
+                    if raw.get("hygiene_wr_source") is not None
+                    else None
+                ),
             )
         except (TypeError, ValueError):
             return None
@@ -113,6 +155,13 @@ def receipt_from_stage_result(
     range_hold_signals: int | None = None,
     range_total_signals: int | None = None,
     range_flat_bars: int | None = None,
+    edgescore: float | None = None,
+    policy_entropy: float | None = None,
+    stage_total_pnl: float | None = None,
+    rolling_winrate: float | None = None,
+    rolling_winrate_source: str | None = None,
+    rolling_window_trades_covered: int | None = None,
+    hygiene_wr_source: str | None = None,
 ) -> StagePassReceipt:
     required = stage_pass_trades(stage, cfg)
     criteria = pass_criteria_for_stage(stage, cfg=cfg)
@@ -166,6 +215,19 @@ def receipt_from_stage_result(
         range_flat_bars=range_flat_b,
         hold_signals=holds,
         total_signals=tot,
+        edgescore=(float(edgescore) if edgescore is not None else None),
+        policy_entropy=(float(policy_entropy) if policy_entropy is not None else None),
+        stage_total_pnl=(float(stage_total_pnl) if stage_total_pnl is not None else None),
+        rolling_winrate=(float(rolling_winrate) if rolling_winrate is not None else None),
+        rolling_winrate_source=(
+            str(rolling_winrate_source) if rolling_winrate_source is not None else None
+        ),
+        rolling_window_trades_covered=(
+            max(0, int(rolling_window_trades_covered))
+            if rolling_window_trades_covered is not None
+            else None
+        ),
+        hygiene_wr_source=(str(hygiene_wr_source) if hygiene_wr_source is not None else None),
     )
 
 
@@ -204,8 +266,9 @@ def verify_stage_pass_receipt(
         return False, "provisional_not_allowed_in_certified_mode"
     if mode == "certified" and receipt_message_is_soft_pass(receipt.message):
         return False, "soft_oracle_pass_not_allowed_in_certified_mode"
-    # Stage1: hard winrate gate must hold for certified (and any non-provisional receipt).
-    if stage == CurriculumStage.STAGE1_TREND and not provisional_ok:
+    # Stage1: hygiene WR when EdgeScore is the pass law; legacy vanity gate otherwise.
+    edgescore_on = bool(getattr(cfg, "stage1_edgescore_enabled", False))
+    if stage == CurriculumStage.STAGE1_TREND and not provisional_ok and not edgescore_on:
         wr_gate = float(
             receipt.winrate_gate
             if receipt.winrate_gate is not None
@@ -213,6 +276,32 @@ def verify_stage_pass_receipt(
         )
         if float(receipt.winrate) < wr_gate:
             return False, f"stage1_winrate_below_gate wr={receipt.winrate:.4f} gate={wr_gate:.4f}"
+    from lumina_core.birth.starship_birth import gate_rolling_winrate, rolling_wr_pass_eligible
+
+    roll_window = int(getattr(cfg, "stage1_rolling_pass_window", 500) or 500)
+    stored_roll = (
+        float(receipt.rolling_winrate) if getattr(receipt, "rolling_winrate", None) is not None else None
+    )
+    stored_roll_src = getattr(receipt, "rolling_winrate_source", None)
+    stored_roll_cov = int(getattr(receipt, "rolling_window_trades_covered", 0) or 0)
+    gate_roll = gate_rolling_winrate(
+        rolling_wr=stored_roll,
+        source=stored_roll_src,
+        covered=stored_roll_cov,
+        window=roll_window,
+    )
+    if stage == CurriculumStage.STAGE1_TREND and not provisional_ok and edgescore_on:
+        hygiene = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35))
+        lifetime_ok = float(receipt.winrate) >= hygiene
+        rolling_ok = gate_roll is not None and float(gate_roll) >= hygiene
+        if not (lifetime_ok or rolling_ok):
+            return (
+                False,
+                f"stage1_hygiene_below_floor wr={receipt.winrate:.4f} "
+                f"rolling={stored_roll if stored_roll is not None else 'n/a'} "
+                f"eligible={rolling_wr_pass_eligible(source=stored_roll_src, covered=stored_roll_cov, window=roll_window)} "
+                f"floor={hygiene:.4f}",
+            )
     # Prefer stored range/hold metrics (Raptor v8). Parse legacy messages as fallback.
     hold_ratio = float(getattr(receipt, "hold_ratio", 0.0) or 0.0)
     range_flat = float(getattr(receipt, "range_flat_ratio", 0.0) or 0.0)
@@ -270,7 +359,9 @@ def verify_stage_pass_receipt(
         allow_provisional=provisional_ok,
         oracle_patterns=0 if not provisional_ok else 10_000,
         buffer_size=0 if not provisional_ok else 10_000,
-        rolling_winrate=float(receipt.winrate),
+        rolling_winrate=gate_roll,
+        policy_entropy=getattr(receipt, "policy_entropy", None),
+        stage_total_pnl=getattr(receipt, "stage_total_pnl", None),
     )
     if not reeval.passed:
         return False, f"re_eval_failed:{reeval.message}"

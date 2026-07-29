@@ -18,6 +18,7 @@ def _cfg(**overrides: object) -> BirthCurriculumConfig:
 @pytest.mark.unit
 def test_stage1_pass_on_rolling_when_lifetime_below_gate() -> None:
     cfg = _cfg(
+        stage1_edgescore_enabled=False,
         stage1_use_rolling_pass=True,
         stage1_rolling_pass_window=500,
         stage1_winrate_pass_threshold=0.45,
@@ -43,7 +44,11 @@ def test_stage1_pass_on_rolling_when_lifetime_below_gate() -> None:
 
 @pytest.mark.unit
 def test_stage1_fail_when_both_below_gate() -> None:
-    cfg = _cfg(stage1_use_rolling_pass=True, stage1_rolling_pass_window=500)
+    cfg = _cfg(
+        stage1_edgescore_enabled=False,
+        stage1_use_rolling_pass=True,
+        stage1_rolling_pass_window=500,
+    )
     result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
         trades=2000,
@@ -60,7 +65,7 @@ def test_stage1_fail_when_both_below_gate() -> None:
 
 @pytest.mark.unit
 def test_stage1_still_requires_zero_constitution() -> None:
-    cfg = _cfg(stage1_use_rolling_pass=True)
+    cfg = _cfg(stage1_edgescore_enabled=False, stage1_use_rolling_pass=True)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
         trades=2000,

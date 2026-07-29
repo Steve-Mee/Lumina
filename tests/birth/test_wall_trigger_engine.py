@@ -25,6 +25,39 @@ def cfg() -> BirthCurriculumConfig:
 
 
 @pytest.mark.unit
+def test_certified_stall_on_wall_budget_exhausted_without_stagnation(
+    cfg: BirthCurriculumConfig,
+) -> None:
+    """Runbook §6 / Starship: wall exhausted + skill blocker → stall (no 1pp wobble gate)."""
+    cfg.stage1_edgescore_enabled = True
+    cfg.stage1_winrate_pass_floor = 0.35
+    result = evaluate_certified_stall(
+        stage=CurriculumStage.STAGE1_TREND,
+        stage_trades=500,
+        stage_wins=167,  # 33.4%
+        required=200,
+        hold_ratio=0.62,
+        constitution_violations=0,
+        range_flat_ratio=0.0,
+        range_round_trips=0,
+        range_total_signals=0,
+        elapsed_stage_sec=100.0,
+        winrate_stagnation_count=0,
+        hold_stagnation_count=0,
+        wall_budget_exhausted=True,
+        allow_provisional=False,
+        failure_key="stage1_winrate",
+        force=False,
+        cfg=cfg,
+        policy_entropy=0.5,
+        ppo_steps=1000,
+    )
+    assert result.triggered is True
+    assert result.trigger_type == "certified_stall"
+    assert result.pending.get("blocker_metric")
+
+
+@pytest.mark.unit
 def test_certified_stall_triggers_after_stagnation_and_wall(cfg: BirthCurriculumConfig) -> None:
     result = evaluate_certified_stall(
         stage=CurriculumStage.STAGE1_TREND,

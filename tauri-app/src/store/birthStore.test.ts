@@ -45,14 +45,27 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().birthSurface).toBe("recovery");
   });
 
-  it("maps detected progress to running surface even when top status is idle", () => {
+  it("maps live detected progress to running surface even when top status is idle", () => {
     useBirthStore.getState().applyStatus({
       status: "idle",
+      live: true,
       certificate_ok: false,
       progress: { stage: "detected", phase: "detected" },
     } as BirthStatusPayload);
     expect(useBirthStore.getState().uiPhase).toBe("running");
     expect(useBirthStore.getState().birthSurface).toBe("running");
+  });
+
+  it("keeps orphaned disk progress on genesis so Resume/Wipe stays available", () => {
+    useBirthStore.getState().applyStatus({
+      status: "idle",
+      live: false,
+      certificate_ok: false,
+      checkpoint_resumable: true,
+      progress: { stage: "training_running", phase: "curriculum_learning" },
+    } as BirthStatusPayload);
+    expect(useBirthStore.getState().uiPhase).not.toBe("running");
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
   });
 
   it("maps interrupted status to genesis surface via idle uiPhase", () => {
@@ -130,6 +143,33 @@ describe("birthStore stage_stalled recovery", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("runPinned keeps running surface during interrupted cold-start polls", () => {
+    useBirthStore.getState().beginBirthRun();
+    expect(useBirthStore.getState().runPinned).toBe(true);
+    expect(useBirthStore.getState().birthSurface).toBe("running");
+
+    useBirthStore.getState().applyStatus({
+      status: "interrupted",
+      live: false,
+      progress: { stage: "interrupted", phase: "paused" },
+    } as BirthStatusPayload);
+
+    expect(useBirthStore.getState().uiPhase).toBe("running");
+    expect(useBirthStore.getState().birthSurface).toBe("running");
+    expect(useBirthStore.getState().runPinned).toBe(true);
+  });
+
+  it("runPinned clears when engine becomes live", () => {
+    useBirthStore.getState().beginBirthRun();
+    useBirthStore.getState().applyStatus({
+      status: "running",
+      live: true,
+      progress: { stage: "training_running", phase: "ppo_training" },
+    } as BirthStatusPayload);
+    expect(useBirthStore.getState().birthSurface).toBe("running");
+    expect(useBirthStore.getState().runPinned).toBe(false);
   });
 
   it("bootstrapSession respects genesisPinned and does not force running surface", async () => {

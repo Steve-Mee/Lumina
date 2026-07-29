@@ -1,4 +1,9 @@
 import type { BirthProgressPayload, BirthStatusPayload } from "@/lib/birthClient";
+import {
+  formatBirthMetricTarget,
+  formatBirthMetricValue,
+  isBirthEdgeScoreCriteria,
+} from "@/lib/birth/birthMetricFormat";
 import type { BirthMilestone } from "@/lib/birthPhaseModel";
 import { extractBirthSessionHud, extractStageScorecard } from "@/lib/birthPhaseModel";
 import { cn } from "@/lib/utils";
@@ -27,20 +32,12 @@ interface BirthMissionControlProps {
 type ChipState = "ok" | "partial" | "warn" | "idle";
 
 function formatMetricValue(scorecard: NonNullable<ReturnType<typeof extractStageScorecard>>): string {
-  if (scorecard.metricValue == null) {
-    return scorecard.tradesDone > 0 ? "syncing…" : "—";
-  }
-  if (scorecard.passCriteriaId === "mixed_constitution") {
-    return String(Math.round(scorecard.metricValue));
-  }
-  return `${(scorecard.metricValue * 100).toFixed(0)}%`;
+  return formatBirthMetricValue(scorecard);
 }
 
 function formatMetricTarget(scorecard: NonNullable<ReturnType<typeof extractStageScorecard>>): string {
-  if (scorecard.metricTarget != null) {
-    return `need ${(scorecard.metricTarget * 100).toFixed(0)}%`;
-  }
-  return scorecard.goalLabel;
+  const target = formatBirthMetricTarget(scorecard);
+  return target || scorecard.goalLabel;
 }
 
 function resolveOverallPhaseLabel(progress: BirthProgressPayload | undefined): string {
@@ -216,14 +213,25 @@ export function BirthMissionControl({
       ? Math.ceil(scorecard.stageWallRemainingSec / 60)
       : null;
 
+  // EdgeScore hygiene target must not paint false green (Starship Seal).
+  const edgeScoreId = isBirthEdgeScoreCriteria(scorecard?.passCriteriaId);
+  const entropyDead =
+    progress?.entropy_alive === false &&
+    progress?.policy_entropy != null &&
+    Number.isFinite(progress.policy_entropy);
+  const entropyMissing =
+    progress?.entropy_alive === false &&
+    (progress?.policy_entropy == null || !Number.isFinite(progress.policy_entropy));
   const metricTone =
-    scorecard?.blockerDetail != null
+    scorecard?.blockerDetail != null || entropyDead || entropyMissing
       ? "warn"
-      : scorecard?.metricValue != null &&
-          scorecard.metricTarget != null &&
-          scorecard.metricValue >= scorecard.metricTarget
-        ? "success"
-        : "accent";
+      : edgeScoreId
+        ? "accent"
+        : scorecard?.metricValue != null &&
+            scorecard.metricTarget != null &&
+            scorecard.metricValue >= scorecard.metricTarget
+          ? "success"
+          : "accent";
 
   return (
     <section
@@ -310,7 +318,7 @@ export function BirthMissionControl({
               }
             />
             <BirthKpiTile
-              label={scorecard?.metricLabel ?? "Pass metric"}
+              label={scorecard?.metricLabel ?? "EdgeScore"}
               value={scorecard ? formatMetricValue(scorecard) : "—"}
               detail={scorecard ? formatMetricTarget(scorecard) : undefined}
               tone={metricTone as "default" | "success" | "warn" | "accent"}

@@ -31,6 +31,7 @@ _BOUNDED_MODULE_MARKERS = [
     "paper_broker",
     "cross_trade_broker",
     "cross_trade_account",
+    "cross_trade_payload",
     "factory",
 ]
 

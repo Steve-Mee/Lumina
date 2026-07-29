@@ -48,6 +48,8 @@ def evaluate_certified_stall(
     failure_key: str,
     force: bool,
     cfg: BirthCurriculumConfig,
+    policy_entropy: float | None = None,
+    ppo_steps: int = 0,
 ) -> WallTriggerResult:
     """Evaluate certified stage stall (stagnation + wall time)."""
     if allow_provisional or stage_trades < required:
@@ -69,6 +71,8 @@ def evaluate_certified_stall(
             range_round_trips=range_round_trips,
             range_total_signals=range_total_signals,
             cfg=cfg,
+            policy_entropy=policy_entropy,
+            ppo_steps=int(ppo_steps),
         )
         pending = {
             "failure_key": failure_key,
@@ -95,11 +99,34 @@ def evaluate_certified_stall(
         range_round_trips=range_round_trips,
         range_total_signals=range_total_signals,
         cfg=cfg,
+        policy_entropy=policy_entropy,
+        ppo_steps=int(ppo_steps),
     )
     if not blocker_metric:
         return WallTriggerResult(triggered=False)
 
     if not force:
+        # Starship honesty: wall budget exhausted + skill blocker → stall without
+        # fragile 1pp stagnation counter (WR wobble was silencing runbook §6).
+        if wall_budget_exhausted:
+            trigger_type = "certified_stall"
+            pending = {
+                "failure_key": failure_key,
+                "blocker_metric": blocker_metric,
+                "blocker_value": blocker_value,
+                "blocker_reason": blocker_reason,
+            }
+            blocked = constitution_blocks_adaptation(
+                stage=stage,
+                constitution_violations=constitution_violations,
+            )
+            return WallTriggerResult(
+                triggered=True,
+                trigger_type=trigger_type,
+                failure_key=failure_key,
+                pending=pending,
+                constitution_blocked=blocked,
+            )
         stagnation_met = False
         if stage == CurriculumStage.STAGE1_TREND:
             stagnation_met = (
@@ -112,7 +139,7 @@ def evaluate_certified_stall(
         stall_wall = max(300, int(cfg.certified_stage_stall_wall_sec))
         if not stagnation_met:
             return WallTriggerResult(triggered=False)
-        if not (elapsed_stage_sec >= stall_wall or wall_budget_exhausted):
+        if elapsed_stage_sec < stall_wall:
             return WallTriggerResult(triggered=False)
 
     trigger_type = "trades_beyond_gate" if force else "certified_stall"
@@ -221,6 +248,8 @@ def evaluate_wall_trigger(
     last_adaptation_stage_trades: int,
     cfg: BirthCurriculumConfig,
     rollouts_since_last_adaptation: int = 0,
+    policy_entropy: float | None = None,
+    ppo_steps: int = 0,
 ) -> WallTriggerResult:
     """Unified entry: adaptation stuck (debounced) then certified stall."""
     trades_beyond = evaluate_trades_beyond_gate(
@@ -257,6 +286,8 @@ def evaluate_wall_trigger(
         failure_key=failure_key,
         force=force or (trades_beyond and stage_trades >= required),
         cfg=cfg,
+        policy_entropy=policy_entropy,
+        ppo_steps=int(ppo_steps),
     )
 
 

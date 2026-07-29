@@ -32,9 +32,19 @@ class StageLoopRolloutTailMixin(StageLoopMixinBase):
             and self.stage_trades >= self.required
             and (current_winrate < self.pass_metric_target or current_hold_ratio > 0.85)
         ):
-            if abs(current_winrate - self.last_winrate) < 0.01 and abs(
-                current_hold_ratio - self.last_hold_ratio
-            ) < 0.01:
+            # Starship: count stagnation vs hygiene floor with a wider band so
+            # 30–34% WR oscillation does not reset the certified-stall counter.
+            hygiene = float(
+                getattr(self.cur_cfg, "stage1_winrate_pass_floor", 0.35) or 0.35
+            )
+            under_hygiene = current_winrate + 1e-9 < hygiene
+            wr_delta = abs(current_winrate - self.last_winrate)
+            hold_delta = abs(current_hold_ratio - self.last_hold_ratio)
+            flat_band = 0.03 if under_hygiene else 0.01
+            if wr_delta < flat_band and hold_delta < flat_band:
+                self.winrate_stagnation_count += 1
+            elif under_hygiene and current_winrate <= self.last_winrate + 1e-9:
+                # Still failing hygiene and not improving — keep accumulating.
                 self.winrate_stagnation_count += 1
             else:
                 self.winrate_stagnation_count = 0
@@ -74,6 +84,7 @@ class StageLoopRolloutTailMixin(StageLoopMixinBase):
                 birth_phase=True,
             )
             self.host.ppo_steps += self.ppo_steps_per_update
+            self._capture_trainer_policy_entropy()
             self.host._persist_checkpoint(
                 training_mode=self.training_mode,
                 curriculum_stage=self.stage.value,

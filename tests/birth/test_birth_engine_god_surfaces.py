@@ -23,8 +23,9 @@ _BIRTH_ENGINE = _ROOT / "lumina_core" / "birth" / "engine.py"
 # Phase 1D cleanup (unused import prune): 1625 -> 1508.
 # Phase 1E (birth_phase_orchestrator extract): 1508 -> 887.
 # GraduationResult extracted to graduation_result.py (2026-07); baseline reflects net +4 LOC.
-_ENGINE_LINE_BASELINE = 1072
-_ENGINE_METHOD_BASELINE = 49
+# Wave B PR-B1: lifecycle/trajectory/graduation mixins → thin composition-root façade.
+_ENGINE_LINE_BASELINE = 250
+_ENGINE_METHOD_BASELINE = 5
 
 # Largest method bodies — must not grow without intentional guard update.
 _METHOD_LINE_CEILINGS: dict[str, int] = {
@@ -116,13 +117,14 @@ def test_birth_engine_imports_bounded_birth_modules() -> None:
 
 @pytest.mark.unit
 def test_birth_engine_extraction_targets_exist_as_imports() -> None:
-    """Phase 1 modules are not yet extracted; guard documents intended split boundaries."""
+    """Wave B PR-B1: composition root must wire mixins + orchestrator hub."""
     text = _engine_source()
     for symbol in (
-        "_persist_checkpoint",
-        "_data_pipeline",
-        "_certificate_pipeline",
-        "_emit_birth_progress",
+        "engine_lifecycle",
+        "engine_trajectory",
+        "engine_graduation",
+        "EngineLifecycleMixin",
         "birth_phase_orchestrator",
+        "stage_training_loop",
     ):
         assert symbol in text, f"expected {symbol!r} in engine as thin delegate/hub"

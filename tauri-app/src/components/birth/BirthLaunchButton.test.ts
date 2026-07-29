@@ -31,7 +31,7 @@ describe("BirthLaunchButton interaction contract", () => {
   });
 
   it("explains click and hold affordance in sublabel", () => {
-    expect(birthLaunchButtonSource).toContain("Click to activate · hold to prime");
+    expect(birthLaunchButtonSource).toContain("Hold until the ring completes");
   });
 
   it("keeps particle effects out of document flow", () => {

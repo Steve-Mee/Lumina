@@ -30,7 +30,7 @@ _BOUNDED = [
 @pytest.mark.unit
 def test_meta_agent_core_loc_at_or_below_target():
     line_count = len(_META.read_text(encoding="utf-8").splitlines())
-    assert line_count <= 650, f"meta_agent_core.py has {line_count} lines (target <=650)"
+    assert line_count <= 400, f"meta_agent_core.py has {line_count} lines (target <=400)"
 
 
 @pytest.mark.unit

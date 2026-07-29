@@ -49,11 +49,13 @@ def test_pass_criteria_stage1_trend() -> None:
 def test_pass_criteria_stage1_trend_with_cfg() -> None:
     from lumina_core.birth.config import BirthCurriculumConfig
 
-    cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
+    cfg = BirthCurriculumConfig(stage1_trend_trades=2000, stage1_edgescore_enabled=True)
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE1_TREND, cfg=cfg)
+    assert criteria.id == "trend_edgescore"
     assert criteria.target_trades == 200
     assert criteria.training_budget_trades == 2000
     assert ">=200 pass gate (2000 budget)" in criteria.label
+    assert "EdgeScore" in criteria.label
 
 
 @pytest.mark.unit
@@ -185,6 +187,7 @@ def test_build_scorecard_pass_reason_uses_cfg_winrate_gate() -> None:
         stage1_trend_trades=2000,
         stage1_winrate_pass_threshold=0.35,
         stage1_winrate_pass_floor=0.35,
+        stage1_edgescore_enabled=True,
     )
     payload = build_scorecard_payload(
         stage=CurriculumStage.STAGE1_TREND,
@@ -201,7 +204,7 @@ def test_build_scorecard_pass_reason_uses_cfg_winrate_gate() -> None:
         learning_attempt=3,
         cfg=cfg,
     )
-    assert payload["pass_reason"] == "winrate 24.8% < 35%"
+    assert payload["pass_reason"] == "hygiene wr 24.8% < 35%"
 
 
 @pytest.mark.unit

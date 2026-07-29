@@ -39,25 +39,48 @@ export function isBirthProgressActive(payload: BirthStatusPayload): boolean {
   return BIRTH_ACTIVE_PROGRESS_STAGES.has(stage) || BIRTH_ACTIVE_PROGRESS_PHASES.has(phase);
 }
 
+/**
+ * True when the Birth engine is actually executing.
+ * On-disk progress alone (e.g. training_running after app restart) is NOT enough —
+ * that would hide Resume/Wipe behind a fake "running" surface.
+ */
 export function isBirthEngineActive(payload: BirthStatusPayload): boolean {
-  return isBirthRunning(payload) || isBirthProgressActive(payload);
+  if (isBirthInterrupted(payload)) {
+    return false;
+  }
+  if (isBirthRunning(payload)) {
+    return true;
+  }
+  // Stale progress without a live runner must not look like an active engine.
+  return payload.live === true && isBirthProgressActive(payload);
 }
 
-/** True when backend reports live runner/thread or progress indicates active engine. */
+/** True when backend reports a live runner/thread (or top-level running status). */
 export function isBirthEngineLive(payload: BirthStatusPayload | null | undefined): boolean {
   if (!payload) {
+    return false;
+  }
+  if (isBirthInterrupted(payload)) {
     return false;
   }
   if (payload.live === true) {
     return true;
   }
-  return isBirthEngineActive(payload);
+  return isBirthRunning(payload);
 }
 
 export function isBirthInterrupted(payload: BirthStatusPayload): boolean {
   const status = normalizeToken(payload.status);
   const stage = normalizeToken(payload.progress?.stage);
-  return status === "interrupted" || stage === "interrupted";
+  const phase = normalizeToken(payload.progress?.phase);
+  return (
+    status === "interrupted" ||
+    status === "paused" ||
+    stage === "interrupted" ||
+    stage === "paused" ||
+    phase === "paused" ||
+    payload.progress?.user_initiated_stop === true
+  );
 }
 
 /** Setup complete but birth never started — missing certificate is expected, not a failure. */

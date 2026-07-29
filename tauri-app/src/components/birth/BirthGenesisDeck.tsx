@@ -531,7 +531,7 @@ export function BirthGenesisDeck({
                       size="sm"
                       className={cn(
                         luminaInteractiveClass("danger"),
-                        "genesis-recovery-action-card__btn w-full border-amber-500/40 font-mono text-[10px] tracking-wide text-amber-100 uppercase hover:bg-amber-950/25",
+                        "genesis-recovery-action-card__btn w-full border-[color:var(--status-warn-border)] font-mono text-[10px] tracking-wide text-[color:var(--status-warn-fg)] uppercase hover:bg-[color:var(--status-warn-bg)]",
                         wipeBlocked && "cursor-not-allowed opacity-70",
                       )}
                       disabled={wipeBlocked}

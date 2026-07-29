@@ -1,12 +1,21 @@
-import type { BirthProgressPayload } from "@/lib/birthClient";
+﻿import type { BirthProgressPayload } from "@/lib/birthClient";
+import {
+  formatBirthEdgeScorePercent,
+  formatBirthExpectancyPercent,
+  formatBirthMetricTarget,
+  formatBirthMetricValue,
+} from "@/lib/birth/birthMetricFormat";
 import {
   extractStageScorecard,
   shouldShowBirthAttentionBanner,
   type StageScorecardModel,
 } from "@/lib/birthPhaseModel";
+import { isStageGoalMet } from "@/lib/birth/birthStageScorecard";
 import { cn } from "@/lib/utils";
+import { useBirthStore } from "@/store/birthStore";
 
 import { BirthFieldCard } from "@/components/birth/BirthFieldCard";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface BirthStageScorecardProps {
@@ -20,31 +29,11 @@ interface BirthStageScorecardProps {
 }
 
 function formatMetricValue(model: StageScorecardModel): string {
-  if (model.metricValue == null) {
-    if (model.passCriteriaId === "trend_winrate" && model.tradesDone > 0) {
-      return "syncing…";
-    }
-    return "—";
-  }
-  if (model.passCriteriaId === "mixed_constitution") {
-    return String(Math.round(model.metricValue));
-  }
-  return `${(model.metricValue * 100).toFixed(0)}%`;
+  return formatBirthMetricValue(model);
 }
 
 function formatMetricTarget(model: StageScorecardModel): string {
-  if (model.passCriteriaId === "mixed_constitution") {
-    return "need 0";
-  }
-  if (model.passCriteriaId === "range_hold_ratio" || model.passCriteriaId === "range_roundtrip") {
-    const min = model.metricMin != null ? (model.metricMin * 100).toFixed(0) : "30";
-    const max = model.metricMax != null ? (model.metricMax * 100).toFixed(0) : "70";
-    return `target ${min}–${max}%`;
-  }
-  if (model.metricTarget != null) {
-    return `need ${(model.metricTarget * 100).toFixed(0)}%`;
-  }
-  return "";
+  return formatBirthMetricTarget(model);
 }
 
 function formatTrendSlope(slope: number | null): string {
@@ -71,7 +60,7 @@ function formatDataWindow(scorecard: StageScorecardModel): string {
     scorecard.dataManifestDaysLoaded > 0 &&
     scorecard.dataManifestDaysLoaded !== scorecard.dataDaysLoaded
   ) {
-    return `${scorecard.dataManifestDaysLoaded}d cache → ${scorecard.dataDaysLoaded}d target`;
+    return `${scorecard.dataManifestDaysLoaded}d cache -> ${scorecard.dataDaysLoaded}d target`;
   }
   return `${scorecard.dataDaysLoaded}d loaded`;
 }
@@ -86,28 +75,55 @@ function formatEvolutionAction(scorecard: StageScorecardModel): string {
   return `${prefix}: ${scorecard.evolutionLastActionDetail}`;
 }
 
-/** Pass-metric within gate and no active blocker → goal met (green). */
+/** Pass criteria met: EdgeScore uses composite blockers, not hygiene target. */
 function isGoalMet(scorecard: StageScorecardModel): boolean {
-  if (scorecard.blockerDetail) return false;
-  if (scorecard.metricValue == null) return false;
-  if (scorecard.passCriteriaId === "mixed_constitution") {
-    return scorecard.metricValue <= 0;
-  }
-  if (
-    scorecard.passCriteriaId === "range_hold_ratio" ||
-    scorecard.passCriteriaId === "range_roundtrip"
-  ) {
-    const min = scorecard.metricMin ?? 0.3;
-    const max = scorecard.metricMax ?? 0.7;
-    return scorecard.metricValue >= min && scorecard.metricValue <= max;
-  }
-  if (scorecard.metricTarget != null) {
-    return scorecard.metricValue >= scorecard.metricTarget;
-  }
-  return false;
+  return isStageGoalMet(scorecard);
 }
 
-function StageTabFields({ scorecard }: { scorecard: StageScorecardModel }) {
+/** Single-instrument Hygiene WR readout (lifetime + rolling in hint — no triple cards). */
+function formatHygieneInstrumentValue(scorecard: StageScorecardModel): string {
+  if (scorecard.hygieneWrEffective != null) {
+    return `${(scorecard.hygieneWrEffective * 100).toFixed(1)}%`;
+  }
+  if (scorecard.hygieneWrLifetime != null) {
+    return `${(scorecard.hygieneWrLifetime * 100).toFixed(1)}%`;
+  }
+  return "—";
+}
+
+function formatHygieneInstrumentHint(scorecard: StageScorecardModel): string {
+  const floor =
+    scorecard.hygieneWrFloor != null
+      ? `≥${(scorecard.hygieneWrFloor * 100).toFixed(0)}%`
+      : "≥35%";
+  const life =
+    scorecard.hygieneWrLifetime != null
+      ? `${(scorecard.hygieneWrLifetime * 100).toFixed(1)}%`
+      : "—";
+  const roll =
+    scorecard.hygieneWrRolling != null || scorecard.rollingWinrate500 != null
+      ? `${(((scorecard.hygieneWrRolling ?? scorecard.rollingWinrate500) as number) * 100).toFixed(1)}%`
+      : null;
+  const covered = scorecard.rollingWindowTradesCovered;
+  const rollNote =
+    roll == null
+      ? null
+      : scorecard.rollingWrEligible === false
+        ? `roll ${roll} (${covered ?? 0}/400)`
+        : scorecard.rollingWrEligible === true
+          ? `roll ${roll} eligible`
+          : `roll ${roll}`;
+  const source = scorecard.hygieneWrSource ? ` · ${scorecard.hygieneWrSource}` : "";
+  return [`life ${life}`, rollNote, `need ${floor}${source}`].filter(Boolean).join(" · ");
+}
+
+function StageTabFields({
+  scorecard,
+  progress,
+}: {
+  scorecard: StageScorecardModel;
+  progress?: BirthProgressPayload;
+}) {
   const heartbeatLabel =
     scorecard.heartbeatSec != null
       ? `${scorecard.heartbeatSec}s ago`
@@ -115,9 +131,41 @@ function StageTabFields({ scorecard }: { scorecard: StageScorecardModel }) {
   const passMetricHint = formatMetricTarget(scorecard);
   const dataHint =
     scorecard.wallClockTradesPerMin != null
-      ? `~${scorecard.wallClockTradesPerMin.toLocaleString()} trades/min · sim speed, not calendar`
+      ? `~${scorecard.wallClockTradesPerMin.toLocaleString()} trades/min | sim speed, not calendar`
       : "Sim runs at hardware speed, not calendar time";
   const goalMet = isGoalMet(scorecard);
+  const entropyAlive = progress?.entropy_alive;
+  const policyEntropy = progress?.policy_entropy;
+  const entropyMissing =
+    entropyAlive === false && (policyEntropy == null || !Number.isFinite(policyEntropy));
+  // missing = telemetry dark; dead = measured below floor (Starship honesty).
+  const entropyValue =
+    entropyMissing
+      ? "missing"
+      : entropyAlive === false
+        ? "dead"
+        : entropyAlive === true
+          ? "alive"
+          : "—";
+  const entropyHint =
+    policyEntropy != null && Number.isFinite(policyEntropy)
+      ? `H=${Number(policyEntropy).toFixed(3)}`
+      : entropyMissing
+        ? "awaiting PPO entropy sample"
+        : progress?.starship_exploration_burst_active
+          ? "exploration burst active"
+          : undefined;
+  const entropyTone =
+    entropyMissing ? "warn" : entropyAlive === false ? "danger" : entropyAlive === true ? "ok" : "default";
+  const bestEdge = formatBirthEdgeScorePercent(progress?.best_edgescore);
+  const swarmReject = Boolean(progress?.swarm_rejected_no_lift);
+  const expectancy = formatBirthExpectancyPercent(progress?.expectancy_proxy);
+  const expectancyTone =
+    expectancy.value !== "—"
+      ? Number(progress?.expectancy_proxy) >= -0.15
+        ? "ok"
+        : "warn"
+      : "default";
 
   return (
     <div className="birth-intel-field-grid">
@@ -138,10 +186,28 @@ function StageTabFields({ scorecard }: { scorecard: StageScorecardModel }) {
         />
       ) : null}
       <BirthFieldCard
-        label="Pass metric"
+        label="EdgeScore"
         value={formatMetricValue(scorecard)}
         hint={passMetricHint || undefined}
         tone={scorecard.blockerDetail ? "warn" : goalMet ? "ok" : "default"}
+      />
+      <BirthFieldCard
+        label="Entropy"
+        value={entropyValue}
+        hint={entropyHint}
+        tone={entropyTone}
+      />
+      <BirthFieldCard
+        label="Expectancy"
+        value={expectancy.value}
+        hint={expectancy.hint}
+        tone={expectancyTone}
+      />
+      <BirthFieldCard
+        label="Champion EdgeScore"
+        value={bestEdge}
+        hint={swarmReject ? "frozen after swarm no-lift" : "best EdgeScore this stage"}
+        tone={swarmReject ? "warn" : "default"}
       />
       <BirthFieldCard
         label="Pass gate"
@@ -167,15 +233,23 @@ function StageTabFields({ scorecard }: { scorecard: StageScorecardModel }) {
       />
       <BirthFieldCard
         label="Regime mix"
-        value={scorecard.regimeDistributionSummary ?? "—"}
+        value={scorecard.regimeDistributionSummary?.trim() || "No regime mix yet"}
       />
       <BirthFieldCard
-        label="Rolling WR (500)"
-        value={
-          scorecard.rollingWinrate500 != null && scorecard.tradesDone >= 50
-            ? `${(scorecard.rollingWinrate500 * 100).toFixed(1)}%`
-            : "—"
+        label="Hygiene WR"
+        value={formatHygieneInstrumentValue(scorecard)}
+        hint={formatHygieneInstrumentHint(scorecard)}
+        tip="Pass hygiene: lifetime OR trusted rolling (≥400 covered) ≥ floor. Rolling is an alternate evidence path, not a vanity metric."
+        tone={
+          scorecard.hygieneWrEffective != null &&
+          scorecard.hygieneWrFloor != null &&
+          scorecard.hygieneWrEffective >= scorecard.hygieneWrFloor
+            ? "ok"
+            : scorecard.blockerDetail?.toLowerCase().includes("hygiene")
+              ? "warn"
+              : "default"
         }
+        className="birth-intel-field-span"
       />
       <BirthFieldCard
         label="Data window"
@@ -315,7 +389,7 @@ function RecoveryTabFields({
                     : ""
                 }${
                   scorecard.stallRemediationStep != null
-                    ? ` · step ${scorecard.stallRemediationStep}${
+                    ? ` | step ${scorecard.stallRemediationStep}${
                         scorecard.stallRemediationMaxSteps != null
                           ? `/${scorecard.stallRemediationMaxSteps}`
                           : ""
@@ -341,7 +415,7 @@ function RecoveryTabFields({
           <BirthFieldCard
             label="Winrate gate"
             value={`${(scorecard.stage1WinrateGate * 100).toFixed(0)}%`}
-            hint={`Recommended ${(scorecard.stage1WinrateRecommended * 100).toFixed(0)}% · REAL needs Evolution Proof + OOS ≥48%`}
+            hint={`Recommended ${(scorecard.stage1WinrateRecommended * 100).toFixed(0)}% | REAL needs Evolution Proof + OOS >=48%`}
             tone="warn"
             className="birth-intel-field-span"
           />
@@ -442,7 +516,7 @@ function EvolutionTabFields({ scorecard }: { scorecard: StageScorecardModel }) {
                     : null,
               ]
                 .filter(Boolean)
-                .join(" · ") || undefined
+                .join(" | ") || undefined
             : undefined
         }
         tone={scorecard.plateauQuarantineActive ? "accent" : "default"}
@@ -474,22 +548,22 @@ export function BirthStageScorecard({
           className,
         )}
       >
-        {scorecard.stageLabel} · {scorecard.tradesDone}/{scorecard.tradesRequired} trades
+        {scorecard.stageLabel} | {scorecard.tradesDone}/{scorecard.tradesRequired} trades
         {scorecard.metricValue != null
-          ? ` · ${scorecard.metricLabel} ${formatMetricValue(scorecard)}`
+          ? ` | ${scorecard.metricLabel} ${formatMetricValue(scorecard)}`
           : ""}
-        {scorecard.learningAttempt > 0 ? ` · attempt ${scorecard.learningAttempt}` : ""}
+        {scorecard.learningAttempt > 0 ? ` | attempt ${scorecard.learningAttempt}` : ""}
         {scorecard.patternsMined > 0
-          ? ` · ${scorecard.patternsMined.toLocaleString()} patterns`
+          ? ` | ${scorecard.patternsMined.toLocaleString()} patterns`
           : ""}
-        {scorecard.explorationActive ? " · explore" : ""}
+        {scorecard.explorationActive ? " | explore" : ""}
         {scorecard.stageWallRemainingSec != null
-          ? ` · wall ${Math.ceil(scorecard.stageWallRemainingSec / 60)}m`
+          ? ` | wall ${Math.ceil(scorecard.stageWallRemainingSec / 60)}m`
           : ""}
         {showAdaptationHud(scorecard) && scorecard.volumeGateStatus
-          ? ` · gate ${scorecard.volumeGateStatus}`
+          ? ` | gate ${scorecard.volumeGateStatus}`
           : ""}
-        {scorecard.retriesThisStage > 0 ? ` · adapt ${scorecard.retriesThisStage}` : ""}
+        {scorecard.retriesThisStage > 0 ? ` | adapt ${scorecard.retriesThisStage}` : ""}
       </p>
     );
   }
@@ -498,6 +572,13 @@ export function BirthStageScorecard({
     birthRunning,
     birthStatus,
   });
+  const acceptChampion = useBirthStore((s) => s.acceptChampion);
+  const wipeBirthData = useBirthStore((s) => s.wipeBirthData);
+  const actions = Array.isArray(progress?.attention_recommended_actions)
+    ? progress.attention_recommended_actions.map((a) => String(a))
+    : [];
+  const showAccept = actions.includes("accept_champion") || actions.includes("resume_champion");
+  const showWipe = actions.includes("wipe_and_retry");
   const defaultTab =
     scorecard.adaptationCycling ||
     (scorecard.stallRemediationCycle != null && scorecard.stallRemediationCycle > 0)
@@ -509,11 +590,37 @@ export function BirthStageScorecard({
   return (
     <div className={cn("birth-stage-scorecard flex min-h-0 flex-1 flex-col", className)}>
       {attention ? (
-        <div className="risk-envelope-banner risk-envelope-banner--info mx-0 mb-2 shrink-0">
+        <div className="risk-envelope-banner risk-envelope-banner--info mx-0 mb-2 shrink-0 space-y-2">
           <p className="text-[11px] leading-relaxed">
             <strong className="text-violet-200/90">Attention required:</strong>{" "}
             {String(progress?.attention_summary ?? "Lumina needs operator review.")}
           </p>
+          {showAccept || showWipe ? (
+            <div className="flex flex-wrap gap-2">
+              {showAccept ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 text-[11px]"
+                  onClick={() => void acceptChampion()}
+                >
+                  Accept champion
+                </Button>
+              ) : null}
+              {showWipe ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px]"
+                  onClick={() => void wipeBirthData({ preserveTickCache: true })}
+                >
+                  Wipe &amp; retry
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -526,7 +633,7 @@ export function BirthStageScorecard({
 
         <div className="risk-envelope-tab-body birth-stage-scorecard__tab-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
           <TabsContent value="stage" className="risk-envelope-tab-content mt-0">
-            <StageTabFields scorecard={scorecard} />
+            <StageTabFields scorecard={scorecard} progress={progress} />
           </TabsContent>
           <TabsContent value="recovery" className="risk-envelope-tab-content mt-0">
             <RecoveryTabFields

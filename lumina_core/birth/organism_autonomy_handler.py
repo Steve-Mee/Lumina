@@ -129,6 +129,15 @@ class OrganismAutonomyHandler:
                         ctx.get("remediation_cycles_exhausted", False)
                     ),
                     plateau_exhausted=bool(ctx.get("plateau_exhausted", False)),
+                    recovery_no_lift_brake=bool(ctx.get("recovery_no_lift_brake", False)),
+                    swarm_tournament_resolved=bool(
+                        ctx.get("swarm_tournament_resolved", False)
+                    ),
+                    starship_context=(
+                        dict(ctx.get("starship_context") or {})
+                        if isinstance(ctx.get("starship_context"), dict)
+                        else None
+                    ),
                 )
                 self._publish_decision(cid, decision)
             elif signal == "autonomy_get_state":

@@ -63,8 +63,20 @@ function resolveIntelChips(progress: BirthProgressPayload | undefined): {
   let wall: ChipState = "idle";
 
   if (scorecard) {
+    const edgeScore =
+      scorecard.passCriteriaId === "trend_edgescore" ||
+      scorecard.passCriteriaId === "range_edgescore" ||
+      scorecard.passCriteriaId === "mixed_edgescore";
     if (scorecard.blockerDetail) {
       gate = "warn";
+    } else if (edgeScore) {
+      // Composite pass: green only when volume gate met and no blocker.
+      gate =
+        scorecard.tradesRequired > 0 && scorecard.tradesDone >= scorecard.tradesRequired
+          ? "ok"
+          : scorecard.tradesDone > 0
+            ? "partial"
+            : "idle";
     } else if (
       scorecard.metricValue != null &&
       scorecard.metricTarget != null &&

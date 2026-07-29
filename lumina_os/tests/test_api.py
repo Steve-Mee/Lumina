@@ -170,8 +170,8 @@ def test_emergency_stop_orders_endpoint_returns_flatten_summary() -> None:
         "message": "Emergency flatten executed.",
     }
     with (
-        patch("backend.app._execute_cancel_all_orders", return_value=cancel_expected),
-        patch("backend.app._execute_emergency_flatten", return_value=flatten_expected),
+        patch("backend.emergency_order_endpoints._execute_cancel_all_orders", return_value=cancel_expected),
+        patch("backend.emergency_order_endpoints._execute_emergency_flatten", return_value=flatten_expected),
     ):
         response = client.post("/orders/emergency-stop", headers={"X-API-Key": "pytest"})
     assert response.status_code == 200
@@ -183,8 +183,8 @@ def test_emergency_stop_orders_aliases_map_to_same_handler() -> None:
     flatten_expected = {"status": "ok", "flattened_count": 1, "flattened": [], "message": "Emergency flatten executed."}
     cancel_expected = {"status": "ok", "cancelled_count": 4, "cancelled": [], "message": "Cancel-all executed."}
     with (
-        patch("backend.app._execute_emergency_flatten", return_value=flatten_expected),
-        patch("backend.app._execute_cancel_all_orders", return_value=cancel_expected),
+        patch("backend.emergency_order_endpoints._execute_emergency_flatten", return_value=flatten_expected),
+        patch("backend.emergency_order_endpoints._execute_cancel_all_orders", return_value=cancel_expected),
     ):
         r1 = client.post("/orders/flatten", headers={"X-API-Key": "pytest"})
         r2 = client.post("/orders/cancel-all", headers={"X-API-Key": "pytest"})

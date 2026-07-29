@@ -169,6 +169,98 @@ def resume_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:
     )
 
 
+def accept_champion_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:
+    """Operator accepts frozen champion after swarm no-lift; clear attention and resume."""
+    from datetime import datetime, timezone
+
+    from lumina_core.birth.checkpoint import (
+        read_checkpoint_payload,
+        write_checkpoint_payload,
+    )
+    from lumina_core.birth.progress import write_birth_progress
+    from lumina_launcher.services.birth_runner_start import start_birth
+
+    progress = dict(svc._load_progress())
+    stage = str(progress.get("stage", "") or "").strip().lower()
+    phase = str(progress.get("phase", "") or "").strip().lower()
+    if stage in {"paused", "interrupted"}:
+        stage = "training_running"
+        phase = "curriculum_learning"
+    progress.update(
+        {
+            "stage": stage or "training_running",
+            "phase": phase or "curriculum_learning",
+            "swarm_rejected_no_lift": False,
+            "swarm_champion_accepted": True,
+            "swarm_tournament_lift_ok": False,
+            "swarm_edgescore_lift_ok": False,
+            "needs_attention": False,
+            "attention_summary": "",
+            "attention_reason_code": "",
+            "attention_recommended_actions": [],
+            "policy_swarm_rejected_no_lift": False,
+            "policy_swarm_champion_accepted": True,
+            "user_initiated_stop": False,
+            "message": "Champion accepted after swarm no-lift — continuing curriculum.",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+    try:
+        write_birth_progress(
+            svc.workspace_root,
+            stage=str(progress.get("stage") or "training_running"),
+            phase=str(progress.get("phase") or "curriculum_learning"),
+            message=str(progress.get("message") or ""),
+            progress_pct=float(progress.get("progress_pct", 0) or 0),
+            cumulative_trades=int(progress.get("cumulative_trades", 0) or 0),
+            target_trades=int(progress.get("target_trades", 0) or 0),
+            ppo_steps=int(progress.get("ppo_steps", 0) or 0),
+            birth_start_time=float(progress.get("birth_start_time", 0) or 0),
+            swarm_rejected_no_lift=False,
+            swarm_champion_accepted=True,
+            swarm_tournament_lift_ok=False,
+            swarm_edgescore_lift_ok=False,
+            needs_attention=False,
+            attention_summary="",
+            attention_reason_code="",
+            attention_recommended_actions=[],
+            policy_swarm_rejected_no_lift=False,
+            policy_swarm_champion_accepted=True,
+            user_initiated_stop=False,
+            curriculum_stage=str(progress.get("curriculum_stage") or ""),
+        )
+    except Exception as exc:
+        logger.warning("birth.accept_champion.progress_write_failed: %s", exc)
+    try:
+        payload = read_checkpoint_payload(svc.workspace_root) or {}
+        metrics = dict(payload.get("stage_metrics") or {})
+        metrics["swarm_rejected_no_lift"] = False
+        metrics["swarm_champion_accepted"] = True
+        metrics["swarm_tournament_lift_ok"] = False
+        metrics["swarm_edgescore_lift_ok"] = False
+        metrics["policy_swarm_rejected_no_lift"] = False
+        metrics["policy_swarm_champion_accepted"] = True
+        payload["stage_metrics"] = metrics
+        if str(payload.get("phase", "") or "").strip().lower() in {
+            "stage_stalled",
+            "paused",
+            "plateau_evolution",
+            "stall_remediation",
+        }:
+            payload["phase"] = "curriculum_learning"
+        write_checkpoint_payload(svc.workspace_root, payload)
+    except Exception as exc:
+        logger.warning("birth.accept_champion.checkpoint_patch_failed: %s", exc)
+    return start_birth(
+        svc,
+        target_trades=target_trades,
+        force=False,
+        explicit_user_start=True,
+        continue_training=True,
+        reuse_data=True,
+    )
+
+
 def reuse_data_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:
     """Resume checkpoint and skip holdout preflight expansion when manifest hash matches."""
     from lumina_launcher.services.birth_runner_start import start_birth

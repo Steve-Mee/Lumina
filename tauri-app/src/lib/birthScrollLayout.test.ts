@@ -9,10 +9,15 @@ const birthPhaseCssSource = readFileSync(
   "utf8",
 );
 
-const birthPhaseSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthPhaseScreen.tsx"),
-  "utf8",
-);
+const birthPhaseRoot = join(dirname(fileURLToPath(import.meta.url)), "../components/birth");
+const birthPhaseSource = [
+  "BirthPhaseScreen.tsx",
+  "BirthPhaseGenesisBranch.tsx",
+  "BirthPhaseMissionBranch.tsx",
+  "BirthPhaseRecoveryOverlays.tsx",
+]
+  .map((name) => readFileSync(join(birthPhaseRoot, name), "utf8"))
+  .join("\n");
 
 const birthMissionControlSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthMissionControl.tsx"),
@@ -37,7 +42,7 @@ const birthAdvancedPanelSource = readFileSync(
 describe("birthScrollLayout", () => {
   it("uses a three-column mission grid on large screens", () => {
     expect(birthPhaseCssSource).toMatch(
-      /\.birth-mission-grid[\s\S]*@media \(min-width: 1024px\)[\s\S]*grid-template-columns:[\s\S]*minmax\(120px, 14%\)[\s\S]*minmax\(280px, 36%\)[\s\S]*minmax\(320px, 1fr\)/,
+      /\.birth-mission-grid[\s\S]*@media \(min-width: 1024px\)[\s\S]*grid-template-columns:[\s\S]*minmax\(100px, 12%\)[\s\S]*minmax\(260px, 34%\)[\s\S]*minmax\(320px, 1fr\)/,
     );
     expect(birthPhaseSource).toContain("BirthStageIntelColumn");
   });

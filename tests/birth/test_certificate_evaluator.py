@@ -7,7 +7,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from lumina_core.birth.birth_certificate import BirthCertificateThresholds
-from lumina_core.birth.certificate_evaluator import evaluate_holdout_certificate
+from lumina_core.birth.certificate_evaluator import (
+    build_certificate_failure_reasons,
+    evaluate_holdout_certificate,
+)
 
 
 @dataclass
@@ -17,6 +20,7 @@ class _FakeRollout:
     pnl_series: list[float] = field(default_factory=lambda: [10.0, -5.0, 8.0, 12.0, -3.0, 6.0])
     constitution_violations: int = 0
     regimes_seen: set[str] = field(default_factory=lambda: {"NEUTRAL"})
+    trajectories: list[dict[str, Any]] = field(default_factory=list)
 
 
 @pytest.fixture
@@ -73,6 +77,58 @@ def test_certificate_evaluator_passes_when_regimes_met(monkeypatch: pytest.Monke
     )
     assert set(result["regimes_covered"]) == {"TREND_UP", "TREND_DOWN", "NEUTRAL"}
     assert result["certificate_passed"] is True
+
+
+@pytest.mark.unit
+def test_oos_regime_empty_with_trajectory_evidence() -> None:
+    reasons = build_certificate_failure_reasons(
+        real_data_pct=98.0,
+        winrate=0.55,
+        sharpe=1.0,
+        drawdown=5.0,
+        regimes=["TREND_UP", "RANGE", "NEUTRAL"],
+        holdout_trades=80,
+        constitution_violations=0,
+        thresholds=BirthCertificateThresholds(min_regimes=3, min_holdout_trades=50),
+        regime_breakdown={
+            "TREND_UP": {"trades": 40, "wins": 22, "winrate": 0.55},
+            "NEUTRAL": {"trades": 20, "wins": 10, "winrate": 0.5},
+            # RANGE claimed but empty
+        },
+    )
+    assert any(r.startswith("oos_regime_empty:RANGE") for r in reasons)
+
+
+@pytest.mark.unit
+def test_certificate_evaluator_regime_empty_from_rollout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_evaluator.run_policy_rollout",
+        lambda **kwargs: _FakeRollout(
+            regimes_seen={"TREND_UP", "RANGE", "NEUTRAL"},
+            trades=60,
+            wins=35,
+            pnl_series=[5.0, 4.0, 3.0, 2.0, 6.0, 7.0, 8.0, 1.0],
+            trajectories=[
+                {"regime": "TREND_UP", "pnl": 5.0},
+                {"regime": "TREND_UP", "pnl": 4.0},
+                {"regime": "NEUTRAL", "pnl": 1.0},
+                # RANGE claimed via regimes_seen but no trajectory trades
+            ],
+        ),
+    )
+    result = evaluate_holdout_certificate(
+        runtime=MagicMock(),
+        holdout_data=[{"last": 5000.0}],
+        policy=None,
+        real_data_pct=98.0,
+        holdout_days=10,
+        constitution_violations=0,
+        workspace_root=".",
+        thresholds=BirthCertificateThresholds(min_holdout_trades=50, min_regimes=3),
+    )
+    assert result["certificate_passed"] is False
+    assert any(str(r).startswith("oos_regime_empty") for r in result["failure_reasons"])
+    assert "TREND_UP" in result["oos_regime_breakdown"]
 
 
 @pytest.mark.unit

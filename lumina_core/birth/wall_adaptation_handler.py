@@ -122,6 +122,12 @@ class WallAdaptationHandler:
         )
         wr_stag = int(ctx.get("winrate_stagnation_count", 0))
         hold_stag = int(ctx.get("hold_stagnation_count", 0))
+        raw_entropy = ctx.get("policy_entropy", None)
+        policy_entropy: float | None
+        try:
+            policy_entropy = float(raw_entropy) if raw_entropy is not None else None
+        except (TypeError, ValueError):
+            policy_entropy = None
         result = evaluate_wall_trigger(
             stage=stage,
             stage_trades=int(ctx.get("stage_trades", 0)),
@@ -151,6 +157,8 @@ class WallAdaptationHandler:
                 or 0
             ),
             cfg=eval_cfg,
+            policy_entropy=policy_entropy,
+            ppo_steps=int(ctx.get("ppo_steps", 0) or 0),
         )
         if not result.triggered:
             self._set_response(cid, "trigger", None)

@@ -106,6 +106,9 @@ def evaluate_terminal_stall(
     recommended_recovery_action: str = "",
     remediation_cycles_exhausted: bool = False,
     plateau_exhausted: bool = False,
+    recovery_no_lift_brake: bool = False,
+    swarm_tournament_resolved: bool = False,
+    starship_context: dict[str, Any] | None = None,
 ) -> AutonomyDecision:
     """Decide how to handle a terminal stall without human gate when autonomy enabled."""
     if not cfg.autonomous_recovery_enabled:
@@ -134,6 +137,21 @@ def evaluate_terminal_stall(
     )
     recommended = str(recommended_recovery_action or autonomy_state.last_recommended_action or "").strip()
     autonomy_state.last_recommended_action = recommended
+
+    # Fail-closed: ladder no-lift → operator, unless swarm tournament already resolved
+    # (commit / champion_accepted) so twin full_auto may CONTINUE without theater.
+    if recovery_no_lift_brake and not bool(swarm_tournament_resolved):
+        return AutonomyDecision(
+            dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+            needs_attention=True,
+            retryable=True,
+            stall_reason=stall_reason,
+            autonomy_metrics=autonomy_state.to_metrics(),
+            message=(
+                "Recovery ladder completed without best-winrate lift — "
+                "operator attention required."
+            ),
+        )
 
     circuit_breaker = record_stall_signature(
         autonomy_state.death_spiral,
@@ -177,6 +195,7 @@ def evaluate_terminal_stall(
                 except Exception:
                     pass
 
+            starship = dict(starship_context or {})
             proxy = PolicyDNA.create(
                 prompt_id="birth_autonomy_twin_gate",
                 version="autonomy",
@@ -185,6 +204,11 @@ def evaluate_terminal_stall(
                     "stall_reason": stall_reason,
                     "fitness": fitness_signal,
                     "trades": stage_trades,
+                    "edgescore": starship.get("edgescore"),
+                    "best_edgescore": starship.get("best_edgescore"),
+                    "swarm_rejected_no_lift": starship.get("swarm_rejected_no_lift"),
+                    "swarm_champion_accepted": starship.get("swarm_champion_accepted"),
+                    "swarm_tournament_resolved": bool(swarm_tournament_resolved),
                 },
                 fitness_score=float(fitness_signal),
                 generation=0,
@@ -204,6 +228,7 @@ def evaluate_terminal_stall(
             t_risks = list(twin_res.get("risk_flags", []) or [])
             twin_mode = str(twin_res.get("mode") or getattr(approval_twin, "mode", "shadow") or "shadow")
             high_conf = t_conf >= 0.80
+            from lumina_core.birth.birth_control_plane import twin_continue_eligible
 
             # Explicit fail-closed subordination of twin: respect constitution_violations already
             # accumulated from BirthConstitutionGuard / trading constitution in this stage.
@@ -214,6 +239,15 @@ def evaluate_terminal_stall(
                 if "prior_constitution_violations" not in t_risks:
                     t_risks.append("prior_constitution_violations")
                 high_conf = False
+
+            twin_continue_ok = twin_continue_eligible(
+                cfg=cfg,
+                twin_mode=twin_mode,
+                twin_executable=t_executable,
+                twin_confidence=t_conf,
+                swarm_resolved=bool(swarm_tournament_resolved),
+                constitution_risks=bool(t_risks) or int(constitution_violations or 0) > 0,
+            )
 
             # Note: the proxy DNA here is synthetic (birth stage metadata). Real trading DNA
             # mutations are always routed through ConstitutionalGuard.check_pre_* + SandboxedMutationExecutor
@@ -234,7 +268,7 @@ def evaluate_terminal_stall(
             if high_conf and t_raw and not t_executable:
                 # Propose only / assisted approve — do not sole-auto; fall through to other recovery.
                 pass
-            elif high_conf and t_rec and t_executable and len(t_risks) == 0:
+            elif twin_continue_ok and t_rec:
                 autonomy_state.autonomous_recovery_count += 1
                 return AutonomyDecision(
                     dispatch=RecoveryDispatch.CONTINUE_LOOP,

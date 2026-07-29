@@ -26,6 +26,10 @@ def _stage1_cfg() -> BirthCurriculumConfig:
     return BirthCurriculumConfig(
         stage1_trend_trades=100,
         allow_provisional_pass=False,
+        stage1_edgescore_enabled=True,
+        stage1_entropy_floor=0.0,
+        stage1_hold_ratio_min=0.05,
+        stage1_hold_ratio_max=0.85,
     )
 
 
@@ -35,12 +39,13 @@ def _valid_stage1_receipt(*, trades: int = 100, wins: int = 50) -> StagePassRece
         CurriculumStage.STAGE1_TREND,
         trades=trades,
         wins=wins,
-        hold_signals=0,
+        hold_signals=max(1, trades // 5),
         total_signals=trades,
         constitution_violations=0,
         target_trades=100,
         cfg=cfg,
         allow_provisional=False,
+        policy_entropy=0.25,
     )
     assert result.passed
     return receipt_from_stage_result(CurriculumStage.STAGE1_TREND, result, cfg=cfg)
@@ -91,7 +96,9 @@ def test_low_winrate_receipt_fails_re_eval() -> None:
         training_mode="certified",
     )
     assert ok is False
-    assert reason.startswith("stage1_winrate_below_gate")
+    assert reason.startswith("stage1_winrate_below_gate") or reason.startswith(
+        "stage1_hygiene_below_floor"
+    )
 
 
 @pytest.mark.unit

@@ -137,3 +137,69 @@ Expliciete, fail-closed scheiding op alle kritieke paden reduceert de kans op co
 **Doel**: Deze lijst moet over tijd korter en minder kritiek worden, niet langer. Als hij groeit of de items vaag blijven, faalt ons zelfverbeteringsproces.
 
 **Huidige focus (2026-05)**: `current-reality/evolutionary-debt.md` zelf was lang het zwakste DNA-bestand (meerdere Guardian scans op 7.0 of lager, inclusief LLM review van 6/10). Na deze verbetering steeg de Truth Density naar 9.4/10 (Guardian run 2026-05-29). Dit blijft een focuspunt totdat het consistent boven 8.5 scoort en concrete follow-up acties laat zien.
+
+## Wave A residual (2026-07-28)
+
+- ~150+ files still >=350 LOC outside Wave A hotspots (birth/twin/shadow/schemas/app splits reduced selected modules; bulk of large-file debt remains for Wave B).
+- Hybrid quarantine inventory: see `docs/hybrid-quarantine.md` (defaults preserve legacy stub outcomes).
+- Intentionally deferred: `birth/engine.py` composition root, `scripts/dna_guardian/validate_dna.py`, Tauri UI gods, test megasuites.
+
+## Wave B residual / B2 (2026-07-28)
+
+Wave B1 + safety-critical (SC) facade splits completed for: birth (engine, config, certificate_pipeline, starship_edgescore, plateau_terminal, plateau_evolution_handler, stage_loop_data_ops, stage_loop_session), evolution (orchestrator_core, approval_twin_bus, approval_twin_evaluators), engine (market_data_service), runtime (headless_runtime, headless_production), ppo_trainer, risk (risk_controller + risk_controller_status, decision_lineage), and safety/trading_constitution. runtime_entrypoint remains oversized pending B2.
+
+Deferred Wave B2 targets:
+- backtester_engine (and related backtest god surfaces)
+- admin_endpoints_core
+- observability_service
+- twin_metrics_store
+- twin_training_service
+- broker bridge / fabric modules
+- order_gatekeeper
+- launcher fabric diagnostics
+- remaining 400-600 LOC engine services (incl. further runtime_entrypoint reduction)
+
+## Wave B2 complete / B3 residual (2026-07-28)
+
+Wave B2 facade splits verified complete for target modules (PR-C5 smoke + LOC + hybrid inventory + focused pytest):
+
+- `admin_endpoints_core`, `backtester_engine`, `observability_service`, `twin_metrics_store`, `twin_training_service`
+- `fabric_connection_diagnostics`, `reasoning_service`, `proposal_generator`
+- broker: `bridge_service`, `fabric_client`; engine: `runtime_entrypoint`
+
+Hybrid quarantine inventory defaults remain fail-soft / legacy-preserving (`require_true_backtest` / `require_trace_verdict` and related inventory keys default `false`; see `docs/hybrid-quarantine.md`).
+
+Wave B3 leftovers:
+
+- `order_gatekeeper` (already under 400 LOC; optional further polish only)
+- `cross_trade_broker` optional polish
+- remaining engine modules still >=500 LOC: `supervisor_phase_state_machine`, `market_data_history`, `performance_validator`, `local_inference_engine`, `meta_agent_core`, `sim_stability_checker`
+- `scripts` / `validate_dna` (DNA guardian) deferred
+- Tauri UI gods deferred
+
+## Wave B3 complete / Wave C residual (2026-07-28)
+
+Wave B3 PR-D3 engine facade splits verified complete for:
+
+- `supervisor_phase_state_machine` (133 LOC)
+- `market_data_history` (185 LOC)
+- `performance_validator` (394 LOC)
+- `local_inference_engine` (382 LOC)
+- `meta_agent_core` (366 LOC)
+- `sim_stability_checker` (397 LOC)
+
+Hybrid quarantine inventory defaults remain fail-soft / legacy-preserving (`require_true_backtest` / `require_trace_verdict` still `false`; see `docs/hybrid-quarantine.md`). Focused pytest for this wave: 29 passed.
+
+Wave C leftovers:
+
+- `scripts/dna_guardian/validate_dna.py`
+- Tauri UI gods: `birthStageScorecard`, `BotConfigForm`, `BirthPhaseScreen`, `ApprovalTwinTrainPanel`, `BirthHelixVisual`
+- optional `order_gatekeeper` / `cross_trade` polish under 500 LOC
+
+## Wave C complete (2026-07-29)
+Note validate_dna + five Tauri façades done with LOC. Residual: optional order_gatekeeper/cross_trade polish under 500 only; modularization campaign waves A–C closed for declared god targets.
+
+## Optional polish + Hybrid SIM opt-in (2026-07-29)
+- Light-split: `admission_risk_steps.py` + `cross_trade_payload.py` (public façades preserved).
+- Hybrid SIM/PAPER strict profile opt-in: env `LUMINA_HYBRID_STRICT` or `hybrid_quarantine.apply_strict_in_sim` (default false). REAL ignores; per-gate committed defaults unchanged.
+- Modularization campaign waves A–C + optional polish closed for declared targets.

@@ -1,243 +1,33 @@
-from __future__ import annotations
-import logging
+"""SIM stability checker façade — history I/O in ``sim_stability_history``; metrics/report here."""
 
-import json
-from dataclasses import dataclass
+from __future__ import annotations
+
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
-_STATE_DIR = Path("state")
-_TEST_RUNS_DIR = _STATE_DIR / "test_runs"
-_HISTORY_PATH = _STATE_DIR / "sim_stability_history.jsonl"
-_GREEN = "\x1b[32m"
-_RED = "\x1b[31m"
-_RESET = "\x1b[0m"
+from .sim_stability_history import (
+    SimSummaryItem,
+    _STATE_DIR_DEFAULT,
+    _TEST_RUNS_DIR_DEFAULT,
+    _HISTORY_PATH_DEFAULT,
+    _safe_float,
+    _safe_int,
+    _parse_ts,
+    _dedupe_key,  # noqa: F401 — re-exported for tests/monkeypatch
+    _iter_summary_paths,  # noqa: F401 — re-exported for tests/monkeypatch
+    _load_evolution_rows,
+    _collect_sim_summaries,
+    _load_history_rows,
+    append_history_entry_for_summary,
+    sync_history_from_summaries,
+    append_history_entry_for_latest_summary,
+)
 
-
-@dataclass(frozen=True)
-class SimSummaryItem:
-    path: str
-    timestamp: datetime
-    summary: dict[str, Any]
-
-
-def _safe_float(value: Any, default: float = 0.0) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _safe_int(value: Any, default: int = 0) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def _parse_ts(raw: Any) -> datetime | None:
-    if raw is None:
-        return None
-    text = str(raw).strip()
-    if not text:
-        return None
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        dt = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
-
-
-def _iter_summary_paths() -> list[Path]:
-    paths: list[Path] = []
-    paths.extend(sorted(_STATE_DIR.glob("*.json")))
-    if _TEST_RUNS_DIR.exists():
-        paths.extend(sorted(_TEST_RUNS_DIR.glob("*.json")))
-    # Remove duplicates while preserving order.
-    seen: set[str] = set()
-    unique: list[Path] = []
-    for p in paths:
-        key = _dedupe_key(p)
-        if key not in seen:
-            unique.append(p)
-            seen.add(key)
-    return unique
-
-
-def _dedupe_key(path: Path) -> str:
-    """Build a stable dedupe key without forcing expensive/fragile realpath resolution."""
-    try:
-        absolute = path.absolute()
-    except Exception:
-        logging.exception("Unhandled broad exception fallback in lumina_core/engine/sim_stability_checker.py:75")
-        absolute = path
-    return str(absolute).lower().replace("\\", "/")
-
-
-def _load_summary(path: Path) -> dict[str, Any] | None:
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        logging.exception("Unhandled broad exception fallback in lumina_core/engine/sim_stability_checker.py:83")
-        return None
-    if not isinstance(payload, dict):
-        return None
-    return payload
-
-
-def _is_sim_summary(path: Path, summary: dict[str, Any]) -> bool:
-    mode = str(summary.get("mode", "")).strip().lower()
-    if mode == "sim":
-        return True
-    name = path.name.lower()
-    return "_sim_" in name or name.startswith("summary_sim_")
-
-
-def _load_evolution_rows() -> list[dict[str, Any]]:
-    path = _STATE_DIR / "evolution_log.jsonl"
-    if not path.exists():
-        return []
-    rows: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        raw = line.strip()
-        if not raw:
-            continue
-        try:
-            obj = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(obj, dict):
-            rows.append(obj)
-    rows.sort(key=lambda r: _parse_ts(r.get("timestamp")) or datetime.min.replace(tzinfo=timezone.utc))
-    return rows
-
-
-def _collect_sim_summaries(limit: int = 0) -> list[SimSummaryItem]:
-    items: list[SimSummaryItem] = []
-    for path in _iter_summary_paths():
-        summary = _load_summary(path)
-        if summary is None:
-            continue
-        if not _is_sim_summary(path, summary):
-            continue
-        ts = _parse_ts(summary.get("finished_at") or summary.get("started_at"))
-        if ts is None:
-            ts = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
-        items.append(SimSummaryItem(path=str(path), timestamp=ts, summary=summary))
-    items.sort(key=lambda x: x.timestamp)
-    if limit > 0:
-        items = items[-limit:]
-    return items
-
-
-def _load_history_rows() -> list[dict[str, Any]]:
-    if not _HISTORY_PATH.exists():
-        return []
-
-    rows: list[dict[str, Any]] = []
-    for line in _HISTORY_PATH.read_text(encoding="utf-8", errors="replace").splitlines():
-        raw = line.strip()
-        if not raw:
-            continue
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(payload, dict):
-            rows.append(payload)
-
-    rows.sort(key=lambda r: _parse_ts(r.get("recorded_at")) or datetime.min.replace(tzinfo=timezone.utc))
-    return rows
-
-
-def _history_row_for_summary(summary: dict[str, Any], *, source_path: str | None = None) -> dict[str, Any]:
-    ts = _parse_ts(summary.get("finished_at") or summary.get("started_at")) or datetime.now(timezone.utc)
-    trades = _safe_int(summary.get("total_trades"))
-    pnl = _safe_float(summary.get("pnl_realized"))
-    expectancy = (pnl / float(trades)) if trades > 0 else 0.0
-    return {
-        "day": ts.date().isoformat(),
-        "recorded_at": ts.isoformat(),
-        "source_summary_path": source_path,
-        "mode": str(summary.get("mode", "")).strip().lower(),
-        "broker_mode": str(summary.get("broker_mode", "")).strip().lower(),
-        "duration_minutes": _safe_float(summary.get("duration_minutes")),
-        "aggressive_sim": bool(summary.get("aggressive_sim")),
-        "sim_overnight_mode": bool(summary.get("sim_overnight_mode")),
-        "pnl_realized": pnl,
-        "total_trades": trades,
-        "expectancy": expectancy,
-        "sharpe_annualized": _safe_float(summary.get("sharpe_annualized")),
-        "risk_events": _safe_int(summary.get("risk_events")),
-        "var_breach_count": _safe_int(summary.get("var_breach_count")),
-        "evolution_proposals": _safe_int(summary.get("evolution_proposals")),
-    }
-
-
-def append_history_entry_for_summary(summary: dict[str, Any], *, source_path: str | None = None) -> dict[str, Any]:
-    mode = str(summary.get("mode", "")).strip().lower()
-    if mode != "sim":
-        return {"appended": False, "reason": "non_sim_summary"}
-
-    row = _history_row_for_summary(summary, source_path=source_path)
-    day = str(row.get("day", ""))
-    existing_days = {str(r.get("day", "")).strip() for r in _load_history_rows()}
-    if day in existing_days:
-        return {"appended": False, "reason": "day_already_recorded", "day": day}
-
-    _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with _HISTORY_PATH.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, ensure_ascii=True) + "\n")
-    return {"appended": True, "day": day, "path": str(_HISTORY_PATH)}
-
-
-def sync_history_from_summaries() -> dict[str, Any]:
-    """Backfill append-only daily history rows from all available SIM summaries."""
-    summaries = _collect_sim_summaries(limit=0)
-    if not summaries:
-        return {"appended": 0, "skipped_existing": 0, "source_summary_count": 0, "days_considered": 0}
-
-    existing_days = {str(r.get("day", "")).strip() for r in _load_history_rows()}
-    # Keep the latest summary per day as that day's canonical snapshot.
-    latest_by_day: dict[str, SimSummaryItem] = {}
-    for item in summaries:
-        day = item.timestamp.date().isoformat()
-        prev = latest_by_day.get(day)
-        if prev is None or item.timestamp > prev.timestamp:
-            latest_by_day[day] = item
-
-    appended = 0
-    skipped_existing = 0
-    for day in sorted(latest_by_day.keys()):
-        if day in existing_days:
-            skipped_existing += 1
-            continue
-        item = latest_by_day[day]
-        result = append_history_entry_for_summary(item.summary, source_path=item.path)
-        if bool(result.get("appended", False)):
-            appended += 1
-            existing_days.add(day)
-
-    return {
-        "appended": appended,
-        "skipped_existing": skipped_existing,
-        "source_summary_count": len(summaries),
-        "days_considered": len(latest_by_day),
-        "history_path": str(_HISTORY_PATH),
-    }
-
-
-def append_history_entry_for_latest_summary() -> dict[str, Any]:
-    summaries = _collect_sim_summaries(limit=0)
-    if not summaries:
-        return {"appended": False, "reason": "no_sim_summaries"}
-    latest = summaries[-1]
-    return append_history_entry_for_summary(latest.summary, source_path=latest.path)
+# Façade-owned path constants (monkeypatch target for tests).
+_STATE_DIR = _STATE_DIR_DEFAULT
+_TEST_RUNS_DIR = _TEST_RUNS_DIR_DEFAULT
+_HISTORY_PATH = _HISTORY_PATH_DEFAULT
+_GREEN, _RED, _RESET = "\x1b[32m", "\x1b[31m", "\x1b[0m"
 
 
 def _daily_expectancy_from_history(history_rows: list[dict[str, Any]]) -> dict[str, dict[str, float]]:
@@ -287,16 +77,20 @@ def _compute_rolling_positive_expectancy(
     return streak, details, missing, latest_day
 
 
-def _extended_sharpe_status(sim_summaries: list[SimSummaryItem]) -> dict[str, Any]:
-    extended: list[SimSummaryItem] = []
-    for item in sim_summaries:
-        summary = item.summary
-        duration = _safe_float(summary.get("duration_minutes"))
-        overnight = bool(summary.get("sim_overnight_mode"))
-        aggressive = bool(summary.get("aggressive_sim"))
-        if duration >= 120.0 or overnight or aggressive:
-            extended.append(item)
+def _is_extended_run(summary: dict[str, Any]) -> bool:
+    return (
+        _safe_float(summary.get("duration_minutes")) >= 120.0
+        or bool(summary.get("sim_overnight_mode"))
+        or bool(summary.get("aggressive_sim"))
+    )
 
+
+def _extended_runs(sim_summaries: list[SimSummaryItem]) -> list[SimSummaryItem]:
+    return [item for item in sim_summaries if _is_extended_run(item.summary)]
+
+
+def _extended_sharpe_status(sim_summaries: list[SimSummaryItem]) -> dict[str, Any]:
+    extended = _extended_runs(sim_summaries)
     if not extended:
         return {
             "ok": False,
@@ -305,10 +99,8 @@ def _extended_sharpe_status(sim_summaries: list[SimSummaryItem]) -> dict[str, An
             "extended_run_count": 0,
             "latest_path": None,
         }
-
     latest = extended[-1]
-    latest_summary = latest.summary
-    latest_sharpe = _safe_float(latest_summary.get("sharpe_annualized"))
+    latest_sharpe = _safe_float(latest.summary.get("sharpe_annualized"))
     return {
         "ok": latest_sharpe > 1.8,
         "latest_sharpe": latest_sharpe,
@@ -319,16 +111,7 @@ def _extended_sharpe_status(sim_summaries: list[SimSummaryItem]) -> dict[str, An
 
 
 def _consistent_sharpe_status(sim_summaries: list[SimSummaryItem]) -> dict[str, Any]:
-    extended: list[SimSummaryItem] = []
-    for item in sim_summaries:
-        summary = item.summary
-        duration = _safe_float(summary.get("duration_minutes"))
-        overnight = bool(summary.get("sim_overnight_mode"))
-        aggressive = bool(summary.get("aggressive_sim"))
-        if duration >= 120.0 or overnight or aggressive:
-            extended.append(item)
-
-    tail = extended[-5:]
+    tail = _extended_runs(sim_summaries)[-5:]
     sharpe_values = [_safe_float(item.summary.get("sharpe_annualized")) for item in tail]
     avg = (sum(sharpe_values) / float(len(sharpe_values))) if sharpe_values else 0.0
     return {
@@ -597,6 +380,15 @@ def format_stability_report(report: dict[str, Any], *, color: bool = False) -> s
 
     return "\n".join(lines)
 
+
+__all__ = [
+    "SimSummaryItem",
+    "append_history_entry_for_summary",
+    "append_history_entry_for_latest_summary",
+    "sync_history_from_summaries",
+    "generate_stability_report",
+    "format_stability_report",
+]
 
 if __name__ == "__main__":
     append_info = append_history_entry_for_latest_summary()

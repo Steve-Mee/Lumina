@@ -12,6 +12,10 @@ _BIRTH = _ROOT / "lumina_core" / "birth"
 _EXECUTOR = _BIRTH / "stage_rollout_executor.py"
 _ROLLOUT = _BIRTH / "stage_loop_rollout.py"
 _SESSION = _BIRTH / "stage_loop_session.py"
+_SESSION_RUNNER = _BIRTH / "stage_loop_session_runner.py"
+_DATA_OPS = _BIRTH / "stage_loop_data_ops.py"
+_DATA_CACHE = _BIRTH / "stage_loop_data_cache.py"
+_DATA_ENRICH = _BIRTH / "stage_loop_data_enrich.py"
 _RECOVERY = _BIRTH / "stage_loop_recovery.py"
 _RECOVERY_MIXIN = _BIRTH / "stage_loop_recovery_mixin.py"
 _RECOVERY_TERMINAL = _BIRTH / "stage_loop_recovery_terminal.py"
@@ -45,13 +49,32 @@ def test_stage_loop_rollout_is_thin_entrypoint() -> None:
 def test_stage_loop_session_hosts_orchestration() -> None:
     text = _SESSION.read_text(encoding="utf-8")
     assert "class StageLoopSession" in text
-    assert "BirthBusClient" in text
+    assert "StageLoopSessionRunnerMixin" in text
     assert "def run_stage_research_loop" in text
+    # Heavy run() body lives in runner; composition root stays thin.
+    assert _SESSION.stat().st_size / 1024 < 15, "stage_loop_session.py too large"
+    runner = _SESSION_RUNNER.read_text(encoding="utf-8")
+    assert "class StageLoopSessionRunnerMixin" in runner
+    assert "def run(" in runner
+    assert "BirthBusClient" in runner
+
+
+@pytest.mark.unit
+def test_stage_loop_data_ops_is_composite_facade() -> None:
+    text = _DATA_OPS.read_text(encoding="utf-8")
+    assert "class StageLoopDataOpsMixin" in text
+    assert "StageLoopDataCacheMixin" in text
+    assert "StageLoopDataEnrichMixin" in text
+    assert _DATA_OPS.stat().st_size / 1024 < 5, "stage_loop_data_ops.py too large"
+    assert "class StageLoopDataCacheMixin" in _DATA_CACHE.read_text(encoding="utf-8")
+    assert "class StageLoopDataEnrichMixin" in _DATA_ENRICH.read_text(encoding="utf-8")
 
 
 @pytest.mark.unit
 def test_stage_loop_recovery_exports_adaptation_helpers() -> None:
+    """Compat façade keeps historical names; mixins own live recovery."""
     text = _RECOVERY.read_text(encoding="utf-8")
+    assert "thin compatibility" in text.lower() or "compat" in text.lower()
     for symbol in (
         "try_adaptive_stall_recovery",
         "force_never_stop_recovery",
@@ -59,6 +82,10 @@ def test_stage_loop_recovery_exports_adaptation_helpers() -> None:
         "adaptation_failure_key",
     ):
         assert symbol in text
+    # Live ownership: adaptation mixin methods
+    adapt = _RECOVERY_ADAPTATION.read_text(encoding="utf-8")
+    assert "_try_adaptive_stall_recovery" in adapt
+    assert "_force_never_stop_recovery" in adapt
 
 
 @pytest.mark.unit

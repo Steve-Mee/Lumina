@@ -611,10 +611,15 @@ def test_reconcile_orphaned_marks_interrupted(tmp_path: Path) -> None:
     svc = BirthService()
     svc.configure_workspace(tmp_path)
     reconciled = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
-    assert reconciled.get("stage") == "interrupted"
-    assert reconciled.get("phase") == "restart_required"
+    # Starship pause SSOT: orphan reconcile uses paused + user_initiated_stop on both files.
+    assert reconciled.get("stage") == "paused"
+    assert reconciled.get("phase") == "paused"
+    assert reconciled.get("user_initiated_stop") is True
     assert reconciled.get("prior_stage") == "loading_data"
     assert "Hervat checkpoint" in str(reconciled.get("message", ""))
+    legacy = json.loads((tmp_path / "state" / "first_boot_progress.json").read_text(encoding="utf-8"))
+    assert legacy.get("stage") == "paused"
+    assert legacy.get("user_initiated_stop") is True
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -651,7 +656,8 @@ def test_reconcile_orphaned_skips_attention_when_checkpoint_exists(tmp_path: Pat
     svc = BirthService()
     svc.configure_workspace(tmp_path)
     reconciled = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
-    assert reconciled.get("stage") == "interrupted"
+    assert reconciled.get("stage") == "paused"
+    assert reconciled.get("user_initiated_stop") is True
     assert not reconciled.get("needs_attention")
     BirthService._instance = None  # type: ignore[attr-defined]
 
@@ -673,6 +679,98 @@ def test_sanitize_running_progress_strips_stale_attention(tmp_path: Path) -> Non
     assert "needs_attention" not in sanitized
     assert "attention_summary" not in sanitized
     assert sanitized.get("user_initiated_stop") is False
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_get_status_reconciles_orphaned_progress_after_dead_runner(tmp_path: Path) -> None:
+    """Status poll must pause orphaned training so UI can offer Resume/Wipe."""
+    BirthService._instance = None  # type: ignore[attr-defined]
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    # Simulate a crash after workspace bind: active progress, no live runner.
+    orphan = {
+        "timestamp": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+        "stage": "training_running",
+        "phase": "curriculum_learning",
+        "target_trades": 25000,
+        "trades_done": 288,
+        "ppo_steps": 12000,
+        "expectancy_proxy": -1493.581188,
+    }
+    (tmp_path / "state" / "lumina_birth_progress.json").write_text(
+        json.dumps(orphan, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    (tmp_path / "state" / "lumina_birth_checkpoint.json").write_text(
+        json.dumps(
+            {
+                "version": 3,
+                "ppo_steps": 12000,
+                "cumulative_trades": 288,
+                "curriculum_stage": "stage1_trend",
+                "phase": "curriculum_learning",
+            },
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    status = svc.get_status()
+    assert status["status"] == "interrupted"
+    assert status.get("live") is False
+    progress = status.get("progress") or {}
+    assert progress.get("user_initiated_stop") is True
+    assert progress.get("stage") == "paused"
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_reconcile_orphaned_plateau_evolution_phase(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    stale_ts = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    orphan = {
+        "timestamp": stale_ts,
+        "stage": "stage_stalled",
+        "phase": "plateau_evolution",
+        "curriculum_stage": "stage1_trend",
+        "target_trades": 25000,
+        "trades_done": 2753,
+    }
+    (tmp_path / "state" / "lumina_birth_progress.json").write_text(
+        json.dumps(orphan, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    reconciled = json.loads(
+        (tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8")
+    )
+    assert reconciled.get("stage") == "paused"
+    assert reconciled.get("phase") == "paused"
+    assert reconciled.get("user_initiated_stop") is True
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_sanitize_preserves_swarm_no_lift_attention(tmp_path: Path) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    progress = {
+        "phase": "curriculum_learning",
+        "stage": "training_running",
+        "needs_attention": True,
+        "attention_summary": "Swarm tournament produced no EdgeScore lift",
+        "attention_reason_code": "swarm_no_edgescore_lift",
+        "swarm_rejected_no_lift": True,
+        "user_initiated_stop": False,
+    }
+    sanitized = svc._sanitize_running_progress(progress)
+    assert sanitized.get("needs_attention") is True
+    assert sanitized.get("attention_reason_code") == "swarm_no_edgescore_lift"
+    assert sanitized.get("swarm_rejected_no_lift") is True
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -744,7 +842,9 @@ def test_stop_birth_sets_pause_flag_when_progress_active(
     assert result["status"] in {"stopping", "stopped"}
     progress = svc._load_progress()
     assert progress.get("user_initiated_stop") is True
-    assert progress.get("phase") == "restart_required"
+    # Starship pause SSOT: paused (not restart_required) on both progress files.
+    assert progress.get("stage") == "paused"
+    assert progress.get("phase") == "paused"
     BirthService._instance = None  # type: ignore[attr-defined]
 
 

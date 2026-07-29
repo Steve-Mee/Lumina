@@ -8,15 +8,22 @@ import { describe, expect, it } from "vitest";
 
 
 
-const birthPhaseSource = readFileSync(
+const birthPhaseRoot = join(dirname(fileURLToPath(import.meta.url)), "../components/birth");
+const birthHooksRoot = join(dirname(fileURLToPath(import.meta.url)), "../hooks");
 
-  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthPhaseScreen.tsx"),
-
-  "utf8",
-
-);
-
-
+/** Birth phase UX surface after Wave C PR-E3 split (shell + branches + hooks). */
+const birthPhaseSource = [
+  "BirthPhaseScreen.tsx",
+  "BirthPhaseGenesisBranch.tsx",
+  "BirthPhaseMissionBranch.tsx",
+  "BirthPhaseRecoveryOverlays.tsx",
+]
+  .map((name) => readFileSync(join(birthPhaseRoot, name), "utf8"))
+  .concat([
+    readFileSync(join(birthHooksRoot, "useBirthPhaseDerived.ts"), "utf8"),
+    readFileSync(join(birthHooksRoot, "useBirthPhaseActions.ts"), "utf8"),
+  ])
+  .join("\n");
 
 const birthActivateSource = readFileSync(
 

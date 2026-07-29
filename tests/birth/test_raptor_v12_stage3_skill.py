@@ -47,6 +47,8 @@ class _FakeEvo(PlateauEvolutionMixin):
         self.active_stage_ticks: list = []
         self.stage_trades = 2100
         self.stage_wins = 650
+        self.stage_hold_signals = 5000
+        self.stage_total_signals = 10000  # 50% hold → explore path
         self.strong_recovery_mode = False
         self.strong_recovery_attempts = 0
         self.cur_cfg = BirthCurriculumConfig(exploration_steps=256)

@@ -53,11 +53,11 @@ Shadow birth run on a **SIM or certified workspace** (no REAL orders). Use this 
 
 ## 6. Stage 1 stall abort (certified wall)
 
-1. During `stage1_trend`, if trade target is met but winrate stays below 45% with high hold ratio:
-   - Scorecard shows blocker text (e.g. `winrate 13% < 45%`).
-   - After `certified_stage_stall_wall_sec` (default 4h) plus stagnation rollouts, phase becomes `stage_stalled`.
+1. During `stage1_trend`, if the volume gate is met but EdgeScore hygiene fails (WR below `stage1_winrate_pass_floor`, default 35%; vanity 45% is diagnostic only):
+   - Scorecard shows blocker text (e.g. `Hygiene WR 33% (need >=35%)`).
+   - When `max_stage_wall_sec` expires (`wall_budget_exhausted`) **or** `certified_stage_stall_wall_sec` plus stagnation rollouts elapse, phase becomes `stage_stalled` (or plateau/swarm escalates first). Soft `explore_boost` alone is not a valid end state.
 2. UI recovery panel offers **Retry stage**, **Expand data & retry**, **Wipe & restart**.
-3. **Fail if:** birth runs 6+ hours at low winrate without `stage_stalled` or blocker HUD.
+3. **Fail if:** birth runs hours past wall budget at sub-hygiene WR without `stage_stalled`, plateau entry, swarm tournament, or blocker HUD.
 
 ## 7. Accept criteria
 
@@ -176,8 +176,21 @@ perfect_birth
 
 Once declared, the organism has proven **Perfect Birth**: high-fidelity Steve twin + reliable never-stop autonomy + coherent shadow layer. Proceed to Phase 2 work.
 
+## Starship Birth (Phase A + B)
+
+Contract SSOT: [starship-birth.md](starship-birth.md) · Seal II: [starship-birth-seal-ii.md](starship-birth-seal-ii.md).
+
+Quick checks during a live shadow run:
+
+1. **Identical-window swarm** — when policy swarm starts, variants share frozen tick windows (progress / logs mention swarm probe then variants; no fresh shuffle each cycle). If windows go missing while active → fail-closed attention (`swarm_frozen_windows_missing`), never a fresh tick pool.
+2. **Swarm reject** — no tournament lift → champion restored, `needs_attention` / `swarm_no_tournament_lift` (legacy `swarm_no_edgescore_lift` still recognized); ladder **and** stall remediation must not burn after freeze.
+3. **Twin CONTINUE** — only if twin mode is already `full_auto` **and** swarm tournament resolved (commit or accept-champion — not reject alone); constitution still vetoes.
+4. **Certificate** — numeric OOS floors unchanged; progress may show `oos_regime_breakdown`; empty claimed regime → `oos_regime_empty`.
+5. **Stage 2/3** — EdgeScore criteria ids `range_edgescore` / `mixed_edgescore` (decimal, not vanity %).
+
 ## Related docs (updated)
 
+- [starship-birth.md](starship-birth.md) — Phase A+B contract (cert floors frozen, full_auto rules)
 - ADR-0031 (approval-twin-event-bus), ADR-0032 (approval-twin-human-replacement)
 - LUMINA_BIRTH_ADAPTIVE_WALL_RETRY_DESIGN.md
 - maturation_progress.py (milestones)

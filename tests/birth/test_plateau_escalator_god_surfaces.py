@@ -15,8 +15,10 @@ _ROOT = Path(__file__).resolve().parents[2]
 _P = _ROOT / "lumina_core" / "birth" / "plateau_escalator.py"
 
 # Baseline after engine extractions. 976 lines at time of guard addition.
-# 2026-07-25: dead-zone / terminal hard-stop ladder (+~100 LOC). Prefer extract next.
-_P_LINE_BASELINE = 1215
+# 2026-07-25: dead-zone / terminal hard-stop ladder (+~100 LOC).
+# 2026-07-26 Seal II: ladder tables/step API → plateau_evolution_ladder.py; ratchet host.
+# 2026-07-28 Wave A: rolling/enter/terminal/telemetry extracts; thin façade host.
+_P_LINE_BASELINE = 220
 
 
 @pytest.mark.unit

@@ -53,7 +53,8 @@ describe("cockpit.css orphan selectors", () => {
       "utf8",
     );
     expect(birthWizardCss).toContain(".birth-launch-btn");
-    expect(birthPhaseCss).not.toContain(".birth-launch-btn");
+    // Genesis CTA may size the shared launch button; base styles stay in birthWizard.css.
+    expect(birthPhaseCss).not.toMatch(/(^|\n)\.birth-launch-btn(\s|--|\{)/);
     expect(birthPhaseCss).toContain(".birth-phase-pulse");
     expect(birthPhaseCss).toContain(".birth-phase-helix-stage");
     expect(birthPhaseCss).toContain("overflow-x: hidden");

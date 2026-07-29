@@ -87,6 +87,8 @@ class PlateauHandler:
                 self.state = PlateauState.from_metrics(ctx.get("metrics"))
                 self._set_response(cid, "ok", True)
             elif signal == "plateau_check_enter":
+                skill_raw = ctx.get("skill_failing")
+                skill_failing = None if skill_raw is None else bool(skill_raw)
                 enter_ctx = PlateauEnterContext(
                     stage_trades=int(ctx.get("stage_trades", 0)),
                     stage_wins=int(ctx.get("stage_wins", 0)),
@@ -94,6 +96,12 @@ class PlateauHandler:
                     winrate_trend_slope=ctx.get("winrate_trend_slope"),
                     velocity_stall_attempts=int(ctx.get("velocity_stall_attempts", 0)),
                     meta_self_eval_phase=str(ctx.get("meta_self_eval_phase", "")),
+                    pass_metric_target=float(ctx.get("pass_metric_target", 0.45) or 0.45),
+                    plateau_quarantine_active=bool(ctx.get("plateau_quarantine_active", False)),
+                    stage=snap_evt.stage,
+                    wall_budget_exhausted=bool(ctx.get("wall_budget_exhausted", False)),
+                    meta_learning_health=str(ctx.get("meta_learning_health", "") or ""),
+                    skill_failing=skill_failing,
                 )
                 should = should_enter_plateau(enter_ctx, cfg=self.cfg)
                 self._set_response(cid, "should_enter", should)
@@ -272,8 +280,32 @@ class PlateauHandler:
                         return
                 self._set_response(cid, "evolution", {"action": None, "applied": False})
             elif signal == "resolve_terminal_stall":
-                # Placeholder rich response; actual terminal shape built in recovery glue
-                self._set_response(cid, "terminal", {"handled": True})
+                from lumina_core.hybrid_quarantine import (
+                    PLATEAU_TERMINAL_PASSTHROUGH,
+                    handler_terminal_passthrough,
+                    log_quarantine,
+                )
+
+                passthrough = handler_terminal_passthrough()
+                log_quarantine(
+                    PLATEAU_TERMINAL_PASSTHROUGH,
+                    strict=not passthrough,
+                    detail="resolve_terminal_stall",
+                )
+                if passthrough:
+                    # Placeholder rich response; actual terminal shape built in recovery glue
+                    self._set_response(cid, "terminal", {"handled": True})
+                else:
+                    pending = ctx if isinstance(ctx, dict) else {}
+                    self._set_response(
+                        cid,
+                        "terminal",
+                        {
+                            "handled": False,
+                            "reason": "handler_terminal_passthrough_disabled",
+                            "pending": pending,
+                        },
+                    )
         except Exception as exc:
             logger.warning("plateau_handler.signal_failed signal=%s: %s", signal, exc)
             self._set_response(cid, "error", str(exc))

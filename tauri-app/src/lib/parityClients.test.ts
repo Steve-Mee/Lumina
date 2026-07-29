@@ -6,7 +6,7 @@ describe("botConfigDraft preferences", () => {
   it("includes runtime preferences in payload", () => {
     const draft = defaultBotConfigDraft();
     const payload = toBotConfigPayload(draft);
-    expect(payload.preferences?.instrument).toBe("ES");
+    expect(payload.preferences?.instrument).toBe("MES");
     expect(payload.preferences?.voice_enabled).toBe(true);
     expect(payload.preferences?.dashboard_enabled).toBe(true);
     expect(payload.preferences?.runtime_trace).toBe(true);

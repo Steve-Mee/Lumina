@@ -9,7 +9,7 @@ import pytest
 _ROOT = Path(__file__).resolve().parents[2]
 _CERT_PIPELINE = _ROOT / "lumina_core" / "birth" / "certificate_pipeline.py"
 
-_CERT_PIPELINE_LINE_BASELINE = 998
+_CERT_PIPELINE_LINE_BASELINE = 200
 
 
 @pytest.mark.unit

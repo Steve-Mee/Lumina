@@ -14,11 +14,15 @@ from lumina_core.birth.plateau_escalator import (
     build_plateau_audit,
     can_force_never_stop_recovery,
     detect_hold_trap,
+    enter_plateau,
     evolution_ladder_blocked_reason,
     maybe_update_best_winrate,
+    reset_plateau_for_new_cycle,
     sanitize_stuck_plateau_evolution,
     should_advance_evolution_step,
+    should_block_phoenix_no_lift,
     should_block_plateau_recovery,
+    should_brake_recovery_no_lift,
     should_force_advance_evolution_step,
     should_start_evolution_step,
     should_terminal_plateau_stall,
@@ -130,7 +134,13 @@ def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
         cfg=cfg,
         pass_criteria=criteria,
     )
-    assert criteria.metric_target == pytest.approx(0.35)
+    # EdgeScore stage-3 criteria use metric_target=None; hygiene floor stays in config/label.
+    wr_floor = float(getattr(cfg, "stage3_winrate_floor", 0.35))
+    if bool(getattr(cfg, "stage3_edgescore_enabled", True)):
+        assert criteria.metric_target is None
+        assert criteria.id == "mixed_edgescore"
+    else:
+        assert criteria.metric_target == pytest.approx(wr_floor)
     assert learning_target == pytest.approx(0.45)
     assert detect_hold_trap(
         hold_ratio=0.80,
@@ -143,7 +153,7 @@ def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
     assert not detect_hold_trap(
         hold_ratio=0.80,
         winrate=0.34,
-        pass_metric_target=float(criteria.metric_target or 0.0),
+        pass_metric_target=wr_floor,
         velocity_stall=True,
         cfg=cfg,
     )
@@ -436,4 +446,65 @@ def test_evolution_ladder_blocked_reason_accepts_stage_trades() -> None:
         progress={"stage_winrate": 0.30, "stage_hold_ratio": 0.76},
     )
     assert "evolution_ladder_blocked_reason" in audit
+
+
+@pytest.mark.unit
+def test_no_lift_brake_after_full_ladder_without_best_improvement() -> None:
+    state = PlateauState(
+        active=True,
+        best_winrate=0.435,
+        best_winrate_at_cycle_start=0.435,
+        evolution_step=6,
+        full_recovery_cycles=0,
+    )
+    assert should_brake_recovery_no_lift(state) is True
+    assert should_block_phoenix_no_lift(state) is True
+    assert should_terminal_plateau_stall(
+        state,
+        stage_trades=2700,
+        required=200,
+        cfg=_cfg(),
+        meta_self_eval_phase="probing",
+        remediation_exhausted=False,
+        trade_budget_remaining=40_000,
+    ) is True
+
+
+@pytest.mark.unit
+def test_no_lift_brake_false_when_best_improved() -> None:
+    state = PlateauState(
+        active=True,
+        best_winrate=0.46,
+        best_winrate_at_cycle_start=0.435,
+        evolution_step=6,
+        full_recovery_cycles=0,
+    )
+    assert should_brake_recovery_no_lift(state) is False
+    assert should_block_phoenix_no_lift(state) is False
+
+
+@pytest.mark.unit
+def test_cycle_reset_increments_and_snapshots_best_at_cycle_start() -> None:
+    state = PlateauState(active=True, best_winrate=0.435, evolution_step=6)
+    enter_plateau(state, stage_trades=800, stage_wins=280)
+    assert state.best_winrate_at_cycle_start == pytest.approx(0.435)
+    assert state.evolution_step == 0
+    state.evolution_step = 6
+    reset_plateau_for_new_cycle(state, stage_trades=1700, stage_wins=590)
+    assert state.full_recovery_cycles == 1
+    assert state.best_winrate_at_cycle_start == pytest.approx(0.435)
+    assert state.evolution_step == 0
+
+
+@pytest.mark.unit
+def test_block_phoenix_after_completed_cycle_without_lift() -> None:
+    state = PlateauState(
+        active=True,
+        best_winrate=0.40,
+        best_winrate_at_cycle_start=0.435,
+        evolution_step=3,
+        full_recovery_cycles=1,
+    )
+    assert should_brake_recovery_no_lift(state) is False  # ladder not exhausted
+    assert should_block_phoenix_no_lift(state) is True
 

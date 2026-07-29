@@ -275,6 +275,32 @@ def start_birth(
         except Exception as e:
             svc._error = str(e)
             logger.exception("Birth Phase failed: %s", e)
+            # Persist durable error progress so UI matches Telegram after in-memory
+            # svc._error is cleared by a later start/restart.
+            try:
+                from lumina_core.birth.progress import read_birth_progress, write_birth_progress
+
+                prev = read_birth_progress(svc.workspace_root) or {}
+                detail = str(e)
+                write_birth_progress(
+                    svc.workspace_root,
+                    stage="error",
+                    phase="error",
+                    message=detail,
+                    progress_pct=float(prev.get("progress_pct", 0) or 0),
+                    cumulative_trades=int(
+                        prev.get("cumulative_trades", prev.get("trades_done", 0)) or 0
+                    ),
+                    target_trades=int(prev.get("target_trades", 0) or 0),
+                    ppo_steps=int(prev.get("ppo_steps", 0) or 0),
+                    birth_start_time=float(prev.get("birth_start_time", 0) or 0),
+                    needs_attention=True,
+                    retryable=True,
+                    last_error=detail,
+                    attention_reason_code="birth_error",
+                )
+            except Exception as progress_exc:
+                logger.warning("birth.error_progress_write_failed: %s", progress_exc)
             try:
                 from lumina_core.notifications.attention_events import birth_error_event
                 from lumina_core.notifications.operator_notifier import notify_problem

@@ -4,8 +4,12 @@ from __future__ import annotations
 from typing import Any
 
 from lumina_core.birth.organism_autonomy import RecoveryDispatch
-from lumina_core.birth.plateau_escalator import TERMINAL_STALL_REASON
-from lumina_core.birth.progress import write_birth_progress
+from lumina_core.birth.plateau_escalator import (
+    TERMINAL_STALL_REASON,
+    should_block_phoenix_no_lift,
+    should_brake_recovery_no_lift,
+)
+from lumina_core.birth.progress import merge_birth_progress_extra, write_birth_progress
 from lumina_core.birth.stall_remediation import HUMAN_GATE_REASON
 from lumina_core.birth.phoenix_loop import PHOENIX_CYCLE_REASON
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
@@ -45,6 +49,8 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             "rollouts_since_last_adaptation": int(
                 getattr(self, "rollouts_since_last_adaptation", 0) or 0
             ),
+            "policy_entropy": self._resolve_policy_entropy(),
+            "ppo_steps": int(getattr(self.host, "ppo_steps", 0) or 0),
         }
 
     def _evaluate_wall_trigger(self, 
@@ -121,6 +127,8 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
                     range_round_trips=self.stage_range_round_trips,
                     range_total_signals=self.stage_range_total_signals,
                     cfg=self.cur_cfg,
+                    policy_entropy=self._resolve_policy_entropy(),
+                    ppo_steps=int(getattr(self.host, "ppo_steps", 0) or 0),
                 )
                 if engineering_stuck and bm is not None:
                     pending["engineering_blocker"] = "adaptation_stuck"
@@ -170,6 +178,34 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             or self.organism_autonomy_state.last_recommended_action
             or ""
         )
+        recovery_no_lift_brake = should_brake_recovery_no_lift(
+            self.plateau_state
+        ) or should_block_phoenix_no_lift(self.plateau_state)
+        from lumina_core.birth.birth_control_plane import swarm_tournament_resolved
+
+        swarm_resolved = swarm_tournament_resolved(
+            swarm_state=self.swarm_state,
+            host_champion_accepted=bool(getattr(self, "swarm_champion_accepted", False)),
+            host_committed=bool(
+                str(getattr(self.swarm_state, "committed_variant_id", "") or "").strip()
+            ),
+        )
+        try:
+            live_edge = float(self._current_edgescore())
+        except Exception:
+            live_edge = float(getattr(self, "best_edgescore", 0.0) or 0.0)
+        starship_ctx = {
+            "edgescore": live_edge,
+            "best_edgescore": float(getattr(self, "best_edgescore", 0.0) or 0.0),
+            "swarm_rejected_no_lift": bool(
+                getattr(self, "swarm_rejected_no_lift", False)
+                or getattr(self.swarm_state, "rejected_no_lift", False)
+            ),
+            "swarm_champion_accepted": bool(
+                getattr(self, "swarm_champion_accepted", False)
+                or getattr(self.swarm_state, "champion_accepted", False)
+            ),
+        }
         autonomy_decision = self.bus.autonomy_evaluate_terminal_stall(self.stage, 
             cfg=self.cur_cfg,
             autonomy_state=self.organism_autonomy_state,
@@ -182,6 +218,9 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             recommended_recovery_action=recommended_recovery,
             remediation_cycles_exhausted=stall_reason in {HUMAN_GATE_REASON, PHOENIX_CYCLE_REASON},
             plateau_exhausted=stall_reason == TERMINAL_STALL_REASON,
+            recovery_no_lift_brake=recovery_no_lift_brake,
+            swarm_tournament_resolved=swarm_resolved,
+            starship_context=starship_ctx,
         )
         provisional_graduation = (
             autonomy_decision.dispatch == RecoveryDispatch.PROVISIONAL_GRADUATE
@@ -232,6 +271,25 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             )
         if autonomy_decision.message:
             autonomy_extra["autonomy_message"] = autonomy_decision.message
+        # Merge extras first — phoenix autonomy_metrics may include curriculum_stage
+        # (PEP 448 dual-kwargs TypeError if unpacked alongside explicit kwargs).
+        stall_extra = merge_birth_progress_extra(
+            self.host._budget_progress_fields(terminal_stall_reason=stall_reason),
+            self.host._constitution_progress_fields(),
+            autonomy_extra,
+            {
+                "curriculum_stage": self.stage.value,
+                "stages_passed": list(self.host._stages_passed),
+                "stage_blocker_metric": blocker_metric,
+                "stage_blocker_value": blocker_value,
+                "pass_reason": blocker_reason,
+                "retryable": retryable,
+                "needs_attention": needs_attention,
+                "provisional_graduation": provisional_graduation,
+                "graduation_tier": "provisional" if provisional_graduation else "strict",
+                "oos_proxy_winrate": proxy_winrate,
+            },
+        )
         write_birth_progress(
             self.host.workspace_root,
             stage="stage_stalled",
@@ -244,19 +302,7 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             cumulative_trades=self.host.cumulative_trades,
             target_trades=self.effective_trade_budget_cap,
             birth_start_time=self.host.birth_start_time,
-            curriculum_stage=self.stage.value,
-            stages_passed=list(self.host._stages_passed),
-            stage_blocker_metric=blocker_metric,
-            stage_blocker_value=blocker_value,
-            pass_reason=blocker_reason,
-            retryable=retryable,
-            needs_attention=needs_attention,
-            provisional_graduation=provisional_graduation,
-            graduation_tier="provisional" if provisional_graduation else "strict",
-            oos_proxy_winrate=proxy_winrate,
-            **self.host._budget_progress_fields(terminal_stall_reason=stall_reason),
-            **self.host._constitution_progress_fields(),
-            **autonomy_extra,
+            **stall_extra,
         )
         policy_hint = str(self.host.final_policy_path)
         if self.host.final_policy_path.is_file():

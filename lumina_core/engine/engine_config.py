@@ -81,10 +81,31 @@ def _safe_dict(value) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _default_trading_instrument() -> str:
+    """SSOT: INSTRUMENT env > trading.instrument yaml > non-expired fallback."""
+    env = str(os.getenv("INSTRUMENT") or "").strip()
+    if env:
+        return env.upper()
+    yaml_inst = str(_config_yaml_nested("", "trading", "instrument") or "").strip()
+    if yaml_inst:
+        return yaml_inst.upper()
+    return "MES SEP26"
+
+
 def _parse_swarm_symbols() -> list[str]:
-    raw = os.getenv("SWARM_SYMBOLS", "MES JUN26,MNQ JUN26,MYM JUN26,ES JUN26").strip()
-    if not raw:
-        return ["MES JUN26", "MNQ JUN26", "MYM JUN26", "ES JUN26"]
+    env_raw = os.getenv("SWARM_SYMBOLS")
+    yaml_raw = _config_yaml_nested(None, "trading", "swarm_symbols")
+    if env_raw is not None and str(env_raw).strip():
+        raw = str(env_raw).strip()
+    elif isinstance(yaml_raw, list) and yaml_raw:
+        return [str(s).strip().upper() for s in yaml_raw if str(s).strip()] or [
+            _default_trading_instrument()
+        ]
+    elif isinstance(yaml_raw, str) and yaml_raw.strip():
+        raw = yaml_raw.strip()
+    else:
+        # Derive a single-symbol swarm from the primary instrument SSOT.
+        return [_default_trading_instrument()]
 
     symbols: list[str]
     if raw.startswith("["):
@@ -97,7 +118,7 @@ def _parse_swarm_symbols() -> list[str]:
     else:
         symbols = [part.strip().upper() for part in raw.split(",") if part.strip()]
 
-    return symbols or ["MES JUN26", "MNQ JUN26", "MYM JUN26", "ES JUN26"]
+    return symbols or [_default_trading_instrument()]
 
 
 class EngineConfig(BaseModel):
@@ -141,7 +162,7 @@ class EngineConfig(BaseModel):
         )
     )
 
-    instrument: str = Field(default_factory=lambda: os.getenv("INSTRUMENT", "MES JUN26"))
+    instrument: str = Field(default_factory=_default_trading_instrument)
     swarm_symbols: list[str] = Field(default_factory=_parse_swarm_symbols)
     swarm_enabled: bool = Field(default_factory=lambda: os.getenv("SWARM_ENABLED", "True").lower() == "true")
     supported_swarm_roots: list[str] = Field(default_factory=lambda: ["MES", "MNQ", "MYM", "ES"])

@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import type { BirthStatusPayload, BirthWipeResult } from "@/lib/birthClient";
 import {
+  acceptChampionSession,
   autonomousRecoverySession,
   expandAndRetryStalledStageSession,
   fetchBirthStatusTyped,
@@ -63,6 +64,8 @@ interface BirthState {
   uiPhase: BirthUiPhase;
   birthSurface: BirthSurface;
   genesisPinned: boolean;
+  /** Sticky operator intent to stay on training shell during resume cold-start. */
+  runPinned: boolean;
   pollError: string | null;
   targetTrades: number;
   setTargetTrades: (n: number) => void;
@@ -77,6 +80,7 @@ interface BirthState {
   }) => Promise<boolean>;
   retryBirth: (options?: { wipe?: boolean }) => Promise<boolean>;
   resumeBirth: () => Promise<boolean>;
+  acceptChampion: () => Promise<boolean>;
   resumeStalledStage: () => Promise<boolean>;
   expandAndRetryStalledStage: () => Promise<boolean>;
   executeRecommendedRecovery: () => Promise<boolean>;
@@ -95,6 +99,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   uiPhase: "idle",
   birthSurface: "genesis",
   genesisPinned: false,
+  runPinned: false,
   pollError: null,
   targetTrades: 25000,
 
@@ -107,6 +112,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       uiPhase: "running",
       birthSurface: "running",
       genesisPinned: false,
+      runPinned: true,
       pollError: null,
     }),
 
@@ -119,31 +125,60 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       payload.certificate_ok,
     );
     let uiPhase: BirthUiPhase = get().uiPhase;
+    let runPinned = get().runPinned;
+    const genesisPinned = get().genesisPinned;
 
     const engineActive = payload.live === true || isBirthEngineActive(payload);
 
     if (get().uiPhase === "finale") {
       /* keep finale until parent transitions */
-    } else if (engineActive && !get().genesisPinned) {
+    } else if (runPinned && !genesisPinned) {
+      // Raptor v14: keep training shell during cold-start; clear pin once live or terminal.
+      if (engineActive) {
+        uiPhase = "running";
+        runPinned = false;
+      } else if (isBirthComplete(payload)) {
+        uiPhase = "finale";
+        runPinned = false;
+      } else if (isBirthStageStalled(payload)) {
+        uiPhase = "stage_stalled";
+        runPinned = false;
+      } else if (isBirthCertificateFailed(payload)) {
+        uiPhase = "certificate_failed";
+        runPinned = false;
+      } else if (isBirthFailed(payload) && !isBirthInterrupted(payload)) {
+        uiPhase = "error";
+        runPinned = false;
+      } else {
+        // interrupted / idle / starting → stay on running shell
+        uiPhase = "running";
+      }
+    } else if (engineActive && !genesisPinned) {
       uiPhase = "running";
     } else if (isBirthCertificateFailed(payload)) {
-      uiPhase = get().genesisPinned ? "idle" : "certificate_failed";
+      uiPhase = genesisPinned ? "idle" : "certificate_failed";
     } else if (isBirthComplete(payload)) {
       uiPhase = "finale";
     } else if (isBirthStageStalled(payload)) {
-      uiPhase = get().genesisPinned ? "idle" : "stage_stalled";
+      uiPhase = genesisPinned ? "idle" : "stage_stalled";
     } else if (isBirthEngineActive(payload)) {
-      uiPhase = get().genesisPinned ? "idle" : "running";
+      uiPhase = genesisPinned ? "idle" : "running";
     } else if (isBirthFailed(payload)) {
       // Respect operator pin: Return to Genesis must not be overwritten by poll.
-      uiPhase = get().genesisPinned ? "idle" : "error";
+      uiPhase = genesisPinned ? "idle" : "error";
     } else if (isBirthInterrupted(payload)) {
       uiPhase = "idle";
-    } else if (get().genesisPinned) {
+    } else if (genesisPinned) {
       uiPhase = "idle";
     }
 
-    const birthSurface = resolveBirthSurface(uiPhase, get().birthSurface, payload, get().genesisPinned);
+    const birthSurface = resolveBirthSurface(
+      uiPhase,
+      get().birthSurface,
+      payload,
+      genesisPinned,
+      runPinned,
+    );
 
     set({
       status: payload,
@@ -151,6 +186,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       headline,
       uiPhase,
       birthSurface,
+      runPinned,
       pollError: null,
     });
   },
@@ -206,7 +242,13 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   retryBirth: async (options) => {
-    set({ uiPhase: "running", birthSurface: "running", pollError: null });
+    set({
+      uiPhase: "running",
+      birthSurface: "running",
+      genesisPinned: false,
+      runPinned: true,
+      pollError: null,
+    });
     try {
       const response = await retryBirthSession(get().targetTrades, options);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -230,8 +272,42 @@ export const useBirthStore = create<BirthState>((set, get) => ({
     }
   },
 
+  acceptChampion: async () => {
+    set({
+      uiPhase: "running",
+      birthSurface: "running",
+      genesisPinned: false,
+      runPinned: true,
+      pollError: null,
+    });
+    try {
+      const response = await acceptChampionSession(get().targetTrades);
+      if (!isBirthStartSuccessful(response.status, response)) {
+        const message = response.message ?? `Accept champion failed (${response.status})`;
+        get().applyStatus(response);
+        set({ uiPhase: recoveryFailureUiPhase(response), pollError: message });
+        return false;
+      }
+      get().applyStatus(response);
+      await get().poll();
+      return true;
+    } catch (err) {
+      set({
+        uiPhase: recoveryFailureUiPhase(get().status),
+        pollError: err instanceof Error ? err.message : "Accept champion failed",
+      });
+      return false;
+    }
+  },
+
   resumeBirth: async () => {
-    set({ uiPhase: "running", birthSurface: "running", pollError: null });
+    set({
+      uiPhase: "running",
+      birthSurface: "running",
+      genesisPinned: false,
+      runPinned: true,
+      pollError: null,
+    });
     try {
       const response = await resumeBirthSession(get().targetTrades);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -253,7 +329,13 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   resumeStalledStage: async () => {
-    set({ uiPhase: "running", birthSurface: "running", pollError: null });
+    set({
+      uiPhase: "running",
+      birthSurface: "running",
+      genesisPinned: false,
+      runPinned: true,
+      pollError: null,
+    });
     try {
       const response = await resumeStalledStageSession(get().targetTrades);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -275,7 +357,13 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   executeRecommendedRecovery: async () => {
-    set({ uiPhase: "running", birthSurface: "running", pollError: null });
+    set({
+      uiPhase: "running",
+      birthSurface: "running",
+      genesisPinned: false,
+      runPinned: true,
+      pollError: null,
+    });
     try {
       const response = await autonomousRecoverySession(get().targetTrades);
       if (!isBirthStartSuccessful(response.status, response)) {
@@ -374,6 +462,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
         uiPhase: "idle",
         birthSurface: "genesis",
         genesisPinned: true,
+        runPinned: false,
         pollError: null,
       });
       try {
@@ -383,6 +472,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
           uiPhase: "idle",
           birthSurface: "genesis",
           genesisPinned: true,
+          runPinned: false,
           pollError: null,
         });
       } catch {
@@ -500,13 +590,25 @@ export const useBirthStore = create<BirthState>((set, get) => ({
 
   returnToGenesis: () => {
     // Pin first so any applyStatus/poll re-entry honors genesis and stays off error overlays.
-    set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
+    set({
+      uiPhase: "idle",
+      birthSurface: "genesis",
+      genesisPinned: true,
+      runPinned: false,
+      pollError: null,
+    });
     const status = get().status;
     if (status) {
       get().applyStatus(status);
     }
     // Re-assert pin after applyStatus (failed/error payloads previously forced uiPhase back to error).
-    set({ uiPhase: "idle", birthSurface: "genesis", genesisPinned: true, pollError: null });
+    set({
+      uiPhase: "idle",
+      birthSurface: "genesis",
+      genesisPinned: true,
+      runPinned: false,
+      pollError: null,
+    });
   },
 
   reset: () => {
@@ -518,6 +620,7 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       uiPhase: "idle",
       birthSurface: "genesis",
       genesisPinned: false,
+      runPinned: false,
       pollError: null,
     });
   },

@@ -14,6 +14,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 _PKG_INIT = _ROOT / "lumina_core" / "order_gatekeeper" / "__init__.py"
 _GATE = _ROOT / "lumina_core" / "order_gatekeeper" / "gate.py"
 _ADMISSION = _ROOT / "lumina_core" / "order_gatekeeper" / "admission_steps.py"
+_ADMISSION_RISK = _ROOT / "lumina_core" / "order_gatekeeper" / "admission_risk_steps.py"
 
 _FORBIDDEN_IN_FACADE = [
     "def enforce_pre_trade_gate",
@@ -28,6 +29,7 @@ _BOUNDED_MODULE_MARKERS = [
     "contract_symbols",
     "lineage_emitters",
     "admission_steps",
+    "admission_risk_steps",
     "regime_session",
     "engine_helpers",
     "gate",
@@ -75,6 +77,15 @@ def test_admission_steps_owns_chain_handlers():
     assert "def build_admission_step_handlers" in text
     assert "ADMISSION_STEP_RISK_POLICY" in text
     assert "ADMISSION_STEP_FINAL_ARBITRATION" in text
+    assert "make_risk_policy_step" in text
+    assert "make_final_arbitration_step" in text
+
+
+@pytest.mark.unit
+def test_admission_risk_steps_owns_heavy_bodies():
+    text = _ADMISSION_RISK.read_text(encoding="utf-8")
+    assert "def make_risk_policy_step" in text
+    assert "def make_final_arbitration_step" in text
     assert "evaluate_constitution_for_intent" in text
 
 

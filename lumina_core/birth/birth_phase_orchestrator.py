@@ -321,7 +321,14 @@ def run_birth_phase(
         target_trades=cfg.trade_budget_cap,
         birth_start_time=host.birth_start_time,
         ppo_steps=host.ppo_steps if resume else 0,
-        actual_real_days_loaded=max(1, len(ticks) // 450),
+        actual_real_days_loaded=max(
+            1,
+            int(
+                (host._data_manifest or {}).get("actual_calendar_days")
+                or (host._data_manifest or {}).get("days_loaded")
+                or 1
+            ),
+        ),
         real_data_pct=host._real_data_pct,
         preflight_report={
             "ok": True,

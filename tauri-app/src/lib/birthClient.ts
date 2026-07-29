@@ -213,6 +213,18 @@ export async function resumeBirthSession(targetTrades: number): Promise<BirthSta
   return retryBirthSession(targetTrades, { wipe: false });
 }
 
+export async function acceptChampionSession(targetTrades: number): Promise<BirthStatusPayload> {
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  try {
+    return await postBirthMutation("/api/birth/accept-champion", params);
+  } catch (err) {
+    if (!isNotFoundError(err)) {
+      throw err;
+    }
+    return resumeBirthSession(targetTrades);
+  }
+}
+
 export async function reuseDataBirthSession(targetTrades: number): Promise<BirthStatusPayload> {
   const params = new URLSearchParams({ target_trades: String(targetTrades) });
   try {

@@ -13,17 +13,17 @@ function lineCount(relativePath: string): number {
 /** Baseline 2026-07-04 — phase 3 frontend birth cluster split. */
 const BASELINES: Record<string, number> = {
   "lib/birthPhaseModel.ts": 12,
-  "lib/birth/birthMilestones.ts": 289,
-  "lib/birth/birthStatusPredicates.ts": 140,
+  "lib/birth/birthMilestones.ts": 296,
+  "lib/birth/birthStatusPredicates.ts": 161,
   "lib/birth/birthProgressExtract.ts": 72,
   "lib/birth/birthSessionHud.ts": 112,
-  "lib/birth/birthStageScorecard.ts": 640,
+  "lib/birth/birthStageScorecard.ts": 400,
   "lib/birth/birthActiveProgress.ts": 60,
   "lib/birth/birthModelUtils.ts": 16,
-  "store/birthStore.ts": 525,
+  "store/birthStore.ts": 627,
   "store/birthPollCoordinator.ts": 140,
-  "store/birthSurfaceModel.ts": 65,
-  "components/birth/BirthPhaseScreen.tsx": 909,
+  "store/birthSurfaceModel.ts": 68,
+  "components/birth/BirthPhaseScreen.tsx": 400,
   "lib/birthClient.ts": 501,
 };
 

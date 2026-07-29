@@ -17,6 +17,7 @@ vi.mock("@/lib/setupClient", () => ({
   startSmartSetup: vi.fn(),
   fetchDeckCredentialsPrefill: vi.fn(),
   fetchAndHydrateDeckApiKey: vi.fn().mockResolvedValue(true),
+  fetchFabricLinkStatus: vi.fn(),
 }));
 
 vi.mock("@/lib/birthClient", () => ({
@@ -25,7 +26,7 @@ vi.mock("@/lib/birthClient", () => ({
     status === "started" || status === "already_running",
 }));
 
-import { fetchOnboardingStatus, postConfigure } from "@/lib/setupClient";
+import { fetchFabricLinkStatus, fetchOnboardingStatus, postConfigure } from "@/lib/setupClient";
 import { startBirth } from "@/lib/birthClient";
 import { toast } from "sonner";
 
@@ -59,9 +60,18 @@ describe("onboardingStore.activateBirth", () => {
     vi.mocked(postConfigure).mockReset();
     vi.mocked(startBirth).mockReset();
     vi.mocked(fetchOnboardingStatus).mockReset();
+    vi.mocked(fetchFabricLinkStatus).mockReset();
     vi.mocked(toast.error).mockReset();
     vi.mocked(toast.info).mockReset();
     vi.mocked(fetchOnboardingStatus).mockResolvedValue(basePayload);
+    vi.mocked(fetchFabricLinkStatus).mockResolvedValue({
+      green: true,
+      reason: "ok",
+      certificate: null,
+      halt: null,
+    });
+    vi.spyOn(useBirthStore.getState(), "poll").mockResolvedValue(undefined as never);
+    vi.spyOn(useBirthStore.getState(), "beginBirthRun").mockImplementation(() => undefined);
   });
 
   it("persists genesis settings before starting birth", async () => {

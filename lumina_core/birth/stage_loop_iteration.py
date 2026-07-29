@@ -47,7 +47,59 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                     phase="paused",
                     stage_metrics=self._stage_metrics_payload(),
                 )
+                # Flush rich scorecard before SSOT pause so curriculum context is preserved.
+                self._write_progress(
+                    phase="paused",
+                    message="Birth Phase gepauzeerd door gebruiker.",
+                )
                 return self.host._paused_result()
+
+            # Starship Seal: after swarm reject, champion is sacred — no fresh-pool PPO.
+            from lumina_core.birth.birth_control_plane import (
+                should_hard_stop_training_after_swarm_reject,
+            )
+
+            if should_hard_stop_training_after_swarm_reject(
+                swarm_state=self.swarm_state,
+                host_rejected_no_lift=bool(getattr(self, "swarm_rejected_no_lift", False)),
+                host_champion_accepted=bool(getattr(self, "swarm_champion_accepted", False)),
+            ):
+                if not bool(getattr(self, "_swarm_reject_hard_stop_armed", False)):
+                    self._swarm_reject_hard_stop_armed = True
+                    restore = getattr(self, "_restore_pre_swarm_policy", None)
+                    if callable(restore):
+                        try:
+                            restore()
+                        except Exception as exc:
+                            logger.warning("birth.swarm.hard_stop_restore_failed: %s", exc)
+                    if not str(getattr(self, "swarm_fail_reason_code", "") or "").strip():
+                        self.swarm_fail_reason_code = "swarm_no_tournament_lift"
+                    logger.warning(
+                        "birth.swarm.hard_stop_training stage=%s reason=%s — accept or wipe",
+                        self.stage.value,
+                        getattr(self, "swarm_fail_reason_code", ""),
+                    )
+                self._write_progress(
+                    phase="swarm_reject_hard_stop",
+                    message=(
+                        "Swarm tournament rejected — champion frozen. "
+                        "No further training until accept champion or wipe."
+                    ),
+                )
+                self.host._persist_checkpoint(
+                    training_mode=self.training_mode,
+                    curriculum_stage=self.stage.value,
+                    policy_path=str(self.host.final_policy_path),
+                    phase="stage_stalled",
+                    stage_metrics=self._stage_metrics_payload(),
+                )
+                return {
+                    "status": "stage_stalled",
+                    "failure_reason": "swarm_reject_hard_stop",
+                    "total_trades": self.host.cumulative_trades,
+                    "ppo_steps": self.host.ppo_steps,
+                    "training_mode": self.training_mode,
+                }
 
             elapsed_stage_sec = max(0.0, time.time() - self.stage_started_at)
             failure_key = {
@@ -151,7 +203,9 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                     ) and self._try_plateau_evolution(failure_key=failure_key):
                         continue
                     if self.plateau_state.active and evolution_ladder_exhausted(
-                        self.plateau_state
+                        self.plateau_state,
+                        stage=self.stage,
+                        max_steps=self._evolution_max_steps(),
                     ):
                         if self._try_evolution_exhausted_remediation(failure_key=failure_key):
                             continue
@@ -210,7 +264,9 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                     ):
                         continue
                     if self.plateau_state.active and evolution_ladder_exhausted(
-                        self.plateau_state
+                        self.plateau_state,
+                        stage=self.stage,
+                        max_steps=self._evolution_max_steps(),
                     ):
                         if self._try_evolution_exhausted_remediation(failure_key=failure_key):
                             continue
@@ -247,6 +303,12 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                             "birth.stage.wall_budget_exhausted",
                             extra={"event_data": {"stage": self.stage.value, "elapsed_sec": elapsed_stage_sec}},
                         )
+            # Starship: wall exhausted + skill fail → plateau/swarm, not soft explore forever.
+            if self.wall_budget_exhausted and not self.allow_provisional:
+                self._maybe_detect_plateau(
+                    stage_trades=self.stage_trades, stage_wins=self.stage_wins
+                )
+                self._maybe_swarm_on_wall_skill_fail()
 
             stage_val_sharpe = 0.0
             stage_val_max_dd = 100.0
@@ -254,21 +316,34 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                 stage_val_sharpe, stage_val_max_dd = risk_metrics_from_pnl(self.stage_val_pnl)
             # Raptor v12/v13: rolling WR for stage1+stage3; only trust real window.
             rolling_wr: float | None = None
+            rolling_src: str | None = None
+            rolling_cov: int = 0
+            rolling_display: float | None = None
             if self.stage in (
                 CurriculumStage.STAGE1_TREND,
                 CurriculumStage.STAGE3_MIXED,
             ):
                 try:
+                    from lumina_core.birth.starship_birth import gate_rolling_winrate
+
                     wr, source, covered = self._rolling_winrate_meta()
+                    rolling_display = float(wr)
+                    rolling_src = str(source)
+                    rolling_cov = int(covered)
                     window = int(getattr(self.cur_cfg, "stage1_rolling_pass_window", 500) or 500)
-                    min_for_pass = min(400, window)
-                    # Do not use lifetime-fallback as a fake "OR rolling" path.
-                    if source in ("true_window", "partial_window") and covered >= min_for_pass:
-                        rolling_wr = float(wr)
-                    else:
-                        rolling_wr = None
+                    rolling_wr = gate_rolling_winrate(
+                        rolling_wr=rolling_display,
+                        source=rolling_src,
+                        covered=rolling_cov,
+                        window=window,
+                    )
                 except Exception:
                     rolling_wr = None
+            stage_pnl = (
+                float(sum(self.stage_val_pnl))
+                if getattr(self, "stage_val_pnl", None)
+                else None
+            )
             stage_result = evaluate_stage_pass(
                 self.stage,
                 trades=self.stage_trades,
@@ -289,6 +364,9 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                 stage_val_sharpe=stage_val_sharpe,
                 stage_val_max_drawdown_pct=stage_val_max_dd,
                 rolling_winrate=rolling_wr,
+                policy_entropy=self._resolve_policy_entropy(),
+                stage_total_pnl=stage_pnl,
+                ppo_steps=int(getattr(self.host, "ppo_steps", 0) or 0),
             )
             if stage_result.passed:
                 self.required = stage_pass_trades(self.stage, self.cur_cfg)
@@ -317,6 +395,42 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                         }
                     },
                 )
+                pass_edgescore = None
+                edgescore_any = bool(
+                    getattr(self.cur_cfg, "stage1_edgescore_enabled", False)
+                    or getattr(self.cur_cfg, "stage2_edgescore_enabled", False)
+                    or getattr(self.cur_cfg, "stage3_edgescore_enabled", False)
+                )
+                if edgescore_any:
+                    try:
+                        pass_edgescore = float(self._current_edgescore())
+                    except Exception:
+                        pass_edgescore = float(getattr(self, "best_edgescore", 0.0) or 0.0)
+                hygiene_source: str | None = None
+                if self.stage in (
+                    CurriculumStage.STAGE1_TREND,
+                    CurriculumStage.STAGE3_MIXED,
+                ):
+                    from lumina_core.birth.starship_birth import hygiene_wr_telemetry
+
+                    floor = (
+                        float(getattr(self.cur_cfg, "stage3_winrate_floor", 0.35))
+                        if self.stage == CurriculumStage.STAGE3_MIXED
+                        else float(getattr(self.cur_cfg, "stage1_winrate_pass_floor", 0.35))
+                    )
+                    hygiene_source = str(
+                        hygiene_wr_telemetry(
+                            lifetime_wr=pass_winrate,
+                            rolling_wr=rolling_display,
+                            rolling_source=rolling_src,
+                            rolling_covered=rolling_cov,
+                            floor=floor,
+                            window=int(
+                                getattr(self.cur_cfg, "stage1_rolling_pass_window", 500) or 500
+                            ),
+                        ).get("hygiene_wr_source")
+                        or "neither"
+                    )
                 self.host._pending_stage_pass_receipt = receipt_from_stage_result(
                     self.stage,
                     stage_result,
@@ -326,6 +440,13 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                     range_hold_signals=self.stage_range_hold_signals,
                     range_total_signals=self.stage_range_total_signals,
                     range_flat_bars=self.stage_range_flat_bars,
+                    edgescore=pass_edgescore,
+                    policy_entropy=self._resolve_policy_entropy(),
+                    stage_total_pnl=stage_pnl,
+                    rolling_winrate=rolling_display,
+                    rolling_winrate_source=rolling_src,
+                    rolling_window_trades_covered=rolling_cov,
+                    hygiene_wr_source=hygiene_source,
                 )
                 return None
 
@@ -370,6 +491,7 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
                         birth_phase=True,
                     )
                     self.host.ppo_steps += self.ppo_steps_per_update
+                    self._capture_trainer_policy_entropy()
 
             if self.attempt >= self._effective_max_rollouts():
                 if self.allow_provisional and (
@@ -462,21 +584,65 @@ class StageLoopIterationMixin(StageLoopRolloutCycleMixin):
             else:
                 remaining = max(1, self.required - self.stage_trades)
                 chunk_target = min(remaining, self.cur_cfg.rollout_chunk_trades)
-            active_ticks = self.host._stage_tick_pool(
-                stage=self.stage,
-                stage_ticks=self.active_stage_ticks,
-                train_ticks=self.active_train,
-                escalation_level=self.escalation_level,
-                attempt=self.attempt,
-                chunk_target=chunk_target,
-                cur_cfg=self.cur_cfg,
-                intra_state=self.intra_state,
-                easy_pool=self.intra_easy_pool,
-                hard_pool=self.intra_hard_pool,
-                intra_s2_state=self.intra_s2_state,
-                s2_easy_pool=self.intra_s2_easy_pool,
-                s2_hard_pool=self.intra_s2_hard_pool,
+            # Starship B0: identical-window tournament — replay frozen slices.
+            # Never fall open to fresh pools while swarm is active (dishonest physics).
+            from lumina_core.birth.birth_control_plane import (
+                fail_closed_missing_frozen_windows,
+                require_frozen_windows_or_fail,
             )
+
+            if bool(getattr(self.swarm_state, "active", False)):
+                if not require_frozen_windows_or_fail(self.swarm_state):
+                    fail_closed_missing_frozen_windows(self.swarm_state, host=self)
+                    self.swarm_rejected_no_lift = True
+                    self.swarm_fail_reason_code = "swarm_frozen_windows_missing"
+                    logger.warning(
+                        "birth.swarm.frozen_windows_missing stage=%s — fail-closed reject",
+                        self.stage.value,
+                    )
+                    self._write_progress(
+                        phase="swarm_frozen_windows_missing",
+                        message=(
+                            "Swarm tournament aborted — frozen tick windows missing. "
+                            "Champion frozen; accept champion or wipe."
+                        ),
+                    )
+                    continue
+                next_win = getattr(self.swarm_state, "next_frozen_window", None)
+                frozen = next_win() if callable(next_win) else None
+                if not frozen:
+                    fail_closed_missing_frozen_windows(self.swarm_state, host=self)
+                    self.swarm_rejected_no_lift = True
+                    self.swarm_fail_reason_code = "swarm_frozen_windows_missing"
+                    logger.warning(
+                        "birth.swarm.frozen_window_empty stage=%s — fail-closed reject",
+                        self.stage.value,
+                    )
+                    self._write_progress(
+                        phase="swarm_frozen_windows_missing",
+                        message=(
+                            "Swarm tournament aborted — empty frozen window. "
+                            "Champion frozen; accept champion or wipe."
+                        ),
+                    )
+                    continue
+                active_ticks = frozen
+            else:
+                active_ticks = self.host._stage_tick_pool(
+                    stage=self.stage,
+                    stage_ticks=self.active_stage_ticks,
+                    train_ticks=self.active_train,
+                    escalation_level=self.escalation_level,
+                    attempt=self.attempt,
+                    chunk_target=chunk_target,
+                    cur_cfg=self.cur_cfg,
+                    intra_state=self.intra_state,
+                    easy_pool=self.intra_easy_pool,
+                    hard_pool=self.intra_hard_pool,
+                    intra_s2_state=self.intra_s2_state,
+                    s2_easy_pool=self.intra_s2_easy_pool,
+                    s2_hard_pool=self.intra_s2_hard_pool,
+                )
             self.current_intra_sample_pool = list(active_ticks)
 
             terminal = self._execute_rollout_cycle(

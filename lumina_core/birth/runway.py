@@ -50,7 +50,22 @@ def micro_oos_probe(
     thresholds: Any,
     max_trades: int = 800,
 ) -> dict[str, Any]:
-    """Read-only holdout eval (never trains on holdout)."""
+    """Read-only holdout eval (never trains on holdout). Multi-slice mean when data allows."""
+    from lumina_core.birth.certificate_evaluator import evaluate_multi_slice_micro_oos
+
+    if len(holdout_data or []) >= 90:
+        return evaluate_multi_slice_micro_oos(
+            runtime=runtime,
+            holdout_data=holdout_data,
+            policy=policy,
+            real_data_pct=real_data_pct,
+            holdout_days=holdout_days,
+            constitution_violations=constitution_violations,
+            workspace_root=workspace_root,
+            thresholds=thresholds,
+            max_trades=max_trades,
+            slices=3,
+        )
     return evaluate_holdout_certificate(
         runtime=runtime,
         holdout_data=holdout_data,

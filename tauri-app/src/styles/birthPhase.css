@@ -1873,12 +1873,29 @@
   gap: 0.45rem;
 }
 
+/* Stage GATE densiteit: één viewport zonder page-scroll. */
+.birth-stage-scorecard__tab-body .birth-intel-field-grid {
+  gap: 0.32rem;
+}
+
+.birth-stage-scorecard__tab-body .birth-field-card.risk-envelope-field-card {
+  padding: 0.32rem 0.48rem 0.36rem;
+}
+
+.birth-stage-scorecard__tab-body .birth-intel-field-span.birth-field-card {
+  padding: 0.36rem 0.55rem 0.4rem;
+}
+
 .birth-intel-field-span {
   grid-column: 1 / -1;
 }
 
 .birth-field-card .risk-envelope-field-hint {
   margin-top: 0.25rem;
+}
+
+.birth-stage-scorecard__tab-body .birth-field-card .risk-envelope-field-hint {
+  margin-top: 0.12rem;
 }
 
 .birth-field-card[data-tone="ok"] {

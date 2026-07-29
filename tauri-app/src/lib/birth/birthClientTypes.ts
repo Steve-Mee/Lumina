@@ -128,6 +128,16 @@ export interface BirthProgressPayload {
   /** true_window | partial_window | lifetime_fallback */
   rolling_winrate_source?: string;
   rolling_window_trades_covered?: number;
+  /** EdgeScore hygiene floor (typically 0.35). */
+  hygiene_wr_floor?: number;
+  hygiene_wr_lifetime?: number;
+  hygiene_wr_rolling?: number | null;
+  /** max(lifetime, eligible rolling) used for hygiene_ok. */
+  hygiene_wr_effective?: number;
+  /** lifetime | rolling | neither */
+  hygiene_wr_source?: string;
+  /** Trusted rolling window eligible for hygiene OR-path (>=400 covered). */
+  rolling_wr_eligible?: boolean;
   sim_ticks_processed_cumulative?: number;
   wall_clock_rollout_sec_avg?: number;
   wall_clock_trades_per_min?: number;
@@ -159,6 +169,25 @@ export interface BirthProgressPayload {
   policy_swarm_results?: Record<string, unknown>;
   oos_proxy_winrate?: number;
   oos_proxy_trades?: number;
+  /** Starship Birth Phase A */
+  edgescore?: number;
+  entropy_alive?: boolean;
+  policy_entropy?: number | null;
+  expectancy_proxy?: number;
+  swarm_tournament_lift_ok?: boolean;
+  swarm_tournament_at_start?: number;
+  /** @deprecated Seal II — use swarm_tournament_lift_ok */
+  swarm_edgescore_lift_ok?: boolean;
+  swarm_rejected_no_lift?: boolean;
+  /** @deprecated Seal II — use swarm_tournament_at_start */
+  swarm_edgescore_at_start?: number;
+  swarm_champion_accepted?: boolean;
+  swarm_retearnament_used?: boolean;
+  best_edgescore?: number;
+  best_edgescore_policy_path?: string;
+  starship_exploration_burst_active?: boolean;
+  policy_swarm_rejected_no_lift?: boolean;
+  policy_swarm_champion_accepted?: boolean;
 }
 
 export interface BirthCertificatePayload {

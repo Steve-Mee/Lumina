@@ -102,6 +102,63 @@ def test_evaluate_terminal_stall_phoenix_resume() -> None:
 
 
 @pytest.mark.unit
+def test_evaluate_terminal_stall_no_lift_brake_blocks_phoenix() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "plateau_evolution_exhausted",
+            "blocker_metric": "winrate",
+            "blocker_value": 0.368,
+        },
+        curriculum_stage="stage1_trend",
+        stage_trades=2700,
+        required=200,
+        constitution_violations=0,
+        fitness_signal=0.368,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=True,
+        swarm_tournament_resolved=False,
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.needs_attention is True
+    assert decision.retryable is True
+    assert "best-winrate lift" in decision.message
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_no_lift_brake_skipped_when_swarm_resolved() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False, allow_provisional_pass=False),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "plateau_evolution_exhausted",
+            "blocker_metric": "winrate",
+            "blocker_value": 0.368,
+        },
+        curriculum_stage="stage1_trend",
+        stage_trades=2700,
+        required=200,
+        constitution_violations=0,
+        fitness_signal=0.368,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=True,
+        swarm_tournament_resolved=True,
+        recommended_recovery_action="expand_data",
+    )
+    # Brake must not short-circuit to operator attention when swarm is CONTINUE-resolved.
+    assert decision.dispatch != RecoveryDispatch.TERMINAL_NOTIFY_ONLY or (
+        "best-winrate lift" not in decision.message
+    )
+    assert "best-winrate lift" not in decision.message
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
+
+
+@pytest.mark.unit
 def test_evaluate_terminal_stall_disabled_needs_attention() -> None:
     autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
     decision = evaluate_terminal_stall(
@@ -216,12 +273,44 @@ def test_evaluate_terminal_stall_twin_high_conf_approval() -> None:
         constitution_violations=0,
         fitness_signal=0.30,
         recommended_recovery_action="expand_data",
+        swarm_tournament_resolved=True,
     )
     assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
     assert "Twin high-conf autonomous approval" in decision.message
     assert twin.calls == 1
     assert twin.sync_calls == 1
     assert autonomy.autonomous_recovery_count == 1
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_twin_full_auto_blocked_until_swarm_resolved() -> None:
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _TwinStub(
+        {
+            "confidence": 0.92,
+            "recommendation": True,
+            "effective_recommendation": True,
+            "executable": True,
+            "mode": "full_auto",
+            "risk_flags": [],
+        }
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled", "blocker_metric": "trend_winrate", "blocker_value": 0.4},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+        recommended_recovery_action="expand_data",
+        swarm_tournament_resolved=False,
+    )
+    assert "Twin high-conf autonomous approval" not in decision.message
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
+    assert decision.recommended_action == "expand_and_retry"
 
 
 @pytest.mark.unit

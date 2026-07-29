@@ -60,6 +60,15 @@ def _disable_birth_meta_controller_for_unit_tests(
         "lumina_core.birth.engine.load_birth_v2_config",
         _load_without_meta,
     )
+    # Wave B PR-B1: lifecycle mixin binds load_birth_v2_config at import time.
+    monkeypatch.setattr(
+        "lumina_core.birth.engine_lifecycle.load_birth_v2_config",
+        _load_without_meta,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine_trajectory.BirthCurriculumConfig",
+        _curriculum_with_meta_off,
+    )
     monkeypatch.setattr(
         "lumina_core.birth.buffer_persist.save_buffer",
         lambda *_args, **_kwargs: "",
@@ -101,6 +110,7 @@ def _disable_birth_meta_controller_for_unit_tests(
         "lumina_core.birth.curriculum_stage_handler.run_policy_rollout",
         "lumina_core.birth.sim_runner.run_policy_rollout",
         "lumina_core.birth.certificate_pipeline.run_policy_rollout",
+        "lumina_core.birth.certificate_remediation.run_policy_rollout",
         "lumina_core.birth.certificate_evaluator.run_policy_rollout",
     ):
         monkeypatch.setattr(rollout_site, _default_rollout)

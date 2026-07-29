@@ -166,11 +166,31 @@ describe("birthPhaseModel", () => {
     ).toBe(true);
   });
 
-  it("detects active progress during historical load", () => {
+  it("detects active progress during historical load only when live", () => {
     expect(
       isBirthEngineActive({
         status: "idle",
+        live: true,
         progress: { stage: "loading_data", phase: "loading_history" },
+      }),
+    ).toBe(true);
+  });
+
+  it("does not treat orphaned on-disk training progress as an active engine", () => {
+    expect(
+      isBirthEngineActive({
+        status: "idle",
+        live: false,
+        progress: { stage: "training_running", phase: "curriculum_learning" },
+      }),
+    ).toBe(false);
+  });
+
+  it("treats paused / user_initiated_stop as interrupted", () => {
+    expect(
+      isBirthInterrupted({
+        status: "paused",
+        progress: { stage: "paused", phase: "paused", user_initiated_stop: true },
       }),
     ).toBe(true);
   });
@@ -244,7 +264,7 @@ describe("birthPhaseModel", () => {
     expect(sim.pct).toBeCloseTo(62);
   });
 
-  it("infers winrate criteria from curriculum stage when scorecard fields missing", () => {
+  it("infers EdgeScore criteria from curriculum stage when scorecard fields missing", () => {
     const scorecard = extractStageScorecard({
       curriculum_stage: "stage1_trend",
       stage_trades: 190,
@@ -253,9 +273,11 @@ describe("birthPhaseModel", () => {
       phase: "ppo_training",
       timestamp: "2026-06-12T12:00:06.000Z",
     });
-    expect(scorecard?.metricLabel).toBe("Winrate");
+    expect(scorecard?.passCriteriaId).toBe("trend_edgescore");
+    expect(scorecard?.metricLabel).toBe("Hygiene WR");
     expect(scorecard?.metricValue).toBeCloseTo(76 / 190, 3);
-    expect(scorecard?.metricTarget).toBe(0.45);
+    // Composite EdgeScore — hygiene 0.35 must not become a fake EdgeScore target.
+    expect(scorecard?.metricTarget).toBeNull();
   });
 
   it("shows syncing state when stage wins are not yet on progress payload", () => {
@@ -265,7 +287,7 @@ describe("birthPhaseModel", () => {
       stage_target_trades: 100,
       phase: "ppo_training",
     });
-    expect(scorecard?.metricLabel).toBe("Winrate");
+    expect(scorecard?.metricLabel).toBe("EdgeScore");
     expect(scorecard?.metricValue).toBeNull();
   });
 
@@ -536,5 +558,26 @@ describe("birthPhaseModel", () => {
     });
     expect(scorecard?.dataDaysLoaded).toBe(730);
     expect(scorecard?.dataManifestDaysLoaded).toBe(71);
+  });
+
+  it("surfaces Starship EdgeScore pass criteria and entropy blocker", () => {
+    const scorecard = extractStageScorecard({
+      timestamp: new Date().toISOString(),
+      curriculum_stage: "stage1_trend",
+      phase: "curriculum_learning",
+      stage_trades: 500,
+      stage_target_trades: 200,
+      stage_winrate: 0.38,
+      edgescore: 0.22,
+      entropy_alive: false,
+      pass_criteria_id: "trend_edgescore",
+      pass_metric_label: "EdgeScore",
+      pass_metric_target: 0.35,
+      pass_reason: "hygiene wr 38.0% < 35%",
+    });
+    expect(scorecard?.passCriteriaId).toBe("trend_edgescore");
+    expect(scorecard?.metricLabel).toBe("EdgeScore");
+    expect(scorecard?.metricValue).toBeCloseTo(0.22);
+    expect(scorecard?.blockerLabel).toBeTruthy();
   });
 });

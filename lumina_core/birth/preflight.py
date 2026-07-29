@@ -85,10 +85,21 @@ def data_manifest_from_split(
     raw_ticks_hash: str = "",
     enrich_version: str = "",
     holdout_pct: float = 0.0,
+    requested_days: int | None = None,
+    actual_calendar_days: int | None = None,
+    requested_instrument: str = "",
+    resolved_instrument: str = "",
+    rolled: bool | None = None,
 ) -> dict[str, Any]:
     holdout_regimes = sorted(regime_labels(split.holdout))
+    # days_loaded SSOT = actual calendar span when known; never ticks//450 fiction.
+    loaded = (
+        int(actual_calendar_days)
+        if actual_calendar_days is not None and int(actual_calendar_days) > 0
+        else int(days_loaded)
+    )
     manifest: dict[str, Any] = {
-        "days_loaded": int(days_loaded),
+        "days_loaded": loaded,
         "train_hash": str(train_hash or ""),
         "holdout_regimes": holdout_regimes,
         "holdout_tick_count": len(split.holdout),
@@ -99,6 +110,16 @@ def data_manifest_from_split(
         "ticks_cache_path": "",
         "split_cache_path": "",
     }
+    if requested_days is not None:
+        manifest["requested_days"] = int(requested_days)
+    if actual_calendar_days is not None:
+        manifest["actual_calendar_days"] = int(actual_calendar_days)
+    if requested_instrument:
+        manifest["requested_instrument"] = str(requested_instrument)
+    if resolved_instrument:
+        manifest["resolved_instrument"] = str(resolved_instrument)
+    if rolled is not None:
+        manifest["rolled"] = bool(rolled)
     if raw_ticks_hash:
         manifest["raw_ticks_hash"] = str(raw_ticks_hash)
     if enrich_version:

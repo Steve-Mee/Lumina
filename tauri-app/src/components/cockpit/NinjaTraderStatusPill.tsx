@@ -39,18 +39,18 @@ export function NinjaTraderStatusPill({ className }: NinjaTraderStatusPillProps)
 
   const tone = connected
     ? inSafe
-      ? "border-amber-500/50 bg-amber-500/10 text-amber-200"
+      ? "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-[color:var(--status-warn-fg)]"
       : "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
     : degraded
-      ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+      ? "border-[color:var(--status-warn-border)] bg-[color:var(--status-warn-bg)] text-[color:var(--status-warn-fg)]"
       : "border-muted-foreground/30 bg-muted/30 text-muted-foreground";
 
   const dot = connected
     ? inSafe
-      ? "bg-amber-400"
+      ? "bg-[color:var(--status-warn-icon)]"
       : "bg-emerald-400"
     : degraded
-      ? "bg-amber-400"
+      ? "bg-[color:var(--status-warn-icon)]"
       : "bg-muted-foreground/60";
 
   return (

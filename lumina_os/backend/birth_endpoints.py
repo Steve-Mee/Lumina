@@ -362,6 +362,15 @@ async def resume_birth(
     return _enrich_status(_merge_start_result(result))
 
 
+@router.post("/accept-champion")
+async def accept_champion(
+    target_trades: int | None = Query(None, ge=1000, le=5_000_000),
+) -> dict[str, Any]:
+    """Accept frozen champion after swarm no-lift and continue curriculum."""
+    result = birth_service.accept_champion_birth(target_trades=target_trades)
+    return _enrich_status(_merge_start_result(result))
+
+
 @router.post("/reuse-data")
 async def reuse_data_birth(
     target_trades: int | None = Query(None, ge=1000, le=5_000_000),

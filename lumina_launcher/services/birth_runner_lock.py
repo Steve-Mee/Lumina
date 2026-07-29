@@ -85,35 +85,41 @@ def clear_orphan_runner_lock_for_wipe(svc: Any) -> None:
 
 
 def mark_user_stopped_progress(svc: Any) -> None:
-    """Persist interrupted progress with user_initiated_stop so UI skips auto-resume."""
+    """Persist paused progress with user_initiated_stop (Starship pause SSOT)."""
     clear_stale_runner_lock(svc)
     progress = svc._load_progress()
     stage = resolve_first_boot_stage(progress)
-    payload: Dict[str, Any] = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "stage": "interrupted",
-        "phase": "restart_required",
-        "message": (
+    from lumina_core.birth.starship_birth import build_pause_ssot_payload, write_pause_ssot
+
+    merged = dict(progress)
+    merged.update(
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "target_trades": int(
+                progress.get("target_trades", FIRST_BOOT_DEFAULT_TRADES) or FIRST_BOOT_DEFAULT_TRADES
+            ),
+            "trades_done": int(progress.get("trades_done", 0) or 0),
+            "cumulative_trades": int(progress.get("cumulative_trades", 0) or 0),
+            "total_trades": int(progress.get("total_trades", 0) or 0),
+            "ppo_steps": int(progress.get("ppo_steps", 0) or 0),
+            "progress_pct": float(progress.get("progress_pct", 0) or 0),
+            "prior_stage": (
+                stage if stage in BIRTH_ACTIVE_STAGES else str(progress.get("stage", "") or "")
+            ),
+            "prior_phase": str(progress.get("phase", "") or ""),
+            "curriculum_stage": str(
+                progress.get("curriculum_stage") or progress.get("prior_stage") or ""
+            ),
+        }
+    )
+    payload = build_pause_ssot_payload(
+        progress=merged,
+        message=(
             "Birth Phase gestopt door gebruiker. "
             "Kies Hervat checkpoint of Wis birth-data voor schone run."
         ),
-        "target_trades": int(progress.get("target_trades", FIRST_BOOT_DEFAULT_TRADES) or FIRST_BOOT_DEFAULT_TRADES),
-        "trades_done": int(progress.get("trades_done", 0) or 0),
-        "cumulative_trades": int(progress.get("cumulative_trades", 0) or 0),
-        "total_trades": int(progress.get("total_trades", 0) or 0),
-        "ppo_steps": int(progress.get("ppo_steps", 0) or 0),
-        "progress_pct": float(progress.get("progress_pct", 0) or 0),
-        "prior_stage": stage if stage in BIRTH_ACTIVE_STAGES else str(progress.get("stage", "") or ""),
-        "prior_phase": str(progress.get("phase", "") or ""),
-        "user_initiated_stop": True,
-    }
-    encoded = json.dumps(payload, ensure_ascii=True, indent=2)
-    for path in (svc.progress_file, svc.legacy_progress_file):
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(encoded, encoding="utf-8")
-        except OSError:
-            logger.warning("birth.user_stop.write_failed path=%s", path, exc_info=True)
+    )
+    write_pause_ssot(svc.workspace_root, payload)
     try:
         if svc.pause_flag_path.exists():
             svc.pause_flag_path.unlink()
@@ -135,38 +141,47 @@ def reconcile_orphaned_birth_progress(svc: Any) -> bool:
     """Mark on-disk active progress as interrupted when no live Birth runner exists."""
     clear_stale_runner_lock(svc)
     progress = svc._load_progress()
-    phase = str(progress.get("phase", "") or "").strip().lower()
-    if phase in {"plateau_evolution", "stall_remediation", "stage_stalled"}:
-        return False
     stage = resolve_first_boot_stage(progress)
-    if stage not in BIRTH_ACTIVE_STAGES:
+    phase = str(progress.get("phase", "") or "").strip().lower()
+    # Starship: also reconcile plateau/stall death-modes (where birth most often dies).
+    orphan_recovery_phases = {
+        "plateau_evolution",
+        "stall_remediation",
+        "stage_stalled",
+        "phoenix_cycle",
+        "policy_swarm",
+        "exploration_burst",
+    }
+    if stage not in BIRTH_ACTIVE_STAGES and phase not in orphan_recovery_phases and stage not in orphan_recovery_phases:
         return False
     if birth_training_is_live(svc.workspace_root, thread_running=svc.is_running()):
         return False
-    payload: Dict[str, Any] = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "stage": "interrupted",
-        "phase": "restart_required",
-        "message": (
+    from lumina_core.birth.starship_birth import build_pause_ssot_payload, write_pause_ssot
+
+    merged = dict(progress)
+    merged.update(
+        {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "target_trades": int(
+                progress.get("target_trades", FIRST_BOOT_DEFAULT_TRADES) or FIRST_BOOT_DEFAULT_TRADES
+            ),
+            "trades_done": int(progress.get("trades_done", 0) or 0),
+            "cumulative_trades": int(progress.get("cumulative_trades", 0) or 0),
+            "total_trades": int(progress.get("total_trades", 0) or 0),
+            "ppo_steps": int(progress.get("ppo_steps", 0) or 0),
+            "progress_pct": float(progress.get("progress_pct", 0) or 0),
+            "prior_stage": stage,
+            "prior_phase": str(progress.get("phase", "") or ""),
+            "curriculum_stage": str(progress.get("curriculum_stage") or stage or ""),
+        }
+    )
+    payload = build_pause_ssot_payload(
+        progress=merged,
+        message=(
             "Vorige sessie onderbroken — klik Hervat checkpoint om verder te gaan."
         ),
-        "target_trades": int(progress.get("target_trades", FIRST_BOOT_DEFAULT_TRADES) or FIRST_BOOT_DEFAULT_TRADES),
-        "trades_done": int(progress.get("trades_done", 0) or 0),
-        "cumulative_trades": int(progress.get("cumulative_trades", 0) or 0),
-        "total_trades": int(progress.get("total_trades", 0) or 0),
-        "ppo_steps": int(progress.get("ppo_steps", 0) or 0),
-        "progress_pct": float(progress.get("progress_pct", 0) or 0),
-        "prior_stage": stage,
-        "prior_phase": str(progress.get("phase", "") or ""),
-        "user_initiated_stop": True,
-    }
-    encoded = json.dumps(payload, ensure_ascii=True, indent=2)
-    for path in (svc.progress_file, svc.legacy_progress_file):
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(encoded, encoding="utf-8")
-        except OSError:
-            logger.warning("birth.reconcile.write_failed path=%s", path, exc_info=True)
+    )
+    write_pause_ssot(svc.workspace_root, payload)
     logger.info("birth.reconcile_orphaned prior_stage=%s workspace=%s", stage, svc.workspace_root)
     try:
         from lumina_core.notifications.attention_events import birth_interrupted_event

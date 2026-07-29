@@ -6,7 +6,6 @@ from typing import Any
 
 from lumina_core.birth.curriculum import (
     CurriculumStage,
-    is_runway_stage,
     update_stage1_intra_state,
     update_stage2_intra_state,
 )
@@ -108,8 +107,8 @@ class StageLoopRolloutCycleMixin(
             wins=rollout.wins,
             total_pnl=float(rollout.total_pnl),
         )
-        if is_runway_stage(self.stage):
-            self.stage_val_pnl.extend(rollout.pnl_series)
+        # Starship: realized PnL for all stages (EdgeScore expectancy must not fall back to WR−0.5).
+        self.stage_val_pnl.extend(rollout.pnl_series)
 
         if self.intra_state is not None and rollout.easy_trades > 0:
             update_stage1_intra_state(

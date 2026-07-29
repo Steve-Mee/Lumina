@@ -24,6 +24,7 @@ from .birth_runner_start import (
     stop_birth,
 )
 from .birth_runner_recovery import (
+    accept_champion_birth,
     expand_and_retry_stalled_stage,
     is_stage_stalled_recovery_eligible,
     resume_birth,
@@ -458,6 +459,9 @@ class BirthService:
 
     def resume_birth(self, target_trades: int | None = None) -> Dict[str, Any]:
         return resume_birth(self, target_trades=target_trades)
+
+    def accept_champion_birth(self, target_trades: int | None = None) -> Dict[str, Any]:
+        return accept_champion_birth(self, target_trades=target_trades)
 
     def reuse_data_birth(self, target_trades: int | None = None) -> Dict[str, Any]:
         return reuse_data_birth(self, target_trades=target_trades)

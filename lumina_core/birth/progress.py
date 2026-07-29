@@ -98,6 +98,7 @@ def write_birth_progress(
     _OOS_PRESERVE_KEYS: frozenset[str] = frozenset(
         {
             "oos_metrics",
+            "oos_regime_breakdown",
             "failure_reasons",
             "remediation_attempt",
             "remediation_max",

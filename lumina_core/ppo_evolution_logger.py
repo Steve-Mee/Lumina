@@ -149,6 +149,7 @@ class PPOEvolutionLogger(BaseCallback):
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_interval = max(1, int(log_interval))
         self.last_log_step = 0
+        self.last_entropy: float | None = None
         self._rolling = RollingStepMetrics(window=ROLLING_WINDOW)
 
     def _on_step(self) -> bool:
@@ -158,6 +159,15 @@ class PPOEvolutionLogger(BaseCallback):
         self._write_log_entry()
         self.last_log_step = int(self.num_timesteps)
         return True
+
+    def _on_training_end(self) -> None:
+        """Always flush once per learn() so short birth bursts still emit entropy."""
+        if int(self.num_timesteps) <= 0:
+            return
+        if int(self.num_timesteps) == int(self.last_log_step):
+            return
+        self._write_log_entry()
+        self.last_log_step = int(self.num_timesteps)
 
     def _accumulate_step(self) -> None:
         locals_map = getattr(self, "locals", None) or {}
@@ -182,15 +192,30 @@ class PPOEvolutionLogger(BaseCallback):
         raw = getattr(logger_obj, "name_to_value", {}) if logger_obj is not None else {}
         return {str(k): float(v) for k, v in raw.items() if v is not None}
 
+    @staticmethod
+    def _resolve_policy_loss(logs: dict[str, float]) -> float:
+        """SB3 2.8+ uses train/policy_gradient_loss; older builds used train/policy_loss."""
+        if "train/policy_gradient_loss" in logs:
+            return float(logs["train/policy_gradient_loss"])
+        return float(logs.get("train/policy_loss", 0.0))
+
+    @staticmethod
+    def _resolve_entropy(logs: dict[str, float]) -> float:
+        """SB3 2.8+ logs train/entropy_loss (negative mean entropy); older used train/entropy."""
+        if "train/entropy_loss" in logs:
+            # SB3 stores mean entropy as a loss term (negative); surface positive entropy.
+            return float(-logs["train/entropy_loss"])
+        return float(logs.get("train/entropy", 0.0))
+
     def _build_entry(self) -> dict[str, Any]:
         logs = self._sb3_logs()
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "step": int(self.num_timesteps),
             "mean_reward": float(logs.get("rollout/ep_rew_mean", 0.0)),
-            "policy_loss": float(logs.get("train/policy_loss", 0.0)),
+            "policy_loss": self._resolve_policy_loss(logs),
             "value_loss": float(logs.get("train/value_loss", 0.0)),
-            "entropy": float(logs.get("train/entropy", 0.0)),
+            "entropy": self._resolve_entropy(logs),
             "explained_variance": float(logs.get("train/explained_variance", 0.0)),
             "winrate_rolling_5k": self._get_rolling_winrate(),
             "sharpe_rolling_5k": self._get_rolling_sharpe(),
@@ -201,6 +226,10 @@ class PPOEvolutionLogger(BaseCallback):
 
     def _write_log_entry(self) -> None:
         entry = self._build_entry()
+        try:
+            self.last_entropy = float(entry["entropy"])
+        except (KeyError, TypeError, ValueError):
+            self.last_entropy = None
         _append_jsonl(self.log_path, entry)
         _broadcast_entry_async(json.dumps(entry, ensure_ascii=True, sort_keys=True))
 

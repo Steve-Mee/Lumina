@@ -72,6 +72,57 @@ def test_dual_star_unpack_raises_without_merge(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_terminal_stall_merge_survives_phoenix_curriculum_stage(tmp_path: Path) -> None:
+    """Regression: phoenix autonomy_metrics.curriculum_stage collided with stall kwargs."""
+    autonomy_extra = {
+        "curriculum_stage": "stage1_trend",
+        "phoenix_novelty": "expand_data",
+        "autonomous_recovery_count": 1,
+    }
+    budget_fields = {"terminal_stall_reason": "plateau_evolution_exhausted"}
+    constitution_fields = {
+        "constitution_violations": 0,
+        "constitution_violations_session": 0,
+        "constitution_violations_cumulative": 0,
+    }
+    stall_fields = {
+        "curriculum_stage": "stage1_trend",
+        "stages_passed": [],
+        "stage_blocker_metric": "winrate",
+        "stage_blocker_value": 0.368,
+        "pass_reason": "winrate 36.8% < 45%",
+        "retryable": False,
+        "needs_attention": True,
+        "provisional_graduation": False,
+        "graduation_tier": "strict",
+        "oos_proxy_winrate": None,
+    }
+    merged = merge_birth_progress_extra(
+        budget_fields,
+        constitution_fields,
+        autonomy_extra,
+        stall_fields,
+    )
+    write_birth_progress(
+        tmp_path,
+        stage="stage_stalled",
+        phase="stage_stalled",
+        message="Stage stage1_trend stalled: winrate",
+        progress_pct=27.0,
+        cumulative_trades=2705,
+        target_trades=50000,
+        **merged,
+    )
+    progress_path = tmp_path / "state" / "lumina_birth_progress.json"
+    loaded = json.loads(progress_path.read_text(encoding="utf-8"))
+    assert loaded["stage"] == "stage_stalled"
+    assert loaded["curriculum_stage"] == "stage1_trend"
+    assert loaded["needs_attention"] is True
+    assert loaded["phoenix_novelty"] == "expand_data"
+    assert loaded["terminal_stall_reason"] == "plateau_evolution_exhausted"
+
+
+@pytest.mark.unit
 def test_write_birth_progress_clears_stale_blockers_on_stage_change(tmp_path: Path) -> None:
     write_birth_progress(
         tmp_path,

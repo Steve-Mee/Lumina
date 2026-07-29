@@ -1,5 +1,9 @@
 import type { BirthProgressPayload, TwinObservabilityPayload } from "@/lib/birthClient";
 import {
+  formatBirthMetricDetail,
+  formatBirthMetricValuePrecise,
+} from "@/lib/birth/birthMetricFormat";
+import {
   extractBirthSessionHud,
   extractPpoProgress,
   extractSimProgress,
@@ -62,44 +66,13 @@ function MetricField({
 function formatPassMetricDetail(
   scorecard: NonNullable<ReturnType<typeof extractStageScorecard>>,
 ): string {
-  if (scorecard.metricValue == null) {
-    if (scorecard.passCriteriaId === "trend_winrate" && scorecard.tradesDone > 0) {
-      return "syncing after next rollout or backend restart";
-    }
-    return "—";
-  }
-  if (scorecard.passCriteriaId === "mixed_constitution") {
-    return `${Math.round(scorecard.metricValue)} violations`;
-  }
-  const value = `${(scorecard.metricValue * 100).toFixed(1)}%`;
-  if (scorecard.passCriteriaId === "range_hold_ratio" || scorecard.passCriteriaId === "range_roundtrip") {
-    const min = scorecard.metricMin != null ? (scorecard.metricMin * 100).toFixed(0) : "30";
-    const max = scorecard.metricMax != null ? (scorecard.metricMax * 100).toFixed(0) : "70";
-    return `${value} (target ${min}–${max}%)`;
-  }
-  if (scorecard.passCriteriaId === "mixed_foundation") {
-    const need =
-      scorecard.metricTarget != null
-        ? `pass if ≥${(scorecard.metricTarget * 100).toFixed(0)}% (all trades)`
-        : "pass if ≥35% (all trades)";
-    return `${value} · ${need}`;
-  }
-  if (scorecard.metricTarget != null) {
-    return `${value} → need ${(scorecard.metricTarget * 100).toFixed(0)}%`;
-  }
-  return value;
+  return formatBirthMetricDetail(scorecard);
 }
 
 function formatPassMetricValue(
   scorecard: NonNullable<ReturnType<typeof extractStageScorecard>>,
 ): string {
-  if (scorecard.metricValue == null) {
-    return scorecard.tradesDone > 0 ? "syncing…" : "—";
-  }
-  if (scorecard.passCriteriaId === "mixed_constitution") {
-    return String(Math.round(scorecard.metricValue));
-  }
-  return `${(scorecard.metricValue * 100).toFixed(1)}%`;
+  return formatBirthMetricValuePrecise(scorecard);
 }
 
 function formatHoldDetail(
@@ -115,28 +88,31 @@ function formatHoldDetail(
   return `${pct}% · need ≤${max}%${ok ? " ✓" : ""}`;
 }
 
-function formatRollingDetail(
+function formatHygieneDetail(
   scorecard: NonNullable<ReturnType<typeof extractStageScorecard>>,
 ): string {
-  if (scorecard.rollingWinrate500 == null) return "—";
-  const pct = (scorecard.rollingWinrate500 * 100).toFixed(1);
+  if (scorecard.hygieneWrEffective == null && scorecard.hygieneWrLifetime == null) {
+    return "—";
+  }
   const floor =
-    scorecard.metricTarget != null
-      ? (scorecard.metricTarget * 100).toFixed(0)
+    scorecard.hygieneWrFloor != null
+      ? (scorecard.hygieneWrFloor * 100).toFixed(0)
       : "35";
-  const source = String(scorecard.rollingWinrateSource ?? "").toLowerCase();
-  if (source === "lifetime_fallback" || source === "") {
-    const covered = scorecard.rollingWindowTradesCovered;
-    if (covered != null && covered > 0 && covered < 200) {
-      return `${pct}% · ≈ lifetime (building last-500 · ${covered} known)`;
-    }
-    return `${pct}% · ≈ lifetime (window building)`;
-  }
-  if (source === "partial_window") {
-    const covered = scorecard.rollingWindowTradesCovered ?? 0;
-    return `${pct}% · partial last ${covered} · OF ≥${floor}%`;
-  }
-  return `${pct}% · OF last 500 ≥${floor}%`;
+  const life =
+    scorecard.hygieneWrLifetime != null
+      ? `${(scorecard.hygieneWrLifetime * 100).toFixed(1)}%`
+      : "—";
+  const rollRaw = scorecard.hygieneWrRolling ?? scorecard.rollingWinrate500;
+  const roll = rollRaw != null ? `${(rollRaw * 100).toFixed(1)}%` : null;
+  const covered = scorecard.rollingWindowTradesCovered;
+  const rollPart =
+    roll == null
+      ? null
+      : scorecard.rollingWrEligible === false
+        ? `roll ${roll} (${covered ?? 0}/400)`
+        : `roll ${roll}`;
+  const src = scorecard.hygieneWrSource ?? "—";
+  return [`life ${life}`, rollPart, `need ≥${floor}%`, src].filter(Boolean).join(" · ");
 }
 
 export function BirthMetricsStrip({
@@ -252,37 +228,45 @@ export function BirthMetricsStrip({
           barPct={scorecard.metricPct}
         />
       ) : null}
+      {/* One Hygiene instrument on Fitness landscape — life/roll in detail (no Rolling duplicate). */}
+      {scorecard &&
+      (scorecard.passCriteriaId === "trend_edgescore" ||
+        scorecard.passCriteriaId === "mixed_edgescore" ||
+        scorecard.passCriteriaId === "mixed_foundation") ? (
+        <MetricField
+          label="Hygiene WR"
+          value={
+            scorecard.hygieneWrEffective != null
+              ? `${(scorecard.hygieneWrEffective * 100).toFixed(1)}%`
+              : scorecard.hygieneWrLifetime != null
+                ? `${(scorecard.hygieneWrLifetime * 100).toFixed(1)}%`
+                : "—"
+          }
+          detail={formatHygieneDetail(scorecard)}
+          barPct={
+            scorecard.hygieneWrEffective != null
+              ? Math.min(100, Math.max(0, scorecard.hygieneWrEffective * 100))
+              : scorecard.hygieneWrLifetime != null
+                ? Math.min(100, Math.max(0, scorecard.hygieneWrLifetime * 100))
+                : 0
+          }
+        />
+      ) : null}
       {scorecard && scorecard.passCriteriaId === "mixed_foundation" ? (
-        <>
-          <MetricField
-            label="Hold ratio"
-            value={
-              scorecard.stageHoldRatio != null
-                ? `${(scorecard.stageHoldRatio * 100).toFixed(1)}%`
-                : "—"
-            }
-            detail={formatHoldDetail(scorecard)}
-            barPct={
-              scorecard.stageHoldRatio != null
-                ? Math.min(100, Math.max(0, scorecard.stageHoldRatio * 100))
-                : 0
-            }
-          />
-          <MetricField
-            label="Rolling winrate (500)"
-            value={
-              scorecard.rollingWinrate500 != null
-                ? `${(scorecard.rollingWinrate500 * 100).toFixed(1)}%`
-                : "—"
-            }
-            detail={formatRollingDetail(scorecard)}
-            barPct={
-              scorecard.rollingWinrate500 != null
-                ? Math.min(100, Math.max(0, scorecard.rollingWinrate500 * 100))
-                : 0
-            }
-          />
-        </>
+        <MetricField
+          label="Hold ratio"
+          value={
+            scorecard.stageHoldRatio != null
+              ? `${(scorecard.stageHoldRatio * 100).toFixed(1)}%`
+              : "—"
+          }
+          detail={formatHoldDetail(scorecard)}
+          barPct={
+            scorecard.stageHoldRatio != null
+              ? Math.min(100, Math.max(0, scorecard.stageHoldRatio * 100))
+              : 0
+          }
+        />
       ) : null}
       {!embedded && showPpoBatch && ppo.steps > 0 ? (
         <MetricField label="PPO batch" value={ppo.label} barPct={overallPct} />

@@ -13,7 +13,7 @@ PPOTrainer.train()
       → ppo_realtime_tailer._process_new_lines()
   → WebSocket /ws/ppo-evolution
       → usePPOEvolution (Tauri birth phase)
-      → PPOEvolutionPanel
+      → PPOEvolutionDashboard
 ```
 
 ## Backend components
@@ -45,9 +45,9 @@ Each line is a JSON object with these fields:
 | `timestamp` | string (ISO-8601 UTC) | Log time |
 | `step` | number | PPO timesteps |
 | `mean_reward` | number | SB3 `rollout/ep_rew_mean` |
-| `policy_loss` | number | SB3 `train/policy_loss` |
+| `policy_loss` | number | SB3 `train/policy_gradient_loss` (fallback: `train/policy_loss`) |
 | `value_loss` | number | SB3 `train/value_loss` |
-| `entropy` | number | SB3 `train/entropy` |
+| `entropy` | number | `-train/entropy_loss` on SB3 2.8+ (fallback: `train/entropy`) |
 | `explained_variance` | number | SB3 `train/explained_variance` |
 | `winrate_rolling_5k` | number | Rolling win rate (last 5k steps) |
 | `sharpe_rolling_5k` | number | Rolling Sharpe (last 5k steps) |
@@ -68,7 +68,7 @@ Example:
 | `tauri-app/src/lib/ppoEvolutionTypes.ts` | TypeScript metric type |
 | `tauri-app/src/lib/ppoEvolutionClient.ts` | URL resolver + JSONL parser |
 | `tauri-app/src/hooks/usePPOEvolution.ts` | WebSocket hook with reconnect |
-| `tauri-app/src/components/birth/PPOEvolutionPanel.tsx` | Birth phase dashboard |
+| `tauri-app/src/components/ppo/PPOEvolutionDashboard.tsx` | Birth phase / PPO dashboard |
 
 Set `VITE_LUMINA_BACKEND_URL=http://127.0.0.1:8000` in dev; the hook derives `ws://127.0.0.1:8000/ws/ppo-evolution`.
 

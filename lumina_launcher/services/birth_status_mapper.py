@@ -51,6 +51,20 @@ def resolve_terminal_birth_status(progress: Dict[str, Any] | None) -> tuple[str,
     phase = str(progress.get("phase", "") or "").strip().lower()
     stage_name = str(progress.get("stage", "") or "").strip().lower()
 
+    # Starship A5: paused + user_initiated_stop ≡ interrupted (one pause truth).
+    if progress.get("user_initiated_stop") is True and stage_name in {
+        "paused",
+        "interrupted",
+    }:
+        message = str(
+            progress.get("message")
+            or "Birth Phase gestopt door gebruiker. Hervat checkpoint of wis birth-data."
+        )
+        return ("interrupted", message)
+    if stage_name == "paused" and phase == "paused":
+        message = str(progress.get("message") or "Birth Phase gepauzeerd.")
+        return ("paused", message)
+
     if phase == "stage_stalled" or stage_name == "stage_stalled":
         message = str(
             progress.get("pass_reason")
@@ -58,6 +72,14 @@ def resolve_terminal_birth_status(progress: Dict[str, Any] | None) -> tuple[str,
             or "Curriculum stage stalled — metrics did not converge."
         )
         return ("stage_stalled", message)
+
+    if phase == "error" or stage_name == "error":
+        message = str(
+            progress.get("last_error")
+            or progress.get("message")
+            or "Birth Phase gefaald"
+        )
+        return ("error", message)
 
     if phase in {"certificate_failed", "certificate_remediation"}:
         message = str(
@@ -89,14 +111,21 @@ def sanitize_running_progress(progress: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = dict(progress)
     phase = str(sanitized.get("phase", "") or "").strip().lower()
     stage = str(sanitized.get("stage", "") or "").strip().lower()
-    if phase in {"stage_stalled", "certificate_failed", "certificate_remediation"} or stage in {
+    if phase in {
+        "stage_stalled",
+        "certificate_failed",
+        "certificate_remediation",
+        "error",
+    } or stage in {
         "stage_stalled",
         "failed",
+        "error",
     }:
         sanitized["phase"] = "loading_history"
         sanitized["stage"] = "loading_data"
         sanitized.pop("terminal_stall_reason", None)
         sanitized.pop("pass_reason", None)
+        sanitized.pop("last_error", None)
         sanitized["retryable"] = True
         sanitized["needs_attention"] = False
     if phase in {"curriculum_failed", "simulation_stall"}:
@@ -117,11 +146,20 @@ def sanitize_running_progress(progress: Dict[str, Any]) -> Dict[str, Any]:
         "enriching_news",
     }
     if phase in active_training_phases or sanitized.get("stage") == "training_running":
-        sanitized.pop("needs_attention", None)
-        sanitized.pop("attention_summary", None)
-        sanitized.pop("attention_reason_code", None)
-        sanitized.pop("attention_recommended_actions", None)
-        sanitized.pop("attention_notified_at", None)
+        # Starship: preserve swarm no-lift attention while training (fail-closed UX).
+        starship_attention = str(sanitized.get("attention_reason_code", "") or "") in {
+            "swarm_no_edgescore_lift",  # legacy synonym
+            "swarm_no_tournament_lift",
+            "swarm_inconclusive_sample",
+            "swarm_frozen_windows_missing",
+            "swarm_incomplete_restore",
+        } or bool(sanitized.get("swarm_rejected_no_lift"))
+        if not starship_attention:
+            sanitized.pop("needs_attention", None)
+            sanitized.pop("attention_summary", None)
+            sanitized.pop("attention_reason_code", None)
+            sanitized.pop("attention_recommended_actions", None)
+            sanitized.pop("attention_notified_at", None)
         sanitized["user_initiated_stop"] = False
     birth_start = float(sanitized.get("birth_start_time", 0) or 0)
     if birth_start > 0:
@@ -177,6 +215,11 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
     from lumina_launcher.services import birth_status_enricher as _enricher
 
     svc._maybe_execute_autonomous_recovery()
+    # Orphan reconcile must run on every status poll (not only workspace bind).
+    # Otherwise a dead runner leaves training_running on disk → API returns idle
+    # and the UI never offers Resume / Wipe after an app restart.
+    if not svc.is_running():
+        svc.reconcile_orphaned_birth_progress()
     svc._maybe_auto_resume_stalled_birth()
     progress = svc._load_progress()
     lightweight = should_use_lightweight_status_enrichment(svc, progress)
@@ -188,19 +231,19 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
     if terminal is not None and not svc.is_running():
         terminal_status, terminal_message = terminal
         live = birth_training_is_live(svc.workspace_root, thread_running=False)
-        return _enricher.enrich_birth_status(
-            svc,
-            {
-                "progress": progress,
-                "live": live,
-                "status": terminal_status,
-                "progress_pct": float(progress.get("progress_pct", 0) or 0),
-                "message": terminal_message,
-                "result": svc._result,
-                "orphaned": False,
-                "adaptive_intelligence": _ai(),
-            },
-        )
+        payload: Dict[str, Any] = {
+            "progress": progress,
+            "live": live,
+            "status": terminal_status,
+            "progress_pct": float(progress.get("progress_pct", 0) or 0),
+            "message": terminal_message,
+            "result": svc._result,
+            "orphaned": False,
+            "adaptive_intelligence": _ai(),
+        }
+        if terminal_status == "error":
+            payload["error"] = terminal_message
+        return _enricher.enrich_birth_status(svc, payload)
 
     if svc.is_running() or progress_indicates_running(svc, progress):
         progress = sanitize_running_progress(progress)
@@ -294,13 +337,16 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
             },
         )
 
-    if stage == "interrupted":
+    if stage in {"interrupted", "paused"} or progress.get("user_initiated_stop") is True:
+        status_name = "interrupted" if progress.get("user_initiated_stop") is True else "paused"
+        if stage == "interrupted":
+            status_name = "interrupted"
         return _enricher.enrich_birth_status(
             svc,
             {
                 **base_meta,
-                "status": "interrupted",
-                "orphaned": True,
+                "status": status_name,
+                "orphaned": status_name == "interrupted",
                 "message": str(
                     progress.get("message")
                     or "Vorige sessie onderbroken — klik Hervat checkpoint om verder te gaan."

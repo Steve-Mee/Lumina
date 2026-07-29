@@ -11,6 +11,7 @@ const emptyDraft = () => ({
   CROSSTRADE_TOKEN: "",
   CROSSTRADE_ACCOUNT: "",
   LUMINA_ADMIN_API_KEY: "",
+  LUMINA_FABRIC_TOKEN: "",
   XAI_API_KEY: "",
   TELEGRAM_BOT_TOKEN: "",
   TELEGRAM_CHAT_ID: "",
@@ -21,9 +22,8 @@ describe("credentialsReadyInEnv", () => {
     expect(
       credentialsReadyInEnv({
         LUMINA_JWT_SECRET_KEY: true,
-        CROSSTRADE_TOKEN: true,
-        CROSSTRADE_ACCOUNT: true,
         LUMINA_ADMIN_API_KEY: true,
+        LUMINA_FABRIC_TOKEN: true,
       }),
     ).toBe(true);
   });
@@ -32,9 +32,8 @@ describe("credentialsReadyInEnv", () => {
     expect(
       credentialsReadyInEnv({
         LUMINA_JWT_SECRET_KEY: true,
-        CROSSTRADE_TOKEN: true,
-        CROSSTRADE_ACCOUNT: false,
         LUMINA_ADMIN_API_KEY: true,
+        LUMINA_FABRIC_TOKEN: false,
       }),
     ).toBe(false);
   });
@@ -46,9 +45,8 @@ describe("credentialsReadyInDraft", () => {
       credentialsReadyInDraft({
         ...emptyDraft(),
         LUMINA_JWT_SECRET_KEY: "jwt",
-        CROSSTRADE_TOKEN: "tok",
-        CROSSTRADE_ACCOUNT: "acct",
         LUMINA_ADMIN_API_KEY: "sk_test",
+        LUMINA_FABRIC_TOKEN: "fabric",
       }),
     ).toBe(true);
   });

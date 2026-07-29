@@ -105,5 +105,78 @@ def test_ppo_evolution_logger_writes_jsonl(tmp_path: Path, monkeypatch) -> None:
     assert required.issubset(entry.keys())
     assert entry["step"] == 5000
     assert entry["mean_reward"] == 1.25
+    assert entry["entropy"] == 0.33
+    assert entry["policy_loss"] == 0.04
     assert entry["action_distribution"]["long"] == 1.0
     assert entry["winrate_rolling_5k"] == 1.0
+
+
+def test_ppo_evolution_logger_flushes_on_training_end(tmp_path: Path, monkeypatch) -> None:
+    """Short birth bursts (< log_interval) must still emit entropy at learn() end."""
+    pytest.importorskip("stable_baselines3")
+
+    log_path = tmp_path / "state" / "ppo_training_log.jsonl"
+    logger = PPOEvolutionLogger(log_path=log_path, log_interval=5000)
+
+    class _FakeLogger:
+        name_to_value = {
+            "rollout/ep_rew_mean": 0.1,
+            "train/entropy_loss": -0.33,
+            "train/policy_gradient_loss": 0.01,
+            "train/value_loss": 1.0,
+            "train/explained_variance": 0.0,
+        }
+
+    logger.model = type("_M", (), {"logger": _FakeLogger()})()
+    logger.num_timesteps = 3000
+    logger.last_log_step = 0
+    monkeypatch.setattr(
+        "lumina_core.ppo_evolution_logger._broadcast_entry_async",
+        lambda _payload: None,
+    )
+    assert logger._on_step() is True
+    assert not log_path.exists()
+    logger._on_training_end()
+    assert log_path.exists()
+    entry = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert entry["step"] == 3000
+    assert entry["entropy"] == pytest.approx(0.33)
+    assert logger.last_entropy == pytest.approx(0.33)
+
+
+def test_resolve_entropy_prefers_sb3_28_entropy_loss() -> None:
+    logs = {"train/entropy_loss": -0.42, "train/entropy": 0.0}
+    assert PPOEvolutionLogger._resolve_entropy(logs) == pytest.approx(0.42)
+
+
+def test_resolve_policy_loss_prefers_sb3_28_policy_gradient_loss() -> None:
+    logs = {"train/policy_gradient_loss": 0.07, "train/policy_loss": 0.0}
+    assert PPOEvolutionLogger._resolve_policy_loss(logs) == pytest.approx(0.07)
+
+
+def test_ppo_evolution_logger_sb3_28_keys(tmp_path: Path, monkeypatch) -> None:
+    pytest.importorskip("stable_baselines3")
+
+    log_path = tmp_path / "state" / "ppo_training_log.jsonl"
+    logger = PPOEvolutionLogger(log_path=log_path, log_interval=1)
+
+    class _FakeLogger:
+        name_to_value = {
+            "rollout/ep_rew_mean": 0.5,
+            "train/policy_gradient_loss": 0.08,
+            "train/value_loss": 12.0,
+            "train/entropy_loss": -0.55,
+            "train/explained_variance": 0.02,
+        }
+
+    logger.model = type("_M", (), {"logger": _FakeLogger()})()
+    logger.num_timesteps = 1000
+    logger.last_log_step = 0
+    monkeypatch.setattr(
+        "lumina_core.ppo_evolution_logger._broadcast_entry_async",
+        lambda _payload: None,
+    )
+    assert logger._on_step() is True
+    entry = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert entry["entropy"] == pytest.approx(0.55)
+    assert entry["policy_loss"] == pytest.approx(0.08)
