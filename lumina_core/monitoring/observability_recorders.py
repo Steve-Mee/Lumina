@@ -53,6 +53,7 @@ class ObservabilityRecordersMixin:
     """record_* API for ``ObservabilityService``."""
 
     __slots__ = ()
+    _last_regime_labels: dict[str, str] | None
 
     # ── Recording API ──────────────────────────────────────────────────────────
 

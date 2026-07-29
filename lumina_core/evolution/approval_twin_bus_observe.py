@@ -24,6 +24,9 @@ _TWIN_SUBSCRIBE_TOPICS: tuple[str, ...] = (
 
 
 class ApprovalTwinBusObserveMixin:
+    _recent_constitution_flags: list[str]
+    _recent_risk_flags: list[str]
+
     def bind_event_bus(self, bus: EventBus | None) -> None:
         """Wire (or re-wire) the central EventBus after construction.
 

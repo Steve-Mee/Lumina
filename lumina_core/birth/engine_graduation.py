@@ -19,6 +19,7 @@ from lumina_core.birth.progress import (
     write_birth_progress,
 )
 from lumina_core.birth.stage_pass_receipt import (
+    StagePassReceipt,
     audit_curriculum_integrity,
     fresh_stage_metrics_for_stage,
     receipt_for_stage,
@@ -30,6 +31,10 @@ logger = get_logger("lumina.birth.engine")
 
 
 class EngineGraduationMixin:
+    _stages_passed: list[str]
+    _stage_pass_receipts: list[StagePassReceipt]
+    _pending_stage_pass_receipt: StagePassReceipt | None
+
     def _stage_metrics_snapshot(
         self,
         *,

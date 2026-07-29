@@ -29,6 +29,9 @@ def _utc_now_iso() -> str:
 class BridgeInboundMixin:
     """Inbound WS frames + Fabric stream event application."""
 
+    _positions: list[Position]
+    _safety_alerts: list[dict[str, Any]]
+
     def handle_inbound(self, payload: dict[str, Any]) -> dict[str, Any] | None:
         """Process an inbound frame from NT8. Returns optional outbound response."""
         try:

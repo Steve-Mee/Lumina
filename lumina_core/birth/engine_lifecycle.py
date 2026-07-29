@@ -25,6 +25,8 @@ logger = get_logger("lumina.birth.engine")
 
 
 class EngineLifecycleMixin:
+    ppo_trainer: Any
+
     def _resolve_approval_twin(self) -> Any | None:
         """Best-effort ApprovalTwin for birth auto-judgment (ADR-0031/0032).
 

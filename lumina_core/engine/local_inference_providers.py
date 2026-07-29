@@ -27,6 +27,9 @@ class LocalInferenceProvidersMixin:
     """vLLM / Ollama / remote Grok provider calls and vLLM health checks."""
 
     __slots__ = ()
+    _ollama_install_cache_names: list[str] | None
+    _ollama_install_cache_host: str | None
+    _ollama_install_cache_ts: float
 
     def _resolve_regime_label(self) -> str:
         snapshot = getattr(self.context, "current_regime_snapshot", None)

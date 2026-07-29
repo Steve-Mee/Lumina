@@ -23,6 +23,7 @@ class MetaAgentNightlyMixin:
     """Lifecycle build + auto fine-tune methods mixed into SelfEvolutionMetaAgent."""
 
     __slots__ = ()
+    lifecycle_manager: EvolutionLifecycleManager | None
 
     def _hydrate_report_from_blackboard(self, report: dict[str, Any]) -> dict[str, Any]:
         if int(report.get("trades", 0) or 0) > 0:

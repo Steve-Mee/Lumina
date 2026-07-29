@@ -19,6 +19,7 @@ class ReasoningPathsMixin:
     """Latency SLA, fast-path toggles, inference routing, and consensus paths."""
 
     __slots__ = ()
+    _sla_breach_streak: int
 
     def _set_fast_path_only(self, enabled: bool, reason: str) -> None:
         app = self._app()

@@ -43,6 +43,19 @@ class HeadlessProductionOrchestrateMixin:
     """Status, checkpoint, config hot-reload, graceful shutdown, and ``run()``."""
 
     __slots__ = ()
+    mode: str
+    _started_at: float
+    _last_checkpoint_at: float | None
+    _last_recon_result: dict[str, Any] | None
+    _shutdown_reason: str
+    _slo_status: str
+    _prev_signal_handlers: dict[int, Any]
+    _last_config_reload_at: str | None
+    _last_config_reload_ok: bool | None
+    _last_config_reload_reason: str | None
+    _config_bus_tokens: list[str]
+    _loop_components: dict[str, Any] | None
+    _pending_safe_restart_code: int | None
 
     def _install_signal_handlers(self) -> None:
         def _handler(signum: int, _frame: Any) -> None:

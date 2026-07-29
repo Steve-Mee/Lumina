@@ -19,6 +19,16 @@ class HeadlessProductionPhasesMixin:
     """Main-loop and deferred-restart phases for HeadlessProductionOrchestrator."""
 
     __slots__ = ()
+    _last_heartbeat: float
+    _last_slo: float
+    _last_recon: float
+    _last_recovery: float
+    _last_recon_result: dict[str, Any] | None
+    _last_checkpoint_at: float | None
+    _shutdown_requested: bool
+    _slo_status: str
+    _pending_safe_restart_code: int | None
+    mode: str
 
     def _handle_deferred_restart(
         self,

@@ -15,6 +15,9 @@ logger = get_logger("lumina.risk.shadow")
 
 
 class ShadowIsolationMixin:
+    _shadow_orchestrator: RiskOrchestrator | None
+    engine: Any
+
     @classmethod
     def with_persistent_registry(
         cls,
