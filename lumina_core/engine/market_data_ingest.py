@@ -9,6 +9,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+import requests
 import websockets
 from websockets.exceptions import ConnectionClosed
 from datetime import datetime

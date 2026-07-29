@@ -10,7 +10,8 @@ from lumina_core.birth.stage_scorecard import compute_stage_blocker, pass_criter
 
 
 def _cfg(**overrides: object) -> BirthCurriculumConfig:
-    base = BirthCurriculumConfig()
+    # Classic foundation-floor assertions (not Starship EdgeScore path).
+    base = BirthCurriculumConfig(stage3_edgescore_enabled=False)
     for key, value in overrides.items():
         setattr(base, key, value)
     return base

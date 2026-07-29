@@ -160,7 +160,7 @@ def test_adaptive_recovery_does_not_write_stage_stalled_progress(
     tick = {"value": 1_000_000.0}
     stall_writes: list[str] = []
     original_write = __import__(
-        "lumina_core.birth.engine", fromlist=["write_birth_progress"]
+        "lumina_core.birth.progress", fromlist=["write_birth_progress"]
     ).write_birth_progress
 
     def _track_write(*args, **kwargs):
@@ -192,6 +192,7 @@ def test_adaptive_recovery_does_not_write_stage_stalled_progress(
         )
 
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
+    monkeypatch.setattr("lumina_core.birth.progress.write_birth_progress", _track_write)
     monkeypatch.setattr("lumina_core.birth.birth_phase_orchestrator.write_birth_progress", _track_write)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _rollout)
     monkeypatch.setattr(engine, "_stop_requested", lambda: rollout_calls["n"] >= 20)

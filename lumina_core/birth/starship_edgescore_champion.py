@@ -1,7 +1,6 @@
 """Starship EdgeScore champion eligibility + poison sanitize + humanize."""
 from __future__ import annotations
 
-from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.starship_edgescore_core import (

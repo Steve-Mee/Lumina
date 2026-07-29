@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.birth.plateau_escalator import (
     EvolutionAction,
     is_valid_best_policy_snapshot,

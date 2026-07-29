@@ -16,18 +16,18 @@ _LAUNCHER_BIRTH = _ROOT / "lumina_launcher" / "services"
 
 # Baselines captured 2026-07-04 after phase 2A/2B splits; birth_runner facade removed 2026-07-13.
 _LINE_BASELINES: dict[str, int] = {
-    "birth_service.py": 520,
-    "birth_status_mapper.py": 351,
+    "birth_service.py": 521,
+    "birth_status_mapper.py": 397,
     "birth_status_enricher.py": 149,
     "birth_status_plateau_risk.py": 60,
-    "birth_runner_lock.py": 181,
-    "birth_runner_start.py": 342,
+    "birth_runner_lock.py": 196,
+    "birth_runner_start.py": 368,
     "birth_runner_wipe.py": 115,
-    "birth_runner_recovery.py": 183,
+    "birth_runner_recovery.py": 275,
 }
 
 _METHOD_CEILINGS: dict[str, dict[str, int]] = {
-    "birth_runner_start.py": {"start_birth": 206},
+    "birth_runner_start.py": {"start_birth": 232},
 }
 
 

@@ -29,6 +29,12 @@ from lumina_core.engine.supervisor_phase_tick_ops import (
     run_tick_signal_gate,
 )
 from lumina_core.engine.valuation_engine import ValuationEngine
+from lumina_core.reasoning.agent_contracts import (  # noqa: F401 — re-export for tests/monkeypatch
+    apply_agent_policy_gateway,
+)
+from lumina_core.runtime_trade_gates import (  # noqa: F401 — re-export for tests/monkeypatch
+    apply_hard_risk_controller_to_signal,
+)
 
 logger = logging.getLogger(__name__)
 

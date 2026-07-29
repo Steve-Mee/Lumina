@@ -91,6 +91,7 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
         stage1_trend_trades=100,
         certified_stage_stall_wall_sec=300,
         meta_controller_enabled=False,
+        stage1_edgescore_enabled=False,
     )
     (tmp_path / "config.yaml").write_text(
         yaml.safe_dump({"birth_v2": {"trade_budget_cap": 500, "curriculum": {}}}),

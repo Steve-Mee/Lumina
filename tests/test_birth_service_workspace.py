@@ -203,10 +203,15 @@ def test_get_status_flag_without_certificate_reports_certificate_failed(
 
 
 @pytest.mark.unit
-def test_get_status_stage_stalled_from_progress_file(tmp_path: Path) -> None:
+def test_get_status_stage_stalled_from_progress_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
     svc.configure_workspace(tmp_path)
+    monkeypatch.setattr(svc, "_maybe_execute_autonomous_recovery", lambda: None)
+    monkeypatch.setattr(svc, "_maybe_auto_resume_stalled_birth", lambda: None)
+    monkeypatch.setattr(svc, "reconcile_orphaned_birth_progress", lambda: None)
     svc.progress_file.parent.mkdir(parents=True, exist_ok=True)
     svc.progress_file.write_text(
         json.dumps(
@@ -880,6 +885,8 @@ def test_configure_workspace_auto_resumes_retryable_stage_stalled(
 
     svc = BirthService()
     monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    monkeypatch.setattr(svc, "_curriculum_integrity_audit", lambda: (True, []))
+    monkeypatch.setattr(svc, "reconcile_orphaned_birth_progress", lambda: None)
     svc.configure_workspace(ws)
     assert calls["n"] == 1
     BirthService._instance = None  # type: ignore[attr-defined]
@@ -918,6 +925,8 @@ def test_auto_resume_allowed_for_plateau_evolution_phase(
 
     svc = BirthService()
     monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    monkeypatch.setattr(svc, "_curriculum_integrity_audit", lambda: (True, []))
+    monkeypatch.setattr(svc, "reconcile_orphaned_birth_progress", lambda: None)
     svc.configure_workspace(ws)
     assert calls["n"] == 1
     BirthService._instance = None  # type: ignore[attr-defined]
@@ -995,6 +1004,8 @@ def test_auto_resume_allowed_for_plateau_exhausted_when_autonomous(
 
     svc = BirthService()
     monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    monkeypatch.setattr(svc, "_curriculum_integrity_audit", lambda: (True, []))
+    monkeypatch.setattr(svc, "reconcile_orphaned_birth_progress", lambda: None)
     svc.configure_workspace(ws)
     assert calls["n"] == 1
     BirthService._instance = None  # type: ignore[attr-defined]

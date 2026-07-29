@@ -22,7 +22,6 @@ from lumina_core.runtime.never_stop_recovery import NeverStopRecovery
 from lumina_core.runtime.production_config import (
     checkpoint_status_enabled,
     force_checkpoint_on_shutdown,
-    load_production_section,
     resolve_engine_state_paths,
     resolve_heartbeat_path,
     resolve_status_path,

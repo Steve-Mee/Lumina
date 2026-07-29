@@ -1,7 +1,6 @@
 """Shadow experiment run / execute helpers."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -10,7 +9,7 @@ from lumina_core.risk.shadow_registry import ShadowRunRegistry
 from lumina_core.risk.shadow_types import ShadowContext, ShadowExperimentResult
 
 if TYPE_CHECKING:
-    from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision, ShadowResult
+    pass
 
 logger = get_logger("lumina.risk.shadow")
 

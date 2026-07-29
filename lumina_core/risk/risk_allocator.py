@@ -14,9 +14,8 @@ class RiskAllocatorMixin:
     state: Any
     enforce_rules: bool
 
-    def _portfolio_return_series(self) -> list[float]:
-        """Stub for mixin method provided by mixing class."""
-        raise NotImplementedError
+    # NOTE: `_portfolio_return_series` is implemented by RiskControllerStatusMixin.
+    # Do not stub it here — MRO would otherwise shadow the real implementation.
 
     def _mc_enforcement_enabled(self) -> bool:
         mode = str(self._active_limits.runtime_mode or "sim").strip().lower()

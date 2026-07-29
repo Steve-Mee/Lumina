@@ -40,7 +40,7 @@ def test_graduation_requires_clean_constitution_stages() -> None:
 
 @pytest.mark.unit
 def test_stage2_pass_blocked_when_constitution_violations_present() -> None:
-    cfg = BirthCurriculumConfig(stage2_range_trades=3000)
+    cfg = BirthCurriculumConfig(stage2_range_trades=3000, stage2_edgescore_enabled=False)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
         trades=300,
@@ -81,7 +81,7 @@ def test_stage1_pass_blocked_when_constitution_violations_present() -> None:
 
 @pytest.mark.unit
 def test_compute_stage_blocker_stage2_flags_constitution_violations() -> None:
-    cfg = BirthCurriculumConfig(stage2_range_trades=3000)
+    cfg = BirthCurriculumConfig(stage2_range_trades=3000, stage2_edgescore_enabled=False)
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE2_RANGE,
         stage_trades=300,

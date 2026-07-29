@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Any
 
 from lumina_core.evolution.dna_registry import PolicyDNA
 from lumina_core.evolution.steve_values_registry import SteveValueRecord

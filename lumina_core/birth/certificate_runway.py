@@ -1,11 +1,9 @@
 """Certificate runway stages + fail helpers for birth certificate pipeline."""
 from __future__ import annotations
 
-from lumina_core.birth.certificate_patch_bridge import cp_attr
 
 from typing import Any
 
-from lumina_core.birth.certificate_evaluator import evaluate_holdout_certificate
 from lumina_core.birth.curriculum import (
     CurriculumStage,
     filter_ticks_for_stage,
@@ -22,7 +20,6 @@ from lumina_core.birth.runway import (
     ticks_for_runway_stage,
 )
 from lumina_core.birth.stage_pass_receipt import receipt_for_stage
-from lumina_core.birth.stage_scorecard import build_scorecard_payload
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.certificate_runway")

@@ -74,9 +74,6 @@ from lumina_core.agent_orchestration.schemas_safety_meta import (
     AgentMetaProposalPayload,
     AgentProposalPayload,
     AgentReflection,
-    ArchHealthSnapshotPayload,
-    ArchMutationProposalPayload,
-    ArchPromotionDecisionPayload,
     CommunityKnowledgeSnippet,
     ConstitutionAudit,
     ConstitutionViolation,
@@ -90,15 +87,11 @@ from lumina_core.agent_orchestration.schemas_safety_meta import (
 )
 from lumina_core.agent_orchestration.schemas_trading import (
     EXECUTION_FILL_RECEIVED_TOPIC,
-    TRADING_ENGINE_EXECUTION_AGGREGATE_TOPIC,
-    DreamState,
     DreamStateEventPayload,
-    ExecutionAggregatePayload,
     ExecutionFill,
     MarketTapePayload,
     TradeIntent,
     TradingEngineExecutionAggregate,
-    filter_payload_for_execution_aggregate,
 )
 
 EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {

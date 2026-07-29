@@ -15,8 +15,8 @@ _ROOT = Path(__file__).resolve().parents[2]
 _BIRTH_SERVICE = _ROOT / "lumina_launcher" / "services" / "birth_service.py"
 
 # Baseline captured 2026-07-04; runner facade collapsed into direct submodule imports.
-_SERVICE_LINE_BASELINE = 520
-_SERVICE_METHOD_BASELINE = 56
+_SERVICE_LINE_BASELINE = 521
+_SERVICE_METHOD_BASELINE = 57
 
 _BOUNDED_MODULE_MARKERS = [
     "birth_status_mapper",

@@ -204,7 +204,7 @@ def test_build_scorecard_pass_reason_uses_cfg_winrate_gate() -> None:
         learning_attempt=3,
         cfg=cfg,
     )
-    assert payload["pass_reason"] == "hygiene wr 24.8% < 35%"
+    assert payload["pass_reason"] == "Hygiene WR lifetime 25% (need >=35%) | EdgeScore 20%"
 
 
 @pytest.mark.unit
@@ -268,7 +268,7 @@ def test_learning_metric_target_stage3_uses_recommended_winrate() -> None:
     from lumina_core.birth.config import BirthCurriculumConfig
     from lumina_core.birth.stage_scorecard import learning_metric_target
 
-    cfg = BirthCurriculumConfig(stage1_winrate_recommended=0.45)
+    cfg = BirthCurriculumConfig(stage1_winrate_recommended=0.45, stage3_edgescore_enabled=False)
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE3_MIXED, cfg=cfg)
     assert criteria.metric_target == pytest.approx(0.35)
     assert learning_metric_target(

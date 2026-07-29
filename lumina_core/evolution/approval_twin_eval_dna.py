@@ -1,7 +1,6 @@
 """Approval Twin DNA promotion evaluation."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from lumina_core.evolution.approval_twin_patch_bridge import twin_attr

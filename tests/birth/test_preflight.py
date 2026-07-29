@@ -25,7 +25,7 @@ def test_stage_pass_trades_uses_stage_config() -> None:
 
 @pytest.mark.unit
 def test_stage2_uses_range_flat_ratio() -> None:
-    cfg = BirthCurriculumConfig(stage2_range_trades=3000)
+    cfg = BirthCurriculumConfig(stage2_range_trades=3000, stage2_edgescore_enabled=False)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
         trades=300,

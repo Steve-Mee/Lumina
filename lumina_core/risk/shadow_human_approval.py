@@ -9,7 +9,7 @@ from lumina_core.risk.shadow_registry import ShadowRunRegistry
 from lumina_core.risk.shadow_types import ShadowContext
 
 if TYPE_CHECKING:
-    from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision
+    from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision, ShadowResult
 
 logger = get_logger("lumina.risk.shadow")
 

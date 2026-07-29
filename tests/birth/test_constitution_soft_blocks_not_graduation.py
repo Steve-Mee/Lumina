@@ -28,7 +28,7 @@ def test_risk_exceeds_is_soft_block_not_hard_violation() -> None:
 @pytest.mark.unit
 def test_stage2_passes_with_soft_blocks_only() -> None:
     """Volume + flat band + RT OK; soft blocks must not set constitution_violations."""
-    cfg = BirthCurriculumConfig()
+    cfg = BirthCurriculumConfig(stage2_edgescore_enabled=False)
     # hard violations = 0 even if policy attempted 679 risk-cap entries
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
@@ -50,7 +50,7 @@ def test_stage2_passes_with_soft_blocks_only() -> None:
 
 @pytest.mark.unit
 def test_stage2_fails_on_hard_violations() -> None:
-    cfg = BirthCurriculumConfig()
+    cfg = BirthCurriculumConfig(stage2_edgescore_enabled=False)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
         trades=300,

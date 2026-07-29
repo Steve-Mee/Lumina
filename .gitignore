@@ -29,6 +29,11 @@ pip_audit_report.json
 # Local refactor extraction scratch (canonical code lives in lumina_core/birth/)
 scripts/_extract_stage_loop*.py
 scripts/_split_*.py
+scripts/_wave_*.py
+scripts/_sanitize_*.py
+# Local champion / policy scratch backups (never publish)
+*.bak
+lumina_agents/ppo/*poisoned*
 
 tmp_*.log
 tmp_*.txt

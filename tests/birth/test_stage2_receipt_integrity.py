@@ -14,7 +14,7 @@ from lumina_core.birth.stage_pass_receipt import (
 
 @pytest.mark.unit
 def test_stage2_receipt_with_range_fields_verifies_certified() -> None:
-    cfg = BirthCurriculumConfig()
+    cfg = BirthCurriculumConfig(stage2_edgescore_enabled=False)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
         trades=300,
@@ -57,7 +57,7 @@ def test_legacy_stage2_message_still_verifies() -> None:
     """Older receipts without structured fields parse range metrics from message."""
     from lumina_core.birth.stage_pass_receipt import StagePassReceipt
 
-    cfg = BirthCurriculumConfig()
+    cfg = BirthCurriculumConfig(stage2_edgescore_enabled=False)
     receipt = StagePassReceipt(
         stage="stage2_range",
         trades=300,

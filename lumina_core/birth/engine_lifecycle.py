@@ -405,7 +405,6 @@ class EngineLifecycleMixin:
         return self._certificate_pipeline().complete_certified_birth(split=split, eval_result=eval_result, training_mode=training_mode, trade_budget_cap=trade_budget_cap)
 
     def _paused_result(self) -> dict[str, Any]:
-        from lumina_core.birth.progress import read_birth_progress
         from lumina_core.birth.starship_birth import build_pause_ssot_payload, write_pause_ssot
 
         write_birth_progress(

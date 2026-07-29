@@ -21,11 +21,18 @@ def _cfg(**overrides: object) -> BirthCurriculumConfig:
 
 @pytest.mark.unit
 def test_certified_stage1_not_passed_with_many_patterns_low_wr() -> None:
-    cfg = _cfg(stage1_winrate_pass_threshold=0.45, stage1_use_rolling_pass=True)
+    # WR below EdgeScore hygiene floor (35%) and classic 45% gate — must not pass
+    # via oracle_soft_pass / pattern count alone in certified mode.
+    cfg = _cfg(
+        stage1_winrate_pass_threshold=0.45,
+        stage1_use_rolling_pass=True,
+        stage1_edgescore_enabled=True,
+        stage1_winrate_pass_floor=0.35,
+    )
     result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
         trades=11_827,
-        wins=4_470,  # 37.79%
+        wins=3_548,  # 30.00% — below EdgeScore hygiene + classic gate
         hold_signals=1000,
         total_signals=10_000,
         constitution_violations=0,
@@ -34,7 +41,7 @@ def test_certified_stage1_not_passed_with_many_patterns_low_wr() -> None:
         allow_provisional=False,
         oracle_patterns=1917,
         buffer_size=10_000,
-        rolling_winrate=0.3779,
+        rolling_winrate=0.30,
     )
     assert result.passed is False
     assert "oracle_soft_pass" not in result.message

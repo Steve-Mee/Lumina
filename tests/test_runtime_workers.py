@@ -20,25 +20,30 @@ def _patch_supervisor_phase_state_machine(
     *,
     fake_datetime: type | None = None,
 ) -> None:
-    """Post Sub11 remediation: orchestration lives in supervisor_phase_state_machine."""
+    """Post Sub11 remediation: orchestration lives in supervisor_phase_state_machine.
+
+    Wave B3 moved capital gates into supervisor_phase_tick_ops — patch both surfaces.
+    """
     from lumina_core.engine import supervisor_phase_state_machine as sp_sm
+    from lumina_core.engine import supervisor_phase_tick_ops as tick_ops
 
     if fake_datetime is not None:
         monkeypatch.setattr(sp_sm, "datetime", fake_datetime)
-    monkeypatch.setattr(
-        sp_sm,
-        "apply_hard_risk_controller_to_signal",
-        lambda **kwargs: (str(kwargs.get("signal", "HOLD")), True, "ok"),
-    )
-    monkeypatch.setattr(
-        sp_sm,
-        "apply_agent_policy_gateway",
-        lambda **kwargs: {
+        monkeypatch.setattr(tick_ops, "datetime", fake_datetime)
+
+    def _risk(**kwargs: Any) -> tuple[str, bool, str]:
+        return (str(kwargs.get("signal", "HOLD")), True, "ok")
+
+    def _gate(**kwargs: Any) -> dict[str, Any]:
+        return {
             "signal": str(kwargs.get("signal", "HOLD")),
             "approved": True,
             "reason": "ok",
-        },
-    )
+        }
+
+    for mod in (sp_sm, tick_ops):
+        monkeypatch.setattr(mod, "apply_hard_risk_controller_to_signal", _risk)
+        monkeypatch.setattr(mod, "apply_agent_policy_gateway", _gate)
 
 
 def test_runtime_workers_exports_expected_callables():

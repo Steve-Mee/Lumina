@@ -18,7 +18,7 @@ _P = _ROOT / "lumina_core" / "birth" / "plateau_escalator.py"
 # 2026-07-25: dead-zone / terminal hard-stop ladder (+~100 LOC).
 # 2026-07-26 Seal II: ladder tables/step API → plateau_evolution_ladder.py; ratchet host.
 # 2026-07-28 Wave A: rolling/enter/terminal/telemetry extracts; thin façade host.
-_P_LINE_BASELINE = 220
+_P_LINE_BASELINE = 212
 
 
 @pytest.mark.unit

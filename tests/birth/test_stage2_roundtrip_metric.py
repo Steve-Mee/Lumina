@@ -10,7 +10,7 @@ from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass
 
 @pytest.mark.unit
 def test_stage2_hold_dominant_fails_with_sufficient_range_ticks() -> None:
-    cfg = BirthCurriculumConfig(stage2_range_trades=3000)
+    cfg = BirthCurriculumConfig(stage2_range_trades=3000, stage2_edgescore_enabled=False)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
         trades=300,
@@ -31,7 +31,7 @@ def test_stage2_hold_dominant_fails_with_sufficient_range_ticks() -> None:
 
 @pytest.mark.unit
 def test_stage2_flat_and_roundtrip_sufficient_passes() -> None:
-    cfg = BirthCurriculumConfig(stage2_range_trades=3000)
+    cfg = BirthCurriculumConfig(stage2_range_trades=3000, stage2_edgescore_enabled=False)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
         trades=300,
@@ -53,7 +53,7 @@ def test_stage2_flat_and_roundtrip_sufficient_passes() -> None:
 
 @pytest.mark.unit
 def test_stage2_falls_back_to_hold_ratio_when_few_range_ticks() -> None:
-    cfg = BirthCurriculumConfig(stage2_range_trades=3000)
+    cfg = BirthCurriculumConfig(stage2_range_trades=3000, stage2_edgescore_enabled=False)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
         trades=300,

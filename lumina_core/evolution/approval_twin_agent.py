@@ -23,8 +23,7 @@ from lumina_core.evolution.approval_twin_bus import ApprovalTwinBusMixin
 from lumina_core.evolution.approval_twin_evaluators import ApprovalTwinEvaluatorsMixin
 from lumina_core.evolution.approval_twin_scoring import ApprovalTwinScoringMixin
 from lumina_core.evolution.approval_twin_training import ApprovalTwinTrainingMixin
-from lumina_core.evolution.dna_registry import PolicyDNA
-from lumina_core.evolution.steve_values_registry import SteveValueRecord, SteveValuesRegistry
+from lumina_core.evolution.steve_values_registry import SteveValuesRegistry
 from lumina_core.evolution.twin_metrics_store import TwinMetricsStore
 from lumina_core.evolution.twin_mode_promotion_gate import (
     TwinModeController,
@@ -219,7 +218,9 @@ class ApprovalTwinAgent(
                 last_avg_error=float(payload.get("last_avg_error", 0.15) or 0.15),
             )
         except Exception:
-            logging.exception("Unhandled broad exception fallback in lumina_core/evolution/approval_twin_agent.py:273")
+            logger.exception(
+                "Unhandled broad exception fallback in lumina_core/evolution/approval_twin_agent.py"
+            )
             return ApprovalTwinState(intercept=0.0, weights={}, threshold=0.6, training_steps=0, last_avg_error=0.15)
 
     def _save_state(self) -> None:

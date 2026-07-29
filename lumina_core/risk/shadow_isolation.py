@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lumina_core.logging_utils import get_logger
 from lumina_core.risk.orchestration import RiskOrchestrator
 from lumina_core.risk.shadow_registry import ShadowRunRegistry
+
+if TYPE_CHECKING:
+    from lumina_core.risk.shadow import ShadowRiskEvaluator
 
 logger = get_logger("lumina.risk.shadow")
 

@@ -9,8 +9,7 @@ NO verdict logic changes in Wave A.
 """
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from lumina_core.logging_utils import get_logger
 from lumina_core.risk.orchestration import RiskOrchestrator
@@ -22,7 +21,7 @@ from lumina_core.risk.shadow_registry import ShadowRunRegistry  # noqa: F401
 from lumina_core.risk.shadow_types import ShadowContext, ShadowExperimentResult  # noqa: F401
 
 if TYPE_CHECKING:
-    from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision, ShadowResult
+    pass
 
 logger = get_logger("lumina.risk.shadow")
 
