@@ -151,6 +151,8 @@ SCORECARD_PRESERVE_KEYS: tuple[str, ...] = (
     "best_edgescore",
     "best_edgescore_at_trade",
     "best_edgescore_policy_path",
+    "edgescore_champion_min_trades",
+    "edgescore_champion_locked",
     "rolling_winrate_500",
     "rolling_winrate_source",
     "rolling_window_trades_covered",

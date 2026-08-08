@@ -25,6 +25,7 @@ import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation
 import { cn } from "@/lib/utils";
 import type { BirthStatusPayload, BirthWipeResult } from "@/lib/birthClient";
 import { traceBirthWipe } from "@/lib/birthWipeTrace";
+import { useBirthStore } from "@/store/birthStore";
 import type { OnboardingDraft } from "@/store/onboardingStore";
 import { useBirthUiStore, type WipeConfirmKind } from "@/store/birthUiStore";
 
@@ -48,6 +49,10 @@ interface BirthGenesisDeckProps {
   busy?: boolean;
   engineLive?: boolean;
   error?: string | null;
+  /** First status poll done — false locks Activate during cold restart. */
+  sessionHydrated?: boolean;
+  sessionProbeState?: "pending" | "ready" | "error";
+  sessionProbePending?: boolean;
   onChangeTraining: (training: Partial<OnboardingDraft["training"]>) => void;
   onActivate: () => void;
   onWipe?: () => Promise<BirthWipeResult>;
@@ -184,6 +189,9 @@ export function BirthGenesisDeck({
   busy = false,
   engineLive = false,
   error = null,
+  sessionHydrated = true,
+  sessionProbeState = "ready",
+  sessionProbePending = false,
   onChangeTraining,
   onActivate,
   onWipe: _onWipe,
@@ -198,11 +206,13 @@ export function BirthGenesisDeck({
   const [genesisTab, setGenesisTab] = useState<GenesisDeckTab>("charter");
   const [helixPrimed, setHelixPrimed] = useState(false);
   const [sequencing, setSequencing] = useState(false);
+  const [probeRetrying, setProbeRetrying] = useState(false);
   const openWipeConfirm = useBirthUiStore((s) => s.openWipeConfirm);
   const openStopConfirm = useBirthUiStore((s) => s.openStopConfirm);
   const wipeConfirmWiping = useBirthUiStore((s) => s.wipeConfirmWiping);
-  const disabled = activating || busy || sequencing;
-  const wipeBlocked = busy || activating || wipeConfirmWiping;
+  const sessionLocked = sessionProbePending || !sessionHydrated || sessionProbeState === "error";
+  const disabled = activating || busy || sequencing || sessionLocked;
+  const wipeBlocked = busy || activating || wipeConfirmWiping || sessionProbePending;
   const gatePct = Math.round((training.stage1_winrate_pass_threshold ?? 0.45) * 100);
   const estimatedDays = resolveDefaultMaxRealDays(training.training_trades);
   const barCapDays = historicalBarCapDays();
@@ -244,18 +254,32 @@ export function BirthGenesisDeck({
   ].join(" · ");
 
   // Recovery context: interrupted runs often lack checkpoint_resumable but still need wipe/resume UX.
+  // During cold probe, surface Recovery so operators see that prior-session options are coming.
   const showRecoveryTab =
-    checkpointAvailable || resumePlateauRisk || engineLive || sessionInterrupted;
+    checkpointAvailable ||
+    resumePlateauRisk ||
+    engineLive ||
+    sessionInterrupted ||
+    sessionProbePending;
 
   // Open Recovery when operator lands on interrupted / checkpoint surface.
   const recoveryAutoOpenRef = useRef(false);
   useEffect(() => {
     if (recoveryAutoOpenRef.current) return;
-    if (showRecoveryTab && (sessionInterrupted || checkpointAvailable || resumePlateauRisk)) {
+    if (
+      showRecoveryTab &&
+      (sessionInterrupted || checkpointAvailable || resumePlateauRisk || sessionProbePending)
+    ) {
       recoveryAutoOpenRef.current = true;
       setGenesisTab("recovery");
     }
-  }, [showRecoveryTab, sessionInterrupted, checkpointAvailable, resumePlateauRisk]);
+  }, [
+    showRecoveryTab,
+    sessionInterrupted,
+    checkpointAvailable,
+    resumePlateauRisk,
+    sessionProbePending,
+  ]);
 
   return (
     <div
@@ -330,6 +354,56 @@ export function BirthGenesisDeck({
         >
           <span className={cn(warnOverlayBodyClass(), "line-clamp-3")}>{error}</span>
         </p>
+      ) : null}
+
+      {sessionProbePending || sessionProbeState === "error" ? (
+        <div
+          className={cn(
+            "risk-envelope-banner mx-2 mt-2 shrink-0",
+            sessionProbeState === "error"
+              ? "risk-envelope-banner--warn"
+              : "risk-envelope-banner--info",
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="min-w-0 flex-1 text-[11px] leading-relaxed">
+              {sessionProbeState === "error" ? (
+                <>
+                  <strong className="text-amber-200/90">Session status unavailable:</strong>{" "}
+                  Could not confirm whether a previous birth is waiting. Activate stays locked
+                  until status loads — retry so you do not overwrite a checkpoint by accident.
+                </>
+              ) : (
+                <>
+                  <strong className="text-cyan-200/90">Loading session state:</strong>{" "}
+                  Checking for a previous birth (checkpoint / interrupted run). Activate is
+                  locked until this finishes.
+                </>
+              )}
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 font-mono text-[10px] tracking-wide uppercase"
+              disabled={probeRetrying}
+              onClick={() => {
+                setProbeRetrying(true);
+                void useBirthStore
+                  .getState()
+                  .pollFresh()
+                  .finally(() => setProbeRetrying(false));
+              }}
+            >
+              {probeRetrying || sessionProbePending ? (
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
+              ) : null}
+              {probeRetrying ? "Retrying…" : sessionProbePending ? "Loading…" : "Retry status"}
+            </Button>
+          </div>
+        </div>
       ) : null}
 
       <div className="birth-genesis-panel__body min-h-0 flex-1 overflow-hidden px-2 pt-2">
@@ -457,27 +531,41 @@ export function BirthGenesisDeck({
                 <div
                   className={cn(
                     "risk-envelope-banner mb-3 shrink-0",
-                    sessionInterrupted || resumePlateauRisk
-                      ? "risk-envelope-banner--warn"
-                      : "risk-envelope-banner--info",
+                    sessionProbePending
+                      ? "risk-envelope-banner--info"
+                      : sessionInterrupted || resumePlateauRisk
+                        ? "risk-envelope-banner--warn"
+                        : "risk-envelope-banner--info",
                   )}
                 >
                   <p className="text-[11px] leading-relaxed">
                     <strong className="text-cyan-200/90">
-                      {sessionInterrupted
-                        ? "Session interrupted:"
-                        : checkpointAvailable
-                          ? "Checkpoint ready:"
-                          : "Recovery:"}
+                      {sessionProbePending
+                        ? "Detecting previous session:"
+                        : sessionInterrupted
+                          ? "Session interrupted:"
+                          : checkpointAvailable
+                            ? "Checkpoint ready:"
+                            : "Recovery:"}
                     </strong>{" "}
-                    {sessionInterrupted
-                      ? "Previous birth stopped before completion. Resume if a checkpoint exists, or wipe for a clean start (two-step safety confirm)."
-                      : checkpointAvailable
-                        ? "Resume curriculum from the last stage, or wipe data if you want a clean run."
-                        : "Wipe birth data for a clean start, or Activate for a new run. Wipe always opens a safety dialog."}
+                    {sessionProbePending
+                      ? "Loading resume / wipe options from the last birth. Activate stays locked until this completes."
+                      : sessionInterrupted
+                        ? "Previous birth stopped before completion. Resume if a checkpoint exists, or wipe for a clean start (two-step safety confirm)."
+                        : checkpointAvailable
+                          ? "Resume curriculum from the last stage, or wipe data if you want a clean run."
+                          : "Wipe birth data for a clean start, or Activate for a new run. Wipe always opens a safety dialog."}
                   </p>
                 </div>
 
+                {sessionProbePending ? (
+                  <div className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-cyan-500/20 bg-cyan-950/20 px-3 py-4 font-mono text-[11px] text-cyan-100/80">
+                    <Loader2 className="size-4 animate-spin text-cyan-300" aria-hidden />
+                    Loading Resume · Wipe birth data · Full wipe…
+                  </div>
+                ) : null}
+
+                {!sessionProbePending ? (
                 <BirthGenesisStatusChips
                   engineLive={engineLive}
                   resumePlateauRisk={resumePlateauRisk}
@@ -487,7 +575,9 @@ export function BirthGenesisDeck({
                   resumeTierHint={resumeTierHint}
                   className="mb-3 justify-center"
                 />
+                ) : null}
 
+                {!sessionProbePending ? (
                 <div className="genesis-recovery-action-grid">
                   {checkpointAvailable ? (
                     <RecoveryActionCard
@@ -507,7 +597,7 @@ export function BirthGenesisDeck({
                         disabled={busy}
                         onClick={() => {
                           if (busy) {
-                            toast.info("Even wachten — een andere birth-actie is bezig.");
+                            toast.info("Please wait — another birth action is in progress.");
                             return;
                           }
                           onResumeCheckpoint?.();
@@ -549,10 +639,10 @@ export function BirthGenesisDeck({
                         if (wipeBlocked) {
                           toast.info(
                             wipeConfirmWiping
-                              ? "Wissen is al bezig…"
+                              ? "Wipe already in progress…"
                               : activating
-                                ? "Birth wordt gestart — wis daarna."
-                                : "Even wachten — een andere birth-actie is bezig.",
+                                ? "Birth is starting — wipe afterward."
+                                : "Please wait — another birth action is in progress.",
                           );
                           return;
                         }
@@ -564,7 +654,7 @@ export function BirthGenesisDeck({
                       ) : (
                         <Trash2 className="size-3.5 shrink-0" aria-hidden />
                       )}
-                      <span>Wis birth-data</span>
+                      <span>Wipe birth data</span>
                     </Button>
                   </RecoveryActionCard>
 
@@ -598,10 +688,10 @@ export function BirthGenesisDeck({
                         if (wipeBlocked) {
                           toast.info(
                             wipeConfirmWiping
-                              ? "Wissen is al bezig…"
+                              ? "Wipe already in progress…"
                               : activating
-                                ? "Birth wordt gestart — wis daarna."
-                                : "Even wachten — een andere birth-actie is bezig.",
+                                ? "Birth is starting — wipe afterward."
+                                : "Please wait — another birth action is in progress.",
                           );
                           return;
                         }
@@ -613,7 +703,7 @@ export function BirthGenesisDeck({
                       ) : (
                         <Trash2 className="size-3.5 shrink-0" aria-hidden />
                       )}
-                      <span>Volledige wipe</span>
+                      <span>Full wipe</span>
                     </Button>
                   </RecoveryActionCard>
 
@@ -636,7 +726,7 @@ export function BirthGenesisDeck({
                         disabled={busy}
                         onClick={() => {
                           if (busy) {
-                            toast.info("Even wachten — een andere birth-actie is bezig.");
+                            toast.info("Please wait — another birth action is in progress.");
                             return;
                           }
                           // Confirm host runs the stop after operator confirms.
@@ -649,6 +739,7 @@ export function BirthGenesisDeck({
                     </RecoveryActionCard>
                   ) : null}
                 </div>
+                ) : null}
 
                 <p className="mt-3 text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">
                   Wipe always opens a two-step safety dialog · Activate arms a fresh run
@@ -682,14 +773,17 @@ export function BirthGenesisDeck({
         </div>
 
         <p className="mb-2 text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">
-          {showRecoveryTab
-            ? "Recovery actions are on the Recovery tab · hold Activate for a fresh ring arm"
-            : "Hold to arm the ring · birth engine idle is normal before activate"}
+          {sessionLocked
+            ? "Activate locked until session status loads · prevents accidental overwrite"
+            : showRecoveryTab
+              ? "Recovery actions are on the Recovery tab · hold Activate for a fresh ring arm"
+              : "Hold to arm the ring · birth engine idle is normal before activate"}
         </p>
         <BirthLaunchButton
           activating={activating}
           primed={helixPrimed}
-          disabled={busy}
+          disabled={busy || sessionLocked}
+          waitingSession={sessionLocked}
           onClick={onActivate}
           onPrimedChange={setHelixPrimed}
           onSequencingChange={setSequencing}

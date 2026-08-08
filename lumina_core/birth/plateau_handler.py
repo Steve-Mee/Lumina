@@ -102,6 +102,7 @@ class PlateauHandler:
                     wall_budget_exhausted=bool(ctx.get("wall_budget_exhausted", False)),
                     meta_learning_health=str(ctx.get("meta_learning_health", "") or ""),
                     skill_failing=skill_failing,
+                    range_flat_ratio=float(ctx.get("range_flat_ratio", 0.0) or 0.0),
                 )
                 should = should_enter_plateau(enter_ctx, cfg=self.cfg)
                 self._set_response(cid, "should_enter", should)

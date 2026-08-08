@@ -123,6 +123,7 @@ def compute_stage_blocker(
                 cfg=cfg,
                 entropy=policy_entropy,
                 ppo_steps=int(ppo_steps),
+                rolling_winrate=rolling_winrate,
             )
             if not edge.passed:
                 reason = humanize_edgescore_blocker(
@@ -131,13 +132,24 @@ def compute_stage_blocker(
                     wins=wins,
                     trades=trades,
                     entropy=policy_entropy,
+                    rolling_winrate=rolling_winrate,
+                    rolling_winrate_display=rolling_winrate_display,
+                    rolling_wr_eligible=rolling_wr_eligible,
+                    stage="stage2_range",
                 )
                 if not edge.activity_ok:
-                    return ("position_flat", round(flat, 4), reason)
+                    # Prefer explicit flat-band copy (operator-actionable for range stage).
+                    flat_reason = (
+                        f"position_flat {flat:.1%} outside 30–70% band "
+                        f"(need more in-range activity, less pure flat) | EdgeScore {edge.score:.0%}"
+                    )
+                    return ("position_flat", round(flat, 4), flat_reason)
                 if not edge.entropy_ok:
                     return ("entropy", 0.0, reason)
                 if not edge.expectancy_ok:
-                    exp = compute_expectancy_proxy(wins=wins, trades=trades)
+                    exp = compute_expectancy_proxy(
+                        wins=wins, trades=trades, rolling_winrate=rolling_winrate
+                    )
                     return ("expectancy", round(float(exp), 4), reason)
                 if not edge.constitution_ok:
                     return (

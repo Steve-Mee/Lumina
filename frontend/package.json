@@ -2,12 +2,14 @@
   "name": "lumina-monitoring-dashboard",
   "private": true,
   "version": "0.1.0",
+  "description": "FROZEN ARCHIVE (T13): legacy monitoring SPA. Operator SSOT is tauri-app/. See FROZEN.md.",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:embedded": "tsc -b && vite build --base /ui/",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "freeze:status": "node -e \"console.log('frontend/ is FROZEN ARCHIVE (T13). See FROZEN.md — no new features. Operator SSOT: tauri-app/')\""
   },
   "dependencies": {
     "framer-motion": "^11.11.17",

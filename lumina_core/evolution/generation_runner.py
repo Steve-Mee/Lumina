@@ -21,6 +21,14 @@ from lumina_core.governance import SignedApproval
 if TYPE_CHECKING:
     from lumina_core.evolution.orchestrator_core import EvolutionOrchestrator
 
+from lumina_core.evolution.generation_runner_phases import (
+    append_generation_completed_metrics,
+    apply_constitutional_pre_promotion,
+    apply_post_twin_constitutional_veto,
+    risk_shadow_validate_candidates,
+    twin_effective_recommendation,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -76,39 +84,7 @@ def run_single_generation(
     )
 
     # === Phase 2 Deliverable 5 (Aperture Hardening) — Risk shadow is now the default path ===
-    # For every candidate in the main evolution flow, we automatically run the
-    # official reusable helper. This makes shadow validation for risk-affecting
-    # DNA the normal, automatic behavior rather than an optional hook.
-    try:
-        from lumina_core.evolution.risk_shadow_bridge import validate_risk_proposal_in_shadow
-        from pathlib import Path
-
-        for candidate in candidates:
-            content = getattr(candidate, "content", {}) or {}
-            if isinstance(content, str):
-                import json
-                try:
-                    content = json.loads(content)
-                except Exception:
-                    content = {}
-
-            # Best-effort: use whatever engine context is available
-            engine = getattr(orchestrator, "_engine", None) or getattr(orchestrator, "engine", None)
-            validate_risk_proposal_in_shadow(
-                proposal={
-                    "experiment_id": f"risk-orchestrator-{candidate.hash[:12]}",
-                    "dna_hash": candidate.hash,
-                    "signal": content.get("signal") or "BUY",
-                    "confluence_score": float(content.get("confluence_score", content.get("confluence", 0.6))),
-                    "proposed_risk": float(content.get("proposed_risk", content.get("max_risk_percent", 150.0))),
-                },
-                engine=engine,
-                storage_path=Path("state/risk_shadow_evolution.jsonl"),
-                auto_record_promotion=True,
-            )
-    except Exception:
-        # Risk shadow at orchestrator level is best-effort and must never break generation.
-        pass
+    risk_shadow_validate_candidates(orchestrator, candidates)
     # ================================================================================
 
     if not candidates:
@@ -206,39 +182,12 @@ def run_single_generation(
     # The ApprovalTwin output is a signal, never a bypass. This (plus the later pre-promotion guard)
     # ensures even a fully tricked twin cannot promote bad DNA.
     # Mode authority: consumers use effective_recommendation (shadow/assisted cannot sole-auto).
-    def _twin_effective_rec(decision: dict[str, Any]) -> bool:
-        if "effective_recommendation" in decision:
-            return bool(decision.get("effective_recommendation", False))
-        # Legacy twin without mode fields — fail-closed (not executable)
-        return False
-
-    try:
-        cg = getattr(orchestrator, "_constitutional_guard", None)
-        if cg is not None:
-            twin_rec = _twin_effective_rec(twin_decision)
-            if not cg.veto_unless_constitutional(
-                dna_content=getattr(winner_dna, "content", winner_dna),
-                mode=mode,
-                current_recommendation=twin_rec or bool(twin_decision.get("recommendation", False)),
-            ):
-                twin_decision = dict(twin_decision)
-                twin_decision["recommendation"] = False
-                twin_decision["effective_recommendation"] = False
-                twin_decision["executable"] = False
-                rf = list(twin_decision.get("risk_flags", []) or [])
-                if "constitution_veto_post_twin" not in rf:
-                    rf.append("constitution_veto_post_twin")
-                twin_decision["risk_flags"] = rf
-                twin_risk_flags = [str(x) for x in rf]
-    except Exception:
-        twin_decision = {
-            "recommendation": False,
-            "effective_recommendation": False,
-            "executable": False,
-            "confidence": 0.0,
-            "risk_flags": ["guard_error_post_twin"],
-        }
-        twin_risk_flags = ["guard_error_post_twin"]
+    twin_decision, twin_risk_flags = apply_post_twin_constitutional_veto(
+        orchestrator,
+        mode=mode,
+        winner_dna=winner_dna,
+        twin_decision=twin_decision,
+    )
 
     # Guard: REAL uses twin confidence (0–1 or 0–100) for ultra zero-touch floor + shadow.
     # Shadow/assisted modes yield effective_recommendation=False → no zero-touch auto.
@@ -247,7 +196,7 @@ def run_single_generation(
         candidate_fitness=winner_fitness,
         current_fitness=previous_fitness,
         mode=mode,
-        approval_twin_recommendation=_twin_effective_rec(twin_decision),
+        approval_twin_recommendation=twin_effective_recommendation(twin_decision),
         approval_twin=orchestrator._approval_twin,
         dna=winner_dna,
         shadow_runner=shadow_runner,
@@ -269,64 +218,29 @@ def run_single_generation(
     promotion_gate: dict[str, Any] = {}
 
     if mode == "real":
-        shadow_decision = orchestrator._run_shadow_validation_gate(
-            dna=winner_dna,
+        from lumina_core.evolution.generation_runner_promotion import apply_real_mode_shadow_promotion
+
+        _real = apply_real_mode_shadow_promotion(
+            orchestrator,
+            winner_dna=winner_dna,
             winner_fitness=winner_fitness,
-            nightly_report=generation_metrics,
+            previous_fitness=previous_fitness,
+            twin_confidence=twin_confidence,
+            twin_risk_flags=twin_risk_flags,
+            generation_metrics=generation_metrics,
             signed=signed,
             generation_ok=generation_ok,
             shadow_runner=shadow_runner,
         )
-        promoted = bool(shadow_decision.get("promote_now", False))
-        veto_check = dict(shadow_decision.get("veto_check", veto_check) or veto_check)
-        veto_blocked = bool(shadow_decision.get("veto_blocked", False))
-        shadow_status = str(shadow_decision.get("shadow_status", shadow_status))
-        shadow_passed = bool(shadow_decision.get("shadow_passed", False))
-        shadow_days_completed = int(shadow_decision.get("shadow_days_completed", 0) or 0)
-        shadow_days_target = int(shadow_decision.get("shadow_days_target", 0) or 0)
-        shadow_total_pnl = float(shadow_decision.get("shadow_total_pnl", 0.0) or 0.0)
-        promotion_gate = dict(shadow_decision.get("promotion_gate", {}) or {})
-
-        gated_promotion = orchestrator._guard.is_confidence_gated_promotion(
-            winner_dna,
-            twin_confidence,
-            shadow_passed,
-            winner_fitness,
-            previous_fitness,
-            twin_risk_flags=twin_risk_flags,
-        )
-        promoted = bool(promoted and gated_promotion)
-
-        if shadow_status in {"passed", "failed", "vetoed"}:
-            fail_reasons = list(promotion_gate.get("fail_reasons", []) or [])
-            gate_reason = str(fail_reasons[0]) if fail_reasons else ""
-            orchestrator._send_promotion_status_telegram(
-                dna_hash=winner_dna.hash,
-                promoted=promoted,
-                reason=gate_reason,
-            )
-            try:
-                from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
-                from lumina_core.maturity.milestone_hooks import (
-                    hook_promotion_gate_passed,
-                    hook_shadow_validation_passed,
-                )
-
-                workspace = resolve_birth_workspace_root()
-                if shadow_passed:
-                    hook_shadow_validation_passed(
-                        workspace,
-                        shadow_status=shadow_status,
-                        dna_hash=winner_dna.hash,
-                    )
-                if bool(promotion_gate.get("promoted", False)):
-                    hook_promotion_gate_passed(
-                        workspace,
-                        mode=mode,
-                        dna_hash=winner_dna.hash,
-                    )
-            except Exception:
-                pass
+        promoted = bool(_real.get("promoted", False))
+        veto_check = dict(_real.get("veto_check", veto_check) or veto_check)
+        veto_blocked = bool(_real.get("veto_blocked", False))
+        shadow_status = str(_real.get("shadow_status", shadow_status))
+        shadow_passed = bool(_real.get("shadow_passed", False))
+        shadow_days_completed = int(_real.get("shadow_days_completed", 0) or 0)
+        shadow_days_target = int(_real.get("shadow_days_target", 0) or 0)
+        shadow_total_pnl = float(_real.get("shadow_total_pnl", 0.0) or 0.0)
+        promotion_gate = dict(_real.get("promotion_gate", {}) or {})
     else:
         promoted = bool(signed and generation_ok)
 
@@ -344,47 +258,13 @@ def run_single_generation(
     promoted = bool(promoted and rollout_decision.allow_promotion)
 
     # ── Constitutional Guard (pre-promotion) ─────────────────────────────
-    # The ConstitutionalGuard is the single authoritative safety gate.
-    # It checks all 15 principles, writes an audit record, and is
-    # fail-closed: any unexpected error blocks promotion.
-    #
-    # Twin recommendation (even high-confidence) is always ignored if this fails.
-    # This is an explicit defense-in-depth path that makes it impossible for a tricked twin
-    # to promote DNA that violates the Trading Constitution, sandbox rules, or aperture.
     constitutional_violations: list[str] = []
-    if promoted:
-        guard_result = orchestrator._constitutional_guard.check_pre_promotion(
-            winner_dna.content, mode=mode, raise_on_fatal=False
-        )
-        if not guard_result.passed:
-            constitutional_violations = guard_result.violation_names
-            logger.error(
-                "ConstitutionalGuard BLOCKED promotion dna=%s mode=%s violations=%s",
-                winner_dna.hash[:12],
-                mode,
-                constitutional_violations,
-            )
-            promoted = False
-            try:
-                from lumina_core.notifications.attention_events import constitution_violation_event
-                from lumina_core.notifications.operator_notifier import notify_problem
-                from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
-
-                notify_problem(
-                    constitution_violation_event(
-                        detail="; ".join(constitutional_violations) or "Promotion blocked."
-                    ),
-                    workspace_root=resolve_birth_workspace_root(),
-                )
-            except Exception:
-                pass
-        elif guard_result.warn_violations:
-            logger.warning(
-                "ConstitutionalGuard WARN dna=%s mode=%s warns=%s",
-                winner_dna.hash[:12],
-                mode,
-                [v.principle_name for v in guard_result.warn_violations],
-            )
+    promoted, constitutional_violations = apply_constitutional_pre_promotion(
+        orchestrator,
+        mode=mode,
+        winner_dna=winner_dna,
+        promoted=promoted,
+    )
 
     base_promoted = promoted
 
@@ -423,11 +303,22 @@ def run_single_generation(
     approval_chain_reason = "not_required"
 
     if mode == "real":
+        # H2: Twin judgment is never consulted here — human chain only
+        from lumina_core.risk.real_multi_gate import real_dna_promotion_allowed
+
         approval_chain_passed = False
-        if not require_human_approval:
+        has_sigs = bool(real_promotion_approvals)
+        allowed, gate_reason = real_dna_promotion_allowed(
+            mode=mode,
+            require_human_approval=bool(require_human_approval),
+            explicit_human_approval=bool(explicit_human_approval),
+            base_promoted=bool(promoted),
+            has_approval_signatures=has_sigs,
+        )
+        if not allowed:
             promoted = False
-            approval_chain_reason = "real_human_approval_mandatory"
-        elif promoted:
+            approval_chain_reason = gate_reason
+        else:
             approval_payload = orchestrator._build_real_promotion_payload(
                 dna=winner_dna,
                 generation_offset=generation_offset,
@@ -437,8 +328,6 @@ def run_single_generation(
                 signatures=real_promotion_approvals,
             )
             promoted = bool(promoted and approval_chain_passed)
-        else:
-            approval_chain_reason = "promotion_not_eligible_before_approval"
 
     if promoted:
         promoted_dna = orchestrator._registry.mutate(
@@ -451,78 +340,36 @@ def run_single_generation(
         orchestrator._registry.register_dna(promoted_dna)
         if mode == "real":
             orchestrator._mark_shadow_promoted(dna_hash=winner_dna.hash)
-    orchestrator._append_metrics(
-        {
-            "event": "generation_completed",
-            "timestamp": _utcnow(),
-            "generation": generation_offset,
-            "candidate_count": len(candidates),
-            "winner_hash": winner_dna.hash,
-            "winner_fitness": winner_fitness,
-            "previous_fitness": previous_fitness,
-            "promoted": promoted,
-            "mode": mode,
-            "explicit_human_approval": bool(explicit_human_approval),
-            "require_human_approval": bool(require_human_approval),
-            "approval_chain_passed": bool(approval_chain_passed),
-            "approval_chain_reason": str(approval_chain_reason),
-            "approval_twin_recommendation": bool(twin_decision.get("recommendation", False)),
-            "approval_twin_confidence": float(twin_decision.get("confidence", 0.0) or 0.0),
-            "approval_twin_risk_flags": list(twin_decision.get("risk_flags", []) or []),
-            "veto_blocked": veto_blocked,
-            "veto_reason": veto_check.get("reason", ""),
-            "veto_active_records": len(veto_check.get("active_veto_records", [])),
-            "shadow_status": shadow_status,
-            "shadow_days_completed": shadow_days_completed,
-            "shadow_days_target": shadow_days_target,
-            "shadow_total_pnl": shadow_total_pnl,
-            "promotion_gate_passed": bool(promotion_gate.get("promoted", False)),
-            "promotion_gate_fail_reasons": list(promotion_gate.get("fail_reasons", []) or []),
-            "promotion_gate": promotion_gate,
-            "generated_ideas": int(generated_summary.get("ideas", 0) or 0),
-            "generated_tested": int(generated_summary.get("tested", 0) or 0),
-            "generated_winners": int(generated_summary.get("winners", 0) or 0),
-            "neuro_tested": int(neuro_summary.get("tested", 0) or 0),
-            "neuro_winners": int(neuro_summary.get("winners", 0) or 0),
-            "neuro_best_fitness": (
-                float(neuro_summary.get("winner_fitness", 0.0) or 0.0)
-                if bool(neuro_summary.get("winner_accepted", False))
-                else None
-            ),
-            "neuro_winner_path": str(neuro_summary.get("winner_path", "") or ""),
-            "neuro_simulator_data_source": str(neuro_summary.get("neuro_simulator_data_source", "") or ""),
-            "ab_experiment_id": str(experiment.experiment_id),
-            "ab_variant_count": len(list(experiment.variants or [])),
-            "rollout_stage": rollout_decision.stage,
-            "rollout_reason": rollout_decision.reason,
-            "rollout_shadow_required": bool(rollout_decision.shadow_required),
-            "rollout_shadow_passed": bool(rollout_decision.shadow_passed),
-            "rollout_live_orders_blocked": bool(rollout_decision.live_orders_blocked),
-            "rollout_radical_mutation": bool(rollout_decision.radical_mutation),
-            "rollout_human_approval_required": bool(rollout_decision.human_approval_required),
-            "rollout_human_approval_granted": bool(rollout_decision.human_approval_granted),
-            "rollout_ab_verdict": str(rollout_decision.ab_verdict),
-            "rollout_metrics_delta": dict(rollout_decision.metrics_delta),
-            "sim_days": sim_days,
-            "parallel_realities": int(parallel_realities),
-            "dream_engine": dict(dream_summary),
-            "community_knowledge": dict(community_summary),
-            "meta_swarm": {
-                "enabled": bool(meta_swarm_governance_enabled()),
-                "allow_promotion": bool(swarm_consensus.allow_promotion),
-                "collective_score": round(float(swarm_consensus.collective_score), 6),
-                "risk_veto": bool(swarm_consensus.risk_veto),
-                "round_two": [
-                    {
-                        "agent": v.agent_id,
-                        "approve": bool(v.approve),
-                        "score": round(float(v.score), 4),
-                        "veto": bool(v.veto),
-                    }
-                    for v in swarm_consensus.round_two
-                ],
-            },
-        }
+    append_generation_completed_metrics(
+        orchestrator,
+        generation_offset=generation_offset,
+        candidates=candidates,
+        winner_dna=winner_dna,
+        winner_fitness=winner_fitness,
+        previous_fitness=previous_fitness,
+        promoted=promoted,
+        mode=mode,
+        explicit_human_approval=explicit_human_approval,
+        require_human_approval=require_human_approval,
+        approval_chain_passed=approval_chain_passed,
+        approval_chain_reason=approval_chain_reason,
+        twin_decision=twin_decision,
+        veto_blocked=veto_blocked,
+        veto_check=veto_check,
+        shadow_status=shadow_status,
+        shadow_days_completed=shadow_days_completed,
+        shadow_days_target=shadow_days_target,
+        shadow_total_pnl=shadow_total_pnl,
+        promotion_gate=promotion_gate,
+        generated_summary=generated_summary,
+        neuro_summary=neuro_summary,
+        experiment=experiment,
+        rollout_decision=rollout_decision,
+        sim_days=sim_days,
+        parallel_realities=parallel_realities,
+        dream_summary=dream_summary,
+        community_summary=community_summary,
+        swarm_consensus=swarm_consensus,
     )
 
     return GenerationResult(

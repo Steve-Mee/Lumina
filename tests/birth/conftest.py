@@ -60,9 +60,13 @@ def _disable_birth_meta_controller_for_unit_tests(
         "lumina_core.birth.engine.load_birth_v2_config",
         _load_without_meta,
     )
-    # Wave B PR-B1: lifecycle mixin binds load_birth_v2_config at import time.
+    # Wave B PR-B1 / M5: lifecycle façade + event mixin bind load_birth_v2_config.
     monkeypatch.setattr(
         "lumina_core.birth.engine_lifecycle.load_birth_v2_config",
+        _load_without_meta,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.engine_lifecycle_event.load_birth_v2_config",
         _load_without_meta,
     )
     monkeypatch.setattr(
@@ -77,13 +81,19 @@ def _disable_birth_meta_controller_for_unit_tests(
         "lumina_core.birth.checkpoint_coordinator.save_buffer",
         lambda *_args, **_kwargs: "",
     )
+    _noop_enrich = lambda ticks, **_kwargs: ticks  # noqa: E731
     monkeypatch.setattr(
         "lumina_core.birth.data_pipeline.enrich_ticks_for_sim",
-        lambda ticks, **_kwargs: ticks,
+        _noop_enrich,
+    )
+    # M5: enrich lives in data_pipeline_enrich (bound at import — patch both)
+    monkeypatch.setattr(
+        "lumina_core.birth.data_pipeline_enrich.enrich_ticks_for_sim",
+        _noop_enrich,
     )
     monkeypatch.setattr(
         "lumina_core.birth.data_expansion.enrich_ticks_for_sim",
-        lambda ticks, **_kwargs: ticks,
+        _noop_enrich,
     )
 
     from lumina_core.birth.sim_runner import SimRolloutResult

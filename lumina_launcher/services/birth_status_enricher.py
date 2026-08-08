@@ -55,6 +55,20 @@ def launcher_setup_status(svc: Any, *, lightweight: bool = False) -> dict[str, A
 
 def adaptive_intelligence_status(svc: Any, *, lightweight: bool = False) -> Dict[str, Any]:
     try:
+        # Cold session probe: do not construct HardwareIntelligenceManager on the
+        # first status poll — that can stall Genesis for seconds after app restart.
+        if lightweight and getattr(svc, "_adaptive_intelligence_manager", None) is None:
+            return {
+                "tier": "light",
+                "mode": "auto",
+                "reasoning_mode": "fast_path_only",
+                "degraded_state": False,
+                "status_reason": "deferred_cold_start",
+                "recommended_model": "",
+                "recommended_provider": "ollama",
+                "context_length": 0,
+                "last_probe_error": None,
+            }
         manager = get_adaptive_intelligence_manager(svc)
         if lightweight:
             cached = manager.get_status()

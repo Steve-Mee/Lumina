@@ -32,7 +32,8 @@ def test_humanize_edgescore_blocker_expectancy_uses_percents() -> None:
     assert "edgescore=" not in text.lower()
     assert "blockers=" not in text.lower()
     assert "Expectancy" in text
-    assert "-15%" in text or ">= -15%" in text
+    # Survival-mode expectancy floor is -50% (legacy -15% was pre-survival).
+    assert "-50%" in text or ">= -50%" in text
     assert "EdgeScore 25%" in text
 
 
@@ -98,7 +99,7 @@ def test_compute_stage_blocker_expectancy_not_raw_message() -> None:
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE1_TREND,
         stage_trades=250,
-        stage_wins=80,
+        stage_wins=25,  # 10% — fails survival hygiene before expectancy
         hold_ratio=0.50,
         required=200,
         constitution_violations=0,
@@ -106,7 +107,7 @@ def test_compute_stage_blocker_expectancy_not_raw_message() -> None:
         range_round_trips=20,
         range_total_signals=100,
         cfg=cfg,
-        rolling_winrate=0.30,
+        rolling_winrate=0.10,
         policy_entropy=0.20,
         ppo_steps=5000,
     )
@@ -115,5 +116,5 @@ def test_compute_stage_blocker_expectancy_not_raw_message() -> None:
     assert reason is not None
     assert "edgescore=" not in reason.lower()
     assert "blockers=" not in reason.lower()
-    assert "Hygiene" in reason or "hygiene" in reason.lower()
+    assert "Hygiene" in reason or "hygiene" in reason.lower() or "Survival WR" in reason
     assert "EdgeScore" in reason

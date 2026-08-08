@@ -192,9 +192,22 @@ class ApprovalTwinAgent(
         return canonicalize_twin_mode(raw or "shadow")
 
     def apply_mode_authority(self, decision: dict[str, Any]) -> dict[str, Any]:
-        """Stamp mode authority fields; consumers must use effective_recommendation."""
+        """Stamp mode authority fields; consumers must use effective_recommendation.
+
+        Track D: pass capital_mode hint so REAL-like paths never get executable twin
+        judgment even when mode state is full_auto (judgment inside gates only).
+        """
         raw_rec = bool(decision.get("recommendation", False))
-        auth = apply_mode_authority(raw_recommendation=raw_rec, mode=self._mode)
+        capital = "sim"
+        try:
+            capital = str(getattr(self._mode_controller, "_capital_mode", None) or "sim")
+        except Exception:
+            capital = "sim"
+        auth = apply_mode_authority(
+            raw_recommendation=raw_rec,
+            mode=self._mode,
+            capital_mode=capital,
+        )
         out = dict(decision)
         out.update(auth)
         # Keep raw judgment under recommendation (auth already sets it from raw)
@@ -203,6 +216,9 @@ class ApprovalTwinAgent(
         out["authority"] = auth["authority"]
         out["executable"] = auth["executable"]
         out["effective_recommendation"] = auth["effective_recommendation"]
+        if auth.get("real_capital_floor"):
+            out["real_capital_floor"] = True
+            out["capital_mode"] = auth.get("capital_mode") or capital
         return out
 
     def _load_state(self) -> ApprovalTwinState:

@@ -215,8 +215,9 @@ def phase2_status_payload(
     window_hours: int = 24,
     recent_limit: int = 5,
     features: Any | None = None,
+    workspace_root: Any | None = None,
 ) -> dict[str, Any]:
-    """Full operator payload for CLI / ops."""
+    """Full operator payload for CLI / ops (includes H3 SIM campaign)."""
     snap = compute_phase2_metrics_snapshot(window_hours=window_hours)
     recent = load_phase2_recent_decisions(limit=recent_limit, window_hours=window_hours)
     features_block: dict[str, Any] = {}
@@ -243,13 +244,40 @@ def phase2_status_payload(
                 else False
             ),
         }
+    campaign_block: dict[str, Any] = {}
+    perfect_birth_block: dict[str, Any] = {}
+    if workspace_root is not None:
+        try:
+            from lumina_core.birth.phase2_autonomy.sim_campaign import sim_campaign_status
+
+            campaign_block = sim_campaign_status(workspace_root)
+        except Exception:
+            campaign_block = {"error": "campaign_status_unavailable"}
+        try:
+            from lumina_core.birth.perfect_birth_gate import perfect_birth_status
+
+            pb = perfect_birth_status(workspace_root)
+            perfect_birth_block = {
+                "would_pass": pb.get("would_pass"),
+                "unlock_valid": pb.get("unlock_valid"),
+                "failures": pb.get("failures") or [],
+                "missing_sources": pb.get("missing_sources") or [],
+                "next_step": pb.get("next_step"),
+                "phase2_shadow_profile": pb.get("phase2_shadow_profile"),
+            }
+        except Exception:
+            perfect_birth_block = {"error": "perfect_birth_status_unavailable"}
     return {
         "features": features_block,
         "metrics": snap,
         "recent_decisions": recent,
+        "sim_campaign": campaign_block,
+        "perfect_birth": perfect_birth_block,
         "operator_hint": (
-            "phase2_apply_rate_pct = applied/apply_requested in window; "
-            "empty means Phase 2 master flag off or no decisions yet."
+            "C1/H3: GET /api/birth/perfect-birth-status for KPI gaps; "
+            "after unlock, POST /api/birth/phase2-enable-shadow; "
+            "shadow_would_apply accumulates; then phase2-promote-sim-apply. "
+            "REAL apply remains forbidden."
         ),
     }
 

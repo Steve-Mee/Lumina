@@ -52,17 +52,11 @@ except ImportError:  # pragma: no cover - fallback when PYTHONPATH excludes lumi
 
 router = APIRouter(prefix="/api/monitoring", tags=["monitoring"])
 
-# ── Service singleton injected at FastAPI startup ─────────────────────────────
-_obs_service: Any = None
 _ADAPTIVE_INTELLIGENCE_LATEST = Path(
     os.getenv("ADAPTIVE_INTELLIGENCE_STATUS_PATH", "state/adaptive_intelligence_status.json")
 )
 _ADAPTIVE_INTELLIGENCE_HISTORY = Path(
     os.getenv("ADAPTIVE_INTELLIGENCE_HISTORY_PATH", "state/adaptive_intelligence_events.jsonl")
-)
-from backend.adaptive_intelligence_snapshot import (
-    build_adaptive_transition_summary,
-    load_adaptive_history_rows,
 )
 from lumina_os.monitoring.snapshots import (
     extract_regime_summary as _extract_regime_summary,
@@ -73,36 +67,21 @@ from lumina_os.monitoring.snapshots import (
     monitoring_paths as _monitoring_paths,
     repo_state_dir as _repo_state_dir,
 )
+from lumina_os.backend.monitoring_endpoints_helpers import (
+    _build_adaptive_transition_summary,
+    _check_api_key,
+    _load_adaptive_history_rows,
+    _require_service,
+    set_observability_service,
+)
 
 
-def set_observability_service(service: Any) -> None:
-    """Inject the ObservabilityService so all routes share the same instance."""
-    global _obs_service
-    _obs_service = service
 
 
-def _require_service() -> Any:
-    if _obs_service is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Observability service not yet initialised",
-        )
-    return _obs_service
 
 
-def _load_adaptive_history_rows(*, limit: int = 100) -> list[dict[str, Any]]:
-    return load_adaptive_history_rows(history_path=_ADAPTIVE_INTELLIGENCE_HISTORY, limit=limit)
 
 
-def _build_adaptive_transition_summary(
-    *,
-    latest_record: dict[str, Any],
-    previous_record: dict[str, Any] | None,
-) -> dict[str, Any]:
-    return build_adaptive_transition_summary(
-        latest_record=latest_record,
-        previous_record=previous_record,
-    )
 
 
 # ── Prometheus scrape endpoint (no auth – standard Prometheus convention) ─────
@@ -326,213 +305,27 @@ async def get_stability_report(
     return report
 
 
-@router.get("/ops-data")
-async def get_ops_data(
-    x_api_key: Optional[str] = Header(None),
-) -> dict[str, Any]:
-    _check_api_key(x_api_key)
-    state = _repo_state_dir()
-    twin = _load_jsonl_file(state / "monitoring_twin_decisions.jsonl", limit=20)
-    gate = _load_jsonl_file(state / "monitoring_gate_rejections.jsonl", limit=50)
-    shadow: dict[str, Any] = {}
-    shadow_path = state / "evolution_shadow_runs.json"
-    if shadow_path.is_file():
-        try:
-            parsed = json.loads(shadow_path.read_text(encoding="utf-8"))
-            shadow = parsed if isinstance(parsed, dict) else {}
-        except (OSError, json.JSONDecodeError):
-            shadow = {}
-    daily_pnl = _load_jsonl_file(state / "monitoring_daily_pnl.jsonl", limit=30)
-    # Perfect Birth Phase KPIs (twin accuracy vs Steve, autonomy, alignment)
-    twin_accuracy = _load_jsonl_file(state / "monitoring_twin_training.jsonl", limit=5)
-    autonomy_rollup = _load_jsonl_file(state / "monitoring_autonomy_metrics.jsonl", limit=5)
-    shadow_align = _load_jsonl_file(state / "monitoring_shadow_twin_alignment.jsonl", limit=10)
-    phase2_recent = _load_jsonl_file(state / "monitoring_phase2_autonomy.jsonl", limit=20)
-    # First-class Twin observability rollup (agreement/calibration/mode progress)
-    twin_observability: dict[str, Any] = {}
-    try:
-        from lumina_core.evolution.twin_training_service import TwinTrainingService
+# ── Internal helpers + split route handlers (global residual) ─────────────────
+from lumina_os.backend.monitoring_endpoints_helpers import (  # noqa: E402,F401
+    _build_adaptive_transition_summary,
+    _check_api_key,
+    _load_adaptive_history_rows,
+    _require_service,
+    set_observability_service,
+)
+from lumina_os.backend.monitoring_endpoints_ops import (  # noqa: E402
+    get_admin_setup_snapshot,
+    get_capital_aperture,
+    get_monitoring_diagnostics,
+    get_ops_data,
+    get_react_dashboard_status,
+    get_workspace_snapshot,
+)
 
-        m = TwinTrainingService().metrics(decision_window=100, series_limit=14)
-        twin_observability = {
-            "mode": m.get("mode"),
-            "authority": m.get("authority"),
-            "twin_steve_agreement_pct": m.get("twin_steve_agreement_pct"),
-            "twin_agreement_pct": m.get("twin_agreement_pct"),
-            "rolling_agreement": m.get("rolling_agreement"),
-            "agreement_over_time": m.get("agreement_over_time"),
-            "risk_flags_caught": m.get("risk_flags_caught"),
-            "risk_flags_missed": m.get("risk_flags_missed"),
-            "risk_flags_catch_rate_pct": m.get("risk_flags_catch_rate_pct"),
-            "calibration": m.get("calibration"),
-            "mode_promotion_progress": m.get("mode_promotion_progress"),
-            "mode_samples": m.get("mode_samples"),
-            "reward": m.get("reward"),
-            "avg_prediction_error": m.get("avg_prediction_error"),
-        }
-    except Exception:
-        twin_observability = {}
-    phase2_metrics: dict[str, Any] = {}
-    try:
-        from lumina_core.birth.phase2_autonomy.metrics import compute_phase2_metrics_snapshot
-
-        phase2_metrics = compute_phase2_metrics_snapshot(window_hours=24)
-    except Exception:
-        phase2_metrics = {"empty": True, "phase2_proposals_total": 0}
-    return {
-        "twin_decisions": twin,
-        "gate_rejections": gate,
-        "shadow_runs": shadow,
-        "daily_pnl_trend": daily_pnl,
-        "perfect_birth_kpis": {
-            "twin_accuracy_latest": twin_accuracy,
-            "autonomy_rollup_latest": autonomy_rollup,
-            "shadow_twin_alignment_latest": shadow_align,
-            "twin_observability": twin_observability,
-            "phase2_autonomy": phase2_metrics,
-        },
-        "twin_observability": twin_observability,
-        "phase2_autonomy": phase2_metrics,
-        "phase2_decisions_recent": phase2_recent,
-    }
-
-
-@router.get("/diagnostics")
-async def get_monitoring_diagnostics(
-    x_api_key: Optional[str] = Header(None),
-) -> dict[str, Any]:
-    """JSONL tails and workspace paths for Command Deck monitoring deep panel."""
-    _check_api_key(x_api_key)
-    state = _repo_state_dir()
-    repo = Path(__file__).resolve().parents[2]
-    logs = repo / "logs"
-    return {
-        "paths": _monitoring_paths(),
-        "structured_errors": _load_jsonl_file(logs / "structured_errors.jsonl", limit=25),
-        "reasoning_latency": _load_jsonl_file(
-            state / "monitoring_reasoning_latency.jsonl", limit=50
-        ),
-        "model_load_times": _load_jsonl_file(
-            state / "monitoring_model_load_times.jsonl", limit=50
-        ),
-        "twin_training": _load_jsonl_file(state / "monitoring_twin_training.jsonl", limit=20),
-        "gate_rejections": _load_jsonl_file(
-            state / "monitoring_gate_rejections.jsonl", limit=30
-        ),
-    }
-
-
-@router.get("/workspace-snapshot")
-async def get_workspace_snapshot(
-    x_api_key: Optional[str] = Header(None),
-) -> dict[str, Any]:
-    """System overview snapshot (monitoring tab A/B parity)."""
-    _check_api_key(x_api_key)
-    state = _repo_state_dir()
-    repo = Path(__file__).resolve().parents[2]
-    progress = _load_json_file(state / "lumina_birth_progress.json")
-    if not progress:
-        progress = _load_json_file(state / "first_boot_progress.json")
-    config_payload = _load_json_file(repo / "config.yaml") or {}
-    runtime_metrics = _load_json_file(state / "monitoring_runtime_metrics.json") or {}
-    sim_state = _load_json_file(state / "lumina_sim_state.json") or {}
-    return {
-        "paths": _monitoring_paths(),
-        "first_boot_progress": progress,
-        "runtime_metrics": runtime_metrics,
-        "sim_state": sim_state,
-        "config_mode": str(config_payload.get("mode", "sim")),
-        "config_first_boot": config_payload.get("first_boot") if isinstance(
-            config_payload.get("first_boot"), dict
-        ) else {},
-    }
-
-
-@router.get("/react-dashboard-status")
-async def get_react_dashboard_status(
-    x_api_key: Optional[str] = Header(None),
-) -> dict[str, Any]:
-    """Embedded React dashboard URL readiness (Streamlit iframe parity)."""
-    _check_api_key(x_api_key)
-    try:
-        from lumina_os.monitoring.dashboard_helpers import DashboardPaths, embedded_react_ui_status
-    except ImportError:
-        return {
-            "ready": False,
-            "reason": "dashboard_views_unavailable",
-            "react_url": os.getenv("LUMINA_REACT_DASHBOARD_URL", "").strip()
-            or f"http://127.0.0.1:{os.getenv('LUMINA_REACT_DASHBOARD_PORT', '5173')}",
-        }
-
-    repo = Path(__file__).resolve().parents[2]
-    base_url = os.getenv("LUMINA_BACKEND_URL", "http://127.0.0.1:8000").strip()
-    paths = DashboardPaths(repo)
-    status = embedded_react_ui_status(base_url, paths)
-    return status if isinstance(status, dict) else {"ready": False, "react_url": ""}
-
-
-@router.get("/admin-setup-snapshot")
-async def get_admin_setup_snapshot(
-    x_api_key: Optional[str] = Header(None),
-) -> dict[str, Any]:
-    """Read-only admin metrics (Streamlit admin tab parity)."""
-    _check_api_key(x_api_key)
-    from lumina_launcher.core.blank_reset import DELETE_TARGETS, PRESERVED_STATE_FILES, WIPE_DIRECTORIES
-
-    repo = Path(__file__).resolve().parents[2]
-    state = repo / "state"
-    env_path = repo / ".env"
-    config_path = repo / "config.yaml"
-
-    env_subset: dict[str, str] = {}
-    if env_path.is_file():
-        for raw in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            line = raw.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            if key in {
-                "TRADE_MODE",
-                "LUMINA_MODE",
-                "INSTRUMENT",
-                "DASHBOARD_ENABLED",
-                "LUMINA_RUNTIME_TRACE",
-            }:
-                env_subset[key] = "***" if "KEY" in key or "TOKEN" in key else value.strip()
-
-    setup_complete = _load_json_file(state / "lumina_setup_complete.json") or {}
-    config_yaml = _load_json_file(config_path) or {}
-    first_boot = config_yaml.get("first_boot") if isinstance(config_yaml.get("first_boot"), dict) else {}
-
-    return {
-        "setup_completed": bool(setup_complete.get("completed")),
-        "runtime_mode": env_subset.get("LUMINA_MODE") or env_subset.get("TRADE_MODE") or "unknown",
-        "configured_first_boot_trades": first_boot.get("training_trades"),
-        "setup_complete_json": setup_complete,
-        "config_yaml_subset": {
-            "mode": config_yaml.get("mode"),
-            "first_boot": first_boot,
-        },
-        "env_subset": env_subset,
-        "reset_manifest": {
-            "wipe_directories": list(WIPE_DIRECTORIES),
-            "delete_targets": list(DELETE_TARGETS),
-            "preserved_state_files": list(PRESERVED_STATE_FILES),
-        },
-    }
-
-
-# ── Internal helpers ──────────────────────────────────────────────────────────
-
-
-def _check_api_key(x_api_key: Optional[str]) -> None:
-    """
-    Lightweight API-key guard for monitoring endpoints.
-
-    The full auth stack lives in app.py; here we do a minimal presence check.
-    A missing key returns 401 so scrapers without a key still get /metrics
-    (unauthenticated) but cannot access the richer JSON endpoints.
-    """
-    if x_api_key is None:
-        raise HTTPException(status_code=401, detail="API key required")
+# Re-bind FastAPI routes onto extracted handlers (signatures keep Header/Query deps).
+get_ops_data = router.get("/ops-data")(get_ops_data)
+get_capital_aperture = router.get("/capital-aperture")(get_capital_aperture)
+get_monitoring_diagnostics = router.get("/diagnostics")(get_monitoring_diagnostics)
+get_workspace_snapshot = router.get("/workspace-snapshot")(get_workspace_snapshot)
+get_react_dashboard_status = router.get("/react-dashboard-status")(get_react_dashboard_status)
+get_admin_setup_snapshot = router.get("/admin-setup-snapshot")(get_admin_setup_snapshot)

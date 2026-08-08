@@ -167,6 +167,34 @@ flowchart LR
 - `admin_endpoints.py` bewaart een backward-compatible exportlaag.
 - `admin_endpoints_core.py` bevat Dash-layout, callbacks en dashboard runtime-start.
 
+### 3.3.1 Birth phase orchestrator + curriculum (Wave D)
+
+`lumina_core/birth/birth_phase_orchestrator.py` is een dunne coordinator:
+
+```mermaid
+flowchart LR
+    orch[birth_phase_orchestrator]
+    boot[birth_phase_bootstrap]
+    data[birth_phase_data_policy]
+    cert[birth_phase_certificate_resume]
+    train[birth_phase_train_complete]
+    gate[birth_phase_certificate_gate]
+    orch --> boot --> data --> cert --> train
+    boot --> gate
+    cert --> gate
+```
+
+- Publieke entry: `run_birth_phase(host, **kwargs)` (ongewijzigde signature).
+- Curriculum façade: `lumina_core/birth/curriculum.py` re-exporteert `curriculum_types`, `curriculum_intra`, `curriculum_pass`.
+- Residual god surfaces (Wave E): `stage_loop_iteration.py`, `config_coercion.py`, overige stage_loop_* — zie `project-dna/lumina/evolutionary-debt.md` Wave E.
+
+### 3.3.2 Evolution generation + multi-day sim (Wave D)
+
+- `evolution/orchestrator_generation.py` → mixins: `generation_nightly`, `generation_neuro_cycle`, `generation_strategy_cycle` (+ `generation_types`).
+- `evolution/multi_day_sim_runner.py` → `multi_day_sim_types` / `evaluate` / `backtest` / `day`.
+- PPO/training: canonical imports via `lumina_core.rl.*` (root paths blijven shims).
+- Backtester: canonical via `lumina_core.engine.backtest.*`.
+
 ### 3.4 Launcher Birth Service split
 
 `lumina_launcher/services/birth_service.py` is de process-wide singleton facade voor Birth Phase start/stop/status. De implementatie is opgesplitst zodat status-mapping, enrichment en thread-lifecycle afzonderlijk testbaar zijn.

@@ -95,8 +95,9 @@ def test_apply_param_with_twin() -> None:
     features = Phase2AutonomyFeatures(
         enabled=True,
         self_adaptive_params_enabled=True,
-        require_perfect_birth_flag=False,
+        require_perfect_birth_flag=True,
         require_twin_for_apply=True,
+        allow_sim_scaffold=True,
         execution_mode="apply",
     )
     state = WallAdaptationState(effective_winrate_window=12, effective_reward_window=12)
@@ -125,8 +126,9 @@ def test_instance_adapt_apply_payload() -> None:
     features = Phase2AutonomyFeatures(
         enabled=True,
         instance_adapt_enabled=True,
-        require_perfect_birth_flag=False,
+        require_perfect_birth_flag=True,
         require_twin_for_apply=False,
+        allow_sim_scaffold=True,
         execution_mode="apply",
     )
     orch = Phase2AutonomyOrchestrator(features=features, mode="sim")

@@ -78,6 +78,27 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().birthSurface).toBe("genesis");
   });
 
+  it("keeps Activate locked until first status hydrates session probe", () => {
+    expect(useBirthStore.getState().sessionHydrated).toBe(false);
+    expect(useBirthStore.getState().sessionProbeState).toBe("pending");
+    useBirthStore.getState().applyStatus({
+      status: "interrupted",
+      live: false,
+      checkpoint_resumable: true,
+      progress: { stage: "paused", user_initiated_stop: true },
+    } as BirthStatusPayload);
+    expect(useBirthStore.getState().sessionHydrated).toBe(true);
+    expect(useBirthStore.getState().sessionProbeState).toBe("ready");
+    expect(useBirthStore.getState().status?.checkpoint_resumable).toBe(true);
+  });
+
+  it("markSessionProbeError keeps Activate locked", () => {
+    useBirthStore.getState().markSessionProbeError("backend offline");
+    expect(useBirthStore.getState().sessionProbeState).toBe("error");
+    expect(useBirthStore.getState().sessionHydrated).toBe(false);
+    expect(useBirthStore.getState().pollError).toContain("backend offline");
+  });
+
   it("maps running status to running surface", () => {
     useBirthStore.getState().applyStatus({
       status: "running",
@@ -120,29 +141,33 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().genesisPinned).toBe(true);
   });
 
-  it("stopBirthRun does not pin genesis when engine stays live", async () => {
-    vi.useFakeTimers();
-    try {
-      const { fetchBirthStatusTyped, stopBirthSession } = await import("@/lib/birthClient");
+  it("stopBirthRun pins genesis optimistically even while worker still drains", async () => {
+    const { fetchBirthStatusTyped, stopBirthSession } = await import("@/lib/birthClient");
 
-      vi.mocked(stopBirthSession).mockResolvedValueOnce({ status: "stopping" });
-      vi.mocked(fetchBirthStatusTyped).mockResolvedValue({
-        status: "running",
-        live: true,
-        progress: { stage: "curriculum_stage", phase: "ppo_training" },
-      } as BirthStatusPayload);
+    vi.mocked(stopBirthSession).mockResolvedValueOnce({
+      status: "stopping",
+      checkpoint_resumable: true,
+    });
+    vi.mocked(fetchBirthStatusTyped).mockResolvedValue({
+      status: "running",
+      live: true,
+      checkpoint_resumable: true,
+      progress: {
+        stage: "paused",
+        phase: "paused",
+        user_initiated_stop: true,
+      },
+    } as BirthStatusPayload);
 
-      useBirthStore.getState().beginBirthRun();
-      const stopPromise = useBirthStore.getState().stopBirthRun();
-      await vi.advanceTimersByTimeAsync(35_000);
-      const ok = await stopPromise;
+    useBirthStore.getState().beginBirthRun();
+    const ok = await useBirthStore.getState().stopBirthRun();
 
-      expect(ok).toBe(false);
-      expect(useBirthStore.getState().genesisPinned).toBe(false);
-      expect(useBirthStore.getState().pollError).toMatch(/engine/i);
-    } finally {
-      vi.useRealTimers();
-    }
+    // Optimistic Genesis: no multi-second drain poll; pin immediately.
+    expect(ok).toBe(true);
+    expect(useBirthStore.getState().genesisPinned).toBe(true);
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useBirthStore.getState().status?.checkpoint_resumable).toBe(true);
   });
 
   it("runPinned keeps running surface during interrupted cold-start polls", () => {

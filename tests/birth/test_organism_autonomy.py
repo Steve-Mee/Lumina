@@ -15,6 +15,7 @@ from lumina_core.birth.organism_autonomy import (
     RecoveryDispatch,
     evaluate_terminal_stall,
     map_recommended_to_service_action,
+    organism_autonomy_status,
 )
 from lumina_core.birth.phoenix_loop import (
     PHOENIX_CYCLE_REASON,
@@ -44,6 +45,32 @@ def test_map_recommended_actions() -> None:
     assert map_recommended_to_service_action("expand_data") == "expand_and_retry"
     assert map_recommended_to_service_action("phoenix_reset") == "phoenix_recovery"
     assert map_recommended_to_service_action("unknown") == "resume_stalled_stage"
+
+
+@pytest.mark.unit
+def test_c2_curriculum_defaults_autonomy_on() -> None:
+    cfg = BirthCurriculumConfig()
+    assert cfg.autonomous_recovery_enabled is True
+    assert cfg.phoenix_loop_enabled is True
+    assert int(cfg.phoenix_max_cycles) >= 1
+
+
+@pytest.mark.unit
+def test_organism_autonomy_status_posture() -> None:
+    cfg = _cfg()
+    state = OrganismAutonomyState(
+        phoenix=PhoenixLoopState(phoenix_count=2),
+        death_spiral=DeathSpiralState(),
+        autonomous_recovery_count=3,
+    )
+    snap = organism_autonomy_status(cfg, state)
+    assert snap["autonomous_recovery_enabled"] is True
+    assert snap["phoenix_cycles_used"] == 2
+    assert snap["phoenix_cycles_remaining"] == 10
+    assert snap["terminal_notify_is_exception"] is True
+    assert snap["no_lift_uses_phoenix_before_notify"] is True
+    assert snap["capital_gates_untouched"] is True
+    assert snap["c2_posture"] == "active"
 
 
 @pytest.mark.unit
@@ -102,7 +129,8 @@ def test_evaluate_terminal_stall_phoenix_resume() -> None:
 
 
 @pytest.mark.unit
-def test_evaluate_terminal_stall_no_lift_brake_blocks_phoenix() -> None:
+def test_evaluate_terminal_stall_no_lift_uses_phoenix_budget() -> None:
+    """Bounded phoenix before operator notify when no-lift and budget remains."""
     autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
     decision = evaluate_terminal_stall(
         cfg=_cfg(),
@@ -122,10 +150,40 @@ def test_evaluate_terminal_stall_no_lift_brake_blocks_phoenix() -> None:
         recovery_no_lift_brake=True,
         swarm_tournament_resolved=False,
     )
+    assert decision.dispatch == RecoveryDispatch.PHOENIX_RESUME
+    assert decision.needs_attention is False
+    assert decision.retryable is True
+    assert autonomy.phoenix.phoenix_count == 1
+    assert "No-lift brake" in decision.message
+
+
+@pytest.mark.unit
+def test_evaluate_terminal_stall_no_lift_notifies_when_phoenix_exhausted() -> None:
+    autonomy = OrganismAutonomyState(
+        phoenix=PhoenixLoopState(phoenix_count=12),
+        death_spiral=DeathSpiralState(),
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_max_cycles=12),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "plateau_evolution_exhausted",
+            "blocker_metric": "winrate",
+            "blocker_value": 0.368,
+        },
+        curriculum_stage="stage1_trend",
+        stage_trades=2700,
+        required=200,
+        constitution_violations=0,
+        fitness_signal=0.368,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=True,
+        swarm_tournament_resolved=False,
+    )
     assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
     assert decision.needs_attention is True
-    assert decision.retryable is True
-    assert "best-winrate lift" in decision.message
+    assert "budget exhausted" in decision.message
 
 
 @pytest.mark.unit

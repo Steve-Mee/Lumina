@@ -21,7 +21,7 @@ def _cfg(**overrides: object) -> BirthCurriculumConfig:
 
 @pytest.mark.unit
 def test_certified_stage1_not_passed_with_many_patterns_low_wr() -> None:
-    # WR below EdgeScore hygiene floor (35%) and classic 45% gate — must not pass
+    # WR below survival EdgeScore hygiene (~20%) and classic 45% gate — must not pass
     # via oracle_soft_pass / pattern count alone in certified mode.
     cfg = _cfg(
         stage1_winrate_pass_threshold=0.45,
@@ -32,7 +32,7 @@ def test_certified_stage1_not_passed_with_many_patterns_low_wr() -> None:
     result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
         trades=11_827,
-        wins=3_548,  # 30.00% — below EdgeScore hygiene + classic gate
+        wins=1_182,  # 10% — below survival hygiene + classic gate
         hold_signals=1000,
         total_signals=10_000,
         constitution_violations=0,
@@ -41,7 +41,7 @@ def test_certified_stage1_not_passed_with_many_patterns_low_wr() -> None:
         allow_provisional=False,
         oracle_patterns=1917,
         buffer_size=10_000,
-        rolling_winrate=0.30,
+        rolling_winrate=0.10,
     )
     assert result.passed is False
     assert "oracle_soft_pass" not in result.message
@@ -49,11 +49,12 @@ def test_certified_stage1_not_passed_with_many_patterns_low_wr() -> None:
 
 @pytest.mark.unit
 def test_practice_oracle_soft_pass_marks_provisional() -> None:
-    cfg = _cfg()
+    # Soft-pass path is classic (non-EdgeScore) practice provisional graduation.
+    cfg = _cfg(stage1_edgescore_enabled=False, stage1_winrate_pass_threshold=0.45)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
         trades=500,
-        wins=150,  # 30%
+        wins=150,  # 30% — below classic gate, soft pass via oracle in practice
         hold_signals=100,
         total_signals=1000,
         constitution_violations=0,

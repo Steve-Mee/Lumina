@@ -107,7 +107,9 @@ def test_enrich_status_uses_artifact_cache_during_active_birth(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from lumina_os.backend import birth_endpoints
+    from lumina_os.backend import birth_endpoints_enrich as enrich
 
+    enrich._ENRICH_ARTIFACT_CACHE = None
     birth_endpoints._ENRICH_ARTIFACT_CACHE = None
     validate_calls = 0
 
@@ -116,14 +118,15 @@ def test_enrich_status_uses_artifact_cache_during_active_birth(
         validate_calls += 1
         return False, "missing_or_invalid_certificate", None
 
-    monkeypatch.setattr(birth_endpoints.birth_service, "workspace_root", tmp_path)
-    monkeypatch.setattr(birth_endpoints, "validate_certificate_artifacts", _tracked_validate)
-    monkeypatch.setattr(birth_endpoints, "load_checkpoint_state", lambda _root: {})
-    monkeypatch.setattr(birth_endpoints.birth_service, "artifacts_ok", lambda: False)
-    monkeypatch.setattr(birth_endpoints.birth_service, "evolution_proof_ok", lambda: False)
-    monkeypatch.setattr(birth_endpoints.birth_service, "real_trading_eligible", lambda: False)
+    # M5: enrich implementation lives in birth_endpoints_enrich.
+    monkeypatch.setattr(enrich.birth_service, "workspace_root", tmp_path)
+    monkeypatch.setattr(enrich, "validate_certificate_artifacts", _tracked_validate)
+    monkeypatch.setattr(enrich, "load_checkpoint_state", lambda _root: {})
+    monkeypatch.setattr(enrich.birth_service, "artifacts_ok", lambda: False)
+    monkeypatch.setattr(enrich.birth_service, "evolution_proof_ok", lambda: False)
+    monkeypatch.setattr(enrich.birth_service, "real_trading_eligible", lambda: False)
     monkeypatch.setattr(
-        birth_endpoints,
+        enrich,
         "should_fast_path_remediation_from_state",
         lambda *_args, **_kwargs: False,
     )
@@ -132,12 +135,13 @@ def test_enrich_status_uses_artifact_cache_during_active_birth(
         "status": "running",
         "progress": {"stage": "loading_data", "phase": "enriching_regimes"},
     }
-    first = birth_endpoints._enrich_status(dict(payload))
-    second = birth_endpoints._enrich_status(dict(payload))
+    first = enrich._enrich_status(dict(payload))
+    second = enrich._enrich_status(dict(payload))
 
     assert validate_calls == 1
     assert first["certificate_ok"] is False
     assert second["certificate_ok"] is False
+    enrich._ENRICH_ARTIFACT_CACHE = None
     birth_endpoints._ENRICH_ARTIFACT_CACHE = None
 
 

@@ -111,6 +111,9 @@ export function extractScorecardProgressExtras(
     dataManifestDaysLoaded: number | null;
     stageHoldRatio: number | null;
     stageHoldMax: number | null;
+    stageRangeFlatRatio?: number | null;
+    stageRangeFlatMin?: number | null;
+    stageRangeFlatMax?: number | null;
   },
 ): {
   evolutionPhase: string | null;
@@ -150,6 +153,9 @@ export function extractScorecardProgressExtras(
   rollingWrEligible: boolean | null;
   stageHoldRatio: number | null;
   stageHoldMax: number | null;
+  stageRangeFlatRatio: number | null;
+  stageRangeFlatMin: number | null;
+  stageRangeFlatMax: number | null;
   simTicksProcessedCumulative: number | null;
   wallClockRolloutSecAvg: number | null;
   wallClockTradesPerMin: number | null;
@@ -311,6 +317,9 @@ export function extractScorecardProgressExtras(
       progress?.rolling_wr_eligible != null ? Boolean(progress.rolling_wr_eligible) : null,
     stageHoldRatio: opts.stageHoldRatio,
     stageHoldMax: opts.stageHoldMax,
+    stageRangeFlatRatio: opts.stageRangeFlatRatio ?? null,
+    stageRangeFlatMin: opts.stageRangeFlatMin ?? null,
+    stageRangeFlatMax: opts.stageRangeFlatMax ?? null,
     simTicksProcessedCumulative:
       progress?.sim_ticks_processed_cumulative != null &&
       Number.isFinite(Number(progress.sim_ticks_processed_cumulative))

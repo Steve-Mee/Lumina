@@ -91,7 +91,9 @@ class FabricConfig:
         )
 
 
-class FabricGrpcClient(FabricClientStreamMixin):
+from lumina_core.broker.ninjatrader.fabric_client_ops import FabricClientOpsMixin
+
+class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
     """Synchronous façade over Fabric TradingStream + unary GetAccountState."""
 
     def __init__(
@@ -145,137 +147,8 @@ class FabricGrpcClient(FabricClientStreamMixin):
     def set_on_message(self, callback: EventCallback | None) -> None:
         self._on_message = callback
 
-    def connect(self) -> bool:
-        """Open channel, start TradingStream, authenticate."""
-        with self._lock:
-            if self._connected:
-                return True
-            self._stop.clear()
-            try:
-                if self._channel is None:
-                    self._channel = grpc.insecure_channel(self.config.target)
-                    self._owns_channel = True
-                self._stub = fabric_pb2_grpc.ExecutionFabricStub(self._channel)
-            except Exception:
-                logger.exception("Fabric channel open failed target=%s", self.config.target)
-                return False
 
-        self._stream_thread = threading.Thread(
-            target=self._stream_loop,
-            name="fabric-trading-stream",
-            daemon=True,
-        )
-        self._stream_thread.start()
 
-        token = self.config.resolve_token()
-        if not token:
-            logger.error("Fabric auth token empty (set %s or LUMINA_NT8_API_KEY)", self.config.auth_token_env)
-            self.disconnect()
-            return False
-
-        corr = str(uuid.uuid4())
-        auth_waiter = self._register_pending(f"auth:{corr}")
-        self._outbound.put(
-            mapper.auth_hello_message(
-                token=token,
-                client_name=self.config.client_name,
-                client_version=self.config.client_version,
-                mode_context=self.config.mode_context,
-            )
-        )
-        # Auth correlation is special-cased in handler under key "auth".
-        # Register both keys so either path can complete.
-        with self._lock:
-            self._pending["auth"] = auth_waiter
-
-        if not auth_waiter.event.wait(timeout=self.config.connect_timeout_seconds):
-            logger.error("Fabric auth timed out after %ss", self.config.connect_timeout_seconds)
-            self.disconnect()
-            return False
-
-        result = auth_waiter.result or {}
-        if result.get("type") == "error" or not result.get("ok"):
-            logger.error("Fabric auth failed: %s", result.get("message", result))
-            self.disconnect()
-            return False
-
-        with self._lock:
-            self._connected = True
-            self._session_id = str(result.get("session_id") or "")
-            self._account_name = str(result.get("account_name") or "")
-
-        if self.config.heartbeat_interval_ms > 0:
-            self._heartbeat_thread = threading.Thread(
-                target=self._heartbeat_loop,
-                name="fabric-heartbeat",
-                daemon=True,
-            )
-            self._heartbeat_thread.start()
-
-        logger.info(
-            "Fabric connected target=%s session=%s account=%s",
-            self.config.target,
-            self._session_id,
-            self._account_name,
-        )
-        return True
-
-    def disconnect(self) -> None:
-        self._stop.set()
-        try:
-            self._outbound.put_nowait(None)
-        except Exception:
-            pass
-        with self._lock:
-            self._connected = False
-            for waiter in self._pending.values():
-                if not waiter.event.is_set():
-                    waiter.result = {
-                        "type": "error",
-                        "code": "DISCONNECTED",
-                        "message": "Fabric client disconnected",
-                    }
-                    waiter.event.set()
-            self._pending.clear()
-            channel = self._channel if self._owns_channel else None
-            self._stub = None
-            if self._owns_channel:
-                self._channel = None
-        if self._stream_thread and self._stream_thread.is_alive() and threading.current_thread() is not self._stream_thread:
-            self._stream_thread.join(timeout=2.0)
-        if self._heartbeat_thread and self._heartbeat_thread.is_alive() and threading.current_thread() is not self._heartbeat_thread:
-            self._heartbeat_thread.join(timeout=1.0)
-        if channel is not None:
-            try:
-                channel.close()
-            except Exception:
-                logger.debug("Fabric channel close failed", exc_info=True)
-        self._stream_thread = None
-        self._heartbeat_thread = None
-
-    def place_order_sync(
-        self,
-        order: Order,
-        *,
-        client_order_id: str,
-        correlation_id: str | None = None,
-        timeout_seconds: float | None = None,
-    ) -> dict[str, Any]:
-        if not self.is_connected:
-            return {"type": "error", "code": "DISCONNECTED", "message": "Fabric not connected"}
-        corr = correlation_id or str(uuid.uuid4())
-        cmd = mapper.order_to_place_command(
-            order,
-            client_order_id=client_order_id,
-            correlation_id=corr,
-            mode_context=self.config.mode_context,
-        )
-        return self._send_and_wait(
-            mapper.place_command_to_brain_message(cmd),
-            wait_key=corr,
-            alt_keys=(client_order_id,),
-            timeout_seconds=timeout_seconds,
-        )
 
     def cancel_order_sync(
         self,

@@ -36,6 +36,9 @@ def _features(mode: str) -> Phase2AutonomyFeatures:
         self_adaptive_params_enabled=True,
         instance_adapt_enabled=True,
         require_perfect_birth_flag=False,
+        require_perfect_birth_evidence=False,
+        # SIM lab path: apply/shadow still require unlock unless scaffold allowed.
+        allow_sim_scaffold=True,
         require_twin_for_apply=True,
         execution_mode=mode,
     )

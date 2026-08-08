@@ -1,6 +1,12 @@
 # LUMINA · React monitoring dashboard
 
-Korte start voor de Vite + React + TypeScript SPA (`localhost:5173`). Uitgebreide integratie met de Streamlit launcher staat in **[INTEGRATION.md](./INTEGRATION.md)**.
+> **FROZEN ARCHIVE (T13 · 2026-08-07):** Operator UI SSOT is the **Neural Command Deck**
+> (`tauri-app/` + `lumina_os/backend/`, [ADR-0016](../docs/adr/0016-streamlit-ui-retirement.md)).
+> This Vite SPA is a **legacy monitoring annex only** — **no new features**.
+> Parity sign-off: T12 tournament naming in Tauri. Policy and checklist: **[FROZEN.md](./FROZEN.md)**.
+> Full tree delete only after explicit operator decision (not part of T13).
+
+Korte start voor de Vite + React + TypeScript SPA (`localhost:5173`). Uitgebreide integratie staat in **[INTEGRATION.md](./INTEGRATION.md)**.
 
 ## Vereisten
 

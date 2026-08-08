@@ -1,13 +1,14 @@
 import { useEffect, type ReactNode } from "react";
 
 import { BirthPhaseScreen } from "@/components/birth/BirthPhaseScreen";
+import { PhaseHubScreen } from "@/components/maturity/PhaseHubScreen";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { PlaygroundEnvelopeSeal } from "@/components/onboarding/PlaygroundEnvelopeSeal";
 import { type AppPhase, useOnboardingStore } from "@/store/onboardingStore";
 import { useBirthStore } from "@/store/birthStore";
 
 interface OnboardingGateProps {
-  children: (phase: Exclude<AppPhase, "wizard" | "birth">) => ReactNode;
+  children: (phase: Exclude<AppPhase, "wizard" | "birth" | "hub">) => ReactNode;
 }
 
 export function OnboardingGate({ children }: OnboardingGateProps) {
@@ -15,14 +16,16 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
   const payload = useOnboardingStore((s) => s.payload);
   const trainingTrades = useOnboardingStore((s) => s.draft.training.training_trades);
   const setupReviewActive = useOnboardingStore((s) => s.setupReviewActive);
+  const operatorDeckActive = useOnboardingStore((s) => s.operatorDeckActive);
   const refresh = useOnboardingStore((s) => s.refresh);
   const setPhase = useOnboardingStore((s) => s.setPhase);
   const setTargetTrades = useBirthStore((s) => s.setTargetTrades);
 
   const needsEnvelopeSeal =
     phase === "cockpit" &&
-    payload?.app_surface === "deck" &&
-    payload.sim_envelope_sealed === false;
+    (payload?.app_surface === "deck" || payload?.app_surface === "hub") &&
+    payload.sim_envelope_sealed === false &&
+    operatorDeckActive;
 
   useEffect(() => {
     void refresh();
@@ -55,6 +58,10 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
 
   if (phase === "birth") {
     return <BirthPhaseScreen />;
+  }
+
+  if (phase === "hub") {
+    return <PhaseHubScreen />;
   }
 
   if (needsEnvelopeSeal) {

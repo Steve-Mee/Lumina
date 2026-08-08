@@ -74,7 +74,27 @@ describe("onboardingStore.activateBirth", () => {
     vi.spyOn(useBirthStore.getState(), "beginBirthRun").mockImplementation(() => undefined);
   });
 
-  it("persists genesis settings before starting birth", async () => {
+  it("starts birth immediately when setup is already complete (no re-configure)", async () => {
+    vi.mocked(postConfigure).mockResolvedValue({ success: true, steps: [] });
+    vi.mocked(startBirth).mockResolvedValue({
+      status: "started",
+      message: "Birth Phase started in background",
+    });
+
+    const ok = await useOnboardingStore.getState().activateBirth();
+
+    expect(ok).toBe(true);
+    // Re-configure blocked the start chain; skip when setup_complete.
+    expect(postConfigure).not.toHaveBeenCalled();
+    expect(startBirth).toHaveBeenCalledWith(25000);
+    expect(useOnboardingStore.getState().phase).toBe("birth");
+    expect(useOnboardingStore.getState().birthPhaseCommitted).toBe(true);
+  });
+
+  it("persists genesis settings when setup is incomplete", async () => {
+    useOnboardingStore.setState({
+      payload: { ...basePayload, setup_complete: false } as never,
+    });
     vi.mocked(postConfigure).mockResolvedValue({ success: true, steps: [] });
     vi.mocked(startBirth).mockResolvedValue({
       status: "started",
@@ -86,11 +106,12 @@ describe("onboardingStore.activateBirth", () => {
     expect(ok).toBe(true);
     expect(postConfigure).toHaveBeenCalledTimes(1);
     expect(startBirth).toHaveBeenCalledWith(25000);
-    expect(useOnboardingStore.getState().phase).toBe("birth");
-    expect(useOnboardingStore.getState().birthPhaseCommitted).toBe(true);
   });
 
   it("surfaces configure failures instead of failing silently", async () => {
+    useOnboardingStore.setState({
+      payload: { ...basePayload, setup_complete: false } as never,
+    });
     vi.mocked(postConfigure).mockResolvedValue({
       success: false,
       steps: [{ success: false, step: "config_update", message: "Config write failed" }],
@@ -136,11 +157,11 @@ describe("onboardingStore.activateBirth", () => {
     expect(toast.info).toHaveBeenCalled();
   });
 
-  it("enters cockpit when birth is already completed with artifacts", async () => {
+  it("enters phase hub when birth is already completed with artifacts", async () => {
     useOnboardingStore.setState({
       payload: {
         ...basePayload,
-        app_surface: "deck",
+        app_surface: "hub",
         birth: { status: "completed", artifacts_ok: true },
       } as never,
     });
@@ -153,24 +174,23 @@ describe("onboardingStore.activateBirth", () => {
     const ok = await useOnboardingStore.getState().activateBirth();
 
     expect(ok).toBe(true);
-    expect(useOnboardingStore.getState().phase).toBe("cockpit");
+    expect(useOnboardingStore.getState().phase).toBe("hub");
     expect(toast.info).toHaveBeenCalled();
   });
 
   it("ignores duplicate activate calls while in flight", async () => {
-    vi.mocked(postConfigure).mockImplementation(
+    vi.mocked(startBirth).mockImplementation(
       () =>
         new Promise((resolve) => {
-          setTimeout(() => resolve({ success: true, steps: [] }), 20);
+          setTimeout(() => resolve({ status: "started" }), 20);
         }),
     );
-    vi.mocked(startBirth).mockResolvedValue({ status: "started" });
 
     const store = useOnboardingStore.getState();
     const first = store.activateBirth();
     const second = store.activateBirth();
     await Promise.all([first, second]);
 
-    expect(postConfigure).toHaveBeenCalledTimes(1);
+    expect(startBirth).toHaveBeenCalledTimes(1);
   });
 });

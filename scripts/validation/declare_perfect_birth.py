@@ -42,6 +42,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Evaluate only; do not write flag/evidence",
     )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show KPI gaps / unlock / Phase 2 shadow profile (no write)",
+    )
     args = parser.parse_args(argv)
 
     from lumina_core.birth.config import load_birth_v2_config
@@ -50,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
         declare_perfect_birth,
         evaluate_perfect_birth_conjunction,
         gather_perfect_birth_kpis,
+        perfect_birth_status,
     )
 
     workspace = Path(args.workspace).resolve() if args.workspace else ROOT
@@ -60,6 +66,18 @@ def main(argv: list[str] | None = None) -> int:
         )
     except Exception:
         pass
+
+    if args.status:
+        payload = perfect_birth_status(workspace, thresholds=thr)
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=True, indent=2))
+        else:
+            print(f"would_pass={payload.get('would_pass')} unlock={payload.get('unlock_valid')}")
+            fails = payload.get("failures") or []
+            if fails:
+                print("failures:", "; ".join(str(x) for x in fails[:12]))
+            print("next:", payload.get("next_step"))
+        return 0 if payload.get("would_pass") or payload.get("unlock_valid") else 1
 
     kpis = gather_perfect_birth_kpis(workspace)
     if args.dry_run:

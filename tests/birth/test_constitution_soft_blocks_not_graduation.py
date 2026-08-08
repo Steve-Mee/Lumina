@@ -18,6 +18,7 @@ def test_risk_exceeds_is_soft_block_not_hard_violation() -> None:
             side=1,
             stop_pct=0.02,  # 2% of equity > 1% risk cap
             equity=50_000.0,
+            auto_clip=False,  # legacy veto path
         )
         assert ok is False
         assert reason == "risk_cap"

@@ -52,7 +52,7 @@ export function BirthControlDock({
 
   const handleStopClick = () => {
     if (busy) {
-      toast.info("Even wachten — een andere birth-actie is bezig.");
+      toast.info("Please wait — another birth action is in progress.");
       return;
     }
     openStopConfirm();
@@ -71,17 +71,17 @@ export function BirthControlDock({
 
     if (wipeConfirmWiping) {
       traceBirthWipe("ui.wipe_button.blocked", { reason: "wiping", kind }, "warn");
-      toast.info("Wissen is al bezig…");
+      toast.info("Wipe already in progress…");
       return;
     }
     if (activating) {
       traceBirthWipe("ui.wipe_button.blocked", { reason: "activating", kind }, "warn");
-      toast.info("Birth wordt gestart — wis birth-data zodra de sequentie klaar is.");
+      toast.info("Birth is starting — wipe after the sequence finishes.");
       return;
     }
     if (busy) {
       traceBirthWipe("ui.wipe_button.blocked", { reason: "busy", kind }, "warn");
-      toast.info("Even wachten — een andere birth-actie is bezig.");
+      toast.info("Please wait — another birth action is in progress.");
       return;
     }
     openWipeConfirm(kind);
@@ -130,7 +130,7 @@ export function BirthControlDock({
               className="onboarding-cta lumina-interactive inline-flex min-w-[140px] items-center justify-center gap-2 py-2 font-mono text-[10px] tracking-wide uppercase"
               onClick={() => {
                 if (busy) {
-                  toast.info("Even wachten — een andere birth-actie is bezig.");
+                  toast.info("Please wait — another birth action is in progress.");
                   return;
                 }
                 onStart?.();
@@ -154,14 +154,14 @@ export function BirthControlDock({
               aria-describedby="birth-resume-checkpoint-hint"
               onClick={() => {
                 if (busy) {
-                  toast.info("Even wachten — een andere birth-actie is bezig.");
+                  toast.info("Please wait — another birth action is in progress.");
                   return;
                 }
                 onResumeCheckpoint?.();
               }}
             >
               <RotateCcw className="size-3.5 shrink-0" aria-hidden />
-              Hervat checkpoint
+              Resume checkpoint
             </Button>
           ) : null}
           <Button
@@ -176,10 +176,10 @@ export function BirthControlDock({
             aria-busy={wipeConfirmWiping}
             title={
               activating
-                ? "Birth wordt gestart — wis birth-data zodra de sequentie klaar is."
+                ? "Birth is starting — wipe after the sequence finishes."
                 : busy
-                  ? "Even wachten — een andere birth-actie is bezig."
-                  : "Checkpoint, PPO en voortgang wissen — tick cache blijft behouden"
+                  ? "Please wait — another birth action is in progress."
+                  : "Clear checkpoint, PPO weights, and progress — tick cache kept"
             }
             onPointerDown={() => {
               traceBirthWipe(
@@ -195,7 +195,7 @@ export function BirthControlDock({
             ) : (
               <Trash2 className="size-3.5 shrink-0" aria-hidden />
             )}
-            Wis birth-data
+            Wipe birth data
           </Button>
           <Button
             type="button"
@@ -209,10 +209,10 @@ export function BirthControlDock({
             aria-busy={wipeConfirmWiping}
             title={
               activating
-                ? "Birth wordt gestart — wis birth-data zodra de sequentie klaar is."
+                ? "Birth is starting — wipe after the sequence finishes."
                 : busy
-                  ? "Even wachten — een andere birth-actie is bezig."
-                  : "Alle birth-data permanent wissen, inclusief tick cache en enrichment"
+                  ? "Please wait — another birth action is in progress."
+                  : "Permanently wipe all birth data, including tick cache and enrichment"
             }
             onPointerDown={() => {
               traceBirthWipe(
@@ -228,7 +228,7 @@ export function BirthControlDock({
             ) : (
               <Trash2 className="size-3.5 shrink-0" aria-hidden />
             )}
-            Volledige wipe
+            Full wipe
           </Button>
         </>
       )}

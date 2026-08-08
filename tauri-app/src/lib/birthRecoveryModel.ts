@@ -10,6 +10,52 @@ export type BirthRecoveryKind =
   | "stage_stalled"
   | null;
 
+/** H6: backend compressed recovery panel (progress.recovery). */
+export type BirthRecoveryCompress = {
+  schema?: string;
+  active?: string;
+  layers?: string[];
+  productive?: boolean;
+  theater?: boolean;
+  theater_reasons?: string[];
+  next_action?: string;
+  escalation?: Record<string, unknown>;
+  flags?: Record<string, unknown>;
+};
+
+export function readBirthRecoveryCompress(
+  status: BirthStatusPayload | null | undefined,
+): BirthRecoveryCompress | null {
+  const raw = (status?.progress as Record<string, unknown> | undefined)?.recovery;
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const rec = raw as BirthRecoveryCompress;
+  if (rec.schema && rec.schema !== "recovery_compress_v1") {
+    return null;
+  }
+  return rec;
+}
+
+/** Prefer compressed next_action when engine says recovery is theater (spin without lift). */
+export function recoveryOperatorHint(
+  status: BirthStatusPayload | null | undefined,
+): string | null {
+  const c = readBirthRecoveryCompress(status);
+  if (!c) {
+    return null;
+  }
+  if (c.theater) {
+    return c.next_action
+      ? `Recovery theater: ${c.next_action}`
+      : "Recovery theater: stop auto-recovery and expand or review manually";
+  }
+  if (c.productive && c.next_action === "let_engine_recover") {
+    return "Engine recovering — single active surface, no operator action required";
+  }
+  return c.next_action && c.next_action !== "none" ? c.next_action : null;
+}
+
 function norm(value: unknown): string {
   return String(value ?? "").trim().toLowerCase();
 }

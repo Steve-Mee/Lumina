@@ -33,7 +33,8 @@ from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 
 logger = logging.getLogger("lumina.risk.aperture_guard")
 
-STRICT_MODES = frozenset({"real", "sim_real_guard"})
+# Track E: align with capital_aperture_lineage strict capital surfaces.
+STRICT_MODES = frozenset({"real", "sim_real_guard", "live", "production", "prod"})
 
 __all__ = [
     "STRICT_MODES",

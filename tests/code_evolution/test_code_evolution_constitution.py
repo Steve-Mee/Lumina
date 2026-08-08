@@ -57,8 +57,37 @@ def test_forbidden_target_fails():
     assert "whitelisted_target" in res.violation_names or "no_risk_path_touch" in res.violation_names
 
 
-def test_pre_promotion_always_blocks_live_apply():
+def test_pre_promotion_blocks_when_apply_disabled():
     c = CodeEvolutionConstitution()
     res = c.check_pre_promotion(_param_proposal())
     assert not res.passed
-    assert "v1_evaluate_only" in res.violation_names
+    assert "apply_disabled" in res.violation_names
+
+
+def test_pre_promotion_blocks_real_capital():
+    c = CodeEvolutionConstitution()
+    prop = _param_proposal(constitution_passed=True)
+    res = c.check_pre_promotion(
+        prop,
+        mode="real",
+        sandbox_passed=True,
+        apply_enabled=True,
+        human_approved=True,
+        capital_mode="real",
+    )
+    assert not res.passed
+    assert "no_live_tree_apply" in res.violation_names
+
+
+def test_pre_promotion_ok_sim_with_human_and_sandbox():
+    c = CodeEvolutionConstitution()
+    prop = _param_proposal(constitution_passed=True)
+    res = c.check_pre_promotion(
+        prop,
+        mode="sim",
+        sandbox_passed=True,
+        apply_enabled=True,
+        human_approved=True,
+        capital_mode="sim",
+    )
+    assert res.passed

@@ -25,6 +25,8 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
   const uiPhase = useBirthStore((s) => s.uiPhase);
   const birthSurface = useBirthStore((s) => s.birthSurface);
   const pollError = useBirthStore((s) => s.pollError);
+  const sessionHydrated = useBirthStore((s) => s.sessionHydrated);
+  const sessionProbeState = useBirthStore((s) => s.sessionProbeState);
   const targetTrades = useBirthStore((s) => s.targetTrades);
   const genesisPinned = useBirthStore((s) => s.genesisPinned);
   const autonomousMode = useBirthUiStore((s) => s.autonomousMode);
@@ -145,6 +147,10 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
     status,
     uiPhase,
     pollError,
+    sessionHydrated,
+    sessionProbeState,
+    /** True until first status arrives — Activate must stay locked. */
+    sessionProbePending: sessionProbeState === "pending" || !sessionHydrated,
     targetTrades,
     genesisPinned,
     autonomousMode,

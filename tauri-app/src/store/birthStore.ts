@@ -20,7 +20,6 @@ import {
   isBirthComplete,
   isBirthCertificateFailed,
   isBirthEngineActive,
-  isBirthEngineLive,
   isBirthFailed,
   isBirthInterrupted,
   isBirthStageStalled,
@@ -36,8 +35,6 @@ import {
   pollBirthStatusWithErrorHandling,
   pollFreshBirthStatus,
   resetPollCoordinator,
-  STOP_ENGINE_POLL_MS,
-  STOP_ENGINE_TIMEOUT_MS,
   TRANSIENT_POLL_WARNING,
   WIPE_VERIFY_ATTEMPTS,
   WIPE_VERIFY_DELAY_MS,
@@ -57,6 +54,9 @@ export {
 };
 export type { BirthSurface, BirthUiPhase };
 
+/** Cold-start probe for previous birth session (checkpoint / interrupted). */
+export type BirthSessionProbeState = "pending" | "ready" | "error";
+
 interface BirthState {
   status: BirthStatusPayload | null;
   milestones: BirthMilestone[];
@@ -67,11 +67,18 @@ interface BirthState {
   /** Sticky operator intent to stay on training shell during resume cold-start. */
   runPinned: boolean;
   pollError: string | null;
+  /**
+   * First successful status poll completed. Until true, Activate must stay
+   * locked so operators cannot start a fresh birth over an unknown prior session.
+   */
+  sessionHydrated: boolean;
+  sessionProbeState: BirthSessionProbeState;
   targetTrades: number;
   setTargetTrades: (n: number) => void;
   setBirthSurface: (surface: BirthSurface) => void;
   beginBirthRun: () => void;
   applyStatus: (payload: BirthStatusPayload) => void;
+  markSessionProbeError: (message?: string | null) => void;
   poll: () => Promise<BirthStatusPayload | null>;
   pollFresh: () => Promise<BirthStatusPayload | null>;
   bootstrapSession: (context: {
@@ -101,6 +108,8 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   genesisPinned: false,
   runPinned: false,
   pollError: null,
+  sessionHydrated: false,
+  sessionProbeState: "pending",
   targetTrades: 25000,
 
   setTargetTrades: (n) => set({ targetTrades: n }),
@@ -188,8 +197,20 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       birthSurface,
       runPinned,
       pollError: null,
+      sessionHydrated: true,
+      sessionProbeState: "ready",
     });
   },
+
+  markSessionProbeError: (message) =>
+    set({
+      sessionProbeState: "error",
+      // Keep Activate locked until a successful status arrives.
+      sessionHydrated: false,
+      pollError:
+        message?.trim() ||
+        "Could not load birth session status. Retry before activating a new birth.",
+    }),
 
   poll: async () =>
     pollBirthStatusWithErrorHandling(
@@ -429,7 +450,15 @@ export const useBirthStore = create<BirthState>((set, get) => ({
   },
 
   stopBirthRun: async () => {
-    set({ pollError: null });
+    // Pin Genesis *before* the network call so the operator never waits on
+    // PPO teardown for navigation (backend stop is signal + pause SSOT only).
+    set({
+      pollError: null,
+      uiPhase: "idle",
+      birthSurface: "genesis",
+      genesisPinned: true,
+      runPinned: false,
+    });
     let stopError: string | null = null;
     try {
       const stopResult = await stopBirthSession();
@@ -438,26 +467,43 @@ export const useBirthStore = create<BirthState>((set, get) => ({
         throw new Error(String(stopResult.message ?? "Birth stop rejected"));
       }
 
-      const deadline = Date.now() + STOP_ENGINE_TIMEOUT_MS;
+      // Single fast status refresh — do not poll-wait for engine drain.
+      // Resume uses on-disk checkpoint_resumable (visible while stopping).
       let payload: BirthStatusPayload | null = null;
-      while (Date.now() < deadline) {
+      try {
         payload = await get().pollFresh();
-        if (payload && !isBirthEngineLive(payload)) {
-          break;
+      } catch {
+        try {
+          payload = await fetchBirthStatusTyped();
+        } catch {
+          payload = null;
         }
-        await new Promise((resolve) => setTimeout(resolve, STOP_ENGINE_POLL_MS));
       }
 
-      if (payload && isBirthEngineLive(payload)) {
-        throw new Error(
-          "Birth Phase stop timeout — engine draait nog. Probeer opnieuw of herstart de backend.",
-        );
+      if (payload) {
+        // Prefer server flag; if stop response already says resumable, surface it.
+        const stopResumable = stopResult.checkpoint_resumable === true;
+        const merged: BirthStatusPayload = stopResumable
+          ? { ...payload, checkpoint_resumable: true }
+          : payload;
+        get().applyStatus(merged);
+      } else if (stopResult.checkpoint_resumable === true) {
+        const prev = get().status;
+        if (prev) {
+          get().applyStatus({
+            ...prev,
+            live: false,
+            checkpoint_resumable: true,
+            progress: {
+              ...(prev.progress ?? {}),
+              stage: "paused",
+              phase: "paused",
+              user_initiated_stop: true,
+            },
+          });
+        }
       }
-    } catch (err) {
-      stopError = err instanceof Error ? err.message : "Birth stop failed";
-    }
 
-    if (stopError == null) {
       set({
         uiPhase: "idle",
         birthSurface: "genesis",
@@ -465,27 +511,21 @@ export const useBirthStore = create<BirthState>((set, get) => ({
         runPinned: false,
         pollError: null,
       });
-      try {
-        const payload = await fetchBirthStatusTyped();
-        get().applyStatus(payload);
-        set({
-          uiPhase: "idle",
-          birthSurface: "genesis",
-          genesisPinned: true,
-          runPinned: false,
-          pollError: null,
-        });
-      } catch {
-        /* genesis pin already applied */
-      }
-    } else {
+    } catch (err) {
+      stopError = err instanceof Error ? err.message : "Birth stop failed";
       try {
         const payload = await fetchBirthStatusTyped();
         get().applyStatus(payload);
       } catch {
         /* keep last known status */
       }
-      set({ pollError: stopError });
+      set({
+        pollError: stopError,
+        uiPhase: "idle",
+        birthSurface: "genesis",
+        genesisPinned: true,
+        runPinned: false,
+      });
     }
 
     return stopError == null;
@@ -622,6 +662,8 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       genesisPinned: false,
       runPinned: false,
       pollError: null,
+      sessionHydrated: false,
+      sessionProbeState: "pending",
     });
   },
 }));

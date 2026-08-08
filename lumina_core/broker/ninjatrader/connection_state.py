@@ -38,8 +38,15 @@ class NinjaTraderConnectionState:
         return self.state == "connected"
 
     @property
+    def is_fabric_safe_mode(self) -> bool:
+        """True when Fabric reports SAFE / FULL_SAFE (no new places)."""
+        sm = str(self.safe_mode or "UNKNOWN").strip().upper()
+        return sm in {"SAFE", "FULL_SAFE", "SAFE_MODE"}
+
+    @property
     def allows_new_orders(self) -> bool:
-        return self.state == "connected"
+        # Connected AND not in Fabric SAFE_MODE (cancel/flatten still separate).
+        return self.state == "connected" and not self.is_fabric_safe_mode
 
     def to_telemetry_dict(self) -> dict[str, object]:
         return {
@@ -48,6 +55,7 @@ class NinjaTraderConnectionState:
             "last_bar_ts": self.last_bar_ts,
             "state": self.state,
             "safe_mode": self.safe_mode,
+            "fabric_safe_mode": self.is_fabric_safe_mode,
             "fabric_target": self.fabric_target,
             "gateway": self.gateway,
             "session_id": self.session_id or "",

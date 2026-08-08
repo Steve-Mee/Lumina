@@ -7,6 +7,7 @@ import type {
   BirthWipeApiResponse,
   StartBirthSessionOptions,
 } from "@/lib/birth/birthClientTypes";
+import { normalizeBirthStatusProgress } from "@/lib/birth/birthTournamentNaming";
 
 export type {
   BirthCertificatePayload,
@@ -42,7 +43,8 @@ async function postBirthMutation(
   if (!response.ok) {
     throw new Error(await readHttpErrorDetail(response));
   }
-  return response.json() as Promise<BirthStatusPayload>;
+  const raw = (await response.json()) as BirthStatusPayload;
+  return normalizeBirthStatusProgress(raw);
 }
 
 export async function stopBirthSession(): Promise<Record<string, unknown>> {
@@ -64,7 +66,9 @@ export async function fetchBirthStatusTyped(options?: {
     connectTimeout: options?.connectTimeout ?? 30_000,
   } as RequestInit);
   if (!response.ok) throw new Error(await readHttpErrorDetail(response));
-  return response.json() as Promise<BirthStatusPayload>;
+  const raw = (await response.json()) as BirthStatusPayload;
+  // T12: tournament physics names primary; legacy edgescore lift aliases promoted.
+  return normalizeBirthStatusProgress(raw);
 }
 
 export async function startBirthSession(

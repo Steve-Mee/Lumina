@@ -58,6 +58,7 @@ from lumina_core.agent_orchestration.schemas_evolution import (
     TwinTrainingUpdateEvent,
 )
 from lumina_core.agent_orchestration.schemas_risk import (
+    AdmissionLineageCheckedPayload,
     FinalArbitrationResult,
     GateEntryPayload,
     RiskConfigMutationProposal,
@@ -101,6 +102,7 @@ EVENT_BUS_TOPIC_MODELS: dict[str, type[BaseModel]] = {
     "trading_engine.dream_state.updated": DreamStateEventPayload,
     "risk.policy.decision": RiskVerdict,
     "risk.final_arbitration.result": FinalArbitrationResult,
+    "risk.admission.lineage_checked": AdmissionLineageCheckedPayload,
     "admission.gate_entry": GateEntryPayload,
     "agent.rl.proposal": AgentProposalPayload,
     "agent.news.proposal": AgentProposalPayload,
@@ -158,6 +160,7 @@ CRITICAL_EVENT_BUS_TOPICS: frozenset[str] = frozenset(
         "trading_engine.execution.aggregate",
         "risk.policy.decision",
         "risk.final_arbitration.result",
+        "risk.admission.lineage_checked",
         "admission.gate_entry",
         "agent.rl.proposal",
         "agent.news.proposal",

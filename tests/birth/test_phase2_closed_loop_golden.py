@@ -55,6 +55,7 @@ def _phase2_cfg(**kwargs: Any) -> BirthCurriculumConfig:
 
 @pytest.mark.unit
 def test_closed_loop_off_by_default_no_phase2_meta() -> None:
+    """Track C: single wall path via handler; Phase 2 inert when master flag off."""
     bus = EventBus()
     cfg = BirthCurriculumConfig(
         stage1_trend_trades=100,
@@ -64,10 +65,12 @@ def test_closed_loop_off_by_default_no_phase2_meta() -> None:
         phase2_autonomy_enabled=False,
     )
     client = BirthBusClient(bus, cfg, BirthRewardConfig())
+    # Low WR + force exercises the attached WallAdaptationHandler path
+    # (single evaluate_wall_trigger engine; no second ML wall / phase2 apply).
     trigger = client.wall_evaluate_trigger(
         CurriculumStage.STAGE1_TREND,
         stage_trades=150,
-        stage_wins=45,
+        stage_wins=20,
         required=100,
         hold_ratio=0.2,
         constitution_violations=0,
@@ -80,7 +83,7 @@ def test_closed_loop_off_by_default_no_phase2_meta() -> None:
         wall_budget_exhausted=False,
         allow_provisional=False,
         failure_key="stage1_winrate",
-        force=False,
+        force=True,
         low_velocity_attempts=0,
         last_adaptation_stage_trades=-1,
     )

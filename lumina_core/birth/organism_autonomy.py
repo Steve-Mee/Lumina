@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
 from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
@@ -13,6 +11,11 @@ from lumina_core.birth.death_spiral_guard import (
     record_stall_signature,
     reset_after_novelty,
     should_widen_data_horizon,
+)
+from lumina_core.birth.organism_autonomy_types import (
+    AutonomyDecision,
+    OrganismAutonomyState,
+    RecoveryDispatch,
 )
 from lumina_core.birth.phoenix_loop import (
     PHOENIX_CYCLE_REASON,
@@ -24,73 +27,60 @@ from lumina_core.logging_utils import get_logger
 logger = get_logger("lumina.birth.organism_autonomy")
 
 
-class RecoveryDispatch(str, Enum):
-    CONTINUE_LOOP = "continue_loop"
-    PHOENIX_RESUME = "phoenix_resume"
-    PROVISIONAL_GRADUATE = "provisional_graduate"
-    TERMINAL_NOTIFY_ONLY = "terminal_notify_only"
-
-
-@dataclass(slots=True)
-class AutonomyDecision:
-    dispatch: RecoveryDispatch
-    needs_attention: bool = False
-    retryable: bool = True
-    stall_reason: str = ""
-    recommended_action: str = ""
-    checkpoint_patch: dict[str, Any] | None = None
-    autonomy_metrics: dict[str, Any] | None = None
-    message: str = ""
-
-
-@dataclass(slots=True)
-class OrganismAutonomyState:
-    phoenix: PhoenixLoopState
-    death_spiral: DeathSpiralState
-    last_recommended_action: str = ""
-    autonomous_recovery_count: int = 0
-
-    def to_metrics(self) -> dict[str, Any]:
-        return {
-            **self.phoenix.to_metrics(),
-            **self.death_spiral.to_metrics(),
-            "autonomous_recovery_count": int(self.autonomous_recovery_count),
-            "last_recommended_action": str(self.last_recommended_action),
-        }
-
-    @classmethod
-    def from_metrics(cls, metrics: dict[str, Any] | None) -> OrganismAutonomyState:
-        if not isinstance(metrics, dict):
-            return cls(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
-        return cls(
-            phoenix=PhoenixLoopState.from_metrics(metrics),
-            death_spiral=DeathSpiralState.from_metrics(metrics),
-            last_recommended_action=str(metrics.get("last_recommended_action", "") or ""),
-            autonomous_recovery_count=int(metrics.get("autonomous_recovery_count", 0) or 0),
-        )
-
-
 def map_recommended_to_service_action(recommended: str) -> str:
     """Map plateau audit recommendation to birth_service recovery method."""
     action = str(recommended or "").strip().lower()
-    mapping = {
+    return {
         "continue_evolution": "resume_stalled_stage",
         "policy_rollback": "resume_stalled_stage",
         "explore_boost_anti_hold": "resume_stalled_stage",
+        "explore_boost_anti_flat": "resume_stalled_stage",
         "range_patience_recovery": "resume_stalled_stage",
+        "expectancy_quality_reward": "resume_stalled_stage",
+        "expectancy_quality_stack": "resume_stalled_stage",
         "phoenix_reset": "phoenix_recovery",
         "expand_and_retry": "expand_and_retry",
         "expand_data": "expand_and_retry",
         "widen_horizon": "expand_and_retry",
-    }
-    return mapping.get(action, "resume_stalled_stage")
+        "accept_champion": "accept_champion",
+        "accept_champion_or_wipe": "accept_champion",
+    }.get(action, "resume_stalled_stage")
 
+
+def organism_autonomy_status(
+    cfg: BirthCurriculumConfig,
+    autonomy_state: OrganismAutonomyState | None = None,
+) -> dict[str, Any]:
+    """Operator-facing C2 snapshot: defaults, phoenix budget, notify-as-exception posture."""
+    state = autonomy_state or OrganismAutonomyState(
+        phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState()
+    )
+    max_cycles = max(1, int(cfg.phoenix_max_cycles))
+    used = int(state.phoenix.phoenix_count)
+    remaining = max(0, max_cycles - used)
+    return {
+        "autonomous_recovery_enabled": bool(cfg.autonomous_recovery_enabled),
+        "phoenix_loop_enabled": bool(cfg.phoenix_loop_enabled),
+        "phoenix_max_cycles": max_cycles,
+        "phoenix_cycles_used": used,
+        "phoenix_cycles_remaining": remaining,
+        "phoenix_budget_exhausted": remaining <= 0 or not bool(cfg.phoenix_loop_enabled),
+        "autonomous_recovery_count": int(state.autonomous_recovery_count),
+        "last_recommended_action": str(state.last_recommended_action or ""),
+        "terminal_notify_is_exception": True,
+        "no_lift_uses_phoenix_before_notify": True,
+        "capital_gates_untouched": True,
+        "c2_posture": (
+            "active"
+            if bool(cfg.autonomous_recovery_enabled)
+            else "disabled_operator_notify"
+        ),
+    }
 
 def _phoenix_eligible(cfg: BirthCurriculumConfig, autonomy_state: OrganismAutonomyState) -> bool:
     if not cfg.phoenix_loop_enabled:
         return False
     return autonomy_state.phoenix.phoenix_count < max(1, int(cfg.phoenix_max_cycles))
-
 
 def evaluate_terminal_stall(
     *,
@@ -138,9 +128,88 @@ def evaluate_terminal_stall(
     recommended = str(recommended_recovery_action or autonomy_state.last_recommended_action or "").strip()
     autonomy_state.last_recommended_action = recommended
 
-    # Fail-closed: ladder no-lift → operator, unless swarm tournament already resolved
-    # (commit / champion_accepted) so twin full_auto may CONTINUE without theater.
+    # No-lift brake: phoenix first; then Twin accept_champion (birth/SIM); else notify.
+    # Never train-through-freeze; never auto-wipe.
     if recovery_no_lift_brake and not bool(swarm_tournament_resolved):
+        if _phoenix_eligible(cfg, autonomy_state):
+            from lumina_core.birth.organism_autonomy_phoenix import try_no_lift_phoenix_decision
+
+            decision = try_no_lift_phoenix_decision(
+                cfg=cfg,
+                autonomy_state=autonomy_state,
+                stall_reason=stall_reason,
+            )
+            if decision is not None:
+                return decision
+        # Twin as human replacement for accept_champion only (ADR-0032, birth/SIM).
+        if approval_twin is not None:
+            try:
+                from lumina_core.birth.birth_control_plane import twin_accept_champion_eligible
+                from lumina_core.evolution.dna_registry import PolicyDNA
+                from pathlib import Path
+
+                starship = dict(starship_context or {})
+                champ_path = str(
+                    starship.get("best_edgescore_policy_path")
+                    or starship.get("best_policy_path")
+                    or ""
+                ).strip()
+                champ_ok = bool(champ_path) and Path(champ_path).is_file()
+                if hasattr(approval_twin, "sync_mode_from_controller"):
+                    try:
+                        approval_twin.sync_mode_from_controller()
+                    except Exception:
+                        pass
+                proxy = PolicyDNA.create(
+                    prompt_id="birth_freeze_accept_champion",
+                    version="autonomy",
+                    content={
+                        "stage": curriculum_stage,
+                        "stall_reason": stall_reason,
+                        "action": "accept_champion",
+                        "swarm_rejected_no_lift": True,
+                        "champion_path": champ_path,
+                    },
+                    fitness_score=float(fitness_signal),
+                    generation=0,
+                    mutation_rate=0.0,
+                    lineage_hash="birth-freeze-accept",
+                )
+                twin_res = approval_twin.evaluate_dna_promotion(proxy)
+                t_conf = float(twin_res.get("confidence", 0.0) or 0.0)
+                t_raw = bool(twin_res.get("recommendation", False))
+                t_rec = bool(twin_res.get("effective_recommendation", t_raw))
+                twin_mode = str(
+                    twin_res.get("mode") or getattr(approval_twin, "mode", "shadow") or "shadow"
+                )
+                if twin_accept_champion_eligible(
+                    cfg=cfg,
+                    twin_confidence=t_conf,
+                    twin_recommendation=bool(t_rec or t_raw),
+                    constitution_violations=int(constitution_violations or 0),
+                    champion_path_exists=champ_ok,
+                    swarm_rejected_no_lift=True,
+                    twin_mode=twin_mode,
+                ):
+                    autonomy_state.autonomous_recovery_count += 1
+                    metrics = autonomy_state.to_metrics()
+                    metrics["twin_accept_champion"] = True
+                    metrics["twin_confidence"] = round(t_conf, 4)
+                    metrics["twin_mode"] = twin_mode
+                    return AutonomyDecision(
+                        dispatch=RecoveryDispatch.ACCEPT_CHAMPION_RESUME,
+                        needs_attention=False,
+                        retryable=True,
+                        stall_reason=stall_reason,
+                        recommended_action="accept_champion",
+                        autonomy_metrics=metrics,
+                        message=(
+                            f"Twin accept_champion (conf={t_conf:.2%}, mode={twin_mode}) "
+                            "— keep champion, clear freeze, continue quality ladder."
+                        ),
+                    )
+            except Exception:
+                logger.debug("birth.twin_accept_champion_failed", exc_info=True)
         return AutonomyDecision(
             dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
             needs_attention=True,
@@ -148,8 +217,9 @@ def evaluate_terminal_stall(
             stall_reason=stall_reason,
             autonomy_metrics=autonomy_state.to_metrics(),
             message=(
-                "Recovery ladder completed without best-winrate lift — "
-                "operator attention required."
+                "Recovery ladder completed without best-winrate lift and phoenix "
+                "budget exhausted — operator attention required "
+                "(or Twin accept_champion when conf≥0.80 + champion path)."
             ),
         )
 
@@ -248,6 +318,18 @@ def evaluate_terminal_stall(
                 swarm_resolved=bool(swarm_tournament_resolved),
                 constitution_risks=bool(t_risks) or int(constitution_violations or 0) > 0,
             )
+            # Track D SSOT: primary birth/SIM judgment never covers REAL capital gates.
+            from lumina_core.evolution.twin_discipline import twin_primary_judgment_for_decision
+
+            primary = twin_primary_judgment_for_decision(
+                twin_mode=twin_mode,
+                twin_confidence=t_conf,
+                twin_raw_recommendation=t_raw,
+                twin_executable=t_executable,
+                twin_effective_recommendation=t_rec,
+                capital_mode="birth",
+                constitution_violations=int(constitution_violations or 0),
+            )
 
             # Note: the proxy DNA here is synthetic (birth stage metadata). Real trading DNA
             # mutations are always routed through ConstitutionalGuard.check_pre_* + SandboxedMutationExecutor
@@ -268,7 +350,7 @@ def evaluate_terminal_stall(
             if high_conf and t_raw and not t_executable:
                 # Propose only / assisted approve — do not sole-auto; fall through to other recovery.
                 pass
-            elif twin_continue_ok and t_rec:
+            elif twin_continue_ok and t_rec and primary.get("primary"):
                 autonomy_state.autonomous_recovery_count += 1
                 return AutonomyDecision(
                     dispatch=RecoveryDispatch.CONTINUE_LOOP,
@@ -350,7 +432,6 @@ def evaluate_terminal_stall(
         autonomy_metrics=autonomy_state.to_metrics(),
         message="Autonomous resume after stall.",
     )
-
 
 __all__ = [
     "AutonomyDecision",

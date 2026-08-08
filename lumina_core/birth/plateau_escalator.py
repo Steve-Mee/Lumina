@@ -53,6 +53,7 @@ from lumina_core.birth.plateau_terminal import (  # noqa: F401
     can_force_never_stop_recovery,
     detect_hold_trap,
     detect_over_trading_trap,
+    detect_under_activity_trap,
     evolution_ladder_blocked_reason,
     increment_evolution_rollout,
     maybe_update_best_winrate,
@@ -72,6 +73,7 @@ from lumina_core.birth.plateau_terminal import (  # noqa: F401
     should_start_evolution_step,
     should_terminal_plateau_stall,
     should_trigger_plateau_evolution_step,
+    stage2_should_defer_swarm_for_flat_band,
     winrate_improvement_blocks_ladder,
 )
 
@@ -91,6 +93,7 @@ __all__ = [
     "can_force_never_stop_recovery",
     "detect_hold_trap",
     "detect_over_trading_trap",
+    "detect_under_activity_trap",
     "enter_plateau",
     "evolution_actions_completed",
     "evolution_actions_for_stage",
@@ -130,6 +133,7 @@ __all__ = [
     "should_terminal_plateau_stall",
     "should_trades_beyond_gate_hard_stop",
     "should_trigger_plateau_evolution_step",
+    "stage2_should_defer_swarm_for_flat_band",
     "update_plateau_quarantine_after_rollout",
     "winrate_improvement_blocks_ladder",
 ]

@@ -1,4 +1,5 @@
 import type { BirthProgressPayload, BirthSettingsPayload, BirthStatusPayload } from "@/lib/birthClient";
+import { isBirthCurriculumScorecardActive } from "@/lib/birth/birthActiveProgress";
 import { extractBirthSessionHud, extractStageScorecard } from "@/lib/birthPhaseModel";
 import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
 import { cn } from "@/lib/utils";
@@ -55,7 +56,13 @@ function resolveIntelChips(progress: BirthProgressPayload | undefined): {
   stageLabel: string;
 } {
   const scorecard = extractStageScorecard(progress);
-  const stageLabel = scorecard?.stageLabel ?? "Stage data syncing…";
+  const prepActive =
+    Boolean(progress) && !scorecard && !isBirthCurriculumScorecardActive(progress);
+  const stageLabel = scorecard?.stageLabel
+    ? scorecard.stageLabel
+    : prepActive
+      ? "Birth preparation"
+      : "Stage data syncing…";
 
   let gate: ChipState = "idle";
   let health: ChipState = "idle";
@@ -153,6 +160,8 @@ export function BirthStageIntelColumn({
 }: BirthStageIntelColumnProps) {
   const scorecard = extractStageScorecard(progress);
   const sessionHud = extractBirthSessionHud(progress);
+  const prepActive =
+    Boolean(progress) && !scorecard && !isBirthCurriculumScorecardActive(progress);
   const showContent = (running || finale) && progress;
   const chips = resolveIntelChips(progress);
 
@@ -195,20 +204,34 @@ export function BirthStageIntelColumn({
             resumePlateauRisk={resumePlateauRisk}
             resumePlateauRiskTrades={resumePlateauRiskTrades}
           />
-        ) : showContent && sessionHud ? (
+        ) : showContent && (sessionHud || prepActive) ? (
           <div className="birth-stage-prep space-y-2">
             <p className="font-mono text-[0.55rem] tracking-[0.14em] text-cyan-200/80 uppercase">
               Birth preparation
             </p>
+            <p className="text-[11px] leading-relaxed text-cyan-100/55">
+              Historical data load and plant bootstrap. Stage 1/3 appears when curriculum training
+              starts — not during data prep.
+            </p>
             <div className="birth-intel-field-grid">
-              <BirthFieldCard label="Sub-phase" value={sessionHud.subPhaseLabel} />
+              <BirthFieldCard
+                label="Sub-phase"
+                value={
+                  sessionHud?.subPhaseLabel ||
+                  String(progress?.sub_phase_label || progress?.phase || "—")
+                }
+              />
               <BirthFieldCard
                 label="Patterns mined"
-                value={sessionHud.patternsMined.toLocaleString()}
+                value={(sessionHud?.patternsMined ?? 0).toLocaleString()}
               />
               <BirthFieldCard
                 label="Learning attempt"
-                value={sessionHud.learningAttempt > 0 ? String(sessionHud.learningAttempt) : "—"}
+                value={
+                  sessionHud && sessionHud.learningAttempt > 0
+                    ? String(sessionHud.learningAttempt)
+                    : "—"
+                }
               />
             </div>
           </div>

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import Any
 
 from lumina_core.agent_orchestration.event_bus import EventBus
@@ -15,6 +17,11 @@ from lumina_core.birth.remediation_handler import RemediationHandler
 from lumina_core.birth.wall_adaptation_handler import WallAdaptationHandler
 
 
+def _workspace_root() -> Path:
+    raw = str(os.environ.get("LUMINA_WORKSPACE_ROOT", "") or "").strip()
+    return Path(raw) if raw else Path.cwd()
+
+
 class BirthHandlerRegistry:
     """Owns handler instances and synchronous response cache (not domain logic)."""
 
@@ -26,18 +33,21 @@ class BirthHandlerRegistry:
         *,
         approval_twin: Any | None = None,
         mode: str = "sim",
+        workspace_root: Path | str | None = None,
     ) -> None:
         self.bus = event_bus
         self.curriculum_cfg = curriculum_cfg
         self.reward_cfg = reward_cfg
         self.approval_twin = approval_twin
         self._mode = str(mode or "sim")
+        self._workspace_root = Path(workspace_root) if workspace_root else _workspace_root()
         self._responses: dict[str, dict[str, Any]] = {}
         self.phase2 = build_orchestrator_from_cfg(
             curriculum_cfg,
             event_bus=event_bus,
             approval_twin=approval_twin,
             mode=self._mode,
+            workspace_root=self._workspace_root,
         )
         self.meta = MetaControllerHandler(
             event_bus,
@@ -101,12 +111,13 @@ class BirthHandlerRegistry:
         self.phoenix.cfg = cfg
         self.autonomy.cfg = cfg
         self.wall_adaptation.cfg = cfg
-        # Rebuild Phase 2 orchestrator only when master flag is on (zero cost when off)
+        # Rebuild Phase 2 when curriculum master flag OR SIM campaign is active
         self.phase2 = build_orchestrator_from_cfg(
             cfg,
             event_bus=self.bus,
             approval_twin=self.approval_twin,
             mode=self._mode,
+            workspace_root=self._workspace_root,
         )
         self.wall_adaptation._phase2 = self.phase2
         if self.phase2 is not None:

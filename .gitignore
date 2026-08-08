@@ -32,6 +32,7 @@ scripts/_split_*.py
 scripts/_wave_*.py
 scripts/_sanitize_*.py
 scripts/_parse_mypy_ci.py
+scripts/_audit_*.py
 # Local champion / policy scratch backups (never publish)
 *.bak
 lumina_agents/ppo/*poisoned*
@@ -42,6 +43,8 @@ tmp_*.json
 tmp_*.md
 tmp_test_subset.txt
 tsc_errors.txt
+tsc-errors.txt
+**/tsc-errors.txt
 _patch_*.py
 .pytest_*.txt
 pytest_*.txt
@@ -299,4 +302,8 @@ coverage.xml
 # C# Fabric build outputs
 integrations/ninjatrader8/**/bin/
 integrations/ninjatrader8/**/obj/
+
+
+# Local Python scratch dumps
+tmp_*.py
 

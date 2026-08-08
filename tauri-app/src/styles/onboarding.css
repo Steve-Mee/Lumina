@@ -1722,6 +1722,47 @@
  background: color-mix(in srgb, white 3.5%, transparent);
  padding: 0.55rem 0.65rem 0.6rem;
  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+ transition:
+   border-color 0.25s ease,
+   background-color 0.25s ease,
+   box-shadow 0.25s ease;
+}
+
+/* Lumina condition tones (green / orange / red) — all field cards app-wide */
+.risk-envelope-field-card[data-tone="ok"] {
+ border-color: color-mix(in srgb, #34d399 42%, transparent);
+ background: color-mix(in srgb, #064e3b 32%, transparent);
+ box-shadow:
+   inset 0 1px 0 color-mix(in srgb, #6ee7b7 12%, transparent),
+   0 0 0 1px color-mix(in srgb, #34d399 12%, transparent);
+}
+
+.risk-envelope-field-card[data-tone="warn"] {
+ border-color: color-mix(in srgb, #fbbf24 45%, transparent);
+ background: color-mix(in srgb, #78350f 26%, transparent);
+ box-shadow:
+   inset 0 1px 0 color-mix(in srgb, #fcd34d 10%, transparent),
+   0 0 0 1px color-mix(in srgb, #fbbf24 10%, transparent);
+}
+
+.risk-envelope-field-card[data-tone="danger"] {
+ border-color: color-mix(in srgb, #f43f5e 48%, transparent);
+ background: color-mix(in srgb, #881337 34%, transparent);
+ box-shadow:
+   inset 0 1px 0 color-mix(in srgb, #fda4af 10%, transparent),
+   0 0 0 1px color-mix(in srgb, #f43f5e 12%, transparent);
+}
+
+.risk-envelope-field-card[data-tone="ok"] .risk-envelope-field-label {
+ color: color-mix(in srgb, #6ee7b7 88%, transparent);
+}
+
+.risk-envelope-field-card[data-tone="warn"] .risk-envelope-field-label {
+ color: color-mix(in srgb, #fcd34d 85%, transparent);
+}
+
+.risk-envelope-field-card[data-tone="danger"] .risk-envelope-field-label {
+ color: color-mix(in srgb, #fda4af 88%, transparent);
 }
 
 .risk-envelope-field-label {

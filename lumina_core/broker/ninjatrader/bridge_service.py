@@ -129,12 +129,17 @@ class NinjaTraderBridgeService(BridgeInboundMixin, BridgeCommandSyncMixin):
             self.metrics.record_disconnect()
         with self._lock:
             self._connection.state = "disconnected"
+            # Track E residual: Brain treats disconnect as SAFE until re-auth (no new places).
+            self._fabric_safe_mode = "SAFE"
             self._send_fn = None
             self._session_id = None
             for waiter in self._pending_commands.values():
                 waiter.result = {"type": "error", "code": "DISCONNECTED", "message": "NT8 / Fabric disconnected"}
                 waiter.event.set()
             self._pending_commands.clear()
+        logger.warning(
+            "nt.bridge.disconnect → SAFE_MODE (brain-side); places blocked until reconnect+auth"
+        )
 
     def begin_authentication(self) -> None:
         with self._lock:

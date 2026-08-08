@@ -2,286 +2,52 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
-import time
-from pathlib import Path
 from typing import Any, Literal
 
-import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from lumina_core.engine.setup_service import SetupService
-from lumina_launcher.core.config_manager import ConfigManager
-from lumina_launcher.core.first_boot import FirstBootManager
-from lumina_launcher.core.onboarding import (
-    compute_onboarding_steps,
-    extract_config_defaults,
-    resolve_app_surface,
-    resolve_credentials_wizard_meta,
-    resolve_wizard_steps,
-    should_skip_wizard,
-)
-from lumina_launcher.core.workspace_root import resolve_birth_workspace_root
-from lumina_launcher.services.birth_service import birth_service
-from lumina_launcher.services.hardware_service import HardwareService
-from lumina_launcher.services.model_service import ModelService
 from lumina_launcher.services.setup_persist import (
     build_credentials_env_snapshot,
-    is_sim_envelope_sealed,
     persist_credentials_only,
     persist_tauri_quick_config,
     scan_missing_credentials,
     seed_sim_runtime_and_mark_setup,
 )
-from lumina_launcher.services.smart_setup_service import SmartSetupOptions, SmartSetupService
+from lumina_launcher.services.birth_service import birth_service
+from lumina_launcher.services.smart_setup_service import SmartSetupOptions
+
+from .setup_onboarding_payload import (
+    _model_catalog_payload,
+    _probe_backend,
+    _readiness_summary,
+    _services,
+    _workspace_root,
+    build_onboarding_payload,
+)
 
 logger = logging.getLogger(__name__)
+
+# Re-export helpers so tests can monkeypatch ``backend.setup_endpoints.*``
+__all__ = [
+    "birth_service",
+    "build_onboarding_payload",
+    "router",
+    "_probe_backend",
+    "_services",
+    "_workspace_root",
+    "_model_catalog_payload",
+    "_readiness_summary",
+]
 
 router = APIRouter(prefix="/api/setup", tags=["setup"])
 
 _smart_setup_lock = threading.Lock()
 _smart_setup_running = False
-
-
-def _workspace_root() -> Path:
-    return resolve_birth_workspace_root(birth_service.workspace_root)
-
-
-def _services() -> tuple[SetupService, ConfigManager, FirstBootManager, SmartSetupService, HardwareService, ModelService]:
-    root = _workspace_root()
-    setup = SetupService(
-        workspace_root=root,
-        config_path=root / "config.yaml",
-        env_path=root / ".env",
-    )
-    config_manager = ConfigManager(root / ".env", root / "config.yaml")
-    first_boot = FirstBootManager(root)
-    smart = SmartSetupService(root, setup_service=setup)
-    hardware = HardwareService(root)
-    model = ModelService(root / "lumina_model_catalog.json")
-    return setup, config_manager, first_boot, smart, hardware, model
-
-
-def _probe_backend(base_url: str) -> dict[str, Any]:
-    url = base_url.rstrip("/")
-    started = time.perf_counter()
-    try:
-        with httpx.Client(timeout=3.0) as client:
-            response = client.get(f"{url}/api/monitoring/health")
-            latency_ms = int((time.perf_counter() - started) * 1000)
-            return {
-                "reachable": response.status_code < 500,
-                "url": url,
-                "latency_ms": latency_ms,
-                "status_code": response.status_code,
-            }
-    except Exception as exc:
-        return {
-            "reachable": False,
-            "url": url,
-            "error": str(exc),
-        }
-
-
-def _model_catalog_payload(hardware: HardwareService, model_service: ModelService) -> list[dict[str, Any]]:
-    snapshot = hardware.get_snapshot()
-    recommended = model_service.get_recommended(
-        ram_gb=snapshot.ram_gb,
-        gpu_vram_gb=snapshot.gpu_vram_gb,
-        vllm_supported=snapshot.vllm_supported,
-    )
-    catalog: list[dict[str, Any]] = []
-    for descriptor in model_service.get_all_models():
-        if descriptor.recommended_provider != "ollama" or not descriptor.tested_by_lumina:
-            continue
-        catalog.append(
-            {
-                "key": descriptor.key,
-                "display_name": descriptor.display_name,
-                "ollama_tag": descriptor.ollama_tag,
-                "recommended_tier": descriptor.recommended_tier,
-                "parameter_size_b": descriptor.parameter_size_b,
-                "fits_hardware": hardware.fits_hardware(descriptor),
-                "is_recommended": descriptor.key == recommended.key,
-            }
-        )
-    catalog.sort(key=lambda item: (not item["is_recommended"], item["display_name"]))
-    return catalog
-
-
-def _readiness_summary(
-    *,
-    backend: dict[str, Any],
-    intelligence: dict[str, Any],
-    credentials_missing: list[str],
-    setup_complete: bool,
-    birth_status: str,
-    artifacts_ok: bool,
-    certificate_ok: bool | None = None,
-) -> list[dict[str, str]]:
-    birth_ready = certificate_ok if certificate_ok is not None else artifacts_ok
-    intel_missing = [item for item in intelligence.get("missing", []) if item != "setup_complete"]
-    rows = [
-        {
-            "id": "backend",
-            "label": "Python backend",
-            "status": "ok" if backend.get("reachable") else "missing",
-        },
-        {
-            "id": "ollama",
-            "label": "Ollama runtime",
-            "status": "ok" if intelligence.get("ollama_installed") else "missing",
-        },
-        {
-            "id": "model",
-            "label": "Trading model",
-            "status": "ok" if intelligence.get("recommended_model_present") else "missing",
-        },
-        {
-            "id": "credentials",
-            "label": "API credentials",
-            "status": "ok" if not credentials_missing else "missing",
-        },
-        {
-            "id": "configuration",
-            "label": "Risk envelope (post-birth)",
-            "status": "ok" if setup_complete else "pending",
-        },
-        {
-            "id": "birth",
-            "label": "Birth Phase",
-            "status": "ok" if birth_ready or birth_status == "running" else "pending",
-        },
-    ]
-    if intel_missing and rows[1]["status"] == "ok" and rows[2]["status"] == "ok":
-        pass
-    return rows
-
-
-def build_onboarding_payload(*, backend_url: str | None = None, serving_request: bool = False) -> dict[str, Any]:
-    setup, config_manager, _, smart, hardware, model_service = _services()
-    root = _workspace_root()
-    base_url = (backend_url or os.getenv("LUMINA_BACKEND_URL", "http://127.0.0.1:8000")).strip()
-    backend = (
-        {"reachable": True, "url": base_url, "latency_ms": 0}
-        if serving_request
-        else _probe_backend(base_url)
-    )
-
-    intel_status = smart.get_setup_status()
-    intelligence_missing = [
-        item for item in intel_status.get("missing", []) if item != "setup_complete"
-    ]
-    credentials_missing = scan_missing_credentials(config_manager)
-    setup_complete = setup.is_setup_complete()
-    birth_raw = birth_service.get_status()
-    birth_status = str(birth_raw.get("status", "idle"))
-    artifacts_ok = birth_service.artifacts_ok()
-    certificate_ok = birth_service.certificate_ok()
-    from lumina_core.birth.birth_certificate import validate_certificate_artifacts
-    from lumina_core.birth.config import load_birth_v2_config
-
-    thresholds = load_birth_v2_config(_workspace_root()).certificate_thresholds
-    _cert_valid, certificate_reason, _cert = validate_certificate_artifacts(
-        _workspace_root(),
-        thresholds=thresholds,
-    )
-
-    global _smart_setup_running
-    required_steps, step_status = compute_onboarding_steps(
-        backend_reachable=bool(backend.get("reachable")),
-        setup_complete=setup_complete,
-        intelligence_missing=intelligence_missing,
-        credentials_missing=credentials_missing,
-        birth_status=birth_status,
-        artifacts_ok=artifacts_ok,
-        certificate_ok=certificate_ok,
-        smart_setup_running=_smart_setup_running,
-    )
-
-    config = config_manager.load_yaml_config()
-    env_values = config_manager.parse_env_file()
-    creds_snapshot = build_credentials_env_snapshot(config_manager)
-    credentials_meta = resolve_credentials_wizard_meta(
-        credentials_missing=credentials_missing,
-        setup_complete=setup_complete,
-    )
-    intelligence_payload = {
-        "ollama_installed": bool(intel_status.get("ollama_installed")),
-        "ollama_required": bool(intel_status.get("ollama_required")),
-        "recommended_model_key": str(intel_status.get("recommended_model_key", "")),
-        "recommended_ollama_tag": str(intel_status.get("recommended_ollama_tag", "")),
-        "recommended_model_present": bool(intel_status.get("recommended_model_present")),
-        "recommended_provider": str(intel_status.get("recommended_provider", "ollama")),
-        "hardware": intel_status.get("hardware", {}),
-        "adaptive_intelligence": intel_status.get("adaptive_intelligence", {}),
-        "missing": intelligence_missing,
-    }
-    wizard_steps = resolve_wizard_steps(required_steps)
-    backend_reachable = bool(backend.get("reachable"))
-    app_surface, app_surface_reason = resolve_app_surface(
-        setup_complete=setup_complete,
-        birth_status=birth_status,
-        artifacts_ok=artifacts_ok,
-        certificate_ok=certificate_ok,
-        backend_reachable=backend_reachable,
-        required_steps=required_steps,
-    )
-
-    return {
-        "backend": backend,
-        "setup_complete": setup_complete,
-        "app_surface": app_surface,
-        "app_surface_reason": app_surface_reason,
-        "skip_wizard": should_skip_wizard(
-            setup_complete=setup_complete,
-            birth_status=birth_status,
-            artifacts_ok=artifacts_ok,
-            certificate_ok=certificate_ok,
-            required_steps=required_steps,
-            backend_reachable=backend_reachable,
-        ),
-        "birth": {
-            "status": birth_status,
-            "message": birth_raw.get("message", ""),
-            "progress": birth_raw.get("progress"),
-            "artifacts_ok": artifacts_ok,
-            "artifacts_label": "Artifacts OK" if artifacts_ok else "Artifacts missing",
-            "certificate_ok": certificate_ok,
-            "certificate_reason": certificate_reason,
-            "evolution_proof_ok": birth_service.evolution_proof_ok(),
-            "real_trading_eligible": birth_service.real_trading_eligible(),
-        },
-        "intelligence": intelligence_payload,
-        "model_catalog": _model_catalog_payload(hardware, model_service),
-        "readiness": _readiness_summary(
-            backend=backend,
-            intelligence=intelligence_payload,
-            credentials_missing=credentials_missing,
-            setup_complete=setup_complete,
-            birth_status=birth_status,
-            artifacts_ok=artifacts_ok,
-            certificate_ok=certificate_ok,
-        ),
-        "credentials": {
-            "missing": credentials_missing,
-            "has_admin_api_key": bool(str(env_values.get("LUMINA_ADMIN_API_KEY", "")).strip()),
-            "env_path": creds_snapshot["env_path"],
-            "present": creds_snapshot["present"],
-            "wizard_required": credentials_meta["wizard_required"],
-            "skip_reason": credentials_meta["skip_reason"],
-        },
-        "required_steps": required_steps,
-        "wizard_steps": wizard_steps,
-        "step_status": step_status,
-        "defaults": extract_config_defaults(config, env_values=env_values),
-        "smart_setup_running": _smart_setup_running,
-        "sim_envelope_sealed": is_sim_envelope_sealed(root),
-        "workspace_root": str(root),
-    }
 
 
 def _is_loopback_client(request: Request) -> bool:
@@ -316,7 +82,8 @@ async def get_deck_api_key(request: Request) -> dict[str, Any]:
 
 @router.get("/onboarding")
 async def get_onboarding_status() -> dict[str, Any]:
-    return build_onboarding_payload(serving_request=True)
+    # Payload builds birth status + hardware probes — never block the event loop.
+    return await asyncio.to_thread(build_onboarding_payload, serving_request=True)
 
 
 class SmartSetupRequest(BaseModel):
@@ -434,28 +201,32 @@ async def ready_for_birth() -> dict[str, Any]:
     Used when the credentials wizard is skipped (env already configured) so operators
     can enter Birth without the pre-birth Risk Envelope step.
     """
-    setup, config_manager, first_boot, _, hardware, model_service = _services()
-    missing = scan_missing_credentials(config_manager)
-    if missing:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Vault incomplete — missing: {', '.join(missing)}",
+
+    def _run() -> dict[str, Any]:
+        setup, config_manager, first_boot, _, hardware, model_service = _services()
+        missing = scan_missing_credentials(config_manager)
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Vault incomplete — missing: {', '.join(missing)}",
+            )
+        snapshot = hardware.get_snapshot(refresh=True)
+        steps = seed_sim_runtime_and_mark_setup(
+            workspace_root=_workspace_root(),
+            setup_service=setup,
+            config_manager=config_manager,
+            first_boot_manager=first_boot,
+            model_service=model_service,
+            snapshot=snapshot,
+            force_envelope_unsealed=True,
         )
-    snapshot = hardware.get_snapshot(refresh=True)
-    steps = seed_sim_runtime_and_mark_setup(
-        workspace_root=_workspace_root(),
-        setup_service=setup,
-        config_manager=config_manager,
-        first_boot_manager=first_boot,
-        model_service=model_service,
-        snapshot=snapshot,
-        force_envelope_unsealed=True,
-    )
-    return {
-        "success": True,
-        "steps": steps,
-        "onboarding": build_onboarding_payload(serving_request=True),
-    }
+        return {
+            "success": True,
+            "steps": steps,
+            "onboarding": build_onboarding_payload(serving_request=True),
+        }
+
+    return await asyncio.to_thread(_run)
 
 
 @router.post("/credentials")
@@ -486,146 +257,22 @@ async def save_credentials(body: ConfigureCredentials) -> dict[str, Any]:
     }
 
 
-class FabricConnectionTestRequest(BaseModel):
-    include_safe_mode: bool = True
-    instrument: str = Field(default="MES", min_length=1, max_length=32)
 
 
-@router.post("/fabric-connection-test")
-async def fabric_connection_test(body: FabricConnectionTestRequest | None = None) -> dict[str, Any]:
-    """Run SIM-only Execution Fabric diagnostics (Brain ↔ NT8 Fabric, not CrossTrade)."""
-    from lumina_launcher.services.fabric_connection_diagnostics import (
-        run_fabric_connection_diagnostics,
-    )
-    from lumina_launcher.services.fabric_link_certificate import write_certificate
+from lumina_os.backend.setup_endpoints_fabric import (  # noqa: E402
+    FabricConnectionTestRequest,
+    TauriSigningRequest,
+    configure_setup,
+    fabric_bootstrap,
+    fabric_connection_test,
+    fabric_link_status,
+    fabric_nt_watch,
+    generate_tauri_signing,
+)
 
-    req = body or FabricConnectionTestRequest()
-    instrument = str(req.instrument or "MES").strip().upper() or "MES"
-    try:
-        report = run_fabric_connection_diagnostics(
-            include_safe_mode=bool(req.include_safe_mode),
-            instrument=instrument,
-        )
-    except Exception as exc:
-        logger.exception("fabric-connection-test failed")
-        raise HTTPException(status_code=500, detail=f"Fabric diagnostics failed: {exc}") from exc
-    payload = report.to_dict()
-    certified = False
-    if str(payload.get("overall", "")).lower() == "green":
-        token = str(os.getenv("LUMINA_FABRIC_TOKEN") or os.getenv("LUMINA_NT8_API_KEY") or "").strip()
-        write_certificate(
-            overall="green",
-            target=str(payload.get("target") or ""),
-            token=token,
-            workspace_root=_workspace_root(),
-        )
-        certified = True
-    payload["certified"] = certified
-    return payload
-
-
-@router.post("/fabric-bootstrap")
-async def fabric_bootstrap() -> dict[str, Any]:
-    """Zero-touch token + fabric.json + AddOn deploy (idempotent)."""
-    from lumina_launcher.services.fabric_bootstrap import run_fabric_bootstrap
-    from lumina_launcher.services.fabric_link_certificate import (
-        is_fabric_link_green,
-        is_halt_active,
-        read_certificate,
-        read_halt,
-    )
-
-    _, config_manager, _, _, _, _ = _services()
-    root = _workspace_root()
-    result = run_fabric_bootstrap(root, config_manager)
-    ok, reason = is_fabric_link_green(workspace_root=root)
-    result["fabric_link_green"] = ok
-    result["fabric_link_reason"] = reason
-    result["certificate"] = read_certificate(root)
-    result["halt"] = read_halt(root) if is_halt_active(root) else None
-    return result
-
-
-@router.get("/fabric-link-status")
-async def fabric_link_status() -> dict[str, Any]:
-    from lumina_launcher.services.fabric_link_certificate import (
-        is_fabric_link_green,
-        is_halt_active,
-        read_certificate,
-        read_halt,
-    )
-
-    root = _workspace_root()
-    ok, reason = is_fabric_link_green(workspace_root=root)
-    return {
-        "green": ok,
-        "reason": reason,
-        "certificate": read_certificate(root),
-        "halt": read_halt(root) if is_halt_active(root) else None,
-    }
-
-
-@router.post("/fabric-nt-watch")
-async def fabric_nt_watch() -> dict[str, Any]:
-    """Detect NT8 binary changes and re-probe Fabric (fail-closed halt on failure)."""
-    from lumina_launcher.services.ninjatrader_watch import check_ninjatrader_update_and_reprobe
-
-    return check_ninjatrader_update_and_reprobe(_workspace_root())
-
-
-@router.post("/configure")
-async def configure_setup(body: ConfigureRequest) -> dict[str, Any]:
-    setup, config_manager, first_boot, _, hardware, model_service = _services()
-    root = _workspace_root()
-
-    missing = scan_missing_credentials(config_manager)
-    creds = body.credentials.model_dump()
-    for key in ("LUMINA_JWT_SECRET_KEY", "LUMINA_FABRIC_TOKEN"):
-        if not str(creds.get(key, "")).strip() and key in missing:
-            # process env may satisfy FABRIC token after bootstrap
-            if key == "LUMINA_FABRIC_TOKEN" and str(os.getenv("LUMINA_FABRIC_TOKEN", "") or "").strip():
-                continue
-            if key == "LUMINA_JWT_SECRET_KEY":
-                raise HTTPException(status_code=400, detail=f"Missing required credential: {key}")
-
-    snapshot = hardware.get_snapshot(refresh=True)
-    steps = persist_tauri_quick_config(
-        workspace_root=root,
-        setup_service=setup,
-        config_manager=config_manager,
-        first_boot_manager=first_boot,
-        model_service=model_service,
-        snapshot=snapshot,
-        mode_selection=body.mode,
-        credentials=creds,
-        risk=body.risk.model_dump(),
-        evolution=body.evolution.model_dump(),
-        training=body.training.model_dump(),
-        selected_model_key=body.selected_model_key,
-    )
-    failures = [s for s in steps if not s.get("success")]
-    return {
-        "success": not failures,
-        "steps": steps,
-        "onboarding": build_onboarding_payload(serving_request=True),
-    }
-
-
-class TauriSigningRequest(BaseModel):
-    force: bool = False
-
-
-@router.post("/tauri-signing/generate")
-async def generate_tauri_signing(body: TauriSigningRequest | None = None) -> dict[str, Any]:
-    from lumina_launcher.services.tauri_signing_service import TauriSigningService
-
-    _, config_manager, _, _, _, _ = _services()
-    service = TauriSigningService(_workspace_root())
-    result = service.generate_keypair(
-        config_manager=config_manager,
-        force=bool(body.force if body else False),
-    )
-    payload = result.to_dict()
-    if not result.success:
-        raise HTTPException(status_code=422, detail=result.message)
-    return payload
+fabric_connection_test = router.post("/fabric-connection-test")(fabric_connection_test)
+fabric_bootstrap = router.post("/fabric-bootstrap")(fabric_bootstrap)
+fabric_link_status = router.get("/fabric-link-status")(fabric_link_status)
+fabric_nt_watch = router.post("/fabric-nt-watch")(fabric_nt_watch)
+configure_setup = router.post("/configure")(configure_setup)
+generate_tauri_signing = router.post("/tauri-signing/generate")(generate_tauri_signing)

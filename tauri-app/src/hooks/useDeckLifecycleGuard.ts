@@ -26,14 +26,21 @@ export function useDeckLifecycleGuard(): void {
       return;
     }
 
+    const operatorDeckActive = useOnboardingStore.getState().operatorDeckActive;
     const expected = mapAppPhase(payload, {
       priorPhase: "cockpit",
       birthPhaseCommitted: false,
       activating: false,
+      operatorDeckActive,
     });
 
-    if (expected !== "cockpit") {
+    // Allow hub → deck session override; only kick if SSOT is setup/birth.
+    if (expected === "wizard" || expected === "birth") {
       setPhase(expected);
+      return;
+    }
+    if (expected === "hub" && !operatorDeckActive) {
+      setPhase("hub");
     }
   }, [payload, setPhase]);
 }

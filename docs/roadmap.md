@@ -65,12 +65,12 @@ Documentatie-, governance- en release-rails (architecture overview, CONTRIBUTING
 | **P0** | REAL: broker-connectiviteit, reconciliatie, production-runbooks | 🔜 | v5.2–5.3 | *ADR gepland* | LUMINA Core |
 | **P0** | PromotionGate REAL: purged/cpcv + reality gap + stress DD + significantie | ✅ | v5.2.x | [0007](adr/0007-promotion-gate-real-mode.md) | LUMINA Core |
 | **P1** | **Phase 2 Autonomy** (wall triggers, self-adaptive params, never-stop, dynamic spawn) | 🔜 foundation | v5.3+ | birth runbook §8–9; [ADR-0034](adr/0034-phase2-autonomy-foundation.md) | LUMINA Core |
-| **P1** | Architecture Meta-Controller (sandbox + human marker) | 🔜 | v5.3+ | [0030](adr/0030-architecture-meta-controller.md) | LUMINA Core |
+| **P1** | Architecture Meta-Controller (sandbox + human marker) | 🔄 M1–M3 residual (scan/pipeline/axes; never auto-apply) | v5.3+ | [0030](adr/0030-architecture-meta-controller.md) | LUMINA Core |
 | **P1** | Test suite: markers, timeouts, isolated fixtures | 🔄 | v5.2–5.3 | [0005](adr/0005-test-suite-overhaul-markers-timeouts-isolated-fixtures.md) | LUMINA Core |
 | **P1** | Event Bus: strikte payload-validatie op kritieke topics | 🔄 | v5.2–5.3 | [0001](adr/0001-bounded-contexts-central-event-bus.md), [ADR-003](adr/ADR-003-event-bus-contract.md) | LUMINA Core |
 | **P2** | CI/nightly: backtest-realism stack als gate | 🔄 | v5.3.0 | [0004](adr/0004-backtest-realism-purged-cv-orderbook-replay-reality-gap.md) | LUMINA Core |
 | **P2** | Observability: dashboards, audit-first operator workflows | 🔄 | v5.3.0 | *ADR optioneel* | LUMINA Core |
-| **P2** | **Secure self-code evolution** (sandbox + Twin + Constitution) | 🔜 v1 prototype (evaluate-only) | ≥ v5.4 | [0033](adr/0033-trading-code-evolution-prototype.md); [0030](adr/0030-architecture-meta-controller.md) arch scaffold; zie §8 | LUMINA Core |
+| **P2** | **Secure self-code evolution** (sandbox + Twin + Constitution) | 🔄 H5 sandbox-store apply (default off) | ≥ v5.4 | [0033](adr/0033-trading-code-evolution-prototype.md); apply_gate; [0030](adr/0030-architecture-meta-controller.md) arch scaffold; zie §8 | LUMINA Core |
 | **P3** | Model pipeline: Unsloth / GGUF / inference productie-hardening | 🔜 | v5.3+ | *ADR optioneel* | LUMINA Core |
 | **—** | Multi-broker support | 🔜 | ≥ v5.4.0 | *ADR vereist vóór build* | LUMINA Core |
 | **—** | Cloud deployment | 🔜 | TBD | *ADR vereist* | LUMINA Core |
@@ -200,7 +200,7 @@ ADR’s: [0031](adr/0031-approval-twin-event-bus.md), [0032](adr/0032-approval-t
 
 ## 8. Visie — Secure self-code evolution (sandbox)
 
-**Status:** 🔜 **v1 prototype scaffold (evaluate-only)** — geen live apply, default disabled.
+**Status:** 🔄 **H5 controlled sandbox-store apply** — default disabled; apply alleen naar `state/code_evolution/applied/` onder human/Twin gates; nooit live repo / REAL capital.
 
 **Doel:** het organisme mag **eigen architectuur/code** voorstellen en in een **isolatie-sandbox** evalueren, met promotie alleen na:
 

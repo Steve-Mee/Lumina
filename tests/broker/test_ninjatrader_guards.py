@@ -78,6 +78,37 @@ def test_disconnect_blocks_orders_in_sim() -> None:
     assert "disconnected" in reason
 
 
+def test_fabric_safe_mode_blocks_place_allows_cancel() -> None:
+    """Track E residual: SAFE_MODE rejects place; cancel remains allowed when connected."""
+    conn = NinjaTraderConnectionState(
+        state="connected",
+        account_name="Sim101",
+        safe_mode="SAFE",
+    )
+    assert conn.is_fabric_safe_mode is True
+    assert conn.allows_new_orders is False
+
+    ok_place, reason_place = assert_nt_bridge_capability(
+        action=NtBridgeAction.SUBMIT_ORDER,
+        trade_mode="sim",
+        connection=conn,
+        configured_account="Sim101",
+        ninjatrader_enabled=True,
+    )
+    assert ok_place is False
+    assert "safe_mode" in reason_place
+
+    ok_cancel, reason_cancel = assert_nt_bridge_capability(
+        action=NtBridgeAction.CANCEL,
+        trade_mode="sim",
+        connection=conn,
+        configured_account="Sim101",
+        ninjatrader_enabled=True,
+    )
+    assert ok_cancel is True
+    assert reason_cancel == "ok"
+
+
 def test_sim_real_guard_requires_feature_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENABLE_SIM_REAL_GUARD", "false")
     ok, reason = check_account_match(

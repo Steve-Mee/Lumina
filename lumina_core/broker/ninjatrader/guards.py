@@ -62,10 +62,24 @@ def check_disconnect_policy(
     """Fail-closed when disconnected for order actions in live-ish modes."""
     mode = normalize_trade_mode(trade_mode)
     if action in {NtBridgeAction.SUBMIT_ORDER, NtBridgeAction.CANCEL}:
-        if not connection.allows_new_orders:
+        if not connection.is_connected:
             if mode in {"sim", "sim_real_guard", "real"}:
                 return False, f"ninjatrader_disconnected:{connection.state}"
             return False, "ninjatrader_disconnected"
+    return True, "ok"
+
+
+def check_safe_mode_policy(
+    *,
+    connection: NinjaTraderConnectionState,
+    action: NtBridgeAction,
+) -> tuple[bool, str]:
+    """Fabric SAFE_MODE: reject new place/modify; allow cancel/flatten (runbook).
+
+    Host cancels non-protected on disconnect/timeout; Brain must not place while SAFE.
+    """
+    if action == NtBridgeAction.SUBMIT_ORDER and connection.is_fabric_safe_mode:
+        return False, f"fabric_safe_mode_blocks_place:{connection.safe_mode}"
     return True, "ok"
 
 
@@ -87,6 +101,10 @@ def assert_nt_bridge_capability(
         return False, f"nt_bridge_action_blocked:{action.value}:mode={mode}"
 
     ok, reason = check_disconnect_policy(trade_mode=mode, connection=connection, action=action)
+    if not ok:
+        return False, reason
+
+    ok, reason = check_safe_mode_policy(connection=connection, action=action)
     if not ok:
         return False, reason
 

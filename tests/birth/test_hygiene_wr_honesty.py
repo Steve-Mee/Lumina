@@ -92,7 +92,8 @@ def test_humanize_hygiene_shows_lifetime_and_rolling_with_eligibility() -> None:
     assert "lifetime 29%" in text
     assert "rolling 33%" in text
     assert "rolling counts after 400" in text
-    assert "need >=35%" in text
+    # Survival-mode hygiene floor is 20% (legacy 35% only when not in survival).
+    assert "need >=20%" in text
 
 
 @pytest.mark.unit
@@ -104,10 +105,11 @@ def test_compute_stage_blocker_hygiene_copy_includes_rolling_display() -> None:
         stage1_entropy_floor=0.05,
         starship_entropy_required_after_ppo_steps=500,
     )
+    # 10% lifetime WR fails survival hygiene (~20%); include rolling display in copy.
     metric, _value, reason = compute_stage_blocker(
         CurriculumStage.STAGE1_TREND,
         stage_trades=269,
-        stage_wins=78,
+        stage_wins=27,
         hold_ratio=0.50,
         required=200,
         constitution_violations=0,

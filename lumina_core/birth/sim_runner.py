@@ -46,6 +46,12 @@ class SimRolloutResult:
     partial_complete: bool = False
     easy_trades: int = 0
     easy_wins: int = 0
+    participation_force_open: int = 0
+    participation_force_hold: int = 0
+    participation_force_flat: int = 0
+    participation_passthrough: int = 0
+    participation_overrides_total: int = 0
+    participation_last_mode: str = "PASSTHROUGH"
 
 
 def _predict_action(policy: Any, obs: np.ndarray) -> np.ndarray:
@@ -85,11 +91,37 @@ def run_policy_rollout(
     escalation_level: int = 0,
     hold_cap_ratio: float | None = None,
     position_flat_cap: float | None = None,
+    position_flat_floor: float | None = None,
     range_patience_active: bool = False,
     plateau_active: bool = False,
     on_progress: Callable[[dict[str, Any]], None] | None = None,
     reward_override: BirthRewardConfig | None = None,
+    participation_envelope_enabled: bool = False,
+    participation_min_signals: int = 50,
+    participation_min_dwell_bars: int = 8,
+    participation_band_lo: float = 0.30,
+    participation_band_hi: float = 0.70,
+    participation_hysteresis: float = 0.02,
+    participation_stop_pct: float = 0.0075,
+    participation_target_pct: float = 0.015,
+    participation_qty_frac: float = 0.15,
+    # Stage SSOT for envelope law (pre-rollout cumulative). When set, warmup and
+    # band decisions use stage+this-rollout occupancy — not a per-chunk reset.
+    stage_range_flat_bars: int = 0,
+    stage_range_total_signals: int = 0,
+    # Stage-2 quality stack seed: max(0, floor − live expectancy on WR−0.50 scale).
+    expectancy_gap: float = 0.0,
+    stage2_expectancy_floor: float = -0.15,
 ) -> SimRolloutResult:
+    from lumina_core.birth.stage2_participation_envelope import (
+        MODE_FORCE_FLAT,
+        MODE_FORCE_HOLD,
+        MODE_FORCE_OPEN,
+        MODE_PASSTHROUGH,
+        decide_stage2_participation,
+        participation_telemetry,
+    )
+
     guard = constitution_guard or BirthConstitutionGuard()
     enriched = []
     for row in data:
@@ -114,6 +146,11 @@ def run_policy_rollout(
         reward=reward_override or load_birth_v2_config(workspace_root).reward,
         plateau_active=bool(plateau_active),
         range_patience_active=bool(range_patience_active),
+        # Per-step envelope toggles suppress/dwell; start open until first decide.
+        suppress_random_flatten=False,
+        participation_min_dwell_bars=0,
+        expectancy_gap=max(0.0, float(expectancy_gap)),
+        stage2_expectancy_floor=float(stage2_expectancy_floor),
     )
     env = RLTradingEnvironment(runtime, enriched, config=cfg)
     env.set_birth_context(workspace_root=workspace_root, constitution_guard=guard)
@@ -140,6 +177,15 @@ def run_policy_rollout(
     exploration_steps_used = 0
     last_progress_at = time.monotonic()
     last_logged_step = 0
+    bars_in_position = 0
+    force_open_step = 0
+    participation_counts: dict[str, int] = {
+        MODE_FORCE_OPEN: 0,
+        MODE_FORCE_HOLD: 0,
+        MODE_FORCE_FLAT: 0,
+        MODE_PASSTHROUGH: 0,
+    }
+    last_participation_mode = MODE_PASSTHROUGH
 
     def _emit_progress() -> None:
         if on_progress is None:
@@ -215,6 +261,64 @@ def run_policy_rollout(
                 side_preview = int(np.clip(np.round(action[0]), 0, 2))
                 if current_flat_ratio < float(position_flat_cap) and side_preview != 0:
                     action = np.array([0.0, 0.5, 0.0075, 0.013], dtype=np.float32)
+            # Under-activity: force exploration entries when range flat is above band.
+            # Also inject when already non-hold but position-flat stays high (entries
+            # dying immediately) — use explicit safe stop/target for birth SIM.
+            if position_flat_floor is not None and range_total_signals > 50 and is_range_preview:
+                current_flat_ratio = float(range_flat_bars) / float(max(1, range_total_signals))
+                side_preview = int(np.clip(np.round(action[0]), 0, 2))
+                if current_flat_ratio > float(position_flat_floor):
+                    if side_preview == 0 or (exploration_steps_used % 3 == 0):
+                        exploration_active = True
+                        action = _exploration_action(exploration_steps_used)
+                        # Guaranteed constitution-safe stop band (≤1%).
+                        action = np.array(
+                            [float(action[0]), 0.25, 0.0075, 0.015],
+                            dtype=np.float32,
+                        )
+                        exploration_steps_used += 1
+
+        # Stage2 Participation Envelope — hard occupancy physics (overrides soft explore).
+        # SSOT: stage cumulative + this rollout so chronic under-activity cannot
+        # re-warmup (PASSTHROUGH) every chunk while stage_flat stays ~95%.
+        stage_flat_prior = max(0, int(stage_range_flat_bars))
+        stage_sig_prior = max(0, int(stage_range_total_signals))
+        envelope_flat_bars = stage_flat_prior + int(range_flat_bars)
+        envelope_signals = stage_sig_prior + int(range_total_signals)
+        envelope_flat_ratio = float(envelope_flat_bars) / float(max(1, envelope_signals))
+        pos_now = int(getattr(env, "_position", 0) or 0)
+        if pos_now != 0:
+            bars_in_position += 1
+        else:
+            bars_in_position = 0
+        decision = decide_stage2_participation(
+            enabled=bool(participation_envelope_enabled) and bool(range_patience_active),
+            range_flat_ratio=envelope_flat_ratio,
+            range_total_signals=envelope_signals,
+            position=pos_now,
+            bars_in_position=bars_in_position,
+            force_open_step=force_open_step,
+            min_signals=int(participation_min_signals),
+            min_dwell_bars=int(participation_min_dwell_bars),
+            band_lo=float(participation_band_lo),
+            band_hi=float(participation_band_hi),
+            hysteresis=float(participation_hysteresis),
+            stop_pct=float(participation_stop_pct),
+            target_pct=float(participation_target_pct),
+            qty_frac=float(participation_qty_frac),
+        )
+        last_participation_mode = decision.mode
+        participation_counts[decision.mode] = int(participation_counts.get(decision.mode, 0) or 0) + 1
+        if decision.action_override is not None:
+            action = np.array(decision.action_override, dtype=np.float32)
+            if decision.mode == MODE_FORCE_OPEN:
+                force_open_step += 1
+                exploration_active = True
+        # Per-step occupancy protect: only while envelope is correcting (over-flat).
+        env.config.suppress_random_flatten = bool(decision.suppress_flatten)
+        env.config.participation_min_dwell_bars = (
+            int(participation_min_dwell_bars) if decision.suppress_flatten else 0
+        )
 
         idx = min(env._idx, len(enriched) - 1)
         tick_regime = str(enriched[idx].get("regime", "NEUTRAL")).upper()
@@ -231,8 +335,11 @@ def run_policy_rollout(
 
         obs, reward, terminated, _truncated, info = env.step(action)
         rollout_steps += 1
-        if is_range_tick and int(getattr(env, "_position", 0) or 0) == 0:
+        pos_after = int(getattr(env, "_position", 0) or 0)
+        if is_range_tick and pos_after == 0:
             range_flat_bars += 1
+        if pos_after == 0:
+            bars_in_position = 0
         if info.get("blocked_by_birth_constitution"):
             constitution_blocks += 1
 
@@ -281,6 +388,7 @@ def run_policy_rollout(
         else:
             stall_reason = "step_budget_exhausted"
 
+    telem = participation_telemetry(participation_counts)
     return SimRolloutResult(
         trades=trades,
         wins=wins,
@@ -303,4 +411,10 @@ def run_policy_rollout(
         partial_complete=partial_complete,
         easy_trades=easy_trades,
         easy_wins=easy_wins,
+        participation_force_open=int(telem["participation_force_open"]),
+        participation_force_hold=int(telem["participation_force_hold"]),
+        participation_force_flat=int(telem["participation_force_flat"]),
+        participation_passthrough=int(telem["participation_passthrough"]),
+        participation_overrides_total=int(telem["participation_overrides_total"]),
+        participation_last_mode=str(last_participation_mode),
     )

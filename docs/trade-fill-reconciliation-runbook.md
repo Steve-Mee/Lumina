@@ -39,6 +39,23 @@ Synthetic schema/normalizer test:
 python scripts/validation/trade_reconciler_self_test.py
 ```
 
+### T4 REAL recon config gate (fail-closed)
+
+Capital-risk modes (`real`, `sim_real_guard`) **require** `reconcile_fills=true`. Starting the reconciler with recon disabled in REAL sets status `fail_closed_recon_required` (does not silently skip).
+
+```bash
+# Default: evaluate REAL recon defaults
+python scripts/validation/real_broker_recon_gate.py
+
+# From live EngineConfig / env
+python scripts/validation/real_broker_recon_gate.py --from-config --json
+
+# Explicit fail case
+python scripts/validation/real_broker_recon_gate.py --mode real --reconcile-fills false
+```
+
+Timeout without broker fill remains **observability only** (no economic ledger / league push).
+
 Live websocket sample (als CrossTrade beschikbaar is):
 
 ```bash

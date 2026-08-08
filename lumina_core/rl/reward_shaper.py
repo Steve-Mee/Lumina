@@ -140,15 +140,65 @@ def range_patience_step_reward(
     position_flat: bool,
     trade_closed: bool,
     cfg: BirthRewardConfig,
+    stage_flat_ratio: float | None = None,
+    expectancy_gap: float | None = None,
+    trade_r_multiple: float | None = None,
 ) -> float:
-    """Birth stage 2 shaping: reward flat exposure, penalize round-trip churn on range ticks."""
+    """Birth stage 2 shaping: keep flat band 30–70% — not pure flat or pure churn.
+
+    Forensics 2026-08-07/08: unconditional flat-bonus trained chronic 95%+ flat
+    and blocked EdgeScore activity. Shape *toward* the band using live flat ratio.
+
+    When occupancy is in-band but expectancy is below floor (``expectancy_gap`` > 0),
+    shift from flat keep-alive to **quality** (R-multiple on close) so Stage-2 can
+    graduate on the WR−0.50 expectancy gate without re-entering the 95% flat trap.
+    """
     if not cfg.enabled or not _is_range_regime(regime):
         return 0.0
+    flat_bonus = float(cfg.range_flat_bonus_coeff)
+    churn_pen = float(cfg.range_churn_penalty_coeff)
+    ratio = float(stage_flat_ratio) if stage_flat_ratio is not None else 0.5
     bonus = 0.0
+    # Over-flat (under-activity): penalize remaining flat; reward being in a position.
+    if ratio > 0.70:
+        if position_flat:
+            bonus -= flat_bonus * 1.5
+        else:
+            bonus += flat_bonus
+        # Mild churn cost only — do not fight participation recovery.
+        if trade_closed:
+            bonus -= churn_pen * 0.25
+        return bonus
+    # Over-active (under-flat): classic patience shaping.
+    if ratio < 0.30:
+        if position_flat:
+            bonus += flat_bonus
+        if trade_closed:
+            bonus -= churn_pen
+        return bonus
+
+    # In band: quality-first when expectancy gap (need better WR/R), else mild keep-alive.
+    gap = max(0.0, float(expectancy_gap) if expectancy_gap is not None else 0.0)
+    quality_mode = gap > 1e-9
+    if quality_mode:
+        # Suppress pure flat bonus that dilutes quality learning near band edges.
+        if position_flat:
+            bonus += flat_bonus * 0.05
+        if trade_closed:
+            r_mult = float(trade_r_multiple) if trade_r_multiple is not None else 0.0
+            quality_scale = float(getattr(cfg, "range_quality_boost_coeff", 0.15) or 0.15)
+            # Positive R-multiple: reinforce; negative: asymmetric penalty (quality stack).
+            if r_mult > 0.0:
+                bonus += quality_scale * min(2.0, r_mult)
+            else:
+                bonus -= churn_pen * (1.0 + min(2.0, abs(r_mult)))
+                bonus -= quality_scale * min(1.5, abs(r_mult))
+        return bonus
+
     if position_flat:
-        bonus += float(cfg.range_flat_bonus_coeff)
+        bonus += flat_bonus * 0.25
     if trade_closed:
-        bonus -= float(cfg.range_churn_penalty_coeff)
+        bonus -= churn_pen * 0.5
     return bonus
 
 

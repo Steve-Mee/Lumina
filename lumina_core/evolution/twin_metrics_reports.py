@@ -9,10 +9,10 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal
 
-from lumina_core.evolution.twin_metrics_store import HIGH_CONF_THRESHOLD, _clamp01
+from lumina_core.evolution.twin_metrics_types import HIGH_CONF_THRESHOLD, _clamp01
 
 if TYPE_CHECKING:
-    from lumina_core.evolution.twin_metrics_store import TwinModeMetricsSnapshot
+    from lumina_core.evolution.twin_metrics_types import TwinModeMetricsSnapshot
 
 _CALIB_BUCKET_KEYS = ("lt_50", "b50_60", "b60_80", "gte_80")
 

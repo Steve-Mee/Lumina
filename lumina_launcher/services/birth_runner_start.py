@@ -37,66 +37,8 @@ from lumina_launcher.services.birth_status_mapper import BIRTH_ACTIVE_STAGES
 logger = get_logger(__name__)
 
 
-def load_saved_birth_settings(svc: Any) -> dict[str, Any]:
-    config_path = svc.workspace_root / "config.yaml"
-    if not config_path.exists():
-        return {}
-    try:
-        cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except Exception:
-        return {}
-    if not isinstance(cfg, dict):
-        return {}
-    section = cfg.get("first_boot")
-    return section if isinstance(section, dict) else {}
 
 
-def preflight_historical_data(svc: Any, max_real_days: int) -> tuple[bool, str]:
-    """Probe Crosstrade/historical API before certified Birth Phase starts."""
-    previous_cfg = os.getenv("LUMINA_CONFIG", "")
-    previous_cwd = Path.cwd()
-    os.environ["LUMINA_CONFIG"] = str((svc.workspace_root / "config.yaml").resolve())
-    try:
-        os.chdir(svc.workspace_root)
-        container = ApplicationContainer()
-        _bind_headless_runtime_app(container)
-        mds = container.market_data_service
-        if mds is None or not hasattr(mds, "load_historical_ohlc_extended"):
-            return False, (
-                "Certified Birth Phase vereist MarketDataService.load_historical_ohlc_extended; "
-                "service niet beschikbaar."
-            )
-        rows = mds.load_historical_ohlc_extended(
-            days_back=max(1, int(max_real_days)),
-            limit=500,
-            ticks_per_bar=4,
-        )
-        if not rows:
-            cfg = getattr(container, "config", None)
-            instrument = str(getattr(cfg, "instrument", "") or "MES").strip()
-            stale_msg = ""
-            if instrument and is_stale_contract_symbol(instrument):
-                rolled = roll_stale_contract_symbol(instrument)
-                stale_msg = (
-                    f" Instrument {instrument} is verlopen; probeer {rolled} in config.yaml. "
-                    if rolled != instrument.upper()
-                    else f" Instrument {instrument} lijkt verlopen. "
-                )
-            return False, (
-                "Geen historische marktdata beschikbaar voor certified training."
-                f"{stale_msg}"
-                "Controleer Crosstrade credentials (CROSSTRADE_TOKEN), NT8/CrossTrade verbinding en netwerk."
-            )
-        return True, ""
-    except Exception as exc:
-        logger.warning("Birth preflight historical data failed: %s", exc, exc_info=True)
-        return False, f"Historische data preflight mislukt: {exc}"
-    finally:
-        os.chdir(previous_cwd)
-        if previous_cfg:
-            os.environ["LUMINA_CONFIG"] = previous_cfg
-        else:
-            os.environ.pop("LUMINA_CONFIG", None)
 
 
 def start_birth(
@@ -168,13 +110,30 @@ def start_birth(
     ).exists()
     reuse_existing_policy = bool(continue_training or (checkpoint_exists and not force))
 
-    if not practice_mode:
-        preflight_ok, preflight_msg = preflight_historical_data(svc, resolved_max_real_days)
-        if not preflight_ok:
-            return {
-                "status": "rejected",
-                "message": preflight_msg or "Historische data niet beschikbaar voor certified training.",
-            }
+    # Acknowledge immediately so UI leaves idle during preflight (was multi-second silent gap).
+    try:
+        from lumina_core.birth.progress import write_birth_progress
+
+        write_birth_progress(
+            svc.workspace_root,
+            stage="pipeline_boot",
+            phase="holdout_preflight" if not practice_mode else "policy_init",
+            message=(
+                "Historische data preflight…"
+                if not practice_mode
+                else "Birth Phase start — practice mode"
+            ),
+            progress_pct=1.0,
+            cumulative_trades=0,
+            target_trades=int(resolved_target),
+            ppo_steps=0,
+            birth_start_time=float(svc._start_time or time.time()),
+            training_mode="practice" if practice_mode else "certified",
+            user_initiated_stop=False,
+            needs_attention=False,
+        )
+    except Exception as ack_exc:
+        logger.warning("birth.start_ack_progress_failed: %s", ack_exc)
 
     logger.info("birth.launcher_setup %s", launcher_setup_status(svc))
 
@@ -193,6 +152,43 @@ def start_birth(
                 svc.workspace_root,
                 adaptive_intelligence_status(svc).get("tier", "light"),
             )
+            # Preflight runs inside the worker thread so POST /start returns immediately.
+            if not practice_mode:
+                preflight_ok, preflight_msg = preflight_historical_data(
+                    svc, resolved_max_real_days
+                )
+                if not preflight_ok:
+                    detail = (
+                        preflight_msg
+                        or "Historische data niet beschikbaar voor certified training."
+                    )
+                    svc._error = detail
+                    try:
+                        from lumina_core.birth.progress import write_birth_progress
+
+                        write_birth_progress(
+                            svc.workspace_root,
+                            stage="error",
+                            phase="loading_history_failed",
+                            message=detail,
+                            progress_pct=0.0,
+                            cumulative_trades=0,
+                            target_trades=int(resolved_target),
+                            ppo_steps=0,
+                            birth_start_time=float(svc._start_time or 0.0),
+                            needs_attention=True,
+                            retryable=True,
+                            last_error=detail,
+                            attention_reason_code="history_unavailable",
+                            training_mode="certified",
+                        )
+                    except Exception as progress_exc:
+                        logger.warning(
+                            "birth.preflight_progress_write_failed: %s", progress_exc
+                        )
+                    logger.warning("Birth preflight rejected: %s", detail)
+                    return
+
             previous_cfg = os.getenv("LUMINA_CONFIG", "")
             previous_cwd = Path.cwd()
             os.environ["LUMINA_CONFIG"] = str((svc.workspace_root / "config.yaml").resolve())
@@ -332,37 +328,4 @@ def start_birth(
         ),
     }
 
-
-def stop_birth(svc: Any, join_timeout: float = 15.0) -> Dict[str, Any]:
-    """Cooperative stop: signal engine via event + pause flag, optionally join thread."""
-    had_thread = svc.is_running()
-    progress = svc._load_progress()
-    stage = str(progress.get("stage", "") or "").strip().lower()
-    progress_active = stage in BIRTH_ACTIVE_STAGES
-
-    if not had_thread and not progress_active and not svc.is_stopping():
-        return {"status": "not_running", "message": "Geen actieve Birth Phase."}
-
-    svc._stop_requested.set()
-    svc.pause_flag_path.parent.mkdir(parents=True, exist_ok=True)
-    svc.pause_flag_path.write_text(datetime.now(timezone.utc).isoformat(), encoding="utf-8")
-
-    if had_thread and svc._thread is not None:
-        svc._thread.join(timeout=max(0.1, float(join_timeout)))
-        if svc.is_running():
-            mark_user_stopped_progress(svc)
-            return {
-                "status": "stopping",
-                "message": "Birth Phase stop aangevraagd — wacht op checkpoint.",
-            }
-        mark_user_stopped_progress(svc)
-        return {"status": "stopped", "message": "Birth Phase gestopt."}
-
-    if progress_active:
-        mark_user_stopped_progress(svc)
-        return {
-            "status": "stopped",
-            "message": "Stop-aanvraag vastgelegd (geen actieve thread in dit proces).",
-        }
-
-    return {"status": "stopping", "message": "Birth Phase stop aangevraagd."}
+from lumina_launcher.services.birth_runner_preflight import load_saved_birth_settings, preflight_historical_data, stop_birth  # noqa: F401

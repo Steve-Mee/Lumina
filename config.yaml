@@ -22,12 +22,12 @@ telegram:
     tz: Europe/Brussels
 participant_id: LUMINA_Steve
 sim:
-  aggressive_evolution: true
-  approval_required: false
+  aggressive_evolution: false
+  approval_required: true
   daily_loss_cap: null
   kelly_fraction: 1.0
   bible_base_winrate: 0.55
-  max_mutation_depth: radical
+  max_mutation_depth: conservative
   max_total_open_risk: 3000.0
 real:
   aggressive_evolution: false
@@ -103,7 +103,6 @@ setup:
 vllm:
   host: http://localhost:8000
   model_name: qwen3.5-9b
-  # Hybrid quarantine: when true, start_vllm_server fails if host unhealthy (no process spawn).
   manage_lifecycle: false
 ollama:
   base_url: http://localhost:11434
@@ -223,21 +222,25 @@ security:
     - true
 evolution:
   enabled: true
-  approval_required: false
+  approval_required: true
   sandbox_mutations: true
   reality_gap_penalty_coeff: 0.15
   approval_twin:
     mode: shadow
     mode_promotion:
       auto_promote_when_ready: false
+      auto_promote_full_auto_when_ready: false
+      forbid_full_auto_in_real_capital: true
       min_samples_assisted: 30
       min_agreement_pct_assisted: 80.0
       max_false_positive_pct_assisted: 10.0
       min_risk_flags_caught_assisted: 0
+      min_steve_labels_assisted: 15
       min_samples_full_auto: 50
       min_agreement_pct_full_auto: 90.0
       max_false_positive_pct_full_auto: 5.0
       min_risk_flags_caught_full_auto: 1
+      min_steve_labels_full_auto: 40
       demote_agreement_floor_pct: 70.0
       demote_false_positive_ceiling_pct: 20.0
       require_constitution_adherence_100: true
@@ -277,6 +280,10 @@ evolution:
     max_proposals_per_cycle: 1
     sandbox_timeout_s: 30
     require_twin: true
+    apply_to_sandbox_store: false
+    require_human_approve_for_apply: true
+    allow_twin_judgment_apply: false
+    forbid_apply_in_real_capital: true
   shadow_validation:
     min_days: 3
     max_days: 7
@@ -300,6 +307,19 @@ fine_tuning:
   auto_trigger: true
   min_acceptance: 0.4
   drift_threshold: 0.25
+maturity:
+  strict_exit_proofs: true
+  experimental_soft_complete: false
+  awakening_min_twin_samples: 10
+  apprenticeship_min_green_days: 5
+  playground_require_first_order: true
+  proving_require_promotion_or_shadow: true
+  apprenticeship_sim_days: 5
+  apprenticeship_sim_days_probe: 0
+  apprenticeship_sim_max_workers: 2
+  apprenticeship_sim_use_real_market_data: false
+  apprenticeship_sim_drawdown_limit_ratio: 0.02
+  telegram_advance_token_ttl_sec: 86400
 birth_v2:
   curriculum:
     stage1_trend_trades: 2000
@@ -327,6 +347,10 @@ birth_v2:
     autonomous_recovery_enabled: true
     phoenix_loop_enabled: true
     phoenix_max_cycles: 12
+    birth_survival_pass_enabled: true
+    birth_survival_wr_floor: 0.2
+    birth_survival_expectancy_floor: -0.5
+    birth_plant_soft_block_rate_max_per_1k: 100.0
     perfect_birth_min_twin_steve_agreement_pct: 80.0
     perfect_birth_min_autonomous_recovery_rate_pct: 85.0
     perfect_birth_min_auto_approved_pct: 60.0
@@ -486,14 +510,14 @@ birth_v2:
     min_regimes: 3
     min_holdout_trades: 50
   prefer_real_data_only: true
-  max_real_days: 112
-  trade_budget_cap: 50000
+  max_real_days: 56
+  trade_budget_cap: 25000
   ppo_update_timesteps: 25000
   chunk_size: 50000
 first_boot:
-  training_trades: 50000
+  training_trades: 25000
   prefer_real_data_only: true
-  max_real_days: 112
+  max_real_days: 56
   birth_phase: true
   allow_minimal_synthetic_fallback: false
   ppo_progress_interval: 5000
@@ -642,10 +666,7 @@ runtime_config:
   hot_reload:
     enabled: true
     debounce_ms: 500
-# Wave A hybrid quarantine — defaults preserve legacy stub/heuristic outcomes.
-# Strict=true enables fail-closed behavior. See docs/hybrid-quarantine.md.
 hybrid_quarantine:
-  # SIM/PAPER bulk strict profile (also: env LUMINA_HYBRID_STRICT=1). Never auto-applies in REAL.
   apply_strict_in_sim: false
   require_true_backtest: false
   require_trace_verdict: false

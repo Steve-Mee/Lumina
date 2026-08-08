@@ -1,5 +1,6 @@
 import type { BirthProgressPayload } from "@/lib/birthClient";
 
+import { isBirthCurriculumScorecardActive } from "@/lib/birth/birthActiveProgress";
 import {
   extractAdaptationFields,
   extractScorecardProgressExtras,
@@ -49,11 +50,17 @@ export function extractStageScorecard(
   progress: BirthProgressPayload | undefined,
   nowMs: number = Date.now(),
 ): StageScorecardModel | null {
+  // Elon gate: never show Stage 1/3 … cards during historical load / enrich / ticks_ready.
+  // curriculum_stage is often pre-stamped before curriculum actually starts.
+  if (!isBirthCurriculumScorecardActive(progress)) {
+    return null;
+  }
+
   const curriculumStage = String(progress?.curriculum_stage ?? "").trim();
   const phase = normalizeToken(progress?.phase);
   const isCurriculum =
     Boolean(curriculumStage) &&
-    !["completed", "practice_completed", "certificate_failed"].includes(phase);
+    !["completed", "practice_completed"].includes(phase);
   const isPolishOrOos = phase === "ppo_polish" || phase === "oos_evaluation";
   if (!isCurriculum && !isPolishOrOos) {
     return null;
@@ -189,12 +196,28 @@ export function extractStageScorecard(
       : progress?.hold_ratio != null && Number.isFinite(Number(progress.hold_ratio))
         ? Number(progress.hold_ratio)
         : null;
+  // Stage-3 activity gate is hold cap (≤ max), not the stage-2 flat band.
   const stageHoldMax =
     passCriteriaId === "mixed_foundation" && metricMax != null
       ? metricMax
-      : passCriteriaId === "mixed_foundation"
+      : passCriteriaId === "mixed_foundation" || passCriteriaId === "mixed_edgescore"
         ? 0.7
         : null;
+
+  // Stage-2 only: range pass band is position flat 30–70%. Not used on stage 1/3.
+  const isStage2RangeActivity =
+    passCriteriaId === "range_edgescore" ||
+    passCriteriaId === "range_hold_ratio" ||
+    passCriteriaId === "range_roundtrip";
+  const stageRangeFlatRatio = isStage2RangeActivity
+    ? progress?.stage_range_flat_ratio != null &&
+      Number.isFinite(Number(progress.stage_range_flat_ratio))
+      ? Number(progress.stage_range_flat_ratio)
+      : // Thin range telemetry: hold ratio is the same activity scale for stage 2.
+        stageHoldRatio
+    : null;
+  const stageRangeFlatMin = isStage2RangeActivity ? 0.3 : null;
+  const stageRangeFlatMax = isStage2RangeActivity ? 0.7 : null;
 
   const ts = parseProgressTimestamp(progress);
   const heartbeatSec = ts != null ? Math.max(0, Math.round((nowMs - ts) / 1000)) : null;
@@ -305,6 +328,9 @@ export function extractStageScorecard(
       dataManifestDaysLoaded,
       stageHoldRatio,
       stageHoldMax,
+      stageRangeFlatRatio,
+      stageRangeFlatMin,
+      stageRangeFlatMax,
     }),
   };
 }

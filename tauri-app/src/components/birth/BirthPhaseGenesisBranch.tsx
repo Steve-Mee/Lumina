@@ -42,6 +42,9 @@ export function BirthPhaseGenesisBranch({
     engineLive,
     onboardingError,
     resumePlateauRisk,
+    sessionHydrated,
+    sessionProbeState,
+    sessionProbePending,
   } = derived;
 
   return (
@@ -86,6 +89,9 @@ export function BirthPhaseGenesisBranch({
             busy={controlBusy}
             engineLive={engineLive}
             error={onboardingError}
+            sessionHydrated={sessionHydrated}
+            sessionProbeState={sessionProbeState}
+            sessionProbePending={sessionProbePending}
             onChangeTraining={onChangeTraining}
             onActivate={onActivate}
             onWipe={onWipe}

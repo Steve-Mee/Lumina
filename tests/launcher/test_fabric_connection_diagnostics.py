@@ -15,6 +15,11 @@ def test_token_and_tcp_fail_closed_without_host(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(diag, "_fabric_json_path", lambda: tmp_path / "missing.json")
     monkeypatch.setattr(diag, "_load_broker_config", lambda: {"live_provider": "crosstrade"})
     monkeypatch.setattr(diag, "_tcp_check", lambda host, port, timeout=2.0: (False, "refused"))
+    # Without token, auto-SimHost must not run (fail-closed preflight).
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_simhost.ensure_simhost_token_aligned",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("auto-start without token")),
+    )
 
     report = diag.run_fabric_connection_diagnostics(include_safe_mode=False)
     assert report.overall == "red"
@@ -52,6 +57,16 @@ def test_report_to_dict_shape(monkeypatch: pytest.MonkeyPatch) -> None:
         lambda: {"live_provider": "ninjatrader", "ninjatrader": {"enabled": True, "fabric": {"host": "127.0.0.1", "port": 50051}}},
     )
     monkeypatch.setattr(diag, "_tcp_check", lambda host, port, timeout=2.0: (False, "down"))
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_simhost.ensure_simhost_token_aligned",
+        lambda **kwargs: {
+            "ok": False,
+            "status": "timeout",
+            "message": "forced down",
+            "listening": False,
+            "authenticated": False,
+        },
+    )
     d = diag.run_fabric_connection_diagnostics(include_safe_mode=False).to_dict()
     assert d["overall"] in {"green", "amber", "red"}
     assert "checks" in d and isinstance(d["checks"], list)

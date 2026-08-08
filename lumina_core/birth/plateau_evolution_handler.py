@@ -1,18 +1,21 @@
 """PlateauEvolutionMixin — StageLoopSession mixin.
 
-Bounded modules: ``plateau_evolution_actions``, ``plateau_evolution_loop``.
-Dispatches over ``plateau_evolution_ladder`` / ``plateau_escalator``.
+Bounded modules (M5): actions · detect · advance · loop finalize.
 """
 from __future__ import annotations
 
 from lumina_core.birth.plateau_escalator import rolling_winrate_last_n_trades
 from lumina_core.birth.plateau_evolution_actions import PlateauEvolutionActionsMixin
+from lumina_core.birth.plateau_evolution_advance import PlateauEvolutionAdvanceMixin
+from lumina_core.birth.plateau_evolution_detect import PlateauEvolutionDetectMixin
 from lumina_core.birth.plateau_evolution_loop import PlateauEvolutionLoopMixin
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 
 
 class PlateauEvolutionMixin(
     PlateauEvolutionActionsMixin,
+    PlateauEvolutionAdvanceMixin,
+    PlateauEvolutionDetectMixin,
     PlateauEvolutionLoopMixin,
     StageLoopMixinBase,
 ):

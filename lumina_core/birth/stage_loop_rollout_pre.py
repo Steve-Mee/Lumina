@@ -1,7 +1,6 @@
 """Pre-rollout planning for a single curriculum cycle."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
@@ -18,23 +17,17 @@ from lumina_core.birth.plateau_escalator import (
     is_valid_best_policy_snapshot,
 )
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
+from lumina_core.birth.stage_loop_rollout_pre_caps import StageLoopRolloutPreCapsMixin
+from lumina_core.birth.stage_loop_rollout_types import RolloutPreState
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_loop_rollout_pre")
 
-
-@dataclass(slots=True)
-class RolloutPreState:
-    explore_steps: int
-    reward_override: Any
-    hold_cap: float | None
-    position_flat_cap: float | None
-    range_patience_active: bool
-    plateau_recovery: bool
-    progress_cb: Callable[[dict[str, Any]], None]
+__all__ = ["RolloutPreState", "StageLoopRolloutPreMixin"]
 
 
-class StageLoopRolloutPreMixin(StageLoopMixinBase):
+
+class StageLoopRolloutPreMixin(StageLoopRolloutPreCapsMixin, StageLoopMixinBase):
     """Build explore plan, traps, caps, and optional policy rollback before sim."""
 
     def _prepare_rollout_cycle(
@@ -327,131 +320,8 @@ class StageLoopRolloutPreMixin(StageLoopMixinBase):
                         * self.cur_cfg.strong_recovery_explore_fraction
                     ),
                 )
-        pre_rollout_hold = (
-            float(self.stage_hold_signals) / float(max(1, self.stage_total_signals))
-            if self.stage_total_signals
-            else 0.0
-        )
-        pre_rollout_flat = (
-            float(self.stage_range_flat_bars) / float(max(1, self.stage_range_total_signals))
-            if self.stage_range_total_signals
-            else 0.0
-        )
-        if self.swarm_state.active:
-            swarm_reward, swarm_explore_mult = self._apply_swarm_variant_for_rollout()
-            if swarm_reward is not None:
-                reward_override = swarm_reward
-            explore_steps = max(200, int(explore_steps * swarm_explore_mult))
-        plateau_recovery = self.plateau_state.active or self.remediation_state.active
-        hold_cap: float | None = None
-        position_flat_cap: float | None = None
-        range_patience_active = self.stage == CurriculumStage.STAGE2_RANGE
-        velocity_stalled = self.low_velocity_attempts >= int(self.cur_cfg.velocity_stall_attempt_threshold)
-        if plateau_recovery or detect_hold_trap(
-            hold_ratio=pre_rollout_hold,
-            winrate=float(self.stage_wins) / float(max(1, self.stage_trades)),
-            pass_metric_target=self.pass_metric_target,
-            velocity_stall=velocity_stalled,
-            cfg=self.cur_cfg,
-        ):
-            hold_cap = float(self.cur_cfg.hold_trap_recovery_hold_cap)
-        if self.stage == CurriculumStage.STAGE2_RANGE and detect_over_trading_trap(
-            range_flat_ratio=pre_rollout_flat,
-            range_round_trips=self.stage_range_round_trips,
-            required=self.required,
-            velocity_stall=velocity_stalled,
-            cfg=self.cur_cfg,
-        ):
-            position_flat_cap = float(self.cur_cfg.over_trading_recovery_flat_target)
-            range_patience_active = True
-        edge_champ_path = str(getattr(self, "best_edgescore_policy_path", "") or "").strip()
-        plateau_champ_ok = bool(self.plateau_state.best_policy_path) and is_valid_best_policy_snapshot(
-            self.plateau_state, cfg=self.cur_cfg
-        )
-        edge_champ_ok = bool(edge_champ_path) and Path(edge_champ_path).is_file()
-        cooldown_ok = self.attempt - self.last_policy_rollback_attempt >= int(
-            self.cur_cfg.policy_rollback_cooldown_rollouts
-        )
-        if (plateau_champ_ok or edge_champ_ok) and cooldown_ok:
-            live_wr = float(self.stage_wins) / float(max(1, self.stage_trades))
-            rollback_wr_gap = live_wr + float(self.cur_cfg.policy_rollback_winrate_gap) < (
-                self.plateau_state.best_winrate
-            )
-            # Starship champion freeze: EdgeScore drop triggers rollback only for
-            # eligible (min-trades) champions — never early noise.
-            from lumina_core.birth.starship_birth import is_edgescore_champion_eligible
-
-            champion_freeze = bool(
-                getattr(self.cur_cfg, "starship_champion_freeze_enabled", True)
-            ) and not bool(self.allow_provisional)
-            live_edge = 0.0
-            best_edge = float(getattr(self, "best_edgescore", 0.0) or 0.0)
-            edge_gap = float(getattr(self.cur_cfg, "starship_champion_edgescore_gap", 0.02))
-            rollback_edge_gap = False
-            champ_eligible = is_edgescore_champion_eligible(
-                stage_trades=int(getattr(self, "best_edgescore_at_trade", 0) or 0),
-                required=int(self.required),
-                cfg=self.cur_cfg,
-            )
-            if champion_freeze and best_edge > 0.0 and champ_eligible:
-                try:
-                    live_edge = float(self._current_edgescore())
-                    rollback_edge_gap = live_edge + edge_gap < best_edge
-                except Exception:
-                    rollback_edge_gap = False
-            should_rollback = (
-                rollback_edge_gap
-                or (
-                    rollback_wr_gap
-                    and plateau_champ_ok
-                    and (
-                        self.strong_recovery_mode
-                        or champion_freeze
-                        or (
-                            self.stage == CurriculumStage.STAGE3_MIXED
-                            and self.stage_trades < self.required
-                            and pre_rollout_hold > 0.75
-                        )
-                    )
-                )
-            )
-            if should_rollback:
-                detail, applied = "", False
-                if plateau_champ_ok:
-                    detail, applied = self._apply_plateau_evolution_action(
-                        EvolutionAction.POLICY_ROLLBACK
-                    )
-                if (
-                    champion_freeze
-                    and edge_champ_ok
-                    and rollback_edge_gap
-                ):
-                    self.host.current_policy = self.host._create_birth_policy(
-                        allow_load_existing=True,
-                        policy_path=edge_champ_path,
-                    )
-                    applied = True
-                    detail = f"{detail}; champion_freeze edgescore".lstrip("; ").strip()
-                if applied:
-                    self.last_policy_rollback_attempt = self.attempt
-                logger.info(
-                    "birth.policy_rollback_auto_applied detail=%s applied=%s live_wr=%.2f%% "
-                    "best=%.2f%% live_edge=%.3f best_edge=%.3f stage=%s hold_ratio=%.1f%%",
-                    detail,
-                    applied,
-                    live_wr * 100.0,
-                    self.plateau_state.best_winrate * 100.0,
-                    live_edge,
-                    best_edge,
-                    self.stage.value,
-                    pre_rollout_hold * 100.0,
-                )
-        return RolloutPreState(
+        return self._finish_rollout_pre_caps(
             explore_steps=explore_steps,
             reward_override=reward_override,
-            hold_cap=hold_cap,
-            position_flat_cap=position_flat_cap,
-            range_patience_active=range_patience_active,
-            plateau_recovery=plateau_recovery,
             progress_cb=_rollout_progress,
         )

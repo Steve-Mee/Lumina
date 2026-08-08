@@ -9,6 +9,8 @@ interface BirthLaunchButtonProps {
   activating: boolean;
   primed?: boolean;
   disabled?: boolean;
+  /** Cold-start: previous session still loading — keep Activate locked. */
+  waitingSession?: boolean;
   onClick: () => void;
   onPrimedChange?: (primed: boolean) => void;
   onSequencingChange?: (sequencing: boolean) => void;
@@ -28,6 +30,7 @@ export function BirthLaunchButton({
   activating,
   primed = false,
   disabled = false,
+  waitingSession = false,
   onClick,
   onPrimedChange,
   onSequencingChange,
@@ -176,7 +179,9 @@ export function BirthLaunchButton({
       ? "SEQUENCING NEURAL LATTICE…"
       : holdProgress > 0 && holdProgress < 1
         ? "ARMING SEQUENCE…"
-        : "ACTIVATE BIRTH";
+        : waitingSession
+          ? "WAITING FOR SESSION…"
+          : "ACTIVATE BIRTH";
 
   const chargeProgress = sequencing ? 1 : holdProgress;
 

@@ -20,7 +20,7 @@ const BASELINES: Record<string, number> = {
   "lib/birth/birthStageScorecard.ts": 400,
   "lib/birth/birthActiveProgress.ts": 60,
   "lib/birth/birthModelUtils.ts": 16,
-  "store/birthStore.ts": 627,
+  "store/birthStore.ts": 400,
   "store/birthPollCoordinator.ts": 140,
   "store/birthSurfaceModel.ts": 68,
   "components/birth/BirthPhaseScreen.tsx": 400,

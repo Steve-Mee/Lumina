@@ -84,6 +84,47 @@ def test_snapshot_caught_and_missed(tmp_path: Path) -> None:
     assert "steve_label_agreement_pct" in d
 
 
+def test_snapshot_prefers_summary_over_full_jsonl(tmp_path: Path) -> None:
+    """Birth status must not re-scan multi-10MB JSONL when a durable summary exists."""
+    store = _store(tmp_path)
+    metrics_path = tmp_path / "metrics.jsonl"
+    # Large-ish synthetic history (not full 80MB — enough to prove summary short-circuit).
+    with metrics_path.open("w", encoding="utf-8") as fh:
+        for i in range(500):
+            fh.write(
+                json.dumps(
+                    {
+                        "twin_recommendation": True,
+                        "ground_truth_approve": True,
+                        "agreed": True,
+                        "source": "shadow_path",
+                        "risk_flags": [],
+                    }
+                )
+                + "\n"
+            )
+    summary = {
+        "samples": 187469,
+        "agreements": 187442,
+        "disagreements": 27,
+        "false_positives": 0,
+        "false_negatives": 27,
+        "risk_flags_caught": 187430,
+        "risk_flags_missed": 11,
+        "constitution_violations": 0,
+        "steve_label_samples": 1,
+        "steve_label_agreements": 1,
+        "path_samples": 187468,
+    }
+    (tmp_path / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
+    snap = store.snapshot()
+    assert snap.samples == 187469
+    assert snap.risk_flags_caught == 187430
+    # Bounded tail still works and does not require summary.
+    window = store.load_events(limit=10)
+    assert len(window) == 10
+
+
 def test_legacy_row_recompute_missed() -> None:
     row = recompute_row_derived(
         {

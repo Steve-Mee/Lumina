@@ -72,7 +72,8 @@ def test_happy_path_param_tweak(tmp_path: Path):
     assert d["constitution_passed"] is True
     assert d["sandbox_passed"] is True
     assert d["applied"] is False
-    assert d["reason"] == "evaluated_ok_not_applied"
+    # H5: default apply_to_sandbox_store=false → apply_disabled (still evaluate-only)
+    assert d["reason"] in ("evaluated_ok_not_applied", "apply_disabled")
     # journal bundle
     pid = out.proposals[0].proposal_id
     bundle = tmp_path / "ce" / "pending" / pid
@@ -150,7 +151,7 @@ def test_reversibility_restores_before_snapshot(tmp_path: Path):
     assert before  # non-empty for param tweak
 
 
-def test_try_apply_live_always_false(tmp_path: Path):
+def test_try_apply_live_default_disabled(tmp_path: Path):
     twin = _FakeTwin()
     pipe = CodeEvolutionPipeline(
         enabled=True,
@@ -162,7 +163,7 @@ def test_try_apply_live_always_false(tmp_path: Path):
     pid = out.proposals[0].proposal_id
     res = pipe.journal.try_apply_live(pid)
     assert res["applied"] is False
-    assert res["reason"] == "v1_evaluate_only"
+    assert res["reason"] in ("apply_disabled", "v1_evaluate_only")
 
 
 def test_dry_cycle_entry(tmp_path: Path):

@@ -21,13 +21,13 @@ describe("BirthControlDock wipe UX", () => {
   it("shows toast feedback when wipe is blocked by busy or activating", () => {
     expect(source).toContain("handleWipeClick");
     expect(source).toContain("toast.info");
-    expect(source).toContain("Birth wordt gestart");
-    expect(source).toContain("Even wachten — een andere birth-actie is bezig.");
+    expect(source).toContain("Birth is starting");
+    expect(source).toContain("Please wait — another birth action is in progress.");
   });
 
   it("shows toast feedback when stop is blocked by busy", () => {
     expect(source).toContain("handleStopClick");
-    expect(source).toContain("Even wachten — een andere birth-actie is bezig.");
+    expect(source).toContain("Please wait — another birth action is in progress.");
   });
 
   it("exposes stop on genesis surface when engineLive", () => {
@@ -38,8 +38,9 @@ describe("BirthControlDock wipe UX", () => {
   it("offers reset and full wipe with confirm flow via birthUiStore", () => {
     expect(source).toContain('handleWipeClick("reset")');
     expect(source).toContain('handleWipeClick("full")');
-    expect(source).toContain("Volledige wipe");
-    expect(source).toContain("Wis birth-data");
+    expect(source).toContain("Full wipe");
+    expect(source).toContain("Wipe birth data");
+    expect(source).toContain("Resume checkpoint");
   });
 
   it("emits structured birth-wipe trace logs", () => {

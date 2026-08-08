@@ -1,0 +1,379 @@
+"""H4: Twin training discipline — high-conf primary in birth/SIM; full_auto only under gates.
+
+Does not arm REAL capital. Coordinates with ``real_multi_gate`` so Twin judgment
+stays inside hard gates.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+from lumina_core.evolution.twin_mode_types import (
+    canonicalize_twin_mode,
+    authority_for_mode,
+)
+from lumina_core.logging_utils import get_logger
+from lumina_core.risk.real_multi_gate import twin_judgment_subordinate_to_real_gates
+
+logger = get_logger("lumina.evolution.twin_discipline")
+
+# Align with organism_autonomy high-conf band
+HIGH_CONF_THRESHOLD = 0.80
+
+REAL_LIKE = frozenset({"real", "live", "prod", "production", "sim_real_guard"})
+
+
+def is_real_like_capital(mode: str | None) -> bool:
+    return str(mode or "").strip().lower() in REAL_LIKE
+
+
+def birth_sim_high_conf_primary_ready(
+    *,
+    twin_mode: str | None,
+    agreement_pct: float,
+    samples: int,
+    steve_label_samples: int,
+    false_positive_pct: float = 0.0,
+    min_samples: int = 30,
+    min_agreement_pct: float = 80.0,
+    min_steve_labels: int = 15,
+    max_false_positive_pct: float = 15.0,
+    capital_mode: str | None = "sim",
+) -> dict[str, Any]:
+    """Whether Twin may act as high-conf primary judgment in birth/SIM (not REAL capital).
+
+    Requires assisted+ mode authority path readiness signals from training metrics.
+    Shadow mode is never "primary" (propose_only). REAL capital never primary.
+    """
+    mode = canonicalize_twin_mode(twin_mode)
+    failures: list[str] = []
+    if is_real_like_capital(capital_mode):
+        failures.append("real_capital_not_primary_judgment")
+    if mode == "shadow":
+        failures.append("mode_is_shadow_propose_only")
+    if int(samples) < int(min_samples):
+        failures.append(f"samples={samples}<{min_samples}")
+    if float(agreement_pct) < float(min_agreement_pct):
+        failures.append(f"agreement_pct={agreement_pct}<{min_agreement_pct}")
+    if int(steve_label_samples) < int(min_steve_labels):
+        failures.append(f"steve_label_samples={steve_label_samples}<{min_steve_labels}")
+    if float(false_positive_pct) > float(max_false_positive_pct):
+        failures.append(f"false_positive_pct={false_positive_pct}>{max_false_positive_pct}")
+
+    ready = len(failures) == 0
+    return {
+        "ready": ready,
+        "twin_mode": mode,
+        "authority": authority_for_mode(mode),
+        "high_conf_threshold": HIGH_CONF_THRESHOLD,
+        "capital_mode": str(capital_mode or "sim"),
+        "failures": failures,
+        "metrics": {
+            "samples": int(samples),
+            "agreement_pct": float(agreement_pct),
+            "steve_label_samples": int(steve_label_samples),
+            "false_positive_pct": float(false_positive_pct),
+        },
+        "note": (
+            "Primary judgment in birth/SIM only when assisted+ and training bars met; "
+            "REAL capital still requires human multi-gate (H2)."
+        ),
+    }
+
+
+def twin_primary_judgment_for_decision(
+    *,
+    twin_mode: str | None,
+    twin_confidence: float,
+    twin_raw_recommendation: bool,
+    twin_executable: bool,
+    twin_effective_recommendation: bool,
+    capital_mode: str | None = "sim",
+    constitution_violations: int = 0,
+    high_conf_threshold: float = HIGH_CONF_THRESHOLD,
+) -> dict[str, Any]:
+    """Track D SSOT: whether this single decision may use Twin as primary (birth/SIM).
+
+    Does not authorize REAL capital, PromotionGate bypass, or constitution override.
+    Consumers: birth organism autonomy, phase2 gates, generation SIM paths.
+    """
+    mode = canonicalize_twin_mode(twin_mode)
+    failures: list[str] = []
+    if is_real_like_capital(capital_mode):
+        failures.append("real_capital_requires_human_multi_gate")
+    if int(constitution_violations or 0) > 0:
+        failures.append("constitution_violations")
+    if float(twin_confidence) < float(high_conf_threshold):
+        failures.append(f"confidence_below_{high_conf_threshold}")
+    if mode == "shadow":
+        failures.append("mode_shadow_propose_only")
+    # full_auto sole-execute; assisted may only veto (not primary approve)
+    if mode != "full_auto":
+        failures.append("mode_not_full_auto_for_primary_approve")
+    if not bool(twin_executable):
+        failures.append("not_executable")
+    if not bool(twin_effective_recommendation):
+        failures.append("effective_recommendation_false")
+    if not bool(twin_raw_recommendation):
+        failures.append("raw_recommendation_veto")
+
+    primary = len(failures) == 0
+    return {
+        "primary": primary,
+        "twin_mode": mode,
+        "capital_mode": str(capital_mode or "sim"),
+        "failures": failures,
+        "role": (
+            "primary_birth_sim_judgment"
+            if primary
+            else "subordinate_or_human_required"
+        ),
+        "never_bypasses": (
+            "constitution",
+            "sandbox",
+            "shadow",
+            "promotion_gate",
+            "real_human_approve",
+        ),
+    }
+
+
+def full_auto_allowed_for_capital_mode(capital_mode: str | None) -> tuple[bool, str]:
+    """full_auto Twin judgment mode is for SIM/birth judgment only — not REAL capital."""
+    if is_real_like_capital(capital_mode):
+        return False, "full_auto_forbidden_in_real_capital"
+    return True, "ok"
+
+
+def discipline_snapshot(
+    *,
+    twin_mode: str | None,
+    capital_mode: str | None = "sim",
+    metrics: dict[str, Any] | None = None,
+    readiness: dict[str, Any] | None = None,
+    auto_promote_when_ready: bool = False,
+    auto_promote_full_auto: bool = False,
+) -> dict[str, Any]:
+    """Operator-facing H4 discipline panel."""
+    m = metrics or {}
+    samples = int(m.get("samples", 0) or 0)
+    agreement = float(m.get("agreement_pct", 0.0) or 0.0)
+    steve = int(m.get("steve_label_samples", 0) or 0)
+    fp = float(m.get("false_positive_pct", 100.0) or 100.0)
+
+    primary = birth_sim_high_conf_primary_ready(
+        twin_mode=twin_mode,
+        agreement_pct=agreement,
+        samples=samples,
+        steve_label_samples=steve,
+        false_positive_pct=fp,
+        capital_mode=capital_mode,
+    )
+    fa_ok, fa_reason = full_auto_allowed_for_capital_mode(capital_mode)
+    twin_floor = twin_judgment_subordinate_to_real_gates(
+        twin_recommendation=True,
+        twin_executable=True,
+        twin_mode=twin_mode or "full_auto",
+        capital_mode=capital_mode,
+    )
+
+    return {
+        "schema": "twin_discipline_v1",
+        "twin_mode": canonicalize_twin_mode(twin_mode),
+        "capital_mode": str(capital_mode or "sim"),
+        "birth_sim_high_conf_primary": primary,
+        "full_auto_allowed_for_capital": fa_ok,
+        "full_auto_block_reason": None if fa_ok else fa_reason,
+        "real_capital_twin_floor": twin_floor,
+        "auto_promote_when_ready": bool(auto_promote_when_ready),
+        "auto_promote_full_auto": bool(auto_promote_full_auto),
+        "readiness": readiness or {},
+        "policy": {
+            "promote_one_step_only": True,
+            "full_auto_requires_steve_labels": True,
+            "full_auto_forbidden_in_real_capital": True,
+            "auto_promote_default_off": True,
+            "auto_promote_full_auto_default_off": True,
+            "human_labels_drive_calibration": True,
+        },
+        "next_step": (
+            "Label twin review queue + train; promote shadow→assisted when gate green; "
+            "full_auto only after steve-label discipline and never in REAL capital."
+            if not primary["ready"]
+            else (
+                "High-conf primary ready for birth/SIM; keep labeling; full_auto only via gate."
+                if fa_ok
+                else "REAL capital: Twin cannot sole-execute; use human multi-gate (H2)."
+            )
+        ),
+    }
+
+
+def build_twin_promote_ops_report(
+    *,
+    mode_status: dict[str, Any] | None = None,
+    controller: Any | None = None,
+    capital_mode: str | None = None,
+) -> dict[str, Any]:
+    """T6: Operator report for shadow→assisted→full_auto promote path (fail-closed).
+
+    Does not promote. Use TwinModeController.try_promote / CLI for gated upgrades.
+    """
+    status: dict[str, Any] = {}
+    if controller is not None and hasattr(controller, "status"):
+        status = dict(controller.status() or {})
+    elif isinstance(mode_status, dict):
+        status = dict(mode_status)
+    else:
+        status = {}
+
+    mode = canonicalize_twin_mode(status.get("mode") or "shadow")
+    cap = str(
+        capital_mode
+        or status.get("capital_mode_hint")
+        or (status.get("mode_ssot") or {}).get("capital_mode")
+        or "sim"
+    )
+    readiness = status.get("readiness") if isinstance(status.get("readiness"), dict) else {}
+    assisted = readiness.get("assisted") if isinstance(readiness.get("assisted"), dict) else {}
+    full_auto = readiness.get("full_auto") if isinstance(readiness.get("full_auto"), dict) else {}
+    fa_ok, fa_reason = full_auto_allowed_for_capital_mode(cap)
+    mode_ssot = status.get("mode_ssot") if isinstance(status.get("mode_ssot"), dict) else {}
+
+    metrics = status.get("metrics") if isinstance(status.get("metrics"), dict) else {}
+    primary = birth_sim_high_conf_primary_ready(
+        twin_mode=mode,
+        agreement_pct=float(metrics.get("agreement_pct", 0.0) or 0.0),
+        samples=int(metrics.get("samples", 0) or 0),
+        steve_label_samples=int(metrics.get("steve_label_samples", 0) or 0),
+        false_positive_pct=float(metrics.get("false_positive_pct", 100.0) or 100.0),
+        capital_mode=cap,
+    )
+
+    ladder = [
+        {
+            "id": "seed_shadow",
+            "title": "Live mode is shadow (or higher via gate only)",
+            "ok": mode in {"shadow", "assisted", "full_auto"},
+            "actual": mode,
+            "action": "python -m lumina_launcher twin mode",
+        },
+        {
+            "id": "labels",
+            "title": "Steve labels for assisted promote",
+            "ok": int(metrics.get("steve_label_samples", 0) or 0) >= 15
+            or bool(assisted.get("promoted")),
+            "actual": int(metrics.get("steve_label_samples", 0) or 0),
+            "target": 15,
+            "action": "python -m lumina_launcher twin review",
+        },
+        {
+            "id": "ready_assisted",
+            "title": "Gate ready for assisted",
+            "ok": bool(assisted.get("promoted")),
+            "actual": assisted,
+            "action": "python -m lumina_launcher twin promote assisted",
+        },
+        {
+            "id": "mode_assisted_or_higher",
+            "title": "Live mode assisted or full_auto",
+            "ok": mode in {"assisted", "full_auto"},
+            "actual": mode,
+            "action": "Promote only when ready_assisted",
+        },
+        {
+            "id": "ready_full_auto",
+            "title": "Gate ready for full_auto (SIM capital only)",
+            "ok": bool(full_auto.get("promoted")) and fa_ok,
+            "actual": {"gate": full_auto, "capital_ok": fa_ok, "capital_reason": fa_reason},
+            "action": (
+                "python -m lumina_launcher twin promote full_auto"
+                if fa_ok
+                else f"Blocked: {fa_reason}"
+            ),
+        },
+        {
+            "id": "full_auto_not_in_real",
+            "title": "full_auto forbidden under REAL capital hint",
+            "ok": fa_ok or mode != "full_auto",
+            "actual": {"capital_mode": cap, "mode": mode},
+            "action": "Keep capital_mode_hint=sim/birth for full_auto judgment",
+        },
+    ]
+
+    open_items = [x for x in ladder if not x["ok"]]
+    actions: list[str] = []
+    for x in open_items:
+        a = str(x.get("action") or "")
+        if a and a not in actions:
+            actions.append(a)
+    if mode == "shadow" and bool(assisted.get("promoted")):
+        actions.insert(0, "python -m lumina_launcher twin promote assisted")
+    if mode == "assisted" and bool(full_auto.get("promoted")) and fa_ok:
+        actions.insert(0, "python -m lumina_launcher twin promote full_auto")
+
+    return {
+        "schema": "twin_promote_ops_v1",
+        "ok": mode in {"assisted", "full_auto"} and primary.get("ready") is not False,
+        "live_mode": mode,
+        "capital_mode": cap,
+        "authority": authority_for_mode(mode),
+        "mode_ssot": mode_ssot
+        or {
+            "live_mode": mode,
+            "config_is_seed_only": True,
+            "full_auto_requires_promotion_gate": True,
+        },
+        "readiness": {
+            "assisted": {
+                "ready": bool(assisted.get("promoted")),
+                "fail_reasons": list(assisted.get("fail_reasons") or []),
+                "reason": assisted.get("reason"),
+            },
+            "full_auto": {
+                "ready": bool(full_auto.get("promoted")),
+                "fail_reasons": list(full_auto.get("fail_reasons") or []),
+                "reason": full_auto.get("reason"),
+                "capital_allows": fa_ok,
+                "capital_block_reason": None if fa_ok else fa_reason,
+            },
+        },
+        "birth_sim_high_conf_primary": primary,
+        "ladder": ladder,
+        "open_items": [x["id"] for x in open_items],
+        "ordered_actions": actions,
+        "auto_promote_when_ready": bool(status.get("auto_promote_when_ready")),
+        "auto_promote_full_auto_when_ready": bool(
+            status.get("auto_promote_full_auto_when_ready")
+        ),
+        "policy": {
+            "yaml_cannot_seed_full_auto": True,
+            "promote_only_via_gate": True,
+            "full_auto_forbidden_in_real_capital": True,
+            "auto_promote_full_auto_default_off": True,
+            "one_step_at_a_time": True,
+        },
+        "commands": {
+            "mode": "python -m lumina_launcher twin mode",
+            "review": "python -m lumina_launcher twin review",
+            "train": "python -m lumina_launcher twin train",
+            "promote_assisted": "python -m lumina_launcher twin promote assisted",
+            "promote_full_auto": "python -m lumina_launcher twin promote full_auto",
+            "ops_report": "python scripts/validation/twin_promote_ops.py",
+        },
+        "next_step": (
+            actions[0]
+            if actions
+            else "Twin promote path ready — use full_auto only in birth/SIM high-conf judgment"
+        ),
+    }
+
+
+__all__ = [
+    "HIGH_CONF_THRESHOLD",
+    "birth_sim_high_conf_primary_ready",
+    "build_twin_promote_ops_report",
+    "discipline_snapshot",
+    "full_auto_allowed_for_capital_mode",
+    "is_real_like_capital",
+    "twin_primary_judgment_for_decision",
+]

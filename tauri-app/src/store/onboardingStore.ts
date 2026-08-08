@@ -74,11 +74,17 @@ interface OnboardingState {
   birthPhaseCommitted: boolean;
   /** Operator reopened first-boot setup (credentials / Fabric test) from Birth. */
   setupReviewActive: boolean;
+  /** Operator opened Command Deck from Phase Hub (session override of app_surface=hub). */
+  operatorDeckActive: boolean;
   smartSetupRunning: boolean;
   refresh: () => Promise<void>;
   setPhase: (phase: AppPhase) => void;
   enterSetupReview: (preferredStep?: OnboardingStepId) => void;
   exitSetupReview: () => void;
+  /** Open Command Deck from Phase Hub without waiting for app_surface=deck. */
+  enterOperatorDeck: () => void;
+  /** Leave deck override and return to Phase Hub surface. */
+  returnToPhaseHub: () => void;
   completeBirthTransition: () => void;
   setStepIndex: (index: number) => void;
   updateDraft: (patch: Partial<OnboardingDraft>) => void;
@@ -140,6 +146,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   activating: false,
   birthPhaseCommitted: false,
   setupReviewActive: false,
+  operatorDeckActive: false,
   smartSetupRunning: false,
 
   setPhase: (phase) => set({ phase }),
@@ -179,7 +186,27 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       }
     }
     void fetchAndHydrateDeckApiKey();
-    set({ phase: "cockpit", birthPhaseCommitted: false });
+    set({ phase: "cockpit", birthPhaseCommitted: false, operatorDeckActive: false });
+  },
+
+  enterOperatorDeck: () => {
+    void fetchAndHydrateDeckApiKey();
+    set({
+      phase: "cockpit",
+      operatorDeckActive: true,
+      setupReviewActive: false,
+      error: null,
+    });
+  },
+
+  returnToPhaseHub: () => {
+    set({
+      phase: "hub",
+      operatorDeckActive: false,
+      setupReviewActive: false,
+      error: null,
+    });
+    void get().refresh();
   },
 
   setStepIndex: (index) => set({ currentStepIndex: index }),
@@ -279,6 +306,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
               birthPhaseCommitted: get().birthPhaseCommitted,
               activating: false,
               setupReviewActive,
+              operatorDeckActive: get().operatorDeckActive,
             }),
       });
     } catch (err) {
@@ -332,6 +360,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
             birthPhaseCommitted: get().birthPhaseCommitted,
             activating: false,
             setupReviewActive: get().setupReviewActive,
+            operatorDeckActive: get().operatorDeckActive,
           }),
         });
       };

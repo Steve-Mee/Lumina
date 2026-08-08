@@ -307,6 +307,25 @@ def complete_certified_birth(
         curriculum_stages_passed=pipeline._host._stages_passed,
     )
 
+    # C1 residual: optional Perfect Birth auto-declare (default off, conjunction-gated).
+    auto_declare: dict[str, Any] = {"declared": False, "reason": "skipped"}
+    try:
+        from lumina_core.birth.perfect_birth_gate import maybe_auto_declare_perfect_birth
+
+        auto_declare = maybe_auto_declare_perfect_birth(
+            pipeline._host.workspace_root,
+            curriculum_cfg=curriculum_cfg,
+        )
+        if auto_declare.get("declared"):
+            logger.info(
+                "perfect_birth.auto_declare declared=%s passed=%s",
+                auto_declare.get("declared"),
+                auto_declare.get("passed"),
+            )
+    except Exception as exc:
+        logger.debug("perfect_birth.auto_declare_failed: %s", exc)
+        auto_declare = {"declared": False, "reason": f"error:{exc}"}
+
     target_policy = pipeline._host.final_policy_path
     return {
         "status": "completed",
@@ -317,4 +336,5 @@ def complete_certified_birth(
         "certificate_path": str(certificate_path(pipeline._host.workspace_root)),
         "eval": eval_result,
         "training_mode": training_mode,
+        "perfect_birth_auto_declare": auto_declare,
     }

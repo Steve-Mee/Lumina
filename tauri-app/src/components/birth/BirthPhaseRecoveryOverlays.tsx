@@ -14,6 +14,7 @@ import {
   warnOverlayPanelClass,
   warnOverlayTitleClass,
 } from "@/lib/modePresentation";
+import { recoveryOperatorHint } from "@/lib/birthRecoveryModel";
 import { cn } from "@/lib/utils";
 
 interface BirthPhaseRecoveryOverlaysProps {
@@ -194,6 +195,14 @@ export function BirthPhaseRecoveryOverlays({
                         ? "Manual action required — use Expand & retry or Review genesis settings below."
                         : "Recovery is not automatic for this stall state."}
               </p>
+              {(() => {
+                const hint = recoveryOperatorHint(status);
+                return hint ? (
+                  <p className="mt-2 rounded border border-amber-500/30 bg-amber-950/20 px-3 py-2 font-mono text-[10px] text-amber-100">
+                    H6 recovery: {hint}
+                  </p>
+                ) : null;
+              })()}
             </>
           }
           error={pollError}

@@ -56,7 +56,14 @@ def test_stage_loop_session_hosts_orchestration() -> None:
     runner = _SESSION_RUNNER.read_text(encoding="utf-8")
     assert "class StageLoopSessionRunnerMixin" in runner
     assert "def run(" in runner
-    assert "BirthBusClient" in runner
+    # BirthBusClient wiring lives in init/resume mixins after Wave H split.
+    birth_root = _SESSION.parent
+    bus_hosts = (
+        (birth_root / "stage_loop_session_phase_init.py").read_text(encoding="utf-8")
+        + (birth_root / "stage_loop_mixin_base.py").read_text(encoding="utf-8")
+        + runner
+    )
+    assert "BirthBusClient" in bus_hosts
 
 
 @pytest.mark.unit

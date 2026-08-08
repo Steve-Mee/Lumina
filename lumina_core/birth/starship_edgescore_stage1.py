@@ -22,8 +22,14 @@ def evaluate_stage1_edgescore(
     rolling_winrate: float | None = None,
     hold_ratio: float | None = None,
     ppo_steps: int = 0,
+    soft_block_rate_per_1k: float | None = None,
 ) -> EdgeScoreResult:
-    """Fail-closed Stage-1 EdgeScore. WR 45% is diagnostic only."""
+    """Fail-closed Stage-1 EdgeScore.
+
+    Birth survival mode (default): grade *reflex/survival* (legal plant, entropy,
+    loose expectancy) — not pro daytrader hygiene 35%. Skill floors apply when
+    ``birth_survival_pass_enabled`` is false (Playground+).
+    """
     trades_i = max(0, int(trades))
     wins_i = max(0, int(wins))
     winrate = float(wins_i) / float(max(1, trades_i))
@@ -33,11 +39,17 @@ def evaluate_stage1_edgescore(
     else:
         hold_ratio_v = float(hold_signals) / float(max(1, total_signals))
     hold_ratio = hold_ratio_v
-    hygiene = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35))
+    survival = bool(getattr(cfg, "birth_survival_pass_enabled", True))
+    if survival:
+        hygiene = float(getattr(cfg, "birth_survival_wr_floor", 0.20))
+        exp_floor = float(getattr(cfg, "birth_survival_expectancy_floor", -0.50))
+    else:
+        hygiene = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35))
+        exp_floor = float(getattr(cfg, "stage1_expectancy_floor", -0.15))
     hold_min = float(getattr(cfg, "stage1_hold_ratio_min", 0.05))
     hold_max = float(getattr(cfg, "stage1_hold_ratio_max", 0.85))
     entropy_floor = float(getattr(cfg, "stage1_entropy_floor", 0.05))
-    exp_floor = float(getattr(cfg, "stage1_expectancy_floor", -0.15))
+    plant_max = float(getattr(cfg, "birth_plant_soft_block_rate_max_per_1k", 100.0))
     expectancy = compute_expectancy_proxy(
         wins=wins_i,
         trades=trades_i,
@@ -56,6 +68,10 @@ def evaluate_stage1_edgescore(
     else:
         entropy_ok = float(entropy) >= entropy_floor
     expectancy_ok = expectancy >= exp_floor
+    if soft_block_rate_per_1k is None:
+        plant_ok = True
+    else:
+        plant_ok = float(soft_block_rate_per_1k) <= plant_max
 
     passed = bool(
         volume_ok
@@ -64,6 +80,7 @@ def evaluate_stage1_edgescore(
         and activity_ok
         and entropy_ok
         and expectancy_ok
+        and plant_ok
     )
     # Score in [0, 1] for swarm ranking / lift checks. WR term uses effective hygiene WR.
     effective_wr = max(winrate, float(roll))
@@ -83,7 +100,8 @@ def evaluate_stage1_edgescore(
     if not constitution_ok:
         blockers.append(f"constitution_violations={constitution_violations}")
     if not hygiene_ok:
-        blockers.append(f"hygiene wr {winrate:.1%}/{roll:.1%} < {hygiene:.0%}")
+        mode = "survival" if survival else "skill"
+        blockers.append(f"{mode} wr {winrate:.1%}/{roll:.1%} < {hygiene:.0%}")
     if not activity_ok:
         blockers.append(f"hold {hold_ratio:.1%} outside {hold_min:.0%}–{hold_max:.0%}")
     if not entropy_ok:
@@ -95,10 +113,15 @@ def evaluate_stage1_edgescore(
             blockers.append(f"entropy {float(entropy):.3f} < {entropy_floor:.3f}")
     if not expectancy_ok:
         blockers.append(f"expectancy {expectancy:.3f} < {exp_floor:.3f}")
+    if not plant_ok:
+        blockers.append(
+            f"plant soft_block_rate {float(soft_block_rate_per_1k):.1f}/1k > {plant_max:.0f}"
+        )
     message = (
         f"edgescore={score:.3f} wr={winrate:.1%} hold={hold_ratio:.1%} "
         f"exp={expectancy:.3f} entropy={entropy if entropy is not None else 'n/a'} "
         f"trades={trades_i}/{required}"
+        + (f" mode={'survival' if survival else 'skill'}")
         + (f" blockers={';'.join(blockers)}" if blockers else " PASS")
     )
     return EdgeScoreResult(

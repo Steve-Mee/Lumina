@@ -156,29 +156,73 @@ class CodeEvolutionConstitution:
         )
 
     def check_pre_promotion(
-        self, proposal: CodeMutationProposal, *, mode: str = "sim"
+        self,
+        proposal: CodeMutationProposal,
+        *,
+        mode: str = "sim",
+        sandbox_passed: bool = False,
+        apply_enabled: bool = False,
+        human_approved: bool = False,
+        twin_recommendation: bool = False,
+        allow_twin_judgment_apply: bool = False,
+        capital_mode: str | None = None,
     ) -> CodeGuardResult:
-        """v1 never promotes to live tree — always fail-closed on apply intent."""
+        """H5: allow promotion only to sandbox store under hard gates — never live tree/REAL.
+
+        Live repo / risk / broker paths remain forbidden. REAL-like capital always fails.
+        """
         base = self.check_pre_mutation(proposal, mode=mode)
-        if not base.passed:
-            return CodeGuardResult(
-                passed=False,
-                violations=base.violations,
-                check_phase="pre_promotion",
-                mode=mode,
-                proposal_id=proposal.proposal_id,
+        violations = list(base.violations)
+
+        def fatal(name: str, description: str, detail: str = "") -> None:
+            violations.append(
+                ConstitutionalViolation(
+                    principle_name=name,
+                    description=description,
+                    severity="fatal",
+                    detail=detail or description,
+                    mode=mode,
+                )
             )
-        # Explicit evaluate-only gate
-        block = ConstitutionalViolation(
-            principle_name="v1_evaluate_only",
-            description="Code evolution v1 forbids live apply/promotion",
-            severity="fatal",
-            detail="applied=False always in v1",
-            mode=mode,
-        )
+
+        cap = str(capital_mode if capital_mode is not None else mode).strip().lower()
+        if cap in {"real", "live", "prod", "production", "sim_real_guard"}:
+            fatal(
+                "no_live_tree_apply",
+                "Code evolution apply forbidden in REAL-like capital mode",
+                cap,
+            )
+
+        if not apply_enabled:
+            fatal(
+                "apply_disabled",
+                "Sandbox apply disabled (evaluate-only until apply_to_sandbox_store=true)",
+                "set evolution.code_evolution.apply_to_sandbox_store",
+            )
+
+        if not sandbox_passed:
+            fatal("requires_sandbox", "Sandbox must pass before apply", "sandbox_passed=False")
+
+        if not proposal.constitution_passed and not base.passed:
+            fatal("constitution_required", "Pre-mutation constitution must pass")
+
+        # Human marker preferred; twin judgment only when explicitly allowed
+        if not human_approved:
+            if not (allow_twin_judgment_apply and twin_recommendation):
+                fatal(
+                    "human_or_twin_required",
+                    "Human APPROVED marker or allowed twin judgment required for apply",
+                )
+
+        # Never claim live-tree apply
+        target = str(proposal.target or "")
+        if target not in ALLOWED_TARGETS:
+            fatal("no_live_tree_apply", "Target must be sandbox logical namespace", target)
+
+        passed = len([v for v in violations if v.severity == "fatal"]) == 0
         return CodeGuardResult(
-            passed=False,
-            violations=[block],
+            passed=passed,
+            violations=violations,
             check_phase="pre_promotion",
             mode=mode,
             proposal_id=proposal.proposal_id,

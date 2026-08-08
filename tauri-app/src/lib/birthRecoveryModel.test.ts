@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import type { BirthStatusPayload } from "@/lib/birthClient";
 import {
   detectBirthRecoveryKind,
+  readBirthRecoveryCompress,
+  recoveryOperatorHint,
   shouldAutoResumeBirth,
   verifyBirthWipeSucceeded,
 } from "@/lib/birthRecoveryModel";
@@ -65,5 +67,21 @@ describe("verifyBirthWipeSucceeded", () => {
       } as BirthStatusPayload,
     });
     expect(result.ok).toBe(false);
+  });
+
+  it("reads H6 compressed recovery and surfaces theater hint", () => {
+    const status = {
+      status: "stage_stalled",
+      progress: {
+        recovery: {
+          schema: "recovery_compress_v1",
+          active: "plateau",
+          theater: true,
+          next_action: "stop_auto_recovery_expand_or_manual",
+        },
+      },
+    } as BirthStatusPayload;
+    expect(readBirthRecoveryCompress(status)?.active).toBe("plateau");
+    expect(recoveryOperatorHint(status)).toContain("theater");
   });
 });

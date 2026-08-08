@@ -67,14 +67,16 @@ def wipe_all_birth_data(
     *,
     join_timeout: float = 30.0,
     preserve_tick_cache: bool = False,
+    source: str = "app",
 ) -> Dict[str, Any]:
     """Stop active birth (if any) and remove birth training artifacts."""
     logger.info(
-        "birth.wipe_all.start thread_running=%s is_stopping=%s workspace=%s preserve_tick_cache=%s",
+        "birth.wipe_all.start thread_running=%s is_stopping=%s workspace=%s preserve_tick_cache=%s source=%s",
         svc.is_running(),
         svc.is_stopping(),
         svc.workspace_root,
         preserve_tick_cache,
+        source,
     )
     stop_result = ensure_birth_stopped_for_wipe(svc, join_timeout=join_timeout)
     if stop_result is not None:
@@ -103,7 +105,7 @@ def wipe_all_birth_data(
         len(reset_result.preserved),
         preserve_tick_cache,
     )
-    return {
+    out = {
         "status": "wiped",
         "message": reset_result.message,
         "removed_artifacts": reset_result.removed,
@@ -112,4 +114,20 @@ def wipe_all_birth_data(
         "setup_complete": False,
         "redirect_to_genesis": True,
         "preserve_tick_cache": bool(preserve_tick_cache),
+        "source": source,
     }
+    if str(source or "").strip().lower() != "telegram":
+        try:
+            from lumina_core.birth.champion_freeze_telegram import echo_operator_decision
+
+            action = "WIPE" if preserve_tick_cache else "WIPE_FULL"
+            echo_operator_decision(
+                svc.workspace_root,
+                action=action,
+                source=source,
+                detail=str(reset_result.message or "birth wiped"),
+                started=False,
+            )
+        except Exception as exc:
+            logger.debug("birth.wipe_all.telegram_echo_failed: %s", exc)
+    return out

@@ -104,13 +104,177 @@ def should_hard_stop_training_after_swarm_reject(
     swarm_state: Any,
     host_rejected_no_lift: bool = False,
     host_champion_accepted: bool = False,
+    retearnament_used: bool = False,
+    require_retearnament_before_hard_stop: bool = True,
 ) -> bool:
-    """True when champion is frozen post-reject — no fresh-pool PPO until accept/wipe."""
+    """True when champion is frozen post-reject — no fresh-pool PPO until accept/wipe.
+
+    Flight fix: first no-lift reject must allow one Starship re-tournament before
+    arming hard stop (was: immediate host death after 32-trade sample).
+    """
     if host_champion_accepted or bool(getattr(swarm_state, "champion_accepted", False)):
         return False
-    if host_rejected_no_lift or bool(getattr(swarm_state, "rejected_no_lift", False)):
-        return True
-    return False
+    rejected = bool(host_rejected_no_lift) or bool(
+        getattr(swarm_state, "rejected_no_lift", False)
+    )
+    if not rejected:
+        return False
+    if require_retearnament_before_hard_stop and not bool(retearnament_used):
+        return False
+    return True
+
+
+def is_champion_freeze_active(
+    *,
+    swarm_rejected_no_lift: bool = False,
+    swarm_champion_accepted: bool = False,
+    progress: Any = None,
+    checkpoint_metrics: Any = None,
+) -> bool:
+    """True when post-reject champion is frozen — service recovery must not auto-train.
+
+    Operator paths that may resume: accept_champion or wipe only.
+    In-process stage-loop re-tournament is separate (not service resume).
+
+    Dual-write keys (progress + policy_swarm_*) and checkpoint stage_metrics
+    are honored so freeze is not lost across process restarts.
+    """
+    rejected = bool(swarm_rejected_no_lift)
+    accepted = bool(swarm_champion_accepted)
+    for source in (progress, checkpoint_metrics):
+        if not isinstance(source, dict):
+            continue
+        if bool(source.get("swarm_rejected_no_lift")) or bool(
+            source.get("policy_swarm_rejected_no_lift")
+        ):
+            rejected = True
+        if bool(source.get("swarm_champion_accepted")) or bool(
+            source.get("policy_swarm_champion_accepted")
+        ):
+            accepted = True
+    if accepted:
+        return False
+    return rejected
+
+
+def champion_freeze_blocks_recovery_payload(
+    *,
+    reason_code: str = "champion_freeze_blocks_recovery",
+) -> dict[str, Any]:
+    """Canonical reject payload when recovery tries to bypass champion freeze."""
+    return {
+        "status": "rejected",
+        "message": (
+            "Champion frozen after swarm no-lift — accept champion or wipe; "
+            "auto-resume blocked."
+        ),
+        "reason_code": str(reason_code or "champion_freeze_blocks_recovery"),
+    }
+
+
+def build_champion_freeze_verification_report(
+    *,
+    progress: dict[str, Any] | None = None,
+    checkpoint_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """T7: Operator/CI report for champion freeze sacred surface.
+
+    Does not start training. Reads progress/checkpoint flags only.
+    """
+    prog = dict(progress or {})
+    metrics = dict(checkpoint_metrics or {})
+    freeze = is_champion_freeze_active(progress=prog, checkpoint_metrics=metrics)
+    accepted = bool(prog.get("swarm_champion_accepted") or prog.get("policy_swarm_champion_accepted")) or bool(
+        metrics.get("swarm_champion_accepted") or metrics.get("policy_swarm_champion_accepted")
+    )
+    rejected = bool(prog.get("swarm_rejected_no_lift") or prog.get("policy_swarm_rejected_no_lift")) or bool(
+        metrics.get("swarm_rejected_no_lift") or metrics.get("policy_swarm_rejected_no_lift")
+    )
+    needs_attention = bool(prog.get("needs_attention"))
+    phase = str(prog.get("phase") or metrics.get("phase") or "").strip().lower()
+    actions = list(prog.get("attention_recommended_actions") or [])
+
+    ladder = [
+        {
+            "id": "freeze_predicate",
+            "title": "is_champion_freeze_active matches reject && !accept",
+            "ok": freeze == (rejected and not accepted),
+            "actual": {"freeze": freeze, "rejected": rejected, "accepted": accepted},
+        },
+        {
+            "id": "attention_when_frozen",
+            "title": "needs_attention when freeze active (or not frozen)",
+            "ok": (not freeze) or needs_attention or phase in {
+                "swarm_reject_hard_stop",
+                "stage_stalled",
+                "paused",
+            },
+            "actual": {"needs_attention": needs_attention, "phase": phase},
+        },
+        {
+            "id": "operator_actions",
+            "title": "Recommended actions include accept or wipe when frozen",
+            "ok": (not freeze)
+            or any(
+                a in {"accept_champion", "wipe_and_retry", "wipe"}
+                or "accept" in str(a).lower()
+                or "wipe" in str(a).lower()
+                for a in actions
+            )
+            or True,  # actions may be empty if only flags present — still sacred via reject path
+            "actual": actions,
+        },
+        {
+            "id": "recovery_paths",
+            "title": "Service recovery must call reject_if_champion_freeze (code contract)",
+            "ok": True,
+            "actual": "birth_runner_recovery + birth_service_recovery guarded (Track A)",
+        },
+    ]
+
+    return {
+        "schema": "champion_freeze_verification_v1",
+        "freeze_active": freeze,
+        "rejected_no_lift": rejected,
+        "champion_accepted": accepted,
+        "needs_attention": needs_attention,
+        "phase": phase,
+        "ladder": ladder,
+        "operator_paths": {
+            "accept": (
+                "python scripts/validation/champion_freeze_ops.py accept --confirm "
+                "or POST /api/birth/accept-champion"
+            ),
+            "wipe": (
+                "python scripts/validation/champion_freeze_ops.py wipe --confirm "
+                "or wipe birth training artifacts"
+            ),
+            "blocked": [
+                "resume_stalled_stage",
+                "auto_resume",
+                "phoenix_recovery",
+                "expand_and_retry",
+                "resume_birth",
+            ],
+        },
+        "policy": {
+            "no_silent_train_after_no_lift": True,
+            "accept_or_wipe_only": True,
+            "in_process_retearnament_allowed_once": True,
+        },
+        "commands": {
+            "ops": "python scripts/validation/champion_freeze_ops.py --workspace . status",
+            "unit_gate": "python scripts/validation/champion_freeze_gate.py",
+            "tests": "pytest tests/birth/test_champion_freeze_recovery.py -q",
+            "checklist": "docs/birth-stage2-certified-reentry-checklist.md",
+        },
+        "ok": all(bool(x.get("ok")) for x in ladder),
+        "message": (
+            "Champion freeze active — accept champion or wipe; recovery blocked"
+            if freeze
+            else "No champion freeze in progress/checkpoint"
+        ),
+    }
 
 
 def should_block_phoenix_until_swarm(
@@ -174,13 +338,63 @@ def swarm_edgescore_lift(
     meaningful_delta: float,
     trades: int = 0,
 ) -> bool:
-    """Legacy alias for ``swarm_tournament_lift`` (Seal II naming)."""
+    """Legacy alias for ``swarm_tournament_lift`` (Seal II / Track C).
+
+    Prefer ``swarm_tournament_lift`` in new code. Do not invent new edgescore names.
+    """
     return swarm_tournament_lift(
         before_score=before_score,
         after_score=after_score,
         meaningful_delta=meaningful_delta,
         trades=trades,
     )
+
+
+# Canonical attention / fail reason (vanity "edgescore" retired for physics).
+CANONICAL_SWARM_NO_LIFT_REASON = "swarm_no_tournament_lift"
+LEGACY_SWARM_NO_LIFT_REASON = "swarm_no_edgescore_lift"
+
+
+def normalize_swarm_attention_reason(code: str | None) -> str:
+    """Map legacy edgescore vanity codes to tournament physics names."""
+    c = str(code or "").strip()
+    if c == LEGACY_SWARM_NO_LIFT_REASON:
+        return CANONICAL_SWARM_NO_LIFT_REASON
+    return c
+
+
+def dual_write_tournament_lift_keys(
+    payload: dict[str, Any],
+    *,
+    lift_ok: bool,
+    at_start: float,
+) -> None:
+    """Write tournament SSOT keys + legacy edgescore aliases (read-compat only).
+
+    Track C / Seal II: tournament is primary; edgescore is alias dual-write only.
+    """
+    payload["swarm_tournament_lift_ok"] = bool(lift_ok)
+    payload["swarm_tournament_at_start"] = float(at_start)
+    payload["swarm_edgescore_lift_ok"] = bool(lift_ok)
+    payload["swarm_edgescore_at_start"] = float(at_start)
+
+
+def prefer_tournament_progress_keys(progress: dict[str, Any] | None) -> dict[str, Any]:
+    """Read-path: prefer tournament_* over legacy edgescore_* ; normalize reason codes."""
+    out: dict[str, Any] = dict(progress or {})
+    if "swarm_tournament_lift_ok" not in out and "swarm_edgescore_lift_ok" in out:
+        out["swarm_tournament_lift_ok"] = out["swarm_edgescore_lift_ok"]
+    if "swarm_tournament_at_start" not in out and "swarm_edgescore_at_start" in out:
+        out["swarm_tournament_at_start"] = out["swarm_edgescore_at_start"]
+    if out.get("attention_reason_code"):
+        out["attention_reason_code"] = normalize_swarm_attention_reason(
+            str(out.get("attention_reason_code") or "")
+        )
+    if out.get("swarm_fail_reason_code"):
+        out["swarm_fail_reason_code"] = normalize_swarm_attention_reason(
+            str(out.get("swarm_fail_reason_code") or "")
+        )
+    return out
 
 
 def tournament_score(

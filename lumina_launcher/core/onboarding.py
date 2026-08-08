@@ -14,7 +14,7 @@ OnboardingStepId = Literal[
     "birth",
 ]
 
-AppSurface = Literal["setup", "birth", "deck"]
+AppSurface = Literal["setup", "birth", "hub", "deck"]
 AppSurfaceReason = Literal[
     "fresh_install",
     "setup_incomplete",
@@ -24,6 +24,7 @@ AppSurfaceReason = Literal[
     "birth_error",
     "certificate_failed",
     "birth_complete",
+    "maturation_hub",
     "backend_unreachable",
 ]
 
@@ -127,7 +128,7 @@ def should_skip_wizard(
     backend_reachable: bool = True,
     certificate_ok: bool | None = None,
 ) -> bool:
-    """True when the user can enter the Command Deck without the wizard (fail-closed on artifacts)."""
+    """True when wizard can be skipped (hub or deck after birth; fail-closed on artifacts)."""
     surface, _ = resolve_app_surface(
         setup_complete=setup_complete,
         birth_status=birth_status,
@@ -136,7 +137,7 @@ def should_skip_wizard(
         backend_reachable=backend_reachable,
         required_steps=required_steps,
     )
-    return surface == "deck"
+    return surface in ("hub", "deck")
 
 
 def _has_pending_setup_steps(required_steps: list[OnboardingStepId]) -> bool:
@@ -175,7 +176,9 @@ def resolve_app_surface(
             return "birth", "certificate_failed"
         return "birth", "birth_pending"
 
-    return "deck", "birth_complete"
+    # Post-birth home is Phase Hub (checkpoint + learned + next steps).
+    # Operator opens Command Deck from hub; deck is no longer cold-start default.
+    return "hub", "maturation_hub"
 
 
 def extract_env_diagnostics(env_values: dict[str, str] | None = None) -> dict[str, Any]:

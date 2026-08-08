@@ -125,16 +125,32 @@ def mark_user_stopped_progress(svc: Any) -> None:
             svc.pause_flag_path.unlink()
     except OSError:
         logger.warning("birth.user_stop.pause_clear_failed", exc_info=True)
-    try:
-        from lumina_core.notifications.attention_events import birth_interrupted_event
-        from lumina_core.notifications.operator_notifier import notify_problem
+    # Never block stop HTTP on Telegram / notifier latency.
+    detail = str(payload.get("message", "") or "")
+    root = svc.workspace_root
 
-        notify_problem(
-            birth_interrupted_event(detail=str(payload.get("message", "") or "")),
-            workspace_root=svc.workspace_root,
-        )
-    except Exception as exc:
-        logger.warning("birth.interrupted_attention_failed: %s", exc)
+    def _notify_interrupted() -> None:
+        try:
+            from lumina_core.notifications.attention_events import birth_interrupted_event
+            from lumina_core.notifications.operator_notifier import notify_problem
+
+            notify_problem(
+                birth_interrupted_event(detail=detail),
+                workspace_root=root,
+            )
+        except Exception as exc:
+            logger.warning("birth.interrupted_attention_failed: %s", exc)
+
+    try:
+        import threading
+
+        threading.Thread(
+            target=_notify_interrupted,
+            name="birth-stop-notify",
+            daemon=True,
+        ).start()
+    except Exception:
+        _notify_interrupted()
 
 
 def reconcile_orphaned_birth_progress(svc: Any) -> bool:

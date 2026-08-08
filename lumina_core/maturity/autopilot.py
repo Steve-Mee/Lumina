@@ -27,40 +27,15 @@ def _workspace_root() -> Path:
 
 
 def _shadow_gate_passed_from_audit(workspace_root: Path) -> tuple[bool, dict[str, Any]]:
-    audit_path = workspace_root / "state" / "promotion_gate_audit.jsonl"
-    if not audit_path.is_file():
-        return False, {}
-    try:
-        lines = [ln.strip() for ln in audit_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
-        for line in reversed(lines[-50:]):
-            import json
+    from lumina_core.maturity.shadow_helpers import shadow_gate_passed_from_audit
 
-            row = json.loads(line)
-            if not isinstance(row, dict):
-                continue
-            promoted = bool(row.get("promoted") or row.get("passed") or row.get("shadow_passed"))
-            if promoted:
-                return True, row
-    except Exception as exc:
-        logger.debug("maturity.autopilot.audit_read_failed: %s", exc)
-    return False, {}
+    return shadow_gate_passed_from_audit(workspace_root)
 
 
 def _run_shadow_promotion_gate(workspace_root: Path) -> bool:
-    try:
-        passed, metadata = _shadow_gate_passed_from_audit(workspace_root)
-        if passed:
-            from lumina_core.maturity.milestone_hooks import hook_promotion_gate_passed
+    from lumina_core.maturity.shadow_helpers import run_shadow_promotion_gate
 
-            hook_promotion_gate_passed(
-                workspace_root,
-                mode=str(metadata.get("mode", "") or ""),
-                dna_hash=str(metadata.get("dna_hash", "") or ""),
-            )
-        return passed
-    except Exception as exc:
-        logger.debug("maturity.autopilot.shadow_failed: %s", exc)
-        return False
+    return run_shadow_promotion_gate(workspace_root)
 
 
 def _sync_playground_milestones(workspace_root: Path) -> None:
@@ -97,7 +72,7 @@ def _maybe_notify_real_ready(workspace_root: Path) -> None:
 
 
 def run_maturation_autopilot_tick(workspace_root: Path | str | None = None) -> dict[str, Any]:
-    """Single autopilot cycle: sync milestones, stability, shadow gate."""
+    """Single autopilot cycle: sync milestones, stability, shadow gate, telegram advance."""
     root = Path(workspace_root or _workspace_root())
     _sync_playground_milestones(root)
     try:
@@ -106,6 +81,38 @@ def run_maturation_autopilot_tick(workspace_root: Path | str | None = None) -> d
         sync_stability_milestone(root)
     except Exception as exc:
         logger.debug("maturity.autopilot.stability_sync_failed: %s", exc)
+
+    # Clear expired telegram advance tokens (fail-closed TTL)
+    expired_clear: dict[str, Any] = {}
+    try:
+        from lumina_core.maturity.continuum import clear_expired_pending_advance
+
+        expired_clear = clear_expired_pending_advance(root)
+    except Exception as exc:
+        logger.debug("maturity.autopilot.expire_pending_failed: %s", exc)
+
+    # Telegram: champion freeze ACCEPT/WIPE (remote autonomy) + phase advance
+    telegram_actions: list[dict[str, Any]] = []
+    try:
+        from lumina_core.birth.champion_freeze_telegram import maybe_poll_freeze_telegram
+        from lumina_core.maturity.continuum import load_continuum
+        from lumina_core.notifications.telegram_notifier import TelegramNotifier
+
+        freeze_actions = maybe_poll_freeze_telegram(root) or []
+        if freeze_actions:
+            telegram_actions.extend(freeze_actions)
+        continuum = load_continuum(root)
+        if continuum.get("advance_mode") == "telegram" and continuum.get("pending_advance"):
+            tg = TelegramNotifier()
+            if hasattr(tg, "configure_workspace"):
+                tg.configure_workspace(root)  # type: ignore[attr-defined]
+            else:
+                setattr(tg, "_workspace_root", root)
+            phase_actions = tg.poll_for_replies() or []
+            if phase_actions:
+                telegram_actions.extend(phase_actions)
+    except Exception as exc:
+        logger.debug("maturity.autopilot.telegram_poll_failed: %s", exc)
 
     progress = load_maturation_progress(root)
     reached = set(progress.milestones_reached)
@@ -123,6 +130,8 @@ def run_maturation_autopilot_tick(workspace_root: Path | str | None = None) -> d
         "blockers": blockers,
         "shadow_gate_passed": shadow_ok,
         "required": list(REAL_ELIGIBILITY_MILESTONES),
+        "telegram_actions": telegram_actions,
+        "expired_pending": expired_clear,
     }
 
 

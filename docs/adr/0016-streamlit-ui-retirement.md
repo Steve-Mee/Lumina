@@ -43,7 +43,16 @@ Bootstrap and `python -m lumina_launcher` no longer start Streamlit; they point 
 
 - ADR-0011: Tauri lifecycle gate SSOT
 
+## Freeze archive (T13 · 2026-08-07)
+
+The optional Vite SPA at `frontend/` is a **frozen archive** after Tauri tournament-naming parity (T12):
+
+- Marker: [`frontend/FROZEN.md`](../../frontend/FROZEN.md)
+- Policy: no new operator features; security/build fixes only
+- Delete of `frontend/` remains an explicit future decision (not automated)
+
 ## References
 
 - [launcher_feature_parity_registry.md](../launcher_feature_parity_registry.md)
 - [command-deck-startup-runbook.md](../command-deck-startup-runbook.md)
+- [starship-birth.md](../starship-birth.md) § Tauri tournament naming (T12)

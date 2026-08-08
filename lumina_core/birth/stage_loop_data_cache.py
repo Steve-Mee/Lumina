@@ -18,12 +18,18 @@ from lumina_core.birth.data_expansion import (
     expansion_ladder_at_max,
 )
 from lumina_core.birth.news_enricher import enrich_ticks_with_news
-from lumina_core.birth.pattern_miner import mine_winning_patterns
 from lumina_core.birth.stall_remediation import curate_buffer_top_quartile
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_loop_data_cache")
+
+
+def _mine_winning_patterns(**kwargs: Any) -> Any:
+    """Late-bound so tests can monkeypatch stage_training_loop.mine_winning_patterns."""
+    from lumina_core.birth import stage_training_loop as _compat
+
+    return _compat.mine_winning_patterns(**kwargs)
 
 
 class StageLoopDataCacheMixin(StageLoopMixinBase):
@@ -84,7 +90,7 @@ class StageLoopDataCacheMixin(StageLoopMixinBase):
         if len(pool) < 80 and self.active_train:
             pool = list(self.active_train)
         hold = max(int(self.cur_cfg.oracle_max_hold_bars), 180)
-        mine_result = mine_winning_patterns(
+        mine_result = _mine_winning_patterns(
             ticks=pool,
             stage=self.stage,
             runtime=self.host.runtime,

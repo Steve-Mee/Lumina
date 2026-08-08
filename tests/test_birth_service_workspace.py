@@ -19,6 +19,9 @@ from tests.birth.test_certificate_fast_path import _seed_certificate_failed_chec
 
 birth_service_module = importlib.import_module("lumina_launcher.services.birth_service")
 birth_runner_start_module = importlib.import_module("lumina_launcher.services.birth_runner_start")
+birth_runner_preflight_module = importlib.import_module(
+    "lumina_launcher.services.birth_runner_preflight"
+)
 birth_runner_wipe_module = importlib.import_module("lumina_launcher.services.birth_runner_wipe")
 birth_status_enricher_module = importlib.import_module(
     "lumina_launcher.services.birth_status_enricher"
@@ -320,6 +323,8 @@ def test_preflight_historical_data_does_not_raise_name_error(
 
     monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
     monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_preflight_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_preflight_module, "_bind_headless_runtime_app", lambda _c: None)
 
     ok, msg = svc._preflight_historical_data(30)
     assert isinstance(ok, bool)
@@ -768,13 +773,14 @@ def test_sanitize_preserves_swarm_no_lift_attention(tmp_path: Path) -> None:
         "stage": "training_running",
         "needs_attention": True,
         "attention_summary": "Swarm tournament produced no EdgeScore lift",
-        "attention_reason_code": "swarm_no_edgescore_lift",
+        "attention_reason_code": "swarm_no_edgescore_lift",  # legacy vanity input
         "swarm_rejected_no_lift": True,
         "user_initiated_stop": False,
     }
     sanitized = svc._sanitize_running_progress(progress)
     assert sanitized.get("needs_attention") is True
-    assert sanitized.get("attention_reason_code") == "swarm_no_edgescore_lift"
+    # Track C: normalize legacy edgescore reason → tournament physics name
+    assert sanitized.get("attention_reason_code") == "swarm_no_tournament_lift"
     assert sanitized.get("swarm_rejected_no_lift") is True
     BirthService._instance = None  # type: ignore[attr-defined]
 
@@ -845,11 +851,46 @@ def test_stop_birth_sets_pause_flag_when_progress_active(
     svc.configure_workspace(tmp_path)
     result = svc.stop_birth()
     assert result["status"] in {"stopping", "stopped"}
+    assert "checkpoint_resumable" in result
     progress = svc._load_progress()
     assert progress.get("user_initiated_stop") is True
     # Starship pause SSOT: paused (not restart_required) on both progress files.
     assert progress.get("stage") == "paused"
     assert progress.get("phase") == "paused"
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_stop_birth_marks_paused_before_slow_thread_join(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """UI must see pause SSOT without waiting for full PPO thread drain."""
+    BirthService._instance = None  # type: ignore[attr-defined]
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "state" / "lumina_birth_progress.json").write_text(
+        '{"stage": "training_running", "phase": "ppo_training", "timestamp": "2099-01-01T00:00:00+00:00"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(BirthService, "reconcile_orphaned_birth_progress", lambda self: False)
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+
+    class _SlowThread:
+        def is_alive(self) -> bool:
+            return True
+
+        def join(self, timeout: float | None = None) -> None:
+            # Would block UI if mark_user_stopped waited for join.
+            import time
+
+            time.sleep(min(0.05, float(timeout or 0.05)))
+
+    svc._thread = _SlowThread()  # type: ignore[assignment]
+    result = svc.stop_birth(join_timeout=0.05)
+    assert result["status"] == "stopping"
+    progress = svc._load_progress()
+    assert progress.get("user_initiated_stop") is True
+    assert progress.get("stage") == "paused"
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -965,6 +1006,59 @@ def test_auto_resume_blocked_for_needs_attention(tmp_path: Path, monkeypatch: py
     monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
     svc.configure_workspace(ws)
     assert calls["n"] == 0
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_auto_resume_blocked_for_champion_freeze_even_when_autonomous(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Swarm no-lift freeze is sacred: no silent train even if autonomous recovery is on."""
+    BirthService._instance = None  # type: ignore[attr-defined]
+    ws = tmp_path / "repo"
+    state = ws / "state"
+    state.mkdir(parents=True)
+    (ws / "config.yaml").write_text(
+        "birth_v2:\n  curriculum:\n    autonomous_recovery_enabled: true\n",
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_progress.json").write_text(
+        json.dumps(
+            {
+                "stage": "stage_stalled",
+                "phase": "swarm_reject_hard_stop",
+                "retryable": True,
+                "needs_attention": True,
+                "swarm_rejected_no_lift": True,
+                "attention_recommended_actions": ["accept_champion", "wipe_and_retry"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_checkpoint.json").write_text(
+        json.dumps(
+            {
+                "phase": "stage_stalled",
+                "version": 3,
+                "stage_metrics": {"swarm_rejected_no_lift": True},
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls = {"n": 0}
+
+    def _fake_resume(target_trades: int | None = None) -> dict[str, str]:
+        _ = target_trades
+        calls["n"] += 1
+        return {"status": "started"}
+
+    svc = BirthService()
+    monkeypatch.setattr(svc, "resume_stalled_stage", _fake_resume)
+    monkeypatch.setattr(svc, "_curriculum_integrity_audit", lambda: (True, []))
+    monkeypatch.setattr(svc, "reconcile_orphaned_birth_progress", lambda: None)
+    svc.configure_workspace(ws)
+    assert calls["n"] == 0
+    assert svc._should_auto_resume_stalled_birth(svc._load_progress()) is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
 

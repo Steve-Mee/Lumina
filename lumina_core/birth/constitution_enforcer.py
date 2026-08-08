@@ -78,7 +78,8 @@ class ConstitutionEnforcer:
         # Hard abort only on explicit hard severities. Certificate still uses guard counts.
         if severity not in _HARD_SEVERITIES:
             self._soft_logged += 1
-            if self._soft_logged <= 3 or self._soft_logged % 100 == 0:
+            # P2: throttle WARN noise (first 3 + every 500) — soft path is training signal.
+            if self._soft_logged <= 3 or self._soft_logged % 500 == 0:
                 logger.warning(
                     "birth.constitution.soft_violation principle=%s severity=%s count=%s detail=%s",
                     v.principle_name,

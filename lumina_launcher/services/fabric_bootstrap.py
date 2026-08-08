@@ -118,10 +118,39 @@ def run_fabric_bootstrap(workspace_root: Path, config_manager: Any) -> dict[str,
     token = ensure_fabric_token_in_env(config_manager)
     fabric_json = write_fabric_json_defaults()
     deploy = deploy_fabric_addons(workspace_root)
+    simhost: dict[str, Any] = {"ok": False, "status": "skipped"}
+    try:
+        from lumina_launcher.services.fabric_simhost import ensure_simhost_token_aligned
+        from lumina_launcher.services.setup_persist_fabric import fabric_json_path
+        import json
+
+        host, port, account = "127.0.0.1", 50051, "Sim101"
+        path = fabric_json_path()
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
+                if isinstance(data, dict):
+                    host = str(data.get("BindHost") or host)
+                    port = int(data.get("BindPort") or port)
+                    account = str(data.get("AccountName") or account)
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                pass
+        simhost = ensure_simhost_token_aligned(
+            host=host,
+            port=port,
+            token=token,
+            account=account,
+            workspace_root=workspace_root,
+            wait_sec=8.0,
+        )
+    except Exception as exc:
+        logger.warning("fabric.bootstrap.simhost_failed: %s", exc)
+        simhost = {"ok": False, "status": "error", "message": str(exc)}
     return {
         "token_ready": bool(token),
         "token_length": len(token),
         "fabric_json": str(fabric_json),
         "deploy": deploy,
         "gateway_mode": "sim",
+        "simhost": simhost,
     }

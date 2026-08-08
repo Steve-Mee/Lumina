@@ -69,3 +69,23 @@ class GateEntryPayload(BaseModel):
     mode: str
     order_side: str | None = None
 
+
+class AdmissionLineageCheckedPayload(BaseModel):
+    """T10: Broker-bridge capital aperture lineage check (admit or reject).
+
+    Complements admission.gate_entry (order gatekeeper) with durable bus provenance
+    on the Final Arbitration / ensure_order_lineage path.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision_context_id: str | None = None
+    mode: str
+    symbol: str = ""
+    side: str = ""
+    quantity: int = Field(default=0, ge=0)
+    prev_hash: str | None = None
+    reason: str = ""
+    stage: str = "capital_aperture_admission"
+    timestamp: str | None = None
+

@@ -230,26 +230,36 @@ class ApprovalTwinBusObserveMixin:
             self.agreements += 1
         else:
             self.disagreements += 1
-        try:
-            logger.info(
-                "twin.shadow_observation",
-                extra={
-                    "event_data": {
-                        "event": "twin.shadow_observation",
-                        "dna_hash": dna_hash,
-                        "source_topic": source_topic,
-                        "twin_recommendation": twin_recommendation,
-                        "observed_allowed_or_pass": observed_allowed_or_pass,
-                        "agreed": agreed,
-                        "confidence": confidence,
-                        "risk_flags": risk_flags,
-                        "mode": self._mode,
-                        "explanation": explanation,
-                    }
-                },
-            )
-        except Exception:
-            pass
+        # P2: sample twin INFO logs — disagreements / risk flags always; else 1/50.
+        # Full durable metrics still recorded below (promotion evidence SSOT).
+        _log_this = (
+            (not agreed)
+            or bool(risk_flags)
+            or self.observations_total <= 3
+            or self.observations_total % 50 == 0
+        )
+        if _log_this:
+            try:
+                logger.info(
+                    "twin.shadow_observation",
+                    extra={
+                        "event_data": {
+                            "event": "twin.shadow_observation",
+                            "dna_hash": dna_hash,
+                            "source_topic": source_topic,
+                            "twin_recommendation": twin_recommendation,
+                            "observed_allowed_or_pass": observed_allowed_or_pass,
+                            "agreed": agreed,
+                            "confidence": confidence,
+                            "risk_flags": risk_flags,
+                            "mode": self._mode,
+                            "explanation": explanation,
+                            "observations_total": self.observations_total,
+                        }
+                    },
+                )
+            except Exception:
+                pass
         if shadow_pnl is not None:
             try:
                 twin_attr("record_shadow_twin_alignment_monitoring", record_shadow_twin_alignment_monitoring)(

@@ -60,6 +60,68 @@ export function formatBirthEdgeScorePercent(
 }
 
 /**
+ * Champion EdgeScore is only frozen after pass-gate volume.
+ * Backend used to publish 0.0 before lock → UI showed a fake "0%".
+ */
+export function formatBirthChampionEdgeScore(progress: {
+  best_edgescore?: number | null;
+  best_edgescore_at_trade?: number | null;
+  edgescore_champion_min_trades?: number | null;
+  edgescore_champion_locked?: boolean | null;
+  stage_trades?: number | null;
+  stage_pass_gate_trades?: number | null;
+  stage_target_trades?: number | null;
+  swarm_rejected_no_lift?: boolean | null;
+  policy_swarm_rejected_no_lift?: boolean | null;
+}): { value: string; hint: string; tone: "default" | "ok" | "warn" } {
+  const locked = progress.edgescore_champion_locked === true;
+  const best = progress.best_edgescore;
+  const atTrade = Number(progress.best_edgescore_at_trade ?? 0);
+  const hasLockedScore =
+    locked ||
+    (best != null && Number.isFinite(best) && Number(best) > 0 && atTrade > 0);
+
+  const swarmReject =
+    progress.swarm_rejected_no_lift === true ||
+    progress.policy_swarm_rejected_no_lift === true;
+
+  if (hasLockedScore) {
+    return {
+      value: formatBirthEdgeScorePercent(best),
+      hint: swarmReject
+        ? "frozen after swarm — no tournament lift"
+        : atTrade > 0
+          ? `best this stage @ ${atTrade.toLocaleString()} trades`
+          : "best EdgeScore this stage",
+      tone: swarmReject ? "warn" : "ok",
+    };
+  }
+
+  const stageTrades = Math.max(0, Number(progress.stage_trades ?? 0));
+  const minTrades = Math.max(
+    1,
+    Number(
+      progress.edgescore_champion_min_trades ??
+        progress.stage_pass_gate_trades ??
+        progress.stage_target_trades ??
+        200,
+    ),
+  );
+  if (stageTrades < minTrades) {
+    return {
+      value: "—",
+      hint: `locks after ${minTrades.toLocaleString()} stage trades (${stageTrades.toLocaleString()} now)`,
+      tone: "default",
+    };
+  }
+  return {
+    value: "—",
+    hint: "no champion locked yet",
+    tone: "default",
+  };
+}
+
+/**
  * Expectancy proxy is WR−50% on [-0.5, 0.5] (e.g. -0.17 => -17%).
  * Reject legacy USD-mean leftovers (|value| ≫ 0.5) so UI never shows -149358%.
  */

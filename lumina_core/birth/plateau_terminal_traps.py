@@ -189,6 +189,58 @@ def detect_over_trading_trap(
     return range_round_trips >= int(min_trips * trip_multiplier)
 
 
+def detect_under_activity_trap(
+    *,
+    range_flat_ratio: float,
+    range_total_signals: int,
+    stage_trades: int,
+    required: int,
+    velocity_stall: bool,
+    cfg: BirthCurriculumConfig,
+) -> bool:
+    """Stage 2: chronic flat position above pass band (under-participation).
+
+    Opposite of over-trading: policy stays flat (~95%+) and never restores the
+    30–70% flat band. Detect after volume gate (or on velocity stall) so
+    explore/participation pressure runs before swarm escalation.
+    """
+    min_signals = int(getattr(cfg, "under_activity_min_range_signals", 50) or 50)
+    if int(range_total_signals) < max(1, min_signals):
+        return False
+    past_gate = int(required) > 0 and int(stage_trades) >= int(required)
+    if not past_gate and not velocity_stall:
+        return False
+    high = float(getattr(cfg, "under_activity_flat_threshold", 0.70) or 0.70)
+    return float(range_flat_ratio) > high
+
+
+def stage2_should_defer_swarm_for_flat_band(
+    *,
+    range_flat_ratio: float,
+    range_total_signals: int,
+    stage_trades: int,
+    required: int,
+    evolution_step: int,
+    cfg: BirthCurriculumConfig,
+) -> bool:
+    """True when Stage2 flat-band failure must remediate before swarm tournament.
+
+    Keeps swarm-first for Stage1/3; Stage2 treats flat-band survival as primary
+    until ``stage2_flat_band_swarm_defer_steps`` evolution steps have run.
+    """
+    min_signals = int(getattr(cfg, "under_activity_min_range_signals", 50) or 50)
+    if int(range_total_signals) < max(1, min_signals):
+        return False
+    if int(required) > 0 and int(stage_trades) < int(required):
+        return False
+    flat = float(range_flat_ratio)
+    in_band = 0.30 - 1e-12 <= flat <= 0.70 + 1e-12
+    if in_band:
+        return False
+    defer_steps = int(getattr(cfg, "stage2_flat_band_swarm_defer_steps", 2) or 2)
+    return int(evolution_step) < max(0, defer_steps)
+
+
 def adaptation_stuck_escape_allowed(
     *,
     escapes_used: int,

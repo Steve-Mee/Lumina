@@ -9,7 +9,7 @@ from lumina_core.birth.curriculum import (
     update_stage1_intra_state,
     update_stage2_intra_state,
 )
-from lumina_core.birth.sim_runner import run_policy_rollout
+
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 from lumina_core.birth.stage_loop_rollout_post import StageLoopRolloutPostMixin
 from lumina_core.birth.stage_loop_rollout_pre import StageLoopRolloutPreMixin, RolloutPreState
@@ -17,6 +17,13 @@ from lumina_core.birth.stage_loop_rollout_tail import StageLoopRolloutTailMixin
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_loop_rollout_cycle")
+
+
+def _run_policy_rollout(**kwargs: Any) -> Any:
+    """Late-bound so tests can monkeypatch stage_training_loop.run_policy_rollout."""
+    from lumina_core.birth import stage_training_loop as _compat
+
+    return _compat.run_policy_rollout(**kwargs)
 
 
 class StageLoopRolloutCycleMixin(
@@ -57,7 +64,7 @@ class StageLoopRolloutCycleMixin(
         pre: RolloutPreState,
     ) -> tuple[Any, float, float, float, float]:
         rollout_started_at = time.time()
-        rollout = run_policy_rollout(
+        rollout = _run_policy_rollout(
             runtime=self.host.runtime,
             data=active_ticks,
             policy=self.host.current_policy,
@@ -70,10 +77,42 @@ class StageLoopRolloutCycleMixin(
             escalation_level=self.escalation_level,
             hold_cap_ratio=pre.hold_cap,
             position_flat_cap=pre.position_flat_cap,
+            position_flat_floor=pre.position_flat_floor,
             range_patience_active=pre.range_patience_active,
             plateau_active=pre.plateau_recovery,
             on_progress=pre.progress_cb,
             reward_override=pre.reward_override,
+            participation_envelope_enabled=bool(
+                getattr(pre, "participation_envelope_enabled", False)
+            ),
+            participation_min_signals=int(
+                getattr(pre, "participation_min_signals", 50) or 50
+            ),
+            participation_min_dwell_bars=int(
+                getattr(pre, "participation_min_dwell_bars", 8) or 8
+            ),
+            participation_band_lo=float(getattr(pre, "participation_band_lo", 0.30) or 0.30),
+            participation_band_hi=float(getattr(pre, "participation_band_hi", 0.70) or 0.70),
+            participation_hysteresis=float(
+                getattr(pre, "participation_hysteresis", 0.02) or 0.02
+            ),
+            participation_stop_pct=float(
+                getattr(pre, "participation_stop_pct", 0.0075) or 0.0075
+            ),
+            participation_target_pct=float(
+                getattr(pre, "participation_target_pct", 0.015) or 0.015
+            ),
+            participation_qty_frac=float(
+                getattr(pre, "participation_qty_frac", 0.15) or 0.15
+            ),
+            stage_range_flat_bars=int(getattr(pre, "stage_range_flat_bars", 0) or 0),
+            stage_range_total_signals=int(
+                getattr(pre, "stage_range_total_signals", 0) or 0
+            ),
+            expectancy_gap=float(getattr(pre, "expectancy_gap", 0.0) or 0.0),
+            stage2_expectancy_floor=float(
+                getattr(pre, "stage2_expectancy_floor", -0.15) or -0.15
+            ),
         )
         self.rollout_wall_clock_total_sec += max(0.0, time.time() - rollout_started_at)
         self.rollout_wall_clock_samples += 1
@@ -88,6 +127,22 @@ class StageLoopRolloutCycleMixin(
         self.stage_range_flat_bars += rollout.range_flat_bars
         self.stage_range_round_trips += rollout.range_round_trips
         self.host.cumulative_trades += rollout.trades
+        # Stage2 participation envelope telemetry (cumulative within stage).
+        self.participation_force_open = int(
+            getattr(self, "participation_force_open", 0) or 0
+        ) + int(getattr(rollout, "participation_force_open", 0) or 0)
+        self.participation_force_hold = int(
+            getattr(self, "participation_force_hold", 0) or 0
+        ) + int(getattr(rollout, "participation_force_hold", 0) or 0)
+        self.participation_force_flat = int(
+            getattr(self, "participation_force_flat", 0) or 0
+        ) + int(getattr(rollout, "participation_force_flat", 0) or 0)
+        self.participation_overrides_total = int(
+            getattr(self, "participation_overrides_total", 0) or 0
+        ) + int(getattr(rollout, "participation_overrides_total", 0) or 0)
+        self.participation_last_mode = str(
+            getattr(rollout, "participation_last_mode", "") or "PASSTHROUGH"
+        )
         # Raptor v10: count train laps for adaptation_stuck debounce.
         self.rollouts_since_last_adaptation = int(
             getattr(self, "rollouts_since_last_adaptation", 0) or 0
@@ -143,12 +198,16 @@ class StageLoopRolloutCycleMixin(
             flat_delta = range_flat_ratio - self.last_range_flat_ratio
             logger.info(
                 "birth.stage2.rollout_metrics rollout_flat=%.4f stage_flat=%.4f delta=%+.4f "
-                "round_trips=%s trades=%s",
+                "round_trips=%s trades=%s force_open=%s force_hold=%s force_flat=%s overrides=%s",
                 rollout_flat,
                 range_flat_ratio,
                 flat_delta,
                 rollout.range_round_trips,
                 rollout.trades,
+                int(getattr(rollout, "participation_force_open", 0) or 0),
+                int(getattr(rollout, "participation_force_hold", 0) or 0),
+                int(getattr(rollout, "participation_force_flat", 0) or 0),
+                int(getattr(rollout, "participation_overrides_total", 0) or 0),
             )
             self.last_range_flat_ratio = range_flat_ratio
         if rollout.trades > 0:

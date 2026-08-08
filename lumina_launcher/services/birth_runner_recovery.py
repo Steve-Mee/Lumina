@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from lumina_core.logging_utils import get_logger
 from lumina_launcher.services.birth_status_mapper import resolve_terminal_birth_status
@@ -24,6 +24,38 @@ def is_stage_stalled_recovery_eligible(svc: Any) -> bool:
     if ckpt_phase in recoverable_phases:
         return True
     return progress_phase in recoverable_phases
+
+
+def _checkpoint_stage_metrics(svc: Any) -> dict[str, Any]:
+    try:
+        from lumina_core.birth.checkpoint import read_checkpoint_payload
+
+        payload = read_checkpoint_payload(svc.workspace_root) or {}
+        metrics = payload.get("stage_metrics")
+        return dict(metrics) if isinstance(metrics, dict) else {}
+    except Exception:
+        return {}
+
+
+def champion_freeze_active_for_svc(svc: Any, progress: dict[str, Any] | None = None) -> bool:
+    """True when swarm no-lift freeze blocks silent service recovery."""
+    from lumina_core.birth.starship_swarm_gates import is_champion_freeze_active
+
+    prog = progress if isinstance(progress, dict) else svc._load_progress()
+    return is_champion_freeze_active(
+        progress=prog,
+        checkpoint_metrics=_checkpoint_stage_metrics(svc),
+    )
+
+
+def reject_if_champion_freeze(svc: Any, progress: dict[str, Any] | None = None) -> Optional[Dict[str, Any]]:
+    """Return reject payload when champion freeze is active; else None."""
+    if not champion_freeze_active_for_svc(svc, progress=progress):
+        return None
+    from lumina_core.birth.starship_swarm_gates import champion_freeze_blocks_recovery_payload
+
+    logger.warning("birth.recovery.blocked_champion_freeze")
+    return champion_freeze_blocks_recovery_payload()
 
 
 def retry_birth(
@@ -105,6 +137,9 @@ def resume_stalled_stage(svc: Any, target_trades: int | None = None) -> Dict[str
     """Resume curriculum from terminal stage_stalled without wiping checkpoint."""
     from lumina_core.birth.checkpoint import reset_adaptation_budget_for_manual_resume
 
+    blocked = reject_if_champion_freeze(svc)
+    if blocked is not None:
+        return blocked
     if not is_stage_stalled_recovery_eligible(svc):
         return {
             "status": "rejected",
@@ -130,6 +165,9 @@ def expand_and_retry_stalled_stage(svc: Any, target_trades: int | None = None) -
         write_checkpoint_payload,
     )
 
+    blocked = reject_if_champion_freeze(svc)
+    if blocked is not None:
+        return blocked
     if not is_stage_stalled_recovery_eligible(svc):
         return {
             "status": "rejected",
@@ -158,6 +196,9 @@ def expand_and_retry_stalled_stage(svc: Any, target_trades: int | None = None) -
 
 def resume_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:
     """Non-destructive resume from the last birth checkpoint."""
+    blocked = reject_if_champion_freeze(svc)
+    if blocked is not None:
+        return blocked
     from lumina_launcher.services.birth_runner_start import start_birth
 
     return start_birth(
@@ -169,8 +210,19 @@ def resume_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:
     )
 
 
-def accept_champion_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:
-    """Operator accepts frozen champion after swarm no-lift; clear attention and resume."""
+def accept_champion_birth(
+    svc: Any,
+    target_trades: int | None = None,
+    *,
+    start: bool = True,
+    source: str = "app",
+) -> Dict[str, Any]:
+    """Operator accepts frozen champion after swarm no-lift; clear attention and resume.
+
+    When ``start=False``, only clears freeze flags (progress/checkpoint) so the
+    operator can follow the Stage 2 re-entry checklist before explicit start.
+    ``source`` is echoed to Telegram (app/cli/telegram) for remote audit.
+    """
     from datetime import datetime, timezone
 
     from lumina_core.birth.checkpoint import (
@@ -184,12 +236,20 @@ def accept_champion_birth(svc: Any, target_trades: int | None = None) -> Dict[st
     stage = str(progress.get("stage", "") or "").strip().lower()
     phase = str(progress.get("phase", "") or "").strip().lower()
     if stage in {"paused", "interrupted"}:
-        stage = "training_running"
-        phase = "curriculum_learning"
+        stage = "training_running" if start else "paused"
+        phase = "curriculum_learning" if start else (phase or "paused")
+    message = (
+        "Champion accepted after swarm no-lift — continuing curriculum."
+        if start
+        else (
+            "Champion accepted after swarm no-lift — freeze cleared; "
+            "start Birth explicitly after Stage 2 re-entry checklist."
+        )
+    )
     progress.update(
         {
-            "stage": stage or "training_running",
-            "phase": phase or "curriculum_learning",
+            "stage": stage or ("training_running" if start else "paused"),
+            "phase": phase or ("curriculum_learning" if start else "paused"),
             "swarm_rejected_no_lift": False,
             "swarm_champion_accepted": True,
             "swarm_tournament_lift_ok": False,
@@ -201,15 +261,15 @@ def accept_champion_birth(svc: Any, target_trades: int | None = None) -> Dict[st
             "policy_swarm_rejected_no_lift": False,
             "policy_swarm_champion_accepted": True,
             "user_initiated_stop": False,
-            "message": "Champion accepted after swarm no-lift — continuing curriculum.",
+            "message": message,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
     try:
         write_birth_progress(
             svc.workspace_root,
-            stage=str(progress.get("stage") or "training_running"),
-            phase=str(progress.get("phase") or "curriculum_learning"),
+            stage=str(progress.get("stage") or ("training_running" if start else "paused")),
+            phase=str(progress.get("phase") or ("curriculum_learning" if start else "paused")),
             message=str(progress.get("message") or ""),
             progress_pct=float(progress.get("progress_pct", 0) or 0),
             cumulative_trades=int(progress.get("cumulative_trades", 0) or 0),
@@ -241,17 +301,45 @@ def accept_champion_birth(svc: Any, target_trades: int | None = None) -> Dict[st
         metrics["policy_swarm_rejected_no_lift"] = False
         metrics["policy_swarm_champion_accepted"] = True
         payload["stage_metrics"] = metrics
-        if str(payload.get("phase", "") or "").strip().lower() in {
+        if start and str(payload.get("phase", "") or "").strip().lower() in {
             "stage_stalled",
             "paused",
             "plateau_evolution",
             "stall_remediation",
+            "swarm_reject_hard_stop",
         }:
             payload["phase"] = "curriculum_learning"
         write_checkpoint_payload(svc.workspace_root, payload)
     except Exception as exc:
         logger.warning("birth.accept_champion.checkpoint_patch_failed: %s", exc)
-    return start_birth(
+    def _echo() -> None:
+        # Telegram apply path already sends a confirmation message.
+        if str(source or "").strip().lower() == "telegram":
+            return
+        try:
+            from lumina_core.birth.champion_freeze_telegram import echo_operator_decision
+
+            echo_operator_decision(
+                svc.workspace_root,
+                action="ACCEPT_NO_START" if not start else "ACCEPT",
+                source=source,
+                detail=message,
+                started=bool(start),
+            )
+        except Exception as exc:
+            logger.debug("birth.accept_champion.telegram_echo_failed: %s", exc)
+
+    if not start:
+        _echo()
+        return {
+            "status": "champion_accepted",
+            "started": False,
+            "message": message,
+            "checkpoint_resumable": bool(svc.checkpoint_resumable()),
+            "checklist": "docs/birth-stage2-certified-reentry-checklist.md",
+            "source": source,
+        }
+    start_result = start_birth(
         svc,
         target_trades=target_trades,
         force=False,
@@ -259,6 +347,12 @@ def accept_champion_birth(svc: Any, target_trades: int | None = None) -> Dict[st
         continue_training=True,
         reuse_data=True,
     )
+    _echo()
+    if isinstance(start_result, dict):
+        start_result = dict(start_result)
+        start_result.setdefault("source", source)
+        start_result.setdefault("started", True)
+    return start_result
 
 
 def reuse_data_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:

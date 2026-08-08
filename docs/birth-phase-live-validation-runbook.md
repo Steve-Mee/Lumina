@@ -85,6 +85,7 @@ pass_reason
 - [Command Deck startup runbook](command-deck-startup-runbook.md)
 - [Launcher setup and model management](launcher-setup-and-model-management.md)
 - ADR-0011 Tauri lifecycle gate (startup SSOT)
+- [Birth zero-human metrics runbook (T14)](birth-zero-human-metrics-runbook.md) — unattended SIM metrics + freeze/accept path
 
 ## Shadow validation appendix
 

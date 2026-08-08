@@ -40,10 +40,15 @@ def test_container_facade_forbidden_inline_patterns():
 
 @pytest.mark.unit
 def test_container_facade_delegates_wiring_modules():
-    text = _PKG_INIT.read_text(encoding="utf-8")
-    assert "wire_platform_services" in text
-    assert "wire_intelligence_agents" in text
-    assert "wire_risk_services" in text
+    """Wiring lives on ApplicationContainerServicesMixin (M5 extract), not the facade."""
+    services = (_ROOT / "lumina_core" / "container" / "container_services.py").read_text(
+        encoding="utf-8"
+    )
+    facade = _PKG_INIT.read_text(encoding="utf-8")
+    assert "ApplicationContainerServicesMixin" in facade
+    assert "wire_platform_services" in services
+    assert "wire_intelligence_agents" in services
+    assert "wire_risk_services" in services
 
 
 @pytest.mark.unit

@@ -1,7 +1,7 @@
-"""Reversible journal for code-evolution proposals (evaluate-only v1).
+"""Reversible journal for code-evolution proposals.
 
 Writes pending bundles under state/code_evolution/pending/<id>/ and an
-append-only journal.jsonl. Never applies patches to the live tree.
+append-only journal.jsonl. H5 may apply to sandbox store only (never live tree).
 """
 
 from __future__ import annotations
@@ -85,9 +85,9 @@ class CodeEvolutionJournal:
             else str(proposal.operator),
             "restore_snapshot": proposal.before_snapshot,
             "instructions": (
-                "v1 evaluate-only: no live apply occurred. "
-                "To reverse a future apply, restore restore_snapshot values "
-                "and delete pending bundle after audit."
+                "H5: apply targets sandbox store under state/code_evolution/applied/ only. "
+                "Never mutates live repo. Revert via CodeEvolutionApplyGate.revert_applied "
+                "or restore restore_snapshot into applied/params.json."
             ),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -119,10 +119,90 @@ class CodeEvolutionJournal:
         snap = revert.get("restore_snapshot") or self.load_before_snapshot(proposal_id)
         return dict(snap) if isinstance(snap, dict) else {}
 
-    def try_apply_live(self, proposal_id: str) -> dict[str, Any]:
-        """v1 stub: always reject live apply (fail-closed)."""
-        return {
-            "applied": False,
-            "reason": "v1_evaluate_only",
-            "proposal_id": proposal_id,
-        }
+    def try_apply_live(
+        self,
+        proposal_id: str,
+        *,
+        evidence: dict[str, Any] | None = None,
+        policy: Any | None = None,
+    ) -> dict[str, Any]:
+        """Controlled apply to sandbox store only (H5). Never live repo tree.
+
+        Default policy keeps apply disabled (evaluate-only). When enabled, requires
+        CodeEvolutionApplyGate evidence (constitution, sandbox, human/twin, non-REAL).
+        """
+        # Lazy import to avoid cycles
+        from lumina_core.code_evolution.apply_gate import (
+            ApplyEvidence,
+            ApplyPolicy,
+            CodeEvolutionApplyGate,
+        )
+        from lumina_core.code_evolution.proposal import (
+            CodeMutationOperator,
+            CodeMutationProposal,
+        )
+
+        prop_path = self.pending_root / proposal_id / "proposal.json"
+        if not prop_path.exists():
+            return {
+                "applied": False,
+                "reason": "proposal_bundle_missing",
+                "proposal_id": proposal_id,
+            }
+
+        try:
+            raw = json.loads(prop_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return {
+                "applied": False,
+                "reason": f"proposal_unreadable:{exc}",
+                "proposal_id": proposal_id,
+            }
+
+        try:
+            op = CodeMutationOperator(str(raw.get("operator") or ""))
+        except ValueError:
+            return {
+                "applied": False,
+                "reason": "unknown_operator",
+                "proposal_id": proposal_id,
+            }
+
+        proposal = CodeMutationProposal(
+            proposal_id=str(raw.get("proposal_id") or proposal_id),
+            operator=op,
+            target=str(raw.get("target") or ""),
+            description=str(raw.get("description") or ""),
+            payload=dict(raw.get("payload") or {}),
+            rationale=str(raw.get("rationale") or ""),
+            estimated_loc=int(raw.get("estimated_loc") or 0),
+            before_snapshot=dict(raw.get("before_snapshot") or {}),
+            after_snapshot=dict(raw.get("after_snapshot") or {}),
+            constitution_passed=bool(raw.get("constitution_passed")),
+            twin_recommendation=bool(raw.get("twin_recommendation")),
+            twin_effective=bool(raw.get("twin_effective")),
+            sandbox_passed=bool(raw.get("sandbox_passed")),
+        )
+
+        ev = dict(evidence or {})
+        # Prefer explicit evidence over proposal flags
+        human_ok = bool(ev.get("human_approved"))
+        human_approver = str(ev.get("human_approver") or "")
+        pol = policy if isinstance(policy, ApplyPolicy) else ApplyPolicy.from_config(
+            policy if isinstance(policy, dict) else None
+        )
+        gate = CodeEvolutionApplyGate(journal_root=self.root, policy=pol)
+        if not human_ok:
+            human_ok, human_approver = gate.is_human_approved(proposal_id)
+
+        apply_ev = ApplyEvidence(
+            proposal=proposal,
+            capital_mode=str(ev.get("capital_mode") or "sim"),
+            constitution_passed=bool(ev.get("constitution_passed", proposal.constitution_passed)),
+            sandbox_passed=bool(ev.get("sandbox_passed", proposal.sandbox_passed)),
+            twin_recommendation=bool(ev.get("twin_recommendation", proposal.twin_recommendation)),
+            twin_effective=bool(ev.get("twin_effective", proposal.twin_effective)),
+            human_approved=human_ok,
+            human_approver=human_approver,
+        )
+        return gate.try_apply(apply_ev)

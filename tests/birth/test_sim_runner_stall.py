@@ -117,3 +117,36 @@ def test_recording_policy_completes_without_stall(tmp_path: Path) -> None:
     )
     assert result.stalled is False
     assert result.trades >= 1
+
+
+@pytest.mark.unit
+def test_stage2_envelope_force_hold_under_chronic_flat(tmp_path: Path) -> None:
+    """Chronic stage flat must produce FORCE_HOLD (opens stick for min dwell)."""
+    ticks = enrich_ticks_for_sim(_rising_historical_ticks(800))
+    # Tag range regime so range_flat counters / envelope path engage.
+    for t in ticks:
+        t["regime"] = "NEUTRAL"
+    result = run_policy_rollout(
+        runtime=_runtime(),
+        data=ticks,
+        policy=_HoldOnlyPolicy(),
+        target_trades=5,
+        workspace_root=tmp_path,
+        rollout_step_budget=400,
+        exploration_steps=0,
+        range_patience_active=True,
+        participation_envelope_enabled=True,
+        participation_min_signals=50,
+        participation_min_dwell_bars=8,
+        stage_range_flat_bars=9_500,
+        stage_range_total_signals=10_000,
+    )
+    assert result.participation_force_open > 0
+    assert result.participation_force_hold > 0, (
+        "FORCE_OPEN without FORCE_HOLD means occupancy dies same-bar "
+        f"(open={result.participation_force_open}, hold={result.participation_force_hold})"
+    )
+    # Occupancy should move: not all range bars flat after forced participation.
+    if result.range_total_signals > 50:
+        rollout_flat = result.range_flat_bars / max(1, result.range_total_signals)
+        assert rollout_flat < 0.95

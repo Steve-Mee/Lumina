@@ -1,6 +1,6 @@
 import type { AppSurface, OnboardingPayload } from "@/lib/onboardingSteps";
 
-export type AppPhase = "loading" | "wizard" | "birth" | "cockpit";
+export type AppPhase = "loading" | "wizard" | "birth" | "hub" | "cockpit";
 
 export interface MapAppPhaseContext {
   priorPhase: AppPhase;
@@ -8,6 +8,8 @@ export interface MapAppPhaseContext {
   activating: boolean;
   /** Operator reopened first-boot setup from Birth (credentials / fabric test). */
   setupReviewActive?: boolean;
+  /** Operator opened Command Deck from Phase Hub (session override). */
+  operatorDeckActive?: boolean;
 }
 
 function surfaceToPhase(surface: AppSurface): AppPhase {
@@ -16,6 +18,8 @@ function surfaceToPhase(surface: AppSurface): AppPhase {
       return "wizard";
     case "birth":
       return "birth";
+    case "hub":
+      return "hub";
     case "deck":
       return "cockpit";
   }
@@ -42,7 +46,7 @@ function legacySurfaceFallback(payload: OnboardingPayload): AppPhase {
   if (!birthReady(payload)) {
     return "birth";
   }
-  return "cockpit";
+  return "hub";
 }
 
 /**
@@ -66,7 +70,16 @@ export function mapAppPhase(
   }
 
   if (payload.app_surface) {
-    return surfaceToPhase(payload.app_surface);
+    const mapped = surfaceToPhase(payload.app_surface);
+    // Session: operator entered deck from hub — stay until they return
+    if (
+      mapped === "hub" &&
+      context.operatorDeckActive &&
+      (context.priorPhase === "cockpit" || context.operatorDeckActive)
+    ) {
+      return "cockpit";
+    }
+    return mapped;
   }
 
   return legacySurfaceFallback(payload);
@@ -89,7 +102,14 @@ export function shouldEnterCockpit(payload: OnboardingPayload): boolean {
   if (payload.app_surface) {
     return payload.app_surface === "deck";
   }
-  return legacySurfaceFallback(payload) === "cockpit";
+  return false;
+}
+
+export function shouldEnterHub(payload: OnboardingPayload): boolean {
+  if (payload.app_surface) {
+    return payload.app_surface === "hub";
+  }
+  return legacySurfaceFallback(payload) === "hub";
 }
 
 /** Marks cached payload backend unreachable after refresh failure (T8). */
@@ -123,6 +143,9 @@ export function resolvePhaseOnRefreshError(
   }
   if (priorPhase === "cockpit" || lastPayload?.app_surface === "deck") {
     return "cockpit";
+  }
+  if (priorPhase === "hub" || lastPayload?.app_surface === "hub") {
+    return "hub";
   }
   if (priorPhase === "birth" || lastPayload?.app_surface === "birth") {
     return "birth";

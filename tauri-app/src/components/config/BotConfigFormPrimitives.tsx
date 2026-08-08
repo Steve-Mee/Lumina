@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { HelpTip } from "@/components/ui/HelpTip";
+import type { ConditionTone } from "@/lib/conditionTone";
 import { cn } from "@/lib/utils";
 
 export function FieldCard({
@@ -9,15 +10,21 @@ export function FieldCard({
   hint,
   children,
   className,
+  tone = "default",
 }: {
   label: string;
   tip?: string;
   hint?: string;
   children: ReactNode;
   className?: string;
+  /** Condition status: ok=green, warn=orange, danger=red. */
+  tone?: ConditionTone;
 }) {
   return (
-    <div className={cn("risk-envelope-field-card", className)}>
+    <div
+      className={cn("risk-envelope-field-card", className)}
+      data-tone={tone === "default" || tone === "accent" ? undefined : tone}
+    >
       <div className="mb-1 flex items-center gap-1.5">
         <p className="risk-envelope-field-label mb-0">{label}</p>
         {tip ? <HelpTip text={tip} /> : null}

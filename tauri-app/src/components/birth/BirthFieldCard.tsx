@@ -1,17 +1,14 @@
 import type { ReactNode } from "react";
 
 import { HelpTip } from "@/components/ui/HelpTip";
+import {
+  CONDITION_VALUE_TEXT_CLASS,
+  type ConditionTone,
+} from "@/lib/conditionTone";
 import { cn } from "@/lib/utils";
 
-export type BirthFieldTone = "default" | "ok" | "warn" | "accent" | "danger";
-
-const VALUE_TONE: Record<BirthFieldTone, string> = {
-  default: "text-cyan-100",
-  ok: "text-emerald-300",
-  warn: "text-amber-300",
-  accent: "text-cyan-200",
-  danger: "text-rose-200",
-};
+/** @deprecated Prefer ConditionTone from @/lib/conditionTone — same values. */
+export type BirthFieldTone = ConditionTone;
 
 interface BirthFieldCardProps {
   label: string;
@@ -46,7 +43,7 @@ export function BirthFieldCard({
         <p
           className={cn(
             "font-mono text-sm tabular-nums tracking-tight",
-            VALUE_TONE[tone],
+            CONDITION_VALUE_TEXT_CLASS[tone],
           )}
         >
           {value ?? "—"}

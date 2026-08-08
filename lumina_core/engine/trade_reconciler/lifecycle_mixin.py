@@ -53,6 +53,33 @@ class LifecycleMixin:
             self._update_status(connection_state="disabled", status="skipped_non_real")
             return
         if not bool(self.engine.config.reconcile_fills):
+            # T4: capital-risk modes must not silently run without fill recon.
+            from lumina_core.engine.trade_reconciler.real_recon_gate import (
+                evaluate_real_broker_recon_gate,
+            )
+
+            gate = evaluate_real_broker_recon_gate(
+                trade_mode=mode,
+                reconcile_fills=False,
+                reconciliation_method=getattr(
+                    self.engine.config, "reconciliation_method", "websocket"
+                ),
+                reconciliation_timeout_seconds=getattr(
+                    self.engine.config, "reconciliation_timeout_seconds", 15.0
+                ),
+            )
+            if gate.get("recon_required") and not gate.get("ok"):
+                logger.error(
+                    "trade_reconciler.fail_closed_real_recon_disabled mode=%s failures=%s",
+                    mode,
+                    gate.get("failures"),
+                )
+                self._update_status(
+                    connection_state="error",
+                    status="fail_closed_recon_required",
+                    last_error=str(gate.get("message") or "reconcile_fills required"),
+                )
+                return
             self._update_status(connection_state="disabled", status="disabled")
             return
 

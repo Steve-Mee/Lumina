@@ -6,8 +6,8 @@ Prefer importing from here instead of ``lumina_core.backtester_engine`` /
 
 from __future__ import annotations
 
-from lumina_core.backtester_engine import BacktesterEngine
-from lumina_core.infinite_simulator import InfiniteSimulator
-from lumina_core.ppo_trainer import PPOTrainer
+from lumina_core.engine.backtest.backtester_engine import BacktesterEngine
+from lumina_core.rl.infinite_simulator import InfiniteSimulator
+from lumina_core.rl.ppo_trainer import PPOTrainer
 
 __all__ = ["BacktesterEngine", "InfiniteSimulator", "PPOTrainer"]

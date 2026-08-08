@@ -2,9 +2,25 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from lumina_core.engine import engine_config as eng_cfg
+from lumina_core.engine.engine_config import EngineConfig
+
+
+@pytest.mark.unit
+def test_engine_config_instantiates_with_path_fields() -> None:
+    """Regression: missing Path/os imports made Pydantic report class-not-fully-defined.
+
+    Birth historical preflight builds ApplicationContainer → EngineConfig() and failed with:
+    `EngineConfig` is not fully defined; you should define `Path`, then call model_rebuild().
+    """
+    cfg = EngineConfig()
+    assert isinstance(cfg.state_file, Path)
+    assert isinstance(cfg.journal_dir, Path)
+    assert cfg.trade_mode in {"paper", "sim", "sim_real_guard", "real"}
 
 
 @pytest.mark.unit

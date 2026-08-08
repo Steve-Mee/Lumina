@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import importlib
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from lumina_launcher.core.birth_reset import clear_birth_training_state
 from lumina_launcher.core.first_boot import FirstBootManager
-import importlib
-
 from lumina_launcher.services.birth_service import BirthService
 
 birth_runner_start_module = importlib.import_module("lumina_launcher.services.birth_runner_start")
@@ -111,6 +113,49 @@ def test_wipe_all_birth_data_service(workspace: Path) -> None:
     status = svc.get_status()
     assert status["status"] == "idle"
     assert svc._result is None
+
+
+def test_wipe_all_endpoint_handler_has_required_imports() -> None:
+    """Regression: extracted actions module must bind logger/asyncio/_enrich_status.
+
+    Missing imports caused NameError → HTTP 500 on Genesis 'Volledige wipe'.
+    """
+    mod = importlib.import_module("lumina_os.backend.birth_endpoints_actions")
+    assert hasattr(mod, "logger")
+    assert hasattr(mod, "asyncio")
+    assert callable(mod._enrich_status)
+    assert callable(mod.wipe_all_birth_data)
+
+
+def test_wipe_all_endpoint_handler_success_and_confirm_guard() -> None:
+    """POST /api/birth/wipe-all handler must not raise NameError (Internal Server Error)."""
+    from lumina_os.backend import birth_endpoints_actions as actions
+
+    with pytest.raises(HTTPException) as missing_confirm:
+        asyncio.run(actions.wipe_all_birth_data(confirm=False, preserve_tick_cache=False))
+    assert missing_confirm.value.status_code == 400
+
+    fake_result = {
+        "status": "wiped",
+        "message": "ok",
+        "removed_artifacts": ["state/lumina_birth_progress.json"],
+        "checkpoint_resumable": False,
+    }
+    mock_svc = MagicMock()
+    mock_svc.workspace_root = Path(".")
+    mock_svc.wipe_all_birth_data.return_value = fake_result
+
+    with (
+        patch.object(actions, "birth_service", mock_svc),
+        patch.object(actions, "_invalidate_enrich_artifact_cache") as inv,
+    ):
+        result = asyncio.run(
+            actions.wipe_all_birth_data(confirm=True, preserve_tick_cache=False)
+        )
+
+    assert result["status"] == "wiped"
+    mock_svc.wipe_all_birth_data.assert_called_once_with(preserve_tick_cache=False)
+    inv.assert_called_once()
 
 
 def test_retry_birth_wipe_parity_with_wipe_all(workspace: Path) -> None:

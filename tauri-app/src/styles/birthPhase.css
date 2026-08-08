@@ -1873,17 +1873,18 @@
   gap: 0.45rem;
 }
 
-/* Stage GATE densiteit: één viewport zonder page-scroll. */
+/* Stage tab: same type scale as left-column mission field cards. */
 .birth-stage-scorecard__tab-body .birth-intel-field-grid {
-  gap: 0.32rem;
+  gap: 0.45rem;
 }
 
+/* Match .risk-envelope-field-card padding (onboarding.css). */
 .birth-stage-scorecard__tab-body .birth-field-card.risk-envelope-field-card {
-  padding: 0.32rem 0.48rem 0.36rem;
+  padding: 0.55rem 0.65rem 0.6rem;
 }
 
 .birth-stage-scorecard__tab-body .birth-intel-field-span.birth-field-card {
-  padding: 0.36rem 0.55rem 0.4rem;
+  padding: 0.55rem 0.65rem 0.6rem;
 }
 
 .birth-intel-field-span {
@@ -1894,39 +1895,187 @@
   margin-top: 0.25rem;
 }
 
-.birth-stage-scorecard__tab-body .birth-field-card .risk-envelope-field-hint {
-  margin-top: 0.12rem;
+/* Condition tones for birth field cards inherit app-wide
+   .risk-envelope-field-card[data-tone] rules from onboarding.css */
+
+/* —— Stage goal: 2-col board; chips share left-column type scale —— */
+.birth-stage-pass-checklist {
+  grid-column: 1 / -1;
+  /* Neutral shell — colors live on per-gate rows only (no single wash). */
+  padding: 0.55rem 0.65rem 0.6rem !important;
+  border-color: color-mix(in srgb, var(--lumina-cyan) 18%, transparent) !important;
+  background: color-mix(in srgb, var(--lumina-void) 55%, transparent) !important;
+  box-shadow: none !important;
 }
 
-.birth-field-card[data-tone="ok"] {
-  border-color: color-mix(in srgb, #34d399 35%, transparent);
-  background: color-mix(in srgb, #064e3b 28%, transparent);
+.birth-stage-pass-checklist__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  margin-bottom: 0.4rem;
 }
 
-.birth-field-card[data-tone="warn"] {
-  border-color: color-mix(in srgb, #fbbf24 38%, transparent);
-  background: color-mix(in srgb, #78350f 22%, transparent);
+/* Value scale = BirthFieldCard / left column (Tailwind text-sm). */
+.birth-stage-pass-checklist__summary {
+  margin: 0.1rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
 }
 
-.birth-field-card[data-tone="danger"] {
-  border-color: color-mix(in srgb, #f43f5e 45%, transparent);
-  background: color-mix(in srgb, #881337 32%, transparent);
+/* Label scale = .risk-envelope-field-label */
+.birth-stage-pass-checklist__stage {
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  color: color-mix(in srgb, var(--lumina-cyan) 65%, transparent);
 }
 
-.birth-field-card[data-tone="danger"] .risk-envelope-field-label {
-  color: color-mix(in srgb, #fda4af 85%, transparent);
+.birth-stage-pass-checklist__list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.birth-field-card[data-tone="warn"] .risk-envelope-field-label {
-  color: color-mix(in srgb, #fcd34d 80%, transparent);
+.birth-stage-pass-checklist__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.35rem 0.4rem;
+  min-width: 0;
+  padding: 0.45rem 0.55rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 16%, transparent);
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, white 3%, transparent);
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.birth-field-card[data-tone="ok"] .risk-envelope-field-label {
-  color: color-mix(in srgb, #6ee7b7 80%, transparent);
+/* Same green / orange / red language as field cards — per gate. */
+.birth-stage-pass-checklist__row[data-tone="ok"] {
+  border-color: color-mix(in srgb, #34d399 48%, transparent);
+  background: color-mix(in srgb, #064e3b 38%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #6ee7b7 14%, transparent),
+    0 0 0 1px color-mix(in srgb, #34d399 14%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="warn"] {
+  border-color: color-mix(in srgb, #fbbf24 50%, transparent);
+  background: color-mix(in srgb, #78350f 32%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fcd34d 12%, transparent),
+    0 0 0 1px color-mix(in srgb, #fbbf24 12%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="danger"] {
+  border-color: color-mix(in srgb, #f43f5e 52%, transparent);
+  background: color-mix(in srgb, #881337 40%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fda4af 12%, transparent),
+    0 0 0 1px color-mix(in srgb, #f43f5e 14%, transparent);
+}
+
+/* Skill later / diagnostic — violet, never rose (not a pass fail). */
+.birth-stage-pass-checklist__row[data-tone="accent"],
+.birth-stage-pass-checklist__row[data-kind="skill"][data-tone="accent"] {
+  border-color: color-mix(in srgb, #a78bfa 48%, transparent);
+  background: color-mix(in srgb, #4c1d95 34%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #c4b5fd 12%, transparent),
+    0 0 0 1px color-mix(in srgb, #a78bfa 12%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="accent"] .birth-stage-pass-checklist__label,
+.birth-stage-pass-checklist__row[data-kind="skill"][data-tone="accent"]
+  .birth-stage-pass-checklist__label {
+  color: color-mix(in srgb, #ddd6fe 92%, transparent);
+}
+
+.birth-stage-pass-checklist__mode {
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--lumina-cyan) 55%, transparent);
+  font-weight: 500;
+}
+
+.birth-stage-pass-checklist__skill-summary {
+  margin-left: 0.15rem;
+  font-weight: 500;
+  color: color-mix(in srgb, #c4b5fd 75%, transparent);
+}
+
+.birth-stage-pass-checklist__glyph {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.65rem;
+  line-height: 1;
+  align-self: start;
+  margin-top: 0.2rem;
+}
+
+.birth-stage-pass-checklist__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+/* Match .risk-envelope-field-label */
+.birth-stage-pass-checklist__label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--lumina-cyan) 72%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="ok"] .birth-stage-pass-checklist__label {
+  color: color-mix(in srgb, #6ee7b7 90%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="warn"] .birth-stage-pass-checklist__label {
+  color: color-mix(in srgb, #fcd34d 88%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="danger"] .birth-stage-pass-checklist__label {
+  color: color-mix(in srgb, #fda4af 90%, transparent);
+}
+
+/* Match .risk-envelope-field-hint */
+.birth-stage-pass-checklist__need {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.55rem;
+  line-height: 1.4;
+  letter-spacing: 0.03em;
+  color: color-mix(in srgb, var(--foreground) 40%, transparent);
+}
+
+/* Match BirthFieldCard value (font-mono text-sm) */
+.birth-stage-pass-checklist__value {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: right;
+  white-space: nowrap;
+  align-self: center;
+}
+
+.birth-stage-blocker-compact.birth-field-card {
+  padding: 0.55rem 0.65rem 0.6rem !important;
 }
 
 @media (max-width: 640px) {
   .birth-intel-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .birth-stage-pass-checklist__list {
     grid-template-columns: 1fr;
   }
 }

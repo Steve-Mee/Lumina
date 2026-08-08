@@ -33,6 +33,9 @@ from lumina_core.birth.config_curriculum import (  # noqa: F401
 
 logger = logging.getLogger("lumina.birth.config")
 
+# Log birth.budget only when (cap, source) changes — status polls used to spam this.
+_LAST_BUDGET_LOG: tuple[int, str] | None = None
+
 __all__ = [
     "BRO_ENGINE_VERSION",
     "BirthCurriculumConfig",
@@ -81,7 +84,11 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
     thresholds = build_certificate_thresholds(thr_raw if isinstance(thr_raw, dict) else {})
 
     trade_budget_cap, budget_source = resolve_trade_budget_cap(raw)
-    logger.info("birth.budget cap=%s source=%s", trade_budget_cap, budget_source)
+    global _LAST_BUDGET_LOG
+    key = (int(trade_budget_cap), str(budget_source))
+    if _LAST_BUDGET_LOG != key:
+        logger.info("birth.budget cap=%s source=%s", trade_budget_cap, budget_source)
+        _LAST_BUDGET_LOG = key
 
     return BirthV2Config(
         curriculum=curriculum,

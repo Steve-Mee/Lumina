@@ -196,61 +196,79 @@ class ArchitectureMetaController:
         return filtered
 
     def _make_extract_helper_proposal(self, snap: ArchHealthSnapshot) -> ArchMutationProposal | None:
-        # Radically simple placeholder proposal (real scanner would use AST/LOC in future pass)
-        # For v1 we emit a canonical "opportunity" that sandbox + human will validate on concrete target.
+        """Synthetic scan stub only — not a real file/diff proposal.
+
+        Until an AST/LOC scanner supplies a concrete target path and real unified
+        diff, we refuse to emit fake ``target_file`` / ``diff`` payloads. Callers
+        must treat a ``None`` result as "no actionable extract opportunity yet".
+        """
         if snap.god_file_count <= 0:
             return None
-        return ArchMutationProposal(
-            proposal_id=f"arch-{ArchMutationType.EXTRACT_PURE_HELPER.value}-1",
-            mutation_type=ArchMutationType.EXTRACT_PURE_HELPER,
-            target_file="lumina_core/some_large_context/module.py",  # concrete target supplied by caller/scan
-            description="Extract small pure computation to sibling _helpers.py (same bounded context)",
-            diff="--- a/...\n+++ b/...\n@@ -10,6 +10,12 @@\n+def _pure_helper(x):\n+    return x * 2\n",
-            expected_delta=0.25,
-            rationale="Reduces god file LOC; keeps pure logic local to context; improves testability.",
-            before_score=snap.arch_health_score,
-            decision_context_id="arch_meta.v1.scan",
-        )
+        # Honesty: do not invent paths or diffs. Real extract proposals require a scanner.
+        return None
 
     def _make_typed_model_proposal(self, snap: ArchHealthSnapshot) -> ArchMutationProposal | None:
+        """Synthetic typed-model opportunity stub (no fake diff).
+
+        Emits a labeled, non-actionable proposal so operators can see contract debt
+        without implying a patch was generated.
+        """
         if snap.pydantic_model_count >= 40:
             return None
         return ArchMutationProposal(
-            proposal_id=f"arch-{ArchMutationType.INTRODUCE_TYPED_MODEL.value}-1",
+            proposal_id=f"arch-{ArchMutationType.INTRODUCE_TYPED_MODEL.value}-synthetic-stub-1",
             mutation_type=ArchMutationType.INTRODUCE_TYPED_MODEL,
             target_file="lumina_core/agent_orchestration/schemas.py",
-            description="Replace loose dict usage in event payload with strict Pydantic model (extra=forbid)",
-            diff="",
+            description=(
+                "[synthetic_scan_stub] Inventory opportunity: tighten loose dict event "
+                "payloads with strict Pydantic (extra=forbid). No auto-generated diff."
+            ),
+            diff="",  # intentionally empty — not a real patch
             expected_delta=0.30,
-            rationale="Advances typed contracts invariant. Makes evolution safer and introspectable.",
+            rationale=(
+                "Synthetic opportunity only (architecture_meta v1). Advances typed "
+                "contracts inventory; does not claim a concrete patch exists."
+            ),
             before_score=snap.arch_health_score,
-            decision_context_id="arch_meta.v1.scan",
+            decision_context_id="arch_meta.v1.scan.synthetic_stub",
         )
 
     def _make_boundary_or_simplify_proposal(self, snap: ArchHealthSnapshot) -> ArchMutationProposal | None:
+        """Inventory-only stubs — never invent live paths or diffs (M1 honesty)."""
         if snap.boundary_violations == 0:
-            # fall back to simplify guard if no boundary issues
             return ArchMutationProposal(
-                proposal_id=f"arch-{ArchMutationType.SIMPLIFY_GUARD.value}-1",
+                proposal_id=f"arch-{ArchMutationType.SIMPLIFY_GUARD.value}-synthetic-stub-1",
                 mutation_type=ArchMutationType.SIMPLIFY_GUARD,
                 target_file="lumina_core/safety/constitutional_guard.py",
-                description="Flatten nested guard condition to early returns (smaller cognitive load)",
+                description=(
+                    "[synthetic_scan_stub] Opportunity: flatten nested guard conditions. "
+                    "No auto-generated diff — not actionable."
+                ),
                 diff="",
                 expected_delta=0.18,
-                rationale="Simpler code in safety critical path. Easier to constitution-audit.",
+                rationale=(
+                    "Synthetic inventory only. Human or scanner must supply a real patch; "
+                    "architecture_meta never auto-applies."
+                ),
                 before_score=snap.arch_health_score,
-                decision_context_id="arch_meta.v1.scan",
+                decision_context_id="arch_meta.v1.scan.synthetic_stub",
             )
         return ArchMutationProposal(
-            proposal_id=f"arch-{ArchMutationType.BOUNDARY_VIA_PORT.value}-1",
+            proposal_id=f"arch-{ArchMutationType.BOUNDARY_VIA_PORT.value}-synthetic-stub-1",
             mutation_type=ArchMutationType.BOUNDARY_VIA_PORT,
-            target_file="lumina_core/some_cross/file.py",
-            description="Replace direct cross-context import with port or EventBus publish",
+            target_file="lumina_core/ports/",
+            description=(
+                f"[synthetic_scan_stub] {snap.boundary_violations} heuristic cross-context "
+                "import smell(s). Replace with ports/EventBus — no concrete patch."
+            ),
             diff="",
             expected_delta=0.40,
-            rationale="Enforces bounded contexts (core constitution rule).",
+            rationale=(
+                "Inventory of boundary smells only. Fake target paths removed (M1). "
+                "Requires human-authored diff before promotion gate."
+            ),
             before_score=snap.arch_health_score,
-            decision_context_id="arch_meta.v1.scan",
+            decision_context_id="arch_meta.v1.scan.synthetic_stub",
         )
 
     def score_proposal(self, proposal: ArchMutationProposal, sandbox_delta: float) -> float:
@@ -258,14 +276,21 @@ class ArchitectureMetaController:
         return max(proposal.expected_delta * 0.6 + sandbox_delta * 0.4, 0.0)
 
     def should_promote_candidate(self, proposal: ArchMutationProposal, sandbox_result: Any) -> bool:
-        """Gate before human: constitution + sandbox delta + small size."""
+        """Gate before human: real diff + constitution + sandbox delta. Never auto-apply."""
         if not proposal.constitution_passed:
             return False
+        diff = str(proposal.diff or "").strip()
+        if len(diff) < 10:
+            return False  # inventory stubs are never promotion candidates
+        target = str(proposal.target_file or "")
+        if not target.endswith(".py"):
+            return False
         # sandbox_result is ArchSandboxResult duck in practice
+        if not bool(getattr(sandbox_result, "passed", False)):
+            return False
         delta = getattr(sandbox_result, "score_delta", 0.0) or 0.0
         if delta < self.min_health_delta:
             return False
-        # diff size check is done in sandbox validator
         return True
 
     def metrics_payload(self) -> dict[str, Any]:

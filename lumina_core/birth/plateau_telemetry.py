@@ -21,6 +21,7 @@ from lumina_core.birth.plateau_terminal import (
     TERMINAL_STALL_REASON,
     detect_hold_trap,
     detect_over_trading_trap,
+    detect_under_activity_trap,
     evolution_ladder_blocked_reason,
     plateau_elapsed_sec,
     should_phoenix_reset,
@@ -185,6 +186,11 @@ def build_plateau_audit(
     )
     range_flat_ratio = float(progress.get("stage_range_flat_ratio", 0) or 0)
     range_round_trips = int(progress.get("stage_range_round_trips", 0) or 0)
+    range_total_signals = int(
+        progress.get("stage_range_total_signals", 0)
+        or progress.get("range_total_signals", 0)
+        or 0
+    )
     over_trading = detect_over_trading_trap(
         range_flat_ratio=range_flat_ratio,
         range_round_trips=range_round_trips,
@@ -192,11 +198,72 @@ def build_plateau_audit(
         velocity_stall=velocity_stall,
         cfg=cfg,
     )
+    under_activity = detect_under_activity_trap(
+        range_flat_ratio=range_flat_ratio,
+        range_total_signals=range_total_signals,
+        stage_trades=stage_trades,
+        required=required,
+        velocity_stall=velocity_stall,
+        cfg=cfg,
+    )
+    # Fallback: blocker metric from progress when range counters absent.
+    if not under_activity and not over_trading:
+        blocker = str(progress.get("stage_blocker_metric", "") or "").strip().lower()
+        blocker_val = float(progress.get("stage_blocker_value", 0) or 0)
+        if blocker == "position_flat" and blocker_val > float(
+            getattr(cfg, "under_activity_flat_threshold", 0.70) or 0.70
+        ):
+            under_activity = True
+    from lumina_core.birth.expectancy_stall import (
+        detect_expectancy_stall,
+        recommended_expectancy_recovery_action,
+    )
+
+    roll_wr = progress.get("rolling_winrate_500")
+    try:
+        roll_wr_f = float(roll_wr) if roll_wr is not None else None
+    except (TypeError, ValueError):
+        roll_wr_f = None
+    beyond = plateau_trades_beyond_gate(stage_trades, required)
+    stage_key = str(
+        progress.get("curriculum_stage") or progress.get("stage_display_name") or ""
+    ).lower()
+    stage_is_range = "stage2" in stage_key or "range" in stage_key
+    expectancy_stall = detect_expectancy_stall(
+        stage_is_range=stage_is_range,
+        range_flat_ratio=range_flat_ratio,
+        range_total_signals=range_total_signals,
+        stage_trades=stage_trades,
+        stage_wins=int(progress.get("stage_wins", 0) or round(winrate * max(1, stage_trades))),
+        required=required,
+        velocity_stall=velocity_stall,
+        plateau_active=bool(state.active),
+        trades_beyond_gate=beyond,
+        rolling_winrate=roll_wr_f,
+        cfg=cfg,
+    )
+    # Only treat expectancy stall when not in dual occupancy traps.
+    if under_activity or over_trading:
+        expectancy_stall = False
+    # Blocker metric override for stage2 range quality.
+    if not expectancy_stall:
+        blocker = str(progress.get("stage_blocker_metric", "") or "").strip().lower()
+        if blocker == "expectancy":
+            expectancy_stall = True
     recommended = "continue_evolution"
-    if hold_trap:
+    if under_activity:
+        # Stage2 chronic flat: participation pressure before rollback/swarm theater.
+        recommended = "explore_boost_anti_flat"
+    elif hold_trap:
         recommended = "explore_boost_anti_hold"
     elif over_trading:
         recommended = "range_patience_recovery"
+    elif expectancy_stall:
+        rem_step = int(progress.get("expectancy_quality_step", 0) or 0)
+        recommended = recommended_expectancy_recovery_action(
+            range_flat_ratio=range_flat_ratio,
+            remediation_step=rem_step,
+        )
     elif state.best_policy_path:
         recommended = "policy_rollback"
     if should_phoenix_reset(state, cfg=cfg, winrate=winrate):
@@ -209,7 +276,7 @@ def build_plateau_audit(
         "best_winrate": state.best_winrate,
         "best_winrate_at_trade": state.best_winrate_at_trade,
         "best_policy_path": state.best_policy_path,
-        "trades_beyond_gate": plateau_trades_beyond_gate(stage_trades, required),
+        "trades_beyond_gate": beyond,
         "trades_beyond_gate_max": plateau_max_trades_beyond_gate(required, cfg),
         "forced_recoveries_count": state.forced_recoveries_count,
         "forced_recoveries_max": int(cfg.max_forced_recoveries_per_plateau),
@@ -217,6 +284,8 @@ def build_plateau_audit(
         "live_winrate": round(winrate, 6),
         "hold_trap_detected": hold_trap,
         "over_trading_detected": over_trading,
+        "under_activity_detected": under_activity,
+        "expectancy_stall_detected": expectancy_stall,
         "evolution_ladder_blocked_reason": blocked,
         "recommended_recovery_action": recommended,
         "terminal_plateau_recommended": terminal,

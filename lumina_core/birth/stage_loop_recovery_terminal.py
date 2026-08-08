@@ -1,6 +1,7 @@
 """Wall trigger + certified terminal stall finalization (stage-loop recovery)."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from lumina_core.birth.organism_autonomy import RecoveryDispatch
@@ -267,10 +268,86 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             autonomy_extra["autonomous_recovery_pending"] = (
                 self.cur_cfg.autonomous_recovery_enabled
                 and autonomy_decision.dispatch
-                in {RecoveryDispatch.PHOENIX_RESUME, RecoveryDispatch.CONTINUE_LOOP}
+                in {
+                    RecoveryDispatch.PHOENIX_RESUME,
+                    RecoveryDispatch.CONTINUE_LOOP,
+                    RecoveryDispatch.ACCEPT_CHAMPION_RESUME,
+                }
             )
         if autonomy_decision.message:
             autonomy_extra["autonomy_message"] = autonomy_decision.message
+
+        # Twin / autonomy accept_champion: clear freeze in-process and continue loop.
+        if (
+            autonomy_decision.dispatch == RecoveryDispatch.ACCEPT_CHAMPION_RESUME
+            and self.cur_cfg.autonomous_recovery_enabled
+        ):
+            try:
+                self.swarm_state.rejected_no_lift = False
+                self.swarm_state.champion_accepted = True
+                self.swarm_state.active = False
+                self.swarm_rejected_no_lift = False
+                self.swarm_champion_accepted = True
+                # Restore champion policy for quality ladder.
+                for path in (
+                    str(getattr(self, "best_edgescore_policy_path", "") or "").strip(),
+                    str(getattr(self.plateau_state, "best_policy_path", "") or "").strip(),
+                    str(getattr(self.swarm_state, "pre_swarm_policy_path", "") or "").strip(),
+                ):
+                    if path and Path(path).is_file():
+                        self.host.current_policy = self.host._create_birth_policy(
+                            allow_load_existing=True,
+                            policy_path=path,
+                        )
+                        break
+                logger.info(
+                    "birth.twin_accept_champion stage=%s conf=%s",
+                    self.stage.value,
+                    (autonomy_decision.autonomy_metrics or {}).get("twin_confidence"),
+                )
+                needs_attention = False
+                retryable = True
+                autonomy_extra["swarm_rejected_no_lift"] = False
+                autonomy_extra["swarm_champion_accepted"] = True
+                autonomy_extra["twin_accept_champion"] = True
+                autonomy_extra["needs_attention"] = False
+                # Persist clear freeze + continue curriculum (not stage_stalled terminal).
+                write_birth_progress(
+                    self.host.workspace_root,
+                    stage="training_running",
+                    phase="curriculum_learning",
+                    message=(
+                        autonomy_decision.message
+                        or "Twin accept_champion — freeze cleared, quality ladder continues"
+                    ),
+                    progress_pct=self.stage_progress_pct,
+                    cumulative_trades=self.host.cumulative_trades,
+                    target_trades=self.effective_trade_budget_cap,
+                    birth_start_time=self.host.birth_start_time,
+                    **merge_birth_progress_extra(
+                        self.host._budget_progress_fields(),
+                        self.host._constitution_progress_fields(),
+                        autonomy_extra,
+                        {
+                            "curriculum_stage": self.stage.value,
+                            "stages_passed": list(self.host._stages_passed),
+                            "swarm_rejected_no_lift": False,
+                            "swarm_champion_accepted": True,
+                            "needs_attention": False,
+                            "retryable": True,
+                        },
+                    ),
+                )
+                self.host._persist_checkpoint(
+                    training_mode=self.training_mode,
+                    curriculum_stage=self.stage.value,
+                    policy_path=str(self.host.final_policy_path),
+                    phase="curriculum_learning",
+                    stage_metrics=self._stage_metrics_payload(),
+                )
+                return None  # continue stage loop
+            except Exception as exc:
+                logger.warning("birth.twin_accept_champion_apply_failed: %s", exc)
         # Merge extras first — phoenix autonomy_metrics may include curriculum_stage
         # (PEP 448 dual-kwargs TypeError if unpacked alongside explicit kwargs).
         stall_extra = merge_birth_progress_extra(

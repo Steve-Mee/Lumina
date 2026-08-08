@@ -2,7 +2,32 @@
 
 Dit document catalogiseert de grootste knelpunten die de toekomstige evolueerbaarheid van Lumina momenteel beperken. Het is een levend document.
 
-**Laatste update**: 2026-05-31 (Elon Musk first-principles aperture analysis + new #0 top debt item)
+**Laatste update**: 2026-08-07 (Tauri UI gods residual · M1–M3 architecture/meta · M7 · M6 · C1/C2 · H1 · M5)
+
+## Living backlog (Critical → High → Medium) — follow top-down
+
+| # | Item | Status |
+|---|------|--------|
+| **C1** | Perfect Birth real evidence + Phase 2 observe→shadow | **Done (2026-08 residual)**: KPI gather + status (`would_pass`/missing_sources/next_step) + declare evidence; auto-declare default off + post-certificate hook; phase2 status embeds PB; hollow flag rejected; no REAL apply |
+| **C2** | Default-on bounded Organism Autonomy Birth/SIM | **Done (2026-08 residual)**: defaults ON; no-lift → phoenix before `TERMINAL_NOTIFY_ONLY`; `organism_autonomy_status` + recovery API embed; capital gates untouched |
+| **C3** | God surface `stage_loop_iteration` | **Done (2026-08)**: façade + core ≤400 + stall/pass/stagnation mixins + pure helpers; LOC guard test |
+| **H1** | Single capital aperture / Event Bus provenance | **Deeper slice (2026-08)**: strict fail-closed + soft ensure + bus emit; durable `decision_log.jsonl` on admission; integrity snapshot H1 goal ≥95% + `/capital-aperture` h1 block. Residual: full capital-path bus rewiring, ≥95% live coverage in production samples |
+| **H2** | REAL multi-gate non-bypassable; Twin inside gates | **Done (2026-08)**: `real_multi_gate` SSOT; mode switch needs human+maturation; Twin floor on REAL capital; DNA promotion human chain |
+| **H3** | Phase 2 productive SIM pillars after C1 | **Done (2026-08)**: `sim_campaign` shadow enable + promote SIM apply; API `/phase2-*`; orchestrator overlay |
+| **H4** | Twin training discipline high-conf birth/SIM | **Done (2026-08)**: `twin_discipline` high-conf primary; gate steve_labels + capital_mode_safe; auto full_auto default off; API `/api/twin/discipline` |
+| **H5** | Secure self-code evolution beyond evaluate-only | **Done (2026-08)**: `apply_gate` sandbox store only; human APPROVED / twin policy; REAL blocked; revert; config default off |
+| **H6** | Compress recovery theater | **Done (2026-08)**: `recovery_compress` single active surface + theater flags; progress.recovery; API `/recovery-status` |
+| **H7** | Birth exit vs maturation ADR | **Done (2026-08)**: ADR-0036 + `birth_exit` SSOT; survival ≠ Perfect Birth/REAL; API `/api/maturity/birth-exit` |
+| **M5** | Remaining ≥400 LOC modularization | **Done (2026-08)**: prod `lumina_core` + `lumina_launcher` + `lumina_os` (excl. tests) ≤400 LOC. Final wave: birth_service/recovery, status_mapper, runner preflight, fabric_diag, setup_orchestrator, twin/evolution/setup endpoints, core_websocket, api/monitoring_enrich. Guard: `tests/test_m5_residual_loc.py` |
+| **M6** | Maturation continuum hardening | **Done (2026-08)**: `continuum_honesty` SSOT — Birth exit ≠ READY_FOR_REAL ≠ REAL eligible; soft-complete + drift flags; hub embed + `GET /api/maturity/honesty` |
+| **M7** | Telegram advance TTL + Phase Hub polish | **Done (2026-08)**: `pending_advance_remaining_sec` / `pending_advance_public` (no raw token); hub poll `clear_expired_pending_advance`; reissue DTO + dedupe_key includes expires; Telegram notify TTL line; Phase Hub countdown + honesty board + issue/refresh token. Guard: `tests/maturity/test_telegram_ttl_m7.py` |
+| **M1** | Architecture meta residual (ADR-0030) | **Done (2026-08)**: real `scanner` LOC/god-files; dry `pipeline` cycle + `journal` (`logs/architecture_evolution.jsonl`); inventory stubs only (no fake paths/diffs); `should_promote` requires real diff; **never auto-apply**. APIs: `GET/POST /api/evolution/architecture-meta/*` |
+| **M2** | Meta-agent approval SSOT | **Done (2026-08)**: `meta_agent_approval` surfaces (architecture / code-evo / twin / DNA / REAL / phase); fail-closed REAL + architecture never auto. API: `GET /api/evolution/meta-approval` |
+| **M3** | Evolution axes catalog | **Done (2026-08)**: `evolution_axes` SSOT (dna, hyperparams, architecture, code_evolution, curriculum, twin, risk_nudge); mode decisions embed M2. API: `GET /api/evolution/axes`. Guard: `tests/architecture_meta/test_m1_m3_architecture_meta.py` |
+| **Tauri** | UI gods residual (birth/onboarding/hub) | **Done (2026-08 residual)**: scorecard/genesis/credentials/phase hub façades ≤400. Guard: `tauriUiGodSurfaceGuards` + `birthGodSurfaceGuards` |
+| **Tauri store/HUD** | Optional store/HUD residual ≥400 | **Done (2026-08)**: `birthStore`→applyStatus+sessionActions; `onboardingStore`→draft+lifecycleActions; `CommandHud`→format/dialogs/overflow; `LivingCore`/`RiskCitadel` parts; `SystemMonitor` compact; `twinClient` types/core/gym/format; `useBirthPhaseActions` handlers; `SettingsDialog` chrome; helix/evolution scene parts; `luminaMetrics` types/normalize. Declared façades ≤400 (guard extended) |
+
+**Non-goals:** hollow Perfect Birth · ML walls / OS REAL spawn · stage_loop as phase2 spine · auto REAL capital · architecture auto-apply · loosen constitution.
 
 ## Huidige Top Debt Items (2026-05)
 
@@ -203,3 +228,108 @@ Note validate_dna + five Tauri façades done with LOC. Residual: optional order_
 - Light-split: `admission_risk_steps.py` + `cross_trade_payload.py` (public façades preserved).
 - Hybrid SIM/PAPER strict profile opt-in: env `LUMINA_HYBRID_STRICT` or `hybrid_quarantine.apply_strict_in_sim` (default false). REAL ignores; per-gate committed defaults unchanged.
 - Modularization campaign waves A–C + optional polish closed for declared targets.
+
+## Wave D modularization (2026-07-31) — completed hotspots
+
+Behavior-preserving façade splits + package-root relocation (not a full zero-god campaign):
+
+| Area | Outcome |
+|------|---------|
+| Birth phase orchestrator | Thin `birth_phase_orchestrator.py` + bootstrap/data/cert/train modules |
+| Curriculum | `curriculum.py` façade + `curriculum_types` / `curriculum_intra` / `curriculum_pass` |
+| Evolution generation | `orchestrator_generation` façade + nightly/neuro/strategy mixins |
+| Multi-day sim | `multi_day_sim_runner` façade + evaluate/backtest/day |
+| Admin Dash panels | `admin_endpoints_panels` thin + layout/callbacks modules |
+| PPO / infinite sim | Canonical under `lumina_core/rl/` with root shims |
+| Backtester | Canonical under `lumina_core/engine/backtest/` with root shims |
+| Setup persist / endpoints | Concern modules + onboarding payload extract |
+| Headless production | lifecycle + run mixins |
+| Honesty | architecture_meta refuses fake extract diffs; aperture audit labels unavailable sections |
+| Frontend SPA | **T13 freeze archive** (`frontend/FROZEN.md` + README) — Tauri Command Deck SSOT; no new features; tree delete deferred |
+
+Focused regression (birth/evolution/PPO/setup): **75 passed** (session Wave D close).
+
+## Living backlog (Critical → High → Medium) — follow top-down
+
+**Critical (in progress / recent):**
+
+| # | Item | Status |
+|---|------|--------|
+| C1 | Perfect Birth real evidence + Phase 2 observe→shadow unlock | Status API `GET /api/birth/perfect-birth-status`; CLI `--status`; shadow profile documented; declare still fail-closed |
+| C2 | Default-on bounded Organism Autonomy Birth/SIM | Defaults already ON; no-lift now uses phoenix budget before `TERMINAL_NOTIFY_ONLY` |
+| C3 | God surface `stage_loop_iteration` | Façade + `stage_loop_iteration_core` + pure swarm/helpers; core still large — further pure leaf extracts next |
+
+**High (Critical/High wave C1–C3 + H1–H7 complete).**
+
+**Medium:** M1–M3 · M5–M7 · Tauri UI + **store/HUD residual done**. Living backlog Critical→Medium deep-research wave **closed** for declared + optional store/HUD targets.
+
+**Non-goals:** auto Perfect Birth hollow flags · ML walls / OS REAL spawn · stage_loop as phase2 spine · auto REAL capital · architecture auto-apply · loosen constitution.
+
+## Wave E residual (2026-07-31) — NOT zero-god yet
+
+Honest inventory after Wave D (prod source scan, ≥400 LOC ≈ **44 files**):
+
+**Critical deferred / incomplete vs original 100% plan:**
+
+- `birth/stage_loop_iteration.py` — **C3 complete (2026-08)**: thin façade; `stage_loop_iteration_core` orchestrates; branches in `*_stall` / `*_pass` / `*_stagnation` mixins; pure helpers in `*_helpers` / `*_swarm`. All modules ≤400 LOC (guard: `tests/birth/test_stage_loop_iteration_c3.py`). No hang-risk rewrite of main while-loop order.
+- `birth/config_coercion.py` — **Wave E2 done** (façade + helpers/budget/curriculum/sections); curriculum table still ~475 LOC pure kwargs
+- Root `runtime_*` relocate **attempted then reverted** (circular import via `runtime_context` ↔ bootstrap ↔ backtest)
+- Root `security` package rename **reverted** (package vs module clash risk)
+- Wave 4 progress: `ppo_trainer_ops` façade + weights/eval/train; `aperture_audit_*` discover/build/markdown; regime ownership flipped to `risk/regime_detector.py` (engine re-export)
+- Still large: stage_loop_session_runner/progress, shadow_deployment, promotion_policy, container wiring, admin_dashboard_layout, Tauri birth UI gods, bootstrap, logging_utils
+- Docs: this section + `docs/architecture.md` §3.3.1/3.3.2 Wave D notes (E0)
+- Success bar “0 prod files >400 LOC” **not met** — requires Wave F+ batches
+
+**Intentionally out of scope for Wave E claim:** flipping hybrid quarantine defaults; full capital-path Event Bus rewiring; deleting `frontend/`.
+
+## Wave F modularization (2026-07-31) — partial residual attack
+
+| Item | Outcome |
+|------|---------|
+| `stage_loop_progress` | Façade + metrics/write mixins |
+| `stage_loop_iteration` | **Pure helpers only** (`failure_key_for_stage`); no control-flow rewrite (still large) |
+| `stage_loop_session_runner` | Third-based split **aborted** (syntax mid-block) — original kept |
+| `shadow_deployment` | helpers + tracker core + verdict mixin; private stats re-exported for `promotion_gate` |
+| `promotion_policy` | `run_shadow_validation_gate` → `PromotionShadowGateMixin` |
+| `bootstrap` | ohlc / traderleague / public_api / runtime_fn façades |
+| `logging_utils` | `compute_autonomy_snapshot` → `logging_autonomy.py` |
+| `container` | `ContainerStatusMixin` (get_status + cleanup) |
+| Root `runtime_*` relocate | Still deferred (circular import risk) |
+| `admin_dashboard_layout` / monitoring helpers | Deferred (fragile / script incomplete) |
+
+Success bar “0 files >400 LOC” **still not met**. Wave G+ continues remaining birth/evolution/UI gods.
+
+## Wave G modularization (2026-07-31) — residual attack continued
+
+| Item | Outcome |
+|------|---------|
+| `supervisor_phase_tick_ops` | Split → preflight/signal/exec/post + thin façade |
+| `stage_loop_data_enrich` | Swarm methods mixin + core + façade |
+| `meta_controller_decisions` | decide_* mixins (pre/after/periodic/adaptation) + core |
+| `promotion_policy` | Evidence mixin + shadow gate mixin; façade ~158 LOC |
+| `twin_mode_promotion_gate` | `TwinModeController` extracted; gate file re-exports API |
+| `stage_loop_progress_write` | Residual mono `_write_progress` (deferred) |
+| `stage_loop_session_runner` / `stage_loop_iteration` | Still large (no unsafe control-flow rewrite) |
+| `generation_runner` | Mono `run_single_generation` deferred |
+| `admin_dashboard_layout` / monitoring | Deferred |
+
+Focused regression (birth/evolution/twin/setup): **73 passed**.
+
+## Wave H modularization (2026-07-31) — residual attack continued
+
+| Item | Outcome |
+|------|---------|
+| `twin_mode_promotion_gate` | Full three-module split: `twin_mode_types` + `twin_mode_promotion_gate_impl` + `twin_mode_controller`; façade re-exports public API (~33 LOC) |
+| `stage_loop_session_runner` | AST-safe sequential phases: `session_phase_{init,resume,prepare}` mixins; thin runner (~31 LOC); early returns preserved |
+| `stage_pass_receipt` | types (receipt + helpers) / build / verify + façade (~37 LOC) |
+| `dna_registry` | `policy_dna` + `dna_registry_impl` + thin façade (~7 LOC); public `DNARegistry`/`PolicyDNA` unchanged |
+| `generation_runner` | Sequential helpers → `generation_runner_phases` (risk shadow, post-twin veto, pre-promotion guard, metrics); runner ~416 LOC |
+| `stage_loop_progress_write` | Starship scorecard block → `stage_loop_progress_write_starship` mixin; write file ~366 LOC |
+| `stage_loop_iteration` | Still large (no unsafe control-flow rewrite — prior hang regressions) |
+| `admin_dashboard_layout` / monitoring | Deferred |
+
+Success bar “0 prod files >400 LOC” **still not met** (iteration, infinite_simulator, generation_runner residual ~416, data_pipeline, etc.). Wave I+ continues remaining gods without control-flow rewrites of birth stage loops.
+
+Also fixed Wave G regression: `promotion_shadow_gate.run_shadow_validation_gate` had been reduced to a stub (`...`); full body restored under the mixin.
+
+Focused regression (twin/dna/promotion/checkpoint): **48 passed** (Wave H close).

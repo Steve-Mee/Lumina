@@ -50,6 +50,7 @@ class PlateauEnterContext:
     wall_budget_exhausted: bool = False
     meta_learning_health: str = ""
     skill_failing: bool | None = None
+    range_flat_ratio: float = 0.0
 
 
 def plateau_min_stage_trades(stage: CurriculumStage, cfg: BirthCurriculumConfig) -> int:
@@ -57,11 +58,19 @@ def plateau_min_stage_trades(stage: CurriculumStage, cfg: BirthCurriculumConfig)
 
     Stage3 mixed: allow plateau as soon as pass-gate volume is met so recovery
     can start when WR/hold floors fail (Raptor v8 — no wait until 25% of 5000).
+
+    Stage2 EdgeScore: same — recovery must start after volume gate, not at 25% of
+    3000 (750). Live forensics: flat 96% stuck for 447 trades beyond gate with
+    plateau_inactive because min was 750.
     """
     from lumina_core.birth.curriculum import stage_pass_trades
 
     floor = stage_pass_trades(stage, cfg)
     if stage == CurriculumStage.STAGE3_MIXED:
+        return floor
+    if stage == CurriculumStage.STAGE2_RANGE and bool(
+        getattr(cfg, "stage2_edgescore_enabled", False)
+    ):
         return floor
     target = stage_trade_target(stage, cfg)
     pct = float(getattr(cfg, "plateau_min_stage_trades_pct", 0.25))
@@ -142,6 +151,16 @@ def _plateau_skill_failing(ctx: PlateauEnterContext, *, cfg: BirthCurriculumConf
     if ctx.skill_failing is not None:
         return bool(ctx.skill_failing)
     winrate = float(ctx.stage_wins) / float(max(1, ctx.stage_trades))
+    # Stage2 EdgeScore skill = flat-band activity (primary) + soft WR floor.
+    if ctx.stage == CurriculumStage.STAGE2_RANGE and bool(
+        getattr(cfg, "stage2_edgescore_enabled", False)
+    ):
+        flat = float(getattr(ctx, "range_flat_ratio", 0.0) or 0.0)
+        # If flat ratio not on context, treat as failing only via WR path below.
+        if flat > 0.0 and (flat < 0.30 - 1e-12 or flat > 0.70 + 1e-12):
+            return True
+        floor = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35) or 0.35)
+        return winrate + 1e-9 < floor
     edgescore_on = bool(
         (
             ctx.stage == CurriculumStage.STAGE1_TREND

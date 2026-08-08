@@ -50,6 +50,7 @@ from lumina_core.birth.phase2_autonomy.gates import evaluate_phase2_gate
 from lumina_core.birth.phase2_autonomy.instance_adapter import (
     materialize_instance_adapt_payload,
     propose_instance_adapt,
+    validate_instance_proposal,
 )
 from lumina_core.birth.phase2_autonomy.metrics import (
     compute_phase2_metrics_snapshot,
@@ -67,6 +68,14 @@ from lumina_core.birth.phase2_autonomy.param_catalog import (
     propose_param_adjustment,
     validate_param_changes,
 )
+from lumina_core.birth.phase2_autonomy.sim_campaign import (
+    build_phase2_shadow_campaign_ops_report,
+    disable_sim_campaign,
+    enable_sim_shadow_campaign,
+    promote_sim_apply_campaign,
+    resolve_features_with_campaign,
+    sim_campaign_status,
+)
 
 __all__ = [
     "BIRTH_SAFE_PARAM_CATALOG",
@@ -78,6 +87,12 @@ __all__ = [
     "Phase2GateResult",
     "Phase2InstanceAdaptProposal",
     "Phase2OrchestratorDecision",
+    "build_phase2_shadow_campaign_ops_report",
+    "disable_sim_campaign",
+    "enable_sim_shadow_campaign",
+    "promote_sim_apply_campaign",
+    "resolve_features_with_campaign",
+    "sim_campaign_status",
     "Phase2ParamAdjustmentProposal",
     "Phase2Pillar",
     "Phase2WallAdjustmentProposal",
@@ -94,5 +109,6 @@ __all__ = [
     "propose_instance_adapt",
     "propose_param_adjustment",
     "record_phase2_decision_monitoring",
+    "validate_instance_proposal",
     "validate_param_changes",
 ]

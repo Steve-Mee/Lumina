@@ -11,6 +11,65 @@ from lumina_core.birth.progress import merge_birth_progress_extra, write_birth_p
 
 
 @pytest.mark.unit
+def test_write_birth_progress_refreshes_session_start_on_restart(tmp_path: Path) -> None:
+    """Regression: SCORECARD_PRESERVE_KEYS used to clobber birth_start_time with prev.
+
+    UI showed a stale 'Session start' after wipe/restart (e.g. hours-old clock).
+    """
+    old_start = 1_700_000_000.0
+    write_birth_progress(
+        tmp_path,
+        stage="history_unavailable",
+        phase="loading_history_failed",
+        message="old failure",
+        progress_pct=100.0,
+        birth_start_time=old_start,
+        needs_attention=True,
+        attention_reason_code="history_unavailable",
+        attention_summary="Geen historische data beschikbaar.",
+    )
+    new_start = old_start + 86_400.0
+    write_birth_progress(
+        tmp_path,
+        stage="loading_data",
+        phase="loading_history",
+        message="Historische data laden…",
+        progress_pct=8.0,
+        birth_start_time=new_start,
+    )
+    payload = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
+    assert float(payload["birth_start_time"]) == new_start
+    assert float(payload["birth_start_time"]) != old_start
+    # Stale attention from the previous failed session must not stick.
+    assert payload.get("needs_attention") is not True
+    assert payload.get("attention_reason_code") in (None, "", False)
+
+
+@pytest.mark.unit
+def test_write_birth_progress_preserves_session_start_within_same_run(tmp_path: Path) -> None:
+    """Mid-run writes that omit birth_start_time keep the session clock."""
+    start = 1_710_000_000.0
+    write_birth_progress(
+        tmp_path,
+        stage="loading_data",
+        phase="loading_history",
+        message="start",
+        progress_pct=5.0,
+        birth_start_time=start,
+    )
+    write_birth_progress(
+        tmp_path,
+        stage="loading_data",
+        phase="enriching_news",
+        message="news",
+        progress_pct=20.0,
+        # birth_start_time omitted (0) — resume preserve path
+    )
+    payload = json.loads((tmp_path / "state" / "lumina_birth_progress.json").read_text(encoding="utf-8"))
+    assert float(payload["birth_start_time"]) == start
+
+
+@pytest.mark.unit
 def test_merge_birth_progress_extra_last_wins() -> None:
     scorecard = {"constitution_violations": 2, "stage_wins": 10}
     constitution_fields = {

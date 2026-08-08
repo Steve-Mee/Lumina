@@ -260,7 +260,7 @@ def test_resolve_app_surface_fresh_install() -> None:
 
 
 @pytest.mark.unit
-def test_resolve_app_surface_deck_when_artifacts_ok() -> None:
+def test_resolve_app_surface_hub_when_artifacts_ok() -> None:
     required, _ = compute_onboarding_steps(
         backend_reachable=True,
         setup_complete=True,
@@ -276,8 +276,8 @@ def test_resolve_app_surface_deck_when_artifacts_ok() -> None:
         backend_reachable=True,
         required_steps=required,
     )
-    assert surface == "deck"
-    assert reason == "birth_complete"
+    assert surface == "hub"
+    assert reason == "maturation_hub"
 
 
 @pytest.mark.unit
@@ -318,7 +318,7 @@ def test_build_onboarding_payload_skip_wizard_matches_app_surface(
     artifacts_ok: bool,
     backend_reachable: bool,
 ) -> None:
-    """Contract: skip_wizard is true iff app_surface is deck."""
+    """Contract: skip_wizard is true when app_surface is hub or deck."""
     setup = MagicMock()
     setup.is_setup_complete.return_value = setup_complete
     config_manager = MagicMock()
@@ -359,7 +359,7 @@ def test_build_onboarding_payload_skip_wizard_matches_app_surface(
             with patch.object(se, "_model_catalog_payload", return_value=[]):
                 payload = se.build_onboarding_payload(serving_request=True)
 
-    assert payload["skip_wizard"] == (payload["app_surface"] == "deck")
+    assert payload["skip_wizard"] == (payload["app_surface"] in ("hub", "deck"))
 
 
 @pytest.mark.unit

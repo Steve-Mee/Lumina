@@ -24,7 +24,7 @@ def test_wall_handler_publishes_trigger_on_stall() -> None:
     trigger = client.wall_evaluate_trigger(
         CurriculumStage.STAGE1_TREND,
         stage_trades=150,
-        stage_wins=45,
+        stage_wins=15,  # 10% — below survival EdgeScore hygiene so stall can fire
         required=100,
         hold_ratio=0.2,
         constitution_violations=0,

@@ -50,18 +50,46 @@ def run_live_checks(
             )
         )
 
-    # 5 auth ok
+    # 5 auth ok — one auto-realign retry for stale SimHost token (SIM only)
     t = time.perf_counter()
     client: FabricGrpcClient | None = None
+    auth_detail = ""
     try:
         client = make_client(token)
-        if client.connect():
+        connected = bool(client.connect())
+        if not connected:
+            # Stale SimHost often holds :50051 with an old --token; realign once.
+            try:
+                from lumina_launcher.services.fabric_simhost import (
+                    ensure_simhost_token_aligned,
+                    is_localhost,
+                )
+
+                if is_localhost(host):
+                    align = ensure_simhost_token_aligned(
+                        host=host,
+                        port=port,
+                        token=token,
+                        wait_sec=8.0,
+                    )
+                    auth_detail = str(align.get("message") or align.get("status") or "")
+                    try:
+                        client.disconnect()
+                    except Exception:
+                        pass
+                    client = make_client(token)
+                    connected = bool(client.connect())
+            except Exception as align_exc:
+                auth_detail = f"realign_failed:{align_exc}"
+
+        if connected:
             checks.append(
                 DiagnosticCheck(
                     id="auth_ok",
                     title="Fabric auth (correct token)",
                     status="pass",
                     message=f"Authenticated session={client.session_id} account={client.account_name}",
+                    detail=auth_detail or None,
                     duration_ms=int((time.perf_counter() - t) * 1000),
                 )
             )
@@ -72,11 +100,14 @@ def run_live_checks(
                     title="Fabric auth (correct token)",
                     status="fail",
                     message="Auth failed with configured token",
+                    detail=auth_detail or None,
                     duration_ms=int((time.perf_counter() - t) * 1000),
                 )
             )
             remediation.append(
-                "Token mismatch: set the same LUMINA_FABRIC_TOKEN for Brain and NT8 (User env), then restart NT."
+                "Token mismatch: Brain LUMINA_FABRIC_TOKEN must match the Fabric host. "
+                "SIM: diagnostics auto-restarts SimHost with the Brain token. "
+                "NT8 AddOn: set the same token as User env and restart NinjaTrader."
             )
             try:
                 client.disconnect()

@@ -26,7 +26,7 @@ export interface ReadinessRow {
 }
 
 /** Phase 1+ backend SSOT lifecycle surface. */
-export type AppSurface = "setup" | "birth" | "deck";
+export type AppSurface = "setup" | "birth" | "hub" | "deck";
 
 export interface OnboardingPayload {
   backend: { reachable: boolean; url: string; latency_ms?: number; error?: string };

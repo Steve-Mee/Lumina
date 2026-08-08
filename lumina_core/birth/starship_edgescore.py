@@ -11,6 +11,7 @@ from lumina_core.birth.starship_edgescore_champion import (  # noqa: F401
     edgescore_champion_min_trades,
     humanize_edgescore_blocker,
     is_edgescore_champion_eligible,
+    publish_edgescore_champion_fields,
     sanitize_edgescore_champion,
 )
 from lumina_core.birth.starship_edgescore_core import (  # noqa: F401
@@ -25,7 +26,10 @@ from lumina_core.birth.starship_edgescore_core import (  # noqa: F401
     should_force_exploration_burst,
 )
 from lumina_core.birth.starship_edgescore_stage1 import evaluate_stage1_edgescore  # noqa: F401
-from lumina_core.birth.starship_edgescore_stage2 import evaluate_stage2_edgescore  # noqa: F401
+from lumina_core.birth.starship_edgescore_stage2 import (  # noqa: F401
+    evaluate_stage2_edgescore,
+    stage2_expectancy_floor,
+)
 from lumina_core.birth.starship_edgescore_stage3 import evaluate_stage3_edgescore  # noqa: F401
 
 __all__ = [
@@ -40,9 +44,11 @@ __all__ = [
     "hygiene_wr_telemetry",
     "is_edgescore_champion_eligible",
     "policy_entropy_alive",
+    "publish_edgescore_champion_fields",
     "read_last_ppo_entropy",
     "rolling_pass_min_covered",
     "rolling_wr_pass_eligible",
     "sanitize_edgescore_champion",
     "should_force_exploration_burst",
+    "stage2_expectancy_floor",
 ]

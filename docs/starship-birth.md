@@ -2,12 +2,16 @@
 
 SSOT for Birth learning integrity, swarm tournaments, twin CONTINUE, and certificate honesty.
 
+**Organism framing:** Birth = survival (breathe / legal action loop), not pro daytrader competence.  
+See [organism-maturation-phases.md](adr/organism-maturation-phases.md) for Genesis→Real capability ladder.  
+Skill floors (WR hygiene 35%+, full OOS certificate) belong to **Playground / Proving Ground**, not newborn exit.
+
 ## Locked decisions
 
 | Topic | Rule |
 |-------|------|
 | **Certificate thresholds** | Frozen. Do **not** lower `min_oos_winrate` (0.48), Sharpe, drawdown, or holdout trade floors in `BirthCertificateThresholds`. |
-| **full_auto** | Never force-promote twin mode in yaml. CONTINUE only when twin is already `full_auto` + executable + conf≥0.80 + swarm tournament **resolved** (commit or `champion_accepted`) + constitution clean (`starship_twin_continue_when_full_auto`). |
+| **full_auto** | Never force-promote twin mode in yaml. CONTINUE only when twin is already `full_auto` + executable + conf≥0.80 + swarm tournament **resolved** (commit or `champion_accepted`) + constitution clean (`starship_twin_continue_when_full_auto`). Audit: `python scripts/validation/twin_mode_ssot_audit.py` (T15). |
 | **Compress** | Thin `BirthControlPlane` + skip plateau ladder **and** stall remediation after freeze/accept. No big-bang rewrite of `plateau_escalator.py`. |
 
 ## Phase A (summary)
@@ -68,6 +72,12 @@ Plan: [starship-birth-seal-ii.md](starship-birth-seal-ii.md).
 - Ladder tables/step API extracted to `plateau_evolution_ladder.py` (re-exported from escalator).
 - Still locked: no cert floor drop, no yaml `full_auto` force.
 
+### Tauri tournament naming (T12)
+
+- Client SSOT: `tauri-app/src/lib/birth/birthTournamentNaming.ts` — prefer `swarm_tournament_*`, normalize `swarm_no_edgescore_lift` → `swarm_no_tournament_lift`, rewrite residual “EdgeScore lift” operator copy.
+- Status fetch path applies normalization (`fetchBirthStatusTyped` / birth mutations).
+- Stage HUD shows **Tournament lift** field (swarm physics); stage pass metric remains **EdgeScore** (composite criteria — not vanity rename).
+
 ## Key modules
 
 - `lumina_core/birth/starship_birth.py` — physics predicates
@@ -78,4 +88,7 @@ Plan: [starship-birth-seal-ii.md](starship-birth-seal-ii.md).
 
 ## Operator pointer
 
-See also [birth-phase-live-validation-runbook.md](birth-phase-live-validation-runbook.md) § Starship Birth.
+See also [birth-phase-live-validation-runbook.md](birth-phase-live-validation-runbook.md) § Starship Birth.  
+**Zero-human metrics (T14):** [birth-zero-human-metrics-runbook.md](birth-zero-human-metrics-runbook.md) — unattended SIM birth KPIs, freeze sacred path, campaign gates.  
+**Self-play lab (ADR-0037 Phase 0):** [self-play-lab.md](self-play-lab.md) — frozen-window `tournament_score` ranking, default off, no REAL/apply.  
+**Operator residuals OR1–OR6:** [operator-residuals-or1-or6.md](operator-residuals-or1-or6.md) · `python scripts/validation/operator_residuals_gate.py`.

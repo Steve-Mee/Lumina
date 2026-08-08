@@ -48,6 +48,15 @@ def test_apply_mode_authority_full_auto_executable() -> None:
     assert auth["authority"] == "execute_judgment"
 
 
+def test_apply_mode_authority_full_auto_not_executable_in_real() -> None:
+    auth = apply_mode_authority(
+        raw_recommendation=True, mode="full_auto", capital_mode="real"
+    )
+    assert auth["executable"] is False
+    assert auth["effective_recommendation"] is False
+    assert auth.get("real_capital_floor") is True
+
+
 def test_gate_insufficient_samples_fail_closed(tmp_path: Path) -> None:
     gate = TwinModePromotionGate(audit_path=tmp_path / "audit.jsonl")
     evidence = TwinModePromotionEvidence(
@@ -77,6 +86,7 @@ def test_gate_good_evidence_promotes_assisted(tmp_path: Path) -> None:
         constitution_adherence_pct=100.0,
         risk_flags_caught=0,
         constitution_violations=0,
+        steve_label_samples=20,  # H4: >= min_steve_labels_assisted (15)
     )
     decision = gate.evaluate(evidence)
     assert decision.promoted is True

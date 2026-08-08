@@ -158,3 +158,16 @@ export function shouldShowBirthAttentionBanner(
   }
   return true;
 }
+
+/** True when attention is swarm tournament no-lift (canonical or legacy vanity code). */
+export function isSwarmTournamentNoLiftAttention(
+  progress: BirthProgressPayload | undefined,
+): boolean {
+  if (!progress) return false;
+  const reason = normalizeToken(progress.attention_reason_code);
+  return (
+    reason === "swarm_no_tournament_lift" ||
+    reason === "swarm_no_edgescore_lift" ||
+    Boolean(progress.swarm_rejected_no_lift)
+  );
+}

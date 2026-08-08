@@ -61,8 +61,9 @@ export function isBirthPollInFlight(): boolean {
 const POLL_FRESH_WAIT_MS = 3000;
 const POLL_FRESH_POLL_INTERVAL_MS = 50;
 
-export const STOP_ENGINE_POLL_MS = 500;
-export const STOP_ENGINE_TIMEOUT_MS = 30_000;
+/** Fast confirm poll after stop — pause SSOT is already on disk; do not block UI. */
+export const STOP_ENGINE_POLL_MS = 200;
+export const STOP_ENGINE_TIMEOUT_MS = 6_000;
 export const WIPE_VERIFY_ATTEMPTS = 10;
 export const WIPE_VERIFY_DELAY_MS = 500;
 

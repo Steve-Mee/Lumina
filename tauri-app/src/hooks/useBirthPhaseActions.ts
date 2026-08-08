@@ -170,8 +170,15 @@ export function useBirthPhaseActions() {
   };
 
   const handleStartBirth = () => {
+    const store = useBirthStore.getState();
+    if (!store.sessionHydrated || store.sessionProbeState !== "ready") {
+      toast.info(
+        "Still loading previous birth session — wait until status is ready before activating.",
+      );
+      return;
+    }
     setControlBusy(true);
-    useBirthStore.getState().beginBirthRun();
+    store.beginBirthRun();
     void activateBirth()
       .then(async (ok) => {
         if (ok) {

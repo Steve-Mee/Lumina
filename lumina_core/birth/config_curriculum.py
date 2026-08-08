@@ -33,6 +33,8 @@ class BirthRewardConfig:
     rolling_trade_window: int = 50
     range_flat_bonus_coeff: float = 0.003
     range_churn_penalty_coeff: float = 0.005
+    # In-band Stage-2 quality boost when expectancy gap (WR−0.50 below floor).
+    range_quality_boost_coeff: float = 0.15
 
 
 @dataclass(slots=True)
@@ -157,6 +159,17 @@ class BirthCurriculumConfig:
     stage1_hold_ratio_min: float = 0.05
     stage1_hold_ratio_max: float = 0.85
     stage1_expectancy_floor: float = -0.15
+    # Stage-2 quality floor on WR−0.50 scale (−0.15 ≡ 35% WR). Not survival −0.50.
+    stage2_expectancy_floor: float = -0.15
+    stage2_expectancy_quality_max_steps: int = 4
+    stage2_expectancy_swarm_defer_steps: int = 2
+    # Birth/SIM: Twin may accept_champion on freeze (never wipe, never REAL).
+    birth_twin_freeze_resolve_enabled: bool = True
+    # Birth = survival (breathe), not pro daytrader. Skill floors apply later (Playground+).
+    birth_survival_pass_enabled: bool = True
+    birth_survival_wr_floor: float = 0.20
+    birth_survival_expectancy_floor: float = -0.50
+    birth_plant_soft_block_rate_max_per_1k: float = 100.0
     starship_entropy_life_support_enabled: bool = True
     starship_swarm_first_enabled: bool = True
     starship_exploration_burst_multiplier: float = 2.5
@@ -180,6 +193,23 @@ class BirthCurriculumConfig:
     over_trading_flat_threshold: float = 0.30
     over_trading_round_trip_multiplier: float = 2.0
     over_trading_recovery_flat_target: float = 0.35
+    # Stage2 under-activity (flat too high): explore/participation before swarm.
+    under_activity_flat_threshold: float = 0.70
+    under_activity_recovery_flat_floor: float = 0.65
+    under_activity_min_range_signals: int = 50
+    under_activity_explore_multiplier: float = 2.0
+    stage2_flat_band_swarm_defer_steps: int = 2
+    # Stage2 Participation Envelope — hard occupancy physics (Birth SIM only).
+    stage2_participation_envelope_enabled: bool = True
+    stage2_participation_min_signals: int = 50
+    stage2_participation_min_dwell_bars: int = 8
+    stage2_participation_band_lo: float = 0.30
+    stage2_participation_band_hi: float = 0.70
+    # Hysteresis for FORCE_* so flat thrash at exact 30/70% does not smother quality.
+    stage2_participation_hysteresis: float = 0.02
+    stage2_participation_force_open_stop_pct: float = 0.0075
+    stage2_participation_force_open_target_pct: float = 0.015
+    stage2_participation_force_open_qty_frac: float = 0.15
     policy_rollback_winrate_gap: float = 0.02
     policy_rollback_cooldown_rollouts: int = 8
     intra_stage2_enabled: bool = True
@@ -222,6 +252,8 @@ class BirthCurriculumConfig:
     perfect_birth_min_samples_labels: int = 30
     perfect_birth_min_recovery_attempts: int = 8
     perfect_birth_sustained_hours: int = 48
+    # Optional auto-declare after birth complete when full KPI conjunction passes (fail-closed default).
+    perfect_birth_auto_declare: bool = False
 
     # Phase 2 Autonomy foundation (ADR-0034) — all default OFF / fail-closed
     phase2_autonomy_enabled: bool = False

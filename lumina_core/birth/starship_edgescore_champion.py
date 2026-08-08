@@ -24,6 +24,7 @@ def humanize_edgescore_blocker(
     rolling_winrate_display: float | None = None,
     rolling_wr_eligible: bool | None = None,
     rolling_min_covered: int | None = None,
+    stage: str | None = None,
 ) -> str:
     """Operator-facing EdgeScore block reason (percentages, no debug dump)."""
     score_pct = f"{float(edge.score) * 100.0:.0f}%"
@@ -32,8 +33,27 @@ def humanize_edgescore_blocker(
         trades=int(trades),
         rolling_winrate=rolling_winrate,
     )
-    exp_floor = float(getattr(cfg, "stage1_expectancy_floor", -0.15))
-    hygiene = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35))
+    stage_key = str(stage or "").strip().lower()
+    is_stage2 = stage_key in {"stage2_range", "stage2", "range", "2"}
+    survival = bool(getattr(cfg, "birth_survival_pass_enabled", True)) and not is_stage2
+    if is_stage2:
+        from lumina_core.birth.starship_edgescore_stage2 import stage2_expectancy_floor
+
+        exp_floor = stage2_expectancy_floor(cfg)
+        hygiene = float(exp_floor) + 0.50  # WR−0.50 scale → hygiene WR equivalent
+        wr_label = "Range quality WR"
+    elif survival:
+        exp_floor = float(getattr(cfg, "birth_survival_expectancy_floor", -0.50))
+        hygiene = float(getattr(cfg, "birth_survival_wr_floor", 0.20))
+        wr_label = "Survival WR"
+    else:
+        exp_floor = float(getattr(cfg, "stage1_expectancy_floor", -0.15))
+        hygiene = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35))
+        wr_label = "Hygiene WR"
+    # Activity (hold/flat band) before hygiene WR — stage-2 blockers must not be
+    # mislabeled as Survival WR when the real failure is flat-ratio outside 30–70%.
+    if not edge.activity_ok:
+        return f"Flat/hold outside 30–70% activity band | EdgeScore {score_pct}"
     if not edge.hygiene_ok:
         lifetime = float(wins) / float(max(1, int(trades)))
         roll_disp = (
@@ -50,19 +70,19 @@ def humanize_edgescore_blocker(
                 int(getattr(cfg, "stage1_rolling_pass_window", 500) or 500)
             )
             return (
-                f"Hygiene WR {detail} (need >={hygiene:.0%}; "
+                f"{wr_label} {detail} (need >={hygiene:.0%}; "
                 f"rolling counts after {need}) | EdgeScore {score_pct}"
             )
-        return f"Hygiene WR {detail} (need >={hygiene:.0%}) | EdgeScore {score_pct}"
-    if not edge.activity_ok:
-        return f"Hold outside activity band | EdgeScore {score_pct}"
+        return f"{wr_label} {detail} (need >={hygiene:.0%}) | EdgeScore {score_pct}"
     if not edge.entropy_ok:
         if entropy is None:
             return f"Entropy missing | EdgeScore {score_pct}"
         return f"Entropy dead (H={float(entropy):.3f}) | EdgeScore {score_pct}"
     if not edge.expectancy_ok:
+        wr_equiv = float(exp) + 0.50
         return (
-            f"Expectancy {exp * 100.0:.0f}% (need >= {exp_floor * 100.0:.0f}%) "
+            f"Expectancy {exp * 100.0:.0f}% (need >= {exp_floor * 100.0:.0f}%; "
+            f"≡ {wr_label} >={hygiene:.0%}, now {wr_equiv:.0%}) "
             f"| EdgeScore {score_pct}"
         )
     if not edge.constitution_ok:
@@ -84,6 +104,36 @@ def is_edgescore_champion_eligible(
 ) -> bool:
     """True only after pass-gate volume — blocks early noise champions."""
     return int(stage_trades) >= edgescore_champion_min_trades(int(required), cfg)
+
+
+def publish_edgescore_champion_fields(
+    *,
+    best_edgescore: float,
+    best_edgescore_at_trade: int,
+    best_edgescore_policy_path: str = "",
+    stage_trades: int,
+    required: int,
+    cfg: BirthCurriculumConfig,
+) -> dict[str, object]:
+    """Progress fields for champion EdgeScore — honest null until locked.
+
+    Writing 0.0 before eligibility made the UI show "Champion EdgeScore 0%" which
+    operators read as a real score. Prefer null + min-trades hint until a champion
+    is actually frozen after pass-gate volume.
+    """
+    min_trades = edgescore_champion_min_trades(int(required), cfg)
+    best = float(best_edgescore or 0.0)
+    at_trade = int(best_edgescore_at_trade or 0)
+    locked = best > 0.0 and at_trade > 0 and at_trade >= min_trades
+    return {
+        "best_edgescore": round(best, 4) if locked else None,
+        "best_edgescore_at_trade": at_trade if locked else 0,
+        "best_edgescore_policy_path": (
+            str(best_edgescore_policy_path or "").strip() if locked else ""
+        ),
+        "edgescore_champion_min_trades": int(min_trades),
+        "edgescore_champion_locked": bool(locked),
+    }
 
 
 def sanitize_edgescore_champion(

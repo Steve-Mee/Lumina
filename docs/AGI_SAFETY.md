@@ -399,7 +399,7 @@ Deze laag is fail-closed: als shadow of approval gates niet voldoen, wordt promo
 
 ---
 
-## Layer 6: Trading Code Evolution Sandbox (v1, evaluate-only)
+## Layer 6: Trading Code Evolution Sandbox (H5: evaluate + optional sandbox apply)
 
 **ADR:** [0033-trading-code-evolution-prototype.md](adr/0033-trading-code-evolution-prototype.md)  
 **Package:** `lumina_core/code_evolution/`  
@@ -427,10 +427,14 @@ SandboxedCodeExecutor (subprocess: tmpdir, secrets stripped, timeout, AST probe)
         ▼
 Audit stream evolution.code_mutation + Event Bus + reversible journal
         │
-        └── try_apply_live → ALWAYS applied=False in v1
+        └── CodeEvolutionApplyGate (H5)
+              ├── default: applied=False (apply_to_sandbox_store: false)
+              ├── human APPROVED marker (or twin when allow_twin_judgment_apply)
+              ├── REAL / live capital → always blocked
+              └── apply target: state/code_evolution/applied/ only (never live repo)
 ```
 
-### v1 operators only
+### Operators only
 
 | Operator | Target | Notes |
 |----------|--------|-------|
@@ -441,10 +445,11 @@ Audit stream evolution.code_mutation + Event Bus + reversible journal
 ### Hard guarantees
 
 - Default **disabled** (`evolution.code_evolution.enabled: false`).
-- **No live tree / REAL apply** in v1.
-- Twin cannot bypass constitution or sandbox.
+- **Apply default off** (`apply_to_sandbox_store: false`); when on, only sandbox store under `state/code_evolution/applied/`.
+- **No live tree / REAL capital apply** (H5 gate + constitution `no_live_tree_apply`).
+- Twin cannot bypass constitution or sandbox; human `APPROVED` marker required by default for apply.
 - Forbidden: full files, risk/broker/order_gatekeeper paths, capital risk keys.
-- Reversibility: `state/code_evolution/pending/<id>/{before_snapshot,REVERT}.json`.
+- Reversibility: `state/code_evolution/pending/<id>/{before_snapshot,REVERT}.json` + `ApplyGate.revert_applied`.
 
 ### Usage
 
@@ -454,7 +459,7 @@ from lumina_core.evolution.approval_twin_agent import ApprovalTwinAgent
 
 twin = ApprovalTwinAgent(mode="shadow")
 result = run_code_evolution_dry_cycle(enabled=True, twin=twin, seed="demo")
-# result["decisions"][*]["applied"] is always False in v1
+# result["decisions"][*]["applied"] is False unless apply_to_sandbox_store + gates
 ```
 
 ### Tests

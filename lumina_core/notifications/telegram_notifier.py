@@ -138,6 +138,12 @@ class TelegramNotifier:
         except Exception as exc:
             logger.error("Failed to record auto-veto for %s: %s", dna_id, exc)
 
+    def configure_workspace(self, workspace_root: Any) -> None:
+        """Optional workspace for maturation phase advance replies."""
+        from pathlib import Path
+
+        self._workspace_root = Path(workspace_root)
+
     def poll_for_replies(self) -> list[dict[str, Any]]:
         if not self._api_token or not self._chat_id:
             return []
@@ -161,14 +167,76 @@ class TelegramNotifier:
                 sender_chat_id = str(getattr(getattr(message, "chat", None), "id", ""))
                 if sender_chat_id != self._chat_id:
                     continue
-                text = str(getattr(message, "text", "") or "").strip().upper()
+                raw_text = str(getattr(message, "text", "") or "").strip()
+                text = raw_text.upper()
                 action, target_dna = self._parse_reply(text)
                 if action:
                     self._apply_reply(action, target_dna)
                     processed.append({"update_id": update_id, "action": action, "dna_id": target_dna})
+                    continue
+                # OR5 champion freeze: ACCEPT / WIPE (remote autonomy)
+                freeze_result = self._try_champion_freeze_reply(raw_text)
+                if freeze_result is not None:
+                    processed.append(
+                        {
+                            "update_id": update_id,
+                            "action": "champion_freeze",
+                            "result": freeze_result,
+                        }
+                    )
+                    continue
+                # Phase continuum advance: YES / CONFIRM / ADVANCE + token
+                phase_result = self._try_phase_advance_reply(raw_text)
+                if phase_result is not None:
+                    processed.append(
+                        {
+                            "update_id": update_id,
+                            "action": "phase_advance",
+                            "result": phase_result,
+                        }
+                    )
         except Exception as exc:
             logger.error("Telegram poll_for_replies error: %s", exc)
         return processed
+
+    def _try_champion_freeze_reply(self, raw_text: str) -> dict[str, Any] | None:
+        """Handle champion freeze ACCEPT/WIPE replies; returns None if not applicable."""
+        try:
+            from pathlib import Path
+
+            from lumina_core.birth.champion_freeze_telegram import (
+                try_handle_telegram_freeze_text,
+            )
+
+            root = getattr(self, "_workspace_root", None) or Path.cwd()
+            return try_handle_telegram_freeze_text(root, raw_text, apply=True)
+        except Exception as exc:
+            logger.debug("Telegram champion freeze handle failed: %s", exc)
+            return None
+
+    def _try_phase_advance_reply(self, raw_text: str) -> dict[str, Any] | None:
+        """Handle maturation advance replies; returns None if not applicable."""
+        try:
+            from pathlib import Path
+
+            from lumina_core.maturity.advance_policy import try_handle_telegram_text
+
+            root = getattr(self, "_workspace_root", None) or Path.cwd()
+            result = try_handle_telegram_text(root, raw_text)
+            if result is None:
+                return None
+            if result.get("ok"):
+                phase = result.get("phase") or result.get("start_phase") or "next"
+                self._send_telegram_message(f"Lumina: starting phase `{phase}` from Telegram confirm.")
+            else:
+                err = result.get("error") or "advance failed"
+                self._send_telegram_message(
+                    f"Lumina: phase advance failed ({err}). Open Phase Hub or check token."
+                )
+            return result
+        except Exception as exc:
+            logger.debug("Telegram phase advance handle failed: %s", exc)
+            return None
 
     def _parse_reply(self, text: str) -> tuple[str | None, str | None]:
         parts = text.split()

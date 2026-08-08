@@ -330,8 +330,8 @@ describe("onboarding surface contracts", () => {
     expect(birthGenesisDeckSource).toContain("genesis-recovery-action-grid");
     expect(birthGenesisDeckSource).toContain("RecoveryActionCard");
     expect(birthGenesisDeckSource).toContain("openWipeConfirm");
-    expect(birthGenesisDeckSource).toContain("Wis birth-data");
-    expect(birthGenesisDeckSource).toContain("Volledige wipe");
+    expect(birthGenesisDeckSource).toContain("Wipe birth data");
+    expect(birthGenesisDeckSource).toContain("Full wipe");
     expect(birthGenesisDeckSource).toContain("Resume checkpoint");
     expect(birthGenesisDeckSource).toContain("sessionInterrupted");
     expect(birthGenesisDeckSource).toMatch(/showRecoveryTab[\s\S]*sessionInterrupted/);

@@ -98,35 +98,60 @@ def evaluate_phase2_gate(
             message=f"Phase 2 pillar disabled: {pillar_key}",
         )
 
-    # Perfect Birth unlock: flag + evidence (Slice C); SIM scaffold may bypass
+    # Perfect Birth unlock: flag + evidence (Slice C / Track B).
+    # Apply path: evidence is non-negotiable unless explicit SIM scaffold.
+    # Observe path: still honors require_perfect_birth_flag (lab/tests).
     unlocked = features.perfect_birth_unlocked()
     unlock_detail = "flag_present" if unlocked else "flag_missing"
-    if features.require_perfect_birth_flag:
-        if not (features.allow_sim_scaffold and _is_sim_like(mode)):
-            ok, unlock_detail = features.perfect_birth_unlock_status(
-                recheck=bool(
-                    require_apply_path and getattr(features, "recheck_perfect_birth_kpis", False)
-                ),
+    sim_scaffold_ok = bool(features.allow_sim_scaffold) and _is_sim_like(mode)
+    require_unlock = bool(features.require_perfect_birth_flag) or bool(require_apply_path)
+    if require_unlock and not sim_scaffold_ok:
+        from lumina_core.birth.perfect_birth_gate import perfect_birth_unlock_valid
+
+        # Apply path always requires evidence sidecar (yaml cannot hollow-flag apply).
+        require_evidence = True if require_apply_path else bool(
+            features.require_perfect_birth_evidence
+        )
+        recheck_kpis = None
+        thr = None
+        if require_apply_path and bool(getattr(features, "recheck_perfect_birth_kpis", False)):
+            from lumina_core.birth.perfect_birth_gate import (
+                PerfectBirthThresholds,
+                gather_perfect_birth_kpis,
             )
-            if not ok:
-                reason = (
-                    Phase2GateReason.PERFECT_BIRTH_EVIDENCE.value
-                    if "evidence" in unlock_detail or "recheck" in unlock_detail
-                    else Phase2GateReason.PERFECT_BIRTH_REQUIRED.value
+
+            recheck_kpis = gather_perfect_birth_kpis()
+            thr = PerfectBirthThresholds()
+        ok, unlock_detail = perfect_birth_unlock_valid(
+            flag_path=features.perfect_birth_path(),
+            require_evidence=require_evidence,
+            recheck_kpis=recheck_kpis,
+            thresholds=thr,
+        )
+        if not ok:
+            reason = (
+                Phase2GateReason.PERFECT_BIRTH_EVIDENCE.value
+                if (
+                    "evidence" in unlock_detail
+                    or "recheck" in unlock_detail
+                    or "forced" in unlock_detail
+                    or "reason_not_valid" in unlock_detail
                 )
-                return Phase2GateResult(
-                    allowed=False,
-                    reason=reason,
-                    pillar=pillar_key,
-                    message=(
-                        f"Perfect Birth unlock failed ({unlock_detail}) at "
-                        f"{features.perfect_birth_path()} "
-                        "(declare via scripts/validation/declare_perfect_birth.py "
-                        "or set phase2_allow_sim_scaffold for SIM scaffold)"
-                    ),
-                    details={"unlock_detail": unlock_detail},
-                )
-            unlocked = True
+                else Phase2GateReason.PERFECT_BIRTH_REQUIRED.value
+            )
+            return Phase2GateResult(
+                allowed=False,
+                reason=reason,
+                pillar=pillar_key,
+                message=(
+                    f"Perfect Birth unlock failed ({unlock_detail}) at "
+                    f"{features.perfect_birth_path()} "
+                    "(declare via scripts/validation/declare_perfect_birth.py "
+                    "or set phase2_allow_sim_scaffold for SIM scaffold)"
+                ),
+                details={"unlock_detail": unlock_detail},
+            )
+        unlocked = True
 
     if require_apply_path and _is_real_like(mode):
         return Phase2GateResult(

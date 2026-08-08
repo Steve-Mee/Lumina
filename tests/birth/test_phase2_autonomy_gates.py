@@ -27,11 +27,20 @@ def _features(**kwargs: Any) -> Phase2AutonomyFeatures:
         require_perfect_birth_flag=True,
         allow_sim_scaffold=False,
         require_twin_for_apply=True,
-        require_perfect_birth_evidence=False,
+        require_perfect_birth_evidence=True,
         execution_mode="apply",
     )
     base.update(kwargs)
     return Phase2AutonomyFeatures(**base)
+
+
+def _apply_lab_features(**kwargs: Any) -> Phase2AutonomyFeatures:
+    """SIM scaffold lab features — for gates other than Perfect Birth."""
+    return _features(
+        allow_sim_scaffold=True,
+        require_twin_for_apply=False,
+        **kwargs,
+    )
 
 
 class _FakeTwin:
@@ -117,8 +126,9 @@ def test_sim_scaffold_bypasses_perfect_birth(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_constitution_blocks_apply() -> None:
     res = evaluate_phase2_gate(
-        features=_features(require_perfect_birth_flag=False, require_twin_for_apply=False),
+        features=_apply_lab_features(),
         pillar=Phase2Pillar.DYNAMIC_WALL,
+        mode="sim",
         constitution_violations=2,
         require_apply_path=True,
     )
@@ -129,8 +139,9 @@ def test_constitution_blocks_apply() -> None:
 @pytest.mark.unit
 def test_twin_required_when_missing() -> None:
     res = evaluate_phase2_gate(
-        features=_features(require_perfect_birth_flag=False, require_twin_for_apply=True),
+        features=_features(allow_sim_scaffold=True, require_twin_for_apply=True),
         pillar=Phase2Pillar.DYNAMIC_WALL,
+        mode="sim",
         approval_twin=None,
         require_apply_path=True,
     )
@@ -142,8 +153,9 @@ def test_twin_required_when_missing() -> None:
 def test_twin_low_confidence_rejects() -> None:
     twin = _FakeTwin(confidence=0.5, recommendation=True)
     res = evaluate_phase2_gate(
-        features=_features(require_perfect_birth_flag=False),
+        features=_features(allow_sim_scaffold=True),
         pillar=Phase2Pillar.DYNAMIC_WALL,
+        mode="sim",
         approval_twin=twin,
         require_apply_path=True,
     )
@@ -155,8 +167,9 @@ def test_twin_low_confidence_rejects() -> None:
 def test_twin_high_conf_veto_rejects() -> None:
     twin = _FakeTwin(confidence=0.95, recommendation=False)
     res = evaluate_phase2_gate(
-        features=_features(require_perfect_birth_flag=False),
+        features=_features(allow_sim_scaffold=True),
         pillar=Phase2Pillar.DYNAMIC_WALL,
+        mode="sim",
         approval_twin=twin,
         require_apply_path=True,
     )
@@ -168,8 +181,9 @@ def test_twin_high_conf_veto_rejects() -> None:
 def test_twin_not_executable_rejects() -> None:
     twin = _FakeTwin(confidence=0.9, executable=False, effective=False, mode="shadow")
     res = evaluate_phase2_gate(
-        features=_features(require_perfect_birth_flag=False),
+        features=_features(allow_sim_scaffold=True),
         pillar=Phase2Pillar.DYNAMIC_WALL,
+        mode="sim",
         approval_twin=twin,
         require_apply_path=True,
     )
@@ -184,8 +198,9 @@ def test_forbidden_param_rejects() -> None:
         rationale="bad",
     )
     res = evaluate_phase2_gate(
-        features=_features(require_perfect_birth_flag=False, require_twin_for_apply=False),
+        features=_apply_lab_features(),
         pillar=Phase2Pillar.SELF_ADAPTIVE_PARAMS,
+        mode="sim",
         proposal=prop,
         require_apply_path=True,
     )
@@ -220,9 +235,26 @@ def test_instance_risk_surface_rejects() -> None:
 
 
 @pytest.mark.unit
-def test_allowed_with_perfect_birth_flag_and_twin(tmp_path: Path) -> None:
-    flag = tmp_path / "perfect_birth_complete.flag"
-    flag.write_text("2026-07-20T00:00:00+00:00\n", encoding="utf-8")
+def test_allowed_with_perfect_birth_evidence_and_twin(tmp_path: Path) -> None:
+    from lumina_core.birth.perfect_birth_gate import PerfectBirthKpis, declare_perfect_birth
+
+    kpis = PerfectBirthKpis(
+        certificate_valid=True,
+        constitution_violations=0,
+        twin_steve_agreement_pct=85.0,
+        twin_samples=40,
+        autonomous_recovery_rate_pct=90.0,
+        autonomous_recovery_attempts=12,
+        auto_approved_pct=70.0,
+        auto_approved_decisions=30,
+        shadow_twin_alignment_pct=80.0,
+        shadow_samples=10,
+        terminal_notify_recent=0,
+    )
+    declared = declare_perfect_birth(
+        tmp_path, kpis=kpis, force=False, record_maturity=False
+    )
+    flag = Path(declared["flag_path"])
     twin = _FakeTwin()
     prop = Phase2WallAdjustmentProposal(
         stall_wall_sec_multiplier=1.1,
@@ -230,18 +262,62 @@ def test_allowed_with_perfect_birth_flag_and_twin(tmp_path: Path) -> None:
         rationale="test",
     )
     res = evaluate_phase2_gate(
-        features=_features(
-            perfect_birth_flag_path=str(flag),
-            require_perfect_birth_evidence=False,
-        ),
+        features=_features(perfect_birth_flag_path=str(flag)),
         pillar=Phase2Pillar.DYNAMIC_WALL,
         approval_twin=twin,
         proposal=prop,
         require_apply_path=True,
         constitution_violations=0,
+        mode="sim",
     )
     assert res.allowed is True
     assert res.reason == Phase2GateReason.ALLOWED.value
+
+
+@pytest.mark.unit
+def test_apply_path_rejects_hollow_flag_even_if_evidence_flag_disabled(
+    tmp_path: Path,
+) -> None:
+    """Track B: apply cannot use hollow flag when yaml would disable evidence."""
+    flag = tmp_path / "perfect_birth_complete.flag"
+    flag.write_text("2026-07-20T00:00:00+00:00\n", encoding="utf-8")
+    res = evaluate_phase2_gate(
+        features=_features(
+            perfect_birth_flag_path=str(flag),
+            require_perfect_birth_evidence=False,
+            require_twin_for_apply=False,
+        ),
+        pillar=Phase2Pillar.DYNAMIC_WALL,
+        require_apply_path=True,
+        mode="sim",
+        constitution_violations=0,
+    )
+    assert res.allowed is False
+    assert res.reason in {
+        Phase2GateReason.PERFECT_BIRTH_EVIDENCE.value,
+        Phase2GateReason.PERFECT_BIRTH_REQUIRED.value,
+    }
+
+
+@pytest.mark.unit
+def test_apply_path_ignores_require_flag_false_without_scaffold(tmp_path: Path) -> None:
+    """Track B: require_perfect_birth_flag=False does not unlock apply without scaffold."""
+    res = evaluate_phase2_gate(
+        features=_features(
+            require_perfect_birth_flag=False,
+            require_twin_for_apply=False,
+            perfect_birth_flag_path=str(tmp_path / "missing.flag"),
+        ),
+        pillar=Phase2Pillar.DYNAMIC_WALL,
+        require_apply_path=True,
+        mode="sim",
+        constitution_violations=0,
+    )
+    assert res.allowed is False
+    assert res.reason in {
+        Phase2GateReason.PERFECT_BIRTH_EVIDENCE.value,
+        Phase2GateReason.PERFECT_BIRTH_REQUIRED.value,
+    }
 
 
 @pytest.mark.unit

@@ -148,7 +148,7 @@ describe("onboardingPhase cold-start matrix (T1–T8)", () => {
     expect(coldStart(p)).toBe("birth");
   });
 
-  it("T6 birth complete with artifacts → command deck", () => {
+  it("T6 birth complete with artifacts → phase hub", () => {
     const p = payload(
       {
         setup_complete: true,
@@ -156,22 +156,41 @@ describe("onboardingPhase cold-start matrix (T1–T8)", () => {
         birth: { status: "completed", artifacts_ok: true },
         wizard_steps: [],
       },
-      "deck",
+      "hub",
     );
-    expect(coldStart(p)).toBe("cockpit");
-    expect(shouldEnterCockpit(p)).toBe(true);
+    expect(coldStart(p)).toBe("hub");
+    expect(shouldEnterCockpit(p)).toBe(false);
   });
 
-  it("T7 restart after T6 → deck directly", () => {
+  it("T7 restart after T6 → hub checkpoint (not re-birth)", () => {
     const p = payload(
       {
         setup_complete: true,
         skip_wizard: true,
         birth: { status: "completed", artifacts_ok: true },
       },
-      "deck",
+      "hub",
     );
-    expect(coldStart(p)).toBe("cockpit");
+    expect(coldStart(p)).toBe("hub");
+  });
+
+  it("operator deck override keeps cockpit while hub SSOT", () => {
+    const p = payload(
+      {
+        setup_complete: true,
+        skip_wizard: true,
+        birth: { status: "completed", artifacts_ok: true },
+      },
+      "hub",
+    );
+    expect(
+      mapAppPhase(p, {
+        priorPhase: "cockpit",
+        birthPhaseCommitted: false,
+        activating: false,
+        operatorDeckActive: true,
+      }),
+    ).toBe("cockpit");
   });
 
   it("T8 backend unreachable → setup wizard", () => {

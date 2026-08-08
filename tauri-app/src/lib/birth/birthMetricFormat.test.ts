@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatBirthChampionEdgeScore,
   formatBirthEdgeScorePercent,
   formatBirthExpectancyPercent,
   formatBirthMetricDetail,
@@ -67,6 +68,29 @@ describe("birthMetricFormat", () => {
     expect(formatBirthEdgeScorePercent(0.273)).toBe("27%");
     expect(formatBirthEdgeScorePercent(0.273, { precise: true })).toBe("27.3%");
     expect(formatBirthEdgeScorePercent(null)).toBe("—");
+  });
+
+  it("does not show fake 0% for unlocked champion EdgeScore", () => {
+    const pending = formatBirthChampionEdgeScore({
+      best_edgescore: 0,
+      best_edgescore_at_trade: 0,
+      stage_trades: 137,
+      stage_pass_gate_trades: 300,
+      edgescore_champion_min_trades: 300,
+    });
+    expect(pending.value).toBe("—");
+    expect(pending.hint).toContain("300");
+    expect(pending.hint).toContain("137");
+
+    const locked = formatBirthChampionEdgeScore({
+      best_edgescore: 0.334,
+      best_edgescore_at_trade: 320,
+      edgescore_champion_locked: true,
+      stage_trades: 400,
+      edgescore_champion_min_trades: 300,
+    });
+    expect(locked.value).toBe("33%");
+    expect(locked.hint).toContain("320");
   });
 
   it("formats WR-50 expectancy and rejects legacy USD-scale values", () => {

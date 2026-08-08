@@ -9,11 +9,19 @@ import {
   extractSimProgress,
   extractStageScorecard,
 } from "@/lib/birthPhaseModel";
+import type { ConditionTone } from "@/lib/conditionTone";
+import { CONDITION_VALUE_TEXT_CLASS } from "@/lib/conditionTone";
 import { formatTwinPct } from "@/lib/twinClient";
 import { cn } from "@/lib/utils";
 
 import { BirthFieldCard } from "@/components/birth/BirthFieldCard";
 import { BirthSessionTelemetry } from "@/components/birth/BirthSessionTelemetry";
+import {
+  edgeScoreConditionTone,
+  hygieneConditionTone,
+  isGoalMet,
+  positionFlatTone,
+} from "@/components/birth/BirthStageScorecardFormat";
 import { useLiveBirthElapsedSec } from "@/hooks/useLiveBirthElapsedSec";
 
 interface BirthMetricsStripProps {
@@ -35,22 +43,45 @@ function MetricField({
   value,
   detail,
   barPct,
+  tone = "default",
 }: {
   label: string;
   value: string;
   detail?: string;
   barPct: number;
+  tone?: ConditionTone;
 }) {
   const pct = Math.min(100, Math.max(0, barPct));
+  const barTone =
+    tone === "ok"
+      ? "from-emerald-500/85 to-emerald-300/70"
+      : tone === "warn"
+        ? "from-amber-500/85 to-amber-300/70"
+        : tone === "danger"
+          ? "from-rose-500/85 to-rose-300/70"
+          : "from-cyan-500/80 to-violet-400/80";
   return (
-    <div className="risk-envelope-field-card birth-metric-field space-y-1">
+    <div
+      className="risk-envelope-field-card birth-metric-field space-y-1"
+      data-tone={tone === "default" || tone === "accent" ? undefined : tone}
+    >
       <div className="flex items-baseline justify-between gap-2">
         <p className="risk-envelope-field-label mb-0 truncate">{label}</p>
-        <p className="shrink-0 font-mono text-[11px] tabular-nums text-cyan-100">{value}</p>
+        <p
+          className={cn(
+            "shrink-0 font-mono text-[11px] tabular-nums",
+            CONDITION_VALUE_TEXT_CLASS[tone],
+          )}
+        >
+          {value}
+        </p>
       </div>
       <div className="h-1.5 overflow-hidden rounded-full bg-white/8">
         <div
-          className="birth-metric-bar-fill h-full rounded-full bg-gradient-to-r from-cyan-500/80 to-violet-400/80 transition-[width] duration-500 ease-out"
+          className={cn(
+            "birth-metric-bar-fill h-full rounded-full bg-gradient-to-r transition-[width] duration-500 ease-out",
+            barTone,
+          )}
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -226,6 +257,7 @@ export function BirthMetricsStrip({
           value={formatPassMetricValue(scorecard)}
           detail={formatPassMetricDetail(scorecard)}
           barPct={scorecard.metricPct}
+          tone={edgeScoreConditionTone(scorecard, { goalMet: isGoalMet(scorecard) })}
         />
       ) : null}
       {/* One Hygiene instrument on Fitness landscape — life/roll in detail (no Rolling duplicate). */}
@@ -250,6 +282,24 @@ export function BirthMetricsStrip({
                 ? Math.min(100, Math.max(0, scorecard.hygieneWrLifetime * 100))
                 : 0
           }
+          tone={hygieneConditionTone(scorecard)}
+        />
+      ) : null}
+      {scorecard &&
+      (scorecard.passCriteriaId === "range_edgescore" ||
+        scorecard.passCriteriaId === "range_hold_ratio" ||
+        scorecard.passCriteriaId === "range_roundtrip") &&
+      scorecard.stageRangeFlatRatio != null ? (
+        <MetricField
+          label="Position flat"
+          value={`${(scorecard.stageRangeFlatRatio * 100).toFixed(1)}%`}
+          detail={
+            scorecard.stageRangeFlatMin != null && scorecard.stageRangeFlatMax != null
+              ? `need ${(scorecard.stageRangeFlatMin * 100).toFixed(0)}–${(scorecard.stageRangeFlatMax * 100).toFixed(0)}% band · stage 2 only`
+              : "flat / out-of-market share"
+          }
+          barPct={Math.min(100, Math.max(0, scorecard.stageRangeFlatRatio * 100))}
+          tone={positionFlatTone(scorecard)}
         />
       ) : null}
       {scorecard && scorecard.passCriteriaId === "mixed_foundation" ? (

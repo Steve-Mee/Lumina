@@ -33,8 +33,9 @@ def test_certified_stall_on_wall_budget_exhausted_without_stagnation(
     cfg.stage1_winrate_pass_floor = 0.35
     result = evaluate_certified_stall(
         stage=CurriculumStage.STAGE1_TREND,
+        # Below survival hygiene (~20%) so EdgeScore still surfaces a skill blocker.
         stage_trades=500,
-        stage_wins=167,  # 33.4%
+        stage_wins=50,  # 10%
         required=200,
         hold_ratio=0.62,
         constitution_violations=0,
@@ -62,7 +63,7 @@ def test_certified_stall_triggers_after_stagnation_and_wall(cfg: BirthCurriculum
     result = evaluate_certified_stall(
         stage=CurriculumStage.STAGE1_TREND,
         stage_trades=150,
-        stage_wins=45,
+        stage_wins=15,  # 10% — below survival EdgeScore hygiene
         required=100,
         hold_ratio=0.2,
         constitution_violations=0,

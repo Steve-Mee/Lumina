@@ -98,11 +98,13 @@ class CurriculumOrchestrator:
         severity = str(payload.severity or "critical").strip().lower()
         # Match ConstitutionEnforcer: warning/info are training feedback, not terminal.
         if severity in {"warning", "info", "soft"}:
-            if self.state.constitution_violations_seen <= 3 or self.state.constitution_violations_seen % 100 == 0:
+            # P2: throttle soft WARN spam (first 3 + every 500).
+            n = int(self.state.constitution_violations_seen)
+            if n <= 3 or n % 500 == 0:
                 logger.warning(
                     "birth.curriculum soft_constitution_violation principle=%s count=%s",
                     payload.principle_name,
-                    self.state.constitution_violations_seen,
+                    n,
                 )
             return
 

@@ -80,6 +80,13 @@ export interface StageScorecardModel {
   /** Stage hold ratio (hold_signals/total_signals) — stage3 gate hold≤max */
   stageHoldRatio: number | null;
   stageHoldMax: number | null;
+  /**
+   * Position flat ratio (stage-2 range activity band 30–70%).
+   * Prefer stage_range_flat_ratio; hold_ratio fallback when range telemetry is thin.
+   */
+  stageRangeFlatRatio: number | null;
+  stageRangeFlatMin: number | null;
+  stageRangeFlatMax: number | null;
   simTicksProcessedCumulative: number | null;
   wallClockRolloutSecAvg: number | null;
   wallClockTradesPerMin: number | null;

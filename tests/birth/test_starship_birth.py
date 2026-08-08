@@ -589,20 +589,26 @@ def test_skip_theater_blocks_remediation_predicate() -> None:
 @pytest.mark.unit
 def test_hard_stop_training_after_swarm_reject() -> None:
     rejected = PolicySwarmState(rejected_no_lift=True)
+    # First reject: soft path — re-tournament not yet used → no hard stop.
+    assert not should_hard_stop_training_after_swarm_reject(
+        swarm_state=rejected, host_rejected_no_lift=True, retearnament_used=False
+    )
+    # After re-tournament burned: hard stop.
     assert should_hard_stop_training_after_swarm_reject(
-        swarm_state=rejected, host_rejected_no_lift=True
+        swarm_state=rejected, host_rejected_no_lift=True, retearnament_used=True
     )
     assert not should_hard_stop_training_after_swarm_reject(
         swarm_state=PolicySwarmState(rejected_no_lift=True, champion_accepted=True),
         host_rejected_no_lift=True,
         host_champion_accepted=True,
+        retearnament_used=True,
     )
     assert not should_hard_stop_training_after_swarm_reject(
         swarm_state=PolicySwarmState(),
     )
     from lumina_core.birth.birth_control_plane import should_hard_stop_training_after_swarm_reject as cp
 
-    assert cp(swarm_state=rejected, host_rejected_no_lift=True)
+    assert cp(swarm_state=rejected, host_rejected_no_lift=True, retearnament_used=True)
 
 
 @pytest.mark.unit
@@ -637,16 +643,18 @@ def test_plateau_evolution_ladder_reexport() -> None:
 
 @pytest.mark.unit
 def test_hard_stop_implies_no_fresh_pool_training() -> None:
-    """Reject/pre-accept hard-stop must block any further tick-pool training path."""
+    """Post re-tournament reject hard-stop must block further tick-pool training."""
     assert should_hard_stop_training_after_swarm_reject(
         swarm_state=PolicySwarmState(rejected_no_lift=True),
         host_rejected_no_lift=True,
+        retearnament_used=True,
     )
     # Accept clears hard-stop — training may resume.
     assert not should_hard_stop_training_after_swarm_reject(
         swarm_state=PolicySwarmState(rejected_no_lift=True, champion_accepted=True),
         host_rejected_no_lift=True,
         host_champion_accepted=True,
+        retearnament_used=True,
     )
 
 
@@ -659,6 +667,34 @@ def test_edgescore_champion_min_trades_blocks_early_noise() -> None:
     assert edgescore_champion_min_trades(200, cfg) == 200
     assert is_edgescore_champion_eligible(stage_trades=50, required=200, cfg=cfg) is False
     assert is_edgescore_champion_eligible(stage_trades=200, required=200, cfg=cfg) is True
+
+
+@pytest.mark.unit
+def test_publish_edgescore_champion_fields_null_until_locked() -> None:
+    """Regression: pre-eligibility champion was published as 0.0 → UI '0%'."""
+    from lumina_core.birth.starship_birth import publish_edgescore_champion_fields
+
+    cfg = BirthCurriculumConfig(plateau_best_policy_min_trades=200)
+    pending = publish_edgescore_champion_fields(
+        best_edgescore=0.0,
+        best_edgescore_at_trade=0,
+        stage_trades=137,
+        required=300,
+        cfg=cfg,
+    )
+    assert pending["best_edgescore"] is None
+    assert pending["edgescore_champion_locked"] is False
+    assert pending["edgescore_champion_min_trades"] == 300
+
+    locked = publish_edgescore_champion_fields(
+        best_edgescore=0.334,
+        best_edgescore_at_trade=320,
+        stage_trades=400,
+        required=300,
+        cfg=cfg,
+    )
+    assert locked["best_edgescore"] == 0.334
+    assert locked["edgescore_champion_locked"] is True
 
 
 @pytest.mark.unit

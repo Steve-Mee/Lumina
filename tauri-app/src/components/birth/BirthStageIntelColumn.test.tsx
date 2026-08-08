@@ -14,6 +14,21 @@ const birthStageScorecardSource = readFileSync(
   "utf8",
 );
 
+const birthStageTabSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "./BirthStageScorecardStageTab.tsx"),
+  "utf8",
+);
+
+const birthRecoveryTabSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "./BirthStageScorecardRecoveryTab.tsx"),
+  "utf8",
+);
+
+const birthEvolutionTabSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), "./BirthStageScorecardEvolutionTab.tsx"),
+  "utf8",
+);
+
 const birthMetricsStripSource = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "./BirthMetricsStrip.tsx"),
   "utf8",
@@ -29,6 +44,8 @@ describe("BirthStageIntelColumn", () => {
     expect(birthStageIntelSource).toContain("BirthStageScorecard");
     expect(birthStageIntelSource).toMatch(/showContent && scorecard \?/);
     expect(birthStageIntelSource).toContain("extractBirthSessionHud");
+    expect(birthStageIntelSource).toContain("isBirthCurriculumScorecardActive");
+    expect(birthStageIntelSource).toContain("Birth preparation");
     expect(birthStageScorecardSource).toContain("extractStageScorecard");
     expect(birthStageScorecardSource).not.toContain("BirthSessionTelemetry");
   });
@@ -61,27 +78,78 @@ describe("BirthStageScorecard field parity", () => {
     expect(birthStageScorecardSource).toContain('value="recovery"');
     expect(birthStageScorecardSource).toContain('value="evolution"');
     expect(birthStageScorecardSource).toContain("risk-envelope-tabs");
-    expect(birthStageScorecardSource).toContain("BirthFieldCard");
-    expect(birthStageScorecardSource).toContain('label="Goal"');
-    expect(birthStageScorecardSource).toContain('label="Volume gate"');
-    expect(birthStageScorecardSource).toContain('label="Plateau clock"');
+    // Stage tab: compact pass checklist + lean ops tiles (no duplicate gate cards).
+    expect(birthStageTabSource).toContain("BirthStagePassChecklistCard");
+    expect(birthStageTabSource).toContain("buildStagePassChecklist");
+    expect(birthStageTabSource).toContain("BirthFieldCard");
+    expect(birthStageTabSource).toContain('label="EdgeScore"');
+    expect(birthStageTabSource).toContain('label="Champion"');
+    expect(birthStageTabSource).toContain('label="Sub-phase"');
+    expect(birthStageTabSource).toContain('label="Data window"');
+    // Pass-gate metrics (volume / flat / hold / hygiene) live only in Stage goal.
+    expect(birthStageTabSource).not.toContain('label="Position flat"');
+    expect(birthStageTabSource).not.toContain('label="Hygiene WR"');
+    expect(birthStageTabSource).not.toContain("shouldShowPositionFlat");
+    expect(birthStageTabSource).not.toContain("shouldShowHoldRatio");
+    expect(birthRecoveryTabSource).toContain('label="Volume gate"');
+    expect(birthEvolutionTabSource).toContain('label="Plateau clock"');
     expect(birthStageScorecardSource).not.toContain("ProgressBar");
   });
 
-  it("spans Goal and Blocking metric full width with goal/danger tones", () => {
-    expect(birthStageScorecardSource).toContain("isGoalMet");
-    expect(birthStageScorecardSource).toMatch(
-      /label="Goal"[\s\S]*birth-intel-field-span/,
-    );
-    expect(birthStageScorecardSource).toContain('tone="danger"');
-    expect(birthStageScorecardSource).toContain("Pass gate blocked");
-    expect(birthFieldCardSource).toContain('"danger"');
+  it("keeps range-stage flat visibility on metrics strip, not as Stage-tab duplicates", () => {
+    expect(birthStageTabSource).toContain("isGoalMet");
+    expect(birthStageTabSource).toContain("BirthStagePassChecklistCard");
+    expect(birthStageTabSource).toContain("birth-stage-blocker-compact");
+    expect(birthMetricsStripSource).toContain("range_edgescore");
+    expect(birthMetricsStripSource).toContain('label="Position flat"');
     expect(birthFieldCardSource).toContain("data-tone");
+    expect(birthFieldCardSource).toContain("CONDITION_VALUE_TEXT_CLASS");
   });
 
   it("reuses Risk Envelope field-card classes", () => {
     expect(birthFieldCardSource).toContain("risk-envelope-field-card");
     expect(birthFieldCardSource).toContain("risk-envelope-field-label");
     expect(birthFieldCardSource).toContain("risk-envelope-field-hint");
+  });
+});
+
+describe("BirthStagePassChecklistCard density", () => {
+  const checklistCardSource = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "./BirthStagePassChecklistCard.tsx"),
+    "utf8",
+  );
+  const birthPhaseCss = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../../styles/birthPhase.css"),
+    "utf8",
+  );
+
+  it("renders a 2-col board with per-gate green/orange/red chips", () => {
+    expect(checklistCardSource).toContain("birth-stage-pass-checklist");
+    expect(checklistCardSource).toContain("Stage goal");
+    expect(checklistCardSource).toContain("gates clear");
+    expect(checklistCardSource).toContain("req.current");
+    expect(checklistCardSource).toContain("req.need");
+    // Outer shell neutral; tones apply per row (no whole-card wash).
+    expect(checklistCardSource).toContain("data-tone={tone}");
+    expect(checklistCardSource).not.toMatch(
+      /birth-stage-pass-checklist[\s\S]*?data-tone=\{overallTone/,
+    );
+    expect(birthPhaseCss).toContain("grid-template-columns: 1fr 1fr");
+    expect(birthPhaseCss).toContain(
+      '.birth-stage-pass-checklist__row[data-tone="ok"]',
+    );
+    expect(birthPhaseCss).toContain(
+      '.birth-stage-pass-checklist__row[data-tone="warn"]',
+    );
+    expect(birthPhaseCss).toContain(
+      '.birth-stage-pass-checklist__row[data-tone="danger"]',
+    );
+    // Same type scale as left-column field cards (label 0.55rem, value text-sm).
+    expect(birthPhaseCss).toMatch(
+      /\.birth-stage-pass-checklist__label\s*\{[^}]*font-size:\s*0\.55rem/s,
+    );
+    expect(birthPhaseCss).toMatch(
+      /\.birth-stage-pass-checklist__value\s*\{[^}]*font-size:\s*0\.875rem/s,
+    );
   });
 });

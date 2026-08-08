@@ -178,6 +178,41 @@ def curriculum_integrity_blocked_event(*, reasons: list[str]) -> AttentionEvent:
     )
 
 
+def birth_champion_freeze_event(
+    *,
+    summary: str,
+    stage_trades: int = 0,
+    winrate: float | None = None,
+    blocker_detail: str = "",
+    reason_code: str = "swarm_no_tournament_lift",
+) -> AttentionEvent:
+    """Sacred OR5 fork — same questions in app popup and Telegram."""
+    detail = summary or "Swarm no-lift — champion frozen."
+    if blocker_detail:
+        detail = f"{detail}\n{blocker_detail}"
+    return AttentionEvent(
+        category=AttentionCategory.BIRTH,
+        severity=AttentionSeverity.CRITICAL,
+        reason_code=str(reason_code or "swarm_no_tournament_lift"),
+        title="Champion freeze — accept or wipe",
+        summary=detail,
+        recommended_actions=(
+            "accept_champion",
+            "wipe_and_retry",
+            "Telegram: reply ACCEPT | ACCEPT_NO_START | WIPE | WIPE_FULL",
+            "Checklist: docs/birth-stage2-certified-reentry-checklist.md",
+        ),
+        context={
+            "stage_trades": stage_trades,
+            "winrate": f"{winrate:.1%}" if winrate is not None else None,
+            "terminal_stall_reason": "swarm_reject_hard_stop",
+            "telegram_commands": "ACCEPT | ACCEPT_NO_START | WIPE | WIPE_FULL",
+        },
+        retryable=True,
+        dedupe_key=f"birth:champion_freeze:{reason_code or 'swarm_no_tournament_lift'}",
+    )
+
+
 def real_safe_mode_event(*, detail: str = "") -> AttentionEvent:
     return AttentionEvent(
         category=AttentionCategory.REAL,

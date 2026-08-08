@@ -82,7 +82,12 @@ def build_pretrade_provenance_report(
         "agent.swarm.proposal",
         "agent.tape.proposal",
     }
-    core_topics = {"admission.gate_entry", "risk.policy.decision", "risk.final_arbitration.result"}
+    core_topics = {
+        "admission.gate_entry",
+        "risk.policy.decision",
+        "risk.final_arbitration.result",
+        "risk.admission.lineage_checked",
+    }
 
     upstream = [e for e in extended_chain if e.get("topic") in upstream_topics]
     core_chain = [e for e in extended_chain if e.get("topic") in core_topics]
@@ -95,6 +100,9 @@ def build_pretrade_provenance_report(
         anomalies.append("Missing admission.gate_entry")
     if not any(e.get("topic") == "risk.final_arbitration.result" for e in core_chain):
         anomalies.append("Missing final arbitration result")
+    # lineage_checked is best-effort on broker-bridge path; missing is soft anomaly
+    if not any(e.get("topic") == "risk.admission.lineage_checked" for e in core_chain):
+        anomalies.append("Missing risk.admission.lineage_checked (soft if gate-only path)")
 
     broken_links = [e for e in extended_chain if not e.get("hash_ok", True)]
     if broken_links:

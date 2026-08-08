@@ -183,8 +183,12 @@ export interface BirthProgressPayload {
   swarm_edgescore_at_start?: number;
   swarm_champion_accepted?: boolean;
   swarm_retearnament_used?: boolean;
-  best_edgescore?: number;
+  best_edgescore?: number | null;
+  best_edgescore_at_trade?: number | null;
   best_edgescore_policy_path?: string;
+  /** Min stage trades before champion EdgeScore may freeze (backend honesty). */
+  edgescore_champion_min_trades?: number;
+  edgescore_champion_locked?: boolean;
   starship_exploration_burst_active?: boolean;
   policy_swarm_rejected_no_lift?: boolean;
   policy_swarm_champion_accepted?: boolean;

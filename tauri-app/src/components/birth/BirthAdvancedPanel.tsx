@@ -1,7 +1,5 @@
 import { ChevronDown, X } from "lucide-react";
 
-
-
 import { BirthLogsPanel } from "@/components/birth/BirthLogsPanel";
 
 import { BirthSettingsPanel } from "@/components/birth/BirthSettingsPanel";
@@ -20,11 +18,7 @@ import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
 
 import { cn } from "@/lib/utils";
 
-
-
 export type BirthAdvancedSection = "logs" | "settings" | "training";
-
-
 
 interface BirthAdvancedPanelProps {
 
@@ -48,8 +42,6 @@ interface BirthAdvancedPanelProps {
 
 }
 
-
-
 const SECTION_LABELS: Record<BirthAdvancedSection, string> = {
 
   logs: "Engine logs",
@@ -59,8 +51,6 @@ const SECTION_LABELS: Record<BirthAdvancedSection, string> = {
   training: "Advanced training (PPO)",
 
 };
-
-
 
 function SectionContent({
 
@@ -142,8 +132,6 @@ function SectionContent({
 
 }
 
-
-
 function SectionToggle({
 
   id,
@@ -204,8 +192,6 @@ function SectionToggle({
 
 }
 
-
-
 export function BirthAdvancedPanel({
 
   running,
@@ -232,8 +218,6 @@ export function BirthAdvancedPanel({
 
   };
 
-
-
   if (controlled) {
 
     if (!openSection) {
@@ -242,11 +226,7 @@ export function BirthAdvancedPanel({
 
     }
 
-
-
     const settingsLabel = running ? "Settings (locked)" : SECTION_LABELS.settings;
-
-
 
     return (
 
@@ -316,8 +296,6 @@ export function BirthAdvancedPanel({
 
   }
 
-
-
   return (
 
     <div className={cn("birth-advanced-panel space-y-2", className)}>
@@ -337,8 +315,6 @@ export function BirthAdvancedPanel({
         <BirthLogsPanel />
 
       </SectionToggle>
-
-
 
       <SectionToggle
 
@@ -365,8 +341,6 @@ export function BirthAdvancedPanel({
         <BirthSettingsPanel initial={settingsInitial} />
 
       </SectionToggle>
-
-
 
       {running || trainingLogs.length > 0 || trainingConnected ? (
 
@@ -409,5 +383,4 @@ export function BirthAdvancedPanel({
   );
 
 }
-
 

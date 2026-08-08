@@ -14,6 +14,19 @@ from lumina_core.birth.stage_scorecard import SCORECARD_PRESERVE_KEYS, enrich_pr
 
 _PHASES_NO_STAGES_PRESERVE = frozenset({"stage_stalled", "curriculum_learning"})
 
+# Session clock is set by write args — never clobber with stale SCORECARD preserve.
+_SESSION_CLOCK_KEYS: frozenset[str] = frozenset({"birth_start_time", "elapsed_sec"})
+# Attention banners must not survive a new birth session (fresh birth_start_time).
+_ATTENTION_PRESERVE_KEYS: frozenset[str] = frozenset(
+    {
+        "needs_attention",
+        "attention_reason_code",
+        "attention_summary",
+        "attention_recommended_actions",
+        "attention_notified_at",
+    }
+)
+
 
 def read_birth_progress(workspace_root: Path | str) -> dict[str, Any]:
     root = Path(workspace_root)
@@ -88,6 +101,11 @@ def write_birth_progress(
         payload["birth_start_time"] = float(prev["birth_start_time"])
     if prev.get("elapsed_sec") and birth_start_time <= 0:
         payload["elapsed_sec"] = prev.get("elapsed_sec", 0.0)
+
+    prev_start = float(prev.get("birth_start_time") or 0.0)
+    # New session when caller supplies a start that differs from the stored clock.
+    new_session = bool(birth_start_time > 0 and (prev_start <= 0 or abs(float(birth_start_time) - prev_start) > 0.5))
+
     new_stage = extra.get("curriculum_stage")
     prev_stage = prev.get("curriculum_stage")
     stage_changed = (
@@ -119,12 +137,22 @@ def write_birth_progress(
             continue
         if stage_changed and key in _STAGE_BLOCKER_PRESERVE_KEYS:
             continue
+        # Explicit session clock from this write must win over stale preserve.
+        if key in _SESSION_CLOCK_KEYS and birth_start_time > 0:
+            continue
+        # Do not carry attention banners from a previous birth into a new session.
+        if new_session and key in _ATTENTION_PRESERVE_KEYS and key not in extra:
+            continue
         if key not in extra and key in prev:
             payload[key] = prev[key]
     for key in _OOS_PRESERVE_KEYS:
         if key not in extra and key in prev:
             payload[key] = prev[key]
     payload.update(extra)
+    # Re-assert session clock after extra merge (extras must not smuggle old start).
+    if birth_start_time > 0:
+        payload["birth_start_time"] = float(birth_start_time)
+        payload["elapsed_sec"] = round(max(0.0, time.time() - float(birth_start_time)), 2)
     payload = enrich_progress_scorecard(payload)
     encoded = json.dumps(payload, ensure_ascii=True, indent=2)
     # Write canonical only. Legacy dual write removed for radical simplicity.

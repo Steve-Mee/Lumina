@@ -68,6 +68,27 @@ def test_is_checkpoint_resumable_false_for_interrupted_progress_only(tmp_path: P
     assert is_checkpoint_resumable(tmp_path) is False
 
 
+def test_service_checkpoint_resumable_true_while_stopping(tmp_path: Path) -> None:
+    """Resume must not wait for PPO thread drain after cooperative stop."""
+    _write_checkpoint(tmp_path)
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+
+    class _AliveThread:
+        def is_alive(self) -> bool:
+            return True
+
+        def join(self, timeout: float | None = None) -> None:
+            return None
+
+    svc._thread = _AliveThread()  # type: ignore[assignment]
+    assert svc.is_running() is True
+    assert svc.checkpoint_resumable() is False  # still actively training
+    svc._stop_requested.set()
+    assert svc.is_stopping() is True
+    assert svc.checkpoint_resumable() is True  # checkpoint already on disk
+
+
 def test_wipe_all_sets_checkpoint_resumable_false(tmp_path: Path) -> None:
     _write_checkpoint(tmp_path)
     progress = tmp_path / "state" / "lumina_birth_progress.json"
@@ -87,14 +108,16 @@ def test_birth_status_enrich_includes_checkpoint_resumable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from lumina_os.backend.birth_endpoints import _enrich_status_full
+    from lumina_os.backend.birth_endpoints_enrich import _enrich_status_full
 
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
     svc.configure_workspace(tmp_path)
     birth_module = sys.modules["lumina_launcher.services.birth_service"]
     monkeypatch.setattr(birth_module, "birth_service", svc)
+    # Enrich lives in birth_endpoints_enrich after M5 split — patch both bindings.
     monkeypatch.setattr("lumina_os.backend.birth_endpoints.birth_service", svc)
+    monkeypatch.setattr("lumina_os.backend.birth_endpoints_enrich.birth_service", svc)
 
     _write_checkpoint(tmp_path)
 
