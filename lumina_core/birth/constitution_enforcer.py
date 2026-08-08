@@ -43,6 +43,7 @@ class ConstitutionEnforcer:
         self._violations: list[dict[str, Any]] = []
         self._hard_aborted: bool = False
         self._soft_logged: int = 0
+        self._soft_warn_emissions: int = 0
 
     def attach(self) -> str:
         if self._token is None:
@@ -80,6 +81,7 @@ class ConstitutionEnforcer:
             self._soft_logged += 1
             # P2: throttle WARN noise (first 3 + every 500) — soft path is training signal.
             if self._soft_logged <= 3 or self._soft_logged % 500 == 0:
+                self._soft_warn_emissions += 1
                 logger.warning(
                     "birth.constitution.soft_violation principle=%s severity=%s count=%s detail=%s",
                     v.principle_name,

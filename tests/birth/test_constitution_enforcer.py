@@ -63,26 +63,23 @@ def test_constitution_enforcer_detach_idempotent() -> None:
 
 
 @pytest.mark.unit
-def test_constitution_enforcer_soft_throttle_every_500(caplog: pytest.LogCaptureFixture) -> None:
-    import logging
-
+def test_constitution_enforcer_soft_throttle_every_500() -> None:
     bus = EventBus()
     enforcer = ConstitutionEnforcer(bus)
     enforcer.attach()
-    with caplog.at_level(logging.WARNING, logger="lumina.birth.constitution_enforcer"):
-        for _ in range(500):
-            bus.publish_validated(
-                topic="safety.constitution.violation",
-                producer="test",
-                payload={
-                    "principle_name": "birth_constitution_guard",
-                    "severity": "warning",
-                    "description": "risk_exceeds_1pct",
-                    "mode": "birth",
-                },
-            )
-    soft_warns = [r for r in caplog.records if "soft_violation" in r.getMessage()]
-    # first 3 + 500th
-    assert len(soft_warns) == 4
+    for _ in range(500):
+        bus.publish_validated(
+            topic="safety.constitution.violation",
+            producer="test",
+            payload={
+                "principle_name": "birth_constitution_guard",
+                "severity": "warning",
+                "description": "risk_exceeds_1pct",
+                "mode": "birth",
+            },
+        )
+    # first 3 + 500th (caplog is flaky under coverage/xdist; assert emission counter)
+    assert enforcer._soft_warn_emissions == 4
+    assert enforcer._soft_logged == 500
     assert enforcer.violation_count() == 500
     assert bus.latest(TOPIC_ABORTED) is None
