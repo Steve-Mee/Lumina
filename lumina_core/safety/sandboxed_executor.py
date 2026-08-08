@@ -11,10 +11,11 @@ from lumina_core.safety.sandboxed_executor_subprocess import SandboxedSubprocess
 from lumina_core.safety.sandboxed_executor_types import (
     SandboxedResult,
     _DEFAULT_TIMEOUT_S,
+    _build_sandbox_env as _build_sandbox_env,
     _strip_secrets as _strip_secrets,
 )
 
-__all__ = ["SandboxedMutationExecutor", "SandboxedResult", "_strip_secrets"]
+__all__ = ["SandboxedMutationExecutor", "SandboxedResult", "_build_sandbox_env", "_strip_secrets"]
 
 logger = logging.getLogger(__name__)
 

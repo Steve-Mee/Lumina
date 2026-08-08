@@ -70,6 +70,7 @@ from lumina_os.backend.monitoring_endpoints_helpers import (
     _check_api_key,
     _load_adaptive_history_rows,
     _require_service,
+    set_observability_service as set_observability_service,
 )
 
 

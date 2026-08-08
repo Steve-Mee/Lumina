@@ -19,7 +19,13 @@ router = APIRouter(prefix="/api/birth", tags=["birth"])
 logger = logging.getLogger(__name__)
 
 from lumina_os.backend.birth_endpoints_enrich import (  # noqa: E402
-    _build_birth_status_payload,
+    _apply_progress_fields as _apply_progress_fields,
+    _build_birth_status_payload as _build_birth_status_payload,
+    _enrich_status as _enrich_status,
+    _enrich_status_full as _enrich_status_full,
+    _invalidate_enrich_artifact_cache as _invalidate_enrich_artifact_cache,
+    _is_active_birth_poll as _is_active_birth_poll,
+    _merge_start_result as _merge_start_result,
 )
 
 _ENRICH_ARTIFACT_CACHE_TTL_SEC = 20.0
