@@ -1,31 +1,19 @@
 """Dash admin dashboard callback registration."""
 from __future__ import annotations
 
-import logging
 from typing import Any
 
-import dash
-import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import threading
 import time
-import webbrowser
-from dash import Input, Output, State, dcc, html
+from dash import Input, Output, State, html
 
 from lumina_core.evolution.bot_stress_choices import (
-    TOOLTIP_NEURO_OHLC_NL,
-    TOOLTIP_OHLC_DNA_NL,
-    resolve_neuro_ohlc_stress_rollouts,
-    resolve_ohlc_reality_stress_enabled,
     save_bot_stress_choices,
 )
 from lumina_core.evolution.parallel_reality_config import (
-    format_tooltip_nl,
-    recommend_parallel_realities,
-    resolve_parallel_realities,
     save_parallel_realities_session,
 )
-from .state_visualizer import StateVisualizer
 
 
 class AdminDashboardCallbacksMixin:

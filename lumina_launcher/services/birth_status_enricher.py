@@ -24,9 +24,8 @@ def get_adaptive_intelligence_manager(svc: Any) -> AdaptiveIntelligenceManager:
 
 def launcher_setup_status(svc: Any, *, lightweight: bool = False) -> dict[str, Any]:
     now = time.time()
-    if lightweight:
-        if svc._launcher_setup_cache is not None:
-            return svc._launcher_setup_cache
+    # Active birth polls stay snappy: never hit launcher setup payload while running.
+    if lightweight and bool(svc.is_running()):
         return {}
     if (
         svc._launcher_setup_cache is not None

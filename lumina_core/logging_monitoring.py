@@ -3,11 +3,11 @@ from __future__ import annotations
 
 import json
 import os
-import threading
+import time
 from pathlib import Path
 from typing import Any
 
-from lumina_core.logging_core import _MONITORING_IO_LOCK, get_logger
+from lumina_core.logging_core import _MONITORING_IO_LOCK
 
 def resolve_monitoring_state_dir() -> Path:
     """Workspace ``state/`` directory (never rely on process cwd alone)."""

@@ -7,14 +7,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 
 from lumina_core.first_boot_progress import resolve_ppo_progress_interval
 from lumina_core.evolution.simulator_data_support import coerce_rl_training_bars
 from lumina_core.logging_utils import (
     correlation_id,
     get_logger,
-    record_model_load_time_monitoring,
     resolve_monitoring_state_dir,
     write_ppo_policy_metadata,
 )
@@ -26,7 +24,7 @@ from lumina_core.rl.ppo_callbacks import (
 )
 from lumina_core.rl.ppo_device import _resolve_ppo_device, _scale_timesteps_for_device
 from lumina_core.rl.ppo_evolution_logger import PPOEvolutionLogger
-from lumina_core.rl import RLConfig, RLTradingEnvironment
+from lumina_core.rl import RLTradingEnvironment
 
 logger = get_logger("lumina.rl.ppo")
 

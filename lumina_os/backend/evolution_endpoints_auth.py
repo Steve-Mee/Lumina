@@ -4,11 +4,10 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Header, HTTPException
+from fastapi import HTTPException
 from lumina_core.audit import get_audit_logger
 
 logger = logging.getLogger(__name__)

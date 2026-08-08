@@ -5,11 +5,9 @@ from __future__ import annotations
 import os
 import threading
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
-import yaml
 
 from lumina_core.container import ApplicationContainer
 from lumina_core.engine.runtime_entrypoint import _bind_headless_runtime_app
@@ -21,18 +19,15 @@ from lumina_core.first_boot_ui import (
 )
 from lumina_core.logging_utils import get_logger
 from lumina_core.birth.engine import BirthPhaseEngineV2 as LuminaBirthEngine  # direct (thin facade deleted for simplicity)
-from lumina_core.order_gatekeeper import is_stale_contract_symbol, roll_stale_contract_symbol
 from lumina_launcher.services.birth_runner_lock import (
     clear_runner_lock,
     clear_stale_runner_lock,
-    mark_user_stopped_progress,
     write_runner_lock,
 )
 from lumina_launcher.services.birth_status_enricher import (
     adaptive_intelligence_status,
     launcher_setup_status,
 )
-from lumina_launcher.services.birth_status_mapper import BIRTH_ACTIVE_STAGES
 
 logger = get_logger(__name__)
 
@@ -328,4 +323,4 @@ def start_birth(
         ),
     }
 
-from lumina_launcher.services.birth_runner_preflight import load_saved_birth_settings, preflight_historical_data, stop_birth  # noqa: F401
+from lumina_launcher.services.birth_runner_preflight import load_saved_birth_settings, preflight_historical_data, stop_birth  # noqa: F401, E402

@@ -1,7 +1,7 @@
 """Bootstrap OHLC validation helpers."""
 from __future__ import annotations
 
-from typing import Any
+import logging
 
 from lumina_core.container import ApplicationContainer
 

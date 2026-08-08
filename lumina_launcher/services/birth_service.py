@@ -8,19 +8,16 @@ Thin facade — status mapping, enrichment, and runner lifecycle live in bounded
 
 from __future__ import annotations
 
-import json
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from lumina_core.first_boot_ui import FIRST_BOOT_DEFAULT_TRADES
 from lumina_core.logging_utils import get_logger
 from lumina_launcher.services import birth_status_enricher, birth_status_mapper
 # birth_runner reexport collapsed; direct submodules below for radical simplicity
 from .birth_runner_start import (
     load_saved_birth_settings,
     preflight_historical_data,
-    start_birth,
     stop_birth,
 )
 from .birth_runner_recovery import (
@@ -44,7 +41,6 @@ from .birth_runner_lock import (
 )
 from .birth_runner_wipe import (
     ensure_birth_stopped_for_wipe,
-    wipe_all_birth_data,
     wipe_birth_training_artifacts,
 )
 from lumina_launcher.services.birth_status_mapper import resolve_terminal_birth_status
@@ -68,7 +64,7 @@ BIRTH_ACTIVE_STAGES = birth_status_mapper.BIRTH_ACTIVE_STAGES
 _LIGHTWEIGHT_STATUS_PHASES = birth_status_mapper.LIGHTWEIGHT_STATUS_PHASES
 
 
-from lumina_launcher.services.birth_service_recovery import BirthServiceRecoveryMixin
+from lumina_launcher.services.birth_service_recovery import BirthServiceRecoveryMixin  # noqa: E402
 
 class BirthService(BirthServiceRecoveryMixin):
     _instance: Optional["BirthService"] = None

@@ -6,7 +6,6 @@ Advance/detect live in ``plateau_evolution_advance`` / ``plateau_evolution_detec
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from lumina_core.birth.plateau_escalator import (
     EvolutionAction,

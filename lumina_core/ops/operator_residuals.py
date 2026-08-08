@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 def _load_progress(workspace: Path) -> dict[str, Any]:

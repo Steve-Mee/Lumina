@@ -5,40 +5,23 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from lumina_core.birth.adaptive_parameter_manager import WallAdaptationState
 from lumina_core.birth.phase2_autonomy.contracts import (
-    Phase2GateResult,
     Phase2OrchestratorDecision,
-    Phase2Pillar,
-)
-from lumina_core.birth.phase2_autonomy.dynamic_wall import (
-    apply_wall_adjustment_to_thresholds,
-    propose_dynamic_wall_adjustment,
 )
 from lumina_core.birth.phase2_autonomy.features import Phase2AutonomyFeatures
-from lumina_core.birth.phase2_autonomy.gates import evaluate_phase2_gate
-from lumina_core.birth.phase2_autonomy.instance_adapter import (
-    materialize_instance_adapt_payload,
-    propose_instance_adapt,
-)
 from lumina_core.birth.phase2_autonomy.execution_mode import (
     Phase2ExecutionMode,
     should_mutate,
     should_record_counterfactual,
 )
 from lumina_core.birth.phase2_autonomy.metrics import record_phase2_decision_monitoring
-from lumina_core.birth.phase2_autonomy.param_catalog import (
-    apply_param_proposal_to_state,
-    propose_param_adjustment,
-)
-
-logger = logging.getLogger("lumina.birth.phase2_autonomy")
-
-
 from lumina_core.birth.phase2_autonomy.orchestrator_wall import Phase2WallEvalMixin
 from lumina_core.birth.phase2_autonomy.orchestrator_param import Phase2ParamEvalMixin
 from lumina_core.birth.phase2_autonomy.orchestrator_instance import Phase2InstanceEvalMixin
 from lumina_core.birth.phase2_autonomy.orchestrator_publish import Phase2PublishMixin
+
+logger = logging.getLogger("lumina.birth.phase2_autonomy")
+
 
 class Phase2AutonomyOrchestrator(
     Phase2WallEvalMixin,

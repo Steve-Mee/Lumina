@@ -1,7 +1,6 @@
 """Paused result / event curriculum / reload (M5 engine_lifecycle extract)."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from lumina_core.birth.config import load_birth_v2_config

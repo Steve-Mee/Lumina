@@ -42,7 +42,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -54,13 +53,8 @@ from typing import Any
 from lumina_core.audit.aperture_audit_build import (  # noqa: E402
     build_aperture_audit_artifact,
 )
-from lumina_core.audit.aperture_audit_discover import (  # noqa: E402
-    discover_recent_final_arbitration_ctxs,
-    merge_d1_audit_context_ids,
-)
 from lumina_core.audit.aperture_audit_markdown import (  # noqa: E402
     format_aperture_audit_as_markdown,
-    format_compact_aperture_audit,
 )
 
 def export_aperture_audit_bundle(

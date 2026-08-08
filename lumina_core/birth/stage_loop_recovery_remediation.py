@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from lumina_core.birth.curriculum import filter_ticks_for_stage
 from lumina_core.birth.plateau_escalator import (
     TERMINAL_STALL_REASON,
     reset_plateau_for_new_cycle,
@@ -11,20 +10,16 @@ from lumina_core.birth.plateau_escalator import (
     should_brake_recovery_no_lift,
     should_phoenix_reset,
 )
-from lumina_core.birth.remediation import filter_train_ticks_for_holdout_profile
 from lumina_core.birth.stall_remediation import (
     HUMAN_GATE_REASON,
     StallRemediationAction,
-    curate_buffer_bottom_half,
 )
-from lumina_core.birth.starship_birth import should_block_phoenix_until_swarm
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
+from lumina_core.birth.stage_loop_recovery_phoenix import StageLoopRecoveryPhoenixMixin
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_loop_recovery_remediation")
 
-
-from lumina_core.birth.stage_loop_recovery_phoenix import StageLoopRecoveryPhoenixMixin
 
 class StageLoopRecoveryRemediationMixin(StageLoopRecoveryPhoenixMixin, StageLoopMixinBase):
     """Phoenix novelty and stall remediation step/cycle orchestration."""

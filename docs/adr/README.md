@@ -49,7 +49,7 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0033 | Trading Code Evolution Prototype (sandbox + Twin + constitution) | Accepted | 2026-07-15 | [0033-trading-code-evolution-prototype.md](./0033-trading-code-evolution-prototype.md) |
 | 0034 | Phase 2 autonomy foundation | Accepted | — | [0034-phase2-autonomy-foundation.md](./0034-phase2-autonomy-foundation.md) |
 | 0035 | Execution Fabric gRPC (supersedes WS wire protocol) | Accepted | 2026-07-20 | [0035-execution-fabric-grpc.md](./0035-execution-fabric-grpc.md) |
-| 0036 | Birth exit vs maturation continuum (survival ≠ Perfect Birth / REAL) | Accepted | 2026-08-06 | [0036-birth-exit-vs-maturation.md](./0036-birth-exit-vs-maturation.md) |
+| 0036 | Birth exit vs maturation continuum (survival ≠ Perfect Birth / REAL); intra-Birth Stage 2/3 early-quality floors → [birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md) | Accepted | 2026-08-06 | [0036-birth-exit-vs-maturation.md](./0036-birth-exit-vs-maturation.md) |
 | 0037 | Self-play lab (Phase 0 scaffold; no birth-loop apply) | Accepted | 2026-08-07 | [0037-self-play-design.md](./0037-self-play-design.md) |
 
 ## Legacy notitie

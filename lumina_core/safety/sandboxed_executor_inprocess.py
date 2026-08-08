@@ -1,8 +1,9 @@
 """In-process sandbox runner (M5 extract)."""
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
-from typing import Any
 
 from lumina_core.safety.sandboxed_executor_types import SandboxedResult
 

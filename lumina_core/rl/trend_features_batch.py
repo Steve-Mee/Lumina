@@ -1,6 +1,7 @@
 """Numpy-backed trend feature batch helpers (M5)."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any, Sequence
 
 import numpy as np
@@ -11,7 +12,6 @@ from lumina_core.rl.trend_features_core import (
     DEFAULT_TREND_ADX_THRESHOLD,
     MIN_TREND_LOOKBACK,
     SLOPE_PERIODS,
-    _TREND_FEATURE_KEYS,
     _extract_ohlc_from_ticks,
     _normalize_slope,
     _zero_trend_features,

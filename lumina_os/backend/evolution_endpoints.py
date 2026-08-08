@@ -19,21 +19,16 @@ otherwise ``LUMINA_DASHBOARD_API_KEY`` is used (legacy).
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, Query
 from pydantic import BaseModel, Field
 
 from lumina_core.evolution.evolution_tree import build_evolution_tree
-from lumina_core.audit import get_audit_logger
-from lumina_core.governance import ApprovalChain, RealPromotionPayload, SignedApproval
-from lumina_core.evolution.promotion_readiness import check_promotion_readiness
-from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
+from lumina_core.governance import RealPromotionPayload, SignedApproval
 
 router = APIRouter(prefix="/api/evolution", tags=["evolution"])
 

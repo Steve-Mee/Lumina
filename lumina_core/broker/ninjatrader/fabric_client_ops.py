@@ -10,7 +10,7 @@ import grpc
 
 from lumina_core.broker.broker_bridge.schemas import Order
 from lumina_core.broker.ninjatrader import fabric_mapper as mapper
-from lumina_core.broker.ninjatrader.generated import fabric_pb2, fabric_pb2_grpc
+from lumina_core.broker.ninjatrader.generated import fabric_pb2_grpc
 
 logger = logging.getLogger(__name__)
 

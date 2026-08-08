@@ -1,7 +1,6 @@
 """Session prepare: bus/progress/adaptation restore (M5)."""
 from __future__ import annotations
 
-from typing import Any
 
 from lumina_core.birth.progress import read_birth_progress
 from lumina_core.logging_utils import get_logger

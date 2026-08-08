@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-import numpy as np
 import plotly.graph_objects as go
 from dash import html
 
@@ -49,9 +48,9 @@ class _VisualizerMetrics(MetricsCollectorProtocol, _MetricSumming, _HealthCollec
     pass
 
 
-from lumina_core.engine.state_visualizer_swarm import StateVisualizerSwarmMixin
-from lumina_core.engine.state_visualizer_inference import StateVisualizerInferenceMixin
-from lumina_core.engine.state_visualizer_health import StateVisualizerHealthMixin
+from lumina_core.engine.state_visualizer_swarm import StateVisualizerSwarmMixin  # noqa: E402
+from lumina_core.engine.state_visualizer_inference import StateVisualizerInferenceMixin  # noqa: E402
+from lumina_core.engine.state_visualizer_health import StateVisualizerHealthMixin  # noqa: E402
 
 class StateVisualizer(
     StateVisualizerSwarmMixin,

@@ -1,10 +1,8 @@
 """Setup fabric/configure endpoints (M5)."""
 from __future__ import annotations
 
-import asyncio
 import logging
-from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field

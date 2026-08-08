@@ -4,7 +4,6 @@ Provides component IDs required by ``admin_dashboard_callbacks``.
 """
 from __future__ import annotations
 
-from typing import Any
 
 import dash_bootstrap_components as dbc
 from dash import dcc, html

@@ -26,6 +26,7 @@ def _patch_supervisor_phase_state_machine(
     """
     from lumina_core.engine import supervisor_phase_state_machine as sp_sm
     from lumina_core.engine import supervisor_phase_tick_ops as tick_ops
+    from lumina_core.engine import supervisor_tick_signal as tick_signal
 
     if fake_datetime is not None:
         monkeypatch.setattr(sp_sm, "datetime", fake_datetime)
@@ -41,7 +42,7 @@ def _patch_supervisor_phase_state_machine(
             "reason": "ok",
         }
 
-    for mod in (sp_sm, tick_ops):
+    for mod in (sp_sm, tick_ops, tick_signal):
         monkeypatch.setattr(mod, "apply_hard_risk_controller_to_signal", _risk)
         monkeypatch.setattr(mod, "apply_agent_policy_gateway", _gate)
 

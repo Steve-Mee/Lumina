@@ -3,14 +3,10 @@
 from __future__ import annotations
 
 import json
-import logging
-import time
 from typing import Any
 
-from lumina_core.order_gatekeeper import session_guard_allows_trading
-from lumina_core.risk.regime_detector import RegimeSnapshot
 from .errors import format_error_code
-from lumina_core.logging_utils import correlation_id, get_logger, record_reasoning_latency_monitoring
+from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.reasoning.service")
 
@@ -30,6 +26,11 @@ class ReasoningPathsInferTailMixin:
         regime_snapshot: Any,
         current_confluence: float,
         consensus_context_id: str,
+        price: float,
+        mtf_data: str,
+        pa_summary: str,
+        structure: dict[str, Any],
+        fib_levels: dict[str, Any],
     ) -> dict[str, Any] | None:
         if regime_snapshot.adaptive_policy.high_risk and current_confluence < 0.88:
             app.logger.warning(
@@ -250,5 +251,5 @@ Voer meta-reasoning + counter-factuals uit.""",
         return fallback
 
 
-__all__ = ["ReasoningPathsMixin"]
+__all__ = []
 

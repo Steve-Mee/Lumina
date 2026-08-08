@@ -4,13 +4,11 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import Header, HTTPException
 from pydantic import BaseModel, Field
 
-from lumina_core.audit import get_audit_logger
 from lumina_core.governance import ApprovalChain, RealPromotionPayload, SignedApproval
 from lumina_core.evolution.promotion_readiness import check_promotion_readiness
 from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION

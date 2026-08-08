@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
 import logging
-from collections.abc import Mapping
-from typing import FrozenSet, Literal, cast
+from typing import FrozenSet
 
-from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.risk.risk_policy import RiskPolicy, load_risk_policy
 from lumina_core.risk.schemas import (
     ArbitrationState,
@@ -13,22 +10,28 @@ from lumina_core.risk.schemas import (
     ArbitrationResult,
     ArbitrationStatus,
     OrderIntent,
-    OrderIntentMetadata,
 )
-from lumina_core.safety.trading_constitution import TRADING_CONSTITUTION
+from lumina_core.risk.final_arbitration_state import (
+    _MODES_REQUIRING_EQUITY_SNAPSHOT,
+    build_constitution_payload as build_constitution_payload,
+    build_current_state_from_engine as build_current_state_from_engine,
+    build_order_intent_from_order as build_order_intent_from_order,
+    evaluate_constitution_for_intent as evaluate_constitution_for_intent,
+    is_strict_arbitration_mode as is_strict_arbitration_mode,
+)
 
 logger = logging.getLogger(__name__)
 
-from lumina_core.risk.final_arbitration_state import (
-    STRICT_ARBITRATION_MODES,
-    _MODES_REQUIRING_EQUITY_SNAPSHOT,
-    _to_float,
-    build_constitution_payload,
-    build_current_state_from_engine,
-    build_order_intent_from_order,
-    evaluate_constitution_for_intent,
-    is_strict_arbitration_mode,
-)
+# Re-export for backward compatibility (tests/importers depend on these being here)
+__all__ = [
+    "FinalArbitration",
+    "build_current_state_from_engine",
+    "build_order_intent_from_order",
+    "build_constitution_payload",
+    "evaluate_constitution_for_intent",
+    "is_strict_arbitration_mode",
+]
+
 _SKIPPABLE_INTERNAL_STEPS = frozenset({"constitution", "risk_policy"})
 
 

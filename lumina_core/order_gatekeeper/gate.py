@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import uuid
 from typing import Any, cast
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError
@@ -14,9 +13,8 @@ from lumina_core.order_gatekeeper.engine_helpers import (
     audit_trade_decision,
     record_mode_guard_block,
     resolve_blackboard,
-    resolve_event_bus,
 )
-from lumina_core.order_gatekeeper.lineage_emitters import build_audit_payload, domain_event_fingerprint
+from lumina_core.order_gatekeeper.lineage_emitters import build_audit_payload
 
 from lumina_core.risk.admission_chain import AdmissionContext, default_chain_for_mode
 from lumina_core.risk.mode_capabilities import resolve_mode_capabilities
@@ -223,5 +221,5 @@ def enforce_pre_trade_gate(
         pass
     return True, str(admission_context.metadata.get("risk_reason", reason or "OK"))
 
-from lumina_core.order_gatekeeper.gate_lineage import _emit_final_risk_verdict, _emit_gate_entry_lineage, _resolve_decision_context_id  # noqa: F401
+from lumina_core.order_gatekeeper.gate_lineage import _emit_final_risk_verdict, _emit_gate_entry_lineage, _resolve_decision_context_id  # noqa: F401, E402
 

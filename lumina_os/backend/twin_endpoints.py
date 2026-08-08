@@ -22,9 +22,6 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from lumina_core.evolution.approval_twin_agent import ApprovalTwinAgent
-from lumina_core.evolution.steve_values_registry import SteveValuesRegistry
-from lumina_core.evolution.twin_training_service import TwinTrainingService
 
 router = APIRouter(prefix="/api/twin", tags=["twin"])
 logger = logging.getLogger(__name__)
@@ -268,10 +265,6 @@ from lumina_os.backend.twin_endpoints_auth import (  # noqa: E402,F401
     set_security_module,
 )
 from lumina_os.backend.twin_endpoints_gym import (  # noqa: E402
-    TwinGymAnswerItem,
-    TwinGymAnswerRequest,
-    TwinGymCompleteRequest,
-    TwinGymSessionRequest,
     twin_gym_answer,
     twin_gym_complete,
     twin_gym_session,

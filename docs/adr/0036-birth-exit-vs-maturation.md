@@ -35,7 +35,23 @@ Default Stage-1 EdgeScore uses **survival floors** (`birth_survival_pass_enabled
 - Expectancy floor ≈ **−0.50**
 - Plant soft-block rate cap
 
-Skill floors (WR 0.35, expectancy −0.15) apply when survival mode is **off** (later skill curriculum). OOS / cert skill walls remain **Proving Ground / certificate pipeline**.
+**Playground+ / skill-mode Stage-1** (when survival mode is **off**): skill floors WR 0.35 and expectancy −0.15.  
+OOS / cert skill walls remain **Proving Ground / certificate pipeline** — never Birth-exit blockers.
+
+### 1b. Intra-Birth stage floors (not Birth-exit)
+
+**Birth exit** (this ADR §1) is survival-only. That does **not** mean every curriculum stage inside Birth uses survival floors.
+
+| Stage | Floor class | Expectancy (WR−0.50 proxy) | Notes |
+|-------|-------------|----------------------------|--------|
+| Stage 1 (survival on) | Survival | ≥ **−0.50** (≡ ~20% WR) | Breathe / plant |
+| Stage 2 Range | **Early-quality** | ≥ **−0.15** (≡ ~35% WR) | Flat 30–70%; **not** pro cert |
+| Stage 3 Mixed | **Early-quality** | ≥ **−0.15** + WR floor ~0.35 | Still inside Birth |
+
+Normative language, why, anti-patterns, and config keys:  
+**[docs/birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md)** (locked SSOT).
+
+Do **not** lower Stage-2/3 floors to −0.50 “because Birth is newborn,” and do **not** treat Stage-2 pass as Perfect Birth or REAL competence.
 
 ### 2. Explicit non-requirements for Birth exit
 
@@ -69,7 +85,8 @@ On Birth exit:
 | Continuum migrate | `continuum.migrate_from_milestones` uses `evaluate_birth_exit` |
 | Mark complete | `MaturityService.mark_birth_complete_from_artifacts` |
 | API | `GET /api/maturity/birth-exit` |
-| EdgeScore floors | `starship_edgescore_stage1.py` survival vs skill |
+| EdgeScore floors (Stage 1) | `starship_edgescore_stage1.py` survival vs skill-side |
+| Intra-Birth Stage 2/3 floors | `starship_edgescore_stage{2,3}.py` + [birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md) |
 
 ## Consequences
 
@@ -97,5 +114,6 @@ On Birth exit:
 - ADR-0026 Evolution Proof  
 - ADR-0027 Maturation ladder  
 - organism-maturation-phases.md (hub + survival floors)  
+- [birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md) — Stage 1 survival vs Stage 2/3 early-quality (locked)  
 - ADR-0007 Promotion gate REAL  
 - H2 real multi-gate  

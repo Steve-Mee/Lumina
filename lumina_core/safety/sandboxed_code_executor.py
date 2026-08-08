@@ -25,6 +25,7 @@ from typing import Any, Final
 
 from lumina_core.code_evolution.proposal import CodeSandboxEvalResult
 from lumina_core.safety.sandboxed_executor import _build_sandbox_env
+from lumina_core.safety.sandboxed_code_worker import _CODE_SANDBOX_WORKER
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ _DEFAULT_TIMEOUT_S: Final[int] = 30
 _MAX_STDOUT_BYTES: Final[int] = 64 * 1024
 
 # Worker runs entirely from embedded script — no pickle.
-from lumina_core.safety.sandboxed_code_worker import _CODE_SANDBOX_WORKER
+
 
 class SandboxedCodeExecutor:
     """Evaluate a code-evolution proposal in an isolated subprocess."""

@@ -2,23 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import yaml
 
 from lumina_core.config_loader import ConfigLoader
 from lumina_core.config.atomic_yaml import atomic_write_yaml
-from lumina_core.engine.model_catalog import ModelDescriptor
 from lumina_core.logging_utils import get_logger
 from lumina_launcher.services import setup_detector
-from lumina_launcher.services.ollama_installer import manual_steps_for_model
 from lumina_launcher.services.setup_compat import HardwareInspector
-from lumina_launcher.services.setup_progress import emit_progress
-from lumina_launcher.services.setup_schemas import (
-    SetupProgressCallback,
-    SmartSetupOptions,
-    SmartSetupResult,
-)
 
 if TYPE_CHECKING:
     from lumina_launcher.services.smart_setup_service import SmartSetupService
@@ -69,4 +61,4 @@ def mark_setup_complete(service: SmartSetupService) -> None:
         descriptor.key,
     )
 
-from lumina_launcher.services.setup_orchestrator_run import complete_run, finalize_run, run_smart_setup  # noqa: F401
+from lumina_launcher.services.setup_orchestrator_run import complete_run, finalize_run, run_smart_setup  # noqa: F401, E402

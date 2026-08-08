@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.risk.risk_policy import RiskPolicy

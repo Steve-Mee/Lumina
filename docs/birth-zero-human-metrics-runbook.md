@@ -3,7 +3,7 @@
 **Purpose:** Run production **Birth** on SIM / certified workspace with **minimal operator touch**, using automated gates + honest metrics.  
 **Not in scope:** auto REAL capital, hollow Perfect Birth declare, yaml `approval_twin.mode: full_auto` force.
 
-Related contracts: [starship-birth.md](starship-birth.md), [birth-phase-live-validation-runbook.md](birth-phase-live-validation-runbook.md), [ADR-0036 birth exit vs maturation](adr/0036-birth-exit-vs-maturation.md).
+Related contracts: [starship-birth.md](starship-birth.md), [birth-phase-live-validation-runbook.md](birth-phase-live-validation-runbook.md), [ADR-0036 birth exit vs maturation](adr/0036-birth-exit-vs-maturation.md), **[birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md)** (Stage 1 survival vs Stage 2/3 early-quality — locked).
 
 ---
 
@@ -12,7 +12,7 @@ Related contracts: [starship-birth.md](starship-birth.md), [birth-phase-live-val
 | Situation | Engine may auto-recover? | Operator action |
 |-----------|--------------------------|-----------------|
 | Stage stall / wall / plateau (pre-swarm freeze) | Yes (bounded Organism Autonomy / phoenix budget) | Monitor only |
-| Stage-2 **expectancy stall** (flat in band, WR−0.50 below floor) | Yes — quality ladder (rollback → reward → explore_reduce → pattern inject); swarm deferred | Monitor only |
+| Stage-2 **expectancy stall** (flat in band; live exp below **early-quality** floor **−0.15** ≡ ~35% WR — *not* Stage-1 survival −0.50) | Yes — quality ladder (rollback → reward → explore_reduce → pattern inject); swarm deferred | Monitor only |
 | Recovery theater (spin without lift) | No ladder burn when freeze/theater | Twin or human `accept_champion`; wipe stays human |
 | Swarm **no tournament lift** (champion freeze) | **No train** on rejected swarm. Twin may **`accept_champion`** (keep best, conf≥0.80, constitution 0, birth/SIM) when `birth_twin_freeze_resolve_enabled` | Wipe always human; Twin low-conf → Telegram accept/wipe |
 | Certificate failed | Remediation path if configured | Review `failure_reasons`; continue / expand / wipe |

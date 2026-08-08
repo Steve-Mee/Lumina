@@ -1,14 +1,20 @@
 """Subprocess sandbox runner (M5 extract)."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
-from typing import Any
 
-from lumina_core.safety.sandboxed_executor_types import SandboxedResult, _build_sandbox_env
+from lumina_core.safety.sandboxed_executor_types import (
+    SandboxedResult,
+    _build_sandbox_env,
+    _MAX_STDOUT_BYTES,
+    _SANDBOX_WORKER_SCRIPT,
+)
 
 logger = logging.getLogger(__name__)
 

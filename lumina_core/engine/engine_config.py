@@ -8,6 +8,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from lumina_core.engine.engine_config_helpers import (
+    _load_yaml_config as _load_yaml_config,
     _config_yaml_nested,
     _config_yaml_section,
     _config_yaml_section_value,
@@ -16,7 +17,6 @@ from lumina_core.engine.engine_config_helpers import (
     _env_or_yaml,
     _env_or_yaml_bool,
     _env_or_yaml_float,
-    _load_yaml_config,
     _parse_swarm_symbols,
     _safe_dict,
 )

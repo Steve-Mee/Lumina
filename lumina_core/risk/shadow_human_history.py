@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lumina_core.risk.shadow_registry import ShadowRunRegistry
+
+if TYPE_CHECKING:
+    from lumina_core.agent_orchestration.schemas import EvolutionPromotionDecision
 
 class ShadowHumanHistoryMixin:
     def list_pending_human_approvals(self) -> list[dict[str, Any]]:

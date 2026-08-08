@@ -1,22 +1,19 @@
 """Security audit, rate limit, config validation (global residual)."""
 from __future__ import annotations
 
-import hashlib
 import logging
 import os
-import secrets
 import threading
 import time
-from collections import defaultdict, deque
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Optional
 
-import yaml
 from typing_extensions import ParamSpec
 
 from lumina_core.audit import get_audit_logger
+from lumina_core.security import SecurityConfig
 
 logger = logging.getLogger(__name__)
 P = ParamSpec("P")

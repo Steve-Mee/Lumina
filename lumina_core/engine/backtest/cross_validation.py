@@ -199,7 +199,7 @@ class PurgedWalkForwardCV:
 # ---------------------------------------------------------------------------
 
 
-from lumina_core.engine.backtest.cross_validation_folds import CombinatorialPurgedCVFoldsMixin
+from lumina_core.engine.backtest.cross_validation_folds import CombinatorialPurgedCVFoldsMixin  # noqa: E402
 
 
 @dataclass(slots=True)

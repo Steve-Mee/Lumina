@@ -1,12 +1,15 @@
 """RegimeCalendarMixin (M5 extract)."""
 from __future__ import annotations
 
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
 
-from lumina_core.risk.regime_types import AdaptiveRegimePolicy, RegimeSnapshot
+from lumina_core.risk.regime_types import _CONTRACT_MONTHS, _MONTH_NAMES
+
+logger = logging.getLogger(__name__)
 
 
 class RegimeCalendarMixin:

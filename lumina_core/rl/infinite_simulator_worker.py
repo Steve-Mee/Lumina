@@ -1,28 +1,13 @@
 # CANONICAL IMPLEMENTATION – v50 Living Organism
 from __future__ import annotations
 
-import json
-import logging
 import math
-import multiprocessing as mp
-import os
 import random
 import statistics
-import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from lumina_core.config_loader import ConfigLoader
 from lumina_core.engine.valuation_engine import ValuationEngine
-from lumina_core.evolution.simulator_data_support import (
-    MIN_SIMULATOR_BARS,
-    require_real_simulator_data_strict,
-    select_first_boot_ppo_bars,
-)
-from lumina_core.first_boot_progress import resolve_ppo_progress_interval
-from lumina_core.logging_utils import correlation_id, get_logger
+from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.simulation.nightly")
 

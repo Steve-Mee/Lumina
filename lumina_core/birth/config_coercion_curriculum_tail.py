@@ -6,8 +6,6 @@ from typing import Any
 from lumina_core.birth.config_coercion_helpers import (
     _coerce_float,
     _coerce_int,
-    _coerce_wall_behavior,
-    _parse_expansion_steps,
 )
 
 

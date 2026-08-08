@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
 from lumina_core.logging_utils import get_logger
-from lumina_core.risk.shadow_registry import ShadowRunRegistry
+from lumina_core.risk.shadow_human_history import ShadowHumanHistoryMixin
 from lumina_core.risk.shadow_types import ShadowContext
 
 if TYPE_CHECKING:
@@ -13,8 +13,6 @@ if TYPE_CHECKING:
 
 logger = get_logger("lumina.risk.shadow")
 
-
-from lumina_core.risk.shadow_human_history import ShadowHumanHistoryMixin
 
 class ShadowHumanApprovalMixin(ShadowHumanHistoryMixin):
     @staticmethod

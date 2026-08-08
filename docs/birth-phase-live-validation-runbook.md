@@ -53,11 +53,15 @@ Shadow birth run on a **SIM or certified workspace** (no REAL orders). Use this 
 
 ## 6. Stage 1 stall abort (certified wall)
 
-1. During `stage1_trend`, if the volume gate is met but EdgeScore hygiene fails (WR below `stage1_winrate_pass_floor`, default 35%; vanity 45% is diagnostic only):
-   - Scorecard shows blocker text (e.g. `Hygiene WR 33% (need >=35%)`).
+1. During `stage1_trend`, if the volume gate is met but EdgeScore hygiene fails under the **active** floor mode:
+   - **Default Birth (`birth_survival_pass_enabled: true`):** survival WR floor ≈ **20%**, expectancy ≥ **−0.50** (not skill 35%). Vanity 45% WR is diagnostic only.
+   - **Skill-side mode (survival off / Playground+):** hygiene uses `stage1_winrate_pass_floor` default **35%**.
+   - Scorecard shows blocker text (e.g. Survival WR or Hygiene WR as configured).
    - When `max_stage_wall_sec` expires (`wall_budget_exhausted`) **or** `certified_stage_stall_wall_sec` plus stagnation rollouts elapse, phase becomes `stage_stalled` (or plateau/swarm escalates first). Soft `explore_boost` alone is not a valid end state.
 2. UI recovery panel offers **Retry stage**, **Expand data & retry**, **Wipe & restart**.
 3. **Fail if:** birth runs hours past wall budget at sub-hygiene WR without `stage_stalled`, plateau entry, swarm tournament, or blocker HUD.
+
+**Stage 2/3 floors** are **early-quality** (expectancy ≥ **−0.15**, Stage 2 flat 30–70%) — not Stage-1 survival −0.50 and not cert OOS 0.48. See [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md).
 
 ## 7. Accept criteria
 
@@ -187,10 +191,11 @@ Quick checks during a live shadow run:
 2. **Swarm reject** — no tournament lift → champion restored, `needs_attention` / `swarm_no_tournament_lift` (legacy `swarm_no_edgescore_lift` still recognized); ladder **and** stall remediation must not burn after freeze.
 3. **Twin CONTINUE** — only if twin mode is already `full_auto` **and** swarm tournament resolved (commit or accept-champion — not reject alone); constitution still vetoes.
 4. **Certificate** — numeric OOS floors unchanged; progress may show `oos_regime_breakdown`; empty claimed regime → `oos_regime_empty`.
-5. **Stage 2/3** — EdgeScore criteria ids `range_edgescore` / `mixed_edgescore` (decimal, not vanity %).
+5. **Stage 2/3** — EdgeScore criteria ids `range_edgescore` / `mixed_edgescore` (decimal, not vanity %); floors = **early-quality** (exp ≥ −0.15), not Stage-1 survival −0.50 — [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md).
 
 ## Related docs (updated)
 
+- [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md) — Stage 1 survival vs Stage 2/3 early-quality (locked)
 - [starship-birth.md](starship-birth.md) — Phase A+B contract (cert floors frozen, full_auto rules)
 - ADR-0031 (approval-twin-event-bus), ADR-0032 (approval-twin-human-replacement)
 - LUMINA_BIRTH_ADAPTIVE_WALL_RETRY_DESIGN.md

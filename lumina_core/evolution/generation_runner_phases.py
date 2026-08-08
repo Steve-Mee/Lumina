@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Sequence, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 from lumina_core.evolution.fitness_evaluator import utcnow as _utcnow
 from lumina_core.evolution.meta_swarm import meta_swarm_governance_enabled
-from lumina_core.governance import SignedApproval
 
 if TYPE_CHECKING:
     from lumina_core.evolution.orchestrator_core import EvolutionOrchestrator

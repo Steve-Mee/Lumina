@@ -15,13 +15,6 @@ from lumina_core.rl.observation_builder import OBSERVATION_DIM, build_observatio
 from lumina_core.rl.gym_environment_step import RLTradingEnvironmentStepMixin
 from lumina_core.rl.reward_shaper import (
     RewardShapingState,
-    TradeCloseContext,
-    compute_expectancy_reward,
-    compute_legacy_reward,
-    hold_action_penalty,
-    range_patience_step_reward,
-    trend_features_from_tick,
-    update_trade_stats,
 )
 
 try:

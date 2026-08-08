@@ -61,10 +61,8 @@ _ADAPTIVE_INTELLIGENCE_HISTORY = Path(
 from lumina_os.monitoring.snapshots import (
     extract_regime_summary as _extract_regime_summary,
     latest_training_reports as _latest_training_reports,
-    load_json_file as _load_json_file,
     load_jsonl_file as _load_jsonl_file,
     metric_value as _metric_value,
-    monitoring_paths as _monitoring_paths,
     repo_state_dir as _repo_state_dir,
 )
 from lumina_os.backend.monitoring_endpoints_helpers import (
@@ -72,7 +70,6 @@ from lumina_os.backend.monitoring_endpoints_helpers import (
     _check_api_key,
     _load_adaptive_history_rows,
     _require_service,
-    set_observability_service,
 )
 
 
@@ -305,14 +302,7 @@ async def get_stability_report(
     return report
 
 
-# ── Internal helpers + split route handlers (global residual) ─────────────────
-from lumina_os.backend.monitoring_endpoints_helpers import (  # noqa: E402,F401
-    _build_adaptive_transition_summary,
-    _check_api_key,
-    _load_adaptive_history_rows,
-    _require_service,
-    set_observability_service,
-)
+# ── Split route handlers (helpers already imported above) ─────────────────────
 from lumina_os.backend.monitoring_endpoints_ops import (  # noqa: E402
     get_admin_setup_snapshot,
     get_capital_aperture,

@@ -1,33 +1,20 @@
 """stage_loop_data_enrich_core — remaining StageLoopDataEnrichMixin methods."""
 from __future__ import annotations
 
-from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from lumina_core.birth.birth_bus_serde import reward_config_to_dict
 from lumina_core.birth.birth_control_plane import (
     effective_plateau_max_evolution_steps,
     should_force_swarm_retearnament,
     should_start_swarm_before_recovery,
-    swarm_tournament_lift,
-    tournament_score,
 )
 from lumina_core.birth.curriculum import CurriculumStage
-from lumina_core.birth.policy_swarm import (
-    PolicySwarmState,
-    build_swarm_variants,
-    record_swarm_rollout,
-    select_swarm_winner,
-    swarm_rollout_target,
-)
 from lumina_core.birth.starship_birth import (
-    edgescore_from_swarm_result,
     evaluate_stage1_edgescore,
     read_last_ppo_entropy,
     should_force_exploration_burst,
 )
-from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_loop_data_enrich")
@@ -159,7 +146,6 @@ class StageLoopDataEnrichMixinCore:
                 from lumina_core.birth.plateau_rolling import rolling_winrate_last_n_trades
                 from lumina_core.birth.starship_edgescore_core import (
                     gate_rolling_winrate,
-                    rolling_pass_min_covered,
                 )
 
                 window = int(getattr(self.cur_cfg, "stage1_rolling_pass_window", 500) or 500)

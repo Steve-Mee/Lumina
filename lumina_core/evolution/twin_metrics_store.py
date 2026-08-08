@@ -8,6 +8,7 @@ from typing import Any
 from lumina_core.evolution.twin_metrics_reports import TwinMetricsReportsMixin
 from lumina_core.evolution.twin_metrics_types import (
     HIGH_CONF_THRESHOLD,
+    ComparisonSource,
     TwinComparisonEvent,
     TwinModeMetricsSnapshot,
     _clamp01,
@@ -245,14 +246,8 @@ class TwinMetricsStore(TwinMetricsReportsMixin):
         self._write_summary_snapshot(snap)
 
 
-# Public re-exports (tests + gates import from twin_metrics_store)
-from lumina_core.evolution.twin_metrics_types import (  # noqa: E402,F401
-    HIGH_CONF_THRESHOLD,
-    TwinComparisonEvent,
-    TwinModeMetricsSnapshot,
-    compute_risk_flag_missed,
-    recompute_row_derived,
-)
+# Public re-export not already imported at top
+from lumina_core.evolution.twin_metrics_types import compute_risk_flag_missed  # noqa: E402,F401
 
 __all__ = [
     "HIGH_CONF_THRESHOLD",

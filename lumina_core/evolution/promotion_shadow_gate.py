@@ -4,14 +4,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from lumina_core.engine.backtest.reality_gap import RealityGapTracker
-from lumina_core.engine.stress_suite_runner import StressSuiteRunner
 
 from .dna_registry import PolicyDNA
 from .fitness_evaluator import utcnow
 from .multi_day_sim_runner import MultiDaySimRunner
 from .promotion_gate import PromotionGateDecision
-from .veto_window import VetoWindow
+from .rollout import EvolutionRolloutFramework
 
 
 class PromotionShadowGateMixin:

@@ -120,7 +120,6 @@ def _first_sim_order_probe(workspace_root: Path) -> dict[str, Any]:
 
     # Optional fabric client probe
     try:
-        from lumina_core.broker.fabric_client import FabricClient  # type: ignore
 
         # Do not place real orders; connectivity only
         return {

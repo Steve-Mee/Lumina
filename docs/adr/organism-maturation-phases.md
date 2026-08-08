@@ -12,7 +12,7 @@ Maturation is a **capability ladder**, not a single certificate wall.
 | Phase | Organism capability | Exit proof (examples) | Non-goals |
 |-------|---------------------|----------------------|-----------|
 | **Genesis** | Wiring exists | fabric GREEN, setup complete, charter | Training |
-| **Birth** | Survive / breathe / closed loop | legal action rate, hard_const=0, checkpoint, entropy alive, loose expectancy | WR≥35%, OOS 0.48, swarm lift |
+| **Birth** | Survive / breathe / closed loop | legal action rate, hard_const=0, checkpoint, entropy alive, Stage-1 loose expectancy | Phase-exit: WR≥35% / OOS 0.48 / Perfect Birth / REAL as exit grades (intra-Birth Stage 2/3 early-quality is separate — see below) |
 | **Awakening** | Prefer better, perceive regimes | twin/shadow rising, recovery works, evolution proof | REAL capital |
 | **Playground** | Move safely in SIM | first SIM order, deck unlock, skill EdgeScore/hygiene | REAL |
 | **Apprenticeship** | Stable multi-day SIM | sim_real_guard streak, never-stop recovery | REAL |
@@ -25,9 +25,22 @@ When `birth_v2.curriculum.birth_survival_pass_enabled` (default **true**):
 
 - Stage1 EdgeScore uses `birth_survival_wr_floor` (default **0.20**) and `birth_survival_expectancy_floor` (default **−0.50**).
 - Plant gate: `soft_block_rate_per_1k` must be ≤ `birth_plant_soft_block_rate_max_per_1k` (default **100**).
-- Skill floors (`stage1_winrate_pass_floor` 0.35, expectancy −0.15) apply when survival mode is **false** (Playground+ skill curriculum).
+- Skill-side Stage-1 floors (`stage1_winrate_pass_floor` 0.35, `stage1_expectancy_floor` −0.15) apply when survival mode is **false** (Playground+ skill curriculum).
 
 REAL / certificate_thresholds for OOS WR 0.48 etc. are **unchanged** and apply at Proving Ground / certificate pipeline — not as the only Birth exit.
+
+### Birth curriculum stages (internal — not phase-exit)
+
+**Phase** Birth exits on survival proofs (ADR-0036). **Inside** Birth, stages ramp:
+
+| Stage | Class | Expectancy (WR−0.50) | Role |
+|-------|--------|----------------------|------|
+| 1 Trend | Survival (default) | ≥ **−0.50** | First breath |
+| 2 Range | **Early-quality** | ≥ **−0.15** | Motor control / range band |
+| 3 Mixed | **Early-quality** | ≥ **−0.15** (+ WR ~0.35) | Deeper train hygiene |
+
+Locked doctrine, why, and anti-patterns: **[birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md)**.  
+Do not call Stage 2/3 “survival −0.50” and do not call Stage 2 pass “pro skill / cert.”
 
 ## Phase Hub (operator home after Birth)
 
@@ -82,7 +95,8 @@ Expired tokens → `token_expired` + clear pending. Hub can `POST /api/maturity/
 ## Related code
 
 - `maturity/birth_exit.py` — **H7 Birth exit SSOT** (survival proofs; not Perfect Birth / REAL)
-- `starship_edgescore_stage1.py` — survival vs skill floors
+- `starship_edgescore_stage1.py` — Stage-1 survival vs skill-side floors
+- `starship_edgescore_stage2.py` / `stage3.py` — early-quality floors (see birth-curriculum-stage-floors.md)
 - `birth_constitution_guard.py` — auto_clip plant
 - `maturation_progress.py` — phase enum order
 - `maturity/continuum.py` — durable hub SSOT

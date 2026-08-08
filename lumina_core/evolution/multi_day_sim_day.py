@@ -1,21 +1,12 @@
 """Day-level trade simulation helpers for MultiDaySimRunner."""
 from __future__ import annotations
 
-import hashlib
-import json
 import logging
 import random
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from typing import Any
 
-import pandas as pd
 
-from .bot_stress_choices import resolve_ohlc_reality_stress_enabled
 from .dna_registry import PolicyDNA
-from .reality_generator import build_parallel_reports, stress_simulator_ohlc
-from .multi_day_sim_types import ShadowFill, SimResult, stable_seed as _stable_seed
 
 logger = logging.getLogger(__name__)
 

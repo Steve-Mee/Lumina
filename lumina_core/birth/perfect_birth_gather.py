@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from lumina_core.birth.perfect_birth_types import (
     PerfectBirthKpis,

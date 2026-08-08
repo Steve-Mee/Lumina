@@ -11,9 +11,7 @@ from lumina_core.evolution.dream_engine import enrich_nightly_report_with_dream
 from lumina_core.evolution.fitness_evaluator import (
     resolve_parallel_realities_count as _resolve_parallel_realities_count,
     seed_from_hash as _seed_from_hash,
-    utcnow as _utcnow,
 )
-from lumina_core.evolution.meta_swarm import meta_swarm_governance_enabled
 from lumina_core.evolution.multi_day_sim_runner import MultiDaySimRunner
 from lumina_core.evolution.orchestrator_core import GenerationResult
 from lumina_core.governance import SignedApproval

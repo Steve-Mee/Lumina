@@ -40,7 +40,6 @@ constitution-guard, risk-safety-review, and produce public evolution entries.
 
 from __future__ import annotations
 
-import argparse
 import json
 import os
 from datetime import datetime
@@ -51,10 +50,6 @@ from typing import Any
 # We deliberately import inside functions where possible to keep startup light
 
 
-from lumina_core.audit.aperture_audit_discover import (  # noqa: E402
-    discover_recent_final_arbitration_ctxs,
-    merge_d1_audit_context_ids,
-)
 
 def build_aperture_audit_artifact(
     decision_context_id: str,

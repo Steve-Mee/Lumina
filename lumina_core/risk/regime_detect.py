@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from lumina_core.risk.regime_types import AdaptiveRegimePolicy, RegimeSnapshot
+from lumina_core.risk.regime_types import RegimeSnapshot
 
 
 class RegimeDetectMixin:

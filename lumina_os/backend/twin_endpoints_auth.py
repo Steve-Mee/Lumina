@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import Header, HTTPException
+from fastapi import HTTPException
 
 from lumina_core.evolution.approval_twin_agent import ApprovalTwinAgent
 from lumina_core.evolution.steve_values_registry import SteveValuesRegistry

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from lumina_core.logging_core import _safe_log, log_event
+from lumina_core.logging_core import _safe_log
 
 def log_evolution_event(logger: logging.Logger, event_type: str, dna_hash: str | None = None, **kwargs: Any) -> None:
     _safe_log(logger, logging.INFO, "evolution.event", event_type=event_type, dna_hash=dna_hash, **kwargs)

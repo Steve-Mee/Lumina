@@ -1,7 +1,6 @@
 """Session prepare: plateau/swarm/quarantine resume (M5)."""
 from __future__ import annotations
 
-from typing import Any
 
 from lumina_core.birth.checkpoint import apply_plateau_quarantine_on_checkpoint_resume
 from lumina_core.birth.curriculum import stage1_winrate_pass_threshold

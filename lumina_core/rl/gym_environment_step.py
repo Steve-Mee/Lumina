@@ -1,8 +1,6 @@
 """step() mixin for RLTradingEnvironment (M5)."""
 from __future__ import annotations
 
-import random
-from typing import Any
 
 import numpy as np
 

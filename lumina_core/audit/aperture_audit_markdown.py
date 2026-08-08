@@ -40,11 +40,6 @@ constitution-guard, risk-safety-review, and produce public evolution entries.
 
 from __future__ import annotations
 
-import argparse
-import json
-import os
-from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 # Internal imports — all best-effort and defensive

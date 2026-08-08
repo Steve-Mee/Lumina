@@ -3,43 +3,10 @@ from __future__ import annotations
 
 import time
 import traceback
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from lumina_core.engine.errors import ErrorSeverity, LuminaError, log_structured
-from lumina_core.engine.eod_force_close_service import EODForceCloseService
-from lumina_core.engine.live_position_manager import LivePositionManager
-from lumina_core.engine.paper_simulator import PaperSimulator
-from lumina_core.engine.price_dupe_resolver import PriceDupeResolver
-from lumina_core.engine.real_close_detector import RealCloseDetector
-from lumina_core.engine.rl_bias_applier import RlBiasApplier
-from lumina_core.logging_utils import log_runtime_trace, runtime_trace_enabled
-from lumina_core.reasoning.agent_contracts import apply_agent_policy_gateway
-from lumina_core.runtime_trade_gates import apply_hard_risk_controller_to_signal
-
-
-@dataclass
-class SupervisorTickCtx:
-    """Mutable per-tick state shared across phase blocks."""
-
-    price: float
-    dream_snapshot: dict[str, Any] | None
-    now: datetime
-    gate_result: dict[str, Any] = field(default_factory=dict)
-    rl_action: Any = None
-    eod_force_hold: bool = False
-    min_confluence: float = 0.0
-    signal: str = "HOLD"
-    trade_mode: str = "paper"
-    qty_multiplier: float = 1.0
-    stop_widen_multiplier: float = 1.0
-    hold_until_ts: float = 0.0
-    swarm_manager: Any = None
-    cfg: Any = None
-    push_trader_league_trade: Callable[..., Any] | None = None
-    compute_session_kpis: Callable[..., Any] | None = None
-    publish_runtime_monitoring_snapshot: Callable[..., Any] | None = None
+from lumina_core.engine.supervisor_tick_ctx import SupervisorTickCtx
 
 
 def run_tick_post_monitor(sm: Any, ctx: SupervisorTickCtx) -> None:

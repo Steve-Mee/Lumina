@@ -14,8 +14,6 @@ from typing import Any, Literal
 from lumina_core.logging_utils import get_logger
 from lumina_core.maturity.maturation_progress import (
     MaturationPhase,
-    PHASE_ORDER,
-    load_maturation_progress,
 )
 
 logger = get_logger("lumina.maturity.continuum")
@@ -345,5 +343,5 @@ def clear_expired_pending_advance(workspace_root: Path | str) -> dict[str, Any]:
         "remaining_sec": 0,
     }
 
-from lumina_core.maturity.continuum_migrate import migrate_from_milestones, wipe_all_continuum, wipe_phase_record  # noqa: F401
+from lumina_core.maturity.continuum_migrate import migrate_from_milestones, wipe_all_continuum, wipe_phase_record  # noqa: F401, E402
 

@@ -9,10 +9,10 @@ from __future__ import annotations
 import traceback
 from typing import TYPE_CHECKING, Any, Callable
 
-import pandas as pd
 
 from .errors import ErrorSeverity, LuminaError, log_structured
 from lumina_core.first_boot_ui import HISTORICAL_BAR_LIMIT_SAFETY_CAP
+from lumina_core.engine.market_data_history_helpers import MarketDataHistoryHelpersMixin
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -24,8 +24,6 @@ def _mds():
 
     return mds
 
-
-from lumina_core.engine.market_data_history_helpers import MarketDataHistoryHelpersMixin
 
 class MarketDataHistoryFetchMixin(MarketDataHistoryHelpersMixin):
     """Historical bars fetch (helpers in MarketDataHistoryHelpersMixin)."""

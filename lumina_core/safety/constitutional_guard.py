@@ -46,7 +46,6 @@ from typing import Any, Final
 from lumina_core.audit import get_audit_logger
 from lumina_core.safety.trading_constitution import (
     ConstitutionalViolation,
-    ConstitutionalViolationError,
     TradingConstitution,
     TRADING_CONSTITUTION,
 )
@@ -116,8 +115,10 @@ class GuardResult:
 # ConstitutionalGuard
 # ---------------------------------------------------------------------------
 
+from lumina_core.safety.constitutional_guard_checks import (  # noqa: E402
+    ConstitutionalGuardChecksMixin,
+)
 
-from lumina_core.safety.constitutional_guard_checks import ConstitutionalGuardChecksMixin
 
 class ConstitutionalGuard(ConstitutionalGuardChecksMixin):
     """Top-level AGI safety gate integrating constitution + sandbox evaluation.

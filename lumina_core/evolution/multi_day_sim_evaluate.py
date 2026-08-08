@@ -1,16 +1,13 @@
 """Variant evaluation entrypoints for MultiDaySimRunner."""
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import random
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass
 from typing import Any
 
-import pandas as pd
 
 from .bot_stress_choices import resolve_ohlc_reality_stress_enabled
 from .dna_registry import PolicyDNA

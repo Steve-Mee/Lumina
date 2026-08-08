@@ -1,17 +1,14 @@
 """Shadow types, defaults, and statistical helpers."""
 from __future__ import annotations
 
-import json
 import logging
 import math
-import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from lumina_core.config_loader import ConfigLoader
-from lumina_core.logging_utils import correlation_id, get_logger, log_shadow_verdict
+from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.evolution.shadow")
 

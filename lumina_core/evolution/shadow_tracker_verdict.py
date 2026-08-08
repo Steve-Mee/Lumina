@@ -1,11 +1,15 @@
 """ShadowDeploymentTracker verdict / A-B methods."""
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from lumina_core.logging_utils import get_logger, log_shadow_verdict
-from lumina_core.evolution.shadow_helpers import *  # noqa: F403
+from lumina_core.evolution.shadow_helpers import (
+    ShadowVerdict,
+    _cohens_d,
+    _sample_sharpe,
+    _welch_t_pvalue,
+)
 
 logger = get_logger("lumina.evolution.shadow")
 

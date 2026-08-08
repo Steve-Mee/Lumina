@@ -1,22 +1,9 @@
 """Mode matrix + mapping helpers for setup persistence."""
 from __future__ import annotations
 
-import json
 import logging
-import os
-import secrets
-import subprocess
-import sys
-from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
-from lumina_core.config_loader import ConfigLoader
-from lumina_core.engine.hardware_inspector import HardwareSnapshot
-from lumina_core.engine.setup_service import SetupService
-from lumina_launcher.core.config_manager import ConfigManager
-from lumina_launcher.core.first_boot import FirstBootManager
-from lumina_launcher.services.model_service import ModelService
 
 logger = logging.getLogger(__name__)
 

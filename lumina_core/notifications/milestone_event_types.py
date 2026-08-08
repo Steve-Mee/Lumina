@@ -7,7 +7,6 @@ from enum import Enum
 from typing import Any
 
 from lumina_core.birth.curriculum import CurriculumStage
-from lumina_core.birth.stage_pass_receipt import StagePassReceipt
 
 _STAGE_LABELS: dict[str, str] = {
     CurriculumStage.STAGE1_TREND.value: "Stage 1 — Trend",

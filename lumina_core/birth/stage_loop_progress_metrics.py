@@ -5,18 +5,9 @@ import time
 from typing import Any
 
 from lumina_core.birth.plateau_escalator import (
-    build_plateau_audit,
     plateau_min_stage_trades,
-    progress_fields as plateau_progress_fields,
     quarantine_progress_payload,
-    remediation_is_exhausted,
 )
-from lumina_core.birth.progress import merge_birth_progress_extra
-from lumina_core.birth.stage_scorecard import (
-    build_scorecard_payload,
-    enrich_adaptation_payload,
-)
-from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_loop_mixin")

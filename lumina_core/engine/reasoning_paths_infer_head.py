@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from typing import Any
 
-from lumina_core.order_gatekeeper import session_guard_allows_trading
-from lumina_core.risk.regime_detector import RegimeSnapshot
-from .errors import format_error_code
-from lumina_core.logging_utils import correlation_id, get_logger, record_reasoning_latency_monitoring
+from lumina_core.logging_utils import correlation_id, get_logger
+from lumina_core.engine.reasoning_paths_latency import ReasoningPathsLatencyMixin
 
 logger = get_logger("lumina.reasoning.service")
 
-
-from lumina_core.engine.reasoning_paths_latency import ReasoningPathsLatencyMixin
 
 class ReasoningPathsInferHeadMixin(ReasoningPathsLatencyMixin):
     """infer_json head (setup + early returns)."""
@@ -212,13 +207,24 @@ class ReasoningPathsInferHeadMixin(ReasoningPathsLatencyMixin):
             current_confluence = 0.0
         return self._infer_json_regime_tail(
             app=app,
-            payload=payload,
-            context=context,
-            timeout=timeout,
-            max_retries=max_retries,
-            resolved_context_id=resolved_context_id,
+            payload={
+                "price": price,
+                "mtf_data": mtf_data,
+                "pa_summary": pa_summary,
+                "structure": structure,
+                "fib_levels": fib_levels,
+            },
+            context="multi_agent_consensus",
+            timeout=20,
+            max_retries=1,
+            resolved_context_id=consensus_context_id,
             regime_snapshot=regime_snapshot,
             current_confluence=current_confluence,
             consensus_context_id=consensus_context_id,
+            price=price,
+            mtf_data=mtf_data,
+            pa_summary=pa_summary,
+            structure=structure,
+            fib_levels=fib_levels,
         )
 

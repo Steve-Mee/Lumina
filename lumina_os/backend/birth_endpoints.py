@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -13,23 +12,14 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from lumina_launcher.services.birth_service import birth_service
-from lumina_launcher.services.birth_status_diagnostics import merge_certificate_diagnostics
 from lumina_core.birth.birth_certificate import load_certificate, validate_certificate_artifacts
-from lumina_core.birth.checkpoint import load_checkpoint_state
-from lumina_core.birth.config import load_birth_v2_config, BRO_ENGINE_VERSION
-from lumina_core.birth.remediation import should_fast_path_remediation_from_state
+from lumina_core.birth.config import load_birth_v2_config
 
 router = APIRouter(prefix="/api/birth", tags=["birth"])
 logger = logging.getLogger(__name__)
 
-from lumina_os.backend.birth_endpoints_enrich import (
+from lumina_os.backend.birth_endpoints_enrich import (  # noqa: E402
     _build_birth_status_payload,
-    _enrich_status,
-    _enrich_status_full,
-    _invalidate_enrich_artifact_cache,
-    _is_active_birth_poll,
-    _apply_progress_fields,
-    _merge_start_result,
 )
 
 _ENRICH_ARTIFACT_CACHE_TTL_SEC = 20.0
@@ -315,15 +305,6 @@ async def get_birth_logs_tail(limit: int = Query(40, ge=5, le=200)) -> dict[str,
         "full_log_tail": full_tail,
     }
 
-from lumina_os.backend.birth_endpoints_enrich import (  # noqa: E402,F401
-    _apply_progress_fields,
-    _build_birth_status_payload,
-    _enrich_status,
-    _enrich_status_full,
-    _invalidate_enrich_artifact_cache,
-    _is_active_birth_poll,
-    _merge_start_result,
-)
 from lumina_os.backend.birth_endpoints_actions import (  # noqa: E402
     accept_champion,
     autonomous_recovery,

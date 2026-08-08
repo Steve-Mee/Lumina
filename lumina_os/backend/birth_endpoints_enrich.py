@@ -2,13 +2,12 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from threading import Lock
 from typing import Any
 
 from lumina_launcher.services.birth_service import birth_service
 from lumina_launcher.services.birth_status_diagnostics import merge_certificate_diagnostics
-from lumina_core.birth.birth_certificate import load_certificate, validate_certificate_artifacts
+from lumina_core.birth.birth_certificate import validate_certificate_artifacts
 from lumina_core.birth.checkpoint import load_checkpoint_state
 from lumina_core.birth.config import BRO_ENGINE_VERSION, load_birth_v2_config
 from lumina_core.birth.remediation import should_fast_path_remediation_from_state

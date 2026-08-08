@@ -1,9 +1,12 @@
 """Inference + empty figure builders (M5 extract)."""
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import plotly.graph_objects as go
+
+if TYPE_CHECKING:
+    from lumina_core.engine.state_visualizer import StateVisualizer
 
 
 class StateVisualizerInferenceMixin:

@@ -1,13 +1,8 @@
 """Full setup configuration persistence (wizard + onboarding)."""
 from __future__ import annotations
 
-import json
 import logging
-import os
 import secrets
-import subprocess
-import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +12,8 @@ from lumina_core.engine.setup_service import SetupService
 from lumina_launcher.core.config_manager import ConfigManager
 from lumina_launcher.core.first_boot import FirstBootManager
 from lumina_launcher.services.model_service import ModelService
+from lumina_launcher.services.setup_persist_mode import resolve_mode_matrix
+from lumina_launcher.services.setup_persist_fabric import apply_fabric_token_side_effects
 
 logger = logging.getLogger(__name__)
 

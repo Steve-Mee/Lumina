@@ -129,7 +129,6 @@ def wipe_all_maturation(workspace_root: Path | str, *, confirm: bool) -> dict[st
     progress.milestones_reached = []
     progress.metadata = {}
     from lumina_core.maturity.maturation_progress import MaturationPhase as MP
-    from lumina_core.maturity.maturation_progress import resolve_current_phase
 
     progress.current_phase = MP.GENESIS
     save_maturation_progress(root, progress)

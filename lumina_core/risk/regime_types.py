@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import logging
 from typing import Any
 
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,6 @@
 """Plateau/recovery milestone event builders (M5 extract)."""
 from __future__ import annotations
 
-from typing import Any
 
 from lumina_core.notifications.milestone_event_types import (
     MilestoneCategory,

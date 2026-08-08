@@ -3,15 +3,17 @@ from __future__ import annotations
 
 import logging
 from statistics import NormalDist
-from typing import Any
+from typing import TYPE_CHECKING
 
-import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from lumina_core.engine.portfolio_var_allocator import PortfolioVaRSnapshot
 
 logger = logging.getLogger(__name__)
 
 
-def _PortfolioVaRSnapshot(**kwargs):
+def _PortfolioVaRSnapshot(**kwargs) -> "PortfolioVaRSnapshot":
     from lumina_core.engine.portfolio_var_allocator import PortfolioVaRSnapshot
     return PortfolioVaRSnapshot(**kwargs)
 
@@ -161,11 +163,13 @@ class PortfolioVaRCalcMixin:
             projected_drawdown_post_pct=float(projected_drawdown_post_pct),
             projected_drawdown_delta_pct=float(projected_drawdown_post_pct - projected_drawdown_pre_pct),
         )
+    @staticmethod
     def _projected_drawdown_pct(total_open_risk: float, effective_limit: float) -> float:
         if effective_limit <= 0.0:
             return 0.0
         utilization = max(0.0, float(total_open_risk) / float(effective_limit))
         return float(min(100.0, utilization * 100.0))
+
     def _quality_score(self, data_points: int) -> float:
         points = max(0, int(data_points))
         minimum = max(1, int(self.config.min_points))

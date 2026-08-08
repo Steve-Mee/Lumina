@@ -6,7 +6,6 @@ Starship fields: ``stage_loop_progress_write_starship``.
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from lumina_core.birth.progress import merge_birth_progress_extra
 from lumina_core.birth.stage_scorecard import build_scorecard_payload

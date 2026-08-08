@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import threading
 from typing import Any, Literal
 
@@ -14,13 +13,13 @@ from pydantic import BaseModel, Field
 from lumina_launcher.services.setup_persist import (
     build_credentials_env_snapshot,
     persist_credentials_only,
-    persist_tauri_quick_config,
     scan_missing_credentials,
     seed_sim_runtime_and_mark_setup,
 )
 from lumina_launcher.services.birth_service import birth_service
 from lumina_launcher.services.smart_setup_service import SmartSetupOptions
 
+from lumina_launcher.core.onboarding import resolve_app_surface
 from .setup_onboarding_payload import (
     _model_catalog_payload,
     _probe_backend,
@@ -32,10 +31,10 @@ from .setup_onboarding_payload import (
 
 logger = logging.getLogger(__name__)
 
-# Re-export helpers so tests can monkeypatch ``backend.setup_endpoints.*``
 __all__ = [
     "birth_service",
     "build_onboarding_payload",
+    "resolve_app_surface",
     "router",
     "_probe_backend",
     "_services",
@@ -260,8 +259,6 @@ async def save_credentials(body: ConfigureCredentials) -> dict[str, Any]:
 
 
 from lumina_os.backend.setup_endpoints_fabric import (  # noqa: E402
-    FabricConnectionTestRequest,
-    TauriSigningRequest,
     configure_setup,
     fabric_bootstrap,
     fabric_connection_test,

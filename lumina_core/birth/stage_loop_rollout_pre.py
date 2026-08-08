@@ -1,8 +1,7 @@
 """Pre-rollout planning for a single curriculum cycle."""
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.birth.meta_controller import (
@@ -11,10 +10,8 @@ from lumina_core.birth.meta_controller import (
 )
 from lumina_core.birth.meta_self_eval import SelfEvalPhase
 from lumina_core.birth.plateau_escalator import (
-    EvolutionAction,
     detect_hold_trap,
     detect_over_trading_trap,
-    is_valid_best_policy_snapshot,
 )
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 from lumina_core.birth.stage_loop_rollout_pre_caps import StageLoopRolloutPreCapsMixin

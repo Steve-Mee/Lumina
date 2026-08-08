@@ -2,9 +2,14 @@
 
 SSOT for Birth learning integrity, swarm tournaments, twin CONTINUE, and certificate honesty.
 
-**Organism framing:** Birth = survival (breathe / legal action loop), not pro daytrader competence.  
-See [organism-maturation-phases.md](adr/organism-maturation-phases.md) for Genesis→Real capability ladder.  
-Skill floors (WR hygiene 35%+, full OOS certificate) belong to **Playground / Proving Ground**, not newborn exit.
+**Organism framing:**
+
+- **Birth phase exit** = survival (breathe / legal action loop / artifacts) — not pro daytrader competence, not OOS 0.48, not Perfect Birth.
+- **Inside Birth**, Stage 1 uses **survival floors**; Stage 2/3 use **early-quality floors** (expectancy ≥ −0.15 ≡ ~35% WR-proxy) — still not cert/REAL.
+- **Playground / Proving Ground** hold full skill EdgeScore and OOS certificate walls.
+
+Canonical floors + why (locked): **[birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md)**.  
+Maturation ladder: [organism-maturation-phases.md](adr/organism-maturation-phases.md).
 
 ## Locked decisions
 
@@ -16,7 +21,7 @@ Skill floors (WR hygiene 35%+, full OOS certificate) belong to **Playground / Pr
 
 ## Phase A (summary)
 
-- Stage-1 pass law = **EdgeScore** (hygiene WR, hold band, entropy, expectancy) — vanity 45% WR is diagnostic only.
+- Stage-1 pass law = **EdgeScore** under **survival floors** when `birth_survival_pass_enabled` (WR ~0.20, expectancy ≥ −0.50); vanity 45% WR is diagnostic only.
 - Swarm-first before recovery ladder; commit only on **tournament lift** (`tournament_score`); else restore champion + `rejected_no_lift`.
 - Champion freeze / accept-champion path; pause SSOT for birth + first_boot progress.
 
@@ -42,11 +47,13 @@ Skill floors (WR hygiene 35%+, full OOS certificate) belong to **Playground / Pr
 - With trajectory evidence, claimed regimes with 0 trades → `oos_regime_empty`.
 - Micro-OOS / runway may report multi-slice mean WR; **full holdout remains SSOT** for `certificate_passed`.
 
-### B3 — Stage 2/3 EdgeScore
+### B3 — Stage 2/3 EdgeScore (early-quality, not survival −0.50)
 
 - Flags: `stage2_edgescore_enabled` / `stage3_edgescore_enabled` (default true).
 - Scorecard ids: `range_edgescore`, `mixed_edgescore` (UI decimal formatter on Mission Control + Metrics Strip).
 - Blockers use EdgeScore when flags on; receipts carry entropy / PnL like Stage 1.
+- **Floors (locked):** Stage 2 expectancy ≥ **−0.15** (`stage2_expectancy_floor`, ≡ ~35% WR-proxy) + flat 30–70%; Stage 3 expectancy ≥ −0.15 + WR floor ~0.35. **Not** Stage-1 survival −0.50. **Not** pro OOS 0.48.
+- Full doctrine: [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md).
 
 ### B4 — BirthControlPlane
 

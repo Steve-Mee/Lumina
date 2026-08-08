@@ -1,12 +1,8 @@
 """ApplicationContainerInstrumentsMixin (M5 extract)."""
 from __future__ import annotations
 
-import atexit
-import os
-from pathlib import Path
-from typing import Any, cast
 
-from lumina_core.logging_utils import build_logger, flush_logger_handlers, get_logger
+from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.container")
 

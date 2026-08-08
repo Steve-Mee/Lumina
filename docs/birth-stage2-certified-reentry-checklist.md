@@ -5,6 +5,7 @@
 **Audience:** Operator (SIM / certified workspace only).
 
 **Related:**  
+- **Stage floors SSOT** — [`docs/birth-curriculum-stage-floors.md`](birth-curriculum-stage-floors.md) (**locked**: Stage 2 = early-quality, not survival −0.50)  
 - OR5 — `docs/operator-residuals-or1-or6.md`  
 - Freeze CLI — `python scripts/validation/champion_freeze_ops.py`  
 - Freeze gate — `python scripts/validation/champion_freeze_gate.py --workspace . --no-pytest`  
@@ -18,11 +19,13 @@
 | In scope | Out of scope |
 |----------|----------------|
 | Clear freeze honestly (accept **or** wipe) | Perfect Birth declare |
-| Stage 2 survival pass (flat band 30–70%, EdgeScore/hygiene as configured) | READY_FOR_REAL / live capital |
+| Stage 2 **early-quality** pass (flat 30–70%, expectancy ≥ **−0.15** ≡ ~35% WR-proxy, EdgeScore as configured) | READY_FOR_REAL / live capital / OOS 0.48 |
 | Productive recovery (pass metrics, not attempt counters) | Twin `full_auto` via yaml |
-| Swarm only after flat-band remediation deferral | Silent champion overwrite |
+| Swarm only after flat-band **and** expectancy-quality remediation deferral | Silent champion overwrite |
 
-Score this run as: **Stage 2 survival pass or honest stall** — not professional daytrader skill.
+Score this run as: **Stage 2 early-quality pass or honest stall** — not Stage-1 survival (−0.50), not professional daytrader / cert skill.
+
+**Doctrine (no debate):** Stage 1 breathes on survival floors; Stage 2/3 raise the bar to early-quality **inside Birth**. See [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md).
 
 ---
 
@@ -163,7 +166,7 @@ New remediation (post-mortem): under-activity trap → `explore_boost_anti_flat`
 | **Honest stall** | Freeze or terminal with clear `next_action`; capital preserved |
 | **Fail / invalid** | Train under freeze, hollow pass, REAL arm, or Perfect Birth declare without evidence |
 
-- [ ] Do **not** declare Perfect Birth from Stage 2 survival alone  
+- [ ] Do **not** declare Perfect Birth from Stage 2 early-quality pass alone  
 - [ ] Do **not** advance continuum to skill/REAL claims without later maturation proofs  
 
 ---

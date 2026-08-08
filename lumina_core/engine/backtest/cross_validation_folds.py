@@ -6,6 +6,7 @@ import statistics
 from typing import Any
 
 class CombinatorialPurgedCVFoldsMixin:
+    @staticmethod
     def _compute_pbo(oos_sharpes: list[float]) -> float:
         """Probability of Backtest Overfitting.
 
@@ -20,6 +21,8 @@ class CombinatorialPurgedCVFoldsMixin:
         median_sharpe = statistics.median(oos_sharpes)
         below_median = sum(1 for s in oos_sharpes if s < median_sharpe)
         return float(below_median / len(oos_sharpes))
+
+    @staticmethod
     def _compute_dsr(
         oos_sharpes: list[float],
         *,
@@ -55,6 +58,8 @@ class CombinatorialPurgedCVFoldsMixin:
         se_sr = math.sqrt((1.0 + 0.5 * sr_mean**2) / n)
         dsr = (sr_mean - sr_star) / max(se_sr, 1e-9)
         return float(dsr)
+
+    @staticmethod
     def _empty_result() -> dict[str, Any]:
         return {
             "method": "combinatorial_purged_cv",

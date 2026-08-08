@@ -7,11 +7,6 @@ from typing import Any
 
 from lumina_core.agent_orchestration.event_bus import EventBus
 from lumina_core.birth.birth_bus_choreography import publish_snapshot
-from lumina_core.birth.birth_bus_serde import (
-    deserialize_learning_snapshot,
-    deserialize_meta_plan,
-    serialize_learning_snapshot,
-)
 from lumina_core.birth.birth_handler_registry import BirthHandlerRegistry
 from lumina_core.birth.config import BirthCurriculumConfig, BirthRewardConfig
 from lumina_core.birth.curriculum import CurriculumStage
@@ -25,6 +20,7 @@ from lumina_core.birth.organism_autonomy import AutonomyDecision, RecoveryDispat
 from lumina_core.birth.plateau_escalator import PlateauState
 from lumina_core.birth.phoenix_loop import PhoenixLoopState
 from lumina_core.birth.stall_remediation import StallRemediationState
+from lumina_core.birth.birth_bus_meta import BirthBusMetaMixin
 
 
 def _hold_plan(snap: LearningSnapshot | None = None) -> MetaActionPlan:
@@ -34,8 +30,6 @@ def _hold_plan(snap: LearningSnapshot | None = None) -> MetaActionPlan:
         rationale="bus_no_response",
     )
 
-
-from lumina_core.birth.birth_bus_meta import BirthBusMetaMixin
 
 class BirthBusClient(BirthBusMetaMixin):
     """Facade used by stage rollout executor — no cross-module orchestration imports."""

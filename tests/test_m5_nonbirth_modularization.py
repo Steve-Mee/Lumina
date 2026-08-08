@@ -47,7 +47,6 @@ def test_m5_nonbirth_public_imports() -> None:
         TwinModeMetricsSnapshot,
     )
     from lumina_core.notifications.milestone_events import (
-        MilestoneEvent,
         birth_started_event,
         plateau_entered_event,
     )

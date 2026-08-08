@@ -13,23 +13,12 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from backend.adaptive_intelligence_snapshot import (
-    build_adaptive_intelligence_block,
-    resolve_adaptive_history_path,
-    resolve_adaptive_status_path,
-)
-from backend.live_trading_snapshot import build_live_trading_block
-from backend.monitoring_endpoints import _extract_regime_summary, _metric_value
-from backend.performance_snapshot import build_performance_block
-from backend.real_ops_snapshot import build_real_ops_block
-from backend.risk_fortress_snapshot import build_fortress_block
 
 try:
     from api.monitoring import _safe_read_json, resolve_state_directory
@@ -78,12 +67,7 @@ def set_observability_service(service: Any) -> None:
 
 from lumina_os.backend.core_websocket_telemetry import (  # noqa: E402
     CoreLiveTelemetryReader,
-    _CachedFileReader,
     _build_frame,
-    _build_ninjatrader_telemetry_block,
-    _coerce_float,
-    _coerce_int,
-    _resolve_risk_level,
     _utc_now_iso,
 )
 

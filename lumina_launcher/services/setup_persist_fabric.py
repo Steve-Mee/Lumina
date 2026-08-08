@@ -7,16 +7,9 @@ import os
 import secrets
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from lumina_core.config_loader import ConfigLoader
-from lumina_core.engine.hardware_inspector import HardwareSnapshot
-from lumina_core.engine.setup_service import SetupService
-from lumina_launcher.core.config_manager import ConfigManager
-from lumina_launcher.core.first_boot import FirstBootManager
-from lumina_launcher.services.model_service import ModelService
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +42,15 @@ def fabric_json_path() -> Path:
 
 
 def write_fabric_json_defaults(*, path: Path | None = None) -> Path:
-    """Write operator fabric.json defaults (no auth token value). Creates parent dirs."""
-    target = path or fabric_json_path()
+    """Write operator fabric.json defaults (no auth token value). Creates parent dirs.
+    
+    Patch-compatible: looks up fabric_json_path via façade module to respect test monkeypatches.
+    """
+    if path is None:
+        # Late-bind via façade so tests can monkeypatch lumina_launcher.services.setup_persist.fabric_json_path
+        import lumina_launcher.services.setup_persist as facade
+        path = facade.fabric_json_path()
+    target = path
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = dict(DEFAULT_FABRIC_JSON)
     # Preserve operator GatewayMode / ports if file already exists.

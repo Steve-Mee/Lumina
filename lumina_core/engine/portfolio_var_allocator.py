@@ -1,11 +1,8 @@
 from __future__ import annotations
-import logging
 
 from dataclasses import dataclass
-from statistics import NormalDist
 from typing import Any
 
-import pandas as pd
 
 from .valuation_engine import ValuationEngine
 
@@ -52,7 +49,7 @@ class PortfolioVaRConfig:
     scenario_tail_percentile: float = 0.02
 
 
-from lumina_core.engine.portfolio_var_calc import PortfolioVaRCalcMixin
+from lumina_core.engine.portfolio_var_calc import PortfolioVaRCalcMixin  # noqa: E402
 
 class PortfolioVaRAllocator(PortfolioVaRCalcMixin):
     """Portfolio-level VaR guardrail for multi-symbol swarm exposure."""

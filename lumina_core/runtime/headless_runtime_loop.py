@@ -1,19 +1,10 @@
 # HeadlessRuntime session helpers + run loop (extracted from headless_runtime façade).
 from __future__ import annotations
 
-import json
 import logging
-import os
 from datetime import datetime, timezone
-from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
-from lumina_core.engine.sim_stability_checker import (
-    append_history_entry_for_summary,
-    format_stability_report,
-    generate_stability_report,
-)
 from lumina_core.runtime.headless_config import (
     _SUMMARY_SCHEMA_VERSION,
     _load_headless_config,
@@ -22,7 +13,6 @@ from lumina_core.runtime.headless_config import (
     _resolve_simulation_seed,
     _resolve_summary_archive_dir,
     _resolve_summary_archive_enabled,
-    _resolve_test_bypass_readiness_gate,
     _resolve_ticks_per_minute,
 )
 from lumina_core.runtime.headless_telemetry import HeadlessTelemetry
@@ -250,5 +240,5 @@ def execute_headless_run(
     )
     return summary
 
-from lumina_core.runtime.headless_runtime_helpers import _apply_stability_and_bypass, _check_session_guard, _count_evolution_proposals, _count_observability_alerts, _financial_reporting, _resolve_summary_path, _validate_broker, persist_headless_summary  # noqa: F401
+from lumina_core.runtime.headless_runtime_helpers import _apply_stability_and_bypass, _check_session_guard, _count_evolution_proposals, _count_observability_alerts, _financial_reporting, _resolve_summary_path, _validate_broker, persist_headless_summary  # noqa: F401, E402
 

@@ -2,7 +2,6 @@ import logging
 import os
 import threading
 import time
-import json
 from contextlib import contextmanager
 from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler

@@ -1,7 +1,6 @@
 """Certificate + runway + polish (M5 engine_lifecycle extract)."""
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from lumina_core.logging_utils import get_logger

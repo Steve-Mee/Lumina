@@ -20,10 +20,10 @@ _LINE_BASELINES: dict[str, int] = {
     "birth_status_mapper.py": 397,
     "birth_status_enricher.py": 149,
     "birth_status_plateau_risk.py": 60,
-    "birth_runner_lock.py": 196,
+    "birth_runner_lock.py": 212,  # Updated 2026-08-08 after M5 split
     # Raised after M5 birth split + fabric/preflight wiring (still well under 400 LOC).
     "birth_runner_start.py": 400,
-    "birth_runner_wipe.py": 115,
+    "birth_runner_wipe.py": 133,  # Updated 2026-08-08 after M5 split
     "birth_runner_recovery.py": 400,
 }
 

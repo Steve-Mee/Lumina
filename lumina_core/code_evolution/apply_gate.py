@@ -6,11 +6,9 @@ Apply is fail-closed: default off; REAL-like capital always blocked.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -100,7 +98,7 @@ class ApplyGateDecision:
         }
 
 
-from lumina_core.code_evolution.apply_gate_ops import CodeEvolutionApplyOpsMixin
+from lumina_core.code_evolution.apply_gate_ops import CodeEvolutionApplyOpsMixin  # noqa: E402
 
 class CodeEvolutionApplyGate(CodeEvolutionApplyOpsMixin):
     """Fail-closed gate + sandbox-store writer for H5 controlled apply."""

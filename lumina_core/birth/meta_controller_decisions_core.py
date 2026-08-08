@@ -5,14 +5,11 @@ from dataclasses import replace
 from typing import Any
 
 from lumina_core.birth.config import BirthRewardConfig
-from lumina_core.birth.curriculum import CurriculumStage, graduation_requires_clean_constitution
-from lumina_core.birth.meta_controller_mixin_base import MetaControllerMixinBase
+from lumina_core.birth.curriculum import graduation_requires_clean_constitution
 from lumina_core.birth.meta_controller_signals import (
-    get_adaptation_decision,
     _hold_plan,
 )
 from lumina_core.birth.meta_controller_types import (
-    AdaptationDecision,
     LearningHealth,
     LearningSnapshot,
     MetaActionPlan,

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from lumina_core.config_loader import ConfigLoader
-from lumina_core.evolution.twin_metrics_store import TwinMetricsStore, TwinModeMetricsSnapshot
+from lumina_core.evolution.twin_metrics_store import TwinMetricsStore
 from lumina_core.evolution.twin_mode_promotion_gate_impl import TwinModePromotionGate
 from lumina_core.evolution.twin_mode_types import (
     TwinModeName,
@@ -16,7 +16,6 @@ from lumina_core.evolution.twin_mode_types import (
     _DEFAULT_MODE_STATE,
     _MODE_RANK,
     _utcnow,
-    apply_mode_authority,
     authority_for_mode,
     canonicalize_twin_mode,
 )

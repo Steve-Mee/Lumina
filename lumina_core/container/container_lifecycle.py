@@ -1,7 +1,6 @@
 """ApplicationContainerLifecycleMixin (M5 extract)."""
 from __future__ import annotations
 
-import atexit
 import os
 from pathlib import Path
 from typing import Any, cast
@@ -152,7 +151,7 @@ class ApplicationContainerLifecycleMixin:
             lumina_bible=Path("state/lumina_bible_generated_strategies.jsonl"),
         )
 
-    def start(self) -> "ApplicationContainer":
+    def start(self) -> "ApplicationContainer":  # noqa: F821
         """Connect the broker and register process-exit cleanup handlers.
 
         Must be called once after __post_init__ completes.  Separating build

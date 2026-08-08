@@ -18,7 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Order, Position
+from lumina_core.broker.broker_bridge.schemas import AccountInfo, Fill, Position
 from lumina_core.broker.ninjatrader import fabric_mapper as mapper
 from lumina_core.broker.ninjatrader.fabric_client_stream import (
     FabricClientStreamMixin,
@@ -91,7 +91,7 @@ class FabricConfig:
         )
 
 
-from lumina_core.broker.ninjatrader.fabric_client_ops import FabricClientOpsMixin
+from lumina_core.broker.ninjatrader.fabric_client_ops import FabricClientOpsMixin  # noqa: E402
 
 class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
     """Synchronous façade over Fabric TradingStream + unary GetAccountState."""

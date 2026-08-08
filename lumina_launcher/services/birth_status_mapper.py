@@ -169,4 +169,4 @@ def progress_indicates_running(svc: Any, progress: Dict[str, Any]) -> bool:
     max_age = resolve_progress_active_max_age_sec(stage, runner_lock_active=lock_active)
     return age <= max_age
 
-from lumina_launcher.services.birth_status_mapper_get import get_birth_status, sanitize_running_progress  # noqa: F401
+from lumina_launcher.services.birth_status_mapper_get import get_birth_status, sanitize_running_progress  # noqa: F401, E402

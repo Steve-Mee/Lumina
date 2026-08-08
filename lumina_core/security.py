@@ -7,16 +7,11 @@ import logging
 import os
 import re
 import secrets
-import threading
-import time
 from datetime import datetime, timedelta, timezone
-from functools import wraps
-from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 import jwt
 from typing_extensions import ParamSpec
-from lumina_core.audit import get_audit_logger
 
 logger = logging.getLogger(__name__)
 
@@ -209,7 +204,7 @@ class APIKeyAuthenticator:
         logger.info(f"API key generated: {name} (role={role})")
         return key
 
-from lumina_core.security_audit import (  # noqa: F401
+from lumina_core.security_audit import (  # noqa: F401, E402
     DangerousConfigValidator,
     RateLimiter,
     SecurityAuditLog,

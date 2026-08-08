@@ -1,7 +1,6 @@
 """Verify stage pass receipts and curriculum integrity."""
 from __future__ import annotations
 
-from typing import Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import (
@@ -15,7 +14,7 @@ from lumina_core.birth.stage_pass_receipt_types import (
     receipt_for_stage,
     receipt_message_is_soft_pass,
 )
-from lumina_core.birth.stage_scorecard import pass_criteria_for_stage, parse_curriculum_stage
+from lumina_core.birth.stage_scorecard import parse_curriculum_stage
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_pass_receipt")

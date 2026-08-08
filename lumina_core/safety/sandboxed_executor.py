@@ -1,20 +1,22 @@
 """Sandboxed mutation executor façade (M5)."""
 from __future__ import annotations
 
-from typing import Any
+import hashlib
+import json
+import logging
+from pathlib import Path
 
 from lumina_core.safety.sandboxed_executor_inprocess import SandboxedInProcessMixin
 from lumina_core.safety.sandboxed_executor_subprocess import SandboxedSubprocessMixin
-from pathlib import Path
-
 from lumina_core.safety.sandboxed_executor_types import (
     SandboxedResult,
     _DEFAULT_TIMEOUT_S,
-    _build_sandbox_env,
-    _strip_secrets,
+    _strip_secrets as _strip_secrets,
 )
 
-__all__ = ["SandboxedMutationExecutor", "SandboxedResult"]
+__all__ = ["SandboxedMutationExecutor", "SandboxedResult", "_strip_secrets"]
+
+logger = logging.getLogger(__name__)
 
 
 class SandboxedMutationExecutor(SandboxedSubprocessMixin, SandboxedInProcessMixin):

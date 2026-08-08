@@ -79,15 +79,36 @@ def pass_criteria_for_stage(
         wr_gate = stage1_winrate_pass_threshold(cfg)
         edgescore_on = bool(getattr(cfg, "stage1_edgescore_enabled", False)) if cfg else False
         if edgescore_on:
-            hygiene = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35) if cfg else 0.35)
+            # Operator-facing label must match survival vs skill-side floors
+            # (docs/birth-curriculum-stage-floors.md — locked doctrine).
+            survival_on = bool(
+                getattr(cfg, "birth_survival_pass_enabled", True) if cfg else True
+            )
+            if survival_on:
+                hygiene = float(
+                    getattr(cfg, "birth_survival_wr_floor", 0.20) if cfg else 0.20
+                )
+                exp_floor = float(
+                    getattr(cfg, "birth_survival_expectancy_floor", -0.50)
+                    if cfg
+                    else -0.50
+                )
+                exp_txt = f"expectancy >= {exp_floor * 100.0:.0f}% (survival)"
+                wr_label = "survival WR"
+            else:
+                hygiene = float(
+                    getattr(cfg, "stage1_winrate_pass_floor", 0.35) if cfg else 0.35
+                )
+                exp_txt = "expectancy >= -15% (skill-side)"
+                wr_label = "hygiene WR"
             return PassCriteria(
                 id="trend_edgescore",
                 label=_pass_gate_label(
                     pass_gate=required,
                     training_budget=training_budget,
                     metric=(
-                        f"EdgeScore | hygiene WR>={hygiene:.0%} | hold band | "
-                        f"entropy alive | expectancy >= -15% "
+                        f"EdgeScore | {wr_label}>={hygiene:.0%} | hold band | "
+                        f"entropy alive | {exp_txt} "
                         f"(WR {wr_gate:.0%} recommended)"
                     ),
                 ),
@@ -118,7 +139,8 @@ def pass_criteria_for_stage(
                     training_budget=training_budget,
                     metric=(
                         "EdgeScore | flat 30-70% | round-trips | "
-                        "entropy alive | expectancy >= -15%"
+                        "entropy alive | early-quality expectancy >= -15% "
+                        "(not Stage-1 survival -50%)"
                     ),
                 ),
                 target_trades=required,
@@ -151,7 +173,8 @@ def pass_criteria_for_stage(
                     training_budget=training_budget,
                     metric=(
                         f"EdgeScore | hygiene WR>={wr_floor:.0%} | hold<={hold_cap:.0%} | "
-                        f"entropy alive | expectancy >= -15%"
+                        f"entropy alive | early-quality expectancy >= -15% "
+                        f"(not Stage-1 survival -50%)"
                     ),
                 ),
                 target_trades=required,
