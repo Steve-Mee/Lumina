@@ -14,6 +14,9 @@ from .lumina_engine import LuminaEngine
 from .valuation_engine import ValuationEngine
 from lumina_core.engine.operations_service_orders import OperationsOrdersMixin
 from lumina_core.engine.operations_service_market import OperationsMarketMixin
+from lumina_core.order_gatekeeper import (  # noqa: F401 — re-export for tests/monkeypatch
+    enforce_pre_trade_gate as enforce_pre_trade_gate,
+)
 
 logger = logging.getLogger(__name__)
 

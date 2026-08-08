@@ -39,8 +39,14 @@ def _require_service() -> Any:
     return _obs_service
 
 
-def _load_adaptive_history_rows(*, limit: int = 100) -> list[dict[str, Any]]:
-    return load_adaptive_history_rows(history_path=_ADAPTIVE_INTELLIGENCE_HISTORY, limit=limit)
+def _load_adaptive_history_rows(
+    *,
+    limit: int = 100,
+    history_path: Path | None = None,
+) -> list[dict[str, Any]]:
+    # Callers pass the façade module path so monkeypatches on monitoring_endpoints stick.
+    path = history_path if history_path is not None else _ADAPTIVE_INTELLIGENCE_HISTORY
+    return load_adaptive_history_rows(history_path=path, limit=limit)
 
 
 def _build_adaptive_transition_summary(

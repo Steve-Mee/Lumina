@@ -230,7 +230,10 @@ async def get_adaptive_intelligence_latest(
         raise HTTPException(status_code=500, detail="Adaptive intelligence latest state unreadable")
     if not isinstance(payload, dict):
         raise HTTPException(status_code=500, detail="Adaptive intelligence latest payload invalid")
-    history_rows = _load_adaptive_history_rows(limit=2)
+    history_rows = _load_adaptive_history_rows(
+        limit=2,
+        history_path=_ADAPTIVE_INTELLIGENCE_HISTORY,
+    )
     previous = history_rows[-2] if len(history_rows) >= 2 else None
     payload["transition_summary"] = _build_adaptive_transition_summary(
         latest_record=payload,
@@ -249,7 +252,10 @@ async def get_adaptive_intelligence_history(
     x_api_key: Optional[str] = Header(None),
 ) -> list[dict[str, Any]]:
     _check_api_key(x_api_key)
-    return _load_adaptive_history_rows(limit=limit)
+    return _load_adaptive_history_rows(
+        limit=limit,
+        history_path=_ADAPTIVE_INTELLIGENCE_HISTORY,
+    )
 
 
 @router.get("/training-reports")

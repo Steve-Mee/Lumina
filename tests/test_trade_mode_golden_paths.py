@@ -144,7 +144,10 @@ def test_golden_path_sim_real_guard_mode_session_guard_blocks_outside_hours() ->
 
 def test_golden_path_sim_real_guard_mode_blocks_risk_breach() -> None:
     svc, broker = _build_service("sim_real_guard")
-    with patch("lumina_core.engine.operations_service.enforce_pre_trade_gate", return_value=(False, "daily_loss_cap")):
+    with patch(
+        "lumina_core.engine.operations_service_orders.enforce_pre_trade_gate",
+        return_value=(False, "daily_loss_cap"),
+    ):
         result = svc.place_order("BUY", 1)
     assert result is False
     assert broker.calls == 0
