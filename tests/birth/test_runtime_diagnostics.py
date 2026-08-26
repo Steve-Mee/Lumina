@@ -144,7 +144,7 @@ def test_fingerprint_identity_defects_detects_off_tree_and_probes() -> None:
         },
         "modules": {
             "lumina_core.birth.runtime_diagnostics": {
-                "path": "C:/other_repo/runtime_diagnostics.py",
+                "path": "/tmp/other_repo/runtime_diagnostics.py",
                 "mtime": "2026-08-14T00:00:00",
                 "sha12": "abc123abc123",
             }

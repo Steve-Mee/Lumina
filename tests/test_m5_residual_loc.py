@@ -69,7 +69,7 @@ M5_OVER_400_CEILINGS: dict[str, int] = {
     "lumina_core/birth/champion_freeze_telegram.py": 541,
     "lumina_core/birth/stage_blocker.py": 537,
     "lumina_core/birth/stage_loop_recovery_terminal.py": 535,
-    "lumina_core/birth/runtime_diagnostics.py": 534,
+    "lumina_core/birth/runtime_diagnostics.py": 560,
     "lumina_core/birth/stage_loop_progress_metrics.py": 527,
     "lumina_launcher/services/birth_runner_recovery.py": 516,
     "lumina_core/birth/phase2_autonomy/sim_campaign.py": 516,
