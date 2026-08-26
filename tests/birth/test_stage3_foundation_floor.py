@@ -121,10 +121,13 @@ def test_stage3_blocker_shows_lifetime_and_rolling() -> None:
         range_total_signals=0,
         cfg=cfg,
         rolling_winrate=0.31,
+        **foundation_eval_kwargs(),
     )
-    assert metric == "winrate"
+    # Missing occupancy (signals=0) surfaces after process-R is supplied.
+    assert metric == "occupancy"
     assert reason is not None
-    assert "lifetime" in reason and "rolling" in reason
+    assert "occupancy" in reason.lower()
+    _ = value
 
 
 @pytest.mark.unit
@@ -141,10 +144,12 @@ def test_stage3_blocker_reports_winrate() -> None:
         range_round_trips=0,
         range_total_signals=0,
         cfg=cfg,
+        **foundation_eval_kwargs(),
     )
-    assert metric == "winrate"
+    assert metric == "occupancy"
     assert reason is not None
-    assert "winrate" in reason or "lifetime" in reason or "35%" in reason
+    assert "occupancy" in reason.lower()
+    _ = value
 
 
 @pytest.mark.unit

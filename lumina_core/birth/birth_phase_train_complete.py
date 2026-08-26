@@ -25,7 +25,6 @@ def run_curriculum_and_complete(
     training_mode = boot.training_mode
     practice_mode = boot.practice_mode
     prefer_real = boot.prefer_real
-    ppo_steps_per_update = boot.ppo_steps_per_update
     checkpoint_state = boot.checkpoint_state
     split = data.split
     start_price = data.start_price

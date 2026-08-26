@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import inspect
 import random
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -16,7 +15,6 @@ from lumina_core.birth.birth_trade_geometry import (
     soft_prior_action_stops,
 )
 from lumina_core.birth.curriculum_intra import (
-    Stage1IntraCurriculumState,
     sample_contiguous_intra_windows,
 )
 from lumina_core.birth.stage_loop_rollout_cycle import StageLoopRolloutCycleMixin

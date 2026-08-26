@@ -106,7 +106,7 @@ def test_compute_stage_blocker_hygiene_copy_includes_rolling_display() -> None:
         stage1_entropy_floor=0.05,
         starship_entropy_required_after_ppo_steps=500,
     )
-    # 10% lifetime WR fails survival hygiene (~20%); include rolling display in copy.
+    # ADR-0046: low lifetime WR is EdgeScore theater; process-R clears Stage-1 HUD.
     metric, _value, reason = compute_stage_blocker(
         CurriculumStage.STAGE1_TREND,
         stage_trades=269,
@@ -123,12 +123,10 @@ def test_compute_stage_blocker_hygiene_copy_includes_rolling_display() -> None:
         rolling_wr_eligible=False,
         policy_entropy=0.20,
         ppo_steps=5000,
+        **foundation_eval_kwargs(),
     )
-    assert metric == "winrate"
-    assert reason is not None
-    assert "lifetime" in reason
-    assert "rolling" in reason
-    assert "400" in reason
+    assert metric is None
+    assert reason is None
 
 
 @pytest.mark.unit

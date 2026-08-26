@@ -7,6 +7,7 @@ from lumina_core.birth.birth_phase_bootstrap import BirthPhaseBootstrap
 from lumina_core.birth.birth_phase_certificate_gate import certificate_fast_path_eligible
 from lumina_core.birth.birth_phase_data_policy import BirthPhaseDataReady
 from lumina_core.birth.purged_split import purged_validation_split
+from lumina_core.birth.runway import POST_BIRTH_CERTIFICATE_PHASE
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.birth_phase_certificate_resume")

@@ -76,8 +76,8 @@ def test_tauri_help_texts_registry_has_training_trades() -> None:
     root = Path(__file__).resolve().parents[1]
     source = (root / "tauri-app" / "src" / "lib" / "helpTexts.ts").read_text(encoding="utf-8")
     assert "training_trades" in source
-    assert "450" in source or "historical" in source
-
+    # Curriculum budget is hardware-sized (no fixed 450); Foundation exit is process-R.
+    assert "Curriculum trade budget" in source or "Foundation" in source
 
 @pytest.mark.unit
 def test_tauri_birth_settings_panel_exists() -> None:

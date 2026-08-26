@@ -151,8 +151,6 @@ def _classify_failed_connect(fabric_cfg: Any) -> tuple[FabricProbeCode, str]:
     target = str(getattr(fabric_cfg, "target", "127.0.0.1:50051"))
     try:
         import grpc
-        from lumina_core.broker.ninjatrader.generated import fabric_pb2, fabric_pb2_grpc
-
         try:
             from lumina_core.mtls_config import build_grpc_channel
 

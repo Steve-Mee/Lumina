@@ -77,7 +77,6 @@ def main() -> int:
         sys.path.insert(0, str(root))
 
     from lumina_core.birth.runtime_diagnostics import (
-        collect_birth_code_fingerprint,
         log_birth_code_fingerprint,
         progress_diagnostic_fields,
     )

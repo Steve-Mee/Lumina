@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -17,6 +16,65 @@ class _CfgMgr:
 
     def write_env_file(self, _d: dict[str, str]) -> None:
         return None
+
+
+def _deploy_ok(destination: Path) -> dict[str, Any]:
+    """Deploy result shape matching current integrity-gated heal path."""
+    return {
+        "deployed": True,
+        "destination": str(destination),
+        "copied": ["Custom/Lumina.Fabric.NtBridge.dll"],
+        "missing": [],
+        "error": None,
+        "destinations": [],
+        "integrity": {
+            "bridge_source": {
+                "ok": True,
+                "size": 50_000,
+                "sha256": "abc123def456",
+                "reason": "ok",
+            }
+        },
+    }
+
+
+def _patch_heal_happy_path(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fake_exe: Path,
+    custom: Path,
+    addons_src: Path | None = None,
+) -> None:
+    """Common mocks so heal never talks to a real Fabric host / NT process."""
+    monkeypatch.setattr(heal, "resolve_nt_exe", lambda: fake_exe)
+    monkeypatch.setattr(heal, "_primary_custom_dir", lambda: custom)
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_bootstrap.ninjatrader_custom_candidates",
+        lambda: [custom],
+    )
+    if addons_src is not None:
+        monkeypatch.setattr(
+            "lumina_launcher.services.fabric_bootstrap.resolve_fabric_source_dir",
+            lambda _root: addons_src,
+        )
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_bootstrap.ensure_fabric_token_in_env",
+        lambda _cm: "test-token-heal-xyz",
+    )
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_bootstrap.deploy_fabric_addons",
+        lambda _root: _deploy_ok(custom),
+    )
+    monkeypatch.setattr(heal, "build_ninjatrader_custom", lambda _c: {"ok": True, "status": "built"})
+    monkeypatch.setattr(heal, "inject_lumina_source_into_csproj", lambda _c: {"ok": True, "status": "injected"})
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_simhost.stop_simhost",
+        lambda **_k: {"ok": True, "killed": []},
+    )
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_link_ensure.ensure_fabric_token_aligned_and_live",
+        lambda **_k: {"ok": True, "code": "OK", "message": "mocked"},
+    )
 
 
 def test_heal_fails_when_nt_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -42,7 +100,7 @@ def test_heal_deploys_and_skips_diag(monkeypatch: pytest.MonkeyPatch, tmp_path: 
     (addons_src / "Lumina.Fabric.NtBridge.dll").write_bytes(b"bridge")
     (addons_src / "Lumina.Execution.Fabric.dll").write_bytes(b"fabric")
 
-    monkeypatch.setattr(heal, "resolve_nt_exe", lambda: fake_exe)
+    _patch_heal_happy_path(monkeypatch, fake_exe=fake_exe, custom=custom, addons_src=addons_src)
     monkeypatch.setattr(heal, "is_ninjatrader_running", lambda: False)
     monkeypatch.setattr(heal, "close_ninjatrader", lambda **_k: {"ok": True, "status": "not_running"})
     monkeypatch.setattr(heal, "launch_ninjatrader", lambda: {"ok": True, "status": "launched", "exe": str(fake_exe)})
@@ -50,35 +108,6 @@ def test_heal_deploys_and_skips_diag(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         heal,
         "wait_for_fabric_host",
         lambda **_k: {"ok": True, "status": "listening", "elapsed_sec": 1.0, "nt_host_state": "running"},
-    )
-    monkeypatch.setattr(heal, "_primary_custom_dir", lambda: custom)
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.ninjatrader_custom_candidates",
-        lambda: [custom],
-    )
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.resolve_fabric_source_dir",
-        lambda _root: addons_src,
-    )
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.ensure_fabric_token_in_env",
-        lambda _cm: "test-token-heal-xyz",
-    )
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.deploy_fabric_addons",
-        lambda _root: {
-            "deployed": True,
-            "destination": str(custom),
-            "copied": ["Custom/Lumina.Fabric.NtBridge.dll"],
-            "missing": [],
-            "error": None,
-        },
-    )
-    monkeypatch.setattr(heal, "build_ninjatrader_custom", lambda _c: {"ok": True, "status": "built"})
-    monkeypatch.setattr(heal, "inject_lumina_source_into_csproj", lambda _c: {"ok": True, "status": "injected"})
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_simhost.stop_simhost",
-        lambda **_k: {"ok": True, "killed": []},
     )
 
     report = heal.run_fabric_heal(
@@ -106,7 +135,7 @@ def test_soft_heal_does_not_close_running_nt(monkeypatch: pytest.MonkeyPatch, tm
     )
     closed: list[Any] = []
 
-    monkeypatch.setattr(heal, "resolve_nt_exe", lambda: fake_exe)
+    _patch_heal_happy_path(monkeypatch, fake_exe=fake_exe, custom=custom)
     monkeypatch.setattr(heal, "is_ninjatrader_running", lambda: True)
     monkeypatch.setattr(
         heal,
@@ -118,31 +147,6 @@ def test_soft_heal_does_not_close_running_nt(monkeypatch: pytest.MonkeyPatch, tm
         heal,
         "wait_for_fabric_host",
         lambda **_k: {"ok": True, "status": "listening", "elapsed_sec": 0.1, "nt_host_state": "running"},
-    )
-    monkeypatch.setattr(heal, "_primary_custom_dir", lambda: custom)
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.ninjatrader_custom_candidates",
-        lambda: [custom],
-    )
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.ensure_fabric_token_in_env",
-        lambda _cm: "tok",
-    )
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.deploy_fabric_addons",
-        lambda _root: {
-            "deployed": True,
-            "destination": str(custom),
-            "copied": ["Custom/Lumina.Fabric.NtBridge.dll"],
-            "missing": [],
-            "error": None,
-        },
-    )
-    monkeypatch.setattr(heal, "build_ninjatrader_custom", lambda _c: {"ok": True, "status": "built"})
-    monkeypatch.setattr(heal, "inject_lumina_source_into_csproj", lambda _c: {"ok": True, "status": "injected"})
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_simhost.stop_simhost",
-        lambda **_k: {"ok": True, "killed": []},
     )
 
     report = heal.run_fabric_heal(
@@ -171,7 +175,7 @@ def test_heal_closes_nt_when_running_no_bool_callable(
     )
     closed: list[dict[str, Any]] = []
 
-    monkeypatch.setattr(heal, "resolve_nt_exe", lambda: fake_exe)
+    _patch_heal_happy_path(monkeypatch, fake_exe=fake_exe, custom=custom)
     monkeypatch.setattr(heal, "is_ninjatrader_running", lambda: True)
     monkeypatch.setattr(
         heal,
@@ -183,31 +187,6 @@ def test_heal_closes_nt_when_running_no_bool_callable(
         heal,
         "wait_for_fabric_host",
         lambda **_k: {"ok": True, "status": "listening", "elapsed_sec": 0.1, "nt_host_state": "running"},
-    )
-    monkeypatch.setattr(heal, "_primary_custom_dir", lambda: custom)
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.ninjatrader_custom_candidates",
-        lambda: [custom],
-    )
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.ensure_fabric_token_in_env",
-        lambda _cm: "tok",
-    )
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_bootstrap.deploy_fabric_addons",
-        lambda _root: {
-            "deployed": True,
-            "destination": str(custom),
-            "copied": ["Custom/Lumina.Fabric.NtBridge.dll"],
-            "missing": [],
-            "error": None,
-        },
-    )
-    monkeypatch.setattr(heal, "build_ninjatrader_custom", lambda _c: {"ok": True, "status": "built"})
-    monkeypatch.setattr(heal, "inject_lumina_source_into_csproj", lambda _c: {"ok": True, "status": "injected"})
-    monkeypatch.setattr(
-        "lumina_launcher.services.fabric_simhost.stop_simhost",
-        lambda **_k: {"ok": True, "killed": []},
     )
 
     report = heal.run_fabric_heal(
@@ -305,12 +284,15 @@ def test_clean_obj_pollution_removes_resources_cs(tmp_path: Path) -> None:
     assert len(r["removed"]) >= 2
 
 
-def test_promote_staged_dlls(tmp_path: Path) -> None:
+def test_promote_staged_dlls(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     custom = tmp_path / "Custom"
     custom.mkdir()
     staged = custom / "Lumina.Fabric.NtBridge.dll.new"
-    staged.write_bytes(b"new")
+    # Product bridge must clear size + marker integrity; use a valid-sized fixture.
+    markers = b"FabricNtHost NtAccountOrderGateway NtHistoricalDataProvider NtLiveMarketDataProvider"
+    staged.write_bytes(markers + b"\0" * (40_000 - len(markers)))
+    monkeypatch.setattr(heal, "is_ninjatrader_running", lambda: False)
     promoted = heal.promote_staged_dlls(custom)
-    assert "Lumina.Fabric.NtBridge.dll" in promoted
+    assert any(Path(p).name == "Lumina.Fabric.NtBridge.dll" for p in promoted)
     assert (custom / "Lumina.Fabric.NtBridge.dll").is_file()
     assert not staged.is_file()

@@ -9,7 +9,7 @@ from lumina_core.birth.starship_birth import (
     EdgeScoreResult,
     humanize_edgescore_blocker,
 )
-from tests.birth.honest_settlement import honest_closes
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 @pytest.mark.unit
@@ -65,7 +65,7 @@ def test_compute_stage_blocker_entropy_missing_not_raw_message() -> None:
         stage1_entropy_floor=0.05,
         starship_entropy_required_after_ppo_steps=500,
     )
-    # WR 40% => hygiene + expectancy ok; entropy missing after warm-up.
+    # Process-R ok; foundation entropy_alive fail (not EdgeScore theater copy).
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE1_TREND,
         stage_trades=250,
@@ -80,11 +80,13 @@ def test_compute_stage_blocker_entropy_missing_not_raw_message() -> None:
         rolling_winrate=0.40,
         policy_entropy=None,
         ppo_steps=5000,
+        entropy_alive=False,
+        **foundation_eval_kwargs(),
     )
     assert metric == "entropy"
     assert reason is not None
     assert "edgescore=" not in reason.lower()
-    assert "Entropy missing" in reason
+    assert "entropy" in reason.lower()
 
 
 @pytest.mark.unit
@@ -96,11 +98,11 @@ def test_compute_stage_blocker_expectancy_not_raw_message() -> None:
         stage1_entropy_floor=0.05,
         starship_entropy_required_after_ppo_steps=500,
     )
-    # Both lifetime and rolling below hygiene -> expectancy also fails (aligned).
+    # ADR-0046: low WR is not a foundation HUD gate once process-R physics pass.
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE1_TREND,
         stage_trades=250,
-        stage_wins=25,  # 10% — fails survival hygiene before expectancy
+        stage_wins=25,  # 10% lifetime WR — EdgeScore theater only
         hold_ratio=0.50,
         required=200,
         constitution_violations=0,
@@ -111,19 +113,16 @@ def test_compute_stage_blocker_expectancy_not_raw_message() -> None:
         rolling_winrate=0.10,
         policy_entropy=0.20,
         ppo_steps=5000,
+        **foundation_eval_kwargs(),
     )
-    # Hygiene is checked before expectancy in blocker order.
-    assert metric == "winrate"
-    assert reason is not None
-    assert "edgescore=" not in reason.lower()
-    assert "blockers=" not in reason.lower()
-    assert "Hygiene" in reason or "hygiene" in reason.lower() or "Survival WR" in reason
-    assert "EdgeScore" in reason
+    assert metric is None
+    assert value is None
+    assert reason is None
 
 
 @pytest.mark.unit
 def test_stage3_blocker_is_mixed_quality_not_survival() -> None:
-    """12/08 stall copy: Stage-3 WR fail must not say Survival WR."""
+    """Stage-3 foundation fails on edge, never Survival WR copy."""
     cfg = BirthCurriculumConfig(
         stage3_edgescore_enabled=True,
         stage3_winrate_floor=0.35,
@@ -144,11 +143,12 @@ def test_stage3_blocker_is_mixed_quality_not_survival() -> None:
         rolling_winrate=0.256,
         policy_entropy=0.20,
         ppo_steps=5000,
+        **foundation_eval_kwargs(first_touch_hit_rate=None),
     )
-    assert metric == "winrate"
+    assert metric == "edge"
     assert reason is not None
     assert "Survival WR" not in reason
-    assert "Mixed quality WR" in reason
+    assert "edge" in reason.lower()
 
 
 @pytest.mark.unit
@@ -174,16 +174,17 @@ def test_stage3_occupancy_blocker_not_survival() -> None:
         policy_entropy=0.20,
         ppo_steps=5000,
         **honest_closes(500),
+        **foundation_eval_kwargs(),
     )
     assert metric == "occupancy"
     assert reason is not None
     assert "Survival WR" not in reason
-    assert "Occupancy" in reason
+    assert "occupancy" in reason.lower()
 
 
 @pytest.mark.unit
 def test_stage2_durable_lifetime_blocker_not_false_green_expectancy() -> None:
-    """Rolling 40% / exp −10% must not read as already clearing −15%."""
+    """ADR-0046: low lifetime WR is not the foundation HUD gate when process-R passes."""
     cfg = BirthCurriculumConfig(
         stage2_edgescore_enabled=True,
         stage2_expectancy_floor=-0.15,
@@ -211,14 +212,17 @@ def test_stage2_durable_lifetime_blocker_not_false_green_expectancy() -> None:
         policy_wins=249,
         consecutive_rolling_pass_windows=7,
         **honest_closes(834),
+        **foundation_eval_kwargs(),
     )
-    assert metric in {"durable_lifetime", "expectancy", "occupancy", "median_loss_r"}
-    assert value is not None
-    assert reason is not None
+    # Foundation physics clear; WR/expectancy theater is suppressed.
+    assert metric is None
+    assert value is None
+    assert reason is None
 
 
 @pytest.mark.unit
 def test_stage3_durable_lifetime_blocker_on_rolling_lift() -> None:
+    """Rolling WR lift does not clear Stage-3; missing edge is the foundation blocker."""
     cfg = BirthCurriculumConfig(
         stage3_edgescore_enabled=True,
         stage3_winrate_floor=0.35,
@@ -244,11 +248,10 @@ def test_stage3_durable_lifetime_blocker_on_rolling_lift() -> None:
         policy_entropy=0.20,
         ppo_steps=5000,
         consecutive_rolling_pass_windows=2,
+        **foundation_eval_kwargs(first_touch_hit_rate=None),
     )
-    assert metric == "durable_lifetime"
-    assert value is not None
-    assert float(value) < 0.30
+    assert metric == "edge"
     assert reason is not None
-    assert "Durable lifetime WR" in reason
-    assert "30%" in reason
+    assert "edge" in reason.lower()
     assert "Survival WR" not in reason
+    _ = value

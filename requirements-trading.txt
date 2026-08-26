@@ -17,4 +17,4 @@ python-telegram-bot==22.5
 # protobuf must stay <7 for xai-sdk / opentelemetry / streamlit compatibility.
 # grpcio-tools 1.73.x requires protobuf>=6.30; 6.33.5+ clears PYSEC-2026-1805.
 grpcio==1.73.1
-protobuf==6.33.5
+protobuf==6.33.6

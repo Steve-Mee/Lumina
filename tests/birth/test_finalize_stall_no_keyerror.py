@@ -112,6 +112,8 @@ def test_finalize_incomplete_pending_no_keyerror(monkeypatch: pytest.MonkeyPatch
                 range_round_trips=100,
                 range_total_signals=10000,
                 cfg=self.cur_cfg,
+                median_loss_r=1.0,
+                unique_calendar_days=40,
             )
             blocker_metric = bm or failure_key
             blocker_value = bv if bv is not None else 0.0
@@ -182,6 +184,8 @@ def test_finalize_prefers_skill_blocker_over_adaptation_stuck(
                 range_round_trips=100,
                 range_total_signals=10000,
                 cfg=self.cur_cfg,
+                median_loss_r=1.0,
+                unique_calendar_days=40,
             )
             if engineering_stuck and bm is not None:
                 blocker_metric = bm
@@ -200,9 +204,9 @@ def test_finalize_prefers_skill_blocker_over_adaptation_stuck(
         _capture_head,
     )
     out = fake._finalize_certified_stage_stall(pending)
-    assert out["blocker_metric"] == "winrate"
+    assert out["blocker_metric"] == "occupancy"
     assert out["blocker_reason"] is not None
-    assert "winrate" in str(out["blocker_reason"]).lower() or "%" in str(out["blocker_reason"])
+    assert "occupancy" in str(out["blocker_reason"]).lower()
     assert out["engineering_blocker"] == "adaptation_stuck"
     # silence unused
     _ = original

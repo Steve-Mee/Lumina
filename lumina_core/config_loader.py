@@ -282,7 +282,14 @@ class ConfigLoader:
         if trade_mode in {"sim", "sim_real_guard", "real"} and broker_mode != "live":
             errors.append(f"Invalid mode matrix: trade_mode={trade_mode} requires broker_backend=live")
 
-        if live_provider == "ninjatrader" and not ninjatrader_enabled:
+        # Only enforce NT enablement when a live backend is actually selected.
+        # Incomplete overlays (tests / partial configs) default live_provider to
+        # ninjatrader — must not fail paper or non-live backends on that default.
+        if (
+            broker_mode == "live"
+            and live_provider == "ninjatrader"
+            and not ninjatrader_enabled
+        ):
             errors.append("broker.live_provider=ninjatrader requires broker.ninjatrader.enabled=true")
 
         # 2c. Live-broker secrets when a live backend is active.

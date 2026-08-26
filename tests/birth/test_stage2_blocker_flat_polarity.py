@@ -1,4 +1,4 @@
-"""Stage-2 blocker humanize: low flat = over-trading, not 'need more activity'."""
+"""Stage-2 foundation occupancy: flat outside 30–70% band."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import pytest
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.birth.stage_blocker import compute_stage_blocker
-from tests.birth.honest_settlement import honest_closes
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 @pytest.mark.unit
@@ -27,12 +27,13 @@ def test_low_flat_blocker_says_over_trading() -> None:
         policy_entropy=0.2,
         ppo_steps=10_000,
         **honest_closes(400),
+        **foundation_eval_kwargs(),
     )
-    assert metric == "position_flat"
+    assert metric == "occupancy"
     assert value == pytest.approx(0.28)
     assert reason is not None
-    assert "over-trading" in reason
-    assert "need more in-range activity" not in reason
+    assert "occupancy" in reason.lower()
+    assert "30%" in reason or "not_in" in reason
 
 
 @pytest.mark.unit
@@ -52,7 +53,10 @@ def test_high_flat_blocker_says_under_activity() -> None:
         policy_entropy=0.2,
         ppo_steps=10_000,
         **honest_closes(400),
+        **foundation_eval_kwargs(),
     )
-    assert metric == "position_flat"
+    assert metric == "occupancy"
+    assert value == pytest.approx(0.90)
     assert reason is not None
-    assert "under-activity" in reason
+    assert "occupancy" in reason.lower()
+    assert "70%" in reason or "not_in" in reason

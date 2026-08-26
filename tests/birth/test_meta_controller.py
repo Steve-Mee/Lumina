@@ -57,6 +57,8 @@ def _snap_inputs(**overrides: object) -> dict[str, object]:
         "stage": CurriculumStage.STAGE1_TREND,
         "intra_hard_pct": 0.25,
         "attempt": 5,
+        # Good process-R so stage1_process_r_plant does not HOLD explore paths.
+        "median_loss_r": 1.0,
     }
     base.update(overrides)
     return base
@@ -109,6 +111,24 @@ def test_decide_explore_reduce_enters_strong_recovery() -> None:
     )
     plan = ctrl.decide_after_rollout(snap)
     assert plan.primary == RecoveryStrategy.EXPLORE_REDUCE
+
+
+@pytest.mark.unit
+def test_decide_hold_when_process_r_bad() -> None:
+    """Missing/bad median_loss_r after volume gate must HOLD (plant-fix)."""
+    ctrl = _controller()
+    ctrl.record_inject(patterns=20, oracle_wins=10)
+    snap, _ = ctrl.observe(
+        **_snap_inputs(
+            winrate_history=[0.40, 0.40, 0.40, 0.40, 0.40, 0.40],
+            reward_history=[0.01, 0.01, 0.01, 0.01, 0.01, 0.01],
+            low_velocity_attempts=5,
+            median_loss_r=None,
+        )
+    )
+    plan = ctrl.decide_after_rollout(snap)
+    assert plan.primary == RecoveryStrategy.HOLD
+    assert plan.rationale == "stage1_process_r_plant"
 
 
 @pytest.mark.unit

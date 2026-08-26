@@ -30,12 +30,19 @@ def test_roll_stale_contract_symbol_keeps_active_contract() -> None:
 
 @pytest.fixture
 def market_data_service(tmp_path, monkeypatch: pytest.MonkeyPatch) -> MarketDataIngestService:
+    """Force Crosstrade history path so pagination/daysBack expectations hold.
+
+    Workspace yaml defaults to live_provider=ninjatrader (Fabric). These unit
+    tests assert CrossTrade HTTP payload shape — isolate from Fabric SSOT.
+    """
     monkeypatch.setattr("lumina_core.engine.rl.ppo_trainer.PPOTrainer", MagicMock())
+    monkeypatch.setenv("BROKER_LIVE_PROVIDER", "crosstrade")
     cfg = EngineConfig(
         state_file=tmp_path / "state.json",
         thought_log=tmp_path / "thought_log.jsonl",
         bible_file=tmp_path / "bible.json",
         live_jsonl=tmp_path / "live_stream.jsonl",
+        broker_live_provider="crosstrade",
     )
     eng = LuminaEngine(config=cfg)
     app = SimpleNamespace(
@@ -44,7 +51,10 @@ def market_data_service(tmp_path, monkeypatch: pytest.MonkeyPatch) -> MarketData
         CROSSTRADE_TOKEN="test-token",
     )
     eng.bind_app(cast(ModuleType, app))
-    return MarketDataIngestService(engine=eng)
+    svc = MarketDataIngestService(engine=eng)
+    # Isolate from workspace yaml live_provider=ninjatrader SSOT override.
+    monkeypatch.setattr(svc, "_yaml_live_provider", lambda: "crosstrade")
+    return svc
 
 
 @pytest.mark.unit

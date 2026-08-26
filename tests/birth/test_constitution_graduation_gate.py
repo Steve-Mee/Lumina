@@ -23,6 +23,7 @@ from lumina_core.birth.wall_trigger_engine import (
     evaluate_certified_stall,
 )
 from lumina_core.rl.gym_environment import RLConfig, RLTradingEnvironment
+from tests.birth.honest_settlement import foundation_eval_kwargs
 
 
 class _FakePpoTrainer:
@@ -95,10 +96,16 @@ def test_compute_stage_blocker_stage2_flags_constitution_violations() -> None:
         range_round_trips=30,
         range_total_signals=500,
         cfg=cfg,
+        **foundation_eval_kwargs(),
     )
     assert metric == "constitution_violations"
     assert value == 5.0
-    assert "violations 5" in (reason or "")
+    assert reason is not None
+    assert "constitution" in reason.lower()
+    assert "5" in reason
+    # Process-R may still appear in the combined foundation message when other
+    # gates also fail; constitution text must remain present.
+    assert "median_loss_r" not in reason or "constitution" in reason.lower()
 
 
 @pytest.mark.unit

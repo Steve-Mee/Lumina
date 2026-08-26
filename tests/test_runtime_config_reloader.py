@@ -23,7 +23,9 @@ from lumina_core.runtime_config_reloader import (
 def _valid_base_cfg() -> dict[str, Any]:
     return {
         "mode": "sim",
-        "broker": {"backend": "live"},
+        # Explicit Crosstrade so incomplete overlays do not default to ninjatrader
+        # and trip broker.ninjatrader.enabled validation in reload tests.
+        "broker": {"backend": "live", "live_provider": "crosstrade"},
         "sim": {"kelly_fraction": 1.0, "max_total_open_risk": 3000.0},
         "real": {"kelly_fraction": 0.25, "max_total_open_risk": 150.0},
         "runtime_config": {"hot_reload": {"enabled": True, "debounce_ms": 50}},
@@ -100,6 +102,8 @@ def test_apply_config_reload_rejects_immutable_change(monkeypatch: pytest.Monkey
     monkeypatch.setenv("LUMINA_MODE", "sim")
     monkeypatch.setenv("TRADE_MODE", "sim")
     monkeypatch.setenv("BROKER_BACKEND", "live")
+    monkeypatch.setenv("BROKER_LIVE_PROVIDER", "crosstrade")
+    monkeypatch.setenv("CROSSTRADE_TOKEN", "reload-test-token")
     ConfigLoader.invalidate()
 
     container = _minimal_reload_container(config=_LiveConfigStub())
@@ -121,6 +125,8 @@ def test_apply_config_reload_applies_safe_sim_overlay(monkeypatch: pytest.Monkey
     monkeypatch.setenv("LUMINA_MODE", "sim")
     monkeypatch.setenv("TRADE_MODE", "sim")
     monkeypatch.setenv("BROKER_BACKEND", "live")
+    monkeypatch.setenv("BROKER_LIVE_PROVIDER", "crosstrade")
+    monkeypatch.setenv("CROSSTRADE_TOKEN", "reload-test-token")
     ConfigLoader.invalidate()
 
     prior = ConfigService().load()
@@ -146,6 +152,8 @@ def test_apply_config_reload_rejects_twin_blocked_auto_approve(
     monkeypatch.setenv("LUMINA_MODE", "sim")
     monkeypatch.setenv("TRADE_MODE", "sim")
     monkeypatch.setenv("BROKER_BACKEND", "live")
+    monkeypatch.setenv("BROKER_LIVE_PROVIDER", "crosstrade")
+    monkeypatch.setenv("CROSSTRADE_TOKEN", "reload-test-token")
     ConfigLoader.invalidate()
 
     prior = ConfigService().load()
@@ -182,6 +190,8 @@ def test_reloader_publishes_events_on_success(monkeypatch: pytest.MonkeyPatch, t
     monkeypatch.setenv("LUMINA_MODE", "sim")
     monkeypatch.setenv("TRADE_MODE", "sim")
     monkeypatch.setenv("BROKER_BACKEND", "live")
+    monkeypatch.setenv("BROKER_LIVE_PROVIDER", "crosstrade")
+    monkeypatch.setenv("CROSSTRADE_TOKEN", "reload-test-token")
     ConfigLoader.invalidate()
 
     prior = ConfigService().load()
@@ -203,7 +213,6 @@ def test_reloader_publishes_events_on_success(monkeypatch: pytest.MonkeyPatch, t
     result = reloader.reload_now(source="test")
     assert result.applied is True
     assert "runtime.config.reloaded" in events
-
 
 @pytest.mark.unit
 def test_validate_dict_rejects_invalid_mode_matrix() -> None:

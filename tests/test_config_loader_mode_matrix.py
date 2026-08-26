@@ -13,6 +13,7 @@ def _set_required_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TRADE_MODE", raising=False)
     monkeypatch.delenv("LUMINA_MODE", raising=False)
     monkeypatch.delenv("BROKER_BACKEND", raising=False)
+    monkeypatch.delenv("BROKER_LIVE_PROVIDER", raising=False)
 
 
 def test_validate_startup_rejects_paper_with_live_backend(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -34,7 +35,16 @@ def test_validate_startup_rejects_sim_with_paper_backend(monkeypatch: pytest.Mon
 def test_validate_startup_accepts_real_with_live_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     _set_required_env(monkeypatch)
     monkeypatch.setenv("CROSSTRADE_TOKEN", "unit-test-token")
-    monkeypatch.setattr(ConfigLoader, "get", classmethod(lambda cls: {"mode": "real", "broker": {"backend": "live"}}))
+    monkeypatch.setattr(
+        ConfigLoader,
+        "get",
+        classmethod(
+            lambda cls: {
+                "mode": "real",
+                "broker": {"backend": "live", "live_provider": "crosstrade"},
+            }
+        ),
+    )
 
     assert ConfigLoader.validate_startup(raise_on_error=True) is True
 
@@ -46,7 +56,12 @@ def test_validate_startup_accepts_sim_real_guard_with_live_backend(monkeypatch: 
     monkeypatch.setattr(
         ConfigLoader,
         "get",
-        classmethod(lambda cls: {"mode": "sim_real_guard", "broker": {"backend": "live"}}),
+        classmethod(
+            lambda cls: {
+                "mode": "sim_real_guard",
+                "broker": {"backend": "live", "live_provider": "crosstrade"},
+            }
+        ),
     )
 
     assert ConfigLoader.validate_startup(raise_on_error=True) is True
@@ -72,7 +87,7 @@ def test_validate_startup_rejects_sim_real_guard_when_feature_flag_disabled(monk
     monkeypatch.setattr(
         ConfigLoader,
         "get",
-        classmethod(lambda cls: {"mode": "sim_real_guard", "broker": {"backend": "live"}}),
+        classmethod(lambda cls: {"mode": "sim_real_guard", "broker": {"backend": "live", "live_provider": "crosstrade"}}),
     )
 
     with pytest.raises(RuntimeError, match="sim_real_guard is disabled by feature flag"):
@@ -88,7 +103,7 @@ def test_validate_startup_warns_placeholder_api_key_in_sim(
     monkeypatch.setenv("CROSSTRADE_TOKEN", "unit-test-token")
     cfg = {
         "mode": "sim",
-        "broker": {"backend": "live"},
+        "broker": {"backend": "live", "live_provider": "crosstrade"},
         "security": {
             "api_keys": {
                 "sk_example_admin_key_replace_me": {
@@ -114,7 +129,7 @@ def test_validate_startup_fails_placeholder_api_key_in_real(monkeypatch: pytest.
     monkeypatch.setenv("CROSSTRADE_TOKEN", "unit-test-token")
     cfg = {
         "mode": "real",
-        "broker": {"backend": "live"},
+        "broker": {"backend": "live", "live_provider": "crosstrade"},
         "security": {
             "api_keys": {
                 "sk_example_admin_key_replace_me": {
