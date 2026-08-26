@@ -119,5 +119,10 @@ export function metricPctForCriteria(
   if (passCriteriaId === "mixed_constitution") {
     return metricValue <= 0 ? 100 : 0;
   }
+  if (passCriteriaId === "closed_loop") {
+    const cap = metricMax != null && metricMax > 0 ? metricMax : 1.5;
+    if (metricValue <= cap + 1e-12) return 100;
+    return Math.min(100, Math.max(0, (cap / metricValue) * 100));
+  }
   return 0;
 }

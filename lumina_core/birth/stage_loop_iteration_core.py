@@ -143,19 +143,192 @@ class StageLoopIterationMixin(
             trades_beyond_hard_stop = should_trades_beyond_gate_hard_stop(
                 self.stage_trades, self.required, self.cur_cfg
             )
+            # H1: Stage-2 early-quality hard-stop — do not burn to 3× gate when already dead
+            if not trades_beyond_hard_stop:
+                try:
+                    from lumina_core.birth.curriculum import CurriculumStage
+                    from lumina_core.birth.expectancy_stall import (
+                        should_stage2_early_quality_hard_stop,
+                    )
+
+                    if self.stage == CurriculumStage.STAGE2_RANGE:
+                        rolling_wr = None
+                        try:
+                            rolling_wr, _, _ = self._rolling_winrate_meta()
+                        except Exception:
+                            rolling_wr = None
+                        flat_ratio = float(self.stage_range_flat_bars) / float(
+                            max(1, self.stage_range_total_signals)
+                        )
+                        if should_stage2_early_quality_hard_stop(
+                            stage_is_range=True,
+                            stage_trades=int(self.stage_trades),
+                            required=int(self.required),
+                            range_flat_ratio=flat_ratio,
+                            stage_wins=int(self.stage_wins),
+                            rolling_winrate=rolling_wr,
+                            range_total_signals=int(self.stage_range_total_signals),
+                            cfg=self.cur_cfg,
+                        ):
+                            # PR-E: freeze/restore — do not wall.force-spam every 50 trades.
+                            freeze_on = bool(
+                                getattr(
+                                    self.cur_cfg,
+                                    "stage2_early_quality_freeze_enabled",
+                                    True,
+                                )
+                            )
+                            cooldown = float(
+                                getattr(
+                                    self.cur_cfg,
+                                    "stage2_early_quality_wall_cooldown_sec",
+                                    300.0,
+                                )
+                                or 300.0
+                            )
+                            last_eq = float(
+                                getattr(self, "_last_early_quality_wall_at", 0.0) or 0.0
+                            )
+                            now_eq = time.time()
+                            if freeze_on:
+                                try:
+                                    from lumina_core.birth.stage2_peak_capture import (
+                                        best_policy_path_for_restore,
+                                        record_restore,
+                                        restore_policy_from_path,
+                                        should_restore_peak_policy,
+                                    )
+
+                                    peak_st = getattr(self, "stage2_peak_state", None)
+                                    if peak_st is not None:
+                                        peak_st.swarm_blocked_reason = "early_quality_freeze"
+                                        # Freeze swarm for N quality rollouts after freeze.
+                                        peak_st.quality_rollouts_since_restore = min(
+                                            int(
+                                                getattr(
+                                                    peak_st,
+                                                    "quality_rollouts_since_restore",
+                                                    0,
+                                                )
+                                                or 0
+                                            ),
+                                            0,
+                                        )
+                                        do_r, rsn = should_restore_peak_policy(
+                                            peak_st,
+                                            stage_trades=int(self.stage_trades),
+                                            stage_wins=int(self.stage_wins),
+                                            rolling_winrate=rolling_wr,
+                                            range_flat_ratio=flat_ratio,
+                                            cfg=self.cur_cfg,
+                                        )
+                                        if do_r:
+                                            path = best_policy_path_for_restore(
+                                                peak_st,
+                                                getattr(self, "plateau_state", None),
+                                            )
+                                            if path and restore_policy_from_path(
+                                                self.host, path
+                                            ):
+                                                record_restore(
+                                                    peak_st,
+                                                    stage_trades=int(self.stage_trades),
+                                                    reason=f"early_quality_{rsn}",
+                                                )
+                                    # Soft-stop active swarm tournament (no thrash).
+                                    try:
+                                        sw = getattr(self, "swarm_state", None)
+                                        if sw is not None and bool(
+                                            getattr(sw, "active", False)
+                                        ):
+                                            sw.active = False
+                                            logger.info(
+                                                "birth.stage2.early_quality_swarm_frozen"
+                                            )
+                                    except Exception:
+                                        pass
+                                except Exception:
+                                    pass
+                                # PR-H: never wall.force while peak_grad / near-miss finish.
+                                peak_st = getattr(self, "stage2_peak_state", None)
+                                no_wall = bool(
+                                    peak_st is not None
+                                    and (
+                                        getattr(peak_st, "peak_grad_armed", False)
+                                        or getattr(peak_st, "near_miss_active", False)
+                                        or getattr(peak_st, "finish_mode_active", False)
+                                        or getattr(peak_st, "flash_green_durable", False)
+                                        or getattr(peak_st, "flash_green", False)
+                                    )
+                                )
+                                if no_wall:
+                                    logger.info(
+                                        "birth.stage2.early_quality_no_wall peak_grad=%s "
+                                        "near_miss=%s flash=%s trades=%s wr=%.3f",
+                                        bool(
+                                            getattr(peak_st, "peak_grad_armed", False)
+                                        ),
+                                        bool(
+                                            getattr(peak_st, "near_miss_active", False)
+                                        ),
+                                        bool(getattr(peak_st, "flash_green", False)),
+                                        self.stage_trades,
+                                        float(self.stage_wins)
+                                        / float(max(1, self.stage_trades)),
+                                    )
+                                # Rate-limit wall force: once per cooldown only.
+                                elif now_eq - last_eq >= max(30.0, cooldown):
+                                    trades_beyond_hard_stop = True
+                                    self._last_early_quality_wall_at = now_eq
+                                    logger.warning(
+                                        "birth.stage2.early_quality_freeze trades=%s "
+                                        "required=%s flat=%.3f wr=%.3f wall_armed=1",
+                                        self.stage_trades,
+                                        self.required,
+                                        flat_ratio,
+                                        float(self.stage_wins)
+                                        / float(max(1, self.stage_trades)),
+                                    )
+                                else:
+                                    logger.info(
+                                        "birth.stage2.early_quality_freeze_hold trades=%s "
+                                        "wr=%.3f cooldown_left=%.0fs",
+                                        self.stage_trades,
+                                        float(self.stage_wins)
+                                        / float(max(1, self.stage_trades)),
+                                        max(0.0, cooldown - (now_eq - last_eq)),
+                                    )
+                            else:
+                                trades_beyond_hard_stop = True
+                                logger.warning(
+                                    "birth.stage2.early_quality_hard_stop trades=%s required=%s "
+                                    "flat=%.3f wr=%.3f",
+                                    self.stage_trades,
+                                    self.required,
+                                    flat_ratio,
+                                    float(self.stage_wins)
+                                    / float(max(1, self.stage_trades)),
+                                )
+                except Exception:
+                    logger.debug("birth.stage2.early_quality_hard_stop_check_failed", exc_info=True)
             # Raptor v3: honor plateau terminal even when wall force never fires.
             if self.plateau_state.active:
                 plateau_terminal = self._plateau_terminal_pending(failure_key=failure_key)
                 if plateau_terminal is not None:
                     self._hard_stop_terminal_armed = True
-                    logger.warning(
-                        "birth.terminal.requested reason=%s step=%s trades=%s wr=%.2f%% beyond=%s",
-                        plateau_terminal.get("terminal_stall_reason"),
-                        self.plateau_state.evolution_step,
-                        self.stage_trades,
-                        float(self.stage_wins) / float(max(1, self.stage_trades)) * 100.0,
-                        trades_beyond_hard_stop,
-                    )
+                    # Rate-limit: terminal.requested was spamming every tick at trades=0.
+                    _now = time.time()
+                    _last = float(getattr(self, "_last_terminal_requested_log_at", 0.0) or 0.0)
+                    if _now - _last >= 300.0:
+                        self._last_terminal_requested_log_at = _now
+                        logger.warning(
+                            "birth.terminal.requested reason=%s step=%s trades=%s wr=%.2f%% beyond=%s",
+                            plateau_terminal.get("terminal_stall_reason"),
+                            self.plateau_state.evolution_step,
+                            self.stage_trades,
+                            float(self.stage_wins) / float(max(1, self.stage_trades)) * 100.0,
+                            trades_beyond_hard_stop,
+                        )
                     self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk
                     stall_result = self._resolve_terminal_stall(plateau_terminal)
                     if stall_result is None:

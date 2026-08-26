@@ -35,6 +35,14 @@ export function useBirthPhaseMonitor() {
     bootstrapStarted.current = true;
 
     void (async () => {
+      // Systems Go cold start already hydrated — skip the 30s Genesis lock.
+      const already =
+        useBirthStore.getState().sessionHydrated ||
+        useBirthStore.getState().sessionProbeState === "ready";
+      if (already) {
+        return;
+      }
+
       let payload = null as Awaited<ReturnType<typeof poll>>;
       for (let attempt = 0; attempt < COLD_PROBE_ATTEMPTS; attempt += 1) {
         payload = await poll();

@@ -38,6 +38,8 @@ from lumina_core.birth.plateau_evolution_ladder import (  # noqa: F401
 )
 from lumina_core.birth.plateau_rolling import (  # noqa: F401
     prune_rolling_trade_chunks,
+    stage_rolling_pass_min_covered,
+    stage_rolling_pass_window,
     rolling_winrate_from_chunks,
     rolling_winrate_last_n_trades,
 )
@@ -119,6 +121,8 @@ __all__ = [
     "revert_evolution_step_on_noop",
     "rolling_winrate_from_chunks",
     "rolling_winrate_last_n_trades",
+    "stage_rolling_pass_min_covered",
+    "stage_rolling_pass_window",
     "sanitize_phantom_evolution_steps",
     "sanitize_plateau_best_snapshot",
     "sanitize_stuck_plateau_evolution",

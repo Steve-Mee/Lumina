@@ -133,7 +133,8 @@ flowchart LR
 
 - Klein lokaal model getraind op **expliciete** approve/veto-labels (`SteveValuesRegistry` → `rlhf_light_update`).
 - Features: DNA-inhoud, emotional twin profile, lineage, Steve-vocabulary; confidence **gekalibreerd** tegen recente prediction error.
-- High-confidence pad: `confidence >= 0.80` + recommendation + clean → primary auto-approval in birth/SIM/autonomy (`organism_autonomy`, promotion policy, evolution guard).
+- High-confidence pad: `confidence >= 0.80` + recommendation + clean → primary **values** judgment when authority is on (`sim_real_guard` / REAL multi-gate input).
+- **ADR-0038 One Twin DNA · Dual Authority:** free SIM/Birth = `explore_pass` (Twin preference is not a rem; organism leert van fouten). `sim_real_guard` = `values_active` (REAL-conscience). REAL = `values_inside_gates` (nooit sole-execute capital). Base curriculum (`base_v4`) traint altijd de REAL-conscience — niet “approve alles omdat SIM”.
 
 ### Training (radicaal eenvoudig)
 
@@ -144,6 +145,14 @@ python -m lumina_launcher twin metrics
 ```
 
 Command Deck: Intelligence → Approvals → **Twin train** (labels + light RLHF via `/api/twin/*`; **Approval Gym** drills via `/api/twin/gym/*`; data stays local under `state/`).
+
+**Birth-ready base curriculum + escalation (ADR-0044):**
+- **Primary UX:** Operator Vault → **Twin** base training (foundation block; seal blocked until ready)
+- App-only base training: `POST /api/twin/base/start` → answer MC → `complete` → `birth_ready` (`GET /api/twin/readiness`)
+- **Hard gate:** `POST /api/birth/start` → 403 `TWIN_BASE_TRAINING_INCOMPLETE` if not base-trained
+- Micro dual-channel: `/api/twin/micro/*` + Telegram
+- Doubt escalation: `/api/twin/escalations/*` (Deck + Telegram; first answer wins)
+- Without base_trained: mode promote blocked; birth cannot start; sole-auto disabled (fail-closed)
 
 ### Judgment modes (shadow → assisted → full_auto)
 
@@ -183,6 +192,9 @@ ADR’s: [0031](adr/0031-approval-twin-event-bus.md), [0032](adr/0032-approval-t
 **Observe:** `python -m lumina_launcher birth phase2-status` · `state/monitoring_phase2_autonomy.jsonl`  
 **Unlock:** `python scripts/validation/declare_perfect_birth.py` (flag + evidence; hollow flag rejected)  
 **Mode:** `phase2_execution_mode: observe|shadow|apply` (default observe)  
+**Evidence bundle (ADR-0040 minimum):** 48–72h Fabric-only Sim101 run (zero CrossTrade loaded);
+full native order lifecycle + historical/live bars audit; heartbeat→SAFE_MODE→flatten deterministic;
+no non-loopback bind/token leak; Sentinel zero critical; Perfect Birth + human promotion markers.  
 **Architecture:** closed-loop only via `handler_hooks` + handlers — not stage_loop
 
 | Pilaar | Doel | Nu |
@@ -200,7 +212,7 @@ ADR’s: [0031](adr/0031-approval-twin-event-bus.md), [0032](adr/0032-approval-t
 
 ## 8. Visie — Secure self-code evolution (sandbox)
 
-**Status:** 🔄 **H5 controlled sandbox-store apply** — default disabled; apply alleen naar `state/code_evolution/applied/` onder human/Twin gates; nooit live repo / REAL capital.
+**Status:** 🔄 **Ladder implemented, defaults OFF (ADR-0045)** — K1–K16 is the Done gate (waves are build order only). OverlayPort, internal paper venue, council/cutover/canary exist in code + tests. Apply never to live repo / REAL capital. Operator must enable `evolution.code_evolution` / `challenger_venue` explicitly.
 
 **Doel:** het organisme mag **eigen architectuur/code** voorstellen en in een **isolatie-sandbox** evalueren, met promotie alleen na:
 

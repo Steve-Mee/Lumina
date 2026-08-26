@@ -12,6 +12,7 @@ Hard rem
 - All features default **OFF**
 - Gate: master → pillar → Perfect Birth evidence → constitution → twin → shadow-if-risk
 - ``phase2_execution_mode``: observe | shadow | apply (only apply mutates)
+- Campaign×curriculum merge: enable + raise, never demote explicit apply
 - Twin never overrides constitution; REAL apply forbidden
 
 Explicit non-goals (do not grow this package into these)
@@ -43,6 +44,7 @@ from lumina_core.birth.phase2_autonomy.dynamic_wall import (
 from lumina_core.birth.phase2_autonomy.execution_mode import (
     Phase2ExecutionMode,
     evaluate_pillar_promotion,
+    max_execution_mode,
     normalize_execution_mode,
 )
 from lumina_core.birth.phase2_autonomy.features import Phase2AutonomyFeatures
@@ -103,6 +105,7 @@ __all__ = [
     "evaluate_phase2_gate",
     "evaluate_pillar_promotion",
     "materialize_instance_adapt_payload",
+    "max_execution_mode",
     "normalize_execution_mode",
     "phase2_status_payload",
     "propose_dynamic_wall_adjustment",

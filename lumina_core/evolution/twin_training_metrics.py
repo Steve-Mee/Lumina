@@ -274,7 +274,7 @@ class TwinTrainingMetricsMixin:
                 latest.get("agreement_pct", agreement),
             )
 
-        return {
+        out: dict[str, Any] = {
             "avg_prediction_error": latest.get(
                 "avg_prediction_error", model.get("last_avg_error", None)
             ),
@@ -325,3 +325,40 @@ class TwinTrainingMetricsMixin:
             "mode_promotion_progress": mode_progress,
             "promotion_audit_tail": list(obs.get("promotion_audit_tail") or []),
         }
+
+        # ADR-0037: base training readiness + escalation rate
+        try:
+            if hasattr(self, "readiness"):
+                ready = dict(self.readiness() or {})  # type: ignore[attr-defined]
+                out["base_trained"] = bool(ready.get("base_trained"))
+                out["birth_ready"] = bool(ready.get("birth_ready"))
+                out["base_training_completion_pct"] = ready.get(
+                    "base_training_completion_pct", 0.0
+                )
+            else:
+                out["base_trained"] = False
+                out["birth_ready"] = False
+                out["base_training_completion_pct"] = 0.0
+        except Exception:
+            out["base_trained"] = False
+            out["birth_ready"] = False
+            out["base_training_completion_pct"] = 0.0
+
+        esc_path = Path(
+            getattr(self, "escalation_log_path", Path("state/monitoring_twin_escalations.jsonl"))
+        )
+        esc_rows = _tail_jsonl(esc_path, limit=max(50, int(decision_window)))
+        esc_created = sum(1 for r in esc_rows if "created" in str(r.get("event") or ""))
+        esc_resolved = sum(1 for r in esc_rows if "resolved" in str(r.get("event") or ""))
+        dec_n = max(1, len(recent_decisions))
+        out["escalation_created"] = esc_created
+        out["escalation_resolved"] = esc_resolved
+        out["escalation_rate"] = round(esc_created / dec_n, 4) if recent_decisions else 0.0
+        high_conf_n = int(confidence_distribution.get("gte_80") or 0)
+        out["autonomy_resolution_pct"] = (
+            round(100.0 * high_conf_n / max(1, int(confidence_distribution.get("n") or 1)), 2)
+            if confidence_distribution.get("n")
+            else 0.0
+        )
+        return out
+

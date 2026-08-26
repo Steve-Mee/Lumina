@@ -66,9 +66,9 @@ def test_practice_oracle_soft_pass_marks_provisional() -> None:
         buffer_size=500,
         rolling_winrate=0.30,
     )
-    assert result.passed is True
-    assert result.provisional is True
-    assert "oracle_soft_pass" in result.message
+    assert result.passed is False
+    assert result.provisional is False
+    assert "practice_soft_pass_disabled_under_foundation" in result.message
 
 
 @pytest.mark.unit
@@ -94,7 +94,7 @@ def test_certified_rejects_soft_oracle_receipt() -> None:
         training_mode="certified",
     )
     assert ok is False
-    assert "soft_oracle" in reason or "winrate" in reason
+    assert "soft_oracle" in reason or "missing_or_invalid_foundation_schema" in reason
 
 
 @pytest.mark.unit

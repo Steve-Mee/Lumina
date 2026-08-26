@@ -177,6 +177,28 @@ def test_maybe_auto_declare_when_enabled_and_kpis_pass(tmp_path: Path) -> None:
     assert again["declared"] is False
     assert again["reason"] == "already_unlocked"
 
+    from lumina_core.maturity.continuum import load_continuum
+
+    assert load_continuum(tmp_path).get("advance_mode") == "auto_evolve"
+
+
+@pytest.mark.unit
+def test_maybe_auto_declare_explicit_false_ignores_fabric_bundle(tmp_path: Path) -> None:
+    from lumina_core.birth.fabric_foundation_bundle import PRE_DECLARE_KEYS
+    from lumina_core.birth.perfect_birth_gate import maybe_auto_declare_perfect_birth
+
+    path = tmp_path / "state" / "fabric_foundation_bundle.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps({key: True for key in PRE_DECLARE_KEYS}),
+        encoding="utf-8",
+    )
+    out = maybe_auto_declare_perfect_birth(
+        tmp_path, force_enabled=False, kpis=_passing_kpis()
+    )
+    assert out["declared"] is False
+    assert out["reason"] == "auto_declare_disabled"
+
 
 @pytest.mark.unit
 def test_status_includes_missing_sources_and_capital_safe(tmp_path: Path) -> None:

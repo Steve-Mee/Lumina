@@ -3,13 +3,24 @@ import { describe, expect, it } from "vitest";
 import { resolveDeckBirthGate } from "@/lib/deckBirthGate";
 
 describe("deckBirthGate", () => {
-  it("returns none when artifacts are ok", () => {
+  it("returns none only when Foundation exit is sufficient", () => {
     expect(
       resolveDeckBirthGate({
         status: "completed",
         artifacts_ok: true,
+        birth_exit_ok: true,
       }),
     ).toBe("none");
+  });
+
+  it("returns incomplete when artifacts exist without Foundation exit", () => {
+    expect(
+      resolveDeckBirthGate({
+        status: "completed",
+        artifacts_ok: true,
+        progress: { progress_pct: 100 },
+      }),
+    ).toBe("incomplete");
   });
 
   it("returns running for active birth without artifacts", () => {

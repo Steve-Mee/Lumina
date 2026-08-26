@@ -22,6 +22,9 @@ def curriculum_kwargs(cur_raw: dict[str, Any]) -> dict[str, Any]:
             0.20,
             min(0.60, _coerce_float(cur_raw.get("evolution_proof_polish_oos_winrate_min"), 0.45)),
         ),
+        evolution_proof_grandfather_missing=bool(
+            cur_raw.get("evolution_proof_grandfather_missing", False)
+        ),
         plateau_oracle_distill_top_pct=max(
             0.05,
             min(0.50, _coerce_float(cur_raw.get("plateau_oracle_distill_top_pct"), 0.25)),
@@ -83,13 +86,29 @@ def curriculum_kwargs(cur_raw: dict[str, Any]) -> dict[str, Any]:
         stage2_participation_hysteresis=max(
             0.0, min(0.08, _coerce_float(cur_raw.get("stage2_participation_hysteresis"), 0.02))
         ),
+        stage2_participation_under_band_release_hysteresis=max(
+            0.02,
+            min(
+                0.08,
+                _coerce_float(
+                    cur_raw.get("stage2_participation_under_band_release_hysteresis"), 0.02
+                ),
+            ),
+        ),
+        stage2_occupancy_control_window_bars=max(
+            50,
+            min(
+                5000,
+                _coerce_int(cur_raw.get("stage2_occupancy_control_window_bars"), 500),
+            ),
+        ),
         stage2_participation_force_open_stop_pct=max(
-            0.001,
-            min(0.01, _coerce_float(cur_raw.get("stage2_participation_force_open_stop_pct"), 0.0075)),
+            0.0004,
+            min(0.01, _coerce_float(cur_raw.get("stage2_participation_force_open_stop_pct"), 0.0012)),
         ),
         stage2_participation_force_open_target_pct=max(
-            0.002,
-            min(0.05, _coerce_float(cur_raw.get("stage2_participation_force_open_target_pct"), 0.015)),
+            0.0005,
+            min(0.05, _coerce_float(cur_raw.get("stage2_participation_force_open_target_pct"), 0.0020)),
         ),
         stage2_participation_force_open_qty_frac=max(
             0.05,
@@ -119,6 +138,9 @@ def curriculum_kwargs(cur_raw: dict[str, Any]) -> dict[str, Any]:
         ),
         intra_stage2_easy_percentile=max(
             0.05, min(0.80, _coerce_float(cur_raw.get("intra_stage2_easy_percentile"), 0.40))
+        ),
+        intra_stage2_easy_winrate_target=max(
+            0.35, min(0.55, _coerce_float(cur_raw.get("intra_stage2_easy_winrate_target"), 0.38))
         ),
         intra_stage2_hard_percentile=max(
             0.05, min(0.80, _coerce_float(cur_raw.get("intra_stage2_hard_percentile"), 0.40))
@@ -222,7 +244,7 @@ def curriculum_kwargs(cur_raw: dict[str, Any]) -> dict[str, Any]:
             1, _coerce_int(cur_raw.get("phoenix_widen_data_after_cycles"), 3)
         ),
         death_spiral_repeat_threshold=max(
-            2, _coerce_int(cur_raw.get("death_spiral_repeat_threshold"), 4)
+            2, _coerce_int(cur_raw.get("death_spiral_repeat_threshold"), 3)
         ),
         death_spiral_novelty_budget=max(
             1, _coerce_int(cur_raw.get("death_spiral_novelty_budget"), 3)

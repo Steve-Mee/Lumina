@@ -12,6 +12,7 @@ import {
   fetchOnboardingStatus,
   postConfigure,
   postCredentials,
+  postFabricConnectionTest,
   postReadyForBirth,
   startSmartSetup,
   type ConfigurePayload,
@@ -20,8 +21,14 @@ import {
   isBirthStartSuccessful,
   startBirth,
 } from "@/lib/birthClient";
+import type { BirthActivationStep } from "@/lib/birthOperatorMode";
 import { mergeCredentialsIntoDraft } from "@/lib/credentialsPrefill";
 import { persistMonitoringApiKey, resolveMonitoringApiKey } from "@/lib/monitoringClient";
+import {
+  startupSafeToastError,
+  startupSafeToastMessage,
+} from "@/lib/startupToastGate";
+import { fetchTwinReadiness } from "@/lib/twinClient";
 import { useBirthStore } from "@/store/birthStore";
 
 export interface OnboardingDraft {
@@ -60,6 +67,8 @@ export interface OnboardingDraft {
     require_real_simulator_data: boolean;
     stage1_winrate_pass_threshold: number;
   };
+  /** Operator Vault emergency CrossTrade MD fallback (YAML SSOT). */
+  emergency_market_data_fallback: boolean;
 }
 
 export type { AppPhase } from "@/lib/onboardingPhase";
@@ -71,12 +80,45 @@ interface OnboardingState {
   draft: OnboardingDraft;
   error: string | null;
   activating: boolean;
+  /** Progress step while activating — never use `error` for progress copy. */
+  activationStep: BirthActivationStep;
   birthPhaseCommitted: boolean;
   /** Operator reopened first-boot setup (credentials / Fabric test) from Birth. */
   setupReviewActive: boolean;
   /** Operator opened Command Deck from Phase Hub (session override of app_surface=hub). */
   operatorDeckActive: boolean;
   smartSetupRunning: boolean;
+  /**
+   * Systems Go finished this session (Fabric ready or operator degraded).
+   * Until true, StartupReadiness cover stays up — no half-loaded Genesis.
+   */
+  ntStartupResolved: boolean;
+  /** Operator chose "Continue without NinjaTrader link" this session. */
+  ntLinkDeferred: boolean;
+  /** Operator dismissed the degraded-link banner for this session. */
+  ntDegradedBannerDismissed: boolean;
+  /** Cold-start Fabric result — Setup reuses this instead of re-waiting. */
+  fabricStartup: {
+    green: boolean;
+    certified: boolean;
+    hostReady?: boolean;
+    level?: string;
+    reason: string;
+    probedAt: number;
+  } | null;
+  setNtStartupResolved: (v: boolean) => void;
+  setNtLinkDeferred: (v: boolean) => void;
+  dismissNtDegradedBanner: () => void;
+  setFabricStartup: (
+    v: {
+      green: boolean;
+      certified: boolean;
+      hostReady?: boolean;
+      level?: string;
+      reason: string;
+      probedAt: number;
+    } | null,
+  ) => void;
   refresh: () => Promise<void>;
   setPhase: (phase: AppPhase) => void;
   enterSetupReview: (preferredStep?: OnboardingStepId) => void;
@@ -130,11 +172,12 @@ const defaultDraft = (): OnboardingDraft => ({
   training: {
     training_trades: 25000,
     prefer_real_data_only: true,
-    max_real_days: 56,
+    max_real_days: 365,
     allow_minimal_synthetic_fallback: false,
     require_real_simulator_data: true,
     stage1_winrate_pass_threshold: 0.45,
   },
+  emergency_market_data_fallback: false,
 });
 
 export const useOnboardingStore = create<OnboardingState>((set, get) => ({
@@ -144,12 +187,27 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   draft: defaultDraft(),
   error: null,
   activating: false,
+  activationStep: "idle",
   birthPhaseCommitted: false,
   setupReviewActive: false,
   operatorDeckActive: false,
   smartSetupRunning: false,
+  ntStartupResolved: false,
+  ntLinkDeferred: false,
+  ntDegradedBannerDismissed: false,
+  fabricStartup: null,
 
   setPhase: (phase) => set({ phase }),
+  setNtStartupResolved: (v) => set({ ntStartupResolved: v }),
+  setFabricStartup: (v) => set({ fabricStartup: v }),
+  setNtLinkDeferred: (v) =>
+    set({
+      ntLinkDeferred: v,
+      // Degraded continue = systems go complete (review-only)
+      ntStartupResolved: v ? true : get().ntStartupResolved,
+      ntDegradedBannerDismissed: v ? false : get().ntDegradedBannerDismissed,
+    }),
+  dismissNtDegradedBanner: () => set({ ntDegradedBannerDismissed: true }),
 
   enterSetupReview: (preferredStep = "credentials") => {
     const steps = SETUP_REVIEW_STEPS;
@@ -241,7 +299,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
           prefer_real_data_only: Boolean(
             (payload.defaults.first_boot as Record<string, unknown>).prefer_real_data_only ?? true,
           ),
-          max_real_days: Number((payload.defaults.first_boot as Record<string, unknown>).max_real_days ?? 56),
+          max_real_days: Number((payload.defaults.first_boot as Record<string, unknown>).max_real_days ?? 365),
           allow_minimal_synthetic_fallback: Boolean(
             (payload.defaults.first_boot as Record<string, unknown>).allow_minimal_synthetic_fallback ?? false,
           ),
@@ -271,10 +329,16 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       if (adminKey) {
         persistMonitoringApiKey(adminKey);
       }
+      const emergency = Boolean(
+        snapshot.emergency_market_data_fallback ??
+          snapshot.fallback_on_fabric_failure ??
+          get().draft.emergency_market_data_fallback,
+      );
       set({
         draft: {
           ...get().draft,
           credentials: merged,
+          emergency_market_data_fallback: emergency,
         },
       });
       return true;
@@ -377,7 +441,10 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
           return false;
         }
         persistMonitoringApiKey(draft.credentials.LUMINA_ADMIN_API_KEY);
-        const result = await postCredentials(draft.credentials);
+        const result = await postCredentials({
+          ...draft.credentials,
+          emergency_market_data_fallback: Boolean(draft.emergency_market_data_fallback),
+        });
         if (result.onboarding) {
           applyOnboarding(result.onboarding);
         } else {
@@ -468,41 +535,143 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     if (get().activating) {
       return false;
     }
-    set({ activating: true, error: null, birthPhaseCommitted: true });
+    // Intent sticky: land on Birth phase immediately so launch shell is visible
+    // (wizard BirthActivateStep must not keep the operator during Fabric/history wait).
+    set({
+      phase: "birth",
+      activating: true,
+      activationStep: "fabric",
+      error: null,
+      birthPhaseCommitted: true,
+      setupReviewActive: false,
+    });
+    useBirthStore.setState({
+      genesisPinned: false,
+      runPinned: false,
+      pollError: null,
+    });
+    const failActivation = async (message: string, opts?: { setupReview?: boolean }) => {
+      // Stay on genesis/decision — never flash orphan recovery surface.
+      set({
+        phase: opts?.setupReview ? get().phase : "birth",
+        activating: false,
+        activationStep: "idle",
+        birthPhaseCommitted: false,
+        error: message,
+      });
+      if (opts?.setupReview) {
+        get().enterSetupReview("credentials");
+        set({ error: message });
+      } else {
+        useBirthStore.setState({
+          uiPhase: "idle",
+          birthSurface: "genesis",
+          genesisPinned: true,
+          runPinned: false,
+          pollError: message,
+        });
+        await useBirthStore.getState().poll().catch(() => undefined);
+      }
+    };
     try {
-      // Fail-closed: Fabric diagnostic GREEN required before Genesis.
+      // Fail-closed: Fabric link GREEN required before Genesis.
       try {
-        const link = await fetchFabricLinkStatus();
-        if (!link.green) {
+        startupSafeToastMessage("Connecting to NinjaTrader Fabric…");
+        let link = await fetchFabricLinkStatus();
+        // Fail-closed: gate_birth_ok (host + recent proof) or live GREEN with proof.
+        let ready = Boolean(
+          link.gate_birth_ok ||
+            (link.green && (link.proof?.certified || link.proof?.badge_ok)),
+        );
+        if (!ready) {
+          try {
+            const report = await postFabricConnectionTest({
+              include_safe_mode: false,
+              instrument: "",
+            });
+            if (report?.overall === "green" || report?.certified) {
+              link = await fetchFabricLinkStatus();
+              ready = Boolean(
+                link.gate_birth_ok ||
+                  (link.green &&
+                    (link.proof?.certified ||
+                      link.proof?.badge_ok ||
+                      report.overall === "green")) ||
+                  (link.host_ready &&
+                    (link.proof?.certified || report.overall === "green")),
+              );
+            }
+          } catch {
+            /* keep not-ready */
+          }
+        }
+        if (!ready) {
           const message =
-            "Fabric diagnostic must be GREEN before Birth. Open Setup & connection and run the test.";
-          set({ activating: false, birthPhaseCommitted: false, error: message });
-          toast.error(message);
-          get().enterSetupReview("credentials");
+            "Connecting to NinjaTrader Fabric failed or host/proof not ready. " +
+            "Start NinjaTrader (datafeed Connected), open New → LUMINA, then Setup → Test connection. " +
+            `(live=${link.level || "?"} ${link.meaning || link.reason || ""})`;
+          startupSafeToastError(message);
+          await failActivation(message, { setupReview: true });
           return false;
         }
       } catch {
         const message =
-          "Could not verify Fabric link. Open Setup & connection and run Fabric diagnostic.";
-        set({ activating: false, birthPhaseCommitted: false, error: message });
-        toast.error(message);
-        get().enterSetupReview("credentials");
+          "Could not verify Fabric link while connecting to NinjaTrader. " +
+          "Open Setup & connection and run Test connection.";
+        startupSafeToastError(message);
+        await failActivation(message, { setupReview: true });
         return false;
       }
+
+      set({ activationStep: "twin" });
+
+      // Fail-closed: Twin base curriculum (Operator Vault → Twin) required before Birth.
+      try {
+        const twin = await fetchTwinReadiness();
+        if (!twin.birth_ready && !twin.base_trained) {
+          const message =
+            "Twin base training is not complete. Open Operator Vault → Twin and finish the base curriculum before Birth can start.";
+          startupSafeToastError(message);
+          await failActivation(message, { setupReview: true });
+          return false;
+        }
+      } catch {
+        const message =
+          "Could not verify Twin Birth-ready status. Open Operator Vault → Twin and complete base training.";
+        startupSafeToastError(message);
+        await failActivation(message, { setupReview: true });
+        return false;
+      }
+
+      set({ activationStep: "history" });
 
       const { draft } = get();
       const configured = await get().saveConfiguration({ skipRefresh: true });
       if (!configured) {
         const message =
           get().error?.trim() || "Could not save genesis settings before birth.";
-        set({ activating: false, birthPhaseCommitted: false, error: message });
         toast.error(message);
+        await failActivation(message);
         return false;
       }
 
       useBirthStore.getState().setTargetTrades(draft.training.training_trades);
-      useBirthStore.getState().beginBirthRun();
-      const result = await startBirth(draft.training.training_trades);
+      set({ activationStep: "engine" });
+      // Hard wall: never leave UI stuck on VERIFYING if backend stalls (CT hang).
+      const START_TIMEOUT_MS = 90_000;
+      const result = await Promise.race([
+        startBirth(draft.training.training_trades),
+        new Promise<never>((_, reject) => {
+          window.setTimeout(() => {
+            reject(
+              new Error(
+                "Birth start timed out after 90s (history preflight). " +
+                  "Ensure Fabric path is used (not CrossTrade) and NT historical_bars is GREEN.",
+              ),
+            );
+          }, START_TIMEOUT_MS);
+        }),
+      ]);
 
       if (result.status === "already_completed") {
         const message = result.message?.trim() || "Birth phase already completed.";
@@ -510,11 +679,16 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         if (artifactsOk) {
           toast.info(message);
           get().completeBirthTransition();
-          set({ activating: false });
+          set({ activating: false, activationStep: "done" });
           return true;
         }
         toast.info(message);
-        set({ phase: "birth", activating: false, birthPhaseCommitted: true });
+        set({
+          phase: "birth",
+          activating: false,
+          activationStep: "done",
+          birthPhaseCommitted: true,
+        });
         return true;
       }
 
@@ -522,8 +696,8 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         const message =
           result.message?.trim() ||
           `Birth activation blocked (${String(result.status).replace(/_/g, " ")})`;
-        set({ activating: false, birthPhaseCommitted: false, error: message });
         toast.error(message);
+        await failActivation(message);
         return false;
       }
 
@@ -531,19 +705,27 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
         toast.info(result.message ?? "Birth phase is already running.");
       }
 
+      useBirthStore.getState().beginBirthRun();
       await get().refresh();
       await useBirthStore.getState().poll();
-      set({ phase: "birth", activating: false, birthPhaseCommitted: true });
+      set({
+        phase: "birth",
+        activating: false,
+        activationStep: "done",
+        birthPhaseCommitted: true,
+        error: null,
+      });
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : "Birth activation failed";
-      set({
-        activating: false,
-        birthPhaseCommitted: false,
-        error: message,
-      });
       toast.error(message);
+      await failActivation(message);
       return false;
+    } finally {
+      // Belt-and-suspenders: never leave activating stuck.
+      if (get().activating) {
+        set({ activating: false, activationStep: "idle" });
+      }
     }
   },
 }));

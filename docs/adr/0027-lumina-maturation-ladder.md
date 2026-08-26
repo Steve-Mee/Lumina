@@ -1,5 +1,7 @@
 # ADR-0027: Lumina Maturation Ladder
 
+> **Supersession (2026-08-14):** Birth exit is Foundation five-of-five + fitness ([ADR-0046](./0046-birth-foundation-evolvable-plant.md)), not a Stage-1 winrate slider. The Genesis “winrate gate” is diagnostic pressure only.
+
 ## Status
 
 Accepted (2026-06-27)

@@ -51,6 +51,19 @@ def risk_shadow_validate_candidates(orchestrator: "EvolutionOrchestrator", candi
         pass
 
 
+def fail_closed_twin_decision(reason: str) -> dict[str, Any]:
+    """SIM twin evaluate failure must not keep recommendation=True (ADR-0045)."""
+    return {
+        "recommendation": False,
+        "effective_recommendation": False,
+        "executable": False,
+        "mode": "shadow",
+        "confidence": 0.0,
+        "risk_flags": ["twin_evaluate_failed"],
+        "explanation": str(reason or "fail-closed: twin evaluate raised"),
+    }
+
+
 def twin_effective_recommendation(decision: dict[str, Any]) -> bool:
     if "effective_recommendation" in decision:
         return bool(decision.get("effective_recommendation", False))

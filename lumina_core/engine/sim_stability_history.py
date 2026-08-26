@@ -4,12 +4,27 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-_STATE_DIR_DEFAULT = Path("state")
+
+def _resolve_state_dir() -> Path:
+    """Absolute state dir — stable across cwd / os.chdir (birth/maturity runners)."""
+    raw = os.getenv("LUMINA_STATE_DIR", "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    cfg = os.getenv("LUMINA_CONFIG", "").strip()
+    if cfg:
+        candidate = Path(cfg).expanduser().resolve().parent / "state"
+        if candidate.is_dir():
+            return candidate
+    return Path("state").resolve()
+
+
+_STATE_DIR_DEFAULT = _resolve_state_dir()
 _TEST_RUNS_DIR_DEFAULT = _STATE_DIR_DEFAULT / "test_runs"
 _HISTORY_PATH_DEFAULT = _STATE_DIR_DEFAULT / "sim_stability_history.jsonl"
 
@@ -90,9 +105,16 @@ def _iter_summary_paths() -> list[Path]:
 
 def _load_summary(path: Path) -> dict[str, Any] | None:
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        resolved = path if path.is_absolute() else path.resolve()
+        if not resolved.is_file():
+            return None
+        payload = json.loads(resolved.read_text(encoding="utf-8"))
+    except OSError:
+        return None
     except Exception:
-        logging.exception("Unhandled broad exception fallback in lumina_core/engine/sim_stability_checker.py:83")
+        logging.exception(
+            "Unhandled broad exception fallback in lumina_core/engine/sim_stability_history.py:_load_summary"
+        )
         return None
     if not isinstance(payload, dict):
         return None

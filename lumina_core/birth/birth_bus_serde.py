@@ -53,6 +53,14 @@ def serialize_learning_snapshot(snap: LearningSnapshot) -> dict[str, Any]:
         "volume_gate_passed": snap.volume_gate_passed,
         "range_flat_ratio": snap.range_flat_ratio,
         "range_round_trips": snap.range_round_trips,
+        "constitution_violations": snap.constitution_violations,
+        "range_total_signals": snap.range_total_signals,
+        "plateau_active": snap.plateau_active,
+        "expectancy_quality_step": snap.expectancy_quality_step,
+        "stage_wins": snap.stage_wins,
+        "rolling_winrate": snap.rolling_winrate,
+        "edge_vs_random": snap.edge_vs_random,
+        "median_loss_r": snap.median_loss_r,
     }
 
 
@@ -83,6 +91,26 @@ def deserialize_learning_snapshot(data: dict[str, Any]) -> LearningSnapshot:
         volume_gate_passed=bool(data.get("volume_gate_passed", False)),
         range_flat_ratio=float(data.get("range_flat_ratio", 0.0)),
         range_round_trips=int(data.get("range_round_trips", 0)),
+        constitution_violations=int(data.get("constitution_violations", 0) or 0),
+        range_total_signals=int(data.get("range_total_signals", 0) or 0),
+        plateau_active=bool(data.get("plateau_active", False)),
+        expectancy_quality_step=int(data.get("expectancy_quality_step", 0) or 0),
+        stage_wins=int(data.get("stage_wins", 0) or 0),
+        rolling_winrate=(
+            float(data["rolling_winrate"])
+            if data.get("rolling_winrate") is not None
+            else None
+        ),
+        edge_vs_random=(
+            float(data["edge_vs_random"])
+            if data.get("edge_vs_random") is not None
+            else None
+        ),
+        median_loss_r=(
+            float(data["median_loss_r"])
+            if data.get("median_loss_r") is not None
+            else None
+        ),
     )
 
 

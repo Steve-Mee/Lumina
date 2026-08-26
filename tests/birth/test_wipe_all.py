@@ -61,6 +61,14 @@ def workspace(tmp_path: Path) -> Path:
     _touch(state / "monitoring_twin_training.jsonl", "{}\n")
     _touch(state / "lumina_birth_completed.flag", "done")
     _touch(state / "lumina_birth_certificate.json", "{}")
+    _touch(state / "lumina_birth_fitness_vector.json", "{}")
+    _touch(state / "dna_registry.jsonl", "{}\n")
+    _touch(state / "dna_registry.sqlite3", "db")
+    _touch(state / "lumina_evolution_proof.json", "{}")
+    _touch(state / "perfect_birth_complete.flag", "1")
+    _touch(state / "lumina_genesis_charter.json", "{}")
+    _touch(state / "milestone_notified.json", "{}")
+    _touch(state / "champion_freeze_telegram_pending.json", "{}")
     _touch(ppo / "lumina_ppo_policy.zip", "zip")
     _touch(ppo / "lumina_ppo_policy_practice.zip", "zip")
     _touch(ppo / "lumina_ppo_policy_birth_500.zip", "zip")
@@ -89,6 +97,14 @@ def test_clear_birth_training_state_removes_full_checklist(workspace: Path) -> N
     assert not (workspace / "lumina_os" / "state" / "metrics.db").exists()
     assert not (workspace / "state" / "first_boot_user_configured.flag").exists()
     assert not (workspace / "state" / "lumina_setup_complete.json").exists()
+    assert not (workspace / "state" / "lumina_birth_fitness_vector.json").exists()
+    assert not (workspace / "state" / "dna_registry.jsonl").exists()
+    assert not (workspace / "state" / "dna_registry.sqlite3").exists()
+    assert not (workspace / "state" / "lumina_evolution_proof.json").exists()
+    assert not (workspace / "state" / "perfect_birth_complete.flag").exists()
+    assert not (workspace / "state" / "lumina_genesis_charter.json").exists()
+    assert not (workspace / "state" / "milestone_notified.json").exists()
+    assert not (workspace / "state" / "champion_freeze_telegram_pending.json").exists()
 
 
 def test_clear_all_birth_artifacts_delegates_to_ssot(workspace: Path) -> None:
@@ -198,12 +214,18 @@ def test_clear_birth_training_state_removes_birth_best_policies(workspace: Path)
     ppo = workspace / "lumina_agents" / "ppo"
     _touch(ppo / "birth_best_stage1_trend.zip", "zip")
     _touch(ppo / "birth_best_stage2_range.zip", "zip")
+    _touch(ppo / "birth_best_stage4_viable_plant.zip", "zip")
+    _touch(ppo / "birth_best_stage5_probe_handoff.zip", "zip")
 
     result = clear_birth_training_state(workspace, wipe_genesis=False)
 
     assert result.success is True
     assert not (ppo / "birth_best_stage1_trend.zip").exists()
     assert not (ppo / "birth_best_stage2_range.zip").exists()
+    assert not (ppo / "birth_best_stage4_viable_plant.zip").exists()
+    assert not (ppo / "birth_best_stage5_probe_handoff.zip").exists()
+    assert (workspace / "state" / "lumina_setup_complete.json").exists()
+    assert not (workspace / "state" / "lumina_birth_fitness_vector.json").exists()
 
 
 def test_wipe_rejected_when_thread_still_running(workspace: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -237,9 +259,29 @@ def test_clear_orphan_runner_lock_for_wipe_clears_lock_without_pid(workspace: Pa
     assert not lock.exists()
 
 
-def test_ensure_birth_stopped_rejects_when_runner_still_live(
+def test_clear_orphan_runner_lock_for_wipe_clears_stale_alive_looking_pid(
+    workspace: Path,
+) -> None:
+    """Wipe must clear lock even when PID field looks valid (local thread dead)."""
+    import os
+
+    svc = BirthService()
+    svc.configure_workspace(workspace)
+    lock = workspace / "state" / "birth_runner.json"
+    lock.write_text(
+        f'{{"pid": {os.getpid()}, "runner": "thread", "host": "test"}}',
+        encoding="utf-8",
+    )
+
+    svc._clear_orphan_runner_lock_for_wipe()
+
+    assert not lock.exists()
+
+
+def test_ensure_birth_stopped_force_proceeds_when_only_stale_live_flag(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Stale birth_runner.json / live flag must not block wipe when local thread is dead."""
     svc = BirthService()
     svc.configure_workspace(workspace)
     monkeypatch.setattr(
@@ -247,15 +289,36 @@ def test_ensure_birth_stopped_rejects_when_runner_still_live(
         "stop_birth",
         lambda _svc, **kwargs: {"status": "stopped"},
     )
-    monkeypatch.setattr(svc, "_clear_orphan_runner_lock_for_wipe", lambda: None)
     monkeypatch.setattr(
         birth_runner_wipe_module,
         "birth_training_is_live",
         lambda *args, **kwargs: True,
     )
 
-    result = svc._ensure_birth_stopped_for_wipe(join_timeout=0.05)
+    result = svc._ensure_birth_stopped_for_wipe(join_timeout=0.2)
+
+    # Local thread not running → force clear + proceed (operator wipe intent).
+    assert result is None
+
+
+def test_ensure_birth_stopped_rejects_when_local_thread_alive(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = BirthService()
+    svc.configure_workspace(workspace)
+
+    class _AliveThread:
+        def is_alive(self) -> bool:
+            return True
+
+    svc._thread = _AliveThread()  # type: ignore[assignment]
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "stop_birth",
+        lambda _svc, **kwargs: {"status": "stopping"},
+    )
+
+    result = svc._ensure_birth_stopped_for_wipe(join_timeout=0.3)
 
     assert result is not None
     assert result["status"] == "rejected"
-    assert "runner" in result["message"].lower() or "lock" in result["message"].lower()

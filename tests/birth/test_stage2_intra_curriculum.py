@@ -42,8 +42,24 @@ def test_update_stage2_intra_state_ramps_hard_pct() -> None:
         intra_stage2_easy_stability_window=2,
         intra_stage2_hard_pct_step=0.10,
         intra_stage2_max_hard_pct=0.70,
+        intra_stage2_easy_winrate_target=0.38,
     )
     state = Stage2IntraCurriculumState(hard_pct=0.15)
-    update_stage2_intra_state(state, chunk_flat_bars=50, chunk_range_signals=100, cfg=cfg)
-    update_stage2_intra_state(state, chunk_flat_bars=45, chunk_range_signals=100, cfg=cfg)
+    # Flat-in-band + easy quality WR ≥ 38% required before hard ramp.
+    update_stage2_intra_state(
+        state,
+        chunk_flat_bars=50,
+        chunk_range_signals=100,
+        cfg=cfg,
+        chunk_easy_trades=20,
+        chunk_easy_wins=10,
+    )
+    update_stage2_intra_state(
+        state,
+        chunk_flat_bars=45,
+        chunk_range_signals=100,
+        cfg=cfg,
+        chunk_easy_trades=20,
+        chunk_easy_wins=10,
+    )
     assert state.hard_pct == pytest.approx(0.25)

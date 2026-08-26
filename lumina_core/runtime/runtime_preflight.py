@@ -84,7 +84,7 @@ def _check_broker_connect(container: Any | None, *, required: bool, mode: str) -
         return False, "broker_missing"
 
     config = getattr(container, "config", None)
-    live_provider = str(getattr(config, "broker_live_provider", "crosstrade") or "crosstrade").strip().lower()
+    live_provider = str(getattr(config, "broker_live_provider", "ninjatrader") or "ninjatrader").strip().lower()
     if live_provider == "ninjatrader":
         try:
             from lumina_core.broker.ninjatrader.bridge_service import get_ninjatrader_bridge_service

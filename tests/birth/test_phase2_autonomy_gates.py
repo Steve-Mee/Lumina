@@ -137,7 +137,8 @@ def test_constitution_blocks_apply() -> None:
 
 
 @pytest.mark.unit
-def test_twin_required_when_missing() -> None:
+def test_explore_pass_sim_twin_preference_not_required() -> None:
+    """ADR-0038: pure SIM Phase2 is explore_pass — Twin preference is not a rem."""
     res = evaluate_phase2_gate(
         features=_features(allow_sim_scaffold=True, require_twin_for_apply=True),
         pillar=Phase2Pillar.DYNAMIC_WALL,
@@ -145,13 +146,13 @@ def test_twin_required_when_missing() -> None:
         approval_twin=None,
         require_apply_path=True,
     )
-    assert res.allowed is False
-    assert res.reason == Phase2GateReason.TWIN_REQUIRED.value
+    assert res.allowed is True
+    assert res.reason == Phase2GateReason.ALLOWED.value
 
 
 @pytest.mark.unit
-def test_twin_low_confidence_rejects() -> None:
-    twin = _FakeTwin(confidence=0.5, recommendation=True)
+def test_explore_pass_sim_ignores_twin_low_confidence_and_veto() -> None:
+    twin = _FakeTwin(confidence=0.5, recommendation=False, executable=False, mode="shadow")
     res = evaluate_phase2_gate(
         features=_features(allow_sim_scaffold=True),
         pillar=Phase2Pillar.DYNAMIC_WALL,
@@ -159,36 +160,24 @@ def test_twin_low_confidence_rejects() -> None:
         approval_twin=twin,
         require_apply_path=True,
     )
-    assert res.allowed is False
-    assert res.reason == Phase2GateReason.TWIN_LOW_CONFIDENCE.value
+    assert res.allowed is True
+    assert res.reason == Phase2GateReason.ALLOWED.value
 
 
 @pytest.mark.unit
-def test_twin_high_conf_veto_rejects() -> None:
-    twin = _FakeTwin(confidence=0.95, recommendation=False)
+def test_sim_real_guard_phase2_apply_still_mode_blocked() -> None:
+    """Dress rehearsal / REAL-like modes cannot use Phase2 apply path (existing SSOT)."""
+    twin = _FakeTwin(confidence=0.95, recommendation=True)
     res = evaluate_phase2_gate(
         features=_features(allow_sim_scaffold=True),
         pillar=Phase2Pillar.DYNAMIC_WALL,
-        mode="sim",
+        mode="sim_real_guard",
         approval_twin=twin,
         require_apply_path=True,
     )
     assert res.allowed is False
-    assert res.reason == Phase2GateReason.TWIN_VETO.value
-
-
-@pytest.mark.unit
-def test_twin_not_executable_rejects() -> None:
-    twin = _FakeTwin(confidence=0.9, executable=False, effective=False, mode="shadow")
-    res = evaluate_phase2_gate(
-        features=_features(allow_sim_scaffold=True),
-        pillar=Phase2Pillar.DYNAMIC_WALL,
-        mode="sim",
-        approval_twin=twin,
-        require_apply_path=True,
-    )
+    # Mode gate fires before twin preference (SIM/birth only for Phase2 apply)
     assert res.allowed is False
-    assert res.reason == Phase2GateReason.TWIN_NOT_EXECUTABLE.value
 
 
 @pytest.mark.unit

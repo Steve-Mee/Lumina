@@ -50,14 +50,27 @@ class RLConfig:
     range_patience_active: bool = False
     # Stage2 participation envelope: block random flatten while forcing dwell.
     suppress_random_flatten: bool = False
-    # When >0 and suppress_random_flatten, skip stop/target exits until dwell.
-    # Birth SIM occupancy law only — does not widen stops past constitution 1%.
+    # Occupancy min-dwell may suppress RNG flatten — never hit_stop / hit_target.
     participation_min_dwell_bars: int = 0
+    # Under-band max-dwell: force flatten this step (legacy occupancy plant).
+    force_flatten_this_step: bool = False
+    # Geometry time-stop: close at mark with honest PnL; prefer stop/target if hit.
+    force_time_stop_this_step: bool = False
     # Birth SIM: floor equity so risk checks / plant survival stay well-defined.
     birth_equity_floor_ratio: float = 0.10
     # Stage-2 quality stack: seed expectancy gap (floor − live) for range reward.
     expectancy_gap: float = 0.0
     stage2_expectancy_floor: float = -0.15
+    # max(0, first_touch_thr − live_wr) — train to beat random first-touch (no floor move).
+    first_touch_training_pressure: float = 0.0
+    # Birth trade geometry SSOT (calibrated from tick moves; not legacy 0.75%).
+    default_stop_pct: float = 0.0012
+    default_target_pct: float = 0.0020
+    soft_prior_stops: bool = True
+    # "trend" | "range" | "mixed" | "" — gates stage-aware reward alignment.
+    curriculum_regime: str = ""
+    # Stage-1 nursery: one contract. Size is not the closed-loop lesson.
+    force_qty_one: bool = False
 
 
 class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
@@ -78,8 +91,15 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
             .lower()
         )
 
+        # Stop/target lows match constitution + birth geometry floor (not legacy 0.1%).
+        try:
+            from lumina_core.birth.birth_constitution_guard import BIRTH_MIN_STOP_PCT
+
+            _stop_lo = float(BIRTH_MIN_STOP_PCT)
+        except Exception:
+            _stop_lo = 0.0004
         self.action_space = spaces.Box(
-            low=np.array([0.0, 0.0, 0.001, 0.001], dtype=np.float32),
+            low=np.array([0.0, 0.0, _stop_lo, _stop_lo * 1.25], dtype=np.float32),
             high=np.array([2.0, 1.0, 0.02, 0.05], dtype=np.float32),
             dtype=np.float32,
         )
@@ -102,8 +122,8 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
         self._initial_equity = 50000.0
         self._equity_curve: list[float] = [50000.0]
         self._returns: list[float] = []
-        self._entry_stop_pct = 0.0075
-        self._entry_target_pct = 0.015
+        self._entry_stop_pct = float(getattr(self.config, "default_stop_pct", 0.0012) or 0.0012)
+        self._entry_target_pct = float(getattr(self.config, "default_target_pct", 0.0020) or 0.0020)
         self._entry_side = 0
         self._reward_state = RewardShapingState()
         # Rolling range-flat for Stage-2 band-aware reward shaping.
@@ -181,6 +201,12 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
 
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
+        if not self.data:
+            raise ValueError(
+                "RLTradingEnvironment.reset: empty market data "
+                "(birth expansion/history load failed — preserve prior train ticks; "
+                "check Fabric/NT HDS or market-data connection)"
+            )
         self._idx = 60
         self._position = 0
         self._qty = 0
@@ -189,8 +215,8 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
         self._initial_equity = 50000.0
         self._equity_curve = [50000.0]
         self._returns = []
-        self._entry_stop_pct = 0.0075
-        self._entry_target_pct = 0.015
+        self._entry_stop_pct = float(getattr(self.config, "default_stop_pct", 0.0012) or 0.0012)
+        self._entry_target_pct = float(getattr(self.config, "default_target_pct", 0.0020) or 0.0020)
         self._entry_side = 0
         self._reward_state = RewardShapingState()
         self._range_flat_bars = 0
@@ -199,6 +225,11 @@ class RLTradingEnvironment(RLTradingEnvironmentStepMixin, gym.Env):
         return self._get_observation(), {}
 
     def _get_observation(self) -> np.ndarray:
+        if not self.data:
+            raise ValueError(
+                "RLTradingEnvironment._get_observation: empty market data "
+                "(no bars/ticks loaded for this rollout)"
+            )
         row = self.data[min(self._idx, len(self.data) - 1)]
         return build_observation_vector(
             row=row,

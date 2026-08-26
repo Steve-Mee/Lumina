@@ -28,3 +28,9 @@ def test_write_and_approve_flow(tmp_path: Path):
     approved2, approver = gate.is_approved("arch-test-001")
     assert approved2
     assert "test-human" in approver
+    applied = gate.apply_if_approved(prop)
+    assert applied.approved is False
+    assert "COUNCIL" in applied.reason
+    (pdir / "COUNCIL.json").write_text('{"allowed": true, "reason": "council"}', encoding="utf-8")
+    applied_ok = gate.apply_if_approved(prop)
+    assert applied_ok.approved is True

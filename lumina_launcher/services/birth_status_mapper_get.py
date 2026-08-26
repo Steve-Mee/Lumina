@@ -101,6 +101,14 @@ def get_birth_status(svc: Any) -> Dict[str, Any]:
     # and the UI never offers Resume / Wipe after an app restart.
     if not svc.is_running():
         svc.reconcile_orphaned_birth_progress()
+        try:
+            from lumina_launcher.services.birth_runner_preflight import (
+                demote_stale_history_failure_progress,
+            )
+
+            demote_stale_history_failure_progress(svc)
+        except Exception as exc:
+            logger.debug("birth.status.demote_residual_history_failed: %s", exc)
     svc._maybe_auto_resume_stalled_birth()
     progress = svc._load_progress()
     lightweight = _m().should_use_lightweight_status_enrichment(svc, progress)

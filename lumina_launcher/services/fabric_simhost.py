@@ -267,7 +267,15 @@ def start_simhost(
             "message": f"Refuse to start SimHost on non-localhost host={host}",
         }
 
-    tok = str(token or os.getenv("LUMINA_FABRIC_TOKEN") or os.getenv("LUMINA_NT8_API_KEY") or "").strip()
+    if token:
+        tok = str(token).strip()
+    else:
+        try:
+            from lumina_core.broker.ninjatrader.fabric_secret import read as fabric_secret_read
+
+            tok = str(fabric_secret_read(heal=True).token or "").strip()
+        except Exception:
+            tok = ""
 
     if tcp_open(host, port) and not force:
         return {
@@ -452,6 +460,98 @@ def ensure_simhost_listening(
     }
 
 
+def is_ninjatrader_running() -> bool:
+    """True if NinjaTrader.exe is running (Windows-friendly)."""
+    try:
+        import psutil  # type: ignore
+
+        for proc in psutil.process_iter(["name"]):
+            name = str(proc.info.get("name") or "").lower()
+            if name in {"ninjatrader.exe", "ninjatrader"}:
+                return True
+    except Exception:
+        pass
+    if sys.platform == "win32":
+        try:
+            r = subprocess.run(
+                ["tasklist", "/FI", "IMAGENAME eq NinjaTrader.exe", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            out = (r.stdout or "").lower()
+            return "ninjatrader.exe" in out
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+    return False
+
+
+def prefer_nt_addon_host(
+    *,
+    host: str = "127.0.0.1",
+    port: int = 50051,
+    wait_sec: float = 6.0,
+) -> dict[str, Any]:
+    """When NinjaTrader is running: free :port from SimHost so NT AddOn can bind.
+
+    Elon rule: SimHost is a crutch. NT AddOn owns execution + market data.
+    Never kill NinjaTrader.exe — only SimHost image markers.
+    """
+    if not is_localhost(host):
+        return {"ok": False, "status": "rejected", "message": "localhost only", "killed": []}
+
+    nt_up = is_ninjatrader_running()
+    if not nt_up:
+        return {
+            "ok": True,
+            "status": "nt_not_running",
+            "message": "NinjaTrader not running — SimHost may own the port",
+            "nt_running": False,
+            "killed": [],
+        }
+
+    sim_pids = find_simhost_pids_on_port(int(port))
+    killed: list[int] = []
+    if sim_pids or _simhost_still_running():
+        stop = stop_simhost(port=int(port), force_port_simhosts=True)
+        killed = list(stop.get("killed") or [])
+        logger.info("fabric.prefer_nt killed_simhost pids=%s", killed)
+
+    # Wait briefly for NT AddOn (with retry timer) to claim the port.
+    deadline = time.time() + max(1.0, float(wait_sec))
+    while time.time() < deadline:
+        if tcp_open(host, int(port)):
+            # If SimHost somehow respawned, kill again once.
+            again = find_simhost_pids_on_port(int(port))
+            if again:
+                stop_simhost(port=int(port), force_port_simhosts=True)
+                time.sleep(0.4)
+                continue
+            return {
+                "ok": True,
+                "status": "nt_port_ready",
+                "message": f"Port {port} open after yielding SimHost to NT AddOn",
+                "nt_running": True,
+                "killed": killed,
+                "listening": True,
+            }
+        time.sleep(0.35)
+
+    return {
+        "ok": False,
+        "status": "nt_port_not_bound",
+        "message": (
+            f"NinjaTrader is running but nothing listens on {host}:{port} after stopping SimHost. "
+            "Run Lumina Repair connection (auto-deploys + builds Custom AddOn), "
+            "check %APPDATA%\\LUMINA\\fabric-nt-host.log, then re-run diagnostic."
+        ),
+        "nt_running": True,
+        "killed": killed,
+        "listening": False,
+    }
+
+
 def ensure_simhost_token_aligned(
     *,
     host: str = "127.0.0.1",
@@ -460,15 +560,28 @@ def ensure_simhost_token_aligned(
     account: str = "Sim101",
     workspace_root: Path | str | None = None,
     wait_sec: float = 8.0,
+    allow_simhost_autostart: bool = True,
 ) -> dict[str, Any]:
-    """Ensure SimHost is up *and* accepts the Brain token.
+    """Ensure a Fabric host is up *and* accepts the Brain token.
 
-    - If port closed → start with token.
+    Prefer NT AddOn when NinjaTrader is running (data plane). SimHost is only
+    auto-started when NT is NOT running and ``allow_simhost_autostart`` is True.
+
+    - If NT running → kill SimHost, wait for NT bind (do not start SimHost).
+    - If port closed + NT down → start SimHost with token (execution-only).
     - If port open + auth OK → done.
     - If port open + auth fail + listener is SimHost → kill & restart with token.
     - If port open + auth fail + foreign host (e.g. NT8) → fail with remediation.
     """
-    tok = str(token or os.getenv("LUMINA_FABRIC_TOKEN") or os.getenv("LUMINA_NT8_API_KEY") or "").strip()
+    if token:
+        tok = str(token).strip()
+    else:
+        try:
+            from lumina_core.broker.ninjatrader.fabric_secret import read as fabric_secret_read
+
+            tok = str(fabric_secret_read(heal=True).token or "").strip()
+        except Exception:
+            tok = ""
     if not tok:
         return {
             "ok": False,
@@ -487,7 +600,43 @@ def ensure_simhost_token_aligned(
             "authenticated": False,
         }
 
+    # --- Prefer native NT path when NT is alive ---
+    if is_ninjatrader_running():
+        prefer = prefer_nt_addon_host(host=host, port=int(port), wait_sec=min(8.0, float(wait_sec)))
+        if prefer.get("listening"):
+            auth_ok, detail = probe_fabric_auth(host, int(port), tok)
+            return {
+                "ok": bool(auth_ok),
+                "status": "nt_addon_aligned" if auth_ok else "nt_addon_auth_failed",
+                "message": prefer.get("message"),
+                "listening": True,
+                "authenticated": auth_ok,
+                "auth_detail": detail,
+                "nt_running": True,
+                "killed": prefer.get("killed") or [],
+                "host_kind": "nt_addon_or_unknown",
+            }
+        # NT up but port still free — do NOT steal with SimHost (data plane required).
+        return {
+            "ok": False,
+            "status": str(prefer.get("status") or "nt_port_not_bound"),
+            "message": str(prefer.get("message") or "NT running but Fabric port not bound"),
+            "listening": False,
+            "authenticated": False,
+            "nt_running": True,
+            "killed": prefer.get("killed") or [],
+            "host_kind": "none",
+        }
+
     if not tcp_open(host, int(port)):
+        if not allow_simhost_autostart:
+            return {
+                "ok": False,
+                "status": "no_host",
+                "message": "Port closed and SimHost auto-start disabled",
+                "listening": False,
+                "authenticated": False,
+            }
         started = ensure_simhost_listening(
             host=host,
             port=int(port),
@@ -497,7 +646,7 @@ def ensure_simhost_token_aligned(
             wait_sec=wait_sec,
         )
         if not started.get("listening"):
-            return {**started, "authenticated": False}
+            return {**started, "authenticated": False, "host_kind": "simhost"}
         auth_ok, detail = probe_fabric_auth(host, int(port), tok)
         return {
             **started,
@@ -505,6 +654,7 @@ def ensure_simhost_token_aligned(
             "status": "aligned" if auth_ok else "auth_failed_after_start",
             "authenticated": auth_ok,
             "auth_detail": detail,
+            "host_kind": "simhost",
             "message": (
                 f"SimHost started and authenticated ({detail})"
                 if auth_ok

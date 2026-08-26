@@ -90,7 +90,7 @@ def test_persist_tauri_quick_config_syncs_winrate_gate(tmp_path: Path) -> None:
         training={
             "training_trades": 20_000,
             "prefer_real_data_only": True,
-            "max_real_days": 60,
+            "max_real_days": 90,
             "allow_minimal_synthetic_fallback": False,
             "require_real_simulator_data": True,
             "stage1_winrate_pass_threshold": 0.40,

@@ -35,6 +35,8 @@ def test_graduation_requires_clean_constitution_stages() -> None:
     assert graduation_requires_clean_constitution(CurriculumStage.STAGE1_TREND)
     assert graduation_requires_clean_constitution(CurriculumStage.STAGE2_RANGE)
     assert graduation_requires_clean_constitution(CurriculumStage.STAGE3_MIXED)
+    assert graduation_requires_clean_constitution(CurriculumStage.STAGE4_VIABLE_PLANT)
+    assert graduation_requires_clean_constitution(CurriculumStage.STAGE5_PROBE_HANDOFF)
     assert not graduation_requires_clean_constitution(CurriculumStage.STAGE4_POLISH)
 
 
@@ -56,7 +58,7 @@ def test_stage2_pass_blocked_when_constitution_violations_present() -> None:
         cfg=cfg,
     )
     assert result.passed is False
-    assert "constitution_violations=860" in result.message
+    assert "constitution" in result.message
 
 
 @pytest.mark.unit

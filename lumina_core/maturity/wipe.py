@@ -23,6 +23,12 @@ _PHASE_MILESTONES: dict[str, tuple[str, ...]] = {
     MaturationPhase.BIRTH.value: (
         "birth_started",
         "birth_certificate_issued",
+        "curriculum_stage1_trend_passed",
+        "curriculum_stage2_range_passed",
+        "curriculum_stage3_mixed_passed",
+        "curriculum_stage4_viable_passed",
+        "curriculum_stage5_probe_passed",
+        "curriculum_stage4_polish_passed",
     ),
     MaturationPhase.AWAKENING.value: (
         "evolution_proof_passed",

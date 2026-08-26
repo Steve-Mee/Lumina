@@ -25,6 +25,7 @@ class SessionPhaseResumeMixin:
         self.oracle_last_target_pct = 0.0
         self.oracle_last_reason = ""
         self._hard_stop_terminal_armed = False
+        self._last_terminal_requested_log_at = 0.0
         self.current_intra_sample_pool: list[dict[str, Any]] = []
         self.active_train: list[dict[str, Any]] = []
         self.active_stage_ticks: list[dict[str, Any]] = []
@@ -107,6 +108,47 @@ class SessionPhaseResumeMixin:
             raw_history = self.stage_metrics.get("winrate_history")
             if isinstance(raw_history, list):
                 self.winrate_history = [float(x) for x in raw_history if isinstance(x, (int, float))]
+            from lumina_core.birth.stage_loop_progress_metrics import (
+                restore_stage_val_pnl,
+                restore_stage_val_pnl_from_buffer,
+                restore_stage_val_r,
+                restore_stage_val_r_from_buffer,
+            )
+
+            self.stage_val_pnl = restore_stage_val_pnl(self.stage_metrics.get("stage_val_pnl"))
+            buffer_trajs: list[Any] = []
+            if not self.stage_val_pnl or not restore_stage_val_r(self.stage_metrics.get("stage_val_r")):
+                host_buffer = getattr(self.host, "buffer", None)
+                raw_trajs = getattr(host_buffer, "trajectories", None)
+                if isinstance(raw_trajs, list) and raw_trajs:
+                    buffer_trajs = raw_trajs
+                else:
+                    from lumina_core.birth.buffer_persist import load_buffer
+
+                    buffer_trajs = load_buffer(self.host.workspace_root)
+            if not self.stage_val_pnl:
+                self.stage_val_pnl = restore_stage_val_pnl_from_buffer(
+                    buffer_trajs,
+                    stage_trades=int(self.stage_trades or 0),
+                )
+                if self.stage_val_pnl:
+                    logger.info(
+                        "birth.resume.stage_val_pnl_backfill n=%s stage_trades=%s",
+                        len(self.stage_val_pnl),
+                        int(self.stage_trades or 0),
+                    )
+            self.stage_val_r = restore_stage_val_r(self.stage_metrics.get("stage_val_r"))
+            if not self.stage_val_r:
+                self.stage_val_r = restore_stage_val_r_from_buffer(
+                    buffer_trajs,
+                    stage_trades=int(self.stage_trades or 0),
+                )
+                if self.stage_val_r:
+                    logger.info(
+                        "birth.resume.stage_val_r_backfill n=%s stage_trades=%s",
+                        len(self.stage_val_r),
+                        int(self.stage_trades or 0),
+                    )
             raw_reward_history = self.stage_metrics.get("reward_history")
             if isinstance(raw_reward_history, list):
                 self.reward_history = [float(x) for x in raw_reward_history if isinstance(x, (int, float))]
@@ -154,4 +196,89 @@ class SessionPhaseResumeMixin:
                 self.rolling_trade_chunks = restored_chunks
             if self.stage_metrics.get("escalation_level") is not None:
                 self.escalation_level = max(0, int(self.stage_metrics.get("escalation_level", 0) or 0))
+            # Restore Stage-2 peak capture so resume does not burn a truthful peak.
+            raw_peak = self.stage_metrics.get("stage2_peak_state")
+            if isinstance(raw_peak, dict) and raw_peak:
+                try:
+                    from lumina_core.birth.stage2_peak_capture import Stage2PeakState
+
+                    st = Stage2PeakState(
+                        peak_winrate=float(raw_peak.get("peak_winrate", 0.0) or 0.0),
+                        peak_expectancy=float(raw_peak.get("peak_expectancy", -1.0) or -1.0),
+                        peak_at_trade=int(raw_peak.get("peak_at_trade", 0) or 0),
+                        peak_policy_path=str(raw_peak.get("peak_policy_path", "") or ""),
+                        peak_flat=float(raw_peak.get("peak_flat", 0.0) or 0.0),
+                        peak_edge_vs_random=float(
+                            raw_peak.get("peak_edge_vs_random", 0.0) or 0.0
+                        ),
+                        near_miss_active=bool(raw_peak.get("near_miss_active", False)),
+                        near_miss_count=int(raw_peak.get("near_miss_count", 0) or 0),
+                        restore_count=int(raw_peak.get("restore_count", 0) or 0),
+                        last_restore_at_trade=int(
+                            raw_peak.get("last_restore_at_trade", 0) or 0
+                        ),
+                        last_restore_reason=str(
+                            raw_peak.get("last_restore_reason", "") or ""
+                        ),
+                        quality_rollouts_since_restore=int(
+                            raw_peak.get("quality_rollouts_since_restore", 0) or 0
+                        ),
+                        cumulative_closes_stop=int(
+                            raw_peak.get("cumulative_closes_stop", 0) or 0
+                        ),
+                        cumulative_closes_target=int(
+                            raw_peak.get("cumulative_closes_target", 0) or 0
+                        ),
+                        cumulative_closes_flatten=int(
+                            raw_peak.get("cumulative_closes_flatten", 0) or 0
+                        ),
+                        cumulative_closes_time_stop=int(
+                            raw_peak.get("cumulative_closes_time_stop", 0) or 0
+                        ),
+                        cumulative_closes_unknown=int(
+                            raw_peak.get("cumulative_closes_unknown", 0) or 0
+                        ),
+                        peak_grad_armed=bool(raw_peak.get("peak_grad_armed", False)),
+                        peak_grad_armed_at_trade=int(
+                            raw_peak.get("peak_grad_armed_at_trade", 0) or 0
+                        ),
+                        volume_rechallenge_done=bool(
+                            raw_peak.get("volume_rechallenge_done", False)
+                        ),
+                        volume_rechallenge_at_trade=int(
+                            raw_peak.get("volume_rechallenge_at_trade", 0) or 0
+                        ),
+                        finish_mode_active=bool(
+                            raw_peak.get("finish_mode_active", False)
+                        ),
+                        consecutive_rolling_pass_windows=int(
+                            raw_peak.get("consecutive_rolling_pass_windows", 0) or 0
+                        ),
+                        flash_green=bool(raw_peak.get("flash_green", False)),
+                        flash_green_wr=float(raw_peak.get("flash_green_wr", 0.0) or 0.0),
+                        flash_green_at_trade=int(
+                            raw_peak.get("flash_green_at_trade", 0) or 0
+                        ),
+                        flash_green_durable=bool(
+                            raw_peak.get("flash_green_durable", False)
+                        ),
+                        consecutive_green_chunks=int(
+                            raw_peak.get("consecutive_green_chunks", 0) or 0
+                        ),
+                        participation_force_exit_cum=int(
+                            raw_peak.get("participation_force_exit_cum", 0) or 0
+                        ),
+                        quality_lock_active=bool(
+                            raw_peak.get("quality_lock_active", False)
+                        ),
+                        quality_lock_wr=float(
+                            raw_peak.get("quality_lock_wr", 0.0) or 0.0
+                        ),
+                        quality_lock_at_trade=int(
+                            raw_peak.get("quality_lock_at_trade", 0) or 0
+                        ),
+                    )
+                    self.stage2_peak_state = st
+                except Exception:
+                    pass
         return None

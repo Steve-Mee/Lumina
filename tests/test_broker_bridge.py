@@ -138,6 +138,8 @@ def test_broker_factory_selects_paper() -> None:
 
 
 def test_broker_factory_live_allows_sim() -> None:
+    from lumina_core.broker.broker_bridge.cross_trade_broker import CrossTradeBroker as CTDirect
+
     cfg = SimpleNamespace(
         broker_backend="live",
         trade_mode="sim",
@@ -146,7 +148,8 @@ def test_broker_factory_live_allows_sim() -> None:
         crosstrade_account="DEMO5042070",
     )
     broker = broker_factory(config=cfg, engine=None, logger=None)
-    assert isinstance(broker, CrossTradeBroker)
+    # Compare against the module class factory uses (lazy package re-export may differ).
+    assert isinstance(broker, CTDirect)
 
 
 def test_broker_factory_live_selects_ninjatrader() -> None:

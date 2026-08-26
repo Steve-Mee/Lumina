@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from lumina_core.birth.history_loader import (
-    actual_calendar_days_from_ticks,
-    load_historical_ticks,
+from lumina_core.birth.foundation_history import (
+    FOUNDATION_HISTORY_START_DAYS,
+    foundation_history_expand_steps,
+    load_foundation_history_ticks,
 )
+from lumina_core.birth.history_loader import actual_calendar_days_from_ticks
 from lumina_core.birth.purged_split import PurgedSplit, purged_train_holdout_split
 from lumina_core.birth.tick_enricher import enrich_ticks_for_sim, real_data_percentage
 from lumina_core.logging_utils import get_logger
@@ -28,10 +30,16 @@ class DataExpansionResult:
     exhausted: bool
     requested_days: int = 0
     actual_calendar_days: int = 0
+    # True when history returned 0 ticks and no synthetic fallback filled the gap.
+    # Callers MUST NOT clobber prior train data when this is set.
+    load_failed: bool = False
+    stitched: bool = False
+    instruments: tuple[str, ...] = ()
+    stitched_from: tuple[str, ...] = ()
 
 
 def default_expansion_steps() -> list[int]:
-    return [90, 180, 365, 730]
+    return list(foundation_history_expand_steps())
 
 
 def clamp_expansion_steps(
@@ -40,14 +48,14 @@ def clamp_expansion_steps(
     max_real_days: int,
 ) -> list[int]:
     """Clamp ladder rungs to max_real_days (dedupe, keep ascending order)."""
-    cap = max(1, int(max_real_days))
+    cap = max(FOUNDATION_HISTORY_START_DAYS, min(3650, int(max_real_days)))
     raw = list(expansion_steps if expansion_steps is not None else default_expansion_steps())
     if not raw:
         raw = default_expansion_steps()
     clamped: list[int] = []
     seen: set[int] = set()
     for step in raw:
-        days = min(max(1, int(step)), cap)
+        days = min(cap, max(FOUNDATION_HISTORY_START_DAYS, int(step)))
         if days in seen:
             continue
         seen.add(days)
@@ -85,7 +93,14 @@ def expand_birth_data(
     start_price: float = 5000.0,
     max_real_days: int | None = None,
 ) -> DataExpansionResult:
-    """Load the next tranche of historical data for birth research."""
+    """Load the next tranche of historical data for birth research.
+
+    Fail-closed honesty:
+    - 0 ticks after load (and no synthetic fill) → ``load_failed=True``.
+    - Empty load never reports fake calendar depth.
+    - ``exhausted`` is true when the ladder cannot yield more real data
+      (empty load on the final rung, or step pointer past the ladder).
+    """
     if max_real_days is not None:
         steps = clamp_expansion_steps(expansion_steps, max_real_days=int(max_real_days))
     else:
@@ -94,16 +109,20 @@ def expand_birth_data(
             steps = default_expansion_steps()
     step_index = min(max(0, current_step), len(steps) - 1)
     days_back = int(steps[step_index])
-    exhausted = step_index >= len(steps) - 1 and current_step >= len(steps)
+    on_final_rung = step_index >= len(steps) - 1
+    # Past the ladder, or already on the last rung with a next-step request.
+    ladder_past_end = int(current_step) >= len(steps)
 
-    ticks = load_historical_ticks(
+    loaded = load_foundation_history_ticks(
         market_data_service=market_data_service,
         runtime=runtime,
         days_back=days_back,
-        limit=None,
     )
+    ticks = list(loaded.ticks)
+    used_synthetic = False
     if not ticks and synthetic_fallback_fn is not None:
         ticks = synthetic_fallback_fn(max(20_000, days_back * 1000), start_price)
+        used_synthetic = bool(ticks)
         logger.info(
             "birth.data_expansion.synthetic_fallback",
             extra={"event_data": {"days_back": days_back, "ticks": len(ticks)}},
@@ -119,6 +138,11 @@ def expand_birth_data(
     split = purged_train_holdout_split(ticks, holdout_pct=holdout_pct)
     real_pct = real_data_percentage(ticks)
     actual_days = actual_calendar_days_from_ticks(ticks)
+    load_failed = len(ticks) == 0 and not used_synthetic
+    # Empty real load on the final rung (or past end) saturates the ladder.
+    # Empty load on an earlier rung is still a failure — callers must not
+    # clobber prior data — but may retry higher rungs if any remain.
+    exhausted = load_failed and (on_final_rung or ladder_past_end)
 
     logger.info(
         "birth.data_expansion.complete",
@@ -131,9 +155,21 @@ def expand_birth_data(
                 "train_ticks": len(split.train),
                 "holdout_ticks": len(split.holdout),
                 "real_data_pct": real_pct,
+                "load_failed": load_failed,
+                "exhausted": exhausted,
+                "used_synthetic": used_synthetic,
+                "stitched": bool(loaded.stitched) and not used_synthetic,
             }
         },
     )
+    if load_failed:
+        logger.warning(
+            "birth.data_expansion.load_failed days_back=%s step_index=%s exhausted=%s "
+            "(0 bars — preserve prior train data; do not clobber)",
+            days_back,
+            step_index,
+            exhausted,
+        )
 
     return DataExpansionResult(
         train_ticks=list(split.train),
@@ -143,7 +179,11 @@ def expand_birth_data(
         days_back=days_back,
         step_index=step_index + 1,
         real_data_pct=real_pct,
-        exhausted=exhausted and len(ticks) == 0,
+        exhausted=exhausted,
         requested_days=days_back,
         actual_calendar_days=actual_days,
+        load_failed=load_failed,
+        stitched=bool(loaded.stitched) and not used_synthetic,
+        instruments=loaded.instruments,
+        stitched_from=loaded.stitched_from,
     )

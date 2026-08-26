@@ -31,6 +31,8 @@ def run_apprenticeship_multi_day_sim(
 
     dna = _resolve_policy_dna(root)
     seed_report = _seed_nightly_report(root)
+    mds = _try_market_data_service(root)
+    use_real = bool(cfg.apprenticeship_sim_use_real_market_data)
     previous_cwd = Path.cwd()
     try:
         os.chdir(root)
@@ -39,15 +41,17 @@ def run_apprenticeship_multi_day_sim(
         runner = MultiDaySimRunner(
             max_workers=cfg.apprenticeship_sim_max_workers,
             drawdown_limit_ratio=cfg.apprenticeship_sim_drawdown_limit_ratio,
-            real_market_data=cfg.apprenticeship_sim_use_real_market_data,
-            true_backtest_mode=False,
+            real_market_data=use_real,
+            true_backtest_mode=True,
+            market_data_service=mds if use_real else None,
         )
         results = runner.evaluate_variants(
             [dna],
             days=day_count,
             nightly_report=seed_report,
             shadow_mode=False,
-            real_market_data=cfg.apprenticeship_sim_use_real_market_data,
+            real_market_data=use_real,
+            true_backtest_mode=True,
         )
         if not results:
             return {
@@ -95,6 +99,17 @@ def run_apprenticeship_multi_day_sim(
             os.chdir(previous_cwd)
         except Exception:
             pass
+
+
+def _try_market_data_service(workspace_root: Path) -> Any | None:
+    """Prefer Birth tick cache (historical). Missing MDS → fail-closed fitness."""
+    try:
+        from lumina_core.evolution.fitness_ssot import birth_tick_cache_mds
+
+        return birth_tick_cache_mds(workspace_root)
+    except Exception:
+        logger.debug("apprenticeship_sim.mds_unavailable", exc_info=True)
+        return None
 
 
 def _resolve_policy_dna(workspace_root: Path) -> Any:

@@ -10,6 +10,7 @@ from lumina_core.birth.stage_pass_receipt import (
     receipt_from_stage_result,
     verify_stage_pass_receipt,
 )
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 @pytest.mark.unit
@@ -29,6 +30,8 @@ def test_stage2_receipt_with_range_fields_verifies_certified() -> None:
         target_trades=3000,
         cfg=cfg,
         allow_provisional=False,
+        **honest_closes(300),
+        **foundation_eval_kwargs(),
     )
     assert result.passed is True
     receipt = receipt_from_stage_result(
@@ -53,8 +56,8 @@ def test_stage2_receipt_with_range_fields_verifies_certified() -> None:
 
 
 @pytest.mark.unit
-def test_legacy_stage2_message_still_verifies() -> None:
-    """Older receipts without structured fields parse range metrics from message."""
+def test_legacy_stage2_message_fails_without_settlement_ssot() -> None:
+    """Older receipts without foundation_v2 fail-closed."""
     from lumina_core.birth.stage_pass_receipt import StagePassReceipt
 
     cfg = BirthCurriculumConfig(stage2_edgescore_enabled=False)
@@ -80,4 +83,10 @@ def test_legacy_stage2_message_still_verifies() -> None:
         cfg=cfg,
         training_mode="certified",
     )
-    assert ok is True, reason
+    assert ok is False
+    assert (
+        "settle" in (reason or "").lower()
+        or "settlement" in (reason or "").lower()
+        or "missing_or_invalid_foundation_schema" in (reason or "")
+        or "missing_median_loss_r" in (reason or "")
+    )

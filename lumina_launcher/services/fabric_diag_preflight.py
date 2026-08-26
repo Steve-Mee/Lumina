@@ -20,9 +20,13 @@ CRITICAL_CHECK_IDS = frozenset(
         "token_present",
         "port_listen",
         "auth_ok",
+        # Host must reject wrong tokens (fail-closed security plane).
+        "auth_reject",
         "place_order",
         "flatten",
         "safe_mode_enter",
+        # Dual-plane: GREEN requires market/historical data readiness (not CrossTrade).
+        "historical_bars",
     }
 )
 
@@ -82,9 +86,13 @@ def _audit_path() -> Path:
 
 
 def _resolve_token() -> str:
-    return str(
-        os.getenv("LUMINA_FABRIC_TOKEN") or os.getenv("LUMINA_NT8_API_KEY") or ""
-    ).strip()
+    """SSOT token for diagnostics — Fabric Secret Bus only (no raw getenv)."""
+    try:
+        from lumina_core.broker.ninjatrader.fabric_secret import read as fabric_secret_read
+
+        return str(fabric_secret_read(heal=True).token or "").strip()
+    except Exception:
+        return ""
 
 
 def _load_fabric_json() -> dict[str, Any]:

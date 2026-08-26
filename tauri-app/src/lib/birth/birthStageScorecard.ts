@@ -20,37 +20,20 @@ export type { StageScorecardHealth, StageScorecardModel } from "@/lib/birth/birt
 export {
   isRawEdgescorePassReason,
   humanizeEdgescoreBlockerDetail,
+  presentBlockerDetail,
 } from "@/lib/birth/birthStageScorecardEdgescore";
 
-/** EdgeScore goals are composite; do not treat hygiene target as the score threshold. */
+/** Engine `stage_pass_now` is the only green light. Volume-only is never pass. */
 export function isStageGoalMet(scorecard: StageScorecardModel): boolean {
   if (scorecard.blockerDetail) return false;
-  const id = scorecard.passCriteriaId;
-  if (id === "trend_edgescore" || id === "range_edgescore" || id === "mixed_edgescore") {
-    const tradesOk =
-      scorecard.tradesRequired <= 0 || scorecard.tradesDone >= scorecard.tradesRequired;
-    return tradesOk && !scorecard.blockerDetail;
-  }
-  if (scorecard.metricValue == null) return false;
-  if (id === "mixed_constitution") {
-    return scorecard.metricValue <= 0;
-  }
-  if (id === "range_hold_ratio" || id === "range_roundtrip") {
-    const min = scorecard.metricMin ?? 0.3;
-    const max = scorecard.metricMax ?? 0.7;
-    return scorecard.metricValue >= min && scorecard.metricValue <= max;
-  }
-  if (scorecard.metricTarget != null) {
-    return scorecard.metricValue >= scorecard.metricTarget;
-  }
-  return false;
+  return scorecard.stagePassNow === true;
 }
 
 export function extractStageScorecard(
   progress: BirthProgressPayload | undefined,
   nowMs: number = Date.now(),
 ): StageScorecardModel | null {
-  // Elon gate: never show Stage 1/3 … cards during historical load / enrich / ticks_ready.
+  // Elon gate: never show Stage 1/5 cards during historical load / enrich / ticks_ready.
   // curriculum_stage is often pre-stamped before curriculum actually starts.
   if (!isBirthCurriculumScorecardActive(progress)) {
     return null;
@@ -74,7 +57,7 @@ export function extractStageScorecard(
   const curriculumIndex = Number(
     progress?.curriculum_index ?? inferred?.curriculumIndex ?? 0,
   );
-  const curriculumTotal = Number(progress?.curriculum_total ?? 3);
+  const curriculumTotal = Number(progress?.curriculum_total ?? 5);
   const displayName =
     String(progress?.stage_display_name ?? "").trim() ||
     inferred?.displayName ||
@@ -85,7 +68,7 @@ export function extractStageScorecard(
       : displayName;
 
   const passCriteriaId = String(
-    progress?.pass_criteria_id ?? inferred?.id ?? "trend_edgescore",
+    progress?.pass_criteria_id ?? inferred?.id ?? "closed_loop",
   );
   const goalLabelRaw =
     String(progress?.pass_criteria_label ?? "").trim() ||
@@ -98,11 +81,11 @@ export function extractStageScorecard(
       .replace(/\u2265/g, ">=")
       .replace(/\s*\|\s*/g, " | ")
       .trim() ||
-    `>=${sim.target} trades | EdgeScore | hygiene WR>=35% | hold band | entropy alive | expectancy >= -15%`;
+    `>=${sim.target} trades | median loss R | occupancy | edge vs first-touch`;
 
   let metricValue: number | null = null;
   let metricLabel = String(
-    progress?.pass_metric_label ?? inferred?.metricLabel ?? "EdgeScore",
+    progress?.pass_metric_label ?? inferred?.metricLabel ?? "Median loss R",
   );
   // EdgeScore pass is composite — never treat hygiene 0.35 as an EdgeScore score target.
   const metricTarget =
@@ -188,6 +171,30 @@ export function extractStageScorecard(
       metricValue = Number(progress.stage_wins) / sim.done;
     }
     metricLabel = "Mixed winrate (lifetime)";
+  } else if (passCriteriaId === "selectivity") {
+    if (progress?.occupancy != null && Number.isFinite(Number(progress.occupancy))) {
+      metricValue = Number(progress.occupancy);
+    } else if (
+      progress?.stage_range_flat_ratio != null &&
+      Number.isFinite(Number(progress.stage_range_flat_ratio))
+    ) {
+      metricValue = Number(progress.stage_range_flat_ratio);
+    }
+  } else if (
+    passCriteriaId === "mixed_regimes" ||
+    passCriteriaId === "viable_plant" ||
+    passCriteriaId === "probe_handoff"
+  ) {
+    if (
+      progress?.edge_vs_first_touch != null &&
+      Number.isFinite(Number(progress.edge_vs_first_touch))
+    ) {
+      metricValue = Number(progress.edge_vs_first_touch);
+    }
+  } else if (passCriteriaId === "closed_loop") {
+    if (progress?.median_loss_r != null && Number.isFinite(Number(progress.median_loss_r))) {
+      metricValue = Number(progress.median_loss_r);
+    }
   }
 
   const stageHoldRatio =
@@ -196,28 +203,32 @@ export function extractStageScorecard(
       : progress?.hold_ratio != null && Number.isFinite(Number(progress.hold_ratio))
         ? Number(progress.hold_ratio)
         : null;
-  // Stage-3 activity gate is hold cap (≤ max), not the stage-2 flat band.
-  const stageHoldMax =
-    passCriteriaId === "mixed_foundation" && metricMax != null
-      ? metricMax
-      : passCriteriaId === "mixed_foundation" || passCriteriaId === "mixed_edgescore"
-        ? 0.7
-        : null;
-
-  // Stage-2 only: range pass band is position flat 30–70%. Not used on stage 1/3.
-  const isStage2RangeActivity =
+  // Stage-2/3 occupancy: position flat band. Stage-3 uses 25–75% mixed.
+  const isOccupancyActivity =
     passCriteriaId === "range_edgescore" ||
     passCriteriaId === "range_hold_ratio" ||
-    passCriteriaId === "range_roundtrip";
-  const stageRangeFlatRatio = isStage2RangeActivity
+    passCriteriaId === "range_roundtrip" ||
+    passCriteriaId === "mixed_edgescore" ||
+    passCriteriaId === "mixed_foundation" ||
+    passCriteriaId === "selectivity" ||
+    passCriteriaId === "mixed_regimes" ||
+    passCriteriaId === "viable_plant" ||
+    passCriteriaId === "probe_handoff";
+  const isStage3Occupancy =
+    passCriteriaId === "mixed_edgescore" ||
+    passCriteriaId === "mixed_foundation" ||
+    passCriteriaId === "mixed_regimes" ||
+    passCriteriaId === "viable_plant" ||
+    passCriteriaId === "probe_handoff";
+  const stageRangeFlatRatio = isOccupancyActivity
     ? progress?.stage_range_flat_ratio != null &&
       Number.isFinite(Number(progress.stage_range_flat_ratio))
       ? Number(progress.stage_range_flat_ratio)
-      : // Thin range telemetry: hold ratio is the same activity scale for stage 2.
-        stageHoldRatio
+      : stageHoldRatio
     : null;
-  const stageRangeFlatMin = isStage2RangeActivity ? 0.3 : null;
-  const stageRangeFlatMax = isStage2RangeActivity ? 0.7 : null;
+  const stageRangeFlatMin = isOccupancyActivity ? (isStage3Occupancy ? 0.25 : 0.3) : null;
+  const stageRangeFlatMax = isOccupancyActivity ? (isStage3Occupancy ? 0.75 : 0.7) : null;
+  const stageHoldMax = null;
 
   const ts = parseProgressTimestamp(progress);
   const heartbeatSec = ts != null ? Math.max(0, Math.round((nowMs - ts) / 1000)) : null;
@@ -238,16 +249,6 @@ export function extractStageScorecard(
     if (passReason) {
       blockerDetail = humanizeEdgescoreBlockerDetail(progress, passReason);
       blockerLabel = "Blocking metric";
-      // Raptor v11: surface hold shortfall alongside WR on stage3 foundation.
-      if (
-        passCriteriaId === "mixed_foundation" &&
-        stageHoldRatio != null &&
-        stageHoldMax != null &&
-        stageHoldRatio > stageHoldMax &&
-        !blockerDetail.toLowerCase().includes("hold")
-      ) {
-        blockerDetail = `${blockerDetail} | hold ${(stageHoldRatio * 100).toFixed(0)}% > ${(stageHoldMax * 100).toFixed(0)}%`;
-      }
     } else if (
       (passCriteriaId === "trend_edgescore" ||
         passCriteriaId === "range_edgescore" ||
@@ -322,6 +323,24 @@ export function extractStageScorecard(
     blockerLabel,
     blockerDetail,
     provisionalPass: Boolean(progress?.provisional_pass),
+    stagePassNow: Boolean(progress?.stage_pass_now),
+    medianLossR:
+      progress?.median_loss_r != null && Number.isFinite(Number(progress.median_loss_r))
+        ? Number(progress.median_loss_r)
+        : null,
+    meanR:
+      progress?.mean_r != null && Number.isFinite(Number(progress.mean_r))
+        ? Number(progress.mean_r)
+        : null,
+    occupancy:
+      progress?.occupancy != null && Number.isFinite(Number(progress.occupancy))
+        ? Number(progress.occupancy)
+        : null,
+    edgeVsFirstTouch:
+      progress?.edge_vs_first_touch != null &&
+      Number.isFinite(Number(progress.edge_vs_first_touch))
+        ? Number(progress.edge_vs_first_touch)
+        : null,
     ...extractAdaptationFields(progress),
     ...extractScorecardProgressExtras(progress, {
       adaptationCycling,

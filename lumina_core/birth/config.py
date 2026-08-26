@@ -30,6 +30,10 @@ from lumina_core.birth.config_curriculum import (  # noqa: F401
     BirthRewardConfig,
     BirthV2Config,
 )
+from lumina_core.birth.foundation_history import (
+    FOUNDATION_HISTORY_MAX_DAYS,
+    clamp_foundation_history_ceiling,
+)
 
 logger = logging.getLogger("lumina.birth.config")
 
@@ -68,7 +72,7 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
             logger.warning("birth_v2: using deprecated first_boot keys; migrate to birth_v2 in config.yaml")
             section = {
                 "prefer_real_data_only": fb.get("prefer_real_data_only", True),
-                "max_real_days": fb.get("max_real_days", 90),
+                "max_real_days": fb.get("max_real_days", FOUNDATION_HISTORY_MAX_DAYS),
                 "trade_budget_cap": fb.get("training_trades", 10_000),
                 "ppo_update_timesteps": fb.get("ppo_update_timesteps", 25_000),
             }
@@ -97,7 +101,13 @@ def load_birth_v2_config(workspace_root: Path | str | None = None) -> BirthV2Con
         holdout_pct=max(0.05, min(0.4, _coerce_float(section.get("holdout_pct"), 0.20))),
         certificate_thresholds=thresholds,
         prefer_real_data_only=bool(section.get("prefer_real_data_only", True)),
-        max_real_days=max(30, min(3650, _coerce_int(section.get("max_real_days"), 90))),
+        max_real_days=clamp_foundation_history_ceiling(
+            _coerce_int(section.get("max_real_days"), FOUNDATION_HISTORY_MAX_DAYS)
+        ),
+        training_window_min_ratio=max(
+            0.5, min(1.0, _coerce_float(section.get("training_window_min_ratio"), 0.95))
+        ),
+        allow_degraded_data_mode=bool(section.get("allow_degraded_data_mode", False)),
         ppo_update_timesteps=max(1000, _coerce_int(section.get("ppo_update_timesteps"), 25_000)),
         chunk_size=max(2500, _coerce_int(section.get("chunk_size"), 50_000)),
         trade_budget_cap=trade_budget_cap,

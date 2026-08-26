@@ -125,9 +125,20 @@ def _readiness_summary(
     birth_status: str,
     artifacts_ok: bool,
     certificate_ok: bool | None = None,
+    birth_exit_ok: bool | None = None,
+    twin_base_ready: bool | None = None,
 ) -> list[dict[str, str]]:
-    birth_ready = certificate_ok if certificate_ok is not None else artifacts_ok
+    birth_ready = bool(birth_exit_ok)
+    _ = artifacts_ok
+    _ = certificate_ok
     intel_missing = [item for item in intelligence.get("missing", []) if item != "setup_complete"]
+    if twin_base_ready is None:
+        try:
+            from lumina_core.evolution.twin_base_training import is_twin_birth_ready
+
+            twin_base_ready = bool(is_twin_birth_ready())
+        except Exception:
+            twin_base_ready = False
     rows = [
         {
             "id": "backend",
@@ -148,6 +159,11 @@ def _readiness_summary(
             "id": "credentials",
             "label": "API credentials",
             "status": "ok" if not credentials_missing else "missing",
+        },
+        {
+            "id": "twin_base",
+            "label": "Twin base training",
+            "status": "ok" if twin_base_ready else "missing",
         },
         {
             "id": "configuration",
@@ -192,6 +208,9 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
     birth_status = str(birth_raw.get("status", "idle"))
     artifacts_ok = _birth.artifacts_ok()
     certificate_ok = _birth.certificate_ok()
+    from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+    birth_exit_ok = bool(is_birth_exit_sufficient(_workspace_root()))
     from lumina_core.birth.birth_certificate import validate_certificate_artifacts
     from lumina_core.birth.config import load_birth_v2_config
 
@@ -214,6 +233,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         birth_status=birth_status,
         artifacts_ok=artifacts_ok,
         certificate_ok=certificate_ok,
+        birth_exit_ok=birth_exit_ok,
         smart_setup_running=smart_setup_running,
     )
 
@@ -242,6 +262,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         birth_status=birth_status,
         artifacts_ok=artifacts_ok,
         certificate_ok=certificate_ok,
+        birth_exit_ok=birth_exit_ok,
         backend_reachable=backend_reachable,
         required_steps=required_steps,
     )
@@ -256,6 +277,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             birth_status=birth_status,
             artifacts_ok=artifacts_ok,
             certificate_ok=certificate_ok,
+            birth_exit_ok=birth_exit_ok,
             required_steps=required_steps,
             backend_reachable=backend_reachable,
         ),
@@ -266,6 +288,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             "artifacts_ok": artifacts_ok,
             "artifacts_label": "Artifacts OK" if artifacts_ok else "Artifacts missing",
             "certificate_ok": certificate_ok,
+            "birth_exit_ok": birth_exit_ok,
             "certificate_reason": certificate_reason,
             "evolution_proof_ok": _birth.evolution_proof_ok(),
             "real_trading_eligible": _birth.real_trading_eligible(),
@@ -284,6 +307,7 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
             birth_status=birth_status,
             artifacts_ok=artifacts_ok,
             certificate_ok=certificate_ok,
+            birth_exit_ok=birth_exit_ok,
         ),
         "credentials": {
             "missing": credentials_missing,
@@ -300,6 +324,30 @@ def build_onboarding_payload(*, backend_url: str | None = None, serving_request:
         "smart_setup_running": smart_setup_running,
         "sim_envelope_sealed": is_sim_envelope_sealed(root),
         "workspace_root": str(root),
+        "twin": _twin_foundation_payload(),
     }
+
+
+def _twin_foundation_payload() -> dict[str, Any]:
+    """Operator Vault foundation: Twin base curriculum status (ADR-0037)."""
+    try:
+        from lumina_core.evolution.twin_base_training import is_twin_birth_ready, load_birth_readiness
+
+        ready = bool(is_twin_birth_ready())
+        raw = load_birth_readiness()
+        return {
+            "birth_ready": ready,
+            "base_trained": ready or bool(raw.get("base_trained")),
+            "base_training_completion_pct": 100.0 if ready else 0.0,
+            "curriculum_version": raw.get("curriculum_version"),
+            "local_only": True,
+        }
+    except Exception:
+        return {
+            "birth_ready": False,
+            "base_trained": False,
+            "base_training_completion_pct": 0.0,
+            "local_only": True,
+        }
 
 

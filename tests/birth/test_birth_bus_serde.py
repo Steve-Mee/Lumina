@@ -48,6 +48,7 @@ def _sample_snapshot() -> LearningSnapshot:
         volume_gate_passed=True,
         range_flat_ratio=0.12,
         range_round_trips=8,
+        median_loss_r=1.12,
     )
 
 
@@ -62,6 +63,7 @@ def test_learning_snapshot_roundtrip() -> None:
     assert restored.stage_trades == original.stage_trades
     assert restored.learning_health == original.learning_health
     assert restored.range_round_trips == original.range_round_trips
+    assert restored.median_loss_r == original.median_loss_r
 
 
 @pytest.mark.unit

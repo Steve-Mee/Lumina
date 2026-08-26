@@ -127,9 +127,9 @@ def seed_sim_runtime_and_mark_setup(
         ),
         prefer_real_data_only=True,
         max_real_days=int(
-            (config_payload.get("first_boot") or {}).get("max_real_days", 56)
+            (config_payload.get("first_boot") or {}).get("max_real_days", 365)
             if isinstance(config_payload.get("first_boot"), dict)
-            else 56
+            else 365
         ),
         allow_minimal_synthetic_fallback=False,
         require_real_simulator_data=True,

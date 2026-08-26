@@ -11,7 +11,10 @@ from lumina_core.birth.birth_certificate import (
 )
 from lumina_core.birth.buffer_persist import clear_buffer
 from lumina_core.birth.checkpoint import clear_checkpoint
-from lumina_core.birth.curriculum import CurriculumStage
+from lumina_core.birth.runway import (
+    POST_BIRTH_CERTIFICATE_PHASE,
+    post_birth_checkpoint_stage,
+)
 from lumina_core.birth.certificate_evaluator import evaluate_holdout_certificate
 from lumina_core.birth.dna_handoff import register_birth_gen0_dna
 from lumina_core.birth.bible_meta import update_bible_after_birth
@@ -38,8 +41,8 @@ def run_stage8_polish_and_certificate(
     cur_cfg = cfg.curriculum
 
     polish_scorecard = build_scorecard_payload(
-        stage=CurriculumStage.STAGE4_POLISH,
-        curriculum_index=8,
+        stage=post_birth_checkpoint_stage(),
+        curriculum_index=5,
         stages_passed=list(pipeline._host._stages_passed),
         stage_trades=0,
         stage_wins=0,
@@ -47,7 +50,7 @@ def run_stage8_polish_and_certificate(
         stage_total_signals=0,
         constitution_violations=pipeline._host._constitution_guard.violations,
         target_trades=0,
-        phase="ppo_polish",
+        phase=POST_BIRTH_CERTIFICATE_PHASE,
         patterns_mined=0,
         learning_attempt=0,
         cfg=cur_cfg,
@@ -55,15 +58,15 @@ def run_stage8_polish_and_certificate(
     write_birth_progress(
         pipeline._host.workspace_root,
         stage="ppo_training",
-        phase="ppo_polish",
-        message="Final PPO polish (stage8).",
+        phase=POST_BIRTH_CERTIFICATE_PHASE,
+        message="Post-Birth certificate (Proving Ground).",
         progress_pct=88.0,
         cumulative_trades=pipeline._host.cumulative_trades,
         target_trades=trade_budget_cap,
         ppo_steps=pipeline._host.ppo_steps,
         birth_start_time=pipeline._host.birth_start_time,
-        curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
-        runway_phase="S8",
+        curriculum_stage=post_birth_checkpoint_stage().value,
+        runway_phase="proving_ground",
         **polish_scorecard,
     )
 
@@ -99,15 +102,15 @@ def run_stage8_polish_and_certificate(
         pipeline._host.ppo_steps += polish_batch
     pipeline._host._persist_checkpoint(
         training_mode=training_mode,
-        curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
+        curriculum_stage=post_birth_checkpoint_stage().value,
         policy_path=str(pipeline._host.final_policy_path),
-        phase="ppo_polish",
+        phase=POST_BIRTH_CERTIFICATE_PHASE,
     )
     pipeline._host.ppo_trainer.save_final_birth_policy(str(pipeline._host.final_policy_path))
 
     oos_scorecard = build_scorecard_payload(
-        stage=CurriculumStage.STAGE4_POLISH,
-        curriculum_index=8,
+        stage=post_birth_checkpoint_stage(),
+        curriculum_index=5,
         stages_passed=list(pipeline._host._stages_passed),
         stage_trades=0,
         stage_wins=0,
@@ -124,12 +127,12 @@ def run_stage8_polish_and_certificate(
         pipeline._host.workspace_root,
         stage="training_running",
         phase="oos_evaluation",
-        message="OOS certificate evaluatie (unified S8)…",
+        message="OOS certificate evaluatie (Proving Ground)…",
         progress_pct=94.0,
         cumulative_trades=pipeline._host.cumulative_trades,
         target_trades=trade_budget_cap,
         birth_start_time=pipeline._host.birth_start_time,
-        runway_phase="S8_cert",
+        runway_phase="proving_ground",
         **oos_scorecard,
     )
 
@@ -193,7 +196,7 @@ def complete_certified_birth(
     training_mode: str,
     trade_budget_cap: int,
 ) -> dict[str, Any]:
-    pipeline._host._stages_passed.append(CurriculumStage.STAGE4_POLISH.value)
+    # Do not append stage4_polish — Foundation resume treats it as legacy rewind.
     certificate = build_certificate_from_eval(
         workspace_root=pipeline._host.workspace_root,
         eval_result=eval_result,

@@ -80,12 +80,22 @@ def check_ninjatrader_update_and_reprobe(
         report = run_fabric_connection_diagnostics(include_safe_mode=True)
         result["overall"] = report.overall
         if report.overall == "green":
-            token = str(os.getenv("LUMINA_FABRIC_TOKEN") or "").strip()
+            try:
+                from lumina_core.broker.ninjatrader.fabric_secret import read as fabric_secret_read
+
+                token = str(fabric_secret_read(heal=True).token or "").strip()
+            except Exception:
+                token = ""
+            hist = next((c for c in report.checks if c.id == "historical_bars"), None)
             write_certificate(
                 overall="green",
                 target=report.target,
                 token=token,
                 workspace_root=workspace_root,
+                extra={
+                    "historical_bars": getattr(hist, "status", None) or "pass",
+                    "checks": [{"id": c.id, "status": c.status} for c in report.checks],
+                },
             )
             result["action"] = "certified"
         else:
@@ -96,5 +106,10 @@ def check_ninjatrader_update_and_reprobe(
             )
             result["halt"] = True
             result["action"] = "halt"
-            logger.warning("NT update re-probe failed overall=%s — FABRIC HALT", report.overall)
+            result["needs_repair"] = True
+            result["repair_hint"] = (
+                "NinjaTrader was updated or reinstalled. "
+                "Click “Repair NinjaTrader connection” in Setup — Lumina will reinstall the bridge."
+            )
+            logger.warning("NT update re-probe failed overall=%s — FABRIC HALT (repair available)", report.overall)
     return result

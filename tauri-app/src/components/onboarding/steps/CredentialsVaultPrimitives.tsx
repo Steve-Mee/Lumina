@@ -9,22 +9,30 @@ import {
 
 import { HelpTip } from "@/components/ui/HelpTip";
 
-export type VaultTab = "security" | "fabric" | "alerts" | "data";
+export type VaultTab = "security" | "fabric" | "alerts" | "data" | "twin";
 export type ChipState = "idle" | "ok" | "partial" | "fail";
 
 export function VaultField({
   label,
   hint,
   tip,
+  fieldState,
   children,
 }: {
   label: string;
   hint?: string;
   tip?: string;
+  /** Traffic edge: ok filled · partial needs fill · fail error */
+  fieldState?: ChipState;
   children: ReactNode;
 }) {
   return (
-    <div className="credentials-vault-field-card">
+    <div
+      className="credentials-vault-field-card"
+      data-field-state={
+        fieldState && fieldState !== "idle" ? fieldState : undefined
+      }
+    >
       <div className="mb-0.5 flex items-center gap-1.5">
         <p className="credentials-vault-field-label mb-0">{label}</p>
         {tip ? <HelpTip text={tip} /> : null}

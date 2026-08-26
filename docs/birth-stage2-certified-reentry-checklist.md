@@ -5,7 +5,7 @@
 **Audience:** Operator (SIM / certified workspace only).
 
 **Related:**  
-- **Stage floors SSOT** — [`docs/birth-curriculum-stage-floors.md`](birth-curriculum-stage-floors.md) (**locked**: Stage 2 = early-quality, not survival −0.50)  
+- **Stage floors SSOT** — [`docs/birth-curriculum-stage-floors.md`](birth-curriculum-stage-floors.md) (**locked**: ADR-0046 process-R / occupancy, not WR 35%)  
 - OR5 — `docs/operator-residuals-or1-or6.md`  
 - Freeze CLI — `python scripts/validation/champion_freeze_ops.py`  
 - Freeze gate — `python scripts/validation/champion_freeze_gate.py --workspace . --no-pytest`  
@@ -19,13 +19,23 @@
 | In scope | Out of scope |
 |----------|----------------|
 | Clear freeze honestly (accept **or** wipe) | Perfect Birth declare |
-| Stage 2 **early-quality** pass (flat 30–70%, expectancy ≥ **−0.15** ≡ ~35% WR-proxy, EdgeScore as configured) | READY_FOR_REAL / live capital / OOS 0.48 |
+| Stage 2 **occupancy + process-R** pass (flat 30–70%, median_loss_R ≤ 1.5; EdgeScore HUD only) | READY_FOR_REAL / live capital / OOS 0.48 |
 | Productive recovery (pass metrics, not attempt counters) | Twin `full_auto` via yaml |
 | Swarm only after flat-band **and** expectancy-quality remediation deferral | Silent champion overwrite |
 
-Score this run as: **Stage 2 early-quality pass or honest stall** — not Stage-1 survival (−0.50), not professional daytrader / cert skill.
+Score this run as: **Stage 2 occupancy + process-R pass or honest stall** — not a WR 35% exam, not professional daytrader / cert skill.
 
-**Doctrine (no debate):** Stage 1 breathes on survival floors; Stage 2/3 raise the bar to early-quality **inside Birth**. See [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md).
+**Doctrine (no debate):** Stage 1 breathes on process-R; Stage 2/3 raise occupancy / edge **inside Birth**. See [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md) and ADR-0046.
+
+### Training quality prerequisites (truthful path)
+
+Before expecting Stage-2 occupancy pass (flat 30–70%, process-R):
+
+1. **Do not** lower `stage2_expectancy_floor` or enable provisional pass.
+2. Confirm unified trade geometry (`birth_trade_geometry` / calibrated stops — not legacy 0.75%/1.5%).
+3. On resume after stall: prefer **wipe training state** or **accept champion** then re-enter; blind resume of exp ≈ −0.24 plateau is not a quality fix.
+4. Progress should show meta rationales `stage2_expectancy_*` under stall (not endless `periodic_declining_pattern_focus_explore`).
+5. Telemetry keys: `birth_trade_stop_pct`, `birth_trade_target_pct`, `expectancy_proxy`, `rolling_winrate_500`.
 
 ---
 

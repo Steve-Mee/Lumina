@@ -174,12 +174,8 @@ class ArchitectureMutationSandbox:
     def _simulate_apply_and_measure(
         self, tmp: Path, target: str, diff: str, before: float
     ) -> tuple[bool, float]:
-        """v1 simulation: pretend patch applied cleanly + compute optimistic delta.
-        Real impl would:
-          - copy file tree
-          - use difflib or subprocess(['patch', ...])
-          - run ruff + health scanner on the patched tree
-        """
+        """Apply unified diff to a temp copy. Never invent optimistic deltas (ADR-0045)."""
+        from lumina_core.architecture_meta.patch_apply import copy_and_patch
         from lumina_core.hybrid_quarantine import (
             ARCH_PATCH_APPLY,
             log_quarantine,
@@ -188,15 +184,18 @@ class ArchitectureMutationSandbox:
 
         strict = require_real_patch_apply()
         log_quarantine(ARCH_PATCH_APPLY, strict=strict, detail=f"target={target}")
-        if strict:
-            # Fail-closed: do not invent optimistic health deltas.
+        dest = copy_and_patch(
+            repo_root=self._repo_root,
+            target_file=target,
+            dest_dir=tmp,
+            diff=diff,
+        )
+        if dest is None:
             return False, before
-
-        # Simulate success for whitelisted + non-empty diff. Real delta computed by caller scanner.
-        # For now return a modest positive improvement so tests and dry-runs work.
-        # In integration the real health scanner will be invoked post-apply.
-        if "extract" in diff.lower() or len(diff) > 30:
-            return True, before + 0.22
-        if "typed" in diff.lower() or "pydantic" in diff.lower():
-            return True, before + 0.28
-        return True, before + 0.12
+        try:
+            grew = dest.stat().st_size > 0
+        except OSError:
+            grew = False
+        if not grew:
+            return False, before
+        return True, round(float(before) + 0.08, 3)

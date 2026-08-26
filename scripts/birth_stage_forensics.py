@@ -38,18 +38,17 @@ def _log_context(log_path: Path, needle: str, *, before: int = 20, after: int = 
     return hits
 
 
-def _infer_stage1_from_cumulative(progress: dict[str, Any]) -> dict[str, Any]:
-    cumulative = int(progress.get("cumulative_trades", 0) or 0)
-    stage2 = int(progress.get("stage_trades", 0) or 0)
-    stage1_trades_est = max(0, cumulative - stage2)
-    _wins = int(progress.get("stage_wins", 0) or 0)
-    return {
-        "estimated_stage1_trades": stage1_trades_est,
-        "stage2_trades": stage2,
-        "cumulative_trades": cumulative,
-        "stage_wins": _wins,
-        "note": "stage1 trades estimated as cumulative - stage2 when only stage1 in stages_passed",
-    }
+def _foundation_receipts(progress: dict[str, Any]) -> dict[str, Any]:
+    from lumina_core.birth.curriculum import ordered_stages
+    from lumina_core.birth.stage_pass_receipt import parse_stage_pass_receipts, receipt_for_stage
+
+    receipts = parse_stage_pass_receipts(progress.get("stage_pass_receipts"))
+    out: dict[str, Any] = {"schema": "foundation_v2", "stages": {}}
+    for stage in ordered_stages():
+        rec = receipt_for_stage(receipts, stage.value)
+        out["stages"][stage.value] = None if rec is None else rec.to_dict()
+    out["complete"] = all(out["stages"][s.value] is not None for s in ordered_stages())
+    return out
 
 
 def _load_yaml_config(workspace: Path) -> dict[str, Any]:
@@ -197,7 +196,7 @@ def build_report(workspace: Path, *, log_needles: list[str] | None = None) -> di
         "plateau_audit": plateau_audit,
         "curriculum_stage": stage,
         "pass_gates": gates,
-        "stage1_estimate": _infer_stage1_from_cumulative(progress),
+        "foundation_receipts": _foundation_receipts(progress),
         "intra_stage1_easy": {
             "easy_trades": checkpoint.get("stage_metrics", {}).get("intra_stage1_easy_trades"),
             "easy_wins": checkpoint.get("stage_metrics", {}).get("intra_stage1_easy_wins"),
@@ -264,7 +263,7 @@ def main() -> None:
     print("\nPass gates vs training budgets:")
     for name, g in report.get("pass_gates", {}).items():
         print(f"  {name}: pass_gate={g['pass_gate']}  training_budget={g['training_budget']}")
-    print("\nStage 1 estimate:", report.get("stage1_estimate"))
+    print("\nFoundation receipts:", json.dumps(report.get("foundation_receipts"), indent=2))
     print("\nStage 2 health:", json.dumps(report.get("stage2_health"), indent=2))
     print("\nStage 3 health:", json.dumps(report.get("stage3_health"), indent=2))
     print("\nCertificate readiness:", json.dumps(report.get("certificate_readiness"), indent=2))

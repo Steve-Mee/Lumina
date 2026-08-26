@@ -53,19 +53,18 @@ Shadow birth run on a **SIM or certified workspace** (no REAL orders). Use this 
 
 ## 6. Stage 1 stall abort (certified wall)
 
-1. During `stage1_trend`, if the volume gate is met but EdgeScore hygiene fails under the **active** floor mode:
-   - **Default Birth (`birth_survival_pass_enabled: true`):** survival WR floor ≈ **20%**, expectancy ≥ **−0.50** (not skill 35%). Vanity 45% WR is diagnostic only.
-   - **Skill-side mode (survival off / Playground+):** hygiene uses `stage1_winrate_pass_floor` default **35%**.
-   - Scorecard shows blocker text (e.g. Survival WR or Hygiene WR as configured).
+1. During `stage1_trend`, if the volume gate is met but Foundation process-R fails:
+   - **Birth Foundation:** median loss R ≤ 1.5, settlement ≥ 70%, entropy alive, constitution 0, net RR ≥ 0.80. WR 20/35/40 is **not** a pass gate.
+   - Scorecard shows blocker text from `evaluate_foundation_pass` (process-R / occupancy / edge).
    - When `max_stage_wall_sec` expires (`wall_budget_exhausted`) **or** `certified_stage_stall_wall_sec` plus stagnation rollouts elapse, phase becomes `stage_stalled` (or plateau/swarm escalates first). Soft `explore_boost` alone is not a valid end state.
 2. UI recovery panel offers **Retry stage**, **Expand data & retry**, **Wipe & restart**.
-3. **Fail if:** birth runs hours past wall budget at sub-hygiene WR without `stage_stalled`, plateau entry, swarm tournament, or blocker HUD.
+3. **Fail if:** birth runs hours past wall budget with failing process-R without `stage_stalled`, plateau entry, swarm tournament, or blocker HUD.
 
-**Stage 2/3 floors** are **early-quality** (expectancy ≥ **−0.15**, Stage 2 flat 30–70%) — not Stage-1 survival −0.50 and not cert OOS 0.48. See [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md).
+**Stage 2/3 floors** are occupancy + process-R (Stage 2 flat 30–70%, Stage 3 occupancy 25–75% and edge ≥ −5pp) — not WR 35% and not cert OOS 0.48. See [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md).
 
 ## 7. Accept criteria
 
-- **Pass:** Birth certificate issued **or** clear abort with `failure_reasons` / `stage_stalled` after configured walls.
+- **Pass:** Birth Foundation exit (`birth_exit_ok`: five v2 receipts + fitness) **or** clear abort with `failure_reasons` / `stage_stalled` after configured walls. Certificate issued is a later Proving Ground event, not this Birth accept criterion.
 - **Pass:** All steps 1–6 observed without silent stalls or misleading UI.
 - **Defer production birth** until this shadow run passes on the same data profile you plan to use in production.
 

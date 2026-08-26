@@ -27,7 +27,8 @@ namespace Lumina.Execution.Fabric.Execution
         }
 
         public string AccountName { get; }
-        public string GatewayKind => "sim";
+        /// <summary>In-memory gateway kind (CI/SimHost). Not a live NT Account.</summary>
+        public string GatewayKind => "memory";
         public double Balance { get; private set; }
         public double Equity { get; private set; }
 

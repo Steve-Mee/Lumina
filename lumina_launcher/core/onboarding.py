@@ -41,9 +41,12 @@ def compute_onboarding_steps(
     artifacts_ok: bool,
     certificate_ok: bool | None = None,
     smart_setup_running: bool = False,
+    birth_exit_ok: bool | None = None,
 ) -> tuple[list[OnboardingStepId], dict[str, StepStatus]]:
     """Return required wizard steps and per-step status."""
-    birth_ready = certificate_ok if certificate_ok is not None else artifacts_ok
+    birth_ready = bool(birth_exit_ok)
+    _ = artifacts_ok
+    _ = certificate_ok
     step_status: dict[str, StepStatus] = {
         "welcome": "pending",
         "backend": "done" if backend_reachable else "pending",
@@ -86,8 +89,11 @@ def compute_onboarding_steps(
     elif birth_status == "certificate_failed":
         required.append("birth")
         step_status["birth"] = "pending"
-    elif birth_ready or birth_status == "completed":
+    elif birth_ready:
         step_status["birth"] = "done"
+    elif birth_status == "completed":
+        required.append("birth")
+        step_status["birth"] = "pending"
 
     return required, step_status
 
@@ -127,13 +133,15 @@ def should_skip_wizard(
     required_steps: list[OnboardingStepId],
     backend_reachable: bool = True,
     certificate_ok: bool | None = None,
+    birth_exit_ok: bool | None = None,
 ) -> bool:
-    """True when wizard can be skipped (hub or deck after birth; fail-closed on artifacts)."""
+    """True when wizard can be skipped (hub after Foundation exit)."""
     surface, _ = resolve_app_surface(
         setup_complete=setup_complete,
         birth_status=birth_status,
         artifacts_ok=artifacts_ok,
         certificate_ok=certificate_ok,
+        birth_exit_ok=birth_exit_ok,
         backend_reachable=backend_reachable,
         required_steps=required_steps,
     )
@@ -154,15 +162,18 @@ def resolve_app_surface(
     backend_reachable: bool,
     required_steps: list[OnboardingStepId],
     certificate_ok: bool | None = None,
+    birth_exit_ok: bool | None = None,
 ) -> tuple[AppSurface, AppSurfaceReason]:
-    """Canonical lifecycle surface for cold start (Phase 1 SSOT). Fail-closed on certificate."""
+    """Canonical lifecycle surface for cold start. Fail-closed on Foundation exit."""
     if not backend_reachable:
         return "setup", "backend_unreachable"
 
     if not setup_complete or _has_pending_setup_steps(required_steps):
         return "setup", "setup_incomplete" if setup_complete else "fresh_install"
 
-    birth_ready = certificate_ok if certificate_ok is not None else artifacts_ok
+    birth_ready = bool(birth_exit_ok)
+    _ = artifacts_ok
+    _ = certificate_ok
     if not birth_ready:
         if birth_status == "running":
             return "birth", "birth_running"
@@ -257,7 +268,7 @@ def extract_config_defaults(
         "first_boot": {
             "training_trades": first_boot.get("training_trades", 25000),
             "prefer_real_data_only": first_boot.get("prefer_real_data_only", True),
-            "max_real_days": first_boot.get("max_real_days", 56),
+            "max_real_days": first_boot.get("max_real_days", 365),
             "allow_minimal_synthetic_fallback": first_boot.get(
                 "allow_minimal_synthetic_fallback", False
             ),

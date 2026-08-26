@@ -37,7 +37,7 @@ describe("birthClient recovery routes", () => {
     expect(isBirthStartSuccessful("certificate_failed")).toBe(false);
   });
 
-  it("resumeBirthSession uses retry without wipe", async () => {
+  it("resumeBirthSession uses /api/birth/resume", async () => {
     luminaFetch.mockResolvedValueOnce(
       new Response(JSON.stringify({ status: "started" }), { status: 200 }),
     );
@@ -46,7 +46,7 @@ describe("birthClient recovery routes", () => {
 
     expect(payload.status).toBe("started");
     expect(luminaFetch).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/api/birth/retry?target_trades=25000",
+      "http://127.0.0.1:8000/api/birth/resume?target_trades=25000",
       { method: "POST" },
     );
   });

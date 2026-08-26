@@ -132,8 +132,179 @@ class MarketDataIngestCore:
             log_structured(err)
             return
 
+    def _live_provider(self) -> str:
+        """fabric | crosstrade for live quotes (Fabric default — ADR-0040)."""
+        cfg = getattr(self.engine, "config", None)
+        provider = str(getattr(cfg, "broker_live_provider", "") or "").strip().lower()
+        if provider in {"ninjatrader", "nt", "fabric"}:
+            return "fabric"
+        try:
+            from lumina_core.engine.engine_config_helpers import (
+                _config_yaml_nested,
+                clear_yaml_config_cache,
+            )
+
+            clear_yaml_config_cache()
+            yaml_lp = str(_config_yaml_nested("", "broker", "live_provider") or "").strip().lower()
+            if yaml_lp in {"ninjatrader", "nt", "fabric"}:
+                return "fabric"
+            if yaml_lp == "crosstrade":
+                return "crosstrade"
+        except Exception:
+            yaml_lp = ""
+        env_lp = str(__import__("os").getenv("BROKER_LIVE_PROVIDER") or "").strip().lower()
+        if env_lp in {"ninjatrader", "nt", "fabric"}:
+            return "fabric"
+        # Explicit Crosstrade only — never silent default to CT (ADR-0040).
+        if provider == "crosstrade" or env_lp == "crosstrade":
+            return "crosstrade"
+        return "fabric"
+
+    async def _fabric_live_listener(self) -> None:
+        """Poll Fabric live quote cache (NT MarketDataUpdate stream). No CrossTrade."""
+        app = self._app()
+        instrument = self._normalize_symbol(getattr(app, "INSTRUMENT", self.engine.config.instrument))
+        configured_swarm = [
+            self._normalize_symbol(s) for s in getattr(app, "SWARM_SYMBOLS", self.engine.config.swarm_symbols)
+        ]
+        if instrument not in configured_swarm:
+            configured_swarm.insert(0, instrument)
+        subscribed_symbols = [s for s in configured_swarm if s]
+        last_tick_print = 0.0
+
+        client = None
+        try:
+            from lumina_core.broker.ninjatrader.fabric_link_supervisor import (
+                ensure_fabric_link_supervisor,
+                get_fabric_link_supervisor,
+            )
+
+            ensure_fabric_link_supervisor(getattr(self.engine, "config", None), mode_context="sim")
+            client = get_fabric_link_supervisor().get_client()
+        except Exception:
+            app.logger.debug("fabric.live.supervisor_unavailable", exc_info=True)
+
+        if client is None or not getattr(client, "is_connected", False):
+            try:
+                from lumina_core.broker.ninjatrader.fabric_client import FabricConfig, FabricGrpcClient
+
+                fabric_cfg = FabricConfig.from_engine_config(
+                    getattr(self.engine, "config", None), mode_context="sim"
+                )
+                client = FabricGrpcClient(fabric_cfg)
+                if not client.connect():
+                    app.logger.error(
+                        "Fabric live market data: connect failed — start NT8 LUMINA AddOn"
+                    )
+                    return
+            except Exception as exc:
+                app.logger.error("Fabric live market data unavailable: %s", exc)
+                return
+
+        try:
+            client.subscribe_market_data(subscribed_symbols, include_ticks=True)
+        except Exception:
+            app.logger.debug("fabric.live.subscribe_failed", exc_info=True)
+
+        log_structured(
+            LuminaError(
+                severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                code="INFO_PRINT_LEGACY",
+                message="Fabric live market data active (native NT — no CrossTrade)",
+                context={"symbols": subscribed_symbols},
+            )
+        )
+
+        while True:
+            tick_start = time.perf_counter()
+            try:
+                for quote_symbol in subscribed_symbols:
+                    q = client.get_last_quote(quote_symbol) if hasattr(client, "get_last_quote") else None
+                    if not q:
+                        continue
+                    price = float(q.get("last") or 0.0)
+                    if price <= 0:
+                        continue
+                    bid = float(q.get("bid") or price)
+                    ask = float(q.get("ask") or price)
+                    vol_cum = int(q.get("volume") or 0)
+                    ts = datetime.now()
+
+                    swarm_manager = getattr(app, "swarm_manager", None)
+                    if swarm_manager is not None and hasattr(swarm_manager, "process_quote_tick"):
+                        swarm_manager.process_quote_tick(
+                            symbol=quote_symbol,
+                            ts=ts,
+                            price=price,
+                            bid=bid,
+                            ask=ask,
+                            volume_cumulative=vol_cum,
+                        )
+
+                    if quote_symbol != instrument and not quote_symbol.startswith(
+                        instrument.split()[0] if instrument else ""
+                    ):
+                        # Allow root match for MES vs MES 09-26
+                        root = instrument.split()[0] if instrument else ""
+                        if not quote_symbol.startswith(root):
+                            continue
+
+                    if quote_symbol == instrument or quote_symbol.startswith(
+                        (instrument.split()[0] if instrument else "") + " "
+                    ) or quote_symbol == (instrument.split()[0] if instrument else ""):
+                        closed_candle = self.engine.market_data.process_quote_tick(
+                            ts=ts,
+                            price=price,
+                            bid=bid,
+                            ask=ask,
+                            volume_cumulative=vol_cum,
+                        )
+                        tape_snapshot = self.engine.market_data.get_tape_snapshot()
+                        tape_signal = self.tape_agent.score_momentum(tape_snapshot)
+                        self.engine.market_data.last_tape_signal = tape_signal
+                        self._publish_tape_signal(tape_signal)
+
+                        if closed_candle is not None:
+                            minute_start = ts.replace(second=0, microsecond=0)
+                            log_structured(
+                                LuminaError(
+                                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                                    code="INFO_PRINT_LEGACY",
+                                    message=(
+                                        f"[{minute_start.strftime('%H:%M')}] 1-min candle closed -> "
+                                        f"O={closed_candle['open']:.2f} H={closed_candle['high']:.2f} "
+                                        f"L={closed_candle['low']:.2f} C={closed_candle['close']:.2f} "
+                                        f"V={closed_candle['volume']}"
+                                    ),
+                                    context={},
+                                )
+                            )
+
+                        if time.time() - last_tick_print >= float(
+                            getattr(app, "TICK_PRINT_INTERVAL_SEC", 2.0)
+                        ):
+                            log_structured(
+                                LuminaError(
+                                    severity=ErrorSeverity.RECOVERABLE_LEARNING,
+                                    code="INFO_PRINT_LEGACY",
+                                    message=f"LIVE tick (fabric) -> last={price:.2f}",
+                                    context={"price": price, "source": "fabric"},
+                                )
+                            )
+                            last_tick_print = time.time()
+
+                elapsed_ms = (time.perf_counter() - tick_start) * 1000.0
+                self._record_latency(elapsed_ms, source="fabric_live")
+            except Exception as exc:
+                app.logger.error("Fabric live poll error: %s", exc)
+            await asyncio.sleep(0.25)
+
     async def websocket_listener(self) -> None:
         app = self._app()
+        if self._live_provider() == "fabric":
+            await self._fabric_live_listener()
+            return
+
         last_tick_print = 0.0
         uri = "wss://app.crosstrade.io/ws/stream"
         headers = {
@@ -292,10 +463,30 @@ class MarketDataIngestCore:
 
     def fetch_quote(self) -> tuple[float, int]:
         app = self._app()
-        account = getattr(app, "CROSSTRADE_ACCOUNT", self.engine.config.crosstrade_account)
         instrument = getattr(app, "INSTRUMENT", self.engine.config.instrument)
-        token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
         request_start = time.perf_counter()
+
+        if self._live_provider() == "fabric":
+            try:
+                from lumina_core.broker.ninjatrader.fabric_link_supervisor import (
+                    get_fabric_link_supervisor,
+                )
+
+                client = get_fabric_link_supervisor().get_client()
+                if client is not None and hasattr(client, "get_last_quote"):
+                    q = client.get_last_quote(str(instrument or ""))
+                    if q and float(q.get("last") or 0) > 0:
+                        elapsed_ms = (time.perf_counter() - request_start) * 1000.0
+                        self._record_latency(elapsed_ms, source="fetch_quote_fabric")
+                        return float(q["last"]), int(q.get("volume") or 0)
+            except Exception:
+                app.logger.debug("fabric.fetch_quote_failed", exc_info=True)
+            elapsed_ms = (time.perf_counter() - request_start) * 1000.0
+            self._record_latency(elapsed_ms, source="fetch_quote_fabric")
+            return 0.0, 0
+
+        account = getattr(app, "CROSSTRADE_ACCOUNT", self.engine.config.crosstrade_account)
+        token = getattr(app, "CROSSTRADE_TOKEN", self.engine.config.crosstrade_token or "")
         try:
             response = _mds().requests.get(
                 f"https://app.crosstrade.io/v1/api/accounts/{account}/quote?instrument={instrument}",

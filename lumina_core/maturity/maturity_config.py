@@ -17,7 +17,7 @@ class MaturityConfig:
     apprenticeship_sim_days: int = 5
     apprenticeship_sim_days_probe: int = 0  # deprecated; ignored when sim_days > 0
     apprenticeship_sim_max_workers: int = 2
-    apprenticeship_sim_use_real_market_data: bool = False
+    apprenticeship_sim_use_real_market_data: bool = True
     apprenticeship_sim_drawdown_limit_ratio: float = 0.02
     # Telegram advance token TTL (seconds)
     telegram_advance_token_ttl_sec: int = 86400
@@ -78,7 +78,7 @@ def load_maturity_config() -> MaturityConfig:
         apprenticeship_sim_days_probe=_int("apprenticeship_sim_days_probe", 0, lo=0, hi=7),
         apprenticeship_sim_max_workers=_int("apprenticeship_sim_max_workers", 2, lo=1, hi=4),
         apprenticeship_sim_use_real_market_data=_bool(
-            "apprenticeship_sim_use_real_market_data", False
+            "apprenticeship_sim_use_real_market_data", True
         ),
         apprenticeship_sim_drawdown_limit_ratio=_float(
             "apprenticeship_sim_drawdown_limit_ratio", 0.02, lo=0.001, hi=0.5

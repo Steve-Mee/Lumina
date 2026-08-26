@@ -5,14 +5,17 @@ from lumina_core.birth.certificate_patch_bridge import cp_attr
 
 from typing import Any
 
+from lumina_core.birth.certificate_preflight_window import (
+    apply_training_window_sla,
+    finalize_preflight_manifest,
+)
 from lumina_core.birth.data_expansion import clamp_expansion_steps, expand_birth_data
+from lumina_core.birth.foundation_history import history_window_meets_sla, sla_requested_days
 from lumina_core.birth.history_loader import actual_calendar_days_from_ticks
 from lumina_core.birth.news_enricher import enrich_ticks_with_news
 from lumina_core.birth.preflight import assess_split_preflight, data_manifest_from_split
 from lumina_core.birth.progress import write_birth_progress
 from lumina_core.birth.remediation import manifest_train_hash_matches
-from lumina_core.birth.tick_cache_persist import compute_ticks_fingerprint, save_birth_data_cache
-from lumina_core.rl.trend_features import ENRICH_VERSION
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.certificate_preflight")
@@ -46,24 +49,34 @@ def ensure_holdout_preflight(
         )
         if preflight.ok:
             actual_days = actual_calendar_days_from_ticks(active_ticks)
-            manifest = dict(saved_manifest or {})
-            manifest.update(
-                data_manifest_from_split(
-                    active_split,
-                    days_loaded=max(1, actual_days),
-                    real_data_pct=pipeline._host._real_data_pct,
-                    train_hash=current_hash,
-                    actual_calendar_days=actual_days,
-                    requested_days=int(
-                        getattr(pipeline._host.birth_config, "max_real_days", actual_days)
-                        or actual_days
-                    ),
+            if not history_window_meets_sla(
+                actual_days=actual_days,
+                manifest=saved_manifest,
+            ):
+                logger.warning(
+                    "birth.preflight.reuse_rejected_thin_window actual=%s requested=%s",
+                    actual_days,
+                    sla_requested_days(saved_manifest),
                 )
-            )
-            manifest["preflight_ok"] = True
-            manifest["holdout_regimes"] = list(preflight.holdout_regimes)
-            manifest["reused_manifest"] = True
-            return active_ticks, active_split, manifest
+            else:
+                manifest = dict(saved_manifest or {})
+                manifest.update(
+                    data_manifest_from_split(
+                        active_split,
+                        days_loaded=max(1, actual_days),
+                        real_data_pct=pipeline._host._real_data_pct,
+                        train_hash=current_hash,
+                        actual_calendar_days=actual_days,
+                        requested_days=sla_requested_days(saved_manifest),
+                        stitched=bool(manifest.get("stitched")),
+                        instruments=manifest.get("instruments"),
+                        stitched_from=manifest.get("stitched_from"),
+                    )
+                )
+                manifest["preflight_ok"] = True
+                manifest["holdout_regimes"] = list(preflight.holdout_regimes)
+                manifest["reused_manifest"] = True
+                return active_ticks, active_split, manifest
     expansion_step = 0
     preflight = cp_attr("assess_split_preflight", assess_split_preflight)(
         active_split,
@@ -101,6 +114,51 @@ def ensure_holdout_preflight(
             max_real_days=max_days,
         )
         expansion_step = expanded.step_index
+        load_failed = bool(getattr(expanded, "load_failed", False)) or not expanded.train_ticks
+        # Never clobber a non-empty split with an empty expansion result.
+        if load_failed or not expanded.train_ticks:
+            if expanded.exhausted or attempts >= max_attempts:
+                write_birth_progress(
+                    pipeline._host.workspace_root,
+                    stage="history_unavailable",
+                    phase="holdout_preflight_failed",
+                    message=(
+                        preflight.message
+                        or (
+                            "History load failed during holdout preflight expansion "
+                            f"(0 bars for {int(expanded.requested_days or expanded.days_back or 0)}d)."
+                        )
+                    ),
+                    progress_pct=100.0,
+                    cumulative_trades=0,
+                    target_trades=pipeline._host.birth_config.trade_budget_cap,
+                    birth_start_time=pipeline._host.birth_start_time,
+                    preflight_report={
+                        "ok": False,
+                        "failure_reasons": list(preflight.failure_reasons)
+                        or ["history_load_failed"],
+                        "holdout_regimes": list(preflight.holdout_regimes),
+                    },
+                    retryable=True,
+                    attention_recommended_actions=[
+                        "check_fabric_nt8",
+                        "check_mds_connection",
+                        "resume_from_checkpoint",
+                        "wipe_and_retry",
+                    ],
+                )
+                pipeline._host._notify_history_unavailable(
+                    preflight.message or "Holdout preflight failed (history load empty)."
+                )
+                return {
+                    "status": "history_unavailable",
+                    "total_trades": 0,
+                    "ppo_steps": 0,
+                    "training_mode": training_mode,
+                    "preflight": preflight.failure_reasons or ["history_load_failed"],
+                }
+            # Intermediate rung failed empty — try next without wiping active_*.
+            continue
         if expanded.exhausted and len(expanded.train_ticks) <= len(active_split.train):
             write_birth_progress(
                 pipeline._host.workspace_root,
@@ -183,11 +241,12 @@ def ensure_holdout_preflight(
         }
 
     actual_days = actual_calendar_days_from_ticks(active_ticks)
-    requested_days = int(pipeline._host.birth_config.max_real_days)
+    requested_days = sla_requested_days(getattr(pipeline._host, "_data_manifest", None))
     mds = pipeline._host.market_data_service
     req_inst = str(getattr(mds, "last_requested_instrument", "") or "")
     res_inst = str(getattr(mds, "last_resolved_instrument", "") or "")
     rolled = bool(req_inst and res_inst and req_inst != res_inst)
+    host_m = dict(getattr(pipeline._host, "_data_manifest", {}) or {})
     manifest = data_manifest_from_split(
         active_split,
         days_loaded=max(1, actual_days),
@@ -198,6 +257,9 @@ def ensure_holdout_preflight(
         requested_instrument=req_inst,
         resolved_instrument=res_inst,
         rolled=rolled,
+        stitched=bool(host_m.get("stitched")),
+        instruments=host_m.get("instruments"),
+        stitched_from=host_m.get("stitched_from"),
     )
     if actual_days > 0 and actual_days < max(7, int(requested_days * 0.5)):
         logger.warning(
@@ -206,19 +268,36 @@ def ensure_holdout_preflight(
             actual_days,
         )
         manifest["depth_thin_warning"] = True
-    manifest["preflight_ok"] = True
-    manifest["holdout_regimes"] = list(preflight.holdout_regimes)
-    manifest["raw_ticks_hash"] = str(pipeline._host._last_raw_ticks_hash or "")
-    manifest["enrich_version"] = ENRICH_VERSION
-    manifest["holdout_pct"] = float(pipeline._host.birth_config.holdout_pct)
-    cache_paths = save_birth_data_cache(
-        pipeline._host.workspace_root,
-        ticks=active_ticks,
-        split=active_split,
-        holdout_pct=pipeline._host.birth_config.holdout_pct,
-        raw_ticks_hash=str(pipeline._host._last_raw_ticks_hash or compute_ticks_fingerprint(active_ticks)),
-        train_hash=str(manifest.get("train_hash", "") or ""),
-        enrich_version=ENRICH_VERSION,
+
+    sla_result = apply_training_window_sla(
+        pipeline,
+        active_ticks=active_ticks,
+        active_split=active_split,
+        actual_days=actual_days,
+        requested_days=requested_days,
+        expansion_step=expansion_step,
+        expansion_steps=expansion_steps,
+        max_attempts=max_attempts,
+        attempts=attempts,
+        prefer_real=prefer_real,
+        start_price=start_price,
+        training_mode=training_mode,
+        max_days=max_days,
+        req_inst=req_inst,
+        res_inst=res_inst,
+        rolled=rolled,
+        manifest=manifest,
     )
-    manifest.update(cache_paths)
+    if isinstance(sla_result, dict):
+        return sla_result
+    active_ticks, active_split, manifest, actual_days = sla_result
+    manifest = finalize_preflight_manifest(
+        pipeline,
+        active_ticks=active_ticks,
+        active_split=active_split,
+        manifest=manifest,
+        requested_days=requested_days,
+        actual_days=actual_days,
+        preflight=preflight,
+    )
     return active_ticks, active_split, manifest

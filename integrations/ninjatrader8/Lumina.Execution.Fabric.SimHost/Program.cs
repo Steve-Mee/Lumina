@@ -41,13 +41,28 @@ namespace Lumina.Execution.Fabric.SimHost
                 }
             }
 
-            // Dev convenience: if no token configured, use a fixed SIM token.
+            // Dev convenience: fixed SIM token only when explicitly allowed or still empty in pure SimHost.
+            // Brain rejects sim-dev-token unless LUMINA_FABRIC_ALLOW_SIM_DEV_TOKEN=true (ADR-0041).
             if (string.IsNullOrEmpty(config.ResolveToken()))
             {
+                var allowDev = string.Equals(
+                    Environment.GetEnvironmentVariable("LUMINA_FABRIC_ALLOW_SIM_DEV_TOKEN"),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase);
+                if (!allowDev)
+                {
+                    Console.Error.WriteLine(
+                        "FATAL: No Fabric token. Set LUMINA_FABRIC_TOKEN or pass --token. " +
+                        "For local SimHost only: set LUMINA_FABRIC_ALLOW_SIM_DEV_TOKEN=true " +
+                        "(uses sim-dev-token; never for REAL).");
+                    return 2;
+                }
                 config.AuthToken = "sim-dev-token";
                 Console.WriteLine("[SimHost] WARNING: using default AuthToken=sim-dev-token (dev only)");
             }
 
+            // SimHost has no NinjaTrader Account — always in-memory gateway.
+            config.GatewayMode = "memory";
             var gateway = FabricGrpcHost.CreateGateway(config);
             Console.WriteLine($"[SimHost] gateway={gateway.GatewayKind} account={config.AccountName}");
             using var host = new FabricGrpcHost(config, gateway, msg => Console.WriteLine(msg));

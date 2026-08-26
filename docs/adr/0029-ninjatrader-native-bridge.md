@@ -12,7 +12,8 @@ The canonical mode matrix (`paper` → `broker_backend=paper`; `sim`/`sim_real_g
 
 ## Decision
 
-1. **Live provider selector** — Keep `broker.backend: paper|live`. Add `broker.live_provider: crosstrade|ninjatrader` (default `crosstrade`).
+1. **Live provider selector** — Keep `broker.backend: paper|live`. Add `broker.live_provider: crosstrade|ninjatrader`
+   (default was `crosstrade`; **ADR-0040 flips default to `ninjatrader` / Fabric-only foundation**).
 2. **Bounded module** — `lumina_core/broker/ninjatrader/` implements transport (`bridge_service`), guards (`guards`, `promotion_gate`), and `NinjaTraderBroker(BrokerBridge)`.
 3. **Admission invariant** — Every `submit_order` calls `run_final_arbitration` before any WS frame is sent. The bridge service has no public submit API.
 4. **NT bridge promotion gate** — Separate from evolution `PromotionGate`; controls market-data ingest and order submission per `trade_mode`.

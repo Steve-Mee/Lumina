@@ -74,7 +74,7 @@ def _normalize_broker_backend(value: Any, default: str) -> str:
     return default
 
 
-def _normalize_live_provider(value: Any, default: str = "crosstrade") -> str:
+def _normalize_live_provider(value: Any, default: str = "ninjatrader") -> str:
     text = str(value or "").strip().lower()
     if text in {"crosstrade", "ninjatrader"}:
         return text
@@ -138,9 +138,9 @@ class ConfigLoader:
         cls._cache = None
         # Also clear the lru_cache in engine_config so both stay in sync.
         try:
-            from lumina_core.engine.engine_config import _load_yaml_config  # noqa: PLC0415
+            from lumina_core.engine.engine_config_helpers import clear_yaml_config_cache  # noqa: PLC0415
 
-            _load_yaml_config.cache_clear()
+            clear_yaml_config_cache()
         except Exception:  # pragma: no cover
             logging.exception("Unhandled broad exception fallback in lumina_core/config_loader.py:132")
             pass
@@ -219,7 +219,7 @@ class ConfigLoader:
         if env_provider in {"crosstrade", "ninjatrader"}:
             return env_provider
         broker = cfg.get("broker") if isinstance(cfg.get("broker"), dict) else {}
-        return _normalize_live_provider(broker.get("live_provider"), "crosstrade")
+        return _normalize_live_provider(broker.get("live_provider"), "ninjatrader")
 
     @classmethod
     def _ninjatrader_enabled(cls, cfg: dict[str, Any]) -> bool:

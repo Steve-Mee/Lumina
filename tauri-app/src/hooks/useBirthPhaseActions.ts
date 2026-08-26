@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { BirthAdvancedSection } from "@/components/birth/BirthAdvancedPanel";
-import type { BirthRecoveryAction } from "@/components/birth/BirthRecoveryActionBar";
+import { buildStalledRecoveryActions } from "@/hooks/birthPhaseRecoveryActions";
 import { useBirthPhaseMonitor } from "@/hooks/useBirthPhaseMonitor";
 import { useDeckTransition } from "@/hooks/useDeckTransition";
 import {
@@ -13,7 +13,6 @@ import { resolveCertificateFailureSubtitle } from "@/lib/birthCertificateDiagnos
 import { traceBirthWipe } from "@/lib/birthWipeTrace";
 import {
   clearBirthForExtraTraining,
-  startBirthSession,
   startBirthSessionContinue,
   type BirthWipeResult,
 } from "@/lib/birthClient";
@@ -36,8 +35,8 @@ export function useBirthPhaseActions() {
   const derived: BirthPhaseDerived = useBirthPhaseDerived(recoveryDismissed);
 
   const poll = useBirthStore((s) => s.poll);
-  const setBirthSurface = useBirthStore((s) => s.setBirthSurface);
   const retryBirth = useBirthStore((s) => s.retryBirth);
+  const resumeBirth = useBirthStore((s) => s.resumeBirth);
   const reuseDataBirth = useBirthStore((s) => s.reuseDataBirth);
   const resumeStalledStage = useBirthStore((s) => s.resumeStalledStage);
   const expandAndRetryStalledStage = useBirthStore((s) => s.expandAndRetryStalledStage);
@@ -178,16 +177,19 @@ export function useBirthPhaseActions() {
       return;
     }
     setControlBusy(true);
-    store.beginBirthRun();
+    // beginBirthRun only after successful start (activateBirth owns that).
     void activateBirth()
       .then(async (ok) => {
         if (ok) {
           await poll();
           return;
         }
-        useBirthStore.getState().setBirthSurface("genesis");
-        useBirthStore.setState({ uiPhase: "idle" });
-        toast.error(onboardingError ?? "Birth start failed");
+        // Keep recovery/error surface from activateBirth — do not force silent Genesis.
+        const err =
+          useOnboardingStore.getState().error ??
+          onboardingError ??
+          "Birth start failed";
+        toast.error(err);
       })
       .finally(() => setControlBusy(false));
   };
@@ -218,14 +220,19 @@ export function useBirthPhaseActions() {
 
   const handleResumeCheckpoint = () => {
     setControlBusy(true);
+    // Sticky training shell immediately (Raptor cold-start) — no wipe/decision thrash.
     useBirthStore.getState().beginBirthRun();
-    void startBirthSession({ targetTrades, continueTraining: true, reuseData: true })
-      .then(async () => {
-        setBirthSurface("running");
-        await poll();
-        toast.success("Resumed from checkpoint");
+    // Dedicated resume: continue_training + reuse_data + pause clear.
+    // Champion freeze: backend accepts frozen champion then starts (explicit human path).
+    void resumeBirth()
+      .then((ok) => {
+        if (ok) {
+          toast.success("Resumed from checkpoint — training continues");
+          return;
+        }
+        // resumeBirth clears run pin and returns to Genesis on failure.
+        toast.error(useBirthStore.getState().pollError ?? "Resume failed");
       })
-      .catch((e) => toast.error(e instanceof Error ? e.message : "Resume failed"))
       .finally(() => setControlBusy(false));
   };
 
@@ -261,7 +268,10 @@ export function useBirthPhaseActions() {
 
   const handleResumeBirth = () => {
     setRetrying(true);
-    void retryBirth()
+    // Sticky training shell immediately — no decision/wipe flash during resume cold-start.
+    useBirthStore.getState().beginBirthRun();
+    // Never use bare retry here — retry without preserve wiped checkpoint for paused runs.
+    void resumeBirth()
       .then((ok) => {
         if (ok) {
           toast.success("Continuing birth from checkpoint");
@@ -336,73 +346,14 @@ export function useBirthPhaseActions() {
     toast.info("Review genesis settings, save, then use Expand & retry.");
   };
 
-  const stalledRecoveryActions: BirthRecoveryAction[] = evolutionExhausted
-    ? [
-        {
-          id: "reset_keep_cache",
-          label: "Reset birth (keep tick cache)",
-          loadingLabel: "Resetting…",
-          variant: "primary",
-          onClick: () => openWipeConfirm("reset"),
-        },
-        {
-          id: "genesis",
-          label: "Review genesis settings",
-          variant: "secondary",
-          onClick: handleReviewGenesisSettings,
-        },
-        {
-          id: "wipe_full",
-          label: "Full wipe (including tick cache)",
-          variant: "outline",
-          onClick: () => openWipeConfirm("full"),
-        },
-        {
-          id: "forensics",
-          label: "Copy forensics cmd",
-          variant: "outline",
-          onClick: handleCopyForensicsCommand,
-        },
-        {
-          id: "dismiss",
-          label: "Dismiss",
-          variant: "ghost",
-          onClick: () => setRecoveryDismissed(true),
-        },
-      ]
-    : [
-        {
-          id: "expand",
-          label: "Expand & retry",
-          loadingLabel: "Starting…",
-          variant: "primary",
-          onClick: handleExpandAndRetryStalledStage,
-        },
-        {
-          id: "genesis",
-          label: "Review genesis settings",
-          variant: "secondary",
-          onClick: handleReviewGenesisSettings,
-        },
-        {
-          id: "retry",
-          label: "Retry stage",
-          variant: "secondary",
-          onClick: handleResumeStalledStage,
-        },
-        {
-          id: "forensics",
-          label: "Copy forensics cmd",
-          variant: "outline",
-          onClick: handleCopyForensicsCommand,
-        },
-        {
-          id: "dismiss",
-          label: "Dismiss",
-          variant: "ghost",
-          onClick: () => setRecoveryDismissed(true),
-        },
-      ];
+  const stalledRecoveryActions = buildStalledRecoveryActions(evolutionExhausted, {
+    openWipeConfirm,
+    handleReviewGenesisSettings,
+    handleCopyForensicsCommand,
+    handleExpandAndRetryStalledStage,
+    handleResumeStalledStage,
+    setRecoveryDismissed,
+  });
 
   const certificateFailureDetail = resolveCertificateFailureSubtitle(status);
 

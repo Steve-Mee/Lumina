@@ -93,6 +93,7 @@ All hard safety contracts are preserved. Changes to those contracts would requir
 
 ## Links
 
+- ADR-0044: Twin Base Curriculum, Micro-Training & Doubt Escalation (Birth-ready training + dual-channel escalation)
 - ADR-0031: ApprovalTwinAgent on Central Event Bus + Primary Auto-Approval (direct predecessor)
 - ADR-0030: Architecture Meta-Controller (parallel path for self-mod of architecture under sandbox + human marker)
 - ADR-0003: Trading Constitution en Sandboxed Mutation Executor

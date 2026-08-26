@@ -1,6 +1,6 @@
 # Execution Fabric — Phase 0 Success Outline
 
-**Status:** In progress (PR-A foundation)  
+**Status:** PR-A…PR-F SIM complete (native NT Account + historical + live MD). REAL promotion still gated.  
 **Blueprint:** `project-dna/lumina/evolution/LUMINA_Execution_Fabric_Blueprint_v1.1_EN.md`  
 **ADR:** [0035-execution-fabric-grpc.md](adr/0035-execution-fabric-grpc.md)
 
@@ -22,6 +22,7 @@ E2E order placement from Python Brain → Fabric gRPC → NinjaTrader **SIM**, p
 | Basic heartbeat timeout cancel | Fabric Safety | Watchdog cancel + SAFE_MODE in C# host (PR-C) |
 | Safety MVP | Fabric + Python | Audit log, StateSync, modify, chaos tests (PR-D) |
 | Hardening | Fabric + Deck | Metrics, pre-trade risk, NT gateway skeleton, telemetry (PR-E) |
+| PR-F SIM | NT AddOn + Brain | NtAccountOrderGateway Sim101 bind, live MD, unary auth, dual-plane |
 
 ## Automated gates (repo)
 

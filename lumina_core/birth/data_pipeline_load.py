@@ -10,6 +10,12 @@ from lumina_core.birth.data_pipeline_types import (
     BirthDataPrepareResult,
     generate_synthetic_ticks,
 )
+from lumina_core.birth.foundation_history import (
+    apply_foundation_history_manifest,
+    history_depth_fail_message,
+    load_foundation_history_ticks,
+    resolve_reload_history_days,
+)
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.data_pipeline")
@@ -54,8 +60,10 @@ class BirthDataPipelineLoadMixin:
             phase=phase,
             message=message,
             progress_pct=float(progress_pct),
-            cumulative_trades=0,
+            # Preserve checkpoint counters on resume cold-load (never flash 0 trades).
+            cumulative_trades=int(getattr(self._host, "cumulative_trades", 0) or 0),
             target_trades=self._host.birth_config.trade_budget_cap,
+            ppo_steps=int(getattr(self._host, "ppo_steps", 0) or 0),
             birth_start_time=self._host.birth_start_time,
             extra_parts=(kwargs,),
         )
@@ -74,13 +82,14 @@ class BirthDataPipelineLoadMixin:
     ) -> BirthDataPrepareResult | list[dict[str, Any]]:
         """Return early BirthDataPrepareResult or loaded tick list."""
         host = self._host
+        days_back = resolve_reload_history_days(host._data_manifest, ceiling=max_days)
         loading_message = (
             resume_cache_decision.resume_message
             if resume and resume_cache_decision and resume_cache_decision.resume_message
             else (
                 "Checkpoint hervat — data opnieuw voorbereid (curriculum gaat verder, geen wipe)."
                 if resume
-                else f"Historische data laden ({max_days} dagen)…"
+                else f"Historische data laden ({days_back} dagen)…"
             )
         )
         _write_birth_progress(
@@ -133,7 +142,7 @@ class BirthDataPipelineLoadMixin:
                         f"({bars_loaded:,} bars)"
                     )
             else:
-                message = f"Historische data laden ({max_days} dagen)…"
+                message = f"Historische data laden ({days_back} dagen)…"
             _write_birth_progress(
                 host.workspace_root,
                 stage="loading_data",
@@ -151,13 +160,15 @@ class BirthDataPipelineLoadMixin:
                 chunk_phase=chunk_phase,
             )
 
-        ticks = _load_historical_ticks(
+        loaded = load_foundation_history_ticks(
             market_data_service=host.market_data_service,
             runtime=host.runtime,
-            days_back=max_days,
-            limit=None,
+            days_back=days_back,
+            load_fn=_load_historical_ticks,
             on_chunk=_history_chunk_progress,
         )
+        apply_foundation_history_manifest(host._data_manifest, loaded)
+        ticks = list(loaded.ticks)
         if host._stop_requested():
             return BirthDataPrepareResult(
                 ticks=[],
@@ -184,18 +195,25 @@ class BirthDataPipelineLoadMixin:
             logger.info("birth.synthetic.minimal_fallback reason=allow_minimal_synthetic_fallback")
             ticks = generate_synthetic_ticks(20_000, start_price=5000.0)
         elif not ticks:
+            fail_msg = history_depth_fail_message(
+                requested_days=loaded.requested_days,
+                actual_days=loaded.actual_calendar_days,
+                instruments=loaded.instruments,
+                stitched_from=loaded.stitched_from,
+            )
             _write_birth_progress(
                 host.workspace_root,
                 stage="history_unavailable",
                 phase="loading_history_failed",
-                message="Geen historische data beschikbaar.",
+                message=fail_msg,
                 progress_pct=100.0,
                 cumulative_trades=0,
                 target_trades=cfg.trade_budget_cap,
                 birth_start_time=host.birth_start_time,
                 retryable=True,
+                data_manifest=dict(host._data_manifest),
             )
-            host._notify_history_unavailable("Geen historische data beschikbaar.")
+            host._notify_history_unavailable(fail_msg)
             return BirthDataPrepareResult(
                 ticks=[],
                 split=None,

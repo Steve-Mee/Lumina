@@ -1958,13 +1958,13 @@ No body. No API key required for read (local operator machine).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `app_surface` | `"setup" \| "birth" \| "deck"` | yes | Canonical startup surface (SSOT) |
-| `app_surface_reason` | string | yes | Diagnostic reason (e.g. `birth_pending`, `birth_complete`, `backend_unreachable`) |
+| `app_surface` | `"setup" \| "birth" \| "hub" \| "deck"` | yes | Canonical startup surface (SSOT). Post-birth default is **`hub`**. |
+| `app_surface_reason` | string | yes | Diagnostic reason (e.g. `birth_pending`, `maturation_hub`, `backend_unreachable`) |
 | `setup_complete` | boolean | yes | Guided setup finished |
-| `skip_wizard` | boolean | yes | `true` only when `app_surface === "deck"` |
+| `skip_wizard` | boolean | yes | `true` when `app_surface` is `hub` or `deck` |
 | `birth.status` | string | yes | Birth service status (`idle`, `running`, `interrupted`, `error`, `completed`, …) |
 | `birth.artifacts_ok` | boolean | yes | Policy zip present on disk |
-| `birth.certificate_ok` | boolean | yes | Valid Birth Certificate v2 (`integrity_version: 2`) with matching policy hash and thresholds met — **deck gate** |
+| `birth.certificate_ok` | boolean | yes | Valid Birth Certificate v2 (`integrity_version: 2`) with matching policy hash and thresholds met — **birth-ready / hub gate** |
 | `birth.certificate_reason` | string | no | Fail-closed reason when `certificate_ok === false` |
 | `birth.certificate` | object | no | Parsed certificate payload when present |
 | `birth.progress` | object | no | Training progress when birth active |
@@ -1978,8 +1978,10 @@ Evaluated in order by `resolve_app_surface()`:
 
 1. If `backend.reachable === false` → `setup` (`backend_unreachable`)
 2. If `setup_complete === false` or pending setup steps → `setup` (`fresh_install` / `setup_incomplete`)
-3. If `birth.certificate_ok === false` or `birth.artifacts_ok === false` → `birth` (reason from birth status: `birth_running`, `birth_interrupted`, `birth_error`, `birth_pending`, `certificate_failed`)
-4. Else → `deck` (`birth_complete`)
+3. If `birth.certificate_ok === false` or (when certificate unknown) `birth.artifacts_ok === false` → `birth` (reason from birth status: `birth_running`, `birth_interrupted`, `birth_error`, `birth_pending`, `certificate_failed`)
+4. Else → **`hub`** (`maturation_hub`) — Phase Hub is the post-birth cold-start home
+
+`deck` is **not** the cold-start default. The operator opens Command Deck from Phase Hub (session override `operatorDeckActive`). Legacy clients may still map `deck` if returned.
 
 ### 9.3.1 Birth Certificate API
 
@@ -1988,11 +1990,11 @@ GET /api/birth/certificate
 GET /api/birth/status
 ```
 
-`GET /api/birth/status` and `GET /api/birth/certificate` both expose `certificate_ok`, `certificate_reason`, `artifacts_ok`, and the parsed `certificate` object. Deck bootstrap requires **`certificate_ok === true`** (not legacy flag-only checks).
+`GET /api/birth/status` and `GET /api/birth/certificate` both expose `certificate_ok`, `certificate_reason`, `artifacts_ok`, and the parsed `certificate` object. Leaving birth for hub requires **`certificate_ok === true`** (or legacy `artifacts_ok` when certificate field is absent).
 
 Pre-integrity-fix certificates (`integrity_version != 2`) are invalid — run mandatory re-birth after PR-A remediation.
 
-**Fail-closed:** `skip_wizard` must not be `true` unless `app_surface === "deck"`.
+**Fail-closed:** `skip_wizard` is `true` only for `hub` or `deck` (never for incomplete birth/setup).
 
 ### 9.4 Client mapping (Tauri)
 
@@ -2000,9 +2002,12 @@ Pre-integrity-fix certificates (`integrity_version != 2`) are invalid — run ma
 |---------------|--------------|-------------------|
 | `setup` | `wizard` | `OnboardingWizard` |
 | `birth` | `birth` | `BirthPhaseScreen` |
+| `hub` | `hub` | `PhaseHubScreen` |
 | `deck` | `cockpit` | `CockpitShell` |
 
 Mapper: `tauri-app/src/lib/onboardingPhase.ts` → `mapAppPhase()`.
+
+**Cold start UI:** while phase is `loading`, Tauri shows `StartupReadinessScreen` (named steps + soft Fabric probe). Sonner is suppressed during that cover.
 
 ### 9.5 Example fragment
 

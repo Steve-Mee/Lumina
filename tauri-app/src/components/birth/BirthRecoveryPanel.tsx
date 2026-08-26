@@ -30,8 +30,8 @@ const COPY: Record<
   { title: string; body: string }
 > = {
   history_unavailable: {
-    title: "Historical data unavailable",
-    body: "Real historical data could not be loaded. Retry with real data, or start a practice run with synthetic data (does not count toward live readiness).",
+    title: "Previous birth run: no historical data yet",
+    body: "A prior run stopped because NinjaTrader / Fabric history was not ready. Wait until datafeed is Connected and New → LUMINA shows the host running, run Test connection (GREEN), then Retry. This is not a live crash.",
   },
   checkpoint_available: {
     title: "Checkpoint available",

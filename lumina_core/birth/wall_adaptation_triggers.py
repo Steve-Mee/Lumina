@@ -66,6 +66,18 @@ class WallAdaptationTriggerMixin:
             cfg=eval_cfg,
             policy_entropy=policy_entropy,
             ppo_steps=int(ctx.get("ppo_steps", 0) or 0),
+            policy_trades=(
+                int(ctx["policy_trades"]) if ctx.get("policy_trades") is not None else None
+            ),
+            policy_wins=(
+                int(ctx["policy_wins"]) if ctx.get("policy_wins") is not None else None
+            ),
+            plant_trades=(
+                int(ctx["plant_trades"]) if ctx.get("plant_trades") is not None else None
+            ),
+            plant_wins=(
+                int(ctx["plant_wins"]) if ctx.get("plant_wins") is not None else None
+            ),
         )
         if not result.triggered:
             self._set_response(cid, "trigger", None)

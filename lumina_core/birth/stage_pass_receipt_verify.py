@@ -6,7 +6,6 @@ from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import (
     CurriculumStage,
     evaluate_stage_pass,
-    stage1_winrate_pass_threshold,
 )
 from lumina_core.birth.stage_pass_receipt_types import (
     CurriculumIntegrityAudit,
@@ -27,12 +26,24 @@ def verify_stage_pass_receipt(
     training_mode: str,
     allow_provisional: bool | None = None,
 ) -> tuple[bool, str]:
+    from lumina_core.birth.foundation_metrics import FOUNDATION_SCHEMA
+    from lumina_core.birth.foundation_stages import is_legacy_intra_birth_stage
+
     if receipt is None:
         return False, "missing_receipt"
     if receipt.stage != stage.value:
         return False, f"receipt_stage_mismatch expected={stage.value} got={receipt.stage}"
+    if is_legacy_intra_birth_stage(stage):
+        return False, f"legacy_intra_birth_stage:{stage.value}"
+    if str(getattr(receipt, "schema", "") or "") != FOUNDATION_SCHEMA:
+        return False, "missing_or_invalid_foundation_schema"
+    if getattr(receipt, "median_loss_r", None) is None:
+        return False, "missing_median_loss_r"
+    if getattr(receipt, "mean_r", None) is None:
+        return False, "missing_mean_r"
+    if stage != CurriculumStage.STAGE1_TREND and getattr(receipt, "occupancy", None) is None:
+        return False, "missing_occupancy"
     mode = str(training_mode).strip().lower()
-    # Certified: never accept provisional/soft oracle graduation.
     provisional_ok = bool(allow_provisional) if allow_provisional is not None else (
         mode == "practice"
     )
@@ -42,43 +53,7 @@ def verify_stage_pass_receipt(
         return False, "provisional_not_allowed_in_certified_mode"
     if mode == "certified" and receipt_message_is_soft_pass(receipt.message):
         return False, "soft_oracle_pass_not_allowed_in_certified_mode"
-    # Stage1: hygiene WR when EdgeScore is the pass law; legacy vanity gate otherwise.
-    edgescore_on = bool(getattr(cfg, "stage1_edgescore_enabled", False))
-    if stage == CurriculumStage.STAGE1_TREND and not provisional_ok and not edgescore_on:
-        wr_gate = float(
-            receipt.winrate_gate
-            if receipt.winrate_gate is not None
-            else stage1_winrate_pass_threshold(cfg)
-        )
-        if float(receipt.winrate) < wr_gate:
-            return False, f"stage1_winrate_below_gate wr={receipt.winrate:.4f} gate={wr_gate:.4f}"
-    from lumina_core.birth.starship_birth import gate_rolling_winrate, rolling_wr_pass_eligible
 
-    roll_window = int(getattr(cfg, "stage1_rolling_pass_window", 500) or 500)
-    stored_roll = (
-        float(receipt.rolling_winrate) if getattr(receipt, "rolling_winrate", None) is not None else None
-    )
-    stored_roll_src = getattr(receipt, "rolling_winrate_source", None)
-    stored_roll_cov = int(getattr(receipt, "rolling_window_trades_covered", 0) or 0)
-    gate_roll = gate_rolling_winrate(
-        rolling_wr=stored_roll,
-        source=stored_roll_src,
-        covered=stored_roll_cov,
-        window=roll_window,
-    )
-    if stage == CurriculumStage.STAGE1_TREND and not provisional_ok and edgescore_on:
-        hygiene = float(getattr(cfg, "stage1_winrate_pass_floor", 0.35))
-        lifetime_ok = float(receipt.winrate) >= hygiene
-        rolling_ok = gate_roll is not None and float(gate_roll) >= hygiene
-        if not (lifetime_ok or rolling_ok):
-            return (
-                False,
-                f"stage1_hygiene_below_floor wr={receipt.winrate:.4f} "
-                f"rolling={stored_roll if stored_roll is not None else 'n/a'} "
-                f"eligible={rolling_wr_pass_eligible(source=stored_roll_src, covered=stored_roll_cov, window=roll_window)} "
-                f"floor={hygiene:.4f}",
-            )
-    # Prefer stored range/hold metrics (Raptor v8). Parse legacy messages as fallback.
     hold_ratio = float(getattr(receipt, "hold_ratio", 0.0) or 0.0)
     range_flat = float(getattr(receipt, "range_flat_ratio", 0.0) or 0.0)
     range_rt = int(getattr(receipt, "range_round_trips", 0) or 0)
@@ -87,36 +62,10 @@ def verify_stage_pass_receipt(
     range_flat_bars = int(getattr(receipt, "range_flat_bars", 0) or 0)
     hold_signals = int(getattr(receipt, "hold_signals", 0) or 0)
     total_signals = int(getattr(receipt, "total_signals", 0) or 0)
-    if range_total <= 0 and "range_flat_ratio=" in str(receipt.message):
-        # Legacy receipts: parse flat ratio + round_trips from message.
-        import re
-
-        m_flat = re.search(r"range_flat_ratio=([0-9.]+)%", receipt.message)
-        m_rt = re.search(r"round_trips=(\d+)", receipt.message)
-        m_ticks = re.search(r"range_ticks=(\d+)", receipt.message)
-        if m_flat:
-            range_flat = float(m_flat.group(1)) / 100.0
-        if m_rt:
-            range_rt = int(m_rt.group(1))
-        if m_ticks:
-            range_total = int(m_ticks.group(1))
-        elif range_flat > 0:
-            range_total = max(50, int(receipt.trades) * 10)
-        range_flat_bars = int(round(range_flat * max(1, range_total)))
     if total_signals <= 0:
         total_signals = max(1, int(receipt.trades) * 20)
     if hold_signals <= 0 and hold_ratio > 0:
         hold_signals = int(round(hold_ratio * total_signals))
-    if hold_ratio <= 0 and total_signals > 0 and hold_signals > 0:
-        hold_ratio = float(hold_signals) / float(total_signals)
-    # Stage3: derive hold from winrate message if needed
-    if stage == CurriculumStage.STAGE3_MIXED and hold_ratio <= 0 and "hold=" in receipt.message:
-        import re
-
-        m_hold = re.search(r"hold=([0-9.]+)%", receipt.message)
-        if m_hold:
-            hold_ratio = float(m_hold.group(1)) / 100.0
-            hold_signals = int(round(hold_ratio * total_signals))
 
     reeval = evaluate_stage_pass(
         stage,
@@ -131,17 +80,31 @@ def verify_stage_pass_receipt(
         constitution_violations=0,
         target_trades=receipt.required_trades,
         cfg=cfg,
-        provisional=False if not provisional_ok else receipt.provisional,
-        allow_provisional=provisional_ok,
-        oracle_patterns=0 if not provisional_ok else 10_000,
-        buffer_size=0 if not provisional_ok else 10_000,
-        rolling_winrate=gate_roll,
+        provisional=False,
+        allow_provisional=False,
+        rolling_winrate=None,
         policy_entropy=getattr(receipt, "policy_entropy", None),
-        stage_total_pnl=getattr(receipt, "stage_total_pnl", None),
+        policy_trades=getattr(receipt, "policy_trades", None),
+        policy_wins=getattr(receipt, "policy_wins", None),
+        plant_trades=getattr(receipt, "plant_trades", None),
+        plant_wins=getattr(receipt, "plant_wins", None),
+        closes_stop=int(getattr(receipt, "closes_stop", 0) or 0),
+        closes_target=int(getattr(receipt, "closes_target", 0) or 0),
+        closes_time_stop=int(getattr(receipt, "closes_time_stop", 0) or 0),
+        closes_flatten=int(getattr(receipt, "closes_flatten", 0) or 0),
+        closes_unknown=int(getattr(receipt, "closes_unknown", 0) or 0),
+        median_loss_r=getattr(receipt, "median_loss_r", None),
+        mean_r=getattr(receipt, "mean_r", None),
+        occupancy=getattr(receipt, "occupancy", None) if getattr(receipt, "occupancy", None) is not None else range_flat,
+        first_touch_hit_rate=getattr(receipt, "p_ft", None),
+        geometry_net_rr=getattr(receipt, "geometry_net_rr", None),
+        unique_calendar_days=getattr(receipt, "unique_calendar_days", None),
+        oos_sharpe=getattr(receipt, "oos_sharpe", None),
+        oos_dd_pct=getattr(receipt, "oos_dd_pct", None),
     )
     if not reeval.passed:
         return False, f"re_eval_failed:{reeval.message}"
-    if not provisional_ok and receipt_message_is_soft_pass(reeval.message):
+    if receipt_message_is_soft_pass(reeval.message):
         return False, "re_eval_soft_pass_rejected"
     return True, "ok"
 

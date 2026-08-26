@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
@@ -54,3 +54,15 @@ async def post_attention_report(body: AttentionReportRequest) -> dict[str, Any]:
 
     sent = notify_problem(event, workspace_root=birth_service.workspace_root)
     return {"ok": True, "sent": bool(sent), "reason_code": body.reason_code}
+
+
+@router.get("/telegram-log")
+async def get_telegram_log(
+    limit: int = Query(200, ge=1, le=2000, description="Maximum thread/message rows"),
+) -> dict[str, Any]:
+    """Chronological Telegram I/O list with Twin question→answer threads (ADR-0043)."""
+    from lumina_core.notifications.telegram_journal import list_threads
+    from lumina_launcher.services.birth_service import birth_service
+
+    messages = list_threads(limit=limit, workspace_root=birth_service.workspace_root)
+    return {"ok": True, "count": len(messages), "messages": messages}

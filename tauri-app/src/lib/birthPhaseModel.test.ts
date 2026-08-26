@@ -14,6 +14,7 @@ import {
   isBirthCertificateFailed,
   isBirthComplete,
   isBirthFailed,
+  isBirthResidualHistoryFailure,
   isBirthEngineActive,
   isBirthInterrupted,
   isBirthProgressPayloadActive,
@@ -195,13 +196,23 @@ describe("birthPhaseModel", () => {
     ).toBe(true);
   });
 
-  it("detects birth completion from status and artifacts", () => {
+  it("detects birth completion only with Foundation exit", () => {
+    const payload: BirthStatusPayload = {
+      status: "completed",
+      artifacts_ok: true,
+      birth_exit_ok: true,
+      progress: { stage: "completed" },
+    };
+    expect(isBirthComplete(payload)).toBe(true);
+  });
+
+  it("does not treat artifacts-only completed as Birth complete", () => {
     const payload: BirthStatusPayload = {
       status: "completed",
       artifacts_ok: true,
       progress: { stage: "completed" },
     };
-    expect(isBirthComplete(payload)).toBe(true);
+    expect(isBirthComplete(payload)).toBe(false);
   });
 
   it("does not treat completed without artifacts as complete when explicitly false", () => {
@@ -217,6 +228,27 @@ describe("birthPhaseModel", () => {
     expect(isBirthFailed({ status: "error" })).toBe(true);
     expect(isBirthFailed({ status: "interrupted" })).toBe(false);
     expect(isBirthInterrupted({ status: "interrupted" })).toBe(true);
+  });
+
+  it("detects residual history failure without live engine", () => {
+    expect(
+      isBirthResidualHistoryFailure({
+        status: "error",
+        live: false,
+        progress: {
+          phase: "loading_history_failed",
+          residual_failure: true,
+          attention_reason_code: "history_unavailable_residual",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isBirthResidualHistoryFailure({
+        status: "error",
+        live: true,
+        progress: { phase: "loading_history_failed" },
+      }),
+    ).toBe(false);
   });
 
   it("ignores stale stage_stalled progress while engine is active", () => {
@@ -264,7 +296,7 @@ describe("birthPhaseModel", () => {
     expect(sim.pct).toBeCloseTo(62);
   });
 
-  it("infers EdgeScore criteria from curriculum stage when scorecard fields missing", () => {
+  it("infers Foundation process-R criteria from curriculum stage when scorecard fields missing", () => {
     const scorecard = extractStageScorecard({
       curriculum_stage: "stage1_trend",
       stage_trades: 190,
@@ -273,21 +305,20 @@ describe("birthPhaseModel", () => {
       phase: "ppo_training",
       timestamp: "2026-06-12T12:00:06.000Z",
     });
-    expect(scorecard?.passCriteriaId).toBe("trend_edgescore");
-    expect(scorecard?.metricLabel).toBe("Hygiene WR");
-    expect(scorecard?.metricValue).toBeCloseTo(76 / 190, 3);
-    // Composite EdgeScore — hygiene 0.35 must not become a fake EdgeScore target.
+    expect(scorecard?.passCriteriaId).toBe("closed_loop");
+    expect(scorecard?.metricLabel).toBe("Median loss R");
+    expect(scorecard?.metricValue).toBeNull();
     expect(scorecard?.metricTarget).toBeNull();
   });
 
-  it("shows syncing state when stage wins are not yet on progress payload", () => {
+  it("process-R missing stays null (fail-closed, not invented)", () => {
     const scorecard = extractStageScorecard({
       curriculum_stage: "stage1_trend",
       stage_trades: 190,
       stage_target_trades: 100,
       phase: "ppo_training",
     });
-    expect(scorecard?.metricLabel).toBe("EdgeScore");
+    expect(scorecard?.metricLabel).toBe("Median loss R");
     expect(scorecard?.metricValue).toBeNull();
   });
 
@@ -297,8 +328,8 @@ describe("birthPhaseModel", () => {
       {
         curriculum_stage: "stage1_trend",
         curriculum_index: 1,
-        curriculum_total: 3,
-        stage_display_name: "Trend",
+        curriculum_total: 5,
+        stage_display_name: "Closed loop",
         stage_trades: 62,
         stage_target_trades: 100,
         stage_winrate: 0.41,
@@ -315,7 +346,7 @@ describe("birthPhaseModel", () => {
       },
       now,
     );
-    expect(scorecard?.stageLabel).toBe("Stage 1/3 · Trend");
+    expect(scorecard?.stageLabel).toBe("Stage 1/5 · Closed loop");
     expect(scorecard?.tradesDone).toBe(62);
     expect(scorecard?.metricValue).toBeCloseTo(0.41);
     expect(scorecard?.heartbeatSec).toBe(4);

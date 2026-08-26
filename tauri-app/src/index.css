@@ -83,6 +83,19 @@
     /* REAL chrome aliases (slate + soft gold — not warning amber) */
     --real-chrome-accent: var(--mode-real-accent);
     --real-chrome-muted: var(--mode-real-muted);
+    /* Traffic-light health (ok/partial/fail) — cyan remains brand/chrome, not "ok" */
+    --status-ok: oklch(0.72 0.16 155);
+    --status-ok-fg: oklch(0.88 0.1 155);
+    --status-ok-bg: color-mix(in srgb, var(--status-ok) 14%, transparent);
+    --status-ok-border: color-mix(in srgb, var(--status-ok) 40%, transparent);
+    --status-partial: oklch(0.82 0.12 85);
+    --status-partial-fg: oklch(0.92 0.08 85);
+    --status-partial-bg: color-mix(in srgb, var(--status-partial) 12%, transparent);
+    --status-partial-border: color-mix(in srgb, var(--status-partial) 45%, transparent);
+    --status-fail: oklch(0.65 0.2 25);
+    --status-fail-fg: oklch(0.82 0.14 25);
+    --status-fail-bg: color-mix(in srgb, var(--status-fail) 14%, transparent);
+    --status-fail-border: color-mix(in srgb, var(--status-fail) 48%, transparent);
     /* status-warn: amber/orange for errors and degraded telemetry only */
     --status-warn: #f97316;
     --status-warn-bg: color-mix(in srgb, var(--status-warn) 12%, transparent);

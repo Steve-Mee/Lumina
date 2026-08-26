@@ -1,4 +1,9 @@
-"""Broker backend factory."""
+"""Broker backend factory.
+
+Fabric / ninjatrader is the default live foundation (ADR-0040).
+CrossTrade is a loadable emergency plugin — zero default import; lazy-loaded
+only when emergency opt-in or explicit live_provider=crosstrade is set.
+"""
 
 from __future__ import annotations
 
@@ -6,15 +11,28 @@ import logging
 from typing import Any
 
 from lumina_core.broker.broker_bridge.base import BrokerBridge
-from lumina_core.broker.broker_bridge.cross_trade_broker import CrossTradeBroker
 from lumina_core.broker.broker_bridge.paper_broker import PaperBroker
+
+_DEFAULT_LIVE_PROVIDER = "ninjatrader"
 
 
 def _resolve_live_provider(config: Any) -> str:
-    provider = str(getattr(config, "broker_live_provider", "crosstrade") or "crosstrade").strip().lower()
+    provider = str(
+        getattr(config, "broker_live_provider", _DEFAULT_LIVE_PROVIDER) or _DEFAULT_LIVE_PROVIDER
+    ).strip().lower()
     if provider not in {"crosstrade", "ninjatrader"}:
-        return "crosstrade"
+        # Fail closed to Fabric — never silent Crosstrade on garbage input.
+        return _DEFAULT_LIVE_PROVIDER
     return provider
+
+
+def _load_crosstrade_broker_plugin(config: Any | None = None) -> type:
+    """Lazy import CrossTrade only when deliberately selected (zero default import)."""
+    from lumina_core.broker.emergency_opt_in import assert_crosstrade_plugin_allowed
+    from lumina_core.broker.broker_bridge.cross_trade_broker import CrossTradeBroker
+
+    assert_crosstrade_plugin_allowed(engine_config=config, purpose="order_path")
+    return CrossTradeBroker
 
 
 def broker_factory(
@@ -56,6 +74,8 @@ def broker_factory(
                 bridge_service=bridge,
             )
 
+        # Emergency / legacy CrossTrade order path — plugin load + opt-in gate.
+        CrossTradeBroker = _load_crosstrade_broker_plugin(config)
         api_key = str(
             getattr(config, "broker_crosstrade_api_key", None) or getattr(config, "crosstrade_token", "") or ""
         ).strip()

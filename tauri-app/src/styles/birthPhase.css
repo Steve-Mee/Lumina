@@ -1220,6 +1220,11 @@
   align-items: stretch;
 }
 
+/* Recovery decision surface — equal glass cards in one row (Elon: one plane, no thrash). */
+.genesis-recovery-surface {
+  min-height: 0;
+}
+
 .genesis-recovery-action-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
@@ -1228,28 +1233,52 @@
   width: 100%;
 }
 
+.genesis-recovery-action-grid--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.genesis-recovery-action-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.genesis-recovery-action-grid--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 720px) {
+  .genesis-recovery-action-grid--2,
+  .genesis-recovery-action-grid--3,
+  .genesis-recovery-action-grid--4 {
+    grid-template-columns: 1fr;
+  }
+}
+
 .genesis-recovery-action-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  min-height: 8.5rem;
-  padding: 0.65rem 0.55rem 0.7rem;
+  min-height: 8.75rem;
+  padding: 0.7rem 0.55rem 0.75rem;
+  backdrop-filter: blur(10px);
 }
 
 .genesis-recovery-action-card--accent {
-  border-color: color-mix(in srgb, var(--lumina-cyan) 28%, transparent);
-  background: color-mix(in srgb, var(--lumina-cyan) 6%, var(--lumina-void) 88%);
+  border-color: color-mix(in srgb, var(--lumina-cyan) 32%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 8%, var(--lumina-void) 86%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--lumina-cyan) 8%, transparent);
 }
 
 .genesis-recovery-action-card--warn {
-  border-color: color-mix(in srgb, oklch(0.78 0.14 85) 32%, transparent);
-  background: color-mix(in srgb, oklch(0.78 0.14 85) 5%, var(--lumina-void) 90%);
+  border-color: color-mix(in srgb, oklch(0.78 0.14 85) 34%, transparent);
+  background: color-mix(in srgb, oklch(0.78 0.14 85) 7%, var(--lumina-void) 88%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, oklch(0.78 0.14 85) 6%, transparent);
 }
 
 .genesis-recovery-action-card--danger {
-  border-color: color-mix(in srgb, oklch(0.65 0.2 25) 35%, transparent);
-  background: color-mix(in srgb, oklch(0.65 0.2 25) 6%, var(--lumina-void) 90%);
+  border-color: color-mix(in srgb, oklch(0.65 0.2 25) 36%, transparent);
+  background: color-mix(in srgb, oklch(0.65 0.2 25) 7%, var(--lumina-void) 88%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, oklch(0.65 0.2 25) 6%, transparent);
 }
 
 .genesis-recovery-action-card__body {
@@ -1260,17 +1289,104 @@
   justify-content: center;
 }
 
+/* Shared translucent action buttons — never solid neon slabs */
 .genesis-recovery-action-card__btn {
   display: inline-flex !important;
-  min-height: 2.25rem;
+  width: 100%;
+  min-height: 2.35rem;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.45rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   white-space: nowrap;
+  cursor: var(--lumina-cursor-interactive);
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .genesis-recovery-action-card__btn span {
   line-height: 1.1;
+}
+
+.genesis-recovery-action-card__btn--accent {
+  border: 1px solid color-mix(in srgb, var(--lumina-cyan) 42%, transparent);
+  background: color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+  color: color-mix(in srgb, var(--lumina-cyan) 88%, white);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--lumina-cyan) 12%, transparent);
+}
+
+.genesis-recovery-action-card__btn--accent:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--lumina-cyan) 22%, transparent);
+  border-color: color-mix(in srgb, var(--lumina-cyan) 58%, transparent);
+  box-shadow: 0 0 26px color-mix(in srgb, var(--lumina-cyan) 20%, transparent);
+}
+
+.genesis-recovery-action-card__btn--warn {
+  border: 1px solid color-mix(in srgb, oklch(0.78 0.14 85) 42%, transparent);
+  background: color-mix(in srgb, oklch(0.78 0.14 85) 12%, transparent);
+  color: color-mix(in srgb, oklch(0.9 0.08 85) 90%, white);
+  box-shadow: 0 0 18px color-mix(in srgb, oklch(0.78 0.14 85) 10%, transparent);
+}
+
+.genesis-recovery-action-card__btn--warn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, oklch(0.78 0.14 85) 18%, transparent);
+  border-color: color-mix(in srgb, oklch(0.78 0.14 85) 55%, transparent);
+  box-shadow: 0 0 26px color-mix(in srgb, oklch(0.78 0.14 85) 16%, transparent);
+}
+
+.genesis-recovery-action-card__btn--danger {
+  border: 1px solid color-mix(in srgb, oklch(0.65 0.2 25) 45%, transparent);
+  background: color-mix(in srgb, oklch(0.65 0.2 25) 12%, transparent);
+  color: color-mix(in srgb, oklch(0.82 0.12 25) 88%, white);
+  box-shadow: 0 0 18px color-mix(in srgb, oklch(0.65 0.2 25) 10%, transparent);
+}
+
+.genesis-recovery-action-card__btn--danger:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, oklch(0.65 0.2 25) 18%, transparent);
+  border-color: color-mix(in srgb, oklch(0.65 0.2 25) 58%, transparent);
+  box-shadow: 0 0 26px color-mix(in srgb, oklch(0.65 0.2 25) 16%, transparent);
+}
+
+.genesis-recovery-action-card__btn:disabled {
+  opacity: 0.55;
+  cursor: var(--lumina-cursor-disabled);
+  transform: none;
+}
+
+/* Legacy class names kept for any residual footer secondary clean path */
+.genesis-recovery-primary-btn,
+.genesis-recovery-secondary-btn {
+  display: inline-flex !important;
+  width: 100%;
+  min-height: 2.35rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.45rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.genesis-recovery-secondary-btn {
+  border: 1px solid color-mix(in srgb, oklch(0.78 0.14 85) 42%, transparent);
+  background: color-mix(in srgb, oklch(0.78 0.14 85) 12%, transparent);
+  color: color-mix(in srgb, oklch(0.9 0.08 85) 90%, white);
 }
 
 .genesis-data-policy-card {
@@ -1291,6 +1407,23 @@
 
 .genesis-data-policy-card__control input {
   margin: 0;
+}
+
+/* Birth activation ceremony reuses Systems Go vault chrome (see BirthLaunchSequence). */
+.birth-launch-sequence.systems-go-shell {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.birth-launch-sequence .systems-go-viewport {
+  /* Phase header + evolution strip already consume vertical space. */
+  padding: 0.75rem 1rem 1rem;
+}
+
+.birth-launch-sequence .systems-go-window {
+  /* Slightly wider than cold-start so four steps read cleanly under the phase strip. */
+  width: min(100%, 28rem);
+  max-height: min(78dvh, 36rem);
 }
 
 .genesis-launch-cta .birth-launch-btn {
@@ -1645,6 +1778,119 @@
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, white 6%, transparent),
     0 0 14px color-mix(in srgb, var(--lumina-cyan) 20%, transparent);
+}
+
+/* Twin micro — Neural Genesis toolbar + mission HUD */
+.birth-genesis-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/* Help tip aligned to toolbar title type size (0.55rem mono) */
+.birth-genesis-title-help {
+  width: 0.7rem !important;
+  height: 0.7rem !important;
+  min-width: 0.7rem;
+  color: color-mix(in srgb, var(--lumina-cyan) 70%, white) !important;
+}
+
+.birth-genesis-title-help svg {
+  width: 0.55rem !important;
+  height: 0.55rem !important;
+}
+
+.birth-twin-micro-host {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+/*
+ * Toolbar slot (was HelpTip): 2-line stack matching Neural Genesis title + subtitle height.
+ * Icon centered above label — same language as mission HUD tool chips.
+ */
+.birth-twin-micro-chip--toolbar {
+  display: inline-flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 0.18rem !important;
+  height: auto !important;
+  min-height: 2.35rem !important;
+  min-width: 3.45rem !important;
+  border-radius: 0.55rem !important;
+  border: 1px solid color-mix(in srgb, white 12%, transparent) !important;
+  padding: 0.28rem 0.5rem 0.32rem !important;
+  font-family: var(--font-mono, ui-monospace, monospace) !important;
+  font-size: 0.48rem !important;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.1 !important;
+  color: color-mix(in srgb, var(--foreground) 62%, transparent);
+  background: color-mix(in srgb, var(--lumina-void) 55%, transparent) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+  white-space: nowrap;
+}
+
+.birth-twin-micro-chip--toolbar > svg {
+  display: block;
+  margin-inline: auto;
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+}
+
+.birth-twin-micro-chip--toolbar > span {
+  display: block;
+  text-align: center;
+  line-height: 1.15;
+  max-width: 4.2rem;
+  white-space: normal;
+}
+
+.birth-twin-micro-chip--toolbar:hover {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 36%, transparent) !important;
+  color: color-mix(in srgb, var(--lumina-cyan) 92%, white);
+  background: color-mix(in srgb, var(--lumina-cyan) 10%, transparent) !important;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--lumina-cyan) 14%, transparent);
+}
+
+.birth-twin-micro-chip[data-state="ok"] {
+  border-color: color-mix(in srgb, var(--lumina-cyan) 36%, transparent) !important;
+  color: color-mix(in srgb, var(--lumina-cyan) 92%, white);
+}
+
+.birth-twin-micro-chip[data-state="warn"] {
+  border-color: color-mix(in srgb, #fbbf24 40%, transparent) !important;
+  color: #fde68a;
+}
+
+.birth-twin-micro-chip[data-state="idle"] {
+  opacity: 0.75;
+}
+
+.birth-twin-micro-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 140;
+  width: min(28rem, calc(100vw - 1.5rem));
+  max-height: min(85vh, 40rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  padding: 1rem 1.1rem 1.15rem;
+  box-shadow:
+    0 0 40px color-mix(in srgb, var(--lumina-cyan) 16%, transparent),
+    0 16px 48px oklch(0 0 0 / 55%);
+}
+
+.birth-twin-micro-modal__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
 }
 
 .birth-command-bar__milestones {
@@ -2046,13 +2292,14 @@
   color: color-mix(in srgb, #fda4af 90%, transparent);
 }
 
-/* Match .risk-envelope-field-hint */
+/* Match .risk-envelope-field-hint — wrap, never crush into a 1-word column */
 .birth-stage-pass-checklist__need {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.55rem;
   line-height: 1.4;
   letter-spacing: 0.03em;
   color: color-mix(in srgb, var(--foreground) 40%, transparent);
+  overflow-wrap: break-word;
 }
 
 /* Match BirthFieldCard value (font-mono text-sm) */
@@ -2066,8 +2313,125 @@
   align-self: center;
 }
 
+/* Compound gates (durable lifetime): Life / Roll / Windows stacked under the need. */
+.birth-stage-pass-checklist__row[data-layout="stack"] {
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "glyph meta"
+    "glyph stats";
+  align-items: start;
+}
+
+.birth-stage-pass-checklist__row[data-layout="stack"] .birth-stage-pass-checklist__glyph {
+  grid-area: glyph;
+}
+
+.birth-stage-pass-checklist__row[data-layout="stack"] .birth-stage-pass-checklist__meta {
+  grid-area: meta;
+}
+
+.birth-stage-pass-checklist__row[data-layout="stack"] .birth-readout-stack {
+  grid-area: stats;
+  margin-top: 0.2rem;
+}
+
+.birth-metric-field .birth-readout-stack {
+  margin-top: 0.15rem;
+}
+
+/* Shared instrument stack — checklist chips + fitness Hygiene WR */
+.birth-readout-stack {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.birth-readout-stack__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.birth-readout-stack__key {
+  margin: 0;
+  flex: 0 0 auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.5rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--foreground) 42%, transparent);
+}
+
+.birth-readout-stack__val {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin: 0;
+  min-width: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.birth-readout-stack__note {
+  font-size: 0.55rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--foreground) 50%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="ok"] .birth-readout-stack__key {
+  color: color-mix(in srgb, #6ee7b7 55%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="warn"] .birth-readout-stack__key {
+  color: color-mix(in srgb, #fcd34d 55%, transparent);
+}
+
+.birth-stage-pass-checklist__row[data-tone="danger"] .birth-readout-stack__key {
+  color: color-mix(in srgb, #fda4af 55%, transparent);
+}
+
 .birth-stage-blocker-compact.birth-field-card {
-  padding: 0.55rem 0.65rem 0.6rem !important;
+  padding: 0.45rem 0.65rem 0.5rem !important;
+}
+
+.birth-blocker-gate__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.birth-blocker-gate__value {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.birth-blocker-gate__kicker {
+  margin: 0.12rem 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.55rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, #fda4af 78%, transparent);
+}
+
+.birth-blocker-gate__hint {
+  margin-top: 0.18rem;
+  overflow-wrap: break-word;
+  line-height: 1.35;
 }
 
 @media (max-width: 640px) {
@@ -2213,6 +2577,9 @@
   display: flex;
   flex-direction: column-reverse;
   gap: 0.5rem;
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
 }
 
 @media (min-width: 640px) {

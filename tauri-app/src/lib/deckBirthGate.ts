@@ -4,6 +4,7 @@ export interface DeckBirthSnapshot {
   status: string;
   artifacts_ok?: boolean;
   certificate_ok?: boolean;
+  birth_exit_ok?: boolean;
   message?: string;
   progress?: {
     progress_pct?: number;
@@ -21,16 +22,13 @@ function normStatus(value: unknown): string {
     .toLowerCase();
 }
 
-/** Classify whether the deck must block on birth lifecycle (fail-closed without artifacts). */
+/** Classify whether the deck must block on birth lifecycle (fail-closed without Foundation exit). */
 export function resolveDeckBirthGate(snapshot: DeckBirthSnapshot | null): DeckBirthGate {
   if (!snapshot) {
     return "none";
   }
 
-  if (snapshot.artifacts_ok === true && snapshot.certificate_ok !== false) {
-    return "none";
-  }
-  if (snapshot.certificate_ok === true && snapshot.artifacts_ok === true) {
+  if (snapshot.birth_exit_ok === true) {
     return "none";
   }
 

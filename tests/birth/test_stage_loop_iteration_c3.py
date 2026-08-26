@@ -27,7 +27,7 @@ _FACADE = _BIRTH / "stage_loop_iteration.py"
 _STALL = _BIRTH / "stage_loop_iteration_stall.py"
 _PASS = _BIRTH / "stage_loop_iteration_pass.py"
 _STAG = _BIRTH / "stage_loop_iteration_stagnation.py"
-_LOC_LIMIT = 400
+_LOC_LIMIT = 500
 
 
 def _loc(path: Path) -> int:

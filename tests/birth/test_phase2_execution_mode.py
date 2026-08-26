@@ -11,6 +11,8 @@ from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.phase2_autonomy.execution_mode import (
     Phase2ExecutionMode,
     evaluate_pillar_promotion,
+    execution_mode_rank,
+    max_execution_mode,
     normalize_execution_mode,
 )
 from lumina_core.birth.phase2_autonomy.features import Phase2AutonomyFeatures
@@ -50,6 +52,16 @@ def test_normalize_execution_mode() -> None:
     assert normalize_execution_mode("shadow") == Phase2ExecutionMode.SHADOW
     assert normalize_execution_mode("apply") == Phase2ExecutionMode.APPLY
     assert normalize_execution_mode("bogus") == Phase2ExecutionMode.OBSERVE
+
+
+@pytest.mark.unit
+def test_max_execution_mode_is_monotonic() -> None:
+    assert max_execution_mode("observe", "shadow") == Phase2ExecutionMode.SHADOW
+    assert max_execution_mode("apply", "observe") == Phase2ExecutionMode.APPLY
+    assert max_execution_mode("shadow", "shadow") == Phase2ExecutionMode.SHADOW
+    assert execution_mode_rank("apply") > execution_mode_rank("shadow") > execution_mode_rank(
+        "observe"
+    )
 
 
 @pytest.mark.unit

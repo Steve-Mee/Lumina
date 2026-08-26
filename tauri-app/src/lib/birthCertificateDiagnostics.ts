@@ -233,10 +233,10 @@ export function resolveCertificateFailureSubtitle(status: BirthStatusPayload | n
   const diag = resolveCertificateDiagnostics(status);
   const runway = diag.runwayPhase;
   if (runway) {
-    return `Generalization gap — runway resume available (${runway} → S8).`;
+    return `Generalization gap — certificate OOS belongs in Proving Ground (${runway}).`;
   }
   if (status?.fast_path_eligible) {
-    return "Curriculum complete — certificate runway S5 resume available.";
+    return "Birth Foundation complete — certificate OOS 0.48 is Proving Ground, not Birth exit.";
   }
   return "Holdout evaluation did not meet Birth Certificate v2 thresholds.";
 }

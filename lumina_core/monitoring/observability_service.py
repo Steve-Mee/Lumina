@@ -88,6 +88,25 @@ from .observability_recorders import (  # noqa: F401 — public metric name re-e
 logger = logging.getLogger("lumina.observability")
 
 
+def _resolve_metrics_db_path(db_path_str: str) -> Path:
+    """Resolve monitoring.db_path against LUMINA_STATE_DIR (absolute, cwd-independent).
+
+    Relative ``state/...`` paths must not depend on process cwd (backend often
+    starts in ``lumina_os/``), otherwise init and flush can hit different files.
+    """
+    rel = Path(db_path_str)
+    if rel.is_absolute():
+        return rel.resolve()
+    env = os.getenv("LUMINA_STATE_DIR", "").strip()
+    if env:
+        parts = rel.parts
+        if parts and parts[0] == "state":
+            rest = Path(*parts[1:]) if len(parts) > 1 else Path()
+            return (Path(env) / rest).resolve()
+        return (Path(env) / rel).resolve()
+    return (Path.cwd() / rel).resolve()
+
+
 @dataclass
 class AlertThresholds:
     latency_ms: float = 500.0
@@ -139,7 +158,7 @@ class ObservabilityService(ObservabilityRecordersMixin):
             )
 
         db_path_str = monitoring.get("db_path", "state/metrics.db")
-        db_path = Path(db_path_str) if db_path_str else None
+        db_path = _resolve_metrics_db_path(str(db_path_str)) if db_path_str else None
         collector: MetricsCollector | NullMetricsCollector = MetricsCollector(db_path=db_path)
 
         raw_thresh = monitoring.get("alert_thresholds", {})

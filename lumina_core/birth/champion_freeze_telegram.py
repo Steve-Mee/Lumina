@@ -170,7 +170,17 @@ def notify_champion_freeze_decision(
             tg.configure_workspace(root)  # type: ignore[attr-defined]
         else:
             setattr(tg, "_workspace_root", root)
-        sent = bool(tg.send_attention_alert(event.title, body, severity="critical"))
+        sent = bool(
+            tg.send_attention_alert(
+                event.title,
+                body,
+                severity="critical",
+                kind="freeze",
+                correlation_id="champion_freeze",
+                expects_reply=True,
+                source="champion_freeze_telegram",
+            )
+        )
     except Exception as exc:
         logger.warning("champion_freeze_telegram.notify_send_failed: %s", exc)
 
@@ -184,7 +194,35 @@ def notify_champion_freeze_decision(
         "checklist": "docs/birth-stage2-certified-reentry-checklist.md",
     }
     write_pending(root, pending_payload)
-    return {"ok": True, "telegram_sent": sent, "card": card, "pending": pending_payload}
+
+    # ADR-0037: birth/SIM judgment via Twin escalation (dual channel), not free-form human.
+    # Wipe remains available as MC choice; REAL capital path is never opened here.
+    twin_esc: dict[str, Any] = {}
+    try:
+        from lumina_core.evolution.twin_base_training import is_twin_birth_ready
+        from lumina_core.evolution.twin_training_service import TwinTrainingService
+
+        if is_twin_birth_ready():
+            svc = TwinTrainingService()
+            twin_esc = svc.create_escalation(
+                dna_hash=f"champion_freeze_{str(card.get('stage') or 'birth')}",
+                confidence=0.55,
+                risk_flags=["champion_freeze"],
+                explanation=str(card.get("guidance") or "Champion freeze — accept or wipe")[:300],
+                twin_recommendation=True,
+                doubt_reasons=["champion_freeze", "operator_judgment_via_twin"],
+                notify_telegram=False,
+            )
+    except Exception as exc:
+        logger.debug("champion_freeze_twin_escalation_failed: %s", exc)
+
+    return {
+        "ok": True,
+        "telegram_sent": sent,
+        "card": card,
+        "pending": pending_payload,
+        "twin_escalation": twin_esc,
+    }
 
 
 def parse_freeze_telegram_command(text: str) -> str | None:
@@ -213,6 +251,21 @@ def parse_freeze_telegram_command(text: str) -> str | None:
     }:
         return token
     return None
+
+
+def _journal_freeze_reply(*, cmd: str, source: str) -> None:
+    try:
+        from lumina_core.notifications.telegram_journal import record_reply
+
+        record_reply(
+            correlation_id="champion_freeze",
+            reply_text=str(cmd),
+            resolved_by=str(source or "telegram"),
+            kind="freeze",
+            source="champion_freeze_telegram",
+        )
+    except Exception:
+        logger.debug("champion_freeze_telegram.reply_journal_failed", exc_info=True)
 
 
 def try_handle_telegram_freeze_text(
@@ -297,6 +350,7 @@ def apply_freeze_command(
             source=source,
         )
         clear_pending(root)
+        _journal_freeze_reply(cmd=CMD_ACCEPT, source=source)
         _send_plain(
             root,
             "Lumina: ACCEPT received via Telegram — champion accepted, training continue requested.\n"
@@ -311,6 +365,7 @@ def apply_freeze_command(
             source=source,
         )
         clear_pending(root)
+        _journal_freeze_reply(cmd=CMD_ACCEPT_NO_START, source=source)
         _send_plain(
             root,
             "Lumina: ACCEPT_NO_START — freeze cleared, Birth NOT started.\n"
@@ -328,6 +383,7 @@ def apply_freeze_command(
         if status == "rejected":
             _send_plain(root, f"Lumina: WIPE rejected — {result.get('message')}")
             return {"ok": False, "action": CMD_WIPE, "result": result, "source": source}
+        _journal_freeze_reply(cmd=CMD_WIPE, source=source)
         _send_plain(
             root,
             "Lumina: WIPE (keep tick cache) completed via Telegram.\n"
@@ -345,6 +401,7 @@ def apply_freeze_command(
         if status == "rejected":
             _send_plain(root, f"Lumina: WIPE_FULL rejected — {result.get('message')}")
             return {"ok": False, "action": CMD_WIPE_FULL, "result": result, "source": source}
+        _journal_freeze_reply(cmd=CMD_WIPE_FULL, source=source)
         _send_plain(
             root,
             "Lumina: WIPE_FULL completed via Telegram.\n"
@@ -385,6 +442,7 @@ def echo_operator_decision(
     lines.append("Checklist: docs/birth-stage2-certified-reentry-checklist.md")
     ok = _send_plain(root, "\n".join(lines))
     if act in {CMD_ACCEPT, CMD_ACCEPT_NO_START, CMD_WIPE, CMD_WIPE_FULL, "ACCEPT", "WIPE"}:
+        _journal_freeze_reply(cmd=act, source=src)
         if src in {"app", "cli", "api", "tauri", "ui"}:
             clear_pending(root)
     return ok
@@ -420,9 +478,9 @@ def maybe_poll_freeze_telegram(
         pass
 
     try:
-        from lumina_core.notifications.telegram_notifier import TelegramNotifier
+        from lumina_core.notifications.telegram_notifier import get_telegram_notifier
 
-        tg = TelegramNotifier()
+        tg = get_telegram_notifier()
         if hasattr(tg, "configure_workspace"):
             tg.configure_workspace(root)  # type: ignore[attr-defined]
         else:
@@ -433,16 +491,31 @@ def maybe_poll_freeze_telegram(
         return []
 
 
-def _send_plain(workspace_root: Path, message: str) -> bool:
+def _send_plain(
+    workspace_root: Path,
+    message: str,
+    *,
+    kind: str = "freeze",
+    correlation_id: str = "champion_freeze",
+    expects_reply: bool = False,
+) -> bool:
     try:
-        from lumina_core.notifications.telegram_notifier import TelegramNotifier
+        from lumina_core.notifications.telegram_notifier import get_telegram_notifier
 
-        tg = TelegramNotifier()
+        tg = get_telegram_notifier()
         if hasattr(tg, "configure_workspace"):
             tg.configure_workspace(workspace_root)  # type: ignore[attr-defined]
         else:
             setattr(tg, "_workspace_root", workspace_root)
-        return bool(tg._send_telegram_message(message))  # noqa: SLF001 — shared send path
+        return bool(
+            tg.send_message(
+                message,
+                kind=kind,
+                correlation_id=correlation_id,
+                expects_reply=expects_reply,
+                source="champion_freeze_telegram",
+            )
+        )
     except Exception as exc:
         logger.debug("champion_freeze_telegram.send_failed: %s", exc)
         return False

@@ -62,13 +62,13 @@ describe("onboardingStore.refresh", () => {
     vi.mocked(fetchOnboardingStatus).mockReset();
   });
 
-  it("T8 cold start fetch failure → wizard with no payload", async () => {
+  it("T8 cold start fetch failure → stay on loading readiness with no payload", async () => {
     vi.mocked(fetchOnboardingStatus).mockRejectedValue(new Error("Network error"));
 
     await useOnboardingStore.getState().refresh();
 
     const state = useOnboardingStore.getState();
-    expect(state.phase).toBe("wizard");
+    expect(state.phase).toBe("loading");
     expect(state.payload).toBeNull();
     expect(state.error).toContain("Network error");
   });

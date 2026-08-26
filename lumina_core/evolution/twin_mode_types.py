@@ -60,16 +60,25 @@ def apply_mode_authority(
 ) -> dict[str, Any]:
     """Compute executable / effective_recommendation from mode + raw judgment.
 
+    One Twin DNA · Dual Authority (ADR-0038):
     - shadow: propose only — never auto-approve
     - assisted: veto blocks; approve does not sole-auto
-    - full_auto: effective = raw recommendation (birth/SIM only)
-    - REAL-like capital_mode: never executable (Track D / H2 floor)
+    - full_auto: effective = raw recommendation (when values gate)
+    - explore_pass (birth/sim): preference pass-through (loop free); raw kept for shadow
+    - values_active (sim_real_guard): apply mode authority; no REAL money sole-execute
+    - values_inside_gates (real): never executable sole (H2 floor)
     """
+    from lumina_core.evolution.twin_discipline import (
+        is_hard_real_capital,
+        is_real_like_capital,
+        twin_values_role,
+    )
+
     canonical = canonicalize_twin_mode(mode)
     authority = authority_for_mode(canonical)
     rec = bool(raw_recommendation)
-    cap = str(capital_mode or "").strip().lower()
-    real_like = cap in {"real", "live", "prod", "production", "sim_real_guard"}
+    cap = str(capital_mode or "").strip().lower() if capital_mode is not None else ""
+    role = twin_values_role(cap or "sim")
 
     if canonical == "shadow":
         out = {
@@ -107,13 +116,30 @@ def apply_mode_authority(
             "effective_recommendation": rec,
         }
 
-    if real_like:
+    out["twin_values_role"] = role
+    out["shadow_recommendation"] = rec
+
+    if role == "explore_pass":
+        # Annotate free-learn regime only. Do NOT rewrite twin mode ladder
+        # (shadow stays propose-only; assisted still non-executable approve).
+        # Preference non-blocking is enforced by twin_primary_judgment_for_decision
+        # + birth/phase2 consumers (ADR-0038), not by faking full_auto authority.
+        out["explore_pass"] = True
+        out["real_capital_floor"] = False
+        out["capital_mode"] = cap or "sim"
+    elif role == "values_inside_gates" or is_hard_real_capital(cap):
         out["executable"] = False
         out["effective_recommendation"] = False
         out["real_capital_floor"] = True
-        out["capital_mode"] = cap
+        out["capital_mode"] = cap or "real"
+    elif role == "values_active":
+        # Dress rehearsal: Steve values apply via mode authority above;
+        # still never arms REAL money (floor flag for capital consumers).
+        out["real_capital_floor"] = True
+        out["capital_mode"] = cap or "sim_real_guard"
+        out["no_real_money_sole_execute"] = True
     elif capital_mode is not None:
-        out["real_capital_floor"] = False
+        out["real_capital_floor"] = bool(is_real_like_capital(cap))
         out["capital_mode"] = cap or "sim"
     return out
 
@@ -127,6 +153,8 @@ class TwinModeCriterion(str, Enum):
     # H4 training discipline
     STEVE_LABELS = "steve_labels"
     CAPITAL_MODE_SAFE = "capital_mode_safe"
+    # ADR-0037: base curriculum required before assisted/full_auto
+    BASE_TRAINED = "base_trained"
 
 class TwinModeCriterionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -154,6 +182,8 @@ class TwinModePromotionEvidence(BaseModel):
     path_samples: int = Field(ge=0, default=0)
     # H4: capital mode for full_auto safety (sim/birth ok; real blocks)
     capital_mode: str = "sim"
+    # ADR-0037: base curriculum completed
+    base_trained: bool = False
 
     @classmethod
     def from_snapshot(
@@ -163,6 +193,7 @@ class TwinModePromotionEvidence(BaseModel):
         target_mode: str,
         snap: TwinModeMetricsSnapshot,
         capital_mode: str = "sim",
+        base_trained: bool = False,
     ) -> TwinModePromotionEvidence:
         return cls(
             current_mode=canonicalize_twin_mode(current_mode),
@@ -176,6 +207,7 @@ class TwinModePromotionEvidence(BaseModel):
             steve_label_samples=int(snap.steve_label_samples),
             path_samples=int(snap.path_samples),
             capital_mode=str(capital_mode or "sim"),
+            base_trained=bool(base_trained),
         )
 
 class TwinModePromotionDecision(BaseModel):

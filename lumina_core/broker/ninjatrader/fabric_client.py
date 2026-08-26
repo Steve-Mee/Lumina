@@ -57,13 +57,45 @@ class FabricConfig:
         return f"{self.host}:{int(self.port)}"
 
     def resolve_token(self) -> str:
-        if self.auth_token:
-            return self.auth_token
-        env_name = str(self.auth_token_env or "LUMINA_FABRIC_TOKEN").strip() or "LUMINA_FABRIC_TOKEN"
-        token = str(os.getenv(env_name, "") or "").strip()
-        if not token:
-            # Backward-compatible fallback used by ADR-0029 WS sketches.
-            token = str(os.getenv("LUMINA_NT8_API_KEY", "") or "").strip()
+        """Resolve auth token via Fabric Secret Bus (single read pipe).
+
+        Explicit ``auth_token`` that differs from SSOT is honored when it is not a
+        short stale snapshot (diagnostics wrong-token probe must still work).
+        """
+        ssot_token = ""
+        try:
+            from lumina_core.broker.ninjatrader.fabric_secret import read as fabric_secret_read
+
+            ssot_token = str(fabric_secret_read(heal=True).token or "").strip()
+        except Exception:
+            ssot_token = ""
+
+        env_name = (
+            str(self.auth_token_env or "LUMINA_FABRIC_TOKEN").strip()
+            or "LUMINA_FABRIC_TOKEN"
+        )
+        env_token = str(os.getenv(env_name, "") or "").strip()
+        if not env_token:
+            env_token = str(os.getenv("LUMINA_NT8_API_KEY", "") or "").strip()
+        # Prefer bus-healed token when available.
+        if ssot_token:
+            env_token = ssot_token
+        explicit = str(self.auth_token or "").strip()
+
+        if explicit and env_token and explicit != env_token:
+            # Prefer healed env when explicit is a short stale snapshot (<20 chars).
+            # Longer deliberate overrides (wrong-token probe, alt secrets) win.
+            if len(explicit) < 20 and len(env_token) >= 24:
+                token = env_token
+            else:
+                token = explicit
+        else:
+            token = env_token or explicit
+
+        # ADR-0041: reject weak/dev tokens (fail-closed; no soft-pass on import errors).
+        from lumina_core.cyber_sentinel import assert_fabric_token_safe
+
+        assert_fabric_token_safe(token, mode_context=str(self.mode_context or "sim"))
         return token
 
     @classmethod
@@ -120,6 +152,7 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
         self._safe_mode: int = fabric_pb2.SAFE_MODE_STATE_UNSPECIFIED
         self._hb_seq = 0
         self._owns_channel = channel is None
+        self._last_quotes: dict[str, dict[str, Any]] = {}
 
     @property
     def is_connected(self) -> bool:
@@ -211,6 +244,13 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
             timeout_seconds=timeout_seconds,
         )
 
+    def _auth_metadata(self) -> tuple[tuple[str, str], ...]:
+        """Unary RPC auth metadata (must match Fabric TryAuthorizeUnary)."""
+        token = self.config.resolve_token()
+        if not token:
+            return ()
+        return (("x-lumina-token", token),)
+
     def get_account_state(self) -> tuple[AccountInfo | None, list[Position], str]:
         """Unary GetAccountState. Returns (account, positions, error_code)."""
         stub = self._stub
@@ -220,6 +260,7 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
             state = stub.GetAccountState(
                 fabric_pb2.GetAccountStateRequest(correlation_id=str(uuid.uuid4())),
                 timeout=self.config.command_timeout_seconds,
+                metadata=self._auth_metadata(),
             )
         except grpc.RpcError as exc:
             return None, [], f"RPC_{exc.code().name}"  # type: ignore[union-attr]
@@ -234,6 +275,128 @@ class FabricGrpcClient(FabricClientOpsMixin, FabricClientStreamMixin):
                 self._account_name = state.account.account_name
             self._safe_mode = int(state.safe_mode)
         return account, positions, "ok"
+
+    def request_historical_data(
+        self,
+        *,
+        instrument: str,
+        bar_period: str = "1m",
+        start_unix_ms: int = 0,
+        end_unix_ms: int = 0,
+        max_bars: int = 500,
+        correlation_id: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """Unary RequestHistoricalData — native NT bars via Fabric (not CrossTrade).
+
+        Returns dict with keys: code, message, instrument, bars (list of bar dicts),
+        correlation_id. code == \"ok\" only when bars were returned.
+        """
+        stub = self._stub
+        if stub is None:
+            return {
+                "code": "DISCONNECTED",
+                "message": "Fabric not connected",
+                "instrument": instrument,
+                "bars": [],
+                "correlation_id": correlation_id or "",
+            }
+        corr = correlation_id or str(uuid.uuid4())
+        timeout = (
+            float(timeout_seconds)
+            if timeout_seconds is not None
+            else max(float(self.config.command_timeout_seconds), 45.0)
+        )
+        try:
+            resp = stub.RequestHistoricalData(
+                fabric_pb2.HistoricalDataRequest(
+                    instrument=str(instrument or ""),
+                    bar_period=str(bar_period or "1m"),
+                    start_unix_ms=int(start_unix_ms or 0),
+                    end_unix_ms=int(end_unix_ms or 0),
+                    max_bars=int(max_bars or 0),
+                    correlation_id=corr,
+                ),
+                timeout=timeout,
+                metadata=self._auth_metadata(),
+            )
+        except grpc.RpcError as exc:
+            return {
+                "code": f"RPC_{exc.code().name}",  # type: ignore[union-attr]
+                "message": str(exc.details() or exc),
+                "instrument": instrument,
+                "bars": [],
+                "correlation_id": corr,
+            }
+
+        code = str(getattr(resp, "code", "") or "").strip() or "EMPTY"
+        bars_out: list[dict[str, Any]] = []
+        for b in getattr(resp, "bars", []) or []:
+            ts_ms = int(getattr(b, "timestamp_unix_ms", 0) or 0)
+            bars_out.append(
+                {
+                    "instrument": str(getattr(b, "instrument", "") or instrument),
+                    "timestamp_unix_ms": ts_ms,
+                    "epoch": ts_ms // 1000 if ts_ms else 0,
+                    "open": float(getattr(b, "open", 0.0) or 0.0),
+                    "high": float(getattr(b, "high", 0.0) or 0.0),
+                    "low": float(getattr(b, "low", 0.0) or 0.0),
+                    "close": float(getattr(b, "close", 0.0) or getattr(b, "last", 0.0) or 0.0),
+                    "volume": int(getattr(b, "volume", 0) or 0),
+                    "last": float(getattr(b, "last", 0.0) or getattr(b, "close", 0.0) or 0.0),
+                    "is_bar": bool(getattr(b, "is_bar", True)),
+                }
+            )
+        ok = code.lower() in {"ok", "success", ""} and len(bars_out) > 0
+        if ok and code.lower() in {"", "success"}:
+            code = "ok"
+        if not ok and code.lower() in {"ok", "success", ""} and not bars_out:
+            code = "NO_BARS"
+        return {
+            "code": code,
+            "message": str(getattr(resp, "message", "") or ""),
+            "instrument": str(getattr(resp, "instrument", "") or instrument),
+            "bars": bars_out,
+            "correlation_id": str(getattr(resp, "correlation_id", "") or corr),
+        }
+
+    def subscribe_market_data(self, instruments: list[str], *, include_ticks: bool = True) -> bool:
+        """Request live market data push on TradingStream (native NT; no CrossTrade)."""
+        if not self.is_connected:
+            return False
+        symbols = [str(s).strip() for s in (instruments or []) if str(s).strip()]
+        if not symbols:
+            return False
+        try:
+            msg = fabric_pb2.BrainMessage(
+                subscribe_market_data=fabric_pb2.SubscribeMarketData(
+                    instruments=symbols,
+                    include_ticks=bool(include_ticks),
+                    include_bars=False,
+                )
+            )
+            self._outbound.put(msg)
+            return True
+        except Exception:
+            logger.debug("Fabric subscribe_market_data failed", exc_info=True)
+            return False
+
+    def get_last_quote(self, instrument: str) -> dict[str, Any] | None:
+        """Latest MarketDataUpdate for instrument (from live stream cache)."""
+        key = str(instrument or "").strip().upper()
+        if not key:
+            return None
+        with self._lock:
+            cache = getattr(self, "_last_quotes", None) or {}
+            q = cache.get(key)
+            if q is not None:
+                return dict(q)
+            # Partial match (MES vs MES 09-26)
+            root = key.split()[0] if key else ""
+            for k, v in cache.items():
+                if k == key or k.startswith(root + " ") or root == k.split()[0]:
+                    return dict(v)
+        return None
 
 
 def apply_fabric_message_to_bridge_state(

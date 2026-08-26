@@ -2,7 +2,11 @@
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <RootNamespace>LuminaNt8AddOn</RootNamespace>
-    <AssemblyName>LuminaNt8AddOn</AssemblyName>
+    <!-- Unique name so NT never binds a stale LuminaNt8AddOn 1.0 without FabricNtHost. -->
+    <AssemblyName>Lumina.Fabric.NtBridge</AssemblyName>
+    <Version>1.5.0</Version>
+    <AssemblyVersion>1.5.0.0</AssemblyVersion>
+    <FileVersion>1.5.0.0</FileVersion>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -17,6 +21,9 @@
       <HintPath>$(NINJATRADER8_BIN)\NinjaTrader.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="WindowsBase" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="PresentationCore" />
   </ItemGroup>
 
   <PropertyGroup Condition="'$(NINJATRADER8_BIN)' == '' Or !Exists('$(NINJATRADER8_BIN)\NinjaTrader.Core.dll')">

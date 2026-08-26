@@ -76,8 +76,13 @@ def rolling_winrate_last_n_trades(
         return (life, "true_window", trades) if return_meta else life
 
     if chunks:
+        # Partial floor scales with window (Stage-2 window=150 must not require 200).
+        partial_need = max(20, min(int(window) // 2, 200))
         wr, source, covered = rolling_winrate_from_chunks(
-            chunks, window=window, lifetime_wr=life
+            chunks,
+            window=window,
+            lifetime_wr=life,
+            min_covered_for_partial=partial_need,
         )
         if source != "lifetime_fallback":
             return (wr, source, covered) if return_meta else wr
@@ -116,6 +121,43 @@ def rolling_winrate_last_n_trades(
     if source == "lifetime_fallback":
         return (life, "lifetime_fallback", delta_trades) if return_meta else life
     return (wr, source, delta_trades) if return_meta else wr
+
+
+def stage_rolling_pass_window(cfg: object | None, stage: object | None = None) -> int:
+    """SSOT: rolling pass window per curriculum stage (truthful peak capture)."""
+    stage_val = ""
+    if stage is not None:
+        stage_val = str(getattr(stage, "value", stage) or "").lower()
+    if "stage2" in stage_val or stage_val.endswith("range"):
+        return max(
+            50,
+            int(getattr(cfg, "stage2_rolling_pass_window", 150) or 150) if cfg else 150,
+        )
+    if "stage3" in stage_val or stage_val.endswith("mixed"):
+        return max(
+            50,
+            int(getattr(cfg, "stage3_rolling_pass_window", 300) or 300) if cfg else 300,
+        )
+    return max(
+        50,
+        int(getattr(cfg, "stage1_rolling_pass_window", 500) or 500) if cfg else 500,
+    )
+
+
+def stage_rolling_pass_min_covered(cfg: object | None, stage: object | None = None) -> int:
+    """Min covered trades before rolling is trusted for pass/peak."""
+    window = stage_rolling_pass_window(cfg, stage)
+    stage_val = ""
+    if stage is not None:
+        stage_val = str(getattr(stage, "value", stage) or "").lower()
+    if "stage2" in stage_val or stage_val.endswith("range"):
+        min_cov = (
+            int(getattr(cfg, "stage2_rolling_pass_min_covered", 80) or 80) if cfg else 80
+        )
+    else:
+        # Stage-1/3: half window, floor 100 for Stage-1 legacy gate behavior.
+        min_cov = max(40, window // 2)
+    return max(20, min(window, int(min_cov)))
 
 
 def prune_rolling_trade_chunks(

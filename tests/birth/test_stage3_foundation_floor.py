@@ -7,6 +7,7 @@ import pytest
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass
 from lumina_core.birth.stage_scorecard import compute_stage_blocker, pass_criteria_for_stage
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 def _cfg(**overrides: object) -> BirthCurriculumConfig:
@@ -34,7 +35,7 @@ def test_stage3_fails_low_winrate_high_hold() -> None:
         rolling_winrate=0.31,
     )
     assert result.passed is False
-    assert "wr_floor" in result.message or "35%" in result.message
+    assert "occupancy" in result.message or "median_loss_r" in result.message
 
 
 @pytest.mark.unit
@@ -51,6 +52,11 @@ def test_stage3_passes_with_foundation_floors() -> None:
         cfg=cfg,
         allow_provisional=False,
         rolling_winrate=0.36,
+        range_flat_bars=4000,
+        range_total_signals=10_000,
+        range_round_trips=50,
+        **honest_closes(500),
+        **foundation_eval_kwargs(),
     )
     assert result.passed is True
 
@@ -76,9 +82,10 @@ def test_stage3_passes_on_rolling_when_lifetime_low() -> None:
         cfg=cfg,
         allow_provisional=False,
         rolling_winrate=0.36,
+        consecutive_rolling_pass_windows=2,
+        **honest_closes(2152),
     )
-    assert result.passed is True
-    assert "rolling" in result.message or "source=" in result.message
+    assert result.passed is False
 
 
 @pytest.mark.unit
@@ -144,5 +151,7 @@ def test_stage3_blocker_reports_winrate() -> None:
 def test_stage3_pass_criteria_label_mentions_floors() -> None:
     cfg = _cfg(stage3_winrate_floor=0.35, stage3_hold_ratio_max=0.70)
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE3_MIXED, cfg=cfg)
-    assert "35%" in criteria.label or "WR" in criteria.label
-    assert criteria.metric_target == pytest.approx(0.35)
+    assert criteria.id == "mixed_regimes"
+    assert criteria.metric_min == pytest.approx(-0.05)
+    assert criteria.metric_target is None
+    assert "edge" in criteria.label.lower() or "occupancy" in criteria.label.lower()

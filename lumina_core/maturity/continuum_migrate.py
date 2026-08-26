@@ -43,14 +43,8 @@ def migrate_from_milestones(workspace_root: Path | str) -> dict[str, Any]:
         birth_done = bool(birth_decision.exited)
         birth_proofs = list(birth_decision.proofs)
     except Exception:
-        birth_done = bool(
-            "birth_certificate_issued" in reached or _c()._birth_artifacts_ok(workspace_root)
-        )
-        birth_proofs = [
-            m
-            for m in ("birth_started", "birth_certificate_issued")
-            if m in reached
-        ] or (["birth_artifacts_ok"] if _c()._birth_artifacts_ok(workspace_root) else [])
+        birth_done = False
+        birth_proofs = []
 
     if birth_done:
         if MaturationPhase.BIRTH.value not in completed:

@@ -186,17 +186,43 @@ class APIKeyAuthenticator:
         self.config = config
 
     def verify_api_key(self, key: str) -> Optional[dict[str, Any]]:
-        """Verify API key and return associated metadata. Returns None if invalid."""
-        if key not in self.config.api_keys:
-            logger.warning("Invalid API key attempt")
-            return None
+        """Verify API key and return associated metadata. Returns None if invalid.
 
-        key_meta = self.config.api_keys[key]
-        if key_meta.get("enabled", True) is False:
-            logger.warning(f"API key disabled: {key_meta.get('name', 'unknown')}")
-            return None
+        During rotation grace (ADR-0042), also accepts ``LUMINA_ADMIN_API_KEY_PREVIOUS``.
+        Keys marked ``grace=True`` are rejected once the grace window expires
+        (even if still present in the in-process api_keys map after hot-reload).
+        """
+        if key in self.config.api_keys:
+            key_meta = self.config.api_keys[key]
+            if key_meta.get("enabled", True) is False:
+                logger.warning(f"API key disabled: {key_meta.get('name', 'unknown')}")
+                return None
+            if key_meta.get("grace") is True:
+                try:
+                    from lumina_core.api_key_rotation import grace_active
 
-        return key_meta
+                    if not grace_active():
+                        logger.warning("Grace API key rejected (window expired)")
+                        return None
+                except Exception:
+                    logger.warning("Grace API key rejected (grace check failed fail-closed)")
+                    return None
+            return key_meta
+
+        # Dual-key grace window after admin rotation (env previous, not yet in map).
+        try:
+            from lumina_core.api_key_rotation import previous_key_meta, grace_active
+
+            prev = str(os.getenv("LUMINA_ADMIN_API_KEY_PREVIOUS", "") or "").strip()
+            if prev and key == prev and grace_active():
+                meta = previous_key_meta()
+                if meta is not None:
+                    return meta
+        except Exception:
+            pass
+
+        logger.warning("Invalid API key attempt")
+        return None
 
     def generate_api_key(self, name: str, role: str = "user") -> str:
         """Generate a random API key."""

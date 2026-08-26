@@ -43,41 +43,38 @@ def test_survival_floors_default_not_skill() -> None:
     assert floors["skill_floors_deferred"]["wr_floor"] == pytest.approx(0.35)
 
 
-def test_birth_exit_false_without_artifacts(tmp_path: Path) -> None:
+def test_birth_exit_false_without_foundation(tmp_path: Path) -> None:
     d = evaluate_birth_exit(tmp_path)
     assert d.exited is False
     assert d.missing
     assert is_birth_exit_sufficient(tmp_path) is False
 
 
-def test_birth_exit_true_with_completed_flag_only(tmp_path: Path) -> None:
-    """Curriculum complete is enough — no Perfect Birth required."""
+def test_birth_exit_false_with_completed_flag_only(tmp_path: Path) -> None:
+    """Artifacts-only cannot exit — ADR-0046."""
     state = tmp_path / "state"
     state.mkdir(parents=True)
     (state / "lumina_birth_completed.flag").write_text("ok", encoding="utf-8")
-    # Post-birth milestones present must not block
     save_maturation_progress(
         tmp_path,
         MaturationProgress(
             current_phase=MaturationPhase.BIRTH,
             milestones_reached=[
                 "birth_started",
-                "perfect_birth_autonomy_proven",  # must not be required
+                "perfect_birth_autonomy_proven",
                 "promotion_gate_passed",
             ],
         ),
     )
     d = evaluate_birth_exit(tmp_path)
-    assert d.exited is True
-    assert "birth_curriculum_complete" in d.proofs or "birth_artifacts_ok" in d.proofs
-    # Conflation list may include post-birth milestones (informational)
+    assert d.exited is False
+    assert "foundation_five_receipts_v2" in d.missing
     assert "perfect_birth_autonomy_proven" in d.conflation_blockers
     assert d.next_phase == "awakening"
 
     ok, missing, learned = evaluate_exit_proofs(tmp_path, "birth")
-    assert ok is True
-    assert missing == []
-    assert learned.get("birth_exit", {}).get("exited") is True
+    assert ok is False
+    assert learned.get("birth_exit", {}).get("exited") is False
 
 
 def test_birth_exit_status_payload_shape(tmp_path: Path) -> None:
@@ -85,15 +82,15 @@ def test_birth_exit_status_payload_shape(tmp_path: Path) -> None:
     (tmp_path / "state" / "lumina_birth_completed.flag").write_text("1", encoding="utf-8")
     payload = birth_exit_status_payload(tmp_path)
     assert payload["schema"] == "birth_exit_v1"
-    assert payload["exited"] is True
+    assert payload["exited"] is False
     assert payload["perfect_birth_required_for_birth_exit"] is False
     assert payload["real_eligible_required_for_birth_exit"] is False
 
 
-def test_certificate_file_counts_as_exit(tmp_path: Path) -> None:
+def test_certificate_file_alone_is_not_exit(tmp_path: Path) -> None:
     state = tmp_path / "state"
     state.mkdir(parents=True)
     (state / "birth_certificate.json").write_text("{}", encoding="utf-8")
     d = evaluate_birth_exit(tmp_path)
-    assert d.exited is True
-    assert "birth_certificate_issued" in d.proofs
+    assert d.exited is False
+    assert "foundation_five_receipts_v2" in d.missing

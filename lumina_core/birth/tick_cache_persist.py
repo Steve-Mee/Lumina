@@ -122,6 +122,11 @@ def save_cache_manifest(
     tick_count: int = 0,
     train_tick_count: int = 0,
     holdout_tick_count: int = 0,
+    requested_days: int = 0,
+    actual_calendar_days: int = 0,
+    instruments: list[str] | tuple[str, ...] | None = None,
+    stitched: bool = False,
+    stitched_from: list[str] | tuple[str, ...] | None = None,
 ) -> str:
     payload = {
         "cache_schema_version": CACHE_SCHEMA_VERSION,
@@ -133,6 +138,11 @@ def save_cache_manifest(
         "tick_count": int(tick_count),
         "train_tick_count": int(train_tick_count),
         "holdout_tick_count": int(holdout_tick_count),
+        "requested_days": int(requested_days),
+        "actual_calendar_days": int(actual_calendar_days),
+        "instruments": [str(item) for item in (instruments or ())],
+        "stitched": bool(stitched),
+        "stitched_from": [str(item) for item in (stitched_from or ())],
         "purged_split_params": {"holdout_pct": float(holdout_pct)},
     }
     path = cache_manifest_path(workspace_root)
@@ -151,6 +161,36 @@ def load_cache_manifest(workspace_root: Path | str) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+def certified_tick_cache_present(workspace_root: Path | str) -> bool:
+    """True when ticks + split + SLA-depth manifest are on disk (no Fabric probe needed).
+
+    Cheap existence/metadata check — does not parse the jsonl tape.
+    """
+    root = Path(workspace_root)
+    ticks = ticks_cache_path(root)
+    split = split_cache_path(root)
+    if not ticks.is_file() or ticks.stat().st_size <= 0:
+        return False
+    if not split.is_file() or split.stat().st_size <= 0:
+        return False
+    manifest = load_cache_manifest(root)
+    if not isinstance(manifest, dict):
+        return False
+    train = str(manifest.get("train_hash") or "").strip()
+    if not train:
+        return False
+    try:
+        actual_days = int(manifest.get("actual_calendar_days") or 0)
+        requested_days = int(manifest.get("requested_days") or 0)
+        tick_count = int(manifest.get("tick_count") or 0)
+    except (TypeError, ValueError):
+        return False
+    # Foundation start rung is 90d at 0.95 ratio → 86 calendar days.
+    if actual_days < 86 or requested_days < 90 or tick_count < 1_000:
+        return False
+    return True
+
+
 def save_birth_data_cache(
     workspace_root: Path | str,
     *,
@@ -160,6 +200,11 @@ def save_birth_data_cache(
     raw_ticks_hash: str,
     train_hash: str,
     enrich_version: str = ENRICH_VERSION,
+    requested_days: int = 0,
+    actual_calendar_days: int = 0,
+    instruments: list[str] | tuple[str, ...] | None = None,
+    stitched: bool = False,
+    stitched_from: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, str]:
     ticks_path = save_ticks_cache(workspace_root, ticks)
     split_path = save_split_cache(workspace_root, split=split, holdout_pct=holdout_pct)
@@ -172,6 +217,11 @@ def save_birth_data_cache(
         tick_count=len(ticks),
         train_tick_count=len(split.train),
         holdout_tick_count=len(split.holdout),
+        requested_days=requested_days,
+        actual_calendar_days=actual_calendar_days,
+        instruments=instruments,
+        stitched=stitched,
+        stitched_from=stitched_from,
     )
     return {
         "ticks_cache_path": ticks_path,

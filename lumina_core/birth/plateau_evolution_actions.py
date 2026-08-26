@@ -77,9 +77,13 @@ class PlateauEvolutionActionsMixin(StageLoopMixinBase):
                     getattr(self, "strong_recovery_attempts", 0) or 0
                 ) + 1
                 base_explore = int(getattr(self.cur_cfg, "exploration_steps", 512) or 512)
+                frac = float(
+                    getattr(self.cur_cfg, "strong_recovery_explore_fraction", 0.35) or 0.35
+                )
+                quality_steps = max(64, int(base_explore * frac))
                 if hold_ratio < 0.40:
                     # Over-trading zone: reduce noise, keep quality mining path.
-                    self.cur_cfg.exploration_steps = max(64, int(base_explore * 0.5))
+                    self.cur_cfg.exploration_steps = quality_steps
                     logger.info(
                         "birth.plateau.stage3_skill_selectivity trades=%s wr=%.2f%% hold=%.1f%%",
                         self.stage_trades,
@@ -87,14 +91,15 @@ class PlateauEvolutionActionsMixin(StageLoopMixinBase):
                         hold_ratio * 100.0,
                     )
                     return "stage3 skill selectivity (reduce explore — overtrade)", True
-                self.cur_cfg.exploration_steps = max(base_explore, base_explore * 4)
+                # Quality owns Stage-3 WR recovery: never 4× entropy (12/08 kill loop).
+                self.cur_cfg.exploration_steps = quality_steps
                 logger.info(
-                    "birth.plateau.stage3_skill_explore_boost trades=%s wr=%.2f%% hold=%.1f%%",
+                    "birth.plateau.stage3_skill_quality trades=%s wr=%.2f%% hold=%.1f%%",
                     self.stage_trades,
                     float(self.stage_wins) / float(max(1, self.stage_trades)) * 100.0,
                     hold_ratio * 100.0,
                 )
-                return "stage3 skill explore-boost (ladder WR recovery)", True
+                return "stage3 skill quality (reduce explore — WR recovery)", True
             return "intra easy-only skipped — no intra curriculum on this stage", False
         if action == EvolutionAction.FRESH_POLICY:
             if bool(getattr(self.swarm_state, "rejected_no_lift", False)) or bool(
@@ -133,10 +138,50 @@ class PlateauEvolutionActionsMixin(StageLoopMixinBase):
                 getattr(self, "swarm_rejected_no_lift", False)
             ):
                 return "phoenix blocked — champion freeze after swarm no-lift", False
+            # P1: Stage-2 peak protect — never reinit-burn a captured peak.
+            try:
+                from lumina_core.birth.curriculum import CurriculumStage
+                from lumina_core.birth.stage2_peak_capture import should_block_phoenix_for_peak
+
+                if self.stage == CurriculumStage.STAGE2_RANGE:
+                    peak_st = getattr(self, "stage2_peak_state", None)
+                    if peak_st is not None:
+                        block_ph, ph_reason = should_block_phoenix_for_peak(
+                            peak_st, cfg=self.cur_cfg
+                        )
+                        if block_ph:
+                            peak_st.phoenix_blocked_reason = str(ph_reason or "peak_protect")
+                            return (
+                                f"phoenix blocked — peak protect ({ph_reason}); "
+                                f"peak_wr={float(peak_st.peak_winrate):.1%}",
+                                False,
+                            )
+            except Exception:
+                pass
             return self._apply_phoenix_reset()
         return "", False
 
     def _apply_phoenix_reset(self) -> tuple[str, bool]:
+        # P1 SSOT: every phoenix reinit path must honor Stage-2 peak protect.
+        try:
+            from lumina_core.birth.curriculum import CurriculumStage
+            from lumina_core.birth.stage2_peak_capture import should_block_phoenix_for_peak
+
+            if self.stage == CurriculumStage.STAGE2_RANGE:
+                peak_st = getattr(self, "stage2_peak_state", None)
+                if peak_st is not None:
+                    block_ph, ph_reason = should_block_phoenix_for_peak(
+                        peak_st, cfg=self.cur_cfg
+                    )
+                    if block_ph:
+                        peak_st.phoenix_blocked_reason = str(ph_reason or "peak_protect")
+                        return (
+                            f"phoenix blocked — peak protect ({ph_reason}); "
+                            f"peak_wr={float(peak_st.peak_winrate):.1%}",
+                            False,
+                        )
+        except Exception:
+            pass
         self.host.current_policy = self.host._create_birth_policy(
             allow_load_existing=False,
             force_reinit=True,

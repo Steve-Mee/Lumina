@@ -15,6 +15,7 @@ from typing import Any
 from lumina_core.first_boot_ui import (
     FIRST_BOOT_DEFAULT_MAX_REAL_DAYS,
     FIRST_BOOT_DEFAULT_TRADES,
+    FIRST_BOOT_MIN_REAL_DAYS,
     estimate_first_boot_real_days,
     normalize_first_boot_training_trades,
 )
@@ -85,7 +86,7 @@ def _load_first_boot_config() -> dict[str, int | bool]:
     return {
         "training_trades": training_trades,
         "prefer_real_data_only": prefer_real_data_only,
-        "max_real_days": max(30, min(3_650, max_real_days)),
+        "max_real_days": max(FIRST_BOOT_MIN_REAL_DAYS, min(3_650, max_real_days)),
         "allow_minimal_synthetic_fallback": allow_minimal_synth,
         "force_training": force_training,
         "birth_phase": birth_phase,

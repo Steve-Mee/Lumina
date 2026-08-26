@@ -150,17 +150,27 @@ def write_ppo_policy_metadata(
 
 
 def write_runtime_monitoring_snapshot(payload: dict[str, Any]) -> None:
-    base = {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-    base.update(payload if isinstance(payload, dict) else {})
-    _write_json(_monitoring_state_path("monitoring_runtime_metrics.json"), base)
-    if "daily_pnl" in base:
-        try:
-            _append_jsonl(
-                _monitoring_state_path("monitoring_daily_pnl.jsonl"),
-                {"timestamp": str(base["timestamp"]), "daily_pnl": float(base["daily_pnl"])},
-            )
-        except (TypeError, ValueError):
-            pass
+    """Write runtime metrics snapshot. Soft-fails: observability must never crash the supervisor."""
+    import logging
+
+    try:
+        base = {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        base.update(payload if isinstance(payload, dict) else {})
+        _write_json(_monitoring_state_path("monitoring_runtime_metrics.json"), base)
+        if "daily_pnl" in base:
+            try:
+                _append_jsonl(
+                    _monitoring_state_path("monitoring_daily_pnl.jsonl"),
+                    {"timestamp": str(base["timestamp"]), "daily_pnl": float(base["daily_pnl"])},
+                )
+            except (TypeError, ValueError):
+                pass
+    except Exception as exc:  # noqa: BLE001 — observability soft-fail (C1 / post-mortem)
+        logging.getLogger(__name__).warning(
+            "MONITORING_SNAPSHOT_WRITE_FAILED soft-fail: %s",
+            exc,
+            exc_info=True,
+        )
 
 
 def record_reasoning_latency_monitoring(

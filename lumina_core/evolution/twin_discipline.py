@@ -1,11 +1,17 @@
-"""H4: Twin training discipline — high-conf primary in birth/SIM; full_auto only under gates.
+"""H4: Twin training discipline — One Twin DNA · Dual Authority (ADR-0038).
 
-Does not arm REAL capital. Coordinates with ``real_multi_gate`` so Twin judgment
-stays inside hard gates.
+Single ApprovalTwin conscience trained to REAL standards.
+Authority by capital_mode (not a second agent):
+
+- explore_pass (birth/sim): Twin preference does NOT block the learn loop
+- values_active (sim_real_guard): Twin applies Steve values (dress rehearsal)
+- values_inside_gates (real): Twin input only; human multi-gate owns capital
+
+Does not arm REAL capital. Coordinates with ``real_multi_gate``.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from lumina_core.evolution.twin_mode_types import (
     canonicalize_twin_mode,
@@ -19,11 +25,44 @@ logger = get_logger("lumina.evolution.twin_discipline")
 # Align with organism_autonomy high-conf band
 HIGH_CONF_THRESHOLD = 0.80
 
-REAL_LIKE = frozenset({"real", "live", "prod", "production", "sim_real_guard"})
+# Pure REAL capital modes — Twin never sole-authorizes capital or DNA promotion
+HARD_REAL_CAPITAL = frozenset({"real", "live", "prod", "production"})
+# Pre-REAL dress rehearsal: SIM account + REAL-like risk guards
+DRESS_REHEARSAL_CAPITAL = frozenset({"sim_real_guard"})
+# Backward-compat alias: anything that must not sole-execute REAL money
+REAL_LIKE = HARD_REAL_CAPITAL | DRESS_REHEARSAL_CAPITAL
+
+TwinValuesRole = Literal["explore_pass", "values_active", "values_inside_gates"]
 
 
 def is_real_like_capital(mode: str | None) -> bool:
+    """True when capital path must not sole-execute REAL money (includes dress rehearsal)."""
     return str(mode or "").strip().lower() in REAL_LIKE
+
+
+def is_hard_real_capital(mode: str | None) -> bool:
+    """True only for live REAL capital modes (not sim_real_guard)."""
+    return str(mode or "").strip().lower() in HARD_REAL_CAPITAL
+
+
+def twin_values_role(capital_mode: str | None) -> TwinValuesRole:
+    """SSOT: which authority regime the single Twin conscience uses.
+
+    - explore_pass: free SIM/birth — organism learns; Twin shadow may log
+    - values_active: sim_real_guard — apply trained REAL values to DNA judgment
+    - values_inside_gates: REAL — judgment input only; multi-gate owns capital
+    """
+    m = str(capital_mode or "sim").strip().lower() or "sim"
+    if m in HARD_REAL_CAPITAL:
+        return "values_inside_gates"
+    if m in DRESS_REHEARSAL_CAPITAL:
+        return "values_active"
+    return "explore_pass"
+
+
+def twin_blocks_preference(capital_mode: str | None) -> bool:
+    """Whether Twin APPROVE/VETO preference may block the exploration/DNA path."""
+    return twin_values_role(capital_mode) != "explore_pass"
 
 
 def birth_sim_high_conf_primary_ready(
@@ -39,15 +78,20 @@ def birth_sim_high_conf_primary_ready(
     max_false_positive_pct: float = 15.0,
     capital_mode: str | None = "sim",
 ) -> dict[str, Any]:
-    """Whether Twin may act as high-conf primary judgment in birth/SIM (not REAL capital).
+    """Whether Twin may act as high-conf primary *values* judgment (values_active path).
 
-    Requires assisted+ mode authority path readiness signals from training metrics.
-    Shadow mode is never "primary" (propose_only). REAL capital never primary.
+    explore_pass: not "values primary" — loop free; use twin_primary_judgment_for_decision.
+    values_inside_gates / hard REAL: never primary.
+    values_active (sim_real_guard): requires assisted+ training bars.
     """
     mode = canonicalize_twin_mode(twin_mode)
+    role = twin_values_role(capital_mode)
     failures: list[str] = []
-    if is_real_like_capital(capital_mode):
+    if role == "values_inside_gates" or is_hard_real_capital(capital_mode):
         failures.append("real_capital_not_primary_judgment")
+    if role == "explore_pass":
+        # Free SIM: Twin is not the values rem; readiness for "values primary" is N/A
+        failures.append("explore_pass_values_not_gating")
     if mode == "shadow":
         failures.append("mode_is_shadow_propose_only")
     if int(samples) < int(min_samples):
@@ -63,6 +107,7 @@ def birth_sim_high_conf_primary_ready(
     return {
         "ready": ready,
         "twin_mode": mode,
+        "twin_values_role": role,
         "authority": authority_for_mode(mode),
         "high_conf_threshold": HIGH_CONF_THRESHOLD,
         "capital_mode": str(capital_mode or "sim"),
@@ -74,8 +119,8 @@ def birth_sim_high_conf_primary_ready(
             "false_positive_pct": float(false_positive_pct),
         },
         "note": (
-            "Primary judgment in birth/SIM only when assisted+ and training bars met; "
-            "REAL capital still requires human multi-gate (H2)."
+            "One Twin DNA: explore_pass frees birth/SIM; values_active on sim_real_guard; "
+            "REAL remains multi-gate (H2)."
         ),
     }
 
@@ -90,40 +135,80 @@ def twin_primary_judgment_for_decision(
     capital_mode: str | None = "sim",
     constitution_violations: int = 0,
     high_conf_threshold: float = HIGH_CONF_THRESHOLD,
+    base_trained: bool | None = None,
 ) -> dict[str, Any]:
-    """Track D SSOT: whether this single decision may use Twin as primary (birth/SIM).
+    """SSOT: may this decision treat Twin as primary for the *preference* path?
+
+    - explore_pass (birth/sim): primary=True if constitution clean — Twin does not gate
+      preference (organism learns). Twin may still shadow-score.
+    - values_active (sim_real_guard): high-conf full_auto + base_trained + approve.
+    - values_inside_gates (real): never primary sole; human multi-gate.
 
     Does not authorize REAL capital, PromotionGate bypass, or constitution override.
-    Consumers: birth organism autonomy, phase2 gates, generation SIM paths.
     """
     mode = canonicalize_twin_mode(twin_mode)
+    role = twin_values_role(capital_mode)
     failures: list[str] = []
-    if is_real_like_capital(capital_mode):
-        failures.append("real_capital_requires_human_multi_gate")
     if int(constitution_violations or 0) > 0:
         failures.append("constitution_violations")
-    if float(twin_confidence) < float(high_conf_threshold):
-        failures.append(f"confidence_below_{high_conf_threshold}")
-    if mode == "shadow":
-        failures.append("mode_shadow_propose_only")
-    # full_auto sole-execute; assisted may only veto (not primary approve)
-    if mode != "full_auto":
-        failures.append("mode_not_full_auto_for_primary_approve")
-    if not bool(twin_executable):
-        failures.append("not_executable")
-    if not bool(twin_effective_recommendation):
-        failures.append("effective_recommendation_false")
-    if not bool(twin_raw_recommendation):
-        failures.append("raw_recommendation_veto")
+
+    if role == "values_inside_gates":
+        failures.append("real_capital_requires_human_multi_gate")
+    elif role == "explore_pass":
+        # Free learn loop: Twin preference never blocks (constitution already checked).
+        # base_trained is still enforced at Birth *start* (API gate), not per tick.
+        primary = len(failures) == 0
+        return {
+            "primary": primary,
+            "twin_mode": mode,
+            "capital_mode": str(capital_mode or "sim"),
+            "twin_values_role": role,
+            "failures": failures,
+            "role": "explore_pass_no_twin_preference_gate" if primary else "blocked",
+            "shadow_raw_recommendation": bool(twin_raw_recommendation),
+            "never_bypasses": (
+                "constitution",
+                "sandbox",
+                "promotion_gate",
+                "real_human_approve",
+            ),
+        }
+    else:
+        # values_active — apply trained REAL conscience
+        ready = base_trained
+        if ready is None:
+            try:
+                from lumina_core.evolution.twin_base_training import is_twin_birth_ready
+
+                ready = is_twin_birth_ready()
+            except Exception:
+                ready = False
+        if not bool(ready):
+            failures.append("base_training_incomplete")
+        if float(twin_confidence) < float(high_conf_threshold):
+            failures.append(f"confidence_below_{high_conf_threshold}")
+        if mode == "shadow":
+            failures.append("mode_shadow_propose_only")
+        if mode != "full_auto":
+            failures.append("mode_not_full_auto_for_primary_approve")
+        if not bool(twin_executable):
+            failures.append("not_executable")
+        if not bool(twin_effective_recommendation):
+            failures.append("effective_recommendation_false")
+        if not bool(twin_raw_recommendation):
+            failures.append("raw_recommendation_veto")
 
     primary = len(failures) == 0
     return {
         "primary": primary,
         "twin_mode": mode,
         "capital_mode": str(capital_mode or "sim"),
+        "twin_values_role": role,
         "failures": failures,
         "role": (
-            "primary_birth_sim_judgment"
+            "primary_values_active_judgment"
+            if primary and role == "values_active"
+            else "primary_birth_sim_judgment"
             if primary
             else "subordinate_or_human_required"
         ),
@@ -138,9 +223,10 @@ def twin_primary_judgment_for_decision(
 
 
 def full_auto_allowed_for_capital_mode(capital_mode: str | None) -> tuple[bool, str]:
-    """full_auto Twin judgment mode is for SIM/birth judgment only — not REAL capital."""
-    if is_real_like_capital(capital_mode):
+    """full_auto Twin *mode* is allowed for explore_pass and values_active, not hard REAL."""
+    if is_hard_real_capital(capital_mode):
         return False, "full_auto_forbidden_in_real_capital"
+    # sim_real_guard: full_auto OK for DNA judgment (values_active); still no real $
     return True, "ok"
 
 
@@ -187,22 +273,32 @@ def discipline_snapshot(
         "auto_promote_when_ready": bool(auto_promote_when_ready),
         "auto_promote_full_auto": bool(auto_promote_full_auto),
         "readiness": readiness or {},
+        "twin_values_role": twin_values_role(capital_mode),
         "policy": {
             "promote_one_step_only": True,
             "full_auto_requires_steve_labels": True,
             "full_auto_forbidden_in_real_capital": True,
+            "one_twin_dna_dual_authority": True,
+            "explore_pass_birth_sim": True,
+            "values_active_sim_real_guard": True,
+            "values_inside_gates_real": True,
+            "base_training_is_real_conscience": True,
             "auto_promote_default_off": True,
             "auto_promote_full_auto_default_off": True,
             "human_labels_drive_calibration": True,
         },
         "next_step": (
-            "Label twin review queue + train; promote shadow→assisted when gate green; "
-            "full_auto only after steve-label discipline and never in REAL capital."
-            if not primary["ready"]
+            "Label twin review queue + train REAL-standard conscience; "
+            "promote shadow→assisted when gate green; full_auto never in hard REAL."
+            if not primary["ready"] and twin_values_role(capital_mode) != "explore_pass"
             else (
-                "High-conf primary ready for birth/SIM; keep labeling; full_auto only via gate."
-                if fa_ok
-                else "REAL capital: Twin cannot sole-execute; use human multi-gate (H2)."
+                "explore_pass: Birth/SIM free learn loop; Twin shadow logs, no preference gate."
+                if twin_values_role(capital_mode) == "explore_pass"
+                else (
+                    "values_active: Twin applies REAL conscience under sim_real_guard."
+                    if fa_ok and twin_values_role(capital_mode) == "values_active"
+                    else "REAL capital: Twin cannot sole-execute; use human multi-gate (H2)."
+                )
             )
         ),
     }
@@ -369,11 +465,18 @@ def build_twin_promote_ops_report(
 
 
 __all__ = [
+    "DRESS_REHEARSAL_CAPITAL",
+    "HARD_REAL_CAPITAL",
     "HIGH_CONF_THRESHOLD",
+    "REAL_LIKE",
+    "TwinValuesRole",
     "birth_sim_high_conf_primary_ready",
     "build_twin_promote_ops_report",
     "discipline_snapshot",
     "full_auto_allowed_for_capital_mode",
+    "is_hard_real_capital",
     "is_real_like_capital",
+    "twin_blocks_preference",
     "twin_primary_judgment_for_decision",
+    "twin_values_role",
 ]

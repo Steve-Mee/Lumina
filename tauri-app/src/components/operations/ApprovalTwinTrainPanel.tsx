@@ -3,6 +3,9 @@ import { toast } from "sonner";
 import { Brain, RefreshCw } from "lucide-react";
 
 import { ApiKeySetupCallout } from "@/components/cockpit/ApiKeySetupCallout";
+import { TwinBaseTrainingWizard } from "@/components/operations/TwinBaseTrainingWizard";
+import { TwinDecisionFeed } from "@/components/operations/TwinDecisionFeed";
+import { TwinMicroSessionCard } from "@/components/operations/TwinMicroSessionCard";
 import { TwinTrainGymSection } from "@/components/operations/TwinTrainGymSection";
 import { TwinTrainHistorySection } from "@/components/operations/TwinTrainHistorySection";
 import { TwinTrainMetricsSection } from "@/components/operations/TwinTrainMetricsSection";
@@ -14,6 +17,7 @@ import {
   fetchTwinLabels,
   fetchTwinMetrics,
   fetchTwinMode,
+  fetchTwinReadiness,
   fetchTwinReviewQueueFull,
   postGymAnswer,
   postTwinLabel,
@@ -28,9 +32,11 @@ import {
   type TwinMetrics,
   type TwinModeStatus,
   type TwinModeTarget,
+  type TwinReadiness,
   type TwinReviewItem,
 } from "@/lib/twinClient";
 import { cn } from "@/lib/utils";
+import "@/styles/twinTraining.css";
 
 export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
   const apiKeyConfigured = useApiKeyStore(selectApiKeyConfigured);
@@ -38,6 +44,7 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<TwinMetrics | null>(null);
   const [modeStatus, setModeStatus] = useState<TwinModeStatus | null>(null);
+  const [readiness, setReadiness] = useState<TwinReadiness | null>(null);
   const [queue, setQueue] = useState<TwinReviewItem[]>([]);
   const [highStakesCount, setHighStakesCount] = useState(0);
   const [labels, setLabels] = useState<TwinLabelRecord[]>([]);
@@ -54,17 +61,19 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
 
   const refresh = useCallback(async () => {
     try {
-      const [m, mode, q, l] = await Promise.all([
+      const [m, mode, q, l, ready] = await Promise.all([
         fetchTwinMetrics(),
         fetchTwinMode().catch(() => null),
         fetchTwinReviewQueueFull(15, { includeLabeled }),
         fetchTwinLabels(25),
+        fetchTwinReadiness().catch(() => null),
       ]);
       setMetrics(m);
       setModeStatus(mode);
       setQueue(q.items);
       setHighStakesCount(q.high_stakes_count ?? 0);
       setLabels(l);
+      setReadiness(ready);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load Twin training data");
     } finally {
@@ -257,10 +266,20 @@ export function ApprovalTwinTrainPanel({ className }: { className?: string }) {
       </div>
 
       <p className="text-[10px] leading-relaxed text-muted-foreground">
-        Review Twin decisions, label as you would (approve / veto / modify), and retrain the
-        local model. Data stays on disk (SteveValues registry + twin model). Twin judgment never
-        bypasses constitution, shadow aperture, or REAL PromotionGate.
+        Twin = jouw judgment DNA. Menselijke tussenkomst: (1) base training in Operator Vault,
+        (2) micro/escalatie (Deck + Telegram), (3) SIM→REAL promote. Constitution, shadow en
+        REAL PromotionGate blijven hard — Twin omzeilt die nooit.
       </p>
+
+      <TwinBaseTrainingWizard
+        variant="deck"
+        readiness={readiness}
+        onCompleted={() => void refresh()}
+      />
+
+      <TwinMicroSessionCard onDone={() => void refresh()} />
+
+      <TwinDecisionFeed />
 
       <TwinTrainMetricsSection metrics={metrics} />
 

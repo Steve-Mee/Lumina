@@ -21,12 +21,21 @@ class PlateauEvolutionMixin(
 ):
     """See StageLoopSession for attributes."""
 
+    def _stage_rolling_pass_window(self) -> int:
+        from lumina_core.birth.plateau_rolling import stage_rolling_pass_window
+
+        return stage_rolling_pass_window(
+            getattr(self, "cur_cfg", None), getattr(self, "stage", None)
+        )
+
     def _rolling_winrate_500(self) -> float:
+        """Legacy name: now stage-aware window (Stage-2=150, Stage-1=500)."""
         chunks = getattr(self, "rolling_trade_chunks", None)
         result = rolling_winrate_last_n_trades(
             stage_trades=self.stage_trades,
             stage_wins=self.stage_wins,
             wins_at_trade=getattr(self, "wins_at_trade_milestones", {}) or {},
+            window=self._stage_rolling_pass_window(),
             chunks=chunks if isinstance(chunks, list) else None,
             return_meta=True,
         )
@@ -43,6 +52,7 @@ class PlateauEvolutionMixin(
             stage_trades=self.stage_trades,
             stage_wins=self.stage_wins,
             wins_at_trade=getattr(self, "wins_at_trade_milestones", {}) or {},
+            window=self._stage_rolling_pass_window(),
             chunks=chunks if isinstance(chunks, list) else None,
             return_meta=True,
         )

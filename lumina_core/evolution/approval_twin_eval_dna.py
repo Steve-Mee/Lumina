@@ -194,21 +194,13 @@ class ApprovalTwinDnaEvaluatorMixin:
             except Exception:
                 pass
 
-            # Publish typed event to central bus (best effort; after logs)
-            self._publish_decision(
-                dna_hash=dna_hash,
-                recommendation=recommendation,
-                confidence=score,
-                risk_flags=risk_flags,
-                explanation=explanation,
-                call="evaluate_dna_promotion",
-            )
-
             decision = {
                 "recommendation": recommendation,
                 "confidence": round(score, 6),
                 "explanation": explanation,
                 "risk_flags": risk_flags,
             }
-            # Mode authority: shadow/assisted cannot sole-auto-approve (fail-closed)
-            return self.apply_mode_authority(decision)
+            # Mode authority first; post-hoc Telegram/bus never gates the judgment.
+            return self._finalize_and_publish_decision(
+                decision, dna_hash=dna_hash, call="evaluate_dna_promotion"
+            )

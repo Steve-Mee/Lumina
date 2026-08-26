@@ -319,16 +319,27 @@ grep '"reason":"rate_limit_exceeded"' logs/security_audit.jsonl | \
 - ✅ Explicit CORS allowlist
 - ✅ Audit logging
 - ✅ Config validation
+- ✅ **ADR-0040:** Command Deck default bind `127.0.0.1` (`LUMINA_API_BIND`); non-loopback hard-vetoed unless TLS/mTLS + allowlist + Sentinel flags are all set (`lumina_core/cyber_sentinel.py`)
+- ✅ **ADR-0040:** `GET /api/core/live` requires API key off-localhost
+- ✅ **ADR-0040:** CrossTrade is emergency plugin only (lazy import + Vault `fallback_on_fabric_failure` SSOT)
+- ✅ **ADR-0041:** SentinelAgent observe→contain (auth/rate/bus bursts); middleware IP allowlist; containment SSOT
+- ✅ **ADR-0041:** API TLS via `LUMINA_API_TLS_CERT` + `LUMINA_API_TLS_KEY` (uvicorn)
+- ✅ **ADR-0041:** Weak Fabric tokens (`sim-dev-token`) banned outside SIM policy
+- ✅ **ADR-0041:** `/api/monitoring/metrics` loopback free; off-loopback needs API key unless `LUMINA_METRICS_PUBLIC=true`
 
-### Out of Scope (Future v51+)
-- [ ] TLS/HTTPS enforcement
-- [ ] IP whitelisting/geo-blocking
-- [ ] API key rotation strategy
+### ADR-0042 Identity / PKI / Crypto (v51 foundation — IMPLEMENTED)
+- ✅ Admin API key rotation + dual-key grace (`api_key_rotation.py`, `POST /api/sentinel/rotate-admin-key`)
+- ✅ Encryption-at-rest helpers (`crypto_at_rest.py`, `LUMINA_STATE_ENCRYPTION_KEY`)
+- ✅ Fabric gRPC TLS/mTLS channel builder (`mtls_config.py`, `LUMINA_FABRIC_TLS_*`)
+- ✅ Sentinel outermost middleware + status/clear endpoints + periodic tick
+
+### Out of Scope (Future v51+ remaining)
+- [ ] Full OAuth2/OIDC federation + MFA
+- [ ] Automated scheduled key rotation without operator command
+- [ ] Fabric **server-side** TLS cert bootstrap in NT AddOn (client path ready)
+- [ ] Encrypt all audit JSONL streams by default
 - [ ] OWASP ModSecurity WAF integration
-- [ ] Intrusion detection (rate+pattern analysis)
-- [ ] Encryption at rest (audit logs, state files)
-- [ ] OAuth2/OIDC federation
-- [ ] Multi-factor authentication
+- [ ] Self-evolving IDS rule promotion (sandbox + Twin/human gate)
 
 ---
 
@@ -341,6 +352,9 @@ Before deploying to production:
 - [ ] Set `LUMINA_JWT_SECRET_KEY` environment variable
 - [ ] Set `LUMINA_ADMIN_API_KEY` environment variable (used by launcher/backend emergency admin endpoints)
 - [ ] Update `config.yaml` with production CORS origins (NOT `["*"]`)
+- [ ] Confirm API bind remains loopback (`127.0.0.1`) unless full ADR-0040/0041 non-loopback gate is satisfied
+- [ ] If non-loopback: set `LUMINA_IP_ALLOWLIST`, TLS cert/key, `LUMINA_SENTINEL_ACTIVE=true`, `LUMINA_ALLOW_NON_LOOPBACK=true`
+- [ ] Never set Brain `LUMINA_FABRIC_TOKEN=sim-dev-token` without `LUMINA_FABRIC_ALLOW_SIM_DEV_TOKEN` (SIM only)
 - [ ] Confirm `config.yaml` maps `security.api_keys` to `${LUMINA_ADMIN_API_KEY}` (no hardcoded secrets)
 - [ ] Ensure `logs/` directory exists and is writable
 - [ ] Run full test suite: `pytest tests/ -v --tb=short`

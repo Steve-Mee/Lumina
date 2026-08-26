@@ -24,11 +24,23 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None)) -> dict[str, A
     security = _sec()
     if not x_api_key:
         security["audit_log"].log_auth_attempt("unknown", False, "api_key")
+        try:
+            from lumina_core.cyber_sentinel import observe_auth_failure
+
+            observe_auth_failure(principal="unknown", reason="missing_api_key")
+        except Exception:
+            pass
         raise HTTPException(status_code=401, detail="API key required")
 
     key_meta = security["api_key"].verify_api_key(x_api_key)
     if not key_meta:
         security["audit_log"].log_auth_attempt("unknown", False, "api_key")
+        try:
+            from lumina_core.cyber_sentinel import observe_auth_failure
+
+            observe_auth_failure(principal="unknown", reason="invalid_api_key")
+        except Exception:
+            pass
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     security["audit_log"].log_auth_attempt(key_meta.get("name", "api_key"), True, "api_key")
@@ -58,4 +70,10 @@ async def check_rate_limit(x_api_key: Optional[str] = Header(None)) -> None:
     security = _sec()
     client_id = x_api_key or "anonymous"
     if not security["rate_limiter"].is_allowed(client_id):
+        try:
+            from lumina_core.cyber_sentinel import observe_rate_limit
+
+            observe_rate_limit(client_id=str(client_id)[:64])
+        except Exception:
+            pass
         raise HTTPException(status_code=429, detail="Rate limit exceeded")

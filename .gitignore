@@ -307,3 +307,13 @@ integrations/ninjatrader8/**/obj/
 # Local Python scratch dumps
 tmp_*.py
 
+# Local session / perf scratch (underscore-prefixed; not covered by tmp_*)
+_tmp_*
+_perf_*.json
+_perf_*.txt
+.mypy_cache*/
+.mypy_cache_hud/
+
+# Accidental root node_modules (frontend/tauri already ignored under their trees)
+/node_modules/
+

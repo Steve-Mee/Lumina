@@ -51,17 +51,70 @@ def write_certificate(
     workspace_root: Path | None = None,
     extra: dict[str, Any] | None = None,
 ) -> Path | None:
+    """Persist GREEN dual-plane proof only.
+
+    ADR-0040: dual-plane GREEN requires objective historical_bars proof
+    (Fabric + NT BarsRequest path), not order-plane alone. Callers that
+    already gated ``overall==green`` via CRITICAL_CHECK_IDS (includes
+    historical_bars) may omit extra; if ``extra`` provides checks or
+    historical_bars status, fail closed when history is not pass.
+    """
     if str(overall).lower() != "green":
         return None
+
+    extra_d = dict(extra or {})
+    hist_status = str(extra_d.get("historical_bars") or extra_d.get("historical_bars_status") or "").strip().lower()
+    checks = extra_d.get("checks")
+    # When caller supplies dual-plane evidence, require historical_bars PASS.
+    # overall==green without extra is allowed only when CRITICAL_CHECK_IDS already
+    # forced historical_bars (diagnostic finalize) — callers should still pass checks.
+    if hist_status and hist_status not in {"pass", "ok", "green"}:
+        logger.warning(
+            "write_certificate refused: historical_bars=%s (dual-plane proof required)",
+            hist_status,
+        )
+        return None
+    if isinstance(checks, list):
+        hist = next(
+            (
+                c
+                for c in checks
+                if isinstance(c, dict) and str(c.get("id") or "") == "historical_bars"
+            ),
+            None,
+        )
+        if hist is None:
+            logger.warning(
+                "write_certificate refused: checks provided without historical_bars "
+                "(dual-plane proof required per ADR-0040)"
+            )
+            return None
+        if str(hist.get("status") or "").lower() not in {
+            "pass",
+            "ok",
+            "green",
+        }:
+            logger.warning(
+                "write_certificate refused: historical_bars check not pass (status=%s)",
+                hist.get("status"),
+            )
+            return None
+
     path = certificate_path(workspace_root)
     payload: dict[str, Any] = {
         "overall": "green",
         "ts_unix": time.time(),
         "target": target,
         "token_fp": token_fingerprint(token),
+        "dual_plane": True,
+        "proof": "fabric_nt_barsrequest",
     }
-    if extra:
-        payload.update(extra)
+    if extra_d:
+        # Do not let extra overwrite dual_plane / proof markers with weaker claims.
+        for k, v in extra_d.items():
+            if k in {"dual_plane", "proof", "overall"}:
+                continue
+            payload[k] = v
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     # Clear halt on successful cert
     clear_halt(workspace_root)
@@ -89,11 +142,21 @@ def invalidate_certificate(workspace_root: Path | None = None, reason: str = "")
         logger.warning("Could not invalidate fabric certificate", exc_info=True)
 
 
+# Legacy paper-cert window (proof only — never primary live GREEN by itself).
+# Live color comes from fabric_link_health.compute_level / build_fabric_link_health.
+DEFAULT_FABRIC_LINK_MAX_AGE_HOURS = 24.0 * 14
+# Birth activate: dual-plane proof must be recent; AND live host must be up
+# (enforced in fabric_link_health.gate_birth_ok — not cert alone).
+BIRTH_FABRIC_LINK_MAX_AGE_HOURS = 2.0
+# Operator Vault "Certified" badge freshness (live color is separate).
+PROOF_BADGE_MAX_AGE_HOURS = 0.5
+
+
 def is_fabric_link_green(
     *,
     token: str | None = None,
     workspace_root: Path | None = None,
-    max_age_hours: float = 24.0 * 14,
+    max_age_hours: float = DEFAULT_FABRIC_LINK_MAX_AGE_HOURS,
 ) -> tuple[bool, str]:
     """Return (ok, reason). Token fingerprint must match when token provided."""
     cert = read_certificate(workspace_root)
@@ -111,6 +174,36 @@ def is_fabric_link_green(
     if is_halt_active(workspace_root):
         return False, "FABRIC_HALT"
     return True, "OK"
+
+
+def is_fabric_link_green_for_birth(
+    *,
+    token: str | None = None,
+    workspace_root: Path | None = None,
+    max_age_hours: float = BIRTH_FABRIC_LINK_MAX_AGE_HOURS,
+) -> tuple[bool, str]:
+    """Birth/Genesis gate: live host up + recent dual-plane proof (never paper alone).
+
+    ``max_age_hours`` is applied inside fabric_link_health via
+    ``BIRTH_FABRIC_LINK_MAX_AGE_HOURS`` (proof window). Token fingerprint
+    mismatch still fails closed when ``token`` is provided.
+    """
+    # Prefer SSOT health (host liveness + proof). Lazy import avoids cycles.
+    from lumina_launcher.services.fabric_link_health import build_fabric_link_health
+
+    if token is not None:
+        ok_fp, reason_fp = is_fabric_link_green(
+            token=token,
+            workspace_root=workspace_root,
+            max_age_hours=max_age_hours,
+        )
+        if not ok_fp and reason_fp == "FABRIC_LINK_TOKEN_CHANGED":
+            return False, reason_fp
+
+    health = build_fabric_link_health(workspace_root=workspace_root, live={})
+    if health.get("gate_birth_ok"):
+        return True, "OK"
+    return False, str(health.get("gate_reason") or "FABRIC_LINK_NOT_GREEN")
 
 
 def set_halt(

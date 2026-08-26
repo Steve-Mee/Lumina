@@ -145,8 +145,9 @@ def build_orchestrator_from_cfg(
 ) -> Phase2AutonomyOrchestrator | None:
     """Return orchestrator when master flag or active SIM campaign is on.
 
-    H3: ``workspace_root`` overlays ``state/phase2_sim_campaign.json`` so pillars
-    run in shadow/apply without config.yaml edits. REAL mode still gate-blocked.
+    H3: ``workspace_root`` merges ``state/phase2_sim_campaign.json`` so pillars
+    can enable without config.yaml. Campaign raises execution authority but never
+    demotes explicit curriculum apply. REAL mode still gate-blocked.
     """
     if workspace_root is not None:
         from lumina_core.birth.phase2_autonomy.sim_campaign import (

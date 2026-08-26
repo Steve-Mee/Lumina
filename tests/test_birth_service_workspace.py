@@ -109,6 +109,9 @@ def test_artifacts_ok_requires_v2_certificate_and_policy(tmp_path: Path, monkeyp
         ppo_steps=1000,
     )
     write_certificate(tmp_path, cert)
+    from lumina_core.birth.evolution_proof_gate import save_evolution_proof_record
+
+    save_evolution_proof_record(tmp_path, {"passed": True})
     assert svc.artifacts_ok() is True
     BirthService._instance = None  # type: ignore[attr-defined]
 
@@ -592,6 +595,359 @@ def test_start_birth_continue_training_reuses_existing_policy(monkeypatch: pytes
 
 
 @pytest.mark.unit
+def test_skip_launcher_history_preflight_rules() -> None:
+    skip = birth_runner_start_module.skip_launcher_history_preflight
+    assert skip(
+        force=False,
+        practice_mode=False,
+        continue_training=True,
+        reuse_data=True,
+        checkpoint_exists=True,
+    )
+    assert skip(
+        force=False,
+        practice_mode=False,
+        continue_training=True,
+        reuse_data=False,
+        checkpoint_exists=True,
+    )
+    assert skip(
+        force=False,
+        practice_mode=False,
+        continue_training=False,
+        reuse_data=True,
+        checkpoint_exists=True,
+    )
+    assert not skip(
+        force=False,
+        practice_mode=False,
+        continue_training=False,
+        reuse_data=False,
+        checkpoint_exists=True,
+    )
+    assert not skip(
+        force=False,
+        practice_mode=False,
+        continue_training=True,
+        reuse_data=True,
+        checkpoint_exists=False,
+    )
+    assert not skip(
+        force=True,
+        practice_mode=False,
+        continue_training=True,
+        reuse_data=True,
+        checkpoint_exists=True,
+    )
+    assert skip(
+        force=False,
+        practice_mode=True,
+        continue_training=False,
+        reuse_data=False,
+        checkpoint_exists=False,
+    )
+    assert skip(
+        force=False,
+        practice_mode=False,
+        continue_training=False,
+        reuse_data=True,
+        checkpoint_exists=False,
+        certified_cache_exists=True,
+    )
+    assert not skip(
+        force=False,
+        practice_mode=False,
+        continue_training=False,
+        reuse_data=True,
+        checkpoint_exists=False,
+        certified_cache_exists=False,
+    )
+    assert not skip(
+        force=False,
+        practice_mode=False,
+        continue_training=True,
+        reuse_data=True,
+        checkpoint_exists=False,
+        certified_cache_exists=True,
+    )
+
+
+@pytest.mark.unit
+def test_start_birth_continue_skips_launcher_history_preflight(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Genesis Resume: no Fabric history probe; engine starts with reuse_data_manifest."""
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    state = tmp_path / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config.yaml").write_text(
+        "first_boot:\n  training_trades: 10000\n  prefer_real_data_only: true\n  max_real_days: 30\n",
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_checkpoint.json").write_text(
+        json.dumps(
+            {
+                "training_mode": "certified",
+                "curriculum_stage": "stage2_range",
+                "cumulative_trades": 4200,
+                "ppo_steps": 88000,
+                "phase": "curriculum_learning",
+            }
+        ),
+        encoding="utf-8",
+    )
+    preflight_calls: list[int] = []
+    captured: dict[str, object] = {}
+
+    class _FakeEngine:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def run_birth_phase(self, **kwargs):
+            captured["run_kwargs"] = kwargs
+            return {"status": "completed", "total_trades": 10_000}
+
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
+        def __init__(self) -> None:
+            self.engine = SimpleNamespace()
+            self.ppo_trainer = _fake_ppo_trainer()
+            self.market_data_service = object()
+            self.runtime_context = SimpleNamespace(app=None)
+            self.logger = SimpleNamespace(info=lambda *a, **k: None)
+
+    def _preflight_should_not_run(_svc: BirthService, _days: int) -> tuple[bool, str]:
+        preflight_calls.append(1)
+        return True, ""
+
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "preflight_historical_data",
+        _preflight_should_not_run,
+    )
+
+    result = svc.start_birth(
+        target_trades=10000,
+        force=False,
+        practice_mode=False,
+        explicit_user_start=True,
+        continue_training=True,
+        reuse_data=True,
+    )
+    assert result["status"] == "started"
+    assert svc._thread is not None  # type: ignore[attr-defined]
+    svc._thread.join(timeout=2.0)  # type: ignore[attr-defined]
+    assert preflight_calls == [], "resume must not re-probe live historical data"
+    run_kwargs = captured.get("run_kwargs")
+    assert isinstance(run_kwargs, dict)
+    assert run_kwargs.get("reuse_existing_policy") is True
+    assert run_kwargs.get("reuse_data_manifest") is True
+    progress = json.loads((state / "lumina_birth_progress.json").read_text(encoding="utf-8"))
+    # Engine may overwrite progress; ack must never leave us stuck only if thread failed.
+    # At minimum engine ran without launcher preflight.
+    assert progress.get("phase") != "loading_history_failed"
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_start_birth_reuse_cache_skips_preflight_without_checkpoint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Stage-1 physics restart: reuse certified ticks, do not probe Fabric."""
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    state = tmp_path / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config.yaml").write_text(
+        "first_boot:\n  training_trades: 10000\n  prefer_real_data_only: true\n  max_real_days: 90\n",
+        encoding="utf-8",
+    )
+    (state / "lumina_birth_ticks_cache.jsonl").write_text("{}\n", encoding="utf-8")
+    (state / "lumina_birth_split_cache.json").write_text("{}", encoding="utf-8")
+    (state / "lumina_birth_cache_manifest.json").write_text(
+        json.dumps(
+            {
+                "train_hash": "abc123",
+                "requested_days": 90,
+                "actual_calendar_days": 89,
+                "tick_count": 345648,
+            }
+        ),
+        encoding="utf-8",
+    )
+    preflight_calls: list[int] = []
+    captured: dict[str, object] = {}
+
+    class _FakeEngine:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def run_birth_phase(self, **kwargs):
+            captured["run_kwargs"] = kwargs
+            return {"status": "completed", "total_trades": 10_000}
+
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
+        def __init__(self) -> None:
+            self.engine = SimpleNamespace()
+            self.ppo_trainer = _fake_ppo_trainer()
+            self.market_data_service = object()
+            self.runtime_context = SimpleNamespace(app=None)
+            self.logger = SimpleNamespace(info=lambda *a, **k: None)
+
+    def _preflight_should_not_run(_svc: BirthService, _days: int) -> tuple[bool, str]:
+        preflight_calls.append(1)
+        return True, ""
+
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "preflight_historical_data",
+        _preflight_should_not_run,
+    )
+
+    result = svc.start_birth(
+        target_trades=10000,
+        force=False,
+        practice_mode=False,
+        explicit_user_start=True,
+        continue_training=False,
+        reuse_data=True,
+    )
+    assert result["status"] == "started"
+    assert svc._thread is not None  # type: ignore[attr-defined]
+    svc._thread.join(timeout=2.0)  # type: ignore[attr-defined]
+    assert preflight_calls == [], "certified cache restart must not probe Fabric"
+    run_kwargs = captured.get("run_kwargs")
+    assert isinstance(run_kwargs, dict)
+    assert run_kwargs.get("reuse_existing_policy") is False
+    assert run_kwargs.get("reuse_data_manifest") is True
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_start_birth_fresh_still_runs_launcher_preflight(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    (tmp_path / "state").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config.yaml").write_text(
+        "first_boot:\n  training_trades: 10000\n  prefer_real_data_only: true\n  max_real_days: 30\n",
+        encoding="utf-8",
+    )
+    preflight_calls: list[int] = []
+    captured: dict[str, object] = {}
+
+    class _FakeEngine:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def run_birth_phase(self, **kwargs):
+            captured["run_kwargs"] = kwargs
+            return {"status": "completed", "total_trades": 10_000}
+
+    class _FakeContainer(_BirthRunnerFakeContainerMixin):
+        def __init__(self) -> None:
+            self.engine = SimpleNamespace()
+            self.ppo_trainer = _fake_ppo_trainer()
+            self.market_data_service = object()
+            self.runtime_context = SimpleNamespace(app=None)
+            self.logger = SimpleNamespace(info=lambda *a, **k: None)
+
+    def _preflight_ok(_svc: BirthService, _days: int) -> tuple[bool, str]:
+        preflight_calls.append(1)
+        return True, ""
+
+    monkeypatch.setattr(birth_runner_start_module, "ApplicationContainer", _FakeContainer)
+    monkeypatch.setattr(birth_runner_start_module, "_bind_headless_runtime_app", lambda _c: None)
+    monkeypatch.setattr(birth_runner_start_module, "LuminaBirthEngine", _FakeEngine)
+    monkeypatch.setattr(
+        birth_runner_start_module,
+        "preflight_historical_data",
+        _preflight_ok,
+    )
+
+    result = svc.start_birth(
+        target_trades=10000,
+        force=True,
+        practice_mode=False,
+        explicit_user_start=True,
+        continue_training=False,
+    )
+    assert result["status"] == "started"
+    assert svc._thread is not None  # type: ignore[attr-defined]
+    svc._thread.join(timeout=2.0)  # type: ignore[attr-defined]
+    assert preflight_calls == [1]
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_retry_birth_preserve_sets_reuse_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    _seed_certificate_failed_checkpoint(tmp_path)
+    calls: list[dict[str, object]] = []
+
+    def _fake_start(_svc: BirthService, **kwargs: object) -> dict[str, str]:
+        calls.append(dict(kwargs))
+        return {"status": "started", "message": "ok"}
+
+    monkeypatch.setattr(birth_runner_start_module, "start_birth", _fake_start)
+
+    result = svc.retry_birth(target_trades=10000, wipe=False)
+
+    assert result["status"] == "started"
+    assert calls
+    assert calls[0]["continue_training"] is True
+    assert calls[0]["reuse_data"] is True
+    assert calls[0]["force"] is False
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+def test_resume_birth_sets_continue_and_reuse_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    BirthService._instance = None  # type: ignore[attr-defined]
+    state = tmp_path / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "lumina_birth_checkpoint.json").write_text(
+        json.dumps({"phase": "curriculum_learning", "version": 3}),
+        encoding="utf-8",
+    )
+    (state / "first_boot_pause_requested").write_text("abort:paused", encoding="utf-8")
+    svc = BirthService()
+    svc.configure_workspace(tmp_path)
+    calls: list[dict[str, object]] = []
+
+    def _fake_start(_svc: BirthService, **kwargs: object) -> dict[str, str]:
+        calls.append(dict(kwargs))
+        return {"status": "started", "message": "ok"}
+
+    monkeypatch.setattr(birth_runner_start_module, "start_birth", _fake_start)
+
+    result = svc.resume_birth(target_trades=10000)
+
+    assert result["status"] == "started"
+    assert calls[0]["continue_training"] is True
+    assert calls[0]["reuse_data"] is True
+    assert calls[0]["force"] is False
+    assert not (state / "first_boot_pause_requested").exists()
+    BirthService._instance = None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
 def test_stop_birth_not_running(tmp_path: Path) -> None:
     BirthService._instance = None  # type: ignore[attr-defined]
     svc = BirthService()
@@ -934,9 +1290,10 @@ def test_configure_workspace_auto_resumes_retryable_stage_stalled(
 
 
 @pytest.mark.unit
-def test_auto_resume_allowed_for_plateau_evolution_phase(
+def test_auto_resume_blocked_for_plateau_evolution_exhausted_even_mid_phase(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """ADR-0024 / post-mortem: plateau_evolution_exhausted is never silent auto-resume."""
     BirthService._instance = None  # type: ignore[attr-defined]
     ws = tmp_path / "repo"
     state = ws / "state"
@@ -969,7 +1326,8 @@ def test_auto_resume_allowed_for_plateau_evolution_phase(
     monkeypatch.setattr(svc, "_curriculum_integrity_audit", lambda: (True, []))
     monkeypatch.setattr(svc, "reconcile_orphaned_birth_progress", lambda: None)
     svc.configure_workspace(ws)
-    assert calls["n"] == 1
+    assert calls["n"] == 0
+    assert svc._should_auto_resume_stalled_birth(svc._load_progress()) is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -1063,9 +1421,10 @@ def test_auto_resume_blocked_for_champion_freeze_even_when_autonomous(
 
 
 @pytest.mark.unit
-def test_auto_resume_allowed_for_plateau_exhausted_when_autonomous(
+def test_auto_resume_blocked_for_plateau_exhausted_even_when_autonomous(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Organism autonomy may phoenix via pending path; generic auto-resume must not grind."""
     BirthService._instance = None  # type: ignore[attr-defined]
     ws = tmp_path / "repo"
     state = ws / "state"
@@ -1101,7 +1460,8 @@ def test_auto_resume_allowed_for_plateau_exhausted_when_autonomous(
     monkeypatch.setattr(svc, "_curriculum_integrity_audit", lambda: (True, []))
     monkeypatch.setattr(svc, "reconcile_orphaned_birth_progress", lambda: None)
     svc.configure_workspace(ws)
-    assert calls["n"] == 1
+    assert calls["n"] == 0
+    assert svc._should_auto_resume_stalled_birth(svc._load_progress()) is False
     BirthService._instance = None  # type: ignore[attr-defined]
 
 

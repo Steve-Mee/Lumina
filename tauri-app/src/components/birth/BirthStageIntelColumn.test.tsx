@@ -79,10 +79,13 @@ describe("BirthStageScorecard field parity", () => {
     expect(birthStageScorecardSource).toContain('value="evolution"');
     expect(birthStageScorecardSource).toContain("risk-envelope-tabs");
     // Stage tab: compact pass checklist + lean ops tiles (no duplicate gate cards).
+    // EdgeScore stays on the fitness landscape — not repeated here.
     expect(birthStageTabSource).toContain("BirthStagePassChecklistCard");
     expect(birthStageTabSource).toContain("buildStagePassChecklist");
     expect(birthStageTabSource).toContain("BirthFieldCard");
-    expect(birthStageTabSource).toContain('label="EdgeScore"');
+    expect(birthStageTabSource).toContain("presentBlockerDetail");
+    expect(birthStageTabSource).toContain("BirthBlockerGateCard");
+    expect(birthStageTabSource).not.toContain('label="EdgeScore"');
     expect(birthStageTabSource).toContain('label="Champion"');
     expect(birthStageTabSource).toContain('label="Sub-phase"');
     expect(birthStageTabSource).toContain('label="Data window"');
@@ -97,9 +100,9 @@ describe("BirthStageScorecard field parity", () => {
   });
 
   it("keeps range-stage flat visibility on metrics strip, not as Stage-tab duplicates", () => {
-    expect(birthStageTabSource).toContain("isGoalMet");
     expect(birthStageTabSource).toContain("BirthStagePassChecklistCard");
     expect(birthStageTabSource).toContain("birth-stage-blocker-compact");
+    expect(birthStageTabSource).toContain("presentBlockerDetail");
     expect(birthMetricsStripSource).toContain("range_edgescore");
     expect(birthMetricsStripSource).toContain('label="Position flat"');
     expect(birthFieldCardSource).toContain("data-tone");
@@ -129,6 +132,8 @@ describe("BirthStagePassChecklistCard density", () => {
     expect(checklistCardSource).toContain("gates clear");
     expect(checklistCardSource).toContain("req.current");
     expect(checklistCardSource).toContain("req.need");
+    expect(checklistCardSource).toContain("data-layout");
+    expect(checklistCardSource).toContain("BirthReadoutStack");
     // Outer shell neutral; tones apply per row (no whole-card wash).
     expect(checklistCardSource).toContain("data-tone={tone}");
     expect(checklistCardSource).not.toMatch(
@@ -151,5 +156,9 @@ describe("BirthStagePassChecklistCard density", () => {
     expect(birthPhaseCss).toMatch(
       /\.birth-stage-pass-checklist__value\s*\{[^}]*font-size:\s*0\.875rem/s,
     );
+    expect(birthPhaseCss).toContain('data-layout="stack"');
+    expect(birthPhaseCss).toContain(".birth-readout-stack");
+    expect(birthPhaseCss).toContain("justify-content: space-between");
+    expect(birthPhaseCss).toContain(".birth-blocker-gate__value");
   });
 });

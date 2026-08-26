@@ -23,7 +23,7 @@ def test_bible_observation_slots_reflect_tick_regime() -> None:
     row["bible_mtf_bias"] = 0.4
 
     engine = SimpleNamespace(
-        detect_market_regime=lambda _df: "NEUTRAL",
+        detect_market_regime=lambda _df: "TREND_UP",
         market_data=SimpleNamespace(get_tape_snapshot=lambda: {}),
         get_current_dream_snapshot=lambda: {},
         AI_DRAWN_FIBS={},

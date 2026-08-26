@@ -104,7 +104,7 @@ if (-not $SkipFabricJson) {
         BindPort             = 50051
         AuthTokenEnv         = "LUMINA_FABRIC_TOKEN"
         AccountName          = "Sim101"
-        GatewayMode          = "sim"
+        GatewayMode          = "nt"
         HeartbeatTimeoutMs   = 5000
         FlattenGraceMs       = 15000
         FlattenOnTimeout     = $true
@@ -120,6 +120,11 @@ if (-not $SkipFabricJson) {
                 if ($null -ne $existing.$prop -and "$($existing.$prop)" -ne "") {
                     $payload[$prop] = $existing.$prop
                 }
+            }
+            # Legacy "sim" meant Sim101 account path — promote to explicit nt.
+            $gw = ("$($payload.GatewayMode)").ToLowerInvariant()
+            if ($gw -eq "sim" -or $gw -eq "sim101" -or $gw -eq "") {
+                $payload.GatewayMode = "nt"
             }
         }
         catch {

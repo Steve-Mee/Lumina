@@ -8,6 +8,7 @@ export function CredentialsVaultStatusStrip({
   secState,
   fabricState,
   linkState,
+  twinState,
   alertsState,
   dataState,
   emergencyFeed,
@@ -15,6 +16,7 @@ export function CredentialsVaultStatusStrip({
   secState: ChipState;
   fabricState: ChipState;
   linkState: ChipState;
+  twinState?: ChipState;
   alertsState: ChipState;
   dataState: ChipState;
   emergencyFeed: boolean;
@@ -35,6 +37,11 @@ export function CredentialsVaultStatusStrip({
         label="LINK"
         state={linkState}
         tip="Fabric diagnostic result. Must be GREEN to seal and enter Genesis."
+      />
+      <StatusChip
+        label="TWIN"
+        state={twinState ?? "idle"}
+        tip="Twin base training (your judgment DNA). Required before Birth can start."
       />
       <StatusChip
         label="ALERTS"

@@ -66,7 +66,6 @@ def run_stage_research_loop(host: Any, **kwargs: Any) -> dict[str, Any] | None:
     # Propagate monkeypatches from this compat module into all modules that
     # bind run_policy_rollout / mine / expand by name (session + mixins).
     try:
-        import lumina_core.birth.stage_loop_data_cache as _data_cache_mod
         import lumina_core.birth.stage_loop_data_ops as _data_ops_mod
         import lumina_core.birth.stage_loop_iteration as _iter_mod
         import lumina_core.birth.stage_loop_rollout as _handler_mod
@@ -76,6 +75,8 @@ def run_stage_research_loop(host: Any, **kwargs: Any) -> dict[str, Any] | None:
         import lumina_core.birth.stage_rollout_executor as _facade_mod
 
         _compat_mod = sys.modules[__name__]
+        # data_cache late-binds expand/mine; copying a throwing expand mock onto
+        # that module leaked into later data_expansion tests.
         _targets = (
             _handler_mod,
             _facade_mod,
@@ -83,7 +84,6 @@ def run_stage_research_loop(host: Any, **kwargs: Any) -> dict[str, Any] | None:
             _iter_mod,
             _cycle_mod,
             _data_ops_mod,
-            _data_cache_mod,
             _rollout_pre_mod,
         )
         for _name in ("run_policy_rollout", "mine_winning_patterns", "expand_birth_data"):

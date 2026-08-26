@@ -3,6 +3,9 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 $env:PYTHONPATH = $RepoRoot
 $env:LUMINA_CONFIG = Join-Path $RepoRoot "config.yaml"
+if ([string]::IsNullOrWhiteSpace($env:LUMINA_STATE_DIR)) {
+    $env:LUMINA_STATE_DIR = Join-Path $RepoRoot "state"
+}
 if ([string]::IsNullOrWhiteSpace($env:LUMINA_JWT_SECRET_KEY)) {
     $env:LUMINA_JWT_SECRET_KEY = "LUMINA_LOCAL_DEVELOPMENT_JWT_SECRET_KEY_32"
 }
@@ -36,5 +39,11 @@ if ($listener) {
     exit 1
 }
 
+# ADR-0040/0041: default loopback. Override only with full gate (see cyber_sentinel).
+$BindHost = "127.0.0.1"
+if (-not [string]::IsNullOrWhiteSpace($env:LUMINA_API_BIND)) {
+    $BindHost = $env:LUMINA_API_BIND.Trim()
+}
 Set-Location $PSScriptRoot
-python -m uvicorn backend.app:app --host 127.0.0.1 --port $Port @args
+# TLS: set LUMINA_API_TLS_CERT + LUMINA_API_TLS_KEY and prefer `python -m backend.app` entrypoint.
+python -m uvicorn backend.app:app --host $BindHost --port $Port @args

@@ -66,6 +66,23 @@ class EvolutionRolloutFramework:
             "shadow_mode": True,
         }
 
+    @staticmethod
+    def _has_constitution_or_capital_risks(risk_flags: list[str]) -> bool:
+        """True when twin flags imply constitution / capital veto (never Twin-auto)."""
+        needles = (
+            "constitution",
+            "veto",
+            "real_mode",
+            "live_order",
+            "capital",
+            "fatal",
+        )
+        for flag in risk_flags:
+            low = str(flag).strip().lower()
+            if any(n in low for n in needles):
+                return True
+        return False
+
     def evaluate_promotion(
         self,
         *,
@@ -78,6 +95,8 @@ class EvolutionRolloutFramework:
         twin_risk_flags: list[str] | None = None,
         selected_variant: dict[str, Any] | None = None,
         all_variants: list[dict[str, Any]] | None = None,
+        twin_confidence: float = 0.0,
+        twin_recommendation: bool = False,
     ) -> RolloutDecision:
         normalized_mode = str(mode or "sim").strip().lower()
         risk_flags = [str(x) for x in list(twin_risk_flags or []) if str(x).strip()]
@@ -90,8 +109,30 @@ class EvolutionRolloutFramework:
 
         radical = bool(risk_flags or abs(delta) >= self._radical_delta_abs or abs(ratio) >= self._radical_delta_ratio)
 
+        # Radical always needs human on paper/REAL. SIM/birth non-radical may auto.
         human_required = bool(normalized_mode in {"real", "paper"} and radical)
+        # REAL DNA promote via this framework never auto-arms capital (live_orders_blocked).
+        if normalized_mode == "real" and radical:
+            human_required = True
         human_granted = bool((not human_required) or explicit_human_approval)
+
+        # H4: Twin-gated auto-apply for paper SIM path when mutation is radical only by
+        # magnitude (no constitution/capital risk flags), Twin conf≥0.80, positive fitness.
+        # Radical with risk flags / REAL stay human. live_orders always blocked below.
+        twin_conf = float(twin_confidence or 0.0)
+        twin_rec = bool(twin_recommendation)
+        constitution_risks = self._has_constitution_or_capital_risks(risk_flags)
+        if (
+            human_required
+            and not human_granted
+            and normalized_mode in {"paper", "sim", "birth"}
+            and not constitution_risks
+            and twin_conf >= 0.80
+            and twin_rec
+            and delta > 0.0
+            and normalized_mode != "real"
+        ):
+            human_granted = True
 
         shadow_required = bool(normalized_mode == "real")
         shadow_ready = bool((not shadow_required) or shadow_passed)
@@ -102,10 +143,29 @@ class EvolutionRolloutFramework:
             stage = "shadow_validation"
             reason = f"shadow_not_complete:{shadow_status}"
         elif human_required and not human_granted:
-            stage = "pending_human_approval"
-            reason = "radical_mutation_requires_explicit_human_approval"
+            # Birth/SIM/paper judgment runs through Twin (or Twin escalation), not free-form human.
+            # REAL radical still needs explicit human (SIM→REAL capital path).
+            # Constitution/capital risk flags never Twin-auto (hard fail-closed).
+            if normalized_mode == "real":
+                stage = "pending_human_approval"
+                reason = "real_capital_requires_explicit_human_approval"
+            elif constitution_risks:
+                stage = "blocked_constitution_or_capital_risk"
+                reason = "constitution_or_capital_risk_flags_block_auto"
+            else:
+                stage = "pending_twin_judgment"
+                reason = "radical_mutation_requires_twin_judgment_or_escalation"
+        elif human_required and human_granted and not explicit_human_approval and twin_conf >= 0.80:
+            reason = "twin_gated_sim_auto_apply"
 
         allow_promotion = bool(shadow_ready and human_granted)
+        # Never allow REAL capital path through this soft auto (defense in depth)
+        if normalized_mode == "real" and not explicit_human_approval:
+            allow_promotion = False
+            if stage in {"ready_for_promotion", "pending_twin_judgment"} or radical:
+                stage = "pending_human_approval"
+                reason = "real_capital_requires_explicit_human_approval"
+                human_granted = False
         ab_verdict = self._derive_ab_verdict(selected_variant=selected_variant, all_variants=all_variants)
 
         decision = RolloutDecision(

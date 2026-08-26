@@ -70,7 +70,15 @@ class SupervisorPhaseStateMachine:
         self._swarm_last_cycle = 0.0
         self._swarm_last_cycle_minute: Optional[tuple[int, int, int, int, int]] = None
         self._swarm_last_dashboard = 0.0
-        self._logger = getattr(app, "logger", logger)
+        # Prefer app.logger only when it exposes standard levels; SimpleNamespace
+        # without .warning caused SUPERVISOR_LOOP_CRASH after monitoring soft-fail (C1).
+        app_logger = getattr(app, "logger", None)
+        if app_logger is not None and all(
+            callable(getattr(app_logger, level, None)) for level in ("info", "warning", "error")
+        ):
+            self._logger = app_logger
+        else:
+            self._logger = logger
         self.valuation_engine = ValuationEngine()
 
     def advance_or_tick(

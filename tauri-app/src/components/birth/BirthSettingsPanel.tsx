@@ -50,7 +50,7 @@ export function BirthSettingsPanel({ className, initial }: BirthSettingsPanelPro
 
     prefer_real_data_only: initial?.prefer_real_data_only ?? true,
 
-    max_real_days: initial?.max_real_days ?? 56,
+    max_real_days: initial?.max_real_days ?? 365,
 
     allow_minimal_synthetic_fallback: initial?.allow_minimal_synthetic_fallback ?? false,
 
@@ -152,15 +152,15 @@ export function BirthSettingsPanel({ className, initial }: BirthSettingsPanelPro
 
           <div>
 
-            <dt className="font-mono text-[9px] uppercase">Max real days</dt>
+            <dt className="font-mono text-[9px] uppercase">History ceiling</dt>
 
-            <dd className="font-mono text-cyan-100">{draft.max_real_days}</dd>
+            <dd className="font-mono text-cyan-100">{draft.max_real_days}d (start 90d)</dd>
 
           </div>
 
           <div>
 
-            <dt className="font-mono text-[9px] uppercase">Stage 1 winrate gate</dt>
+            <dt className="font-mono text-[9px] uppercase">Learning WR pressure</dt>
 
             <dd className="font-mono text-cyan-100">{gatePct}%</dd>
 
@@ -188,7 +188,7 @@ export function BirthSettingsPanel({ className, initial }: BirthSettingsPanelPro
 
           <BirthHoloSlider
 
-            label="Stage 1 winrate gate"
+            label="Learning WR pressure (not a pass gate)"
 
             value={gatePct}
 

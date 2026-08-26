@@ -10,12 +10,14 @@ from lumina_core.birth.curriculum import (
     stage_pass_trades,
     stage_progress_pct,
 )
+from lumina_core.birth.foundation_metrics import S1_MIN_TRADES
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 @pytest.mark.unit
 def test_stage_pass_trades_uses_config_not_hard_cap() -> None:
     cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
-    assert stage_pass_trades(CurriculumStage.STAGE1_TREND, cfg) == 200
+    assert stage_pass_trades(CurriculumStage.STAGE1_TREND, cfg) == S1_MIN_TRADES
 
 
 @pytest.mark.unit
@@ -23,16 +25,18 @@ def test_cumulative_stage_pass_after_enough_trades() -> None:
     cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
     result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
-        trades=200,
-        wins=100,
+        trades=S1_MIN_TRADES,
+        wins=40,
         hold_signals=10,
-        total_signals=200,
+        total_signals=S1_MIN_TRADES,
         constitution_violations=0,
         target_trades=2000,
         cfg=cfg,
+        **honest_closes(S1_MIN_TRADES),
+        **foundation_eval_kwargs(),
     )
     assert result.passed is True
-    assert "200/200" in result.message
+    assert result.schema == "foundation_v2"
 
 
 @pytest.mark.unit
@@ -62,5 +66,5 @@ def test_gen0_soft_pass_requires_buffer_and_trades() -> None:
 @pytest.mark.unit
 def test_stage_progress_pct() -> None:
     cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
-    pct = stage_progress_pct(100, cfg, stage=CurriculumStage.STAGE1_TREND)
+    pct = stage_progress_pct(75, cfg, stage=CurriculumStage.STAGE1_TREND)
     assert pct == 50.0

@@ -161,6 +161,14 @@ export interface TwinMetrics {
   calibration?: TwinCalibration | null;
   mode_promotion_progress?: TwinModePromotionProgress | null;
   promotion_audit_tail?: Record<string, unknown>[] | null;
+  /** ADR-0037 birth-ready readiness */
+  base_trained?: boolean;
+  birth_ready?: boolean;
+  base_training_completion_pct?: number;
+  escalation_rate?: number;
+  escalation_created?: number;
+  escalation_resolved?: number;
+  autonomy_resolution_pct?: number;
 }
 
 export interface TwinModeStatus {

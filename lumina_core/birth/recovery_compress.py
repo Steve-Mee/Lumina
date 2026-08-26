@@ -85,8 +85,11 @@ def compress_recovery(
     terminal = bool(terminal_stall_reason) or ph in _PHASE_STALL and remediation_exhausted
     if terminal or (ph in _PHASE_STALL and trade_budget_remaining == 0):
         layers.append("terminal_stall")
-    # Hard-stop phase implies operator attention (champion sacred)
-    attention = bool(needs_attention) or ph in _PHASE_SWARM_HARD_STOP
+        terminal = True
+    # Hard-stop phase implies operator attention (champion sacred).
+    # C2 / ADR-0024: honest terminal stall must never be silent — force needs_attention
+    # when terminalized (e.g. plateau_evolution_exhausted) so unattended Birth pages.
+    attention = bool(needs_attention) or ph in _PHASE_SWARM_HARD_STOP or terminal
     if attention:
         layers.append("needs_attention")
     if ph in _PHASE_CERTIFICATE:
@@ -146,7 +149,7 @@ def compress_recovery(
         active=active,
         theater=theater,
         remediation_exhausted=remediation_exhausted,
-        needs_attention=needs_attention,
+        needs_attention=attention,
         trade_budget_remaining=trade_budget_remaining,
         adaptation_tier=adaptation_tier,
         max_adaptation_tiers=max_adaptation_tiers,
@@ -155,6 +158,16 @@ def compress_recovery(
         stage_blocker_metric=stage_blocker_metric,
         volume_gate_status=volume_gate_status,
     )
+    # C2: terminal / plateau_evolution_exhausted must page (never silent stall hours)
+    stall_reason = str(terminal_stall_reason or "").strip()
+    if not productive and (
+        terminal
+        or stall_reason == "plateau_evolution_exhausted"
+        or active == "terminal_stall"
+    ):
+        attention = True
+        if "needs_attention" not in layers:
+            layers.append("needs_attention")
 
     next_action = _next_action(
         active=active,

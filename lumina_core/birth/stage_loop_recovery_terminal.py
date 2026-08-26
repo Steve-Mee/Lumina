@@ -52,6 +52,10 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             ),
             "policy_entropy": self._resolve_policy_entropy(),
             "ppo_steps": int(getattr(self.host, "ppo_steps", 0) or 0),
+            "policy_trades": int(getattr(self, "stage_policy_trades", 0) or 0),
+            "policy_wins": int(getattr(self, "stage_policy_wins", 0) or 0),
+            "plant_trades": int(getattr(self, "stage_plant_trades", 0) or 0),
+            "plant_wins": int(getattr(self, "stage_plant_wins", 0) or 0),
         }
 
     def _evaluate_wall_trigger(self, 
@@ -130,6 +134,10 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
                     cfg=self.cur_cfg,
                     policy_entropy=self._resolve_policy_entropy(),
                     ppo_steps=int(getattr(self.host, "ppo_steps", 0) or 0),
+                    policy_trades=int(getattr(self, "stage_policy_trades", 0) or 0),
+                    policy_wins=int(getattr(self, "stage_policy_wins", 0) or 0),
+                    plant_trades=int(getattr(self, "stage_plant_trades", 0) or 0),
+                    plant_wins=int(getattr(self, "stage_plant_wins", 0) or 0),
                 )
                 if engineering_stuck and bm is not None:
                     pending["engineering_blocker"] = "adaptation_stuck"
@@ -179,9 +187,12 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             or self.organism_autonomy_state.last_recommended_action
             or ""
         )
+        evo_max = self._evolution_max_steps()
         recovery_no_lift_brake = should_brake_recovery_no_lift(
-            self.plateau_state
-        ) or should_block_phoenix_no_lift(self.plateau_state)
+            self.plateau_state, max_steps=evo_max, stage=self.stage
+        ) or should_block_phoenix_no_lift(
+            self.plateau_state, max_steps=evo_max, stage=self.stage
+        )
         from lumina_core.birth.birth_control_plane import swarm_tournament_resolved
 
         swarm_resolved = swarm_tournament_resolved(
@@ -198,6 +209,12 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
         starship_ctx = {
             "edgescore": live_edge,
             "best_edgescore": float(getattr(self, "best_edgescore", 0.0) or 0.0),
+            "best_edgescore_policy_path": str(
+                getattr(self, "best_edgescore_policy_path", "") or ""
+            ),
+            "best_policy_path": str(
+                getattr(self.plateau_state, "best_policy_path", "") or ""
+            ),
             "swarm_rejected_no_lift": bool(
                 getattr(self, "swarm_rejected_no_lift", False)
                 or getattr(self.swarm_state, "rejected_no_lift", False)
@@ -311,6 +328,24 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
                 autonomy_extra["swarm_champion_accepted"] = True
                 autonomy_extra["twin_accept_champion"] = True
                 autonomy_extra["needs_attention"] = False
+                try:
+                    from lumina_core.birth.terminal_freeze import (
+                        extract_terminal_freeze,
+                        mark_freeze_resolved,
+                    )
+
+                    prev_f = extract_terminal_freeze(
+                        getattr(self.host, "_terminal_freeze", None),
+                        getattr(self.host, "_active_stage_metrics", None),
+                    )
+                    if prev_f:
+                        resolved = mark_freeze_resolved(
+                            prev_f, action="accept_champion", resolved_by="twin"
+                        )
+                        self.host._terminal_freeze = resolved
+                        autonomy_extra["terminal_freeze"] = resolved
+                except Exception:
+                    pass
                 # Persist clear freeze + continue curriculum (not stage_stalled terminal).
                 write_birth_progress(
                     self.host.workspace_root,
@@ -348,6 +383,32 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
                 return None  # continue stage loop
             except Exception as exc:
                 logger.warning("birth.twin_accept_champion_apply_failed: %s", exc)
+        # Atomic terminal freeze SSOT: one frozen narrative so restart cannot
+        # rewrite hollow stage1/trades=0 while advertising ladder step=4.
+        from lumina_core.birth.terminal_freeze import build_terminal_freeze
+
+        terminal_freeze = build_terminal_freeze(
+            reason=stall_reason,
+            curriculum_stage=self.stage.value,
+            stages_passed=list(self.host._stages_passed),
+            evolution_step=int(getattr(self.plateau_state, "evolution_step", 0) or 0),
+            stage_trades=int(self.stage_trades),
+            stage_wins=int(self.stage_wins),
+            swarm_rejected_no_lift=bool(
+                getattr(self, "swarm_rejected_no_lift", False)
+                or getattr(self.swarm_state, "rejected_no_lift", False)
+            ),
+            swarm_champion_accepted=bool(
+                getattr(self, "swarm_champion_accepted", False)
+                or getattr(self.swarm_state, "champion_accepted", False)
+            ),
+            best_edgescore_policy_path=str(
+                getattr(self, "best_edgescore_policy_path", "") or ""
+            ),
+            best_policy_path=str(
+                getattr(self.plateau_state, "best_policy_path", "") or ""
+            ),
+        )
         # Merge extras first — phoenix autonomy_metrics may include curriculum_stage
         # (PEP 448 dual-kwargs TypeError if unpacked alongside explicit kwargs).
         stall_extra = merge_birth_progress_extra(
@@ -365,6 +426,17 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
                 "provisional_graduation": provisional_graduation,
                 "graduation_tier": "provisional" if provisional_graduation else "strict",
                 "oos_proxy_winrate": proxy_winrate,
+                "terminal_freeze": terminal_freeze,
+                **(
+                    {
+                        "evolution_phase": "exhausted",
+                        "evolution_step": int(
+                            getattr(self.plateau_state, "evolution_step", 0) or 0
+                        ),
+                    }
+                    if stall_reason == TERMINAL_STALL_REASON
+                    else {}
+                ),
             },
         )
         write_birth_progress(
@@ -387,12 +459,14 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
         checkpoint_phase = "stage_stalled"
         if autonomy_decision.dispatch == RecoveryDispatch.PHOENIX_RESUME:
             checkpoint_phase = "phoenix_cycle"
+        stage_metrics = self._stage_metrics_payload()
+        stage_metrics["terminal_freeze"] = terminal_freeze
         self.host._persist_checkpoint(
             training_mode=self.training_mode,
             curriculum_stage=self.stage.value,
             policy_path=policy_hint,
             phase=checkpoint_phase,
-            stage_metrics=self._stage_metrics_payload(),
+            stage_metrics=stage_metrics,
         )
         if autonomy_decision.checkpoint_patch and self.cur_cfg.autonomous_recovery_enabled:
             try:
@@ -404,6 +478,12 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
                 ckpt_metrics.update(dict(patch.get("stage_metrics") or {}))
                 ckpt.update({k: v for k, v in patch.items() if k != "stage_metrics"})
                 ckpt["stage_metrics"] = ckpt_metrics
+                # Preserve freeze even if patch overwrites stage_metrics keys.
+                ckpt_metrics = dict(ckpt.get("stage_metrics") or {})
+                ckpt_metrics["terminal_freeze"] = terminal_freeze
+                ckpt["stage_metrics"] = ckpt_metrics
+                ckpt["stages_passed"] = list(self.host._stages_passed)
+                ckpt["curriculum_stage"] = self.stage.value
                 write_checkpoint_payload(self.host.workspace_root, ckpt)
             except Exception as exc:
                 logger.warning("birth.autonomy.checkpoint_patch_failed: %s", exc)

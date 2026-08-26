@@ -282,7 +282,22 @@ def test_resume_checkpoint_reuses_existing_policy(tmp_path: Path, monkeypatch: p
         ),
         encoding="utf-8",
     )
-    ticks = _rising_historical_ticks(800)
+    patch_holdout_preflight_ok(monkeypatch)
+    ticks = []
+    price = 5000.0
+    for i in range(800):
+        price += 0.5
+        ts = "2026-01-01T00:00:00+00:00" if i == 0 else "2026-04-01T00:00:00+00:00"
+        ticks.append(
+            {
+                "timestamp": ts,
+                "last": price,
+                "bid": price - 0.125,
+                "ask": price + 0.125,
+                "volume": 100,
+                "source": "real_historical",
+            }
+        )
     monkeypatch.setattr(
         "lumina_core.birth.data_pipeline.load_historical_ticks",
         lambda **_kwargs: ticks,

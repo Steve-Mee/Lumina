@@ -15,6 +15,7 @@ import {
   warnOverlayTitleClass,
 } from "@/lib/modePresentation";
 import { recoveryOperatorHint } from "@/lib/birthRecoveryModel";
+import { isBirthResidualHistoryFailure } from "@/lib/birthPhaseModel";
 import { cn } from "@/lib/utils";
 
 interface BirthPhaseRecoveryOverlaysProps {
@@ -45,6 +46,7 @@ export function BirthPhaseRecoveryOverlays({
   const {
     showRecovery,
     genesisMode,
+    launchingMode,
     status,
     targetTrades,
     certificateFailed,
@@ -74,9 +76,13 @@ export function BirthPhaseRecoveryOverlays({
     failed,
   } = derived;
 
+  // Genesis owns all attention/error/decision UI inside the glass deck.
+  // Never paint a second error strip under the helix (breaks Lumina composition).
+  const suppressGenesisExternalError = genesisMode || launchingMode;
+
   return (
     <>
-      {/* Genesis Recovery tab owns resume/wipe UI — avoid a second messy action strip. */}
+      {/* Non-genesis recovery only — Genesis Recovery tab owns resume/wipe. */}
       {showRecovery && !genesisMode ? (
         <BirthRecoveryPanel
           status={status}
@@ -198,7 +204,7 @@ export function BirthPhaseRecoveryOverlays({
               {(() => {
                 const hint = recoveryOperatorHint(status);
                 return hint ? (
-                  <p className="mt-2 rounded border border-amber-500/30 bg-amber-950/20 px-3 py-2 font-mono text-[10px] text-amber-100">
+                  <p className={cn("mt-2 rounded border px-3 py-2 font-mono text-[10px]", distressPanelClass("warn"), warnOverlayBodyClass())}>
                     H6 recovery: {hint}
                   </p>
                 ) : null;
@@ -231,17 +237,38 @@ export function BirthPhaseRecoveryOverlays({
         </BirthFailureOverlayShell>
       ) : null}
 
-      {uiPhase === "error" ? (
+      {uiPhase === "error" && !suppressGenesisExternalError ? (
         <div
           className={cn(
             "birth-phase-error relative z-30 mx-4 mb-4 shrink-0 rounded-xl p-4 text-sm lumina-glass lumina-glass--overlay",
             warnOverlayPanelClass(),
           )}
         >
-          <p className={warnOverlayTitleClass()}>Birth interrupted</p>
-          <p className={cn("mt-1", warnOverlayBodyClass())}>
-            {status?.error ?? status?.message ?? pollError ?? "Training could not continue."}
-          </p>
+          {(() => {
+            const residual = isBirthResidualHistoryFailure(status);
+            const body =
+              status?.error ??
+              status?.message ??
+              status?.progress?.message ??
+              pollError ??
+              "Training could not continue.";
+            return (
+              <>
+                <p className={warnOverlayTitleClass()}>
+                  {residual
+                    ? "Previous birth run failed (waiting on market data)"
+                    : "Birth needs attention"}
+                </p>
+                <p className={cn("mt-1", warnOverlayBodyClass())}>{body}</p>
+                {residual ? (
+                  <p className={cn("mt-2 text-xs", warnOverlayBodyClass())}>
+                    Ensure NinjaTrader is Connected and New → LUMINA shows host running, then Test
+                    connection (GREEN) before Retry.
+                  </p>
+                ) : null}
+              </>
+            );
+          })()}
           <div className="mt-4 flex flex-wrap gap-3">
             <Button type="button" className="onboarding-cta" onClick={onRetryBirth}>
               Retry birth
@@ -258,7 +285,7 @@ export function BirthPhaseRecoveryOverlays({
         </div>
       ) : null}
 
-      {pollError && !failed ? (
+      {pollError && !failed && !suppressGenesisExternalError ? (
         <p
           className={cn(
             "relative z-30 mx-auto mb-3 max-w-md shrink-0 px-4 text-center text-xs",

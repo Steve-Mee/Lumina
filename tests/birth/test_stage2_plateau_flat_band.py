@@ -21,8 +21,8 @@ def test_stage2_edgescore_plateau_min_is_pass_gate() -> None:
         stage2_edgescore_enabled=True,
         plateau_min_stage_trades_pct=0.25,
     )
-    # Pass gate 300 (10% of 3000) — not 750 (25% of 3000).
-    assert plateau_min_stage_trades(CurriculumStage.STAGE2_RANGE, cfg) == 300
+    # Pass gate is foundation S2 min (250), not 10% of budget.
+    assert plateau_min_stage_trades(CurriculumStage.STAGE2_RANGE, cfg) == 250
 
 
 @pytest.mark.unit

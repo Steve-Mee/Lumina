@@ -96,10 +96,10 @@ def curriculum_stage4_polish_passed_event(
     return MilestoneEvent(
         milestone_id="curriculum_stage4_polish_passed",
         category=MilestoneCategory.BIRTH,
-        title="Stage 4 — Polish voltooid",
+        title="Post-Birth certificate polish",
         summary=(
-            f"Curriculum stages 1–3 afgerond ({stages}). "
-            f"PPO polish start ({int(cumulative_trades):,} trades)."
+            f"Foundation 5/5 complete ({stages}). "
+            f"Proving Ground certificate polish starts ({int(cumulative_trades):,} trades)."
         ),
         context={
             "stages_passed": stages,
@@ -116,14 +116,17 @@ def curriculum_stage_passed_event(
     milestone_id = _STAGE_MILESTONE_IDS.get(stage_value, f"curriculum_{stage_value}_passed")
     label = _STAGE_LABELS.get(stage_value, stage_value)
     provisional_note = " (provisional)" if receipt.provisional else ""
+    physics = (
+        f"median_loss_R={getattr(receipt, 'median_loss_r', None)} "
+        f"occupancy={getattr(receipt, 'occupancy', None)}"
+    )
     return MilestoneEvent(
         milestone_id=milestone_id,
         category=MilestoneCategory.BIRTH,
         title=f"{label} voltooid",
         summary=(
             f"{label} geslaagd{provisional_note}: "
-            f"{receipt.trades}/{receipt.required_trades} trades, "
-            f"winrate {receipt.winrate:.1%}."
+            f"{receipt.trades}/{receipt.required_trades} trades, {physics}."
         ),
         context={
             "stage": stage_value,
@@ -145,7 +148,7 @@ def refinement_started_event(
         category=MilestoneCategory.BIRTH,
         title="PPO polish gestart",
         summary=(
-            f"Final PPO polish (stage 4): "
+            f"Post-Birth PPO polish (Proving Ground): "
             f"{int(cumulative_trades):,} cumulative trades, "
             f"{int(ppo_steps):,} PPO steps."
         ),
@@ -262,10 +265,11 @@ def birth_gate_warning_event(*, threshold: float, recommended: float) -> Milesto
     return MilestoneEvent(
         milestone_id="birth_gate_warning",
         category=MilestoneCategory.BIRTH,
-        title="Birth winrate gate below recommended",
+        title="Birth process-R gate below recommended",
         summary=(
-            f"Stage 1 gate set to {threshold:.0%} (recommended {recommended:.0%}). "
-            "REAL requires Evolution Proof + OOS ≥48%."
+            f"Genesis WR slider is {threshold:.0%} (recommended {recommended:.0%}) — "
+            "diagnostic pressure only. Birth Foundation grades median loss R, occupancy, "
+            "and first-touch, not a WR exam. REAL still needs Evolution Proof + OOS ≥48%."
         ),
         context={"threshold": f"{threshold:.0%}", "recommended": f"{recommended:.0%}"},
     )

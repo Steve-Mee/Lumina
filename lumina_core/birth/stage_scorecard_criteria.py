@@ -12,7 +12,10 @@ from lumina_core.birth.curriculum import (
     stage_trade_target,
 )
 
-CURRICULUM_STAGE_COUNT = 3
+from lumina_core.birth.foundation_metrics import FOUNDATION_STAGE_COUNT
+
+
+CURRICULUM_STAGE_COUNT = FOUNDATION_STAGE_COUNT
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,33 +37,20 @@ def _pass_gate_label(*, pass_gate: int, training_budget: int, metric: str) -> st
 
 
 def curriculum_index_for_stage(stage: CurriculumStage) -> int:
-    mapping = {
-        CurriculumStage.STAGE1_TREND: 1,
-        CurriculumStage.STAGE2_RANGE: 2,
-        CurriculumStage.STAGE3_MIXED: 3,
-        CurriculumStage.STAGE5_PROFIT_VAL: 5,
-        CurriculumStage.STAGE6_RISK_DISCIPLINE: 6,
-        CurriculumStage.STAGE7_HOLDOUT_PROFILE: 7,
-        CurriculumStage.STAGE4_POLISH: 8,
-    }
-    return mapping.get(stage, 0)
+    from lumina_core.birth.foundation_stages import foundation_index_for_stage
+
+    return foundation_index_for_stage(stage)
 
 
 def runway_curriculum_total() -> int:
-    return 7
+    """Birth HUD is always 5. Legacy runway is post-Birth, not this counter."""
+    return FOUNDATION_STAGE_COUNT
 
 
 def stage_display_name(stage: CurriculumStage) -> str:
-    names = {
-        CurriculumStage.STAGE1_TREND: "Trend",
-        CurriculumStage.STAGE2_RANGE: "Range patience",
-        CurriculumStage.STAGE3_MIXED: "Mixed regimes",
-        CurriculumStage.STAGE5_PROFIT_VAL: "Runway profit",
-        CurriculumStage.STAGE6_RISK_DISCIPLINE: "Runway risk",
-        CurriculumStage.STAGE7_HOLDOUT_PROFILE: "Runway generalize",
-        CurriculumStage.STAGE4_POLISH: "Polish & certificate",
-    }
-    return names.get(stage, stage.value.replace("_", " ").title())
+    from lumina_core.birth.foundation_stages import foundation_display_name
+
+    return foundation_display_name(stage)
 
 
 def pass_criteria_for_stage(
@@ -76,175 +66,76 @@ def pass_criteria_for_stage(
         training_budget = max(1, int(target_trades))
         required = max(50, min(100, training_budget))
     if stage == CurriculumStage.STAGE1_TREND:
-        wr_gate = stage1_winrate_pass_threshold(cfg)
-        edgescore_on = bool(getattr(cfg, "stage1_edgescore_enabled", False)) if cfg else False
-        if edgescore_on:
-            # Operator-facing label must match survival vs skill-side floors
-            # (docs/birth-curriculum-stage-floors.md — locked doctrine).
-            survival_on = bool(
-                getattr(cfg, "birth_survival_pass_enabled", True) if cfg else True
-            )
-            if survival_on:
-                hygiene = float(
-                    getattr(cfg, "birth_survival_wr_floor", 0.20) if cfg else 0.20
-                )
-                exp_floor = float(
-                    getattr(cfg, "birth_survival_expectancy_floor", -0.50)
-                    if cfg
-                    else -0.50
-                )
-                exp_txt = f"expectancy >= {exp_floor * 100.0:.0f}% (survival)"
-                wr_label = "survival WR"
-            else:
-                hygiene = float(
-                    getattr(cfg, "stage1_winrate_pass_floor", 0.35) if cfg else 0.35
-                )
-                exp_txt = "expectancy >= -15% (skill-side)"
-                wr_label = "hygiene WR"
-            return PassCriteria(
-                id="trend_edgescore",
-                label=_pass_gate_label(
-                    pass_gate=required,
-                    training_budget=training_budget,
-                    metric=(
-                        f"EdgeScore | {wr_label}>={hygiene:.0%} | hold band | "
-                        f"entropy alive | {exp_txt} "
-                        f"(WR {wr_gate:.0%} recommended)"
-                    ),
-                ),
-                target_trades=required,
-                training_budget_trades=training_budget,
-                metric_label="EdgeScore",
-                # Hygiene floor lives in the label; EdgeScore pass is composite (not score>=0.35).
-                metric_target=None,
-            )
         return PassCriteria(
-            id="trend_winrate",
+            id="closed_loop",
             label=_pass_gate_label(
                 pass_gate=required,
                 training_budget=training_budget,
-                metric=f"winrate >={wr_gate:.0%}",
+                metric="median loss R ≤ 1.5 · settlement ≥70% · entropy alive · net RR ≥ 0.80",
             ),
             target_trades=required,
             training_budget_trades=training_budget,
-            metric_label="Winrate",
-            metric_target=wr_gate,
+            metric_label="Median loss R",
+            metric_max=1.5,
         )
     if stage == CurriculumStage.STAGE2_RANGE:
-        if bool(getattr(cfg, "stage2_edgescore_enabled", False)) if cfg else False:
-            return PassCriteria(
-                id="range_edgescore",
-                label=_pass_gate_label(
-                    pass_gate=required,
-                    training_budget=training_budget,
-                    metric=(
-                        "EdgeScore | flat 30-70% | round-trips | "
-                        "entropy alive | early-quality expectancy >= -15% "
-                        "(not Stage-1 survival -50%)"
-                    ),
-                ),
-                target_trades=required,
-                training_budget_trades=training_budget,
-                metric_label="EdgeScore",
-                metric_min=0.30,
-                metric_max=0.70,
-            )
         return PassCriteria(
-            id="range_roundtrip",
+            id="selectivity",
             label=_pass_gate_label(
                 pass_gate=required,
                 training_budget=training_budget,
-                metric="position-flat 30–70% on range ticks",
+                metric="occupancy 30–70% · median loss R ≤ 1.5 · round-trips · settlement",
             ),
             target_trades=required,
             training_budget_trades=training_budget,
-            metric_label="Position flat",
+            metric_label="Occupancy",
             metric_min=0.30,
             metric_max=0.70,
         )
     if stage == CurriculumStage.STAGE3_MIXED:
-        wr_floor = float(getattr(cfg, "stage3_winrate_floor", 0.35) if cfg else 0.35)
-        hold_cap = float(getattr(cfg, "stage3_hold_ratio_max", 0.70) if cfg else 0.70)
-        if bool(getattr(cfg, "stage3_edgescore_enabled", False)) if cfg else False:
-            return PassCriteria(
-                id="mixed_edgescore",
-                label=_pass_gate_label(
-                    pass_gate=required,
-                    training_budget=training_budget,
-                    metric=(
-                        f"EdgeScore | hygiene WR>={wr_floor:.0%} | hold<={hold_cap:.0%} | "
-                        f"entropy alive | early-quality expectancy >= -15% "
-                        f"(not Stage-1 survival -50%)"
-                    ),
-                ),
-                target_trades=required,
-                training_budget_trades=training_budget,
-                metric_label="EdgeScore",
-                metric_target=None,
-                metric_max=hold_cap,
-            )
         return PassCriteria(
-            id="mixed_foundation",
+            id="mixed_regimes",
             label=_pass_gate_label(
                 pass_gate=required,
                 training_budget=training_budget,
-                metric=f"WR>={wr_floor:.0%} · hold≤{hold_cap:.0%} · 0 hard violations",
+                metric="occupancy 25–75% · edge ≥ −5pp vs first-touch · median loss R ≤ 1.5",
             ),
             target_trades=required,
             training_budget_trades=training_budget,
-            metric_label="Mixed winrate",
-            metric_target=wr_floor,
-            metric_max=hold_cap,
+            metric_label="Edge vs first-touch",
+            metric_min=-0.05,
         )
-    if stage == CurriculumStage.STAGE5_PROFIT_VAL:
-        wr = float(getattr(cfg, "runway_stage5_winrate_pass", 0.40) if cfg else 0.40)
-        hold = float(getattr(cfg, "runway_stage5_hold_ratio_max", 0.55) if cfg else 0.55)
+    if stage == CurriculumStage.STAGE4_VIABLE_PLANT:
         return PassCriteria(
-            id="runway_profit_val",
+            id="viable_plant",
             label=_pass_gate_label(
                 pass_gate=required,
                 training_budget=training_budget,
-                metric=f"val WR >={wr:.0%} · hold ≤{hold:.0%}",
+                metric="skill WR ≥ first-touch AND mean R ≥ E_mech−0.10 · occupancy 25–75%",
             ),
             target_trades=required,
             training_budget_trades=training_budget,
-            metric_label="Val winrate",
-            metric_target=wr,
+            metric_label="Edge vs first-touch",
+            metric_min=0.0,
         )
-    if stage == CurriculumStage.STAGE6_RISK_DISCIPLINE:
-        sharpe = float(getattr(cfg, "runway_stage6_sharpe_min", 0.20) if cfg else 0.20)
-        dd = float(getattr(cfg, "runway_stage6_drawdown_max_pct", 12.0) if cfg else 12.0)
+    if stage == CurriculumStage.STAGE5_PROBE_HANDOFF:
         return PassCriteria(
-            id="runway_risk",
+            id="probe_handoff",
             label=_pass_gate_label(
                 pass_gate=required,
                 training_budget=training_budget,
-                metric=f"Sharpe >={sharpe:.2f} · DD ≤{dd:.0f}%",
+                metric="holdout edge ≥ −3pp · Sharpe > −2 · DD ≤ 25% · fitness vector",
             ),
             target_trades=required,
             training_budget_trades=training_budget,
-            metric_label="Val Sharpe",
-            metric_target=sharpe,
-        )
-    if stage == CurriculumStage.STAGE7_HOLDOUT_PROFILE:
-        wr = float(getattr(cfg, "runway_stage7_winrate_min", 0.45) if cfg else 0.45)
-        return PassCriteria(
-            id="runway_holdout_profile",
-            label=_pass_gate_label(
-                pass_gate=required,
-                training_budget=training_budget,
-                metric=f"profile WR >={wr:.0%} · EP OOS probe",
-            ),
-            target_trades=required,
-            training_budget_trades=training_budget,
-            metric_label="Profile winrate",
-            metric_target=wr,
+            metric_label="OOS edge",
+            metric_min=-0.03,
         )
     return PassCriteria(
-        id="polish_complete",
-        label="Final PPO buffer polish",
+        id="not_foundation",
+        label="Not a Birth Foundation stage",
         target_trades=0,
-        metric_label="Polish",
+        metric_label="Rejected",
         metric_target=None,
     )
 
@@ -255,7 +146,9 @@ def human_sub_phase(phase: str) -> str:
         "curriculum_learning": "Policy rollouts",
         "data_expansion": "Data expansion",
         "ppo_training": "PPO batch training",
-        "ppo_polish": "Final PPO polish",
+        "post_birth_certificate": "Post-Birth certificate (Proving Ground)",
+        "runway_stage": "Post-Birth certificate (Proving Ground)",
+        "ppo_polish": "Post-Birth PPO polish",
         "oos_evaluation": "OOS certificate eval",
         "parallel_simulation": "Parallel simulation",
     }

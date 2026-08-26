@@ -18,12 +18,8 @@ import {
 import {
   buildMilestones,
   isBirthComplete,
-  isBirthCertificateFailed,
   isBirthEngineActive,
-  isBirthFailed,
   isBirthInterrupted,
-  isBirthStageStalled,
-  resolveBirthHeadline,
   type BirthMilestone,
 } from "@/lib/birthPhaseModel";
 import { shouldAutoResumeBirth, verifyBirthWipeSucceeded } from "@/lib/birthRecoveryModel";
@@ -39,9 +35,9 @@ import {
   WIPE_VERIFY_ATTEMPTS,
   WIPE_VERIFY_DELAY_MS,
 } from "@/store/birthPollCoordinator";
+import { computeBirthApplyStatusPatch } from "@/store/birthStoreApplyStatus";
 import {
   recoveryFailureUiPhase,
-  resolveBirthSurface,
   type BirthSurface,
   type BirthUiPhase,
 } from "@/store/birthSurfaceModel";
@@ -126,80 +122,15 @@ export const useBirthStore = create<BirthState>((set, get) => ({
     }),
 
   applyStatus: (payload) => {
-    const milestones = buildMilestones(payload.progress, payload.status);
-    const headline = resolveBirthHeadline(
-      milestones,
-      payload.status,
-      payload.progress,
-      payload.certificate_ok,
+    const state = get();
+    set(
+      computeBirthApplyStatusPatch(payload, {
+        uiPhase: state.uiPhase,
+        runPinned: state.runPinned,
+        genesisPinned: state.genesisPinned,
+        birthSurface: state.birthSurface,
+      }),
     );
-    let uiPhase: BirthUiPhase = get().uiPhase;
-    let runPinned = get().runPinned;
-    const genesisPinned = get().genesisPinned;
-
-    const engineActive = payload.live === true || isBirthEngineActive(payload);
-
-    if (get().uiPhase === "finale") {
-      /* keep finale until parent transitions */
-    } else if (runPinned && !genesisPinned) {
-      // Raptor v14: keep training shell during cold-start; clear pin once live or terminal.
-      if (engineActive) {
-        uiPhase = "running";
-        runPinned = false;
-      } else if (isBirthComplete(payload)) {
-        uiPhase = "finale";
-        runPinned = false;
-      } else if (isBirthStageStalled(payload)) {
-        uiPhase = "stage_stalled";
-        runPinned = false;
-      } else if (isBirthCertificateFailed(payload)) {
-        uiPhase = "certificate_failed";
-        runPinned = false;
-      } else if (isBirthFailed(payload) && !isBirthInterrupted(payload)) {
-        uiPhase = "error";
-        runPinned = false;
-      } else {
-        // interrupted / idle / starting → stay on running shell
-        uiPhase = "running";
-      }
-    } else if (engineActive && !genesisPinned) {
-      uiPhase = "running";
-    } else if (isBirthCertificateFailed(payload)) {
-      uiPhase = genesisPinned ? "idle" : "certificate_failed";
-    } else if (isBirthComplete(payload)) {
-      uiPhase = "finale";
-    } else if (isBirthStageStalled(payload)) {
-      uiPhase = genesisPinned ? "idle" : "stage_stalled";
-    } else if (isBirthEngineActive(payload)) {
-      uiPhase = genesisPinned ? "idle" : "running";
-    } else if (isBirthFailed(payload)) {
-      // Respect operator pin: Return to Genesis must not be overwritten by poll.
-      uiPhase = genesisPinned ? "idle" : "error";
-    } else if (isBirthInterrupted(payload)) {
-      uiPhase = "idle";
-    } else if (genesisPinned) {
-      uiPhase = "idle";
-    }
-
-    const birthSurface = resolveBirthSurface(
-      uiPhase,
-      get().birthSurface,
-      payload,
-      genesisPinned,
-      runPinned,
-    );
-
-    set({
-      status: payload,
-      milestones,
-      headline,
-      uiPhase,
-      birthSurface,
-      runPinned,
-      pollError: null,
-      sessionHydrated: true,
-      sessionProbeState: "ready",
-    });
   },
 
   markSessionProbeError: (message) =>
@@ -333,16 +264,39 @@ export const useBirthStore = create<BirthState>((set, get) => ({
       const response = await resumeBirthSession(get().targetTrades);
       if (!isBirthStartSuccessful(response.status, response)) {
         const message = response.message ?? `Birth resume failed (${response.status})`;
+        // Fail closed: never leave a fake "running/paused" mission shell after reject.
         get().applyStatus(response);
-        set({ uiPhase: recoveryFailureUiPhase(response), pollError: message });
+        set({
+          uiPhase: "idle",
+          birthSurface: "genesis",
+          genesisPinned: true,
+          runPinned: false,
+          pollError: message,
+        });
         return false;
       }
       get().applyStatus(response);
       await get().poll();
+      // If poll still looks interrupted (stale), keep run pin so cold-start shell holds.
+      const after = get().status;
+      if (
+        after &&
+        !after.live &&
+        !isBirthEngineActive(after) &&
+        isBirthInterrupted(after)
+      ) {
+        set({
+          pollError:
+            "Resume acknowledged but engine is still paused. Check pause flags / champion freeze, then retry Continue.",
+        });
+      }
       return true;
     } catch (err) {
       set({
-        uiPhase: recoveryFailureUiPhase(get().status),
+        uiPhase: "idle",
+        birthSurface: "genesis",
+        genesisPinned: true,
+        runPinned: false,
         pollError: err instanceof Error ? err.message : "Birth resume failed",
       });
       return false;

@@ -7,6 +7,7 @@ from lumina_core.birth.birth_bus_client import BirthBusClient
 from lumina_core.birth.curriculum import (
     stage_pass_trades,
 )
+from lumina_core.birth.foundation_history import foundation_history_start_days
 from lumina_core.birth.stage_scorecard import (
     learning_metric_target,
     pass_criteria_for_stage,
@@ -61,11 +62,21 @@ class SessionPhaseInitMixin:
             pass_criteria=self.stage_pass_criteria,
         )
         # Certified never soft-graduates (config flag alone cannot bypass hard gates).
-        self.allow_provisional = self.training_mode == "practice"
+        self.allow_provisional = False
+        from lumina_core.birth.foundation_stages import foundation_eval_only
+
+        self._foundation_eval_only = foundation_eval_only(self.stage)
         self.max_rollouts = (
-            self.cur_cfg.max_rollouts_per_stage
-            if self.allow_provisional
-            else min(self.cur_cfg.max_rollouts_per_stage, self.cur_cfg.certified_max_rollouts_per_stage)
+            1
+            if self._foundation_eval_only
+            else (
+                self.cur_cfg.max_rollouts_per_stage
+                if self.training_mode == "practice"
+                else min(
+                    self.cur_cfg.max_rollouts_per_stage,
+                    self.cur_cfg.certified_max_rollouts_per_stage,
+                )
+            )
         )
         self.stage_trades = 0
         self.stage_wins = 0
@@ -76,17 +87,34 @@ class SessionPhaseInitMixin:
         self.stage_range_flat_bars = 0
         self.stage_range_round_trips = 0
         self.attempt = 0
+        self._foundation_epoch_count = 0
+        self._foundation_epoch_hash = ""
         self.escalation_level = 0
         self.gen0_provisional = False
         self.patterns_mined = 0
         self.oracle_wins = 0
         self.expansion_step = 0
-        self.data_days_loaded = self.host.birth_config.max_real_days
+        self.data_days_loaded = int(
+            (self.host._data_manifest or {}).get("requested_days")
+            or foundation_history_start_days()
+        )
         self.hold_stagnation_count = 0
         self.winrate_stagnation_count = 0
         self.wall_budget_exhausted = False
         self.winrate_history: list[float] = []
         self.stage_val_pnl: list[float] = []
+        self.stage_val_r: list[float] = []
+        self._unique_calendar_days = 0
+        try:
+            from lumina_core.birth.history_loader import session_unique_calendar_days
+
+            self._unique_calendar_days = session_unique_calendar_days(
+                cached=0,
+                host=self.host,
+                ticks=self.stage_ticks,
+            )
+        except Exception:
+            self._unique_calendar_days = 0
         self.budget_milestones_notified: set[int] = set()
         self.hold_trap_milestone_sent = False
         self.over_trading_milestone_sent = False
@@ -107,4 +135,13 @@ class SessionPhaseInitMixin:
         self.rolling_trade_chunks: list[tuple[int, int]] = []
         self._rolling_winrate_source = "lifetime_fallback"
         self._rolling_window_trades_covered = 0
+        # Fresh peak-capture state per stage session (no stale WR from prior stage).
+        try:
+            from lumina_core.birth.stage2_peak_capture import Stage2PeakState
+
+            self.stage2_peak_state = Stage2PeakState()
+        except Exception:
+            self.stage2_peak_state = None
+        self._occupancy_control_window: list[int] = []
+        self.occupancy_control_flat = 0.0
         return None

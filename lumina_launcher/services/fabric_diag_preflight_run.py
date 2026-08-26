@@ -107,20 +107,36 @@ def run_preflight(
     gateway_mode = str(
         fabric_cfg.get("GatewayMode")
         or fabric_yaml.get("gateway_mode")
-        or "sim"
+        or "nt"
     ).strip().lower()
     target = f"{host}:{port}"
 
-    # 1 token
+    # 1 token (SSOT: fabric.json AuthToken heals stale process env)
     t = time.perf_counter()
     token = resolve_token()
+    token_meta: dict[str, Any] = {}
+    try:
+        from lumina_core.broker.ninjatrader.fabric_secret import read as fabric_secret_read
+
+        sec = fabric_secret_read(heal=True)
+        token_meta = sec.as_dict()
+        if sec.token:
+            token = str(sec.token)
+    except Exception:
+        token_meta = {}
     if token:
+        src = str(token_meta.get("source") or "env")
+        mismatch = bool(token_meta.get("mismatch"))
+        msg = f"Token ready (source={src}, len={len(token)})"
+        if mismatch:
+            msg += " — healed process env to match fabric.json (was divergent)"
         checks.append(
             _p().DiagnosticCheck(
                 id="token_present",
                 title="Fabric auth token",
                 status="pass",
-                message="LUMINA_FABRIC_TOKEN (or legacy LUMINA_NT8_API_KEY) is set",
+                message=msg,
+                detail=json.dumps(token_meta, default=str)[:400] if token_meta else None,
                 duration_ms=int((time.perf_counter() - t) * 1000),
             )
         )
@@ -143,15 +159,31 @@ def run_preflight(
     t = time.perf_counter()
     fj_path = fabric_json_path()
     if fabric_cfg:
-        gw = str(fabric_cfg.get("GatewayMode", "sim")).lower()
+        gw = str(fabric_cfg.get("GatewayMode", "nt")).lower()
         status: Any = "pass"
         msg = f"Found {fj_path} (GatewayMode={gw})"
-        if gw not in {"sim", "nt", "ninjatrader"}:
+        known = {
+            "nt",
+            "ninjatrader",
+            "account",
+            "sim101",
+            "memory",
+            "simhost",
+            "mock",
+            "sim",  # legacy in-memory; NT AddOn upgrades to Account bind
+        }
+        if gw not in known:
             status = "warn"
             msg += " — unexpected GatewayMode"
-        if gw in {"nt", "ninjatrader"}:
+        elif gw in {"nt", "ninjatrader", "account", "sim101"}:
+            status = "pass"
+            msg += " — NT Account gateway (Sim101 bind; real SIM path)"
+        elif gw in {"memory", "simhost", "mock"}:
+            status = "pass"
+            msg += " — in-memory gateway (execution-only; historical_bars needs NT AddOn)"
+        elif gw == "sim":
             status = "warn"
-            msg += " — prefer GatewayMode=sim until NtOrderGateway is bound"
+            msg += " — legacy label; product path is GatewayMode=nt (Sim101 Account). Re-run token install / bootstrap to migrate."
         checks.append(
             _p().DiagnosticCheck(
                 id="fabric_json",
@@ -179,7 +211,7 @@ def run_preflight(
 
     # 3 config alignment
     t = time.perf_counter()
-    live_provider = str(broker.get("live_provider") or "crosstrade").lower()
+    live_provider = str(broker.get("live_provider") or "ninjatrader").lower()
     nt_enabled = bool(nt.get("enabled", False))
     if live_provider == "ninjatrader" and nt_enabled:
         checks.append(
@@ -240,9 +272,15 @@ def run_preflight(
     t = time.perf_counter()
     ok_tcp, tcp_msg = tcp_check(host, port)
     simhost_detail: str | None = None
-    # SIM localhost + token: ensure host listens *and* accepts Brain token.
-    # Fixes: nothing on 50051, or old SimHost still holding the port with wrong token.
-    if bool(token) and is_localhost(host) and gateway_mode in {"sim", "paper", "practice", ""}:
+    # Memory/CI gateway only: auto-start SimHost when nothing listens.
+    # Never auto-start SimHost for GatewayMode=nt — that steals :50051 from the NT AddOn
+    # (historical_bars → HOST_NO_NT_DATA). Product path expects NinjaTrader + Repair.
+    if bool(token) and is_localhost(host) and gateway_mode in {
+        "memory",
+        "simhost",
+        "mock",
+        "sim",  # legacy name still maps to memory gateway outside NT
+    }:
         try:
             from lumina_launcher.services.fabric_simhost import ensure_simhost_token_aligned
 
@@ -284,20 +322,42 @@ def run_preflight(
             )
         )
     else:
+        # Product path (GatewayMode=nt): NT AddOn owns :50051 — never suggest SimHost thrash.
+        nt_mode = str(gateway_mode or "").strip().lower() in {
+            "nt",
+            "ninjatrader",
+            "account",
+            "sim101",
+            "",
+        }
+        if nt_mode:
+            port_msg = (
+                f"Cannot reach {target} — NinjaTrader Fabric host is not listening. "
+                "Open Control Center → New → LUMINA (starts host), or run Repair connection."
+            )
+            port_remediation = (
+                "1) Confirm NinjaTrader.exe is running and datafeed Connected. "
+                "2) Control Center → New → LUMINA (host must show GREEN / listening). "
+                "3) If port stays closed: close LUMINA Link window, wait 3s, open New → LUMINA again. "
+                "4) Still red: Repair connection in Lumina (redeploy AddOn), then restart NT once."
+            )
+        else:
+            port_msg = f"Cannot reach {target}"
+            port_remediation = (
+                "Start ONE Fabric host: SimHost or NT8 AddOn (not both) on 127.0.0.1:50051. "
+                "SIM auto-start looks for Lumina.Execution.Fabric.SimHost.exe under integrations/."
+            )
         checks.append(
             _p().DiagnosticCheck(
                 id="port_listen",
                 title="Fabric port reachable",
                 status="fail",
-                message=f"Cannot reach {target}",
+                message=port_msg,
                 detail=simhost_detail or tcp_msg,
                 duration_ms=int((time.perf_counter() - t) * 1000),
             )
         )
-        remediation.append(
-            "Start ONE Fabric host: SimHost or NT8 AddOn (not both) on 127.0.0.1:50051. "
-            "SIM auto-start looks for Lumina.Execution.Fabric.SimHost.exe under integrations/."
-        )
+        remediation.append(port_remediation)
         return PreflightContext(
             host=host,
             port=port,

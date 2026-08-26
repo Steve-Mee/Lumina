@@ -20,11 +20,13 @@ from lumina_core.evolution.twin_mode_types import TwinModePromotionEvidence
 
 @pytest.mark.unit
 def test_high_conf_primary_requires_assisted_and_labels() -> None:
+    # values_active dress rehearsal — not free explore_pass SIM
     bad = birth_sim_high_conf_primary_ready(
         twin_mode="shadow",
         agreement_pct=95.0,
         samples=100,
         steve_label_samples=50,
+        capital_mode="sim_real_guard",
     )
     assert bad["ready"] is False
     assert "mode_is_shadow" in bad["failures"][0]
@@ -35,8 +37,20 @@ def test_high_conf_primary_requires_assisted_and_labels() -> None:
         samples=40,
         steve_label_samples=20,
         false_positive_pct=5.0,
+        capital_mode="sim_real_guard",
     )
     assert good["ready"] is True
+
+    free_sim = birth_sim_high_conf_primary_ready(
+        twin_mode="assisted",
+        agreement_pct=85.0,
+        samples=40,
+        steve_label_samples=20,
+        false_positive_pct=5.0,
+        capital_mode="sim",
+    )
+    assert free_sim["ready"] is False
+    assert any("explore_pass" in f for f in free_sim["failures"])
 
 
 @pytest.mark.unit
@@ -46,6 +60,9 @@ def test_full_auto_forbidden_in_real_capital() -> None:
     assert "real" in reason
     ok2, _ = full_auto_allowed_for_capital_mode("sim")
     assert ok2 is True
+    # Dress rehearsal may use full_auto for DNA judgment
+    ok3, _ = full_auto_allowed_for_capital_mode("sim_real_guard")
+    assert ok3 is True
 
 
 @pytest.mark.unit
@@ -139,7 +156,10 @@ def test_discipline_snapshot_shape() -> None:
 
 @pytest.mark.unit
 def test_primary_judgment_ssot_birth_sim_vs_real() -> None:
-    """Track D: full_auto high-conf is primary only in birth/SIM, never REAL."""
+    """ADR-0038: explore_pass free; values_active gated; REAL never sole primary."""
+    from lumina_core.evolution.twin_discipline import twin_values_role
+
+    # Free birth/SIM: Twin preference never blocks (even shadow / no base / veto)
     ok = twin_primary_judgment_for_decision(
         twin_mode="full_auto",
         twin_confidence=0.92,
@@ -148,9 +168,36 @@ def test_primary_judgment_ssot_birth_sim_vs_real() -> None:
         twin_effective_recommendation=True,
         capital_mode="birth",
         constitution_violations=0,
+        base_trained=True,
     )
     assert ok["primary"] is True
+    assert ok["twin_values_role"] == "explore_pass"
     assert "constitution" in ok["never_bypasses"]
+
+    explore_veto = twin_primary_judgment_for_decision(
+        twin_mode="shadow",
+        twin_confidence=0.99,
+        twin_raw_recommendation=False,
+        twin_executable=False,
+        twin_effective_recommendation=False,
+        capital_mode="sim",
+        base_trained=False,
+    )
+    assert explore_veto["primary"] is True
+    assert explore_veto["twin_values_role"] == "explore_pass"
+
+    # Constitution still blocks explore_pass
+    const_block = twin_primary_judgment_for_decision(
+        twin_mode="full_auto",
+        twin_confidence=0.99,
+        twin_raw_recommendation=True,
+        twin_executable=True,
+        twin_effective_recommendation=True,
+        capital_mode="birth",
+        constitution_violations=1,
+        base_trained=True,
+    )
+    assert const_block["primary"] is False
 
     real = twin_primary_judgment_for_decision(
         twin_mode="full_auto",
@@ -159,19 +206,36 @@ def test_primary_judgment_ssot_birth_sim_vs_real() -> None:
         twin_executable=True,
         twin_effective_recommendation=True,
         capital_mode="real",
+        base_trained=True,
     )
     assert real["primary"] is False
     assert any("real" in f for f in real["failures"])
+    assert twin_values_role("real") == "values_inside_gates"
 
-    shadow = twin_primary_judgment_for_decision(
-        twin_mode="shadow",
+    # Dress rehearsal: values_active requires full_auto high-conf + base
+    srg_ok = twin_primary_judgment_for_decision(
+        twin_mode="full_auto",
+        twin_confidence=0.92,
+        twin_raw_recommendation=True,
+        twin_executable=True,
+        twin_effective_recommendation=True,
+        capital_mode="sim_real_guard",
+        base_trained=True,
+    )
+    assert srg_ok["primary"] is True
+    assert srg_ok["twin_values_role"] == "values_active"
+
+    srg_no_base = twin_primary_judgment_for_decision(
+        twin_mode="full_auto",
         twin_confidence=0.99,
         twin_raw_recommendation=True,
-        twin_executable=False,
-        twin_effective_recommendation=False,
-        capital_mode="sim",
+        twin_executable=True,
+        twin_effective_recommendation=True,
+        capital_mode="sim_real_guard",
+        base_trained=False,
     )
-    assert shadow["primary"] is False
+    assert srg_no_base["primary"] is False
+    assert "base_training_incomplete" in srg_no_base["failures"]
 
 
 @pytest.mark.unit
@@ -184,6 +248,7 @@ def test_apply_mode_authority_real_capital_floor() -> None:
     assert auth["executable"] is False
     assert auth["effective_recommendation"] is False
     assert auth.get("real_capital_floor") is True
+    assert auth.get("twin_values_role") == "values_inside_gates"
 
     sim = apply_mode_authority(
         raw_recommendation=True,
@@ -192,6 +257,47 @@ def test_apply_mode_authority_real_capital_floor() -> None:
     )
     assert sim["executable"] is True
     assert sim["effective_recommendation"] is True
+    assert sim.get("explore_pass") is True
+    assert sim.get("twin_values_role") == "explore_pass"
+
+    # explore_pass annotates regime but does not fake mode ladder (shadow stays non-exec)
+    sim_shadow = apply_mode_authority(
+        raw_recommendation=True,
+        mode="shadow",
+        capital_mode="birth",
+    )
+    assert sim_shadow.get("explore_pass") is True
+    assert sim_shadow["executable"] is False
+    assert sim_shadow["shadow_recommendation"] is True
+
+    # full_auto raw veto still reflected under explore_pass (primary SSOT unblocks loop)
+    sim_veto = apply_mode_authority(
+        raw_recommendation=False,
+        mode="full_auto",
+        capital_mode="birth",
+    )
+    assert sim_veto["effective_recommendation"] is False
+    assert sim_veto["shadow_recommendation"] is False
+    assert sim_veto.get("explore_pass") is True
+
+    # Dress rehearsal: values apply (full_auto approve stays executable for DNA)
+    srg = apply_mode_authority(
+        raw_recommendation=True,
+        mode="full_auto",
+        capital_mode="sim_real_guard",
+    )
+    assert srg["executable"] is True
+    assert srg["effective_recommendation"] is True
+    assert srg.get("real_capital_floor") is True
+    assert srg.get("twin_values_role") == "values_active"
+
+    srg_veto = apply_mode_authority(
+        raw_recommendation=False,
+        mode="full_auto",
+        capital_mode="sim_real_guard",
+    )
+    assert srg_veto["executable"] is False
+    assert srg_veto["effective_recommendation"] is False
 
 
 @pytest.mark.unit

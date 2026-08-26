@@ -2,22 +2,24 @@ import { describe, expect, it } from "vitest";
 
 import {
   BIRTH_BARS_PER_TRADING_DAY,
+  clampMaxRealDays,
   estimateFirstBootRealDays,
   exceedsMaxRealDaysWindow,
+  FIRST_BOOT_DEFAULT_MAX_REAL_DAYS,
   FIRST_BOOT_EST_TRADES_PER_REAL_DAY,
   FIRST_BOOT_HIGH_LOAD_ESTIMATE_DAYS,
   FIRST_BOOT_MAX_REAL_DAYS,
   FIRST_BOOT_MIN_REAL_DAYS,
+  FOUNDATION_HISTORY_MAX_DAYS,
+  FOUNDATION_HISTORY_START_DAYS,
   historicalBarCapDays,
   HISTORICAL_BAR_LIMIT_SAFETY_CAP,
   isHighLoadEstimate,
-  linkMaxRealDaysToTrainingTrades,
   resolveDefaultMaxRealDays,
-  syncMaxRealDaysForTrainingTrades,
 } from "@/lib/firstBootSizing";
 
 describe("firstBootSizing", () => {
-  it("mirrors Python estimate_first_boot_real_days parity cases", () => {
+  it("mirrors Python estimate_first_boot_real_days parity cases (duration only)", () => {
     expect(FIRST_BOOT_EST_TRADES_PER_REAL_DAY).toBe(450);
     expect(estimateFirstBootRealDays(25_000)).toBe(56);
     expect(estimateFirstBootRealDays(100_000)).toBe(223);
@@ -27,23 +29,18 @@ describe("firstBootSizing", () => {
     expect(estimateFirstBootRealDays(2_000_000)).toBe(4445);
   });
 
-  it("resolveDefaultMaxRealDays applies floor of 30 days", () => {
-    expect(resolveDefaultMaxRealDays(5_000)).toBe(FIRST_BOOT_MIN_REAL_DAYS);
-    expect(resolveDefaultMaxRealDays(25_000)).toBe(56);
-    expect(resolveDefaultMaxRealDays(100_000)).toBe(223);
+  it("resolveDefaultMaxRealDays is Foundation ceiling, independent of trades", () => {
+    expect(FIRST_BOOT_MIN_REAL_DAYS).toBe(FOUNDATION_HISTORY_START_DAYS);
+    expect(FIRST_BOOT_DEFAULT_MAX_REAL_DAYS).toBe(FOUNDATION_HISTORY_MAX_DAYS);
+    expect(resolveDefaultMaxRealDays(5_000)).toBe(365);
+    expect(resolveDefaultMaxRealDays(25_000)).toBe(365);
+    expect(resolveDefaultMaxRealDays(100_000)).toBe(365);
   });
 
-  it("linkMaxRealDaysToTrainingTrades tracks estimate for slider coupling", () => {
-    expect(linkMaxRealDaysToTrainingTrades(5_000)).toBe(30);
-    expect(linkMaxRealDaysToTrainingTrades(25_000)).toBe(56);
-    expect(linkMaxRealDaysToTrainingTrades(500_000)).toBe(1112);
-  });
-
-  it("syncMaxRealDaysForTrainingTrades bumps up but never below estimate", () => {
-    expect(syncMaxRealDaysForTrainingTrades(25_000, 56)).toBe(56);
-    expect(syncMaxRealDaysForTrainingTrades(25_000, 30)).toBe(56);
-    expect(syncMaxRealDaysForTrainingTrades(500_000, 56)).toBe(1112);
-    expect(syncMaxRealDaysForTrainingTrades(500_000, 1500)).toBe(1500);
+  it("25k trades still start at 90d; clamp refuses 56 as Birth start", () => {
+    expect(FOUNDATION_HISTORY_START_DAYS).toBe(90);
+    expect(clampMaxRealDays(56)).toBe(90);
+    expect(clampMaxRealDays(365)).toBe(365);
   });
 
   it("exceedsMaxRealDaysWindow and high-load band match Python helpers", () => {

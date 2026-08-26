@@ -41,6 +41,7 @@ class RealPromotionPayload(BaseModel):
     dna_hash: str = Field(min_length=8)
     target_mode: str = Field(default="real", min_length=4, max_length=4)
     dna_content_digest: str = Field(min_length=64, max_length=64)
+    artifact_digest: str = Field(default="", max_length=64)
     promotion_epoch: str = Field(min_length=1)
     reason_context: str = Field(default="real_promotion", min_length=1)
     created_at: datetime = Field(default_factory=_utcnow)
@@ -75,6 +76,8 @@ class ApprovalChain:
     @staticmethod
     def canonical_payload_bytes(payload: RealPromotionPayload) -> bytes:
         as_dict = payload.model_dump(mode="json")
+        if not str(as_dict.get("artifact_digest") or "").strip():
+            as_dict.pop("artifact_digest", None)
         canonical = json.dumps(as_dict, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         return canonical.encode("utf-8")
 

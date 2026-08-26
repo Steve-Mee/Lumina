@@ -45,6 +45,8 @@ __all__ = [
     "swarm_tournament_resolved",
     "twin_accept_champion_eligible",
     "twin_continue_eligible",
+    "twin_expand_data_eligible",
+    "twin_mode_allows_judgment",
     "tournament_lift_required_delta",
     "tournament_score",
     "write_pause_ssot",
@@ -99,8 +101,9 @@ def twin_continue_eligible(
     twin_confidence: float,
     swarm_resolved: bool,
     constitution_risks: bool,
+    base_trained: bool | None = None,
 ) -> bool:
-    """CONTINUE only when full_auto + executable + swarm resolved + clean."""
+    """CONTINUE only when full_auto + executable + swarm resolved + clean + base-trained."""
     if not bool(getattr(cfg, "starship_twin_continue_when_full_auto", True)):
         return False
     if str(twin_mode or "").strip().lower() != "full_auto":
@@ -112,6 +115,17 @@ def twin_continue_eligible(
     if not swarm_resolved:
         return False
     if constitution_risks:
+        return False
+    # ADR-0037 fail-closed: Twin birth-ready required for sole CONTINUE
+    ready = base_trained
+    if ready is None:
+        try:
+            from lumina_core.evolution.twin_base_training import is_twin_birth_ready
+
+            ready = is_twin_birth_ready()
+        except Exception:
+            ready = False
+    if not bool(ready):
         return False
     return True
 
@@ -152,3 +166,37 @@ def twin_accept_champion_eligible(
     if mode in {"disabled", "off"}:
         return False
     return True
+
+
+def twin_expand_data_eligible(
+    *,
+    cfg: BirthCurriculumConfig,
+    twin_confidence: float,
+    twin_recommendation: bool,
+    constitution_violations: int,
+    twin_mode: str = "shadow",
+    plateau_exhausted: bool = False,
+) -> bool:
+    """Birth/SIM: Twin may choose expand_data after terminal plateau (never wipe).
+
+    Fail-closed: conf ≥ 0.80, recommend continue/expand, constitution clean, mode on.
+    """
+    if not bool(getattr(cfg, "birth_twin_freeze_resolve_enabled", True)):
+        return False
+    if not bool(plateau_exhausted):
+        return False
+    if int(constitution_violations or 0) > 0:
+        return False
+    if float(twin_confidence) < 0.80:
+        return False
+    if not bool(twin_recommendation):
+        return False
+    mode = str(twin_mode or "").strip().lower()
+    if mode in {"disabled", "off"}:
+        return False
+    return True
+
+
+def twin_mode_allows_judgment(twin_mode: str) -> bool:
+    mode = str(twin_mode or "").strip().lower()
+    return mode not in {"disabled", "off", ""}

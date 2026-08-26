@@ -21,6 +21,8 @@ pub fn run() {
             core_events::append_core_event,
             ninjatrader::detect_ninjatrader,
             ninjatrader::launch_ninjatrader,
+            ninjatrader::close_ninjatrader,
+            ninjatrader::is_ninjatrader_running,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

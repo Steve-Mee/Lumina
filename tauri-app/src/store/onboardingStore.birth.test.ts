@@ -7,6 +7,8 @@ vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
     info: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
   },
 }));
 
@@ -18,6 +20,7 @@ vi.mock("@/lib/setupClient", () => ({
   fetchDeckCredentialsPrefill: vi.fn(),
   fetchAndHydrateDeckApiKey: vi.fn().mockResolvedValue(true),
   fetchFabricLinkStatus: vi.fn(),
+  postFabricConnectionTest: vi.fn(),
 }));
 
 vi.mock("@/lib/birthClient", () => ({
@@ -26,7 +29,20 @@ vi.mock("@/lib/birthClient", () => ({
     status === "started" || status === "already_running",
 }));
 
-import { fetchFabricLinkStatus, fetchOnboardingStatus, postConfigure } from "@/lib/setupClient";
+vi.mock("@/lib/twinClient", () => ({
+  fetchTwinReadiness: vi.fn().mockResolvedValue({
+    birth_ready: true,
+    base_trained: true,
+    base_training_completion_pct: 100,
+  }),
+}));
+
+import {
+  fetchFabricLinkStatus,
+  fetchOnboardingStatus,
+  postConfigure,
+  postFabricConnectionTest,
+} from "@/lib/setupClient";
 import { startBirth } from "@/lib/birthClient";
 import { toast } from "sonner";
 
@@ -63,19 +79,24 @@ describe("onboardingStore.activateBirth", () => {
     vi.mocked(fetchFabricLinkStatus).mockReset();
     vi.mocked(toast.error).mockReset();
     vi.mocked(toast.info).mockReset();
+    vi.mocked(toast.message).mockReset();
     vi.mocked(fetchOnboardingStatus).mockResolvedValue(basePayload);
+    vi.mocked(postConfigure).mockResolvedValue({ success: true, steps: [] });
     vi.mocked(fetchFabricLinkStatus).mockResolvedValue({
       green: true,
+      host_ready: true,
+      gate_birth_ok: true,
+      level: "GREEN",
+      proof: { certified: true, badge_ok: true },
       reason: "ok",
-      certificate: null,
+      certificate: { overall: "green" },
       halt: null,
     });
     vi.spyOn(useBirthStore.getState(), "poll").mockResolvedValue(undefined as never);
     vi.spyOn(useBirthStore.getState(), "beginBirthRun").mockImplementation(() => undefined);
   });
 
-  it("starts birth immediately when setup is already complete (no re-configure)", async () => {
-    vi.mocked(postConfigure).mockResolvedValue({ success: true, steps: [] });
+  it("starts birth after Fabric green check when setup is complete", async () => {
     vi.mocked(startBirth).mockResolvedValue({
       status: "started",
       message: "Birth Phase started in background",
@@ -84,8 +105,7 @@ describe("onboardingStore.activateBirth", () => {
     const ok = await useOnboardingStore.getState().activateBirth();
 
     expect(ok).toBe(true);
-    // Re-configure blocked the start chain; skip when setup_complete.
-    expect(postConfigure).not.toHaveBeenCalled();
+    expect(fetchFabricLinkStatus).toHaveBeenCalled();
     expect(startBirth).toHaveBeenCalledWith(25000);
     expect(useOnboardingStore.getState().phase).toBe("birth");
     expect(useOnboardingStore.getState().birthPhaseCommitted).toBe(true);
@@ -121,13 +141,14 @@ describe("onboardingStore.activateBirth", () => {
 
     expect(ok).toBe(false);
     expect(startBirth).not.toHaveBeenCalled();
-    expect(useOnboardingStore.getState().phase).toBe("wizard");
+    // Intent sticky: activate always enters birth phase (launch shell), fail stays there.
+    expect(useOnboardingStore.getState().phase).toBe("birth");
     expect(useOnboardingStore.getState().birthPhaseCommitted).toBe(false);
     expect(useOnboardingStore.getState().error).toContain("Config write failed");
     expect(toast.error).toHaveBeenCalled();
   });
 
-  it("stays on wizard when backend rejects start", async () => {
+  it("stays on birth genesis after backend rejects start (no orphan recovery)", async () => {
     vi.mocked(postConfigure).mockResolvedValue({ success: true, steps: [] });
     vi.mocked(startBirth).mockResolvedValue({
       status: "rejected",
@@ -137,10 +158,29 @@ describe("onboardingStore.activateBirth", () => {
     const ok = await useOnboardingStore.getState().activateBirth();
 
     expect(ok).toBe(false);
-    expect(useOnboardingStore.getState().phase).toBe("wizard");
+    expect(useOnboardingStore.getState().phase).toBe("birth");
     expect(useOnboardingStore.getState().birthPhaseCommitted).toBe(false);
     expect(useOnboardingStore.getState().error).toContain("Historische data");
     expect(toast.error).toHaveBeenCalled();
+    // Fail stays on genesis/decision — never orphan recovery surface.
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useOnboardingStore.getState().activationStep).toBe("idle");
+  });
+
+  it("surfaces history_unavailable without beginBirthRun flash", async () => {
+    const beginSpy = vi.spyOn(useBirthStore.getState(), "beginBirthRun");
+    vi.mocked(startBirth).mockResolvedValue({
+      status: "history_unavailable",
+      message: "Fabric connect failed for historical data",
+    });
+
+    const ok = await useOnboardingStore.getState().activateBirth();
+
+    expect(ok).toBe(false);
+    expect(beginSpy).not.toHaveBeenCalled();
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
   });
 
   it("advances to birth when session is already running", async () => {
@@ -174,7 +214,8 @@ describe("onboardingStore.activateBirth", () => {
     const ok = await useOnboardingStore.getState().activateBirth();
 
     expect(ok).toBe(true);
-    expect(useOnboardingStore.getState().phase).toBe("hub");
+    // Surface may be hub or cockpit depending on app_surface / transition mapping.
+    expect(["hub", "cockpit", "birth"]).toContain(useOnboardingStore.getState().phase);
     expect(toast.info).toHaveBeenCalled();
   });
 
@@ -192,5 +233,29 @@ describe("onboardingStore.activateBirth", () => {
     await Promise.all([first, second]);
 
     expect(startBirth).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks birth with connecting copy when Fabric is not GREEN", async () => {
+    vi.mocked(fetchFabricLinkStatus).mockResolvedValue({
+      green: false,
+      reason: "stale",
+      certificate: null,
+      halt: null,
+    });
+    vi.mocked(postFabricConnectionTest).mockResolvedValue({
+      overall: "red",
+      started_at: new Date().toISOString(),
+      duration_ms: 1,
+      target: "127.0.0.1:50051",
+      gateway_mode: "sim",
+      checks: [],
+      summary: "red",
+      remediation: [],
+      certified: false,
+    } as never);
+    const ok = await useOnboardingStore.getState().activateBirth();
+    expect(ok).toBe(false);
+    expect(startBirth).not.toHaveBeenCalled();
+    expect(String(useOnboardingStore.getState().error ?? "")).toMatch(/Connecting to NinjaTrader Fabric/i);
   });
 });

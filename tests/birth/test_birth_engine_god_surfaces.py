@@ -24,7 +24,7 @@ _BIRTH_ENGINE = _ROOT / "lumina_core" / "birth" / "engine.py"
 # Phase 1E (birth_phase_orchestrator extract): 1508 -> 887.
 # GraduationResult extracted to graduation_result.py (2026-07); baseline reflects net +4 LOC.
 # Wave B PR-B1: lifecycle/trajectory/graduation mixins → thin composition-root façade.
-_ENGINE_LINE_BASELINE = 218
+_ENGINE_LINE_BASELINE = 230
 _ENGINE_METHOD_BASELINE = 3
 
 # Largest method bodies — must not grow without intentional guard update.

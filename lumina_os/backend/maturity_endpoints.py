@@ -102,6 +102,10 @@ async def get_maturity_hub() -> dict[str, Any]:
     # Keep continuum synced with birth artifacts on every hub open / restart
     try:
         if birth_service.certificate_ok() or birth_service.artifacts_ok():
+            from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+            if not is_birth_exit_sufficient(birth_service.workspace_root):
+                return maturity_service.get_hub()
             continuum = maturity_service.get_hub()
             completed = set(continuum.get("completed_phases") or [])
             if "birth" not in completed:

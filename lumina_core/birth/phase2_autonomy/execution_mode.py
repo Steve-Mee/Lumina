@@ -28,6 +28,33 @@ def normalize_execution_mode(raw: str | Phase2ExecutionMode | None) -> Phase2Exe
     return Phase2ExecutionMode.OBSERVE
 
 
+_MODE_RANK: dict[str, int] = {
+    Phase2ExecutionMode.OBSERVE.value: 0,
+    Phase2ExecutionMode.SHADOW.value: 1,
+    Phase2ExecutionMode.APPLY.value: 2,
+}
+
+
+def execution_mode_rank(mode: Phase2ExecutionMode | str | None) -> int:
+    """Monotonic productivity rank: observe < shadow < apply."""
+    return int(_MODE_RANK.get(normalize_execution_mode(mode).value, 0))
+
+
+def max_execution_mode(
+    *modes: Phase2ExecutionMode | str | None,
+) -> Phase2ExecutionMode:
+    """Highest SIM execution authority among modes (never invents REAL capital)."""
+    best = Phase2ExecutionMode.OBSERVE
+    best_rank = -1
+    for m in modes:
+        em = normalize_execution_mode(m)
+        r = execution_mode_rank(em)
+        if r > best_rank:
+            best = em
+            best_rank = r
+    return best
+
+
 def should_mutate(mode: Phase2ExecutionMode | str | None) -> bool:
     """True only for apply mode (gate must still allow)."""
     return normalize_execution_mode(mode) == Phase2ExecutionMode.APPLY
@@ -110,6 +137,8 @@ __all__ = [
     "Phase2ExecutionMode",
     "compute_shadow_evidence_from_rows",
     "evaluate_pillar_promotion",
+    "execution_mode_rank",
+    "max_execution_mode",
     "normalize_execution_mode",
     "should_mutate",
     "should_record_counterfactual",

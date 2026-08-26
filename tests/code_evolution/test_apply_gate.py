@@ -163,7 +163,7 @@ def test_pipeline_apply_with_human_and_policy(tmp_path: Path) -> None:
         policy=pipe.apply_policy,
     )
     assert res["applied"] is True
-    assert (root / "applied" / "params.json").exists()
+    assert (root / "applied" / "challenger" / "params.json").exists()
 
 
 @pytest.mark.unit

@@ -256,15 +256,14 @@ export default function BirthPhasePanel(): JSX.Element {
                 className="mt-2 w-full rounded-xl border border-[#00f0ff]/25 bg-black/70 px-4 py-3 font-mono text-white outline-none focus:border-[#00f0ff]/55"
               />
               <p className="mt-2 text-xs text-zinc-400">
-                Geschatte echte historische dagen: ~{estimatedRealDays.toLocaleString()} (ceil(trades/
-                {EST_TRADES_PER_REAL_DAY})).
+                Geschatte sessieduur: ~{estimatedRealDays.toLocaleString()} dagen (ceil(trades/
+                {EST_TRADES_PER_REAL_DAY})). Dit is wall-clock, niet het history-venster.
               </p>
               <p className="mt-1 text-xs text-zinc-500">
-                Referentie: 200.000 - ~445 dagen, 500.000 - ~1.112 dagen, 1.000.000 - ~2.223 dagen.
+                History start is Foundation 90 kalenderdagen (expand 180/365), niet trades/450.
               </p>
               <p className="mt-1 text-xs text-zinc-500">
-                Realistische verwachting: hogere targets vragen meer historical cycling; synthetic top-up kan nodig zijn
-                als het real-data venster te klein is.
+                Hogere trade-budgets cyclen dezelfde tape vaker; synthetic top-up is practice-only.
               </p>
             </label>
             <div className="flex flex-wrap gap-2">

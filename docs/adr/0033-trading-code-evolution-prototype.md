@@ -18,7 +18,7 @@ Introduce bounded context `lumina_core/code_evolution/` with:
 3. **Pipeline order (non-negotiable):**  
    `CodeEvolutionConstitution` → optional `ConstitutionalGuard` → `ApprovalTwinAgent.evaluate_code_proposal` → `SandboxedCodeExecutor` → audit + journal.
 4. **Subprocess sandbox** (`lumina_core/safety/sandboxed_code_executor.py`) reusing DNA sandbox isolation patterns (tmpdir, secret strip, timeout, JSON I/O, no network).
-5. **Evaluate-only v1:** `try_apply_live` always returns `applied=False, reason=v1_evaluate_only`. Reversibility via `before_snapshot` + `REVERT.json` journal bundles.
+5. **Evaluate-only v1 (superseded in code by H5 sandbox-store apply):** live-repo apply remains forbidden. H5 may write `state/code_evolution/applied/{champion,challenger}/` under gates. Closed-loop load/cutover is **ADR-0045** — not claimed Done here. Reversibility via `before_snapshot` + `REVERT.json` journal bundles.
 6. **Default disabled** (`evolution.code_evolution.enabled: false` in `config.yaml`).
 7. **Typed Event Bus topics:** `evolution.code.proposal.created`, `evolution.code.sandbox.result`, `evolution.code.decision`.
 8. **Canonical audit stream:** `evolution.code_mutation` → `state/code_evolution_audit.jsonl`.

@@ -21,6 +21,18 @@ from lumina_core.engine.engine_config_helpers import (
     _safe_dict,
 )
 
+
+def _default_fabric_token() -> str | None:
+    """Fabric Secret Bus — never raw getenv for LUMINA_FABRIC_TOKEN."""
+    try:
+        from lumina_core.broker.ninjatrader.fabric_secret import read as fabric_secret_read
+
+        tok = str(fabric_secret_read(heal=True).token or "").strip()
+        return tok or None
+    except Exception:
+        return None
+
+
 class EngineConfig(BaseModel):
     """Validated runtime configuration for the OOP engine."""
 
@@ -144,11 +156,19 @@ class EngineConfig(BaseModel):
         default_factory=lambda: (
             str(
                 os.getenv("BROKER_LIVE_PROVIDER")
-                or _config_yaml_nested("crosstrade", "broker", "live_provider")
-                or "crosstrade"
+                or _config_yaml_nested("ninjatrader", "broker", "live_provider")
+                or "ninjatrader"
             )
             .strip()
             .lower()
+        )
+    )
+    # Emergency CrossTrade hop only — default fail-closed when live_provider=ninjatrader.
+    fallback_on_fabric_failure: bool = Field(
+        default_factory=lambda: (
+            str(os.getenv("BROKER_FALLBACK_ON_FABRIC_FAILURE", "")).strip().lower()
+            in {"1", "true", "yes"}
+            or bool(_config_yaml_nested(False, "broker", "fallback_on_fabric_failure"))
         )
     )
     ninjatrader_enabled: bool = Field(
@@ -172,9 +192,7 @@ class EngineConfig(BaseModel):
         ).strip()
     )
     ninjatrader_nt8_api_key: str | None = Field(
-        default_factory=lambda: (
-            str(os.getenv("LUMINA_FABRIC_TOKEN") or os.getenv("LUMINA_NT8_API_KEY") or "").strip() or None
-        )
+        default_factory=lambda: _default_fabric_token()
     )
     # Execution Fabric gRPC (ADR-0035) — Brain connects to Fabric host.
     ninjatrader_fabric_host: str = Field(

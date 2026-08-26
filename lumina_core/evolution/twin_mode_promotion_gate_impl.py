@@ -119,6 +119,10 @@ class TwinModePromotionGate:
             criteria.append(
                 self._evaluate_steve_labels(evidence.steve_label_samples, min_steve)
             )
+            # ADR-0037: base curriculum required for assisted / full_auto
+            criteria.append(
+                self._evaluate_base_trained(bool(getattr(evidence, "base_trained", False)))
+            )
             # H4: never promote to full_auto under REAL capital mode
             if target == "full_auto" and self._forbid_full_auto_in_real_capital:
                 criteria.append(
@@ -256,9 +260,10 @@ class TwinModePromotionGate:
         )
 
     def _evaluate_capital_mode_safe(self, capital_mode: str) -> TwinModeCriterionResult:
-        from lumina_core.evolution.twin_discipline import is_real_like_capital
+        # Hard REAL only — sim_real_guard may use full_auto for DNA values_active.
+        from lumina_core.evolution.twin_discipline import is_hard_real_capital
 
-        unsafe = is_real_like_capital(capital_mode)
+        unsafe = is_hard_real_capital(capital_mode)
         passed = not unsafe
         return TwinModeCriterionResult(
             criterion=TwinModeCriterion.CAPITAL_MODE_SAFE,
@@ -268,6 +273,17 @@ class TwinModePromotionGate:
             actual=0.0 if unsafe else 1.0,
             reason="ok" if passed else f"full_auto_forbidden_in_capital:{capital_mode}",
             metadata={"capital_mode": str(capital_mode or "sim")},
+        )
+
+    def _evaluate_base_trained(self, base_trained: bool) -> TwinModeCriterionResult:
+        passed = bool(base_trained)
+        return TwinModeCriterionResult(
+            criterion=TwinModeCriterion.BASE_TRAINED,
+            passed=passed,
+            score=1.0 if passed else 0.0,
+            threshold=1.0,
+            actual=1.0 if passed else 0.0,
+            reason="ok" if passed else "base_training_incomplete",
         )
 
     def _append_audit(

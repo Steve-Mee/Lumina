@@ -1,6 +1,6 @@
 import type { BirthProgressPayload, BirthSettingsPayload, BirthStatusPayload } from "@/lib/birthClient";
 import { isBirthCurriculumScorecardActive } from "@/lib/birth/birthActiveProgress";
-import { extractBirthSessionHud, extractStageScorecard } from "@/lib/birthPhaseModel";
+import { extractBirthSessionHud, extractStageScorecard, isStageGoalMet } from "@/lib/birthPhaseModel";
 import type { PPOEvolutionMetric } from "@/lib/ppoEvolutionTypes";
 import { cn } from "@/lib/utils";
 
@@ -70,25 +70,9 @@ function resolveIntelChips(progress: BirthProgressPayload | undefined): {
   let wall: ChipState = "idle";
 
   if (scorecard) {
-    const edgeScore =
-      scorecard.passCriteriaId === "trend_edgescore" ||
-      scorecard.passCriteriaId === "range_edgescore" ||
-      scorecard.passCriteriaId === "mixed_edgescore";
     if (scorecard.blockerDetail) {
       gate = "warn";
-    } else if (edgeScore) {
-      // Composite pass: green only when volume gate met and no blocker.
-      gate =
-        scorecard.tradesRequired > 0 && scorecard.tradesDone >= scorecard.tradesRequired
-          ? "ok"
-          : scorecard.tradesDone > 0
-            ? "partial"
-            : "idle";
-    } else if (
-      scorecard.metricValue != null &&
-      scorecard.metricTarget != null &&
-      scorecard.metricValue >= scorecard.metricTarget
-    ) {
+    } else if (isStageGoalMet(scorecard)) {
       gate = "ok";
     } else if (scorecard.tradesDone > 0) {
       gate = "partial";
@@ -195,6 +179,35 @@ export function BirthStageIntelColumn({
         </div>
       ) : null}
 
+      {showContent && scorecard ? (
+        <div className="flex flex-wrap gap-1 px-2.5" aria-label="Foundation physics">
+          <StatusChip
+            label={`R̃ ${scorecard.medianLossR != null ? scorecard.medianLossR.toFixed(2) : "—"}`}
+            state={
+              scorecard.medianLossR != null && scorecard.medianLossR <= 1.5 ? "ok" : "warn"
+            }
+            tip="Median loss R (process health ≤ 1.5)"
+          />
+          <StatusChip
+            label={`occ ${scorecard.occupancy != null ? `${Math.round(scorecard.occupancy * 100)}%` : "—"}`}
+            state={scorecard.occupancy != null ? "partial" : "idle"}
+            tip="Occupancy (plant-flat, never hold%)"
+          />
+          <StatusChip
+            label={`edge ${scorecard.edgeVsFirstTouch != null ? `${(scorecard.edgeVsFirstTouch * 100).toFixed(1)}pp` : "—"}`}
+            state={
+              scorecard.edgeVsFirstTouch != null && scorecard.edgeVsFirstTouch >= 0 ? "ok" : "partial"
+            }
+            tip="Skill WR minus first-touch"
+          />
+          <StatusChip
+            label={`meanR ${scorecard.meanR != null ? scorecard.meanR.toFixed(2) : "—"}`}
+            state={scorecard.meanR != null && scorecard.meanR >= 0 ? "ok" : "partial"}
+            tip="Mean R (profit is Playground, not Birth pass)"
+          />
+        </div>
+      ) : null}
+
       <div className="birth-stage-intel-column__body min-h-0 flex-1 space-y-1.5 px-2.5 py-1.5">
         {showContent && scorecard ? (
           <BirthStageScorecard
@@ -210,7 +223,7 @@ export function BirthStageIntelColumn({
               Birth preparation
             </p>
             <p className="text-[11px] leading-relaxed text-cyan-100/55">
-              Historical data load and plant bootstrap. Stage 1/3 appears when curriculum training
+              Historical data load and plant bootstrap. Stage 1/5 appears when curriculum training
               starts — not during data prep.
             </p>
             <div className="birth-intel-field-grid">

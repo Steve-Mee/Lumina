@@ -9,6 +9,8 @@ from typing import Any
 
 from lumina_launcher.services.fabric_diag_preflight import DiagnosticCheck
 
+# NOTE: nested helpers may rebind ``client`` after prefer_nt_addon_host recovery.
+
 
 def run_live_checks(
     *,
@@ -50,11 +52,29 @@ def run_live_checks(
             )
         )
 
-    # 5 auth ok — one auto-realign retry for stale SimHost token (SIM only)
+    # 5 auth ok — heal token SSOT first, then SimHost realign if still failing
     t = time.perf_counter()
     client: FabricGrpcClient | None = None
     auth_detail = ""
     try:
+        # Re-resolve via Fabric Secret Bus (single pipe).
+        try:
+            from lumina_core.broker.ninjatrader.fabric_secret import read as fabric_secret_read
+
+            sec = fabric_secret_read(heal=True)
+            healed_tok = str(sec.token or "").strip()
+            if healed_tok:
+                if healed_tok != token or sec.mismatch or sec.healed:
+                    auth_detail = (
+                        f"token_ssot source={sec.source} "
+                        f"env_len={sec.env_len} json_len={sec.json_len} "
+                        f"mismatch={sec.mismatch} healed={sec.healed} "
+                        f"fp={sec.fingerprint}"
+                    )
+                token = healed_tok
+        except Exception as ssot_exc:
+            auth_detail = f"token_ssot_failed:{ssot_exc}"
+
         client = make_client(token)
         connected = bool(client.connect())
         if not connected:
@@ -72,7 +92,12 @@ def run_live_checks(
                         token=token,
                         wait_sec=8.0,
                     )
-                    auth_detail = str(align.get("message") or align.get("status") or "")
+                    align_msg = str(align.get("message") or align.get("status") or "")
+                    auth_detail = (
+                        f"{auth_detail}; simhost_align={align_msg}".strip("; ")
+                        if auth_detail
+                        else align_msg
+                    )
                     try:
                         client.disconnect()
                     except Exception:
@@ -80,7 +105,11 @@ def run_live_checks(
                     client = make_client(token)
                     connected = bool(client.connect())
             except Exception as align_exc:
-                auth_detail = f"realign_failed:{align_exc}"
+                auth_detail = (
+                    f"{auth_detail}; realign_failed:{align_exc}".strip("; ")
+                    if auth_detail
+                    else f"realign_failed:{align_exc}"
+                )
 
         if connected:
             checks.append(
@@ -194,9 +223,143 @@ def run_live_checks(
             )
         )
 
-    # 8 place
+    # 7b historical bars — market data plane (critical; SimHost must fail closed)
     t = time.perf_counter()
+    min_bars = 10
     try:
+        assert client is not None
+
+        def _do_hist() -> dict[str, Any]:
+            # Wider window + more bars — NT BarsRequest is more reliable with barsBack/lookback.
+            end_ms = int(time.time() * 1000)
+            start_ms = end_ms - (14 * 24 * 60 * 60 * 1000)
+            return client.request_historical_data(
+                instrument=instrument,
+                bar_period="1m",
+                start_unix_ms=start_ms,
+                end_unix_ms=end_ms,
+                max_bars=max(min_bars, 200),
+                timeout_seconds=90.0,
+            )
+
+        hist = _do_hist()
+        hist_code = str(hist.get("code") or "").strip()
+        # SimHost often stole :50051 — yield to NT AddOn once and reconnect.
+        recover_detail = ""
+        if hist_code in {"HOST_NO_NT_DATA", "NOT_IMPLEMENTED"}:
+            try:
+                from lumina_launcher.services.fabric_simhost import (
+                    is_ninjatrader_running,
+                    prefer_nt_addon_host,
+                )
+
+                if is_ninjatrader_running():
+                    prefer = prefer_nt_addon_host(host=host, port=port, wait_sec=8.0)
+                    recover_detail = str(prefer.get("message") or prefer.get("status") or "")
+                    try:
+                        client.disconnect()
+                    except Exception:
+                        pass
+                    client = make_client(token)
+                    if client.connect() and prefer.get("listening"):
+                        hist = _do_hist()
+                        hist_code = str(hist.get("code") or "").strip()
+            except Exception as recover_exc:
+                recover_detail = f"prefer_nt_failed:{recover_exc}"
+
+        bars = hist.get("bars") if isinstance(hist.get("bars"), list) else []
+        bar_count = len(bars)
+        hist_ok = hist_code.lower() == "ok" and bar_count >= min_bars
+        detail = json.dumps(
+            {
+                "code": hist_code,
+                "message": hist.get("message"),
+                "instrument": hist.get("instrument"),
+                "bar_count": bar_count,
+                "recover": recover_detail or None,
+            },
+            default=str,
+        )[:500]
+        if hist_ok:
+            checks.append(
+                DiagnosticCheck(
+                    id="historical_bars",
+                    title="Historical bars via Fabric (market data plane)",
+                    status="pass",
+                    message=f"{bar_count} bars for {hist.get('instrument') or instrument}",
+                    detail=detail,
+                    duration_ms=int((time.perf_counter() - t) * 1000),
+                )
+            )
+        else:
+            checks.append(
+                DiagnosticCheck(
+                    id="historical_bars",
+                    title="Historical bars via Fabric (market data plane)",
+                    status="fail",
+                    message=(
+                        f"code={hist_code} bars={bar_count} (need ≥{min_bars}). "
+                        f"{hist.get('message') or ''}"
+                    ).strip(),
+                    detail=detail,
+                    duration_ms=int((time.perf_counter() - t) * 1000),
+                )
+            )
+            if hist_code in {"HOST_NO_NT_DATA", "NOT_IMPLEMENTED"}:
+                remediation.append(
+                    "Market data plane missing: SimHost/stub cannot load real bars. "
+                    "NinjaTrader must own 127.0.0.1:50051 (not SimHost). "
+                    "1) Lumina → Repair NinjaTrader connection (auto-deploy + build Custom). "
+                    "2) Check %APPDATA%\\LUMINA\\fabric-nt-host.log and New → LUMINA status. "
+                    "3) Re-run diagnostic (auto-kills SimHost when NT is running)."
+                )
+            elif hist_code in {"NO_BARS", "INSTRUMENT_NOT_FOUND", "NT_BARS_ERROR", "HISTORICAL_TIMEOUT"}:
+                remediation.append(
+                    f"Fabric historical failed ({hist_code}): check NT instrument mapping "
+                    f"for '{instrument}', data feed connection, and NinjaScript [FabricData] logs."
+                )
+            else:
+                remediation.append(
+                    f"RequestHistoricalData failed: code={hist_code} message={hist.get('message')}"
+                )
+    except Exception as exc:
+        checks.append(
+            DiagnosticCheck(
+                id="historical_bars",
+                title="Historical bars via Fabric (market data plane)",
+                status="fail",
+                message=f"{type(exc).__name__}: {exc}",
+                duration_ms=int((time.perf_counter() - t) * 1000),
+            )
+        )
+        remediation.append(
+            "Historical bars check crashed — ensure FabricGrpcClient.request_historical_data "
+            "and NT AddOn historical provider are deployed."
+        )
+
+    def _is_safe_mode_block(resp: dict[str, Any] | None) -> bool:
+        if not isinstance(resp, dict):
+            return False
+        blob = json.dumps(resp, default=str).upper()
+        code = str(resp.get("code") or resp.get("rejection_reason") or "").upper()
+        if code in {"SAFE_MODE", "SAFE", "FULL_SAFE"}:
+            return True
+        if "SAFE_MODE" in blob or "SAFE MODE" in blob:
+            return True
+        # protobuf enum often surfaces as safe_mode=2 (SAFE)
+        sm = resp.get("safe_mode")
+        if sm is None and isinstance(resp.get("detail"), dict):
+            sm = resp["detail"].get("safe_mode")
+        try:
+            if int(sm) in (2, 3):  # SAFE / FULL_SAFE
+                return True
+        except (TypeError, ValueError):
+            pass
+        return "FABRIC PLACE BLOCKED" in blob and "SAFE" in blob
+
+    def _place_with_safe_recovery() -> tuple[dict[str, Any], Any]:
+        """Place once; if leftover SAFE_MODE, re-auth once and retry (diagnostic honesty)."""
+        nonlocal client
         assert client is not None
         cid = f"diag-place-{uuid.uuid4().hex[:8]}"
         place = client.place_order_sync(
@@ -204,6 +367,41 @@ def run_live_checks(
             client_order_id=cid,
             correlation_id=f"corr-{cid}",
         )
+        if place.get("type") != "error" or not _is_safe_mode_block(place):
+            return place, client
+        # Host left in SAFE from prior heartbeat gap / previous diagnostic — clear via re-auth.
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+        client = make_client(token, hb_ms=500)
+        if not client.connect():
+            place = dict(place)
+            place["message"] = (
+                str(place.get("message") or place)
+                + " | re-auth reconnect failed after SAFE_MODE"
+            )
+            return place, client
+        time.sleep(0.35)
+        cid2 = f"diag-place-retry-{uuid.uuid4().hex[:8]}"
+        place2 = client.place_order_sync(
+            Order(symbol=instrument, side="BUY", quantity=1, order_type="MARKET"),
+            client_order_id=cid2,
+            correlation_id=f"corr-{cid2}",
+        )
+        if place2.get("type") != "error":
+            place2 = dict(place2)
+            place2["message"] = (
+                str(place2.get("message") or place2.get("type") or "ok")
+                + " (cleared SAFE_MODE via re-auth)"
+            )
+        return place2, client
+
+    # 8 place
+    t = time.perf_counter()
+    try:
+        assert client is not None
+        place, client = _place_with_safe_recovery()
         place_ok = place.get("type") != "error"
         checks.append(
             DiagnosticCheck(
@@ -216,7 +414,9 @@ def run_live_checks(
             )
         )
         if not place_ok:
-            remediation.append(f"Place failed: {place}. Check SAFE_MODE and host logs.")
+            remediation.append(
+                f"Place failed: {place}. If SAFE_MODE persists, Repair connection / restart NT host."
+            )
     except Exception as exc:
         checks.append(
             DiagnosticCheck(
@@ -327,7 +527,7 @@ def run_live_checks(
             except Exception:
                 pass
 
-        # 12 reauth clears
+        # 12 reauth clears + leave host NORMAL for operators (Link window honesty)
         t = time.perf_counter()
         c3 = make_client(token, hb_ms=500)
         try:
@@ -355,6 +555,8 @@ def run_live_checks(
                     c3.flatten_sync(instrument=instrument)
                 except Exception:
                     pass
+                # Brief HB so watchdog does not immediately re-enter SAFE after we disconnect.
+                time.sleep(0.4)
             else:
                 checks.append(
                     DiagnosticCheck(

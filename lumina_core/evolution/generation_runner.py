@@ -23,6 +23,7 @@ from lumina_core.evolution.generation_runner_phases import (
     append_generation_completed_metrics,
     apply_constitutional_pre_promotion,
     apply_post_twin_constitutional_veto,
+    fail_closed_twin_decision,
     risk_shadow_validate_candidates,
     twin_effective_recommendation,
 )
@@ -80,10 +81,11 @@ def run_single_generation(
         dream_report=dream_summary,
         evolution_mode=mode,
     )
-
-    # === Phase 2 Deliverable 5 (Aperture Hardening) — Risk shadow is now the default path ===
+    from lumina_core.evolution.research_lab.cycle import gate_winner, merge_catalog_challengers
+    candidates = merge_catalog_challengers(
+        orchestrator._registry, candidates, generation_offset=generation_offset, mode=mode
+    )
     risk_shadow_validate_candidates(orchestrator, candidates)
-    # ================================================================================
 
     if not candidates:
         raise LuminaError(
@@ -145,9 +147,10 @@ def run_single_generation(
     winner_hash = str(selected.get("dna_hash", ""))
     winner_dna = next((item for item in candidates if item.hash == winner_hash), candidates[0])
     winner_fitness = float(selected.get("score", float("-inf")))
-
-    # Twin is primary auto-approval layer. For birth/SIM it can auto (when clean + above thresh).
-    # REAL path still funnels through guard + shadow + PromotionGate.
+    winner_dna, winner_fitness, _cc = gate_winner(
+        champion=active_dna, challenger=winner_dna, challenger_fitness=winner_fitness,
+        previous_fitness=previous_fitness, sim_results=sim_results, mode=mode,
+    )
     twin_decision: dict[str, Any] = {
         "recommendation": True,
         "effective_recommendation": False,  # fail-closed until twin evaluate stamps authority
@@ -160,17 +163,18 @@ def run_single_generation(
     if str(mode).strip().lower() in ("real", "paper"):
         twin_decision = orchestrator._approval_twin.evaluate_dna_promotion(winner_dna)
     else:
-        # For pure sim/birth, proactively consult twin for the auto-approval signal
         try:
             twin_decision = orchestrator._approval_twin.evaluate_dna_promotion(winner_dna)
         except Exception:
-            pass
+            logger.exception("twin evaluate_dna_promotion failed; fail-closed")
+            twin_decision = fail_closed_twin_decision("twin_evaluate_raised")
 
-    # Dedicated shadow runner for REAL promotion validation.
-    shadow_runner: Any = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
-    # Keep compatibility with injected/custom runners in tests and dev overrides.
-    if hasattr(orchestrator._sim_runner, "evaluate_variants") and not isinstance(orchestrator._sim_runner, MultiDaySimRunner):
-        shadow_runner = orchestrator._sim_runner
+    shadow_runner: Any = orchestrator._sim_runner
+    if not hasattr(shadow_runner, "evaluate_variants"):
+        shadow_runner = MultiDaySimRunner(
+            max_workers=8, drawdown_limit_ratio=0.02, real_market_data=True, true_backtest_mode=True,
+            market_data_service=getattr(orchestrator, "_market_data_service", None),
+        )
 
     twin_confidence = float(twin_decision.get("confidence", 0.0) or 0.0)
     twin_risk_flags = [str(x) for x in list(twin_decision.get("risk_flags", []) or [])]
@@ -252,6 +256,10 @@ def run_single_generation(
         twin_risk_flags=twin_risk_flags,
         selected_variant=selected,
         all_variants=list(experiment.variants or []),
+        twin_confidence=float(twin_confidence or 0.0),
+        twin_recommendation=bool(
+            twin_decision.get("effective_recommendation", twin_decision.get("recommendation", False))
+        ),
     )
     promoted = bool(promoted and rollout_decision.allow_promotion)
 

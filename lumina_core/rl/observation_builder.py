@@ -128,6 +128,21 @@ def build_observation_vector(
     if not _has_trend_features(row) and regime_strength == 0.0 and regime:
         regime_strength = regime_scalar(regime)
 
+    # Range-native signal (no dim bump): on NEUTRAL/RANGING, blend mean-reversion
+    # residual into slot-1 so Stage-2/3 policies see fade edge, not only weak trend.
+    regime_u = str(regime or "NEUTRAL").upper()
+    if regime_u in {"NEUTRAL", "RANGING"} or "RANGE" in regime_u:
+        slope5 = float(row.get("trend_slope_5", 0.0) or 0.0)
+        if len(trend_tail) >= 4:
+            # trend_tail[3] is slope_5 when full tail present (adx*3 + slopes).
+            try:
+                slope5 = float(row.get("trend_slope_5", trend_tail[3] if len(trend_tail) > 3 else slope5) or slope5)
+            except (TypeError, ValueError, IndexError):
+                pass
+        # Fade residual: negative short slope → positive long bias signal.
+        fade = float(max(-1.0, min(1.0, -slope5 * 40.0)))
+        regime_strength = float(0.35 * float(regime_strength) + 0.65 * fade)
+
     tape = engine.market_data.get_tape_snapshot() if hasattr(engine, "market_data") else {}
     tape = tape if isinstance(tape, dict) else {}
     dream = engine.get_current_dream_snapshot() if hasattr(engine, "get_current_dream_snapshot") else {}

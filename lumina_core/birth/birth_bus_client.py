@@ -283,6 +283,32 @@ class BirthBusClient(BirthBusMetaMixin):
             attempt=int(kwargs.get("attempt", 0)),
             range_flat_ratio=float(kwargs.get("range_flat_ratio", 0.0)),
             range_round_trips=int(kwargs.get("range_round_trips", 0)),
+            constitution_violations=int(kwargs.get("constitution_violations", 0) or 0),
+            volume_gate_passed=bool(
+                kwargs["volume_gate_passed"]
+                if kwargs.get("volume_gate_passed") is not None
+                else int(kwargs.get("stage_trades", 0) or 0)
+                >= int(kwargs.get("required_trades", 0) or 0)
+            ),
+            range_total_signals=int(kwargs.get("range_total_signals", 0) or 0),
+            plateau_active=bool(kwargs.get("plateau_active", False)),
+            expectancy_quality_step=int(kwargs.get("expectancy_quality_step", 0) or 0),
+            stage_wins=int(kwargs.get("stage_wins", 0) or 0),
+            rolling_winrate=(
+                float(kwargs["rolling_winrate"])
+                if kwargs.get("rolling_winrate") is not None
+                else None
+            ),
+            edge_vs_random=(
+                float(kwargs["edge_vs_random"])
+                if kwargs.get("edge_vs_random") is not None
+                else None
+            ),
+            median_loss_r=(
+                float(kwargs["median_loss_r"])
+                if kwargs.get("median_loss_r") is not None
+                else None
+            ),
         )
 
 

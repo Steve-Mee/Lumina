@@ -10,6 +10,7 @@ import pytest
 from lumina_core.birth.phase2_autonomy.orchestrator import build_orchestrator_from_cfg
 from lumina_core.birth.phase2_autonomy.sim_campaign import (
     disable_sim_campaign,
+    enable_sim_observe_campaign,
     enable_sim_shadow_campaign,
     load_sim_campaign,
     promote_sim_apply_campaign,
@@ -51,6 +52,8 @@ def test_ops_report_blocked_without_perfect_birth(tmp_path: Path) -> None:
     assert report["ok"] is False
     assert report["policy"]["real_apply_forbidden"] is True
     assert report["can_enable_shadow"] is False
+    assert report["can_enable_observe"] is True
+    assert report["policy"]["observe_without_perfect_birth"] is True
 
 
 @pytest.mark.unit
@@ -66,6 +69,35 @@ def test_ops_report_ready_after_pb_and_enable(tmp_path: Path) -> None:
     assert report["campaign_active"] is True
     assert report["mode"] == "shadow"
     assert report["ok"] is True
+
+
+@pytest.mark.unit
+def test_enable_observe_without_perfect_birth(tmp_path: Path) -> None:
+    """R3 M5: observe may start pre-PB (audit only)."""
+    result = enable_sim_observe_campaign(tmp_path, source="test")
+    assert result["ok"] is True
+    assert result["mode"] == "observe"
+    camp = load_sim_campaign(tmp_path)
+    assert camp is not None
+    assert camp["mode"] == "observe"
+    assert camp["real_apply_forbidden"] is True
+    cfg = BirthCurriculumConfig()
+    features = resolve_features_with_campaign(cfg, tmp_path)
+    assert features.enabled is True
+    assert features.execution_mode == "observe"
+    assert features.require_perfect_birth_flag is False
+    orch = build_orchestrator_from_cfg(cfg, mode="sim", workspace_root=tmp_path)
+    assert orch is not None
+    assert orch.is_active() is True
+    assert orch.execution_mode().value == "observe"
+
+
+@pytest.mark.unit
+def test_observe_cannot_promote_to_apply(tmp_path: Path) -> None:
+    enable_sim_observe_campaign(tmp_path)
+    result = promote_sim_apply_campaign(tmp_path)
+    assert result["ok"] is False
+    assert result["error"] == "observe_cannot_promote_to_apply"
 
 
 @pytest.mark.unit
@@ -101,6 +133,61 @@ def test_resolve_features_overlay_activates_orchestrator(tmp_path: Path) -> None
     assert orch is not None
     assert orch.is_active() is True
     assert orch.execution_mode().value == "shadow"
+
+
+@pytest.mark.unit
+def test_resolve_features_does_not_demote_curriculum_apply(tmp_path: Path) -> None:
+    """Observe campaign must not strip explicit curriculum closed-loop apply (SIM product)."""
+    enable_sim_observe_campaign(tmp_path, source="test")
+    cfg = BirthCurriculumConfig(
+        phase2_autonomy_enabled=True,
+        phase2_dynamic_wall_enabled=True,
+        phase2_self_adaptive_params_enabled=True,
+        phase2_instance_adapt_enabled=True,
+        phase2_execution_mode="apply",
+        phase2_require_perfect_birth_flag=False,
+        phase2_allow_sim_scaffold=True,
+        phase2_require_twin_for_apply=True,
+    )
+    features = resolve_features_with_campaign(cfg, tmp_path)
+    assert features.enabled is True
+    assert features.execution_mode == "apply"
+    assert features.allow_sim_scaffold is True
+    orch = build_orchestrator_from_cfg(cfg, mode="sim", workspace_root=tmp_path)
+    assert orch is not None
+    assert orch.execution_mode().value == "apply"
+    status = sim_campaign_status(tmp_path, cfg=cfg)
+    assert status["mode"] == "observe"
+    assert status["effective_features"]["execution_mode"] == "apply"
+
+
+@pytest.mark.unit
+def test_resolve_features_campaign_raises_above_curriculum_observe(tmp_path: Path) -> None:
+    """Shadow campaign may raise authority when curriculum only has observe."""
+    _declare_perfect(tmp_path)
+    enable_sim_shadow_campaign(tmp_path, source="test")
+    cfg = BirthCurriculumConfig(
+        phase2_autonomy_enabled=True,
+        phase2_dynamic_wall_enabled=True,
+        phase2_execution_mode="observe",
+    )
+    features = resolve_features_with_campaign(cfg, tmp_path)
+    assert features.execution_mode == "shadow"
+
+
+@pytest.mark.unit
+def test_resolve_features_master_off_ignores_stale_curriculum_mode_field(
+    tmp_path: Path,
+) -> None:
+    """If master flag is off, only campaign mode applies (no accidental apply from field)."""
+    enable_sim_observe_campaign(tmp_path, source="test")
+    cfg = BirthCurriculumConfig(
+        phase2_autonomy_enabled=False,
+        phase2_execution_mode="apply",  # stale / ignored while master off
+    )
+    features = resolve_features_with_campaign(cfg, tmp_path)
+    assert features.enabled is True
+    assert features.execution_mode == "observe"
 
 
 @pytest.mark.unit

@@ -10,7 +10,7 @@ namespace Lumina.Execution.Fabric.Execution
     {
         string AccountName { get; }
 
-        /// <summary>Gateway kind for telemetry: "sim" or "nt".</summary>
+        /// <summary>Gateway kind for telemetry: "memory" (in-process) or "nt" (Account).</summary>
         string GatewayKind { get; }
 
         AccountMetrics GetAccountMetrics();

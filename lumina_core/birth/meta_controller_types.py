@@ -74,6 +74,15 @@ class LearningSnapshot:
     range_flat_ratio: float = 0.0
     range_round_trips: int = 0
     constitution_violations: int = 0
+    # Stage-2 expectancy quality ladder (Phase C) — optional snapshot fields.
+    range_total_signals: int = 0
+    plateau_active: bool = False
+    expectancy_quality_step: int = 0
+    stage_wins: int = 0
+    rolling_winrate: float | None = None
+    # Policy WR − first-touch thr (negative = worse than random entry).
+    edge_vs_random: float | None = None
+    median_loss_r: float | None = None
 
     @property
     def thin_buffer(self) -> bool:

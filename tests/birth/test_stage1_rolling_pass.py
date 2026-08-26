@@ -26,7 +26,7 @@ def test_stage1_pass_on_rolling_when_lifetime_below_gate() -> None:
         stage_pass_trade_pct=0.10,
         stage1_trend_trades=2000,
     )
-    # lifetime 39%, rolling 46% over last 500 — should pass
+    # Rolling WR is HUD-only and cannot graduate Stage 1.
     result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
         trades=2000,
@@ -38,8 +38,8 @@ def test_stage1_pass_on_rolling_when_lifetime_below_gate() -> None:
         cfg=cfg,
         rolling_winrate=0.46,
     )
-    assert result.passed is True
-    assert "source=rolling" in result.message
+    assert result.passed is False
+    assert "source=rolling" not in result.message
 
 
 @pytest.mark.unit

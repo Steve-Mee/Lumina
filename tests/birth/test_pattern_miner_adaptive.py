@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from lumina_core.birth.birth_trade_geometry import BIRTH_FALLBACK_STOP_PCT
 from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.birth.pattern_miner import (
-    _BIRTH_FALLBACK_STOP_PCT,
     _LEGACY_STOP_PCT,
     calibrate_oracle_stops,
     mine_winning_patterns,
@@ -31,6 +31,7 @@ def _synthetic_trend_ticks(n: int = 400) -> list[dict]:
                 "close": price,
                 "regime": "TREND_UP" if i % 40 < 20 else "TREND_DOWN",
                 "trend_atr_norm": 0.0015,
+                "bar_index": i,
                 "timestamp": f"2026-01-01T00:{i//60:02d}:{i%60:02d}",
             }
         )
@@ -69,5 +70,5 @@ def test_adaptive_mine_finds_patterns() -> None:
 @pytest.mark.unit
 def test_birth_fallback_below_legacy_defaults() -> None:
     """Document pre-v4 failure: legacy 0.75% stop never hits 1m MES (~0.15% moves)."""
-    assert _BIRTH_FALLBACK_STOP_PCT < _LEGACY_STOP_PCT
-    assert _BIRTH_FALLBACK_STOP_PCT < 0.002
+    assert BIRTH_FALLBACK_STOP_PCT < _LEGACY_STOP_PCT
+    assert BIRTH_FALLBACK_STOP_PCT < 0.002

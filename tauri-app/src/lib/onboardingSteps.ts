@@ -39,6 +39,7 @@ export interface OnboardingPayload {
     artifacts_ok: boolean;
     artifacts_label?: string;
     certificate_ok?: boolean;
+    birth_exit_ok?: boolean;
     certificate_reason?: string;
   };
   intelligence: {
@@ -78,6 +79,14 @@ export interface OnboardingPayload {
   smart_setup_running: boolean;
   app_surface: AppSurface;
   app_surface_reason?: string;
+  /** Twin foundation (Operator Vault) — ADR-0037 hard Birth gate. */
+  twin?: {
+    birth_ready?: boolean;
+    base_trained?: boolean;
+    base_training_completion_pct?: number;
+    curriculum_version?: string;
+    local_only?: boolean;
+  };
   /** Post-birth Playground gate — false until operator seals Risk Envelope. */
   sim_envelope_sealed?: boolean;
 }

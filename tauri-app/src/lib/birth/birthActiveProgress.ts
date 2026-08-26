@@ -46,7 +46,7 @@ export const BIRTH_TERMINAL_PROGRESS_STAGES = new Set([
 
 /**
  * Data-prep / plant bootstrap — historical load, enrich, split, policy init.
- * Stage 1/3 scorecard must NOT appear here (only Birth preparation).
+ * Stage 1/5 scorecard must NOT appear here (only Birth preparation).
  */
 export const BIRTH_DATA_PREP_PHASES = new Set([
   "detected",
@@ -65,7 +65,7 @@ export const BIRTH_DATA_PREP_PHASES = new Set([
 ]);
 
 /**
- * Curriculum is live — Stage N/3 scorecard + gates are honest.
+ * Curriculum is live — Stage N/5 scorecard + gates are honest.
  * Includes recovery / swarm / stall so the right column stays useful mid-stage.
  */
 export const BIRTH_CURRICULUM_SCORECARD_PHASES = new Set([
@@ -92,7 +92,7 @@ export const BIRTH_CURRICULUM_SCORECARD_PHASES = new Set([
 ]);
 
 /**
- * True only when Stage intelligence (Stage 1/3 …) should render.
+ * True only when Stage intelligence (Stage 1/5 …) should render.
  * Data load / enrich / ticks_ready → false even if curriculum_stage is pre-stamped.
  */
 export function isBirthCurriculumScorecardActive(
@@ -104,7 +104,7 @@ export function isBirthCurriculumScorecardActive(
   // Prefer the more specific sub_phase when present.
   const active = sub || phase;
 
-  // Hard ban: data plant / historical load — never Stage N/3 cards.
+  // Hard ban: data plant / historical load — never Stage N/5 cards.
   if (
     (active && BIRTH_DATA_PREP_PHASES.has(active)) ||
     (phase && BIRTH_DATA_PREP_PHASES.has(phase))

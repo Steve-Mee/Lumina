@@ -4,7 +4,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from lumina_core.birth.foundation_history import FOUNDATION_HISTORY_EXPAND_STEPS
+
 logger = logging.getLogger("lumina.birth.config")
+
 
 def _coerce_int(value: Any, default: int) -> int:
     try:
@@ -38,6 +41,6 @@ def _parse_expansion_steps(raw: Any) -> tuple[int, ...]:
                 continue
         if out:
             return tuple(out)
-    return (90, 180, 365, 730)
+    return FOUNDATION_HISTORY_EXPAND_STEPS
 
 

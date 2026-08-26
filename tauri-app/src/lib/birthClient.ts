@@ -122,7 +122,13 @@ export async function startBirth(targetTrades: number): Promise<BirthStartRespon
   return response.json() as Promise<BirthStartResponse>;
 }
 
-export type BirthStartStatus = "started" | "rejected" | "already_running" | "already_completed";
+export type BirthStartStatus =
+  | "started"
+  | "rejected"
+  | "already_running"
+  | "already_completed"
+  | "history_unavailable"
+  | "fabric_not_ready";
 
 export function isBirthStartSuccessful(
   status: unknown,
@@ -132,6 +138,15 @@ export function isBirthStartSuccessful(
     return true;
   }
   const normalized = String(status ?? "").toLowerCase();
+  // Explicit fail-closed statuses (sync preflight / fabric gate).
+  if (
+    normalized === "history_unavailable" ||
+    normalized === "fabric_not_ready" ||
+    normalized === "rejected" ||
+    normalized === "error"
+  ) {
+    return false;
+  }
   return normalized === "started" || normalized === "already_running";
 }
 
@@ -213,8 +228,16 @@ export async function expandAndRetryStalledStageSession(
 }
 
 export async function resumeBirthSession(targetTrades: number): Promise<BirthStatusPayload> {
-  /** Certificate-failure fast path: retry without wipe (BRO v2 SSOT). */
-  return retryBirthSession(targetTrades, { wipe: false });
+  /** Continue from checkpoint: continue_training + reuse_data (skip launcher history probe). */
+  const params = new URLSearchParams({ target_trades: String(targetTrades) });
+  try {
+    return await postBirthMutation("/api/birth/resume", params);
+  } catch (err) {
+    if (!isNotFoundError(err)) {
+      throw err;
+    }
+    return retryBirthSession(targetTrades, { wipe: false });
+  }
 }
 
 export async function acceptChampionSession(targetTrades: number): Promise<BirthStatusPayload> {

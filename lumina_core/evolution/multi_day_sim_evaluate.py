@@ -37,8 +37,9 @@ class MultiDaySimEvaluateMixin:
 
         report = dict(nightly_report or {})
         day_count = max(1, int(days))
-        use_real_data = bool(real_market_data) and self.real_market_data and self.market_data_service is not None
-        use_true_backtest = bool(true_backtest_mode) and self.true_backtest_mode and use_real_data
+        # Want-real if caller OR runner asks; missing MDS is fail-closed later, not RNG.
+        use_real_data = bool(real_market_data) or bool(self.real_market_data)
+        use_true_backtest = bool(true_backtest_mode) or bool(self.true_backtest_mode)
         results: list[SimResult] = []
 
         eff_parallel = 1 if bool(shadow_mode) else max(1, min(50, int(parallel_realities)))
@@ -235,22 +236,31 @@ class MultiDaySimEvaluateMixin:
         max_drawdown_ratio = 0.0
         hypothetical_fills: list[ShadowFill] = []
 
-        # FASE 1: Load real market data if enabled
+        from lumina_core.evolution.fitness_ssot import (
+            fail_closed_sim_result,
+            heuristic_fitness_allowed,
+            rng_heuristic_daily_pnl,
+        )
+        from lumina_core.hybrid_quarantine import MULTI_DAY_SIM, log_quarantine, require_true_backtest
+
+        allow_heuristic = heuristic_fitness_allowed(
+            runner_flag=bool(getattr(self, "allow_heuristic_fitness", False))
+        )
+
         real_ticks: list[dict[str, Any]] = []
         if real_market_data and self.market_data_service is not None:
             try:
-                days_back = max(7, days // 5)  # Fetch extra historical context
+                days_back = max(7, days // 5)
                 real_ticks = self.market_data_service.load_historical_ohlc_extended(
                     days_back=days_back,
                     limit=max(5000, days * 250),
                     ticks_per_bar=4,
                 )
                 if not real_ticks:
-                    logger.warning("[EVOLUTION] No real market data available, falling back to simulation")
-                    real_market_data = False
+                    logger.warning("[EVOLUTION] No real market data available — fail-closed (no RNG)")
             except Exception as exc:
-                logger.warning("[EVOLUTION] Real market data load failed: %s – using simulation", exc)
-                real_market_data = False
+                logger.warning("[EVOLUTION] Real market data load failed: %s — fail-closed", exc)
+                real_ticks = []
 
         if resolve_ohlc_reality_stress_enabled() and real_ticks and report.get("_reality_id") is not None:
             real_ticks = stress_simulator_ohlc(
@@ -259,7 +269,7 @@ class MultiDaySimEvaluateMixin:
                 stress_seed=str(variant.hash),
             )
 
-        if true_backtest_mode and real_market_data and real_ticks:
+        if true_backtest_mode and real_ticks:
             backtest = self._run_true_backtest(
                 ticks=real_ticks,
                 target_days=days,
@@ -273,32 +283,16 @@ class MultiDaySimEvaluateMixin:
             regime_fit_bonus = float(backtest.get("regime_fit_bonus", 0.0) or 0.0)
             if shadow_mode:
                 hypothetical_fills = list(backtest.get("fills", []) or [])
-        elif real_market_data and real_ticks:
-            from lumina_core.hybrid_quarantine import (
-                MULTI_DAY_SIM,
-                log_quarantine,
-                require_true_backtest,
+        elif allow_heuristic and real_ticks:
+            log_quarantine(MULTI_DAY_SIM, strict=require_true_backtest(), detail="tick_proxy_path")
+            pnl_values = self._calculate_tick_proxy_daily_pnl(
+                real_ticks, days, baseline_equity, variant, rng
             )
-
-            strict = require_true_backtest()
-            log_quarantine(MULTI_DAY_SIM, strict=strict, detail="tick_proxy_path")
-            if strict:
-                return SimResult(
-                    dna_hash=variant.hash,
-                    day_count=days,
-                    avg_pnl=0.0,
-                    max_drawdown_ratio=0.0,
-                    regime_fit_bonus=0.0,
-                    fitness=float("-inf"),
-                    shadow_mode=shadow_mode,
-                    hypothetical_fills=None,
-                )
-            # Tick-bar proxy daily PnL (not broker economic_pnl)
-            pnl_values = self._calculate_tick_proxy_daily_pnl(real_ticks, days, baseline_equity, variant, rng)
             for day_idx, day_pnl in enumerate(pnl_values):
-                day_dd_ratio = max(0.0, base_drawdown_abs * (1.0 + rng.uniform(-0.1, 0.1)) / baseline_equity)
+                day_dd_ratio = max(
+                    0.0, base_drawdown_abs * (1.0 + rng.uniform(-0.1, 0.1)) / baseline_equity
+                )
                 max_drawdown_ratio = max(max_drawdown_ratio, day_dd_ratio)
-
                 if shadow_mode:
                     side = "BUY" if day_pnl >= 0.0 else "SELL"
                     qty = max(1, int(abs(day_pnl) // 50) + 1)
@@ -315,50 +309,24 @@ class MultiDaySimEvaluateMixin:
                             reason="shadow_real_market_validation",
                         )
                     )
-        else:
-            from lumina_core.hybrid_quarantine import (
-                MULTI_DAY_SIM,
-                log_quarantine,
-                require_true_backtest,
+        elif allow_heuristic:
+            log_quarantine(MULTI_DAY_SIM, strict=require_true_backtest(), detail="rng_heuristic_path")
+            pnl_values, max_drawdown_ratio, hypothetical_fills = rng_heuristic_daily_pnl(
+                days=days,
+                base_pnl=base_pnl,
+                base_drawdown_abs=base_drawdown_abs,
+                baseline_equity=baseline_equity,
+                rng=rng,
+                shadow_mode=shadow_mode,
             )
-
-            strict = require_true_backtest()
-            log_quarantine(MULTI_DAY_SIM, strict=strict, detail="rng_heuristic_path")
-            if strict:
-                return SimResult(
-                    dna_hash=variant.hash,
-                    day_count=days,
-                    avg_pnl=0.0,
-                    max_drawdown_ratio=0.0,
-                    regime_fit_bonus=0.0,
-                    fitness=float("-inf"),
-                    shadow_mode=shadow_mode,
-                    hypothetical_fills=None,
-                )
-            # Original random perturbation logic (backwards compatible)
-            for day_index in range(1, days + 1):
-                day_pnl = base_pnl * (1.0 + rng.uniform(-0.2, 0.2))
-                day_dd_abs = base_drawdown_abs * (1.0 + rng.uniform(-0.15, 0.15))
-                day_dd_ratio = max(0.0, day_dd_abs / baseline_equity)
-                pnl_values.append(day_pnl)
-                max_drawdown_ratio = max(max_drawdown_ratio, day_dd_ratio)
-
-                if shadow_mode:
-                    side = "BUY" if day_pnl >= 0.0 else "SELL"
-                    qty = max(1, int(abs(day_pnl) // 25) + 1)
-                    entry_price = round(100.0 + rng.uniform(-3.0, 3.0), 4)
-                    exit_price = round(entry_price + (day_pnl / max(1, qty * 10.0)), 4)
-                    hypothetical_fills.append(
-                        ShadowFill(
-                            day_index=day_index,
-                            side=side,
-                            qty=qty,
-                            entry_price=entry_price,
-                            exit_price=exit_price,
-                            pnl=float(day_pnl),
-                            reason="shadow_validation_no_order_execution",
-                        )
-                    )
+        else:
+            log_quarantine(MULTI_DAY_SIM, strict=True, detail="fitness_ssot_fail_closed")
+            return fail_closed_sim_result(
+                dna_hash=variant.hash,
+                days=days,
+                shadow_mode=shadow_mode,
+                reason="no_true_backtest_ticks",
+            )
 
         if max_drawdown_ratio > self.drawdown_limit_ratio:
             return SimResult(

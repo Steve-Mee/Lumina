@@ -143,7 +143,12 @@ def run_nightly_evolution_cycle(
         approval_twin_recommendation = bool(td_raw.get("recommendation", False))
         confidence_for_guard = float(td_raw.get("confidence", confidence) or 0.0)
         twin_risk_flags = [str(x) for x in list(td_raw.get("risk_flags", []) or [])]
-        shadow_runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.02)
+        mds = getattr(agent, "market_data_service", None)
+        if mds is None:
+            mds = getattr(getattr(agent, "engine", None), "market_data_service", None)
+        shadow_runner = MultiDaySimRunner(
+            max_workers=8, drawdown_limit_ratio=0.02, market_data_service=mds
+        )
     else:
         approval_twin_recommendation = guard.resolve_approval_twin_recommendation(
             approval_twin=approval_twin,
@@ -293,6 +298,16 @@ def run_nightly_evolution_cycle(
         mode_key=str(mode_key),
         mutation_allowed=bool(mutation_allowed),
         dry_run=bool(dry_run),
+    )
+
+    from lumina_core.evolution.challenger_nightly import maybe_run_challenger_code_cycle
+
+    outcome["challenger_code_evolution"] = maybe_run_challenger_code_cycle(
+        agent,
+        mode_key=str(mode_key),
+        mutation_allowed=bool(mutation_allowed),
+        dry_run=bool(dry_run),
+        workspace=getattr(agent, "workspace_root", None) or ".",
     )
 
     agent._append_immutable_log(outcome)

@@ -61,7 +61,7 @@ class ArchPromotionGate:
         pdir = self.pending_root / decision.proposal_id
         pdir.mkdir(parents=True, exist_ok=True)
         (pdir / "decision.json").write_text(
-            json.dumps(decision.__dict__, indent=2), encoding="utf-8"
+            json.dumps(asdict(decision), indent=2), encoding="utf-8"
         )
         return pdir / "decision.json"
 
@@ -100,6 +100,19 @@ This change must preserve:
 - No trading behavior change in REAL paths
 """
 
+    def is_council_ok(self, proposal_id: str) -> tuple[bool, str]:
+        pdir = self.pending_root / proposal_id
+        marker = pdir / "COUNCIL.json"
+        if not marker.exists():
+            return False, "no COUNCIL.json"
+        try:
+            raw = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False, "corrupt COUNCIL.json"
+        if isinstance(raw, dict) and raw.get("allowed") is True:
+            return True, str(raw.get("reason") or "council")
+        return False, "council_not_allowed"
+
     def apply_if_approved(
         self, proposal: ArchMutationProposal, *, apply_fn: Any = None
     ) -> ArchPromotionDecision:
@@ -110,6 +123,14 @@ This change must preserve:
                 proposal_id=proposal.proposal_id,
                 approved=False,
                 reason="no APPROVED marker",
+            )
+        council_ok, council_reason = self.is_council_ok(proposal.proposal_id)
+        if not council_ok:
+            return ArchPromotionDecision(
+                proposal_id=proposal.proposal_id,
+                approved=False,
+                approver=approver,
+                reason=council_reason,
             )
 
         ts = datetime.now(timezone.utc).isoformat()

@@ -15,12 +15,14 @@ import { formatTwinPct } from "@/lib/twinClient";
 import { cn } from "@/lib/utils";
 
 import { BirthFieldCard } from "@/components/birth/BirthFieldCard";
+import { BirthReadoutStack, type BirthReadoutStat } from "@/components/birth/BirthReadoutStack";
 import { BirthSessionTelemetry } from "@/components/birth/BirthSessionTelemetry";
 import {
   edgeScoreConditionTone,
   hygieneConditionTone,
   isGoalMet,
   positionFlatTone,
+  shouldShowPositionFlat,
 } from "@/components/birth/BirthStageScorecardFormat";
 import { useLiveBirthElapsedSec } from "@/hooks/useLiveBirthElapsedSec";
 
@@ -42,12 +44,14 @@ function MetricField({
   label,
   value,
   detail,
+  stats,
   barPct,
   tone = "default",
 }: {
   label: string;
   value: string;
   detail?: string;
+  stats?: BirthReadoutStat[];
   barPct: number;
   tone?: ConditionTone;
 }) {
@@ -64,6 +68,7 @@ function MetricField({
     <div
       className="risk-envelope-field-card birth-metric-field space-y-1"
       data-tone={tone === "default" || tone === "accent" ? undefined : tone}
+      title={detail}
     >
       <div className="flex items-baseline justify-between gap-2">
         <p className="risk-envelope-field-label mb-0 truncate">{label}</p>
@@ -85,8 +90,10 @@ function MetricField({
           style={{ width: `${pct}%` }}
         />
       </div>
-      {detail ? (
-        <p className="risk-envelope-field-hint mb-0 truncate" title={detail}>
+      {stats && stats.length > 0 ? (
+        <BirthReadoutStack stats={stats} tone={tone} />
+      ) : detail ? (
+        <p className="risk-envelope-field-hint mb-0 leading-snug" title={detail}>
           {detail}
         </p>
       ) : null}
@@ -111,12 +118,7 @@ function formatHoldDetail(
 ): string {
   if (scorecard.stageHoldRatio == null) return "—";
   const pct = (scorecard.stageHoldRatio * 100).toFixed(1);
-  const max =
-    scorecard.stageHoldMax != null
-      ? (scorecard.stageHoldMax * 100).toFixed(0)
-      : "70";
-  const ok = scorecard.stageHoldRatio <= (scorecard.stageHoldMax ?? 0.7);
-  return `${pct}% · need ≤${max}%${ok ? " ✓" : ""}`;
+  return `${pct}% · diagnostic (occupancy is the gate)`;
 }
 
 function formatHygieneDetail(
@@ -144,6 +146,43 @@ function formatHygieneDetail(
         : `roll ${roll}`;
   const src = scorecard.hygieneWrSource ?? "—";
   return [`life ${life}`, rollPart, `need ≥${floor}%`, src].filter(Boolean).join(" · ");
+}
+
+function formatHygieneReadoutStats(
+  scorecard: NonNullable<ReturnType<typeof extractStageScorecard>>,
+): BirthReadoutStat[] {
+  if (scorecard.hygieneWrEffective == null && scorecard.hygieneWrLifetime == null) {
+    return [];
+  }
+  const floor =
+    scorecard.hygieneWrFloor != null
+      ? `${(scorecard.hygieneWrFloor * 100).toFixed(0)}%`
+      : "diag";
+  const life =
+    scorecard.hygieneWrLifetime != null
+      ? `${(scorecard.hygieneWrLifetime * 100).toFixed(1)}%`
+      : "—";
+  const rollRaw = scorecard.hygieneWrRolling ?? scorecard.rollingWinrate500;
+  const roll = rollRaw != null ? `${(rollRaw * 100).toFixed(1)}%` : "—";
+  const covered = scorecard.rollingWindowTradesCovered;
+  const rollNote =
+    scorecard.rollingWrEligible === false ? `${covered ?? 0}/400` : undefined;
+  const src = scorecard.hygieneWrSource;
+  const srcNote =
+    src === "neither"
+      ? "no lift"
+      : src === "lifetime"
+        ? "life"
+        : src === "rolling"
+          ? "roll"
+          : src
+            ? src.replace(/_/g, " ")
+            : undefined;
+  return [
+    { key: "Life", value: life },
+    { key: "Roll", value: roll, ...(rollNote ? { note: rollNote } : {}) },
+    { key: "Need", value: `≥ ${floor}`, ...(srcNote ? { note: srcNote } : {}) },
+  ];
 }
 
 export function BirthMetricsStrip({
@@ -264,45 +303,51 @@ export function BirthMetricsStrip({
       {scorecard &&
       (scorecard.passCriteriaId === "trend_edgescore" ||
         scorecard.passCriteriaId === "mixed_edgescore" ||
-        scorecard.passCriteriaId === "mixed_foundation") ? (
+        scorecard.passCriteriaId === "mixed_foundation" ||
+        scorecard.passCriteriaId === "range_edgescore") ? (
         <MetricField
           label="Hygiene WR"
           value={
-            scorecard.hygieneWrEffective != null
-              ? `${(scorecard.hygieneWrEffective * 100).toFixed(1)}%`
-              : scorecard.hygieneWrLifetime != null
-                ? `${(scorecard.hygieneWrLifetime * 100).toFixed(1)}%`
-                : "—"
+            scorecard.passCriteriaId === "range_edgescore" &&
+            scorecard.hygieneWrLifetime != null
+              ? `${(scorecard.hygieneWrLifetime * 100).toFixed(1)}%`
+              : scorecard.hygieneWrEffective != null
+                ? `${(scorecard.hygieneWrEffective * 100).toFixed(1)}%`
+                : scorecard.hygieneWrLifetime != null
+                  ? `${(scorecard.hygieneWrLifetime * 100).toFixed(1)}%`
+                  : "—"
           }
           detail={formatHygieneDetail(scorecard)}
+          stats={formatHygieneReadoutStats(scorecard)}
           barPct={
-            scorecard.hygieneWrEffective != null
-              ? Math.min(100, Math.max(0, scorecard.hygieneWrEffective * 100))
-              : scorecard.hygieneWrLifetime != null
-                ? Math.min(100, Math.max(0, scorecard.hygieneWrLifetime * 100))
-                : 0
+            scorecard.passCriteriaId === "range_edgescore" &&
+            scorecard.hygieneWrLifetime != null
+              ? Math.min(100, Math.max(0, scorecard.hygieneWrLifetime * 100))
+              : scorecard.hygieneWrEffective != null
+                ? Math.min(100, Math.max(0, scorecard.hygieneWrEffective * 100))
+                : scorecard.hygieneWrLifetime != null
+                  ? Math.min(100, Math.max(0, scorecard.hygieneWrLifetime * 100))
+                  : 0
           }
           tone={hygieneConditionTone(scorecard)}
         />
       ) : null}
-      {scorecard &&
-      (scorecard.passCriteriaId === "range_edgescore" ||
-        scorecard.passCriteriaId === "range_hold_ratio" ||
-        scorecard.passCriteriaId === "range_roundtrip") &&
-      scorecard.stageRangeFlatRatio != null ? (
+      {scorecard && shouldShowPositionFlat(scorecard) ? (
         <MetricField
           label="Position flat"
-          value={`${(scorecard.stageRangeFlatRatio * 100).toFixed(1)}%`}
+          value={`${(scorecard.stageRangeFlatRatio! * 100).toFixed(1)}%`}
           detail={
             scorecard.stageRangeFlatMin != null && scorecard.stageRangeFlatMax != null
-              ? `need ${(scorecard.stageRangeFlatMin * 100).toFixed(0)}–${(scorecard.stageRangeFlatMax * 100).toFixed(0)}% band · stage 2 only`
+              ? `need ${(scorecard.stageRangeFlatMin * 100).toFixed(0)}–${(scorecard.stageRangeFlatMax * 100).toFixed(0)}% occupancy band`
               : "flat / out-of-market share"
           }
-          barPct={Math.min(100, Math.max(0, scorecard.stageRangeFlatRatio * 100))}
+          barPct={Math.min(100, Math.max(0, (scorecard.stageRangeFlatRatio ?? 0) * 100))}
           tone={positionFlatTone(scorecard)}
         />
       ) : null}
-      {scorecard && scorecard.passCriteriaId === "mixed_foundation" ? (
+      {scorecard &&
+      (scorecard.passCriteriaId === "mixed_foundation" ||
+        scorecard.passCriteriaId === "mixed_edgescore") ? (
         <MetricField
           label="Hold ratio"
           value={

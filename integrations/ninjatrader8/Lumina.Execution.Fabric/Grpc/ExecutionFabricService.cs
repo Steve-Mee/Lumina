@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Grpc.Core;
 using Lumina.Execution.Fabric.Audit;
 using Lumina.Execution.Fabric.Execution;
+using Lumina.Execution.Fabric.MarketData;
 using Lumina.Execution.Fabric.Observability;
 using Lumina.Execution.Fabric.Safety;
 using Lumina.Execution.V1;
@@ -15,6 +16,7 @@ namespace Lumina.Execution.Fabric.Grpc
 {
     /// <summary>
     /// Fabric gRPC service — Safety + hardening (PR-D/E): risk engine, metrics, state sync, audit.
+    /// Market data plane: RequestHistoricalData via injected <see cref="IHistoricalDataProvider"/>.
     /// </summary>
     public sealed class ExecutionFabricService : ExecutionFabric.ExecutionFabricBase
     {
@@ -28,6 +30,8 @@ namespace Lumina.Execution.Fabric.Grpc
         private readonly PreTradeRiskEngine _preTrade;
         private readonly FabricMetrics _metrics;
         private readonly FabricAuditLog? _audit;
+        private readonly IHistoricalDataProvider _historical;
+        private readonly ILiveMarketDataProvider _liveMarket;
         private readonly Action<string>? _log;
         private readonly object _streamWriteGate = new object();
 
@@ -42,7 +46,9 @@ namespace Lumina.Execution.Fabric.Grpc
             PreTradeRiskEngine preTrade,
             FabricMetrics metrics,
             FabricAuditLog? audit = null,
-            Action<string>? log = null)
+            Action<string>? log = null,
+            IHistoricalDataProvider? historical = null,
+            ILiveMarketDataProvider? liveMarket = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
@@ -54,6 +60,8 @@ namespace Lumina.Execution.Fabric.Grpc
             _preTrade = preTrade ?? throw new ArgumentNullException(nameof(preTrade));
             _metrics = metrics ?? throw new ArgumentNullException(nameof(metrics));
             _audit = audit;
+            _historical = historical ?? new NullHistoricalDataProvider();
+            _liveMarket = liveMarket ?? new NullLiveMarketDataProvider();
             _log = log;
         }
 
@@ -86,6 +94,8 @@ namespace Lumina.Execution.Fabric.Grpc
             finally
             {
                 _sessions.Unregister(sessionId);
+                if (authenticated)
+                    FabricRuntimeStatus.Instance.NoteSessionClosed(sessionId);
                 _audit?.Record("session_close", "trading_stream_ended", new { session_id = sessionId, authenticated });
 
                 // Disconnect policy only when no Brain sessions remain (multi-session safe).
@@ -99,6 +109,10 @@ namespace Lumina.Execution.Fabric.Grpc
 
         public override Task<AccountState> GetAccountState(GetAccountStateRequest request, ServerCallContext context)
         {
+            if (!TryAuthorizeUnary(context, out var authReason))
+            {
+                throw new RpcException(new Status(StatusCode.Unauthenticated, authReason));
+            }
             return Task.FromResult(BuildAccountState());
         }
 
@@ -106,28 +120,128 @@ namespace Lumina.Execution.Fabric.Grpc
             HistoricalDataRequest request,
             ServerCallContext context)
         {
-            return Task.FromResult(new HistoricalDataResponse
+            if (!TryAuthorizeUnary(context, out var authReason))
+            {
+                return Task.FromResult(new HistoricalDataResponse
+                {
+                    Instrument = request?.Instrument ?? "",
+                    CorrelationId = request?.CorrelationId ?? "",
+                    Code = "UNAUTHENTICATED",
+                    Message = authReason,
+                });
+            }
+
+            var sw = Stopwatch.StartNew();
+            HistoricalDataResponse response;
+            try
+            {
+                response = _historical.GetHistoricalBars(request ?? new HistoricalDataRequest());
+            }
+            catch (Exception ex)
+            {
+                Log($"[FabricData] historical exception: {ex.Message}");
+                response = new HistoricalDataResponse
+                {
+                    Instrument = request?.Instrument ?? "",
+                    CorrelationId = request?.CorrelationId ?? "",
+                    Code = "HISTORICAL_ERROR",
+                    Message = ex.Message,
+                };
+            }
+
+            sw.Stop();
+            var barCount = response?.Bars?.Count ?? 0;
+            var code = response?.Code ?? "EMPTY";
+            Log($"[FabricData] hist provider={_historical.ProviderKind} instrument={request?.Instrument} code={code} bars={barCount} ms={sw.ElapsedMilliseconds}");
+            FabricRuntimeStatus.Instance.NoteHistorical(request?.Instrument, barCount, code);
+            _audit?.Record("historical_data", code, new
+            {
+                instrument = request?.Instrument,
+                provider = _historical.ProviderKind,
+                bars = barCount,
+                ms = sw.ElapsedMilliseconds,
+                correlation_id = request?.CorrelationId,
+            });
+            return Task.FromResult(response ?? new HistoricalDataResponse
             {
                 Instrument = request?.Instrument ?? "",
                 CorrelationId = request?.CorrelationId ?? "",
-                Code = "NOT_IMPLEMENTED",
-                Message = "Historical data deferred past Phase 1",
+                Code = "EMPTY",
+                Message = "No response from historical provider",
             });
         }
 
         public override Task<RiskParametersAck> SetRiskParameters(RiskParameters request, ServerCallContext context)
         {
-            _audit?.Record("set_risk_parameters", "phase1_accept_echo", request);
+            if (!TryAuthorizeUnary(context, out var authReason))
+            {
+                return Task.FromResult(new RiskParametersAck
+                {
+                    Accepted = false,
+                    Message = authReason,
+                    Applied = new RiskParameters(),
+                });
+            }
+
+            // Apply into host config (live for subsequent pre-trade checks). Fail-closed on null.
+            if (request == null)
+            {
+                return Task.FromResult(new RiskParametersAck
+                {
+                    Accepted = false,
+                    Message = "null_risk_parameters",
+                    Applied = new RiskParameters(),
+                });
+            }
+
+            if (request.MaxPositionSize > 0)
+                _config.MaxPositionSize = request.MaxPositionSize;
+            if (request.DailyLossLimit != 0)
+                _config.DailyLossLimit = request.DailyLossLimit;
+            if (request.MaxOrdersPerMinute > 0)
+                _config.MaxOrdersPerMinute = request.MaxOrdersPerMinute;
+            if (request.HeartbeatTimeoutMs > 0)
+                _config.HeartbeatTimeoutMs = request.HeartbeatTimeoutMs;
+            if (request.FlattenGraceMs > 0)
+                _config.FlattenGraceMs = request.FlattenGraceMs;
+            _config.FlattenOnTimeout = request.FlattenOnTimeout;
+            if (request.MaxPositionByInstrument != null && request.MaxPositionByInstrument.Count > 0)
+            {
+                _config.MaxPositionByInstrument ??= new System.Collections.Generic.Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (var kv in request.MaxPositionByInstrument)
+                    _config.MaxPositionByInstrument[kv.Key] = kv.Value;
+            }
+
+            var applied = new RiskParameters
+            {
+                MaxPositionSize = _config.MaxPositionSize,
+                DailyLossLimit = _config.DailyLossLimit,
+                MaxOrdersPerMinute = _config.MaxOrdersPerMinute,
+                HeartbeatTimeoutMs = _config.HeartbeatTimeoutMs,
+                FlattenGraceMs = _config.FlattenGraceMs,
+                FlattenOnTimeout = _config.FlattenOnTimeout,
+            };
+            if (_config.MaxPositionByInstrument != null)
+            {
+                foreach (var kv in _config.MaxPositionByInstrument)
+                    applied.MaxPositionByInstrument[kv.Key] = kv.Value;
+            }
+
+            _audit?.Record("set_risk_parameters", "applied", applied);
             return Task.FromResult(new RiskParametersAck
             {
                 Accepted = true,
-                Message = "accepted_echo",
-                Applied = request ?? new RiskParameters(),
+                Message = "applied",
+                Applied = applied,
             });
         }
 
         public override Task<RiskParameters> GetRiskParameters(GetRiskParametersRequest request, ServerCallContext context)
         {
+            if (!TryAuthorizeUnary(context, out var authReason))
+            {
+                throw new RpcException(new Status(StatusCode.Unauthenticated, authReason));
+            }
             return Task.FromResult(new RiskParameters
             {
                 MaxPositionSize = _config.MaxPositionSize,
@@ -166,6 +280,24 @@ namespace Lumina.Execution.Fabric.Grpc
                     instrument = evt.Instrument,
                 });
                 _sessions.Broadcast(new FabricMessage { OrderEvent = evt });
+            }
+        }
+
+        public void PublishPositionUpdates(IEnumerable<PositionUpdate> positions)
+        {
+            if (positions == null)
+                return;
+            foreach (var pos in positions)
+            {
+                if (pos == null)
+                    continue;
+                _audit?.Record("position_update", pos.Side ?? "", new
+                {
+                    instrument = pos.Instrument,
+                    quantity = pos.Quantity,
+                    side = pos.Side,
+                });
+                _sessions.Broadcast(new FabricMessage { PositionUpdate = pos });
             }
         }
 
@@ -233,10 +365,61 @@ namespace Lumina.Execution.Fabric.Grpc
                     break;
 
                 case BrainMessage.PayloadOneofCase.SubscribeMarketData:
-                case BrainMessage.PayloadOneofCase.UnsubscribeMarketData:
+                {
                     if (!authenticated)
+                    {
                         replies.Add(Reject("", "", "UNAUTHENTICATED", "Auth required"));
+                        break;
+                    }
+                    var sub = brain.SubscribeMarketData;
+                    var instruments = sub?.Instruments;
+                    if (instruments == null || instruments.Count == 0)
+                    {
+                        replies.Add(Reject("", "", "INVALID_INSTRUMENT", "SubscribeMarketData requires instruments"));
+                        break;
+                    }
+                    foreach (var inst in instruments)
+                    {
+                        var code = _liveMarket.Subscribe(inst ?? "", "", update =>
+                        {
+                            try
+                            {
+                                _sessions.Broadcast(new FabricMessage { MarketData = update });
+                            }
+                            catch (Exception ex)
+                            {
+                                Log("live md broadcast: " + ex.Message);
+                            }
+                        });
+                        if (!string.Equals(code, "ok", StringComparison.OrdinalIgnoreCase))
+                        {
+                            replies.Add(Reject("", "", code, "Live market subscribe failed for "
+                                + inst + ": " + code + " (provider=" + _liveMarket.ProviderKind + ")"));
+                        }
+                        else
+                        {
+                            _audit?.Record("subscribe_market_data", "ok", new { instrument = inst, provider = _liveMarket.ProviderKind });
+                            Log("[FabricLive] subscribed " + inst + " provider=" + _liveMarket.ProviderKind);
+                        }
+                    }
                     break;
+                }
+
+                case BrainMessage.PayloadOneofCase.UnsubscribeMarketData:
+                {
+                    if (!authenticated)
+                    {
+                        replies.Add(Reject("", "", "UNAUTHENTICATED", "Auth required"));
+                        break;
+                    }
+                    var unsub = brain.UnsubscribeMarketData;
+                    if (unsub?.Instruments != null)
+                    {
+                        foreach (var inst in unsub.Instruments)
+                            _liveMarket.Unsubscribe(inst ?? "");
+                    }
+                    break;
+                }
 
                 default:
                     replies.Add(Reject("", "", "UNKNOWN_PAYLOAD", "Unsupported BrainMessage payload"));
@@ -255,6 +438,7 @@ namespace Lumina.Execution.Fabric.Grpc
             {
                 Log("AUTH reject: fabric token not configured");
                 _metrics.IncAuthFail();
+                FabricRuntimeStatus.Instance.NoteAuthFail();
                 _audit?.Record("auth_failed", "TOKEN_NOT_CONFIGURED", null);
                 return new List<FabricMessage>
                 {
@@ -272,9 +456,20 @@ namespace Lumina.Execution.Fabric.Grpc
 
             if (!string.Equals(expected, provided, StringComparison.Ordinal))
             {
-                Log("AUTH reject: bad token");
+                // Fingerprint only — never log full secrets.
+                var fpProv = TokenFingerprint(provided);
+                var fpExp = TokenFingerprint(expected);
+                Log($"AUTH reject: bad token provided_fp={fpProv} expected_fp={fpExp} provided_len={(provided ?? "").Length} expected_len={(expected ?? "").Length}");
                 _metrics.IncAuthFail();
-                _audit?.Record("auth_failed", "AUTH_FAILED", new { session_id = sessionId });
+                FabricRuntimeStatus.Instance.NoteAuthFail();
+                _audit?.Record("auth_failed", "AUTH_FAILED", new
+                {
+                    session_id = sessionId,
+                    provided_fp = fpProv,
+                    expected_fp = fpExp,
+                    provided_len = (provided ?? "").Length,
+                    expected_len = (expected ?? "").Length,
+                });
                 return new List<FabricMessage>
                 {
                     new FabricMessage
@@ -292,6 +487,7 @@ namespace Lumina.Execution.Fabric.Grpc
             authenticated = true;
             _metrics.IncAuthOk();
             _watchdog.NoteAuthenticatedSession();
+            FabricRuntimeStatus.Instance.NoteAuthOk(sessionId);
             if (_safeMode.State == SafeModeState.Safe)
                 _safeMode.ClearToNormal("brain_reauthenticated");
 
@@ -605,6 +801,85 @@ namespace Lumina.Execution.Fabric.Grpc
                     SafeMode = _safeMode.State,
                 },
             };
+        }
+
+        /// <summary>Non-reversible short fingerprint for auth mismatch logs (never full secret).</summary>
+        private static string TokenFingerprint(string? token)
+        {
+            var t = (token ?? "").Trim();
+            if (t.Length == 0)
+                return "empty";
+            try
+            {
+                using var sha = SHA256.Create();
+                var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(t));
+                var hex = new StringBuilder(8);
+                for (var i = 0; i < 4 && i < bytes.Length; i++)
+                    hex.Append(bytes[i].ToString("x2"));
+                return hex.ToString();
+            }
+            catch
+            {
+                return "err";
+            }
+        }
+
+        /// <summary>
+        /// Unary RPC auth: metadata x-lumina-token or authorization: Bearer &lt;token&gt;.
+        /// </summary>
+        private bool TryAuthorizeUnary(ServerCallContext context, out string reason)
+        {
+            var expected = _config.ResolveToken();
+            if (string.IsNullOrEmpty(expected))
+            {
+                reason = "TOKEN_NOT_CONFIGURED";
+                return false;
+            }
+
+            string? provided = null;
+            try
+            {
+                var headers = context?.RequestHeaders;
+                if (headers != null)
+                {
+                    foreach (var entry in headers)
+                    {
+                        if (entry == null || entry.IsBinary)
+                            continue;
+                        var key = entry.Key ?? "";
+                        if (string.Equals(key, "x-lumina-token", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(key, "x-lumina-fabric-token", StringComparison.OrdinalIgnoreCase))
+                        {
+                            provided = entry.Value;
+                            break;
+                        }
+                        if (string.Equals(key, "authorization", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var v = entry.Value ?? "";
+                            if (v.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                                provided = v.Substring("Bearer ".Length).Trim();
+                            else
+                                provided = v.Trim();
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                reason = "auth_header_error:" + ex.Message;
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(provided) || !string.Equals(expected, provided, StringComparison.Ordinal))
+            {
+                reason = "AUTH_FAILED";
+                _metrics.IncAuthFail();
+                return false;
+            }
+
+            reason = "ok";
+            return true;
         }
 
         private void Log(string message) => _log?.Invoke("[Fabric] " + message);

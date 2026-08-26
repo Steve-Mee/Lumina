@@ -15,8 +15,13 @@ namespace Lumina.Execution.Fabric
         public string AuthTokenEnv { get; set; } = "LUMINA_FABRIC_TOKEN";
         public string AuthToken { get; set; } = "";
         public string AccountName { get; set; } = "Sim101";
-        /// <summary>Order gateway: "sim" (default) or "nt" (live Account gateway when bound).</summary>
-        public string GatewayMode { get; set; } = "sim";
+        /// <summary>
+        /// Order gateway mode:
+        /// - "nt" / "ninjatrader" / "account" / "sim101" → NT Account (Sim101 in NT process)
+        /// - "memory" / "simhost" / "mock" → in-memory SimOrderGateway (CI / SimHost only)
+        /// - "sim" (legacy) → treated as memory in CreateGateway; NT AddOn upgrades to Account bind
+        /// </summary>
+        public string GatewayMode { get; set; } = "nt";
         public int HeartbeatTimeoutMs { get; set; } = 5000;
         public int FlattenGraceMs { get; set; } = 15000;
         public bool FlattenOnTimeout { get; set; } = true;
@@ -29,12 +34,75 @@ namespace Lumina.Execution.Fabric
         /// <summary>Optional path for append-only fabric-audit.jsonl (default %APPDATA%\LUMINA\).</summary>
         public string? AuditLogPath { get; set; }
 
-        public bool UseNtGateway =>
-            string.Equals(GatewayMode, "nt", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(GatewayMode, "ninjatrader", StringComparison.OrdinalIgnoreCase);
+        /// <summary>In-memory gateway (no NT Account, no exchange). SimHost / unit tests only.</summary>
+        public bool UseMemoryGateway
+        {
+            get
+            {
+                var m = (GatewayMode ?? "").Trim();
+                return string.Equals(m, "memory", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(m, "simhost", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(m, "mock", StringComparison.OrdinalIgnoreCase);
+            }
+        }
 
+        /// <summary>NT Account gateway intent (Sim101 product path; REAL requires promotion ADR).</summary>
+        public bool UseNtGateway =>
+            !UseMemoryGateway;
+
+        // Hot-reload cache: Brain dual-writes fabric.json; host must not pin a stale
+        // in-memory AuthToken across Systems Go / Repair without NT restart.
+        private static string _tokenFileCachePath = "";
+        private static DateTime _tokenFileCacheMtimeUtc = DateTime.MinValue;
+        private static string _tokenFileCacheValue = "";
+
+        /// <summary>
+        /// Resolve auth token with live %APPDATA%\LUMINA\fabric.json preference.
+        ///
+        /// Root cause of "Safe mode - waiting for Lumina Brain heartbeats" at cold
+        /// start: host loaded a short/stale AuthToken once, Brain later dual-wrote
+        /// the SSOT 43-char token → AUTH_FAILED forever until host restart.
+        /// Re-read on mtime change so bootstrap/align succeeds without NT kill.
+        /// </summary>
         public string ResolveToken()
         {
+            try
+            {
+                var path = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "LUMINA",
+                    "fabric.json");
+                if (File.Exists(path))
+                {
+                    var mtime = File.GetLastWriteTimeUtc(path);
+                    if (_tokenFileCachePath != path
+                        || _tokenFileCacheMtimeUtc != mtime
+                        || string.IsNullOrEmpty(_tokenFileCacheValue))
+                    {
+                        var live = LoadFromFile(path);
+                        var liveToken = (live.AuthToken ?? string.Empty).Trim();
+                        if (!string.IsNullOrEmpty(liveToken))
+                        {
+                            _tokenFileCachePath = path;
+                            _tokenFileCacheMtimeUtc = mtime;
+                            _tokenFileCacheValue = liveToken;
+                            // Keep instance field aligned for diagnostics / logs.
+                            AuthToken = liveToken;
+                            return liveToken;
+                        }
+                    }
+                    else if (!string.IsNullOrEmpty(_tokenFileCacheValue))
+                    {
+                        AuthToken = _tokenFileCacheValue;
+                        return _tokenFileCacheValue;
+                    }
+                }
+            }
+            catch
+            {
+                // Fall through to instance / env — never block auth on file I/O.
+            }
+
             if (!string.IsNullOrWhiteSpace(AuthToken))
                 return AuthToken.Trim();
 

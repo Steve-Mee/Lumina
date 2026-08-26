@@ -24,7 +24,10 @@ _BIBLE: dict[str, Any] = cast(dict[str, Any], DEFAULT_BIBLE)
 
 # Capital-preservation band for birth SIM entries (fraction of equity).
 BIRTH_MAX_RISK_STOP_PCT = 0.01
-BIRTH_MIN_STOP_PCT = 0.001
+# Floor must match birth_trade_geometry micro-scale (1-min MES ~0.05–0.12%).
+# Legacy 0.001 (0.1%) silently re-widened calibrated oracle/SIM stops and
+# poisoned expectancy transfer (forensics 2026-08 foundation audit).
+BIRTH_MIN_STOP_PCT = 0.0004
 BIRTH_MAX_STOP_PCT = 0.02
 BIRTH_MAX_TARGET_PCT = 0.05
 
@@ -116,6 +119,7 @@ class BirthConstitutionGuard:
         stop_pct: float,
         equity: float,
         auto_clip: bool = True,
+        qty: int = 1,
     ) -> tuple[bool, str]:
         """Return (allowed, reason).
 
@@ -152,9 +156,21 @@ class BirthConstitutionGuard:
         if equity_for_risk <= 0.0:
             equity_for_risk = 1.0
 
-        # After clip, stop is ≤ 1% by construction — keep check as fail-closed belt.
-        risk_usd = equity_for_risk * float(effective_stop)
+        # Dollar risk = qty × stop × price × pv vs 1% of equity.
+        # Size must not silently walk around the 1% band.
+        qty_n = max(1, int(qty))
+        px = 0.0
+        if isinstance(tick, dict):
+            px = float(tick.get("close") or tick.get("last") or 0.0)
         max_risk = equity_for_risk * BIRTH_MAX_RISK_STOP_PCT
+        if px > 0.0:
+            risk_usd = abs(float(effective_stop)) * abs(px) * float(qty_n) * 5.0
+        else:
+            # Empty tick: fallback stop_pct × qty vs 1% (no invented price).
+            if float(effective_stop) * float(qty_n) > BIRTH_MAX_RISK_STOP_PCT + 1e-12:
+                self._record_soft("risk_exceeds_1pct")
+                return False, "risk_cap"
+            return True, ""
         if risk_usd > max_risk + 1e-9:
             self._record_soft("risk_exceeds_1pct")
             return False, "risk_cap"
@@ -169,6 +185,7 @@ class BirthConstitutionGuard:
         stop_pct: float,
         target_pct: float,
         equity: float,
+        qty: int = 1,
     ) -> tuple[bool, str, float, float]:
         """Clip risk params then check. Returns (allowed, reason, stop, target).
 
@@ -188,6 +205,7 @@ class BirthConstitutionGuard:
             stop_pct=clipped_stop,
             equity=equity,
             auto_clip=False,
+            qty=qty,
         )
         return allowed, reason, clipped_stop, clipped_target
 

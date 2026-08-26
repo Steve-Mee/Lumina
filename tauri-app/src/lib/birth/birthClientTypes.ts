@@ -61,9 +61,28 @@ export interface BirthProgressPayload {
   stage_range_flat_bars?: number;
   stage_range_round_trips?: number;
   stage_range_flat_ratio?: number;
+  /** Envelope IMU: min(rolling, cumulative) flat. Exam gate uses stage_range_flat_ratio. */
+  occupancy_control_flat?: number;
+  stage_settlement_share?: number;
+  stage_closes_stop_cum?: number;
+  stage_closes_target_cum?: number;
+  stage_closes_time_stop_cum?: number;
+  stage_closes_flatten_cum?: number;
+  stage_closes_unknown_cum?: number;
   stage_blocker_metric?: string;
   stage_blocker_value?: number;
   pass_reason?: string;
+  stage_pass_now?: boolean;
+  median_loss_r?: number;
+  mean_r?: number;
+  occupancy?: number;
+  edge_vs_first_touch?: number;
+  first_touch_p_ft?: number;
+  geometry_net_rr?: number;
+  geometry_net_rr_after_cost?: number;
+  e_mech?: number;
+  oos_sharpe?: number;
+  oos_dd_pct?: number;
   provisional_pass?: boolean;
   provisional_graduation?: boolean;
   stall_diagnostics?: string | Record<string, unknown>;
@@ -138,6 +157,12 @@ export interface BirthProgressPayload {
   hygiene_wr_source?: string;
   /** Trusted rolling window eligible for hygiene OR-path (>=400 covered). */
   rolling_wr_eligible?: boolean;
+  /** Consecutive rolling windows at/above floor-equiv WR (Stage-2/3 durable A). */
+  stage2_consecutive_rolling_pass_windows?: number;
+  /** skill | rolling | skill_lifted_by_rolling */
+  pass_expectancy_source?: string;
+  expectancy_proxy_total?: number;
+  skill_metric_winrate?: number;
   sim_ticks_processed_cumulative?: number;
   wall_clock_rollout_sec_avg?: number;
   wall_clock_trades_per_min?: number;
@@ -145,6 +170,9 @@ export interface BirthProgressPayload {
   evolution_last_action_detail?: string;
   needs_attention?: boolean;
   attention_reason_code?: string;
+  /** True when disk residual from a prior session (not a live runner failure). */
+  residual_failure?: boolean;
+  residual_failure_at?: string;
   attention_summary?: string;
   attention_recommended_actions?: string[];
   attention_notified_at?: string;
@@ -214,6 +242,7 @@ export interface BirthStatusPayload {
   progress_pct?: number;
   artifacts_ok?: boolean;
   certificate_ok?: boolean;
+  birth_exit_ok?: boolean;
   certificate_reason?: string;
   certificate?: BirthCertificatePayload | null;
   curriculum_stage?: string;
@@ -310,6 +339,6 @@ export interface BirthSettingsPayload {
   max_real_days: number;
   allow_minimal_synthetic_fallback: boolean;
   require_real_simulator_data: boolean;
-  /** Stage 1 winrate pass gate (0.35â€“0.45). Default 0.45. */
+  /** Learning-pressure WR (hold-trap / reward). Not a Birth pass gate. */
   stage1_winrate_pass_threshold?: number;
 }

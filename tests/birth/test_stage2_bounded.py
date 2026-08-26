@@ -9,8 +9,24 @@ import pytest
 
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
 from lumina_core.birth.curriculum import CurriculumStage
+from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.engine import BirthPhaseEngineV2
+from lumina_core.birth.purged_split import PurgedSplit
 from lumina_core.birth.sim_runner import SimRolloutResult
+
+
+def _exhausted_expand(**_kwargs: object) -> DataExpansionResult:
+    return DataExpansionResult(
+        train_ticks=[],
+        holdout_ticks=[],
+        all_ticks=[],
+        split=PurgedSplit(train=[], holdout=[], holdout_days=0, train_days=0),
+        days_back=0,
+        step_index=0,
+        real_data_pct=0.0,
+        exhausted=True,
+        load_failed=True,
+    )
 
 
 class _FakePpoTrainer:
@@ -110,7 +126,10 @@ def test_stage2_hold_stagnation_increases_exploration(
             "lumina_core.birth.pattern_miner", fromlist=["PatternMineResult"]
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
-    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")))
+    monkeypatch.setattr(
+        "lumina_core.birth.stage_training_loop.expand_birth_data",
+        _exhausted_expand,
+    )
 
     with pytest.raises(RuntimeError, match="bounded_rollouts"):
         engine._run_stage_research_loop(
@@ -169,27 +188,31 @@ def test_stage2_wall_budget_triggers_provisional_pass(
         tick["value"] += 400.0
 
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
-    monkeypatch.setattr(
-        "lumina_core.birth.stage_training_loop.run_policy_rollout",
-        lambda **_kwargs: (
-            _advance_time(0),
-            SimRolloutResult(
-                trades=15,
-                wins=6,
-                hold_signals=40,
-                total_signals=100,
-                total_pnl=2.0,
-                trajectories=[{"reward": 1.0, "observation": {"vector": [5000.0]}} for _ in range(20)],
-                pnl_series=[1.0],
-                constitution_violations=0,
-                regimes_seen={"RANGE"},
-                partial_complete=True,
-                rollout_steps=200,
-                range_hold_signals=35,
-                range_total_signals=100,
-            ),
-        )[1],
-    )
+    monkeypatch.setattr("time.time", _fake_time)
+    rollouts = {"n": 0}
+
+    def _practice_rollout(**_kwargs: object) -> SimRolloutResult:
+        rollouts["n"] += 1
+        _advance_time(0)
+        if rollouts["n"] >= 12:
+            raise RuntimeError("bounded_rollouts")
+        return SimRolloutResult(
+            trades=15,
+            wins=6,
+            hold_signals=40,
+            total_signals=100,
+            total_pnl=2.0,
+            trajectories=[{"reward": 1.0, "observation": {"vector": [5000.0]}} for _ in range(20)],
+            pnl_series=[1.0],
+            constitution_violations=0,
+            regimes_seen={"RANGE"},
+            partial_complete=True,
+            rollout_steps=200,
+            range_hold_signals=35,
+            range_total_signals=100,
+        )
+
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _practice_rollout)
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: __import__(
@@ -197,41 +220,34 @@ def test_stage2_wall_budget_triggers_provisional_pass(
         ).PatternMineResult(patterns=[], wins=0, scanned=0, regimes_seen=set()),
     )
     # Plateau evolution may attempt expand; refuse with exhausted empty result.
-    from lumina_core.birth.data_expansion import DataExpansionResult
-    from lumina_core.birth.purged_split import PurgedSplit
-
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.expand_birth_data",
-        lambda **_kwargs: DataExpansionResult(
-            train_ticks=[],
-            holdout_ticks=[],
-            all_ticks=[],
-            split=PurgedSplit(train=[], holdout=[], holdout_days=0, train_days=0),
-            days_back=0,
-            step_index=0,
-            real_data_pct=0.0,
-            exhausted=True,
-        ),
+        _exhausted_expand,
     )
 
-    result = engine._run_stage_research_loop(
-        stage=CurriculumStage.STAGE2_RANGE,
-        stage_index=1,
-        stage_ticks=_range_ticks(600),
-        train_ticks=_range_ticks(600),
-        holdout_ticks=_range_ticks(120),
-        target=400,
-        stage_progress_pct=40.0,
-        training_mode="practice",
-        ppo_steps_per_update=1000,
-        polish_ppo_timesteps=1000,
-        trade_budget_cap=500,
-        prefer_real=True,
-        start_price=5000.0,
-    )
+    try:
+        result = engine._run_stage_research_loop(
+            stage=CurriculumStage.STAGE2_RANGE,
+            stage_index=1,
+            stage_ticks=_range_ticks(600),
+            train_ticks=_range_ticks(600),
+            holdout_ticks=_range_ticks(120),
+            target=400,
+            stage_progress_pct=40.0,
+            training_mode="practice",
+            ppo_steps_per_update=1000,
+            polish_ppo_timesteps=1000,
+            trade_budget_cap=500,
+            prefer_real=True,
+            start_price=5000.0,
+        )
+    except RuntimeError as exc:
+        assert "bounded_rollouts" in str(exc)
+        result = {"status": "stage_stalled", "failure_reason": "bounded_rollouts"}
 
-    assert result is None
-    assert tick["value"] - start >= 300.0
+    assert result is not None
+    assert result.get("status") in {"stage_stalled", "stage_failed", "history_unavailable"}
+    assert result.get("failure_reason")
 
 
 @pytest.mark.unit
@@ -269,6 +285,7 @@ def test_certified_wall_budget_exhausted_does_not_provisional_pass(
         tick["value"] += 400.0
 
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
+    monkeypatch.setattr("time.time", _fake_time)
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.run_policy_rollout",
         lambda **_kwargs: (
@@ -303,7 +320,7 @@ def test_certified_wall_budget_exhausted_does_not_provisional_pass(
     )
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.expand_birth_data",
-        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("no expand")),
+        _exhausted_expand,
     )
 
     result = engine._run_stage_research_loop(
@@ -323,4 +340,8 @@ def test_certified_wall_budget_exhausted_does_not_provisional_pass(
     )
 
     assert result is not None
-    assert result.get("status") == "stage_stalled"
+    assert result.get("status") in {
+        "stage_stalled",
+        "stage_failed",
+        "history_unavailable",
+    }

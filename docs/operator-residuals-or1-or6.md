@@ -23,6 +23,9 @@ python scripts/validation/operator_residuals_gate.py
 python scripts/validation/operator_residuals_gate.py --workspace .
 python scripts/validation/operator_residuals_gate.py --fabric-mock   # slower; runs T1 mock
 python scripts/validation/operator_residuals_gate.py --json
+
+# R2 cadence (every 15–60 min): residuals + PB + theater + Phase2 + data SLA
+python scripts/validation/birth_zero_human_cadence.py --workspace .
 ```
 
 | Status | Meaning |
@@ -122,6 +125,23 @@ python scripts/validation/operator_residuals_gate.py --json
 | **SP4** | Deferred — birth-loop observe hook |
 
 ---
+
+## Phase 2 campaign ladder (R3)
+
+```bash
+# Pre-PB: observe only (propose + audit; never mutates; never REAL)
+python scripts/validation/phase2_shadow_campaign.py --observe
+
+# After Perfect Birth declare (evidence green):
+python scripts/validation/phase2_shadow_campaign.py --enable
+
+# After shadow evidence accumulates:
+python scripts/validation/phase2_shadow_campaign.py --promote-apply   # SIM apply only
+
+python scripts/validation/phase2_shadow_campaign.py --disable
+```
+
+**Policy:** observe may run without Perfect Birth. Shadow + apply require PB evidence. REAL apply is always forbidden here.
 
 ## Before implementing SP3–SP4
 

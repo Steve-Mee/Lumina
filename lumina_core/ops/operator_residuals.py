@@ -349,6 +349,25 @@ def _or6_recovery_theater(workspace: Path, progress: dict[str, Any]) -> dict[str
     next_action = str(report.get("next_action") or "none")
     active = str(report.get("active") or "none")
     report_ok = bool(report.get("ok", True))
+    flags = report.get("flags") if isinstance(report.get("flags"), dict) else {}
+    needs_attention = bool(
+        progress.get("needs_attention") or flags.get("needs_attention")
+    )
+    terminal_reason = str(
+        progress.get("terminal_stall_reason")
+        or flags.get("terminal_stall_reason")
+        or ""
+    ).strip()
+    # C2/R2: silent terminal stall is a residual (should never happen post-fix)
+    silent_terminal = bool(terminal_reason) and not needs_attention and active in {
+        "terminal_stall",
+        "needs_attention",
+        "idle",
+        "none",
+        "",
+    }
+    if terminal_reason and active == "terminal_stall" and not needs_attention:
+        silent_terminal = True
 
     if theater and next_action in {
         "accept_champion_or_wipe",
@@ -362,9 +381,30 @@ def _or6_recovery_theater(workspace: Path, progress: dict[str, Any]) -> dict[str
         )
         human = True
         blocks = True
+    elif silent_terminal:
+        status = "yellow"
+        summary = (
+            f"Silent terminal residual: reason={terminal_reason} but needs_attention=false "
+            "(C2 regression risk)."
+        )
+        human = True
+        blocks = False
+        report_ok = False
     elif theater:
         status = "yellow"
         summary = f"Theater signal on surface={active}; next={next_action}."
+        human = True
+        blocks = False
+    elif needs_attention and next_action in {
+        "expand_data_or_wipe_genesis",
+        "human_review_telegram",
+        "accept_champion_or_wipe",
+    }:
+        status = "yellow"
+        summary = (
+            f"Operator attention required (surface={active}, next={next_action}, "
+            f"reason={terminal_reason or progress.get('attention_reason_code') or 'attention'})."
+        )
         human = True
         blocks = False
     else:
@@ -385,12 +425,16 @@ def _or6_recovery_theater(workspace: Path, progress: dict[str, Any]) -> dict[str
             "python scripts/validation/recovery_theater_gate.py --workspace . --no-pytest",
             "If theater + freeze: accept_champion_or_wipe only",
             "Do not run parallel plateau ladder under champion freeze",
+            "Silent terminal must set needs_attention=true (C2)",
         ],
         command="python scripts/validation/recovery_theater_gate.py --no-pytest",
         evidence={
             "active": active,
             "theater": theater,
             "next_action": next_action,
+            "needs_attention": needs_attention,
+            "terminal_stall_reason": terminal_reason or None,
+            "silent_terminal": silent_terminal,
             "residual_layers": report.get("residual_parallel_layers"),
             "flags": report.get("flags"),
         },

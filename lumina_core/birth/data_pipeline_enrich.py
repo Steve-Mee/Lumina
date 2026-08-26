@@ -139,6 +139,7 @@ class BirthDataPipelineEnrichMixin:
                 },
             )
         host._real_data_pct = real_data_percentage(ticks)
+        host_m = dict(host._data_manifest or {})
         save_birth_data_cache(
             host.workspace_root,
             ticks=ticks,
@@ -147,6 +148,11 @@ class BirthDataPipelineEnrichMixin:
             raw_ticks_hash=host._last_raw_ticks_hash,
             train_hash=train_hash(split.train),
             enrich_version=ENRICH_VERSION,
+            requested_days=int(host_m.get("requested_days") or 0),
+            actual_calendar_days=int(host_m.get("actual_calendar_days") or 0),
+            instruments=host_m.get("instruments"),
+            stitched=bool(host_m.get("stitched")),
+            stitched_from=host_m.get("stitched_from"),
         )
         # Signal success via sentinel None; caller uses updated ticks from return path
         # Store enriched ticks on host-less path: return result with ticks

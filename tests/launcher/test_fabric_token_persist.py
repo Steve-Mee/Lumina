@@ -26,7 +26,7 @@ def test_write_fabric_json_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     path = sp.write_fabric_json_defaults()
     assert path == target
     data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["GatewayMode"] == "sim"
+    assert data["GatewayMode"] == "nt"
     assert data["AuthTokenEnv"] == "LUMINA_FABRIC_TOKEN"
     assert data["MaxPositionSize"] == 2
     assert data["MaxOrdersPerMinute"] == 30
@@ -35,12 +35,14 @@ def test_write_fabric_json_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
 def test_write_fabric_json_preserves_gateway_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     target = tmp_path / "fabric.json"
-    target.write_text(json.dumps({"GatewayMode": "sim", "AuthToken": "should-strip"}), encoding="utf-8")
+    # Operator-chosen mode must survive re-write of defaults.
+    target.write_text(json.dumps({"GatewayMode": "memory", "AuthToken": "keep-if-present"}), encoding="utf-8")
     monkeypatch.setattr(sp, "fabric_json_path", lambda: target)
     sp.write_fabric_json_defaults(path=target)
     data = json.loads(target.read_text(encoding="utf-8"))
-    assert data["GatewayMode"] == "sim"
-    assert "AuthToken" not in data
+    assert data["GatewayMode"] == "memory"
+    # AuthToken is dual-written when present so NT AddOn can resolve without User env only.
+    assert data.get("AuthToken") == "keep-if-present"
 
 
 def test_persist_credentials_writes_fabric_token(
@@ -89,7 +91,9 @@ def test_persist_credentials_writes_fabric_token(
     assert "LUMINA_FABRIC_TOKEN=fabric-secret-test-value-32chars!!" in env_text
     data = json.loads(fabric_path.read_text(encoding="utf-8"))
     assert data["BindPort"] == 50051
-    assert "AuthToken" not in data
+    # Dual-write so NT AddOn ResolveToken matches Brain without User-env-only race.
+    assert data.get("AuthToken") == "fabric-secret-test-value-32chars!!"
+    assert data.get("GatewayMode") == "nt"
 
 
 def test_config_loader_accepts_fabric_token_or_legacy(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -12,7 +12,17 @@ from lumina_launcher.services import fabric_connection_diagnostics as diag
 def test_token_and_tcp_fail_closed_without_host(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     monkeypatch.delenv("LUMINA_FABRIC_TOKEN", raising=False)
     monkeypatch.delenv("LUMINA_NT8_API_KEY", raising=False)
-    monkeypatch.setattr(diag, "_fabric_json_path", lambda: tmp_path / "missing.json")
+    missing = tmp_path / "missing.json"
+    monkeypatch.setattr(diag, "_fabric_json_path", lambda: missing)
+    # Secret bus + SSOT must not leak real APPDATA fabric.json token.
+    monkeypatch.setattr(
+        "lumina_launcher.services.setup_persist_fabric.fabric_json_path",
+        lambda: missing,
+    )
+    monkeypatch.setattr(
+        "lumina_core.broker.ninjatrader.fabric_secret.fabric_json_path",
+        lambda: missing,
+    )
     monkeypatch.setattr(diag, "_load_broker_config", lambda: {"live_provider": "crosstrade"})
     monkeypatch.setattr(diag, "_tcp_check", lambda host, port, timeout=2.0: (False, "refused"))
     # Without token, auto-SimHost must not run (fail-closed preflight).
@@ -46,6 +56,12 @@ def test_rejects_non_localhost(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "localhost" in " ".join(c.message for c in report.checks).lower() or any(
         "localhost" in r.lower() for r in report.remediation
     )
+
+
+def test_historical_bars_is_critical() -> None:
+    from lumina_launcher.services.fabric_diag_preflight import CRITICAL_CHECK_IDS
+
+    assert "historical_bars" in CRITICAL_CHECK_IDS
 
 
 def test_report_to_dict_shape(monkeypatch: pytest.MonkeyPatch) -> None:

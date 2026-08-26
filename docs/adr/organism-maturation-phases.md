@@ -2,7 +2,7 @@
 
 **Status:** Accepted (design SSOT)  
 **Date:** 2026-08-01  
-**Normative Birth exit:** [ADR-0036 Birth Exit vs Maturation](./0036-birth-exit-vs-maturation.md) (H7 code SSOT: `maturity/birth_exit.py`)  
+**Normative Birth exit:** [ADR-0036](./0036-birth-exit-vs-maturation.md) refined by [ADR-0046](./0046-birth-foundation-evolvable-plant.md) (H7 code SSOT: `maturity/birth_exit.py`)  
 **Context:** Lumina is an experimental self-evolving daytrading organism. Birth must not be graded as professional trading competence.
 
 ## Decision
@@ -12,7 +12,7 @@ Maturation is a **capability ladder**, not a single certificate wall.
 | Phase | Organism capability | Exit proof (examples) | Non-goals |
 |-------|---------------------|----------------------|-----------|
 | **Genesis** | Wiring exists | fabric GREEN, setup complete, charter | Training |
-| **Birth** | Survive / breathe / closed loop | legal action rate, hard_const=0, checkpoint, entropy alive, Stage-1 loose expectancy | Phase-exit: WR≥35% / OOS 0.48 / Perfect Birth / REAL as exit grades (intra-Birth Stage 2/3 early-quality is separate — see below) |
+| **Birth** | Evolvable plant (closed loop → probe) | five `foundation_v2` receipts + fitness vector | Phase-exit: WR≥35% / artifacts-only / OOS 0.48 / Perfect Birth / REAL as exit grades |
 | **Awakening** | Prefer better, perceive regimes | twin/shadow rising, recovery works, evolution proof | REAL capital |
 | **Playground** | Move safely in SIM | first SIM order, deck unlock, skill EdgeScore/hygiene | REAL |
 | **Apprenticeship** | Stable multi-day SIM | sim_real_guard streak, never-stop recovery | REAL |
@@ -31,16 +31,18 @@ REAL / certificate_thresholds for OOS WR 0.48 etc. are **unchanged** and apply a
 
 ### Birth curriculum stages (internal — not phase-exit)
 
-**Phase** Birth exits on survival proofs (ADR-0036). **Inside** Birth, stages ramp:
+**Phase** Birth exits on Foundation proofs (ADR-0046). **Inside** Birth, stages ramp:
 
-| Stage | Class | Expectancy (WR−0.50) | Role |
-|-------|--------|----------------------|------|
-| 1 Trend | Survival (default) | ≥ **−0.50** | First breath |
-| 2 Range | **Early-quality** | ≥ **−0.15** | Motor control / range band |
-| 3 Mixed | **Early-quality** | ≥ **−0.15** (+ WR ~0.35) | Deeper train hygiene |
+| Stage | Class | Pass | Role |
+|-------|--------|------|------|
+| 1 Closed loop | Process-R | median_loss_R ≤ 1.5, net RR ≥ 0.80 | First breath |
+| 2 Selectivity | Occupancy | 30–70% + process-R | Motor control |
+| 3 Mixed | Occupancy + edge | 25–75%, edge ≥ −0.05 | Mixed regimes |
+| 4 Viable plant | Skill AND | edge ≥ 0 AND mean_R ≥ E_mech−0.10 | Val plant |
+| 5 Probe | Holdout | edge / Sharpe / DD + fitness | Handoff |
 
-Locked doctrine, why, and anti-patterns: **[birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md)**.  
-Do not call Stage 2/3 “survival −0.50” and do not call Stage 2 pass “pro skill / cert.”
+Locked doctrine: **[birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md)** + **ADR-0046**.  
+Do not call Stage 2/3 “WR 35% pass” and do not call Stage 2 pass “pro skill / cert.”
 
 ## Phase Hub (operator home after Birth)
 

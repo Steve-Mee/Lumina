@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from lumina_launcher.core.birth_reset import clear_birth_training_state
+from lumina_core.birth.tick_cache_persist import certified_tick_cache_present
 
 
 def _touch(path: Path, content: str = "x") -> None:
@@ -25,6 +26,8 @@ def workspace(tmp_path: Path) -> Path:
     _touch(state / "lumina_birth_cache_manifest.json", "{}")
     _touch(state / "lumina_setup_complete.json", "{}")
     _touch(state / "lumina_daytrading_bible.json", "{}")
+    _touch(state / "lumina_birth_fitness_vector.json", "{}")
+    _touch(state / "dna_registry.jsonl", "{}\n")
     cache = state / "birth_enrichment_cache"
     cache.mkdir()
     _touch(cache / "sample.meta.json", "{}")
@@ -41,6 +44,8 @@ def test_preserve_tick_cache_keeps_ticks_and_enrichment(workspace: Path) -> None
     assert result.success is True
     assert not (workspace / "state" / "lumina_birth_progress.json").exists()
     assert not (workspace / "state" / "lumina_setup_complete.json").exists()
+    assert not (workspace / "state" / "lumina_birth_fitness_vector.json").exists()
+    assert not (workspace / "state" / "dna_registry.jsonl").exists()
     assert (workspace / "state" / "lumina_birth_ticks_cache.jsonl").exists()
     assert (workspace / "state" / "lumina_birth_split_cache.json").exists()
     assert (workspace / "state" / "birth_enrichment_cache" / "sample.meta.json").exists()
@@ -57,3 +62,22 @@ def test_full_wipe_removes_tick_cache(workspace: Path) -> None:
     assert result.success is True
     assert not (workspace / "state" / "lumina_birth_ticks_cache.jsonl").exists()
     assert not (workspace / "state" / "birth_enrichment_cache").exists()
+
+
+@pytest.mark.unit
+def test_certified_tick_cache_present_requires_sla_manifest(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    assert certified_tick_cache_present(tmp_path) is False
+    (state / "lumina_birth_ticks_cache.jsonl").write_text("{}\n", encoding="utf-8")
+    (state / "lumina_birth_split_cache.json").write_text("{}", encoding="utf-8")
+    (state / "lumina_birth_cache_manifest.json").write_text(
+        '{"train_hash":"abc","requested_days":90,"actual_calendar_days":89,"tick_count":345648}',
+        encoding="utf-8",
+    )
+    assert certified_tick_cache_present(tmp_path) is True
+    (state / "lumina_birth_cache_manifest.json").write_text(
+        '{"train_hash":"abc","requested_days":30,"actual_calendar_days":20,"tick_count":10}',
+        encoding="utf-8",
+    )
+    assert certified_tick_cache_present(tmp_path) is False

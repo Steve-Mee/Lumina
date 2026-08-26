@@ -13,9 +13,15 @@ from pathlib import Path
 from statistics import median
 from typing import Literal
 
-# Aligns with LuminaBirthEngine _BIRTH_TICKS_PER_REAL_DAY (shared day-estimate heuristic).
+from lumina_core.birth.foundation_history import (
+    FOUNDATION_HISTORY_MAX_DAYS,
+    foundation_history_max_days,
+    foundation_history_start_days,
+)
+
+# Wall-clock duration heuristic only — never a Birth history sizer.
 FIRST_BOOT_EST_TRADES_PER_REAL_DAY = 450
-FIRST_BOOT_MIN_REAL_DAYS = 30
+FIRST_BOOT_MIN_REAL_DAYS = foundation_history_start_days()
 # MES RTH ~6.5h session at 1-min bars; used only for optional explicit bar caps (preflight uses fixed limit).
 BIRTH_BARS_PER_TRADING_DAY = 390
 HISTORICAL_BAR_LIMIT_SAFETY_CAP = 500_000
@@ -35,7 +41,7 @@ FIRST_BOOT_LAUNCHER_TRADE_STEP = 500
 FIRST_BOOT_DEFAULT_TRADES = 5_000
 # PPO batch update fallback for Birth Phase (not related to user trade target).
 FIRST_BOOT_DEFAULT_PPO_UPDATE_TIMESTEPS = 25_000
-FIRST_BOOT_DEFAULT_MAX_REAL_DAYS = 90
+FIRST_BOOT_DEFAULT_MAX_REAL_DAYS = foundation_history_max_days()
 
 # Back-compat names used in older snippets / docs — map to launcher-aligned bounds above.
 FIRST_BOOT_TRADE_MIN = FIRST_BOOT_TRAINING_TRADES_MIN
@@ -58,12 +64,14 @@ class FirstBootDurationEstimate:
 
 
 def estimate_first_boot_real_days(training_trades: int) -> int:
+    """Wall-clock session-day estimate at ~450 trades/day. Not a history sizer."""
     return int(math.ceil(max(1, int(training_trades)) / float(FIRST_BOOT_EST_TRADES_PER_REAL_DAY)))
 
 
 def resolve_default_max_real_days(training_trades: int) -> int:
-    """SSOT default for max_real_days when config omits the field."""
-    return max(FIRST_BOOT_MIN_REAL_DAYS, estimate_first_boot_real_days(training_trades))
+    """Expand ceiling SSOT. Independent of the trade budget."""
+    _ = training_trades
+    return FOUNDATION_HISTORY_MAX_DAYS
 
 
 def resolve_historical_bar_limit(max_real_days: int | None) -> int | None:
@@ -198,7 +206,7 @@ def estimate_first_boot_duration(
     profile_tier: str | None = None,
 ) -> FirstBootDurationEstimate:
     normalized_trades = normalize_first_boot_training_trades(training_trades)
-    max_days = max(30, min(3_650, int(max_real_days)))
+    max_days = max(FIRST_BOOT_MIN_REAL_DAYS, min(3_650, int(max_real_days)))
     estimated_days = estimate_first_boot_real_days(normalized_trades)
     configured_capacity = int(max_days * FIRST_BOOT_EST_TRADES_PER_REAL_DAY)
     synthetic_top_up = bool(prefer_real_data_only) and normalized_trades > configured_capacity

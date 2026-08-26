@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -144,3 +145,14 @@ def test_audit_trail_hash_chain_remains_intact(tmp_path: Path) -> None:
     assert ok is True
     assert is_valid is True
     assert message == "ok"
+
+
+@pytest.mark.unit
+def test_artifact_digest_omitted_from_canonical_when_empty() -> None:
+    payload = _payload()
+    assert payload.artifact_digest == ""
+    raw = json.loads(ApprovalChain.canonical_payload_bytes(payload).decode("utf-8"))
+    assert "artifact_digest" not in raw
+    filled = payload.model_copy(update={"artifact_digest": "b" * 64})
+    raw2 = json.loads(ApprovalChain.canonical_payload_bytes(filled).decode("utf-8"))
+    assert raw2["artifact_digest"] == "b" * 64

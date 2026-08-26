@@ -25,8 +25,36 @@ class ApprovalTwinBusPublishMixin:
         risk_flags: list[str],
         explanation: str,
         call: str = "evaluate_dna_promotion",
+        executable: bool | None = None,
+        authority: str | None = None,
+        effective_recommendation: bool | None = None,
     ) -> None:
-        """Best-effort publish of TwinDecisionEvent. Never affects decision path or raises."""
+        """Best-effort publish of TwinDecisionEvent + Telegram operator feed.
+
+        Post-hoc observability only — never a pre-approval gate. Never raises.
+        Optional OK|FIX feedback trains Twin after the fact.
+        """
+        mode = str(getattr(self, "_mode", "") or "")
+        # Telegram / local feed first so operator sees decisions even without bus.
+        try:
+            from lumina_core.evolution.twin_decision_notify import notify_twin_decision
+
+            notify_twin_decision(
+                dna_hash=str(dna_hash),
+                recommendation=bool(recommendation),
+                confidence=float(confidence),
+                risk_flags=list(risk_flags or []),
+                explanation=str(explanation or ""),
+                call=str(call),
+                mode=mode,
+                notify_telegram=True,
+                executable=executable,
+                authority=authority,
+                effective_recommendation=effective_recommendation,
+            )
+        except Exception:
+            pass
+
         if self._event_bus is None:
             return
         try:
@@ -38,6 +66,12 @@ class ApprovalTwinBusPublishMixin:
                 explanation=str(explanation or ""),
                 call=str(call),
             ).model_dump(mode="json")
+            if authority is not None:
+                payload["authority"] = str(authority)
+            if executable is not None:
+                payload["executable"] = bool(executable)
+            if effective_recommendation is not None:
+                payload["effective_recommendation"] = bool(effective_recommendation)
             self._event_bus.publish_validated(
                 topic="evolution.twin.decision",
                 producer="evolution.approval_twin_agent",
@@ -46,6 +80,35 @@ class ApprovalTwinBusPublishMixin:
         except Exception:
             # Observability only; decisions and training must never be impacted.
             pass
+
+    def _finalize_and_publish_decision(
+        self,
+        decision: dict[str, Any],
+        *,
+        dna_hash: str,
+        call: str,
+    ) -> dict[str, Any]:
+        """Apply mode authority, publish post-hoc feed, return authoritative decision."""
+        out = self.apply_mode_authority(decision)
+        try:
+            self._publish_decision(
+                dna_hash=str(dna_hash),
+                recommendation=bool(out.get("recommendation", decision.get("recommendation"))),
+                confidence=float(out.get("confidence", decision.get("confidence") or 0.0)),
+                risk_flags=list(out.get("risk_flags") or decision.get("risk_flags") or []),
+                explanation=str(out.get("explanation") or decision.get("explanation") or ""),
+                call=str(call),
+                executable=bool(out.get("executable")) if "executable" in out else None,
+                authority=str(out.get("authority") or "") or None,
+                effective_recommendation=(
+                    bool(out.get("effective_recommendation"))
+                    if "effective_recommendation" in out
+                    else None
+                ),
+            )
+        except Exception:
+            pass
+        return out
 
     def _publish_mode_promotion(
         self,

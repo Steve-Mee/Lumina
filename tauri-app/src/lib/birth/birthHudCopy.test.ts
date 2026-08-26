@@ -9,6 +9,7 @@ import {
   humanizeEdgescoreBlockerDetail,
   isRawEdgescorePassReason,
   isStageGoalMet,
+  presentBlockerDetail,
 } from "@/lib/birth/birthStageScorecard";
 
 describe("birth HUD copy", () => {
@@ -51,9 +52,9 @@ describe("birth HUD copy", () => {
       metricValue: 0.25,
       metricTarget: null,
     });
-    expect(target).toContain("hygiene WR>=35% (lifetime or rolling)");
-    expect(target).toContain("entropy alive");
-    expect(target).toContain("expectancy >= -15%");
+    expect(target).toContain("median loss R <= 1.5");
+    expect(target).toContain("settlement >=70%");
+    expect(target).not.toContain("hygiene WR>=35%");
     expect(target).not.toMatch(/â|Â/);
   });
 
@@ -89,9 +90,16 @@ describe("birth HUD copy", () => {
       stage_target_trades: 200,
       stage_pass_gate_trades: 200,
     });
-    expect(scorecard).not.toBeNull();
-    // No blocker + volume met => goal met even though score is a composite.
-    expect(isStageGoalMet(scorecard!)).toBe(true);
+    expect(isStageGoalMet(scorecard!)).toBe(false);
+
+    const passed = extractStageScorecard({
+      curriculum_stage: "stage1_trend",
+      pass_criteria_id: "closed_loop",
+      stage_trades: 250,
+      stage_target_trades: 200,
+      stage_pass_now: true,
+    });
+    expect(isStageGoalMet(passed!)).toBe(true);
 
     const blocked = {
       ...scorecard!,
@@ -144,5 +152,49 @@ describe("birth HUD copy", () => {
     expect(scorecard?.blockerDetail).toContain("lifetime 29%");
     expect(scorecard?.blockerDetail).toContain("rolling 33%");
     expect(scorecard?.blockerDetail).toContain("400");
+  });
+
+  it("rewrites contradictory Stage-2 expectancy copy into durable lifetime", () => {
+    const detail = humanizeEdgescoreBlockerDetail(
+      {
+        edgescore: 0.825,
+        hygiene_wr_lifetime: 0.2986,
+        hygiene_wr_rolling: 0.4,
+        rolling_winrate_500: 0.4,
+        expectancy_proxy: -0.1,
+        pass_reason:
+          "Expectancy -10% (need >= -15%; ≡ Range quality WR >=35%, now 40% src=skill_lifted_by_rolling) | EdgeScore 82%",
+      },
+      "Expectancy -10% (need >= -15%; ≡ Range quality WR >=35%, now 40% src=skill_lifted_by_rolling) | EdgeScore 82%",
+    );
+    expect(detail).toContain("Durable lifetime WR");
+    expect(detail).toContain("29.9%");
+    expect(detail).toContain("30%");
+    expect(detail).toContain("does not pass alone");
+  });
+
+  it("presents expectancy blocker as a compact fail-gate readout", () => {
+    const presented = presentBlockerDetail(
+      "Expectancy -21% (need >= -15%; = Range quality WR >=35%, now 29% src=skill_lifted_by_rolling) | EdgeScore 49%",
+    );
+    expect(presented.title).toBe("Expectancy");
+    expect(presented.value).toBe("-21%");
+    expect(presented.hint).toContain("need ≥ -15%");
+    expect(presented.hint).toContain("WR 29%");
+    expect(presented.hint).toContain("need ≥ 35%");
+    expect(presented.hint).toContain("EdgeScore 49%");
+    expect(presented.hint).not.toContain("src=");
+    expect(presented.hint).not.toContain("skill_lifted_by_rolling");
+  });
+
+  it("presents hygiene blocker without the engine dump", () => {
+    const presented = presentBlockerDetail(
+      "Hygiene WR lifetime 29% / rolling 33% (need >=35%; rolling counts after 400) | EdgeScore 45%",
+    );
+    expect(presented.title).toBe("Hygiene WR");
+    expect(presented.value).toBe("29%");
+    expect(presented.hint).toContain("roll 33%");
+    expect(presented.hint).toContain("need ≥ 35%");
+    expect(presented.hint).toContain("rolling after 400");
   });
 });

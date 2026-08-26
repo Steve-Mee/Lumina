@@ -8,6 +8,7 @@ Keeps Steve's labels local and auditable:
 Does **not** touch promotion, REAL capital paths, or hard safety gates.
 
 Gym sessions: ``twin_gym_session.TwinGymSessionMixin``.
+Base curriculum / micro / escalation: ADR-0037 mixins.
 Metrics rollups: ``twin_training_metrics.TwinTrainingMetricsMixin``.
 """
 
@@ -19,7 +20,11 @@ from typing import Any
 
 from lumina_core.evolution.approval_twin_agent import ApprovalTwinAgent
 from lumina_core.evolution.steve_values_registry import SteveValueRecord, SteveValuesRegistry
+from lumina_core.evolution.twin_base_training import TwinBaseTrainingMixin
+from lumina_core.evolution.twin_escalation import TwinEscalationMixin
 from lumina_core.evolution.twin_gym_session import TwinGymSessionMixin
+from lumina_core.evolution.twin_micro_training import TwinMicroTrainingMixin
+from lumina_core.evolution.twin_pending_store import TwinPendingStore
 from lumina_core.evolution.twin_training_metrics import (  # noqa: F401
     HIGH_CONF_THRESHOLD,
     DecisionKind,
@@ -40,13 +45,23 @@ STATE_DIR = Path("state")
 DEFAULT_TWIN_DECISIONS = STATE_DIR / "monitoring_twin_decisions.jsonl"
 DEFAULT_TWIN_TRAINING = STATE_DIR / "monitoring_twin_training.jsonl"
 DEFAULT_MODEL_PATH = STATE_DIR / "approval_twin_model.json"
+DEFAULT_PENDING = STATE_DIR / "twin_pending_questions.json"
+DEFAULT_BASE_SESSION = STATE_DIR / "twin_base_training.json"
+DEFAULT_BIRTH_READY = STATE_DIR / "twin_birth_readiness.json"
+DEFAULT_ESCALATION_LOG = STATE_DIR / "monitoring_twin_escalations.jsonl"
 
 # How far back in the registry we look when filtering already-labeled DNA.
 LABELED_LOOKBACK = 2000
 
 
-class TwinTrainingService(TwinGymSessionMixin, TwinTrainingMetricsMixin):
-    """Orchestrate review queue, Steve labels, and light RLHF updates."""
+class TwinTrainingService(
+    TwinBaseTrainingMixin,
+    TwinMicroTrainingMixin,
+    TwinEscalationMixin,
+    TwinGymSessionMixin,
+    TwinTrainingMetricsMixin,
+):
+    """Orchestrate review queue, Steve labels, curriculum, escalations, light RLHF."""
 
     def __init__(
         self,
@@ -56,12 +71,20 @@ class TwinTrainingService(TwinGymSessionMixin, TwinTrainingMetricsMixin):
         model_path: Path | str = DEFAULT_MODEL_PATH,
         decisions_path: Path | str = DEFAULT_TWIN_DECISIONS,
         training_path: Path | str = DEFAULT_TWIN_TRAINING,
+        pending_path: Path | str = DEFAULT_PENDING,
+        base_session_path: Path | str = DEFAULT_BASE_SESSION,
+        birth_readiness_path: Path | str = DEFAULT_BIRTH_READY,
+        escalation_log_path: Path | str = DEFAULT_ESCALATION_LOG,
     ) -> None:
         self.model_path = Path(model_path)
         self.decisions_path = Path(decisions_path)
         self.training_path = Path(training_path)
+        self.base_session_path = Path(base_session_path)
+        self.birth_readiness_path = Path(birth_readiness_path)
+        self.escalation_log_path = Path(escalation_log_path)
         self.registry = registry or SteveValuesRegistry()
         self.twin = twin or ApprovalTwinAgent(registry=self.registry, model_path=self.model_path)
+        self.pending_store = TwinPendingStore(path=pending_path)
         # Ensure twin sees the same registry instance
         if getattr(self.twin, "_registry", None) is None:
             self.twin._registry = self.registry  # noqa: SLF001 — intentional bind

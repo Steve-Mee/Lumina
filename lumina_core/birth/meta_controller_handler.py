@@ -60,6 +60,12 @@ class MetaControllerHandler:
             self._trap_token = self.bus.subscribe(
                 "birth.plateau.trap.detected", self._on_trap_detected
             )
+        try:
+            from lumina_core.birth.runtime_diagnostics import log_birth_code_fingerprint
+
+            log_birth_code_fingerprint(reason="meta_handler_attach")
+        except Exception as exc:
+            logger.warning("birth.meta.fingerprint_on_attach_failed: %s", exc)
         return self._token or ""
 
     def detach(self) -> None:
@@ -84,6 +90,41 @@ class MetaControllerHandler:
             self._registry.set_response(correlation_id, key, value)
 
     def _publish_plan(self, correlation_id: str, plan: MetaActionPlan, trigger: str) -> None:
+        try:
+            from lumina_core.birth.expectancy_stall import snapshot_expectancy_stall
+            from lumina_core.birth.runtime_diagnostics import log_meta_decision_trace
+
+            snap = getattr(plan, "snapshot", None)
+            stall = None
+            try:
+                stall = (
+                    bool(snapshot_expectancy_stall(snap, cfg=self.cfg))
+                    if snap is not None
+                    else None
+                )
+            except Exception:
+                stall = None
+            log_meta_decision_trace(
+                trigger=str(trigger),
+                primary=str(getattr(plan.primary, "value", plan.primary)),
+                rationale=str(getattr(plan, "rationale", "") or ""),
+                secondary=[
+                    str(getattr(s, "value", s)) for s in (getattr(plan, "secondary", ()) or ())
+                ],
+                stage=str(
+                    getattr(getattr(snap, "stage", None), "value", getattr(snap, "stage", ""))
+                    if snap is not None
+                    else ""
+                ),
+                stage_trades=int(getattr(snap, "stage_trades", 0) or 0) if snap else 0,
+                stage_wins=int(getattr(snap, "stage_wins", 0) or 0) if snap else 0,
+                flat=float(getattr(snap, "range_flat_ratio", 0.0) or 0.0) if snap else 0.0,
+                stall=stall,
+                coerced=False,
+                source="meta_handler_publish",
+            )
+        except Exception as exc:
+            logger.warning("birth.meta.publish_trace_failed: %s", exc)
         payload = BirthMetaPlan(
             correlation_id=correlation_id,
             trigger=trigger,
@@ -131,6 +172,31 @@ class MetaControllerHandler:
                     range_flat_ratio=float(ctx.get("range_flat_ratio", 0.0)),
                     range_round_trips=int(ctx.get("range_round_trips", 0)),
                     oos_proxy_history=ctx.get("oos_proxy_history"),
+                    constitution_violations=int(ctx.get("constitution_violations", 0) or 0),
+                    range_total_signals=int(ctx.get("range_total_signals", 0) or 0),
+                    plateau_active=bool(ctx.get("plateau_active", False)),
+                    expectancy_quality_step=int(ctx.get("expectancy_quality_step", 0) or 0),
+                    stage_wins=int(ctx.get("stage_wins", 0) or 0),
+                    rolling_winrate=(
+                        float(ctx["rolling_winrate"])
+                        if ctx.get("rolling_winrate") is not None
+                        else None
+                    ),
+                    volume_gate_passed=(
+                        bool(ctx["volume_gate_passed"])
+                        if ctx.get("volume_gate_passed") is not None
+                        else None
+                    ),
+                    edge_vs_random=(
+                        float(ctx["edge_vs_random"])
+                        if ctx.get("edge_vs_random") is not None
+                        else None
+                    ),
+                    median_loss_r=(
+                        float(ctx["median_loss_r"])
+                        if ctx.get("median_loss_r") is not None
+                        else None
+                    ),
                 )
                 self._set_response(cid, "snapshot", serialize_learning_snapshot(observed))
                 self._set_response(cid, "stall", asdict(stall))

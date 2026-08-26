@@ -72,14 +72,20 @@ class MarketDataHistoryMixin(MarketDataHistoryFetchMixin):
         ticks_per_bar: int = 4,
         on_chunk: Callable[..., None] | None = None,
         prefer_daysback_only: bool = False,
+        instrument: str | None = None,
     ) -> list[dict[str, Any]]:
         """Load historical bars and expand each bar into pseudo ticks.
 
         Crosstrade historical endpoint is bar-based; this creates a deterministic
         tick stream (open/high/low/close path) for simulation workloads.
+        Optional ``instrument`` fetches a specific listing (Birth stitch); default
+        remains the engine front month. Stitch orchestration lives in Birth, not here.
         """
         app = self._app()
-        instrument = self._normalize_symbol(getattr(app, "INSTRUMENT", self.engine.config.instrument))
+        requested = str(instrument or "").strip()
+        instrument = self._normalize_symbol(
+            requested or getattr(app, "INSTRUMENT", self.engine.config.instrument)
+        )
         try:
             bars = self._fetch_historical_bars(
                 instrument=instrument,

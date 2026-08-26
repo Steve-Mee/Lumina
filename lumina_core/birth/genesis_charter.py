@@ -9,6 +9,10 @@ from typing import Any
 import yaml
 
 from lumina_core.birth.config import load_birth_v2_config, resolve_trade_budget_cap
+from lumina_core.birth.foundation_history import (
+    foundation_history_max_days,
+    foundation_history_start_days,
+)
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.genesis_charter")
@@ -70,13 +74,15 @@ def compute_genesis_charter(workspace_root: Path | str) -> GenesisCharter:
     elif profile == "beast":
         winrate_threshold = min(0.55, winrate_threshold + 0.02)
 
-    days_per_1k_trades = 2.24
-    max_real_days = max(30, min(730, int(round((training_trades / 1000.0) * days_per_1k_trades))))
+    max_real_days = foundation_history_max_days()
 
     rationale = {
         "training_trades": f"trade_budget_cap={cap} ({cap_source}) × profile_scale={profile_scale}",
         "stage1_winrate_pass_threshold": f"recommended={cur.stage1_winrate_recommended} profile={profile}",
-        "max_real_days": f"derived from {training_trades} trades @ {days_per_1k_trades}d/1k",
+        "max_real_days": (
+            f"Foundation history ceiling {max_real_days}d "
+            f"(start {foundation_history_start_days()}d; not sized from trades)"
+        ),
         "prefer_real_data_only": "birth_v2.prefer_real_data_only",
     }
     return GenesisCharter(

@@ -4,6 +4,8 @@ import { BirthPhaseScreen } from "@/components/birth/BirthPhaseScreen";
 import { PhaseHubScreen } from "@/components/maturity/PhaseHubScreen";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { PlaygroundEnvelopeSeal } from "@/components/onboarding/PlaygroundEnvelopeSeal";
+import { ColdStartReadiness } from "@/components/startup/ColdStartReadiness";
+import { NinjaTraderDegradedBanner } from "@/components/startup/NinjaTraderDegradedBanner";
 import { type AppPhase, useOnboardingStore } from "@/store/onboardingStore";
 import { useBirthStore } from "@/store/birthStore";
 
@@ -17,6 +19,7 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
   const trainingTrades = useOnboardingStore((s) => s.draft.training.training_trades);
   const setupReviewActive = useOnboardingStore((s) => s.setupReviewActive);
   const operatorDeckActive = useOnboardingStore((s) => s.operatorDeckActive);
+  const ntStartupResolved = useOnboardingStore((s) => s.ntStartupResolved);
   const refresh = useOnboardingStore((s) => s.refresh);
   const setPhase = useOnboardingStore((s) => s.setPhase);
   const setTargetTrades = useBirthStore((s) => s.setTargetTrades);
@@ -52,21 +55,54 @@ export function OnboardingGate({ children }: OnboardingGateProps) {
     setupReviewActive,
   ]);
 
+  // Cold-start cover until SSOT fetch completes.
+  // NT process gate also holds the cover after SSOT maps phase — unless operator deferred.
+  // Exception: when backend is unreachable, keep cover for backend retry (payload null or !reachable)
+  // without requiring NT first (NT gate runs once backend is reachable).
+  const backendReachable = payload?.backend.reachable === true;
+  const holdForNtGate =
+    !ntStartupResolved &&
+    (phase === "loading" || backendReachable || payload == null);
+
+  if (holdForNtGate) {
+    return <ColdStartReadiness />;
+  }
+
   if (phase === "wizard") {
-    return <OnboardingWizard />;
+    return (
+      <>
+        <OnboardingWizard />
+        <NinjaTraderDegradedBanner />
+      </>
+    );
   }
 
   if (phase === "birth") {
-    return <BirthPhaseScreen />;
+    return (
+      <>
+        <BirthPhaseScreen />
+        <NinjaTraderDegradedBanner />
+      </>
+    );
   }
 
   if (phase === "hub") {
-    return <PhaseHubScreen />;
+    return (
+      <>
+        <PhaseHubScreen />
+        <NinjaTraderDegradedBanner />
+      </>
+    );
   }
 
   if (needsEnvelopeSeal) {
     return <PlaygroundEnvelopeSeal />;
   }
 
-  return <>{children(phase)}</>;
+  return (
+    <>
+      {children(phase)}
+      <NinjaTraderDegradedBanner />
+    </>
+  );
 }

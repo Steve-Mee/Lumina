@@ -64,9 +64,10 @@ class MetricsCollector:
     def __init__(self, db_path: Path | None = None) -> None:
         self._store: dict[str, _MetricEntry] = {}
         self._lock = threading.Lock()
-        self._db_path = db_path
-        if db_path is not None:
-            self._init_db(db_path)
+        # Absolute path: relative paths + cwd drift caused empty DBs without schema.
+        self._db_path = db_path.resolve() if db_path is not None else None
+        if self._db_path is not None:
+            self._init_db(self._db_path)
 
     # ── write API ──────────────────────────────────────────────────────────────
 
@@ -260,6 +261,8 @@ class MetricsCollector:
         if not rows:
             return
         try:
+            # Self-heal: empty / truncated files get schema before INSERT (fail-soft, not silent rot).
+            self._init_db(self._db_path)
             con = sqlite3.connect(str(self._db_path))
             con.executemany(
                 "INSERT INTO metrics(ts, name, labels, type, value) VALUES (?,?,?,?,?)",

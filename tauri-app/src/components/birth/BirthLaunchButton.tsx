@@ -11,6 +11,8 @@ interface BirthLaunchButtonProps {
   disabled?: boolean;
   /** Cold-start: previous session still loading — keep Activate locked. */
   waitingSession?: boolean;
+  /** Idle label when not arming (e.g. ACTIVATE BIRTH / RETRY BIRTH). */
+  idleLabel?: string;
   onClick: () => void;
   onPrimedChange?: (primed: boolean) => void;
   onSequencingChange?: (sequencing: boolean) => void;
@@ -31,6 +33,7 @@ export function BirthLaunchButton({
   primed = false,
   disabled = false,
   waitingSession = false,
+  idleLabel = "ACTIVATE BIRTH",
   onClick,
   onPrimedChange,
   onSequencingChange,
@@ -173,15 +176,16 @@ export function BirthLaunchButton({
     beginSequence();
   }, [beginSequence, isDisabled]);
 
+  // activating=true while backend sync preflight runs — keep label honest, not frozen forever.
   const label = activating
-    ? "INITIALIZING SEQUENCE…"
+    ? "VERIFYING FABRIC / STARTING BIRTH…"
     : sequencing
       ? "SEQUENCING NEURAL LATTICE…"
       : holdProgress > 0 && holdProgress < 1
         ? "ARMING SEQUENCE…"
         : waitingSession
           ? "WAITING FOR SESSION…"
-          : "ACTIVATE BIRTH";
+          : idleLabel;
 
   const chargeProgress = sequencing ? 1 : holdProgress;
 

@@ -18,7 +18,7 @@ DEFAULT_FABRIC_JSON: dict[str, Any] = {
     "BindPort": 50051,
     "AuthTokenEnv": "LUMINA_FABRIC_TOKEN",
     "AccountName": "Sim101",
-    "GatewayMode": "sim",
+    "GatewayMode": "nt",
     "HeartbeatTimeoutMs": 5000,
     "FlattenGraceMs": 15000,
     "FlattenOnTimeout": True,
@@ -41,9 +41,17 @@ def fabric_json_path() -> Path:
     return Path.home() / ".config" / "LUMINA" / "fabric.json"
 
 
-def write_fabric_json_defaults(*, path: Path | None = None) -> Path:
-    """Write operator fabric.json defaults (no auth token value). Creates parent dirs.
-    
+def write_fabric_json_defaults(
+    *,
+    path: Path | None = None,
+    auth_token: str | None = None,
+) -> Path:
+    """Write operator fabric.json defaults. Creates parent dirs.
+
+    When ``auth_token`` is provided, dual-writes plaintext AuthToken so the NT
+    AddOn can load the same secret as Brain without waiting only on User env
+    inheritance (still requires NT/AddOn restart to re-read the file).
+
     Patch-compatible: looks up fabric_json_path via façade module to respect test monkeypatches.
     """
     if path is None:
@@ -53,6 +61,7 @@ def write_fabric_json_defaults(*, path: Path | None = None) -> Path:
     target = path
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = dict(DEFAULT_FABRIC_JSON)
+    existing_token = ""
     # Preserve operator GatewayMode / ports if file already exists.
     if target.is_file():
         try:
@@ -61,10 +70,20 @@ def write_fabric_json_defaults(*, path: Path | None = None) -> Path:
                 for key in ("GatewayMode", "BindHost", "BindPort", "AccountName", "AuthTokenEnv"):
                     if key in existing and existing[key] is not None:
                         payload[key] = existing[key]
-                # Never keep plaintext AuthToken in the onboarding-written file.
-                payload.pop("AuthToken", None)
+                existing_token = str(existing.get("AuthToken") or "").strip()
+                # Legacy product default "sim" meant Sim101 account intent, not memory gateway.
+                # Migrate to explicit "nt" so status/ops match NtAccountOrderGateway.
+                gw = str(payload.get("GatewayMode") or "").strip().lower()
+                if gw in {"sim", "sim101", ""}:
+                    payload["GatewayMode"] = "nt"
         except (OSError, json.JSONDecodeError):
             logger.warning("Could not merge existing fabric.json; rewriting defaults", exc_info=True)
+    token = str(auth_token or "").strip() or existing_token
+    if token:
+        # Local APPDATA only — required so NT AddOn ResolveToken matches Brain.
+        payload["AuthToken"] = token
+    else:
+        payload.pop("AuthToken", None)
     # Write UTF-8 without BOM so C# and Python parsers agree.
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return target
@@ -114,22 +133,45 @@ def set_user_environment_variable(name: str, value: str) -> bool:
 
 
 def apply_fabric_token_side_effects(token: str) -> dict[str, Any]:
-    """Write fabric.json defaults and set User env for LUMINA_FABRIC_TOKEN."""
-    token = str(token or "").strip()
-    result: dict[str, Any] = {"fabric_json": None, "user_env": False}
-    if not token:
-        return result
-    try:
-        path = write_fabric_json_defaults()
-        result["fabric_json"] = str(path)
-    except OSError:
-        logger.exception("Failed to write fabric.json")
-    result["user_env"] = set_user_environment_variable("LUMINA_FABRIC_TOKEN", token)
-    return result
+    """Write fabric.json + process/User env via Fabric Secret Bus (single writer)."""
+    from lumina_core.broker.ninjatrader.fabric_secret import write as fabric_secret_write
+
+    out = fabric_secret_write(token, source="apply_fabric_token_side_effects")
+    return {
+        "fabric_json": out.get("fabric_json"),
+        "user_env": bool(out.get("user_env")),
+        "process_env": bool(out.get("process_env")),
+        "ok": bool(out.get("ok")),
+        "fingerprint": out.get("fingerprint"),
+        "error": out.get("error"),
+    }
+
+
+def read_fabric_json_auth_token(path: Path | None = None) -> str:
+    """Read AuthToken from fabric.json (host SSOT for NT AddOn). Empty if missing."""
+    from lumina_core.broker.ninjatrader.fabric_secret import _read_json_auth_token
+
+    return _read_json_auth_token(path)
+
+
+def resolve_fabric_token_ssot(
+    *,
+    heal_process_env: bool = True,
+    prefer_host_json: bool = True,
+) -> dict[str, Any]:
+    """Resolve token via Fabric Secret Bus (single reader)."""
+    from lumina_core.broker.ninjatrader.fabric_secret import resolve_fabric_token_ssot as _ssot
+
+    return _ssot(
+        heal_process_env=heal_process_env,
+        prefer_host_json=prefer_host_json,
+    )
 
 
 def generate_fabric_token() -> str:
     """Cryptographically strong url-safe token for LUMINA_FABRIC_TOKEN."""
-    return secrets.token_urlsafe(32)
+    from lumina_core.broker.ninjatrader.fabric_secret import generate_token
+
+    return generate_token()
 
 

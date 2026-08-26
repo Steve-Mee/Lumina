@@ -32,7 +32,7 @@ describe("birthStageScorecard EdgeScore S2/S3", () => {
     ).toBe("27%");
   });
 
-  it("infers mixed_edgescore for stage3 and binds edgescore", () => {
+  it("infers mixed_regimes for stage3 — EdgeScore is not the pass metric", () => {
     const scorecard = extractStageScorecard(
       {
         curriculum_stage: "stage3_mixed",
@@ -42,8 +42,9 @@ describe("birthStageScorecard EdgeScore S2/S3", () => {
       },
       Date.now(),
     );
-    expect(scorecard?.passCriteriaId).toBe("mixed_edgescore");
-    expect(scorecard?.metricValue).toBe(0.41);
+    expect(scorecard?.passCriteriaId).toBe("mixed_regimes");
+    expect(scorecard?.metricLabel).toBe("Edge vs first-touch");
+    expect(scorecard?.metricValue).toBeNull();
     expect(
       formatBirthMetricValue({
         passCriteriaId: scorecard!.passCriteriaId,
@@ -52,7 +53,7 @@ describe("birthStageScorecard EdgeScore S2/S3", () => {
         metricTarget: scorecard!.metricTarget,
         tradesDone: scorecard!.tradesDone,
       }),
-    ).toBe("41%");
+    ).toBe("—");
   });
 
   it("falls back hygiene lifetime from stage_winrate when hygiene fields absent", () => {

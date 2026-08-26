@@ -108,11 +108,18 @@ def main() -> None:
 
     last_action: EvolutionAction | None = None
     last_detail = ""
+    try:
+        from lumina_core.birth.birth_control_plane import effective_plateau_max_evolution_steps
+
+        max_steps = effective_plateau_max_evolution_steps(cur_cfg, certified=True)
+    except Exception:
+        max_steps = int(getattr(cur_cfg, "plateau_max_evolution_steps", 8) or 8)
     while state.evolution_step < target_step:
         last_action = begin_evolution_step(
             state,
             stage_trades=stage_trades,
             stage_wins=stage_wins,
+            max_steps=max_steps,
         )
         print(f"Advanced to step {state.evolution_step}: {last_action.value}")
         if last_action == EvolutionAction.TERMINAL:

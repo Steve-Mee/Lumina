@@ -94,6 +94,40 @@ def test_notify_writes_pending(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
+def test_freeze_does_not_send_twin_mc_telegram(tmp_path: Path) -> None:
+    progress = {
+        "swarm_rejected_no_lift": True,
+        "phase": "swarm_reject_hard_stop",
+        "needs_attention": True,
+        "cumulative_trades": 100,
+    }
+    (tmp_path / "state").mkdir()
+    captured: dict[str, object] = {}
+
+    class _Svc:
+        def create_escalation(self, **kwargs: object) -> dict[str, object]:
+            captured.update(kwargs)
+            return {"escalation_id": "esc-freeze", "created": True}
+
+    with patch(
+        "lumina_core.notifications.attention_notifier.notify_attention", return_value=True
+    ), patch(
+        "lumina_core.notifications.telegram_notifier.TelegramNotifier"
+    ) as tg_cls, patch(
+        "lumina_core.evolution.twin_base_training.is_twin_birth_ready", return_value=True
+    ), patch(
+        "lumina_core.evolution.twin_training_service.TwinTrainingService",
+        return_value=_Svc(),
+    ):
+        tg = MagicMock()
+        tg.send_attention_alert.return_value = True
+        tg_cls.return_value = tg
+        notify_champion_freeze_decision(tmp_path, progress=progress, force=True)
+    assert captured.get("notify_telegram") is False
+    tg.send_twin_mc_question.assert_not_called()
+
+
+@pytest.mark.unit
 def test_try_handle_status_without_freeze(tmp_path: Path) -> None:
     (tmp_path / "state").mkdir()
     (tmp_path / "state" / "lumina_birth_progress.json").write_text(

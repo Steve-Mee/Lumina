@@ -14,6 +14,7 @@ from lumina_core.agent_orchestration.schemas import (
 )
 from lumina_core.birth.birth_bus_choreography import TOPIC_SNAPSHOT
 from lumina_core.birth.config import BirthCurriculumConfig
+from lumina_core.birth.birth_control_plane import effective_plateau_max_evolution_steps
 from lumina_core.birth.plateau_escalator import (
     EvolutionAction,
     PlateauEnterContext,
@@ -150,18 +151,40 @@ class PlateauHandler:
                 )
                 self._set_response(cid, "entered", True)
             elif signal == "plateau_should_trigger_evolution":
+                max_steps = int(
+                    ctx.get("max_steps")
+                    if ctx.get("max_steps") is not None
+                    else effective_plateau_max_evolution_steps(
+                        self.cfg, certified=bool(ctx.get("certified", True))
+                    )
+                )
                 should = should_trigger_plateau_evolution_step(
                     self.state,
-                    stage_trades=int(ctx.get("stage_trades", 0)),
-                    stage_wins=int(ctx.get("stage_wins", 0)),
                     cfg=self.cfg,
+                    current_winrate=float(ctx.get("current_winrate", 0.0) or 0.0),
+                    allow_start=bool(ctx.get("allow_start", True)),
+                    pass_target=float(ctx.get("pass_target", 0.0) or 0.0) or None,
+                    ppo_steps_since_step_start=int(
+                        ctx.get("ppo_steps_since_step_start", 0) or 0
+                    ),
+                    stage_trades=int(ctx.get("stage_trades", 0) or 0),
+                    required=int(ctx.get("required", 0) or 0),
+                    max_steps=max_steps,
                 )
                 self._set_response(cid, "should_trigger", should)
             elif signal == "plateau_begin_evolution_step":
+                max_steps = int(
+                    ctx.get("max_steps")
+                    if ctx.get("max_steps") is not None
+                    else effective_plateau_max_evolution_steps(
+                        self.cfg, certified=bool(ctx.get("certified", True))
+                    )
+                )
                 action = begin_evolution_step(
                     self.state,
                     stage_trades=int(ctx.get("stage_trades", 0)),
                     stage_wins=int(ctx.get("stage_wins", 0)),
+                    max_steps=max_steps,
                 )
                 step_payload = BirthPlateauEvolutionStep(
                     correlation_id=cid,
@@ -189,16 +212,21 @@ class PlateauHandler:
                 action = (
                     EvolutionAction(str(action_raw)) if action_raw else None
                 )
-                record_evolution_outcome(
-                    self.state,
-                    action=action,
-                    stage_trades=int(ctx.get("stage_trades", 0)),
-                    stage_wins=int(ctx.get("stage_wins", 0)),
-                    detail=str(ctx.get("detail", "")),
-                    failure_key=str(ctx.get("failure_key", "")),
-                    forced=bool(ctx.get("forced", False)),
-                )
-                self._set_response(cid, "ok", True)
+                if action is None:
+                    self._set_response(cid, "ok", False)
+                else:
+                    detail = str(ctx.get("detail", "") or "")
+                    if ctx.get("forced"):
+                        detail = f"{detail} (forced)".strip()
+                    record_evolution_outcome(
+                        self.state,
+                        action=action,
+                        stage_trades=int(ctx.get("stage_trades", 0)),
+                        stage_wins=int(ctx.get("stage_wins", 0)),
+                        detail=detail,
+                        applied=bool(ctx.get("applied", True)),
+                    )
+                    self._set_response(cid, "ok", True)
             elif signal == "plateau_detect_hold_trap":
                 trapped = detect_hold_trap(
                     hold_ratio=float(ctx.get("hold_ratio", 0.0)),
@@ -233,6 +261,12 @@ class PlateauHandler:
                     self.state,
                     cfg=self.cfg,
                     current_winrate=float(ctx.get("current_winrate", 0.0)),
+                    pass_target=float(ctx.get("pass_target", 0.0) or 0.0) or None,
+                    ppo_steps_since_step_start=int(
+                        ctx.get("ppo_steps_since_step_start", 0) or 0
+                    ),
+                    stage_trades=int(ctx.get("stage_trades", 0) or 0),
+                    required=int(ctx.get("required", 0) or 0),
                 )
                 self._set_response(cid, "force_advance", should)
             elif signal == "plateau_revert_noop":
@@ -259,25 +293,49 @@ class PlateauHandler:
                 # Composite: check + begin + basic record. Returns action info for orchestrator.
                 current_wr = float(ctx.get("current_winrate", 0.0))
                 pass_target = float(ctx.get("pass_target", 0.0))
+                max_steps = int(
+                    ctx.get("max_steps")
+                    if ctx.get("max_steps") is not None
+                    else effective_plateau_max_evolution_steps(
+                        self.cfg, certified=bool(ctx.get("certified", True))
+                    )
+                )
+                stage_trades = int(ctx.get("stage_trades", 0) or 0)
+                required = int(ctx.get("required", 0) or 0)
                 should = should_trigger_plateau_evolution_step(
                     self.state,
                     cfg=self.cfg,
                     current_winrate=current_wr,
                     allow_start=bool(ctx.get("allow_start", True)),
                     pass_target=pass_target,
+                    stage_trades=stage_trades,
+                    required=required,
+                    max_steps=max_steps,
                 )
                 action = None
                 if should:
                     action = begin_evolution_step(
                         self.state,
-                        stage_trades=int(ctx.get("stage_trades", 0)),
+                        stage_trades=stage_trades,
                         stage_wins=int(ctx.get("stage_wins", 0)),
+                        max_steps=max_steps,
                     )
                     if action and action != EvolutionAction.TERMINAL:
                         self._set_response(cid, "evolution", {
                             "action": action.value if hasattr(action, "value") else str(action),
                             "applied": True,
                         })
+                        return
+                    if action == EvolutionAction.TERMINAL:
+                        self._set_response(
+                            cid,
+                            "evolution",
+                            {
+                                "action": EvolutionAction.TERMINAL.value,
+                                "applied": False,
+                                "ladder_exhausted": True,
+                            },
+                        )
                         return
                 self._set_response(cid, "evolution", {"action": None, "applied": False})
             elif signal == "resolve_terminal_stall":

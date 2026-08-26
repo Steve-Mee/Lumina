@@ -268,16 +268,20 @@ def update_cost_tracker_from_usage(
 
 
 def run_async_safely(coro):
+    """Run a coroutine from sync code without nesting into a live event loop."""
     try:
         asyncio.get_running_loop()
     except RuntimeError:
         return asyncio.run(coro)
 
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_until_complete(coro)
-    finally:
-        loop.close()
+    # Caller thread already has a running loop (e.g. uvicorn) — offload.
+    import concurrent.futures
+
+    def _runner():
+        return asyncio.run(coro)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(_runner).result()
 
 
 def parse_json_loose(raw_text: str) -> dict[str, Any]:

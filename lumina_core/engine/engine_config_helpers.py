@@ -10,17 +10,63 @@ from typing import Any
 import yaml
 
 
-@lru_cache(maxsize=1)
-def _load_yaml_config() -> dict:
-    config_path = Path("config.yaml")
-    if not config_path.exists():
+def _resolve_config_yaml_path() -> Path:
+    """Resolve config.yaml from LUMINA_CONFIG or cwd (never cache empty wrong-cwd forever)."""
+    env = str(os.getenv("LUMINA_CONFIG") or "").strip()
+    if env:
+        p = Path(env)
+        if p.is_file():
+            return p.resolve()
+        # Allow LUMINA_CONFIG pointing at a workspace directory.
+        if p.is_dir() and (p / "config.yaml").is_file():
+            return (p / "config.yaml").resolve()
+    return (Path.cwd() / "config.yaml").resolve()
+
+
+@lru_cache(maxsize=8)
+def _load_yaml_config_at(path_str: str) -> dict:
+    config_path = Path(path_str)
+    if not config_path.is_file():
         return {}
     try:
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     except Exception:
-        logging.exception("Unhandled broad exception fallback in lumina_core/engine/engine_config.py:20")
+        logging.exception("Unhandled broad exception fallback in lumina_core/engine/engine_config_helpers")
         return {}
     return raw if isinstance(raw, dict) else {}
+
+
+def _load_yaml_config() -> dict:
+    """Load workspace config.yaml. Path-aware so wrong first cwd cannot poison SSOT forever."""
+    path = _resolve_config_yaml_path()
+    data = _load_yaml_config_at(str(path))
+    # Never cache a permanent empty miss for a path that may appear after chdir —
+    # only positive loads are sticky via lru; empty result: clear that path entry.
+    if not data:
+        try:
+            _load_yaml_config_at.cache_clear()
+        except Exception:
+            pass
+        # Retry once after clear in case of race.
+        data = _load_yaml_config_at(str(path)) if path.is_file() else {}
+    return data if isinstance(data, dict) else {}
+
+
+def clear_yaml_config_cache() -> None:
+    """Call after chdir / LUMINA_CONFIG change so EngineConfig sees fresh yaml."""
+    try:
+        _load_yaml_config_at.cache_clear()
+    except Exception:
+        pass
+    # Back-compat: some callers still invoke ``_load_yaml_config.cache_clear()``.
+    try:
+        setattr(_load_yaml_config, "cache_clear", clear_yaml_config_cache)
+    except Exception:
+        pass
+
+
+# Allow ``_load_yaml_config.cache_clear()`` used by config_loader invalidate hooks.
+_load_yaml_config.cache_clear = clear_yaml_config_cache  # type: ignore[attr-defined]
 
 
 def _config_yaml_value(key: str, default):

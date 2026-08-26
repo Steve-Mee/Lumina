@@ -11,7 +11,6 @@ from lumina_core.maturity.maturation_progress import (
     REAL_ELIGIBILITY_MILESTONES,
     load_maturation_progress,
     maturation_eligible_for_real,
-    record_maturation_milestone,
     sync_maturation_from_birth_state,
 )
 
@@ -39,10 +38,8 @@ def _run_shadow_promotion_gate(workspace_root: Path) -> bool:
 
 
 def _sync_playground_milestones(workspace_root: Path) -> None:
+    """Sync birth→maturity ledger. Do not fabricate Playground first-order proofs."""
     sync_maturation_from_birth_state(workspace_root)
-    progress = load_maturation_progress(workspace_root)
-    if "deck_unlocked" not in progress.milestones_reached:
-        record_maturation_milestone(workspace_root, "deck_unlocked")
 
 
 def _maybe_notify_real_ready(workspace_root: Path) -> None:
@@ -91,26 +88,17 @@ def run_maturation_autopilot_tick(workspace_root: Path | str | None = None) -> d
     except Exception as exc:
         logger.debug("maturity.autopilot.expire_pending_failed: %s", exc)
 
-    # Telegram: champion freeze ACCEPT/WIPE (remote autonomy) + phase advance
+    # Telegram: one poller (freeze ACCEPT/WIPE + phase advance) via shared offset
     telegram_actions: list[dict[str, Any]] = []
     try:
-        from lumina_core.birth.champion_freeze_telegram import maybe_poll_freeze_telegram
-        from lumina_core.maturity.continuum import load_continuum
-        from lumina_core.notifications.telegram_notifier import TelegramNotifier
+        from lumina_core.notifications.telegram_notifier import get_telegram_notifier
 
-        freeze_actions = maybe_poll_freeze_telegram(root) or []
-        if freeze_actions:
-            telegram_actions.extend(freeze_actions)
-        continuum = load_continuum(root)
-        if continuum.get("advance_mode") == "telegram" and continuum.get("pending_advance"):
-            tg = TelegramNotifier()
-            if hasattr(tg, "configure_workspace"):
-                tg.configure_workspace(root)  # type: ignore[attr-defined]
-            else:
-                setattr(tg, "_workspace_root", root)
-            phase_actions = tg.poll_for_replies() or []
-            if phase_actions:
-                telegram_actions.extend(phase_actions)
+        tg = get_telegram_notifier()
+        if hasattr(tg, "configure_workspace"):
+            tg.configure_workspace(root)  # type: ignore[attr-defined]
+        else:
+            setattr(tg, "_workspace_root", root)
+        telegram_actions = list(tg.poll_for_replies() or [])
     except Exception as exc:
         logger.debug("maturity.autopilot.telegram_poll_failed: %s", exc)
 

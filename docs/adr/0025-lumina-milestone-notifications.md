@@ -1,5 +1,7 @@
 # ADR-0025: Lumina Milestone Notifications
 
+> **Supersession (2026-08-14):** Birth Foundation pass and exit follow [ADR-0046](./0046-birth-foundation-evolvable-plant.md). Milestone copy must not treat WR gates or `stage4_polish` as current Birth graduation.
+
 ## Status
 
 Accepted (2026-06-28)

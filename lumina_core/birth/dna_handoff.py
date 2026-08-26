@@ -117,6 +117,47 @@ def register_partial_birth_dna(
     )
 
 
+def register_birth_gen0_from_fitness(workspace_root: Path | str, vector: Any) -> None:
+    """Gen-0 DNA from Stage-5 fitness vector (not cert Sharpe)."""
+    root = Path(workspace_root)
+    registry = DNARegistry(
+        jsonl_path=root / "state" / "dna_registry.jsonl",
+        sqlite_path=root / "state" / "dna_registry.sqlite3",
+    )
+    if registry.get_latest_dna(version="active") is not None:
+        logger.info("birth.dna_handoff.fitness_skip_active_exists")
+        return
+    payload = vector.to_dict() if hasattr(vector, "to_dict") else dict(vector)
+    fitness = float(payload.get("mean_r") or 0.0) + float(payload.get("edge") or 0.0)
+    lineage = str(payload.get("s5_receipt_checksum") or "foundation")[:16]
+    content = {
+        "candidate_name": "birth_foundation_v2",
+        "birth_certificate_version": "foundation_v2",
+        "mean_r": payload.get("mean_r"),
+        "edge": payload.get("edge"),
+        "occupancy": payload.get("occupancy"),
+        "oos_wr": payload.get("oos_wr"),
+        "oos_sharpe": payload.get("oos_sharpe"),
+        "median_loss_r": payload.get("median_loss_r"),
+        "hyperparam_suggestion": {
+            "max_risk_percent": 1.0,
+            "drawdown_kill_percent": 8.0,
+            "fast_path_threshold": 0.78,
+        },
+    }
+    dna = PolicyDNA.create(
+        prompt_id="birth_foundation_v2",
+        version="active",
+        content=content,
+        fitness_score=fitness,
+        generation=0,
+        lineage_hash=lineage,
+        mutation_rate=0.0,
+    )
+    registry.register_dna(dna)
+    logger.info("birth.dna_handoff.foundation_registered fitness=%.4f", fitness)
+
+
 def resolve_birth_gen0_dna(registry: DNARegistry) -> PolicyDNA | None:
     """Return active gen-0 DNA registered from Birth Certificate v2, if any."""
     active = registry.get_latest_dna(version="active")
@@ -125,6 +166,7 @@ def resolve_birth_gen0_dna(registry: DNARegistry) -> PolicyDNA | None:
     if str(getattr(active, "prompt_id", "") or "") in {
         "birth_v2_certificate",
         "birth_v2_partial",
+        "birth_foundation_v2",
     }:
         return active
     content = active.content if isinstance(active.content, dict) else {}

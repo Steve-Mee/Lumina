@@ -36,7 +36,7 @@ def test_compute_genesis_charter(tmp_path: Path) -> None:
     charter = compute_genesis_charter(tmp_path)
     assert charter.training_trades >= 5000
     assert 0.35 <= charter.stage1_winrate_pass_threshold <= 0.55
-    assert charter.max_real_days >= 30
+    assert charter.max_real_days == 365
     assert charter.prefer_real_data_only is True
 
 

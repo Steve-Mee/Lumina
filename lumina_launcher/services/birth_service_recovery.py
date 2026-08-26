@@ -48,14 +48,17 @@ class BirthServiceRecoveryMixin:
         if champion_freeze_active_for_svc(self, progress=progress):
             return False
         autonomous = self._autonomous_recovery_enabled()
+        terminal = str(progress.get("terminal_stall_reason") or "").strip().lower()
+        # ADR-0024 / post-mortem: never silent auto-resume after ladder exhaustion.
+        # Operator expand_data / wipe / accept_champion only (phoenix is separate path).
+        # Must run before phase-based resume — exhausted can still show phase=plateau_evolution.
+        if terminal in {"plateau_evolution_exhausted", "stall_remediation_exhausted"}:
+            return False
         phase = str(progress.get("phase", "") or "").strip().lower()
         if phase in {"plateau_evolution", "stall_remediation", "curriculum_learning", "phoenix_cycle"}:
             return self._is_stage_stalled_recovery_eligible()
         if progress.get("needs_attention") is True and not autonomous:
             return False
-        terminal = str(progress.get("terminal_stall_reason") or "").strip().lower()
-        if terminal in {"plateau_evolution_exhausted", "stall_remediation_exhausted"}:
-            return autonomous and progress.get("retryable") is not False
         if terminal == "phoenix_cycle" and autonomous:
             return True
         if progress.get("curriculum_integrity_blocked") is True:

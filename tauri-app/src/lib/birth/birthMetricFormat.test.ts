@@ -10,6 +10,7 @@ import {
   formatBirthMetricValuePrecise,
   isBirthExpectancyProxyValid,
 } from "@/lib/birth/birthMetricFormat";
+import { metricPctForCriteria } from "@/lib/birth/birthStageScorecardHealth";
 
 describe("birthMetricFormat", () => {
   it("formats EdgeScore as percent", () => {
@@ -22,7 +23,8 @@ describe("birthMetricFormat", () => {
     };
     expect(formatBirthMetricValue(model)).toBe("22%");
     expect(formatBirthMetricValuePrecise(model)).toBe("22.0%");
-    expect(formatBirthMetricTarget(model)).toContain("lifetime or rolling");
+    expect(formatBirthMetricTarget(model)).toContain("median loss R");
+    expect(formatBirthMetricTarget(model)).not.toContain("lifetime or rolling");
     expect(formatBirthMetricValue(model)).toContain("%");
   });
 
@@ -60,7 +62,8 @@ describe("birthMetricFormat", () => {
       tradesDone: 200,
     });
     expect(detail).toContain("27%");
-    expect(detail).toContain("flat 30-70%");
+    expect(detail).toContain("occupancy 30-70%");
+    expect(detail).toContain("median loss R");
     expect(detail).not.toContain("0.27");
   });
 
@@ -91,6 +94,43 @@ describe("birthMetricFormat", () => {
     });
     expect(locked.value).toBe("33%");
     expect(locked.hint).toContain("320");
+  });
+
+  it("formats closed-loop process-R as R, never percent or syncing", () => {
+    const model = {
+      passCriteriaId: "closed_loop",
+      metricLabel: "Median loss R",
+      metricValue: 9.3719,
+      metricMax: 1.5,
+      tradesDone: 1300,
+    };
+    expect(formatBirthMetricValue(model)).toBe("9.37R");
+    expect(formatBirthMetricValuePrecise(model)).toBe("9.37R");
+    expect(formatBirthMetricDetail(model)).toContain("9.37R");
+    expect(formatBirthMetricDetail(model)).not.toContain("%");
+    expect(formatBirthMetricValue(model)).not.toContain("%");
+  });
+
+  it("missing process-R after trades is dash, not syncing", () => {
+    const model = {
+      passCriteriaId: "closed_loop",
+      metricLabel: "Median loss R",
+      metricValue: null,
+      metricMax: 1.5,
+      tradesDone: 700,
+    };
+    expect(formatBirthMetricValue(model)).toBe("—");
+    expect(formatBirthMetricValuePrecise(model)).toBe("—");
+    expect(formatBirthMetricDetail(model)).toContain("fail-closed");
+    expect(formatBirthMetricValuePrecise(model)).not.toBe("syncing…");
+  });
+
+  it("closed-loop bar is lower-is-better vs 1.5R, never 937%", () => {
+    expect(metricPctForCriteria("closed_loop", 1.1, null, null, 1.5)).toBe(100);
+    expect(metricPctForCriteria("closed_loop", 9.37, null, null, 1.5)).toBeCloseTo(
+      (1.5 / 9.37) * 100,
+    );
+    expect(metricPctForCriteria("closed_loop", 9.37, null, null, 1.5)).toBeLessThan(20);
   });
 
   it("formats WR-50 expectancy and rejects legacy USD-scale values", () => {

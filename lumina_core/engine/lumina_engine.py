@@ -112,6 +112,9 @@ class LuminaEngine:
     technical_analysis_service: TechnicalAnalysisService | None = None
     risk_orchestrator: RiskOrchestrator | None = None
     execution_service: ExecutionService | None = None
+    runtime_role: str = "champion"
+    runtime_overlay: Any | None = None
+    challenger_fanout: Any | None = None
 
     def __post_init__(self) -> None:
         if self.bible_engine is None:

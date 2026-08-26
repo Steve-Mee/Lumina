@@ -6,6 +6,8 @@ import type { StagePassChecklist } from "@/lib/birth/birthStagePassChecklist";
 import { CONDITION_VALUE_TEXT_CLASS, type ConditionTone } from "@/lib/conditionTone";
 import { cn } from "@/lib/utils";
 
+import { BirthReadoutStack } from "@/components/birth/BirthReadoutStack";
+
 function statusGlyph(tone: ConditionTone, met: boolean, kind: "gate" | "skill"): string {
   if (kind === "skill") {
     if (met || tone === "ok") return "◆";
@@ -55,8 +57,10 @@ export function BirthStagePassChecklistCard({
         <div className="min-w-0">
           <p className="risk-envelope-field-label mb-0">
             Stage goal
-            {passMode === "survival" ? (
-              <span className="birth-stage-pass-checklist__mode"> · survival</span>
+            {passMode === "process" ? (
+              <span className="birth-stage-pass-checklist__mode"> · plant</span>
+            ) : passMode === "skill" ? (
+              <span className="birth-stage-pass-checklist__mode"> · skill</span>
             ) : null}
           </p>
           <p
@@ -80,12 +84,14 @@ export function BirthStagePassChecklistCard({
         {requirements.map((req) => {
           const kind = req.kind ?? "gate";
           const tone = rowToneAttr(req.tone);
+          const stacked = Boolean(req.stats && req.stats.length > 0);
           return (
             <li
               key={req.id}
               className="birth-stage-pass-checklist__row"
               data-tone={tone}
               data-kind={kind}
+              data-layout={stacked ? "stack" : "inline"}
               title={
                 kind === "skill"
                   ? `${req.label} (skill later — not required to pass): ${req.current} · ${req.need}`
@@ -105,16 +111,20 @@ export function BirthStagePassChecklistCard({
                 <span className="birth-stage-pass-checklist__label truncate">
                   {req.label}
                 </span>
-                <span className="birth-stage-pass-checklist__need truncate">{req.need}</span>
+                <span className="birth-stage-pass-checklist__need">{req.need}</span>
               </div>
-              <span
-                className={cn(
-                  "birth-stage-pass-checklist__value tabular-nums",
-                  CONDITION_VALUE_TEXT_CLASS[req.tone],
-                )}
-              >
-                {req.current}
-              </span>
+              {stacked && req.stats ? (
+                <BirthReadoutStack stats={req.stats} tone={req.tone} />
+              ) : (
+                <span
+                  className={cn(
+                    "birth-stage-pass-checklist__value tabular-nums",
+                    CONDITION_VALUE_TEXT_CLASS[req.tone],
+                  )}
+                >
+                  {req.current}
+                </span>
+              )}
             </li>
           );
         })}

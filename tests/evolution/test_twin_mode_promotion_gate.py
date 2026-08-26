@@ -55,6 +55,17 @@ def test_apply_mode_authority_full_auto_not_executable_in_real() -> None:
     assert auth["executable"] is False
     assert auth["effective_recommendation"] is False
     assert auth.get("real_capital_floor") is True
+    assert auth.get("twin_values_role") == "values_inside_gates"
+
+
+def test_apply_mode_authority_sim_real_guard_values_active() -> None:
+    auth = apply_mode_authority(
+        raw_recommendation=True, mode="full_auto", capital_mode="sim_real_guard"
+    )
+    assert auth["executable"] is True
+    assert auth["effective_recommendation"] is True
+    assert auth.get("twin_values_role") == "values_active"
+    assert auth.get("real_capital_floor") is True  # no real money sole-execute
 
 
 def test_gate_insufficient_samples_fail_closed(tmp_path: Path) -> None:
@@ -87,10 +98,30 @@ def test_gate_good_evidence_promotes_assisted(tmp_path: Path) -> None:
         risk_flags_caught=0,
         constitution_violations=0,
         steve_label_samples=20,  # H4: >= min_steve_labels_assisted (15)
+        base_trained=True,  # ADR-0037
     )
     decision = gate.evaluate(evidence)
     assert decision.promoted is True
     assert decision.fail_reasons == ()
+
+
+def test_gate_blocks_without_base_trained(tmp_path: Path) -> None:
+    gate = TwinModePromotionGate(audit_path=tmp_path / "audit.jsonl")
+    evidence = TwinModePromotionEvidence(
+        current_mode="shadow",
+        target_mode="assisted",
+        samples=40,
+        agreement_pct=85.0,
+        false_positive_pct=5.0,
+        constitution_adherence_pct=100.0,
+        risk_flags_caught=0,
+        constitution_violations=0,
+        steve_label_samples=20,
+        base_trained=False,
+    )
+    decision = gate.evaluate(evidence)
+    assert decision.promoted is False
+    assert "base_trained" in decision.fail_reasons
 
 
 def test_gate_fp_too_high_blocks(tmp_path: Path) -> None:
@@ -127,7 +158,12 @@ def test_gate_cannot_skip_to_full_auto(tmp_path: Path) -> None:
     assert "mode_order" in decision.fail_reasons
 
 
-def test_controller_try_promote_and_demote(tmp_path: Path) -> None:
+def test_controller_try_promote_and_demote(tmp_path: Path, monkeypatch) -> None:
+    # ADR-0037: controller reads birth readiness from disk — force true for unit test
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_base_training.is_twin_birth_ready",
+        lambda *a, **k: True,
+    )
     store = TwinMetricsStore(
         path=tmp_path / "metrics.jsonl",
         summary_path=tmp_path / "summary.json",

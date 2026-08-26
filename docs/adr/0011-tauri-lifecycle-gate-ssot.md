@@ -16,14 +16,16 @@ Three operator-visible surfaces exist: **Setup**, **Birth**, and **Deck**. The T
 
 We introduce a **single backend function** `resolve_app_surface()` in `lumina_launcher/core/onboarding.py` as the lifecycle SSOT.
 
-1. **`GET /api/setup/onboarding`** exposes `app_surface` (`setup` | `birth` | `deck`) and `app_surface_reason`.
-2. **`should_skip_wizard()`** is derived from `app_surface === "deck"` only (fail-closed on `artifacts_ok`).
-3. **Tauri client** maps `app_surface` → phase via `mapAppPhase()`; no sticky deck phase across refresh.
-4. **Defense in depth on deck:**
+1. **`GET /api/setup/onboarding`** exposes `app_surface` (`setup` | `birth` | `hub` | `deck`) and `app_surface_reason`.
+2. **`should_skip_wizard()`** is true for `hub` or `deck` (fail-closed on certificate/artifacts).
+3. **Tauri client** maps `app_surface` → phase via `mapAppPhase()`; no sticky deck phase across **process** restart. Session override: operator may open deck from hub (`operatorDeckActive`).
+4. **Post-birth cold-start default is `hub`** (`maturation_hub`), not deck — operator enters Command Deck deliberately.
+5. **Cold-start cover:** `StartupReadinessScreen` while phase `loading` (named steps; soft Fabric probe; toasts suppressed).
+6. **Defense in depth on deck:**
    - `useDeckLifecycleGuard` redirects if backend disagrees after mount.
    - `DeckBlockingOverlay` + `resolveDeckBirthGate()` block interaction when `!artifacts_ok`.
-5. **Birth restart:** incomplete or interrupted birth always resolves to `birth` surface; auto-resume only with existing checkpoint (Phase 3).
-6. **No React Router** — `OnboardingGate` remains the phase switch; scope stays bounded.
+7. **Birth restart:** incomplete or interrupted birth always resolves to `birth` surface; auto-resume only with existing checkpoint (Phase 3). Explicit Resume/Wipe preferred over silent continue for interrupted/checkpoint states.
+8. **No React Router** — `OnboardingGate` remains the phase switch; scope stays bounded.
 
 ## Consequences
 

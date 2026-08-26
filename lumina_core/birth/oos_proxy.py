@@ -32,6 +32,14 @@ def run_oos_proxy_eval(
 ) -> dict[str, Any]:
     """Lightweight holdout rollout used as a curriculum fitness proxy."""
     sample_trades = max(20, int(cfg.oos_proxy_sample_trades))
+    # Frozen chrono geometry — never peak-calibrate on a thin/shuffled proxy slice.
+    try:
+        from lumina_core.birth.birth_trade_geometry import calibrate_birth_stops
+
+        hold = max(30, int(getattr(cfg, "oracle_max_hold_bars", 90) or 90))
+        geo = calibrate_birth_stops(list(holdout_ticks or []), max_hold_bars=hold)
+    except Exception:
+        geo = None
     rollout = run_policy_rollout(
         runtime=runtime,
         data=holdout_ticks,
@@ -39,6 +47,8 @@ def run_oos_proxy_eval(
         target_trades=sample_trades,
         workspace_root=workspace_root,
         constitution_guard=constitution_guard,
+        trade_geometry=geo,
+        soft_prior_stops=True,
     )
     winrate = float(rollout.wins) / float(max(1, rollout.trades))
     return {

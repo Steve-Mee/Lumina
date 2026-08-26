@@ -35,6 +35,12 @@ def receipt_from_stage_result(
     rolling_winrate_source: str | None = None,
     rolling_window_trades_covered: int | None = None,
     hygiene_wr_source: str | None = None,
+    policy_trades: int | None = None,
+    policy_wins: int | None = None,
+    plant_trades: int | None = None,
+    plant_wins: int | None = None,
+    geometry_net_rr: float | None = None,
+    unique_calendar_days: int | None = None,
 ) -> StagePassReceipt:
     required = stage_pass_trades(stage, cfg)
     criteria = pass_criteria_for_stage(stage, cfg=cfg)
@@ -101,6 +107,50 @@ def receipt_from_stage_result(
             else None
         ),
         hygiene_wr_source=(str(hygiene_wr_source) if hygiene_wr_source is not None else None),
+        policy_trades=(max(0, int(policy_trades)) if policy_trades is not None else None),
+        policy_wins=(max(0, int(policy_wins)) if policy_wins is not None else None),
+        plant_trades=(max(0, int(plant_trades)) if plant_trades is not None else None),
+        plant_wins=(max(0, int(plant_wins)) if plant_wins is not None else None),
+        closes_stop=max(0, int(getattr(result, "closes_stop", 0) or 0)),
+        closes_target=max(0, int(getattr(result, "closes_target", 0) or 0)),
+        closes_time_stop=max(0, int(getattr(result, "closes_time_stop", 0) or 0)),
+        closes_flatten=max(0, int(getattr(result, "closes_flatten", 0) or 0)),
+        closes_unknown=max(0, int(getattr(result, "closes_unknown", 0) or 0)),
+        schema=str(getattr(result, "schema", "") or "foundation_v2"),
+        median_loss_r=getattr(result, "median_loss_r", None),
+        mean_r=getattr(result, "mean_r", None),
+        occupancy=float(getattr(result, "occupancy", 0.0) or 0.0),
+        edge=getattr(result, "edge", None),
+        p_ft=getattr(result, "p_ft", None),
+        e_mech=getattr(result, "e_mech", None),
+        geometry_net_rr=(
+            float(geometry_net_rr)
+            if geometry_net_rr is not None
+            else (
+                float(result.net_rr)
+                if getattr(result, "net_rr", None) is not None
+                else None
+            )
+        ),
+        unique_calendar_days=(
+            max(0, int(unique_calendar_days))
+            if unique_calendar_days is not None
+            else (
+                int(result.unique_calendar_days)
+                if getattr(result, "unique_calendar_days", None) is not None
+                else None
+            )
+        ),
+        oos_sharpe=(
+            float(result.oos_sharpe)
+            if getattr(result, "oos_sharpe", None) is not None
+            else None
+        ),
+        oos_dd_pct=(
+            float(result.oos_dd_pct)
+            if getattr(result, "oos_dd_pct", None) is not None
+            else None
+        ),
     )
 
 

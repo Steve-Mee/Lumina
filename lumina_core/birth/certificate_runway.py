@@ -6,13 +6,12 @@ from typing import Any
 
 from lumina_core.birth.curriculum import (
     CurriculumStage,
-    filter_ticks_for_stage,
     ordered_runway_stages,
     stage_trade_target,
 )
-from lumina_core.birth.pattern_miner import mine_winning_patterns
 from lumina_core.birth.progress import read_birth_progress, write_birth_progress
 from lumina_core.birth.runway import (
+    POST_BIRTH_CERTIFICATE_PHASE,
     micro_oos_evolution_proof_passed,
     micro_oos_probe,
     micro_oos_sanity_passed,
@@ -51,40 +50,10 @@ def resolve_baseline_oos_winrate(pipeline, *, checkpoint_state: dict[str, Any] |
     return 0.0
 
 def bootstrap_runway_stage5(pipeline, *, train_ticks: list[dict[str, Any]]) -> None:
-    """S5: optional rollback to best S3 snapshot + oracle distill from S1 trend."""
-    cur_cfg = pipeline._host.birth_config.curriculum
-    snap = pipeline._host.workspace_root / "lumina_agents" / "ppo" / "birth_best_stage3_mixed.zip"
-    if snap.is_file():
-        load_fn = getattr(pipeline._host.ppo_trainer, "load_policy", None)
-        if callable(load_fn):
-            try:
-                load_fn(str(snap))
-                logger.info("birth.runway.s5_policy_rollback path=%s", snap)
-            except Exception as exc:
-                logger.warning("birth.runway.s5_policy_rollback_failed: %s", exc)
-    s1_ticks = filter_ticks_for_stage(CurriculumStage.STAGE1_TREND, train_ticks)
-    if not s1_ticks:
-        return
-    max_patterns, scan_stride = pipeline._host._resolve_oracle_mining_params(cur_cfg, aggressive=True)
-    mine_result = mine_winning_patterns(
-        ticks=s1_ticks[: min(len(s1_ticks), 50_000)],
-        stage=CurriculumStage.STAGE5_PROFIT_VAL,
-        runtime=pipeline._host.runtime,
-        workspace_root=pipeline._host.workspace_root,
-        max_patterns=max_patterns,
-        scan_stride=scan_stride,
-        max_hold_bars=cur_cfg.oracle_max_hold_bars,
-    )
-    for pattern in mine_result.patterns:
-        pipeline._host.buffer.add(
-            pattern,
-            priority=3.0 + min(10.0, abs(float(pattern.get("reward", 0.0)))),
-        )
-    logger.info(
-        "birth.runway.s5_oracle_seed patterns=%s wins=%s",
-        len(mine_result.patterns),
-        mine_result.wins,
-    )
+    """Post-Birth cert runway only. Never seed S1-trend oracle into a later buffer."""
+    _ = (pipeline, train_ticks)
+    logger.info("birth.runway.s5_oracle_seed_forbidden_under_foundation")
+
 
 def run_certificate_runway_stages(
     pipeline,
@@ -109,14 +78,14 @@ def run_certificate_runway_stages(
     write_birth_progress(
         pipeline._host.workspace_root,
         stage="training_running",
-        phase="runway_stage",
-        message="Certificate runway: profit → risk → generalize",
+        phase=POST_BIRTH_CERTIFICATE_PHASE,
+        message="Post-Birth certificate (Proving Ground): profit → risk → generalize",
         progress_pct=80.0,
         cumulative_trades=pipeline._host.cumulative_trades,
         target_trades=trade_budget_cap,
         ppo_steps=pipeline._host.ppo_steps,
         birth_start_time=pipeline._host.birth_start_time,
-        runway_phase="S5",
+        runway_phase="PG1",
         birth_exit_winrate=birth_exit_winrate,
     )
 
@@ -143,7 +112,13 @@ def run_certificate_runway_stages(
             validation_ticks=validation_ticks,
         )
         if not stage_ticks:
-            stage_ticks = list(validation_ticks) or list(train_core_ticks)
+            logger.error("birth.runway.empty_filter_fail_closed stage=%s", stage.value)
+            return {
+                "status": "stage_failed",
+                "failure_reason": f"empty_runway_ticks:{stage.value}",
+                "total_trades": pipeline._host.cumulative_trades,
+                "training_mode": training_mode,
+            }
         target = stage_trade_target(stage, cur_cfg)
         pipeline._host._accumulate_constitution_violations_before_stage_reset()
 
@@ -151,15 +126,15 @@ def run_certificate_runway_stages(
         write_birth_progress(
             pipeline._host.workspace_root,
             stage="training_running",
-            phase="runway_stage",
-            message=f"Runway {stage.value}: training…",
+            phase=POST_BIRTH_CERTIFICATE_PHASE,
+            message=f"Post-Birth certificate (Proving Ground) {stage.value}: training…",
             progress_pct=stage_progress_pct,
             cumulative_trades=pipeline._host.cumulative_trades,
             target_trades=trade_budget_cap,
             ppo_steps=pipeline._host.ppo_steps,
             birth_start_time=pipeline._host.birth_start_time,
             curriculum_stage=stage.value,
-            runway_phase=f"S{runway_stage_index(stage)}",
+            runway_phase=f"PG{runway_stage_index(stage)}",
             birth_exit_winrate=birth_exit_winrate,
         )
 
@@ -209,7 +184,7 @@ def run_certificate_runway_stages(
                     cumulative_trades=pipeline._host.cumulative_trades,
                     target_trades=trade_budget_cap,
                     micro_oos_probe=micro_probe,
-                    runway_phase="S6_probe",
+                    runway_phase="PG2_probe",
                 )
                 if not ok:
                     logger.info("birth.runway.s6_sanity_retry reason=%s", probe_msg)
@@ -241,7 +216,7 @@ def run_certificate_runway_stages(
                     cumulative_trades=pipeline._host.cumulative_trades,
                     target_trades=trade_budget_cap,
                     micro_oos_probe=micro_probe,
-                    runway_phase="S7_ep_probe",
+                    runway_phase="PG3_ep_probe",
                 )
                 if not ok:
                     logger.info("birth.runway.s7_ep_retry reason=%s", probe_msg)

@@ -26,13 +26,13 @@ function surfaceToPhase(surface: AppSurface): AppPhase {
 }
 
 function birthReady(payload: OnboardingPayload): boolean {
-  if (payload.birth.certificate_ok === false) {
-    return false;
-  }
-  if (payload.birth.certificate_ok === true) {
+  if (payload.birth.birth_exit_ok === true) {
     return true;
   }
-  return payload.birth.artifacts_ok;
+  if (payload.birth.birth_exit_ok === false) {
+    return false;
+  }
+  return false;
 }
 
 /** Legacy fallback when backend omits app_surface (backward compat, max one release). */
@@ -139,6 +139,10 @@ export function resolvePhaseOnRefreshError(
     return "wizard";
   }
   if (priorPhase === "loading") {
+    // Cold start: stay on readiness cover until SSOT arrives (no half-wizard flash).
+    if (!lastPayload) {
+      return "loading";
+    }
     return "wizard";
   }
   if (priorPhase === "cockpit" || lastPayload?.app_surface === "deck") {

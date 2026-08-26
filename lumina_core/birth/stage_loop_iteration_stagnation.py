@@ -58,13 +58,38 @@ class StageLoopIterationStagnationMixin:
                 )
         self.stagnation_count = 0
         if len(self.host.buffer) >= 80:
-            self.host.current_policy = self.host.ppo_trainer.update_from_buffer(
-                buffer=self.host.buffer,
-                timesteps=self.ppo_steps_per_update,
-                birth_phase=True,
-            )
-            self.host.ppo_steps += self.ppo_steps_per_update
-            self._capture_trainer_policy_entropy()
+            # Stage-2: never destroy restored peak weights via stagnation train.
+            skip_ppo = False
+            try:
+                from lumina_core.birth.curriculum import CurriculumStage
+                from lumina_core.birth.stage2_peak_capture import (
+                    should_freeze_ppo_after_restore,
+                )
+
+                if self.stage == CurriculumStage.STAGE2_RANGE:
+                    peak_st = getattr(self, "stage2_peak_state", None)
+                    if peak_st is not None:
+                        freeze, freeze_r = should_freeze_ppo_after_restore(
+                            peak_st,
+                            cfg=self.cur_cfg,
+                            stage_trades=int(self.stage_trades),
+                        )
+                        if freeze:
+                            skip_ppo = True
+                            logger.info(
+                                "birth.stage2.ppo_update_skipped_stagnation reason=%s",
+                                freeze_r,
+                            )
+            except Exception as exc:
+                logger.debug("birth.stage2.stagnation_ppo_gate_failed: %s", exc)
+            if not skip_ppo:
+                self.host.current_policy = self.host.ppo_trainer.update_from_buffer(
+                    buffer=self.host.buffer,
+                    timesteps=self.ppo_steps_per_update,
+                    birth_phase=True,
+                )
+                self.host.ppo_steps += self.ppo_steps_per_update
+                self._capture_trainer_policy_entropy()
         return "fallthrough", None
 
     def _iteration_handle_max_rollouts(self) -> tuple[LoopAction, dict[str, Any] | None]:
@@ -95,12 +120,17 @@ class StageLoopIterationStagnationMixin:
                     self.attempt = 0
                     return "continue", None
                 force_wr = stage_winrate(self.stage_wins, self.stage_trades)
+                evo_max = self._evolution_max_steps()
                 if self.plateau_state.active and should_trigger_plateau_evolution_step(
                     self.plateau_state,
                     cfg=self.cur_cfg,
                     current_winrate=force_wr,
                     allow_start=False,
                     pass_target=self._plateau_pass_target(),
+                    stage_trades=self.stage_trades,
+                    required=self.required,
+                    max_steps=evo_max,
+                    stage=self.stage,
                 ) and self._try_plateau_evolution(failure_key=force_failure_key):
                     self.attempt = 0
                     return "continue", None
@@ -112,6 +142,18 @@ class StageLoopIterationStagnationMixin:
                 ):
                     self.attempt = 0
                     return "continue", None
+                from lumina_core.birth.plateau_escalator import evolution_ladder_exhausted
+
+                if self.plateau_state.active and evolution_ladder_exhausted(
+                    self.plateau_state,
+                    stage=self.stage,
+                    max_steps=evo_max,
+                ):
+                    if self._try_evolution_exhausted_remediation(
+                        failure_key=force_failure_key
+                    ):
+                        self.attempt = 0
+                        return "continue", None
                 plateau_terminal = self._plateau_terminal_pending(failure_key=force_failure_key)
                 if plateau_terminal is not None:
                     self.cur_cfg.rollout_chunk_trades = self.original_rollout_chunk

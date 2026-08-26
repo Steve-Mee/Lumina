@@ -175,18 +175,21 @@ def test_resume_stalled_stage_blocked_by_freeze(
 
 
 @pytest.mark.unit
-def test_expand_and_resume_birth_blocked_by_freeze(
+def test_expand_blocked_by_freeze_explicit_resume_accepts_champion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Silent expand stays freeze-blocked; Continue-from-checkpoint accepts champion."""
     svc = _mock_svc_with_progress({"policy_swarm_rejected_no_lift": True})
+    svc.checkpoint_file = MagicMock()
+    svc.checkpoint_file.exists.return_value = True
     monkeypatch.setattr(
         "lumina_launcher.services.birth_runner_recovery._checkpoint_stage_metrics",
         lambda _svc: {},
     )
-    started: list[bool] = []
+    expand_starts: list[bool] = []
 
     def _no_start(*_a: Any, **_k: Any) -> dict[str, str]:
-        started.append(True)
+        expand_starts.append(True)
         return {"status": "started"}
 
     monkeypatch.setattr(
@@ -194,8 +197,23 @@ def test_expand_and_resume_birth_blocked_by_freeze(
         _no_start,
     )
     assert expand_and_retry_stalled_stage(svc)["status"] == "rejected"
-    assert resume_birth(svc)["status"] == "rejected"
-    assert started == []
+    assert expand_starts == []
+
+    accept_calls: list[dict[str, Any]] = []
+
+    def _accept(_svc: Any, **kwargs: Any) -> dict[str, str]:
+        accept_calls.append(dict(kwargs))
+        return {"status": "started", "message": "champion accepted — continuing"}
+
+    monkeypatch.setattr(
+        "lumina_launcher.services.birth_runner_recovery.accept_champion_birth",
+        _accept,
+    )
+    result = resume_birth(svc, target_trades=25000)
+    assert result["status"] == "started"
+    assert accept_calls, "explicit resume must accept frozen champion"
+    assert accept_calls[0].get("start") is True
+    assert accept_calls[0].get("source") == "resume_checkpoint"
 
 
 @pytest.mark.unit
@@ -246,3 +264,120 @@ def test_champion_freeze_active_for_svc_checkpoint_fallback(
         lambda _svc: {"swarm_rejected_no_lift": True},
     )
     assert champion_freeze_active_for_svc(svc) is True
+
+
+@pytest.mark.unit
+def test_accept_champion_resolves_terminal_freeze(tmp_path: Path) -> None:
+    from lumina_core.birth.checkpoint import read_checkpoint_payload, write_checkpoint_payload
+    from lumina_core.birth.terminal_freeze import (
+        build_terminal_freeze,
+        extract_terminal_freeze,
+        freeze_blocks_curriculum_grind,
+    )
+    from lumina_launcher.services.birth_runner_recovery import accept_champion_birth
+
+    freeze = build_terminal_freeze(
+        reason="phoenix_cycle",
+        curriculum_stage="stage1_trend",
+        stages_passed=[],
+        swarm_rejected_no_lift=True,
+        next_action="accept_champion_or_wipe",
+        stage_trades=1300,
+        stage_wins=364,
+    )
+    assert freeze_blocks_curriculum_grind(freeze) is True
+    write_checkpoint_payload(
+        tmp_path,
+        {
+            "phase": "phoenix_cycle",
+            "curriculum_stage": "stage1_trend",
+            "stage_metrics": {"terminal_freeze": freeze, "stage_trades": 1300},
+        },
+    )
+    svc = MagicMock()
+    svc.workspace_root = tmp_path
+    svc._load_progress.return_value = {
+        "stage": "paused",
+        "phase": "paused",
+        "swarm_rejected_no_lift": True,
+        "terminal_freeze": freeze,
+        "curriculum_stage": "stage1_trend",
+        "cumulative_trades": 1300,
+        "target_trades": 25000,
+    }
+    svc.checkpoint_resumable.return_value = True
+    result = accept_champion_birth(svc, target_trades=25000, start=False, source="test")
+    assert result["status"] == "champion_accepted"
+    payload = read_checkpoint_payload(tmp_path) or {}
+    restored = extract_terminal_freeze(payload)
+    assert restored is not None
+    assert freeze_blocks_curriculum_grind(restored) is False
+    assert restored.get("resolved_action") == "accept_champion"
+
+
+@pytest.mark.unit
+def test_explicit_resume_resolves_terminal_freeze_when_swarm_already_accepted(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from lumina_core.birth.checkpoint import read_checkpoint_payload, write_checkpoint_payload
+    from lumina_core.birth.terminal_freeze import (
+        build_terminal_freeze,
+        extract_terminal_freeze,
+        freeze_blocks_curriculum_grind,
+    )
+    from lumina_launcher.services.birth_runner_recovery import resume_birth
+
+    freeze = build_terminal_freeze(
+        reason="phoenix_cycle",
+        curriculum_stage="stage1_trend",
+        stages_passed=[],
+        swarm_rejected_no_lift=False,
+        swarm_champion_accepted=True,
+        next_action="accept_champion_or_wipe",
+        stage_trades=1300,
+        stage_wins=364,
+    )
+    write_checkpoint_payload(
+        tmp_path,
+        {
+            "phase": "phoenix_cycle",
+            "curriculum_stage": "stage1_trend",
+            "stage_metrics": {
+                "terminal_freeze": freeze,
+                "swarm_champion_accepted": True,
+            },
+        },
+    )
+    svc = MagicMock()
+    svc.workspace_root = tmp_path
+    svc.checkpoint_file = tmp_path / "state" / "lumina_birth_checkpoint.json"
+    svc._load_progress.return_value = {
+        "stage": "paused",
+        "phase": "paused",
+        "swarm_rejected_no_lift": False,
+        "swarm_champion_accepted": True,
+        "terminal_freeze": freeze,
+        "curriculum_stage": "stage1_trend",
+    }
+    started: list[bool] = []
+
+    def _start(*_a: Any, **_k: Any) -> dict[str, str]:
+        started.append(True)
+        payload = read_checkpoint_payload(tmp_path) or {}
+        restored = extract_terminal_freeze(payload)
+        assert restored is not None
+        assert freeze_blocks_curriculum_grind(restored) is False
+        return {"status": "started"}
+
+    monkeypatch.setattr(
+        "lumina_launcher.services.birth_runner_start.clear_birth_pause_flags",
+        lambda _svc: None,
+    )
+    monkeypatch.setattr(
+        "lumina_launcher.services.birth_runner_start.start_birth",
+        _start,
+    )
+    result = resume_birth(svc, target_trades=25000)
+    assert result["status"] == "started"
+    assert started == [True]

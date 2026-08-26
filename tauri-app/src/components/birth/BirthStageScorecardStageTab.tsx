@@ -1,24 +1,55 @@
 /**
  * Stage tab — Stage goal checklist (all pass gates) + lean ops tiles.
  * Pass-gate metrics live only in Stage goal (no duplicate full-height cards).
+ * EdgeScore lives on the fitness landscape — not repeated here.
  */
 import type { BirthProgressPayload } from "@/lib/birthClient";
 import { formatBirthChampionEdgeScore } from "@/lib/birth/birthMetricFormat";
 import { buildStagePassChecklist } from "@/lib/birth/birthStagePassChecklist";
+import { presentBlockerDetail } from "@/lib/birth/birthStageScorecardEdgescore";
 import {
   formatSwarmTournamentLiftLabel,
   isSwarmRejectedNoLift,
 } from "@/lib/birth/birthTournamentNaming";
 import type { StageScorecardModel } from "@/lib/birthPhaseModel";
+import { CONDITION_VALUE_TEXT_CLASS } from "@/lib/conditionTone";
+import { cn } from "@/lib/utils";
 import { BirthFieldCard } from "@/components/birth/BirthFieldCard";
 import { BirthStagePassChecklistCard } from "@/components/birth/BirthStagePassChecklistCard";
-import {
-  edgeScoreConditionTone,
-  formatDataWindow,
-  formatMetricTarget,
-  formatMetricValue,
-  isGoalMet,
-} from "@/components/birth/BirthStageScorecardFormat";
+import { formatDataWindow } from "@/components/birth/BirthStageScorecardFormat";
+
+function BirthBlockerGateCard({
+  label,
+  detail,
+}: {
+  label?: string | null;
+  detail: string;
+}) {
+  const presented = presentBlockerDetail(detail);
+  return (
+    <div
+      className="risk-envelope-field-card birth-field-card birth-blocker-gate birth-intel-field-span birth-stage-blocker-compact"
+      data-tone="danger"
+      title={presented.raw}
+    >
+      <div className="birth-blocker-gate__head">
+        <p className="risk-envelope-field-label mb-0">{label ?? "Blocking metric"}</p>
+        <p
+          className={cn(
+            "birth-blocker-gate__value font-mono tabular-nums tracking-tight",
+            CONDITION_VALUE_TEXT_CLASS.danger,
+          )}
+        >
+          {presented.value}
+        </p>
+      </div>
+      <p className="birth-blocker-gate__kicker">{presented.title}</p>
+      <p className="risk-envelope-field-hint birth-blocker-gate__hint mb-0">
+        {presented.hint}
+      </p>
+    </div>
+  );
+}
 
 export function StageTabFields({
   scorecard,
@@ -32,13 +63,6 @@ export function StageTabFields({
     scorecard.heartbeatSec != null
       ? `${scorecard.heartbeatSec}s ago`
       : "Awaiting update";
-  const passMetricHint = formatMetricTarget(scorecard);
-  const dataHint =
-    scorecard.wallClockTradesPerMin != null
-      ? `~${scorecard.wallClockTradesPerMin.toLocaleString()} trades/min`
-      : undefined;
-  const goalMet = isGoalMet(scorecard);
-  const edgeTone = edgeScoreConditionTone(scorecard, { goalMet });
   const champion = formatBirthChampionEdgeScore(progress ?? {});
   const swarmReject = isSwarmRejectedNoLift(progress);
   const tournamentLift = formatSwarmTournamentLiftLabel(progress);
@@ -57,23 +81,12 @@ export function StageTabFields({
       {passChecklist ? <BirthStagePassChecklistCard checklist={passChecklist} /> : null}
 
       {scorecard.blockerDetail ? (
-        <BirthFieldCard
-          label={scorecard.blockerLabel ?? "Blocking metric"}
-          value={scorecard.blockerDetail}
-          hint="Primary fail gate"
-          tone="danger"
-          className="birth-intel-field-span birth-stage-blocker-compact"
+        <BirthBlockerGateCard
+          label={scorecard.blockerLabel}
+          detail={scorecard.blockerDetail}
         />
       ) : null}
 
-      {/* Composite score — detail; individual gates are in Stage goal only */}
-      <BirthFieldCard
-        label="EdgeScore"
-        value={formatMetricValue(scorecard)}
-        hint={passMetricHint || undefined}
-        tone={edgeTone}
-        tip="Composite of the Stage goal gates (not the champion freeze)."
-      />
       <BirthFieldCard
         label="Champion"
         value={champion.value}
@@ -112,7 +125,11 @@ export function StageTabFields({
       <BirthFieldCard
         label="Data window"
         value={formatDataWindow(scorecard)}
-        hint={dataHint}
+        hint={
+          scorecard.wallClockTradesPerMin != null
+            ? `~${scorecard.wallClockTradesPerMin.toLocaleString()} trades/min`
+            : undefined
+        }
       />
       {scorecard.provisionalPass ? (
         <BirthFieldCard

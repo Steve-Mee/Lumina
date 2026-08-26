@@ -13,7 +13,8 @@ The router is mounted in lumina_os/backend/app.py via:
     app.include_router(monitoring_router)
     set_observability_service(obs_instance)
 
-/metrics is intentionally unauthenticated to support standard Prometheus scraping.
+/metrics: loopback unauthenticated (Prometheus scrape on localhost).
+Off-loopback requires API key unless LUMINA_METRICS_PUBLIC=true (explicit ops opt-in).
 /metrics/json and /metrics/history require an API key (standard app auth).
 """
 
@@ -25,7 +26,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, HTTPException, Header, Query, Request
 from fastapi.responses import PlainTextResponse
 
 try:
@@ -82,17 +83,37 @@ from lumina_os.backend.monitoring_endpoints_helpers import (
 
 
 
-# ── Prometheus scrape endpoint (no auth – standard Prometheus convention) ─────
+# ── Prometheus scrape endpoint (loopback free; off-loopback gated — ADR-0041) ─
 
 
 @router.get(
     "/metrics",
     response_class=PlainTextResponse,
     summary="Prometheus metrics",
-    description="Return all Lumina metrics in Prometheus text exposition format (v0.0.4).",
+    description=(
+        "Prometheus text exposition (v0.0.4). Loopback: no auth. "
+        "Off-loopback: API key required unless LUMINA_METRICS_PUBLIC=true."
+    ),
     include_in_schema=True,
 )
-async def get_prometheus_metrics() -> PlainTextResponse:
+async def get_prometheus_metrics(
+    request: Request,
+    x_api_key: Optional[str] = Header(None),
+) -> PlainTextResponse:
+    try:
+        from lumina_core.cyber_sentinel import is_loopback_host
+
+        client_host = (request.client.host if request.client else "") or ""
+        loopback = is_loopback_host(client_host)
+    except Exception:
+        loopback = True
+    public = str(os.getenv("LUMINA_METRICS_PUBLIC", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    if not loopback and not public:
+        _check_api_key(x_api_key)
     obs = _require_service()
     return PlainTextResponse(
         content=obs.prometheus_text(),

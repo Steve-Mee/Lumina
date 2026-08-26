@@ -95,6 +95,7 @@ class EngineTrajectoryMixin:
                 intra_state,
                 pool_size=pool_size,
                 rng=rng,
+                chrono_source=list(stage_ticks or train_ticks or []),
             )
         if (
             stage == CurriculumStage.STAGE2_RANGE
@@ -114,17 +115,45 @@ class EngineTrajectoryMixin:
                 intra_s2_state,
                 pool_size=pool_size,
                 rng=rng,
+                chrono_source=list(stage_ticks or train_ticks or []),
             )
         if escalation_level >= 2:
-            pool = list(train_ticks)
+            # Contiguous windows from train — no full shuffle (geometry/path poison).
+            from lumina_core.birth.curriculum_intra import _stamp_and_concat_windows
+
+            series = list(train_ticks or stage_ticks or [])
+            if len(series) < 64:
+                return series
             rng = random.Random(attempt + escalation_level * 17)
-            rng.shuffle(pool)
-            return pool
+            win = 256
+            n_win = max(1, min(32, (len(series) + win - 1) // win))
+            max_st = max(0, len(series) - win)
+            windows: list[list[dict]] = []
+            for _ in range(n_win):
+                st = int(rng.randint(0, max_st)) if max_st > 0 else 0
+                windows.append([dict(t) for t in series[st : st + win]])
+            rng.shuffle(windows)
+            return _stamp_and_concat_windows(windows, size=n_win * win)
         if escalation_level >= 1 and len(stage_ticks) < len(train_ticks):
+            # Append contiguous train segment with explicit segment break at merge.
+            from lumina_core.birth.birth_trade_geometry import (
+                SEGMENT_BREAK_KEY,
+                SEGMENT_ID_KEY,
+            )
+
             extra = list(train_ticks)
-            rng = random.Random(attempt + 3)
-            rng.shuffle(extra)
-            merged = list(stage_ticks) + extra[: max(len(stage_ticks), len(train_ticks) // 4)]
+            take = max(len(stage_ticks), len(train_ticks) // 4)
+            merged: list[dict] = []
+            for t in stage_ticks:
+                row = dict(t)
+                row[SEGMENT_ID_KEY] = 0
+                merged.append(row)
+            for j, t in enumerate(extra[:take]):
+                row = dict(t)
+                row[SEGMENT_ID_KEY] = 1
+                if j == 0:
+                    row[SEGMENT_BREAK_KEY] = True
+                merged.append(row)
             return merged
         return list(stage_ticks)
 

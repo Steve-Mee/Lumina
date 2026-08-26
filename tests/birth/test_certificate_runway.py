@@ -11,10 +11,10 @@ from lumina_core.birth.checkpoint import load_checkpoint_state, save_checkpoint
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import (
     CurriculumStage,
-    evaluate_stage_pass,
     ordered_runway_stages,
     stage_pass_trades,
 )
+from lumina_core.maturity.post_birth_skill_gates import economic_viability, risk_discipline
 from lumina_core.birth.progress import write_birth_progress
 from lumina_core.birth.purged_split import purged_validation_split
 from lumina_core.birth.runway import micro_oos_sanity_passed, ticks_for_runway_stage
@@ -43,7 +43,10 @@ def test_purged_validation_split_holdout_untouched() -> None:
 
 
 @pytest.mark.unit
-def test_runway_stage5_pass_gate() -> None:
+def test_runway_stage5_is_not_a_birth_pass_gate() -> None:
+    """Former S5 profit lives in Playground economic_viability, not evaluate_stage_pass."""
+    from lumina_core.birth.curriculum import evaluate_stage_pass
+
     cfg = BirthCurriculumConfig()
     required = stage_pass_trades(CurriculumStage.STAGE5_PROFIT_VAL, cfg)
     result = evaluate_stage_pass(
@@ -56,11 +59,17 @@ def test_runway_stage5_pass_gate() -> None:
         target_trades=cfg.stage5_profit_val_trades,
         cfg=cfg,
     )
-    assert result.passed is True
+    assert result.passed is False
+    assert "legacy_intra_birth_stage_rejected" in result.message
+    eco = economic_viability(mean_r=0.05, skill_wr=0.42, breakeven_wr=0.40)
+    assert eco.passed is True
+    assert eco.home_phase == "playground"
 
 
 @pytest.mark.unit
-def test_runway_stage6_sharpe_gate() -> None:
+def test_runway_stage6_is_apprenticeship_risk_gate() -> None:
+    from lumina_core.birth.curriculum import evaluate_stage_pass
+
     cfg = BirthCurriculumConfig()
     required = stage_pass_trades(CurriculumStage.STAGE6_RISK_DISCIPLINE, cfg)
     result = evaluate_stage_pass(
@@ -75,7 +84,11 @@ def test_runway_stage6_sharpe_gate() -> None:
         stage_val_sharpe=0.25,
         stage_val_max_drawdown_pct=10.0,
     )
-    assert result.passed is True
+    assert result.passed is False
+    assert "legacy_intra_birth_stage_rejected" in result.message
+    risk = risk_discipline(sharpe=0.25, max_dd_pct=10.0)
+    assert risk.passed is True
+    assert risk.home_phase == "apprenticeship"
 
 
 @pytest.mark.unit
@@ -101,6 +114,13 @@ def test_ticks_for_runway_stage_uses_validation_slice() -> None:
         validation_ticks=val,
     )
     assert s5 == val
+    empty = ticks_for_runway_stage(
+        CurriculumStage.STAGE5_PROFIT_VAL,
+        train_ticks=train,
+        holdout_ticks=holdout,
+        validation_ticks=[],
+    )
+    assert empty == []
 
 
 @pytest.mark.unit

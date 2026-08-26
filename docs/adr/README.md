@@ -49,8 +49,16 @@ De kernmissie (extreme intellectual honesty, rigoureuze testing, radicale creati
 | 0033 | Trading Code Evolution Prototype (sandbox + Twin + constitution) | Accepted | 2026-07-15 | [0033-trading-code-evolution-prototype.md](./0033-trading-code-evolution-prototype.md) |
 | 0034 | Phase 2 autonomy foundation | Accepted | — | [0034-phase2-autonomy-foundation.md](./0034-phase2-autonomy-foundation.md) |
 | 0035 | Execution Fabric gRPC (supersedes WS wire protocol) | Accepted | 2026-07-20 | [0035-execution-fabric-grpc.md](./0035-execution-fabric-grpc.md) |
-| 0036 | Birth exit vs maturation continuum (survival ≠ Perfect Birth / REAL); intra-Birth Stage 2/3 early-quality floors → [birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md) | Accepted | 2026-08-06 | [0036-birth-exit-vs-maturation.md](./0036-birth-exit-vs-maturation.md) |
+| 0036 | Birth exit vs maturation continuum (refined by ADR-0046: exit = five Foundation receipts + fitness, not artifacts/WR/cert) → [birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md) | Accepted | 2026-08-06 | [0036-birth-exit-vs-maturation.md](./0036-birth-exit-vs-maturation.md) |
 | 0037 | Self-play lab (Phase 0 scaffold; no birth-loop apply) | Accepted | 2026-08-07 | [0037-self-play-design.md](./0037-self-play-design.md) |
+| 0038 | One Twin DNA · Dual Authority (SIM explore vs REAL values) | Accepted | 2026-08-10 | [0038-twin-one-dna-dual-authority.md](./0038-twin-one-dna-dual-authority.md) |
+| 0039 | Fabric Link Health SSOT (Live ≠ Proof) | Accepted | 2026-08-10 | [0039-fabric-link-health-ssot.md](./0039-fabric-link-health-ssot.md) |
+| 0040 | Fabric-only foundation, emergency opt-in, Sentinel domain | Accepted | 2026-08-11 | [0040-fabric-only-foundation-and-sentinel.md](./0040-fabric-only-foundation-and-sentinel.md) |
+| 0041 | Sentinel Agent — observe → contain (network/token) | Accepted | 2026-08-11 | [0041-sentinel-agent-observe-contain.md](./0041-sentinel-agent-observe-contain.md) |
+| 0042 | Identity, PKI/mTLS foundation, encryption-at-rest | Accepted | 2026-08-11 | [0042-identity-pki-crypto-at-rest.md](./0042-identity-pki-crypto-at-rest.md) |
+| 0043 | Telegram I/O SSOT (journal + single door, no Twin diary spam) | Accepted | 2026-08-13 | [0043-telegram-io-ssot.md](./0043-telegram-io-ssot.md) |
+| 0045 | Champion/Challenger self-evolution ladder (overlay, venue, council, cutover) | Accepted | 2026-08-14 | [0045-champion-challenger-evolution-ladder.md](./0045-champion-challenger-evolution-ladder.md) |
+| 0046 | Birth Foundation: evolvable plant, sequential 1/5–5/5, process-R + first-touch (WR 20/35/40 pass retired) | Accepted | 2026-08-14 | [0046-birth-foundation-evolvable-plant.md](./0046-birth-foundation-evolvable-plant.md) |
 
 ## Legacy notitie
 

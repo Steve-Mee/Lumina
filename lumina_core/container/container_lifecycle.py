@@ -114,6 +114,16 @@ class ApplicationContainerLifecycleMixin:
         )
         self.engine._sync_services_registry()
 
+        # Always-on Fabric link when native NT is the live provider (24/7 keep-alive).
+        try:
+            from lumina_core.broker.ninjatrader.fabric_link_supervisor import (
+                ensure_fabric_link_supervisor,
+            )
+
+            ensure_fabric_link_supervisor(self.config, mode_context="sim")
+        except Exception:
+            logger.debug("fabric.supervisor.bootstrap_skipped", exc_info=True)
+
     def _ensure_runtime_paths(self) -> None:
         file_paths = [
             Path(self.config.state_file),
@@ -182,7 +192,9 @@ class ApplicationContainerLifecycleMixin:
         ConfigLoader.validate_startup(raise_on_error=True)
 
         if str(getattr(self.config, "broker_backend", "paper")).strip().lower() == "live":
-            live_provider = str(getattr(self.config, "broker_live_provider", "crosstrade") or "crosstrade").strip().lower()
+            live_provider = str(
+                getattr(self.config, "broker_live_provider", "ninjatrader") or "ninjatrader"
+            ).strip().lower()
             if live_provider == "crosstrade" and not (
                 self.config.broker_crosstrade_api_key or self.config.crosstrade_token
             ):

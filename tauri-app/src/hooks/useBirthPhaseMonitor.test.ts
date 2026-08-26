@@ -27,10 +27,11 @@ describe("useBirthPhaseMonitor cold session probe", () => {
 
   it("locks Activate and surfaces loading recovery until session is known", () => {
     expect(deckSource).toContain("sessionProbePending");
-    expect(deckSource).toContain("Loading session state");
-    expect(deckSource).toContain("Activate stays locked");
-    expect(deckSource).toContain("Loading Resume · Wipe birth data · Full wipe");
     expect(deckSource).toContain("sessionLocked");
-    expect(deckSource).toContain("disabled={busy || sessionLocked}");
+    // Genesis presentation SSOT — one banner + CTA path inside the glass deck.
+    expect(deckSource).toContain("resolveGenesisDeckPresentation");
+    expect(deckSource).toContain("Start clean");
+    expect(deckSource).toContain("RETRY BIRTH");
+    expect(deckSource).toContain("birth-distress-callout");
   });
 });

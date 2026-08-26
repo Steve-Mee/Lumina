@@ -4,6 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from lumina_core.birth.birth_certificate import BirthCertificateThresholds
+from lumina_core.birth.foundation_history import (
+    FOUNDATION_HISTORY_EXPAND_STEPS,
+    FOUNDATION_HISTORY_MAX_DAYS,
+)
 
 BRO_ENGINE_VERSION = "BRO-v2"
 
@@ -42,6 +46,13 @@ class BirthCurriculumConfig:
     stage1_trend_trades: int = 2000
     stage2_range_trades: int = 3000
     stage3_mixed_trades: int = 5000
+    stage4_viable_trades: int = 800
+    stage5_probe_trades: int = 200
+    foundation_stage1_min_trades: int = 150
+    foundation_stage2_min_trades: int = 250
+    foundation_stage3_min_trades: int = 400
+    foundation_stage4_min_trades: int = 100
+    foundation_stage5_min_trades: int = 50
     stage_pass_trade_pct: float = 0.10
     stage_pass_min_trades: int = 100
     stage4_polish_ppo_steps: int = 50_000
@@ -55,7 +66,7 @@ class BirthCurriculumConfig:
     oracle_scan_stride: int = 5
     oracle_patterns_per_stage: int = 5000
     oracle_max_hold_bars: int = 120
-    data_expansion_steps: tuple[int, ...] = (90, 180, 365, 730)
+    data_expansion_steps: tuple[int, ...] = FOUNDATION_HISTORY_EXPAND_STEPS
     stagnation_rollouts_before_expand: int = 5
     curriculum_ppo_timesteps: int = 3_000
     polish_ppo_timesteps: int = 50_000
@@ -67,7 +78,7 @@ class BirthCurriculumConfig:
     allow_provisional_pass: bool = False
     # Stage3 mixed foundation floors (birth baseline before evolution / OOS cert).
     stage3_winrate_floor: float = 0.35
-    stage3_hold_ratio_max: float = 0.70
+    stage3_hold_ratio_max: float = 0.70  # diagnostic / HUD only — not a Stage-3 pass gate
     stage3_use_rolling_pass: bool = True
     certified_max_rollouts_per_stage: int = 200
     certified_stage_stall_wall_sec: int = 14_400
@@ -163,6 +174,80 @@ class BirthCurriculumConfig:
     stage2_expectancy_floor: float = -0.15
     stage2_expectancy_quality_max_steps: int = 4
     stage2_expectancy_swarm_defer_steps: int = 2
+    # Stage2 cold bootstrap: oracle net-edge harvest + PPO warm before free rollout.
+    stage2_cold_bootstrap_policy: bool = True
+    stage2_oracle_bootstrap_steps: int = 5000
+    # Min net PnL (USD after cost) for oracle winners; 0 → use geometry cost floor only.
+    stage2_min_net_oracle_pnl: float = 0.50
+    # Detox Stage1 prior: reinit action/value head, keep feature encoder.
+    stage2_reinit_action_head: bool = True
+    stage2_bootstrap_min_buffer_reward: float = 0.0
+    stage2_bootstrap_max_buffer: int = 4000
+    # Pilot grade: FORCE_OPEN plant trades excluded from expectancy pass.
+    stage2_skill_metric_policy_only: bool = True
+    stage2_skill_min_trades: int = 150
+    # Stage-2 rolling pass window (shorter than Stage-1 500 — peak capture truth).
+    stage2_rolling_pass_window: int = 150
+    stage2_rolling_pass_min_covered: int = 80
+    # Peak capture / near-miss / restore (P0–P1) — floors unchanged.
+    stage2_peak_capture_enabled: bool = True
+    # Chunk scale: capture first green hop (live 36% @ 50 was lost with min=80).
+    stage2_peak_min_trades: int = 50
+    stage2_near_miss_exp_delta: float = 0.02  # within 2pp of −0.15 on WR−0.50 scale
+    stage2_peak_restore_enabled: bool = True
+    stage2_peak_collapse_wr_drop: float = 0.05
+    stage2_peak_restore_min_trades_since_peak: int = 50
+    stage2_peak_restore_cooldown_trades: int = 80
+    # PR-L: flash green min sample after first hop above floor.
+    stage2_flash_green_min_trades: int = 50
+    # Durable green: ≥N consecutive green chunks (or life/rolling) before arm/thrash.
+    stage2_flash_durable_min_chunks: int = 2
+    # Hold clamps: geometry-respecting defaults (was 35/40 — caused stop magnet).
+    stage2_flash_max_hold_bars: int = 100
+    stage2_peak_block_phoenix_enabled: bool = True
+    stage2_peak_phoenix_min_restores: int = 1
+    stage2_peak_phoenix_min_quality_rollouts: int = 4
+    stage2_swarm_block_if_peak_wr_above: float = 0.28  # mid-30s peaks (was 0.33 — never armed)
+    # Exit forensics: block swarm/phoenix while stop-magnet active.
+    stage2_exit_forensics_block_swarm: bool = True
+    stage2_exit_forensics_stop_target_max: float = 2.5
+    stage2_exit_forensics_target_share_min: float = 0.30
+    stage2_exit_forensics_min_decisive: int = 40
+    # P2: stricter oracle inject under quality / peak protect / anti-edge.
+    stage2_quality_inject_max_patterns: int = 200
+    stage2_peak_inject_max_patterns: int = 120
+    stage2_beat_random_inject_max_patterns: int = 80
+    # Under expectancy stall + under-band: shorter max-hold (occupancy free).
+    stage2_stall_max_hold_bars: int = 80
+    # In-band quality: respect geometry (~120); never 35-bar flash clamp.
+    stage2_quality_max_hold_bars: int = 120
+    # When stop:target ratio bad under-band, clamp hold (still ≥80 quality floor).
+    stage2_exit_magnet_max_hold_bars: int = 80
+    stage2_exit_magnet_stop_target_ratio: float = 2.5
+    # In-band FORCE_EXIT under exp gap. Default OFF (geometry time-stop, not flatten).
+    stage2_force_exit_on_expectancy_gap: bool = False
+    # Early-quality: freeze/restore instead of wall.force spam.
+    stage2_early_quality_freeze_enabled: bool = True
+    stage2_early_quality_wall_cooldown_sec: float = 300.0
+    # PR-G: peak cleared floor before volume — arm graduation protect (floors unchanged).
+    stage2_peak_grad_enabled: bool = True
+    stage2_peak_grad_min_trades: int = 200
+    # Durable collapse drop (was 0.03 — over-restored hop noise).
+    stage2_peak_grad_collapse_wr_drop: float = 0.05
+    # Finish hold = quality hold (geometry path); no early FORCE_EXIT theater.
+    stage2_finish_max_hold_bars: int = 100
+    # After restore: freeze PPO briefly (stop destroy-after-restore), then unstick.
+    stage2_ppo_freeze_after_restore_enabled: bool = True
+    stage2_ppo_freeze_rollouts_after_restore: int = 3
+    # Hard unstick: never freeze learning longer than this many stage trades.
+    stage2_ppo_freeze_trades_after_restore: int = 120
+    # Skip PPO on clearly toxic large chunks (improving chunks always allowed).
+    stage2_ppo_quality_gate_enabled: bool = True
+    stage2_ppo_quality_min_chunk_wr: float = 0.26
+    # Flash-green quality lock (42% hop): freeze PPO until lifetime ≥ 30%.
+    stage2_quality_lock_enabled: bool = True
+    stage2_quality_lock_chunk_wr: float = 0.36
+    stage2_quality_lock_exp_floor: float = -0.14
     # Birth/SIM: Twin may accept_champion on freeze (never wipe, never REAL).
     birth_twin_freeze_resolve_enabled: bool = True
     # Birth = survival (breathe), not pro daytrader. Skill floors apply later (Playground+).
@@ -170,6 +255,16 @@ class BirthCurriculumConfig:
     birth_survival_wr_floor: float = 0.20
     birth_survival_expectancy_floor: float = -0.50
     birth_plant_soft_block_rate_max_per_1k: float = 100.0
+    # Stage-1 foundation (learning target ≠ pass floor). Grow without theater.
+    stage1_foundation_pressure_enabled: bool = True
+    stage1_foundation_target_wr: float = 0.30  # learning aspire; pass stays survival
+    stage1_anti_thrash_wr: float = 0.25  # below this past gate → anti-thrash meta
+    # Stage-1 → Stage-2 hard transfer handoff (umbilical cut).
+    stage1_transfer_handoff_enabled: bool = True
+    stage1_transfer_purge_buffer: bool = True
+    stage1_transfer_keep_buffer_top_pct: float = 0.0  # 0 = full clear
+    stage1_transfer_max_buffer_keep: int = 0
+    stage1_transfer_reinit_action_head: bool = True
     starship_entropy_life_support_enabled: bool = True
     starship_swarm_first_enabled: bool = True
     starship_exploration_burst_multiplier: float = 2.5
@@ -180,10 +275,44 @@ class BirthCurriculumConfig:
     starship_entropy_required_after_ppo_steps: int = 500
     starship_twin_continue_when_full_auto: bool = True
     stage2_edgescore_enabled: bool = True
+    # Durable Stage-2 graduation (A+C): 2× rolling + lifetime ≥ floor−δ.
+    stage2_pass_durable_enabled: bool = True
+    stage2_pass_rolling_streak: int = 2
+    stage2_pass_lifetime_delta: float = 0.05  # life ≥ 30% when floor 35%
+    # Stage-2 → Stage-3 transfer detox.
+    stage2_transfer_handoff_enabled: bool = True
+    stage2_transfer_purge_buffer: bool = True
+    stage2_transfer_keep_buffer_top_pct: float = 0.10
+    stage2_transfer_max_buffer_keep: int = 500
+    stage2_transfer_reinit_action_head: bool = True
+    stage2_transfer_reinit_below_wr: float = 0.32
     stage3_edgescore_enabled: bool = True
+    # Durable Stage-3 graduation: no rolling-only 35% at lifetime 25%.
+    stage3_pass_durable_enabled: bool = True
+    stage3_pass_rolling_streak: int = 2
+    stage3_pass_lifetime_delta: float = 0.05  # life ≥ 30% when floor 35%
+    # Stage-3 occupancy pass: mixed-flat in band (capital preservation).
+    stage3_occupancy_pass_enabled: bool = True
+    stage3_position_flat_min: float = 0.25
+    stage3_position_flat_max: float = 0.75
+    stage3_occupancy_all_ticks: bool = True
+    # Settlement honesty (S2+S3): stop/target/time-stop share vs flatten theater.
+    settlement_honesty_enabled: bool = True
+    settlement_min_decisive_share: float = 0.70
+    # Stage-3 Participation Envelope — wide PASSTHROUGH (no 0.30–0.32 sticky pin).
+    stage3_participation_envelope_enabled: bool = True
+    stage3_participation_min_signals: int = 50
+    stage3_participation_min_dwell_bars: int = 8
+    stage3_participation_band_lo: float = 0.28
+    stage3_participation_band_hi: float = 0.72
+    stage3_participation_hysteresis: float = 0.0
+    stage3_participation_under_band_release_hysteresis: float = 0.0
+    # Same IMU window as Stage 2; pass band stays 25–75%.
+    stage3_occupancy_control_window_bars: int = 500
     evolution_proof_min_trades: int = 500
     evolution_proof_min_winrate_lift: float = 0.05
     evolution_proof_polish_oos_winrate_min: float = 0.45
+    evolution_proof_grandfather_missing: bool = False
     plateau_oracle_distill_top_pct: float = 0.25
     phoenix_reset_min_full_cycles: int = 3
     phoenix_reset_max_winrate: float = 0.30
@@ -207,8 +336,14 @@ class BirthCurriculumConfig:
     stage2_participation_band_hi: float = 0.70
     # Hysteresis for FORCE_* so flat thrash at exact 30/70% does not smother quality.
     stage2_participation_hysteresis: float = 0.02
-    stage2_participation_force_open_stop_pct: float = 0.0075
-    stage2_participation_force_open_target_pct: float = 0.015
+    # Empty-suppress until flat ≥ 0.32 (settle inside exam). In-position HOLD
+    # only below 0.30; 0.30–0.32 in a trade is PASSTHROUGH (not a HOLD puppet).
+    stage2_participation_under_band_release_hysteresis: float = 0.02
+    # Rolling occupancy IMU (control). Pass-gate stays cumulative 30–70%.
+    stage2_occupancy_control_window_bars: int = 500
+    # Defaults match birth micro-geometry; runtime always re-calibrates from ticks.
+    stage2_participation_force_open_stop_pct: float = 0.0012
+    stage2_participation_force_open_target_pct: float = 0.0020
     stage2_participation_force_open_qty_frac: float = 0.15
     policy_rollback_winrate_gap: float = 0.02
     policy_rollback_cooldown_rollouts: int = 8
@@ -219,6 +354,8 @@ class BirthCurriculumConfig:
     intra_stage2_easy_flat_target: float = 0.40
     intra_stage2_easy_stability_window: int = 3
     intra_stage2_easy_percentile: float = 0.40
+    # Easy pool must clear early-quality WR before hard ramp (not flat-only).
+    intra_stage2_easy_winrate_target: float = 0.38
     intra_stage2_hard_percentile: float = 0.40
     stall_remediation_enabled: bool = True
     stall_remediation_max_cycles: int = 3
@@ -241,7 +378,7 @@ class BirthCurriculumConfig:
     phoenix_loop_enabled: bool = True
     phoenix_max_cycles: int = 12
     phoenix_widen_data_after_cycles: int = 3
-    death_spiral_repeat_threshold: int = 4
+    death_spiral_repeat_threshold: int = 3
     death_spiral_novelty_budget: int = 3
 
     # Perfect Birth Phase success criteria (measurable KPIs for graduation to Phase 2)
@@ -278,7 +415,11 @@ class BirthV2Config:
     holdout_pct: float = 0.20
     certificate_thresholds: BirthCertificateThresholds = field(default_factory=BirthCertificateThresholds)
     prefer_real_data_only: bool = True
-    max_real_days: int = 90
+    max_real_days: int = FOUNDATION_HISTORY_MAX_DAYS
+    # C3: fraction of this load's requested days (start/expand rung), never the ceiling.
+    training_window_min_ratio: float = 0.95
+    # When True, short history is allowed only with degraded_data_mode + needs_attention (never silent)
+    allow_degraded_data_mode: bool = False
     ppo_update_timesteps: int = 25_000
     chunk_size: int = 50_000
     trade_budget_cap: int = 10_000

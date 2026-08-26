@@ -1,7 +1,7 @@
 """Birth curriculum stages (ADR-0014) + Stage 1/2 intra curriculum (ADR-0020)."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -14,6 +14,9 @@ class CurriculumStage(str, Enum):
     STAGE1_TREND = "stage1_trend"
     STAGE2_RANGE = "stage2_range"
     STAGE3_MIXED = "stage3_mixed"
+    STAGE4_VIABLE_PLANT = "stage4_viable_plant"
+    STAGE5_PROBE_HANDOFF = "stage5_probe_handoff"
+    # Legacy intra-Birth numbering — parse-compatible, not in ordered_stages().
     STAGE4_POLISH = "stage4_polish"
     STAGE5_PROFIT_VAL = "stage5_profit_val"
     STAGE6_RISK_DISCIPLINE = "stage6_risk_discipline"
@@ -32,6 +35,27 @@ class StageResult:
     range_hold_ratio: float = 0.0
     range_flat_ratio: float = 0.0
     range_round_trips: int = 0
+    closes_stop: int = 0
+    closes_target: int = 0
+    closes_time_stop: int = 0
+    closes_flatten: int = 0
+    closes_unknown: int = 0
+    occupancy: float | None = None
+    median_loss_r: float | None = None
+    mean_r: float | None = None
+    edge: float | None = None
+    p_ft: float | None = None
+    e_mech: float | None = None
+    net_rr: float | None = None
+    unique_calendar_days: int | None = None
+    oos_sharpe: float | None = None
+    oos_dd_pct: float | None = None
+    schema: str = "foundation_v2"
+    settlement_ok: bool = True
+    settlement_share: float = 1.0
+    entropy_alive: bool = True
+    replay_ok: bool = False
+    progress_fields: dict[str, Any] = field(default_factory=dict)
 
 
 def filter_ticks_for_stage(stage: CurriculumStage, ticks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -41,6 +65,8 @@ def filter_ticks_for_stage(stage: CurriculumStage, ticks: list[dict[str, Any]]) 
         return [t for t in ticks if str(t.get("regime", "NEUTRAL")).upper() in {"NEUTRAL", "RANGING"}]
     if stage in {
         CurriculumStage.STAGE3_MIXED,
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        CurriculumStage.STAGE5_PROBE_HANDOFF,
         CurriculumStage.STAGE5_PROFIT_VAL,
         CurriculumStage.STAGE6_RISK_DISCIPLINE,
         CurriculumStage.STAGE7_HOLDOUT_PROFILE,
@@ -56,6 +82,10 @@ def stage_trade_target(stage: CurriculumStage, cfg: BirthCurriculumConfig) -> in
         return cfg.stage2_range_trades
     if stage == CurriculumStage.STAGE3_MIXED:
         return cfg.stage3_mixed_trades
+    if stage == CurriculumStage.STAGE4_VIABLE_PLANT:
+        return int(getattr(cfg, "stage4_viable_trades", 800))
+    if stage == CurriculumStage.STAGE5_PROBE_HANDOFF:
+        return int(getattr(cfg, "stage5_probe_trades", 200))
     if stage == CurriculumStage.STAGE5_PROFIT_VAL:
         return int(getattr(cfg, "stage5_profit_val_trades", 3000))
     if stage == CurriculumStage.STAGE6_RISK_DISCIPLINE:
@@ -66,7 +96,40 @@ def stage_trade_target(stage: CurriculumStage, cfg: BirthCurriculumConfig) -> in
 
 
 def stage_pass_trades(stage: CurriculumStage, cfg: BirthCurriculumConfig) -> int:
-    """Minimum cumulative trades required to graduate a curriculum stage."""
+    """Minimum closed trades required to graduate a foundation stage."""
+    from lumina_core.birth.foundation_metrics import (
+        S1_MIN_TRADES,
+        S2_MIN_TRADES,
+        S3_MIN_TRADES,
+        S4_MIN_TRADES,
+        S5_MIN_TRADES,
+    )
+
+    floors = {
+        CurriculumStage.STAGE1_TREND: (
+            S1_MIN_TRADES,
+            "foundation_stage1_min_trades",
+        ),
+        CurriculumStage.STAGE2_RANGE: (
+            S2_MIN_TRADES,
+            "foundation_stage2_min_trades",
+        ),
+        CurriculumStage.STAGE3_MIXED: (
+            S3_MIN_TRADES,
+            "foundation_stage3_min_trades",
+        ),
+        CurriculumStage.STAGE4_VIABLE_PLANT: (
+            S4_MIN_TRADES,
+            "foundation_stage4_min_trades",
+        ),
+        CurriculumStage.STAGE5_PROBE_HANDOFF: (
+            S5_MIN_TRADES,
+            "foundation_stage5_min_trades",
+        ),
+    }
+    if stage in floors:
+        base, key = floors[stage]
+        return max(int(base), int(getattr(cfg, key, base) or base))
     target = stage_trade_target(stage, cfg)
     if target <= 0:
         return 50
@@ -113,6 +176,8 @@ def graduation_requires_clean_constitution(stage: CurriculumStage) -> bool:
         CurriculumStage.STAGE1_TREND,
         CurriculumStage.STAGE2_RANGE,
         CurriculumStage.STAGE3_MIXED,
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        CurriculumStage.STAGE5_PROBE_HANDOFF,
     }
 
 
@@ -125,11 +190,13 @@ def constitution_blocks_graduation(
 
 
 def ordered_stages() -> list[CurriculumStage]:
+    """Sequential Birth Foundation 1/5–5/5. No polish skip, no intra-Birth runway."""
     return [
         CurriculumStage.STAGE1_TREND,
         CurriculumStage.STAGE2_RANGE,
         CurriculumStage.STAGE3_MIXED,
-        CurriculumStage.STAGE4_POLISH,
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        CurriculumStage.STAGE5_PROBE_HANDOFF,
     ]
 
 
@@ -143,6 +210,7 @@ def dynamic_stages(workspace_root: Path | str | None = None) -> list[dict[str, A
 
 
 def ordered_runway_stages() -> list[CurriculumStage]:
+    """Legacy runway enums — post-Birth proving/cert only, not Birth numbering."""
     return [
         CurriculumStage.STAGE5_PROFIT_VAL,
         CurriculumStage.STAGE6_RISK_DISCIPLINE,
@@ -159,4 +227,6 @@ def is_core_curriculum_stage(stage: CurriculumStage) -> bool:
         CurriculumStage.STAGE1_TREND,
         CurriculumStage.STAGE2_RANGE,
         CurriculumStage.STAGE3_MIXED,
+        CurriculumStage.STAGE4_VIABLE_PLANT,
+        CurriculumStage.STAGE5_PROBE_HANDOFF,
     }

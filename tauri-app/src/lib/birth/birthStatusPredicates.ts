@@ -7,7 +7,8 @@ import {
 import { normalizeToken } from "@/lib/birth/birthModelUtils";
 
 export function isBirthComplete(payload: BirthStatusPayload): boolean {
-  if (payload.certificate_ok === false || payload.artifacts_ok === false) return false;
+  if (payload.birth_exit_ok === false) return false;
+  if (payload.birth_exit_ok !== true) return false;
   const status = normalizeToken(payload.status);
   const stage = normalizeToken(payload.progress?.stage);
   const phase = normalizeToken(payload.progress?.phase);
@@ -124,6 +125,39 @@ export function isBirthCertificateFailed(payload: BirthStatusPayload): boolean {
 export function isBirthFailed(payload: BirthStatusPayload): boolean {
   const status = normalizeToken(payload.status);
   return status === "error" || status === "certificate_failed";
+}
+
+/**
+ * Residual history failure from a previous session (runner not live).
+ * Must not present as a live "Birth interrupted" panic before Fabric is up.
+ */
+export function isBirthResidualHistoryFailure(
+  payload: BirthStatusPayload | null | undefined,
+): boolean {
+  if (!payload || payload.live === true) {
+    return false;
+  }
+  if (isBirthEngineActive(payload) || isBirthInterrupted(payload)) {
+    return false;
+  }
+  const progress = payload.progress;
+  if (!progress) {
+    return false;
+  }
+  if (progress.residual_failure === true) {
+    return true;
+  }
+  const phase = normalizeToken(progress.phase);
+  const reason = normalizeToken(progress.attention_reason_code);
+  const status = normalizeToken(payload.status);
+  if (status !== "error" && status !== "idle") {
+    // Backend may still surface status=error for residual disk progress.
+  }
+  return (
+    phase === "loading_history_failed" ||
+    reason === "history_unavailable" ||
+    reason === "history_unavailable_residual"
+  );
 }
 
 export function isBirthStageStalled(payload: BirthStatusPayload | null): boolean {

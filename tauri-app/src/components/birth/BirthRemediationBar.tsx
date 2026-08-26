@@ -20,12 +20,14 @@ export function BirthRemediationBar({ status, className }: BirthRemediationBarPr
     phase === "certificate_failed" && (Boolean(runwayPhase) || remediationExhausted);
 
   if (runwayResume) {
-    const label = runwayPhase ? `Runway resume: ${runwayPhase} → S8` : "Runway resume: S5 → S8";
+    const label = runwayPhase
+      ? `Certificate retry: ${runwayPhase} (Proving Ground, not Birth)`
+      : "Certificate OOS is Proving Ground — not a Birth stage";
     return (
       <div className={cn("birth-info-callout rounded-md px-3 py-2", className)}>
         <p className="birth-info-callout__text text-[10px] uppercase tracking-wide">{label}</p>
         <p className="mt-1 text-[10px] text-muted-foreground">
-          Continue learning re-enters the certificate runway without resetting S1–S3.
+          Continue learning re-enters the certificate pipeline after Birth Foundation. S1–S5 plant receipts stay.
         </p>
       </div>
     );

@@ -29,6 +29,7 @@ class MarketDataManager:
     last_volume_delta: float = 0.0
     last_bid_ask_imbalance: float = 1.0
     last_tape_signal: dict[str, Any] = field(default_factory=dict)
+    on_quote_tick: Any | None = None
 
     def __post_init__(self) -> None:
         expected = {"timestamp", "open", "high", "low", "close", "volume"}
@@ -127,6 +128,20 @@ class MarketDataManager:
             self.prev_last_price = float(price)
             self.prev_volume_cum = volume_cumulative
 
+        listener = self.on_quote_tick
+        if listener is not None:
+            try:
+                listener(
+                    {
+                        "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                        "last": float(price),
+                        "bid": float(bid),
+                        "ask": float(ask),
+                        "volume": int(volume_cumulative),
+                    }
+                )
+            except Exception:
+                pass
         return closed_candle
 
     def _compute_bid_ask_imbalance(self, last: float, bid: float, ask: float) -> float:

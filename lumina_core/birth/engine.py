@@ -85,6 +85,7 @@ class BirthPhaseEngineV2(
         self._stages_passed: list[str] = []
         self._stage_pass_receipts: list[StagePassReceipt] = []
         self._pending_stage_pass_receipt: StagePassReceipt | None = None
+        self._terminal_freeze: dict[str, Any] | None = None
         self._real_data_pct = 0.0
         self._data_manifest: dict[str, Any] = {}
         self._last_raw_ticks_hash: str = ""

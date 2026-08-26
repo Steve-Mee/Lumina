@@ -61,6 +61,7 @@ class StageLoopIterationStallMixin:
             force_train_lap = True
         elif beyond_gate:
             current_wr = stage_winrate(self.stage_wins, self.stage_trades)
+            evo_max = self._evolution_max_steps()
             if self.plateau_state.active and should_trigger_plateau_evolution_step(
                 self.plateau_state,
                 cfg=self.cur_cfg,
@@ -69,12 +70,14 @@ class StageLoopIterationStallMixin:
                 pass_target=self._plateau_pass_target(),
                 stage_trades=self.stage_trades,
                 required=self.required,
+                max_steps=evo_max,
+                stage=self.stage,
             ) and self._try_plateau_evolution(failure_key=failure_key):
                 return "continue", None
             if self.plateau_state.active and evolution_ladder_exhausted(
                 self.plateau_state,
                 stage=self.stage,
-                max_steps=self._evolution_max_steps(),
+                max_steps=evo_max,
             ):
                 if self._try_evolution_exhausted_remediation(failure_key=failure_key):
                     return "continue", None
@@ -108,6 +111,7 @@ class StageLoopIterationStallMixin:
             return "continue", None
         if not force_train_lap:
             current_wr = stage_winrate(self.stage_wins, self.stage_trades)
+            evo_max = self._evolution_max_steps()
             if self.plateau_state.active and should_trigger_plateau_evolution_step(
                 self.plateau_state,
                 cfg=self.cur_cfg,
@@ -116,6 +120,8 @@ class StageLoopIterationStallMixin:
                 pass_target=self._plateau_pass_target(),
                 stage_trades=self.stage_trades,
                 required=self.required,
+                max_steps=evo_max,
+                stage=self.stage,
             ) and self._try_plateau_evolution(failure_key=failure_key):
                 return "continue", None
             if not adaptation_stuck and self._force_never_stop_recovery(failure_key=failure_key):
@@ -125,7 +131,7 @@ class StageLoopIterationStallMixin:
             if self.plateau_state.active and evolution_ladder_exhausted(
                 self.plateau_state,
                 stage=self.stage,
-                max_steps=self._evolution_max_steps(),
+                max_steps=evo_max,
             ):
                 if self._try_evolution_exhausted_remediation(failure_key=failure_key):
                     return "continue", None

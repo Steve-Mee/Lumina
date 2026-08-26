@@ -124,6 +124,135 @@ pub fn launch_ninjatrader() -> NinjaTraderLaunchResult {
     }
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NinjaTraderCloseResult {
+    pub closed: bool,
+    pub was_running: bool,
+    pub error: Option<String>,
+}
+
+/// Soft-close then force-kill NinjaTrader so bridge DLLs can be replaced (Fabric heal).
+/// Code Red: only call from explicit user Repair. Appends %APPDATA%/LUMINA/nt-lifecycle.log.
+#[tauri::command]
+pub fn close_ninjatrader() -> NinjaTraderCloseResult {
+    #[cfg(not(windows))]
+    {
+        return NinjaTraderCloseResult {
+            closed: false,
+            was_running: false,
+            error: Some("close_ninjatrader is only supported on Windows".into()),
+        };
+    }
+
+    #[cfg(windows)]
+    {
+        use std::fs::OpenOptions;
+        use std::io::Write;
+        use std::thread;
+        use std::time::Duration;
+
+        // Lifecycle audit — every intentional kill is traceable.
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            let path = std::path::PathBuf::from(appdata)
+                .join("LUMINA")
+                .join("nt-lifecycle.log");
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
+                let ts = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let _ = writeln!(
+                    f,
+                    "unix={ts} event=close_begin reason=tauri_close_ninjatrader"
+                );
+            }
+        }
+
+        // Soft close
+        let soft = Command::new("taskkill")
+            .args(["/IM", "NinjaTrader.exe"])
+            .output();
+        let was_running = match &soft {
+            Ok(o) => o.status.success() || !o.stdout.is_empty() || !o.stderr.is_empty(),
+            Err(_) => true,
+        };
+
+        // Wait for clean exit
+        for _ in 0..20 {
+            let check = Command::new("tasklist")
+                .args(["/FI", "IMAGENAME eq NinjaTrader.exe", "/NH"])
+                .output();
+            let still = check
+                .ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("ninjatrader.exe"))
+                .unwrap_or(false);
+            if !still {
+                return NinjaTraderCloseResult {
+                    closed: true,
+                    was_running,
+                    error: None,
+                };
+            }
+            thread::sleep(Duration::from_millis(400));
+        }
+
+        // Force
+        let hard = Command::new("taskkill")
+            .args(["/IM", "NinjaTrader.exe", "/F", "/T"])
+            .output();
+        thread::sleep(Duration::from_millis(600));
+
+        let still = Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq NinjaTrader.exe", "/NH"])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("ninjatrader.exe"))
+            .unwrap_or(false);
+
+        if still {
+            let err = match &hard {
+                Err(e) => Some(e.to_string()),
+                Ok(o) if !o.status.success() => {
+                    Some(String::from_utf8_lossy(&o.stderr).into_owned())
+                }
+                Ok(_) => None,
+            };
+            NinjaTraderCloseResult {
+                closed: false,
+                was_running: true,
+                error: err.or(Some("NinjaTrader still running after force close".into())),
+            }
+        } else {
+            NinjaTraderCloseResult {
+                closed: true,
+                was_running: true,
+                error: None,
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub fn is_ninjatrader_running() -> bool {
+    #[cfg(windows)]
+    {
+        Command::new("tasklist")
+            .args(["/FI", "IMAGENAME eq NinjaTrader.exe", "/NH"])
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains("ninjatrader.exe"))
+            .unwrap_or(false)
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -35,6 +35,12 @@ def try_certificate_fast_path_resume(
     prefer_real = boot.prefer_real
     split = data.split
     start_price = data.start_price
+    from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+    if not is_birth_exit_sufficient(host.workspace_root):
+        logger.info("birth.certificate_fast_path.blocked_until_foundation_exit")
+        return None
+
     if (
         not practice_mode
         and resume
@@ -44,8 +50,8 @@ def try_certificate_fast_path_resume(
             _orch().write_birth_progress(
                 host.workspace_root,
                 stage="training_running",
-                phase="runway_stage",
-                message="Resuming certificate runway from checkpoint (S5→S8).",
+                phase=POST_BIRTH_CERTIFICATE_PHASE,
+                message="Resuming post-Birth certificate (Proving Ground) from checkpoint.",
                 progress_pct=80.0,
                 cumulative_trades=host.cumulative_trades,
                 target_trades=cfg.trade_budget_cap,

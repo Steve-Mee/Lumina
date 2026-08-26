@@ -173,7 +173,12 @@ def evaluate_phase2_gate(
 
     twin_conf = 0.0
     twin_mode = ""
-    if require_apply_path and features.require_twin_for_apply:
+    from lumina_core.evolution.twin_discipline import twin_values_role
+
+    # Phase2 SIM/birth → explore_pass: Twin preference is not a rem (ADR-0038).
+    # values_active (sim_real_guard) / REAL still use Twin (or multi-gate) strictly.
+    values_role = twin_values_role(mode)
+    if require_apply_path and features.require_twin_for_apply and values_role != "explore_pass":
         if approval_twin is None:
             return Phase2GateResult(
                 allowed=False,
@@ -225,6 +230,12 @@ def evaluate_phase2_gate(
                 twin_confidence=twin_conf,
                 twin_mode=twin_mode,
             )
+    elif require_apply_path and features.require_twin_for_apply and values_role == "explore_pass":
+        # Optional shadow score for observability; never blocks free-SIM Phase2 apply.
+        if approval_twin is not None:
+            twin_res = _evaluate_twin(approval_twin, pillar_key=pillar_key, mode=mode)
+            twin_conf = float(twin_res.get("confidence", 0.0) or 0.0)
+            twin_mode = str(twin_res.get("mode") or "")
 
     if proposal is not None:
         prop_check = _validate_proposal(proposal)

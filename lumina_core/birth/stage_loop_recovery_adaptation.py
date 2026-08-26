@@ -95,12 +95,18 @@ class StageLoopRecoveryAdaptationMixin(StageLoopMixinBase):
             self.bus.plateau_enter(self.stage, stage_trades=self.stage_trades, stage_wins=self.stage_wins)
             self.ppo_steps_at_plateau_evolution_step = int(self.host.ppo_steps)
         if result.get("spawn_phoenix_reset"):
-            self._apply_phoenix_reset()
-            reset_plateau_for_new_cycle(
-                self.plateau_state,
-                stage_trades=self.stage_trades,
-                stage_wins=self.stage_wins,
-            )
+            _detail, applied = self._apply_phoenix_reset()
+            if applied:
+                reset_plateau_for_new_cycle(
+                    self.plateau_state,
+                    stage_trades=self.stage_trades,
+                    stage_wins=self.stage_wins,
+                )
+            else:
+                logger.warning(
+                    "birth.adaptation.phoenix_reset_blocked detail=%s",
+                    _detail,
+                )
         self.attempt = 0
         self.winrate_stagnation_count = 0
         self.hold_stagnation_count = 0

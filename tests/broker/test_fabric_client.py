@@ -31,6 +31,7 @@ class _MockFabricServicer(fabric_pb2_grpc.ExecutionFabricServicer):
         self.flatten_calls = 0
         self.reject_orders = False
         self.safe_mode = False
+        self.historical_mode = "ok"  # ok | not_implemented | host_no_nt
 
     def TradingStream(  # noqa: N802 — gRPC naming
         self,
@@ -163,7 +164,56 @@ class _MockFabricServicer(fabric_pb2_grpc.ExecutionFabricServicer):
         )
 
     def RequestHistoricalData(self, request, context):  # noqa: N802, ANN001
-        return fabric_pb2.HistoricalDataResponse(code="NOT_IMPLEMENTED", message="mock")
+        # Mirror C# TryAuthorizeUnary: require x-lumina-token when expected_token set.
+        md = dict(context.invocation_metadata() or ())
+        token = str(md.get("x-lumina-token") or md.get("authorization") or "").replace("Bearer ", "").strip()
+        if self.expected_token and token != self.expected_token:
+            return fabric_pb2.HistoricalDataResponse(
+                instrument=request.instrument,
+                correlation_id=request.correlation_id,
+                code="UNAUTHENTICATED",
+                message="AUTH_FAILED",
+            )
+        if self.historical_mode == "not_implemented":
+            return fabric_pb2.HistoricalDataResponse(
+                instrument=request.instrument,
+                correlation_id=request.correlation_id,
+                code="NOT_IMPLEMENTED",
+                message="mock",
+            )
+        if self.historical_mode == "host_no_nt":
+            return fabric_pb2.HistoricalDataResponse(
+                instrument=request.instrument,
+                correlation_id=request.correlation_id,
+                code="HOST_NO_NT_DATA",
+                message="SimHost is execution-only",
+            )
+        # Return enough 1-min bars for dual-plane diagnostics (min 10).
+        now_ms = int(time.time() * 1000)
+        bars = []
+        for i in range(20):
+            ts = now_ms - (20 - i) * 60_000
+            px = 5000.0 + i
+            bars.append(
+                fabric_pb2.MarketDataUpdate(
+                    instrument=request.instrument or "MES",
+                    timestamp_unix_ms=ts,
+                    open=px,
+                    high=px + 1,
+                    low=px - 1,
+                    close=px + 0.25,
+                    last=px + 0.25,
+                    volume=100 + i,
+                    is_bar=True,
+                )
+            )
+        return fabric_pb2.HistoricalDataResponse(
+            instrument=request.instrument or "MES",
+            correlation_id=request.correlation_id,
+            code="ok",
+            message="bars=20 provider=mock",
+            bars=bars,
+        )
 
     def SetRiskParameters(self, request, context):  # noqa: N802, ANN001
         return fabric_pb2.RiskParametersAck(accepted=True, applied=request)
@@ -214,8 +264,75 @@ def test_fabric_client_connect_auth_and_place_order(mock_fabric_server: tuple[st
     assert len(positions) == 1
     assert positions[0].symbol == "MNQ"
 
+    hist = client.request_historical_data(instrument="MES", max_bars=20)
+    assert hist["code"] == "ok"
+    assert len(hist["bars"]) >= 10
+    assert hist["bars"][0]["close"] > 0
+
     client.disconnect()
     assert client.is_connected is False
+
+
+def test_fabric_client_historical_unary_auth_metadata(
+    mock_fabric_server: tuple[str, _MockFabricServicer],
+) -> None:
+    """G7: unary historical requires x-lumina-token (client sends via _auth_metadata)."""
+    target, servicer = mock_fabric_server
+    host, port_s = target.split(":")
+    # Wrong token → UNAUTHENTICATED
+    bad = FabricGrpcClient(
+        FabricConfig(
+            host=host,
+            port=int(port_s),
+            auth_token="wrong-token",
+            heartbeat_interval_ms=0,
+            connect_timeout_seconds=3.0,
+            command_timeout_seconds=3.0,
+        )
+    )
+    # connect uses stream auth (also wrong) — skip connect, set stub via connect fail path:
+    # Use correct stream token then call historical with empty token by clearing after connect.
+    good = FabricGrpcClient(
+        FabricConfig(
+            host=host,
+            port=int(port_s),
+            auth_token="test-token",
+            heartbeat_interval_ms=0,
+            connect_timeout_seconds=3.0,
+            command_timeout_seconds=3.0,
+        )
+    )
+    assert good.connect() is True
+    hist_ok = good.request_historical_data(instrument="MES", max_bars=5)
+    assert hist_ok["code"] == "ok"
+    # Clear token so next unary has empty metadata → AUTH_FAILED
+    good.config.auth_token = ""
+    hist_fail = good.request_historical_data(instrument="MES", max_bars=5)
+    assert hist_fail["code"] == "UNAUTHENTICATED"
+    good.disconnect()
+    _ = bad  # silence unused if connect not used
+    _ = servicer
+
+
+def test_fabric_client_historical_host_no_nt(mock_fabric_server: tuple[str, _MockFabricServicer]) -> None:
+    target, servicer = mock_fabric_server
+    servicer.historical_mode = "host_no_nt"
+    host, port_s = target.split(":")
+    client = FabricGrpcClient(
+        FabricConfig(
+            host=host,
+            port=int(port_s),
+            auth_token="test-token",
+            heartbeat_interval_ms=0,
+            connect_timeout_seconds=3.0,
+            command_timeout_seconds=3.0,
+        )
+    )
+    assert client.connect() is True
+    hist = client.request_historical_data(instrument="MES", max_bars=10)
+    assert hist["code"] == "HOST_NO_NT_DATA"
+    assert hist["bars"] == []
+    client.disconnect()
 
 
 def test_fabric_client_auth_failure(mock_fabric_server: tuple[str, _MockFabricServicer]) -> None:

@@ -127,3 +127,28 @@ def test_hold_action_penalty_during_plateau_trend() -> None:
     assert hold_action_penalty(is_hold=True, regime="TREND_UP", plateau_active=True) < 0
     assert hold_action_penalty(is_hold=True, regime="TREND_UP", plateau_active=False) == 0.0
     assert hold_action_penalty(is_hold=False, regime="TREND_UP", plateau_active=True) == 0.0
+
+
+@pytest.mark.unit
+def test_quality_uses_intended_risk_not_equity_floor() -> None:
+    """$19 stop-risk must not be inflated by a $25/$50 theater floor."""
+    cfg = _cfg()
+    state = RewardShapingState()
+    ctx_floor = TradeCloseContext(
+        net_pnl=-19.3,
+        equity=50_000.0,
+        stop_pct=0.000512,
+        side=1,
+        risk_usd=19.31,
+    )
+    ctx_no_intent = TradeCloseContext(
+        net_pnl=-19.3,
+        equity=50_000.0,
+        stop_pct=0.000512,
+        side=1,
+    )
+    r_int, comp_int = compute_expectancy_reward(ctx_floor, state, cfg)
+    r_eq, _ = compute_expectancy_reward(ctx_no_intent, state, cfg)
+    assert comp_int["r_multiple"] == pytest.approx(-19.3 / 19.31, rel=1e-3)
+    # Equity × stop ≈ $25.6, not min_risk_usd=50.
+    assert abs(r_int) > abs(r_eq)

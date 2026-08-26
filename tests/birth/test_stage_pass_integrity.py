@@ -19,6 +19,7 @@ from lumina_core.birth.stage_pass_receipt import (
     receipt_from_stage_result,
     verify_stage_pass_receipt,
 )
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 from scripts.birth_stage_forensics import build_report
 
 
@@ -33,7 +34,7 @@ def _stage1_cfg() -> BirthCurriculumConfig:
     )
 
 
-def _valid_stage1_receipt(*, trades: int = 100, wins: int = 50) -> StagePassReceipt:
+def _valid_stage1_receipt(*, trades: int = 160, wins: int = 50) -> StagePassReceipt:
     cfg = _stage1_cfg()
     result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
@@ -45,7 +46,8 @@ def _valid_stage1_receipt(*, trades: int = 100, wins: int = 50) -> StagePassRece
         target_trades=100,
         cfg=cfg,
         allow_provisional=False,
-        policy_entropy=0.25,
+        **honest_closes(trades),
+        **foundation_eval_kwargs(policy_entropy=0.25),
     )
     assert result.passed
     return receipt_from_stage_result(CurriculumStage.STAGE1_TREND, result, cfg=cfg)
@@ -65,7 +67,7 @@ def test_missing_receipt_fails_verify() -> None:
 
 @pytest.mark.unit
 def test_valid_receipt_allows_verify() -> None:
-    receipt = _valid_stage1_receipt(trades=100, wins=50)
+    receipt = _valid_stage1_receipt(trades=160, wins=50)
     ok, reason = verify_stage_pass_receipt(
         CurriculumStage.STAGE1_TREND,
         receipt,
@@ -89,16 +91,87 @@ def test_low_winrate_receipt_fails_re_eval() -> None:
         passed_at="2026-01-01T00:00:00+00:00",
         engine_version="BRO-v2",
     )
+    # Skill mode (survival off): 24% WR fails 0.35 hygiene.
+    cfg = BirthCurriculumConfig(
+        stage1_trend_trades=100,
+        allow_provisional_pass=False,
+        stage1_edgescore_enabled=True,
+        stage1_entropy_floor=0.0,
+        stage1_hold_ratio_min=0.05,
+        stage1_hold_ratio_max=0.85,
+        birth_survival_pass_enabled=False,
+        stage1_winrate_pass_floor=0.35,
+    )
     ok, reason = verify_stage_pass_receipt(
         CurriculumStage.STAGE1_TREND,
         receipt,
-        cfg=_stage1_cfg(),
+        cfg=cfg,
         training_mode="certified",
     )
     assert ok is False
-    assert reason.startswith("stage1_winrate_below_gate") or reason.startswith(
-        "stage1_hygiene_below_floor"
+    assert (
+        reason.startswith("stage1_winrate_below_gate")
+        or reason.startswith("stage1_hygiene_below_floor")
+        or "missing_or_invalid_foundation_schema" in reason
+        or "missing_median_loss_r" in reason
     )
+
+
+@pytest.mark.unit
+def test_survival_stage1_receipt_survives_integrity_verify() -> None:
+    """ADR-0036: survival pass at ~28% WR must not be wiped by skill hygiene 0.35."""
+    cfg = BirthCurriculumConfig(
+        stage1_trend_trades=200,
+        allow_provisional_pass=False,
+        stage1_edgescore_enabled=True,
+        stage1_entropy_floor=0.0,
+        stage1_hold_ratio_min=0.05,
+        stage1_hold_ratio_max=0.95,
+        birth_survival_pass_enabled=True,
+        birth_survival_wr_floor=0.20,
+        birth_survival_expectancy_floor=-0.50,
+    )
+    result = evaluate_stage_pass(
+        CurriculumStage.STAGE1_TREND,
+        trades=200,
+        wins=57,
+        hold_signals=160,
+        total_signals=200,
+        constitution_violations=0,
+        target_trades=200,
+        cfg=cfg,
+        allow_provisional=False,
+        stage_total_pnl=-10.0,
+        **honest_closes(200),
+        **foundation_eval_kwargs(policy_entropy=0.25, mean_r=-0.05),
+    )
+    assert result.passed, result.message
+    receipt = receipt_from_stage_result(
+        CurriculumStage.STAGE1_TREND,
+        result,
+        cfg=cfg,
+        hold_signals=160,
+        total_signals=200,
+        policy_entropy=0.25,
+        stage_total_pnl=-10.0,
+        edgescore=0.625,
+    )
+    ok, reason = verify_stage_pass_receipt(
+        CurriculumStage.STAGE1_TREND,
+        receipt,
+        cfg=cfg,
+        training_mode="certified",
+    )
+    assert ok is True, reason
+    audit = audit_curriculum_integrity(
+        stages_passed=["stage1_trend"],
+        stage_pass_receipts=[receipt],
+        cfg=cfg,
+        training_mode="certified",
+    )
+    assert audit.ok is True
+    assert audit.stages_passed == ["stage1_trend"]
+    assert audit.reset_applied is False
 
 
 @pytest.mark.unit

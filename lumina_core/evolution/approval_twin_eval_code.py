@@ -79,14 +79,6 @@ class ApprovalTwinCodeEvaluatorMixin:
                 f"code_proposal op={operator} target={target} loc={estimated_loc} "
                 f"score={score:.2%} threshold={self._state.threshold:.0%} flags={risk_flags}"
             )
-            self._publish_decision(
-                dna_hash=proposal_id,
-                recommendation=recommendation,
-                confidence=score,
-                risk_flags=risk_flags,
-                explanation=explanation,
-                call="evaluate_code_proposal",
-            )
             decision = {
                 "recommendation": recommendation,
                 "confidence": round(float(score), 6),
@@ -94,4 +86,8 @@ class ApprovalTwinCodeEvaluatorMixin:
                 "risk_flags": risk_flags,
                 "proposal_id": proposal_id,
             }
-            return self.apply_mode_authority(decision)
+            return self._finalize_and_publish_decision(
+                decision,
+                dna_hash=str(proposal_id or target),
+                call="evaluate_code_proposal",
+            )

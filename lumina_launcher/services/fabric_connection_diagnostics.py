@@ -56,14 +56,57 @@ def _load_fabric_json() -> dict[str, Any]:
         return {}
 
 
+def _resolve_diag_instrument(explicit: str | None = None) -> str:
+    """Prefer full contract names. Bare MES/MNQ roots are expanded by NT provider too.
+
+    Priority: multi-token explicit → config trading.instrument → explicit root → MES SEP26.
+    """
+    raw = str(explicit or "").strip()
+    if raw and len(raw.split()) >= 2:
+        return raw
+
+    instrument = ""
+    try:
+        import yaml
+
+        candidates = [
+            Path.cwd() / "config.yaml",
+            Path(__file__).resolve().parents[2] / "config.yaml",
+        ]
+        for cfg_path in candidates:
+            if not cfg_path.is_file():
+                continue
+            data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            if not isinstance(data, dict):
+                continue
+            trading = data.get("trading") if isinstance(data.get("trading"), dict) else {}
+            instrument = str(trading.get("instrument") or "").strip()
+            if instrument:
+                break
+            broker = data.get("broker") if isinstance(data.get("broker"), dict) else {}
+            nt = broker.get("ninjatrader") if isinstance(broker.get("ninjatrader"), dict) else {}
+            instruments = nt.get("instruments") or []
+            if isinstance(instruments, list) and instruments:
+                instrument = str(instruments[0] or "").strip()
+            if instrument:
+                break
+    except Exception:
+        instrument = ""
+
+    if instrument:
+        return instrument
+    return raw or "MES SEP26"
+
+
 def run_fabric_connection_diagnostics(
     *,
     include_safe_mode: bool = True,
-    instrument: str = "MES",
+    instrument: str = "",
 ) -> FabricConnectionReport:
     """Run ordered SIM-only Fabric diagnostics. Never touches CrossTrade."""
     t0 = time.perf_counter()
     started = datetime.now(timezone.utc).isoformat()
+    instrument = _resolve_diag_instrument(instrument)
 
     # Resolve helpers via this module so monkeypatch.setattr(diag, "_tcp_check", ...) works.
     ctx = run_preflight(

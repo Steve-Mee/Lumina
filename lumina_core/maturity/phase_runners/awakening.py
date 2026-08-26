@@ -23,30 +23,39 @@ def run_awakening(workspace_root: Path | str) -> dict[str, Any]:
 
         evo_ok = False
         evo_meta: dict[str, Any] = {}
-        write_phase_progress(root, "awakening", progress_pct=30.0, message="Checking evolution proof")
+        write_phase_progress(root, "awakening", progress_pct=30.0, message="Checking evolution proof vs birth fitness vector")
         try:
-            from lumina_core.birth.evolution_proof_gate import (
-                evolution_proof_passed,
-                load_evolution_proof_record,
+            from lumina_core.maturity.post_birth_skill_gates import (
+                awakening_evolution_proof_from_fitness,
             )
+            from lumina_core.birth.evolution_proof_gate import load_evolution_proof_record
 
-            evo_ok = bool(evolution_proof_passed(root))
+            rec = load_evolution_proof_record(root) or {}
+            ep = awakening_evolution_proof_from_fitness(
+                root,
+                polish_oos_winrate=(
+                    float(rec["oos_winrate"]) if rec.get("oos_winrate") is not None else None
+                ),
+                holdout_trades=int(rec.get("holdout_trades") or 0),
+            )
+            evo_ok = bool(ep.passed)
+            evo_meta = dict(ep.detail)
             if evo_ok:
-                rec = load_evolution_proof_record(root) or {}
-                evo_meta = {"oos_winrate": rec.get("oos_winrate"), "lift": rec.get("lift")}
                 record_maturation_milestone(root, "evolution_proof_passed", metadata=evo_meta)
                 try:
                     from lumina_core.maturity.milestone_hooks import hook_evolution_proof_passed
 
                     hook_evolution_proof_passed(
                         root,
-                        oos_winrate=float(rec.get("oos_winrate") or 0.0),
-                        lift=rec.get("lift"),
+                        oos_winrate=float(evo_meta.get("probe_oos_wr") or 0.0),
+                        lift=None,
                     )
                 except Exception:
                     pass
         except Exception as exc:
-            logger.debug("awakening.evolution_proof_skip: %s", exc)
+            logger.debug("awakening.evolution_proof_fail_closed: %s", exc)
+            evo_ok = False
+            evo_meta = {"error": str(exc)}
 
         write_phase_progress(root, "awakening", progress_pct=60.0, message="Probing twin observability")
         twin_samples = _twin_sample_count(root)

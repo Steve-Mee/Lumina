@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""T8: Phase 2 SIM shadow campaign ops (after Perfect Birth; never REAL apply).
+"""T8/R3: Phase 2 SIM campaign ops — observe → shadow → apply (never REAL).
 
 Usage:
   python scripts/validation/phase2_shadow_campaign.py
   python scripts/validation/phase2_shadow_campaign.py --json
-  python scripts/validation/phase2_shadow_campaign.py --enable
+  python scripts/validation/phase2_shadow_campaign.py --observe   # pre-PB audit only
+  python scripts/validation/phase2_shadow_campaign.py --enable    # after Perfect Birth
   python scripts/validation/phase2_shadow_campaign.py --enable --scaffold   # lab only
   python scripts/validation/phase2_shadow_campaign.py --promote-apply
   python scripts/validation/phase2_shadow_campaign.py --disable
@@ -23,9 +24,14 @@ if str(ROOT) not in sys.path:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Phase 2 SIM shadow campaign (T8)")
+    parser = argparse.ArgumentParser(description="Phase 2 SIM shadow campaign (T8/R3)")
     parser.add_argument("--workspace", type=str, default="")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--observe",
+        action="store_true",
+        help="R3: enable observe campaign (propose+audit only; no PB required)",
+    )
     parser.add_argument("--enable", action="store_true", help="Enable shadow after PB unlock")
     parser.add_argument(
         "--scaffold",
@@ -39,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     from lumina_core.birth.phase2_autonomy.sim_campaign import (
         build_phase2_shadow_campaign_ops_report,
         disable_sim_campaign,
+        enable_sim_observe_campaign,
         enable_sim_shadow_campaign,
         promote_sim_apply_campaign,
     )
@@ -48,6 +55,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.disable:
         action_result = disable_sim_campaign(workspace)
+    elif args.observe:
+        action_result = enable_sim_observe_campaign(
+            workspace,
+            source="phase2_shadow_campaign_cli",
+        )
     elif args.enable:
         action_result = enable_sim_shadow_campaign(
             workspace,

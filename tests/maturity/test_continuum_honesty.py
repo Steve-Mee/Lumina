@@ -18,17 +18,15 @@ from lumina_core.maturity.phase_specs import hub_payload
 
 
 @pytest.mark.unit
-def test_honesty_birth_exit_not_ready_for_real(tmp_path: Path) -> None:
+def test_honesty_completed_flag_alone_is_not_birth_exit(tmp_path: Path) -> None:
     (tmp_path / "state").mkdir(parents=True, exist_ok=True)
     (tmp_path / "state" / "lumina_birth_completed.flag").write_text("ok\n", encoding="utf-8")
     mark_phase_completed(tmp_path, "genesis", learned={}, exit_proofs=["setup"])
-    # Do not mark continuum birth yet — exit proofs from artifacts only
     snap = continuum_honesty_snapshot(tmp_path)
     assert snap["schema"] == "continuum_honesty_v1"
-    assert snap["birth_exit"]["exited"] is True
+    assert snap["birth_exit"]["exited"] is False
     assert snap["ready_for_real"]["ready"] is False
-    assert any("Birth exit" in w for w in snap["conflation_warnings"])
-    assert any("Birth survival" in s or "Birth" in s for s in snap["next_honest_steps"]) or snap[
+    assert any("Birth" in s or "birth" in s.lower() for s in snap["next_honest_steps"]) or snap[
         "next_honest_steps"
     ]
 

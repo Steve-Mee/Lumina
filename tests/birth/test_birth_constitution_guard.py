@@ -6,6 +6,7 @@ import pytest
 
 from lumina_core.birth.birth_constitution_guard import (
     BIRTH_MAX_RISK_STOP_PCT,
+    BIRTH_MIN_STOP_PCT,
     BirthConstitutionGuard,
     clip_birth_risk_params,
 )
@@ -22,6 +23,17 @@ def test_clip_birth_risk_params_hard_clips_into_1pct_band() -> None:
     assert clipped2 is False
     assert stop2 == pytest.approx(0.005)
     assert target2 == pytest.approx(0.01)
+
+
+@pytest.mark.unit
+def test_clip_preserves_micro_calibrated_stops() -> None:
+    """Foundation: constitution must NOT re-widen birth geometry (~0.06%)."""
+    micro = 0.00064
+    stop, target, clipped = clip_birth_risk_params(micro, micro * 1.6)
+    assert clipped is False
+    assert stop == pytest.approx(micro)
+    assert stop >= BIRTH_MIN_STOP_PCT
+    assert target >= stop * 1.25 - 1e-9 or target == pytest.approx(micro * 1.6)
 
 
 @pytest.mark.unit
@@ -184,3 +196,25 @@ def test_birth_constitution_guard_hold_side_skips_checks() -> None:
     )
     assert ok is True
     assert guard.violations == 0
+
+
+@pytest.mark.unit
+def test_qty_does_not_bypass_1pct_dollar_band() -> None:
+    """Size × micro-stop can still exceed 1% equity; qty must enter the check."""
+    guard = BirthConstitutionGuard()
+    tick = {"close": 7543.0, "last": 7543.0}
+    ok_one, _ = guard.check_entry(
+        tick=tick, side=1, stop_pct=0.001, equity=50_000.0, qty=1
+    )
+    assert ok_one is True
+    ok_big, reason = guard.check_entry(
+        tick=tick, side=1, stop_pct=0.001, equity=50_000.0, qty=20, auto_clip=False
+    )
+    assert ok_big is False
+    assert reason == "risk_cap"
+    # Empty tick: stop_pct × qty vs 1%.
+    ok_empty, reason_empty = guard.check_entry(
+        tick={}, side=1, stop_pct=0.001, equity=50_000.0, qty=20, auto_clip=False
+    )
+    assert ok_empty is False
+    assert reason_empty == "risk_cap"

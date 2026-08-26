@@ -65,12 +65,14 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
             ),
         )
         scorecard.update(adaptation_fields)
+        evo_max = self._evolution_max_steps()
         scorecard.update(
             plateau_progress_fields(
                 self.plateau_state,
                 stage_trades=current_stage_trades,
                 required=self.required,
                 cfg=self.cur_cfg,
+                max_steps=evo_max,
             )
         )
         rem_exhausted = remediation_is_exhausted(
@@ -88,6 +90,7 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
                 progress=scorecard,
                 remediation_exhausted=rem_exhausted,
                 trade_budget_remaining=max(0, self.trade_budget_cap - self.host.cumulative_trades),
+                max_steps=evo_max,
             )
         )
         scorecard["stall_remediation_cycle"] = int(self.remediation_state.remediation_cycle)
@@ -136,6 +139,29 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
                     scorecard.get("provisional_graduation") or scorecard.get("provisional_pass")
                 ),
             )
+            # C2: promote recovery SSOT attention to top-level progress (page unattended Birth)
+            rec = scorecard.get("recovery") if isinstance(scorecard.get("recovery"), dict) else {}
+            rec_flags = rec.get("flags") if isinstance(rec.get("flags"), dict) else {}
+            if bool(rec_flags.get("needs_attention")) or rec.get("active") == "terminal_stall":
+                scorecard["needs_attention"] = True
+                if not str(scorecard.get("attention_reason_code") or "").strip():
+                    reason = str(
+                        scorecard.get("terminal_stall_reason")
+                        or rec_flags.get("terminal_stall_reason")
+                        or "terminal_stall"
+                    ).strip()
+                    scorecard["attention_reason_code"] = reason
+                if not str(scorecard.get("attention_summary") or "").strip():
+                    scorecard["attention_summary"] = (
+                        f"Terminal recovery: {scorecard.get('attention_reason_code')} — "
+                        f"next_action={rec.get('next_action', 'expand_data_or_wipe_genesis')}"
+                    )
+                if not scorecard.get("attention_recommended_actions"):
+                    scorecard["attention_recommended_actions"] = [
+                        "expand_data",
+                        "wipe_and_retry",
+                        "human_review",
+                    ]
         except Exception:
             logger.debug("birth.recovery_compress failed", exc_info=True)
 
@@ -177,6 +203,12 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
         lifetime_wr = float(self.stage_wins) / float(max(1, current_stage_trades))
         if self.stage.value == "stage3_mixed":
             hygiene_floor = float(getattr(self.cur_cfg, "stage3_winrate_floor", 0.35))
+        elif self.stage.value == "stage1_trend" and bool(
+            getattr(self.cur_cfg, "birth_survival_pass_enabled", True)
+        ):
+            hygiene_floor = float(
+                getattr(self.cur_cfg, "birth_survival_wr_floor", 0.20) or 0.20
+            )
         else:
             hygiene_floor = float(getattr(self.cur_cfg, "stage1_winrate_pass_floor", 0.35))
         scorecard.update(
@@ -241,12 +273,425 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
         scorecard["participation_force_flat"] = int(
             getattr(self, "participation_force_flat", 0) or 0
         )
+        scorecard["participation_force_exit"] = int(
+            getattr(self, "participation_force_exit", 0) or 0
+        )
         scorecard["participation_overrides_total"] = int(
             getattr(self, "participation_overrides_total", 0) or 0
         )
         scorecard["participation_last_mode"] = str(
             getattr(self, "participation_last_mode", "") or "PASSTHROUGH"
         )
+        try:
+            scorecard["occupancy_control_flat"] = round(
+                float(getattr(self, "occupancy_control_flat", 0.0) or 0.0), 4
+            )
+        except (TypeError, ValueError):
+            scorecard["occupancy_control_flat"] = 0.0
+        scorecard["expectancy_quality_step"] = int(
+            getattr(self, "expectancy_quality_step", 0) or 0
+        )
+        scorecard["stage2_bootstrap_patterns"] = int(
+            getattr(self, "stage2_bootstrap_patterns", 0) or 0
+        )
+        scorecard["stage2_bootstrap_updates"] = int(
+            getattr(self, "stage2_bootstrap_updates", 0) or 0
+        )
+        scorecard["stage2_action_head_reinit"] = bool(
+            getattr(self, "stage2_action_head_reinit", False)
+        )
+        # Stage-1 foundation telemetry (learning target ≠ survival pass floor).
+        try:
+            from lumina_core.birth.curriculum import CurriculumStage
+            from lumina_core.birth.stage1_foundation import compute_stage1_foundation
+
+            if self.stage == CurriculumStage.STAGE1_TREND:
+                rolling = None
+                try:
+                    rolling, _, _ = self._rolling_winrate_meta()
+                except Exception:
+                    rolling = None
+                edge = getattr(self, "_edge_vs_random", None)
+                try:
+                    edge_f = float(edge) if edge is not None else None
+                except (TypeError, ValueError):
+                    edge_f = None
+                s1 = compute_stage1_foundation(
+                    stage_trades=int(getattr(self, "stage_trades", 0) or 0),
+                    stage_wins=int(getattr(self, "stage_wins", 0) or 0),
+                    required=int(getattr(self, "required", 200) or 200),
+                    survival_wr_floor=float(
+                        getattr(self.cur_cfg, "birth_survival_wr_floor", 0.20) or 0.20
+                    ),
+                    foundation_target_wr=float(
+                        getattr(self.cur_cfg, "stage1_foundation_target_wr", 0.30) or 0.30
+                    ),
+                    anti_thrash_wr=float(
+                        getattr(self.cur_cfg, "stage1_anti_thrash_wr", 0.25) or 0.25
+                    ),
+                    edge_vs_random=edge_f,
+                    rolling_winrate=float(rolling) if rolling is not None else None,
+                )
+                scorecard.update(s1.as_progress_fields())
+            # Persist last Stage-1 handoff flags on host for Stage-2 HUD.
+            handoff = getattr(self.host, "_stage1_transfer_handoff", None)
+            if isinstance(handoff, dict):
+                scorecard["stage1_transfer_handoff_ok"] = bool(handoff.get("ok"))
+                scorecard["stage1_transfer_purge_mode"] = str(
+                    (handoff.get("buffer_purge") or {}).get("mode") or ""
+                )
+                scorecard["stage1_transfer_reinit_ok"] = bool(
+                    (handoff.get("action_head_reinit") or {}).get("ok")
+                )
+        except Exception:
+            pass
+        # Pilot vs plant skill metric + economic honesty (floors unchanged).
+        try:
+            from lumina_core.birth.stage2_skill_metric import resolve_stage2_skill_counts
+            from lumina_core.birth.birth_trade_geometry import economic_skill_gap
+
+            sc = resolve_stage2_skill_counts(
+                total_trades=int(getattr(self, "stage_trades", 0) or 0),
+                total_wins=int(getattr(self, "stage_wins", 0) or 0),
+                policy_trades=int(getattr(self, "stage_policy_trades", 0) or 0),
+                policy_wins=int(getattr(self, "stage_policy_wins", 0) or 0),
+                plant_trades=int(getattr(self, "stage_plant_trades", 0) or 0),
+                plant_wins=int(getattr(self, "stage_plant_wins", 0) or 0),
+                skill_only=bool(
+                    getattr(self.cur_cfg, "stage2_skill_metric_policy_only", True)
+                ),
+                required=int(getattr(self, "required", 300) or 300),
+                skill_min_trades=getattr(self.cur_cfg, "stage2_skill_min_trades", None),
+            )
+            scorecard.update(sc.as_progress_fields())
+            be_wr = float(
+                scorecard.get("geometry_breakeven_wr_after_cost")
+                or getattr(getattr(self, "_birth_trade_geometry", None), "breakeven_wr_after_cost", 0.0)
+                or 0.0
+            )
+            skill_wr = float(sc.skill_winrate)
+            scorecard["skill_pass_wr_floor"] = 0.35  # ≡ exp −0.15; never moved
+            scorecard["economic_be_wr"] = round(be_wr, 4)
+            scorecard["skill_wr_vs_economic_be"] = round(skill_wr - be_wr, 4)
+            scorecard["economic_training_pressure"] = round(
+                economic_skill_gap(be_wr=be_wr, skill_wr=skill_wr), 4
+            )
+            # Dual truth: when skill metric grades pass, HUD expectancy follows pilot.
+            if bool(sc.skill_eligible) and bool(sc.skill_only):
+                scorecard["expectancy_proxy"] = round(float(sc.skill_expectancy), 4)
+                scorecard["expectancy_proxy_source"] = "skill_policy_only"
+            else:
+                scorecard.setdefault(
+                    "expectancy_proxy_source",
+                    str(scorecard.get("expectancy_proxy_source") or "total_or_rolling"),
+                )
+            # Stash skill_wr for first-touch pressure after thr is computed below.
+            scorecard["_skill_wr_for_ft"] = float(skill_wr)
+        except Exception:
+            scorecard.setdefault("skill_metric_policy_only", True)
+            scorecard.setdefault("stage_policy_trades", 0)
+            scorecard.setdefault("stage_plant_trades", 0)
+        # Geometry + exit physics always on progress SSOT (never omit keys).
+        stop_g = getattr(self, "_birth_trade_stop_pct", None)
+        target_g = getattr(self, "_birth_trade_target_pct", None)
+        scorecard["birth_trade_stop_pct"] = (
+            round(float(stop_g), 6) if stop_g is not None else 0.0
+        )
+        scorecard["birth_trade_target_pct"] = (
+            round(float(target_g), 6) if target_g is not None else 0.0
+        )
+        scorecard["birth_trade_geometry_source"] = str(
+            getattr(self, "_birth_trade_geometry_source", None) or "unset"
+        )
+        scorecard["closes_stop"] = int(getattr(self, "closes_stop", 0) or 0)
+        scorecard["closes_target"] = int(getattr(self, "closes_target", 0) or 0)
+        scorecard["closes_flatten"] = int(getattr(self, "closes_flatten", 0) or 0)
+        scorecard["closes_time_stop"] = int(getattr(self, "closes_time_stop", 0) or 0)
+        scorecard["closes_unknown"] = int(getattr(self, "closes_unknown", 0) or 0)
+        scorecard["mean_entry_stop_pct"] = round(
+            float(getattr(self, "mean_entry_stop_pct", 0.0) or 0.0), 6
+        )
+        scorecard["mean_entry_target_pct"] = round(
+            float(getattr(self, "mean_entry_target_pct", 0.0) or 0.0), 6
+        )
+        # Geometry forensics (v4) — always emit; proves time-ordered micro SSOT.
+        try:
+            from lumina_core.birth.birth_trade_geometry import apply_geometry_forensics
+
+            apply_geometry_forensics(
+                scorecard, getattr(self, "_birth_trade_geometry", None)
+            )
+        except Exception:
+            scorecard.setdefault("geometry_time_ordered", False)
+            scorecard.setdefault("geometry_p40_raw", 0.0)
+            scorecard.setdefault("geometry_hold_bars", 0)
+            scorecard.setdefault("geometry_pool_size", 0)
+            scorecard.setdefault("geometry_macro_rejected", False)
+            scorecard.setdefault("geometry_floor_bound", False)
+            scorecard.setdefault("geometry_breakeven_wr_after_cost", 0.0)
+            scorecard.setdefault("geometry_cost_usd", 0.0)
+            scorecard.setdefault("geometry_ref_price", 0.0)
+        # Edge vs random first-touch (diagnostic; does not change floors).
+        try:
+            thr = float(getattr(self, "_first_touch_target_hit_rate", 0.0) or 0.0)
+            if thr <= 0:
+                geo = getattr(self, "_birth_trade_geometry", None)
+                pool = list(
+                    getattr(self, "active_stage_ticks", None)
+                    or getattr(self, "active_train", None)
+                    or []
+                )
+                if geo is not None and len(pool) >= 80:
+                    from lumina_core.birth.birth_trade_geometry import (
+                        first_touch_target_hit_rate,
+                    )
+
+                    thr = float(
+                        first_touch_target_hit_rate(
+                            pool,
+                            stop_pct=float(geo.stop_pct),
+                            target_pct=float(geo.target_pct),
+                            max_hold_bars=int(getattr(geo, "hold_bars", 90) or 90),
+                            sample_stride=40,
+                        )
+                        or 0.0
+                    )
+                    self._first_touch_target_hit_rate = thr
+            scorecard["first_touch_target_hit_rate"] = round(thr, 4)
+            live_wr = float(
+                scorecard.get("hygiene_wr_effective")
+                or scorecard.get("rolling_winrate_500")
+                or scorecard.get("stage_winrate")
+                or getattr(self, "last_winrate", 0.0)
+                or 0.0
+            )
+            if thr > 0:
+                edge = live_wr - thr
+                scorecard["edge_vs_random"] = round(edge, 4)
+                self._edge_vs_random = edge
+                if edge < 0 and bool(scorecard.get("expectancy_stall_detected")):
+                    try:
+                        from lumina_core.logging_utils import get_logger
+
+                        get_logger("lumina.birth.expectancy").warning(
+                            "birth.expectancy.anti_edge wr=%.4f first_touch_thr=%.4f "
+                            "edge=%.4f (policy worse than random first-touch)",
+                            live_wr,
+                            thr,
+                            edge,
+                        )
+                    except Exception:
+                        pass
+            else:
+                scorecard.setdefault("edge_vs_random", 0.0)
+        except Exception:
+            scorecard.setdefault("first_touch_target_hit_rate", 0.0)
+            scorecard.setdefault("edge_vs_random", 0.0)
+        # First-touch pressure after thr is known (skill dual-truth, floors unchanged).
+        try:
+            thr = float(scorecard.get("first_touch_target_hit_rate") or 0.0)
+            skill_wr = float(
+                scorecard.get("_skill_wr_for_ft")
+                or scorecard.get("skill_metric_winrate")
+                or scorecard.get("stage_winrate")
+                or 0.0
+            )
+            if thr > 0:
+                scorecard["skill_wr_vs_first_touch"] = round(skill_wr - thr, 4)
+                scorecard["first_touch_training_pressure"] = round(
+                    max(0.0, thr - skill_wr), 4
+                )
+            scorecard.pop("_skill_wr_for_ft", None)
+        except Exception:
+            scorecard.pop("_skill_wr_for_ft", None)
+        # Stage-2 Pass Vector SSOT (multi-blocker gaps — never lowers floors).
+        try:
+            from lumina_core.birth.stage2_pass_vector import compute_stage2_pass_vector
+            from lumina_core.birth.starship_edgescore_stage2 import stage2_expectancy_floor
+
+            signals = int(getattr(self, "stage_range_total_signals", 0) or 0)
+            flat_bars = int(getattr(self, "stage_range_flat_bars", 0) or 0)
+            flat_pv = (
+                float(flat_bars) / float(max(1, signals)) if signals > 0 else 0.5
+            )
+            # Prefer skill expectancy when policy-only grades the pilot.
+            exp_proxy = float(
+                scorecard.get("skill_metric_expectancy")
+                if scorecard.get("expectancy_proxy_source") == "skill_policy_only"
+                else (
+                    scorecard.get("expectancy_proxy")
+                    or (
+                        float(scorecard.get("hygiene_wr_effective") or 0.0) - 0.50
+                        if scorecard.get("hygiene_wr_effective") is not None
+                        else (float(scorecard.get("stage_winrate") or 0.0) - 0.50)
+                    )
+                )
+            )
+            exp_floor = float(stage2_expectancy_floor(self.cur_cfg))
+            edge_pv = float(scorecard.get("edge_vs_random") or getattr(self, "_edge_vs_random", 0.0) or 0.0)
+            pv = compute_stage2_pass_vector(
+                range_flat_ratio=flat_pv,
+                expectancy=exp_proxy,
+                exp_floor=exp_floor,
+                edge_vs_random=edge_pv,
+                band_lo=float(
+                    getattr(self.cur_cfg, "stage2_participation_band_lo", 0.30) or 0.30
+                ),
+                band_hi=float(
+                    getattr(self.cur_cfg, "stage2_participation_band_hi", 0.70) or 0.70
+                ),
+            )
+            scorecard.update(pv.as_progress_fields())
+            # PR-I: pass HUD SSOT = same leg as EdgeScore (max skill, rolling).
+            pass_exp = float(exp_proxy)
+            pass_src = str(
+                scorecard.get("expectancy_proxy_source")
+                or ("skill_policy_only" if scorecard.get("skill_metric_eligible") else "total")
+            )
+            try:
+                from lumina_core.birth.stage2_skill_metric import (
+                    resolve_stage2_skill_counts,
+                    skill_expectancy_for_pass,
+                )
+
+                sc2 = resolve_stage2_skill_counts(
+                    total_trades=int(getattr(self, "stage_trades", 0) or 0),
+                    total_wins=int(getattr(self, "stage_wins", 0) or 0),
+                    policy_trades=int(getattr(self, "stage_policy_trades", 0) or 0),
+                    policy_wins=int(getattr(self, "stage_policy_wins", 0) or 0),
+                    plant_trades=int(getattr(self, "stage_plant_trades", 0) or 0),
+                    plant_wins=int(getattr(self, "stage_plant_wins", 0) or 0),
+                    skill_only=bool(
+                        getattr(self.cur_cfg, "stage2_skill_metric_policy_only", True)
+                    ),
+                    required=int(getattr(self, "required", 300) or 300),
+                    skill_min_trades=getattr(
+                        self.cur_cfg, "stage2_skill_min_trades", None
+                    ),
+                )
+                roll_h = scorecard.get("hygiene_wr_rolling") or scorecard.get(
+                    "rolling_winrate_500"
+                )
+                roll_f = float(roll_h) if roll_h is not None else None
+                pack = skill_expectancy_for_pass(sc2, rolling_winrate=roll_f)
+                if len(pack) >= 3 and pack[1]:
+                    pass_exp, pass_src = float(pack[0]), str(pack[2])
+                elif pack[1]:
+                    pass_exp = float(pack[0])
+            except Exception:
+                pass
+            scorecard["pass_expectancy"] = round(float(pass_exp), 4)
+            scorecard["pass_wr_equiv"] = round(float(pass_exp) + 0.50, 4)
+            scorecard["pass_expectancy_source"] = str(pass_src)
+            # Keep expectancy_proxy aligned with pass leg for operator truth.
+            scorecard["expectancy_proxy"] = round(float(pass_exp), 4)
+            scorecard["expectancy_proxy_source"] = str(pass_src)
+        except Exception:
+            scorecard.setdefault("pass_vector_dominant", "none")
+            scorecard.setdefault("pass_vector_action", "hold_pass_path")
+            scorecard.setdefault("pass_vector_edge_gap", 0.0)
+            scorecard.setdefault("pass_vector_exp_gap", 0.0)
+        # P0–P1 peak capture / near-miss / restore telemetry (truthful, floors unchanged).
+        try:
+            peak_st = getattr(self, "stage2_peak_state", None)
+            if peak_st is not None and hasattr(peak_st, "as_progress_fields"):
+                scorecard.update(peak_st.as_progress_fields())
+            else:
+                scorecard.setdefault("stage2_peak_winrate", 0.0)
+                scorecard.setdefault("stage2_near_miss_active", False)
+                scorecard.setdefault("stage2_peak_restore_count", 0)
+        except Exception:
+            scorecard.setdefault("stage2_peak_winrate", 0.0)
+            scorecard.setdefault("stage2_near_miss_active", False)
+        # Engine cum is HUD SSOT (peak blob may omit time_stop / unknown / share).
+        try:
+            from lumina_core.birth.starship_edgescore_core import settlement_progress_fields
+
+            scorecard.update(
+                settlement_progress_fields(
+                    closes_stop=int(getattr(self, "stage_closes_stop_cum", 0) or 0),
+                    closes_target=int(getattr(self, "stage_closes_target_cum", 0) or 0),
+                    closes_time_stop=int(
+                        getattr(self, "stage_closes_time_stop_cum", 0) or 0
+                    ),
+                    closes_flatten=int(
+                        getattr(self, "stage_closes_flatten_cum", 0) or 0
+                    ),
+                    closes_unknown=int(
+                        getattr(self, "stage_closes_unknown_cum", 0) or 0
+                    ),
+                )
+            )
+        except Exception:
+            logger.debug("birth.settlement_progress_fields_failed", exc_info=True)
+        scorecard["expectancy_quality_step_source"] = str(
+            getattr(self, "expectancy_quality_step_source", "") or ""
+        )
+        # Runtime identity — proves which binary wrote this progress row.
+        try:
+            from lumina_core.birth.runtime_diagnostics import (
+                log_progress_write_trace,
+                progress_diagnostic_fields,
+            )
+
+            scorecard.update(progress_diagnostic_fields())
+            # Explicit last meta rationale from applied plan (not only bus history).
+            plan = getattr(self, "meta_last_plan", None)
+            if plan is not None and not scorecard.get("meta_last_rationale"):
+                scorecard["meta_last_rationale"] = str(
+                    getattr(plan, "rationale", "") or ""
+                )
+            log_progress_write_trace(
+                phase=str(phase),
+                curriculum_stage=str(getattr(self.stage, "value", self.stage)),
+                stage_trades=int(current_stage_trades),
+                scorecard=scorecard,
+            )
+        except Exception as exc:
+            scorecard["birth_diag_contract"] = "diag_error"
+            scorecard["birth_code_fingerprint"] = f"error:{type(exc).__name__}"
+            scorecard["birth_runtime_pid"] = 0
+        # Phase D: maturity / certificate readiness (honest absence, never hollow declare).
+        try:
+            from lumina_core.birth.foundation_metrics import FOUNDATION_STAGE_COUNT
+            from lumina_core.birth.maturity_readiness import (
+                certificate_path_ready,
+                certificate_readiness_blockers,
+                maturity_artifact_presence,
+            )
+
+            root = self.host.workspace_root
+            arts = maturity_artifact_presence(root)
+            scorecard.update(arts)
+            stages_passed = list(getattr(self.host, "_stages_passed", None) or [])
+            scorecard["curriculum_stages_passed_count"] = len(stages_passed)
+            scorecard["certificate_path_ready"] = certificate_path_ready(
+                stages_passed_count=len(stages_passed),
+                plateau_active=bool(self.plateau_state.active),
+                needs_attention=bool(scorecard.get("needs_attention")),
+                curriculum_stages_required=FOUNDATION_STAGE_COUNT,
+            )
+            scorecard["certificate_readiness_blockers"] = certificate_readiness_blockers(
+                stages_passed_count=len(stages_passed),
+                plateau_active=bool(self.plateau_state.active),
+                expectancy_stall=bool(scorecard.get("expectancy_stall_detected")),
+                needs_attention=bool(scorecard.get("needs_attention")),
+                certificate_present=bool(arts.get("certificate_present")),
+                curriculum_stages_required=FOUNDATION_STAGE_COUNT,
+            )
+            try:
+                from lumina_core.birth.perfect_birth_gate import perfect_birth_status
+
+                pb = perfect_birth_status(root)
+                scorecard["perfect_birth_would_pass"] = bool(pb.get("would_pass"))
+                scorecard["perfect_birth_unlock_valid"] = bool(pb.get("unlock_valid"))
+                scorecard["perfect_birth_failures"] = list(pb.get("failures") or [])[:12]
+            except Exception:
+                scorecard["perfect_birth_would_pass"] = False
+                scorecard["perfect_birth_unlock_valid"] = False
+                scorecard["perfect_birth_failures"] = ["status_unavailable"]
+        except Exception:
+            logger.debug("birth.maturity_readiness_fields_failed", exc_info=True)
 
 
 __all__ = ["StageLoopProgressWriteEnrichMixin"]

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-# run_birth_phase integration can exceed the global 30s limit on cold CI/agents.
-pytestmark = pytest.mark.timeout(120)
+pytestmark = pytest.mark.timeout(30)
 
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
+from lumina_core.birth.curriculum import CurriculumStage
 from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.pattern_miner import PatternMineResult
 from lumina_core.birth.sim_runner import SimRolloutResult
@@ -46,7 +48,9 @@ def _rising_ticks(n: int) -> list[dict]:
         price += 0.5
         ticks.append(
             {
-                "timestamp": f"2026-01-01T{i:04d}:00Z",
+                "timestamp": (
+                    datetime(2025, 1, 1, tzinfo=timezone.utc) + timedelta(hours=i * 12)
+                ).isoformat(),
                 "last": price,
                 "bid": price - 0.125,
                 "ask": price + 0.125,
@@ -124,6 +128,23 @@ def _mock_expand_once(**_kwargs):
     )
 
 
+def _patch_expand(monkeypatch: pytest.MonkeyPatch, fn=_mock_expand_once) -> None:
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", fn)
+    monkeypatch.setattr("lumina_core.birth.data_expansion.expand_birth_data", fn)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", fn)
+
+
+def _install_fast_wall_clock(monkeypatch: pytest.MonkeyPatch) -> dict[str, float]:
+    """Wall floor is max(300, max_stage_wall_sec); jump clock on each time.time()."""
+    tick = {"value": 1_000_000.0}
+
+    def _fake_time() -> float:
+        return tick["value"]
+
+    monkeypatch.setattr("lumina_core.birth.stage_training_loop.time.time", _fake_time)
+    return tick
+
+
 @pytest.mark.slow
 @pytest.mark.unit
 def test_learning_loop_continues_after_single_trade_chunk(
@@ -137,30 +158,23 @@ def test_learning_loop_continues_after_single_trade_chunk(
         market_data_service=SimpleNamespace(),
         workspace_root=tmp_path,
     )
-    small_cfg = BirthV2Config(
+    engine.birth_config = BirthV2Config(
         curriculum=BirthCurriculumConfig(
-            stage1_trend_trades=5,
-            stage2_range_trades=5,
-            stage3_mixed_trades=5,
+            stage1_trend_trades=150,
             rollout_chunk_trades=10,
-            max_rollouts_per_stage=8,
-            max_escalation_level=5,
+            max_rollouts_per_stage=20,
             gen0_provisional_min_trades=5,
-            rollout_step_budget_multiplier=20,
             certificate_runway_enabled=False,
             autonomous_recovery_enabled=False,
             phoenix_loop_enabled=False,
+            checkpoint_interval_sec=3600,
         ),
         trade_budget_cap=500,
     )
-    engine.birth_config = small_cfg
+    for i in range(300):
+        engine.buffer.add({"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.01]}})
 
-    monkeypatch.setattr(
-        "lumina_core.birth.data_pipeline.load_historical_ticks",
-        lambda **_kwargs: _rising_ticks(800),
-    )
-    _expand_calls["n"] = 0
-    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand_once)
+    _patch_expand(monkeypatch)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.mine_winning_patterns", _fast_oracle_mine)
     monkeypatch.setattr(
         "lumina_core.birth.news_enricher.enrich_ticks_with_news",
@@ -170,8 +184,10 @@ def test_learning_loop_continues_after_single_trade_chunk(
 
     def _chunk_rollout(**_kwargs) -> SimRolloutResult:
         rollout_calls["n"] += 1
+        if rollout_calls["n"] >= 6:
+            raise RuntimeError("continued_after_partial_chunks")
         trades = 50 if rollout_calls["n"] >= 3 else 1
-        trajectories = [{"reward": 1.0, "pnl": 1.0}] * trades
+        trajectories = [{"reward": 1.0, "pnl": 1.0, "observation": {"vector": [5000.0]}}] * max(1, trades)
         return SimRolloutResult(
             trades=trades,
             wins=trades,
@@ -187,38 +203,26 @@ def test_learning_loop_continues_after_single_trade_chunk(
         )
 
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.run_policy_rollout", _chunk_rollout)
-    monkeypatch.setattr(
-        "lumina_core.birth.certificate_pipeline.run_policy_rollout",
-        _chunk_rollout,
-    )
-    monkeypatch.setattr(
-        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
-        lambda **_kwargs: {
-            "certificate_passed": True,
-            "holdout_trades": 60,
-            "real_data_pct": 99.0,
-            "oos_winrate": 0.5,
-            "oos_sharpe": 0.4,
-            "oos_max_drawdown_pct": 4.0,
-            "constitution_violations": 0,
-            "regimes_covered": ["TREND_UP", "NEUTRAL"],
-            "holdout_days": 5,
-        },
-    )
 
-    result = engine.run_birth_phase(target_trades=100, force=True, prefer_real_data_only=False)
+    ticks = _rising_ticks(800)
+    with pytest.raises(RuntimeError, match="continued_after_partial_chunks"):
+        engine._run_stage_research_loop(
+            stage=CurriculumStage.STAGE1_TREND,
+            stage_index=0,
+            stage_ticks=ticks,
+            train_ticks=ticks,
+            holdout_ticks=ticks[:160],
+            target=150,
+            stage_progress_pct=20.0,
+            training_mode="certified",
+            ppo_steps_per_update=1000,
+            polish_ppo_timesteps=1000,
+            trade_budget_cap=500,
+            prefer_real=True,
+            start_price=5000.0,
+        )
 
     assert rollout_calls["n"] >= 3
-    assert result["status"] in {
-        "completed",
-        "certificate_failed",
-        "practice_completed",
-        "stage_stalled",
-    }
-    progress_path = tmp_path / "state" / "lumina_birth_progress.json"
-    if progress_path.is_file():
-        payload = json.loads(progress_path.read_text(encoding="utf-8"))
-        assert payload.get("phase") != "curriculum_failed"
 
 
 @pytest.mark.slow
@@ -228,11 +232,13 @@ def test_learning_loop_never_writes_curriculum_failed_on_partial_winrate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trainer = _FakePpoTrainer()
+    stop_event = threading.Event()
     engine = LuminaBirthEngine(
         runtime=SimpleNamespace(),
         ppo_trainer=trainer,
         market_data_service=SimpleNamespace(),
         workspace_root=tmp_path,
+        stop_event=stop_event,
     )
     engine.birth_config = BirthV2Config(
         curriculum=BirthCurriculumConfig(
@@ -253,7 +259,8 @@ def test_learning_loop_never_writes_curriculum_failed_on_partial_winrate(
         lambda **_kwargs: _rising_ticks(400),
     )
     _expand_calls["n"] = 0
-    monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand_once)
+    _patch_expand(monkeypatch)
+    wall_tick = _install_fast_wall_clock(monkeypatch)
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.mine_winning_patterns", _fast_oracle_mine)
     monkeypatch.setattr(
         "lumina_core.birth.news_enricher.enrich_ticks_with_news",
@@ -261,6 +268,8 @@ def test_learning_loop_never_writes_curriculum_failed_on_partial_winrate(
     )
 
     def _one_trade_rollout(**_kwargs) -> SimRolloutResult:
+        wall_tick["value"] += 400.0
+        stop_event.set()
         return SimRolloutResult(
             trades=1,
             wins=1,

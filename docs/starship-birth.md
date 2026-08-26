@@ -4,9 +4,9 @@ SSOT for Birth learning integrity, swarm tournaments, twin CONTINUE, and certifi
 
 **Organism framing:**
 
-- **Birth phase exit** = survival (breathe / legal action loop / artifacts) — not pro daytrader competence, not OOS 0.48, not Perfect Birth.
-- **Inside Birth**, Stage 1 uses **survival floors**; Stage 2/3 use **early-quality floors** (expectancy ≥ −0.15 ≡ ~35% WR-proxy) — still not cert/REAL.
-- **Playground / Proving Ground** hold full skill EdgeScore and OOS certificate walls.
+- **Birth phase exit** = five Foundation `foundation_v2` receipts + fitness vector (ADR-0046) — not artifacts-only, not a WR exam, not OOS 0.48, not Perfect Birth.
+- **Inside Birth**, stages 1–5 pass on process-R, occupancy, and first-touch. EdgeScore / WR sliders are HUD diagnostics. WR 20/35/40 is **not** current pass law.
+- **Playground / Proving Ground** hold economic viability, Evolution Proof, and OOS certificate walls.
 
 Canonical floors + why (locked): **[birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md)**.  
 Maturation ladder: [organism-maturation-phases.md](adr/organism-maturation-phases.md).
@@ -21,7 +21,7 @@ Maturation ladder: [organism-maturation-phases.md](adr/organism-maturation-phase
 
 ## Phase A (summary)
 
-- Stage-1 pass law = **EdgeScore** under **survival floors** when `birth_survival_pass_enabled` (WR ~0.20, expectancy ≥ −0.50); vanity 45% WR is diagnostic only.
+- Stage-1 pass law = Foundation process-R (median loss R ≤ 1.5, settlement, net RR ≥ 0.80). EdgeScore survival floors remain HUD diagnostics; vanity 45% WR is never `passed`.
 - Swarm-first before recovery ladder; commit only on **tournament lift** (`tournament_score`); else restore champion + `rejected_no_lift`.
 - Champion freeze / accept-champion path; pause SSOT for birth + first_boot progress.
 
@@ -47,12 +47,12 @@ Maturation ladder: [organism-maturation-phases.md](adr/organism-maturation-phase
 - With trajectory evidence, claimed regimes with 0 trades → `oos_regime_empty`.
 - Micro-OOS / runway may report multi-slice mean WR; **full holdout remains SSOT** for `certificate_passed`.
 
-### B3 — Stage 2/3 EdgeScore (early-quality, not survival −0.50)
+### B3 — Stage 2/3 HUD EdgeScore (not Foundation pass)
 
 - Flags: `stage2_edgescore_enabled` / `stage3_edgescore_enabled` (default true).
-- Scorecard ids: `range_edgescore`, `mixed_edgescore` (UI decimal formatter on Mission Control + Metrics Strip).
-- Blockers use EdgeScore when flags on; receipts carry entropy / PnL like Stage 1.
-- **Floors (locked):** Stage 2 expectancy ≥ **−0.15** (`stage2_expectancy_floor`, ≡ ~35% WR-proxy) + flat 30–70%; Stage 3 expectancy ≥ −0.15 + WR floor ~0.35. **Not** Stage-1 survival −0.50. **Not** pro OOS 0.48.
+- Scorecard ids: `range_edgescore`, `mixed_edgescore` (Mission Control + Metrics Strip).
+- EdgeScore `.passed` / rolling WR may paint HUD blockers; **graduation is `evaluate_stage_pass` only** (process-R + occupancy). Never “Ready to pass” without `stage_pass_now`.
+- **Pass (locked, ADR-0046):** Stage 2 occupancy 30–70% + process-R; Stage 3 occupancy 25–75% + edge ≥ −5pp vs first-touch. **Not** WR 35%. **Not** pro OOS 0.48.
 - Full doctrine: [birth-curriculum-stage-floors.md](birth-curriculum-stage-floors.md).
 
 ### B4 — BirthControlPlane
@@ -83,7 +83,7 @@ Plan: [starship-birth-seal-ii.md](starship-birth-seal-ii.md).
 
 - Client SSOT: `tauri-app/src/lib/birth/birthTournamentNaming.ts` — prefer `swarm_tournament_*`, normalize `swarm_no_edgescore_lift` → `swarm_no_tournament_lift`, rewrite residual “EdgeScore lift” operator copy.
 - Status fetch path applies normalization (`fetchBirthStatusTyped` / birth mutations).
-- Stage HUD shows **Tournament lift** field (swarm physics); stage pass metric remains **EdgeScore** (composite criteria — not vanity rename).
+- Stage HUD shows **Tournament lift** field (swarm physics); stage pass metric is Foundation process-R / occupancy (`stage_pass_now`). EdgeScore is diagnostic theater, not graduation.
 
 ## Key modules
 

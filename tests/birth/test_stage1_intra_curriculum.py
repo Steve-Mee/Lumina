@@ -63,7 +63,9 @@ def test_sample_intra_stage1_pool_respects_hard_pct() -> None:
         t["_intra_difficulty"] = "hard"
     state = Stage1IntraCurriculumState(hard_pct=0.15)
     rng = random.Random(42)
-    pool = sample_intra_stage1_pool(easy, hard, state, pool_size=200, rng=rng)
+    pool = sample_intra_stage1_pool(
+        easy, hard, state, pool_size=200, rng=rng, window_len=5
+    )
     hard_in_pool = sum(1 for t in pool if t.get("_intra_difficulty") == "hard")
     ratio = hard_in_pool / len(pool)
     assert 0.08 <= ratio <= 0.22

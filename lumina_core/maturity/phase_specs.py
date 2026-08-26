@@ -97,20 +97,13 @@ def can_start_phase(workspace_root: Path | str, phase: str) -> tuple[bool, str]:
 
 
 def _birth_ok(workspace_root: Path | str) -> bool:
-    """H7: Birth exit SSOT — not Perfect Birth / promotion / READY_FOR_REAL."""
+    """H7 / ADR-0046: Foundation exit SSOT — artifacts-only is not enough."""
     try:
         from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
 
         return bool(is_birth_exit_sufficient(workspace_root))
     except Exception:
-        try:
-            from lumina_launcher.services.birth_service import BirthService
-
-            svc = BirthService()
-            svc.configure_workspace(Path(workspace_root))
-            return bool(svc.artifacts_ok() or svc.certificate_ok() or svc.is_completed())
-        except Exception:
-            return False
+        return False
 
 
 def evaluate_exit_proofs(workspace_root: Path | str, phase: str) -> tuple[bool, list[str], dict[str, Any]]:

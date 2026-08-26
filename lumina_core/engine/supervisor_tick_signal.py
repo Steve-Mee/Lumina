@@ -27,6 +27,12 @@ def run_tick_signal_gate(sm: Any, ctx: SupervisorTickCtx) -> None:
         dream_snapshot.get("min_confluence_override", getattr(_cfg, "min_confluence", 0.0))
         or getattr(_cfg, "min_confluence", 0.0)
     )
+    from lumina_core.code_evolution.runtime_overlay import (
+        effective_min_confluence,
+        overlay_from_engine,
+    )
+
+    min_confluence = effective_min_confluence(min_confluence, overlay_from_engine(engine))
     qty_multiplier = float(dream_snapshot.get("position_size_multiplier", 1.0) or 1.0)
     stop_widen_multiplier = float(dream_snapshot.get("stop_widen_multiplier", 1.0) or 1.0)
     signal = dream_snapshot.get("signal", "HOLD")

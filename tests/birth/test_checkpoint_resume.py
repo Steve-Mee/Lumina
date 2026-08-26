@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ from lumina_core.birth.buffer_persist import save_buffer
 from lumina_core.birth.checkpoint import save_checkpoint
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
 from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 from lumina_core.birth.data_expansion import DataExpansionResult
 from lumina_core.birth.pattern_miner import PatternMineResult
 from lumina_core.birth.sim_runner import SimRolloutResult
@@ -46,7 +48,9 @@ def _rising_ticks(n: int) -> list[dict]:
         price += 0.5
         ticks.append(
             {
-                "timestamp": f"2026-01-01T{i:04d}:00Z",
+                "timestamp": (
+                    datetime(2025, 1, 1, tzinfo=timezone.utc) + timedelta(hours=i * 12)
+                ).isoformat(),
                 "last": price,
                 "bid": price - 0.125,
                 "ask": price + 0.125,
@@ -117,14 +121,16 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
 
     stage1_result = evaluate_stage_pass(
         CurriculumStage.STAGE1_TREND,
-        trades=100,
+        trades=160,
         wins=50,
         hold_signals=0,
-        total_signals=100,
+        total_signals=160,
         constitution_violations=0,
         target_trades=100,
         cfg=curriculum,
         allow_provisional=False,
+        **honest_closes(160),
+        **foundation_eval_kwargs(unique_calendar_days=90),
     )
     assert stage1_result.passed
     from lumina_core.birth.stage_pass_receipt import receipt_from_stage_result
@@ -197,6 +203,8 @@ def test_mid_stage_resume_restores_buffer_and_stage_trades(
         lambda ticks, **_kwargs: ticks,
     )
     monkeypatch.setattr("lumina_core.birth.stage_training_loop.expand_birth_data", _mock_expand)
+    monkeypatch.setattr("lumina_core.birth.data_expansion.expand_birth_data", _mock_expand)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _mock_expand)
     monkeypatch.setattr(
         "lumina_core.birth.stage_training_loop.mine_winning_patterns",
         lambda **_kwargs: PatternMineResult(

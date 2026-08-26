@@ -9,17 +9,19 @@ from typing import Any
 from lumina_core.birth.curriculum import CurriculumStage
 
 _STAGE_LABELS: dict[str, str] = {
-    CurriculumStage.STAGE1_TREND.value: "Stage 1 — Trend",
-    CurriculumStage.STAGE2_RANGE.value: "Stage 2 — Range",
-    CurriculumStage.STAGE3_MIXED.value: "Stage 3 — Mixed",
-    CurriculumStage.STAGE4_POLISH.value: "Stage 4 — Polish",
+    CurriculumStage.STAGE1_TREND.value: "Stage 1 — Closed loop",
+    CurriculumStage.STAGE2_RANGE.value: "Stage 2 — Selectivity",
+    CurriculumStage.STAGE3_MIXED.value: "Stage 3 — Mixed regimes",
+    CurriculumStage.STAGE4_VIABLE_PLANT.value: "Stage 4 — Viable plant",
+    CurriculumStage.STAGE5_PROBE_HANDOFF.value: "Stage 5 — Probe & handoff",
 }
 
 _STAGE_MILESTONE_IDS: dict[str, str] = {
     CurriculumStage.STAGE1_TREND.value: "curriculum_stage1_trend_passed",
     CurriculumStage.STAGE2_RANGE.value: "curriculum_stage2_range_passed",
     CurriculumStage.STAGE3_MIXED.value: "curriculum_stage3_mixed_passed",
-    CurriculumStage.STAGE4_POLISH.value: "curriculum_stage4_polish_passed",
+    CurriculumStage.STAGE4_VIABLE_PLANT.value: "curriculum_stage4_viable_passed",
+    CurriculumStage.STAGE5_PROBE_HANDOFF.value: "curriculum_stage5_probe_passed",
 }
 
 

@@ -121,11 +121,23 @@ def test_should_skip_wizard_when_birth_running() -> None:
 
 
 @pytest.mark.unit
-def test_should_skip_wizard_when_artifacts_ok() -> None:
+def test_should_skip_wizard_when_birth_exit_ok() -> None:
     assert should_skip_wizard(
         setup_complete=True,
         birth_status="idle",
         artifacts_ok=True,
+        birth_exit_ok=True,
+        required_steps=["welcome"],
+    )
+
+
+@pytest.mark.unit
+def test_should_skip_wizard_rejects_artifacts_without_foundation_exit() -> None:
+    assert not should_skip_wizard(
+        setup_complete=True,
+        birth_status="completed",
+        artifacts_ok=True,
+        birth_exit_ok=False,
         required_steps=["welcome"],
     )
 
@@ -260,7 +272,7 @@ def test_resolve_app_surface_fresh_install() -> None:
 
 
 @pytest.mark.unit
-def test_resolve_app_surface_hub_when_artifacts_ok() -> None:
+def test_resolve_app_surface_hub_when_birth_exit_ok() -> None:
     required, _ = compute_onboarding_steps(
         backend_reachable=True,
         setup_complete=True,
@@ -268,16 +280,41 @@ def test_resolve_app_surface_hub_when_artifacts_ok() -> None:
         credentials_missing=[],
         birth_status="completed",
         artifacts_ok=True,
+        birth_exit_ok=True,
     )
     surface, reason = resolve_app_surface(
         setup_complete=True,
         birth_status="completed",
         artifacts_ok=True,
+        birth_exit_ok=True,
         backend_reachable=True,
         required_steps=required,
     )
     assert surface == "hub"
     assert reason == "maturation_hub"
+
+
+@pytest.mark.unit
+def test_resolve_app_surface_birth_when_artifacts_without_exit() -> None:
+    required, _ = compute_onboarding_steps(
+        backend_reachable=True,
+        setup_complete=True,
+        intelligence_missing=[],
+        credentials_missing=[],
+        birth_status="completed",
+        artifacts_ok=True,
+        birth_exit_ok=False,
+    )
+    surface, reason = resolve_app_surface(
+        setup_complete=True,
+        birth_status="completed",
+        artifacts_ok=True,
+        birth_exit_ok=False,
+        backend_reachable=True,
+        required_steps=required,
+    )
+    assert surface == "birth"
+    assert reason == "birth_pending"
 
 
 @pytest.mark.unit

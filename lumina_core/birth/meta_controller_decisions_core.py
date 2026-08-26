@@ -124,7 +124,17 @@ class MetaControllerDecisionsCore:
     def scorecard_fields(self, plan: MetaActionPlan | None = None) -> dict[str, Any]:
         snap = plan.snapshot if plan and plan.snapshot else None
         primary = plan.primary.value if plan else RecoveryStrategy.HOLD.value
+        rationale = str(getattr(plan, "rationale", "") or "") if plan else ""
         # Stage2 over-flat: HOLD is anti-participation theater — surface explore.
+        # Never surface explore_boost while expectancy quality stall owns Stage-2.
+        try:
+            from lumina_core.birth.expectancy_stall import snapshot_expectancy_stall
+
+            quality_stall = bool(
+                snap is not None and snapshot_expectancy_stall(snap, cfg=self.cfg)
+            )
+        except Exception:
+            quality_stall = False
         try:
             if (
                 snap is not None
@@ -132,8 +142,13 @@ class MetaControllerDecisionsCore:
                 and str(getattr(snap.stage, "value", snap.stage)) == "stage2_range"
                 and float(getattr(snap, "range_flat_ratio", 0.0) or 0.0) > 0.70
                 and primary == RecoveryStrategy.HOLD.value
+                and not quality_stall
             ):
                 primary = RecoveryStrategy.EXPLORE_BOOST.value
+            if quality_stall and primary == RecoveryStrategy.EXPLORE_BOOST.value:
+                primary = RecoveryStrategy.EXPLORE_REDUCE.value
+                if "stage2_expectancy" not in rationale:
+                    rationale = "stage2_expectancy_scorecard_guard"
         except Exception:
             pass
         return {
@@ -145,4 +160,5 @@ class MetaControllerDecisionsCore:
             "meta_pattern_quality": snap.pattern_quality if snap else 0.0,
             "meta_explore_multiplier": round(float(self.explore_multiplier), 4),
             "meta_review_trigger": str(self.last_review_trigger),
+            "meta_last_rationale": rationale,
         }

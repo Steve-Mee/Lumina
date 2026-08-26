@@ -27,20 +27,81 @@ def _stage2_exp_floor(loop: Any) -> float:
         return float(getattr(loop.cur_cfg, "stage2_expectancy_floor", -0.15) or -0.15)
 
 
+def _stage1_foundation_gap(loop: Any) -> float:
+    """Stage-1 learning pressure toward foundation target (not survival pass floor)."""
+    try:
+        from lumina_core.birth.curriculum import CurriculumStage
+        from lumina_core.birth.stage1_foundation import stage1_foundation_learning_gap
+
+        if getattr(loop, "stage", None) != CurriculumStage.STAGE1_TREND:
+            return 0.0
+        rolling = None
+        try:
+            rolling, _, _ = loop._rolling_winrate_meta()  # type: ignore[attr-defined]
+        except Exception:
+            rolling = None
+        edge = getattr(loop, "_edge_vs_random", None)
+        try:
+            edge_f = float(edge) if edge is not None else None
+        except (TypeError, ValueError):
+            edge_f = None
+        return float(
+            stage1_foundation_learning_gap(
+                stage_trades=int(getattr(loop, "stage_trades", 0) or 0),
+                stage_wins=int(getattr(loop, "stage_wins", 0) or 0),
+                required=int(getattr(loop, "required", 200) or 200),
+                cfg=getattr(loop, "cur_cfg", None),
+                rolling_winrate=float(rolling) if rolling is not None else None,
+                edge_vs_random=edge_f,
+            )
+        )
+    except Exception:
+        return 0.0
+
+
 def _stage2_expectancy_gap(loop: Any) -> float:
-    """max(0, floor − live expectancy) for quality reward seed."""
+    """max(0, floor − live skill expectancy) + economic pressure when BE-WR high.
+
+    Floor never moves. Economic pressure trains harder wins when plant BE-WR
+    exceeds the proxy-relevant target — honest dual objective.
+    """
     trades = int(getattr(loop, "stage_trades", 0) or 0)
     wins = int(getattr(loop, "stage_wins", 0) or 0)
     if trades <= 0:
         return 0.0
     floor = _stage2_exp_floor(loop)
-    lifetime = float(wins) / float(max(1, trades))
-    live = lifetime - 0.50
+    # Prefer pilot skill counts when present.
+    try:
+        from lumina_core.birth.stage2_skill_metric import resolve_stage2_skill_counts
+
+        sc = resolve_stage2_skill_counts(
+            total_trades=trades,
+            total_wins=wins,
+            policy_trades=int(getattr(loop, "stage_policy_trades", 0) or 0),
+            policy_wins=int(getattr(loop, "stage_policy_wins", 0) or 0),
+            plant_trades=int(getattr(loop, "stage_plant_trades", 0) or 0),
+            plant_wins=int(getattr(loop, "stage_plant_wins", 0) or 0),
+            skill_only=bool(
+                getattr(loop.cur_cfg, "stage2_skill_metric_policy_only", True)
+            ),
+            required=int(getattr(loop, "required", 300) or 300),
+            skill_min_trades=getattr(loop.cur_cfg, "stage2_skill_min_trades", None),
+        )
+        live = float(sc.skill_expectancy)
+        skill_wr = float(sc.skill_winrate)
+    except Exception:
+        lifetime = float(wins) / float(max(1, trades))
+        live = lifetime - 0.50
+        skill_wr = lifetime
     try:
         from lumina_core.birth.plateau_rolling import rolling_winrate_last_n_trades
         from lumina_core.birth.starship_edgescore_core import gate_rolling_winrate
 
-        window = int(getattr(loop.cur_cfg, "stage1_rolling_pass_window", 500) or 500)
+        from lumina_core.birth.plateau_rolling import stage_rolling_pass_window
+
+        window = stage_rolling_pass_window(
+            getattr(loop, "cur_cfg", None), getattr(loop, "stage", None)
+        )
         chunks = getattr(loop, "rolling_trade_chunks", None)
         wins_at = getattr(loop, "wins_at_trade_milestones", None) or {}
         if not isinstance(wins_at, dict):
@@ -62,9 +123,23 @@ def _stage2_expectancy_gap(loop: Any) -> float:
             )
             if wr is not None:
                 live = max(live, float(wr) - 0.50)
+                skill_wr = max(skill_wr, float(wr))
     except Exception:
         pass
-    return max(0.0, float(floor) - float(live))
+    gap = max(0.0, float(floor) - float(live))
+    # Economic honesty: when break-even WR after cost >> skill WR, add pressure.
+    try:
+        from lumina_core.birth.birth_trade_geometry import economic_skill_gap
+
+        geo = getattr(loop, "_birth_trade_geometry", None)
+        be = float(getattr(geo, "breakeven_wr_after_cost", 0.0) or 0.0)
+        if be > 0:
+            econ_gap = economic_skill_gap(be_wr=be, skill_wr=skill_wr)
+            # Cap so economic term cannot drown skill gap signal.
+            gap = max(gap, min(0.25, 0.5 * econ_gap + gap))
+    except Exception:
+        pass
+    return float(gap)
 
 
 class StageLoopRolloutPreCapsMixin:
@@ -94,12 +169,24 @@ class StageLoopRolloutPreCapsMixin:
         hold_cap: float | None = None
         position_flat_cap: float | None = None
         position_flat_floor: float | None = None
-        range_patience_active = self.stage == CurriculumStage.STAGE2_RANGE
-        # Stage2 Participation Envelope: always on for range curriculum (hard occupancy).
+        is_s2 = self.stage == CurriculumStage.STAGE2_RANGE
+        is_s3 = self.stage == CurriculumStage.STAGE3_MIXED
+        range_patience_active = is_s2 or is_s3
+        # Stage-2/3 Participation Envelope: hard occupancy physics (capital preservation).
+        # Live forensics Stage-3: flat~3% with envelope OFF → permanent in-market, WR~22%.
         participation_envelope_enabled = bool(
-            self.stage == CurriculumStage.STAGE2_RANGE
-            and getattr(self.cur_cfg, "stage2_participation_envelope_enabled", True)
+            (
+                is_s2
+                and getattr(self.cur_cfg, "stage2_participation_envelope_enabled", True)
+            )
+            or (
+                is_s3
+                and getattr(self.cur_cfg, "stage3_participation_envelope_enabled", True)
+            )
         )
+        # Occupancy envelope is airframe (FORCE_FLAT/OPEN). Quality lock may freeze
+        # PPO and block explore_boost; it must never disable the envelope.
+        # In-band PASSTHROUGH is already decide_stage2_participation's nominal law.
         velocity_stalled = self.low_velocity_attempts >= int(self.cur_cfg.velocity_stall_attempt_threshold)
         if plateau_recovery or detect_hold_trap(
             hold_ratio=pre_rollout_hold,
@@ -107,9 +194,18 @@ class StageLoopRolloutPreCapsMixin:
             pass_metric_target=self.pass_metric_target,
             velocity_stall=velocity_stalled,
             cfg=self.cur_cfg,
+            range_flat_ratio=pre_rollout_flat,
         ):
             hold_cap = float(self.cur_cfg.hold_trap_recovery_hold_cap)
-        if self.stage == CurriculumStage.STAGE2_RANGE and detect_over_trading_trap(
+        # Stage-3 uses same position-flat SSOT when range flat bars are tracked.
+        if is_s3 and int(getattr(self, "stage_range_total_signals", 0) or 0) < 50:
+            # Fallback: treat low hold as not empty — estimate flat from hold complement.
+            # Prefer real range flat once warm; this only covers cold start.
+            pre_rollout_flat = max(
+                float(pre_rollout_flat),
+                max(0.0, 1.0 - float(pre_rollout_hold)),
+            )
+        if (is_s2 or is_s3) and detect_over_trading_trap(
             range_flat_ratio=pre_rollout_flat,
             range_round_trips=self.stage_range_round_trips,
             required=self.required,
@@ -118,7 +214,17 @@ class StageLoopRolloutPreCapsMixin:
         ):
             position_flat_cap = float(self.cur_cfg.over_trading_recovery_flat_target)
             range_patience_active = True
-        under_activity = self.stage == CurriculumStage.STAGE2_RANGE and detect_under_activity_trap(
+            try:
+                self.over_trading_detected = True
+            except Exception:
+                pass
+        else:
+            try:
+                if is_s2 or is_s3:
+                    self.over_trading_detected = False
+            except Exception:
+                pass
+        under_activity = (is_s2 or is_s3) and detect_under_activity_trap(
             range_flat_ratio=pre_rollout_flat,
             range_total_signals=self.stage_range_total_signals,
             stage_trades=self.stage_trades,
@@ -142,6 +248,42 @@ class StageLoopRolloutPreCapsMixin:
                 float(position_flat_floor) * 100.0,
                 explore_steps,
             )
+        # Expectancy stall + chronic HOLD: tighten hold cap so policy must take
+        # decisive trades (truthful learning; does not lower WR floors).
+        try:
+            from lumina_core.birth.expectancy_stall import loop_expectancy_stall
+
+            exp_stall = bool(
+                loop_expectancy_stall(self)
+                if callable(loop_expectancy_stall)
+                else False
+            )
+        except Exception:
+            exp_stall = bool(getattr(self, "expectancy_stall_detected", False))
+        if (
+            (is_s2 or is_s3)
+            and exp_stall
+            and pre_rollout_hold > 0.65
+            and int(getattr(self, "stage_total_signals", 0) or 0) >= 50
+        ):
+            trap_cap = float(getattr(self.cur_cfg, "hold_trap_recovery_hold_cap", 0.55) or 0.55)
+            hold_cap = min(float(hold_cap) if hold_cap is not None else 1.0, trap_cap, 0.55)
+            logger.info(
+                "birth.expectancy.hold_pressure hold=%.1f%% hold_cap=%.2f (stall + over-hold)",
+                pre_rollout_hold * 100.0,
+                float(hold_cap),
+            )
+        # Stage-3 hygiene gap: also pressure hold when WR≪35% and chronically holding.
+        if is_s3 and int(self.stage_trades) >= max(50, int(self.required) // 4):
+            life_wr = float(self.stage_wins) / float(max(1, self.stage_trades))
+            s3_floor = float(getattr(self.cur_cfg, "stage3_winrate_floor", 0.35) or 0.35)
+            if life_wr + 1e-12 < s3_floor and pre_rollout_hold > 0.55:
+                trap_cap = float(
+                    getattr(self.cur_cfg, "hold_trap_recovery_hold_cap", 0.55) or 0.55
+                )
+                hold_cap = min(
+                    float(hold_cap) if hold_cap is not None else 1.0, trap_cap, 0.55
+                )
         edge_champ_path = str(getattr(self, "best_edgescore_policy_path", "") or "").strip()
         plateau_champ_ok = bool(self.plateau_state.best_policy_path) and is_valid_best_policy_snapshot(
             self.plateau_state, cfg=self.cur_cfg
@@ -224,6 +366,40 @@ class StageLoopRolloutPreCapsMixin:
                     self.stage.value,
                     pre_rollout_hold * 100.0,
                 )
+        # Stage-3: wide PASSTHROUGH (0.28–0.72, zero hysteresis) — no 0.32 sticky pin.
+        # Do not use `or 0.02`: hysteresis 0.0 is a valid Stage-3 law.
+        hyst_default = 0.0 if is_s3 else 0.02
+        lo_default = 0.28 if is_s3 else 0.30
+        hi_default = 0.72 if is_s3 else 0.70
+        hyst_raw = getattr(
+            self.cur_cfg,
+            "stage3_participation_hysteresis" if is_s3 else "stage2_participation_hysteresis",
+            hyst_default,
+        )
+        participation_hysteresis = float(hyst_default if hyst_raw is None else hyst_raw)
+        rel_attr = (
+            "stage3_participation_under_band_release_hysteresis"
+            if is_s3
+            else "stage2_participation_under_band_release_hysteresis"
+        )
+        rel_default = 0.0 if is_s3 else 0.02
+        rel_raw = getattr(self.cur_cfg, rel_attr, rel_default)
+        participation_release_hyst = float(rel_default if rel_raw is None else rel_raw)
+        # Stage-2: 0.0 release hyst pins occupancy at 0.2996 (PID 19776). Floor 0.02.
+        if not is_s3 and participation_release_hyst < 0.02 - 1e-12:
+            participation_release_hyst = 0.02
+        lo_raw = getattr(
+            self.cur_cfg,
+            "stage3_participation_band_lo" if is_s3 else "stage2_participation_band_lo",
+            lo_default,
+        )
+        hi_raw = getattr(
+            self.cur_cfg,
+            "stage3_participation_band_hi" if is_s3 else "stage2_participation_band_hi",
+            hi_default,
+        )
+        participation_band_lo = float(lo_default if lo_raw is None else lo_raw)
+        participation_band_hi = float(hi_default if hi_raw is None else hi_raw)
         return RolloutPreState(
             explore_steps=explore_steps,
             reward_override=reward_override,
@@ -235,27 +411,48 @@ class StageLoopRolloutPreCapsMixin:
             progress_cb=progress_cb,
             participation_envelope_enabled=participation_envelope_enabled,
             participation_min_signals=int(
-                getattr(self.cur_cfg, "stage2_participation_min_signals", 50) or 50
+                getattr(
+                    self.cur_cfg,
+                    "stage3_participation_min_signals"
+                    if is_s3
+                    else "stage2_participation_min_signals",
+                    50,
+                )
+                or 50
             ),
             participation_min_dwell_bars=int(
-                getattr(self.cur_cfg, "stage2_participation_min_dwell_bars", 8) or 8
+                getattr(
+                    self.cur_cfg,
+                    "stage3_participation_min_dwell_bars"
+                    if is_s3
+                    else "stage2_participation_min_dwell_bars",
+                    8,
+                )
+                or 8
             ),
-            participation_band_lo=float(
-                getattr(self.cur_cfg, "stage2_participation_band_lo", 0.30) or 0.30
-            ),
-            participation_band_hi=float(
-                getattr(self.cur_cfg, "stage2_participation_band_hi", 0.70) or 0.70
-            ),
-            participation_hysteresis=float(
-                getattr(self.cur_cfg, "stage2_participation_hysteresis", 0.02) or 0.02
+            participation_band_lo=participation_band_lo,
+            participation_band_hi=participation_band_hi,
+            participation_hysteresis=participation_hysteresis,
+            participation_under_band_release_hysteresis=participation_release_hyst,
+            occupancy_control_window_bars=int(
+                getattr(
+                    self.cur_cfg,
+                    "stage3_occupancy_control_window_bars"
+                    if is_s3
+                    else "stage2_occupancy_control_window_bars",
+                    500,
+                )
+                or 500
             ),
             participation_stop_pct=float(
-                getattr(self.cur_cfg, "stage2_participation_force_open_stop_pct", 0.0075)
-                or 0.0075
+                getattr(self, "_birth_trade_stop_pct", None)
+                or getattr(self.cur_cfg, "stage2_participation_force_open_stop_pct", 0.0012)
+                or 0.0012
             ),
             participation_target_pct=float(
-                getattr(self.cur_cfg, "stage2_participation_force_open_target_pct", 0.015)
-                or 0.015
+                getattr(self, "_birth_trade_target_pct", None)
+                or getattr(self.cur_cfg, "stage2_participation_force_open_target_pct", 0.0020)
+                or 0.0020
             ),
             participation_qty_frac=float(
                 getattr(self.cur_cfg, "stage2_participation_force_open_qty_frac", 0.15)
@@ -265,7 +462,10 @@ class StageLoopRolloutPreCapsMixin:
             stage_range_total_signals=int(
                 getattr(self, "stage_range_total_signals", 0) or 0
             ),
-            expectancy_gap=_stage2_expectancy_gap(self),
+            expectancy_gap=max(
+                _stage2_expectancy_gap(self),
+                _stage1_foundation_gap(self),
+            ),
             stage2_expectancy_floor=_stage2_exp_floor(self),
         )
 

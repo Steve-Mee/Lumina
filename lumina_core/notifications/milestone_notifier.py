@@ -148,8 +148,8 @@ class MilestoneNotifier:
             if mid:
                 seeded.add(mid)
 
-        if CurriculumStage.STAGE4_POLISH.value in stages_passed:
-            seeded.add("curriculum_stage4_polish_passed")
+        if CurriculumStage.STAGE5_PROBE_HANDOFF.value in stages_passed:
+            seeded.add("curriculum_stage5_probe_passed")
 
         if str(training_mode).strip().lower() == "practice" and phase_norm == "practice_completed":
             seeded.add("practice_birth_completed")

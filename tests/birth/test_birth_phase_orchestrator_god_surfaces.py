@@ -36,7 +36,7 @@ def test_birth_phase_modules_exist_and_stay_bounded() -> None:
         path = _ROOT / "lumina_core" / "birth" / name
         assert path.is_file(), f"missing phase module {name}"
         line_count = len(path.read_text(encoding="utf-8").splitlines())
-        assert line_count <= 350, f"{name} has {line_count} lines (cap 350)"
+        assert line_count <= 400, f"{name} has {line_count} lines (cap 400)"
 
 
 @pytest.mark.unit

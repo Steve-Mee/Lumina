@@ -40,6 +40,27 @@ export async function launchNinjaTrader(): Promise<NinjaTraderLaunchResult> {
   return invoke<NinjaTraderLaunchResult>("launch_ninjatrader");
 }
 
+export interface NinjaTraderCloseResult {
+  closed: boolean;
+  wasRunning: boolean;
+  error?: string | null;
+}
+
+/** Soft-close then force-kill NT so Fabric heal can replace locked DLLs. */
+export async function closeNinjaTrader(): Promise<NinjaTraderCloseResult> {
+  if (!isTauri()) {
+    return { closed: false, wasRunning: false, error: "Not running in desktop app" };
+  }
+  return invoke<NinjaTraderCloseResult>("close_ninjatrader");
+}
+
+export async function isNinjaTraderRunning(): Promise<boolean> {
+  if (!isTauri()) {
+    return false;
+  }
+  return invoke<boolean>("is_ninjatrader_running");
+}
+
 export const NINJATRADER_DOWNLOAD_URL = "https://ninjatrader.com/GetStarted";
 
 export const NINJATRADER_DEFAULT_PATH =

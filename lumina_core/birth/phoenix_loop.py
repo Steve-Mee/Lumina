@@ -28,9 +28,8 @@ class PhoenixNoveltyAction(str, Enum):
 
 PHOENIX_NOVELTY_SEQUENCE: tuple[PhoenixNoveltyAction, ...] = (
     PhoenixNoveltyAction.EXPAND_DATA,
-    PhoenixNoveltyAction.POLICY_SWARM,
     PhoenixNoveltyAction.REWARD_SWEEP,
-    PhoenixNoveltyAction.SOFT_GATE,
+    PhoenixNoveltyAction.EXPAND_DATA,
     PhoenixNoveltyAction.WIDEN_HORIZON,
 )
 
@@ -84,7 +83,7 @@ def select_phoenix_novelty(
     circuit_breaker: bool = False,
 ) -> PhoenixNoveltyAction:
     if circuit_breaker:
-        return PhoenixNoveltyAction.WIDEN_HORIZON
+        return PhoenixNoveltyAction.EXPAND_DATA
     idx = state.phoenix_count % len(PHOENIX_NOVELTY_SEQUENCE)
     return PHOENIX_NOVELTY_SEQUENCE[idx]
 

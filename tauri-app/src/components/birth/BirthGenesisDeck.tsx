@@ -1,27 +1,38 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Loader2, OctagonPause, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  CharterTile,
+  DataPolicyCard,
+  RecoveryActionCard,
+  RESUME_TIER_HINT,
+  StatusChip,
+} from "@/components/birth/BirthGenesisDeckPrimitives";
 import { BirthGenesisStatusChips } from "@/components/birth/BirthGenesisStatusChips";
 import { BirthLaunchButton } from "@/components/birth/BirthLaunchButton";
 import {
   GenesisMaturityGoalsPreview,
 } from "@/components/birth/GenesisMaturityLadder";
+import { BirthTwinMicroHost } from "@/components/birth/BirthTwinMicroHost";
 import { Button } from "@/components/ui/button";
 import { HelpTip } from "@/components/ui/HelpTip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import {
+  FOUNDATION_HISTORY_MAX_DAYS,
+  FOUNDATION_HISTORY_START_DAYS,
+  estimateFirstBootRealDays,
   historicalBarCapDays,
   isHighLoadEstimate,
-  linkMaxRealDaysToTrainingTrades,
-  resolveDefaultMaxRealDays,
 } from "@/lib/firstBootSizing";
 import { formatGenesisCheckpointSummary } from "@/lib/birthPhaseModel";
+import {
+  resolveGenesisDeckPresentation,
+  sanitizeBirthOperatorMessage,
+} from "@/lib/birthGenesisPresentation";
 import { helpFor } from "@/lib/helpTexts";
-import { luminaInteractiveClass } from "@/lib/glassGlowTaxonomy";
-import { distressPanelClass, warnOverlayBodyClass } from "@/lib/modePresentation";
 import { cn } from "@/lib/utils";
 import type { BirthStatusPayload, BirthWipeResult } from "@/lib/birthClient";
 import { traceBirthWipe } from "@/lib/birthWipeTrace";
@@ -31,24 +42,20 @@ import { useBirthUiStore, type WipeConfirmKind } from "@/store/birthUiStore";
 
 type GenesisDeckTab = "charter" | "data" | "recovery";
 
-const RESUME_TIER_HINT: Record<string, string> = {
-  T0: "Latest cache loaded directly.",
-  T1: "Checkpoint manifest restored from cache.",
-  T2: "Regime map recomputed (algo update); curriculum intact.",
-  T3: "Data re-prepared; curriculum intact.",
-  T4: "New market data — holdout recomputed; curriculum intact.",
-};
-
 interface BirthGenesisDeckProps {
   training: OnboardingDraft["training"];
   activating: boolean;
   checkpointAvailable?: boolean;
   /** Prior birth stopped mid-run — surface recovery controls even without checkpoint_resumable. */
   sessionInterrupted?: boolean;
+  /** Operator must choose Continue / Start clean (not Activate + wipe thrash). */
+  decisionMode?: boolean;
   birthStatus?: BirthStatusPayload | null;
   busy?: boolean;
   engineLive?: boolean;
   error?: string | null;
+  /** Birth store poll / residual engine error (merged into deck attention). */
+  pollError?: string | null;
   /** First status poll done — false locks Activate during cold restart. */
   sessionHydrated?: boolean;
   sessionProbeState?: "pending" | "ready" | "error";
@@ -64,131 +71,17 @@ interface BirthGenesisDeckProps {
   className?: string;
 }
 
-function StatusChip({
-  label,
-  state,
-  tip,
-}: {
-  label: string;
-  state: "ok" | "partial" | "warn" | "idle";
-  tip: string;
-}) {
-  return (
-    <span
-      className="risk-envelope-status-chip"
-      data-state={state === "idle" ? undefined : state}
-      title={tip}
-    >
-      <span className="risk-envelope-status-chip__dot" />
-      {label}
-    </span>
-  );
-}
-
-function RecoveryActionCard({
-  label,
-  tip,
-  hint,
-  tone = "default",
-  children,
-}: {
-  label: string;
-  tip?: string;
-  hint: string;
-  tone?: "default" | "accent" | "warn" | "danger";
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "risk-envelope-field-card genesis-recovery-action-card h-full",
-        tone === "accent" && "genesis-recovery-action-card--accent",
-        tone === "warn" && "genesis-recovery-action-card--warn",
-        tone === "danger" && "genesis-recovery-action-card--danger",
-      )}
-    >
-      <div className="mb-2 flex items-center justify-center gap-1.5">
-        <p className="risk-envelope-field-label mb-0">{label}</p>
-        {tip ? <HelpTip text={tip} /> : null}
-      </div>
-      <div className="genesis-recovery-action-card__body">{children}</div>
-      <p className="risk-envelope-field-hint mt-auto pt-2 text-center">{hint}</p>
-    </div>
-  );
-}
-
-function CharterTile({
-  label,
-  value,
-  tip,
-  footnote,
-}: {
-  label: string;
-  value: string;
-  tip: string;
-  footnote: string;
-}) {
-  return (
-    <div className="risk-envelope-field-card genesis-charter-tile genesis-charter-tile--centered flex h-full flex-col items-center text-center">
-      <div className="mb-1 flex items-center justify-center gap-1.5">
-        <p className="risk-envelope-field-label mb-0">{label}</p>
-        <HelpTip text={tip} />
-      </div>
-      <p className="font-mono text-lg tabular-nums tracking-tight text-cyan-100 sm:text-xl">
-        {value}
-      </p>
-      <p className="risk-envelope-field-hint mt-auto w-full pt-1 text-center">{footnote}</p>
-    </div>
-  );
-}
-
-function DataPolicyCard({
-  label,
-  tip,
-  hint,
-  checked,
-  disabled,
-  onChange,
-  controlLabel,
-}: {
-  label: string;
-  tip?: string;
-  hint: string;
-  checked: boolean;
-  disabled?: boolean;
-  onChange: (next: boolean) => void;
-  controlLabel: string;
-}) {
-  return (
-    <div className="risk-envelope-field-card genesis-data-policy-card h-full">
-      <div className="mb-2 flex items-center justify-center gap-1.5">
-        <p className="risk-envelope-field-label mb-0">{label}</p>
-        {tip ? <HelpTip text={tip} /> : null}
-      </div>
-      <label className="genesis-data-policy-card__control">
-        <input
-          type="checkbox"
-          className="size-4 shrink-0 accent-cyan-400"
-          checked={checked}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span className="text-sm font-medium text-foreground/90">{controlLabel}</span>
-      </label>
-      <p className="risk-envelope-field-hint mt-auto pt-2 text-center">{hint}</p>
-    </div>
-  );
-}
-
 export function BirthGenesisDeck({
   training,
   activating,
   checkpointAvailable = false,
   sessionInterrupted = false,
+  decisionMode = false,
   birthStatus = null,
   busy = false,
   engineLive = false,
   error = null,
+  pollError = null,
   sessionHydrated = true,
   sessionProbeState = "ready",
   sessionProbePending = false,
@@ -214,9 +107,9 @@ export function BirthGenesisDeck({
   const disabled = activating || busy || sequencing || sessionLocked;
   const wipeBlocked = busy || activating || wipeConfirmWiping || sessionProbePending;
   const gatePct = Math.round((training.stage1_winrate_pass_threshold ?? 0.45) * 100);
-  const estimatedDays = resolveDefaultMaxRealDays(training.training_trades);
+  const estimatedDays = estimateFirstBootRealDays(training.training_trades);
   const barCapDays = historicalBarCapDays();
-  const linkedDays = linkMaxRealDaysToTrainingTrades(training.training_trades);
+  const historyLabel = `Foundation ${FOUNDATION_HISTORY_START_DAYS}d · expand 180/${FOUNDATION_HISTORY_MAX_DAYS}`;
   const checkpointSummary = checkpointAvailable
     ? formatGenesisCheckpointSummary(birthStatus)
     : null;
@@ -226,60 +119,83 @@ export function BirthGenesisDeck({
   const loadHints: string[] = [];
   if (isHighLoadEstimate(estimatedDays)) {
     loadHints.push(
-      `Large trade target (~${estimatedDays.toLocaleString()} days of history) — longer load and higher hardware load.`,
+      `Large trade budget (~${estimatedDays.toLocaleString()} estimated session-days at 450 trades/day) — longer wall-clock, not extra unique tape.`,
     );
   }
-  if (estimatedDays > barCapDays && training.prefer_real_data_only) {
+  if (FOUNDATION_HISTORY_MAX_DAYS > barCapDays && training.prefer_real_data_only) {
     loadHints.push(
-      `Bar fetch capped at ~${barCapDays.toLocaleString()} days; synthetic top-up may apply.`,
+      `365d expand is calendar SLA; 1-minute bar fetch still caps at ~${barCapDays.toLocaleString()} days.`,
     );
   }
-
-  const migratedRef = useRef(false);
-  useEffect(() => {
-    if (migratedRef.current) return;
-    migratedRef.current = true;
-    if (training.max_real_days !== linkedDays) {
-      onChangeTraining({ max_real_days: linkedDays });
-    }
-    // One-time auto-link of historical window to system trade target.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const summaryLine = [
     `${training.training_trades.toLocaleString()} trades`,
     `Gate ${gatePct}%`,
-    `~${linkedDays}d history`,
+    historyLabel,
     training.prefer_real_data_only ? "Real data" : "Mixed data",
   ].join(" · ");
 
-  // Recovery context: interrupted runs often lack checkpoint_resumable but still need wipe/resume UX.
-  // During cold probe, surface Recovery so operators see that prior-session options are coming.
-  const showRecoveryTab =
-    checkpointAvailable ||
-    resumePlateauRisk ||
-    engineLive ||
-    sessionInterrupted ||
-    sessionProbePending;
-
-  // Open Recovery when operator lands on interrupted / checkpoint surface.
-  const recoveryAutoOpenRef = useRef(false);
-  useEffect(() => {
-    if (recoveryAutoOpenRef.current) return;
-    if (
-      showRecoveryTab &&
-      (sessionInterrupted || checkpointAvailable || resumePlateauRisk || sessionProbePending)
-    ) {
-      recoveryAutoOpenRef.current = true;
-      setGenesisTab("recovery");
-    }
-  }, [
-    showRecoveryTab,
+  const presentation = resolveGenesisDeckPresentation({
+    activating,
     sessionInterrupted,
     checkpointAvailable,
     resumePlateauRisk,
+    decisionMode,
     sessionProbePending,
-  ]);
+    sessionProbeError: sessionProbeState === "error",
+    engineLive,
+    error,
+    pollError,
+    statusMessage: birthStatus?.message ?? birthStatus?.progress?.message ?? null,
+    statusError: birthStatus?.error ?? null,
+  });
+
+  // Recovery SSOT from presentation — never after clean post-wipe idle.
+  const showRecoveryTab = presentation.showRecoveryTab;
+  const decisionSurface =
+    presentation.ctaMode === "decision" || presentation.preferRecoveryTab;
+
+  // Land on Recovery when birth needs a decision / failed (not Charter frontpage).
+  useEffect(() => {
+    if (!showRecoveryTab) {
+      if (genesisTab === "recovery") setGenesisTab("charter");
+      return;
+    }
+    if (presentation.preferRecoveryTab) {
+      setGenesisTab("recovery");
+    }
+  }, [showRecoveryTab, presentation.preferRecoveryTab]); // eslint-disable-line react-hooks/exhaustive-deps -- intentional land once per decision edge
+
+  const recoveryOperator = sanitizeBirthOperatorMessage(
+    String(error ?? "").trim() ||
+      String(pollError ?? "").trim() ||
+      String(birthStatus?.error ?? "").trim() ||
+      String(birthStatus?.message ?? birthStatus?.progress?.message ?? "").trim() ||
+      "",
+  );
+
+  const openStartClean = (source: string = "recovery_tab") => {
+    const kind: WipeConfirmKind = "reset";
+    traceBirthWipe("ui.wipe_button.click", {
+      mode: "genesis",
+      kind,
+      busy,
+      activating,
+      wiping: wipeConfirmWiping,
+      source,
+    });
+    if (wipeBlocked) {
+      toast.info(
+        wipeConfirmWiping
+          ? "Wipe already in progress…"
+          : activating
+            ? "Birth is starting — wipe afterward."
+            : "Please wait — another birth action is in progress.",
+      );
+      return;
+    }
+    openWipeConfirm(kind);
+  };
 
   return (
     <div
@@ -290,17 +206,23 @@ export function BirthGenesisDeck({
     >
       <div className="risk-envelope-panel__toolbar shrink-0">
         <div className="min-w-0">
-          <p className="risk-envelope-panel__toolbar-title">Neural Genesis</p>
+          <div className="birth-genesis-title-row">
+            <p className="risk-envelope-panel__toolbar-title">Neural Genesis</p>
+            <HelpTip
+              className="birth-genesis-title-help"
+              label="Neural Genesis info"
+              text={
+                helpFor("genesis_maturity_charter") ??
+                "Sign the pre-birth contract. Training size is auto-sized. Birth pass is process-R, not a WR exam."
+              }
+            />
+          </div>
           <p className="mt-0.5 font-mono text-[0.5rem] tracking-wide text-white/30 uppercase">
-            Maturity charter · awaiting activation
+            {presentation.toolbarSubtitle}
           </p>
         </div>
-        <HelpTip
-          text={
-            helpFor("genesis_maturity_charter") ??
-            "Sign the pre-birth contract. Training size and winrate gate are auto-sized for this machine."
-          }
-        />
+        {/* Twin train occupies the former HelpTip slot — tighter toolbar composition */}
+        <BirthTwinMicroHost variant="genesis-toolbar" />
       </div>
 
       <div
@@ -311,7 +233,7 @@ export function BirthGenesisDeck({
         <StatusChip
           label="CHARTER"
           state="ok"
-          tip="Auto charter ready — training trades and winrate gate are system-derived."
+          tip="Auto charter ready — training trades are system-derived. Pass is process-R, not WR."
         />
         <StatusChip
           label="DATA"
@@ -325,84 +247,86 @@ export function BirthGenesisDeck({
         <StatusChip
           label="HISTORY"
           state={isHighLoadEstimate(estimatedDays) ? "warn" : "ok"}
-          tip={`Auto historical window ~${linkedDays} days linked to training trades.`}
+          tip={`Foundation ${FOUNDATION_HISTORY_START_DAYS}d start · expand 180/${FOUNDATION_HISTORY_MAX_DAYS}. Not linked to training trades.`}
         />
         <StatusChip
           label="BIRTH"
-          state={engineLive ? "warn" : "ok"}
+          state={presentation.birthChipState}
           tip={
             engineLive
               ? "Birth engine is running in the background — stop before wipe. Does not block re-entry to Genesis."
-              : "Birth engine idle — safe to activate. This chip is status only; it does not gate Activate Birth."
+              : presentation.birthChipState === "warn"
+                ? "Birth needs attention — use the actions below. This chip is status only."
+                : "Birth engine idle — safe to activate. This chip is status only; it does not gate Activate Birth."
           }
         />
       </div>
 
-      <div className="risk-envelope-banner risk-envelope-banner--info mx-2 mt-2 shrink-0">
-        <p className="text-[11px] leading-relaxed">
-          <strong className="text-cyan-200/90">What we need from you:</strong> review the auto
-          charter, set data policy, then activate birth. Training size and Stage‑1 winrate gate
-          are computed for this install — not manual sliders.
-        </p>
-      </div>
-
-      {error ? (
-        <p
-          className={cn("mx-2 mt-2 shrink-0 rounded-lg p-2 text-xs", distressPanelClass("error"))}
-          role="alert"
-          title={error}
-        >
-          <span className={cn(warnOverlayBodyClass(), "line-clamp-3")}>{error}</span>
-        </p>
-      ) : null}
-
-      {sessionProbePending || sessionProbeState === "error" ? (
+      {/* Charter/Data banner only — Recovery tab owns its own decision story (no dual narrative). */}
+      {genesisTab !== "recovery" ? (
         <div
           className={cn(
             "risk-envelope-banner mx-2 mt-2 shrink-0",
-            sessionProbeState === "error"
+            presentation.banner.tone === "warn"
               ? "risk-envelope-banner--warn"
               : "risk-envelope-banner--info",
           )}
-          role="status"
-          aria-live="polite"
+          role={presentation.banner.tone === "warn" ? "alert" : "status"}
         >
           <div className="flex flex-wrap items-start justify-between gap-2">
             <p className="min-w-0 flex-1 text-[11px] leading-relaxed">
-              {sessionProbeState === "error" ? (
-                <>
-                  <strong className="text-amber-200/90">Session status unavailable:</strong>{" "}
-                  Could not confirm whether a previous birth is waiting. Activate stays locked
-                  until status loads — retry so you do not overwrite a checkpoint by accident.
-                </>
-              ) : (
-                <>
-                  <strong className="text-cyan-200/90">Loading session state:</strong>{" "}
-                  Checking for a previous birth (checkpoint / interrupted run). Activate is
-                  locked until this finishes.
-                </>
-              )}
+              <strong
+                className={
+                  presentation.banner.tone === "warn"
+                    ? "text-amber-100/95"
+                    : "text-cyan-200/90"
+                }
+              >
+                {presentation.banner.title}
+              </strong>{" "}
+              {presentation.banner.body}
             </p>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="shrink-0 font-mono text-[10px] tracking-wide uppercase"
-              disabled={probeRetrying}
-              onClick={() => {
-                setProbeRetrying(true);
-                void useBirthStore
-                  .getState()
-                  .pollFresh()
-                  .finally(() => setProbeRetrying(false));
-              }}
-            >
-              {probeRetrying || sessionProbePending ? (
-                <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
-              ) : null}
-              {probeRetrying ? "Retrying…" : sessionProbePending ? "Loading…" : "Retry status"}
-            </Button>
+            {sessionProbePending || sessionProbeState === "error" ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="shrink-0 font-mono text-[10px] tracking-wide uppercase"
+                disabled={probeRetrying}
+                onClick={() => {
+                  setProbeRetrying(true);
+                  void useBirthStore
+                    .getState()
+                    .pollFresh()
+                    .finally(() => setProbeRetrying(false));
+                }}
+              >
+                {probeRetrying || sessionProbePending ? (
+                  <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
+                ) : null}
+                {probeRetrying ? "Retrying…" : sessionProbePending ? "Loading…" : "Retry status"}
+              </Button>
+            ) : null}
           </div>
+        </div>
+      ) : null}
+
+      {presentation.detail && genesisTab !== "recovery" ? (
+        <div
+          className="birth-distress-callout mx-2 mt-2 shrink-0 rounded-lg px-3 py-2"
+          role="status"
+        >
+          <p className="birth-distress-callout__body text-[11px] leading-relaxed">
+            {presentation.detail.operatorLine}
+          </p>
+          {presentation.detail.technicalLine ? (
+            <p
+              className="mt-1 font-mono text-[9px] leading-snug text-white/35"
+              title={presentation.detail.technicalLine}
+            >
+              Detail: {presentation.detail.technicalLine}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -445,22 +369,22 @@ export function BirthGenesisDeck({
                     footnote="System-derived · not operator-editable"
                   />
                   <CharterTile
-                    label="Winrate gate"
-                    value={`${gatePct}%`}
+                    label="Foundation exam"
+                    value="1/5 plant"
                     tip={
                       helpFor("stage1_winrate_gate") ??
-                      "Stage 1 pipeline pass threshold. REAL still needs certificate OOS ≥48%."
+                      "Birth grades process-R and occupancy. Certificate OOS ≥48% is Proving Ground."
                     }
-                    footnote="Auto pipeline gate · not REAL guarantee"
+                    footnote="Not a WR 35–45% pass · not REAL"
                   />
                   <CharterTile
                     label="Historical window"
-                    value={`~${linkedDays}d`}
+                    value={historyLabel}
                     tip={
                       helpFor("max_real_days") ??
-                      "Calendar days of history linked to the training trade target."
+                      "Foundation start 90 calendar days; expand 180 then 365. Trade budget is a cap, not a history sizer."
                     }
-                    footnote="Auto-linked to training trades"
+                    footnote="Start 90d · not auto-linked to trades"
                   />
                 </div>
 
@@ -528,239 +452,228 @@ export function BirthGenesisDeck({
 
             {showRecoveryTab ? (
               <TabsContent value="recovery" className="risk-envelope-tab-content">
-                <div
-                  className={cn(
-                    "risk-envelope-banner mb-3 shrink-0",
-                    sessionProbePending
-                      ? "risk-envelope-banner--info"
-                      : sessionInterrupted || resumePlateauRisk
+                <motion.div
+                  initial={reducedMotion ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                  className="genesis-recovery-surface space-y-3"
+                >
+                  <div
+                    className={cn(
+                      "risk-envelope-banner shrink-0",
+                      decisionSurface || presentation.hasAttention
                         ? "risk-envelope-banner--warn"
                         : "risk-envelope-banner--info",
-                  )}
-                >
-                  <p className="text-[11px] leading-relaxed">
-                    <strong className="text-cyan-200/90">
-                      {sessionProbePending
-                        ? "Detecting previous session:"
-                        : sessionInterrupted
-                          ? "Session interrupted:"
-                          : checkpointAvailable
-                            ? "Checkpoint ready:"
-                            : "Recovery:"}
-                    </strong>{" "}
-                    {sessionProbePending
-                      ? "Loading resume / wipe options from the last birth. Activate stays locked until this completes."
-                      : sessionInterrupted
-                        ? "Previous birth stopped before completion. Resume if a checkpoint exists, or wipe for a clean start (two-step safety confirm)."
-                        : checkpointAvailable
-                          ? "Resume curriculum from the last stage, or wipe data if you want a clean run."
-                          : "Wipe birth data for a clean start, or Activate for a new run. Wipe always opens a safety dialog."}
-                  </p>
-                </div>
-
-                {sessionProbePending ? (
-                  <div className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-cyan-500/20 bg-cyan-950/20 px-3 py-4 font-mono text-[11px] text-cyan-100/80">
-                    <Loader2 className="size-4 animate-spin text-cyan-300" aria-hidden />
-                    Loading Resume · Wipe birth data · Full wipe…
-                  </div>
-                ) : null}
-
-                {!sessionProbePending ? (
-                <BirthGenesisStatusChips
-                  engineLive={engineLive}
-                  resumePlateauRisk={resumePlateauRisk}
-                  resumePlateauRiskTrades={resumePlateauRiskTrades}
-                  checkpointAvailable={checkpointAvailable}
-                  checkpointSummary={checkpointSummary}
-                  resumeTierHint={resumeTierHint}
-                  className="mb-3 justify-center"
-                />
-                ) : null}
-
-                {!sessionProbePending ? (
-                <div className="genesis-recovery-action-grid">
-                  {checkpointAvailable ? (
-                    <RecoveryActionCard
-                      label="Resume"
-                      tip="Continue from the last stage / PPO steps. Data prep may re-run briefly; curriculum is not wiped."
-                      hint={checkpointSummary ?? "Checkpoint available"}
-                      tone="accent"
-                    >
-                      <Button
-                        type="button"
-                        size="sm"
-                        className={cn(
-                          luminaInteractiveClass("default"),
-                          "genesis-recovery-action-card__btn w-full font-mono text-[10px] tracking-wide uppercase",
-                          busy && "cursor-not-allowed opacity-70",
-                        )}
-                        disabled={busy}
-                        onClick={() => {
-                          if (busy) {
-                            toast.info("Please wait — another birth action is in progress.");
-                            return;
-                          }
-                          onResumeCheckpoint?.();
-                        }}
+                    )}
+                    role={decisionSurface || presentation.hasAttention ? "alert" : "status"}
+                  >
+                    <p className="text-[11px] leading-relaxed">
+                      <strong
+                        className={
+                          decisionSurface || presentation.hasAttention
+                            ? "text-amber-100/95"
+                            : "text-cyan-200/90"
+                        }
                       >
-                        <RotateCcw className="size-3.5 shrink-0" aria-hidden />
-                        <span>Resume checkpoint</span>
-                      </Button>
-                    </RecoveryActionCard>
+                        {checkpointAvailable
+                          ? "Checkpoint ready — choose one path:"
+                          : presentation.hasAttention
+                            ? "Recovery required:"
+                            : "Recovery tools:"}
+                      </strong>{" "}
+                      {checkpointAvailable
+                        ? "Continue resumes training. Start clean clears curriculum (tick cache kept). Full wipe also drops tick cache."
+                        : presentation.hasAttention
+                          ? "Start clean or Full wipe below. Retry activation from the footer when the issue is clear."
+                          : "Start clean clears curriculum. Full wipe includes tick cache. Stop engine if the host is still live."}
+                    </p>
+                  </div>
+
+                  {recoveryOperator.operator ? (
+                    <div
+                      className="birth-distress-callout shrink-0 rounded-lg px-3 py-2"
+                      role="status"
+                    >
+                      <p className="birth-distress-callout__body text-[11px] leading-relaxed">
+                        {recoveryOperator.operator}
+                      </p>
+                      {recoveryOperator.technical ? (
+                        <p
+                          className="mt-1 font-mono text-[9px] leading-snug text-white/35"
+                          title={recoveryOperator.technical}
+                        >
+                          Detail: {recoveryOperator.technical}
+                        </p>
+                      ) : null}
+                    </div>
                   ) : null}
 
-                  <RecoveryActionCard
-                    label="Reset data"
-                    tip="Clear checkpoint, PPO weights progress, and stage receipts. Tick cache is kept for faster reloads."
-                    hint="Tick cache kept · two-step confirm"
-                    tone="warn"
-                  >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        luminaInteractiveClass("danger"),
-                        "genesis-recovery-action-card__btn w-full border-[color:var(--status-warn-border)] font-mono text-[10px] tracking-wide text-[color:var(--status-warn-fg)] uppercase hover:bg-[color:var(--status-warn-bg)]",
-                        wipeBlocked && "cursor-not-allowed opacity-70",
-                      )}
-                      disabled={wipeBlocked}
-                      aria-busy={wipeConfirmWiping}
-                      onClick={() => {
-                        const kind: WipeConfirmKind = "reset";
-                        traceBirthWipe("ui.wipe_button.click", {
-                          mode: "genesis",
-                          kind,
-                          busy,
-                          activating,
-                          wiping: wipeConfirmWiping,
-                          source: "recovery_tab",
-                        });
-                        if (wipeBlocked) {
-                          toast.info(
-                            wipeConfirmWiping
-                              ? "Wipe already in progress…"
-                              : activating
-                                ? "Birth is starting — wipe afterward."
-                                : "Please wait — another birth action is in progress.",
-                          );
-                          return;
-                        }
-                        openWipeConfirm(kind);
-                      }}
-                    >
-                      {wipeConfirmWiping ? (
-                        <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
-                      ) : (
-                        <Trash2 className="size-3.5 shrink-0" aria-hidden />
-                      )}
-                      <span>Wipe birth data</span>
-                    </Button>
-                  </RecoveryActionCard>
+                  <BirthGenesisStatusChips
+                    engineLive={engineLive}
+                    resumePlateauRisk={resumePlateauRisk}
+                    resumePlateauRiskTrades={resumePlateauRiskTrades}
+                    checkpointAvailable={checkpointAvailable}
+                    checkpointSummary={checkpointSummary}
+                    resumeTierHint={resumeTierHint}
+                    className="justify-center"
+                  />
 
-                  <RecoveryActionCard
-                    label="Full wipe"
-                    tip="Permanent removal of all birth artifacts including tick cache and enrichment. Use only for a hard clean start."
-                    hint="Includes tick cache · two-step confirm"
-                    tone="danger"
+                  {/* One equal glass row — Continue · Start clean · Full wipe (+ Stop when live). */}
+                  <div
+                    className={cn(
+                      "genesis-recovery-action-grid",
+                      checkpointAvailable && engineLive && "genesis-recovery-action-grid--4",
+                      checkpointAvailable && !engineLive && "genesis-recovery-action-grid--3",
+                      !checkpointAvailable && engineLive && "genesis-recovery-action-grid--3",
+                      !checkpointAvailable && !engineLive && "genesis-recovery-action-grid--2",
+                    )}
                   >
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        luminaInteractiveClass("danger"),
-                        "genesis-recovery-action-card__btn w-full border-red-600/55 bg-red-950/20 font-mono text-[10px] tracking-wide text-red-100 uppercase hover:bg-red-950/40",
-                        wipeBlocked && "cursor-not-allowed opacity-70",
-                      )}
-                      disabled={wipeBlocked}
-                      aria-busy={wipeConfirmWiping}
-                      onClick={() => {
-                        const kind: WipeConfirmKind = "full";
-                        traceBirthWipe("ui.wipe_button.click", {
-                          mode: "genesis",
-                          kind,
-                          busy,
-                          activating,
-                          wiping: wipeConfirmWiping,
-                          source: "recovery_tab",
-                        });
-                        if (wipeBlocked) {
-                          toast.info(
-                            wipeConfirmWiping
-                              ? "Wipe already in progress…"
-                              : activating
-                                ? "Birth is starting — wipe afterward."
-                                : "Please wait — another birth action is in progress.",
-                          );
-                          return;
+                    {checkpointAvailable ? (
+                      <RecoveryActionCard
+                        label="Continue"
+                        tip="Resume training from the last resumable checkpoint. Curriculum and stage progress are preserved."
+                        hint={
+                          checkpointSummary
+                            ? checkpointSummary
+                            : "Resumes last checkpoint · preferred path"
                         }
-                        openWipeConfirm(kind);
-                      }}
-                    >
-                      {wipeConfirmWiping ? (
-                        <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
-                      ) : (
-                        <Trash2 className="size-3.5 shrink-0" aria-hidden />
-                      )}
-                      <span>Full wipe</span>
-                    </Button>
-                  </RecoveryActionCard>
+                        tone="accent"
+                      >
+                        <button
+                          type="button"
+                          className={cn(
+                            "genesis-recovery-action-card__btn genesis-recovery-action-card__btn--accent",
+                            (busy || wipeBlocked) && "cursor-not-allowed opacity-70",
+                          )}
+                          disabled={busy || wipeBlocked}
+                          onClick={() => {
+                            if (busy) {
+                              toast.info("Please wait — another birth action is in progress.");
+                              return;
+                            }
+                            onResumeCheckpoint?.();
+                          }}
+                        >
+                          <RotateCcw className="size-3.5 shrink-0" aria-hidden />
+                          <span>Continue</span>
+                        </button>
+                      </RecoveryActionCard>
+                    ) : null}
 
-                  {engineLive ? (
                     <RecoveryActionCard
-                      label="Stop engine"
-                      tip="Stop the live birth engine. Checkpoint is kept when possible."
-                      hint="Engine still running"
+                      label="Start clean"
+                      tip="Clear birth curriculum and start a new run. Tick cache is kept by default for faster reload."
+                      hint="Tick cache kept · faster reload"
+                      tone="warn"
+                    >
+                      <button
+                        type="button"
+                        className={cn(
+                          "genesis-recovery-action-card__btn genesis-recovery-action-card__btn--warn",
+                          wipeBlocked && "cursor-not-allowed opacity-70",
+                        )}
+                        disabled={wipeBlocked}
+                        aria-busy={wipeConfirmWiping}
+                        onClick={() => openStartClean("recovery_primary")}
+                      >
+                        {wipeConfirmWiping ? (
+                          <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+                        ) : (
+                          <Trash2 className="size-3.5 shrink-0" aria-hidden />
+                        )}
+                        <span>Start clean</span>
+                      </button>
+                    </RecoveryActionCard>
+
+                    <RecoveryActionCard
+                      label="Full wipe"
+                      tip="Permanent removal of all birth artifacts including tick cache and enrichment. Use only for a hard clean start."
+                      hint="Includes tick cache · two-step confirm"
                       tone="danger"
                     >
-                      <Button
+                      <button
                         type="button"
-                        variant="outline"
-                        size="sm"
                         className={cn(
-                          luminaInteractiveClass("danger"),
-                          "genesis-recovery-action-card__btn w-full border-red-500/45 font-mono text-[10px] tracking-wide text-red-200 uppercase",
-                          busy && "cursor-not-allowed opacity-70",
+                          "genesis-recovery-action-card__btn genesis-recovery-action-card__btn--danger",
+                          wipeBlocked && "cursor-not-allowed opacity-70",
                         )}
-                        disabled={busy}
+                        disabled={wipeBlocked}
+                        aria-busy={wipeConfirmWiping}
                         onClick={() => {
-                          if (busy) {
-                            toast.info("Please wait — another birth action is in progress.");
+                          const kind: WipeConfirmKind = "full";
+                          traceBirthWipe("ui.wipe_button.click", {
+                            mode: "genesis",
+                            kind,
+                            busy,
+                            activating,
+                            wiping: wipeConfirmWiping,
+                            source: "recovery_tab_full",
+                          });
+                          if (wipeBlocked) {
+                            toast.info(
+                              wipeConfirmWiping
+                                ? "Wipe already in progress…"
+                                : activating
+                                  ? "Birth is starting — wipe afterward."
+                                  : "Please wait — another birth action is in progress.",
+                            );
                             return;
                           }
-                          // Confirm host runs the stop after operator confirms.
-                          openStopConfirm();
+                          openWipeConfirm(kind);
                         }}
                       >
-                        <OctagonPause className="size-3.5 shrink-0" aria-hidden />
-                        <span>Stop birth</span>
-                      </Button>
+                        {wipeConfirmWiping ? (
+                          <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden />
+                        ) : (
+                          <Trash2 className="size-3.5 shrink-0" aria-hidden />
+                        )}
+                        <span>Full wipe</span>
+                      </button>
                     </RecoveryActionCard>
-                  ) : null}
-                </div>
-                ) : null}
 
-                <p className="mt-3 text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">
-                  Wipe always opens a two-step safety dialog · Activate arms a fresh run
-                </p>
+                    {engineLive ? (
+                      <RecoveryActionCard
+                        label="Stop engine"
+                        tip="Stop the live birth engine. Checkpoint is kept when possible."
+                        hint="Engine still running"
+                        tone="danger"
+                      >
+                        <button
+                          type="button"
+                          className={cn(
+                            "genesis-recovery-action-card__btn genesis-recovery-action-card__btn--danger",
+                            busy && "cursor-not-allowed opacity-70",
+                          )}
+                          disabled={busy}
+                          onClick={() => {
+                            if (busy) {
+                              toast.info("Please wait — another birth action is in progress.");
+                              return;
+                            }
+                            openStopConfirm();
+                          }}
+                        >
+                          <OctagonPause className="size-3.5 shrink-0" aria-hidden />
+                          <span>Stop birth</span>
+                        </button>
+                      </RecoveryActionCard>
+                    ) : null}
+                  </div>
+
+                  <p className="text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">
+                    One decision · full wipe always opens a two-step safety dialog
+                  </p>
+                </motion.div>
               </TabsContent>
             ) : null}
           </div>
         </Tabs>
       </div>
 
+      {/* Footer: Activate/Retry only. Decision CTAs live under Recovery tab (no Go-to-Recovery thrash). */}
       <div className="risk-envelope-cta-bar genesis-launch-cta shrink-0">
-        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <BirthGenesisStatusChips
-            engineLive={engineLive}
-            resumePlateauRisk={resumePlateauRisk}
-            resumePlateauRiskTrades={resumePlateauRiskTrades}
-            checkpointAvailable={checkpointAvailable}
-            checkpointSummary={checkpointSummary}
-            resumeTierHint={resumeTierHint}
-          />
-          {onOpenSetup ? (
+        {onOpenSetup ? (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
               className="onboarding-btn-secondary lumina-interactive rounded-md px-2.5 py-1 font-mono text-[0.55rem] tracking-wider uppercase"
@@ -769,26 +682,57 @@ export function BirthGenesisDeck({
             >
               Setup & connection
             </button>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
-        <p className="mb-2 text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">
-          {sessionLocked
-            ? "Activate locked until session status loads · prevents accidental overwrite"
-            : showRecoveryTab
-              ? "Recovery actions are on the Recovery tab · hold Activate for a fresh ring arm"
-              : "Hold to arm the ring · birth engine idle is normal before activate"}
-        </p>
-        <BirthLaunchButton
-          activating={activating}
-          primed={helixPrimed}
-          disabled={busy || sessionLocked}
-          waitingSession={sessionLocked}
-          onClick={onActivate}
-          onPrimedChange={setHelixPrimed}
-          onSequencingChange={setSequencing}
-          className="w-full"
-        />
+        {presentation.ctaMode === "decision" ||
+        (presentation.preferRecoveryTab && presentation.ctaMode !== "retry") ? (
+          <p className="text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">
+            {genesisTab === "recovery"
+              ? "Continue or Start clean above · Charter / Data stay available"
+              : "Open the Recovery tab for Continue or Start clean"}
+          </p>
+        ) : (
+          <div className="flex w-full flex-col gap-2">
+            <p className="mb-0 text-center font-mono text-[0.5rem] tracking-[0.12em] text-white/30 uppercase">
+              {presentation.ctaHint}
+            </p>
+            <BirthLaunchButton
+              activating={activating}
+              primed={helixPrimed}
+              disabled={busy || sessionLocked || presentation.ctaMode === "locked"}
+              waitingSession={sessionLocked || presentation.ctaMode === "locked"}
+              idleLabel={
+                presentation.ctaMode === "retry" ? "RETRY BIRTH" : "ACTIVATE BIRTH"
+              }
+              onClick={onActivate}
+              onPrimedChange={setHelixPrimed}
+              onSequencingChange={setSequencing}
+              className="w-full"
+            />
+            {presentation.showStartCleanSecondary && presentation.ctaMode === "retry" ? (
+              <div className="genesis-launch-secondary mt-1 flex w-full flex-col gap-2 border-t border-white/5 pt-3">
+                <button
+                  type="button"
+                  className={cn(
+                    "genesis-recovery-primary-btn genesis-recovery-secondary-btn w-full rounded-md font-mono text-xs tracking-wide uppercase",
+                    wipeBlocked && "cursor-not-allowed opacity-70",
+                  )}
+                  disabled={wipeBlocked}
+                  aria-busy={wipeConfirmWiping}
+                  onClick={() => openStartClean("retry_secondary")}
+                >
+                  {wipeConfirmWiping ? (
+                    <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+                  ) : (
+                    <Trash2 className="size-4 shrink-0" aria-hidden />
+                  )}
+                  <span>Start clean</span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        )}
       </div>
     </div>
   );

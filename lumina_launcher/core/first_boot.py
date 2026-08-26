@@ -174,14 +174,18 @@ class FirstBootManager:
         first_boot = self._ensure_mapping(cfg, "first_boot")
         first_boot["training_trades"] = normalize_first_boot_training_trades(training_trades)
         first_boot["prefer_real_data_only"] = bool(prefer_real_data_only)
-        first_boot["max_real_days"] = max(30, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS))
+        first_boot["max_real_days"] = max(
+            FIRST_BOOT_MIN_REAL_DAYS, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS)
+        )
         first_boot["allow_minimal_synthetic_fallback"] = bool(allow_minimal_synthetic_fallback)
         first_boot["force_training"] = True
         first_boot["birth_phase"] = True
         birth_v2 = self._ensure_mapping(cfg, "birth_v2")
         normalized_trades = normalize_first_boot_training_trades(training_trades)
         birth_v2["trade_budget_cap"] = normalized_trades
-        birth_v2["max_real_days"] = max(30, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS))
+        birth_v2["max_real_days"] = max(
+            FIRST_BOOT_MIN_REAL_DAYS, int(max_real_days or FIRST_BOOT_DEFAULT_MAX_REAL_DAYS)
+        )
         birth_v2["prefer_real_data_only"] = bool(prefer_real_data_only)
         if stage1_winrate_pass_threshold is not None:
             curriculum = self._ensure_mapping(birth_v2, "curriculum")

@@ -38,6 +38,7 @@ class StageLoopContext:
     wall_budget_exhausted: bool = False
     winrate_history: list[float] = field(default_factory=list)
     stage_val_pnl: list[float] = field(default_factory=list)
+    stage_val_r: list[float] = field(default_factory=list)
     budget_milestones_notified: set[int] = field(default_factory=set)
     hold_trap_milestone_sent: bool = False
     over_trading_milestone_sent: bool = False

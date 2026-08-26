@@ -36,10 +36,9 @@ export function BirthConfirmHost() {
       wiping: wipeConfirmWiping,
       source: "BirthConfirmHost",
     });
-    if (!open && wipeConfirmWiping) {
-      return;
-    }
-    if (!open && shouldBlockDismiss()) {
+    // Soft-block only the 400ms open guard (prevents accidental scrim click on open).
+    // Never hard-lock dismiss while wiping — that left operators stuck after hung wipes.
+    if (!open && shouldBlockDismiss() && !wipeConfirmWiping) {
       traceBirthWipe("ui.wipe_dialog.dismiss_suppressed", { wipeConfirmStep });
       return;
     }
@@ -59,21 +58,29 @@ export function BirthConfirmHost() {
 
   const runWipe = () => {
     const preserveTickCache = wipeConfirmKind === "reset";
+    const kind = wipeConfirmKind;
     traceBirthWipe("ui.wipe_confirm.click", {
       wipeConfirmStep,
       wiping: wipeConfirmWiping,
-      kind: wipeConfirmKind,
+      kind,
       preserveTickCache,
     });
-    if (wipeConfirmWiping) {
+    if (useBirthUiStore.getState().wipeConfirmWiping) {
+      toast.info("Wipe already in progress…");
       return;
     }
     setWipeConfirmError(null);
     setWipeConfirmWiping(true);
-    traceBirthWipe("ui.wipe_handler.start", { kind: wipeConfirmKind, preserveTickCache });
-    void useBirthStore
-      .getState()
-      .wipeBirthData({ preserveTickCache })
+    traceBirthWipe("ui.wipe_handler.start", { kind, preserveTickCache });
+    // Hard ceiling so a hung backend never leaves the dialog stuck forever.
+    const WIPE_UI_TIMEOUT_MS = 90_000;
+    const wipePromise = useBirthStore.getState().wipeBirthData({ preserveTickCache });
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      window.setTimeout(() => {
+        reject(new Error("Wipe timed out after 90s — backend may be stuck; restart and retry."));
+      }, WIPE_UI_TIMEOUT_MS);
+    });
+    void Promise.race([wipePromise, timeoutPromise])
       .then((result) => {
         traceBirthWipe(
           "ui.wipe_handler.result",
@@ -167,7 +174,7 @@ export function BirthConfirmHost() {
       <BirthPortaledDialog
         open={wipeConfirmStep > 0}
         onOpenChange={handleWipeOpenChange}
-        dismissLocked={wipeConfirmWiping}
+        dismissLocked={false}
         shouldBlockDismiss={shouldBlockDismiss}
         onMounted={() =>
           traceBirthWipe("ui.wipe_dialog.mounted", {
@@ -274,8 +281,14 @@ export function BirthConfirmHost() {
                 type="button"
                 variant="destructive"
                 size="sm"
-                className={cn(luminaInteractiveClass("danger"), "birth-portaled-dialog__danger font-mono text-[10px] tracking-wide uppercase")}
-                onClick={() => {
+                className={cn(
+                  luminaInteractiveClass("danger"),
+                  "birth-portaled-dialog__danger pointer-events-auto font-mono text-[10px] tracking-wide uppercase",
+                )}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   setWipeConfirmStep(2);
                   traceBirthWipe("ui.wipe_dialog.step", { step: 2 });
                 }}
@@ -288,8 +301,16 @@ export function BirthConfirmHost() {
                 variant="destructive"
                 size="sm"
                 disabled={wipeConfirmWiping}
-                className={cn(luminaInteractiveClass("danger"), "birth-portaled-dialog__danger font-mono text-[10px] tracking-wide uppercase")}
-                onClick={runWipe}
+                className={cn(
+                  luminaInteractiveClass("danger"),
+                  "birth-portaled-dialog__danger pointer-events-auto font-mono text-[10px] tracking-wide uppercase",
+                )}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  runWipe();
+                }}
               >
                 {wipeConfirmWiping ? (
                   <>

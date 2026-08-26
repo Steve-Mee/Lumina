@@ -196,6 +196,38 @@ class FabricClientStreamMixin:
                 msg.safety_alert.message,
                 msg.safety_alert.recommended_action,
             )
+            return
+
+        if which == "market_data":
+            md = msg.market_data
+            inst = str(getattr(md, "instrument", "") or "").strip().upper()
+            if not inst:
+                return
+            quote = {
+                "instrument": inst,
+                "last": float(getattr(md, "last", 0.0) or 0.0),
+                "bid": float(getattr(md, "bid", 0.0) or 0.0),
+                "ask": float(getattr(md, "ask", 0.0) or 0.0),
+                "volume": int(getattr(md, "volume", 0) or 0),
+                "timestamp_unix_ms": int(getattr(md, "timestamp_unix_ms", 0) or 0),
+            }
+            with self._lock:
+                cache = getattr(self, "_last_quotes", None)
+                if cache is None:
+                    self._last_quotes = {}  # type: ignore[attr-defined]
+                    cache = self._last_quotes  # type: ignore[attr-defined]
+                cache[inst] = quote
+            return
+
+        if which == "position_update":
+            pu = msg.position_update
+            logger.info(
+                "Fabric PositionUpdate instrument=%s qty=%s side=%s",
+                getattr(pu, "instrument", ""),
+                getattr(pu, "quantity", 0),
+                getattr(pu, "side", ""),
+            )
+            return
 
     def _heartbeat_loop(self) -> None:
         interval = max(0.2, self.config.heartbeat_interval_ms / 1000.0)

@@ -264,5 +264,11 @@ class AgentBlackboardPublishMixin:
         if normalized in allowed:
             return
         self._record_reject(topic=topic, producer=producer, reason="unauthorized_producer")
+        try:
+            from lumina_core.cyber_sentinel import observe_unauthorized_producer
+
+            observe_unauthorized_producer(topic=str(topic), producer=str(producer))
+        except Exception:
+            pass
         raise PermissionError(f"producer '{producer}' is not allowed on topic '{topic}'")
 

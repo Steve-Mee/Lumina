@@ -74,17 +74,21 @@ export function formatHygieneInstrumentValue(scorecard: StageScorecardModel): st
   return "—";
 }
 
-/** True only for stage-2 range pass criteria (flat 30–70% band). */
+/** True for stage-2 (30–70%) and stage-3 mixed occupancy (25–75%). */
 export function shouldShowPositionFlat(scorecard: StageScorecardModel): boolean {
   const id = String(scorecard.passCriteriaId ?? "");
   return (
-    (id === "range_edgescore" || id === "range_hold_ratio" || id === "range_roundtrip") &&
+    (id === "range_edgescore" ||
+      id === "range_hold_ratio" ||
+      id === "range_roundtrip" ||
+      id === "mixed_edgescore" ||
+      id === "mixed_foundation") &&
     scorecard.stageRangeFlatRatio != null &&
     Number.isFinite(scorecard.stageRangeFlatRatio)
   );
 }
 
-/** Stage-3 uses hold cap (≤ max), not the stage-2 flat band. */
+/** Stage-3 hold% is diagnostic only (geometry HOLD is expected); occupancy is the gate. */
 export function shouldShowHoldRatio(scorecard: StageScorecardModel): boolean {
   const id = String(scorecard.passCriteriaId ?? "");
   return (
@@ -135,33 +139,42 @@ export function formatHoldRatioValue(scorecard: StageScorecardModel): string {
   return `${(scorecard.stageHoldRatio * 100).toFixed(1)}%`;
 }
 
-export function formatHoldRatioHint(scorecard: StageScorecardModel): string {
-  const max =
-    scorecard.stageHoldMax != null
-      ? (scorecard.stageHoldMax * 100).toFixed(0)
-      : "70";
-  return `need ≤${max}% hold (stage 3 activity)`;
+export function formatHoldRatioHint(_scorecard: StageScorecardModel): string {
+  return "diagnostic only · occupancy is the pass gate";
 }
 
-export function holdRatioTone(scorecard: StageScorecardModel): ConditionTone {
-  return resolveConditionTone({
-    value: scorecard.stageHoldRatio,
-    max: scorecard.stageHoldMax ?? 0.7,
-    direction: "lower",
-    criticalGap: 0.15,
-  });
+export function holdRatioTone(_scorecard: StageScorecardModel): ConditionTone {
+  return "default";
 }
 
-/** Hygiene WR: higher is better vs floor. */
+/** Hygiene WR: higher is better vs floor. Stage-2 uses lifetime vs durable C-band. */
 export function hygieneConditionTone(scorecard: StageScorecardModel): ConditionTone {
+  const id = String(scorecard.passCriteriaId ?? "");
+  const slope = scorecard.winrateTrendSlope;
+  const improving = slope == null ? null : slope > 0.00005;
+  if (id === "range_edgescore") {
+    const life = scorecard.hygieneWrLifetime;
+    const roll = scorecard.hygieneWrRolling ?? scorecard.rollingWinrate500;
+    const wrFloor = 0.35;
+    const lifeMin = wrFloor - 0.05;
+    const rollLift =
+      roll != null && Number.isFinite(roll) && roll + 1e-12 >= wrFloor &&
+      (life == null || life + 1e-12 < wrFloor);
+    return resolveConditionTone({
+      value: life ?? null,
+      target: rollLift ? lifeMin : wrFloor,
+      direction: "higher",
+      improving,
+      criticalGap: 0.05,
+    });
+  }
   const value = scorecard.hygieneWrEffective ?? scorecard.hygieneWrLifetime;
   const floor = scorecard.hygieneWrFloor;
-  const slope = scorecard.winrateTrendSlope;
   return resolveConditionTone({
     value,
     target: floor,
     direction: "higher",
-    improving: slope == null ? null : slope > 0.00005,
+    improving,
     criticalGap: 0.08,
   });
 }
@@ -203,14 +216,16 @@ export function edgeScoreConditionTone(
     min: scorecard.metricMin,
     max: scorecard.metricMax,
     direction:
-      scorecard.metricMin != null && scorecard.metricMax != null
-        ? "band"
-        : "higher",
+      scorecard.passCriteriaId === "closed_loop"
+        ? "lower"
+        : scorecard.metricMin != null && scorecard.metricMax != null
+          ? "band"
+          : "higher",
     improving:
       scorecard.winrateTrendSlope == null
         ? null
         : scorecard.winrateTrendSlope > 0.00005,
-    criticalGap: 0.08,
+    criticalGap: scorecard.passCriteriaId === "closed_loop" ? 0.5 : 0.08,
   });
 }
 

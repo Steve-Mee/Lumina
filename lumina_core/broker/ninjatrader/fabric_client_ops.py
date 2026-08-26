@@ -17,18 +17,32 @@ logger = logging.getLogger(__name__)
 
 class FabricClientOpsMixin:
     def connect(self) -> bool:
-        """Open channel, start TradingStream, authenticate."""
+        """Open channel, start TradingStream, authenticate.
+
+        Sets ``last_connect_error`` / ``last_connect_code`` for callers
+        (AUTH_FAILED vs CONNECTION_REFUSED vs TOKEN_EMPTY).
+        """
+        self.last_connect_error = ""
+        self.last_connect_code = ""
         with self._lock:
             if self._connected:
                 return True
             self._stop.clear()
             try:
                 if self._channel is None:
-                    self._channel = grpc.insecure_channel(self.config.target)
+                    # ADR-0042: TLS/mTLS when LUMINA_FABRIC_TLS_* env is set; else localhost insecure.
+                    try:
+                        from lumina_core.mtls_config import build_grpc_channel
+
+                        self._channel = build_grpc_channel(self.config.target)
+                    except Exception:
+                        self._channel = grpc.insecure_channel(self.config.target)
                     self._owns_channel = True
                 self._stub = fabric_pb2_grpc.ExecutionFabricStub(self._channel)
-            except Exception:
+            except Exception as exc:
                 logger.exception("Fabric channel open failed target=%s", self.config.target)
+                self.last_connect_code = "CONNECTION_REFUSED"
+                self.last_connect_error = str(exc)
                 return False
 
         self._stream_thread = threading.Thread(
@@ -41,6 +55,8 @@ class FabricClientOpsMixin:
         token = self.config.resolve_token()
         if not token:
             logger.error("Fabric auth token empty (set %s or LUMINA_NT8_API_KEY)", self.config.auth_token_env)
+            self.last_connect_code = "TOKEN_EMPTY"
+            self.last_connect_error = "Fabric auth token empty"
             self.disconnect()
             return False
 
@@ -61,12 +77,33 @@ class FabricClientOpsMixin:
 
         if not auth_waiter.event.wait(timeout=self.config.connect_timeout_seconds):
             logger.error("Fabric auth timed out after %ss", self.config.connect_timeout_seconds)
+            self.last_connect_code = "AUTH_TIMEOUT"
+            self.last_connect_error = f"Fabric auth timed out after {self.config.connect_timeout_seconds}s"
             self.disconnect()
             return False
 
         result = auth_waiter.result or {}
         if result.get("type") == "error" or not result.get("ok"):
-            logger.error("Fabric auth failed: %s", result.get("message", result))
+            msg = str(result.get("message") or result.get("code") or result)
+            logger.error("Fabric auth failed: %s", msg)
+            code = str(result.get("code") or "").upper()
+            msg_l = msg.lower()
+            if any(
+                x in msg_l
+                for x in (
+                    "connection refused",
+                    "unavailable",
+                    "failed to connect",
+                    "stream lost",
+                    "10061",
+                )
+            ):
+                self.last_connect_code = "CONNECTION_REFUSED"
+            elif "AUTH" in code or "token" in msg_l or "invalid" in msg_l:
+                self.last_connect_code = "AUTH_FAILED"
+            else:
+                self.last_connect_code = "AUTH_FAILED"
+            self.last_connect_error = msg
             self.disconnect()
             return False
 
@@ -89,6 +126,8 @@ class FabricClientOpsMixin:
             self._session_id,
             self._account_name,
         )
+        self.last_connect_code = "OK"
+        self.last_connect_error = ""
         return True
     def disconnect(self) -> None:
         self._stop.set()

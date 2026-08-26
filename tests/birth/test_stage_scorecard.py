@@ -24,25 +24,27 @@ def test_curriculum_index_for_stage() -> None:
     assert curriculum_index_for_stage(CurriculumStage.STAGE1_TREND) == 1
     assert curriculum_index_for_stage(CurriculumStage.STAGE2_RANGE) == 2
     assert curriculum_index_for_stage(CurriculumStage.STAGE3_MIXED) == 3
-    assert curriculum_index_for_stage(CurriculumStage.STAGE4_POLISH) == 8
+    assert curriculum_index_for_stage(CurriculumStage.STAGE4_VIABLE_PLANT) == 4
+    assert curriculum_index_for_stage(CurriculumStage.STAGE5_PROBE_HANDOFF) == 5
+    assert curriculum_index_for_stage(CurriculumStage.STAGE4_POLISH) == 0
 
 
 @pytest.mark.unit
 def test_stage_display_name() -> None:
-    assert stage_display_name(CurriculumStage.STAGE1_TREND) == "Trend"
-    assert stage_display_name(CurriculumStage.STAGE2_RANGE) == "Range patience"
+    assert stage_display_name(CurriculumStage.STAGE1_TREND) == "Closed loop"
+    assert stage_display_name(CurriculumStage.STAGE2_RANGE) == "Selectivity"
 
 
 @pytest.mark.unit
 def test_pass_criteria_stage1_trend() -> None:
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE1_TREND, target_trades=2000)
-    assert criteria.id == "trend_winrate"
+    assert criteria.id == "closed_loop"
     assert criteria.target_trades == 100
     assert criteria.training_budget_trades == 2000
-    assert criteria.metric_target == 0.45
+    assert criteria.metric_max == 1.5
     assert "pass gate" in criteria.label
     assert "2000 budget" in criteria.label
-    assert "45%" in criteria.label
+    assert "median loss" in criteria.label.lower()
 
 
 @pytest.mark.unit
@@ -51,17 +53,17 @@ def test_pass_criteria_stage1_trend_with_cfg() -> None:
 
     cfg = BirthCurriculumConfig(stage1_trend_trades=2000, stage1_edgescore_enabled=True)
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE1_TREND, cfg=cfg)
-    assert criteria.id == "trend_edgescore"
-    assert criteria.target_trades == 200
+    assert criteria.id == "closed_loop"
+    assert criteria.target_trades == 150
     assert criteria.training_budget_trades == 2000
-    assert ">=200 pass gate (2000 budget)" in criteria.label
-    assert "EdgeScore" in criteria.label
+    assert ">=150 pass gate (2000 budget)" in criteria.label
+    assert "median loss" in criteria.label.lower()
 
 
 @pytest.mark.unit
 def test_pass_criteria_stage2_range() -> None:
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE2_RANGE, target_trades=3000)
-    assert criteria.id == "range_roundtrip"
+    assert criteria.id == "selectivity"
     assert criteria.metric_min == 0.30
     assert criteria.metric_max == 0.70
 
@@ -69,15 +71,15 @@ def test_pass_criteria_stage2_range() -> None:
 @pytest.mark.unit
 def test_pass_criteria_stage3_mixed() -> None:
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE3_MIXED, target_trades=5000)
-    assert criteria.id == "mixed_foundation"
-    assert criteria.metric_target == pytest.approx(0.35)
-    assert criteria.metric_max == pytest.approx(0.70)
+    assert criteria.id == "mixed_regimes"
+    assert criteria.metric_min == pytest.approx(-0.05)
+    assert criteria.metric_max is None
 
 
 @pytest.mark.unit
 def test_human_sub_phase_mapping() -> None:
     assert human_sub_phase("curriculum_research") == "Oracle research"
-    assert human_sub_phase("ppo_polish") == "Final PPO polish"
+    assert human_sub_phase("ppo_polish") == "Post-Birth PPO polish"
 
 
 @pytest.mark.unit
@@ -132,8 +134,8 @@ def test_enrich_progress_scorecard_infers_pass_criteria() -> None:
             "phase": "ppo_training",
         }
     )
-    assert enriched["pass_criteria_id"] == "trend_winrate"
-    assert enriched["pass_metric_label"] == "Winrate"
+    assert enriched["pass_criteria_id"] == "closed_loop"
+    assert enriched["pass_metric_label"] == "Median loss R"
     assert enriched["stage_winrate"] == pytest.approx(0.4, rel=1e-2)
 
 
@@ -174,19 +176,17 @@ def test_build_scorecard_payload_stage1_with_cfg_uses_stage_pass_trades() -> Non
         learning_attempt=3,
         cfg=cfg,
     )
-    assert payload["stage_target_trades"] == 200
+    assert payload["stage_target_trades"] == 150
     assert payload["stage_training_budget_trades"] == 2000
-    assert ">=200 pass gate (2000 budget)" in payload["pass_criteria_label"]
+    assert ">=150 pass gate (2000 budget)" in payload["pass_criteria_label"]
 
 
 @pytest.mark.unit
-def test_build_scorecard_pass_reason_uses_cfg_winrate_gate() -> None:
+def test_build_scorecard_missing_process_r_is_foundation_blocker() -> None:
     from lumina_core.birth.config import BirthCurriculumConfig
 
     cfg = BirthCurriculumConfig(
         stage1_trend_trades=2000,
-        stage1_winrate_pass_threshold=0.35,
-        stage1_winrate_pass_floor=0.35,
         stage1_edgescore_enabled=True,
     )
     payload = build_scorecard_payload(
@@ -203,14 +203,58 @@ def test_build_scorecard_pass_reason_uses_cfg_winrate_gate() -> None:
         patterns_mined=100,
         learning_attempt=3,
         cfg=cfg,
+        unique_calendar_days=50,
+        closes_stop=3000,
+        closes_target=2000,
+        policy_entropy=5.6,
+        ppo_steps=2000,
+        geometry_net_rr=1.4,
     )
-    # With survival EdgeScore, hold/activity can surface before hygiene depending on band.
-    assert "EdgeScore" in str(payload["pass_reason"])
-    assert (
-        "Hygiene WR" in str(payload["pass_reason"])
-        or "Hold outside" in str(payload["pass_reason"])
-        or "activity" in str(payload["pass_reason"]).lower()
+    assert payload["stage_pass_now"] is False
+    assert payload["median_loss_r"] is None
+    assert payload["stage_blocker_metric"] == "median_loss_r"
+    assert "median_loss_r" in str(payload["pass_reason"])
+
+
+@pytest.mark.unit
+def test_build_scorecard_payload_stage1_emits_process_r_and_net_rr() -> None:
+    from lumina_core.birth.config import BirthCurriculumConfig
+
+    cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
+    losses = [-20.2] * 70
+    wins = [28.2] * 80
+    payload = build_scorecard_payload(
+        stage=CurriculumStage.STAGE1_TREND,
+        curriculum_index=1,
+        stages_passed=[],
+        stage_trades=150,
+        stage_wins=80,
+        stage_hold_signals=100,
+        stage_total_signals=400,
+        constitution_violations=0,
+        target_trades=2000,
+        phase="curriculum_learning",
+        patterns_mined=100,
+        learning_attempt=1,
+        cfg=cfg,
+        pnl_series=wins + losses,
+        stop_pct=0.000537,
+        ref_price=7521.25,
+        geometry_net_rr=1.3975,
+        unique_calendar_days=40,
+        closes_stop=70,
+        closes_target=80,
+        policy_entropy=5.6,
+        ppo_steps=2000,
     )
+    assert payload["median_loss_r"] is not None
+    assert float(payload["median_loss_r"]) <= 1.5 + 1e-9
+    assert payload["geometry_net_rr"] == pytest.approx(1.3975)
+    assert payload["geometry_net_rr_after_cost"] == pytest.approx(1.3975)
+    assert payload["occupancy"] is None
+    assert payload["stage_pass_now"] is True
+    assert payload["stage_blocker_metric"] is None
+    assert payload["pass_reason"] is None
 
 
 @pytest.mark.unit
@@ -233,7 +277,7 @@ def test_build_scorecard_payload_stage1() -> None:
     assert payload["curriculum_total"] == CURRICULUM_STAGE_COUNT
     assert payload["stage_wins"] == 25
     assert payload["stage_winrate"] == pytest.approx(0.4032, rel=1e-3)
-    assert payload["pass_criteria_id"] == "trend_winrate"
+    assert payload["pass_criteria_id"] == "closed_loop"
     assert payload["sub_phase"] == "curriculum_research"
     assert payload["sub_phase_label"] == "Oracle research"
     assert payload["is_advancing"] is True
@@ -276,7 +320,10 @@ def test_learning_metric_target_stage3_uses_recommended_winrate() -> None:
 
     cfg = BirthCurriculumConfig(stage1_winrate_recommended=0.45, stage3_edgescore_enabled=False)
     criteria = pass_criteria_for_stage(CurriculumStage.STAGE3_MIXED, cfg=cfg)
-    assert criteria.metric_target == pytest.approx(0.35)
+    assert criteria.id == "mixed_regimes"
+    assert criteria.metric_target is None
+    assert criteria.metric_min == pytest.approx(-0.05)
+    # Hold-trap / plateau recovery still uses recommended WR; it is not a pass gate.
     assert learning_metric_target(
         CurriculumStage.STAGE3_MIXED,
         cfg=cfg,
@@ -286,6 +333,9 @@ def test_learning_metric_target_stage3_uses_recommended_winrate() -> None:
 
 @pytest.mark.unit
 def test_build_scorecard_payload_clears_blockers_below_volume_gate() -> None:
+    from lumina_core.birth.config import BirthCurriculumConfig
+
+    cfg = BirthCurriculumConfig()
     payload = build_scorecard_payload(
         stage=CurriculumStage.STAGE3_MIXED,
         curriculum_index=3,
@@ -299,6 +349,7 @@ def test_build_scorecard_payload_clears_blockers_below_volume_gate() -> None:
         phase="ppo_training",
         patterns_mined=0,
         learning_attempt=10,
+        cfg=cfg,
     )
     assert payload["stage_blocker_metric"] is None
     assert payload["stage_blocker_value"] is None

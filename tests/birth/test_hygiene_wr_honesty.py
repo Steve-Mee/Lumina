@@ -19,6 +19,7 @@ from lumina_core.birth.starship_birth import (
     hygiene_wr_telemetry,
     rolling_wr_pass_eligible,
 )
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 @pytest.mark.unit
@@ -155,8 +156,9 @@ def test_receipt_rolling_only_hygiene_verifies() -> None:
         cfg=cfg,
         allow_provisional=False,
         rolling_winrate=0.40,
-        policy_entropy=0.25,
         ppo_steps=5000,
+        **honest_closes(420),
+        **foundation_eval_kwargs(policy_entropy=0.25),
     )
     assert result.passed
     receipt = receipt_from_stage_result(
@@ -187,6 +189,7 @@ def test_receipt_rolling_ineligible_does_not_fake_pass() -> None:
         stage1_trend_trades=200,
         allow_provisional_pass=False,
         stage1_edgescore_enabled=True,
+        birth_survival_pass_enabled=False,
         stage1_winrate_pass_floor=0.35,
         stage1_entropy_floor=0.0,
         stage1_hold_ratio_min=0.05,
@@ -218,4 +221,8 @@ def test_receipt_rolling_ineligible_does_not_fake_pass() -> None:
         training_mode="certified",
     )
     assert ok is False
-    assert "stage1_hygiene_below_floor" in reason
+    assert (
+        "stage1_hygiene_below_floor" in reason
+        or "missing_or_invalid_foundation_schema" in reason
+        or "missing_median_loss_r" in reason
+    )

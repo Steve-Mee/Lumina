@@ -138,22 +138,16 @@ class ApprovalTwinShadowEvaluatorMixin:
             except Exception:
                 pass
 
-            # Publish (shadow path reuses base but emits distinct call for traceability)
-            self._publish_decision(
-                dna_hash=dna_hash,
-                recommendation=recommendation,
-                confidence=confidence,
-                risk_flags=risk_flags,
-                explanation=explanation,
-                call="evaluate_shadow_promotion",
-            )
-
             decision = {
                 **base,
                 "recommendation": recommendation,
+                "confidence": float(confidence),
+                "risk_flags": list(risk_flags or []),
                 "shadow_total_pnl": float(shadow_total_pnl),
                 "veto_blocked": bool(veto_blocked),
                 "explanation": explanation,
             }
-            # Re-apply authority on combined shadow recommendation
-            return self.apply_mode_authority(decision)
+            # Authority first; post-hoc notify never blocks shadow judgment.
+            return self._finalize_and_publish_decision(
+                decision, dna_hash=dna_hash, call="evaluate_shadow_promotion"
+            )

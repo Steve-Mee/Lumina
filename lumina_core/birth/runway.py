@@ -12,15 +12,24 @@ from lumina_core.birth.certificate_evaluator import (
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import CurriculumStage, ordered_runway_stages
 from lumina_core.birth.evolution_proof_gate import EvolutionProofConfig, evaluate_evolution_proof
+from lumina_core.birth.foundation_metrics import S5_DD_EQUITY_USD
 from lumina_core.birth.remediation import filter_train_ticks_for_holdout_profile
+
+POST_BIRTH_CERTIFICATE_PHASE = "post_birth_certificate"
+
+
+def post_birth_checkpoint_stage() -> CurriculumStage:
+    """Last Foundation stage — never write stage4_polish (resume-incompatible)."""
+    return CurriculumStage.STAGE5_PROBE_HANDOFF
 
 
 def runway_stage_index(stage: CurriculumStage) -> int:
+    """1-based index inside post-Birth Proving Ground runway (not Birth 5/5)."""
     stages = ordered_runway_stages()
     try:
-        return stages.index(stage) + 5
+        return stages.index(stage) + 1
     except ValueError:
-        return 5
+        return 1
 
 
 def ticks_for_runway_stage(
@@ -31,11 +40,11 @@ def ticks_for_runway_stage(
     validation_ticks: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     if stage in {CurriculumStage.STAGE5_PROFIT_VAL, CurriculumStage.STAGE6_RISK_DISCIPLINE}:
-        return list(validation_ticks) if validation_ticks else list(train_ticks)
+        return list(validation_ticks) if validation_ticks else []
     if stage == CurriculumStage.STAGE7_HOLDOUT_PROFILE:
         matched = filter_train_ticks_for_holdout_profile(train_ticks, holdout_ticks)
-        return matched if matched else list(train_ticks)
-    return list(train_ticks)
+        return matched if matched else []
+    return []
 
 
 def micro_oos_probe(
@@ -116,5 +125,10 @@ def micro_oos_evolution_proof_passed(
     return False, "; ".join(result.reasons) if result.reasons else "evolution_proof_failed"
 
 
-def risk_metrics_from_pnl(pnl_series: list[float]) -> tuple[float, float]:
-    return sharpe_from_pnl(pnl_series), max_drawdown_pct(pnl_series)
+def risk_metrics_from_pnl(
+    pnl_series: list[float],
+    *,
+    equity: float | None = None,
+) -> tuple[float, float]:
+    eq = float(S5_DD_EQUITY_USD if equity is None else equity)
+    return sharpe_from_pnl(pnl_series), max_drawdown_pct(pnl_series, equity=eq)

@@ -1,6 +1,6 @@
 # ADR-0036: Birth Exit vs Maturation Continuum
 
-**Status:** Accepted (2026-08-06)  
+**Status:** Accepted (2026-08-06); **§1 refined 2026-08-14 by [ADR-0046](./0046-birth-foundation-evolvable-plant.md)** (exit = evolvable plant, not any-of artifacts).  
 **Deciders:** LUMINA Engineering (Steve + AI)  
 **Supersedes / refines:** Partial guidance in [organism-maturation-phases.md](./organism-maturation-phases.md), [0027-lumina-maturation-ladder.md](./0027-lumina-maturation-ladder.md)
 
@@ -10,8 +10,8 @@ Operators and automated gates conflated several “done” concepts:
 
 | Concept | Intent |
 |---------|--------|
-| **Birth exit** | Newborn *survived* closed-loop training (breathe, plant, checkpoint) |
-| **Birth Certificate v2** | Stronger curriculum + OOS artifact (may still be Birth exit *evidence*) |
+| **Birth exit** | Newborn *evolvable plant* — five Foundation receipts + fitness (ADR-0046) |
+| **Birth Certificate v2** | Proving Ground / cert pipeline (not Birth exit) |
 | **Perfect Birth** | Twin / autonomy / shadow KPI conjunction → Phase 2 unlock |
 | **Maturation phases** | Awakening → Playground → Apprenticeship → Proving Ground → REAL |
 | **REAL eligibility** | Fail-closed multi-milestone + human approve |
@@ -20,38 +20,47 @@ Using Perfect Birth, PromotionGate, OOS WR ≥ 0.48, or READY_FOR_REAL as **Birt
 
 ## Decision
 
-### 1. Birth exit is survival-only
+### 1. Birth exit is the evolvable plant (ADR-0046)
 
-Birth phase completes when **any** sufficient proof holds:
+Birth phase completes when **all** of these hold (fail-closed):
 
-- `birth_curriculum_complete` (engine completed flag / stages)
-- `birth_artifacts_ok` (checkpoint / DNA / completed flag)
-- `birth_certificate_issued` (certificate present — optional stronger proof)
-- `birth_started_with_artifacts` (crash recovery path)
+- five `foundation_v2` receipts for `ordered_stages()` (S1–S5), each passing `verify_stage_pass_receipt`
+- checksum-consistent `lumina_birth_fitness_vector.json`
 
-Default Stage-1 EdgeScore uses **survival floors** (`birth_survival_pass_enabled: true`):
+These are **not** sufficient (closed loopholes):
 
-- WR floor ≈ **0.20** (not 0.35 skill, not 0.48 OOS)
+- completed flag / `birth_curriculum_complete`
+- PPO artifacts / checkpoint / DNA (`birth_artifacts_ok`)
+- `birth_certificate_issued`
+- crash-recovery `birth_started_with_artifacts`
+
+Code SSOT: `is_birth_exit_sufficient` in `lumina_core/maturity/birth_exit.py`.
+
+Default Stage-1 **EdgeScore** (HUD only) may still use **survival floors** (`birth_survival_pass_enabled: true`):
+
+- WR floor ≈ **0.20** (diagnostic — not Foundation `passed`)
 - Expectancy floor ≈ **−0.50**
 - Plant soft-block rate cap
 
-**Playground+ / skill-mode Stage-1** (when survival mode is **off**): skill floors WR 0.35 and expectancy −0.15.  
+**Playground+ / skill-mode Stage-1** (when survival mode is **off**): skill floors WR 0.35 and expectancy −0.15 remain HUD pressure.  
 OOS / cert skill walls remain **Proving Ground / certificate pipeline** — never Birth-exit blockers.
 
-### 1b. Intra-Birth stage floors (not Birth-exit)
+### 1b. Intra-Birth Foundation stages (not Birth-exit)
 
-**Birth exit** (this ADR §1) is survival-only. That does **not** mean every curriculum stage inside Birth uses survival floors.
+**Birth exit** (this ADR §1 + ADR-0046) is five sequential Foundation receipts. Intra-Birth pass is process-R / occupancy / first-touch — **never WR 20/35/40**.
 
-| Stage | Floor class | Expectancy (WR−0.50 proxy) | Notes |
-|-------|-------------|----------------------------|--------|
-| Stage 1 (survival on) | Survival | ≥ **−0.50** (≡ ~20% WR) | Breathe / plant |
-| Stage 2 Range | **Early-quality** | ≥ **−0.15** (≡ ~35% WR) | Flat 30–70%; **not** pro cert |
-| Stage 3 Mixed | **Early-quality** | ≥ **−0.15** + WR floor ~0.35 | Still inside Birth |
+| Stage | Pass class | Gate | Notes |
+|-------|------------|------|--------|
+| 1 Closed loop | Process-R | median_loss_R ≤ 1.5, net RR ≥ 0.80, settlement | No occupancy / WR / edge pass |
+| 2 Selectivity | Occupancy + process-R | occupancy 30–70%, round-trips | EdgeScore `.passed` is HUD-only |
+| 3 Mixed | Occupancy + edge | occupancy 25–75%, edge ≥ −0.05 | WR ~0.35 is **not** current law |
+| 4 Viable plant | Skill AND | edge ≥ 0 AND mean_R ≥ E_mech−0.10 | Purged val slice |
+| 5 Probe | Holdout + fitness | edge ≥ −0.03, Sharpe > −2, DD ≤ 25% | Occupancy extra via `_common_body` |
 
 Normative language, why, anti-patterns, and config keys:  
-**[docs/birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md)** (locked SSOT).
+**[docs/birth-curriculum-stage-floors.md](../birth-curriculum-stage-floors.md)** and **[ADR-0046](./0046-birth-foundation-evolvable-plant.md)**.
 
-Do **not** lower Stage-2/3 floors to −0.50 “because Birth is newborn,” and do **not** treat Stage-2 pass as Perfect Birth or REAL competence.
+Do **not** restore Stage-2/3 WR 35% “because Birth is newborn,” and do **not** treat Stage-2 pass as Perfect Birth or REAL competence.
 
 ### 2. Explicit non-requirements for Birth exit
 
@@ -98,7 +107,7 @@ On Birth exit:
 
 ### Negative / trade-offs
 
-- Certificate is *sufficient* but not *required* for Birth exit — operators who want cert-hard Birth must still run certificate pipeline before treating organism as “certified.”  
+- Certificate is a **Proving Ground** wall — it is neither required nor sufficient for Birth exit. Operators who want cert-hard organisms still run the certificate pipeline after Foundation exit.  
 - Soft lab modes for later phases unchanged (`experimental_soft_complete`).  
 
 ## Alternatives considered

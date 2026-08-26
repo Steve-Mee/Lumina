@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 
+import { BirthLaunchSequence } from "@/components/birth/BirthLaunchSequence";
 import { BirthPhaseGenesisBranch } from "@/components/birth/BirthPhaseGenesisBranch";
 import { BirthPhaseMissionBranch } from "@/components/birth/BirthPhaseMissionBranch";
 import { BirthPhaseRecoveryOverlays } from "@/components/birth/BirthPhaseRecoveryOverlays";
@@ -55,7 +56,8 @@ export function BirthPhaseScreen() {
     recoveryOverlayActive,
     certificateFailedPinned,
     genesisMode,
-    phaseSubtitle,
+    launchingMode,
+    activationStep,
   } = derived;
 
   return (
@@ -70,13 +72,13 @@ export function BirthPhaseScreen() {
       >
         <LuminaPhaseHeader
           {...phaseHeader}
-          variant={missionMode ? "compact" : "strip"}
+          variant={missionMode && !launchingMode ? "compact" : "strip"}
           className="relative z-20"
         />
         <EvolutionLadderStrip
           className={cn(
             "relative z-20",
-            missionMode && "evolution-ladder-strip--dense !py-1",
+            missionMode && !launchingMode && "evolution-ladder-strip--dense !py-1",
           )}
         />
         {certificateFailedPinned ? (
@@ -90,7 +92,9 @@ export function BirthPhaseScreen() {
             data &amp; retry from recovery actions.
           </p>
         ) : null}
-        {genesisMode ? (
+        {launchingMode ? (
+          <BirthLaunchSequence step={activationStep} />
+        ) : genesisMode ? (
           <BirthPhaseGenesisBranch
             derived={derived}
             controlBusy={controlBusy}
@@ -112,29 +116,33 @@ export function BirthPhaseScreen() {
             onExtraTraining={handleExtraTraining}
           />
         ) : (
-          <motion.div
-            className="birth-phase-hero relative flex min-h-0 flex-1 flex-col overflow-hidden"
-            animate={{ scale: 1 }}
-            transition={transitionOrNone(reducedMotion, modeMotion)}
-          >
-            <div className="flex min-h-0 flex-1 items-center justify-center px-4">
-              <p className="birth-phase-subtitle text-center text-sm">{phaseSubtitle}</p>
-            </div>
-          </motion.div>
+          // Fail-closed: never orphan empty hero — land on Genesis branch.
+          <BirthPhaseGenesisBranch
+            derived={derived}
+            controlBusy={controlBusy}
+            onActivate={() => void handleStartBirth()}
+            onWipe={handleWipeBirthData}
+            onStop={handleStopBirth}
+            onResumeCheckpoint={handleResumeCheckpoint}
+            onOpenSetup={() => enterSetupReview("credentials")}
+            onChangeTraining={onChangeTraining}
+          />
         )}
 
-        <BirthPhaseRecoveryOverlays
-          derived={derived}
-          retrying={retrying}
-          certificateFailureDetail={certificateFailureDetail}
-          stalledRecoveryActions={stalledRecoveryActions}
-          onDismissRecovery={() => setRecoveryDismissed(true)}
-          onResumeBirth={handleResumeBirth}
-          onReuseDataBirth={handleReuseDataBirth}
-          onWipeRetryBirth={handleWipeRetryBirth}
-          onReturnToGenesis={returnToGenesis}
-          onRetryBirth={() => void retryBirth()}
-        />
+        {!launchingMode ? (
+          <BirthPhaseRecoveryOverlays
+            derived={derived}
+            retrying={retrying}
+            certificateFailureDetail={certificateFailureDetail}
+            stalledRecoveryActions={stalledRecoveryActions}
+            onDismissRecovery={() => setRecoveryDismissed(true)}
+            onResumeBirth={handleResumeBirth}
+            onReuseDataBirth={handleReuseDataBirth}
+            onWipeRetryBirth={handleWipeRetryBirth}
+            onReturnToGenesis={returnToGenesis}
+            onRetryBirth={() => void retryBirth()}
+          />
+        ) : null}
       </motion.div>
 
       <ModeTransitionVeil

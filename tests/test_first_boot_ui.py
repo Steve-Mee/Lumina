@@ -42,10 +42,12 @@ def test_estimate_first_boot_real_days_matches_engine_ssot() -> None:
 
 
 @pytest.mark.unit
-def test_resolve_default_max_real_days_floor_and_estimate() -> None:
-    assert resolve_default_max_real_days(25_000) == max(FIRST_BOOT_MIN_REAL_DAYS, 56)
-    assert resolve_default_max_real_days(5_000) == FIRST_BOOT_MIN_REAL_DAYS
-    assert resolve_default_max_real_days(100_000) == max(FIRST_BOOT_MIN_REAL_DAYS, 223)
+def test_resolve_default_max_real_days_is_foundation_ceiling() -> None:
+    assert FIRST_BOOT_MIN_REAL_DAYS == 90
+    assert FIRST_BOOT_DEFAULT_MAX_REAL_DAYS == 365
+    assert resolve_default_max_real_days(25_000) == 365
+    assert resolve_default_max_real_days(5_000) == 365
+    assert resolve_default_max_real_days(100_000) == 365
 
 
 @pytest.mark.unit
@@ -59,7 +61,7 @@ def test_resolve_historical_bar_limit_no_25k_cap() -> None:
 
 @pytest.mark.unit
 def test_exceeds_max_real_days_window_default_config() -> None:
-    """Default max_real_days in config is 90; large estimates should trigger a warning."""
+    """Default max_real_days ceiling is 365; large duration estimates should trigger a warning."""
     max_days = FIRST_BOOT_DEFAULT_MAX_REAL_DAYS
     assert exceeds_max_real_days_window(400, max_days) is True
     assert exceeds_max_real_days_window(80, max_days) is False

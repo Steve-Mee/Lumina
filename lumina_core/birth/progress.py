@@ -153,6 +153,12 @@ def write_birth_progress(
     if birth_start_time > 0:
         payload["birth_start_time"] = float(birth_start_time)
         payload["elapsed_sec"] = round(max(0.0, time.time() - float(birth_start_time)), 2)
+    # Never carry "user paused" into active training phases unless explicitly set.
+    stage_l = str(payload.get("stage", "") or "").strip().lower()
+    phase_l = str(payload.get("phase", "") or "").strip().lower()
+    if stage_l not in {"paused", "interrupted"} and phase_l not in {"paused", "interrupted"}:
+        if "user_initiated_stop" not in extra:
+            payload["user_initiated_stop"] = False
     payload = enrich_progress_scorecard(payload)
     encoded = json.dumps(payload, ensure_ascii=True, indent=2)
     # Write canonical only. Legacy dual write removed for radical simplicity.

@@ -92,12 +92,11 @@ def save_continuum(workspace_root: Path | str, data: dict[str, Any]) -> None:
 
 
 def _birth_artifacts_ok(workspace_root: Path | str) -> bool:
+    """Legacy name: Foundation exit only. Certificate files alone are not enough."""
     try:
-        from lumina_launcher.services.birth_service import BirthService
+        from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
 
-        svc = BirthService()
-        svc.configure_workspace(Path(workspace_root))
-        return bool(svc.artifacts_ok() or svc.certificate_ok())
+        return bool(is_birth_exit_sufficient(workspace_root))
     except Exception:
         return False
 

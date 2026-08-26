@@ -78,6 +78,23 @@ describe("birthStore stage_stalled recovery", () => {
     expect(useBirthStore.getState().birthSurface).toBe("genesis");
   });
 
+  it("resumeBirth failure returns to genesis (no stuck paused mission shell)", async () => {
+    const { resumeBirthSession } = await import("@/lib/birthClient");
+    vi.mocked(resumeBirthSession).mockResolvedValue({
+      status: "rejected",
+      message: "Champion frozen after swarm no-lift — accept champion or wipe",
+      reason_code: "champion_freeze_blocks_recovery",
+    } as BirthStatusPayload);
+
+    useBirthStore.getState().beginBirthRun();
+    const ok = await useBirthStore.getState().resumeBirth();
+    expect(ok).toBe(false);
+    expect(useBirthStore.getState().runPinned).toBe(false);
+    expect(useBirthStore.getState().birthSurface).toBe("genesis");
+    expect(useBirthStore.getState().uiPhase).toBe("idle");
+    expect(useBirthStore.getState().pollError).toMatch(/Champion frozen|Resume failed|frozen/i);
+  });
+
   it("keeps Activate locked until first status hydrates session probe", () => {
     expect(useBirthStore.getState().sessionHydrated).toBe(false);
     expect(useBirthStore.getState().sessionProbeState).toBe("pending");

@@ -97,4 +97,9 @@ export interface StageScorecardModel {
   adaptationCycling: boolean;
   autonomousRecoveryRatePct: number | null;
   regimeDistributionSummary: string | null;
+  stagePassNow: boolean;
+  medianLossR: number | null;
+  meanR: number | null;
+  occupancy: number | null;
+  edgeVsFirstTouch: number | null;
 }

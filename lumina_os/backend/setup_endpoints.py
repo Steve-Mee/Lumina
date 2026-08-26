@@ -160,6 +160,8 @@ class ConfigureCredentials(BaseModel):
     XAI_API_KEY: str = ""
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_CHAT_ID: str = ""
+    # Vault emergency CrossTrade MD fallback → broker.fallback_on_fabric_failure (ADR-0040).
+    emergency_market_data_fallback: bool = False
 
 
 class ConfigureRisk(BaseModel):
@@ -178,7 +180,7 @@ class ConfigureEvolution(BaseModel):
 class ConfigureTraining(BaseModel):
     training_trades: int = Field(default=25000, ge=1000, le=2_000_000)
     prefer_real_data_only: bool = True
-    max_real_days: int = Field(default=56, ge=30, le=3650)
+    max_real_days: int = Field(default=365, ge=90, le=3650)
     allow_minimal_synthetic_fallback: bool = False
     require_real_simulator_data: bool = True
     stage1_winrate_pass_threshold: float | None = Field(default=None, ge=0.35, le=0.45)
@@ -235,7 +237,12 @@ async def save_credentials(body: ConfigureCredentials) -> dict[str, Any]:
     # Fabric-first: JWT required; Crosstrade optional emergency feed.
     if not str(creds.get("LUMINA_JWT_SECRET_KEY", "")).strip():
         raise HTTPException(status_code=400, detail="Missing required credential: LUMINA_JWT_SECRET_KEY")
-    still_missing = persist_credentials_only(config_manager, creds)
+    still_missing = persist_credentials_only(
+        config_manager,
+        creds,
+        emergency_market_data_fallback=bool(body.emergency_market_data_fallback),
+        workspace_root=_workspace_root(),
+    )
     seed_steps: list[dict[str, Any]] = []
     if not still_missing:
         snapshot = hardware.get_snapshot(refresh=True)
@@ -262,6 +269,7 @@ from lumina_os.backend.setup_endpoints_fabric import (  # noqa: E402
     configure_setup,
     fabric_bootstrap,
     fabric_connection_test,
+    fabric_heal,
     fabric_link_status,
     fabric_nt_watch,
     generate_tauri_signing,
@@ -271,5 +279,6 @@ fabric_connection_test = router.post("/fabric-connection-test")(fabric_connectio
 fabric_bootstrap = router.post("/fabric-bootstrap")(fabric_bootstrap)
 fabric_link_status = router.get("/fabric-link-status")(fabric_link_status)
 fabric_nt_watch = router.post("/fabric-nt-watch")(fabric_nt_watch)
+fabric_heal = router.post("/fabric-heal")(fabric_heal)
 configure_setup = router.post("/configure")(configure_setup)
 generate_tauri_signing = router.post("/tauri-signing/generate")(generate_tauri_signing)

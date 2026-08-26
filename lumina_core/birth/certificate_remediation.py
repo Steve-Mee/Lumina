@@ -6,7 +6,7 @@ from lumina_core.birth.certificate_patch_bridge import cp_attr
 from typing import Any
 
 from lumina_core.birth.certificate_evaluator import evaluate_holdout_certificate
-from lumina_core.birth.curriculum import CurriculumStage
+from lumina_core.birth.runway import POST_BIRTH_CERTIFICATE_PHASE, post_birth_checkpoint_stage
 from lumina_core.birth.data_expansion import clamp_expansion_steps, expand_birth_data
 from lumina_core.birth.news_enricher import enrich_ticks_with_news
 from lumina_core.birth.progress import write_birth_progress
@@ -80,8 +80,8 @@ def run_certificate_remediation(
         if pipeline._host._stop_requested():
             pipeline._host._persist_checkpoint(
                 training_mode=training_mode,
-                curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
-                phase="certificate_remediation",
+                curriculum_stage=post_birth_checkpoint_stage().value,
+                phase=POST_BIRTH_CERTIFICATE_PHASE,
             )
             return pipeline._host._paused_result()
 
@@ -155,8 +155,8 @@ def run_certificate_remediation(
             pipeline._host.ppo_steps += ppo_steps
             pipeline._host._persist_checkpoint(
                 training_mode=training_mode,
-                curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
-                phase="certificate_remediation",
+                curriculum_stage=post_birth_checkpoint_stage().value,
+                phase=POST_BIRTH_CERTIFICATE_PHASE,
             )
 
         current_eval = cp_attr("evaluate_holdout_certificate", evaluate_holdout_certificate)(
@@ -204,7 +204,7 @@ def run_certificate_remediation(
         logger.warning("birth.cert_attention_failed: %s", exc)
     pipeline._host._persist_checkpoint(
         training_mode=training_mode,
-        curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
+        curriculum_stage=post_birth_checkpoint_stage().value,
         phase="certificate_failed",
         oos_metrics=dict(current_eval),
     )

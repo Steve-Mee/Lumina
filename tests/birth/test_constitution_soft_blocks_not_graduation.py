@@ -7,6 +7,7 @@ import pytest
 from lumina_core.birth.birth_constitution_guard import BirthConstitutionGuard
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 @pytest.mark.unit
@@ -45,6 +46,8 @@ def test_stage2_passes_with_soft_blocks_only() -> None:
         target_trades=3000,
         cfg=cfg,
         allow_provisional=False,
+        **honest_closes(300),
+        **foundation_eval_kwargs(),
     )
     assert result.passed is True
 

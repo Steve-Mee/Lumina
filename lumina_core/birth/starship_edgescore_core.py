@@ -21,6 +21,14 @@ class EdgeScoreResult:
     expectancy_ok: bool
     constitution_ok: bool
     message: str
+    # Optional Stage-2 dual-truth (skill vs rolling) — floors unchanged.
+    pass_expectancy: float | None = None
+    pass_expectancy_source: str = ""
+    pass_wr_equiv: float | None = None
+    # Durable C-band (rolling lift requires lifetime ≥ floor−δ). Default True
+    # so Stage-1 / non-durable paths stay unchanged.
+    durable_ok: bool = True
+    durable_reason: str = ""
 
 
 def rolling_pass_min_covered(window: int = 500) -> int:
@@ -90,6 +98,84 @@ def hygiene_wr_telemetry(
         "hygiene_wr_source": source,
         "rolling_wr_eligible": bool(eligible),
     }
+
+def evaluate_settlement_honesty(
+    *,
+    closes_stop: int = 0,
+    closes_target: int = 0,
+    closes_time_stop: int = 0,
+    closes_flatten: int = 0,
+    closes_unknown: int = 0,
+    trades: int = 0,
+    required: int = 0,
+    min_share: float = 0.70,
+    min_decisive: int | None = None,
+) -> tuple[bool, float, str]:
+    """Fail-closed when closes are flatten-dominated or close_reason SSOT is missing.
+
+    Decisive = stop + target + time_stop. Dishonest = flatten + unknown.
+    Share must be ≥ ``min_share`` and decisive count ≥ max(20, required/10)
+    once volume is met. Warm-up (trades < required) does not fail the leg.
+    """
+    stop_n = max(0, int(closes_stop))
+    tgt_n = max(0, int(closes_target))
+    time_n = max(0, int(closes_time_stop))
+    flat_n = max(0, int(closes_flatten))
+    unk_n = max(0, int(closes_unknown))
+    decisive = stop_n + tgt_n + time_n
+    dishonest = flat_n + unk_n
+    total = decisive + dishonest
+    share_floor = max(0.50, min(0.95, float(min_share)))
+    need = (
+        int(min_decisive)
+        if min_decisive is not None
+        else max(20, int(required) // 10)
+    )
+    need = max(1, int(need))
+    volume_met = int(trades) >= max(1, int(required))
+    if total <= 0:
+        if volume_met:
+            return False, 0.0, "settlement SSOT missing"
+        return True, -1.0, "warmup"
+    share = float(decisive) / float(max(1, total))
+    if not volume_met:
+        return True, share, "warmup"
+    if decisive < need:
+        return False, share, f"decisive {decisive}<{need}"
+    if share + 1e-12 < share_floor:
+        return False, share, f"share {share:.0%}<{share_floor:.0%}"
+    return True, share, "ok"
+
+
+def settlement_progress_fields(
+    *,
+    closes_stop: int = 0,
+    closes_target: int = 0,
+    closes_time_stop: int = 0,
+    closes_flatten: int = 0,
+    closes_unknown: int = 0,
+) -> dict[str, Any]:
+    """Stage-wide close SSOT for progress / HUD (warmup share is null, not 0%)."""
+    stop_c = max(0, int(closes_stop))
+    tgt_c = max(0, int(closes_target))
+    time_c = max(0, int(closes_time_stop))
+    flat_c = max(0, int(closes_flatten))
+    unk_c = max(0, int(closes_unknown))
+    decisive = stop_c + tgt_c + time_c
+    total = decisive + flat_c + unk_c
+    share: float | None = None
+    if total > 0:
+        share = round(float(decisive) / float(total), 4)
+    return {
+        "stage_closes_stop_cum": stop_c,
+        "stage_closes_target_cum": tgt_c,
+        "stage_closes_flatten_cum": flat_c,
+        "stage_closes_time_stop_cum": time_c,
+        "stage_closes_unknown_cum": unk_c,
+        "stage_stop_target_ratio": round(float(stop_c) / float(max(1, tgt_c)), 3),
+        "stage_settlement_share": share,
+    }
+
 
 def compute_expectancy_proxy(
     *,

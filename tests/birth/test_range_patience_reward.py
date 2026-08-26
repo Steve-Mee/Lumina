@@ -84,14 +84,37 @@ def test_range_patience_churn_penalty_on_close_under_active() -> None:
         range_flat_bonus_coeff=0.003,
         range_churn_penalty_coeff=0.005,
     )
+    # Flat empty bonus + mild churn on non-loss close (r_mult=0 → 0.35 * churn).
     net = range_patience_step_reward(
         regime="NEUTRAL",
         position_flat=True,
         trade_closed=True,
         cfg=cfg,
         stage_flat_ratio=0.15,
+        trade_r_multiple=0.0,
     )
-    assert net == pytest.approx(-0.002)
+    assert net == pytest.approx(0.003 - 0.005 * 0.35)
+
+
+@pytest.mark.unit
+def test_under_flat_stop_out_extra_penalty() -> None:
+    """Stop-out under over-trading band is punished harder than a flat keep-alive."""
+    cfg = BirthRewardConfig(
+        enabled=True,
+        range_flat_bonus_coeff=0.003,
+        range_churn_penalty_coeff=0.005,
+        range_quality_boost_coeff=0.15,
+    )
+    stop_out = range_patience_step_reward(
+        regime="NEUTRAL",
+        position_flat=False,
+        trade_closed=True,
+        cfg=cfg,
+        stage_flat_ratio=0.25,
+        expectancy_gap=0.10,
+        trade_r_multiple=-1.0,
+    )
+    assert stop_out < -0.01
 
 
 @pytest.mark.unit

@@ -269,8 +269,38 @@ from lumina_os.backend.twin_endpoints_gym import (  # noqa: E402
     twin_gym_complete,
     twin_gym_session,
 )
+from lumina_os.backend.twin_endpoints_curriculum import (  # noqa: E402
+    twin_base_answer,
+    twin_base_complete,
+    twin_base_next,
+    twin_base_start,
+    twin_base_status,
+    twin_decision_feedback,
+    twin_decisions_recent,
+    twin_escalation_create,
+    twin_escalation_resolve,
+    twin_escalations_pending,
+    twin_micro_answer,
+    twin_micro_start,
+    twin_readiness,
+)
 
 # Re-bind FastAPI routes for gym handlers extracted to twin_endpoints_gym.
 twin_gym_session = router.post("/gym/session")(twin_gym_session)
 twin_gym_answer = router.post("/gym/answer")(twin_gym_answer)
 twin_gym_complete = router.post("/gym/complete")(twin_gym_complete)
+
+# ADR-0037: base curriculum + micro + escalation
+twin_base_start = router.post("/base/start")(twin_base_start)
+twin_base_status = router.get("/base/status")(twin_base_status)
+twin_base_next = router.get("/base/next")(twin_base_next)
+twin_base_answer = router.post("/base/answer")(twin_base_answer)
+twin_base_complete = router.post("/base/complete")(twin_base_complete)
+twin_readiness = router.get("/readiness")(twin_readiness)
+twin_micro_start = router.post("/micro/start")(twin_micro_start)
+twin_micro_answer = router.post("/micro/answer")(twin_micro_answer)
+twin_escalations_pending = router.get("/escalations/pending")(twin_escalations_pending)
+twin_escalation_create = router.post("/escalations/create")(twin_escalation_create)
+twin_escalation_resolve = router.post("/escalations/{escalation_id}/resolve")(twin_escalation_resolve)
+twin_decisions_recent = router.get("/decisions/recent")(twin_decisions_recent)
+twin_decision_feedback = router.post("/decisions/{decision_id}/feedback")(twin_decision_feedback)

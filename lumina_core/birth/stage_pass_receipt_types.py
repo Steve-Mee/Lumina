@@ -10,9 +10,8 @@ ORDERED_STAGE_VALUES = (
     CurriculumStage.STAGE1_TREND.value,
     CurriculumStage.STAGE2_RANGE.value,
     CurriculumStage.STAGE3_MIXED.value,
-    CurriculumStage.STAGE5_PROFIT_VAL.value,
-    CurriculumStage.STAGE6_RISK_DISCIPLINE.value,
-    CurriculumStage.STAGE7_HOLDOUT_PROFILE.value,
+    CurriculumStage.STAGE4_VIABLE_PLANT.value,
+    CurriculumStage.STAGE5_PROBE_HANDOFF.value,
 )
 
 
@@ -47,6 +46,27 @@ class StagePassReceipt:
     rolling_winrate_source: str | None = None
     rolling_window_trades_covered: int | None = None
     hygiene_wr_source: str | None = None
+    # Stage-2 skill split (pilot vs plant) — integrity re-eval must use same SSOT.
+    policy_trades: int | None = None
+    policy_wins: int | None = None
+    plant_trades: int | None = None
+    plant_wins: int | None = None
+    closes_stop: int = 0
+    closes_target: int = 0
+    closes_time_stop: int = 0
+    closes_flatten: int = 0
+    closes_unknown: int = 0
+    schema: str = ""
+    median_loss_r: float | None = None
+    mean_r: float | None = None
+    occupancy: float | None = None
+    edge: float | None = None
+    p_ft: float | None = None
+    e_mech: float | None = None
+    geometry_net_rr: float | None = None
+    unique_calendar_days: int | None = None
+    oos_sharpe: float | None = None
+    oos_dd_pct: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -115,6 +135,60 @@ class StagePassReceipt:
                     str(raw["hygiene_wr_source"])
                     if raw.get("hygiene_wr_source") is not None
                     else None
+                ),
+                policy_trades=(
+                    max(0, int(raw["policy_trades"]))
+                    if raw.get("policy_trades") is not None
+                    else None
+                ),
+                policy_wins=(
+                    max(0, int(raw["policy_wins"]))
+                    if raw.get("policy_wins") is not None
+                    else None
+                ),
+                plant_trades=(
+                    max(0, int(raw["plant_trades"]))
+                    if raw.get("plant_trades") is not None
+                    else None
+                ),
+                plant_wins=(
+                    max(0, int(raw["plant_wins"]))
+                    if raw.get("plant_wins") is not None
+                    else None
+                ),
+                closes_stop=max(0, int(raw.get("closes_stop", 0) or 0)),
+                closes_target=max(0, int(raw.get("closes_target", 0) or 0)),
+                closes_time_stop=max(0, int(raw.get("closes_time_stop", 0) or 0)),
+                closes_flatten=max(0, int(raw.get("closes_flatten", 0) or 0)),
+                closes_unknown=max(0, int(raw.get("closes_unknown", 0) or 0)),
+                schema=str(raw.get("schema", "") or ""),
+                median_loss_r=(
+                    float(raw["median_loss_r"])
+                    if raw.get("median_loss_r") is not None
+                    else None
+                ),
+                mean_r=float(raw["mean_r"]) if raw.get("mean_r") is not None else None,
+                occupancy=(
+                    float(raw["occupancy"]) if raw.get("occupancy") is not None else None
+                ),
+                edge=float(raw["edge"]) if raw.get("edge") is not None else None,
+                p_ft=float(raw["p_ft"]) if raw.get("p_ft") is not None else None,
+                e_mech=float(raw["e_mech"]) if raw.get("e_mech") is not None else None,
+                geometry_net_rr=(
+                    float(raw["geometry_net_rr"])
+                    if raw.get("geometry_net_rr") is not None
+                    else None
+                ),
+                unique_calendar_days=(
+                    max(0, int(raw["unique_calendar_days"]))
+                    if raw.get("unique_calendar_days") is not None
+                    else None
+                ),
+                oos_sharpe=(
+                    float(raw["oos_sharpe"]) if raw.get("oos_sharpe") is not None else None
+                ),
+                oos_dd_pct=(
+                    float(raw["oos_dd_pct"]) if raw.get("oos_dd_pct") is not None else None
                 ),
             )
         except (TypeError, ValueError):

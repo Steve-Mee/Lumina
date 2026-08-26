@@ -34,6 +34,7 @@ _ACTIVE_BIRTH_POLL_PHASES = frozenset(
     }
 )
 _ENRICH_ARTIFACT_KEYS = (
+    "birth_exit_ok",
     "artifacts_ok",
     "certificate_ok",
     "certificate_reason",
@@ -88,6 +89,24 @@ def _apply_progress_fields(payload: dict[str, Any], *, checkpoint: dict[str, Any
         payload["remediation_attempt"] = progress.get("remediation_attempt")
         payload["remediation_max"] = progress.get("remediation_max")
         payload["data_manifest"] = progress.get("data_manifest")
+        # Phase D readiness (honest absence; never hollow declare).
+        for key in (
+            "certificate_present",
+            "evolution_proof_present",
+            "perfect_birth_flag_present",
+            "certificate_path_ready",
+            "certificate_readiness_blockers",
+            "perfect_birth_would_pass",
+            "perfect_birth_unlock_valid",
+            "perfect_birth_failures",
+            "curriculum_stages_passed_count",
+            "expectancy_quality_step",
+            "expectancy_stall_detected",
+            "evolution_actions_completed",
+            "plateau_evolution_max_steps_effective",
+        ):
+            if key in progress:
+                payload[key] = progress.get(key)
     return progress_phase
 
 def _enrich_status_full(payload: dict[str, Any]) -> dict[str, Any]:
@@ -124,6 +143,12 @@ def _enrich_status_full(payload: dict[str, Any]) -> dict[str, Any]:
         if isinstance(failure_reasons, list) and failure_reasons:
             cert_reason = "; ".join(str(item) for item in failure_reasons)
     payload["artifacts_ok"] = birth_service.artifacts_ok()
+    try:
+        from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+        payload["birth_exit_ok"] = bool(is_birth_exit_sufficient(root))
+    except Exception:
+        payload["birth_exit_ok"] = False
     payload["certificate_ok"] = cert_ok
     payload["certificate_reason"] = cert_reason
     payload["evolution_proof_ok"] = birth_service.evolution_proof_ok()

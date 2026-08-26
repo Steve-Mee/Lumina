@@ -3,21 +3,31 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-pytestmark = pytest.mark.timeout(120)
+pytestmark = pytest.mark.timeout(30)
 
 from lumina_core.birth.buffer_persist import save_buffer
 from lumina_core.birth.checkpoint import save_checkpoint
 from lumina_core.birth.config import BirthCurriculumConfig, BirthV2Config
+from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass, ordered_stages
 from lumina_core.birth.data_expansion import DataExpansionResult
+from lumina_core.birth.fitness_vector import (
+    BirthFitnessVector,
+    receipt_checksum,
+    write_fitness_vector,
+)
+from lumina_core.birth.foundation_metrics import FOUNDATION_SCHEMA, mechanical_ev_r
 from lumina_core.birth.preflight import PreflightReport
 from lumina_core.birth.data_pipeline import train_hash
 from lumina_core.birth.engine import BirthPhaseEngineV2
 from lumina_core.birth.purged_split import purged_train_holdout_split
+from lumina_core.birth.stage_pass_receipt import receipt_from_stage_result
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 import importlib
 
 from lumina_launcher.services.birth_service import BirthService
@@ -53,7 +63,9 @@ def _ticks(n: int = 1200) -> list[dict]:
         price += 0.5
         out.append(
             {
-                "timestamp": f"2026-01-01T{i:04d}:00Z",
+                "timestamp": (
+                    datetime(2025, 1, 1, tzinfo=timezone.utc) + timedelta(hours=i * 12)
+                ).isoformat(),
                 "last": price,
                 "bid": price - 0.125,
                 "ask": price + 0.125,
@@ -65,7 +77,77 @@ def _ticks(n: int = 1200) -> list[dict]:
     return out
 
 
+def _foundation_receipts(cfg: BirthCurriculumConfig) -> list[dict]:
+    p_ft = 0.28
+    rr = 1.2
+    e_mech = mechanical_ev_r(p_ft=p_ft, net_rr=rr)
+    payloads = [
+        (CurriculumStage.STAGE1_TREND, 160, 50),
+        (CurriculumStage.STAGE2_RANGE, 260, 90),
+        (CurriculumStage.STAGE3_MIXED, 400, 130),
+        (CurriculumStage.STAGE4_VIABLE_PLANT, 120, 50),
+        (CurriculumStage.STAGE5_PROBE_HANDOFF, 60, 25),
+    ]
+    receipts: list[dict] = []
+    for stage, trades, wins in payloads:
+        result = evaluate_stage_pass(
+            stage,
+            trades=trades,
+            wins=wins,
+            hold_signals=40,
+            total_signals=max(200, trades),
+            range_hold_signals=40,
+            range_total_signals=200,
+            range_flat_bars=90,
+            range_round_trips=30,
+            constitution_violations=0,
+            target_trades=trades,
+            cfg=cfg,
+            policy_entropy=0.4,
+            ppo_steps=800,
+            occupancy=0.45,
+            oos_sharpe=-1.0,
+            oos_dd_pct=10.0,
+            **honest_closes(trades),
+            **foundation_eval_kwargs(
+                unique_calendar_days=90,
+                first_touch_hit_rate=p_ft,
+                geometry_net_rr=rr,
+                mean_r=float(e_mech),
+            ),
+        )
+        assert result.passed, f"{stage.value}: {result.message}"
+        receipts.append(receipt_from_stage_result(stage, result, cfg=cfg).to_dict())
+    return receipts
+
+
+def _write_fitness_for_s5(tmp_path: Path, receipts: list[dict]) -> None:
+    from lumina_core.birth.stage_pass_receipt_types import StagePassReceipt
+
+    s5_raw = next(r for r in receipts if r.get("stage") == "stage5_probe_handoff")
+    parsed = StagePassReceipt.from_dict(s5_raw)
+    assert parsed is not None
+    payload = parsed.to_dict()
+    write_fitness_vector(
+        tmp_path,
+        BirthFitnessVector(
+            schema=FOUNDATION_SCHEMA,
+            mean_r=float(payload.get("mean_r") or 0.0),
+            edge=float(payload.get("edge") or 0.0),
+            occupancy=float(payload.get("occupancy") or 0.0),
+            oos_wr=0.4,
+            oos_sharpe=-1.0,
+            median_loss_r=float(payload.get("median_loss_r") or 1.1),
+            s5_receipt_checksum=receipt_checksum(payload),
+            trades=int(payload.get("trades") or 0),
+        ),
+    )
+
+
 def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
+    cfg = BirthCurriculumConfig()
+    receipts = _foundation_receipts(cfg)
+    stages = [s.value for s in ordered_stages()]
     trajectories = [{"reward": 1.0, "observation": {"vector": [5000.0 + i * 0.1]}} for i in range(120)]
     buffer_path = save_buffer(tmp_path, trajectories)
     policy_path = tmp_path / "lumina_agents" / "ppo" / "lumina_ppo_policy.zip"
@@ -79,8 +161,8 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
         cumulative_trades=500,
         ppo_steps=9000,
         training_mode="certified",
-        stages_passed=["stage1_trend", "stage2_range", "stage3_mixed"],
-        curriculum_stage="stage4_polish",
+        stages_passed=list(stages),
+        curriculum_stage="stage5_probe_handoff",
         policy_path=str(policy_path),
         stage_metrics={
             "stage_trades": 120,
@@ -92,6 +174,7 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
         data_manifest={"train_hash": manifest_train_hash, "preflight_ok": True},
         phase="certificate_failed",
         remediation_attempt=1,
+        stage_pass_receipts=receipts,
     )
     progress_path = tmp_path / "state" / "lumina_birth_progress.json"
     progress_path.parent.mkdir(parents=True, exist_ok=True)
@@ -100,7 +183,8 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
             {
                 "phase": "certificate_failed",
                 "stage": "failed",
-                "stages_passed": ["stage1_trend", "stage2_range", "stage3_mixed"],
+                "stages_passed": list(stages),
+                "stage_pass_receipts": receipts,
                 "failure_reasons": ["holdout_trades:12/50"],
                 "oos_metrics": {
                     "certificate_passed": False,
@@ -111,6 +195,7 @@ def _seed_certificate_failed_checkpoint(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+    _write_fitness_for_s5(tmp_path, receipts)
     _ = split
 
 
@@ -271,6 +356,7 @@ def test_retry_birth_preserves_checkpoint_and_continues_training(
     assert calls
     assert calls[0]["force"] is False
     assert calls[0]["continue_training"] is True
+    assert calls[0]["reuse_data"] is True
     BirthService._instance = None  # type: ignore[attr-defined]
 
 
@@ -291,7 +377,13 @@ def test_retry_birth_reconstructs_checkpoint_from_progress(
         json.dumps(
             {
                 "phase": "certificate_failed",
-                "stages_passed": ["stage1_trend", "stage2_range", "stage3_mixed"],
+                "stages_passed": [
+                    "stage1_trend",
+                    "stage2_range",
+                    "stage3_mixed",
+                    "stage4_viable_plant",
+                    "stage5_probe_handoff",
+                ],
                 "failure_reasons": ["oos_sharpe:0.1/0.35"],
                 "cumulative_trades": 500,
                 "ppo_steps": 9000,
@@ -317,4 +409,5 @@ def test_retry_birth_reconstructs_checkpoint_from_progress(
     assert (tmp_path / "state" / "lumina_birth_checkpoint.json").is_file()
     assert calls[0]["force"] is False
     assert calls[0]["continue_training"] is True
+    assert calls[0]["reuse_data"] is True
     BirthService._instance = None  # type: ignore[attr-defined]

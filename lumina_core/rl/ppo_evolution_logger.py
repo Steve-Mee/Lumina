@@ -246,7 +246,7 @@ class PPOEvolutionLogger(BaseCallback):
         custom = float(logs.get("custom/avg_stop_pct", 0.0))
         if custom > 0.0:
             return round(custom, 4)
-        return compute_avg_pct(self._rolling.stop_pcts, default=0.008)
+        return compute_avg_pct(self._rolling.stop_pcts, default=0.0012)
 
     def _get_avg_target_pct(self, logs: dict[str, float]) -> float:
         custom = float(logs.get("custom/avg_target_pct", 0.0))

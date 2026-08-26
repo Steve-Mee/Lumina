@@ -218,8 +218,11 @@ def sync_maturation_from_birth_state(workspace_root: Path | str) -> MaturationPr
         if proof and "evolution_proof_passed" not in progress.milestones_reached:
             progress.milestones_reached.append("evolution_proof_passed")
     if svc.artifacts_ok():
-        if "deck_unlocked" not in progress.milestones_reached:
-            progress.milestones_reached.append("deck_unlocked")
+        from lumina_core.maturity.birth_exit import is_birth_exit_sufficient
+
+        if is_birth_exit_sufficient(workspace_root):
+            if "deck_unlocked" not in progress.milestones_reached:
+                progress.milestones_reached.append("deck_unlocked")
     progress.current_phase = resolve_current_phase(progress)
     save_maturation_progress(workspace_root, progress)
     return progress

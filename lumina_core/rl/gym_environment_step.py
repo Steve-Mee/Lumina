@@ -33,8 +33,40 @@ class RLTradingEnvironmentStepMixin:
         side_bucket = int(np.clip(np.round(action_arr[0]), 0, 2))
         side = 0 if side_bucket == 0 else (1 if side_bucket == 1 else -1)
         qty = max(1, int(1 + np.clip(action_arr[1], 0.0, 1.0) * 9))
-        stop_pct = float(np.clip(action_arr[2], 0.001, 0.02))
-        target_pct = float(np.clip(action_arr[3], 0.001, 0.05))
+        if self.trade_mode == "birth" and bool(getattr(self.config, "force_qty_one", False)):
+            qty = 1
+        try:
+            from lumina_core.birth.birth_constitution_guard import BIRTH_MIN_STOP_PCT
+
+            _stop_lo = float(BIRTH_MIN_STOP_PCT)
+        except Exception:
+            _stop_lo = 0.0004
+        stop_pct = float(np.clip(action_arr[2], _stop_lo, 0.02))
+        target_pct = float(np.clip(action_arr[3], _stop_lo * 1.25, 0.05))
+        # Birth soft-prior: pull macro stops toward calibrated default geometry.
+        if (
+            self.trade_mode == "birth"
+            and bool(getattr(self.config, "soft_prior_stops", True))
+            and side != 0
+        ):
+            try:
+                from lumina_core.birth.birth_trade_geometry import (
+                    SOFT_PRIOR_DEFAULT_MULTIPLE,
+                )
+
+                _soft_mult = float(SOFT_PRIOR_DEFAULT_MULTIPLE)
+            except Exception:
+                _soft_mult = 2.5
+            cal_s = float(getattr(self.config, "default_stop_pct", 0.0012) or 0.0012)
+            cal_t = float(getattr(self.config, "default_target_pct", 0.0020) or 0.0020)
+            if stop_pct > cal_s * _soft_mult:
+                stop_pct = min(stop_pct, cal_s * _soft_mult)
+            if stop_pct < max(_stop_lo, cal_s / _soft_mult):
+                stop_pct = max(_stop_lo, cal_s / _soft_mult)
+            if target_pct < stop_pct * 1.25:
+                target_pct = stop_pct * 1.25
+            if target_pct > cal_t * _soft_mult * 1.5:
+                target_pct = cal_t * _soft_mult
 
         realized_pnl = 0.0
         slippage_cost = 0.0
@@ -47,21 +79,38 @@ class RLTradingEnvironmentStepMixin:
             # the action that actually executes (prepare_entry preferred path).
             if self.trade_mode == "birth" and self._birth_constitution_guard is not None:
                 tick_row = self.data[min(self._idx, len(self.data) - 1)]
+                allowed = False
+                _reason = "birth_constitution_unresolved"
                 prepare = getattr(self._birth_constitution_guard, "prepare_entry", None)
                 if callable(prepare):
-                    allowed, _reason, stop_pct, target_pct = prepare(
+                    prepared = prepare(
                         tick=tick_row,
                         side=side,
                         stop_pct=stop_pct,
                         target_pct=target_pct,
                         equity=self._equity,
+                        qty=qty,
                     )
+                    if isinstance(prepared, tuple) and len(prepared) >= 4:
+                        allowed = bool(prepared[0])
+                        _reason = str(prepared[1] or "")
+                        stop_pct = float(prepared[2])
+                        target_pct = float(prepared[3])
+                    else:
+                        allowed, _reason = self._birth_constitution_guard.check_entry(
+                            tick=tick_row,
+                            side=side,
+                            stop_pct=stop_pct,
+                            equity=self._equity,
+                            qty=qty,
+                        )
                 else:
                     allowed, _reason = self._birth_constitution_guard.check_entry(
                         tick=tick_row,
                         side=side,
                         stop_pct=stop_pct,
                         equity=self._equity,
+                        qty=qty,
                     )
                 if not allowed:
                     blocked_by_capital_preservation = True
@@ -120,12 +169,17 @@ class RLTradingEnvironmentStepMixin:
         trade_closed = False
         close_side = 0
         close_stop_pct = self._entry_stop_pct
+        close_reason = ""
         if self._position != 0:
             # Exit levels MUST use entry stops — live action stop was collapsing
             # holds immediately and drove Stage-2 position_flat to ~95%+.
-            entry_stop = float(getattr(self, "_entry_stop_pct", 0.0) or stop_pct or 0.0075)
+            def_stop = float(getattr(self.config, "default_stop_pct", 0.0012) or 0.0012)
+            def_target = float(getattr(self.config, "default_target_pct", 0.0020) or 0.0020)
+            entry_stop = float(getattr(self, "_entry_stop_pct", 0.0) or stop_pct or def_stop)
             entry_target = float(
-                getattr(self, "_entry_target_pct", 0.0) or target_pct or max(entry_stop * 2.0, 0.01)
+                getattr(self, "_entry_target_pct", 0.0)
+                or target_pct
+                or max(entry_stop * 1.25, def_target)
             )
             stop = self._entry_price * (
                 1.0 - entry_stop if self._position > 0 else 1.0 + entry_stop
@@ -137,61 +191,127 @@ class RLTradingEnvironmentStepMixin:
             hit_stop = (self._position > 0 and price <= stop) or (self._position < 0 and price >= stop)
             hit_target = (self._position > 0 and price >= target) or (self._position < 0 and price <= target)
             # Random flatten only when not fighting under-activity (over-flat band).
+            # Birth SIM: never RNG-exit. Live forensics 2026-08-13: 5%/HOLD-bar
+            # made mean hold ~17 bars vs geometry 120; WR measured MTM theater.
             flat_ratio_now = 0.5
             if int(getattr(self, "_range_total_bars", 0) or 0) > 0:
                 flat_ratio_now = float(self._range_flat_bars) / float(
                     max(1, self._range_total_bars)
                 )
-            flatten_p = 0.05
+            is_birth = str(getattr(self, "trade_mode", "") or "").lower() == "birth"
+            if not is_birth:
+                is_birth = str(getattr(self.config, "trade_mode", "") or "").lower() == "birth"
+            flatten_p = 0.0 if is_birth else 0.05
             if self.config.range_patience_active and flat_ratio_now > 0.70:
                 flatten_p = 0.0
             if bool(getattr(self.config, "suppress_random_flatten", False)):
                 flatten_p = 0.0
-            flatten = side == 0 and np.random.random() < flatten_p
+            # Occupancy plant flatten (legacy) vs geometry time-stop (honest PnL).
+            force_flat_now = bool(getattr(self.config, "force_flatten_this_step", False))
+            force_time_now = bool(getattr(self.config, "force_time_stop_this_step", False))
+            flatten = (
+                force_flat_now
+                or force_time_now
+                or (side == 0 and np.random.random() < flatten_p)
+            )
 
-            # Stage2 Participation Envelope occupancy law: while correcting
-            # over-flat, force min dwell so stop/slippage cannot wipe FORCE_OPEN
-            # in the same bar (live forensics: force_open≫0, force_hold=0, flat≈95%).
+            # Occupancy min-dwell may suppress RNG flatten — never the stop/target.
             min_dwell = max(0, int(getattr(self.config, "participation_min_dwell_bars", 0) or 0))
             bars_held = max(0, int(getattr(self, "_bars_held", 0) or 0))
             if (
-                bool(getattr(self.config, "suppress_random_flatten", False))
+                not force_flat_now
+                and not force_time_now
+                and bool(getattr(self.config, "suppress_random_flatten", False))
                 and min_dwell > 0
                 and bars_held < min_dwell
             ):
-                hit_stop = False
-                hit_target = False
                 flatten = False
 
             if hit_stop or hit_target or flatten:
                 close_side = self._entry_side
                 close_stop_pct = self._entry_stop_pct
+                close_qty = max(1, int(self._qty or qty or 1))
+                close_entry = float(self._entry_price)
                 trade_closed = True
-                exit_ticks = max(
-                    0.0,
-                    float(self._stochastic_slippage_points(price))
-                    / max(self.valuation_engine.tick_size(self.instrument), 1e-9),
+                from lumina_core.rl.gym_stop_fill import (
+                    plan_birth_exit_fill,
+                    row_is_segment_gap,
                 )
+
+                is_birth_fill = is_birth
+                fill_plan = None
+                if is_birth_fill:
+                    fill_plan = plan_birth_exit_fill(
+                        hit_stop=bool(hit_stop),
+                        hit_target=bool(hit_target),
+                        flatten=bool(flatten),
+                        force_time=bool(force_time_now),
+                        force_flat=bool(force_flat_now),
+                        close_price=price,
+                        stop_price=float(stop),
+                        target_price=float(target),
+                        is_gap=row_is_segment_gap(row),
+                    )
+                if fill_plan is not None:
+                    close_reason = fill_plan.reason
+                    mark = float(fill_plan.mark_price)
+                    exit_ticks = float(fill_plan.slippage_ticks)
+                else:
+                    if hit_stop:
+                        close_reason = "stop"
+                    elif hit_target:
+                        close_reason = "target"
+                    elif force_time_now:
+                        close_reason = "time_stop"
+                    elif force_flat_now:
+                        close_reason = "force_exit"
+                    else:
+                        close_reason = "flatten"
+                    mark = price
+                    exit_ticks = max(
+                        0.0,
+                        float(self._stochastic_slippage_points(price))
+                        / max(self.valuation_engine.tick_size(self.instrument), 1e-9),
+                    )
                 exit_fill = self.valuation_engine.apply_exit_fill(
                     symbol=self.instrument,
-                    price=price,
+                    price=mark,
                     side=self._position,
                     slippage_ticks=exit_ticks,
                 )
-                slippage_cost += abs(exit_fill - price) * self._qty * self.valuation_engine.point_value(self.instrument)
-                fees_cost += self._fees_usd(quantity=self._qty, sides=1)
+                slippage_cost += abs(exit_fill - mark) * close_qty * self.valuation_engine.point_value(
+                    self.instrument
+                )
+                fees_cost += self._fees_usd(quantity=close_qty, sides=1)
                 realized_pnl = self.valuation_engine.pnl_dollars(
                     symbol=self.instrument,
-                    entry_price=self._entry_price,
+                    entry_price=close_entry,
                     exit_price=exit_fill,
                     side=self._position,
-                    quantity=self._qty,
+                    quantity=close_qty,
                 )
+                self._close_qty = close_qty
+                self._close_entry_price = close_entry
+                try:
+                    from lumina_core.birth.foundation_metrics import intended_risk_usd
+
+                    self._close_risk_usd = intended_risk_usd(
+                        stop_pct=float(close_stop_pct),
+                        entry_price=float(close_entry),
+                        qty=int(close_qty),
+                        point_value=float(self.valuation_engine.point_value(self.instrument)),
+                    )
+                except Exception:
+                    self._close_risk_usd = abs(float(close_stop_pct)) * abs(float(close_entry)) * float(close_qty) * 5.0
                 self._position = 0
                 self._qty = 0
                 self._entry_price = 0.0
-                self._entry_stop_pct = 0.0075
-                self._entry_target_pct = 0.015
+                self._entry_stop_pct = float(
+                    getattr(self.config, "default_stop_pct", 0.0012) or 0.0012
+                )
+                self._entry_target_pct = float(
+                    getattr(self.config, "default_target_pct", 0.0020) or 0.0020
+                )
                 self._bars_held = 0
             else:
                 # Completed a bar in position (for envelope min-dwell protect).
@@ -241,6 +361,15 @@ class RLTradingEnvironmentStepMixin:
                     trend_regime_strength=trend_strength,
                     trend_atr_norm=atr_norm,
                     var_es_penalty=var_es_penalty,
+                    curriculum_regime=str(
+                        getattr(self.config, "curriculum_regime", "") or ""
+                    ),
+                    expectancy_gap=float(
+                        getattr(self.config, "expectancy_gap", 0.0) or 0.0
+                    ),
+                    tick_regime=str(row.get("regime", "NEUTRAL") or "NEUTRAL"),
+                    risk_usd=float(getattr(self, "_close_risk_usd", 0.0) or 0.0) or None,
+                    qty=int(getattr(self, "_close_qty", 0) or 0) or None,
                 )
                 reward, reward_components = compute_expectancy_reward(
                     ctx,
@@ -304,11 +433,15 @@ class RLTradingEnvironmentStepMixin:
                 exp_gap = max(exp_gap, max(0.0, exp_floor - live_exp))
             trade_r = None
             if trade_closed:
-                risk_usd = max(
-                    float(reward_cfg.min_risk_usd),
-                    float(prev_equity) * max(float(close_stop_pct), 1e-6),
-                )
-                trade_r = float(rl_close_accounting_net_usd) / max(risk_usd, 1e-6)
+                risk_usd = float(getattr(self, "_close_risk_usd", 0.0) or 0.0)
+                if risk_usd <= 1e-12:
+                    risk_usd = abs(float(close_stop_pct)) * abs(
+                        float(getattr(self, "_close_entry_price", 0.0) or 0.0)
+                    ) * float(getattr(self, "_close_qty", 1) or 1) * 5.0
+                trade_r = float(rl_close_accounting_net_usd) / max(risk_usd, 1e-9)
+            ft_press = float(
+                getattr(self.config, "first_touch_training_pressure", 0.0) or 0.0
+            )
             reward += range_patience_step_reward(
                 regime=tick_regime,
                 position_flat=int(self._position) == 0,
@@ -317,12 +450,18 @@ class RLTradingEnvironmentStepMixin:
                 stage_flat_ratio=stage_flat_ratio,
                 expectancy_gap=exp_gap,
                 trade_r_multiple=trade_r,
+                first_touch_training_pressure=ft_press,
             )
 
         self._idx += 1
         terminated = self._idx >= min(len(self.data) - 1, self.config.max_steps)
 
         training_reward = float(reward)
+        close_qty_info = int(getattr(self, "_close_qty", 0) or 0) if trade_closed else 0
+        close_risk = float(getattr(self, "_close_risk_usd", 0.0) or 0.0) if trade_closed else 0.0
+        trade_r_info = (
+            float(rl_close_accounting_net_usd) / max(close_risk, 1e-9) if trade_closed and close_risk > 0 else None
+        )
         info = {
             "model_close_gross_pnl_usd": realized_pnl,
             "rl_close_accounting_net_usd": rl_close_accounting_net_usd,
@@ -335,8 +474,14 @@ class RLTradingEnvironmentStepMixin:
             "var_es_penalty": var_es_penalty,
             "reward_components": reward_components,
             "trade_closed": trade_closed,
+            "close_reason": close_reason,
+            "entry_stop_pct": float(getattr(self, "_entry_stop_pct", 0.0) or 0.0),
+            "entry_target_pct": float(getattr(self, "_entry_target_pct", 0.0) or 0.0),
             "blocked_by_capital_preservation": blocked_by_capital_preservation,
             "block_reason": block_reason,
+            "qty": close_qty_info,
+            "risk_usd": close_risk if trade_closed else 0.0,
+            "trade_r": trade_r_info,
         }
         return self._get_observation(), reward, terminated, False, info
 

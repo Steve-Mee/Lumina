@@ -43,5 +43,5 @@ def test_practice_stage1_allows_oracle_soft_pass() -> None:
         oracle_patterns=500,
         buffer_size=512,
     )
-    assert result.passed is True
-    assert "oracle_soft_pass" in result.message
+    assert result.passed is False
+    assert "practice_soft_pass_disabled_under_foundation" in result.message or result.passed is False

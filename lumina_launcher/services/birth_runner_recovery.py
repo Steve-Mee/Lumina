@@ -58,13 +58,25 @@ def reject_if_champion_freeze(svc: Any, progress: dict[str, Any] | None = None) 
     return champion_freeze_blocks_recovery_payload()
 
 
+def _is_paused_or_interrupted_progress(progress: dict[str, Any]) -> bool:
+    stage = str(progress.get("stage", "") or "").strip().lower()
+    phase = str(progress.get("phase", "") or "").strip().lower()
+    if progress.get("user_initiated_stop") is True:
+        return True
+    return stage in {"paused", "interrupted"} or phase in {"paused", "interrupted"}
+
+
 def retry_birth(
     svc: Any,
     target_trades: int | None = None,
     *,
     wipe: bool = False,
 ) -> Dict[str, Any]:
-    """Resume from checkpoint on certificate failure; wipe only when explicitly requested."""
+    """Resume from checkpoint on certificate failure / user pause; wipe only when asked.
+
+    Critical: user-paused runs with a checkpoint must **continue**, never
+    ``clear_stale_for_certified_retry`` (that deletes checkpoint + progress).
+    """
     from lumina_core.birth.config import BRO_ENGINE_VERSION
     from lumina_core.birth.checkpoint import load_checkpoint_state
     from lumina_core.birth.remediation import (
@@ -82,7 +94,11 @@ def retry_birth(
     fast_path_eligible = (
         should_fast_path_remediation_from_state(progress, checkpoint_state) if not wipe else False
     )
-    preserve_checkpoint = not wipe and fast_path_eligible
+    # Paused/interrupted + checkpoint = honest resume (not cert fast-path only).
+    paused_resume = (
+        not wipe and checkpoint_exists and _is_paused_or_interrupted_progress(progress)
+    )
+    preserve_checkpoint = not wipe and (fast_path_eligible or paused_resume)
     if preserve_checkpoint and not checkpoint_exists:
         policy_hint = str(svc.policy_path) if svc.policy_path.exists() else ""
         reconstructed = reconstruct_checkpoint_from_progress(
@@ -104,12 +120,13 @@ def retry_birth(
         )
     logger.info(
         "birth.retry preserve_checkpoint=%s phase=%s checkpoint_exists=%s wipe=%s "
-        "fast_path_eligible=%s engine_version=%s",
+        "fast_path_eligible=%s paused_resume=%s engine_version=%s",
         preserve_checkpoint,
         phase,
         checkpoint_exists,
         wipe,
         fast_path_eligible,
+        paused_resume,
         BRO_ENGINE_VERSION,
     )
     if wipe:
@@ -130,6 +147,8 @@ def retry_birth(
         force=not preserve_checkpoint,
         explicit_user_start=True,
         continue_training=preserve_checkpoint,
+        # Resume with preserved checkpoint reuses tick cache / manifest; no launcher history probe.
+        reuse_data=bool(preserve_checkpoint),
     )
 
 
@@ -194,12 +213,111 @@ def expand_and_retry_stalled_stage(svc: Any, target_trades: int | None = None) -
     )
 
 
+def persist_operator_resolved_terminal_freeze(
+    svc: Any,
+    *,
+    action: str,
+    source: str,
+) -> None:
+    """Explicit Continue-from-checkpoint resolves an unresolved terminal freeze.
+
+    Swarm-accept flags can be cleared while ``terminal_freeze.resolved`` stays
+    false; the curriculum gate then blocks HUD/process-R forever. Operator
+    resume is the Twin fork — mark the freeze resolved on disk before start.
+    """
+    from lumina_core.birth.checkpoint import read_checkpoint_payload, write_checkpoint_payload
+    from lumina_core.birth.progress import write_birth_progress
+    from lumina_core.birth.terminal_freeze import (
+        extract_terminal_freeze,
+        freeze_is_active,
+        mark_freeze_resolved,
+    )
+
+    progress = dict(svc._load_progress())
+    try:
+        payload = read_checkpoint_payload(svc.workspace_root) or {}
+    except Exception:
+        payload = {}
+    freeze = extract_terminal_freeze(progress, payload, payload.get("stage_metrics"))
+    if freeze is None or not freeze_is_active(freeze):
+        return
+    resolved = mark_freeze_resolved(freeze, action=action, resolved_by=str(source or "app"))
+    metrics = dict(payload.get("stage_metrics") or {})
+    metrics["terminal_freeze"] = resolved
+    payload["stage_metrics"] = metrics
+    payload["terminal_freeze"] = resolved
+    if str(payload.get("phase") or "").strip().lower() in {
+        "stage_stalled",
+        "paused",
+        "plateau_evolution",
+        "stall_remediation",
+        "swarm_reject_hard_stop",
+        "phoenix_cycle",
+    }:
+        payload["phase"] = "curriculum_learning"
+    write_checkpoint_payload(svc.workspace_root, payload)
+    try:
+        write_birth_progress(
+            svc.workspace_root,
+            stage=str(progress.get("stage") or "paused"),
+            phase=str(progress.get("phase") or "paused"),
+            message=str(progress.get("message") or ""),
+            progress_pct=float(progress.get("progress_pct") or 0),
+            cumulative_trades=int(progress.get("cumulative_trades") or 0),
+            target_trades=int(progress.get("target_trades") or 0),
+            ppo_steps=int(progress.get("ppo_steps") or 0),
+            birth_start_time=float(progress.get("birth_start_time") or 0),
+            terminal_freeze=resolved,
+            curriculum_stage=str(progress.get("curriculum_stage") or ""),
+        )
+    except Exception as exc:
+        logger.debug("birth.resume.freeze_progress_write_failed: %s", exc)
+
+
 def resume_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:
-    """Non-destructive resume from the last birth checkpoint."""
-    blocked = reject_if_champion_freeze(svc)
-    if blocked is not None:
-        return blocked
-    from lumina_launcher.services.birth_runner_start import start_birth
+    """Non-destructive resume from the last birth checkpoint.
+
+    Silent recovery (stall auto-retry / expand) stays blocked under champion freeze.
+    Explicit operator **Continue from checkpoint** with freeze active means:
+    accept the frozen champion and continue curriculum (not wipe).
+    """
+    from lumina_launcher.services.birth_runner_start import clear_birth_pause_flags, start_birth
+
+    # Explicit resume: clear pause flags before thread spawn (defense in depth).
+    clear_birth_pause_flags(svc)
+    # Fail-closed: require checkpoint so we never hollow-"start" a wiped workspace.
+    checkpoint_exists = (
+        getattr(svc, "checkpoint_file", None) is not None and svc.checkpoint_file.exists()
+    ) or (svc.workspace_root / "state" / "first_boot_checkpoint.json").exists()
+    if not checkpoint_exists:
+        return {
+            "status": "rejected",
+            "message": (
+                "No birth checkpoint to resume. Use Start birth for a fresh run, "
+                "or wipe only if you intend a clean start."
+            ),
+            "retryable": True,
+        }
+
+    persist_operator_resolved_terminal_freeze(
+        svc,
+        action="accept_champion" if champion_freeze_active_for_svc(svc) else "operator_resume",
+        source="resume_checkpoint",
+    )
+
+    # Champion freeze: Continue from checkpoint = human accepts frozen champion + train.
+    # Auto/silent paths (resume_stalled_stage, expand_and_retry) still reject via freeze gate.
+    if champion_freeze_active_for_svc(svc):
+        logger.info(
+            "birth.resume.champion_freeze_accept_and_continue target_trades=%s",
+            target_trades,
+        )
+        return accept_champion_birth(
+            svc,
+            target_trades=target_trades,
+            start=True,
+            source="resume_checkpoint",
+        )
 
     return start_birth(
         svc,
@@ -207,6 +325,7 @@ def resume_birth(svc: Any, target_trades: int | None = None) -> Dict[str, Any]:
         force=False,
         explicit_user_start=True,
         continue_training=True,
+        reuse_data=True,
     )
 
 
@@ -230,9 +349,26 @@ def accept_champion_birth(
         write_checkpoint_payload,
     )
     from lumina_core.birth.progress import write_birth_progress
+    from lumina_core.birth.terminal_freeze import (
+        extract_terminal_freeze,
+        mark_freeze_resolved,
+    )
     from lumina_launcher.services.birth_runner_start import start_birth
 
     progress = dict(svc._load_progress())
+    payload_pre = None
+    try:
+        payload_pre = read_checkpoint_payload(svc.workspace_root)
+    except Exception:
+        payload_pre = None
+    freeze = extract_terminal_freeze(progress, payload_pre)
+    if freeze:
+        resolved_freeze = mark_freeze_resolved(
+            freeze,
+            action="accept_champion",
+            resolved_by=str(source or "app"),
+        )
+        progress["terminal_freeze"] = resolved_freeze
     stage = str(progress.get("stage", "") or "").strip().lower()
     phase = str(progress.get("phase", "") or "").strip().lower()
     if stage in {"paused", "interrupted"}:
@@ -288,6 +424,7 @@ def accept_champion_birth(
             policy_swarm_champion_accepted=True,
             user_initiated_stop=False,
             curriculum_stage=str(progress.get("curriculum_stage") or ""),
+            terminal_freeze=progress.get("terminal_freeze"),
         )
     except Exception as exc:
         logger.warning("birth.accept_champion.progress_write_failed: %s", exc)
@@ -300,6 +437,15 @@ def accept_champion_birth(
         metrics["swarm_edgescore_lift_ok"] = False
         metrics["policy_swarm_rejected_no_lift"] = False
         metrics["policy_swarm_champion_accepted"] = True
+        freeze_ckpt = extract_terminal_freeze(progress, payload, metrics)
+        if freeze_ckpt:
+            resolved = mark_freeze_resolved(
+                freeze_ckpt,
+                action="accept_champion",
+                resolved_by=str(source or "app"),
+            )
+            metrics["terminal_freeze"] = resolved
+            payload["terminal_freeze"] = resolved
         payload["stage_metrics"] = metrics
         if start and str(payload.get("phase", "") or "").strip().lower() in {
             "stage_stalled",
@@ -307,6 +453,7 @@ def accept_champion_birth(
             "plateau_evolution",
             "stall_remediation",
             "swarm_reject_hard_stop",
+            "phoenix_cycle",
         }:
             payload["phase"] = "curriculum_learning"
         write_checkpoint_payload(svc.workspace_root, payload)

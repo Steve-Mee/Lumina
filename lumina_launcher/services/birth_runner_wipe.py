@@ -16,26 +16,44 @@ logger = get_logger(__name__)
 
 
 def ensure_birth_stopped_for_wipe(svc: Any, *, join_timeout: float) -> Dict[str, Any] | None:
-    """Stop birth thread and cross-process runner; return error payload if still live."""
+    """Stop birth thread and drop stale runner lock; return error only if local thread lives."""
     from lumina_launcher.services.birth_runner_start import stop_birth
 
     if svc.is_running() or svc.is_stopping():
         stop_birth(svc, join_timeout=join_timeout)
     if svc.is_running():
-        return {
-            "status": "rejected",
-            "message": (
-                "Birth Phase kon niet volledig stoppen — probeer opnieuw na enkele seconden "
-                "of herstart de backend."
-            ),
-        }
+        # One short grace (join can lag) — do not burn full join_timeout here.
+        grace = min(1.5, max(0.3, float(join_timeout) * 0.1))
+        deadline = time.monotonic() + grace
+        while svc.is_running() and time.monotonic() < deadline:
+            time.sleep(0.1)
+        if svc.is_running():
+            return {
+                "status": "rejected",
+                "message": (
+                    "Birth Phase kon niet volledig stoppen — probeer opnieuw na enkele seconden "
+                    "of herstart de backend."
+                ),
+            }
+
+    # Local thread is dead: always clear lock so wipe cannot soft-lock on stale
+    # birth_runner.json (PID recycled / PowerShell false-positive / orphan lock).
+    clear_orphan_runner_lock_for_wipe(svc)
 
     if birth_training_is_live(svc.workspace_root, thread_running=svc.is_running()):
-        stop_birth(svc, join_timeout=min(join_timeout, 10.0))
+        # Should be rare after force-clear; one more clear + short wait.
         clear_orphan_runner_lock_for_wipe(svc)
-        deadline = time.monotonic() + min(join_timeout, 15.0)
+        deadline = time.monotonic() + min(join_timeout, 5.0)
         while birth_training_is_live(svc.workspace_root, thread_running=svc.is_running()):
             if time.monotonic() >= deadline:
+                # Last resort: force-clear again and proceed (wipe is operator-intent).
+                clear_orphan_runner_lock_for_wipe(svc)
+                if not svc.is_running():
+                    logger.warning(
+                        "birth.wipe.force_proceed_after_stale_live_flag workspace=%s",
+                        svc.workspace_root,
+                    )
+                    return None
                 return {
                     "status": "rejected",
                     "message": (
@@ -44,7 +62,7 @@ def ensure_birth_stopped_for_wipe(svc: Any, *, join_timeout: float) -> Dict[str,
                     ),
                     "checkpoint_resumable": svc.checkpoint_resumable(),
                 }
-            time.sleep(0.25)
+            time.sleep(0.15)
             clear_orphan_runner_lock_for_wipe(svc)
 
     return None

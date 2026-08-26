@@ -20,6 +20,14 @@ telegram:
     start: '23:00'
     end: 07:00
     tz: Europe/Brussels
+  journal_path: state/monitoring_telegram_messages.jsonl
+  outbound:
+    min_interval_sec: 20
+    max_per_hour: 12
+    bypass_kinds:
+    - promotion
+    - freeze
+    - real_safety
 participant_id: LUMINA_Steve
 sim:
   aggressive_evolution: false
@@ -60,7 +68,7 @@ broker:
       host: 127.0.0.1
       port: 50051
       auth_token_env: LUMINA_FABRIC_TOKEN
-      gateway_mode: sim
+      gateway_mode: nt
       heartbeat_interval_ms: 1000
       heartbeat_timeout_ms: 5000
       flatten_grace_ms: 15000
@@ -227,6 +235,26 @@ evolution:
   reality_gap_penalty_coeff: 0.15
   approval_twin:
     mode: shadow
+    base_training:
+      enabled: true
+      curriculum_version: base_v4
+      app_only: true
+      target_minutes: 12
+    micro_training:
+      enabled: true
+      questions_per_day: 3
+      weekly_session_size: 5
+      dual_channel: true
+    escalation:
+      high_conf_threshold: 0.8
+      ttl_sec: 3600
+      dual_channel: true
+    decision_notify:
+      enabled: true
+      telegram: false
+      min_interval_sec: 300
+      coalesce_same_dna_sec: 45
+      force_low_conf: false
     mode_promotion:
       auto_promote_when_ready: false
       auto_promote_full_auto_when_ready: false
@@ -284,6 +312,18 @@ evolution:
     require_human_approve_for_apply: true
     allow_twin_judgment_apply: false
     forbid_apply_in_real_capital: true
+    nightly: false
+    apply_store_role: challenger
+  challenger_venue:
+    enabled: false
+    mds_buffer: 64
+    min_days: 5
+    min_trades: 50
+    max_gap_ratio: 0.3
+    require_own_process_when_real_champion: true
+    canary_max_trades: 10
+    canary_dd_limit: 0.02
+    canary_window_sec: 3600
   shadow_validation:
     min_days: 3
     max_days: 7
@@ -293,7 +333,8 @@ evolution:
   multiweek_fitness:
     enabled: false
     days: 14
-    use_real_market_data: false
+    use_real_market_data: true
+    backtest_mode: true
     parallel_realities: 1
   neuroevolution:
     require_real_simulator_data: true
@@ -317,13 +358,14 @@ maturity:
   apprenticeship_sim_days: 5
   apprenticeship_sim_days_probe: 0
   apprenticeship_sim_max_workers: 2
-  apprenticeship_sim_use_real_market_data: false
+  apprenticeship_sim_use_real_market_data: true
   apprenticeship_sim_drawdown_limit_ratio: 0.02
   telegram_advance_token_ttl_sec: 86400
 birth_v2:
   curriculum:
     stage1_trend_trades: 2000
     stage2_range_trades: 3000
+    stage2_expectancy_floor: -0.15
     stage3_mixed_trades: 5000
     stage_pass_trade_pct: 0.1
     stage_pass_min_trades: 100
@@ -336,7 +378,6 @@ birth_v2:
     - 90
     - 180
     - 365
-    - 730
     stagnation_rollouts_before_expand: 5
     max_rollouts_per_stage: 500
     gen0_provisional_min_trades: 25
@@ -370,7 +411,7 @@ birth_v2:
     phase2_recheck_perfect_birth_kpis: false
     phase2_execution_mode: observe
     phoenix_widen_data_after_cycles: 3
-    death_spiral_repeat_threshold: 4
+    death_spiral_repeat_threshold: 3
     death_spiral_novelty_budget: 3
     stall_remediation_max_cycles: 3
     max_adaptation_stuck_escapes: 3
@@ -444,11 +485,77 @@ birth_v2:
     starship_entropy_required_after_ppo_steps: 500
     starship_twin_continue_when_full_auto: true
     stage2_edgescore_enabled: true
+    stage2_rolling_pass_window: 150
+    stage2_rolling_pass_min_covered: 80
+    stage2_peak_capture_enabled: true
+    stage2_peak_min_trades: 50
+    stage2_flash_green_min_trades: 50
+    stage2_flash_durable_min_chunks: 2
+    stage2_flash_max_hold_bars: 100
+    stage2_near_miss_exp_delta: 0.02
+    stage2_peak_restore_enabled: true
+    stage2_peak_collapse_wr_drop: 0.05
+    stage2_peak_restore_min_trades_since_peak: 50
+    stage2_peak_restore_cooldown_trades: 80
+    stage2_peak_block_phoenix_enabled: true
+    stage2_peak_phoenix_min_restores: 1
+    stage2_peak_phoenix_min_quality_rollouts: 4
+    stage2_swarm_block_if_peak_wr_above: 0.28
+    stage2_exit_forensics_block_swarm: true
+    stage2_exit_forensics_stop_target_max: 2.5
+    stage2_exit_forensics_target_share_min: 0.3
+    stage2_exit_forensics_min_decisive: 40
+    stage2_quality_inject_max_patterns: 200
+    stage2_peak_inject_max_patterns: 120
+    stage2_beat_random_inject_max_patterns: 80
+    stage2_stall_max_hold_bars: 80
+    stage2_quality_max_hold_bars: 120
+    stage2_exit_magnet_max_hold_bars: 80
+    stage2_exit_magnet_stop_target_ratio: 2.5
+    stage2_force_exit_on_expectancy_gap: false
+    stage2_early_quality_freeze_enabled: true
+    stage2_early_quality_wall_cooldown_sec: 300
+    stage2_peak_grad_enabled: true
+    stage2_peak_grad_min_trades: 200
+    stage2_peak_grad_collapse_wr_drop: 0.05
+    stage2_finish_max_hold_bars: 100
+    stage2_ppo_freeze_after_restore_enabled: true
+    stage2_ppo_freeze_rollouts_after_restore: 3
+    stage2_ppo_freeze_trades_after_restore: 120
+    stage2_ppo_quality_gate_enabled: true
+    stage2_ppo_quality_min_chunk_wr: 0.26
+    stage2_quality_lock_enabled: true
+    stage2_quality_lock_chunk_wr: 0.36
+    stage2_quality_lock_exp_floor: -0.14
+    stage2_skill_metric_policy_only: true
+    stage2_skill_min_trades: 150
+    stage2_pass_durable_enabled: true
+    stage2_pass_rolling_streak: 2
+    stage2_pass_lifetime_delta: 0.05
+    stage2_transfer_handoff_enabled: true
+    stage2_transfer_purge_buffer: true
+    stage2_transfer_keep_buffer_top_pct: 0.1
+    stage2_transfer_reinit_action_head: true
     stage3_edgescore_enabled: true
+    stage3_pass_durable_enabled: true
+    stage3_pass_rolling_streak: 2
+    stage3_pass_lifetime_delta: 0.05
+    stage3_occupancy_pass_enabled: true
+    stage3_position_flat_min: 0.25
+    stage3_position_flat_max: 0.75
+    stage3_occupancy_all_ticks: true
+    settlement_honesty_enabled: true
+    settlement_min_decisive_share: 0.7
+    stage3_participation_envelope_enabled: true
+    stage3_participation_band_lo: 0.28
+    stage3_participation_band_hi: 0.72
+    stage3_participation_hysteresis: 0.0
+    stage3_participation_under_band_release_hysteresis: 0.0
     policy_swarm_min_trades: 20
     evolution_proof_min_trades: 150
     evolution_proof_min_winrate_lift: 0.05
     evolution_proof_polish_oos_winrate_min: 0.45
+    evolution_proof_grandfather_missing: false
     max_forced_recoveries_per_plateau: 12
     plateau_save_best_policy: true
     plateau_oracle_distill_top_pct: 0.25
@@ -510,14 +617,14 @@ birth_v2:
     min_regimes: 3
     min_holdout_trades: 50
   prefer_real_data_only: true
-  max_real_days: 56
+  max_real_days: 365
   trade_budget_cap: 25000
   ppo_update_timesteps: 25000
   chunk_size: 50000
 first_boot:
   training_trades: 25000
   prefer_real_data_only: true
-  max_real_days: 56
+  max_real_days: 365
   birth_phase: true
   allow_minimal_synthetic_fallback: false
   ppo_progress_interval: 5000
@@ -668,7 +775,7 @@ runtime_config:
     debounce_ms: 500
 hybrid_quarantine:
   apply_strict_in_sim: false
-  require_true_backtest: false
+  require_true_backtest: true
   require_trace_verdict: false
   require_real_patch_apply: false
   require_reset_authorization: false

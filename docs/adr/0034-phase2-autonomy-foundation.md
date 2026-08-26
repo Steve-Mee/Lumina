@@ -78,6 +78,12 @@ Introduce birth-scoped package `lumina_core/birth/phase2_autonomy/` with:
     - Public `__init__` surface slimmed; stage_loop must not import phase2
     - Explicit non-goals documented on package + this ADR
 
+13. **Campaign × curriculum merge (2026-08):**
+    - `resolve_features_with_campaign`: campaign **enables** + may **raise**
+      execution mode (observe→shadow→apply); must **not demote** explicit
+      curriculum closed-loop (`phase2_execution_mode=apply`).
+    - Leftover observe campaigns no longer break SIM apply closed-loop.
+
 ## Scope and limitations (v1 foundation)
 
 | In scope | Out of scope |

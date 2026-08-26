@@ -68,20 +68,22 @@ def reset_in_memory_birth_state(svc: Any) -> None:
 
 
 def clear_orphan_runner_lock_for_wipe(svc: Any) -> None:
-    """Remove stale birth_runner.json when this process has no live birth thread."""
+    """Drop birth_runner.json when this process has no live birth thread.
+
+    Operator wipe must never soft-lock on a stale lock file. If the local thread
+    is dead, the lock is always cleared — even when a recycled PID still looks
+    \"alive\" under Windows process checks.
+    """
     if svc.is_running():
         return
-    payload = read_birth_runner_lock(svc.workspace_root)
-    if payload is None:
+    if read_birth_runner_lock(svc.workspace_root) is None:
         return
-    raw_pid = payload.get("pid")
-    try:
-        int(raw_pid)
-    except (TypeError, ValueError):
-        clear_runner_lock(svc)
-        return
-    if not birth_runner_lock_active(svc.workspace_root):
-        clear_runner_lock(svc)
+    logger.info(
+        "birth.runner_lock.force_clear_for_wipe path=%s was_active=%s",
+        getattr(svc, "runner_lock_path", None),
+        birth_runner_lock_active(svc.workspace_root),
+    )
+    clear_runner_lock(svc)
 
 
 def mark_user_stopped_progress(svc: Any) -> None:

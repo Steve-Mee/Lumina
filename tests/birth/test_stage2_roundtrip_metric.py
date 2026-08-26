@@ -6,6 +6,7 @@ import pytest
 
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 @pytest.mark.unit
@@ -26,7 +27,7 @@ def test_stage2_hold_dominant_fails_with_sufficient_range_ticks() -> None:
         cfg=cfg,
     )
     assert result.passed is False
-    assert "range_flat" in result.message
+    assert "occupancy" in result.message or "round_trips" in result.message
 
 
 @pytest.mark.unit
@@ -45,9 +46,11 @@ def test_stage2_flat_and_roundtrip_sufficient_passes() -> None:
         constitution_violations=0,
         target_trades=3000,
         cfg=cfg,
+        **honest_closes(300),
+        **foundation_eval_kwargs(),
     )
     assert result.passed is True
-    assert "range_flat" in result.message
+    assert "foundation_pass" in result.message
     assert result.range_round_trips == 30
 
 
@@ -67,6 +70,8 @@ def test_stage2_falls_back_to_hold_ratio_when_few_range_ticks() -> None:
         constitution_violations=0,
         target_trades=3000,
         cfg=cfg,
+        **honest_closes(300),
+        **foundation_eval_kwargs(),
     )
-    assert result.passed is True
-    assert "hold_ratio" in result.message
+    assert result.passed is False
+    assert "occupancy" in result.message or "round_trips" in result.message

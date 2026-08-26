@@ -24,35 +24,95 @@ async def start_birth(
     continue_training: bool = Query(False),
     reuse_data: bool = Query(False),
 ) -> dict[str, Any]:
-    # Fail-closed: Fabric link must be GREEN before Birth / Genesis training.
-    try:
-        from lumina_launcher.services.fabric_link_certificate import is_fabric_link_green
+    # Fail-closed: live host + recent dual-plane proof (never paper cert alone).
+    # Exception: reuse_data + certified tick-cache — AMBER must not block history restart.
+    skip_live_fabric = False
+    if reuse_data is True:
+        try:
+            from lumina_core.birth.tick_cache_persist import certified_tick_cache_present
 
-        ok, reason = is_fabric_link_green(workspace_root=birth_service.workspace_root)
-        if not ok:
+            skip_live_fabric = certified_tick_cache_present(birth_service.workspace_root)
+        except Exception:
+            skip_live_fabric = False
+    if not skip_live_fabric:
+        try:
+            from lumina_launcher.services.fabric_link_health import build_fabric_link_health
+
+            live: dict = {}
+            try:
+                from lumina_core.broker.ninjatrader.fabric_link_supervisor import (
+                    get_fabric_link_supervisor,
+                )
+
+                live = get_fabric_link_supervisor().status().to_dict()
+            except Exception:
+                live = {}
+            health = build_fabric_link_health(
+                workspace_root=birth_service.workspace_root,
+                live=live,
+            )
+            if not health.get("gate_birth_ok"):
+                reason = str(health.get("gate_reason") or "FABRIC_LINK_NOT_GREEN")
+                level = str(health.get("level") or "RED")
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "code": reason,
+                        "message": (
+                            "Connecting to NinjaTrader Fabric is not ready for Birth "
+                            f"({reason}, live={level}). "
+                            "Start NinjaTrader (datafeed Connected), open New → LUMINA, "
+                            "then Setup → Test connection until live host is up and "
+                            "diagnostic is GREEN before Birth."
+                        ),
+                        "level": level,
+                        "meaning": str(health.get("meaning") or ""),
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # If health subsystem fails open would be unsafe — block.
             raise HTTPException(
                 status_code=403,
                 detail={
-                    "code": reason or "FABRIC_LINK_NOT_GREEN",
+                    "code": "FABRIC_LINK_NOT_GREEN",
+                    "message": "Fabric link health unavailable — run Operator Vault diagnostic.",
+                },
+            ) from None
+
+    # ADR-0037: Twin base curriculum is a foundation block (Operator Vault).
+    # Without birth_ready the organism has no operator judgment DNA — fail-closed.
+    try:
+        from lumina_core.evolution.twin_base_training import is_twin_birth_ready
+
+        if not is_twin_birth_ready():
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "TWIN_BASE_TRAINING_INCOMPLETE",
                     "message": (
-                        "Fabric diagnostic must be GREEN before Birth. "
-                        "Open Setup & connection → Run fabric diagnostic."
+                        "Twin base training is not complete. "
+                        "Open Operator Vault → Twin and finish the base curriculum "
+                        "(~10–12 min forced-choice) before Birth can start."
                     ),
                 },
             )
     except HTTPException:
         raise
     except Exception:
-        # If certificate subsystem fails open would be unsafe — block.
         raise HTTPException(
             status_code=403,
             detail={
-                "code": "FABRIC_LINK_NOT_GREEN",
-                "message": "Fabric link certificate unavailable — run Operator Vault diagnostic.",
+                "code": "TWIN_BASE_TRAINING_INCOMPLETE",
+                "message": (
+                    "Twin birth-ready flag unavailable — complete Operator Vault → Twin base training."
+                ),
             },
         ) from None
 
-    # Preflight loads ApplicationContainer + historical OHLC; never block the event loop.
+    # History preflight is sync inside start_birth (fail before promise).
+    # Offload the whole start path so the event loop stays responsive.
     return await asyncio.to_thread(
         birth_service.start_birth,
         target_trades=target_trades,
@@ -137,8 +197,8 @@ async def autonomous_recovery(
 async def resume_birth(
     target_trades: int | None = Query(None, ge=1000, le=5_000_000),
 ) -> dict[str, Any]:
-    """Continue learning from certificate failure (alias for retry without wipe)."""
-    result = birth_service.retry_birth(target_trades=target_trades, wipe=False)
+    """Continue learning from the last checkpoint (continue_training + reuse_data)."""
+    result = birth_service.resume_birth(target_trades=target_trades)
     return _enrich_status(_merge_start_result(result))
 
 async def accept_champion(

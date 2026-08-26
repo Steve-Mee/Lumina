@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
 
@@ -85,9 +85,35 @@ from lumina_os.backend.core_websocket_telemetry import (  # noqa: E402
 
 
 
+def _is_loopback_client(request: Request) -> bool:
+    client = request.client
+    if client is None:
+        return False
+    host = (client.host or "").strip().lower()
+    return host in {"127.0.0.1", "::1", "localhost", "testclient"} or host.startswith("127.")
+
+
 @router.get("/api/core/live")
-async def get_core_live() -> dict[str, Any]:
-    """REST snapshot for polling fallback when WebSocket is unavailable (v1, no auth)."""
+async def get_core_live(
+    request: Request,
+    x_api_key: str | None = Header(None),
+) -> dict[str, Any]:
+    """REST snapshot when WebSocket is unavailable.
+
+    Loopback (local Command Deck) remains unauthenticated for operator UX.
+    Non-loopback requires API key (ADR-0040 fail-closed observation plane).
+    """
+    if not _is_loopback_client(request):
+        try:
+            from backend.app_auth import verify_api_key
+
+            await verify_api_key(x_api_key)
+        except HTTPException:
+            raise
+        except Exception:
+            if not x_api_key:
+                raise HTTPException(status_code=401, detail="API key required off-localhost")
+            raise HTTPException(status_code=401, detail="Invalid API key")
     reader = CoreLiveTelemetryReader()
     payload = reader.build_snapshot(_obs_service)
     return _build_frame(seq=0, payload=payload)

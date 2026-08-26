@@ -155,6 +155,14 @@ class BirthMetaController(MetaControllerDecisionsMixin, MetaControllerSelfEvalMi
         range_round_trips: int = 0,
         oos_proxy_history: list[float] | None = None,
         constitution_violations: int = 0,
+        range_total_signals: int = 0,
+        plateau_active: bool = False,
+        expectancy_quality_step: int = 0,
+        stage_wins: int = 0,
+        rolling_winrate: float | None = None,
+        volume_gate_passed: bool | None = None,
+        edge_vs_random: float | None = None,
+        median_loss_r: float | None = None,
     ) -> tuple[LearningSnapshot, StallDetectionResult]:
         stall = detect_stall(
             winrate_history=winrate_history,
@@ -165,6 +173,11 @@ class BirthMetaController(MetaControllerDecisionsMixin, MetaControllerSelfEvalMi
         )
         quality = _pattern_quality(self.patterns_last_inject, self.oracle_wins_last_inject)
         health = _classify_learning_health(stall.combined_velocity, self.cfg)
+        gate_passed = (
+            bool(volume_gate_passed)
+            if volume_gate_passed is not None
+            else stage_trades >= required_trades
+        )
         snap = LearningSnapshot(
             winrate_history=tuple(winrate_history),
             reward_history=tuple(reward_history),
@@ -188,10 +201,23 @@ class BirthMetaController(MetaControllerDecisionsMixin, MetaControllerSelfEvalMi
             is_stalled=stall.is_stalled,
             pattern_quality=round(quality, 4),
             learning_health=health,
-            volume_gate_passed=stage_trades >= required_trades,
+            volume_gate_passed=gate_passed,
             range_flat_ratio=float(range_flat_ratio),
             range_round_trips=int(range_round_trips),
             constitution_violations=max(0, int(constitution_violations)),
+            range_total_signals=max(0, int(range_total_signals)),
+            plateau_active=bool(plateau_active),
+            expectancy_quality_step=max(0, int(expectancy_quality_step)),
+            stage_wins=max(0, int(stage_wins)),
+            rolling_winrate=(
+                float(rolling_winrate) if rolling_winrate is not None else None
+            ),
+            edge_vs_random=(
+                float(edge_vs_random) if edge_vs_random is not None else None
+            ),
+            median_loss_r=(
+                float(median_loss_r) if median_loss_r is not None else None
+            ),
         )
         return snap, stall
 

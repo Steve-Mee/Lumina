@@ -1,12 +1,15 @@
-"""Broker bridge facade (re-exports bounded submodules)."""
+"""Broker bridge facade (re-exports bounded submodules).
+
+CrossTradeBroker is lazy — zero default import (ADR-0040 emergency plugin).
+"""
 
 from __future__ import annotations
 
 import random
+from typing import Any
 
 from lumina_core.broker.broker_bridge.admission import audit_final_arbitration_reject
 from lumina_core.broker.broker_bridge.base import BrokerBridge
-from lumina_core.broker.broker_bridge.cross_trade_broker import CrossTradeBroker
 from lumina_core.broker.broker_bridge.factory import broker_factory
 from lumina_core.broker.broker_bridge.paper_broker import PaperBroker
 from lumina_core.broker.broker_bridge.schemas import (
@@ -34,3 +37,11 @@ __all__ = [
     "paper_position_from_fills",
     "random",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "CrossTradeBroker":
+        from lumina_core.broker.broker_bridge.cross_trade_broker import CrossTradeBroker
+
+        return CrossTradeBroker
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

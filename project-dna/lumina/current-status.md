@@ -1,6 +1,6 @@
 # Lumina — Current Status
 
-**Last Updated**: 2026-07-15  
+**Last Updated**: 2026-08-14  
 **Owner**: Guardian + Human
 
 ---
@@ -16,21 +16,21 @@
 | North Star (90-day)       | Sustained     | -         | Sustained  | 7/7 aperture window |
 
 **Current Focus Areas**:
-- **Approval Twin** as core differentiator (human replacement *judgment* in SIM/birth)
-- Perfect Birth KPIs → unlock **Phase 2 Autonomy**
-- Continued modularization of residual god surfaces
-- Living docs SSOT (`docs/roadmap.md` v5.2.x wave)
+- **Approval Twin** as core differentiator (judgment in SIM/birth; ADR-0031/0032/0038/0044)
+- Truthful post-birth fitness SSOT (no RNG DNA promotion)
+- Perfect Birth evidence + Fabric foundation bundle (ADR-0040) → Phase 2 SIM unlock
+- Maturation continuum: Awakening → Playground → Apprenticeship → Proving Ground → human REAL
 
 ---
 
 ## Unique Differentiator — Approval Twin
 
-**Status**: Core shipped (ADR-0031, ADR-0032).
+**Status**: Core shipped (ADR-0031, ADR-0032, ADR-0038, ADR-0044).
 
-- User-trained mimic of operator approve/veto (`SteveValuesRegistry` → train CLI).
-- Primary auto-approval signal for birth/SIM/autonomy when high-conf + clean.
+- User-trained mimic of operator approve/veto (`SteveValuesRegistry` → train CLI / Operator Vault).
+- Dual authority: Birth/SIM `explore_pass`; `sim_real_guard` values-active; REAL values-inside-gates.
 - **Never** bypasses Constitution, sandbox, risk shadow, or REAL PromotionGate.
-- Train: `python -m lumina_launcher twin review|train|metrics`
+- Train: Operator Vault Twin base curriculum; `python -m lumina_launcher twin review|train|metrics`
 
 SSOT: [`docs/roadmap.md`](../../docs/roadmap.md) §6 · [`docs/adr/0032-approval-twin-human-replacement-layer.md`](../../docs/adr/0032-approval-twin-human-replacement-layer.md)
 
@@ -41,7 +41,7 @@ SSOT: [`docs/roadmap.md`](../../docs/roadmap.md) §6 · [`docs/adr/0032-approval
 **Status**: **GREEN** — All 4 FATAL structural bypass mechanisms eliminated (Phase 1.3.4 complete).
 
 - `aperture_guard` functions as **permanent regression detector**.
-- Live broker (CrossTrade) lineage wiring completed.
+- Execution Fabric is the live skeleton (ADR-0035/0040); CrossTrade is emergency prosthesis only.
 - No structural bypasses remain in source, tests or **living** documentation.
 
 **Key Reference**: `evolution/log/2026-05-31-elon-musk-first-principles-trading-system-analysis.md`  
@@ -52,19 +52,19 @@ SSOT: [`docs/roadmap.md`](../../docs/roadmap.md) §6 · [`docs/adr/0032-approval
 ## Current Phase Progress
 
 ### v5.2.x wave — Twin + Modularization
-- **Approval Twin**: Event Bus + primary auto-approval paths + CLI training (accepted ADRs).
-- **Modularization**: thin orchestrators, birth package, bounded evolution/risk extractions ongoing.
-- **Never-stall / adaptive wall**: engine + recovery UI baseline complete (see `docs/progress.md` — feature log, not product roadmap).
+- **Approval Twin**: Event Bus + dual authority + base curriculum (ADR-0044).
+- **Modularization**: thin orchestrators, birth package, bounded evolution/risk extractions.
+- **Never-stall / adaptive wall**: engine + recovery UI baseline complete.
+
+### Post-Birth evolution honesty (2026-08-14)
+- Multi-day DNA fitness is **fail-closed** without historical ticks + true backtest (RNG is test-only).
+- Evolution Proof missing record = **not passed**.
+- Strategy Research Lab: catalog seeds + champion-challenger on the same evaluator (SIM only).
 
 ### Perfect Birth → Phase 2 Autonomy
-- **Status**: KPIs defined; conjunction gate not auto-declared.
-- Unlock criteria: twin accuracy, never-stop recovery rate, auto-approve %, shadow/twin alignment — see `docs/birth-phase-live-validation-runbook.md` §8–9.
-- Phase 2 pillars (planned): dynamic wall triggers, self-adaptive parameters, never-stop at scale, dynamic spawn without restart.
-
-### Earlier campaign work (May–June 2026) — closed context
-- Phase 2 D2 runtime decomposition (largely complete; residual gods in runtime_workers/pre_dream)
-- Phase 3 D3/D4 Guardian forcing + genuine campaign evidence
-- Historical detail: `evolution/log/` and aperture mission-control export (not forward roadmap)
+- **Status**: foundation gated default-OFF (ADR-0034). Unlock needs conjunction + Fabric bundle (ADR-0040), not a hollow flag.
+- Auto-declare from evidence requires Fabric sidecar; REAL never auto.
+- Phase 2 is a **SIM capability unlock**, not a maturation phase (next after Birth is **Awakening**).
 
 ---
 
@@ -73,8 +73,8 @@ SSOT: [`docs/roadmap.md`](../../docs/roadmap.md) §6 · [`docs/adr/0032-approval
 See full details in `evolutionary-debt.md`.
 
 **Highest remaining items**:
-1. Residual god surfaces (`runtime_workers`, `pre_dream`, related)
-2. Phase 2 Autonomy implementation (after Perfect Birth evidence)
+1. Live Fabric SAFE_MODE evidence (OR1) before production REAL
+2. Phase 2 Autonomy productive SIM apply after Perfect Birth + Fabric bundle
 3. Secure self-code evolution vision (sandbox + Twin + Constitution) — roadmap §8
 4. Full shadow deployment hardening edge cases for risk-affecting mutations
 
@@ -82,20 +82,19 @@ See full details in `evolutionary-debt.md`.
 
 ## Active Priorities (Next 30–60 days)
 
-1. Twin training discipline + Perfect Birth KPI observation
-2. Modularization of remaining high-blast god surfaces
-3. Keep Aperture Integrity GREEN (daily Guardian)
-4. Design/ADR for Phase 2 Autonomy when Perfect Birth nears
-5. Maintain living SSOT: `docs/roadmap.md` + this file + agent-context export
+1. Birth certificate → Awakening on truthful OOS; keep fitness SSOT green
+2. Twin training + Perfect Birth campaign with Fabric Sim101 evidence
+3. Keep Aperture Integrity GREEN
+4. Maintain living SSOT: `docs/roadmap.md` + this file + ADR index
 
 ---
 
 ## Recent Milestones
 
-- **2026-07-15**: Living docs alignment — Twin + Phase 2 Autonomy + historical snapshot banners
+- **2026-08-14**: Fitness SSOT + research lab + ADR-0044 numbering fix
+- **2026-08-11**: ADR-0040/0041/0042 Fabric-only + Sentinel + PKI
+- **2026-08-08/10**: Twin curriculum + dual authority
 - **2026-07-13/14**: ADR-0031 (Twin Event Bus), ADR-0032 (Human Replacement Layer)
-- **2026-07-13**: ADR-0030 Architecture Meta-Controller (sandbox scaffold)
-- **2026-06**: Birth Phase v2, never-stall, modularization subs, aperture campaign evidence
 
 ---
 
@@ -106,7 +105,7 @@ See full details in `evolutionary-debt.md`.
 | `docs/roadmap.md` | Living product/capability roadmap | Always for direction |
 | `constitution.md` | Non-negotiable invariants | Before risk/safety/capital paths |
 | `north-star.md` | Core mission & principles | Always |
-| ADR-0031 / 0032 | Approval Twin | Before touching approval/autonomy |
+| ADR-0031 / 0032 / 0038 / 0044 | Approval Twin | Before touching approval/autonomy |
 | `self-improvement-protocol.md` | How to evolve the DNA | Before any meta-change |
 | `evolutionary-debt.md` | Current biggest limitations | Large refactors |
 | `docs/history/` | **Historical snapshots only** | Never as SSOT |

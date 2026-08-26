@@ -18,6 +18,7 @@ def _reset_birth_service(monkeypatch: pytest.MonkeyPatch) -> Any:
     mock.workspace_root = Path(".")
     mock.is_completed.return_value = False
     mock.artifacts_ok.return_value = False
+    mock.checkpoint_resumable.return_value = False
     mock.get_status.return_value = {
         "status": "idle",
         "message": "Birth Phase nog niet gestart",
@@ -25,8 +26,18 @@ def _reset_birth_service(monkeypatch: pytest.MonkeyPatch) -> Any:
     }
     mock.start_birth.return_value = {"status": "started", "target_trades": 25000, "message": "ok"}
     mock.stop_birth.return_value = {"status": "stopped", "message": "ok"}
+    mock.resume_birth.return_value = {"status": "started", "message": "ok"}
+    mock.retry_birth.return_value = {"status": "started", "message": "ok"}
     monkeypatch.setattr(be, "birth_service", mock)
+    # Action handlers / enrich import birth_service from their own modules — patch all.
+    import lumina_os.backend.birth_endpoints_actions as be_actions
+    import lumina_os.backend.birth_endpoints_enrich as be_enrich
+
+    monkeypatch.setattr(be_actions, "birth_service", mock)
+    monkeypatch.setattr(be_enrich, "birth_service", mock)
+    be_enrich._invalidate_enrich_artifact_cache()
     yield mock
+    be_enrich._invalidate_enrich_artifact_cache()
 
 
 @pytest.mark.unit
@@ -38,8 +49,10 @@ def test_enrich_status_merges_checkpoint_oos_metrics(
         "phase": "certificate_failed",
         "failure_reasons": ["oos_winrate:0.31/0.48"],
     }
+    import lumina_os.backend.birth_endpoints_enrich as be_enrich
+
     monkeypatch.setattr(
-        be,
+        be_enrich,
         "load_checkpoint_state",
         lambda _root: {
             "oos_metrics": {
@@ -102,7 +115,22 @@ def test_enrich_status_full_exposes_genesis_charter(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_start_birth_delegates(_reset_birth_service: MagicMock) -> None:
+async def test_start_birth_delegates(
+    _reset_birth_service: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_link_health.build_fabric_link_health",
+        lambda **_k: {
+            "gate_birth_ok": True,
+            "gate_reason": "OK",
+            "level": "GREEN",
+            "meaning": "ok",
+        },
+    )
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_base_training.is_twin_birth_ready",
+        lambda *a, **k: True,
+    )
     result = await be.start_birth(
         target_trades=10000,
         force=False,
@@ -119,6 +147,98 @@ async def test_start_birth_delegates(_reset_birth_service: MagicMock) -> None:
         continue_training=False,
         reuse_data=False,
     )
+    assert result["status"] == "started"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_start_birth_blocks_without_twin_base(
+    _reset_birth_service: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_link_health.build_fabric_link_health",
+        lambda **_k: {
+            "gate_birth_ok": True,
+            "gate_reason": "OK",
+            "level": "GREEN",
+            "meaning": "ok",
+        },
+    )
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_base_training.is_twin_birth_ready",
+        lambda *a, **k: False,
+    )
+    with pytest.raises(HTTPException) as exc:
+        await be.start_birth(target_trades=10000)
+    assert exc.value.status_code == 403
+    detail = exc.value.detail
+    assert isinstance(detail, dict)
+    assert detail.get("code") == "TWIN_BASE_TRAINING_INCOMPLETE"
+    _reset_birth_service.start_birth.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_start_birth_blocks_when_fabric_host_down(
+    _reset_birth_service: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from fastapi import HTTPException
+
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_link_health.build_fabric_link_health",
+        lambda **_k: {
+            "gate_birth_ok": False,
+            "gate_reason": "FABRIC_HOST_DOWN",
+            "level": "RED",
+            "meaning": "Bridge not running",
+        },
+    )
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_base_training.is_twin_birth_ready",
+        lambda *a, **k: True,
+    )
+    with pytest.raises(HTTPException) as exc:
+        await be.start_birth(target_trades=10000)
+    assert exc.value.status_code == 403
+    detail = exc.value.detail
+    assert isinstance(detail, dict)
+    assert detail.get("code") == "FABRIC_HOST_DOWN"
+    _reset_birth_service.start_birth.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_start_birth_reuse_data_skips_fabric_when_cache_present(
+    _reset_birth_service: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "lumina_core.birth.tick_cache_persist.certified_tick_cache_present",
+        lambda *_a, **_k: True,
+    )
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_link_health.build_fabric_link_health",
+        lambda **_k: {
+            "gate_birth_ok": False,
+            "gate_reason": "FABRIC_HOST_DOWN",
+            "level": "AMBER",
+            "meaning": "Bridge not running",
+        },
+    )
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_base_training.is_twin_birth_ready",
+        lambda *a, **k: True,
+    )
+    result = await be.start_birth(
+        target_trades=10000,
+        force=False,
+        practice_mode=False,
+        explicit_user_start=True,
+        continue_training=False,
+        reuse_data=True,
+    )
+    _reset_birth_service.start_birth.assert_called_once()
     assert result["status"] == "started"
 
 
@@ -210,10 +330,10 @@ async def test_expand_and_retry_delegates(_reset_birth_service: MagicMock) -> No
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_resume_birth_delegates(_reset_birth_service: MagicMock) -> None:
-    _reset_birth_service.retry_birth.return_value = {"status": "started", "message": "ok"}
+    _reset_birth_service.resume_birth.return_value = {"status": "started", "message": "ok"}
     _reset_birth_service.get_status.return_value = {"status": "running", "progress": {}}
     result = await be.resume_birth(target_trades=25000)
-    _reset_birth_service.retry_birth.assert_called_once_with(target_trades=25000, wipe=False)
+    _reset_birth_service.resume_birth.assert_called_once_with(target_trades=25000)
     assert result["status"] == "started"
     assert result.get("start_acknowledged") is True
 

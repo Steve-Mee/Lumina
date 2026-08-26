@@ -230,7 +230,7 @@ async def get_birth_certificate() -> dict[str, Any]:
 class BirthSettingsRequest(BaseModel):
     training_trades: int = Field(ge=500, le=2_000_000)
     prefer_real_data_only: bool = True
-    max_real_days: int = Field(ge=30, le=3650)
+    max_real_days: int = Field(ge=90, le=3650)
     allow_minimal_synthetic_fallback: bool = False
     require_real_simulator_data: bool = True
     stage1_winrate_pass_threshold: float | None = Field(default=None, ge=0.35, le=0.45)
@@ -262,17 +262,14 @@ async def save_birth_settings(body: BirthSettingsRequest) -> dict[str, Any]:
 
 @router.post("/adjust-max-days")
 async def adjust_max_real_days() -> dict[str, Any]:
-    """Raise max_real_days to estimated window (Streamlit 'Pas max days aan' parity)."""
-    from lumina_core.first_boot_ui import estimate_first_boot_real_days
+    """Set max_real_days to the Foundation expand ceiling (not trades/450)."""
+    from lumina_core.birth.foundation_history import foundation_history_max_days
     from lumina_launcher.core.first_boot import FirstBootManager
 
     root = birth_service.workspace_root
     manager = FirstBootManager(root)
     settings = manager.read_settings()
-    estimate_days = int(
-        estimate_first_boot_real_days(int(settings.get("training_trades", 25000)))
-    )
-    new_max = max(int(settings.get("max_real_days", 30)), estimate_days)
+    new_max = foundation_history_max_days()
     manager.save_full_settings(
         training_trades=int(settings.get("training_trades", 25000)),
         prefer_real_data_only=bool(settings.get("prefer_real_data_only", True)),
@@ -281,7 +278,7 @@ async def adjust_max_real_days() -> dict[str, Any]:
         require_real_simulator_data=bool(settings.get("require_real_simulator_data", True)),
         mark_user_configured=True,
     )
-    return {"ok": True, "max_real_days": new_max, "estimated_days": estimate_days}
+    return {"ok": True, "max_real_days": new_max, "estimated_days": new_max}
 
 
 @router.get("/logs-tail")

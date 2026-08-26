@@ -32,11 +32,9 @@ class _Runtime:
 
 
 @pytest.mark.unit
-def test_min_dwell_blocks_stop_exit_under_envelope() -> None:
-    """With suppress_random_flatten + min_dwell, stop cannot close before dwell."""
+def test_min_dwell_cannot_suppress_stop_under_envelope() -> None:
+    """Occupancy min-dwell may suppress RNG flatten — never a live stop."""
     data = _flat_ticks(120)
-    # Extreme entry stop so unprotected path would exit immediately on any move;
-    # flat book keeps price constant — we force hit by setting stop after entry.
     cfg = RLConfig(
         trade_mode="birth",
         max_steps=100,
@@ -46,22 +44,17 @@ def test_min_dwell_blocks_stop_exit_under_envelope() -> None:
     )
     env = RLTradingEnvironment(_Runtime(), data, config=cfg)
     env.reset()
-    # Open long with tiny stop; then next bars use hold action.
     open_action = np.array([1.0, 0.5, 0.001, 0.002], dtype=np.float32)
-    obs, reward, term, trunc, info = env.step(open_action)
+    env.step(open_action)
     assert int(env._position) != 0
-    assert int(env._bars_held) >= 1
 
-    # Tighten stop to guarantee hit_stop if protect were off.
-    env._entry_stop_pct = 0.50  # 50% — price flat would not hit; move entry instead
-    env._entry_price = float(data[env._idx]["close"]) * 2.0  # long stop far above market
+    env._entry_stop_pct = 0.50
+    env._entry_price = float(data[env._idx]["close"]) * 2.0
 
     hold = np.array([0.0, 0.5, 0.0075, 0.015], dtype=np.float32)
-    for _ in range(6):
-        env.step(hold)
-        assert int(env._position) != 0, "position must survive min dwell under envelope"
-
-    assert int(env._bars_held) >= 7
+    _obs, _rew, _term, _trunc, info = env.step(hold)
+    assert int(env._position) == 0
+    assert info.get("close_reason") == "stop"
 
 
 @pytest.mark.unit

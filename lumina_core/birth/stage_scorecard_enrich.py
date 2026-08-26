@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from lumina_core.birth.curriculum import CurriculumStage, is_runway_stage
+from lumina_core.birth.curriculum import CurriculumStage
 
 from lumina_core.birth.stage_scorecard_criteria import (
     CURRICULUM_STAGE_COUNT,
@@ -12,7 +12,6 @@ from lumina_core.birth.stage_scorecard_criteria import (
     human_sub_phase,
     pass_criteria_for_stage,
     parse_curriculum_stage,
-    runway_curriculum_total,
     stage_display_name,
 )
 
@@ -146,8 +145,8 @@ def enrich_progress_scorecard(payload: dict[str, Any]) -> dict[str, Any]:
         merged.setdefault("stage_display_name", stage_display_name(stage))
     if not merged.get("curriculum_index"):
         merged["curriculum_index"] = curriculum_index_for_stage(stage)
-    total = runway_curriculum_total() if is_runway_stage(stage) else CURRICULUM_STAGE_COUNT
-    merged.setdefault("curriculum_total", total)
+    total = CURRICULUM_STAGE_COUNT
+    merged["curriculum_total"] = total
 
     phase = str(merged.get("sub_phase") or merged.get("phase") or "").strip().lower()
     if phase:

@@ -7,7 +7,6 @@ from .bible_engine import BibleEngine
 from lumina_core.broker.broker_bridge import (
     AccountInfo,
     BrokerBridge,
-    CrossTradeBroker,
     Fill,
     Order,
     OrderResult,
@@ -99,3 +98,12 @@ __all__ = [
     "DomainEvent",
     "EventBus",
 ]
+
+
+def __getattr__(name: str):  # type: ignore[no-untyped-def]
+    """Lazy CrossTradeBroker re-export (ADR-0040 — zero default emergency plugin import)."""
+    if name == "CrossTradeBroker":
+        from lumina_core.broker.broker_bridge.cross_trade_broker import CrossTradeBroker
+
+        return CrossTradeBroker
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

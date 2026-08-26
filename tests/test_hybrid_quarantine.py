@@ -102,14 +102,14 @@ def test_arch_sandbox_strict_refuses_optimistic_delta() -> None:
 
 
 @pytest.mark.unit
-def test_arch_sandbox_default_keeps_optimistic_delta() -> None:
+def test_arch_sandbox_default_does_not_invent_delta() -> None:
     from lumina_core.architecture_meta.sandbox import ArchitectureMutationSandbox
 
     sand = ArchitectureMutationSandbox(repo_root=Path("."))
     with patch("lumina_core.hybrid_quarantine.require_real_patch_apply", return_value=False):
         ok, score = sand._simulate_apply_and_measure(Path("."), "x.py", "extract helper", 5.0)
-    assert ok is True
-    assert score == pytest.approx(5.22)
+    assert ok is False
+    assert score == pytest.approx(5.0)
 
 
 @pytest.mark.unit

@@ -21,9 +21,11 @@ import {
   selectRiskLevel,
   useCoreStore,
 } from "@/store/coreStore";
+import { useOnboardingStore } from "@/store/onboardingStore";
 import { Toaster } from "sonner";
 
 import { BirthConfirmHost } from "@/components/birth/BirthConfirmHost";
+import { TwinEscalationModal } from "@/components/operations/TwinEscalationModal";
 
 const LivingCore = lazy(() =>
   import("@/components/LivingCore").then((module) => ({
@@ -190,37 +192,44 @@ function GlobalShortcutsProvider() {
   return null;
 }
 
+/** No toast storm during cold-start readiness cover. */
+function AppToaster() {
+  const phase = useOnboardingStore((s) => s.phase);
+  const ntStartupResolved = useOnboardingStore((s) => s.ntStartupResolved);
+  if (phase === "loading" || !ntStartupResolved) {
+    return null;
+  }
+  return (
+    <Toaster
+      theme="dark"
+      position="top-right"
+      toastOptions={{
+        className: "lumina-glass lumina-glass--overlay font-mono text-xs",
+      }}
+    />
+  );
+}
+
 export default function App() {
   return (
     <>
       <OnboardingGate>
-        {(phase) =>
-          phase === "loading" ? (
-            <div className="flex h-screen items-center justify-center bg-background text-sm text-muted-foreground">
-              Initializing Neural Command Deck…
-            </div>
-          ) : (
-            <>
-              <GlobalShortcutsProvider />
-              <CockpitShell>
-                <CommandDeckGrid />
-              </CockpitShell>
-              <CommandDeckTour />
-              {import.meta.env.DEV && localStorage.getItem("lumina.debugPanel") === "1" ? (
-                <CoreDebugPanel />
-              ) : null}
-            </>
-          )
-        }
+        {() => (
+          <>
+            <GlobalShortcutsProvider />
+            <CockpitShell>
+              <CommandDeckGrid />
+            </CockpitShell>
+            <CommandDeckTour />
+            {import.meta.env.DEV && localStorage.getItem("lumina.debugPanel") === "1" ? (
+              <CoreDebugPanel />
+            ) : null}
+          </>
+        )}
       </OnboardingGate>
       <BirthConfirmHost />
-      <Toaster
-        theme="dark"
-        position="top-right"
-        toastOptions={{
-          className: "lumina-glass lumina-glass--overlay font-mono text-xs",
-        }}
-      />
+      <TwinEscalationModal />
+      <AppToaster />
     </>
   );
 }

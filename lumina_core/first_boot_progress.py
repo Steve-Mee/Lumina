@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Mapping
@@ -140,22 +139,22 @@ def birth_runner_lock_path(workspace_root: Path | str) -> Path:
 
 
 def _pid_alive(pid: int) -> bool:
+    """Fast process-alive check (no PowerShell — that was multi-second and flaky)."""
     if pid <= 0:
         return False
     try:
         if os.name == "nt":
-            result = subprocess.run(
-                [
-                    "powershell",
-                    "-NoProfile",
-                    "-Command",
-                    f"Get-Process -Id {pid} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id",
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
+            # OpenProcess is O(1) and correct; PowerShell Get-Process was slow/wrong.
+            import ctypes
+
+            PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+            handle = ctypes.windll.kernel32.OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid)
             )
-            return str(pid) in (result.stdout or "")
+            if handle:
+                ctypes.windll.kernel32.CloseHandle(handle)
+                return True
+            return False
         os.kill(pid, 0)
         return True
     except OSError:

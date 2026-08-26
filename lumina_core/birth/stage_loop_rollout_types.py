@@ -21,9 +21,11 @@ class RolloutPreState:
     participation_band_lo: float = 0.30
     participation_band_hi: float = 0.70
     participation_hysteresis: float = 0.02
-    participation_stop_pct: float = 0.0075
-    participation_target_pct: float = 0.015
+    participation_under_band_release_hysteresis: float = 0.02
+    participation_stop_pct: float = 0.0012
+    participation_target_pct: float = 0.0020
     participation_qty_frac: float = 0.15
+    occupancy_control_window_bars: int = 500
     stage_range_flat_bars: int = 0
     stage_range_total_signals: int = 0
     expectancy_gap: float = 0.0

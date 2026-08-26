@@ -24,6 +24,9 @@ export interface DeckCredentialsPrefillResponse {
   env_path: string;
   present: Partial<Record<CredentialEnvKey, boolean>>;
   credentials: Partial<Record<CredentialEnvKey, string>>;
+  /** Machine SSOT for Operator Vault emergency CrossTrade checkbox */
+  emergency_market_data_fallback?: boolean;
+  fallback_on_fabric_failure?: boolean;
 }
 
 export function credentialsReadyInEnv(present: Record<string, boolean> = {}): boolean {

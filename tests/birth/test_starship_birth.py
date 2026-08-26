@@ -45,6 +45,7 @@ from lumina_core.birth.starship_birth import (
     tournament_score,
     write_pause_ssot,
 )
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 
 
 @pytest.mark.unit
@@ -78,10 +79,11 @@ def test_edgescore_passes_without_vanity_winrate() -> None:
         constitution_violations=0,
         target_trades=2000,
         cfg=cfg,
-        policy_entropy=0.20,
+        **honest_closes(250),
+        **foundation_eval_kwargs(policy_entropy=0.20),
     )
     assert result.passed is True
-    assert "edgescore" in result.message
+    assert result.schema == "foundation_v2"
 
 
 @pytest.mark.unit
@@ -444,6 +446,8 @@ def test_stage2_stage3_edgescore_pass_fail() -> None:
         cfg=cfg,
         entropy=0.2,
         total_pnl=10.0,
+        consecutive_rolling_pass_windows=2,
+        **honest_closes(200),
     )
     assert s2_ok.passed is True
     s2_bad = evaluate_stage2_edgescore(
@@ -457,6 +461,7 @@ def test_stage2_stage3_edgescore_pass_fail() -> None:
         cfg=cfg,
         entropy=0.2,
         total_pnl=10.0,
+        **honest_closes(200),
     )
     assert s2_bad.passed is False
     s3_ok = evaluate_stage3_edgescore(
@@ -469,6 +474,10 @@ def test_stage2_stage3_edgescore_pass_fail() -> None:
         cfg=cfg,
         entropy=0.2,
         total_pnl=10.0,
+        range_flat_ratio=0.40,
+        range_total_signals=200,
+        range_round_trips=40,
+        **honest_closes(200),
     )
     assert s3_ok.passed is True
     s3_hold = evaluate_stage3_edgescore(
@@ -481,8 +490,30 @@ def test_stage2_stage3_edgescore_pass_fail() -> None:
         cfg=cfg,
         entropy=0.2,
         total_pnl=10.0,
+        hold_ratio=0.90,
+        range_flat_ratio=0.40,
+        range_total_signals=200,
+        range_round_trips=40,
+        **honest_closes(200),
     )
-    assert s3_hold.passed is False
+    # High HOLD% is geometry, not a Stage-3 fail.
+    assert s3_hold.passed is True
+    s3_flatten = evaluate_stage3_edgescore(
+        trades=200,
+        wins=80,
+        hold_signals=400,
+        total_signals=1000,
+        constitution_violations=0,
+        required=150,
+        cfg=cfg,
+        entropy=0.2,
+        total_pnl=10.0,
+        range_flat_ratio=0.40,
+        range_total_signals=200,
+        range_round_trips=40,
+        **honest_closes(200, flatten_share=0.90),
+    )
+    assert s3_flatten.passed is False
     result = evaluate_stage_pass(
         CurriculumStage.STAGE2_RANGE,
         trades=400,
@@ -495,11 +526,12 @@ def test_stage2_stage3_edgescore_pass_fail() -> None:
         constitution_violations=0,
         target_trades=2000,
         cfg=cfg,
-        policy_entropy=0.2,
-        stage_total_pnl=10.0,
+        consecutive_rolling_pass_windows=2,
+        **honest_closes(400),
+        **foundation_eval_kwargs(policy_entropy=0.2),
     )
     assert result.passed is True
-    assert "edgescore" in result.message.lower()
+    assert result.schema == "foundation_v2"
 
 
 @pytest.mark.unit
@@ -735,6 +767,41 @@ def test_sanitize_poisoned_early_edgescore_champion() -> None:
     assert cleared3 is False
     assert best3 == 0.59
     assert at3 == 250
+    # Stage-1 survival: 31% WR at first-touch is not poison vs 20% breathe floor.
+    best_s1, at_s1, cleared_s1 = sanitize_edgescore_champion(
+        best_edgescore=0.659,
+        best_edgescore_at_trade=700,
+        best_winrate=0.3015,
+        required=150,
+        cfg=BirthCurriculumConfig(
+            plateau_best_policy_min_trades=200,
+            birth_survival_pass_enabled=True,
+            birth_survival_wr_floor=0.20,
+            stage1_winrate_pass_floor=0.35,
+        ),
+        stage="stage1_trend",
+        live_winrate=0.3086,
+    )
+    assert cleared_s1 is False
+    assert best_s1 == pytest.approx(0.659)
+    assert at_s1 == 700
+    # PID 33628: occupancy theater 80% with Stage-2 WR 30% must sanitize
+    # (survival 20% floor must not keep the fake champion).
+    best4, at4, cleared4 = sanitize_edgescore_champion(
+        best_edgescore=0.80,
+        best_edgescore_at_trade=994,
+        best_winrate=0.3067,
+        required=300,
+        cfg=BirthCurriculumConfig(
+            plateau_best_policy_min_trades=200,
+            stage1_winrate_pass_floor=0.20,
+            stage2_expectancy_floor=-0.15,
+        ),
+        stage="stage2_range",
+        live_winrate=0.2978,
+    )
+    assert cleared4 is True
+    assert best4 == 0.0
 
 
 @pytest.mark.unit

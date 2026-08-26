@@ -157,9 +157,9 @@ export function RecoveryTabFields({
         scorecard.stage1WinrateRecommended != null &&
         scorecard.stage1WinrateGate < scorecard.stage1WinrateRecommended - 0.001 ? (
           <BirthFieldCard
-            label="Winrate gate"
-            value={`${(scorecard.stage1WinrateGate * 100).toFixed(0)}%`}
-            hint={`Recommended ${(scorecard.stage1WinrateRecommended * 100).toFixed(0)}% | REAL needs Evolution Proof + OOS >=48%`}
+            label="Process-R gate"
+            value={`${(scorecard.stage1WinrateGate * 100).toFixed(0)}% WR slider`}
+            hint={`Diagnostic only (recommended ${(scorecard.stage1WinrateRecommended * 100).toFixed(0)}%). Birth pass is median loss R / occupancy / first-touch.`}
             tone="warn"
             className="birth-intel-field-span"
           />

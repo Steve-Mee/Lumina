@@ -3,6 +3,7 @@ import { FileText, Settings2, Zap } from "lucide-react";
 
 import type { BirthAdvancedSection } from "@/components/birth/BirthAdvancedPanel";
 import { BirthMilestoneTrack } from "@/components/birth/BirthMilestoneTrack";
+import { BirthTwinMicroHost } from "@/components/birth/BirthTwinMicroHost";
 import { Button } from "@/components/ui/button";
 import type { BirthProgressPayload } from "@/lib/birthClient";
 import type { BirthMilestone } from "@/lib/birthPhaseModel";
@@ -73,6 +74,7 @@ function RunningAdvancedActions({
 
   return (
     <div className="birth-command-bar__actions" role="group" aria-label="Birth advanced panels">
+      <BirthTwinMicroHost variant="compact" />
       <AdvancedToggleButton
         label="Logs"
         active={advancedOpen === "logs"}

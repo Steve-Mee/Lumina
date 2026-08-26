@@ -136,3 +136,28 @@ class TwinModePromotionEvent(BaseModel):
     false_positive_pct: float = 100.0
     samples: int = Field(ge=0, default=0)
 
+
+class TwinEscalationEvent(BaseModel):
+    """Twin doubt escalation lifecycle (ADR-0037). Never bypasses hard gates."""
+
+    model_config = ConfigDict(extra="allow")
+
+    escalation_id: str
+    dna_hash: str = ""
+    status: str = "pending"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    doubt_reasons: list[str] = Field(default_factory=list)
+    channel: str = ""
+
+
+class OverlayLoadedPayload(BaseModel):
+    """Champion/challenger overlay load audit (ADR-0045). Never capital-critical."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: str
+    active: bool
+    loaded_from: str = ""
+    fail_reasons: list[str] = Field(default_factory=list)
+
+

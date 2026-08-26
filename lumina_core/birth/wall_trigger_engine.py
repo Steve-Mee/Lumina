@@ -50,6 +50,10 @@ def evaluate_certified_stall(
     cfg: BirthCurriculumConfig,
     policy_entropy: float | None = None,
     ppo_steps: int = 0,
+    policy_trades: int | None = None,
+    policy_wins: int | None = None,
+    plant_trades: int | None = None,
+    plant_wins: int | None = None,
 ) -> WallTriggerResult:
     """Evaluate certified stage stall (stagnation + wall time)."""
     if allow_provisional or stage_trades < required:
@@ -73,6 +77,10 @@ def evaluate_certified_stall(
             cfg=cfg,
             policy_entropy=policy_entropy,
             ppo_steps=int(ppo_steps),
+            policy_trades=policy_trades,
+            policy_wins=policy_wins,
+            plant_trades=plant_trades,
+            plant_wins=plant_wins,
         )
         pending = {
             "failure_key": failure_key,
@@ -101,6 +109,10 @@ def evaluate_certified_stall(
         cfg=cfg,
         policy_entropy=policy_entropy,
         ppo_steps=int(ppo_steps),
+        policy_trades=policy_trades,
+        policy_wins=policy_wins,
+        plant_trades=plant_trades,
+        plant_wins=plant_wins,
     )
     if not blocker_metric:
         return WallTriggerResult(triggered=False)
@@ -250,6 +262,10 @@ def evaluate_wall_trigger(
     rollouts_since_last_adaptation: int = 0,
     policy_entropy: float | None = None,
     ppo_steps: int = 0,
+    policy_trades: int | None = None,
+    policy_wins: int | None = None,
+    plant_trades: int | None = None,
+    plant_wins: int | None = None,
 ) -> WallTriggerResult:
     """Unified entry: adaptation stuck (debounced) then certified stall."""
     trades_beyond = evaluate_trades_beyond_gate(
@@ -288,6 +304,10 @@ def evaluate_wall_trigger(
         cfg=cfg,
         policy_entropy=policy_entropy,
         ppo_steps=int(ppo_steps),
+        policy_trades=policy_trades,
+        policy_wins=policy_wins,
+        plant_trades=plant_trades,
+        plant_wins=plant_wins,
     )
 
 

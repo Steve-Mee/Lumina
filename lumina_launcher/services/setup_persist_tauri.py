@@ -32,7 +32,7 @@ def persist_tauri_quick_config(
     model_service: ModelService,
     snapshot: HardwareSnapshot,
     mode_selection: str,
-    credentials: dict[str, str],
+    credentials: dict[str, Any],
     risk: dict[str, Any],
     evolution: dict[str, Any],
     training: dict[str, Any],
@@ -53,6 +53,7 @@ def persist_tauri_quick_config(
         "CROSSTRADE_TOKEN",
         "CROSSTRADE_ACCOUNT",
         "LUMINA_JWT_SECRET_KEY",
+        "LUMINA_FABRIC_TOKEN",
     ):
         value = str(credentials.get(key, "")).strip()
         if value:
@@ -66,6 +67,30 @@ def persist_tauri_quick_config(
     config_payload["mode"] = mode_value
     broker = _ensure_mapping(config_payload, "broker")
     broker["backend"] = broker_backend
+    # Fabric-first SSOT unless operator already chose crosstrade.
+    lp = str(broker.get("live_provider") or "ninjatrader").strip().lower()
+    if lp not in {"crosstrade", "ninjatrader"}:
+        broker["live_provider"] = "ninjatrader"
+    # Vault emergency checkbox → machine flag (same SSOT as /credentials).
+    if "emergency_market_data_fallback" in credentials:
+        raw_em = credentials.get("emergency_market_data_fallback")
+        if isinstance(raw_em, bool):
+            broker["fallback_on_fabric_failure"] = raw_em
+        else:
+            broker["fallback_on_fabric_failure"] = str(raw_em or "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+        try:
+            import os
+
+            os.environ["BROKER_FALLBACK_ON_FABRIC_FAILURE"] = (
+                "true" if broker["fallback_on_fabric_failure"] else "false"
+            )
+        except Exception:
+            pass
 
     mode_section = _ensure_mapping(config_payload, mode_value if mode_value in {"sim", "real"} else "sim")
     if "kelly_fraction" in risk:
@@ -99,7 +124,7 @@ def persist_tauri_quick_config(
     first_boot_manager.save_full_settings(
         training_trades=int(training["training_trades"]),
         prefer_real_data_only=bool(training.get("prefer_real_data_only", True)),
-        max_real_days=int(training.get("max_real_days", 56)),
+        max_real_days=int(training.get("max_real_days", 365)),
         allow_minimal_synthetic_fallback=bool(training.get("allow_minimal_synthetic_fallback", False)),
         require_real_simulator_data=bool(training.get("require_real_simulator_data", True)),
         stage1_winrate_pass_threshold=gate_threshold,

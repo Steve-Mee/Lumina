@@ -2,13 +2,17 @@
 RuntimeMonitoringService — D2 sub-slice 15: session KPI + monitoring snapshot from runtime_workers.
 
 Observability-only; non-capital path. Same formulas as legacy ORACLE log block.
+Snapshot publish soft-fails: never raise into the supervisor loop (C1 / birth post-mortem).
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from lumina_core.logging_utils import write_runtime_monitoring_snapshot
+
+_logger = logging.getLogger(__name__)
 
 
 class RuntimeMonitoringService:
@@ -59,44 +63,48 @@ class RuntimeMonitoringService:
         }
 
     def publish_snapshot(self) -> None:
-        app = self.app
-        risk_controller = getattr(app.engine, "risk_controller", None)
-        consecutive_losses = int(getattr(risk_controller, "consecutive_losses", 0) or 0)
-        account_balance = float(getattr(app, "account_balance", 0.0) or 0.0)
-        account_equity = float(getattr(app, "account_equity", 0.0) or 0.0)
-        drawdown_pct = 0.0
-        if account_balance > 0:
-            drawdown_pct = max(0.0, (account_balance - account_equity) / account_balance * 100.0)
+        """Publish runtime metrics. Soft-fails all errors — never FATAL the supervisor."""
+        try:
+            app = self.app
+            risk_controller = getattr(app.engine, "risk_controller", None)
+            consecutive_losses = int(getattr(risk_controller, "consecutive_losses", 0) or 0)
+            account_balance = float(getattr(app, "account_balance", 0.0) or 0.0)
+            account_equity = float(getattr(app, "account_equity", 0.0) or 0.0)
+            drawdown_pct = 0.0
+            if account_balance > 0:
+                drawdown_pct = max(0.0, (account_balance - account_equity) / account_balance * 100.0)
 
-        mc_drawdown_pct = None
-        if risk_controller is not None:
-            rc_state = getattr(risk_controller, "state", None)
-            if rc_state is not None:
-                worst = getattr(rc_state, "mc_drawdown_worst_pct", None)
-                if worst is not None:
-                    mc_drawdown_pct = float(worst)
+            mc_drawdown_pct = None
+            if risk_controller is not None:
+                rc_state = getattr(risk_controller, "state", None)
+                if rc_state is not None:
+                    worst = getattr(rc_state, "mc_drawdown_worst_pct", None)
+                    if worst is not None:
+                        mc_drawdown_pct = float(worst)
 
-        drawdown_kill_pct = float(getattr(app.engine.config, "drawdown_kill_percent", 8.0) or 8.0)
+            drawdown_kill_pct = float(getattr(app.engine.config, "drawdown_kill_percent", 8.0) or 8.0)
 
-        equity_curve = [float(v) for v in list(getattr(app, "equity_curve", []) or [])[-120:]]
-        pnl_history = [float(v) for v in list(getattr(app, "pnl_history", []) or [])[-50:]]
-        session_kpis = self.compute_session_kpis()
+            equity_curve = [float(v) for v in list(getattr(app, "equity_curve", []) or [])[-120:]]
+            pnl_history = [float(v) for v in list(getattr(app, "pnl_history", []) or [])[-50:]]
+            session_kpis = self.compute_session_kpis()
 
-        payload = {
-            "mode": str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower(),
-            "live_position_qty": int(getattr(app.engine, "live_position_qty", 0) or 0),
-            "daily_pnl": float(getattr(app, "realized_pnl_today", 0.0) or 0.0),
-            "open_pnl": float(getattr(app, "open_pnl", 0.0) or 0.0),
-            "account_equity": account_equity,
-            "account_balance": account_balance,
-            "drawdown_pct": round(drawdown_pct, 4),
-            "drawdown_kill_pct": drawdown_kill_pct,
-            "mc_drawdown_pct": mc_drawdown_pct,
-            "consecutive_losses": consecutive_losses,
-            "pending_reconciliations": len(getattr(app, "pending_trade_reconciliations", []) or []),
-            "last_trades": list(getattr(app, "trade_log", []) or [])[-10:],
-            "equity_curve": equity_curve,
-            "pnl_history": pnl_history,
-            "session_kpis": session_kpis,
-        }
-        write_runtime_monitoring_snapshot(payload)
+            payload = {
+                "mode": str(getattr(app.engine.config, "trade_mode", "paper")).strip().lower(),
+                "live_position_qty": int(getattr(app.engine, "live_position_qty", 0) or 0),
+                "daily_pnl": float(getattr(app, "realized_pnl_today", 0.0) or 0.0),
+                "open_pnl": float(getattr(app, "open_pnl", 0.0) or 0.0),
+                "account_equity": account_equity,
+                "account_balance": account_balance,
+                "drawdown_pct": round(drawdown_pct, 4),
+                "drawdown_kill_pct": drawdown_kill_pct,
+                "mc_drawdown_pct": mc_drawdown_pct,
+                "consecutive_losses": consecutive_losses,
+                "pending_reconciliations": len(getattr(app, "pending_trade_reconciliations", []) or []),
+                "last_trades": list(getattr(app, "trade_log", []) or [])[-10:],
+                "equity_curve": equity_curve,
+                "pnl_history": pnl_history,
+                "session_kpis": session_kpis,
+            }
+            write_runtime_monitoring_snapshot(payload)
+        except Exception as exc:  # noqa: BLE001 — observability must soft-fail (C1)
+            _logger.warning("MONITORING_SNAPSHOT_PUBLISH_FAILED soft-fail: %s", exc, exc_info=True)

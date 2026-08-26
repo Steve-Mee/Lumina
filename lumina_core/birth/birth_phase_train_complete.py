@@ -1,23 +1,16 @@
-"""Birth phase curriculum loop, runway, practice complete, stage8 certificate."""
+"""Birth Foundation curriculum loop (ADR-0046) then complete_foundation_birth."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 from lumina_core.birth.birth_phase_bootstrap import BirthPhaseBootstrap
 from lumina_core.birth.birth_phase_data_policy import BirthPhaseDataReady
-from lumina_core.birth.buffer_persist import clear_buffer
-from lumina_core.birth.checkpoint import clear_checkpoint
 from lumina_core.birth.curriculum import (
-    CurriculumStage,
-    filter_ticks_for_stage,
     ordered_stages,
     stage_trade_target,
 )
-from lumina_core.birth.progress import write_birth_progress
+from lumina_core.birth.progress import merge_birth_progress_extra, write_birth_progress
 from lumina_core.birth.purged_split import purged_validation_split
-from lumina_core.birth.runway import micro_oos_probe
-from lumina_core.birth.stage_scorecard import build_scorecard_payload
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.birth_phase_train_complete")
@@ -52,6 +45,79 @@ def run_curriculum_and_complete(
         training_mode=training_mode,
     )
 
+    # Terminal freeze: do not re-enter hollow curriculum grind. Twin/operator must
+    # resolve expand_data | accept_champion | wipe first (ADR-0024 / Twin-first Birth).
+    try:
+        from lumina_core.birth.terminal_freeze import (
+            extract_terminal_freeze,
+            freeze_attention_fields,
+            freeze_blocks_curriculum_grind,
+        )
+
+        freeze = extract_terminal_freeze(
+            getattr(host, "_terminal_freeze", None),
+            getattr(host, "_active_stage_metrics", None),
+            checkpoint_state if isinstance(checkpoint_state, dict) else None,
+        )
+        metrics_pending = dict(getattr(host, "_active_stage_metrics", None) or {})
+        if freeze_blocks_curriculum_grind(freeze) and not bool(
+            metrics_pending.get("pending_data_expand")
+        ):
+            frozen_stage = str((freeze or {}).get("curriculum_stage") or "stage_stalled")
+            attn = freeze_attention_fields(freeze or {})
+            write_birth_progress(
+                host.workspace_root,
+                stage="stage_stalled",
+                phase="stage_stalled",
+                message=str(
+                    attn.get("attention_summary")
+                    or "Terminal freeze — Twin/operator fork required"
+                ),
+                progress_pct=27.0 + (stage_index / max(1, total_stages)) * 53.0,
+                cumulative_trades=host.cumulative_trades,
+                target_trades=cfg.trade_budget_cap,
+                birth_start_time=host.birth_start_time,
+                training_mode=training_mode,
+                **merge_birth_progress_extra(
+                    host._budget_progress_fields(
+                        terminal_stall_reason=str((freeze or {}).get("reason") or "")
+                    ),
+                    host._constitution_progress_fields(),
+                    attn,
+                    {
+                        "curriculum_stage": frozen_stage,
+                        "stages_passed": list(host._stages_passed),
+                    },
+                ),
+            )
+            host._persist_checkpoint(
+                training_mode=training_mode,
+                curriculum_stage=frozen_stage,
+                policy_path=str(host.final_policy_path),
+                phase="stage_stalled",
+                stage_metrics=dict(metrics_pending),
+            )
+            logger.warning(
+                "birth.terminal_freeze.block_curriculum reason=%s stage=%s next=%s",
+                (freeze or {}).get("reason"),
+                frozen_stage,
+                (freeze or {}).get("next_action"),
+            )
+            return {
+                "status": "stage_stalled",
+                "failure_reason": str((freeze or {}).get("reason") or "terminal_freeze"),
+                "total_trades": host.cumulative_trades,
+                "ppo_steps": host.ppo_steps,
+                "training_mode": training_mode,
+            }
+    except Exception as exc:
+        logger.debug("birth.terminal_freeze.curriculum_gate_failed: %s", exc)
+
+    val_split = purged_validation_split(
+        list(split.train),
+        validation_pct=float(cfg.curriculum.certificate_runway_validation_pct),
+    )
+
     for stage in ordered_stages():
         if host._stop_requested():
             policy_hint = str(host.final_policy_path)
@@ -65,23 +131,34 @@ def run_curriculum_and_complete(
             )
             return host._paused_result()
 
-        if stage == CurriculumStage.STAGE4_POLISH:
-            break
-
         if stage.value in host._stages_passed:
             if host._verify_stage_pass_receipt_for_skip(stage, training_mode=training_mode):
                 stage_index += 1
                 continue
+            host._stages_passed = [
+                s for s in host._stages_passed if s != stage.value
+            ]
 
-        stage_ticks = filter_ticks_for_stage(stage, split.train)
+        from lumina_core.birth.foundation_stages import ticks_for_foundation_stage
+
+        stage_ticks = ticks_for_foundation_stage(
+            stage,
+            train_ticks=list(split.train),
+            validation_ticks=list(val_split.validation),
+            holdout_ticks=list(split.holdout),
+        )
         if not stage_ticks:
-            stage_ticks = list(split.train)
+            logger.error("birth.foundation.empty_ticks_fail_closed stage=%s", stage.value)
+            return {
+                "status": "stage_failed",
+                "failure_reason": f"empty_stage_ticks:{stage.value}",
+                "total_trades": host.cumulative_trades,
+                "training_mode": training_mode,
+            }
         target = stage_trade_target(stage, cfg.curriculum)
         host._accumulate_constitution_violations_before_stage_reset()
 
         stage_progress_pct = 27.0 + (stage_index / total_stages) * 53.0
-        # Note: direct path still supported. Preferred long-term: host.start_event_driven_curriculum()
-        # which uses the thin CurriculumOrchestrator + dedicated handlers over central EventBus.
         stage_error = host._run_stage_research_loop(
             stage=stage,
             stage_index=stage_index,
@@ -109,137 +186,11 @@ def run_curriculum_and_complete(
         )
         stage_index += 1
 
-    val_split = purged_validation_split(
-        list(split.train),
-        validation_pct=float(cfg.curriculum.certificate_runway_validation_pct),
-    )
-    birth_exit_wr = host._resolve_birth_exit_winrate()
-    baseline_oos_wr = host._resolve_baseline_oos_winrate(checkpoint_state=checkpoint_state)
+    from lumina_core.birth.foundation_complete import complete_foundation_birth
 
-    if cfg.curriculum.certificate_runway_enabled and not practice_mode:
-        if baseline_oos_wr <= 0.0:
-            baseline_probe = micro_oos_probe(
-                runtime=host.runtime,
-                holdout_data=list(split.holdout),
-                policy=host.current_policy,
-                real_data_pct=host._real_data_pct,
-                holdout_days=split.holdout_days,
-                constitution_violations=host._constitution_guard.violations,
-                workspace_root=host.workspace_root,
-                thresholds=cfg.certificate_thresholds,
-                max_trades=int(cfg.curriculum.runway_micro_oos_max_trades),
-            )
-            baseline_oos_wr = float(baseline_probe.get("oos_winrate", 0.0) or 0.0)
-            write_birth_progress(
-                host.workspace_root,
-                stage="training_running",
-                phase="runway_micro_oos",
-                message=(
-                    f"Pre-runway micro-OOS baseline WR {baseline_oos_wr:.1%} "
-                    f"(birth exit {birth_exit_wr:.1%})"
-                ),
-                progress_pct=79.0,
-                cumulative_trades=host.cumulative_trades,
-                target_trades=cfg.trade_budget_cap,
-                micro_oos_probe=baseline_probe,
-                birth_exit_winrate=birth_exit_wr,
-            )
-        runway_error = host._run_certificate_runway_stages(
-            split=split,
-            validation_ticks=list(val_split.validation),
-            train_core_ticks=list(val_split.train_core),
-            training_mode=training_mode,
-            ppo_steps_per_update=curriculum_timesteps,
-            trade_budget_cap=cfg.trade_budget_cap,
-            prefer_real=prefer_real,
-            start_price=start_price,
-            baseline_oos_winrate=baseline_oos_wr,
-            birth_exit_winrate=birth_exit_wr,
-        )
-        if runway_error is not None:
-            return runway_error
-
-    if practice_mode:
-        polish_scorecard = build_scorecard_payload(
-            stage=CurriculumStage.STAGE4_POLISH,
-            curriculum_index=4,
-            stages_passed=list(host._stages_passed),
-            stage_trades=0,
-            stage_wins=0,
-            stage_hold_signals=0,
-            stage_total_signals=0,
-            constitution_violations=host._constitution_guard.violations,
-            target_trades=0,
-            phase="ppo_polish",
-            patterns_mined=0,
-            learning_attempt=0,
-            cfg=cfg.curriculum,
-        )
-        write_birth_progress(
-            host.workspace_root,
-            stage="ppo_training",
-            phase="ppo_polish",
-            message="Final PPO polish (practice).",
-            progress_pct=85.0,
-            cumulative_trades=host.cumulative_trades,
-            target_trades=cfg.trade_budget_cap,
-            ppo_steps=host.ppo_steps,
-            birth_start_time=host.birth_start_time,
-            curriculum_stage=CurriculumStage.STAGE4_POLISH.value,
-            **polish_scorecard,
-        )
-        polish_steps = cfg.curriculum.polish_ppo_timesteps
-        if len(host.buffer) >= 256:
-            host.ppo_trainer.final_birth_polish(host.buffer)
-            host.ppo_steps += polish_steps
-        else:
-            polish_batch = min(polish_steps, 10_000)
-            host.ppo_trainer.update_from_buffer(
-                buffer=host.buffer,
-                timesteps=polish_batch,
-                birth_phase=True,
-            )
-            host.ppo_steps += polish_batch
-        target_policy = host.practice_policy_path
-        host.ppo_trainer.save_final_birth_policy(str(target_policy))
-        host.practice_completed_flag_path.write_text(
-            datetime.now(timezone.utc).isoformat(), encoding="utf-8"
-        )
-        clear_checkpoint(host.workspace_root)
-        clear_buffer(host.workspace_root)
-        write_birth_progress(
-            host.workspace_root,
-            stage="practice_completed",
-            phase="practice_completed",
-            message="Practice Birth voltooid (geen certificate).",
-            progress_pct=100.0,
-            cumulative_trades=host.cumulative_trades,
-            target_trades=cfg.trade_budget_cap,
-            birth_start_time=host.birth_start_time,
-        )
-        from lumina_core.notifications.milestone_events import practice_birth_completed_event
-
-        host._notify_milestone(
-            practice_birth_completed_event(
-                cumulative_trades=host.cumulative_trades,
-                ppo_steps=host.ppo_steps,
-                policy_path=str(target_policy),
-            )
-        )
-        return {
-            "status": "practice_completed",
-            "total_trades": host.cumulative_trades,
-            "ppo_steps": host.ppo_steps,
-            "real_data_pct": host._real_data_pct,
-            "policy_path": str(target_policy),
-            "training_mode": "practice",
-        }
-
-    return host._run_stage8_polish_and_certificate(
-        split=split,
+    return complete_foundation_birth(
+        host,
         training_mode=training_mode,
-        ppo_steps_per_update=ppo_steps_per_update,
         trade_budget_cap=cfg.trade_budget_cap,
-        prefer_real=prefer_real,
-        start_price=start_price,
+        practice_mode=practice_mode,
     )

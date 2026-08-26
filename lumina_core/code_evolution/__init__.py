@@ -39,6 +39,14 @@ from lumina_core.code_evolution.proposal import (
     CodeMutationProposal,
     CodeSandboxEvalResult,
 )
+from lumina_core.code_evolution.runtime_overlay import (
+    OverlaySnapshot,
+    bind_overlay_to_engine,
+    effective_min_confluence,
+    empty_overlay,
+    load_overlay,
+)
+from lumina_core.code_evolution.runtime_role import CHALLENGER, CHAMPION
 
 __all__ = [
     "ALLOWED_TARGETS",
@@ -54,6 +62,13 @@ __all__ = [
     "CodeMutationOperator",
     "CodeMutationProposal",
     "CodeSandboxEvalResult",
+    "OverlaySnapshot",
+    "CHALLENGER",
+    "CHAMPION",
     "default_param_snapshot",
+    "effective_min_confluence",
+    "empty_overlay",
+    "bind_overlay_to_engine",
+    "load_overlay",
     "run_code_evolution_dry_cycle",
 ]

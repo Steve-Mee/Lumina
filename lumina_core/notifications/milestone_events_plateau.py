@@ -51,20 +51,30 @@ def plateau_entered_event(
     *,
     stage_trades: int,
     winrate: float,
-    pass_target: float,
+    pass_target: float | None = None,
+    pass_label: str | None = None,
 ) -> MilestoneEvent:
+    if pass_label:
+        target_txt = str(pass_label)
+        target_ctx = str(pass_label)
+    elif pass_target is not None and 0.0 < float(pass_target) < 1.0:
+        target_txt = f"target {float(pass_target):.0%}"
+        target_ctx = f"{float(pass_target):.0%}"
+    else:
+        target_txt = "process-R / net RR / settlement (WR is not a pass gate)"
+        target_ctx = "foundation_process"
     return MilestoneEvent(
         milestone_id="plateau_entered",
         category=MilestoneCategory.BIRTH,
         title="Learning plateau detected",
         summary=(
             f"Plateau entered at {stage_trades:,} trades, winrate {winrate:.1%} "
-            f"(target {pass_target:.0%}). Evolution ladder starting."
+            f"({target_txt}). Evolution ladder starting."
         ),
         context={
             "trades": int(stage_trades),
             "winrate": f"{winrate:.1%}",
-            "pass_target": f"{pass_target:.0%}",
+            "pass_target": target_ctx,
         },
     )
 

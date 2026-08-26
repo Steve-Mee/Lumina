@@ -1,5 +1,7 @@
 # ADR-0026: Post-Birth Evolution Proof Gate
 
+> **Supersession (2026-08-14):** Birth Foundation no longer uses a WR 35–45% curriculum pass ([ADR-0046](./0046-birth-foundation-evolvable-plant.md)). Evolution Proof remains an **Awakening / post-Birth** wall. Certificate OOS ≥48% remains Proving Ground — not Birth exit.
+
 ## Status
 
 Accepted (2026-06-27)
@@ -24,7 +26,7 @@ Implementation SSOT: [`lumina_core/birth/evolution_proof_gate.py`](../../lumina_
 
 - Evaluated at certificate issue via `record_and_evaluate_at_certificate()`.
 - Persisted to `state/lumina_evolution_proof.json`.
-- `evolution_proof_passed()` returns **True** when no record exists (grandfather pre-ADR births).
+- `evolution_proof_passed()` returns **False** when no record exists (fail-closed). Legacy grandfather is opt-in via `birth_v2.curriculum.evolution_proof_grandfather_missing` or `allow_legacy_grandfather=True`.
 - [`lumina_launcher/services/birth_service.py`](../../lumina_launcher/services/birth_service.py): `artifacts_ok()` and `real_trading_eligible()` require evolution proof pass.
 
 Config under `birth_v2.curriculum.evolution_proof_*`.
@@ -34,7 +36,7 @@ Config under `birth_v2.curriculum.evolution_proof_*`.
 - Positive: Lower birth gate (35%) no longer implies REAL eligibility; operator must see measurable evolution.
 - Positive: Fail-closed REAL launcher; constitution and certificate gates unchanged.
 - Negative: Additional polish/OOS data required before REAL — may extend post-birth refinement window.
-- Negative: Legacy runs without proof file remain eligible until re-certified (intentional grandfather).
+- Negative: Legacy runs without a proof file are **not** REAL-eligible unless `evolution_proof_grandfather_missing` is explicitly enabled.
 
 ## Related ADRs
 

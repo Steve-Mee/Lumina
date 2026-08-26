@@ -3,29 +3,27 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const birthSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../components/birth/BirthHelixVisual.tsx"),
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+const birthSource = readFileSync(join(root, "components/birth/BirthHelixVisual.tsx"), "utf8");
+const ceremonySource = readFileSync(
+  join(root, "components/birth/BirthHelixCeremonyScene.tsx"),
   "utf8",
 );
-const coreSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../components/LivingCore.tsx"),
-  "utf8",
-);
+const scenesSource = readFileSync(join(root, "components/birth/BirthHelixScenes.tsx"), "utf8");
+const coreSource = readFileSync(join(root, "components/LivingCore.tsx"), "utf8");
 const evolutionSceneSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../components/evolution/EvolutionForceGraphScene.tsx"),
+  join(root, "components/evolution/EvolutionForceGraphScene.tsx"),
   "utf8",
 );
-const primitivesSource = readFileSync(
-  join(dirname(fileURLToPath(import.meta.url)), "../components/three/helixPrimitives.tsx"),
-  "utf8",
-);
+const primitivesSource = readFileSync(join(root, "components/three/helixPrimitives.tsx"), "utf8");
 
 describe("three scene identity", () => {
   it("BirthHelix and LivingCore do not import each other's scene files", () => {
     expect(birthSource).not.toContain("LivingCoreScene");
-    expect(birthSource).not.toContain("from \"@/components/LivingCore\"");
+    expect(birthSource).not.toContain('from "@/components/LivingCore"');
     expect(coreSource).not.toContain("BirthHelixScene");
-    expect(coreSource).not.toContain("from \"@/components/birth/BirthHelixVisual\"");
+    expect(coreSource).not.toContain('from "@/components/birth/BirthHelixVisual"');
   });
 
   it("shared primitives live in helixPrimitives module", () => {
@@ -36,16 +34,17 @@ describe("three scene identity", () => {
 
   it("Birth helix uses quality tiers and ceremony DoubleHelixStrands", () => {
     expect(birthSource).toContain("helixTubeSegments");
-    expect(birthSource).toContain("DoubleHelixStrands");
-    expect(birthSource).toContain("CeremonyHelixScene");
-    expect(birthSource).toContain("createStrandGradientMaterial");
-    expect(birthSource).not.toMatch(/meshStandardMaterial[\s\S]*emissive/);
+    expect(birthSource).toContain("BirthHelixScene");
+    expect(scenesSource).toContain("CeremonyHelixScene");
+    expect(ceremonySource).toContain("DoubleHelixStrands");
+    // Gradient strand materials live in shared primitives; ceremony composes DoubleHelixStrands.
+    expect(primitivesSource).toContain("createStrandGradientMaterial");
+    expect(ceremonySource).not.toMatch(/meshStandardMaterial[\s\S]*emissive/);
   });
 
   it("Birth ceremony scene avoids DNA rung cylinders", () => {
-    const ceremonyBlock = birthSource.split("function CeremonyHelixScene")[0] ?? "";
-    expect(ceremonyBlock).toContain("DoubleHelixStrands");
-    expect(ceremonyBlock).not.toContain("cylinderGeometry");
+    expect(ceremonySource).toContain("DoubleHelixStrands");
+    expect(ceremonySource).not.toContain("cylinderGeometry");
   });
 
   it("Living Core uses dedicated halo animation class", () => {

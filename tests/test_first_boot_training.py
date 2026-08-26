@@ -133,7 +133,7 @@ def test_runtime_load_first_boot_config_preserves_requested_trades_within_bounds
     )
     cfg = runtime_entrypoint._load_first_boot_config()
     assert cfg["training_trades"] == normalize_first_boot_training_trades(155_000) == 155_000
-    assert cfg["max_real_days"] == 30
+    assert cfg["max_real_days"] == 90
     assert cfg["force_training"] is True
 
 

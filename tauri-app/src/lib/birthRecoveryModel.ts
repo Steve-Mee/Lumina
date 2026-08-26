@@ -106,7 +106,13 @@ export function detectBirthRecoveryKind(
   const stage = norm(status.progress.stage);
   const phase = norm(status.progress.phase);
 
-  if (stage === "history_unavailable" || phase === "loading_history_failed") {
+  if (
+    stage === "history_unavailable" ||
+    phase === "loading_history_failed" ||
+    norm(status.progress.attention_reason_code) === "history_unavailable" ||
+    norm(status.progress.attention_reason_code) === "history_unavailable_residual" ||
+    status.progress.residual_failure === true
+  ) {
     return "history_unavailable";
   }
   if (phase === "certificate_failed" || phase === "certificate_remediation") {

@@ -134,8 +134,30 @@ def record_and_evaluate_at_certificate(
     return result
 
 
-def evolution_proof_passed(workspace_root: Path | str) -> bool:
+def evolution_proof_passed(
+    workspace_root: Path | str,
+    *,
+    allow_legacy_grandfather: bool | None = None,
+) -> bool:
+    """True only when a persisted record exists and passed.
+
+    Missing file is fail-closed (False). Legacy grandfather is opt-in via
+    ``birth_v2.curriculum.evolution_proof_grandfather_missing`` or the
+    explicit ``allow_legacy_grandfather`` argument.
+    """
     record = load_evolution_proof_record(workspace_root)
     if not record:
-        return True
+        if allow_legacy_grandfather is None:
+            allow_legacy_grandfather = _legacy_grandfather_enabled(workspace_root)
+        return bool(allow_legacy_grandfather)
     return bool(record.get("passed"))
+
+
+def _legacy_grandfather_enabled(workspace_root: Path | str) -> bool:
+    try:
+        from lumina_core.birth.config import load_birth_v2_config
+
+        cur = load_birth_v2_config(Path(workspace_root)).curriculum
+        return bool(getattr(cur, "evolution_proof_grandfather_missing", False))
+    except Exception:
+        return False

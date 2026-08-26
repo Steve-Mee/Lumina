@@ -16,6 +16,13 @@ def curriculum_kwargs(cur_raw: dict[str, Any]) -> dict[str, Any]:
         stage1_trend_trades=_coerce_int(cur_raw.get("stage1_trend_trades"), 2000),
         stage2_range_trades=_coerce_int(cur_raw.get("stage2_range_trades"), 3000),
         stage3_mixed_trades=_coerce_int(cur_raw.get("stage3_mixed_trades"), 5000),
+        stage4_viable_trades=_coerce_int(cur_raw.get("stage4_viable_trades"), 800),
+        stage5_probe_trades=_coerce_int(cur_raw.get("stage5_probe_trades"), 200),
+        foundation_stage1_min_trades=_coerce_int(cur_raw.get("foundation_stage1_min_trades"), 150),
+        foundation_stage2_min_trades=_coerce_int(cur_raw.get("foundation_stage2_min_trades"), 250),
+        foundation_stage3_min_trades=_coerce_int(cur_raw.get("foundation_stage3_min_trades"), 400),
+        foundation_stage4_min_trades=_coerce_int(cur_raw.get("foundation_stage4_min_trades"), 100),
+        foundation_stage5_min_trades=_coerce_int(cur_raw.get("foundation_stage5_min_trades"), 50),
         stage_pass_trade_pct=max(
             0.05,
             min(1.0, _coerce_float(cur_raw.get("stage_pass_trade_pct"), 0.10)),

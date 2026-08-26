@@ -111,12 +111,15 @@ def maybe_auto_declare_perfect_birth(
     force_enabled: bool | None = None,
     kpis: PerfectBirthKpis | None = None,
 ) -> dict[str, Any]:
-    """If config enables auto-declare and conjunction passes, write flag+evidence.
+    """If conjunction + Fabric foundation bundle pass, write flag+evidence.
 
-    Fail-closed: default disabled. Never force. Never mutates Phase 2 flags / REAL.
+    Fail-closed: never force. Never mutates Phase 2 flags / REAL.
+    ``force_enabled=True`` is an explicit lab/test override (still conjunction-gated).
+    Production auto-declare also requires the ADR-0040 Fabric sidecar.
     """
     root = Path(workspace_root) if workspace_root else Path.cwd()
     enabled = force_enabled
+    skip_fabric = force_enabled is True
     thr = PerfectBirthThresholds()
     if curriculum_cfg is not None:
         thr = PerfectBirthThresholds.from_curriculum_cfg(curriculum_cfg)
@@ -132,11 +135,29 @@ def maybe_auto_declare_perfect_birth(
         except Exception:
             enabled = False
 
+    fabric: dict[str, Any] = {"ok": False, "reason": "not_checked"}
+    if not skip_fabric:
+        from lumina_core.birth.fabric_foundation_bundle import evaluate_fabric_foundation_bundle
+
+        fabric = evaluate_fabric_foundation_bundle(root)
+        # Production only: Fabric evidence can enable auto-declare. Explicit False stays off.
+        if fabric.get("ok") and force_enabled is None:
+            enabled = True
+
     if not enabled:
         return {
             "declared": False,
             "reason": "auto_declare_disabled",
             "passed": False,
+            "fabric_bundle": fabric,
+        }
+
+    if not skip_fabric and not fabric.get("ok"):
+        return {
+            "declared": False,
+            "reason": "fabric_foundation_bundle_incomplete",
+            "passed": False,
+            "fabric_bundle": fabric,
         }
 
     flag_path = root / DEFAULT_FLAG_REL
@@ -311,6 +332,8 @@ def declare_perfect_birth(
                 )
             except Exception as exc:
                 logger.debug("perfect_birth.maturity_hook_failed: %s", exc)
+        if result.passed:
+            _enable_sim_auto_evolve(root)
         logger.info(
             "perfect_birth.declared passed=%s forced=%s path=%s",
             result.passed,
@@ -335,6 +358,19 @@ def declare_perfect_birth(
         )
 
     return payload
+
+
+def _enable_sim_auto_evolve(workspace_root: Path) -> None:
+    """After Perfect Birth evidence: auto-advance SIM phases. REAL stays hub-confirm."""
+    try:
+        from lumina_core.maturity.continuum import load_continuum, set_advance_mode
+
+        mode = str(load_continuum(workspace_root).get("advance_mode") or "manual")
+        if mode in {"telegram", "auto_evolve"}:
+            return
+        set_advance_mode(workspace_root, "auto_evolve")
+    except Exception as exc:
+        logger.debug("perfect_birth.auto_evolve_skip: %s", exc)
 
 
 __all__ = [

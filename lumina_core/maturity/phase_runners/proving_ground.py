@@ -48,15 +48,36 @@ def run_proving_ground(workspace_root: Path | str) -> dict[str, Any]:
                     reason="insufficient_shadow_evidence",
                 )
 
-        write_phase_progress(root, "proving_ground", progress_pct=90.0, message="Evaluating exit proofs")
-        # Final milestone sync from audit
+        write_phase_progress(root, "proving_ground", progress_pct=90.0, message="Evaluating exit proofs + cert OOS walls")
         run_shadow_promotion_gate(root)
+        cert_gate: dict[str, Any] = {}
+        try:
+            from lumina_core.maturity.post_birth_skill_gates import (
+                certificate_oos_walls,
+                load_certificate_oos_fields,
+            )
+
+            fields = load_certificate_oos_fields(root)
+            cert = certificate_oos_walls(
+                oos_wr=fields.get("oos_wr"),
+                oos_sharpe=fields.get("oos_sharpe"),
+                max_dd_pct=fields.get("max_dd_pct"),
+            )
+            cert_gate = cert.to_dict()
+            write_phase_progress(
+                root,
+                "proving_ground",
+                learned={"certificate_oos_walls": cert_gate},
+            )
+        except Exception as exc:
+            cert_gate = {"error": str(exc)}
 
         result = finish_from_exit_eval(
             root,
             "proving_ground",
             default_proofs=["promotion_gate_passed"],
         )
+        result["certificate_oos_walls"] = cert_gate
         if result.get("ok"):
             write_phase_progress(root, "proving_ground", progress_pct=100.0, message="Proving Ground complete")
         else:

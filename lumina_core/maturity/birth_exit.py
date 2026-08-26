@@ -1,14 +1,7 @@
-"""H7: Birth exit policy vs post-birth maturation (ADR-0036).
+"""H7: Birth exit policy vs post-birth maturation (ADR-0036 + ADR-0046).
 
-Birth exit means the newborn *survived* the curriculum loop — not that it is a
-professional daytrader, Perfect Birth unlock, or REAL-eligible.
-
-Non-goals for Birth exit (must NOT block Birth→Hub):
-- Perfect Birth KPI conjunction / Phase 2 flag
-- Promotion gate / shadow validation
-- OOS WR ≥ 0.48 certificate skill walls (Proving Ground / cert pipeline)
-- READY_FOR_REAL multi-day streak
-- Twin high-conf primary / full_auto
+Birth exit means the plant is *evolvable* — five foundation receipts + fitness
+vector — not a professional daytrader, Perfect Birth, or REAL-eligible.
 """
 
 from __future__ import annotations
@@ -41,13 +34,11 @@ POST_BIRTH_ONLY_MILESTONES: frozenset[str] = frozenset(
     }
 )
 
-# Proofs that may complete Birth phase (any one sufficient when artifacts honest).
+# Proofs that must ALL hold for Birth phase exit (ADR-0046). Any-of artifacts is closed.
 BIRTH_EXIT_PROOFS: frozenset[str] = frozenset(
     {
-        "birth_curriculum_complete",  # stages + engine completed
-        "birth_artifacts_ok",  # DNA / checkpoint / completed flag
-        "birth_certificate_issued",  # cert issued (stronger; still not Perfect Birth)
-        "birth_started_with_artifacts",  # started + artifacts after crash recovery
+        "foundation_five_receipts_v2",
+        "foundation_fitness_vector",
     }
 )
 
@@ -111,9 +102,9 @@ def birth_exit_policy_dict() -> dict[str, Any]:
     """Operator-facing contract: what Birth exit is and is not."""
     return {
         "birth_exit_means": [
-            "survive_closed_training_loop",
+            "five_foundation_v2_receipts",
+            "fitness_vector_checksum_ok",
             "legal_plant_hard_const_ok",
-            "curriculum_or_artifacts_or_certificate",
             "return_to_phase_hub",
         ],
         "birth_exit_does_not_require": sorted(POST_BIRTH_ONLY_MILESTONES)
@@ -123,20 +114,17 @@ def birth_exit_policy_dict() -> dict[str, Any]:
             "twin_full_auto",
             "real_capital",
         ],
-        "sufficient_proofs_any_of": sorted(BIRTH_EXIT_PROOFS),
-        "survival_vs_skill": {
-            "birth_default": "survival",
-            "survival_wr_floor": DEFAULT_SURVIVAL_WR_FLOOR,
-            "skill_wr_floor_when_survival_off": DEFAULT_SKILL_WR_FLOOR,
-            "proving_oos_wr_not_birth_exit": PROVING_OOS_WR_EXAMPLE,
-        },
         "after_birth": {
             "surface": "phase_hub",
             "next_phase": MaturationPhase.AWAKENING.value,
             "perfect_birth": "awakening_or_phase2_unlock_not_birth_gate",
             "certificate_skill_walls": "proving_ground_and_cert_pipeline",
+            "economic_viability": "playground",
+            "risk_discipline": "apprenticeship",
+            "evolution_proof": "awakening",
         },
-        "adr": "0036-birth-exit-vs-maturation",
+        "adr": ["0036-birth-exit-vs-maturation", "0046-birth-foundation-evolvable-plant"],
+        "sufficient_proofs_all_of": sorted(BIRTH_EXIT_PROOFS),
     }
 
 
@@ -189,61 +177,85 @@ def effective_stage1_floors(cfg: Any | None = None) -> dict[str, Any]:
 
 
 def collect_birth_exit_proofs(workspace_root: Path | str) -> tuple[list[str], dict[str, Any]]:
-    """Inspect workspace for Birth exit evidence (fail-closed best-effort)."""
+    """Foundation exit: five v2 receipts + fitness vector. Artifacts-only is not enough."""
     root = Path(workspace_root)
     proofs: list[str] = []
     detail: dict[str, Any] = {}
 
-    progress = load_maturation_progress(root)
-    reached = set(progress.milestones_reached)
-    detail["milestones"] = sorted(reached)
+    from lumina_core.birth.config import BirthCurriculumConfig
+    from lumina_core.birth.curriculum_types import ordered_stages
+    from lumina_core.birth.fitness_vector import load_fitness_vector, receipt_checksum
+    from lumina_core.birth.foundation_metrics import FOUNDATION_SCHEMA
+    from lumina_core.birth.progress import read_birth_progress
+    from lumina_core.birth.stage_pass_receipt_types import (
+        parse_stage_pass_receipts,
+        receipt_for_stage,
+    )
 
-    if "birth_certificate_issued" in reached:
-        proofs.append("birth_certificate_issued")
+    progress = read_birth_progress(root)
+    receipts = parse_stage_pass_receipts(progress.get("stage_pass_receipts"))
+    if not receipts:
+        ckpt = root / "state" / "lumina_birth_checkpoint.json"
+        if ckpt.is_file():
+            try:
+                import json
 
-    # Artifacts: BirthService when available, always OR filesystem probes (tmp/tests)
-    artifacts_ok = False
-    certificate_ok = False
-    engine_completed = False
+                raw = json.loads(ckpt.read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    receipts = parse_stage_pass_receipts(raw.get("stage_pass_receipts"))
+            except (OSError, ValueError):
+                receipts = []
+
+    required = [s.value for s in ordered_stages()]
+    missing_stages: list[str] = []
+    cfg = BirthCurriculumConfig()
     try:
-        from lumina_launcher.services.birth_service import BirthService
+        from lumina_core.birth.config import load_birth_v2_config
 
-        svc = BirthService()
-        svc.configure_workspace(root)
-        artifacts_ok = bool(svc.artifacts_ok())
-        certificate_ok = bool(svc.certificate_ok())
-        engine_completed = bool(svc.is_completed())
-    except Exception as exc:
-        logger.debug("birth_exit.birth_service_probe_failed: %s", exc)
+        cfg = load_birth_v2_config(root).curriculum
+    except Exception:
+        cfg = BirthCurriculumConfig()
+    from lumina_core.birth.curriculum_types import CurriculumStage
+    from lumina_core.birth.stage_pass_receipt_verify import verify_stage_pass_receipt
 
-    fs_artifacts = _fs_birth_artifacts(root)
-    fs_certificate = (root / "state" / "birth_certificate.json").is_file() or (
-        root / "state" / "lumina_birth_certificate.json"
-    ).is_file()
-    fs_completed = (root / "state" / "lumina_birth_completed.flag").is_file()
-    artifacts_ok = artifacts_ok or fs_artifacts
-    certificate_ok = certificate_ok or fs_certificate
-    engine_completed = engine_completed or fs_completed
+    for stage_value in required:
+        rec = receipt_for_stage(receipts, stage_value)
+        if rec is None or str(getattr(rec, "schema", "") or "") != FOUNDATION_SCHEMA:
+            missing_stages.append(stage_value)
+            continue
+        stage_enum = CurriculumStage(stage_value)
+        ok, reason = verify_stage_pass_receipt(
+            stage_enum,
+            rec,
+            cfg=cfg,
+            training_mode="certified",
+        )
+        if not ok:
+            missing_stages.append(stage_value)
+            detail.setdefault("receipt_verify_failures", {})[stage_value] = reason
+    detail["required_stages"] = required
+    detail["missing_foundation_stages"] = missing_stages
+    if not missing_stages:
+        proofs.append("foundation_five_receipts_v2")
 
-    detail["artifacts_ok"] = artifacts_ok
-    detail["certificate_ok"] = certificate_ok
-    detail["engine_completed"] = engine_completed
-    detail["fs_probes"] = {
-        "artifacts": fs_artifacts,
-        "certificate": fs_certificate,
-        "completed_flag": fs_completed,
-    }
+    vector = load_fitness_vector(root)
+    s5 = receipt_for_stage(receipts, "stage5_probe_handoff")
+    vector_ok = False
+    if vector is not None and s5 is not None:
+        expected = receipt_checksum(s5.to_dict())
+        vector_ok = str(vector.s5_receipt_checksum) == expected
+        detail["fitness_checksum_ok"] = vector_ok
+        detail["fitness_checksum"] = vector.s5_receipt_checksum
+        detail["s5_checksum"] = expected
+    else:
+        detail["fitness_vector_present"] = vector is not None
+        detail["s5_receipt_present"] = s5 is not None
+    if vector_ok:
+        proofs.append("foundation_fitness_vector")
 
-    if certificate_ok and "birth_certificate_issued" not in proofs:
-        proofs.append("birth_certificate_issued")
-    if artifacts_ok:
-        proofs.append("birth_artifacts_ok")
-    if engine_completed:
-        proofs.append("birth_curriculum_complete")
-    if "birth_started" in reached and artifacts_ok:
-        proofs.append("birth_started_with_artifacts")
+    detail["completed_flag"] = (root / "state" / "lumina_birth_completed.flag").is_file()
+    detail["artifacts_insufficient_alone"] = True
 
-    # De-dupe preserve order
     seen: set[str] = set()
     ordered: list[str] = []
     for p in proofs:
@@ -251,16 +263,6 @@ def collect_birth_exit_proofs(workspace_root: Path | str) -> tuple[list[str], di
             seen.add(p)
             ordered.append(p)
     return ordered, detail
-
-
-def _fs_birth_artifacts(root: Path) -> bool:
-    candidates = [
-        root / "state" / "lumina_birth_completed.flag",
-        root / "state" / "birth_checkpoint.json",
-        root / "state" / "partial_dna.json",
-        root / "state" / "lumina_partial_dna.json",
-    ]
-    return any(p.is_file() for p in candidates)
 
 
 def evaluate_birth_exit(
@@ -281,10 +283,10 @@ def evaluate_birth_exit(
     post = sorted(POST_BIRTH_ONLY_MILESTONES & reached)
 
     sufficient = [p for p in proofs if p in BIRTH_EXIT_PROOFS]
-    exited = len(sufficient) > 0
+    exited = set(BIRTH_EXIT_PROOFS).issubset(set(sufficient))
     missing: list[str] = []
     if not exited:
-        missing = ["birth_artifacts_or_certificate_or_curriculum_complete"]
+        missing = sorted(BIRTH_EXIT_PROOFS - set(sufficient))
 
     return BirthExitDecision(
         exited=exited,
@@ -334,7 +336,7 @@ def birth_exit_status_payload(
         "message": (
             "Birth exit satisfied — return to Phase Hub; next is Awakening."
             if decision.exited
-            else "Birth still in progress — survival loop / artifacts not yet sufficient."
+            else "Birth Foundation incomplete — need five v2 receipts + fitness vector."
         ),
     }
 

@@ -54,6 +54,9 @@ def prepare_birth_data_and_policy(
     resume_skip_load = data_prep.resume_skip_load
     _ = data_prep.resume_reenrich_only
 
+    reuse_manifest = bool(resume and host._data_manifest) or bool(
+        getattr(host, "_reuse_data_manifest", False) and host._data_manifest
+    )
     preflight_result = host._ensure_holdout_preflight(
         ticks=ticks,
         split=split,
@@ -61,8 +64,8 @@ def prepare_birth_data_and_policy(
         prefer_real=prefer_real,
         start_price=float(ticks[-1].get("last", 5000.0) or 5000.0) if ticks else 5000.0,
         training_mode=training_mode,
-        reuse_manifest=bool(resume and host._data_manifest),
-        saved_manifest=host._data_manifest if resume else None,
+        reuse_manifest=reuse_manifest,
+        saved_manifest=host._data_manifest if reuse_manifest else None,
     )
     if isinstance(preflight_result, dict):
         return BirthPhaseDataReady(ticks=[], split=None, start_price=0.0, early_return=preflight_result)

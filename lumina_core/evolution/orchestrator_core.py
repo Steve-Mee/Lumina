@@ -129,12 +129,23 @@ class EvolutionOrchestrator(OrchestratorGenerationMixin, OrchestratorPromotionMi
         """Create MultiDaySimRunner with real-market and true-backtest modes when configured."""
         evolution_cfg = ConfigLoader.section("evolution", default={}) or {}
         mw_cfg = evolution_cfg.get("multiweek_fitness", {}) if isinstance(evolution_cfg, dict) else {}
-        use_real_data = bool(mw_cfg.get("use_real_market_data", False)) if isinstance(mw_cfg, dict) else False
-        use_backtest_mode = bool(mw_cfg.get("backtest_mode", False)) if isinstance(mw_cfg, dict) else False
+        if not isinstance(mw_cfg, dict):
+            mw_cfg = {}
+        use_real_data = bool(mw_cfg.get("use_real_market_data", True))
+        use_backtest_mode = bool(
+            mw_cfg.get("backtest_mode", mw_cfg.get("true_backtest_mode", True))
+        )
 
         market_data_service = self._market_data_service if use_real_data else None
         if use_real_data and market_data_service is None:
-            logger.warning("[EVOLUTION] real_market_data enabled but market_data_service unavailable")
+            try:
+                from lumina_core.evolution.fitness_ssot import birth_tick_cache_mds
+
+                market_data_service = birth_tick_cache_mds(Path.cwd())
+            except Exception:
+                market_data_service = None
+            if market_data_service is None:
+                logger.warning("[EVOLUTION] real_market_data enabled but market_data_service unavailable")
 
         return MultiDaySimRunner(
             max_workers=8,

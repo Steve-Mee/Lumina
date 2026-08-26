@@ -33,8 +33,17 @@ export function resolveBirthSurface(
   if (payload.live === true || isBirthEngineActive(payload)) {
     return "running";
   }
-  if (uiPhase === "certificate_failed" || uiPhase === "stage_stalled" || uiPhase === "error") {
+  // Interrupted / paused always lands on Genesis decision — not recovery orphan surface.
+  // (live/engine-active already ruled out above; re-checking them is a TS dead branch.)
+  if (isBirthInterrupted(payload)) {
+    return "genesis";
+  }
+  if (uiPhase === "certificate_failed" || uiPhase === "stage_stalled") {
     return "recovery";
+  }
+  // Hard error without live engine: recovery overlays mount on genesis branch via operator mode.
+  if (uiPhase === "error") {
+    return "genesis";
   }
   if (uiPhase === "finale") {
     return "running";

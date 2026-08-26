@@ -69,10 +69,14 @@ export const useBirthUiStore = create<BirthUiState>((set, get) => ({
   setWipeConfirmStep: (step) => set({ wipeConfirmStep: step }),
 
   closeWipeConfirm: () => {
-    if (get().wipeConfirmWiping) {
-      return;
-    }
-    set({ wipeConfirmStep: 0, wipeConfirmError: null, wipeConfirmKind: "reset" });
+    // Always allow dismiss — if a wipe is mid-flight, clear wiping flag so the
+    // dialog cannot soft-lock after a hung request.
+    set({
+      wipeConfirmStep: 0,
+      wipeConfirmError: null,
+      wipeConfirmKind: "reset",
+      wipeConfirmWiping: false,
+    });
   },
 
   setWipeConfirmWiping: (wiping) => set({ wipeConfirmWiping: wiping }),

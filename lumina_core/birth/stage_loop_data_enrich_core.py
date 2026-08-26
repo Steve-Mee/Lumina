@@ -148,7 +148,9 @@ class StageLoopDataEnrichMixinCore:
                     gate_rolling_winrate,
                 )
 
-                window = int(getattr(self.cur_cfg, "stage1_rolling_pass_window", 500) or 500)
+                from lumina_core.birth.plateau_rolling import stage_rolling_pass_window
+
+                window = stage_rolling_pass_window(self.cur_cfg, self.stage)
                 chunks = getattr(self, "rolling_trade_chunks", None)
                 wins_at = getattr(self, "wins_at_trade_milestones", None) or {}
                 if not isinstance(wins_at, dict):
@@ -181,11 +183,38 @@ class StageLoopDataEnrichMixinCore:
                 total_pnl=total_pnl,
                 ppo_steps=ppo_steps,
                 rolling_winrate=roll_wr,
+                policy_trades=int(getattr(self, "stage_policy_trades", 0) or 0),
+                policy_wins=int(getattr(self, "stage_policy_wins", 0) or 0),
+                plant_trades=int(getattr(self, "stage_plant_trades", 0) or 0),
+                plant_wins=int(getattr(self, "stage_plant_wins", 0) or 0),
+                consecutive_rolling_pass_windows=int(
+                    getattr(self, "_stage2_rolling_pass_streak", 0) or 0
+                ),
+                closes_stop=int(getattr(self, "stage_closes_stop_cum", 0) or 0),
+                closes_target=int(getattr(self, "stage_closes_target_cum", 0) or 0),
+                closes_time_stop=int(getattr(self, "stage_closes_time_stop_cum", 0) or 0),
+                closes_flatten=int(getattr(self, "stage_closes_flatten_cum", 0) or 0),
+                closes_unknown=int(getattr(self, "stage_closes_unknown_cum", 0) or 0),
             )
             return float(edge.score)
         if self.stage == CurriculumStage.STAGE3_MIXED and bool(
             getattr(self.cur_cfg, "stage3_edgescore_enabled", False)
         ):
+            flat_s3 = float(self.stage_range_flat_bars) / float(
+                max(1, self.stage_range_total_signals)
+            )
+            roll_s3 = None
+            try:
+                wr, src, cov = self._rolling_winrate_meta()
+                from lumina_core.birth.starship_edgescore_core import gate_rolling_winrate
+                from lumina_core.birth.plateau_rolling import stage_rolling_pass_window
+
+                window = stage_rolling_pass_window(self.cur_cfg, self.stage)
+                roll_s3 = gate_rolling_winrate(
+                    rolling_wr=float(wr), source=str(src), covered=int(cov), window=window
+                )
+            except Exception:
+                roll_s3 = None
             edge = evaluate_stage3_edgescore(
                 trades=self.stage_trades,
                 wins=self.stage_wins,
@@ -197,6 +226,20 @@ class StageLoopDataEnrichMixinCore:
                 entropy=entropy,
                 total_pnl=total_pnl,
                 ppo_steps=ppo_steps,
+                hold_ratio=float(self.stage_hold_signals)
+                / float(max(1, self.stage_total_signals)),
+                rolling_winrate=roll_s3,
+                range_flat_ratio=flat_s3,
+                range_total_signals=int(self.stage_range_total_signals),
+                consecutive_rolling_pass_windows=int(
+                    getattr(self, "_stage2_rolling_pass_streak", 0) or 0
+                ),
+                range_round_trips=int(self.stage_range_round_trips),
+                closes_stop=int(getattr(self, "stage_closes_stop_cum", 0) or 0),
+                closes_target=int(getattr(self, "stage_closes_target_cum", 0) or 0),
+                closes_time_stop=int(getattr(self, "stage_closes_time_stop_cum", 0) or 0),
+                closes_flatten=int(getattr(self, "stage_closes_flatten_cum", 0) or 0),
+                closes_unknown=int(getattr(self, "stage_closes_unknown_cum", 0) or 0),
             )
             return float(edge.score)
         edge = evaluate_stage1_edgescore(
@@ -285,9 +328,14 @@ class StageLoopDataEnrichMixinCore:
             should_brake_recovery_no_lift,
         )
 
+        evo_max = self._evolution_max_steps()
         no_lift = (
-            should_brake_recovery_no_lift(self.plateau_state)
-            or should_block_phoenix_no_lift(self.plateau_state)
+            should_brake_recovery_no_lift(
+                self.plateau_state, max_steps=evo_max, stage=self.stage
+            )
+            or should_block_phoenix_no_lift(
+                self.plateau_state, max_steps=evo_max, stage=self.stage
+            )
             or bool(getattr(self, "swarm_rejected_no_lift", False))
         )
         hard_stop = bool(getattr(self, "_hard_stop_terminal_armed", False))

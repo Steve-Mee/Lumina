@@ -5,9 +5,9 @@ using Lumina.Execution.V1;
 namespace Lumina.Execution.Fabric.Execution
 {
     /// <summary>
-    /// Live NinjaTrader Account order gateway skeleton (PR-E).
-    /// Fail-closed until a real NT Account handle is bound via <see cref="BindAccount"/>.
-    /// Phase PR-E does not call NT APIs yet — bind is the extension point for PR-F / NT wiring.
+    /// Fail-closed NT gateway placeholder used only when Fabric runs <em>outside</em>
+    /// NinjaTrader (wrong host). Real Sim101/live book lives in
+    /// <c>NtAccountOrderGateway</c> (Lumina.Fabric.NtBridge AddOn).
     /// </summary>
     public sealed class NtOrderGateway : IOrderGateway
     {
@@ -41,7 +41,8 @@ namespace Lumina.Execution.Fabric.Execution
         }
 
         /// <summary>
-        /// Bind a NinjaTrader Account (or adapter) instance. Until bound, all orders reject fail-closed.
+        /// Bind marker only — does not enable NT API calls in this assembly (no NinjaTrader.Core).
+        /// Use NtAccountOrderGateway inside the NT process for real execution.
         /// </summary>
         public void BindAccount(object account, string? accountName = null)
         {
@@ -65,7 +66,6 @@ namespace Lumina.Execution.Fabric.Execution
 
         public AccountMetrics GetAccountMetrics()
         {
-            // Live snapshot requires NT Account — return empty fail-safe metrics when unbound.
             return new AccountMetrics
             {
                 AccountName = AccountName,
@@ -110,14 +110,13 @@ namespace Lumina.Execution.Fabric.Execution
 
         public IReadOnlyList<OrderEvent> CancelNonProtected(string reason)
         {
-            // No working book when unbound.
             return Array.Empty<OrderEvent>();
         }
 
         private string NotBoundReason()
         {
             return IsBound
-                ? "nt_gateway_not_implemented"
+                ? "nt_gateway_requires_nt_process"
                 : "nt_account_not_bound";
         }
 

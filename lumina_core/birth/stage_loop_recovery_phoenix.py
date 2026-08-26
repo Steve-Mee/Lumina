@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from lumina_core.birth.curriculum_types import filter_ticks_for_stage
+from lumina_core.birth.foundation_stages import refresh_fail_closed_ticks_after_data_change
 from lumina_core.birth.plateau_terminal_traps import (
     should_block_phoenix_no_lift,
     should_brake_recovery_no_lift,
@@ -38,8 +38,11 @@ class StageLoopRecoveryPhoenixMixin:
                 ),
             )
             return False
-        if should_brake_recovery_no_lift(self.plateau_state) or should_block_phoenix_no_lift(
-            self.plateau_state
+        evo_max = self._evolution_max_steps()
+        if should_brake_recovery_no_lift(
+            self.plateau_state, max_steps=evo_max, stage=self.stage
+        ) or should_block_phoenix_no_lift(
+            self.plateau_state, max_steps=evo_max, stage=self.stage
         ):
             logger.warning(
                 "birth.phoenix.in_loop blocked_no_lift cycles=%s best=%.2f%%",
@@ -68,6 +71,39 @@ class StageLoopRecoveryPhoenixMixin:
                 return True
             logger.warning("birth.phoenix.blocked_awaiting_swarm stall=%s", stall_reason)
             return False
+        # P1: peak protect — do not phoenix-burn a truthful Stage-2 peak.
+        try:
+            from lumina_core.birth.curriculum import CurriculumStage
+            from lumina_core.birth.stage2_peak_capture import should_block_phoenix_for_peak
+
+            if self.stage == CurriculumStage.STAGE2_RANGE:
+                peak_st = getattr(self, "stage2_peak_state", None)
+                if peak_st is not None:
+                    block_ph, ph_reason = should_block_phoenix_for_peak(
+                        peak_st, cfg=self.cur_cfg
+                    )
+                    if block_ph:
+                        peak_st.phoenix_blocked_reason = str(ph_reason or "peak_protect")
+                        logger.warning(
+                            "birth.phoenix.blocked_peak_protect reason=%s peak_wr=%.2f%% "
+                            "restores=%s quality_rollouts=%s stall=%s",
+                            ph_reason,
+                            float(peak_st.peak_winrate) * 100.0,
+                            int(peak_st.restore_count),
+                            int(peak_st.quality_rollouts_since_restore),
+                            stall_reason,
+                        )
+                        self._write_progress(
+                            phase="stage_stalled",
+                            message=(
+                                f"Peak protect: phoenix blocked ({ph_reason}); "
+                                f"peak_wr={float(peak_st.peak_winrate):.1%} — "
+                                "restore/quality first, floors unchanged"
+                            ),
+                        )
+                        return False
+        except Exception as peak_ph_exc:
+            logger.debug("birth.phoenix.peak_gate_failed: %s", peak_ph_exc)
         if self._maybe_entropy_life_support():
             return True
         patch = self.bus.phoenix_begin_cycle(
@@ -127,7 +163,16 @@ class StageLoopRecoveryPhoenixMixin:
             )
             if filtered:
                 self.active_train = list(filtered)
-                self.active_stage_ticks = filter_ticks_for_stage(self.stage, self.active_train)
+                val_pct = float(
+                    getattr(self.cur_cfg, "certificate_runway_validation_pct", 0.20) or 0.20
+                )
+                self.stage_ticks, self.active_stage_ticks = refresh_fail_closed_ticks_after_data_change(
+                    self.stage,
+                    train_ticks=self.active_train,
+                    previous_stage_ticks=getattr(self, "stage_ticks", None),
+                    holdout_ticks=getattr(self, "holdout_ticks", None),
+                    validation_pct=val_pct,
+                )
             detail = "regime-diverse train slice applied"
         elif action == StallRemediationAction.META_SWEEP:
             self.remediation_state.meta_sweep_index += 1

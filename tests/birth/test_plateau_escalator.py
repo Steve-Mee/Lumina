@@ -138,7 +138,7 @@ def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
     wr_floor = float(getattr(cfg, "stage3_winrate_floor", 0.35))
     if bool(getattr(cfg, "stage3_edgescore_enabled", True)):
         assert criteria.metric_target is None
-        assert criteria.id == "mixed_edgescore"
+        assert criteria.id in {"mixed_regimes", "mixed_edgescore"}
     else:
         assert criteria.metric_target == pytest.approx(wr_floor)
     assert learning_target == pytest.approx(0.45)
@@ -148,6 +148,15 @@ def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
         pass_metric_target=learning_target,
         velocity_stall=True,
         cfg=cfg,
+        range_flat_ratio=0.90,
+    )
+    assert not detect_hold_trap(
+        hold_ratio=0.80,
+        winrate=0.34,
+        pass_metric_target=learning_target,
+        velocity_stall=True,
+        cfg=cfg,
+        range_flat_ratio=0.32,
     )
     # Pass-floor target (0.35) with gap 0.10 needs wr < 0.25 — 0.34 does not trip.
     assert not detect_hold_trap(
@@ -157,6 +166,37 @@ def test_detect_hold_trap_stage3_learning_target_not_zero() -> None:
         velocity_stall=True,
         cfg=cfg,
     )
+
+
+@pytest.mark.unit
+def test_occupancy_pin_does_not_recommend_explore_boost_anti_hold() -> None:
+    """PID 19776: 93% HOLD at flat 0.2996 is envelope geometry, not a freeze trap."""
+    cfg = _cfg()
+    state = PlateauState(active=True)
+    audit = build_plateau_audit(
+        state,
+        stage_trades=1168,
+        required=300,
+        cfg=cfg,
+        progress={
+            "curriculum_stage": "stage2_range",
+            "stage_winrate": 0.3112,
+            "stage_hold_ratio": 0.933,
+            "pass_metric_target": 0.45,
+            "velocity_stall_attempts": 66,
+            "stage_range_flat_ratio": 0.2996,
+            "occupancy_control_flat": 0.2996,
+            "participation_last_mode": "FORCE_HOLD",
+            "stage_range_round_trips": 1168,
+            "stage_range_total_signals": 35193,
+            "stage_blocker_metric": "expectancy",
+            "stage_blocker_value": -0.185,
+            "rolling_winrate_500": 0.301667,
+            "expectancy_quality_step": 4,
+        },
+    )
+    assert audit["hold_trap_detected"] is False
+    assert audit["recommended_recovery_action"] != "explore_boost_anti_hold"
 
 
 @pytest.mark.unit

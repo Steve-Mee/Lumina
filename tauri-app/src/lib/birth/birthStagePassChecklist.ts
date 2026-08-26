@@ -1,9 +1,8 @@
 /**
- * Single-source stage pass checklist — gates vs skill diagnostics.
+ * Stage pass checklist — HUD must match engine `evaluate_foundation_pass`.
  *
- * Birth survival (ADR-0036): stage pass uses survival floors (e.g. WR ≥20%,
- * expectancy ≥ −50%). Skill floors (WR ≥35%, expectancy ≥ −15%) are maturation
- * targets — shown as "skill later", never as red fail gates.
+ * Gates are process-R, occupancy, settlement, first-touch edge — never WR 20/35/40.
+ * Rolling WR is diagnostic only. If HUD ≠ engine, HUD is wrong.
  */
 
 import type { BirthProgressPayload } from "@/lib/birthClient";
@@ -17,6 +16,13 @@ import {
 /** gate = must clear to pass stage; skill = diagnostic / later maturation */
 export type StageRequirementKind = "gate" | "skill";
 
+/** Compound instrument rows (Life / Roll / Windows) — stacked in narrow cards. */
+export interface StagePassStat {
+  key: string;
+  value: string;
+  note?: string;
+}
+
 export interface StagePassRequirement {
   id: string;
   label: string;
@@ -27,6 +33,8 @@ export interface StagePassRequirement {
   tone: ConditionTone;
   met: boolean;
   kind: StageRequirementKind;
+  /** When set, the card stacks these instead of the long `current` string. */
+  stats?: StagePassStat[];
 }
 
 export interface StagePassChecklist {
@@ -46,7 +54,7 @@ export interface StagePassChecklist {
   skillTotalCount: number;
   /** Overall card tone from worst open *gate* only */
   overallTone: ConditionTone;
-  passMode: "survival" | "skill";
+  passMode: "process" | "skill";
 }
 
 function pct(v: number | null | undefined, digits = 0): string {
@@ -66,14 +74,11 @@ function worstTone(tones: ConditionTone[]): ConditionTone {
   return "default";
 }
 
-/** Survival Birth mode for stage-1 EdgeScore (backend birth_survival_pass_enabled). */
-function isSurvivalStage1(id: string, scorecard: StageScorecardModel): boolean {
-  if (id !== "trend_edgescore" && id !== "trend_winrate") return false;
-  // Backend progress hygiene_wr_floor is survival 0.20 when survival mode is on.
-  const floor = scorecard.hygieneWrFloor;
-  if (floor != null && Number.isFinite(floor) && floor <= 0.25 + 1e-9) return true;
-  // Default Birth: survival unless explicitly skill-gated elsewhere.
-  return true;
+/** Never paint a gate green unless it actually passed (PID 33628 sticky durable). */
+function gateTone(met: boolean, scored: ConditionTone): ConditionTone {
+  if (met) return "ok";
+  if (scored === "ok" || scored === "default") return "warn";
+  return scored;
 }
 
 function skillTone(met: boolean): ConditionTone {
@@ -103,33 +108,7 @@ function volumeReq(
     label: "Stage volume",
     current: gate > 0 ? `${num(done)} / ${num(gate)}` : num(done),
     need: gate > 0 ? `≥ ${num(gate)} trades` : "any trades",
-    tone: met ? "ok" : tone === "default" ? "warn" : tone,
-    met,
-    kind: "gate",
-  };
-}
-
-function hygieneGateReq(
-  scorecard: StageScorecardModel,
-  opts: { floor: number; label: string; id: string },
-): StagePassRequirement {
-  const { floor, label, id } = opts;
-  const value = scorecard.hygieneWrEffective ?? scorecard.hygieneWrLifetime;
-  const slope = scorecard.winrateTrendSlope;
-  const met = value != null && value >= floor;
-  const tone = resolveConditionTone({
-    value,
-    target: floor,
-    direction: "higher",
-    improving: slope == null ? null : slope > 0.00005,
-    criticalGap: 0.08,
-  });
-  return {
-    id,
-    label,
-    current: pct(value, 1),
-    need: `≥ ${pct(floor, 0)} (life or roll)`,
-    tone,
+    tone: gateTone(met, tone),
     met,
     kind: "gate",
   };
@@ -157,76 +136,44 @@ function hygieneSkillReq(
   };
 }
 
-function holdBandReq(
-  scorecard: StageScorecardModel,
+
+/** Match backend evaluate_settlement_honesty / settlement_progress_fields. */
+function settlementShareFromProgress(
   progress?: BirthProgressPayload,
-): StagePassRequirement {
-  const hold =
-    scorecard.stageHoldRatio ??
-    (progress?.stage_hold_ratio != null
-      ? Number(progress.stage_hold_ratio)
-      : progress?.hold_ratio != null
-        ? Number(progress.hold_ratio)
-        : null);
-  const min = 0.05;
-  const max = 0.85;
-  const met = hold != null && hold >= min && hold <= max;
-  const tone = resolveConditionTone({
-    value: hold,
-    min,
-    max,
-    direction: "band",
-    criticalGap: 0.1,
-  });
-  return {
-    id: "hold_band",
-    label: "Hold band",
-    current: pct(hold, 1),
-    need: `${pct(min, 0)}–${pct(max, 0)} hold`,
-    tone,
-    met,
-    kind: "gate",
-  };
+): number | null {
+  const direct = progress?.stage_settlement_share;
+  if (direct != null && Number.isFinite(Number(direct)) && Number(direct) >= 0) {
+    return Number(direct);
+  }
+  const stop = Number(progress?.stage_closes_stop_cum ?? 0);
+  const target = Number(progress?.stage_closes_target_cum ?? 0);
+  const timeStop = Number(progress?.stage_closes_time_stop_cum ?? 0);
+  const flatten = Number(progress?.stage_closes_flatten_cum ?? 0);
+  const unknown = Number(progress?.stage_closes_unknown_cum ?? 0);
+  if (![stop, target, timeStop, flatten, unknown].every((n) => Number.isFinite(n))) {
+    return null;
+  }
+  const decisive = Math.max(0, stop) + Math.max(0, target) + Math.max(0, timeStop);
+  const total = decisive + Math.max(0, flatten) + Math.max(0, unknown);
+  if (total <= 0) return null;
+  return decisive / total;
 }
 
-function flatBandReq(scorecard: StageScorecardModel): StagePassRequirement {
-  const flat = scorecard.stageRangeFlatRatio;
-  const min = scorecard.stageRangeFlatMin ?? 0.3;
-  const max = scorecard.stageRangeFlatMax ?? 0.7;
-  const met = flat != null && flat >= min && flat <= max;
+function settlementReq(progress?: BirthProgressPayload): StagePassRequirement {
+  const share = settlementShareFromProgress(progress);
+  const target = 0.7;
+  const met = share != null && share >= target;
   const tone = resolveConditionTone({
-    value: flat,
-    min,
-    max,
-    direction: "band",
-    criticalGap: 0.15,
+    value: share,
+    target,
+    direction: "higher",
+    criticalGap: 0.2,
   });
   return {
-    id: "flat_band",
-    label: "Position flat",
-    current: pct(flat, 1),
-    need: `${pct(min, 0)}–${pct(max, 0)} flat`,
-    tone,
-    met,
-    kind: "gate",
-  };
-}
-
-function holdCapReq(scorecard: StageScorecardModel): StagePassRequirement {
-  const hold = scorecard.stageHoldRatio;
-  const max = scorecard.stageHoldMax ?? 0.7;
-  const met = hold != null && hold <= max;
-  const tone = resolveConditionTone({
-    value: hold,
-    max,
-    direction: "lower",
-    criticalGap: 0.15,
-  });
-  return {
-    id: "hold_cap",
-    label: "Hold ratio",
-    current: pct(hold, 1),
-    need: `≤ ${pct(max, 0)}`,
+    id: "settlement",
+    label: "Settlement honesty",
+    current: pct(share, 0),
+    need: "≥ 70% stop/target/time-stop",
     tone,
     met,
     kind: "gate",
@@ -261,53 +208,6 @@ function entropyReq(progress?: BirthProgressPayload): StagePassRequirement {
   };
 }
 
-function expectancyGateReq(
-  progress: BirthProgressPayload | undefined,
-  opts: { floor: number; id: string; label: string },
-): StagePassRequirement {
-  const { floor, id, label } = opts;
-  const value =
-    progress?.expectancy_proxy != null && Number.isFinite(Number(progress.expectancy_proxy))
-      ? Number(progress.expectancy_proxy)
-      : null;
-  const met = value != null && value >= floor;
-  const tone = resolveConditionTone({
-    value,
-    target: floor,
-    direction: "higher",
-    criticalGap: 0.1,
-  });
-  const sign = value != null && value > 0 ? "+" : "";
-  return {
-    id,
-    label,
-    current: value == null ? "—" : `${sign}${(value * 100).toFixed(0)}%`,
-    need: `≥ ${(floor * 100).toFixed(0)}% (WR−50%)`,
-    tone,
-    met,
-    kind: "gate",
-  };
-}
-
-function expectancySkillReq(progress?: BirthProgressPayload): StagePassRequirement {
-  const value =
-    progress?.expectancy_proxy != null && Number.isFinite(Number(progress.expectancy_proxy))
-      ? Number(progress.expectancy_proxy)
-      : null;
-  const skillFloor = -0.15;
-  const met = value != null && value >= skillFloor;
-  const sign = value != null && value > 0 ? "+" : "";
-  return {
-    id: "expectancy_skill",
-    label: "Skill expectancy (later)",
-    current: value == null ? "—" : `${sign}${(value * 100).toFixed(0)}%`,
-    need: `≥ ${(skillFloor * 100).toFixed(0)}% pro floor`,
-    tone: skillTone(met),
-    met,
-    kind: "skill",
-  };
-}
-
 function constitutionReq(progress?: BirthProgressPayload): StagePassRequirement {
   const v = Number(progress?.constitution_violations ?? 0);
   const met = v <= 0;
@@ -322,21 +222,228 @@ function constitutionReq(progress?: BirthProgressPayload): StagePassRequirement 
   };
 }
 
-function missionForCriteria(id: string, survival: boolean): string {
-  switch (id) {
-    case "range_edgescore":
-    case "range_hold_ratio":
-    case "range_roundtrip":
-      return "Range patience — clear volume, stay in the flat band, keep entropy alive. WR skill floors come later.";
-    case "mixed_edgescore":
-    case "mixed_foundation":
-      return "Mixed regimes — volume, hygiene WR, hold under cap, entropy & expectancy healthy.";
-    case "trend_edgescore":
-    case "trend_winrate":
-    default:
-      return survival
-        ? "Trend survival — volume, survival WR, hold band, entropy, survival expectancy. Pro skill targets are diagnostic only."
-        : "Trend stage — volume, hygiene WR, hold band, entropy, expectancy skill floors.";
+function finiteOrNull(
+  ...candidates: Array<number | null | undefined>
+): number | null {
+  for (const v of candidates) {
+    if (v != null && Number.isFinite(Number(v))) return Number(v);
+  }
+  return null;
+}
+
+function processRReq(
+  scorecard: StageScorecardModel,
+  progress?: BirthProgressPayload,
+): StagePassRequirement {
+  const v = finiteOrNull(scorecard.medianLossR, progress?.median_loss_r);
+  const maxR = 1.5;
+  const met = v != null && v <= maxR + 1e-12;
+  const tone = resolveConditionTone({
+    value: v,
+    target: maxR,
+    direction: "lower",
+    criticalGap: 0.5,
+  });
+  return {
+    id: "process_r",
+    label: "Process-R (median loss)",
+    current: v == null ? "—" : `${v.toFixed(2)}R`,
+    need: `≤ ${maxR}R`,
+    tone: gateTone(met, tone),
+    met,
+    kind: "gate",
+  };
+}
+
+function occupancyReq(
+  scorecard: StageScorecardModel,
+  progress?: BirthProgressPayload,
+  lo = 0.3,
+  hi = 0.7,
+): StagePassRequirement {
+  const occ = finiteOrNull(
+    scorecard.occupancy,
+    progress?.occupancy,
+    scorecard.stageRangeFlatRatio,
+  );
+  const min = scorecard.stageRangeFlatMin ?? lo;
+  const max = scorecard.stageRangeFlatMax ?? hi;
+  const met = occ != null && occ >= min - 1e-12 && occ <= max + 1e-12;
+  const tone = resolveConditionTone({
+    value: occ,
+    min,
+    max,
+    direction: "band",
+    criticalGap: 0.15,
+  });
+  return {
+    id: "occupancy",
+    label: "Occupancy",
+    current: pct(occ, 0),
+    need: `${pct(min, 0)}–${pct(max, 0)} flat`,
+    tone: gateTone(met, tone),
+    met,
+    kind: "gate",
+  };
+}
+
+function edgeReq(
+  scorecard: StageScorecardModel,
+  progress: BirthProgressPayload | undefined,
+  floor: number,
+  label: string,
+): StagePassRequirement {
+  const v = finiteOrNull(scorecard.edgeVsFirstTouch, progress?.edge_vs_first_touch);
+  const met = v != null && v + 1e-12 >= floor;
+  const tone = resolveConditionTone({
+    value: v,
+    target: floor,
+    direction: "higher",
+    criticalGap: 0.05,
+  });
+  const pp = v == null ? "—" : `${(v * 100).toFixed(1)}pp`;
+  return {
+    id: "edge",
+    label,
+    current: pp,
+    need: `≥ ${(floor * 100).toFixed(0)}pp vs first-touch`,
+    tone: gateTone(met, tone),
+    met,
+    kind: "gate",
+  };
+}
+
+function netRrReq(progress?: BirthProgressPayload): StagePassRequirement {
+  const v = finiteOrNull(
+    progress?.geometry_net_rr,
+    progress?.geometry_net_rr_after_cost,
+  );
+  const floor = 0.8;
+  const met = v != null && v + 1e-12 >= floor;
+  const tone = resolveConditionTone({
+    value: v,
+    target: floor,
+    direction: "higher",
+    criticalGap: 0.2,
+  });
+  return {
+    id: "net_rr",
+    label: "Geometry net RR",
+    current: v == null ? "—" : v.toFixed(2),
+    need: `≥ ${floor.toFixed(2)}`,
+    tone: gateTone(met, tone),
+    met,
+    kind: "gate",
+  };
+}
+
+function meanRVsMechReq(
+  scorecard: StageScorecardModel,
+  progress?: BirthProgressPayload,
+): StagePassRequirement {
+  const meanR = finiteOrNull(scorecard.meanR, progress?.mean_r);
+  const eMech = finiteOrNull(progress?.e_mech);
+  const slack = 0.1;
+  const met =
+    meanR != null && eMech != null && meanR + 1e-12 >= eMech - slack;
+  const need = eMech == null ? "E_mech − 0.10" : `≥ ${(eMech - slack).toFixed(2)}R`;
+  return {
+    id: "mean_r",
+    label: "Mean R vs mechanical",
+    current: meanR == null ? "—" : `${meanR.toFixed(2)}R`,
+    need,
+    tone: met ? "ok" : meanR == null || eMech == null ? "warn" : "danger",
+    met,
+    kind: "gate",
+  };
+}
+
+function roundTripsReq(
+  scorecard: StageScorecardModel,
+  progress?: BirthProgressPayload,
+): StagePassRequirement {
+  const done = finiteOrNull(
+    scorecard.stageRangeRoundTrips,
+    progress?.stage_range_round_trips,
+  );
+  const gate = scorecard.stagePassGateTrades ?? scorecard.tradesRequired ?? 250;
+  const need = Math.max(3, Math.floor(gate / 10));
+  const met = done != null && done >= need;
+  return {
+    id: "round_trips",
+    label: "Round-trips",
+    current: done == null ? "—" : num(done),
+    need: `≥ ${num(need)}`,
+    tone: met ? "ok" : "warn",
+    met,
+    kind: "gate",
+  };
+}
+
+function sharpeReq(progress?: BirthProgressPayload): StagePassRequirement {
+  const v = finiteOrNull(progress?.oos_sharpe);
+  const floor = -2;
+  const met = v != null && v > floor;
+  return {
+    id: "oos_sharpe",
+    label: "Holdout Sharpe",
+    current: v == null ? "—" : v.toFixed(2),
+    need: `> ${floor}`,
+    tone: met ? "ok" : v == null ? "warn" : "danger",
+    met,
+    kind: "gate",
+  };
+}
+
+function ddReq(progress?: BirthProgressPayload): StagePassRequirement {
+  const v = finiteOrNull(progress?.oos_dd_pct);
+  const maxDd = 25;
+  const met = v != null && v <= maxDd + 1e-12;
+  return {
+    id: "oos_dd",
+    label: "Holdout drawdown",
+    current: v == null ? "—" : `${v.toFixed(1)}%`,
+    need: `≤ ${maxDd}% on $50k`,
+    tone: met ? "ok" : v == null ? "warn" : "danger",
+    met,
+    kind: "gate",
+  };
+}
+
+type FoundationFamily = "s1" | "s2" | "s3" | "s4" | "s5";
+
+function foundationFamily(id: string): FoundationFamily | null {
+  if (id === "closed_loop" || id === "trend_edgescore" || id === "trend_winrate") {
+    return "s1";
+  }
+  if (
+    id === "selectivity" ||
+    id === "range_edgescore" ||
+    id === "range_hold_ratio" ||
+    id === "range_roundtrip"
+  ) {
+    return "s2";
+  }
+  if (id === "mixed_regimes" || id === "mixed_edgescore" || id === "mixed_foundation") {
+    return "s3";
+  }
+  if (id === "viable_plant") return "s4";
+  if (id === "probe_handoff") return "s5";
+  return null;
+}
+
+function missionForFamily(family: FoundationFamily): string {
+  switch (family) {
+    case "s1":
+      return "Closed loop — volume, median loss R ≤ 1.5, settlement ≥70%, entropy alive, constitution 0, net RR ≥ 0.80. WR is not a pass gate.";
+    case "s2":
+      return "Selectivity — volume, occupancy 30–70%, round-trips, settlement, constitution 0, median loss R ≤ 1.5. WR is not a pass gate.";
+    case "s3":
+      return "Mixed regimes — volume, occupancy 25–75%, settlement, constitution 0, median loss R ≤ 1.5, edge ≥ −5pp vs first-touch.";
+    case "s4":
+      return "Viable plant — skill WR ≥ first-touch AND mean R ≥ E_mech−0.10, occupancy 25–75%, process-R.";
+    case "s5":
+      return "Probe & handoff — holdout edge ≥ −3pp, Sharpe > −2, DD ≤ 25% on $50k. Fitness vector is the exit checksum.";
   }
 }
 
@@ -352,92 +459,49 @@ export function buildStagePassChecklist(
   const id = String(scorecard.passCriteriaId ?? "");
   if (!id || id === "polish_complete") return null;
 
-  const survivalS1 = isSurvivalStage1(id, scorecard);
-  const requirements: StagePassRequirement[] = [];
+  const family = foundationFamily(id);
+  if (family == null) return null;
 
-  requirements.push(volumeReq(scorecard, progress));
-
-  if (
-    id === "trend_edgescore" ||
-    id === "trend_winrate" ||
-    id === "mixed_edgescore" ||
-    id === "mixed_foundation"
-  ) {
-    if (survivalS1) {
-      // Gate = survival floor (progress hygieneWrFloor often 0.20).
-      const gateFloor =
-        scorecard.hygieneWrFloor != null && scorecard.hygieneWrFloor <= 0.25
-          ? scorecard.hygieneWrFloor
-          : 0.2;
-      requirements.push(
-        hygieneGateReq(scorecard, {
-          floor: gateFloor,
-          label: "Survival WR",
-          id: "hygiene",
-        }),
-      );
-      requirements.push(
-        hygieneSkillReq(scorecard, {
-          skillFloor: 0.35,
-          recommended: scorecard.stage1WinrateRecommended ?? 0.45,
-        }),
-      );
-    } else {
-      const floor = scorecard.hygieneWrFloor ?? 0.35;
-      requirements.push(
-        hygieneGateReq(scorecard, {
-          floor,
-          label: "Hygiene WR",
-          id: "hygiene",
-        }),
-      );
-    }
-  }
-
-  if (id === "trend_edgescore" || id === "trend_winrate") {
-    requirements.push(holdBandReq(scorecard, progress));
-  }
-
-  if (id === "range_edgescore" || id === "range_hold_ratio" || id === "range_roundtrip") {
-    requirements.push(flatBandReq(scorecard));
-  }
-
-  if (id === "mixed_edgescore" || id === "mixed_foundation") {
-    requirements.push(holdCapReq(scorecard));
-  }
-
-  if (
-    id === "trend_edgescore" ||
-    id === "range_edgescore" ||
-    id === "mixed_edgescore" ||
-    id === "mixed_foundation" ||
-    id === "trend_winrate"
-  ) {
+  const requirements: StagePassRequirement[] = [volumeReq(scorecard, progress)];
+  if (family === "s1") {
+    requirements.push(processRReq(scorecard, progress));
+    requirements.push(settlementReq(progress));
     requirements.push(entropyReq(progress));
-    if (survivalS1) {
-      requirements.push(
-        expectancyGateReq(progress, {
-          floor: -0.5,
-          id: "expectancy",
-          label: "Survival expectancy",
-        }),
-      );
-      requirements.push(expectancySkillReq(progress));
-    } else {
-      // Range / mixed / non-survival trend: expectancy gate at skill floor (−15%).
-      // (range_hold_ratio / range_roundtrip are handled via range_edgescore path only.)
-      requirements.push(
-        expectancyGateReq(progress, {
-          floor: -0.15,
-          id: "expectancy",
-          label: "Expectancy",
-        }),
-      );
-    }
     requirements.push(constitutionReq(progress));
+    requirements.push(netRrReq(progress));
+  } else if (family === "s2") {
+    requirements.push(occupancyReq(scorecard, progress, 0.3, 0.7));
+    requirements.push(roundTripsReq(scorecard, progress));
+    requirements.push(settlementReq(progress));
+    requirements.push(constitutionReq(progress));
+    requirements.push(processRReq(scorecard, progress));
+  } else if (family === "s3") {
+    requirements.push(occupancyReq(scorecard, progress, 0.25, 0.75));
+    requirements.push(settlementReq(progress));
+    requirements.push(constitutionReq(progress));
+    requirements.push(processRReq(scorecard, progress));
+    requirements.push(edgeReq(scorecard, progress, -0.05, "Edge vs first-touch"));
+  } else if (family === "s4") {
+    requirements.push(occupancyReq(scorecard, progress, 0.25, 0.75));
+    requirements.push(settlementReq(progress));
+    requirements.push(constitutionReq(progress));
+    requirements.push(processRReq(scorecard, progress));
+    requirements.push(edgeReq(scorecard, progress, 0, "Skill ≥ first-touch"));
+    requirements.push(meanRVsMechReq(scorecard, progress));
+  } else {
+    requirements.push(occupancyReq(scorecard, progress, 0.25, 0.75));
+    requirements.push(processRReq(scorecard, progress));
+    requirements.push(edgeReq(scorecard, progress, -0.03, "Holdout edge"));
+    requirements.push(sharpeReq(progress));
+    requirements.push(ddReq(progress));
   }
 
-  if (requirements.length === 0) return null;
+  requirements.push(
+    hygieneSkillReq(scorecard, {
+      skillFloor: 0.35,
+      recommended: scorecard.stage1WinrateRecommended ?? 0.45,
+    }),
+  );
 
   const gates = requirements.filter((r) => r.kind === "gate");
   const skills = requirements.filter((r) => r.kind === "skill");
@@ -459,9 +523,9 @@ export function buildStagePassChecklist(
   return {
     stageTitle: scorecard.stageLabel,
     stageIndex,
-    stageTotal: 3,
+    stageTotal: 5,
     passCriteriaId: id,
-    mission: missionForCriteria(id, survivalS1),
+    mission: missionForFamily(family),
     requirements,
     metCount,
     totalCount,
@@ -469,6 +533,6 @@ export function buildStagePassChecklist(
     skillMetCount,
     skillTotalCount,
     overallTone,
-    passMode: survivalS1 ? "survival" : "skill",
+    passMode: family === "s4" || family === "s5" ? "skill" : "process",
   };
 }

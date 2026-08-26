@@ -45,7 +45,7 @@ def run_birth_phase(
     reuse_data_manifest: bool = False,
     expand_data: bool = False,
 ) -> dict[str, Any]:
-    _ = reuse_data_manifest  # reserved; data pipeline reads host state
+    host._reuse_data_manifest = bool(reuse_data_manifest)
     boot = bootstrap_birth_phase(
         host,
         target_trades=target_trades,

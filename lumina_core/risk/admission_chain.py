@@ -64,6 +64,7 @@ class AdmissionContext:
     metadata: dict[str, Any] = field(default_factory=dict)
     step_handlers: dict[str, AdmissionStepHandler] = field(default_factory=dict)
     experimental_bypass_step_ids: frozenset[str] = frozenset()
+    forbid_bypass: bool = False
 
     def normalized_mode(self) -> str:
         return str(self.mode or "").strip().lower()
@@ -87,8 +88,12 @@ class AdmissionChain:
 
         for step_id in self.steps:
             if step_id in bypass_step_ids:
-                if mode == _REAL_MODE:
-                    reason = f"experimental_bypass_forbidden_in_real:{step_id}"
+                if mode == _REAL_MODE or bool(ctx.forbid_bypass):
+                    reason = (
+                        f"experimental_bypass_forbidden:{step_id}"
+                        if bool(ctx.forbid_bypass)
+                        else f"experimental_bypass_forbidden_in_real:{step_id}"
+                    )
                     trace.add_result(
                         AdmissionStepResult(
                             step_id=step_id,

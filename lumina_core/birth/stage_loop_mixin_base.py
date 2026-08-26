@@ -57,6 +57,9 @@ if TYPE_CHECKING:
         wa_state: Any
         meta_message_suffix: str
         pass_metric_target: float
+        stage_val_pnl: list[float]
+        stage_val_r: list[float]
+        _unique_calendar_days: int
 else:
 
     class StageLoopMixinBase:

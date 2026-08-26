@@ -104,11 +104,19 @@ class TwinModeController:
 
     def readiness(self, target_mode: str) -> TwinModePromotionDecision:
         snap = self._metrics.snapshot()
+        base_trained = False
+        try:
+            from lumina_core.evolution.twin_base_training import is_twin_birth_ready
+
+            base_trained = is_twin_birth_ready()
+        except Exception:
+            base_trained = False
         evidence = TwinModePromotionEvidence.from_snapshot(
             current_mode=self._mode,
             target_mode=target_mode,
             snap=snap,
             capital_mode=self._capital_mode,
+            base_trained=base_trained,
         )
         return self._gate.evaluate(evidence)
 

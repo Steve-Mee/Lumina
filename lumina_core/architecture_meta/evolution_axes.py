@@ -122,6 +122,45 @@ EVOLUTION_AXES: tuple[EvolutionAxis, ...] = (
         related_approval_surface="twin_judgment",
         notes="Config risk_nudge_modes exclude real; never opens capital aperture.",
     ),
+    EvolutionAxis(
+        axis_id="strategy_research_lab",
+        label="Strategy research lab (catalog + invent + champion-challenger)",
+        mutates_live_repo=False,
+        mutates_trading_behavior=True,
+        default_enabled=True,
+        auto_in_sim=True,
+        auto_in_real=False,
+        requires_human_promotion=True,
+        sandbox_required=True,
+        related_approval_surface="dna_promotion",
+        notes="Catalog seeds + LLM/oracle/neuro via truthful fitness SSOT; never REAL auto.",
+    ),
+    EvolutionAxis(
+        axis_id="schema_extension",
+        label="Organism schema namespace (org_* columns)",
+        mutates_live_repo=False,
+        mutates_trading_behavior=False,
+        default_enabled=False,
+        auto_in_sim=False,
+        auto_in_real=False,
+        requires_human_promotion=True,
+        sandbox_required=True,
+        related_approval_surface="code_evolution_apply",
+        notes="Never ALTER core tables; organism_extensions.sqlite3 only. ADR-0045.",
+    ),
+    EvolutionAxis(
+        axis_id="challenger_venue",
+        label="Champion/challenger internal paper venue",
+        mutates_live_repo=False,
+        mutates_trading_behavior=True,
+        default_enabled=False,
+        auto_in_sim=False,
+        auto_in_real=False,
+        requires_human_promotion=True,
+        sandbox_required=True,
+        related_approval_surface="code_evolution_apply",
+        notes="Live tape, zero NT/broker; Steve gates SIM then REAL cutover. ADR-0045.",
+    ),
 )
 
 
@@ -167,7 +206,12 @@ def axis_allowed_for_mode(axis_id: str, *, capital_mode: str | None) -> dict[str
         }
 
     # Non-REAL
-    if not axis.default_enabled and axis.axis_id in ("architecture", "code_evolution"):
+    if not axis.default_enabled and axis.axis_id in (
+        "architecture",
+        "code_evolution",
+        "schema_extension",
+        "challenger_venue",
+    ):
         return {
             "allowed": True,
             "auto": False,

@@ -313,10 +313,11 @@ describe("onboarding surface contracts", () => {
     expect(birthGenesisDeckSource).toContain("stage1_winrate_pass_threshold");
     expect(birthGenesisDeckSource).toContain("require_real_simulator_data");
     expect(birthGenesisDeckSource).toContain("firstBootSizing");
-    expect(birthGenesisDeckSource).toContain("linkMaxRealDaysToTrainingTrades");
+    expect(birthGenesisDeckSource).toContain("FOUNDATION_HISTORY_START_DAYS");
+    expect(birthGenesisDeckSource).not.toContain("linkMaxRealDaysToTrainingTrades");
     expect(birthGenesisDeckSource).toContain("CharterTile");
     expect(birthGenesisDeckSource).toContain("Training trades");
-    expect(birthGenesisDeckSource).toContain("Winrate gate");
+    expect(birthGenesisDeckSource).toContain("Foundation exam");
     expect(birthGenesisDeckSource).toContain("Historical window");
     expect(birthGenesisDeckSource).not.toContain("BirthHoloSlider");
     expect(birthGenesisDeckSource).not.toContain("GenesisWinrateGateBlock");
@@ -326,16 +327,29 @@ describe("onboarding surface contracts", () => {
     expect(birthPhaseCssSource).toContain(".genesis-maturity-goals");
   });
 
-  it("BirthGenesisDeck Recovery tab uses vault action cards with wipe safety path", () => {
+  it("BirthGenesisDeck Recovery tab owns decision actions (not footer thrash)", () => {
     expect(birthGenesisDeckSource).toContain("genesis-recovery-action-grid");
+    expect(birthGenesisDeckSource).toContain("genesis-recovery-action-grid--3");
     expect(birthGenesisDeckSource).toContain("RecoveryActionCard");
     expect(birthGenesisDeckSource).toContain("openWipeConfirm");
-    expect(birthGenesisDeckSource).toContain("Wipe birth data");
     expect(birthGenesisDeckSource).toContain("Full wipe");
-    expect(birthGenesisDeckSource).toContain("Resume checkpoint");
+    expect(birthGenesisDeckSource).toContain("Start clean");
+    expect(birthGenesisDeckSource).toContain("Continue");
     expect(birthGenesisDeckSource).toContain("sessionInterrupted");
-    expect(birthGenesisDeckSource).toMatch(/showRecoveryTab[\s\S]*sessionInterrupted/);
-    // CTA no longer hosts the cramped control dock.
+    // Equal translucent glass cards — no solid neon slab primary.
+    expect(birthGenesisDeckSource).toContain("genesis-recovery-action-card__btn--accent");
+    expect(birthGenesisDeckSource).toContain("genesis-recovery-action-card__btn--warn");
+    expect(birthGenesisDeckSource).toContain("genesis-recovery-action-card__btn--danger");
+    expect(birthGenesisDeckSource).not.toMatch(
+      /genesis-recovery-action-card__btn--accent[\s\S]*onboarding-cta/,
+    );
+    // Recovery visibility + auto-land SSOT.
+    expect(birthGenesisDeckSource).toContain("presentation.showRecoveryTab");
+    expect(birthGenesisDeckSource).toContain("preferRecoveryTab");
+    expect(birthGenesisDeckSource).toContain('setGenesisTab("recovery")');
+    expect(birthGenesisDeckSource).toContain("resolveGenesisDeckPresentation");
+    expect(birthGenesisDeckSource).not.toContain("Go to Recovery");
+    expect(birthGenesisDeckSource).not.toContain("Open Recovery");
     expect(birthGenesisDeckSource).not.toMatch(/genesis-launch-cta[\s\S]*BirthControlDock/);
     expect(birthPhaseSource).toContain("sessionInterrupted={interrupted}");
     expect(birthPhaseSource).toContain("showRecovery && !genesisMode");

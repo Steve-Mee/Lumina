@@ -7,6 +7,7 @@ from typing import Any
 
 from lumina_core.birth.birth_constitution_guard import BirthConstitutionGuard
 from lumina_core.birth.birth_certificate import BirthCertificateThresholds
+from lumina_core.birth.foundation_metrics import S5_DD_EQUITY_USD
 from lumina_core.birth.sim_runner import run_policy_rollout
 
 
@@ -14,7 +15,7 @@ def sharpe_from_pnl(pnl_series: list[float]) -> float:
     return _sharpe_from_pnl(pnl_series)
 
 
-def max_drawdown_pct(pnl_series: list[float], *, equity: float = 50_000.0) -> float:
+def max_drawdown_pct(pnl_series: list[float], *, equity: float = S5_DD_EQUITY_USD) -> float:
     return _max_drawdown_pct(pnl_series, equity=equity)
 
 
@@ -27,7 +28,7 @@ def _sharpe_from_pnl(pnl_series: list[float]) -> float:
     return float((mean / std) * math.sqrt(252.0))
 
 
-def _max_drawdown_pct(pnl_series: list[float], *, equity: float = 50_000.0) -> float:
+def _max_drawdown_pct(pnl_series: list[float], *, equity: float = S5_DD_EQUITY_USD) -> float:
     curve = [equity]
     for pnl in pnl_series:
         curve.append(curve[-1] + pnl)
@@ -120,6 +121,12 @@ def evaluate_holdout_certificate(
     max_trades: int = 2000,
 ) -> dict[str, Any]:
     guard = BirthConstitutionGuard()
+    try:
+        from lumina_core.birth.birth_trade_geometry import calibrate_birth_stops
+
+        cert_geo = calibrate_birth_stops(list(holdout_data or []), max_hold_bars=90)
+    except Exception:
+        cert_geo = None
     rollout = run_policy_rollout(
         runtime=runtime,
         data=holdout_data,
@@ -127,6 +134,8 @@ def evaluate_holdout_certificate(
         target_trades=max_trades,
         workspace_root=workspace_root,
         constitution_guard=guard,
+        trade_geometry=cert_geo,
+        soft_prior_stops=True,
     )
     total_violations = int(constitution_violations) + int(rollout.constitution_violations)
     winrate = float(rollout.wins) / float(max(1, rollout.trades))

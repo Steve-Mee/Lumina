@@ -126,7 +126,8 @@ De backend draait normaal op poort 8000. Start hem met:
 cd lumina_os
 python -m backend.app
 # of
-uvicorn backend.app:app --host 0.0.0.0 --port 8000
+uvicorn backend.app:app --host 127.0.0.1 --port 8000
+# Non-loopback requires ADR-0040 mTLS + allowlist + Sentinel env gates (not default)
 ```
 
 ### 3. Test de nieuwe launcher

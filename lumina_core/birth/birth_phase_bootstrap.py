@@ -15,6 +15,7 @@ from lumina_core.birth.checkpoint import (
     write_checkpoint_payload,
 )
 from lumina_core.birth.config import BRO_ENGINE_VERSION, resolve_effective_trade_budget
+from lumina_core.birth.foundation_history import clamp_foundation_history_ceiling
 from lumina_core.birth.stage_pass_receipt import parse_stage_pass_receipts
 from lumina_core.logging_utils import get_logger
 
@@ -79,7 +80,7 @@ def bootstrap_birth_phase(
     _ = (chunk_size, force)
     cfg = host.birth_config
     raw_yaml = host._load_workspace_yaml()
-    max_days = max(30, min(3650, int(max_real_days or cfg.max_real_days)))
+    max_days = clamp_foundation_history_ceiling(int(max_real_days or cfg.max_real_days))
     prefer_real = bool(prefer_real_data_only if prefer_real_data_only is not None else cfg.prefer_real_data_only)
     effective_cap, budget_source = resolve_effective_trade_budget(raw_yaml, target_trades=target_trades)
     host._trade_budget_source = budget_source
@@ -158,19 +159,92 @@ def bootstrap_birth_phase(
             0, int(checkpoint_state.get("remediation_attempt", 0) or 0)
         )
         host._active_stage_metrics = dict(checkpoint_state.get("stage_metrics") or {})
+        # Restore terminal freeze identity before any hollow stage1 rewrite.
+        try:
+            from lumina_core.birth.terminal_freeze import (
+                extract_terminal_freeze,
+                freeze_is_active,
+                restore_identity_from_freeze,
+            )
+
+            freeze = extract_terminal_freeze(
+                progress_snapshot,
+                checkpoint_state,
+                host._active_stage_metrics,
+            )
+            if freeze_is_active(freeze):
+                host._stages_passed, restored_stage = restore_identity_from_freeze(
+                    stages_passed=list(host._stages_passed),
+                    curriculum_stage=str(
+                        checkpoint_state.get("curriculum_stage", "") or ""
+                    ),
+                    freeze=freeze,
+                )
+                if restored_stage:
+                    checkpoint_state = dict(checkpoint_state)
+                    checkpoint_state["curriculum_stage"] = restored_stage
+                    checkpoint_state["stages_passed"] = list(host._stages_passed)
+                host._active_stage_metrics = dict(host._active_stage_metrics)
+                host._active_stage_metrics["terminal_freeze"] = dict(freeze)
+                host._terminal_freeze = dict(freeze)
+            else:
+                host._terminal_freeze = None
+        except Exception as exc:
+            logger.debug("birth.terminal_freeze_restore_failed: %s", exc)
+            host._terminal_freeze = None
         host.buffer.clear()
         host._restore_buffer_from_checkpoint(checkpoint_state)
         if checkpoint_phase.strip().lower() == "stage_stalled":
             reset_adaptation_budget_for_manual_resume(host.workspace_root)
             checkpoint_state = load_checkpoint_state(host.workspace_root)
             host._active_stage_metrics = dict(checkpoint_state.get("stage_metrics") or {})
+            # Re-apply freeze identity after manual-resume metric reload.
+            try:
+                from lumina_core.birth.terminal_freeze import (
+                    extract_terminal_freeze,
+                    freeze_is_active,
+                    restore_identity_from_freeze,
+                )
+
+                freeze = extract_terminal_freeze(
+                    progress_snapshot,
+                    checkpoint_state,
+                    host._active_stage_metrics,
+                    getattr(host, "_terminal_freeze", None),
+                )
+                if freeze_is_active(freeze):
+                    host._stages_passed, restored_stage = restore_identity_from_freeze(
+                        stages_passed=list(host._stages_passed),
+                        curriculum_stage=str(
+                            checkpoint_state.get("curriculum_stage", "") or ""
+                        ),
+                        freeze=freeze,
+                    )
+                    host._active_stage_metrics = dict(host._active_stage_metrics)
+                    host._active_stage_metrics["terminal_freeze"] = dict(freeze)
+                    host._terminal_freeze = dict(freeze)
+                    if restored_stage:
+                        checkpoint_state = dict(checkpoint_state)
+                        checkpoint_state["curriculum_stage"] = restored_stage
+            except Exception as exc:
+                logger.debug("birth.terminal_freeze_restore_stalled_failed: %s", exc)
         if expand_data and resume:
             metrics = dict(host._active_stage_metrics)
             metrics["pending_data_expand"] = True
+            # Twin/operator expand resolves freeze for this cycle.
+            freeze = metrics.get("terminal_freeze")
+            if isinstance(freeze, dict):
+                from lumina_core.birth.terminal_freeze import mark_freeze_resolved
+
+                metrics["terminal_freeze"] = mark_freeze_resolved(
+                    freeze, action="expand_data", resolved_by="expand_data"
+                )
+                host._terminal_freeze = metrics["terminal_freeze"]
             host._active_stage_metrics = metrics
             payload = read_checkpoint_payload(host.workspace_root)
             if payload:
                 payload["stage_metrics"] = metrics
+                payload["stages_passed"] = list(host._stages_passed)
                 write_checkpoint_payload(host.workspace_root, payload)
 
     allow_load = resume if reuse_existing_policy is None else bool(reuse_existing_policy)
@@ -227,6 +301,38 @@ def bootstrap_birth_phase(
             "attention_recommended_actions": [],
             "user_initiated_stop": False,
         }
+        # Unresolved terminal freeze must keep honest attention SSOT (never clear).
+        try:
+            from lumina_core.birth.terminal_freeze import (
+                extract_terminal_freeze,
+                freeze_attention_fields,
+                freeze_is_active,
+            )
+
+            freeze = extract_terminal_freeze(
+                progress_snapshot,
+                checkpoint_state,
+                getattr(host, "_active_stage_metrics", None),
+                getattr(host, "_terminal_freeze", None),
+            )
+            if freeze_is_active(freeze) and not expand_data:
+                resume_progress_extra.update(freeze_attention_fields(freeze))
+                resume_message = (
+                    f"Terminal freeze intact — "
+                    f"{freeze.get('curriculum_stage') or 'stage'} "
+                    f"next_action={freeze.get('next_action')} "
+                    f"(Twin/operator; geen hollow stage1 rewrite)."
+                )
+        except Exception as exc:
+            logger.debug("birth.terminal_freeze_resume_attention_failed: %s", exc)
+    extra = dict(resume_progress_extra)
+    extra.update(host._budget_progress_fields())
+    try:
+        from lumina_core.birth.runtime_diagnostics import identity_progress_fields_for_boot
+
+        extra.update(identity_progress_fields_for_boot())
+    except Exception as exc:
+        logger.warning("birth.runtime.fingerprint_failed: %s", exc)
     _write_birth_progress(
         host.workspace_root,
         stage="detected",
@@ -239,8 +345,7 @@ def bootstrap_birth_phase(
         birth_start_time=host.birth_start_time,
         training_mode=training_mode,
         resumed=resume,
-        **resume_progress_extra,
-        **host._budget_progress_fields(),
+        **extra,
     )
 
     from lumina_core.notifications.milestone_events import birth_started_event

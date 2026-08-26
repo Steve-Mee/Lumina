@@ -24,7 +24,8 @@ A WebSocket design where Core hosts the socket inverts control: if Brain dies, n
 3. **Preserve ADR-0029 broker/admission decisions:**
    - `broker.backend: paper|live` + `broker.live_provider: crosstrade|ninjatrader`
    - Every place-order still passes `run_final_arbitration` / order gatekeeper **before** any Fabric RPC
-   - CrossTrade remains default until Fabric SIM criteria pass
+   - **Superseded by ADR-0040:** default live provider is Fabric/`ninjatrader`;
+     CrossTrade is emergency opt-in plugin only (not library default)
    - REAL requires separate promotion evidence (no capital path in Phase 0–2 without further ADR)
 4. **Defense in depth:** Brain admission (Python) **and** Fabric Safety & Risk Engine (C#) are both mandatory. Fabric never trusts Brain-only limits.
 5. **WebSocket JSON frames** under `docs/schemas/ninjatrader/v1/` and the planned `/ws/ninjatrader/v1` endpoint are **superseded for the wire protocol**. Existing `lumina_core/broker/ninjatrader/*` modules remain the Python façade (session state, guards, `NinjaTraderBroker`); transport becomes `FabricGrpcClient`.

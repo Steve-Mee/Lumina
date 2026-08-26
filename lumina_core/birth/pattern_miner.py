@@ -12,6 +12,10 @@ from typing import Any
 import numpy as np
 
 from lumina_core.birth.bible_observation import bible_features_for_tick
+from lumina_core.birth.birth_trade_geometry import (
+    calibrate_oracle_stops,
+    estimate_round_trip_cost_usd,
+)
 from lumina_core.birth.config import BirthRewardConfig, load_birth_v2_config
 from lumina_core.birth.curriculum import CurriculumStage, filter_ticks_for_stage
 from lumina_core.logging_utils import get_logger
@@ -29,9 +33,6 @@ logger = get_logger("lumina.birth.pattern_miner")
 # Legacy defaults — only used if auto-calib fails and caller forces fixed mode.
 _LEGACY_STOP_PCT = 0.0075
 _LEGACY_TARGET_PCT = 0.013
-# Birth-scale fallbacks (1-min futures): match observed move distribution.
-_BIRTH_FALLBACK_STOP_PCT = 0.0012
-_BIRTH_FALLBACK_TARGET_PCT = 0.0020
 _POINT_VALUE = 5.0  # MES-like SIM scale for oracle PnL ranking
 
 
@@ -53,55 +54,6 @@ def _tick_price(tick: dict[str, Any]) -> float:
         return float(tick.get("last") or tick.get("close") or 0.0)
     except (TypeError, ValueError):
         return 0.0
-
-
-def calibrate_oracle_stops(
-    ticks: list[dict[str, Any]],
-    *,
-    max_hold_bars: int = 180,
-    sample_stride: int = 10,
-) -> tuple[float, float]:
-    """Derive stop/target from realized move distribution (fail-closed fallbacks)."""
-    if len(ticks) < 40:
-        return _BIRTH_FALLBACK_STOP_PCT, _BIRTH_FALLBACK_TARGET_PCT
-
-    hold = max(20, int(max_hold_bars))
-    abs_moves: list[float] = []
-    atr_samples: list[float] = []
-    stride = max(1, int(sample_stride))
-    end = len(ticks) - hold - 1
-    for i in range(20, max(21, end), stride):
-        entry = _tick_price(ticks[i])
-        if entry <= 0:
-            continue
-        atr = float(ticks[i].get("trend_atr_norm", 0.0) or 0.0)
-        if atr > 0:
-            # atr_norm is often already a fractional scale; clamp to sane band
-            atr_samples.append(min(0.02, max(0.0003, atr if atr < 0.05 else atr / entry)))
-        peak = 0.0
-        for j in range(i + 1, min(len(ticks), i + hold + 1)):
-            price = _tick_price(ticks[j])
-            if price <= 0:
-                continue
-            peak = max(peak, abs(price - entry) / entry)
-        if peak > 0:
-            abs_moves.append(peak)
-
-    if not abs_moves and not atr_samples:
-        return _BIRTH_FALLBACK_STOP_PCT, _BIRTH_FALLBACK_TARGET_PCT
-
-    if abs_moves:
-        arr = np.asarray(abs_moves, dtype=float)
-        p40 = float(np.percentile(arr, 40))
-        p60 = float(np.percentile(arr, 60))
-        stop = max(0.0004, min(0.008, p40 * 0.85))
-        target = max(stop * 1.25, min(0.015, p60 * 1.05))
-    else:
-        atr_med = float(np.median(np.asarray(atr_samples, dtype=float)))
-        stop = max(0.0004, min(0.008, atr_med * 0.9))
-        target = max(stop * 1.25, min(0.015, atr_med * 1.5))
-
-    return float(stop), float(target)
 
 
 def _simulate_outcome(
@@ -157,12 +109,19 @@ def mine_winning_patterns(
     max_patterns: int = 5000,
     min_pnl_usd: float = 0.01,
     scan_stride: int = 5,
-    max_hold_bars: int = 180,
+    max_hold_bars: int = 90,
     stop_pct: float | None = None,
     target_pct: float | None = None,
     auto_calibrate: bool = True,
+    net_of_cost: bool = True,
+    min_net_pnl_usd: float | None = None,
 ) -> PatternMineResult:
-    """Scan historical ticks for hindsight-profitable entries (oracle labeling)."""
+    """Scan historical ticks for hindsight-profitable entries (oracle labeling).
+
+    When ``net_of_cost`` is True (default), winners must clear round-trip cost
+    (same fee/slip model as geometry) plus ``min_net_pnl_usd`` (or ``min_pnl_usd``).
+    Prevents flooding PPO with gross-only micro "wins" that are -$EV after costs.
+    """
     pool = filter_ticks_for_stage(stage, ticks)
     if not pool:
         pool = list(ticks)
@@ -190,6 +149,12 @@ def mine_winning_patterns(
     if use_stop >= 0.005 and auto_calibrate:
         cal_stop, cal_target = calibrate_oracle_stops(pool, max_hold_bars=hold)
         use_stop, use_target = cal_stop, cal_target
+    # Explicit stage geometry that is still macro-scale: re-derive from pool
+    # (never silently train oracle on 0.75% when ticks support micro stops).
+    if use_stop >= 0.005 and not auto_calibrate and len(pool) >= 40:
+        cal_stop, cal_target = calibrate_oracle_stops(pool, max_hold_bars=hold)
+        if cal_stop < 0.005:
+            use_stop, use_target = cal_stop, cal_target
 
     enriched: list[dict[str, Any]] = []
     for row in pool:
@@ -210,6 +175,9 @@ def mine_winning_patterns(
     reward_state = RewardShapingState()
     hits = 0
     winners = 0
+    # Net edge floor: require positive edge after same cost model as gym/geometry.
+    net_floor = float(min_net_pnl_usd) if min_net_pnl_usd is not None else float(min_pnl_usd)
+    net_floor = max(0.0, net_floor)
 
     for i in range(20, len(enriched) - hold - 1, stride):
         scanned += 1
@@ -226,7 +194,14 @@ def mine_winning_patterns(
                 continue
             hits += 1
             pnl, exit_idx = outcome
-            if pnl < min_pnl_usd:
+            entry_px = _tick_price(enriched[i])
+            if bool(net_of_cost) and entry_px > 0:
+                cost_usd = estimate_round_trip_cost_usd(price=entry_px)
+                net_pnl = float(pnl) - float(cost_usd)
+                if net_pnl < net_floor:
+                    continue
+                pnl = net_pnl  # store net for reward ranking / buffer priority
+            elif pnl < min_pnl_usd:
                 continue
             winners += 1
 

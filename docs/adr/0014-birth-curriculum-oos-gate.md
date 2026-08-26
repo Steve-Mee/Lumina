@@ -1,5 +1,7 @@
 # ADR-0014: Birth Curriculum + OOS Gate
 
+> **Supersession (2026-08-14):** Intra-Birth stage count and pass law are defined by [ADR-0046](./0046-birth-foundation-evolvable-plant.md) (five Foundation stages, process-R / occupancy / first-touch). This ADR remains historical for the purged-holdout + certificate OOS idea. Do not treat stage4_polish or WR-as-pass as current Birth law.
+
 **Status**: Accepted
 
 **Date**: 2026-06-11

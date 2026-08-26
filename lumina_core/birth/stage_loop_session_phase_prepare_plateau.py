@@ -3,7 +3,7 @@ from __future__ import annotations
 
 
 from lumina_core.birth.checkpoint import apply_plateau_quarantine_on_checkpoint_resume
-from lumina_core.birth.curriculum import stage1_winrate_pass_threshold
+from lumina_core.birth.curriculum import CurriculumStage, stage1_winrate_pass_threshold
 from lumina_core.birth.plateau_escalator import (
     EvolutionAction,
     enter_plateau,
@@ -27,6 +27,7 @@ class SessionPhasePreparePlateauMixin:
     def _prepare_restore_plateau_swarm(self) -> None:
         """Plateau sanitize, swarm resume, deep-stuck resume."""
         if self.plateau_state.active:
+            evo_max = self._evolution_max_steps()
             sanitize_plateau_best_snapshot(
                 self.plateau_state,
                 cfg=self.cur_cfg,
@@ -38,9 +39,36 @@ class SessionPhasePreparePlateauMixin:
                 self.plateau_state,
                 cfg=self.cur_cfg,
                 current_winrate=stage_winrate,
-                pass_target=stage1_winrate_pass_threshold(self.cur_cfg),
+                pass_target=(
+                    float(getattr(self.cur_cfg, "birth_survival_wr_floor", 0.20) or 0.20)
+                    if self.stage == CurriculumStage.STAGE1_TREND
+                    else stage1_winrate_pass_threshold(self.cur_cfg)
+                ),
             )
-            sanitize_phantom_evolution_steps(self.plateau_state)
+            sanitize_phantom_evolution_steps(
+                self.plateau_state, max_steps=evo_max
+            )
+            # Any resume (not only 3× hard-stop): if certified ladder is done without
+            # lift, pin step to max so first iteration terminal predicates fire.
+            if evolution_ladder_exhausted(
+                self.plateau_state, stage=self.stage, max_steps=evo_max
+            ):
+                self.plateau_state.evolution_step = max(
+                    int(self.plateau_state.evolution_step), int(evo_max)
+                )
+                if should_brake_recovery_no_lift(
+                    self.plateau_state, max_steps=evo_max, stage=self.stage
+                ):
+                    logger.warning(
+                        "birth.plateau.resume_exhausted_no_lift step=%s max=%s "
+                        "best=%.2f%% cycle_start=%.2f%% trades=%s — terminal path armed",
+                        int(self.plateau_state.evolution_step),
+                        int(evo_max),
+                        float(self.plateau_state.best_winrate) * 100.0,
+                        float(self.plateau_state.best_winrate_at_cycle_start) * 100.0,
+                        self.stage_trades,
+                    )
+                    self._exhausted_ladder_swarm_used = True  # no post-resume swarm thrash
         if self.metrics_match_stage and isinstance(self.stage_metrics, dict):
             for key in (
                 "plateau_quarantine_active",
@@ -80,13 +108,20 @@ class SessionPhasePreparePlateauMixin:
                 )
             # Fail-closed: drop early/noise EdgeScore champions before freeze can arm.
             try:
-                from lumina_core.birth.starship_birth import sanitize_edgescore_champion
+                from lumina_core.birth.starship_birth import (
+                    live_stage_winrate,
+                    sanitize_edgescore_champion,
+                )
 
                 plateau_wr = float(
                     self.stage_metrics.get("plateau_best_winrate")
                     or self.stage_metrics.get("best_winrate")
                     or getattr(self.plateau_state, "best_winrate", 0.0)
                     or 0.0
+                )
+                live_wr = live_stage_winrate(
+                    wins=int(getattr(self, "stage_wins", 0) or 0),
+                    trades=int(getattr(self, "stage_trades", 0) or 0),
                 )
                 best, at_trade, cleared = sanitize_edgescore_champion(
                     best_edgescore=float(getattr(self, "best_edgescore", 0.0) or 0.0),
@@ -96,6 +131,7 @@ class SessionPhasePreparePlateauMixin:
                     best_winrate=plateau_wr,
                     required=int(self.required),
                     cfg=self.cur_cfg,
+                    live_winrate=live_wr,
                 )
                 self.best_edgescore = best
                 self.best_edgescore_at_trade = at_trade
@@ -122,6 +158,12 @@ class SessionPhasePreparePlateauMixin:
                 self.swarm_edgescore_at_start = self.swarm_tournament_at_start
             self.swarm_champion_accepted = bool(
                 self.stage_metrics.get("swarm_champion_accepted", False)
+            )
+            self.expectancy_quality_step = int(
+                self.stage_metrics.get("expectancy_quality_step", 0) or 0
+            )
+            self._exhausted_ladder_swarm_used = bool(
+                self.stage_metrics.get("_exhausted_ladder_swarm_used", False)
             )
             try:
                 self.swarm_state = PolicySwarmState.from_metrics(self.stage_metrics)
@@ -187,25 +229,48 @@ class SessionPhasePreparePlateauMixin:
                     self.low_velocity_attempts,
                     int(self.cur_cfg.velocity_stall_attempt_threshold),
                 )
+                evo_max = self._evolution_max_steps()
+                # Cap phantom / certified step so exhaust predicates match begin_evolution_step.
+                if int(self.plateau_state.evolution_step) > int(evo_max):
+                    self.plateau_state.evolution_step = int(evo_max)
                 no_lift_brake = should_brake_recovery_no_lift(
-                    self.plateau_state
-                ) or should_block_phoenix_no_lift(self.plateau_state)
-                if no_lift_brake:
+                    self.plateau_state, max_steps=evo_max, stage=self.stage
+                ) or should_block_phoenix_no_lift(
+                    self.plateau_state, max_steps=evo_max, stage=self.stage
+                )
+                ladder_done = evolution_ladder_exhausted(
+                    self.plateau_state, stage=self.stage, max_steps=evo_max
+                )
+                if no_lift_brake or (
+                    ladder_done
+                    and float(self.plateau_state.best_winrate)
+                    <= float(self.plateau_state.best_winrate_at_cycle_start) + 1e-9
+                ):
                     logger.warning(
                         "birth.plateau.deep_resume_braked_no_lift cycles=%s "
-                        "best=%.2f%% cycle_start=%.2f%% trades=%s",
+                        "best=%.2f%% cycle_start=%.2f%% trades=%s step=%s max=%s",
                         self.plateau_state.full_recovery_cycles,
                         float(self.plateau_state.best_winrate) * 100.0,
                         float(self.plateau_state.best_winrate_at_cycle_start) * 100.0,
                         self.stage_trades,
+                        int(self.plateau_state.evolution_step),
+                        int(evo_max),
                     )
                     self._pending_deep_resume_harvest = False
+                    # Keep plateau active at exhausted cap — terminal path owns next move.
+                    if not self.plateau_state.active:
+                        enter_plateau(
+                            self.plateau_state,
+                            stage_trades=self.stage_trades,
+                            stage_wins=self.stage_wins,
+                        )
+                    self.plateau_state.evolution_step = max(
+                        int(self.plateau_state.evolution_step), int(evo_max)
+                    )
                 else:
-                    # Ladder wrap must account cycles — never silent step-1 restart.
-                    if (
-                        evolution_ladder_exhausted(self.plateau_state)
-                        and self.plateau_state.evolution_history
-                    ):
+                    # Ladder wrap must account cycles — never silent step-1 restart
+                    # after certified exhaust (even when evolution_history is empty).
+                    if ladder_done:
                         reset_plateau_for_new_cycle(
                             self.plateau_state,
                             stage_trades=self.stage_trades,

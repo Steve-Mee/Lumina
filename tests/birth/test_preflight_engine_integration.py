@@ -316,6 +316,17 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
         workspace_root=tmp_path,
     )
     train_hash = v2_engine._train_hash(split.train)
+    from lumina_core.birth.tick_cache_persist import save_cache_manifest
+
+    save_cache_manifest(
+        tmp_path,
+        raw_ticks_hash="raw",
+        train_hash=train_hash,
+        holdout_pct=0.2,
+        requested_days=90,
+        actual_calendar_days=300,
+        instruments=["MES SEP26"],
+    )
     engine = LuminaBirthEngine(
         runtime=SimpleNamespace(),
         ppo_trainer=trainer,
@@ -410,6 +421,126 @@ def test_reuse_data_manifest_skips_tick_load_and_expansion(
 
 
 @pytest.mark.unit
+def test_reuse_data_manifest_without_checkpoint_skips_tick_load(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Physics restart: reuse_data_manifest loads cache with no checkpoint."""
+    ticks = _three_regime_calendar_ticks(days=300, ticks_per_day=10)
+    split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+
+    from lumina_core.birth.tick_cache_persist import save_split_cache, save_ticks_cache
+
+    save_ticks_cache(tmp_path, ticks)
+    save_split_cache(tmp_path, split=split, holdout_pct=0.2)
+
+    load_calls: list[int] = []
+    expand_calls: list[int] = []
+
+    def _load_historical_ticks(**_kwargs) -> list[dict]:
+        load_calls.append(1)
+        return _calendar_ticks(days=300, ticks_per_day=10, holdout_neutral_only=True)
+
+    def _expand(**_kwargs) -> DataExpansionResult:
+        expand_calls.append(1)
+        raise AssertionError("expand_birth_data should not run on manifest reuse")
+
+    trainer = _FakePpoTrainer()
+    v2_engine = BirthPhaseEngineV2(
+        runtime=SimpleNamespace(),
+        ppo_trainer=trainer,
+        market_data_service=SimpleNamespace(),
+        workspace_root=tmp_path,
+    )
+    train_hash = v2_engine._train_hash(split.train)
+    from lumina_core.birth.tick_cache_persist import save_cache_manifest
+
+    save_cache_manifest(
+        tmp_path,
+        raw_ticks_hash="raw",
+        train_hash=train_hash,
+        holdout_pct=0.2,
+        requested_days=90,
+        actual_calendar_days=300,
+        instruments=["MES SEP26"],
+        tick_count=len(ticks),
+        train_tick_count=len(split.train),
+        holdout_tick_count=len(split.holdout),
+    )
+    engine = LuminaBirthEngine(
+        runtime=SimpleNamespace(),
+        ppo_trainer=trainer,
+        market_data_service=SimpleNamespace(),
+        workspace_root=tmp_path,
+    )
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(
+            rollout_chunk_trades=5,
+            max_rollouts_per_stage=1,
+            data_expansion_steps=(90, 180),
+        ),
+        trade_budget_cap=200,
+        holdout_pct=0.2,
+        certificate_thresholds=BirthCertificateThresholds(min_holdout_trades=5, min_regimes=3),
+    )
+
+    monkeypatch.setattr("lumina_core.birth.data_pipeline.load_historical_ticks", _load_historical_ticks)
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _expand)
+    monkeypatch.setattr(
+        "lumina_core.birth.news_enricher.enrich_ticks_with_news",
+        lambda loaded_ticks, **_kwargs: loaded_ticks,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.stage_training_loop.mine_winning_patterns",
+        lambda **_kwargs: PatternMineResult(
+            patterns=[{"reward": 1.0, "observation": {"vector": [5000.0]}} for _ in range(120)],
+            wins=120,
+            scanned=150,
+            regimes_seen={"TREND_UP", "TREND_DOWN", "NEUTRAL"},
+        ),
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.stage_training_loop.run_policy_rollout",
+        lambda **_kwargs: SimRolloutResult(
+            trades=5,
+            wins=2,
+            hold_signals=40,
+            total_signals=100,
+            total_pnl=1.0,
+            trajectories=[{"reward": 1.0, "observation": {"vector": [5000.0]}} for _ in range(10)],
+            pnl_series=[1.0],
+            constitution_violations=0,
+            regimes_seen={"NEUTRAL"},
+            partial_complete=True,
+            rollout_steps=100,
+        ),
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.certificate_pipeline.evaluate_holdout_certificate",
+        lambda **_kwargs: {
+            "certificate_passed": False,
+            "failure_reasons": ["sharpe:0.0/0.5"],
+            "sharpe": 0.0,
+            "winrate": 0.5,
+            "total_trades": 10,
+            "max_drawdown_pct": 1.0,
+            "real_data_pct": 99.0,
+        },
+    )
+
+    result = engine.run_birth_phase(
+        target_trades=100,
+        force=False,
+        prefer_real_data_only=True,
+        reuse_data_manifest=True,
+    )
+
+    assert load_calls == [], "cached ticks should skip load_historical_ticks without checkpoint"
+    assert expand_calls == [], "manifest reuse should skip preflight expansion"
+    assert result["status"] in {"certificate_failed", "completed", "history_unavailable"}
+
+
+@pytest.mark.unit
 def test_resume_checkpoint_skips_tick_load_without_reuse_manifest(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -446,6 +577,17 @@ def test_resume_checkpoint_skips_tick_load_without_reuse_manifest(
         workspace_root=tmp_path,
     )
     train_hash = v2_engine._train_hash(split.train)
+    from lumina_core.birth.tick_cache_persist import save_cache_manifest
+
+    save_cache_manifest(
+        tmp_path,
+        raw_ticks_hash="raw",
+        train_hash=train_hash,
+        holdout_pct=0.2,
+        requested_days=90,
+        actual_calendar_days=300,
+        instruments=["MES SEP26"],
+    )
     engine = LuminaBirthEngine(
         runtime=SimpleNamespace(),
         ppo_trainer=trainer,
@@ -539,4 +681,60 @@ def test_resume_checkpoint_skips_tick_load_without_reuse_manifest(
     assert first_write.get("cumulative_trades") == 140
     assert first_write.get("needs_attention") is False
     assert result["status"] in {"completed", "certificate_failed", "history_unavailable"}
+
+
+@pytest.mark.unit
+def test_reuse_manifest_thin_57_day_tape_does_not_skip_sla(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Old checkpoints without requested_days must not SLA 57/57 and enter Stage-1."""
+    ticks = _three_regime_calendar_ticks(days=57, ticks_per_day=10)
+    split = purged_train_holdout_split(ticks, holdout_pct=0.2)
+    engine = BirthPhaseEngineV2(
+        runtime=SimpleNamespace(),
+        ppo_trainer=SimpleNamespace(),
+        market_data_service=SimpleNamespace(),
+        workspace_root=tmp_path,
+    )
+    engine.birth_config = BirthV2Config(
+        curriculum=BirthCurriculumConfig(data_expansion_steps=(90, 180)),
+        certificate_thresholds=BirthCertificateThresholds(min_holdout_trades=5, min_regimes=3),
+        allow_degraded_data_mode=False,
+        max_real_days=90,
+    )
+    engine.birth_start_time = 1.0
+    engine._data_manifest = {}
+    engine._real_data_pct = 99.0
+    train_hash = engine._train_hash(split.train)
+
+    def _expand(**_kwargs: object) -> DataExpansionResult:
+        empty = purged_train_holdout_split([], holdout_pct=0.2)
+        return DataExpansionResult(
+            train_ticks=[],
+            holdout_ticks=[],
+            all_ticks=[],
+            split=empty,
+            days_back=90,
+            step_index=1,
+            real_data_pct=0.0,
+            exhausted=True,
+            load_failed=True,
+            requested_days=90,
+        )
+
+    monkeypatch.setattr("lumina_core.birth.certificate_pipeline.expand_birth_data", _expand)
+    result = engine._ensure_holdout_preflight(
+        ticks=ticks,
+        split=split,
+        max_days=90,
+        prefer_real=True,
+        start_price=5000.0,
+        training_mode="certified",
+        reuse_manifest=True,
+        saved_manifest={"train_hash": train_hash},
+    )
+    assert isinstance(result, dict)
+    assert result["status"] == "history_unavailable"
+    assert result.get("reused_manifest") is not True
 

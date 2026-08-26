@@ -83,9 +83,18 @@ def test_select_regime_diverse_train_ticks() -> None:
     assert len(regimes) >= 3
 
 
+_FOUNDATION_STAGES = [
+    "stage1_trend",
+    "stage2_range",
+    "stage3_mixed",
+    "stage4_viable_plant",
+    "stage5_probe_handoff",
+]
+
+
 @pytest.mark.unit
 def test_should_fast_path_remediation() -> None:
-    stages = ["stage1_trend", "stage2_range", "stage3_mixed"]
+    stages = list(_FOUNDATION_STAGES)
     assert should_fast_path_remediation(checkpoint_phase="certificate_failed", stages_passed=stages)
     assert should_fast_path_remediation(
         checkpoint_phase="certificate_remediation", stages_passed=stages
@@ -93,13 +102,14 @@ def test_should_fast_path_remediation() -> None:
     assert not should_fast_path_remediation(checkpoint_phase="stage2_range", stages_passed=stages)
     assert not should_fast_path_remediation(
         checkpoint_phase="certificate_failed",
-        stages_passed=["stage1_trend"],
+        stages_passed=["stage1_trend", "stage2_range", "stage3_mixed"],
     )
 
 
 @pytest.mark.unit
 def test_curriculum_stages_complete() -> None:
-    assert curriculum_stages_complete(["stage1_trend", "stage2_range", "stage3_mixed"])
+    assert curriculum_stages_complete(list(_FOUNDATION_STAGES))
+    assert not curriculum_stages_complete(["stage1_trend", "stage2_range", "stage3_mixed"])
     assert not curriculum_stages_complete(["stage1_trend"])
 
 
@@ -121,7 +131,7 @@ def test_should_fast_path_remediation_from_state_uses_checkpoint_stages() -> Non
     progress = {"phase": "certificate_failed", "stages_passed": []}
     checkpoint = {
         "phase": "certificate_failed",
-        "stages_passed": ["stage1_trend", "stage2_range", "stage3_mixed"],
+        "stages_passed": list(_FOUNDATION_STAGES),
     }
     assert should_fast_path_remediation_from_state(progress, checkpoint)
 

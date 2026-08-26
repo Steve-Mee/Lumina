@@ -23,6 +23,26 @@ def test_priority_terminal_beats_plateau() -> None:
     assert out["active"] == "terminal_stall"
     assert "plateau" in out["layers"]
     assert out["productive"] is False
+    # C2: terminal stall must never be silent
+    assert out["flags"]["needs_attention"] is True
+    assert "needs_attention" in out["layers"]
+    assert out["next_action"] == "expand_data_or_wipe_genesis"
+
+
+def test_plateau_evolution_exhausted_forces_attention() -> None:
+    """C2 regression: audit 2026-08-08 silent stall (needs_attention=false)."""
+    out = compress_recovery(
+        phase="curriculum_learning",
+        plateau_active=True,
+        plateau_evolution_step=2,
+        terminal_stall_reason="plateau_evolution_exhausted",
+        needs_attention=False,
+        autonomous_recovery_successes=0,
+    )
+    assert out["active"] == "terminal_stall"
+    assert out["productive"] is False
+    assert out["flags"]["needs_attention"] is True
+    assert out["next_action"] == "expand_data_or_wipe_genesis"
 
 
 def test_swarm_block_before_phoenix() -> None:

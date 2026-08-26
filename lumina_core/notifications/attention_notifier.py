@@ -83,10 +83,17 @@ class AttentionNotifier:
         )
 
         def _send() -> bool:
+            from lumina_core.notifications.telegram_gateway import kind_for_attention_event
+
+            kind, expects = kind_for_attention_event(event)
             ok = self._telegram.send_attention_alert(
                 event.title,
                 event.telegram_body(),
                 severity=event.severity.value,
+                kind=kind,
+                correlation_id=str(event.event_id),
+                expects_reply=expects,
+                source="attention_notifier",
             )
             if ok:
                 self._record_dedupe(event)

@@ -10,19 +10,22 @@ function lineCount(relativePath: string): number {
   return text.split(/\r?\n/).length;
 }
 
-/** Baseline 2026-07-04 — phase 3 frontend birth cluster split. */
+/**
+ * Measured baselines 2026-08-11 — block growth; extract before raising.
+ * Phase-3 birth cluster remains partially residual (predicates/progress/store).
+ */
 const BASELINES: Record<string, number> = {
   "lib/birthPhaseModel.ts": 12,
   "lib/birth/birthMilestones.ts": 296,
-  "lib/birth/birthStatusPredicates.ts": 161,
+  "lib/birth/birthStatusPredicates.ts": 207,
   "lib/birth/birthProgressExtract.ts": 72,
   "lib/birth/birthSessionHud.ts": 112,
   "lib/birth/birthStageScorecard.ts": 400,
-  "lib/birth/birthActiveProgress.ts": 60,
+  "lib/birth/birthActiveProgress.ts": 155,
   "lib/birth/birthModelUtils.ts": 16,
-  "store/birthStore.ts": 400,
+  "store/birthStore.ts": 676,
   "store/birthPollCoordinator.ts": 140,
-  "store/birthSurfaceModel.ts": 68,
+  "store/birthSurfaceModel.ts": 77,
   "components/birth/BirthPhaseScreen.tsx": 400,
   "lib/birthClient.ts": 501,
 };

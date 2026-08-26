@@ -246,8 +246,16 @@ class PPOTrainerEvalMixin:
         confidence = float(np.clip(np.abs(action_arr[0] - 1.0), 0.0, 1.0))
 
         qty = max(1, int(1 + np.clip(action_arr[1], 0.0, 1.0) * 9))
-        stop_pct = float(np.clip(action_arr[2], 0.001, 0.02))
-        target_pct = float(np.clip(action_arr[3], 0.001, 0.05))
+        # Align with birth geometry floor so learned micro-stops are not re-widened
+        # on inference. Cap still respects capital band at 2% hard / risk elsewhere.
+        try:
+            from lumina_core.birth.birth_constitution_guard import BIRTH_MIN_STOP_PCT
+
+            _lo = float(BIRTH_MIN_STOP_PCT)
+        except Exception:
+            _lo = 0.0004
+        stop_pct = float(np.clip(action_arr[2], _lo, 0.02))
+        target_pct = float(np.clip(action_arr[3], _lo * 1.25, 0.05))
 
         price = float(observation[0]) if observation.size > 0 else 0.0
         if signal == "BUY":

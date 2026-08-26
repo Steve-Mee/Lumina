@@ -143,7 +143,7 @@ export function GenesisMaturityGoalsPreview({ className }: GenesisMaturityGoalsP
         ))}
       </ul>
       <p className="genesis-maturity-goals__footnote mt-2 font-mono text-[9px] text-violet-200/65">
-        Birth winrate gate is pipeline validation only — not a REAL guarantee.
+        Birth grades process-R and occupancy — not a WR exam, not a REAL guarantee.
       </p>
     </div>
   );

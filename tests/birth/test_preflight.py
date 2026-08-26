@@ -6,6 +6,8 @@ from lumina_core.birth.birth_certificate import BirthCertificateThresholds
 from lumina_core.birth.certificate_evaluator import build_certificate_failure_reasons
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass, stage_pass_trades, stage_progress_pct
+from lumina_core.birth.foundation_metrics import S1_MIN_TRADES
+from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
 from lumina_core.birth.preflight import assess_split_preflight, regime_labels
 from lumina_core.birth.purged_split import PurgedSplit
 
@@ -20,7 +22,7 @@ def _ticks(regimes: list[str]) -> list[dict]:
 @pytest.mark.unit
 def test_stage_pass_trades_uses_stage_config() -> None:
     cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
-    assert stage_pass_trades(CurriculumStage.STAGE1_TREND, cfg) == 200
+    assert stage_pass_trades(CurriculumStage.STAGE1_TREND, cfg) == S1_MIN_TRADES
 
 
 @pytest.mark.unit
@@ -39,15 +41,17 @@ def test_stage2_uses_range_flat_ratio() -> None:
         constitution_violations=0,
         target_trades=3000,
         cfg=cfg,
+        **honest_closes(300),
+        **foundation_eval_kwargs(),
     )
     assert result.passed is True
-    assert "range_flat" in result.message
+    assert "foundation_pass" in result.message
 
 
 @pytest.mark.unit
 def test_stage_progress_pct_with_cfg() -> None:
     cfg = BirthCurriculumConfig(stage1_trend_trades=2000)
-    pct = stage_progress_pct(100, cfg, stage=CurriculumStage.STAGE1_TREND)
+    pct = stage_progress_pct(75, cfg, stage=CurriculumStage.STAGE1_TREND)
     assert pct == 50.0
 
 

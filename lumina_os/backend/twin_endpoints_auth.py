@@ -102,16 +102,28 @@ def _verify_api_key(x_api_key: Optional[str], *, require_admin: bool = False) ->
         return
     _verify_legacy_dashboard_key(x_api_key)
 
+_SERVICE: TwinTrainingService | None = None
+_SERVICE_LOCK = __import__("threading").Lock()
+
+
 def _service() -> TwinTrainingService:
-    registry = SteveValuesRegistry(
-        sqlite_path=_REGISTRY_SQLITE,
-        jsonl_path=_REGISTRY_JSONL,
-    )
-    twin = ApprovalTwinAgent(registry=registry, model_path=_MODEL_PATH)
-    return TwinTrainingService(
-        registry=registry,
-        twin=twin,
-        model_path=_MODEL_PATH,
-        decisions_path=_DECISIONS_PATH,
-        training_path=_TRAINING_PATH,
-    )
+    """Process-local singleton — avoid rebuilding Twin + registry on every HTTP hit."""
+    global _SERVICE
+    if _SERVICE is not None:
+        return _SERVICE
+    with _SERVICE_LOCK:
+        if _SERVICE is not None:
+            return _SERVICE
+        registry = SteveValuesRegistry(
+            sqlite_path=_REGISTRY_SQLITE,
+            jsonl_path=_REGISTRY_JSONL,
+        )
+        twin = ApprovalTwinAgent(registry=registry, model_path=_MODEL_PATH)
+        _SERVICE = TwinTrainingService(
+            registry=registry,
+            twin=twin,
+            model_path=_MODEL_PATH,
+            decisions_path=_DECISIONS_PATH,
+            training_path=_TRAINING_PATH,
+        )
+        return _SERVICE

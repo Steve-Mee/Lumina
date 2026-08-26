@@ -29,12 +29,14 @@ class MultiDaySimRunner(
         *,
         max_workers: int = 8,
         drawdown_limit_ratio: float = 0.02,
-        real_market_data: bool = False,
-        true_backtest_mode: bool = False,
+        real_market_data: bool = True,
+        true_backtest_mode: bool = True,
         market_data_service: Any | None = None,
+        allow_heuristic_fitness: bool = False,
     ) -> None:
         self.max_workers = max(1, int(max_workers))
         self.drawdown_limit_ratio = max(0.0, float(drawdown_limit_ratio))
         self.real_market_data = bool(real_market_data)
         self.true_backtest_mode = bool(true_backtest_mode)
         self.market_data_service = market_data_service
+        self.allow_heuristic_fitness = bool(allow_heuristic_fitness)

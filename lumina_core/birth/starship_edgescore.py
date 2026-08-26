@@ -11,12 +11,14 @@ from lumina_core.birth.starship_edgescore_champion import (  # noqa: F401
     edgescore_champion_min_trades,
     humanize_edgescore_blocker,
     is_edgescore_champion_eligible,
+    live_stage_winrate,
     publish_edgescore_champion_fields,
     sanitize_edgescore_champion,
 )
 from lumina_core.birth.starship_edgescore_core import (  # noqa: F401
     EdgeScoreResult,
     compute_expectancy_proxy,
+    evaluate_settlement_honesty,
     gate_rolling_winrate,
     hygiene_wr_telemetry,
     policy_entropy_alive,
@@ -35,6 +37,7 @@ from lumina_core.birth.starship_edgescore_stage3 import evaluate_stage3_edgescor
 __all__ = [
     "EdgeScoreResult",
     "compute_expectancy_proxy",
+    "evaluate_settlement_honesty",
     "edgescore_champion_min_trades",
     "evaluate_stage1_edgescore",
     "evaluate_stage2_edgescore",
@@ -43,6 +46,7 @@ __all__ = [
     "humanize_edgescore_blocker",
     "hygiene_wr_telemetry",
     "is_edgescore_champion_eligible",
+    "live_stage_winrate",
     "policy_entropy_alive",
     "publish_edgescore_champion_fields",
     "read_last_ppo_entropy",

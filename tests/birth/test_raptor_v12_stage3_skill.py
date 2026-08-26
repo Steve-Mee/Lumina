@@ -60,14 +60,16 @@ class _FakeEvo(PlateauEvolutionMixin):
 
 
 @pytest.mark.unit
-def test_intra_easy_only_stage3_applies_skill_explore() -> None:
+def test_intra_easy_only_stage3_applies_skill_quality() -> None:
     fake = _FakeEvo(CurriculumStage.STAGE3_MIXED)
     detail, applied = fake._apply_plateau_evolution_action(EvolutionAction.INTRA_EASY_ONLY)
     assert applied is True
     assert "stage3" in detail.lower()
     assert "not stage1" not in detail.lower()
     assert fake.strong_recovery_mode is True
-    assert fake.cur_cfg.exploration_steps >= 256 * 4
+    # Quality owns: never 4× entropy (12/08 kill loop).
+    assert fake.cur_cfg.exploration_steps < 256
+    assert "explore-boost" not in detail.lower()
 
 
 @pytest.mark.unit

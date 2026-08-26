@@ -19,10 +19,17 @@ import {
   postWipeAllMaturation,
   postWipeMaturityPhase,
 } from "@/lib/maturationClient";
+import { fetchTwinReadiness, type TwinReadiness } from "@/lib/twinClient";
 import { useOnboardingStore } from "@/store/onboardingStore";
 import { formatLearned } from "@/components/maturity/phaseHubFormat";
 import { PhaseHubHonestyBoard } from "@/components/maturity/PhaseHubHonestyBoard";
 import { PhaseHubAdvanceSection } from "@/components/maturity/PhaseHubAdvanceSection";
+import {
+  distressPanelClass,
+  warnOverlayBodyClass,
+  warnOverlayTitleClass,
+} from "@/lib/modePresentation";
+import { cn } from "@/lib/utils";
 
 export function PhaseHubScreen() {
   const [hub, setHub] = useState<MaturityHubPayload | null>(null);
@@ -30,6 +37,7 @@ export function PhaseHubScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [telegramToken, setTelegramToken] = useState("");
+  const [twinReady, setTwinReady] = useState<TwinReadiness | null>(null);
   const enterOperatorDeck = useOnboardingStore((s) => s.enterOperatorDeck);
   const refreshOnboarding = useOnboardingStore((s) => s.refresh);
 
@@ -38,6 +46,11 @@ export function PhaseHubScreen() {
       const payload = await fetchMaturityHub();
       setHub(payload);
       setError(null);
+      try {
+        setTwinReady(await fetchTwinReadiness());
+      } catch {
+        setTwinReady(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Hub unavailable");
     } finally {
@@ -184,8 +197,30 @@ export function PhaseHubScreen() {
         </div>
 
         {hub?.soft_legacy_complete ? (
-          <p className="mt-2 rounded-md border border-amber-500/30 bg-amber-950/20 px-3 py-2 font-mono text-[10px] text-amber-100/90">
+          <p
+            className={cn(
+              "mt-2 rounded-md border px-3 py-2 font-mono text-[10px]",
+              distressPanelClass("warn"),
+              warnOverlayBodyClass(),
+            )}
+          >
             Last phase was completed under legacy soft stamps. Wipe + re-run for strict evidence.
+          </p>
+        ) : null}
+
+        {twinReady && !twinReady.birth_ready ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-cyan-500/30 bg-cyan-950/20 px-3 py-2">
+            <p className="flex-1 font-mono text-[10px] text-cyan-100/90">
+              Twin base training incomplete ({Number(twinReady.base_training_completion_pct ?? 0).toFixed(0)}%).
+              Birth sole-auto stays fail-closed until ready.
+            </p>
+            <Button type="button" size="sm" variant="secondary" onClick={onOpenDeck}>
+              Train Twin Agent
+            </Button>
+          </div>
+        ) : twinReady?.birth_ready ? (
+          <p className="mt-2 font-mono text-[10px] text-emerald-200/80">
+            Twin Birth-ready · base trained
           </p>
         ) : null}
 
@@ -272,11 +307,11 @@ export function PhaseHubScreen() {
               </p>
             )}
             {hub?.exit_eval && !hub.exit_eval.ok && hub.exit_eval.missing?.length ? (
-              <div className="mt-2 rounded border border-amber-500/25 bg-amber-950/20 p-2">
-                <p className="font-mono text-[9px] uppercase tracking-wider text-amber-200/80">
+              <div className={cn("mt-2 rounded border p-2", distressPanelClass("warn"))}>
+                <p className={cn("font-mono text-[9px] uppercase tracking-wider", warnOverlayTitleClass())}>
                   Missing proofs
                 </p>
-                <ul className="mt-1 space-y-0.5 font-mono text-[10px] text-amber-200/80">
+                <ul className={cn("mt-1 space-y-0.5 font-mono text-[10px]", warnOverlayBodyClass())}>
                   {hub.exit_eval.missing.map((m) => (
                     <li key={m}>· {m}</li>
                   ))}

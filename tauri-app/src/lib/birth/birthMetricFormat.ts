@@ -21,6 +21,10 @@ function isEdgeScoreMetric(model: ScorecardMetricLike): boolean {
 
 export function formatBirthMetricValue(model: ScorecardMetricLike): string {
   if (model.metricValue == null) {
+    // Missing process-R after trades is fail-closed, not "still syncing".
+    if (model.passCriteriaId === "closed_loop") {
+      return "—";
+    }
     if (
       (model.passCriteriaId === "trend_winrate" || model.passCriteriaId === "trend_edgescore") &&
       (model.tradesDone ?? 0) > 0
@@ -32,16 +36,34 @@ export function formatBirthMetricValue(model: ScorecardMetricLike): string {
   if (model.passCriteriaId === "mixed_constitution") {
     return String(Math.round(model.metricValue));
   }
+  if (model.passCriteriaId === "closed_loop") {
+    return `${Number(model.metricValue).toFixed(2)}R`;
+  }
+  if (
+    model.passCriteriaId === "mixed_regimes" ||
+    model.passCriteriaId === "viable_plant" ||
+    model.passCriteriaId === "probe_handoff"
+  ) {
+    const sign = Number(model.metricValue) > 0 ? "+" : "";
+    return `${sign}${(Number(model.metricValue) * 100).toFixed(1)}pp`;
+  }
   // EdgeScore and ratio metrics are stored in [0, 1]; display as percent.
   return `${(model.metricValue * 100).toFixed(0)}%`;
 }
 
 export function formatBirthMetricValuePrecise(model: ScorecardMetricLike): string {
+  const id = String(model.passCriteriaId ?? "");
+  if (
+    id === "closed_loop" ||
+    id === "mixed_regimes" ||
+    id === "viable_plant" ||
+    id === "probe_handoff" ||
+    id === "mixed_constitution"
+  ) {
+    return formatBirthMetricValue(model);
+  }
   if (model.metricValue == null) {
     return (model.tradesDone ?? 0) > 0 ? "syncing…" : "—";
-  }
-  if (model.passCriteriaId === "mixed_constitution") {
-    return String(Math.round(model.metricValue));
   }
   return `${(model.metricValue * 100).toFixed(1)}%`;
 }
@@ -164,13 +186,19 @@ export function formatBirthMetricTarget(model: ScorecardMetricLike): string {
   }
   if (isEdgeScoreMetric(model)) {
     const id = String(model.passCriteriaId ?? "");
-    if (id === "range_edgescore") {
-      return "flat 30-70% | round-trips | entropy alive | expectancy >= -15%";
+    if (id === "range_edgescore" || id === "selectivity") {
+      return "occupancy 30-70% | round-trips | median loss R <= 1.5 | settlement >=70%";
     }
-    if (id === "mixed_edgescore") {
-      return "hygiene WR>=35% (lifetime or rolling) | hold cap | entropy alive | expectancy >= -15%";
+    if (id === "mixed_edgescore" || id === "mixed_regimes") {
+      return "occupancy 25–75% | edge >= -5pp vs first-touch | median loss R <= 1.5 | settlement >=70%";
     }
-    return "hygiene WR>=35% (lifetime or rolling) | hold band | entropy alive | expectancy >= -15%";
+    if (id === "viable_plant") {
+      return "skill WR >= first-touch AND mean R >= E_mech-0.10 | occupancy 25-75% | process-R";
+    }
+    if (id === "probe_handoff") {
+      return "holdout edge >= -3pp | Sharpe > -2 | DD <= 25%";
+    }
+    return "median loss R <= 1.5 | settlement >=70% | entropy alive | net RR >= 0.80";
   }
   if (model.metricTarget != null) {
     return `need ${(model.metricTarget * 100).toFixed(0)}%`;
@@ -181,6 +209,11 @@ export function formatBirthMetricTarget(model: ScorecardMetricLike): string {
 /** Detail line under a scorecard metric (MetricsStrip / MissionControl). */
 export function formatBirthMetricDetail(model: ScorecardMetricLike): string {
   if (model.metricValue == null) {
+    if (model.passCriteriaId === "closed_loop") {
+      return (model.tradesDone ?? 0) > 0
+        ? "median loss R missing (fail-closed)"
+        : "—";
+    }
     if (
       (model.passCriteriaId === "trend_winrate" ||
         model.passCriteriaId === "trend_edgescore" ||
@@ -195,6 +228,10 @@ export function formatBirthMetricDetail(model: ScorecardMetricLike): string {
   if (model.passCriteriaId === "mixed_constitution") {
     return `${Math.round(model.metricValue)} violations`;
   }
+  if (model.passCriteriaId === "closed_loop") {
+    const cap = model.metricMax ?? 1.5;
+    return `${Number(model.metricValue).toFixed(2)}R | need ≤ ${cap}R`;
+  }
   if (isEdgeScoreMetric(model)) {
     const value = `${(model.metricValue * 100).toFixed(0)}%`;
     const target = formatBirthMetricTarget(model);
@@ -208,7 +245,7 @@ export function formatBirthMetricDetail(model: ScorecardMetricLike): string {
     const need =
       model.metricTarget != null
         ? `pass if ≥${(model.metricTarget * 100).toFixed(0)}% (all trades)`
-        : "pass if ≥35% (all trades)";
+        : "pass if occupancy 25–75% and edge ≥ −5pp";
     return `${value} · ${need}`;
   }
   if (model.metricTarget != null) {

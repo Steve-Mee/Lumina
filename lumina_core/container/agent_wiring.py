@@ -78,6 +78,15 @@ def wire_intelligence_agents(container: "ApplicationContainer") -> None:
         container.meta_agent_orchestrator = None  # type: ignore[assignment]
         container.engine.meta_agent_orchestrator = None
 
+    try:
+        from lumina_core.evolution.challenger_venue.attach import attach_challenger_surfaces
+
+        attach_challenger_surfaces(container.engine, workspace=".")
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("challenger_surfaces.attach_failed")
+
 
 def wire_swarm(container: "ApplicationContainer") -> None:
     container.swarm_manager = SwarmManager(container.engine)

@@ -8,7 +8,8 @@ Native execution plane for LUMINA Brain (ADR-0035 / Blueprint v1.1).
 |---------|------|
 | `Lumina.Execution.Fabric` | gRPC server, safety watchdog, SIM order gateway, idempotency |
 | `Lumina.Execution.Fabric.SimHost` | Standalone console host for Phase 0 E2E **without** NT8 |
-| `LuminaNt8AddOn` | NT8 `AddOnBase` entry; starts Fabric on `State.Active` |
+| `LuminaNt8AddOn` → `Lumina.Fabric.NtBridge.dll` | `FabricNtHost` + NT Account gateway + historical/live MD (no `AddOnBase` in DLL) |
+| `deploy/AddOns/@LuminaFabricHost.cs` | Source `AddOnBase` entry (reflects into `FabricNtHost`); **New → LUMINA** status window |
 
 ## Build
 
@@ -81,7 +82,7 @@ Or use unit tests with an in-process mock server (`tests/broker/test_fabric_clie
 powershell -ExecutionPolicy Bypass -File scripts\install_fabric_token.ps1
 ```
 
-Installs User env `LUMINA_FABRIC_TOKEN`, workspace `.env`, and `%APPDATA%\LUMINA\fabric.json` (`GatewayMode: sim`).  
+Installs User env `LUMINA_FABRIC_TOKEN`, workspace `.env`, and `%APPDATA%\LUMINA\fabric.json` (`GatewayMode: nt`).  
 **Restart NinjaTrader** after setting User env. Run **either** SimHost **or** this AddOn on port 50051 — not both.
 
 ## Deploy to NinjaTrader 8
@@ -93,22 +94,28 @@ $env:NINJATRADER8_BIN = "C:\Program Files\NinjaTrader 8\bin"
 dotnet build integrations\ninjatrader8\Lumina.Execution.Fabric.sln -c Release
 ```
 
-2. Copy `LuminaNt8AddOn.dll`, `Lumina.Execution.Fabric.dll`, and Grpc/Protobuf dependencies into  
-   `%USERPROFILE%\Documents\NinjaTrader 8\bin\Custom\AddOns\`  
-   (or merge per NT dependency policy).
-3. Restart NT8; enable **LUMINA Execution Fabric**.
-4. Confirm NinjaScript Output shows `gRPC listening` and `AuthToken set = YES`.
+2. Prefer **Lumina → Repair NinjaTrader connection** (zero-IT) or:
 
-AddOn starts real `FabricGrpcHost` with `GatewayMode` from `fabric.json` (default **sim** / `SimOrderGateway`).  
-Switch to `nt` only after `NtOrderGateway` is bound to a live Account.
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\deploy_fabric_nt8.ps1
+```
+
+   Deploys `Lumina.Fabric.NtBridge.dll` + `Lumina.Execution.Fabric.dll` + deps into the **live** Custom tree
+   (OneDrive `Documenten` when that is the real install). **Post-deploy integrity fails closed** if NtBridge
+   is a stub (&lt;40 KB or missing `NtAccountOrderGateway` / historical / live types).
+3. Restart NT8; open **New → LUMINA** (status window).
+4. Confirm NinjaScript Output / `%APPDATA%\LUMINA\fabric-nt-host.log` shows `gRPC listening` and `AuthToken set = YES`.
+
+Product host starts `FabricGrpcHost` with `GatewayMode=nt` → `NtAccountOrderGateway` bound to **Sim101**.  
+Use `GatewayMode=memory` only for in-process fills / SimHost / CI (no exchange).
 
 ## Checklist
 
 - [x] gRPC listens only on `127.0.0.1` (default)
-- [x] Auth rejects wrong token
-- [x] PlaceOrder + GetAccountState (SIM)
+- [x] Auth rejects wrong token (stream + unary historical/account)
+- [x] PlaceOrder + GetAccountState (SIM memory + NT Account)
 - [x] Heartbeat watchdog → SAFE_MODE + cancel
 - [x] Metrics + pre-trade risk + StateSync + chaos tests (PR-D/E)
-- [x] `NtOrderGateway` skeleton (`GatewayMode=nt`, fail-closed until Account bound)
-- [ ] Live NT Account bind + order API (post PR-E)
-- [ ] REAL promotion ADR
+- [x] **PR-F:** `NtAccountOrderGateway` — bind Sim101, place/cancel/modify/flatten, async fills
+- [x] Native historical (`NtHistoricalDataProvider`) + live market subscribe (`NtLiveMarketDataProvider`)
+- [ ] REAL promotion ADR (live money accounts still blocked)

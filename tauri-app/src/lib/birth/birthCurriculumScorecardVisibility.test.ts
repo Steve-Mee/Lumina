@@ -64,13 +64,13 @@ describe("isBirthCurriculumScorecardActive", () => {
       phase: "ppo_training",
       curriculum_stage: "stage1_trend",
       curriculum_index: 1,
-      curriculum_total: 3,
+      curriculum_total: 5,
       pass_criteria_id: "trend_edgescore",
       stage_trades: 50,
       stage_target_trades: 200,
     });
     expect(card).not.toBeNull();
-    expect(card?.stageLabel).toMatch(/Stage 1\/3/);
+    expect(card?.stageLabel).toMatch(/Stage 1\/5/);
   });
 
   it("shows stage 2 card only on stage2 curriculum phases", () => {
@@ -78,11 +78,11 @@ describe("isBirthCurriculumScorecardActive", () => {
       phase: "curriculum_learning",
       curriculum_stage: "stage2_range",
       curriculum_index: 2,
-      curriculum_total: 3,
+      curriculum_total: 5,
       stage_display_name: "Range patience",
       pass_criteria_id: "range_edgescore",
       stage_trades: 100,
     });
-    expect(card?.stageLabel).toMatch(/Stage 2\/3/);
+    expect(card?.stageLabel).toMatch(/Stage 2\/5/);
   });
 });

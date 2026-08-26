@@ -9,10 +9,11 @@ import {
   isBirthEngineActive,
   isBirthEngineLive,
   isBirthInterrupted,
-  isBirthStageStalled,
   resolveBirthPhaseCopy,
 } from "@/lib/birthPhaseModel";
 import type { BirthSettingsPayload } from "@/lib/birthClient";
+import { resolveGenesisDeckPresentation } from "@/lib/birthGenesisPresentation";
+import { resolveBirthOperatorMode } from "@/lib/birthOperatorMode";
 import { resolveBirthScreenPhaseHeader } from "@/lib/luminaPhasePresentation";
 import { useBirthStore } from "@/store/birthStore";
 import { useBirthUiStore } from "@/store/birthUiStore";
@@ -29,45 +30,64 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
   const sessionProbeState = useBirthStore((s) => s.sessionProbeState);
   const targetTrades = useBirthStore((s) => s.targetTrades);
   const genesisPinned = useBirthStore((s) => s.genesisPinned);
+  const runPinned = useBirthStore((s) => s.runPinned);
   const autonomousMode = useBirthUiStore((s) => s.autonomousMode);
   const activating = useOnboardingStore((s) => s.activating);
+  const activationStep = useOnboardingStore((s) => s.activationStep);
   const onboardingError = useOnboardingStore((s) => s.error);
   const trainingDraft = useOnboardingStore((s) => s.draft.training);
 
-  const awakening = uiPhase === "finale";
-  const certificateFailed = uiPhase === "certificate_failed" && !genesisPinned;
-  const stageStalledActive =
-    !awakening &&
-    !recoveryDismissed &&
-    !genesisPinned &&
-    (uiPhase === "stage_stalled" || isBirthStageStalled(status));
+  const operatorMode = resolveBirthOperatorMode({
+    status,
+    activating,
+    runPinned,
+    genesisPinned,
+    uiPhase,
+    recoveryDismissed,
+  });
+
+  const awakening = operatorMode === "finale" || uiPhase === "finale";
+  const certificateFailed = operatorMode === "certificate_overlay";
+  const stageStalledActive = operatorMode === "stall_overlay";
   const recoveryOverlayActive = certificateFailed || stageStalledActive;
-  // When genesis is pinned, keep the deck accessible even if backend still reports error.
-  const failed = (uiPhase === "error" && !genesisPinned) || certificateFailed;
+  // Never treat decision/genesis as failed orphan; cert overlay still counts as failed.
+  const failed = certificateFailed;
   const running =
-    (uiPhase === "running" || isBirthEngineActive(status ?? { status: "idle" })) &&
+    (operatorMode === "training" ||
+      operatorMode === "launching" ||
+      uiPhase === "running" ||
+      isBirthEngineActive(status ?? { status: "idle" })) &&
     !stageStalledActive;
   const engineActive =
     status != null &&
     !genesisPinned &&
     (status.live === true || isBirthEngineActive(status));
   const genesisMode =
-    birthSurface === "genesis" && !awakening && !recoveryOverlayActive && !failed && !engineActive;
+    (operatorMode === "idle" || operatorMode === "decision") &&
+    !awakening &&
+    !recoveryOverlayActive &&
+    !engineActive;
+  const launchingMode = operatorMode === "launching";
+  const decisionMode = operatorMode === "decision";
   const engineLive = (genesisMode || engineActive) && status != null && isBirthEngineLive(status);
   const checkpointAvailable = isBirthCheckpointResumable(status);
-  const { logs, connected } = usePPOEvolution(!failed && !awakening && !genesisMode);
+  const { logs, connected } = usePPOEvolution(
+    !awakening && !genesisMode && !launchingMode && operatorMode === "training",
+  );
   const recoveryKind = detectBirthRecoveryKind(status);
   const interrupted = status != null && isBirthInterrupted(status);
   const certificateFailedPinned =
     genesisPinned && status != null && isBirthCertificateFailed(status);
+  // Legacy recovery panel only for non-genesis recovery surface (stall/cert use overlays).
   const showRecovery =
-    (birthSurface === "genesis" || birthSurface === "recovery") &&
+    decisionMode &&
+    birthSurface === "recovery" &&
     (Boolean(recoveryKind) || interrupted) &&
     !recoveryDismissed &&
-    !failed &&
     !certificateFailed &&
     !stageStalledActive &&
-    !awakening;
+    !awakening &&
+    !activating;
 
   const birthSettingsInitial: Partial<BirthSettingsPayload> = {
     training_trades: targetTrades,
@@ -100,12 +120,42 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
   // Full vault mission chrome whenever the engine is live or we are in running/finale —
   // never drop to a subtitle-only hero mid-birth (regime map / policy init included).
   const missionMode =
-    (birthSurface === "running" || engineActive) && (running || awakening || engineActive);
+    operatorMode === "training" ||
+    operatorMode === "finale" ||
+    ((birthSurface === "running" || engineActive) && (running || awakening || engineActive));
+
+  // Align phase header with Genesis deck SSOT (one narrative, no dual idle/stopped copy).
+  const genesisPresentation = resolveGenesisDeckPresentation({
+    activating,
+    sessionInterrupted: interrupted,
+    checkpointAvailable,
+    resumePlateauRisk: Boolean(status?.resume_plateau_risk),
+    decisionMode,
+    sessionProbePending: sessionProbeState === "pending" || !sessionHydrated,
+    sessionProbeError: sessionProbeState === "error",
+    engineLive,
+    error: onboardingError,
+    pollError,
+    statusMessage: status?.message ?? status?.progress?.message ?? null,
+    statusError: status?.error ?? null,
+  });
+  // Align header with deck SSOT — clean idle after wipe is not "needs attention".
+  const genesisAttention =
+    genesisMode &&
+    (genesisPresentation.hasAttention ||
+      genesisPresentation.ctaMode === "retry" ||
+      genesisPresentation.ctaMode === "decision");
+
   const phaseHeader = resolveBirthScreenPhaseHeader({
     genesisMode,
     missionMode,
     awakening,
     activating,
+    launching: launchingMode,
+    decisionMode,
+    genesisAttention,
+    genesisPhaseStatus: genesisMode ? genesisPresentation.phaseStatus : undefined,
+    genesisPhaseTone: genesisMode ? genesisPresentation.phaseTone : undefined,
     interrupted,
     certificateFailed,
     certificateOverlayActive: certificateFailed,
@@ -155,6 +205,12 @@ export function useBirthPhaseDerived(recoveryDismissed: boolean) {
     genesisPinned,
     autonomousMode,
     activating,
+    activationStep,
+    operatorMode,
+    launchingMode,
+    decisionMode,
+    genesisAttention,
+    genesisPresentation,
     onboardingError,
     trainingDraft,
     awakening,

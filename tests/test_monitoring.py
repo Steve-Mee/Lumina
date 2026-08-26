@@ -528,6 +528,40 @@ def test_sqlite_flush_and_query_history() -> None:
 
 
 @pytest.mark.chaos_metrics
+def test_sqlite_flush_self_heals_empty_db_file() -> None:
+    """Empty/truncated metrics.db must get schema on flush (no 'no such table')."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "empty_metrics.db"
+        db_path.write_bytes(b"")
+        col = MetricsCollector(db_path=db_path)
+        col.set("lumina_uptime_seconds", 1.0, help_="uptime")
+        col.flush_to_sqlite()
+        history = col.query_history("lumina_uptime_seconds", limit=5)
+    assert len(history) == 1
+
+
+@pytest.mark.chaos_metrics
+def test_from_config_resolves_db_path_via_lumina_state_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    state = tmp_path / "state_root"
+    state.mkdir()
+    monkeypatch.setenv("LUMINA_STATE_DIR", str(state))
+    obs = ObservabilityService.from_config(
+        {
+            "monitoring": {
+                "enabled": True,
+                "db_path": "state/metrics.db",
+                "webhook": {"enabled": False},
+            }
+        }
+    )
+    assert isinstance(obs.collector, MetricsCollector)
+    assert obs.collector._db_path == (state / "metrics.db").resolve()
+    assert (state / "metrics.db").exists()
+
+
+@pytest.mark.chaos_metrics
 def test_sqlite_query_history_empty_when_no_db() -> None:
     col = MetricsCollector(db_path=None)
     col.set("x", 1.0)

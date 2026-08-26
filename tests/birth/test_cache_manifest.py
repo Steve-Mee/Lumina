@@ -36,6 +36,7 @@ def test_save_birth_data_cache_writes_manifest(tmp_path) -> None:
     assert manifest["cache_schema_version"] == CACHE_SCHEMA_VERSION
     assert manifest["raw_ticks_hash"] == "raw123"
     assert manifest["train_hash"] == "train123"
+    assert manifest["requested_days"] == 0
     assert ticks_cache_path(tmp_path).is_file()
     payload = json.loads(ticks_cache_path(tmp_path).read_text(encoding="utf-8").splitlines()[0])
     assert payload["last"] == 5000.0

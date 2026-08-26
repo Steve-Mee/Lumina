@@ -1,10 +1,10 @@
 # NinjaTrader 8 Integration — Architecture & Implementation Plan
 
-> **Version:** 0.2 (Execution Fabric)  
-> **Status:** Wire protocol **gRPC** per [ADR-0035](adr/0035-execution-fabric-grpc.md) — Phase 0 foundation landed; full Fabric in progress  
-> **Scope:** Native NT8 **Execution Fabric** (gRPC server in Add-on) + Python Brain client  
+> **Version:** 1.0 (Execution Fabric product path)  
+> **Status:** Wire protocol **gRPC** per [ADR-0035](adr/0035-execution-fabric-grpc.md) — PR-A…PR-F SIM **source complete**; reliability hinges on **product NtBridge deploy integrity** + dual-plane GREEN  
+> **Scope:** Native NT8 **Execution Fabric** (gRPC server in process) + Python Brain client  
 > **Audience:** Backend engineers, NT8/C# developers, operators, security reviewers  
-> **Companion:** [lumina-core-architecture.md](lumina-core-architecture.md), [execution-fabric-phase0.md](execution-fabric-phase0.md), Blueprint v1.1  
+> **Companion:** [lumina-core-architecture.md](lumina-core-architecture.md), [execution-fabric-phase0.md](execution-fabric-phase0.md), [execution-fabric-operator.md](runbooks/execution-fabric-operator.md), Blueprint v1.1  
 > **Supersession:** Planned WebSocket `/ws/ninjatrader/v1` is **not** the production wire protocol. JSON schemas under `docs/schemas/ninjatrader/v1/` are **legacy**. SSOT contract: `protos/lumina/execution/v1/fabric.proto`.
 
 ---
@@ -41,11 +41,15 @@ The Add-on connects **only to The Core**, never to the Tauri Command Deck direct
 
 | Component | Role | Location |
 |-----------|------|----------|
-| **CrossTrade REST broker** | Order placement and account snapshots via HTTP | [`lumina_core/broker/broker_bridge.py`](../lumina_core/broker/broker_bridge.py) (`CrossTradeBroker`) |
-| **Command Deck telemetry** | Aggregated organism state every 500 ms | [`lumina_os/backend/core_websocket.py`](../lumina_os/backend/core_websocket.py) — `WS /ws/core/live` |
-| **Launch NinjaTrader button** | Opens NT8 executable from Command HUD | [`tauri-app/src/components/cockpit/LaunchNinjaTraderButton.tsx`](../tauri-app/src/components/cockpit/LaunchNinjaTraderButton.tsx) |
-| **Decision Theater chart** | Placeholder — no live NT8 embed yet | [`tauri-app/src/components/DecisionTheater.tsx`](../tauri-app/src/components/DecisionTheater.tsx) |
-| **NT8 Add-on (C#)** | Does not exist in this repository | — |
+| **Execution Fabric (C#)** | gRPC host + safety + audit inside NT8 or SimHost | `integrations/ninjatrader8/Lumina.Execution.Fabric/` |
+| **NT product bridge** | `NtAccountOrderGateway` + historical/live MD (product build only) | `LuminaNt8AddOn` → `Lumina.Fabric.NtBridge.dll` |
+| **Source AddOn entry** | `AddOnBase` lifecycle via reflection → `FabricNtHost` | `deploy/AddOns/@LuminaFabricHost.cs` (compiled into NinjaTrader.Custom) |
+| **Python Brain client** | `FabricGrpcClient` + supervisor + dual-plane diagnostics | `lumina_core/broker/ninjatrader/` |
+| **Product config** | `broker.live_provider=ninjatrader`, Sim101, localhost `:50051` | `config.yaml` + `%APPDATA%\LUMINA\fabric.json` |
+| **CrossTrade** | Optional emergency fallback only (never silent hop when ninjatrader) | `CrossTradeBroker` |
+| **Command Deck** | Operator Vault / Repair / LUMINA Link health SSOT | Tauri + `fabric_link_health` (ADR-0039) |
+
+**Critical operator fact:** a **stub** `Lumina.Fabric.NtBridge.dll` (~12 KB, missing `NtAccountOrderGateway` / hist / live types) must never be deployed. Heal/deploy enforce ≥40 KB + type markers.
 
 ### 1.3 Target State
 
@@ -59,7 +63,10 @@ NinjaTraderBroker / FabricGrpcClient
    WS /ws/core/live → Command Deck  (operator telemetry only)
 ```
 
-CrossTrade remains the **default** live provider until Fabric SIM criteria pass (`broker.live_provider=crosstrade`). Enable Fabric with `broker.live_provider=ninjatrader` + `broker.ninjatrader.enabled=true` after Phase 0 gates.
+**Fabric is the default foundation** (`broker.live_provider=ninjatrader`, ADR-0040).
+CrossTrade is an **emergency opt-in plugin only** (Vault checkbox →
+`broker.fallback_on_fabric_failure`, or explicit `live_provider=crosstrade`).
+Never a silent hop.
 
 ---
 
@@ -120,20 +127,22 @@ flowchart TB
 
 ## 3. NT8 Add-on Design (C#)
 
-> **Status:** Planned — no C# source exists in the repository yet.
+> **Status:** Implemented (product path). Entry is **source AddOn** `@LuminaFabricHost.cs` reflecting into `FabricNtHost` in `Lumina.Fabric.NtBridge.dll`. There is intentionally **no** `AddOnBase` inside the bridge DLL (dual-load race).
 
-### 3.1 Proposed Project Layout
+### 3.1 Project Layout
 
 ```
-integrations/ninjatrader8/LuminaNt8AddOn/
-├── LuminaNt8AddOn.csproj
-├── AddOn.cs                    # AddOnBase entry point
-├── LuminaWebSocketClient.cs    # WS connect, auth, reconnect, frame I/O
-├── MarketDataPublisher.cs      # Bars, ticks, throttling
-├── OrderExecutor.cs            # submit_order / cancel / flatten handlers
-├── FrameModels.cs              # JSON DTOs matching Core schema
-├── Config.cs                   # account, instruments, Core URL
-└── README.md                   # Build + deploy instructions
+integrations/ninjatrader8/
+├── Lumina.Execution.Fabric/     # gRPC, safety, SimOrderGateway, Null* data providers
+├── Lumina.Execution.Fabric.SimHost/  # execution-only host (no NT bars)
+├── LuminaNt8AddOn/              # FabricNtHost, NtAccountOrderGateway, hist/live MD
+│   ├── FabricNtHost.cs
+│   ├── NtAccountOrderGateway.cs
+│   ├── NtHistoricalDataProvider.cs
+│   ├── NtLiveMarketDataProvider.cs
+│   └── AddOn.cs                 # intentionally empty (no AddOnBase)
+└── deploy/AddOns/
+    └── @LuminaFabricHost.cs     # authoritative AddOnBase entry + LUMINA Link window
 ```
 
 ### 3.2 NinjaTrader 8 Primitives
@@ -599,7 +608,7 @@ Add section to [sim_real_guard_rollout_b_staging_runbook.md](requests/sim_real_g
 ```yaml
 broker:
   backend: live                    # paper | live (canonical mode matrix)
-  live_provider: ninjatrader       # crosstrade | ninjatrader (default: crosstrade)
+  live_provider: ninjatrader       # ninjatrader (default) | crosstrade (emergency opt-in only)
   ninjatrader:
     enabled: false                 # explicit opt-in promotion gate
     websocket_path: /ws/ninjatrader/v1
@@ -701,7 +710,8 @@ During migration:
 - [x] PR-C: C# Fabric gRPC host POC (PlaceOrder SIM + heartbeat)
 - [x] PR-D: Safety MVP (audit, StateSync, modify, chaos matrix, operator runbook)
 - [x] PR-E: Hardening (pre-trade risk, metrics, Deck NT pill, NtOrderGateway skeleton)
-- [ ] PR-F / REAL: Live NT Account bind + promotion ADR after SIM evidence
+- [x] PR-F SIM: Live NT Account bind (Sim101) + place/cancel/fills + live market data (no CrossTrade)
+- [ ] REAL promotion ADR after SIM evidence (live money accounts still blocked)
 
 See [execution-fabric-phase0.md](execution-fabric-phase0.md) for Phase 0 gates.
 

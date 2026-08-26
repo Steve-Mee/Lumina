@@ -50,6 +50,13 @@ def run_apprenticeship(workspace_root: Path | str) -> dict[str, Any]:
                 "ready_for_real": ready,
                 "consecutive_green_days": green,
                 "min_green_days": min_green,
+                "risk_discipline_gate": {
+                    "gate_home": "apprenticeship",
+                    "relocated_from": "birth_runway_stage6_risk_discipline",
+                    "sharpe_min": 0.20,
+                    "dd_max_pct": 12.0,
+                    "note": "Former Birth S6 risk walls — graded on multi-day SIM, not Birth.",
+                },
                 "note": "Apprenticeship: multi-day SIM stability (strict)",
             },
         )

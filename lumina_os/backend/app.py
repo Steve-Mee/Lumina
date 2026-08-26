@@ -94,6 +94,13 @@ app.include_router(ninjatrader_ws_router)
 app.include_router(emergency_router)
 app.include_router(community_router)
 
+try:
+    from backend.sentinel_endpoints import router as sentinel_router
+
+    app.include_router(sentinel_router)
+except Exception:
+    logger.warning("Sentinel endpoints not loaded", exc_info=True)
+
 app.add_middleware(LuminaEmbeddedUIMiddleware, dist_dir=_UI_DIST)
 if (_UI_DIST / "index.html").is_file():
     logger.info("Embedded React monitoring UI served under /ui from %s", _UI_DIST)
@@ -127,6 +134,15 @@ if cors_origins:
 else:
     logger.warning("CORS is disabled (allow_origins is empty)")
 
+# ADR-0041: Sentinel outermost (add last → runs first in Starlette stack).
+try:
+    from backend.sentinel_middleware import SentinelAccessMiddleware
+
+    app.add_middleware(SentinelAccessMiddleware)
+    logger.info("Sentinel access middleware enabled (outermost network/token plane)")
+except Exception:
+    logger.warning("Sentinel access middleware not loaded", exc_info=True)
+
 # Re-exports for tests that import from app
 __all__ = [
     "app",
@@ -137,4 +153,12 @@ __all__ = [
 ]
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # ADR-0040/0041: default loopback only. Non-loopback requires TLS/mTLS + allowlist + Sentinel.
+    from lumina_core.cyber_sentinel import resolve_api_bind_host, resolve_uvicorn_ssl
+
+    _bind = resolve_api_bind_host("127.0.0.1")
+    _ssl = resolve_uvicorn_ssl()
+    if _ssl:
+        uvicorn.run(app, host=_bind, port=8000, **_ssl)
+    else:
+        uvicorn.run(app, host=_bind, port=8000)

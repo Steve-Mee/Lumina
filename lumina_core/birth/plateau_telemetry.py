@@ -84,13 +84,22 @@ def progress_fields(
     required: int,
     cfg: BirthCurriculumConfig,
     now: float | None = None,
+    max_steps: int | None = None,
 ) -> dict[str, Any]:
+    step_cap = max(
+        1,
+        int(
+            max_steps
+            if max_steps is not None
+            else getattr(cfg, "plateau_max_evolution_steps", 8) or 8
+        ),
+    )
     if not state.active:
         return {
             "evolution_phase": "none",
             "evolution_step": 0,
             "evolution_step_label": "",
-            "evolution_actions_remaining": int(cfg.plateau_max_evolution_steps),
+            "evolution_actions_remaining": step_cap,
             "plateau_elapsed_sec": 0.0,
             "trades_beyond_gate": plateau_trades_beyond_gate(stage_trades, required),
             "plateau_forced_recoveries_count": 0,
@@ -103,13 +112,13 @@ def progress_fields(
     )
     if state.evolution_step <= 0:
         phase = "detected"
-    elif state.evolution_step >= int(cfg.plateau_max_evolution_steps):
+    elif state.evolution_step >= step_cap:
         phase = "exhausted"
     else:
         phase = f"step_{state.evolution_step}"
-    actions_total = len(EVOLUTION_STEP_ACTIONS)
-    actions_completed = evolution_actions_completed(state)
-    phantom_steps = evolution_phantom_steps(state)
+    actions_total = min(len(EVOLUTION_STEP_ACTIONS), step_cap)
+    actions_completed = evolution_actions_completed(state, max_steps=step_cap)
+    phantom_steps = evolution_phantom_steps(state, max_steps=step_cap)
     remaining = max(0, actions_total - actions_completed)
     max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
     label = ACTION_LABELS.get(action, action.value)
@@ -134,6 +143,7 @@ def progress_fields(
         "plateau_evolution_rollouts_this_step": int(state.evolution_rollouts_this_step),
         "plateau_evolution_rollouts_per_step": int(cfg.plateau_evolution_rollouts_per_step),
         "plateau_evolution_rollouts_max": max_rollouts,
+        "plateau_evolution_max_steps_effective": step_cap,
     }
 
 
@@ -146,18 +156,45 @@ def build_plateau_audit(
     progress: dict[str, Any],
     remediation_exhausted: bool = True,
     trade_budget_remaining: int | None = None,
+    max_steps: int | None = None,
 ) -> dict[str, Any]:
     winrate = float(progress.get("stage_winrate", 0) or 0)
     if not winrate and progress.get("stage_wins") is not None and stage_trades:
         winrate = int(progress.get("stage_wins", 0) or 0) / max(1, stage_trades)
     hold_ratio = float(progress.get("stage_hold_ratio", 0) or 0)
-    pass_target = float(progress.get("pass_metric_target", 0.45) or 0.45)
+    raw_target = progress.get("pass_metric_target")
+    pass_target: float
+    try:
+        if raw_target is None:
+            raise TypeError("foundation metric has no WR pass target")
+        pass_target = float(raw_target)
+        if pass_target <= 0.0:
+            raise ValueError("non-positive pass_metric_target")
+    except (TypeError, ValueError):
+        # S1 Closed loop: metric_target is null (median loss R max). Never invent 45%.
+        try:
+            pass_target = float(
+                progress.get("stage1_foundation_target_wr")
+                or progress.get("birth_survival_wr_floor")
+                or 0.20
+            )
+        except (TypeError, ValueError):
+            pass_target = 0.20
     velocity_stall = int(progress.get("velocity_stall_attempts", 0) or 0) >= int(
         cfg.velocity_stall_attempt_threshold
     )
     budget_remaining = trade_budget_remaining
     if budget_remaining is None:
         budget_remaining = int(progress.get("trade_budget_remaining", 0) or 0)
+    # Prefer caller max_steps; fall back to progress effective cap (certified SSOT).
+    step_cap = max_steps
+    if step_cap is None:
+        raw_cap = progress.get("plateau_evolution_max_steps_effective")
+        if raw_cap is not None:
+            try:
+                step_cap = int(raw_cap)
+            except (TypeError, ValueError):
+                step_cap = None
     terminal = should_terminal_plateau_stall(
         state,
         stage_trades=stage_trades,
@@ -166,6 +203,7 @@ def build_plateau_audit(
         meta_self_eval_phase=str(progress.get("meta_self_eval_phase", "") or ""),
         remediation_exhausted=remediation_exhausted,
         trade_budget_remaining=budget_remaining,
+        max_steps=step_cap,
     )
     blocked = evolution_ladder_blocked_reason(
         state,
@@ -176,15 +214,36 @@ def build_plateau_audit(
         stage_trades=stage_trades,
         required=required,
         pass_target=pass_target,
+        max_steps=step_cap,
     )
+    raw_flat = progress.get("stage_range_flat_ratio")
+    try:
+        hold_flat = float(raw_flat) if raw_flat is not None else None
+    except (TypeError, ValueError):
+        hold_flat = None
     hold_trap = detect_hold_trap(
         hold_ratio=hold_ratio,
         winrate=winrate,
         pass_metric_target=pass_target,
         velocity_stall=velocity_stall,
         cfg=cfg,
+        range_flat_ratio=hold_flat,
     )
     range_flat_ratio = float(progress.get("stage_range_flat_ratio", 0) or 0)
+    try:
+        occ_ctrl = progress.get("occupancy_control_flat")
+        occ_ctrl_f = float(occ_ctrl) if occ_ctrl is not None else None
+    except (TypeError, ValueError):
+        occ_ctrl_f = None
+    # Envelope geometry (FORCE_HOLD at ~30% flat) is not a policy freeze trap.
+    last_mode = str(progress.get("participation_last_mode") or "").strip().upper()
+    occupancy_geometry = 0.25 <= range_flat_ratio <= 0.75
+    if occ_ctrl_f is not None and 0.25 <= occ_ctrl_f <= 0.75:
+        occupancy_geometry = True
+    if bool(progress.get("pass_vector_in_flat_band")):
+        occupancy_geometry = True
+    if occupancy_geometry or last_mode in {"FORCE_HOLD", "FORCE_FLAT", "FORCE_EXIT"}:
+        hold_trap = False
     range_round_trips = int(progress.get("stage_range_round_trips", 0) or 0)
     range_total_signals = int(
         progress.get("stage_range_total_signals", 0)
@@ -228,9 +287,13 @@ def build_plateau_audit(
     stage_key = str(
         progress.get("curriculum_stage") or progress.get("stage_display_name") or ""
     ).lower()
-    stage_is_range = "stage2" in stage_key or "range" in stage_key
+    stage_is_range = "stage2" in stage_key or (
+        "range" in stage_key and "mixed" not in stage_key
+    )
+    stage_is_mixed = "stage3" in stage_key or "mixed" in stage_key
     expectancy_stall = detect_expectancy_stall(
         stage_is_range=stage_is_range,
+        stage_is_mixed=stage_is_mixed,
         range_flat_ratio=range_flat_ratio,
         range_total_signals=range_total_signals,
         stage_trades=stage_trades,
@@ -254,7 +317,7 @@ def build_plateau_audit(
     if under_activity:
         # Stage2 chronic flat: participation pressure before rollback/swarm theater.
         recommended = "explore_boost_anti_flat"
-    elif hold_trap:
+    elif hold_trap and not expectancy_stall:
         recommended = "explore_boost_anti_hold"
     elif over_trading:
         recommended = "range_patience_recovery"

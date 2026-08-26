@@ -67,6 +67,8 @@ export interface ConfigurePayload {
     XAI_API_KEY?: string;
     TELEGRAM_BOT_TOKEN?: string;
     TELEGRAM_CHAT_ID?: string;
+    /** Vault emergency CrossTrade MD fallback → broker.fallback_on_fabric_failure */
+    emergency_market_data_fallback?: boolean;
   };
   risk: {
     kelly_fraction: number;
@@ -126,10 +128,67 @@ export async function postFabricConnectionTest(options?: {
     method: "POST",
     body: JSON.stringify({
       include_safe_mode: options?.include_safe_mode ?? true,
-      instrument: options?.instrument ?? "MES",
+      // Empty → backend uses trading.instrument from config (e.g. MES SEP26).
+      instrument: options?.instrument ?? "",
     }),
   });
 }
+
+export interface FabricHealStep {
+  id: string;
+  title: string;
+  status: "pass" | "fail" | "skip" | "warn";
+  message: string;
+  user_message?: string;
+  detail?: string | null;
+}
+
+export interface FabricHealResult {
+  ok: boolean;
+  overall: string;
+  steps: FabricHealStep[];
+  needs_user: Array<{ code: string; title: string; body: string; cta: string }>;
+  report: FabricConnectionTestReportExt | null;
+  certified: boolean;
+}
+
+/**
+ * Fabric heal pipeline.
+ * Default close_ninjatrader=false — killing NT is opt-in only (user Repair).
+ * Accidental callers must not force-restart the trading terminal.
+ */
+export async function postFabricHeal(options?: {
+  close_ninjatrader?: boolean;
+  launch_ninjatrader?: boolean;
+  run_diagnostic?: boolean;
+  allow_simhost?: boolean;
+  force_redeploy?: boolean;
+  wait_host_sec?: number;
+}): Promise<FabricHealResult> {
+  return apiFetch("/api/setup/fabric-heal", {
+    method: "POST",
+    body: JSON.stringify({
+      close_ninjatrader: options?.close_ninjatrader ?? false,
+      launch_ninjatrader: options?.launch_ninjatrader ?? true,
+      run_diagnostic: options?.run_diagnostic ?? true,
+      allow_simhost: options?.allow_simhost ?? false,
+      force_redeploy: options?.force_redeploy ?? true,
+      wait_host_sec: options?.wait_host_sec ?? 90,
+    }),
+  });
+}
+
+/** Live Fabric health SSOT (level ≠ paper certificate). */
+export type FabricLinkLevel = "RED" | "AMBER" | "GREEN" | "RESTARTING" | string;
+
+export type FabricLinkProof = {
+  certified?: boolean;
+  overall?: string;
+  age_sec?: number | null;
+  target?: string | null;
+  stale?: boolean;
+  badge_ok?: boolean;
+};
 
 export interface FabricBootstrapResult {
   token_ready: boolean;
@@ -146,6 +205,10 @@ export interface FabricBootstrapResult {
   gateway_mode: string;
   fabric_link_green: boolean;
   fabric_link_reason: string;
+  host_ready?: boolean;
+  gate_birth_ok?: boolean;
+  level?: string;
+  proof?: FabricLinkProof;
   certificate: Record<string, unknown> | null;
   halt: Record<string, unknown> | null;
 }
@@ -154,12 +217,26 @@ export async function postFabricBootstrap(): Promise<FabricBootstrapResult> {
   return apiFetch("/api/setup/fabric-bootstrap", { method: "POST", body: "{}" });
 }
 
-export async function fetchFabricLinkStatus(): Promise<{
+export type FabricLinkStatus = {
+  /** Live GREEN only (Brain connected + host up). Never paper-only. */
   green: boolean;
+  /** Host running + port (or brief RESTARTING). */
+  host_ready?: boolean;
+  /** Birth/seal gate: host up + recent dual-plane proof. */
+  gate_birth_ok?: boolean;
+  gate_reason?: string;
+  level?: FabricLinkLevel;
+  meaning?: string;
   reason: string;
+  proof?: FabricLinkProof;
+  host?: Record<string, unknown>;
+  live?: Record<string, unknown>;
+  health?: Record<string, unknown>;
   certificate: Record<string, unknown> | null;
   halt: Record<string, unknown> | null;
-}> {
+};
+
+export async function fetchFabricLinkStatus(): Promise<FabricLinkStatus> {
   return apiFetch("/api/setup/fabric-link-status");
 }
 

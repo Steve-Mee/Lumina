@@ -9,21 +9,41 @@ from lumina_core.birth.stage_scorecard import compute_stage_blocker
 
 
 @pytest.mark.unit
-def test_stage1_blocker_winrate_below_target() -> None:
+def test_stage1_blocker_missing_process_r_after_volume_gate() -> None:
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE1_TREND,
         stage_trades=200,
         stage_wins=26,
         hold_ratio=0.92,
-        required=200,
+        required=150,
         constitution_violations=0,
         range_flat_ratio=0.0,
         range_round_trips=0,
         range_total_signals=0,
     )
-    assert metric == "winrate"
-    assert value is not None and value < 0.45
-    assert reason is not None and "45%" in reason
+    assert metric == "median_loss_r"
+    assert reason is not None and "median_loss_r" in reason
+
+
+@pytest.mark.unit
+def test_stage1_blocker_clears_when_foundation_physics_present() -> None:
+    metric, value, reason = compute_stage_blocker(
+        CurriculumStage.STAGE1_TREND,
+        stage_trades=200,
+        stage_wins=62,
+        hold_ratio=0.33,
+        required=150,
+        constitution_violations=0,
+        range_flat_ratio=0.0,
+        range_round_trips=0,
+        range_total_signals=0,
+        median_loss_r=1.1,
+        geometry_net_rr=1.4,
+        unique_calendar_days=40,
+    )
+    assert metric is None
+    assert value is None
+    assert reason is None
 
 
 @pytest.mark.unit
@@ -48,35 +68,38 @@ def test_stage1_no_blocker_below_trade_target() -> None:
 def test_stage2_blocker_flat_outside_band() -> None:
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE2_RANGE,
-        stage_trades=100,
-        stage_wins=50,
+        stage_trades=250,
+        stage_wins=80,
         hold_ratio=0.90,
-        required=100,
+        required=250,
         constitution_violations=0,
         range_flat_ratio=0.15,
-        range_round_trips=12,
+        range_round_trips=40,
         range_total_signals=200,
+        median_loss_r=1.1,
+        unique_calendar_days=40,
     )
-    assert metric == "position_flat"
+    assert metric == "occupancy"
     assert value is not None
-    assert reason is not None and "30" in reason
+    assert reason is not None and "occupancy" in reason
 
 
 @pytest.mark.unit
 def test_stage2_blocker_insufficient_round_trips() -> None:
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE2_RANGE,
-        stage_trades=100,
-        stage_wins=50,
+        stage_trades=250,
+        stage_wins=80,
         hold_ratio=0.50,
-        required=100,
+        required=250,
         constitution_violations=0,
         range_flat_ratio=0.50,
         range_round_trips=2,
         range_total_signals=200,
+        median_loss_r=1.1,
+        unique_calendar_days=40,
     )
     assert metric == "round_trips"
-    assert value == 2.0
     assert reason is not None and "round_trips" in reason
 
 
@@ -84,15 +107,16 @@ def test_stage2_blocker_insufficient_round_trips() -> None:
 def test_stage3_blocker_constitution_violations() -> None:
     metric, value, reason = compute_stage_blocker(
         CurriculumStage.STAGE3_MIXED,
-        stage_trades=150,
+        stage_trades=400,
         stage_wins=80,
         hold_ratio=0.40,
-        required=150,
+        required=400,
         constitution_violations=2,
         range_flat_ratio=0.50,
-        range_round_trips=10,
+        range_round_trips=40,
         range_total_signals=100,
+        median_loss_r=1.1,
+        unique_calendar_days=40,
     )
     assert metric == "constitution_violations"
-    assert value == 2.0
-    assert reason is not None and "violations" in reason
+    assert reason is not None and "constitution" in reason

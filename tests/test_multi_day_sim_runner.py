@@ -17,7 +17,9 @@ def _dna(hash_seed: str = "a") -> PolicyDNA:
 
 
 def test_multi_day_sim_runner_applies_hard_drawdown_guard() -> None:
-    runner = MultiDaySimRunner(max_workers=2, drawdown_limit_ratio=0.02)
+    runner = MultiDaySimRunner(
+        max_workers=2, drawdown_limit_ratio=0.02, allow_heuristic_fitness=True
+    )
     results = runner.evaluate_variants(
         [_dna("high-dd")],
         days=3,
@@ -35,7 +37,9 @@ def test_multi_day_sim_runner_applies_hard_drawdown_guard() -> None:
 
 
 def test_multi_day_sim_runner_returns_ranked_results() -> None:
-    runner = MultiDaySimRunner(max_workers=4, drawdown_limit_ratio=0.02)
+    runner = MultiDaySimRunner(
+        max_workers=4, drawdown_limit_ratio=0.02, allow_heuristic_fitness=True
+    )
     results = runner.evaluate_variants(
         [_dna("x"), _dna("y"), _dna("z")],
         days=2,
@@ -53,7 +57,9 @@ def test_multi_day_sim_runner_returns_ranked_results() -> None:
 
 
 def test_multi_day_sim_runner_shadow_mode_emits_hypothetical_fills() -> None:
-    runner = MultiDaySimRunner(max_workers=2, drawdown_limit_ratio=0.05)
+    runner = MultiDaySimRunner(
+        max_workers=2, drawdown_limit_ratio=0.05, allow_heuristic_fitness=True
+    )
     results = runner.evaluate_variants(
         [_dna("shadow")],
         days=3,
@@ -75,7 +81,9 @@ def test_multi_day_sim_runner_shadow_mode_emits_hypothetical_fills() -> None:
 
 
 def test_test_generated_strategy_returns_finite_on_safe_snippet() -> None:
-    runner = MultiDaySimRunner(max_workers=2, drawdown_limit_ratio=0.05)
+    runner = MultiDaySimRunner(
+        max_workers=2, drawdown_limit_ratio=0.05, allow_heuristic_fitness=True
+    )
     code = (
         "def generated_strategy(context: dict) -> dict:\n"
         '    """Simple deterministic generated strategy."""\n'
@@ -110,7 +118,9 @@ def test_build_parallel_reports_length_and_stress_names() -> None:
 
 
 def test_multi_day_sim_runner_parallel_realities_aggregates_one_per_variant() -> None:
-    runner = MultiDaySimRunner(max_workers=8, drawdown_limit_ratio=0.35)
+    runner = MultiDaySimRunner(
+        max_workers=8, drawdown_limit_ratio=0.35, allow_heuristic_fitness=True
+    )
     results = runner.evaluate_variants(
         [_dna("pr-a"), _dna("pr-b")],
         days=2,
@@ -129,7 +139,9 @@ def test_multi_day_sim_runner_parallel_realities_aggregates_one_per_variant() ->
 
 
 def test_multi_day_sim_runner_shadow_ignores_parallel_realities() -> None:
-    runner = MultiDaySimRunner(max_workers=4, drawdown_limit_ratio=0.05)
+    runner = MultiDaySimRunner(
+        max_workers=4, drawdown_limit_ratio=0.05, allow_heuristic_fitness=True
+    )
     results = runner.evaluate_variants(
         [_dna("shadow-pr")],
         days=3,
@@ -145,3 +157,54 @@ def test_multi_day_sim_runner_shadow_ignores_parallel_realities() -> None:
     assert len(results) == 1
     assert results[0].shadow_mode is True
     assert len(results[0].hypothetical_fills or []) == 3
+
+
+def test_multi_day_sim_runner_default_fail_closed_without_ticks() -> None:
+    runner = MultiDaySimRunner(max_workers=2, drawdown_limit_ratio=0.05)
+    results = runner.evaluate_variants(
+        [_dna("ssot")],
+        days=3,
+        nightly_report={
+            "net_pnl": 250.0,
+            "sharpe": 0.8,
+            "max_drawdown": 50.0,
+            "account_equity": 50_000.0,
+        },
+    )
+    assert len(results) == 1
+    assert results[0].fitness == float("-inf")
+    assert results[0].hypothetical_fills is None
+
+
+def test_multi_day_true_backtest_with_tick_cache() -> None:
+    ticks = []
+    for day in range(3):
+        for i in range(8):
+            px = 100.0 + float(i)
+            ticks.append(
+                {
+                    "timestamp": f"2026-08-1{day}T1{i:02d}:00:00",
+                    "last": px,
+                    "high": px + 0.5,
+                    "low": px - 0.5,
+                }
+            )
+    mds = type("Mds", (), {"load_historical_ohlc_extended": lambda self, **_k: ticks})()
+    runner = MultiDaySimRunner(
+        max_workers=2,
+        drawdown_limit_ratio=0.5,
+        real_market_data=True,
+        true_backtest_mode=True,
+        market_data_service=mds,
+    )
+    results = runner.evaluate_variants(
+        [_dna("truth")],
+        days=3,
+        nightly_report={"net_pnl": 0.0, "sharpe": 0.0, "max_drawdown": 1.0, "account_equity": 50_000.0},
+        real_market_data=True,
+        true_backtest_mode=True,
+    )
+    assert len(results) == 1
+    assert results[0].fitness != float("-inf")
+    assert results[0].day_count == 3
+

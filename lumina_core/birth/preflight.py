@@ -90,6 +90,9 @@ def data_manifest_from_split(
     requested_instrument: str = "",
     resolved_instrument: str = "",
     rolled: bool | None = None,
+    stitched: bool | None = None,
+    instruments: list[str] | tuple[str, ...] | None = None,
+    stitched_from: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
     holdout_regimes = sorted(regime_labels(split.holdout))
     # days_loaded SSOT = actual calendar span when known; never ticks//450 fiction.
@@ -120,6 +123,12 @@ def data_manifest_from_split(
         manifest["resolved_instrument"] = str(resolved_instrument)
     if rolled is not None:
         manifest["rolled"] = bool(rolled)
+    if stitched is not None:
+        manifest["stitched"] = bool(stitched)
+    if instruments is not None:
+        manifest["instruments"] = [str(item) for item in instruments]
+    if stitched_from is not None:
+        manifest["stitched_from"] = [str(item) for item in stitched_from]
     if raw_ticks_hash:
         manifest["raw_ticks_hash"] = str(raw_ticks_hash)
     if enrich_version:

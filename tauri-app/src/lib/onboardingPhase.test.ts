@@ -283,7 +283,7 @@ describe("onboardingPhase fail-closed regressions", () => {
 
 describe("resolvePhaseOnRefreshError", () => {
   it("cold start failure → wizard", () => {
-    expect(resolvePhaseOnRefreshError("loading", null)).toBe("wizard");
+    expect(resolvePhaseOnRefreshError("loading", null)).toBe("loading");
   });
 
   it("deck session failure → stay on cockpit", () => {

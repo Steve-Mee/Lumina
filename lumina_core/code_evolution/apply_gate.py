@@ -22,6 +22,11 @@ from lumina_core.code_evolution.proposal import (
     CodeMutationOperator,
     CodeMutationProposal,
 )
+from lumina_core.code_evolution.runtime_role import (
+    CHALLENGER,
+    applied_root_for_role,
+    normalize_runtime_role,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -108,10 +113,13 @@ class CodeEvolutionApplyGate(CodeEvolutionApplyOpsMixin):
         *,
         journal_root: Path | str,
         policy: ApplyPolicy | None = None,
+        store_role: str = CHALLENGER,
     ) -> None:
         self.root = Path(journal_root)
+        self.store_role = normalize_runtime_role(store_role)
         self.pending_root = self.root / "pending"
-        self.applied_root = self.root / "applied"
+        # Apply writes challenger store by default — never champion (K1/K2).
+        self.applied_root = Path(applied_root_for_role(self.root, self.store_role))
         self.policy = policy or ApplyPolicy()
         self.applied_root.mkdir(parents=True, exist_ok=True)
         self.pending_root.mkdir(parents=True, exist_ok=True)

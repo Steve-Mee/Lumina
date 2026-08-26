@@ -38,9 +38,11 @@ export function BirthPhaseGenesisBranch({
     trainingDraft,
     checkpointAvailable,
     interrupted,
+    decisionMode,
     status,
     engineLive,
     onboardingError,
+    pollError,
     resumePlateauRisk,
     sessionHydrated,
     sessionProbeState,
@@ -85,10 +87,12 @@ export function BirthPhaseGenesisBranch({
             activating={activating}
             checkpointAvailable={checkpointAvailable}
             sessionInterrupted={interrupted}
+            decisionMode={decisionMode}
             birthStatus={status}
             busy={controlBusy}
             engineLive={engineLive}
             error={onboardingError}
+            pollError={pollError}
             sessionHydrated={sessionHydrated}
             sessionProbeState={sessionProbeState}
             sessionProbePending={sessionProbePending}

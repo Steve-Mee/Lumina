@@ -48,8 +48,13 @@ def test_evaluate_fails_insufficient_trades_and_lift() -> None:
 
 
 @pytest.mark.unit
-def test_evolution_proof_passed_grandfathers_missing_record(tmp_path: Path) -> None:
-    assert evolution_proof_passed(tmp_path) is True
+def test_evolution_proof_passed_fail_closed_on_missing_record(tmp_path: Path) -> None:
+    assert evolution_proof_passed(tmp_path) is False
+
+
+@pytest.mark.unit
+def test_evolution_proof_passed_legacy_grandfather_opt_in(tmp_path: Path) -> None:
+    assert evolution_proof_passed(tmp_path, allow_legacy_grandfather=True) is True
 
 
 @pytest.mark.unit

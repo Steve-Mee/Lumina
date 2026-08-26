@@ -82,6 +82,78 @@ def _phoenix_eligible(cfg: BirthCurriculumConfig, autonomy_state: OrganismAutono
         return False
     return autonomy_state.phoenix.phoenix_count < max(1, int(cfg.phoenix_max_cycles))
 
+
+def _twin_escalate_or_notify(
+    *,
+    approval_twin: Any,
+    autonomy_state: OrganismAutonomyState,
+    stall_reason: str,
+    curriculum_stage: str,
+    fitness_signal: float,
+    fork: str,
+    twin_res: dict[str, Any] | None = None,
+    t_conf: float = 0.0,
+    t_risks: list[str] | None = None,
+) -> AutonomyDecision:
+    """When Twin is unsure: escalate to operator (exception path). Never silent grind."""
+    metrics = autonomy_state.to_metrics()
+    metrics["twin_terminal_fork"] = fork
+    metrics["twin_confidence"] = round(float(t_conf), 4)
+    try:
+        from lumina_core.evolution.twin_training_service import TwinTrainingService
+
+        svc = TwinTrainingService()
+        conf = float(t_conf)
+        risks = list(t_risks or [])
+        should, reasons = svc.should_escalate_decision(
+            confidence=conf if conf > 0 else 0.5,
+            risk_flags=risks or ["terminal_fork"],
+            dna_hash=f"birth_terminal_{fork}_{curriculum_stage}",
+        )
+        if should or conf < 0.80:
+            esc = svc.create_escalation(
+                dna_hash=f"birth_terminal_{fork}_{curriculum_stage}",
+                confidence=conf if conf > 0 else 0.5,
+                risk_flags=risks or ["terminal_fork", fork],
+                explanation=(
+                    str((twin_res or {}).get("explanation") or "")[:300]
+                    or f"Birth terminal fork: {fork} at {curriculum_stage}"
+                ),
+                twin_recommendation=bool((twin_res or {}).get("recommendation", False)),
+                doubt_reasons=reasons or ["low_conf", "terminal_fork"],
+                notify_telegram=True,
+            )
+            metrics["twin_escalation_id"] = esc.get("escalation_id")
+            metrics["twin_doubt_reasons"] = reasons or ["low_conf"]
+            return AutonomyDecision(
+                dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+                needs_attention=True,
+                retryable=False,
+                stall_reason=stall_reason,
+                recommended_action=fork,
+                autonomy_metrics=metrics,
+                message=(
+                    f"Twin vraagt raad (fork={fork}, conf={conf:.2%}) — "
+                    f"escalation id={esc.get('escalation_id')}. "
+                    "Deck/Telegram: expand_data | accept_champion | wipe. Geen auto-grind."
+                ),
+            )
+    except Exception:
+        logger.debug("birth.twin_terminal_escalate_failed", exc_info=True)
+    return AutonomyDecision(
+        dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+        needs_attention=True,
+        retryable=False,
+        stall_reason=stall_reason,
+        recommended_action=fork,
+        autonomy_metrics=metrics,
+        message=(
+            f"Terminal fork {fork} — Twin niet zeker; operator uitzondering "
+            f"(expand_data | accept_champion | wipe). Geen silent resume."
+        ),
+    )
+
+
 def evaluate_terminal_stall(
     *,
     cfg: BirthCurriculumConfig,
@@ -208,18 +280,33 @@ def evaluate_terminal_stall(
                             "— keep champion, clear freeze, continue quality ladder."
                         ),
                     )
+                # Twin present but not eligible: escalate (human exception), never grind.
+                return _twin_escalate_or_notify(
+                    approval_twin=approval_twin,
+                    autonomy_state=autonomy_state,
+                    stall_reason=stall_reason,
+                    curriculum_stage=curriculum_stage,
+                    fitness_signal=fitness_signal,
+                    fork="accept_champion_or_wipe",
+                    twin_res=twin_res if isinstance(twin_res, dict) else {},
+                    t_conf=t_conf,
+                    t_risks=list(twin_res.get("risk_flags") or [])
+                    if isinstance(twin_res, dict)
+                    else [],
+                )
             except Exception:
                 logger.debug("birth.twin_accept_champion_failed", exc_info=True)
         return AutonomyDecision(
             dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
             needs_attention=True,
-            retryable=True,
+            # Not auto-resumable: expand_data / wipe / accept_champion only.
+            retryable=False,
             stall_reason=stall_reason,
             autonomy_metrics=autonomy_state.to_metrics(),
             message=(
                 "Recovery ladder completed without best-winrate lift and phoenix "
-                "budget exhausted — operator attention required "
-                "(or Twin accept_champion when conf≥0.80 + champion path)."
+                "budget exhausted — Twin absent/unavailable; operator exception "
+                "(accept_champion | wipe). Geen train-through-freeze."
             ),
         )
 
@@ -318,39 +405,114 @@ def evaluate_terminal_stall(
                 swarm_resolved=bool(swarm_tournament_resolved),
                 constitution_risks=bool(t_risks) or int(constitution_violations or 0) > 0,
             )
-            # Track D SSOT: primary birth/SIM judgment never covers REAL capital gates.
-            from lumina_core.evolution.twin_discipline import twin_primary_judgment_for_decision
+            # ADR-0038: One Twin DNA · Dual Authority — birth is explore_pass.
+            from lumina_core.evolution.twin_discipline import (
+                twin_primary_judgment_for_decision,
+                twin_values_role,
+            )
 
+            birth_capital_mode = "birth"
+            values_role = twin_values_role(birth_capital_mode)
             primary = twin_primary_judgment_for_decision(
                 twin_mode=twin_mode,
                 twin_confidence=t_conf,
                 twin_raw_recommendation=t_raw,
                 twin_executable=t_executable,
                 twin_effective_recommendation=t_rec,
-                capital_mode="birth",
+                capital_mode=birth_capital_mode,
                 constitution_violations=int(constitution_violations or 0),
             )
+
+            # ADR-0037/0038: escalate ONLY when values gate is on (not explore_pass).
+            # Free SIM/birth: Twin may shadow-score; does not freeze the learn loop.
+            failures = list(primary.get("failures") or [])
+            authority_only_block = bool(failures) and all(
+                f.startswith("mode_")
+                or f in {
+                    "not_executable",
+                    "effective_recommendation_false",
+                    "base_training_incomplete",
+                    "mode_shadow_propose_only",
+                    "mode_not_full_auto_for_primary_approve",
+                    "explore_pass_values_not_gating",
+                }
+                or "mode_" in f
+                for f in failures
+            )
+            if (
+                values_role != "explore_pass"
+                and not primary.get("primary")
+                and not authority_only_block
+                and t_conf >= 0.45
+                and (t_conf < 0.80 or bool(t_risks))
+            ):
+                try:
+                    from lumina_core.evolution.twin_training_service import TwinTrainingService
+
+                    svc = TwinTrainingService()
+                    should, reasons = svc.should_escalate_decision(
+                        confidence=t_conf,
+                        risk_flags=t_risks,
+                        dna_hash=str(getattr(proxy, "hash", "") or "birth_autonomy"),
+                    )
+                    if should and (t_conf >= 0.55 or bool(t_risks)):
+                        esc = svc.create_escalation(
+                            dna_hash=str(getattr(proxy, "hash", "") or "birth_autonomy"),
+                            confidence=t_conf,
+                            risk_flags=t_risks,
+                            explanation=str(twin_res.get("explanation") or "")[:300],
+                            twin_recommendation=bool(t_raw),
+                            doubt_reasons=reasons or ["low_conf"],
+                            notify_telegram=True,
+                        )
+                        metrics = autonomy_state.to_metrics()
+                        metrics["twin_escalation_id"] = esc.get("escalation_id")
+                        metrics["twin_doubt_reasons"] = reasons
+                        return AutonomyDecision(
+                            dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+                            needs_attention=True,
+                            retryable=True,
+                            stall_reason=stall_reason,
+                            autonomy_metrics=metrics,
+                            message=(
+                                f"Twin twijfelt (conf={t_conf:.2%}, {reasons}) — "
+                                f"advies vóór besluit id={esc.get('escalation_id')} "
+                                "(Deck of Telegram). Geen pre-approval van high-conf Twin."
+                            ),
+                        )
+                except Exception:
+                    logger.debug("birth.twin_escalation_failed", exc_info=True)
 
             # Note: the proxy DNA here is synthetic (birth stage metadata). Real trading DNA
             # mutations are always routed through ConstitutionalGuard.check_pre_* + SandboxedMutationExecutor
             # regardless of any twin recommendation (see mutation_pipeline / generation_runner / orchestrator).
 
-            # Assisted / shadow: twin veto may block (fail-closed); only full_auto may sole-CONTINUE.
-            if high_conf and not t_raw:
+            # High-conf Twin VETO stops path only when values gate is active.
+            # explore_pass (birth/SIM): Twin preference never blocks the learn loop.
+            if values_role != "explore_pass" and high_conf and not t_raw:
                 return AutonomyDecision(
                     dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
-                    needs_attention=True,
+                    needs_attention=False,
                     retryable=False,
                     stall_reason=stall_reason,
                     message=(
-                        f"Twin high-conf veto (conf={t_conf:.2%}, mode={twin_mode}) "
-                        "— operator attention required."
+                        f"Twin high-conf VETO (conf={t_conf:.2%}, mode={twin_mode}, "
+                        f"role={values_role}) — besluit genomen; post-hoc review via Telegram/Deck."
                     ),
                 )
-            if high_conf and t_raw and not t_executable:
+            if high_conf and t_raw and not t_executable and values_role != "explore_pass":
                 # Propose only / assisted approve — do not sole-auto; fall through to other recovery.
                 pass
-            elif twin_continue_ok and t_rec and primary.get("primary"):
+            elif primary.get("primary") and (
+                # ADR-0038: free SIM/birth — Twin preference never gates CONTINUE
+                # (constitution already enforced in primary; swarm still required).
+                (
+                    values_role == "explore_pass"
+                    and bool(swarm_tournament_resolved)
+                    and int(constitution_violations or 0) == 0
+                )
+                or (twin_continue_ok and t_rec)
+            ):
                 autonomy_state.autonomous_recovery_count += 1
                 return AutonomyDecision(
                     dispatch=RecoveryDispatch.CONTINUE_LOOP,
@@ -360,8 +522,12 @@ def evaluate_terminal_stall(
                     recommended_action=map_recommended_to_service_action(recommended or "resume_stalled_stage"),
                     autonomy_metrics=autonomy_state.to_metrics(),
                     message=(
-                        f"Twin high-conf autonomous approval "
-                        f"(conf={t_conf:.2%}, mode={twin_mode})"
+                        f"Explore-pass CONTINUE (twin shadow conf={t_conf:.2%}, mode={twin_mode})"
+                        if values_role == "explore_pass"
+                        else (
+                            f"Twin high-conf autonomous approval "
+                            f"(conf={t_conf:.2%}, mode={twin_mode})"
+                        )
                     ),
                 )
         except Exception:
@@ -411,26 +577,134 @@ def evaluate_terminal_stall(
                 message=f"Phoenix cycle requested: {novelty}",
             )
 
+    # Explicit recovery recommendation (meta/recovery engines) — honor before hard terminal.
     if recommended:
         autonomy_state.autonomous_recovery_count += 1
+        mapped = map_recommended_to_service_action(recommended)
         return AutonomyDecision(
             dispatch=RecoveryDispatch.CONTINUE_LOOP,
             needs_attention=False,
             retryable=True,
             stall_reason=stall_reason,
-            recommended_action=map_recommended_to_service_action(recommended),
+            recommended_action=mapped,
             autonomy_metrics=autonomy_state.to_metrics(),
             message=f"Autonomous recovery: {recommended}",
         )
 
+    ladder_exhausted = bool(plateau_exhausted) or stall_reason in {
+        "plateau_evolution_exhausted",
+        "stall_remediation_exhausted",
+    }
+    phoenix_gone = not _phoenix_eligible(cfg, autonomy_state)
+
+    # Twin owns expand_data only after phoenix budget is truly gone (never wipe).
+    if ladder_exhausted and phoenix_gone:
+        if approval_twin is not None:
+            try:
+                from lumina_core.birth.birth_control_plane import twin_expand_data_eligible
+                from lumina_core.evolution.dna_registry import PolicyDNA
+
+                if hasattr(approval_twin, "sync_mode_from_controller"):
+                    try:
+                        approval_twin.sync_mode_from_controller()
+                    except Exception:
+                        pass
+                proxy = PolicyDNA.create(
+                    prompt_id="birth_terminal_expand_data",
+                    version="autonomy",
+                    content={
+                        "stage": curriculum_stage,
+                        "stall_reason": stall_reason,
+                        "action": "expand_data",
+                        "fitness": fitness_signal,
+                        "trades": stage_trades,
+                    },
+                    fitness_score=float(fitness_signal),
+                    generation=0,
+                    mutation_rate=0.0,
+                    lineage_hash="birth-terminal-expand",
+                )
+                twin_res = approval_twin.evaluate_dna_promotion(proxy)
+                t_conf = float(twin_res.get("confidence", 0.0) or 0.0)
+                t_raw = bool(twin_res.get("recommendation", False))
+                t_rec = bool(twin_res.get("effective_recommendation", t_raw))
+                twin_mode = str(
+                    twin_res.get("mode") or getattr(approval_twin, "mode", "shadow") or "shadow"
+                )
+                if twin_expand_data_eligible(
+                    cfg=cfg,
+                    twin_confidence=t_conf,
+                    twin_recommendation=bool(t_rec or t_raw),
+                    constitution_violations=int(constitution_violations or 0),
+                    twin_mode=twin_mode,
+                    plateau_exhausted=True,
+                ):
+                    autonomy_state.autonomous_recovery_count += 1
+                    metrics = autonomy_state.to_metrics()
+                    metrics["twin_expand_data"] = True
+                    metrics["twin_confidence"] = round(t_conf, 4)
+                    metrics["twin_mode"] = twin_mode
+                    return AutonomyDecision(
+                        dispatch=RecoveryDispatch.PHOENIX_RESUME,
+                        needs_attention=False,
+                        retryable=True,
+                        stall_reason=PHOENIX_CYCLE_REASON,
+                        recommended_action="expand_and_retry",
+                        autonomy_metrics=metrics,
+                        message=(
+                            f"Twin expand_data (conf={t_conf:.2%}, mode={twin_mode}) "
+                            "— widen horizon, preserve checkpoint, continue Birth."
+                        ),
+                    )
+                return _twin_escalate_or_notify(
+                    approval_twin=approval_twin,
+                    autonomy_state=autonomy_state,
+                    stall_reason=stall_reason,
+                    curriculum_stage=curriculum_stage,
+                    fitness_signal=fitness_signal,
+                    fork="expand_data_or_wipe_genesis",
+                    twin_res=twin_res if isinstance(twin_res, dict) else {},
+                    t_conf=t_conf,
+                    t_risks=list(twin_res.get("risk_flags") or [])
+                    if isinstance(twin_res, dict)
+                    else [],
+                )
+            except Exception:
+                logger.debug("birth.twin_expand_data_failed", exc_info=True)
+        return AutonomyDecision(
+            dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+            needs_attention=True,
+            retryable=False,
+            stall_reason=stall_reason,
+            recommended_action="expand_data",
+            autonomy_metrics=autonomy_state.to_metrics(),
+            message=(
+                "Plateau exhausted and phoenix budget gone — Twin unavailable; "
+                "operator exception (expand_data | wipe). Geen silent auto-resume."
+            ),
+        )
+
+    # Soft mid-ladder stall: keep organism breathing (not terminal freeze).
+    if _phoenix_eligible(cfg, autonomy_state):
+        autonomy_state.autonomous_recovery_count += 1
+        return AutonomyDecision(
+            dispatch=RecoveryDispatch.PHOENIX_RESUME,
+            needs_attention=False,
+            retryable=True,
+            stall_reason=PHOENIX_CYCLE_REASON,
+            recommended_action="resume_stalled_stage",
+            autonomy_metrics=autonomy_state.to_metrics(),
+            message="Autonomous resume after stall.",
+        )
+
     return AutonomyDecision(
-        dispatch=RecoveryDispatch.PHOENIX_RESUME,
-        needs_attention=False,
-        retryable=True,
-        stall_reason=PHOENIX_CYCLE_REASON,
-        recommended_action="resume_stalled_stage",
+        dispatch=RecoveryDispatch.TERMINAL_NOTIFY_ONLY,
+        needs_attention=True,
+        retryable=False,
+        stall_reason=stall_reason or "stage_stalled",
+        recommended_action="expand_data",
         autonomy_metrics=autonomy_state.to_metrics(),
-        message="Autonomous resume after stall.",
+        message="Terminal stall — operator exception (expand_data | wipe). Geen blind resume.",
     )
 
 __all__ = [

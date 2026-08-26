@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import stage1_winrate_pass_threshold
@@ -54,9 +54,19 @@ def winrate_improvement_blocks_ladder(
     return delta >= meaningful_delta and progress_ratio >= _PLATEAU_GAP_PROGRESS_MIN
 
 
-def sanitize_phantom_evolution_steps(state: PlateauState) -> bool:
-    """Cap evolution counter after checkpoint resume (legacy runs reached step 38+)."""
+def sanitize_phantom_evolution_steps(
+    state: PlateauState,
+    *,
+    max_steps: int | None = None,
+) -> bool:
+    """Cap evolution counter after checkpoint resume (legacy runs reached step 38+).
+
+    When ``max_steps`` is set (certified/starship cap), use that as the hard ceiling
+    so resume cannot sit above begin_evolution_step's TERMINAL threshold.
+    """
     cap = len(EVOLUTION_STEP_ACTIONS)
+    if max_steps is not None:
+        cap = max(1, min(cap, int(max_steps)))
     if state.evolution_step <= cap:
         return False
     logger.warning(
@@ -107,8 +117,15 @@ def _compressed_ladder_active(
     required: int = 0,
     compress: bool = False,
 ) -> bool:
-    """True when evolution must run compressed (beyond hard-stop recovery mode)."""
+    """True when evolution must run compressed (post volume-gate / hard-stop).
+
+    Past the stage pass-gate volume, min_ppo + long rollout waits become thrash
+    fuel. Compress as soon as ``stage_trades > required`` (or hard-stop), not only
+    after the 3× beyond-gate multiplier.
+    """
     if compress:
+        return True
+    if required > 0 and int(stage_trades) > int(required):
         return True
     if required > 0 and should_trades_beyond_gate_hard_stop(stage_trades, required, cfg):
         return True
@@ -168,7 +185,12 @@ def should_force_advance_evolution_step(
     required: int = 0,
     compress_ladder: bool = False,
 ) -> bool:
-    """Time-box fallback: force next evolution action after max rollouts without lift."""
+    """Time-box fallback: force next evolution action after max rollouts without lift.
+
+    ``min_ppo`` gates soft advance only. Once rollouts hit max without lift, force
+    immediately — do not wait for min_ppo or max*3 (certified thrash root cause).
+    """
+    del ppo_steps_since_step_start  # soft-advance only; force is rollout-bounded
     if not state.active or state.evolution_step <= 0:
         return False
     max_noops = max(1, int(getattr(cfg, "plateau_evolution_max_noops_per_step", 3)))
@@ -185,14 +207,9 @@ def should_force_advance_evolution_step(
         max_rollouts = max(
             2, int(getattr(cfg, "beyond_gate_evolution_rollouts_per_step", 4) or 4) * 2
         )
+    # Safety valve: always force after triple max even if WR is improving slowly.
     if state.evolution_rollouts_this_step >= max_rollouts * 3:
         return True
-    min_ppo = int(getattr(cfg, "plateau_evolution_min_ppo_steps_between_steps", 0))
-    if compressed:
-        min_ppo = 0
-    if min_ppo > 0 and int(ppo_steps_since_step_start) < min_ppo:
-        if state.evolution_rollouts_this_step < max_rollouts * 3:
-            return False
     if state.evolution_rollouts_this_step < max_rollouts:
         return False
     target = float(pass_target if pass_target is not None else stage1_winrate_pass_threshold(cfg))
@@ -217,10 +234,12 @@ def should_trigger_plateau_evolution_step(
     stage_trades: int = 0,
     required: int = 0,
     compress_ladder: bool = False,
+    max_steps: int | None = None,
+    stage: Any = None,
 ) -> bool:
     if not state.active:
         return False
-    if evolution_ladder_exhausted(state):
+    if evolution_ladder_exhausted(state, stage=stage, max_steps=max_steps):
         return False
     if allow_start and should_start_evolution_step(state):
         return True
@@ -257,9 +276,13 @@ def evolution_ladder_blocked_reason(
     stage_trades: int,
     required: int,
     pass_target: float | None = None,
+    max_steps: int | None = None,
+    stage: Any = None,
 ) -> str | None:
     if not state.active:
         return "plateau_inactive"
+    if evolution_ladder_exhausted(state, stage=stage, max_steps=max_steps):
+        return "ladder_exhausted"
     if should_block_plateau_recovery(
         state,
         cfg=cfg,
@@ -267,12 +290,25 @@ def evolution_ladder_blocked_reason(
         trade_budget_remaining=trade_budget_remaining,
         stage_trades=stage_trades,
         required=required,
+        max_steps=max_steps,
+        stage=stage,
     ):
         return "recovery_blocked_budget_or_exhausted"
     if state.evolution_step <= 0:
         return None
     max_rollouts = int(getattr(cfg, "plateau_evolution_max_rollouts_per_step", 24))
     min_rollouts = int(cfg.plateau_evolution_rollouts_per_step)
+    # H3: post volume-gate / compressed ladder uses shorter rollout gate
+    if _compressed_ladder_active(
+        cfg=cfg,
+        stage_trades=stage_trades,
+        required=required,
+        compress=False,
+    ):
+        min_rollouts = int(
+            getattr(cfg, "beyond_gate_evolution_rollouts_per_step", 4) or 4
+        )
+        max_rollouts = max(min_rollouts, min(max_rollouts, min_rollouts * 2))
     target = float(pass_target if pass_target is not None else stage1_winrate_pass_threshold(cfg))
     blocks = winrate_improvement_blocks_ladder(
         state,

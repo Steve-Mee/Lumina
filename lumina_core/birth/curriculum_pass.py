@@ -1,13 +1,49 @@
-"""Curriculum stage pass evaluation (gates + soft provisional rules)."""
+"""Curriculum stage pass evaluation — Foundation AND-gates (ADR-0046)."""
 from __future__ import annotations
 
 from lumina_core.birth.config import BirthCurriculumConfig
-from lumina_core.birth.curriculum_types import (
-    CurriculumStage,
-    StageResult,
-    stage1_winrate_pass_threshold,
-    stage_pass_trades,
+from lumina_core.birth.curriculum_types import CurriculumStage, StageResult, stage_pass_trades
+from lumina_core.birth.foundation_metrics import (
+    FOUNDATION_SCHEMA,
+    SETTLEMENT_MIN_SHARE,
+    occupancy_ratio,
 )
+from lumina_core.birth.foundation_pass import evaluate_foundation_pass
+from lumina_core.birth.foundation_stages import is_foundation_stage, is_legacy_intra_birth_stage
+
+
+def _settlement_pass_leg(
+    cfg: BirthCurriculumConfig | None,
+    *,
+    trades: int,
+    required: int,
+    closes_stop: int,
+    closes_target: int,
+    closes_time_stop: int,
+    closes_flatten: int,
+    closes_unknown: int,
+) -> tuple[bool, str, float]:
+    from lumina_core.birth.starship_edgescore_core import evaluate_settlement_honesty
+
+    ok, share, reason = evaluate_settlement_honesty(
+        closes_stop=int(closes_stop),
+        closes_target=int(closes_target),
+        closes_time_stop=int(closes_time_stop),
+        closes_flatten=int(closes_flatten),
+        closes_unknown=int(closes_unknown),
+        trades=int(trades),
+        required=int(required),
+        min_share=float(
+            getattr(cfg, "settlement_min_decisive_share", SETTLEMENT_MIN_SHARE)
+            or SETTLEMENT_MIN_SHARE
+        )
+        if cfg
+        else SETTLEMENT_MIN_SHARE,
+    )
+    if cfg is not None and not bool(getattr(cfg, "settlement_honesty_enabled", True)):
+        return True, "disabled", float(share or 1.0)
+    return bool(ok), str(reason), float(share or 0.0)
+
 
 def evaluate_stage_pass(
     stage: CurriculumStage,
@@ -34,225 +70,135 @@ def evaluate_stage_pass(
     policy_entropy: float | None = None,
     stage_total_pnl: float | None = None,
     ppo_steps: int = 0,
+    policy_trades: int | None = None,
+    policy_wins: int | None = None,
+    plant_trades: int | None = None,
+    plant_wins: int | None = None,
+    consecutive_rolling_pass_windows: int = 0,
+    closes_stop: int = 0,
+    closes_target: int = 0,
+    closes_time_stop: int = 0,
+    closes_flatten: int = 0,
+    closes_unknown: int = 0,
+    pnl_series: list[float] | None = None,
+    stop_pct: float | None = None,
+    ref_price: float | None = None,
+    geometry_net_rr: float | None = None,
+    first_touch_hit_rate: float | None = None,
+    median_loss_r: float | None = None,
+    mean_r: float | None = None,
+    occupancy: float | None = None,
+    unique_calendar_days: int | None = None,
+    oos_sharpe: float | None = None,
+    oos_dd_pct: float | None = None,
+    r_series: list[float] | None = None,
 ) -> StageResult:
-    winrate = float(wins) / float(max(1, trades))
+    """Foundation pass law. Rolling WR / EdgeScore / WR floors are HUD-only."""
+    _ = (
+        rolling_winrate,
+        consecutive_rolling_pass_windows,
+        plant_trades,
+        plant_wins,
+        oracle_patterns,
+        buffer_size,
+        oracle_soft_min_patterns,
+        stage_total_pnl,
+        target_trades,
+    )
     hold_ratio = float(hold_signals) / float(max(1, total_signals))
     range_hold_ratio = float(range_hold_signals) / float(max(1, range_total_signals))
     range_flat_ratio = float(range_flat_bars) / float(max(1, range_total_signals))
+    occ = occupancy
+    # S1 occupancy is plant-flat, not HOLD%. Do not invent 0.0 from trend signals.
+    if occ is None and stage != CurriculumStage.STAGE1_TREND:
+        occ_signals = int(range_total_signals) if int(range_total_signals) > 0 else int(total_signals)
+        occ_flat = int(range_flat_bars)
+        occ = occupancy_ratio(flat_bars=occ_flat, total_signals=occ_signals)
+
     if cfg is not None:
         required = stage_pass_trades(stage, cfg)
     else:
         required = max(50, min(100, max(1, int(target_trades))))
+
+    settle_ok, settle_reason, settle_share = _settlement_pass_leg(
+        cfg,
+        trades=trades,
+        required=required,
+        closes_stop=closes_stop,
+        closes_target=closes_target,
+        closes_time_stop=closes_time_stop,
+        closes_flatten=closes_flatten,
+        closes_unknown=closes_unknown,
+    )
+    entropy_alive = True
+    if cfg is not None:
+        from lumina_core.birth.starship_edgescore_core import policy_entropy_alive
+
+        entropy_alive = policy_entropy_alive(
+            policy_entropy, cfg=cfg, ppo_steps=int(ppo_steps)
+        )
+
+    skill_trades = int(policy_trades) if policy_trades is not None else int(trades)
+    skill_wins = int(policy_wins) if policy_wins is not None else int(wins)
+    volume = int(skill_trades if policy_trades is not None else trades)
+    volume_wins = int(skill_wins if policy_trades is not None else wins)
+    days = unique_calendar_days
+    from lumina_core.birth.foundation_metrics import build_foundation_snapshot
+
+    if stage == CurriculumStage.STAGE5_PROBE_HANDOFF:
+        oos_s = oos_sharpe if oos_sharpe is not None else float(stage_val_sharpe)
+        oos_d = oos_dd_pct if oos_dd_pct is not None else float(stage_val_max_drawdown_pct)
+    else:
+        oos_s = oos_sharpe
+        oos_d = oos_dd_pct
+
+    snap = build_foundation_snapshot(
+        trades=volume,
+        wins=volume_wins,
+        pnl_series=list(pnl_series) if pnl_series else None,
+        r_series=list(r_series) if r_series is not None else None,
+        stop_pct=stop_pct,
+        ref_price=ref_price,
+        net_rr=geometry_net_rr,
+        p_ft=first_touch_hit_rate,
+        median_loss_r_value=median_loss_r,
+        mean_r_value=mean_r,
+        occupancy=occ,
+        settlement_ok=settle_ok,
+        settlement_share=settle_share,
+        constitution_violations=int(constitution_violations),
+        entropy_alive=entropy_alive,
+        unique_calendar_days=int(days) if days is not None else 0,
+        oos_sharpe=oos_s,
+        oos_dd_pct=oos_d,
+    )
+
     passed = False
     message = ""
-
-    if stage == CurriculumStage.STAGE1_TREND:
-        wr_gate = stage1_winrate_pass_threshold(cfg) if cfg is not None else 0.45
-        use_rolling = bool(getattr(cfg, "stage1_use_rolling_pass", True)) if cfg else True
-        roll_window = int(getattr(cfg, "stage1_rolling_pass_window", 500) or 500) if cfg else 500
-        roll = float(rolling_winrate) if rolling_winrate is not None else winrate
-        edgescore_on = bool(getattr(cfg, "stage1_edgescore_enabled", False)) if cfg else False
-        if edgescore_on and cfg is not None:
-            from lumina_core.birth.starship_birth import evaluate_stage1_edgescore
-
-            edge = evaluate_stage1_edgescore(
-                trades=trades,
-                wins=wins,
-                hold_signals=hold_signals,
-                total_signals=total_signals,
-                constitution_violations=constitution_violations,
-                required=required,
-                cfg=cfg,
-                entropy=policy_entropy,
-                total_pnl=stage_total_pnl,
-                rolling_winrate=rolling_winrate,
-                ppo_steps=int(ppo_steps),
-            )
-            passed = edge.passed
-            message = (
-                f"trend edgescore {edge.message} recommended_wr={wr_gate:.0%} "
-                f"(diagnostic only)"
-            )
-        else:
-            lifetime_ok = winrate >= wr_gate
-            rolling_ok = use_rolling and trades >= max(required, roll_window) and roll >= wr_gate
-            wr_ok = lifetime_ok or rolling_ok
-            passed = trades >= required and wr_ok and constitution_violations == 0
-            gate_source = (
-                "lifetime"
-                if lifetime_ok
-                else ("rolling" if rolling_ok else "neither")
-            )
-            message = (
-                f"trend winrate={winrate:.2%} rolling={roll:.2%} trades={trades}/{required} "
-                f"gate={wr_gate:.0%} source={gate_source} "
-                f"constitution_violations={constitution_violations}"
-            )
-    elif stage == CurriculumStage.STAGE2_RANGE:
-        s2_edge_on = bool(getattr(cfg, "stage2_edgescore_enabled", False)) if cfg else False
-        if s2_edge_on and cfg is not None:
-            from lumina_core.birth.starship_birth import evaluate_stage2_edgescore
-
-            flat_metric = range_flat_ratio if range_total_signals >= 50 else hold_ratio
-            edge = evaluate_stage2_edgescore(
-                trades=trades,
-                wins=wins,
-                range_flat_ratio=flat_metric,
-                range_round_trips=range_round_trips,
-                range_total_signals=range_total_signals,
-                constitution_violations=constitution_violations,
-                required=required,
-                cfg=cfg,
-                entropy=policy_entropy,
-                total_pnl=stage_total_pnl,
-                ppo_steps=int(ppo_steps),
-                rolling_winrate=rolling_winrate,
-            )
-            passed = edge.passed
-            message = f"range edgescore {edge.message}"
-        elif range_total_signals >= 50:
-            metric = range_flat_ratio
-            metric_label = "range_flat"
-            min_round_trips = max(3, required // 10)
-            passed = (
-                trades >= required
-                and 0.30 <= metric <= 0.70
-                and range_round_trips >= min_round_trips
-                and constitution_violations == 0
-            )
-            message = (
-                f"{metric_label}_ratio={metric:.2%} round_trips={range_round_trips} "
-                f"trades={trades}/{required} constitution_violations={constitution_violations} "
-                f"(range_ticks={range_total_signals})"
-            )
-        else:
-            metric = hold_ratio
-            metric_label = "hold"
-            passed = (
-                trades >= required
-                and 0.30 <= metric <= 0.70
-                and constitution_violations == 0
-            )
-            message = (
-                f"{metric_label}_ratio={metric:.2%} trades={trades}/{required} "
-                f"constitution_violations={constitution_violations} "
-                f"(range_ticks={range_total_signals})"
-            )
-    elif stage == CurriculumStage.STAGE3_MIXED:
-        s3_edge_on = bool(getattr(cfg, "stage3_edgescore_enabled", False)) if cfg else False
-        if s3_edge_on and cfg is not None:
-            from lumina_core.birth.starship_birth import evaluate_stage3_edgescore
-
-            edge = evaluate_stage3_edgescore(
-                trades=trades,
-                wins=wins,
-                hold_signals=hold_signals,
-                total_signals=total_signals,
-                constitution_violations=constitution_violations,
-                required=required,
-                cfg=cfg,
-                entropy=policy_entropy,
-                total_pnl=stage_total_pnl,
-                rolling_winrate=rolling_winrate,
-                hold_ratio=hold_ratio,
-                ppo_steps=int(ppo_steps),
-            )
-            passed = edge.passed
-            message = f"mixed edgescore {edge.message}"
-        else:
-            # Foundation floor: mixed regime must retain skill + not pure-hold.
-            wr_floor = float(getattr(cfg, "stage3_winrate_floor", 0.35) if cfg else 0.35)
-            hold_cap = float(getattr(cfg, "stage3_hold_ratio_max", 0.70) if cfg else 0.70)
-            use_rolling = bool(getattr(cfg, "stage3_use_rolling_pass", True)) if cfg else True
-            roll_window = int(getattr(cfg, "stage1_rolling_pass_window", 500) or 500) if cfg else 500
-            roll = float(rolling_winrate) if rolling_winrate is not None else winrate
-            lifetime_ok = winrate >= wr_floor
-            rolling_ok = use_rolling and trades >= min(required, roll_window) and roll >= wr_floor
-            wr_ok = lifetime_ok or rolling_ok
-            hold_ok = hold_ratio <= hold_cap
-            passed = (
-                trades >= required
-                and constitution_violations == 0
-                and wr_ok
-                and hold_ok
-            )
-            wr_source = "lifetime" if lifetime_ok else ("rolling" if rolling_ok else "neither")
-            message = (
-                f"mixed wr={winrate:.2%} rolling={roll:.2%} hold={hold_ratio:.1%} "
-                f"trades={trades}/{required} wr_floor={wr_floor:.0%} hold_cap={hold_cap:.0%} "
-                f"source={wr_source} constitution_violations={constitution_violations}"
-            )
-    elif stage == CurriculumStage.STAGE5_PROFIT_VAL:
-        wr_gate = float(getattr(cfg, "runway_stage5_winrate_pass", 0.40) if cfg else 0.40)
-        hold_cap = float(getattr(cfg, "runway_stage5_hold_ratio_max", 0.55) if cfg else 0.55)
-        passed = (
-            trades >= required
-            and winrate >= wr_gate
-            and hold_ratio <= hold_cap
-            and constitution_violations == 0
+    if is_legacy_intra_birth_stage(stage):
+        passed = False
+        message = f"legacy_intra_birth_stage_rejected:{stage.value}"
+    elif is_foundation_stage(stage):
+        need_rt = max(3, required // 10)
+        decision = evaluate_foundation_pass(
+            stage,
+            snap,
+            round_trips=int(range_round_trips),
+            required_round_trips=need_rt,
         )
-        message = (
-            f"runway5 winrate={winrate:.2%} hold={hold_ratio:.1%} "
-            f"trades={trades}/{required} gate={wr_gate:.0%}"
-        )
-    elif stage == CurriculumStage.STAGE6_RISK_DISCIPLINE:
-        wr_gate = float(getattr(cfg, "runway_stage6_winrate_min", 0.42) if cfg else 0.42)
-        sharpe_min = float(getattr(cfg, "runway_stage6_sharpe_min", 0.20) if cfg else 0.20)
-        dd_max = float(getattr(cfg, "runway_stage6_drawdown_max_pct", 12.0) if cfg else 12.0)
-        passed = (
-            trades >= required
-            and winrate >= wr_gate
-            and float(stage_val_sharpe) >= sharpe_min
-            and float(stage_val_max_drawdown_pct) <= dd_max
-            and constitution_violations == 0
-        )
-        message = (
-            f"runway6 winrate={winrate:.2%} sharpe={stage_val_sharpe:.2f} "
-            f"dd={stage_val_max_drawdown_pct:.1f}% trades={trades}/{required}"
-        )
-    elif stage == CurriculumStage.STAGE7_HOLDOUT_PROFILE:
-        wr_gate = float(getattr(cfg, "runway_stage7_winrate_min", 0.45) if cfg else 0.45)
-        passed = (
-            trades >= required
-            and winrate >= wr_gate
-            and constitution_violations == 0
-        )
-        message = f"runway7 winrate={winrate:.2%} trades={trades}/{required} gate={wr_gate:.0%}"
-    elif stage == CurriculumStage.STAGE4_POLISH:
-        passed = True
-        message = "polish complete"
+        passed = decision.passed
+        message = f"{decision.message} settle={settle_reason}"
+    else:
+        passed = False
+        message = f"unknown_stage:{stage.value}"
 
-    # Soft / research passes are PRACTICE-only. Certified mode must never graduate
-    # via oracle pattern count alone (Raptor v5 — no backstage graduation).
+    # PRACTICE-only soft pass. Certified never graduates via oracle/gen0.
     soft_provisional = False
-    if allow_provisional and provisional and not passed and trades >= max(1, required // 4):
-        passed = True
-        soft_provisional = True
-        message = f"{message} gen0_provisional"
+    if allow_provisional and not passed:
+        passed = False
+        message = f"{message} (practice_soft_pass_disabled_under_foundation)"
 
-    if (
-        allow_provisional
-        and not passed
-        and oracle_patterns >= oracle_soft_min_patterns
-        and buffer_size >= 256
-        and trades >= max(1, required // 4)
-    ):
-        passed = True
-        soft_provisional = True
-        message = f"{message} oracle_soft_pass"
-
-    if (
-        allow_provisional
-        and not passed
-        and provisional
-        and oracle_patterns >= oracle_soft_min_patterns
-        and buffer_size >= max(80, oracle_soft_min_patterns)
-        and trades >= 1
-    ):
-        passed = True
-        soft_provisional = True
-        message = f"{message} oracle_gen0_research_pass"
-
+    _ = provisional  # HUD may still flag gen0; cannot set passed.
     return StageResult(
         stage=stage,
         trades=trades,
@@ -260,10 +206,29 @@ def evaluate_stage_pass(
         hold_ratio=hold_ratio,
         passed=passed,
         message=message,
-        provisional=bool(provisional) or soft_provisional,
+        provisional=soft_provisional,
         range_hold_ratio=range_hold_ratio,
         range_flat_ratio=range_flat_ratio,
         range_round_trips=int(range_round_trips),
+        closes_stop=int(closes_stop),
+        closes_target=int(closes_target),
+        closes_time_stop=int(closes_time_stop),
+        closes_flatten=int(closes_flatten),
+        closes_unknown=int(closes_unknown),
+        occupancy=snap.occupancy,
+        median_loss_r=snap.median_loss_r,
+        mean_r=snap.mean_r,
+        edge=snap.edge,
+        p_ft=snap.p_ft,
+        e_mech=snap.e_mech,
+        net_rr=snap.net_rr,
+        unique_calendar_days=snap.unique_calendar_days,
+        oos_sharpe=snap.oos_sharpe,
+        oos_dd_pct=snap.oos_dd_pct,
+        schema=FOUNDATION_SCHEMA,
+        settlement_ok=snap.settlement_ok,
+        settlement_share=snap.settlement_share,
+        entropy_alive=snap.entropy_alive,
+        replay_ok=snap.replay_ok,
+        progress_fields=dict(snap.to_progress_fields()),
     )
-
-

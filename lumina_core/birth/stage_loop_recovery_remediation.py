@@ -46,13 +46,30 @@ class StageLoopRecoveryRemediationMixin(StageLoopRecoveryPhoenixMixin, StageLoop
                 bool(getattr(self, "swarm_champion_accepted", False)),
             )
             return False
-        if self._maybe_entropy_life_support():
-            return True
-        # Starship A3/A4: swarm tournament before stall remediation / phoenix.
-        if bool(getattr(self.cur_cfg, "starship_stall_after_swarm_only", True)):
-            if self._ensure_swarm_first() or bool(self.swarm_state.active):
-                return True
         hard_stop = bool(getattr(self, "_hard_stop_terminal_armed", False))
+        # After hard-stop terminal arming: never re-open entropy/swarm theater that
+        # returns True forever (birth.terminal.requested spam). Allow at most one
+        # remediation cycle; otherwise finalize for operator expand/wipe.
+        if hard_stop:
+            rem_cycle = int(getattr(self.remediation_state, "remediation_cycle", 0) or 0)
+            rem_active = bool(getattr(self.remediation_state, "active", False))
+            if rem_cycle >= 1 and (
+                self.bus.remediation_is_exhausted(self.stage) or not rem_active
+            ):
+                logger.warning(
+                    "birth.terminal.finalized hard_stop_no_theater cycle=%s",
+                    rem_cycle,
+                )
+                return False
+            # rem_cycle >= 1 and still active: fall through to step advancement only.
+            # rem_cycle == 0: fall through to begin a single cycle (no swarm/entropy first).
+        else:
+            if self._maybe_entropy_life_support():
+                return True
+            # Starship A3/A4: swarm tournament before stall remediation / phoenix.
+            if bool(getattr(self.cur_cfg, "starship_stall_after_swarm_only", True)):
+                if self._ensure_swarm_first() or bool(self.swarm_state.active):
+                    return True
         # Raptor v4: after hard-stop, at most one remediation cycle — then finalize.
         if hard_stop and int(self.remediation_state.remediation_cycle) >= 1:
             if self.bus.remediation_is_exhausted(self.stage) or not self.remediation_state.active:
@@ -99,9 +116,12 @@ class StageLoopRecoveryRemediationMixin(StageLoopRecoveryPhoenixMixin, StageLoop
                     self.remediation_state.remediation_cycle,
                 )
                 return False
+            evo_max = self._evolution_max_steps()
             no_lift = should_brake_recovery_no_lift(
-                self.plateau_state
-            ) or should_block_phoenix_no_lift(self.plateau_state)
+                self.plateau_state, max_steps=evo_max, stage=self.stage
+            ) or should_block_phoenix_no_lift(
+                self.plateau_state, max_steps=evo_max, stage=self.stage
+            )
             if no_lift:
                 logger.warning(
                     "birth.plateau.no_lift_brake blocking cycle/phoenix reset "
@@ -127,15 +147,20 @@ class StageLoopRecoveryRemediationMixin(StageLoopRecoveryPhoenixMixin, StageLoop
                 cfg=self.cur_cfg,
                 winrate=float(self.stage_wins) / float(max(1, self.stage_trades)),
             ):
-                self._apply_phoenix_reset()
-                reset_plateau_for_new_cycle(
-                    self.plateau_state,
-                    stage_trades=self.stage_trades,
-                    stage_wins=self.stage_wins,
+                _detail, applied = self._apply_phoenix_reset()
+                if applied:
+                    reset_plateau_for_new_cycle(
+                        self.plateau_state,
+                        stage_trades=self.stage_trades,
+                        stage_wins=self.stage_wins,
+                    )
+                    self.remediation_state.active = False
+                    fk = str(pending.get("failure_key") or "stage_metrics")
+                    return self._try_plateau_evolution(failure_key=fk)
+                logger.warning(
+                    "birth.remediation.phoenix_reset_blocked detail=%s",
+                    _detail,
                 )
-                self.remediation_state.active = False
-                fk = str(pending.get("failure_key") or "stage_metrics")
-                return self._try_plateau_evolution(failure_key=fk)
             if self.cur_cfg.autonomous_recovery_enabled and self._apply_phoenix_in_loop(
                 stall_reason=TERMINAL_STALL_REASON
             ):
