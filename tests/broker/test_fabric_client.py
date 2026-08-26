@@ -23,6 +23,24 @@ from lumina_core.broker.ninjatrader.fabric_client import FabricConfig, FabricGrp
 from lumina_core.broker.ninjatrader.generated import fabric_pb2, fabric_pb2_grpc
 
 
+@pytest.fixture(autouse=True)
+def _isolate_fabric_token_ssot(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep mock-server tokens authoritative (no ambient env/SSOT override).
+
+    ``FabricConfig.resolve_token`` prefers a healed SSOT/env token when the
+    explicit probe token is short (<20). CI runners may have a long
+    ``LUMINA_FABRIC_TOKEN`` set, which would break mock auth expecting
+    ``test-token``.
+    """
+    monkeypatch.delenv("LUMINA_FABRIC_TOKEN", raising=False)
+    monkeypatch.delenv("LUMINA_NT8_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "lumina_core.broker.ninjatrader.fabric_secret.read",
+        lambda heal=True: SimpleNamespace(token=""),
+        raising=False,
+    )
+
+
 class _MockFabricServicer(fabric_pb2_grpc.ExecutionFabricServicer):
     def __init__(self, *, expected_token: str = "test-token", account: str = "Sim101") -> None:
         self.expected_token = expected_token
@@ -275,30 +293,10 @@ def test_fabric_client_connect_auth_and_place_order(mock_fabric_server: tuple[st
 
 def test_fabric_client_historical_unary_auth_metadata(
     mock_fabric_server: tuple[str, _MockFabricServicer],
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """G7: unary historical requires x-lumina-token (client sends via _auth_metadata)."""
+    """G7: empty token fail-closes before unary historical (ADR-0041)."""
     target, servicer = mock_fabric_server
     host, port_s = target.split(":")
-    monkeypatch.delenv("LUMINA_FABRIC_TOKEN", raising=False)
-    monkeypatch.delenv("LUMINA_NT8_API_KEY", raising=False)
-    monkeypatch.setattr(
-        "lumina_core.broker.ninjatrader.fabric_secret.read",
-        lambda heal=True: SimpleNamespace(token=""),
-        raising=False,
-    )
-    # Wrong token → UNAUTHENTICATED
-    bad = FabricGrpcClient(
-        FabricConfig(
-            host=host,
-            port=int(port_s),
-            auth_token="wrong-token",
-            heartbeat_interval_ms=0,
-            connect_timeout_seconds=3.0,
-            command_timeout_seconds=3.0,
-        )
-    )
-    # Use correct stream token then clear so resolve_token fail-closes (ADR-0041).
     good = FabricGrpcClient(
         FabricConfig(
             host=host,
@@ -316,7 +314,6 @@ def test_fabric_client_historical_unary_auth_metadata(
     with pytest.raises(RuntimeError, match="Fabric auth token is empty"):
         good.request_historical_data(instrument="MES", max_bars=5)
     good.disconnect()
-    _ = bad  # silence unused if connect not used
     _ = servicer
 
 
