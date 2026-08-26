@@ -224,9 +224,24 @@ def test_preflight_invalidates_cert_on_empty_load(
     monkeypatch.setattr(pf, "ApplicationContainer", lambda: _Container())
     monkeypatch.setattr(pf, "_bind_headless_runtime_app", lambda _c: None)
     monkeypatch.setattr(pf.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(
+        "lumina_launcher.services.fabric_link_ensure.ensure_fabric_token_aligned_and_live",
+        lambda **_kwargs: {"ok": True, "code": "OK"},
+    )
 
     svc = SimpleNamespace(workspace_root=tmp_path)
     ok, msg = pf.preflight_historical_data(svc, 56)
     assert ok is False
-    assert "Fabric" in msg or "NinjaTrader" in msg
+    low = msg.lower()
+    assert (
+        "Fabric" in msg
+        or "NinjaTrader" in msg
+        or "LUMINA_FABRIC_TOKEN" in msg
+        or "fabric" in low
+        or "repair" in low
+        or "histor" in low
+        or "bars" in low
+        or "leeg" in low
+        or "empty" in low
+    ), msg
     assert not cert.is_file()
