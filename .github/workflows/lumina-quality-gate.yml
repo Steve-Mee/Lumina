@@ -261,7 +261,10 @@ jobs:
     name: Nightly Full Suite
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Schedule-only: do not run on workflow_dispatch of the Quality Gate
+    # (manual dispatch is for lint/unit/depsec recovery). Nightly Security Audit
+    # remains the dedicated nightly security workflow.
+    if: github.event_name == 'schedule'
 
     steps:
       - uses: actions/checkout@v4
