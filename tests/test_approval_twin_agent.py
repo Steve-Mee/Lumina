@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from lumina_core.agent_orchestration import EventBus
 from lumina_core.evolution.approval_twin_agent import ApprovalTwinAgent
 from lumina_core.evolution.dna_registry import PolicyDNA
@@ -207,10 +209,17 @@ def test_evaluate_shadow_promotion_records_durable_metrics(tmp_path: Path) -> No
     assert snap.path_samples >= 1
 
 
-def test_try_promote_publishes_mode_promotion_event(tmp_path: Path) -> None:
+def test_try_promote_publishes_mode_promotion_event(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from lumina_core.evolution.twin_metrics_store import TwinMetricsStore
     from lumina_core.evolution.twin_mode_promotion_gate import TwinModeController
 
+    # ADR-0037: gate requires Twin birth-ready; CI has no readiness file on disk.
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_base_training.is_twin_birth_ready",
+        lambda *a, **k: True,
+    )
     registry = SteveValuesRegistry(
         sqlite_path=tmp_path / "values.sqlite3",
         jsonl_path=tmp_path / "values.jsonl",

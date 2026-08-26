@@ -559,6 +559,7 @@ def test_birth_control_plane_import_smoke() -> None:
         twin_confidence=0.9,
         swarm_resolved=True,
         constitution_risks=False,
+        base_trained=True,
     )
     assert not bcp.twin_continue_eligible(
         cfg=BirthCurriculumConfig(starship_twin_continue_when_full_auto=True),
@@ -567,6 +568,7 @@ def test_birth_control_plane_import_smoke() -> None:
         twin_confidence=0.9,
         swarm_resolved=False,
         constitution_risks=False,
+        base_trained=True,
     )
 
 

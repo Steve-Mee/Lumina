@@ -77,8 +77,26 @@ def _module_path(mod_name: str) -> Path | None:
         return None
 
 
+def _repo_root() -> Path:
+    """Lumina checkout root: ``<repo>/lumina_core/birth/runtime_diagnostics.py`` → parents[2]."""
+    return Path(__file__).resolve().parents[2]
+
+
 def _path_in_repo(path: object) -> bool:
-    return "ninjatraderai_bot" in str(path or "").replace("\\", "/").lower()
+    """True when *path* resolves under (or is) the Lumina repo root.
+
+    Empty / ``.`` sys.path entries mean cwd — resolve them. Prefer real path
+    containment over a folder-name substring so Linux CI checkouts, xdist
+    workers, and editable installs still count as on-tree.
+    """
+    raw = str(path or "").strip()
+    try:
+        root = _repo_root()
+        candidate = Path.cwd() if raw in {"", "."} else Path(raw)
+        resolved = candidate.resolve()
+        return resolved == root or root in resolved.parents
+    except (OSError, RuntimeError, ValueError):
+        return "ninjatraderai_bot" in raw.replace("\\", "/").lower()
 
 
 def _macro_stop_threshold() -> float:

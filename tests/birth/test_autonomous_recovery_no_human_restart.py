@@ -18,6 +18,9 @@ class _FakePpoTrainer:
     def update_from_buffer(self, **_kwargs):
         return SimpleNamespace()
 
+    def create_fresh_birth_policy(self, **_kwargs):
+        return SimpleNamespace(predict=lambda *_a, **_k: (0, None))
+
 
 def _trend_ticks(n: int) -> list[dict]:
     return [{"price": 5000.0 + i * 0.1, "regime": "TREND_UP"} for i in range(n)]
