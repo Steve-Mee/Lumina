@@ -275,10 +275,18 @@ def test_fabric_client_connect_auth_and_place_order(mock_fabric_server: tuple[st
 
 def test_fabric_client_historical_unary_auth_metadata(
     mock_fabric_server: tuple[str, _MockFabricServicer],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """G7: unary historical requires x-lumina-token (client sends via _auth_metadata)."""
     target, servicer = mock_fabric_server
     host, port_s = target.split(":")
+    monkeypatch.delenv("LUMINA_FABRIC_TOKEN", raising=False)
+    monkeypatch.delenv("LUMINA_NT8_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "lumina_core.broker.ninjatrader.fabric_secret.read",
+        lambda heal=True: SimpleNamespace(token=""),
+        raising=False,
+    )
     # Wrong token → UNAUTHENTICATED
     bad = FabricGrpcClient(
         FabricConfig(
@@ -290,8 +298,7 @@ def test_fabric_client_historical_unary_auth_metadata(
             command_timeout_seconds=3.0,
         )
     )
-    # connect uses stream auth (also wrong) — skip connect, set stub via connect fail path:
-    # Use correct stream token then call historical with empty token by clearing after connect.
+    # Use correct stream token then clear so resolve_token fail-closes (ADR-0041).
     good = FabricGrpcClient(
         FabricConfig(
             host=host,
@@ -305,10 +312,9 @@ def test_fabric_client_historical_unary_auth_metadata(
     assert good.connect() is True
     hist_ok = good.request_historical_data(instrument="MES", max_bars=5)
     assert hist_ok["code"] == "ok"
-    # Clear token so next unary has empty metadata → AUTH_FAILED
     good.config.auth_token = ""
-    hist_fail = good.request_historical_data(instrument="MES", max_bars=5)
-    assert hist_fail["code"] == "UNAUTHENTICATED"
+    with pytest.raises(RuntimeError, match="Fabric auth token is empty"):
+        good.request_historical_data(instrument="MES", max_bars=5)
     good.disconnect()
     _ = bad  # silence unused if connect not used
     _ = servicer
