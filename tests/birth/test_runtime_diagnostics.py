@@ -25,7 +25,8 @@ from lumina_core.birth.runtime_diagnostics import (
 )
 from lumina_core.birth.stage_scorecard import SCORECARD_PRESERVE_KEYS
 
-_DIAG_LOGGER = "lumina.birth.runtime_diagnostics"
+# Stable capture: Lumina loggers may not propagate to root, so caplog is unreliable
+# under single-process coverage runs. Assert via monkeypatched logger methods.
 
 
 @pytest.fixture(autouse=True)
@@ -35,8 +36,39 @@ def _reset_runtime_diag() -> Iterator[None]:
     reset_runtime_diagnostics_for_tests()
 
 
-def _records(caplog: pytest.LogCaptureFixture, needle: str) -> list[logging.LogRecord]:
-    return [r for r in caplog.records if needle in r.getMessage()]
+@pytest.fixture
+def diag_logs(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, str]]:
+    """Capture runtime_diagnostics logger.info/warning messages."""
+    captured: list[tuple[int, str]] = []
+
+    def _format(msg: object, args: tuple[object, ...]) -> str:
+        text = str(msg)
+        if args:
+            try:
+                return text % args
+            except Exception:
+                return f"{text} {args!r}"
+        return text
+
+    def _info(msg: object, *args: object, **_kwargs: object) -> None:
+        captured.append((logging.INFO, _format(msg, args)))
+
+    def _warning(msg: object, *args: object, **_kwargs: object) -> None:
+        captured.append((logging.WARNING, _format(msg, args)))
+
+    monkeypatch.setattr(
+        "lumina_core.birth.runtime_diagnostics.logger.info",
+        _info,
+    )
+    monkeypatch.setattr(
+        "lumina_core.birth.runtime_diagnostics.logger.warning",
+        _warning,
+    )
+    return captured
+
+
+def _records(captured: list[tuple[int, str]], needle: str) -> list[tuple[int, str]]:
+    return [(level, msg) for level, msg in captured if needle in msg]
 
 
 @pytest.mark.unit
@@ -80,22 +112,21 @@ def test_identity_keys_are_preserved_on_progress() -> None:
 
 @pytest.mark.unit
 def test_healthy_fingerprint_logs_info_once_without_module_dump(
-    caplog: pytest.LogCaptureFixture,
+    diag_logs: list[tuple[int, str]],
 ) -> None:
-    caplog.set_level(logging.DEBUG, logger=_DIAG_LOGGER)
     log_birth_code_fingerprint(reason="boot")
     log_birth_code_fingerprint(reason="attach")
-    lines = _records(caplog, "birth.runtime.fingerprint")
+    lines = _records(diag_logs, "birth.runtime.fingerprint")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.INFO
-    assert "reason=boot" in lines[0].getMessage()
-    assert "defects=none" in lines[0].getMessage()
-    assert _records(caplog, "birth.runtime.module") == []
+    assert lines[0][0] == logging.INFO
+    assert "reason=boot" in lines[0][1]
+    assert "defects=none" in lines[0][1]
+    assert _records(diag_logs, "birth.runtime.module") == []
 
 
 @pytest.mark.unit
 def test_defective_fingerprint_warns_every_call_with_module_dump(
-    caplog: pytest.LogCaptureFixture,
+    diag_logs: list[tuple[int, str]],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake: dict[str, Any] = {
@@ -118,16 +149,15 @@ def test_defective_fingerprint_warns_every_call_with_module_dump(
         "lumina_core.birth.runtime_diagnostics.collect_birth_code_fingerprint",
         lambda: fake,
     )
-    caplog.set_level(logging.INFO, logger=_DIAG_LOGGER)
     log_birth_code_fingerprint(reason="bad1")
     log_birth_code_fingerprint(reason="bad2")
-    lines = _records(caplog, "birth.runtime.fingerprint")
+    lines = _records(diag_logs, "birth.runtime.fingerprint")
     assert len(lines) == 2
-    assert all(r.levelno == logging.WARNING for r in lines)
-    assert "repo_not_on_path" in lines[0].getMessage()
-    modules = _records(caplog, "birth.runtime.module")
+    assert all(level == logging.WARNING for level, _ in lines)
+    assert "repo_not_on_path" in lines[0][1]
+    modules = _records(diag_logs, "birth.runtime.module")
     assert len(modules) == 2
-    assert all(r.levelno == logging.WARNING for r in modules)
+    assert all(level == logging.WARNING for level, _ in modules)
 
 
 @pytest.mark.unit
@@ -156,8 +186,7 @@ def test_fingerprint_identity_defects_detects_off_tree_and_probes() -> None:
 
 
 @pytest.mark.unit
-def test_progress_write_trace_healthy_info_once(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG, logger=_DIAG_LOGGER)
+def test_progress_write_trace_healthy_info_once(diag_logs: list[tuple[int, str]]) -> None:
     scorecard = {
         "birth_code_fingerprint": "abc",
         "birth_code_identity_ok": True,
@@ -178,17 +207,16 @@ def test_progress_write_trace_healthy_info_once(caplog: pytest.LogCaptureFixture
         stage_trades=20,
         scorecard=scorecard,
     )
-    lines = _records(caplog, "birth.progress.write_trace")
+    lines = _records(diag_logs, "birth.progress.write_trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.INFO
-    assert "defects=none" in lines[0].getMessage()
+    assert lines[0][0] == logging.INFO
+    assert "defects=none" in lines[0][1]
 
 
 @pytest.mark.unit
 def test_progress_write_trace_unset_geometry_is_not_a_defect(
-    caplog: pytest.LogCaptureFixture,
+    diag_logs: list[tuple[int, str]],
 ) -> None:
-    caplog.set_level(logging.DEBUG, logger=_DIAG_LOGGER)
     scorecard = {
         "birth_code_fingerprint": "abc",
         "birth_code_identity_ok": True,
@@ -203,17 +231,16 @@ def test_progress_write_trace_unset_geometry_is_not_a_defect(
         stage_trades=0,
         scorecard=scorecard,
     )
-    lines = _records(caplog, "birth.progress.write_trace")
+    lines = _records(diag_logs, "birth.progress.write_trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.INFO
-    assert "defects=none" in lines[0].getMessage()
+    assert lines[0][0] == logging.INFO
+    assert "defects=none" in lines[0][1]
 
 
 @pytest.mark.unit
 def test_progress_write_trace_rejected_shuffle_is_not_a_defect(
-    caplog: pytest.LogCaptureFixture,
+    diag_logs: list[tuple[int, str]],
 ) -> None:
-    caplog.set_level(logging.DEBUG, logger=_DIAG_LOGGER)
     scorecard = {
         "birth_code_fingerprint": "abc",
         "birth_code_identity_ok": True,
@@ -228,16 +255,15 @@ def test_progress_write_trace_rejected_shuffle_is_not_a_defect(
         stage_trades=10,
         scorecard=scorecard,
     )
-    lines = _records(caplog, "birth.progress.write_trace")
+    lines = _records(diag_logs, "birth.progress.write_trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.INFO
+    assert lines[0][0] == logging.INFO
 
 
 @pytest.mark.unit
 def test_progress_write_trace_disordered_unrejected_warns(
-    caplog: pytest.LogCaptureFixture,
+    diag_logs: list[tuple[int, str]],
 ) -> None:
-    caplog.set_level(logging.INFO, logger=_DIAG_LOGGER)
     scorecard = {
         "birth_code_fingerprint": "abc",
         "birth_code_identity_ok": True,
@@ -253,15 +279,14 @@ def test_progress_write_trace_disordered_unrejected_warns(
         scorecard=scorecard,
         throttle_sec=0.0,
     )
-    lines = _records(caplog, "birth.progress.write_trace")
+    lines = _records(diag_logs, "birth.progress.write_trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.WARNING
-    assert "geometry_not_time_ordered" in lines[0].getMessage()
+    assert lines[0][0] == logging.WARNING
+    assert "geometry_not_time_ordered" in lines[0][1]
 
 
 @pytest.mark.unit
-def test_progress_write_trace_macro_geometry_warns(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.INFO, logger=_DIAG_LOGGER)
+def test_progress_write_trace_macro_geometry_warns(diag_logs: list[tuple[int, str]]) -> None:
     scorecard = {
         "birth_code_fingerprint": "abc",
         "birth_code_identity_ok": True,
@@ -276,15 +301,14 @@ def test_progress_write_trace_macro_geometry_warns(caplog: pytest.LogCaptureFixt
         scorecard=scorecard,
         throttle_sec=0.0,
     )
-    lines = _records(caplog, "birth.progress.write_trace")
+    lines = _records(diag_logs, "birth.progress.write_trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.WARNING
-    assert "macro_move_distribution" in lines[0].getMessage()
+    assert lines[0][0] == logging.WARNING
+    assert "macro_move_distribution" in lines[0][1]
 
 
 @pytest.mark.unit
-def test_geometry_trace_healthy_is_info(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG, logger=_DIAG_LOGGER)
+def test_geometry_trace_healthy_is_info(diag_logs: list[tuple[int, str]]) -> None:
     log_geometry_trace(
         where="stage_prepare",
         stop_pct=0.0012,
@@ -294,15 +318,14 @@ def test_geometry_trace_healthy_is_info(caplog: pytest.LogCaptureFixture) -> Non
         time_ordered=True,
         macro_rejected=False,
     )
-    lines = _records(caplog, "birth.geometry.trace")
+    lines = _records(diag_logs, "birth.geometry.trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.INFO
-    assert "defects=none" in lines[0].getMessage()
+    assert lines[0][0] == logging.INFO
+    assert "defects=none" in lines[0][1]
 
 
 @pytest.mark.unit
-def test_geometry_trace_disordered_unrejected_warns(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.INFO, logger=_DIAG_LOGGER)
+def test_geometry_trace_disordered_unrejected_warns(diag_logs: list[tuple[int, str]]) -> None:
     log_geometry_trace(
         where="stage_prepare",
         stop_pct=0.0012,
@@ -312,15 +335,14 @@ def test_geometry_trace_disordered_unrejected_warns(caplog: pytest.LogCaptureFix
         time_ordered=False,
         macro_rejected=False,
     )
-    lines = _records(caplog, "birth.geometry.trace")
+    lines = _records(diag_logs, "birth.geometry.trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.WARNING
-    assert "disordered_unrejected" in lines[0].getMessage()
+    assert lines[0][0] == logging.WARNING
+    assert "disordered_unrejected" in lines[0][1]
 
 
 @pytest.mark.unit
-def test_geometry_trace_rejected_shuffle_is_info(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG, logger=_DIAG_LOGGER)
+def test_geometry_trace_rejected_shuffle_is_info(diag_logs: list[tuple[int, str]]) -> None:
     log_geometry_trace(
         where="stage_prepare",
         stop_pct=0.0012,
@@ -330,14 +352,13 @@ def test_geometry_trace_rejected_shuffle_is_info(caplog: pytest.LogCaptureFixtur
         time_ordered=False,
         macro_rejected=True,
     )
-    lines = _records(caplog, "birth.geometry.trace")
+    lines = _records(diag_logs, "birth.geometry.trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.INFO
+    assert lines[0][0] == logging.INFO
 
 
 @pytest.mark.unit
-def test_meta_decision_trace_is_info(caplog: pytest.LogCaptureFixture) -> None:
-    caplog.set_level(logging.DEBUG, logger=_DIAG_LOGGER)
+def test_meta_decision_trace_is_info(diag_logs: list[tuple[int, str]]) -> None:
     log_meta_decision_trace(
         trigger="periodic",
         primary="hold",
@@ -346,9 +367,9 @@ def test_meta_decision_trace_is_info(caplog: pytest.LogCaptureFixture) -> None:
         coerced=True,
         source="apply_meta_plan",
     )
-    lines = _records(caplog, "birth.meta.trace")
+    lines = _records(diag_logs, "birth.meta.trace")
     assert len(lines) == 1
-    assert lines[0].levelno == logging.INFO
+    assert lines[0][0] == logging.INFO
 
 
 @pytest.mark.unit

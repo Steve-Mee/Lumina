@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from concurrent import futures
+from types import SimpleNamespace
 from typing import Iterator
 
 import pytest
@@ -17,6 +18,24 @@ from lumina_core.broker.broker_bridge.schemas import Order
 from lumina_core.broker.ninjatrader.bridge_service import NinjaTraderBridgeService
 from lumina_core.broker.ninjatrader.fabric_client import FabricConfig, FabricGrpcClient
 from lumina_core.broker.ninjatrader.generated import fabric_pb2, fabric_pb2_grpc
+
+
+@pytest.fixture(autouse=True)
+def _isolate_fabric_token_ssot(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep mock-server tokens authoritative (no ambient env/SSOT override).
+
+    ``FabricConfig.resolve_token`` prefers a healed SSOT/env token when the
+    explicit probe token is short (<20). CI runners may have a long
+    ``LUMINA_FABRIC_TOKEN`` set, which would break mock auth expecting
+    ``chaos-token``.
+    """
+    monkeypatch.delenv("LUMINA_FABRIC_TOKEN", raising=False)
+    monkeypatch.delenv("LUMINA_NT8_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "lumina_core.broker.ninjatrader.fabric_secret.read",
+        lambda heal=True: SimpleNamespace(token=""),
+        raising=False,
+    )
 
 
 class _ChaosFabricServicer(fabric_pb2_grpc.ExecutionFabricServicer):

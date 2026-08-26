@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import pytest
 
 from lumina_core.birth.config import BirthCurriculumConfig
@@ -13,6 +16,7 @@ from lumina_core.birth.death_spiral_guard import (
 from lumina_core.birth.organism_autonomy import (
     OrganismAutonomyState,
     RecoveryDispatch,
+    _twin_escalate_or_notify,
     evaluate_terminal_stall,
     map_recommended_to_service_action,
     organism_autonomy_status,
@@ -540,4 +544,304 @@ def test_organism_autonomy_handler_passes_twin_on_bus() -> None:
         recommended_recovery_action="expand_data",
     )
     assert twin.calls >= 1
+    assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
+
+
+class _EscalateSvc:
+    def should_escalate_decision(self, **_kwargs: Any) -> tuple[bool, list[str]]:
+        return True, ["low_conf", "terminal_fork"]
+
+    def create_escalation(self, **_kwargs: Any) -> dict[str, Any]:
+        return {"escalation_id": "esc-cov-1"}
+
+
+@pytest.mark.unit
+def test_twin_escalate_or_notify_creates_escalation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_training_service.TwinTrainingService",
+        _EscalateSvc,
+    )
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = _twin_escalate_or_notify(
+        approval_twin=_TwinStub({"confidence": 0.4}),
+        autonomy_state=autonomy,
+        stall_reason="plateau_evolution_exhausted",
+        curriculum_stage="stage1_trend",
+        fitness_signal=0.3,
+        fork="accept_champion_or_wipe",
+        twin_res={"explanation": "unsure", "recommendation": False},
+        t_conf=0.4,
+        t_risks=["uncertain"],
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.needs_attention is True
+    assert decision.retryable is False
+    assert decision.autonomy_metrics.get("twin_escalation_id") == "esc-cov-1"
+    assert "esc-cov-1" in decision.message
+
+
+@pytest.mark.unit
+def test_twin_escalate_or_notify_falls_back_when_service_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _Boom:
+        def __init__(self) -> None:
+            raise RuntimeError("twin service down")
+
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_training_service.TwinTrainingService",
+        _Boom,
+    )
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    decision = _twin_escalate_or_notify(
+        approval_twin=_TwinStub({}),
+        autonomy_state=autonomy,
+        stall_reason="stall",
+        curriculum_stage="stage2_range",
+        fitness_signal=0.2,
+        fork="expand_data_or_wipe_genesis",
+        t_conf=0.3,
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.needs_attention is True
+    assert "operator uitzondering" in decision.message
+
+
+@pytest.mark.unit
+def test_no_lift_twin_not_eligible_escalates(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_training_service.TwinTrainingService",
+        _EscalateSvc,
+    )
+    autonomy = OrganismAutonomyState(
+        phoenix=PhoenixLoopState(phoenix_count=12),
+        death_spiral=DeathSpiralState(),
+    )
+    twin = _TwinStub(
+        {
+            "confidence": 0.45,
+            "recommendation": False,
+            "effective_recommendation": False,
+            "executable": False,
+            "mode": "shadow",
+            "risk_flags": ["uncertain"],
+            "explanation": "keep grinding? no",
+        }
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_max_cycles=12),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "plateau_evolution_exhausted",
+            "blocker_metric": "winrate",
+            "blocker_value": 0.36,
+        },
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=2700,
+        required=200,
+        constitution_violations=0,
+        fitness_signal=0.36,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=True,
+        swarm_tournament_resolved=False,
+        starship_context={},
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.needs_attention is True
+    assert twin.calls >= 1
+    assert decision.recommended_action == "accept_champion_or_wipe"
+
+
+@pytest.mark.unit
+def test_no_lift_twin_accept_path_survives_sync_and_eval_errors() -> None:
+    class _FlakyTwin:
+        def sync_mode_from_controller(self) -> None:
+            raise RuntimeError("sync failed")
+
+        def evaluate_dna_promotion(self, _dna: object) -> dict[str, object]:
+            raise RuntimeError("eval failed")
+
+    autonomy = OrganismAutonomyState(
+        phoenix=PhoenixLoopState(phoenix_count=12),
+        death_spiral=DeathSpiralState(),
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_max_cycles=12),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "swarm_no_lift"},
+        curriculum_stage="stage2_range",
+        approval_twin=_FlakyTwin(),
+        stage_trades=500,
+        required=300,
+        constitution_violations=0,
+        fitness_signal=0.3,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=True,
+        swarm_tournament_resolved=False,
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.retryable is False
+
+
+@pytest.mark.unit
+def test_expand_data_twin_not_eligible_escalates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_training_service.TwinTrainingService",
+        _EscalateSvc,
+    )
+    autonomy = OrganismAutonomyState(
+        phoenix=PhoenixLoopState(phoenix_count=12),
+        death_spiral=DeathSpiralState(),
+    )
+    twin = _TwinStub(
+        {
+            "confidence": 0.5,
+            "recommendation": False,
+            "effective_recommendation": False,
+            "executable": False,
+            "mode": "shadow",
+            "risk_flags": ["doubt"],
+        }
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_max_cycles=12, allow_provisional_pass=False),
+        autonomy_state=autonomy,
+        pending={
+            "terminal_stall_reason": "plateau_evolution_exhausted",
+            "blocker_metric": "expectancy",
+            "blocker_value": 0.1,
+        },
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=100,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.2,
+        remediation_cycles_exhausted=True,
+        plateau_exhausted=True,
+        recovery_no_lift_brake=False,
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.recommended_action == "expand_data_or_wipe_genesis"
+    assert twin.calls >= 1
+
+
+@pytest.mark.unit
+def test_twin_values_active_high_conf_veto(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When values gate is active, high-conf Twin VETO hard-stops (not explore_pass)."""
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_discipline.twin_values_role",
+        lambda _mode: "values_active",
+    )
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _TwinStub(
+        {
+            "confidence": 0.95,
+            "recommendation": False,
+            "effective_recommendation": False,
+            "executable": False,
+            "mode": "full_auto",
+            "risk_flags": [],
+        }
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False, allow_provisional_pass=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled", "blocker_metric": "trend_winrate", "blocker_value": 0.4},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert "VETO" in decision.message
+
+
+@pytest.mark.unit
+def test_twin_values_active_doubt_escalation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_discipline.twin_values_role",
+        lambda _mode: "values_active",
+    )
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_training_service.TwinTrainingService",
+        _EscalateSvc,
+    )
+
+    def _primary(**_kwargs: Any) -> dict[str, Any]:
+        return {"primary": False, "failures": ["low_confidence_for_values_gate"]}
+
+    monkeypatch.setattr(
+        "lumina_core.evolution.twin_discipline.twin_primary_judgment_for_decision",
+        _primary,
+    )
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _TwinStub(
+        {
+            "confidence": 0.60,
+            "recommendation": True,
+            "effective_recommendation": False,
+            "executable": False,
+            "mode": "assisted",
+            "risk_flags": ["doubt"],
+            "explanation": "maybe",
+        }
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False, allow_provisional_pass=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled"},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+    )
+    assert decision.dispatch == RecoveryDispatch.TERMINAL_NOTIFY_ONLY
+    assert decision.autonomy_metrics.get("twin_escalation_id") == "esc-cov-1"
+
+
+@pytest.mark.unit
+def test_twin_sync_mode_exception_is_swallowed(tmp_path: Path) -> None:
+    class _SyncBoomTwin(_TwinStub):
+        def sync_mode_from_controller(self) -> str:
+            self.sync_calls += 1
+            raise RuntimeError("controller offline")
+
+    champ = tmp_path / "champ.zip"
+    champ.write_bytes(b"pk")
+    autonomy = OrganismAutonomyState(phoenix=PhoenixLoopState(), death_spiral=DeathSpiralState())
+    twin = _SyncBoomTwin(
+        {
+            "confidence": 0.92,
+            "recommendation": True,
+            "effective_recommendation": True,
+            "executable": True,
+            "mode": "full_auto",
+            "risk_flags": [],
+        }
+    )
+    decision = evaluate_terminal_stall(
+        cfg=_cfg(phoenix_loop_enabled=False),
+        autonomy_state=autonomy,
+        pending={"terminal_stall_reason": "stage_stalled"},
+        curriculum_stage="stage1_trend",
+        approval_twin=twin,
+        stage_trades=200,
+        required=500,
+        constitution_violations=0,
+        fitness_signal=0.30,
+        recommended_recovery_action="expand_data",
+        swarm_tournament_resolved=True,
+        starship_context={"best_policy_path": str(champ)},
+    )
+    assert twin.sync_calls >= 1
     assert decision.dispatch == RecoveryDispatch.CONTINUE_LOOP
