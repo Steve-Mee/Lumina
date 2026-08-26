@@ -83,7 +83,14 @@ def real_mes_ohlc(tmp_path_factory: pytest.TempPathFactory) -> pd.DataFrame:
     eng.bind_app(cast(ModuleType, app))
     service = MarketDataIngestService(engine=eng)
 
-    loaded = service.load_historical_ohlc(days_back=3, limit=5000)
+    try:
+        loaded = service.load_historical_ohlc(days_back=3, limit=5000)
+    except RuntimeError as exc:
+        # Coverage/CI often has no Fabric token; fail-closed must not ERROR the suite.
+        msg = str(exc)
+        if "Fabric auth token is empty" in msg or "fail-closed" in msg.lower():
+            pytest.skip(f"Real MES data unavailable ({msg})")
+        raise
     if not loaded or eng.ohlc_1min.empty:
         pytest.skip("Real MES 1-min data unavailable via load_historical_ohlc (token/network/API required).")
 
