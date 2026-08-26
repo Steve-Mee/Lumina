@@ -317,3 +317,7 @@ _perf_*.txt
 # Accidental root node_modules (frontend/tauri already ignored under their trees)
 /node_modules/
 
+
+.coverage*
+
+tmp_module_cov_art/
