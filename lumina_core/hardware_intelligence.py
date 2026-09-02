@@ -210,7 +210,12 @@ class HardwareIntelligenceManager:
 
     def __init__(self, workspace_root: Path | str | None = None) -> None:
         self.workspace_root = Path(workspace_root).resolve() if workspace_root is not None else Path.cwd().resolve()
-        self.catalog = ModelCatalog(self.workspace_root / "lumina_model_catalog.json")
+        catalog_path = self.workspace_root / "lumina_model_catalog.json"
+        if not catalog_path.is_file():
+            repo_catalog = Path(__file__).resolve().parents[1] / "lumina_model_catalog.json"
+            if repo_catalog.is_file():
+                catalog_path = repo_catalog
+        self.catalog = ModelCatalog(catalog_path)
         self._latest_hardware_snapshot: HardwareSnapshot | None = None
         self._latest_intelligence_snapshot: HardwareIntelligenceSnapshot | None = None
 

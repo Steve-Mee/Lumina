@@ -1,0 +1,2 @@
+44:2026-09-02 11:28:58,697,INFO,birth.engine.version=BRO-v2 budget_cap=8000 source=start_arg.target_trades max_real_days=90
+429:    "reused_manifest": true

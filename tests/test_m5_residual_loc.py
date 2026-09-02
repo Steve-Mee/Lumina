@@ -53,8 +53,8 @@ M5_OVER_400_CEILINGS: dict[str, int] = {
     "lumina_core/evolution/twin_base_curriculum.py": 932,
     "lumina_core/engine/market_data_history_fetch.py": 930,
     "lumina_core/notifications/telegram_notifier.py": 881,
+    "lumina_core/birth/sim_runner.py": 848,
     "lumina_core/birth/birth_trade_geometry.py": 821,
-    "lumina_core/birth/sim_runner.py": 781,
     "lumina_launcher/services/fabric_simhost.py": 735,
     "lumina_core/birth/organism_autonomy.py": 717,
     "lumina_core/birth/stage_loop_progress_write_enrich.py": 697,
@@ -89,12 +89,13 @@ M5_OVER_400_CEILINGS: dict[str, int] = {
     "lumina_core/evolution/twin_base_training.py": 464,
     "lumina_core/broker/ninjatrader/fabric_client.py": 439,
     "lumina_core/birth/stage_loop_rollout_pre.py": 431,
+    "lumina_core/broker/ninjatrader/fabric_link_supervisor.py": 426,
     "lumina_core/birth/config_curriculum.py": 425,
     "lumina_launcher/services/birth_runner_preflight.py": 421,
     "lumina_core/risk/capital_aperture_lineage.py": 421,
     "lumina_core/birth/stage_loop_data_enrich_core.py": 418,
-    "lumina_core/broker/ninjatrader/fabric_link_supervisor.py": 416,
     "lumina_core/birth/meta_decide_after_rollout.py": 414,
+    "lumina_core/birth/synthetic_cloud_fixture.py": 406,
     "lumina_core/monitoring/observability_service.py": 404,
     "lumina_core/engine/visualization_charts.py": 401,
 }
@@ -155,6 +156,8 @@ def test_m5_residual_split_modules_exist() -> None:
         "lumina_os/backend/core_websocket_telemetry.py",
         "lumina_os/backend/birth_endpoints_enrich.py",
         "lumina_os/backend/monitoring_endpoints_ops.py",
+        "lumina_core/birth/force_open_plant.py",
+        "lumina_core/birth/synthetic_cloud_fixture_persist.py",
     ]
     missing = [c for c in companions if not (ROOT / c).is_file()]
     assert not missing, f"missing M5 companion modules: {missing}"

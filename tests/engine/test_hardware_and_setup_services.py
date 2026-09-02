@@ -177,3 +177,10 @@ def test_hardware_inspector_sweet_note_spells_beast_requirements() -> None:
     )
 
     assert any("voor beast is 64 GB RAM" in note for note in notes)
+
+
+def test_recommended_for_empty_catalog_does_not_crash(tmp_path: Path) -> None:
+    catalog = ModelCatalog(tmp_path / "missing_catalog.json")
+    desc = catalog.recommended_for(ram_gb=16.0, gpu_vram_gb=0.0, vllm_supported=False)
+    assert desc.key == "none"
+    assert desc.recommended_tier == "light"

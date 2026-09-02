@@ -1,0 +1,36 @@
+{
+  "cache_schema_version": 1,
+  "cache_written_at": "2026-09-02T11:26:19.551702+00:00",
+  "raw_ticks_hash": "2466d3f41d60657b",
+  "train_hash": "7e86c2bb1c71d514",
+  "holdout_pct": 0.2,
+  "enrich_version": "trend_features_v1",
+  "tick_count": 213120,
+  "train_tick_count": 166620,
+  "holdout_tick_count": 43170,
+  "requested_days": 90,
+  "actual_calendar_days": 88,
+  "instruments": [
+    "NQ SEP26"
+  ],
+  "stitched": false,
+  "stitched_from": [],
+  "purged_split_params": {
+    "holdout_pct": 0.2
+  },
+  "source": "synthetic_cloud_fixture",
+  "schema_version": "cloud_fixture_v1",
+  "instrument": "NQ SEP26",
+  "holdout_regimes": [
+    "NEUTRAL",
+    "TREND_DOWN",
+    "TREND_UP"
+  ],
+  "train_regimes": [
+    "NEUTRAL",
+    "TREND_DOWN",
+    "TREND_UP"
+  ],
+  "preflight_ok": true,
+  "real_data_pct": 0.0
+}

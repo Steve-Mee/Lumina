@@ -1,0 +1,784 @@
+mode: sim
+telegram:
+  token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+  waking_hour_start: 8
+  waking_hour_end: 22
+  attention_alerts_enabled: true
+  attention_dedupe_sec: 1800
+  attention_critical_bypass_quiet_hours: true
+  milestone_alerts_enabled: true
+  milestone_bypass_quiet_hours: true
+  notification_matrix:
+    maturation: true
+    birth_milestones: true
+    birth_attention: true
+    real_safety: true
+    evolution: true
+    ops: true
+  quiet_hours:
+    start: '23:00'
+    end: 07:00
+    tz: Europe/Brussels
+  journal_path: state/monitoring_telegram_messages.jsonl
+  outbound:
+    min_interval_sec: 20
+    max_per_hour: 12
+    bypass_kinds:
+    - promotion
+    - freeze
+    - real_safety
+participant_id: LUMINA_Steve
+sim:
+  aggressive_evolution: false
+  approval_required: true
+  daily_loss_cap: null
+  kelly_fraction: 1.0
+  bible_base_winrate: 0.55
+  max_mutation_depth: conservative
+  max_total_open_risk: 3000.0
+real:
+  aggressive_evolution: false
+  approval_required: true
+  daily_loss_cap: -150.0
+  max_consecutive_losses: 1
+  max_open_risk_per_instrument: 75.0
+  max_total_open_risk: 150.0
+  max_exposure_per_regime: 100.0
+  cooldown_after_streak: 60
+  session_cooldown_minutes: 60
+  enforce_session_guard: true
+  kelly_fraction: 0.25
+  bible_base_winrate: 0.55
+  max_mutation_depth: conservative
+hardware_profile: sweet
+reconcile_fills: true
+reconciliation_method: websocket
+reconciliation_timeout_seconds: 15
+broker:
+  backend: live
+  live_provider: ninjatrader
+  fallback_on_fabric_failure: false
+  ninjatrader:
+    enabled: true
+    websocket_path: /ws/ninjatrader/v1
+    account_name: Sim101
+    instruments: []
+    fabric:
+      host: 127.0.0.1
+      port: 50051
+      auth_token_env: LUMINA_FABRIC_TOKEN
+      gateway_mode: nt
+      heartbeat_interval_ms: 1000
+      heartbeat_timeout_ms: 5000
+      flatten_grace_ms: 15000
+      bind_localhost_only: true
+      max_position_size: 2
+      max_orders_per_minute: 30
+      daily_loss_limit: 0
+  crosstrade:
+    api_key: ${CROSSTRADE_TOKEN}
+    websocket_url: wss://app.crosstrade.io/ws/stream
+xai:
+  api_key: ${XAI_API_KEY}
+  model: grok-4.1-fast
+  update_interval_sec: 60
+inference:
+  primary_provider: ollama
+  provider_order:
+  - ollama
+  - vllm
+  - grok_remote
+  max_tokens: 1200
+  temperature: 0.65
+  llm_real_temperature: 0.35
+  llm_max_latency_ms: 8000
+  json_mode: true
+  fast_path_threshold: 0.75
+  request_timeout_sec: 60
+  max_consecutive_failures: 5
+intelligence:
+  mode: auto
+  tier_names:
+    high: high
+    standard: standard
+    light: light
+setup:
+  mode: smart
+  auto_install_ollama: true
+  auto_download_model: true
+  allow_force_tier: false
+vllm:
+  host: http://localhost:8000
+  model_name: qwen3.5-9b
+  manage_lifecycle: false
+ollama:
+  base_url: http://localhost:11434
+  temperature: 0.65
+  context_length: 16384
+  num_gpu: -1
+  num_ctx: 16384
+models:
+  vision: qwen2.5-vl:7b
+  reasoning: qwen3.5:9b
+  reflector: qwen2.5:3b
+  meta: qwen3.5:9b
+  grok_trader_1b: qwen3.5-35b
+trading:
+  instrument: NQ SEP26
+  risk_profile: Balanced
+  news_avoidance_pre_minutes: 10
+  news_avoidance_post_minutes: 5
+  news_avoidance_high_impact_pre_minutes: 15
+  news_avoidance_high_impact_post_minutes: 10
+  news_avoidance_minutes: 3
+  news_impact_multipliers:
+    high_bullish: 1.8
+    high_bearish: 0.4
+    medium_neutral: 1.0
+  eod_force_close_minutes_before_session_end: 30
+  eod_no_new_trades_minutes_before_session_end: 60
+  overnight_gap_protection_enabled: true
+  kelly_fraction_max: 0.25
+  kelly_min_confidence: 0.65
+risk_controller:
+  daily_loss_cap: -1000.0
+  max_consecutive_losses: 3
+  max_open_risk_per_instrument: 500.0
+  max_total_open_risk: 3000.0
+  max_exposure_per_regime: 2000.0
+  cooldown_after_streak: 30
+  order_book_spread_atr_ratio: 0.1
+  order_book_market_impact_alpha: 0.5
+  order_book_market_impact_beta: 0.6
+  order_book_spread_multipliers:
+    open: 2.5
+    midday: 1.0
+    close: 2.0
+  slippage_base_points: 0.125
+  slippage_sigma: 0.5
+  slippage_volatility_factor: 1.0
+  commission_per_side_usd: 1.29
+  exchange_fee_per_side_usd: 0.35
+  clearing_fee_per_side_usd: 0.1
+  nfa_fee_per_side_usd: 0.02
+  real_capital_safety_threshold_usd: 1000.0
+  real_capital_safety_threshold_ratio: 0.9
+  var_es_method: historical
+  var_es_window: 200
+  var_es_min_samples: 40
+  var_es_fail_closed_on_insufficient_data: true
+  var_es_insufficient_data_policy: fail_closed_real_only
+  enable_var_es_calc: true
+  enable_var_es_enforce_sim_real_guard: true
+  enable_var_es_enforce_real: true
+  var_es_high_risk_limit_multiplier: 0.8
+  var_es_normal_risk_limit_multiplier: 1.0
+  var_es_reason_codes_enabled: true
+  var_95_limit_usd: 1200.0
+  var_99_limit_usd: 1800.0
+  es_95_limit_usd: 1500.0
+  es_99_limit_usd: 2200.0
+  enable_mc_drawdown_calc: true
+  mc_drawdown_paths: 10000
+  mc_drawdown_horizon_days: 252
+  mc_drawdown_min_samples: 40
+  mc_drawdown_insufficient_data_policy: fail_closed_real_only
+  enable_mc_drawdown_enforce_sim_real_guard: true
+  enable_mc_drawdown_enforce_real: true
+  mc_drawdown_threshold_pct: 12.0
+  mc_drawdown_random_seed: 4242
+  sim_var_penalty_coeff: 0.04
+  sim_es_penalty_coeff: 0.06
+  kelly_rolling_window: 50
+  kelly_min_window_trades: 10
+  kelly_vol_scaling_enabled: true
+  kelly_vol_target_annual: 0.15
+  kelly_vol_lookback_trades: 20
+  market_impact_alpha: 0.5
+  market_impact_beta: 0.6
+  cost_model_enabled: true
+  slippage_base_ticks: 0.5
+  enabled: true
+risk_instrument_overrides: {}
+security:
+  cors_allowed_origins:
+  - http://localhost:3000
+  - http://127.0.0.1:3000
+  - http://localhost:5173
+  - http://127.0.0.1:5173
+  - http://localhost:8000
+  jwt_secret_key: ${LUMINA_JWT_SECRET_KEY}
+  jwt_algorithm: HS256
+  jwt_expiration_minutes: 1440
+  api_key_header: X-API-Key
+  api_keys:
+    ${LUMINA_ADMIN_API_KEY}:
+      name: launcher-admin
+      role: admin
+      enabled: true
+  rate_limit_enabled: true
+  rate_limit_requests_per_minute: 60
+  rate_limit_burst_size: 10
+  admin_role_required: true
+  audit_log_enabled: true
+  audit_log_path: logs/security_audit.jsonl
+  dangerous_configs:
+    cors_allowed_origins:
+    - '*'
+    security.debug_mode:
+    - true
+evolution:
+  enabled: true
+  approval_required: true
+  sandbox_mutations: true
+  reality_gap_penalty_coeff: 0.15
+  approval_twin:
+    mode: shadow
+    base_training:
+      enabled: true
+      curriculum_version: base_v4
+      app_only: true
+      target_minutes: 12
+    micro_training:
+      enabled: true
+      questions_per_day: 3
+      weekly_session_size: 5
+      dual_channel: true
+    escalation:
+      high_conf_threshold: 0.8
+      ttl_sec: 3600
+      dual_channel: true
+    decision_notify:
+      enabled: true
+      telegram: false
+      min_interval_sec: 300
+      coalesce_same_dna_sec: 45
+      force_low_conf: false
+    mode_promotion:
+      auto_promote_when_ready: false
+      auto_promote_full_auto_when_ready: false
+      forbid_full_auto_in_real_capital: true
+      min_samples_assisted: 30
+      min_agreement_pct_assisted: 80.0
+      max_false_positive_pct_assisted: 10.0
+      min_risk_flags_caught_assisted: 0
+      min_steve_labels_assisted: 15
+      min_samples_full_auto: 50
+      min_agreement_pct_full_auto: 90.0
+      max_false_positive_pct_full_auto: 5.0
+      min_risk_flags_caught_full_auto: 1
+      min_steve_labels_full_auto: 40
+      demote_agreement_floor_pct: 70.0
+      demote_false_positive_ceiling_pct: 20.0
+      require_constitution_adherence_100: true
+      audit_path: state/twin_mode_promotion_audit.jsonl
+      mode_state_path: state/approval_twin_mode.json
+      metrics_path: state/monitoring_twin_mode_metrics.jsonl
+  meta_swarm:
+    enabled: true
+  ohlc_reality_stress_enabled: true
+  community_knowledge:
+    enabled: true
+    max_commit_per_generation: 3
+    queue_path: state/community_knowledge_queue.jsonl
+    processed_path: state/community_knowledge_processed.txt
+    twin_confidence_min: 0.82
+    chroma_persist_path: state/chroma_community
+    chroma_collection_name: lumina_community_vetted
+  dream_engine:
+    enabled: true
+    dream_count: 4000
+    horizon_days: 7
+    drawdown_limit_ratio: 0.02
+  architecture_meta:
+    enabled: false
+    max_proposals_per_scan: 2
+    max_patch_lines: 80
+    min_health_delta: 0.15
+    sandbox_timeout_s: 60
+    require_human_approval: true
+    commit_hints_to_bible: true
+    apply_risk_nudges: true
+    risk_nudge_modes:
+    - sim
+    - paper
+  code_evolution:
+    enabled: false
+    max_proposals_per_cycle: 1
+    sandbox_timeout_s: 30
+    require_twin: true
+    apply_to_sandbox_store: false
+    require_human_approve_for_apply: true
+    allow_twin_judgment_apply: false
+    forbid_apply_in_real_capital: true
+    nightly: false
+    apply_store_role: challenger
+  challenger_venue:
+    enabled: false
+    mds_buffer: 64
+    min_days: 5
+    min_trades: 50
+    max_gap_ratio: 0.3
+    require_own_process_when_real_champion: true
+    canary_max_trades: 10
+    canary_dd_limit: 0.02
+    canary_window_sec: 3600
+  shadow_validation:
+    min_days: 3
+    max_days: 7
+    min_trades: 20
+    pvalue_threshold: 0.1
+    effect_size_threshold: 0.2
+  multiweek_fitness:
+    enabled: false
+    days: 14
+    use_real_market_data: true
+    backtest_mode: true
+    parallel_realities: 1
+  neuroevolution:
+    require_real_simulator_data: true
+    fetch_days_back: 90
+    fetch_limit: 20000
+    max_bars_in_report: 12000
+    stress_universa_enabled: true
+    stress_universa_max: 12
+    use_ohlc_stress_rollouts: false
+fine_tuning:
+  auto_trigger: true
+  min_acceptance: 0.4
+  drift_threshold: 0.25
+maturity:
+  strict_exit_proofs: true
+  experimental_soft_complete: false
+  awakening_min_twin_samples: 10
+  apprenticeship_min_green_days: 5
+  playground_require_first_order: true
+  proving_require_promotion_or_shadow: true
+  apprenticeship_sim_days: 5
+  apprenticeship_sim_days_probe: 0
+  apprenticeship_sim_max_workers: 2
+  apprenticeship_sim_use_real_market_data: true
+  apprenticeship_sim_drawdown_limit_ratio: 0.02
+  telegram_advance_token_ttl_sec: 86400
+birth_v2:
+  curriculum:
+    stage1_trend_trades: 2000
+    stage2_range_trades: 3000
+    stage2_expectancy_floor: -0.15
+    stage3_mixed_trades: 5000
+    stage_pass_trade_pct: 0.1
+    stage_pass_min_trades: 100
+    stage4_polish_ppo_steps: 50000
+    rollout_chunk_trades: 250
+    oracle_scan_stride: 5
+    oracle_patterns_per_stage: 5000
+    oracle_max_hold_bars: 120
+    data_expansion_steps:
+    - 90
+    - 180
+    - 365
+    stagnation_rollouts_before_expand: 5
+    max_rollouts_per_stage: 500
+    gen0_provisional_min_trades: 25
+    allow_provisional_pass: false
+    stage3_winrate_floor: 0.35
+    stage3_hold_ratio_max: 0.7
+    stage3_use_rolling_pass: true
+    autonomous_recovery_enabled: true
+    phoenix_loop_enabled: true
+    phoenix_max_cycles: 12
+    birth_survival_pass_enabled: true
+    birth_survival_wr_floor: 0.2
+    birth_survival_expectancy_floor: -0.5
+    birth_plant_soft_block_rate_max_per_1k: 100.0
+    perfect_birth_min_twin_steve_agreement_pct: 80.0
+    perfect_birth_min_autonomous_recovery_rate_pct: 85.0
+    perfect_birth_min_auto_approved_pct: 60.0
+    perfect_birth_min_shadow_twin_alignment_pct: 75.0
+    perfect_birth_min_samples_labels: 30
+    perfect_birth_min_recovery_attempts: 8
+    perfect_birth_sustained_hours: 48
+    phase2_autonomy_enabled: false
+    phase2_dynamic_wall_enabled: false
+    phase2_self_adaptive_params_enabled: false
+    phase2_instance_adapt_enabled: false
+    phase2_require_perfect_birth_flag: true
+    phase2_allow_sim_scaffold: false
+    phase2_require_twin_for_apply: true
+    phase2_perfect_birth_flag_path: state/perfect_birth_complete.flag
+    phase2_require_perfect_birth_evidence: true
+    phase2_recheck_perfect_birth_kpis: false
+    phase2_execution_mode: observe
+    phoenix_widen_data_after_cycles: 3
+    death_spiral_repeat_threshold: 3
+    death_spiral_novelty_budget: 3
+    stall_remediation_max_cycles: 3
+    max_adaptation_stuck_escapes: 3
+    graduation_mode: evolution_deferred
+    provisional_oos_floor: 0.35
+    oos_proxy_enabled: true
+    oos_proxy_interval_trades: 500
+    oos_proxy_sample_trades: 50
+    oos_proxy_weight: 0.4
+    policy_swarm_enabled: true
+    policy_swarm_variants: 3
+    policy_swarm_rollouts_per_variant: 4
+    certified_max_rollouts_per_stage: 200
+    certified_stage_stall_wall_sec: 28800
+    stage1_winrate_stagnation_rollouts: 8
+    intra_stage1_enabled: true
+    intra_initial_hard_pct: 0.15
+    intra_max_hard_pct: 0.7
+    intra_hard_pct_step: 0.05
+    intra_easy_winrate_target: 0.5
+    intra_easy_stability_window: 3
+    intra_easy_percentile: 0.4
+    intra_hard_percentile: 0.4
+    intra_pool_size_multiplier: 4
+    meta_controller_enabled: true
+    meta_reward_tweak_step: 0.05
+    meta_max_expectancy_coeff: 0.75
+    meta_pattern_yield_floor: 0.15
+    meta_improving_velocity_multiplier: 1.5
+    meta_review_interval_rollouts: 5
+    meta_explore_decay_improving: 0.65
+    meta_explore_decay_stall: 0.5
+    meta_intra_ramp_on_improving: true
+    meta_self_eval_enabled: true
+    meta_self_eval_min_stall_attempts: 16
+    meta_self_eval_min_recovery_attempts: 8
+    meta_self_eval_rollouts_per_strategy: 12
+    meta_self_eval_min_velocity_gain: 0.003
+    meta_self_eval_velocity_floor: 0.002
+    meta_self_eval_cooldown_rollouts: 20
+    plateau_detection_enabled: true
+    plateau_winrate_gap: 0.1
+    plateau_trades_beyond_gate_multiplier: 3
+    plateau_min_stage_trades_pct: 0.25
+    plateau_quarantine_rollouts: 32
+    plateau_quarantine_min_trades: 500
+    plateau_evolution_min_ppo_steps_between_steps: 15000
+    plateau_evolution_max_noops_per_step: 3
+    velocity_stall_min_history_samples: 5
+    plateau_max_wall_sec: 7200
+    plateau_max_evolution_steps: 8
+    plateau_evolution_rollouts_per_step: 12
+    plateau_evolution_max_rollouts_per_step: 24
+    plateau_evolution_meaningful_delta: 0.01
+    plateau_best_policy_min_trades: 200
+    stage1_winrate_pass_threshold: 0.45
+    stage1_winrate_pass_floor: 0.35
+    stage1_winrate_recommended: 0.45
+    stage1_edgescore_enabled: true
+    stage1_entropy_floor: 0.05
+    stage1_hold_ratio_min: 0.05
+    stage1_hold_ratio_max: 0.85
+    stage1_expectancy_floor: -0.15
+    starship_entropy_life_support_enabled: true
+    starship_swarm_first_enabled: true
+    starship_exploration_burst_multiplier: 2.5
+    starship_certified_plateau_max_evolution_steps: 4
+    starship_stall_after_swarm_only: true
+    starship_champion_freeze_enabled: true
+    starship_champion_edgescore_gap: 0.02
+    starship_entropy_required_after_ppo_steps: 500
+    starship_twin_continue_when_full_auto: true
+    stage2_edgescore_enabled: true
+    stage2_rolling_pass_window: 150
+    stage2_rolling_pass_min_covered: 80
+    stage2_peak_capture_enabled: true
+    stage2_peak_min_trades: 50
+    stage2_flash_green_min_trades: 50
+    stage2_flash_durable_min_chunks: 2
+    stage2_flash_max_hold_bars: 100
+    stage2_near_miss_exp_delta: 0.02
+    stage2_peak_restore_enabled: true
+    stage2_peak_collapse_wr_drop: 0.05
+    stage2_peak_restore_min_trades_since_peak: 50
+    stage2_peak_restore_cooldown_trades: 80
+    stage2_peak_block_phoenix_enabled: true
+    stage2_peak_phoenix_min_restores: 1
+    stage2_peak_phoenix_min_quality_rollouts: 4
+    stage2_swarm_block_if_peak_wr_above: 0.28
+    stage2_exit_forensics_block_swarm: true
+    stage2_exit_forensics_stop_target_max: 2.5
+    stage2_exit_forensics_target_share_min: 0.3
+    stage2_exit_forensics_min_decisive: 40
+    stage2_quality_inject_max_patterns: 200
+    stage2_peak_inject_max_patterns: 120
+    stage2_beat_random_inject_max_patterns: 80
+    stage2_stall_max_hold_bars: 80
+    stage2_quality_max_hold_bars: 120
+    stage2_exit_magnet_max_hold_bars: 80
+    stage2_exit_magnet_stop_target_ratio: 2.5
+    stage2_force_exit_on_expectancy_gap: false
+    stage2_early_quality_freeze_enabled: true
+    stage2_early_quality_wall_cooldown_sec: 300
+    stage2_peak_grad_enabled: true
+    stage2_peak_grad_min_trades: 200
+    stage2_peak_grad_collapse_wr_drop: 0.05
+    stage2_finish_max_hold_bars: 100
+    stage2_ppo_freeze_after_restore_enabled: true
+    stage2_ppo_freeze_rollouts_after_restore: 3
+    stage2_ppo_freeze_trades_after_restore: 120
+    stage2_ppo_quality_gate_enabled: true
+    stage2_ppo_quality_min_chunk_wr: 0.26
+    stage2_quality_lock_enabled: true
+    stage2_quality_lock_chunk_wr: 0.36
+    stage2_quality_lock_exp_floor: -0.14
+    stage2_skill_metric_policy_only: true
+    stage2_skill_min_trades: 150
+    stage2_pass_durable_enabled: true
+    stage2_pass_rolling_streak: 2
+    stage2_pass_lifetime_delta: 0.05
+    stage2_transfer_handoff_enabled: true
+    stage2_transfer_purge_buffer: true
+    stage2_transfer_keep_buffer_top_pct: 0.1
+    stage2_transfer_reinit_action_head: true
+    stage3_edgescore_enabled: true
+    stage3_pass_durable_enabled: true
+    stage3_pass_rolling_streak: 2
+    stage3_pass_lifetime_delta: 0.05
+    stage3_occupancy_pass_enabled: true
+    stage3_position_flat_min: 0.25
+    stage3_position_flat_max: 0.75
+    stage3_occupancy_all_ticks: true
+    settlement_honesty_enabled: true
+    settlement_min_decisive_share: 0.7
+    stage3_participation_envelope_enabled: true
+    stage3_participation_band_lo: 0.28
+    stage3_participation_band_hi: 0.72
+    stage3_participation_hysteresis: 0.0
+    stage3_participation_under_band_release_hysteresis: 0.0
+    policy_swarm_min_trades: 20
+    evolution_proof_min_trades: 150
+    evolution_proof_min_winrate_lift: 0.05
+    evolution_proof_polish_oos_winrate_min: 0.45
+    evolution_proof_grandfather_missing: false
+    max_forced_recoveries_per_plateau: 12
+    plateau_save_best_policy: true
+    plateau_oracle_distill_top_pct: 0.25
+    phoenix_reset_min_full_cycles: 3
+    phoenix_reset_max_winrate: 0.3
+    hold_trap_hold_ratio_threshold: 0.55
+    hold_trap_winrate_gap: 0.1
+    hold_trap_recovery_hold_cap: 0.4
+    over_trading_flat_threshold: 0.3
+    over_trading_round_trip_multiplier: 2.0
+    over_trading_recovery_flat_target: 0.35
+    policy_rollback_winrate_gap: 0.02
+    policy_rollback_cooldown_rollouts: 8
+    intra_stage2_enabled: true
+    intra_stage2_initial_hard_pct: 0.15
+    intra_stage2_max_hard_pct: 0.7
+    intra_stage2_hard_pct_step: 0.05
+    intra_stage2_easy_flat_target: 0.4
+    intra_stage2_easy_stability_window: 3
+    intra_stage2_easy_percentile: 0.4
+    intra_stage2_hard_percentile: 0.4
+    stall_remediation_enabled: true
+    stall_remediation_max_steps: 5
+    stall_remediation_rollouts_per_step: 12
+    certificate_runway_enabled: true
+    certificate_runway_validation_pct: 0.15
+    stage5_profit_val_trades: 3000
+    stage6_risk_discipline_trades: 2000
+    stage7_holdout_profile_trades: 4000
+    runway_stage5_winrate_pass: 0.4
+    runway_stage5_hold_ratio_max: 0.55
+    runway_stage6_winrate_min: 0.42
+    runway_stage6_sharpe_min: 0.2
+    runway_stage6_drawdown_max_pct: 12.0
+    runway_stage7_winrate_min: 0.45
+    runway_s6_oos_sanity_winrate_min: 0.35
+    runway_micro_oos_max_trades: 800
+    checkpoint_interval_sec: 20
+  reward:
+    enabled: true
+    expectancy_coeff: 0.5
+    quality_win_bonus_coeff: 0.25
+    loss_asymmetry_coeff: 1.25
+    volatility_penalty_coeff: 0.15
+    trend_align_bonus_coeff: 0.1
+    min_risk_usd: 25.0
+    reward_clip: 5.0
+    range_flat_bonus_coeff: 0.003
+    range_churn_penalty_coeff: 0.005
+  news:
+    primary: finnhub
+    enable_cache: true
+    cache_path: state/birth_news_cache.json
+  holdout_pct: 0.2
+  certificate_thresholds:
+    min_oos_winrate: 0.48
+    min_oos_sharpe: 0.35
+    max_oos_drawdown_pct: 8.0
+    min_real_data_pct: 95.0
+    min_regimes: 3
+    min_holdout_trades: 50
+  prefer_real_data_only: true
+  max_real_days: 90
+  trade_budget_cap: 25000
+  ppo_update_timesteps: 25000
+  chunk_size: 50000
+first_boot:
+  training_trades: 25000
+  prefer_real_data_only: true
+  max_real_days: 90
+  birth_phase: true
+  allow_minimal_synthetic_fallback: false
+  ppo_progress_interval: 5000
+  force_training: true
+session:
+  cooldown_minutes_after_streak: 15
+  enforce_calendar: true
+portfolio_var:
+  confidence: 0.95
+  window_days: 30
+  max_portfolio_var_usd: 1200
+  max_var_usd: 1200
+  max_total_open_risk: 3000
+  method: historical
+audit:
+  trade_decision_jsonl: logs/trade_decision_audit.jsonl
+  fail_closed_real: true
+regime:
+  enabled: true
+  lookback_bars: 120
+  trend_adx_threshold: 23
+  range_adx_threshold: 18
+  high_vol_atr_ratio: 1.6
+  news_volume_ratio: 2.2
+  low_liquidity_volume_ratio: 0.55
+  high_risk_regimes:
+  - HIGH_VOLATILITY
+  - NEWS_DRIVEN
+  - ROLLOVER
+  - LOW_LIQUIDITY
+  fast_path_weight_by_regime:
+    TRENDING: 0.35
+    RANGING: 0.45
+    HIGH_VOLATILITY: 0.72
+    NEWS_DRIVEN: 0.82
+    ROLLOVER: 0.8
+    LOW_LIQUIDITY: 0.88
+    NEUTRAL: 0.5
+  risk_multiplier_by_regime:
+    TRENDING: 1.15
+    RANGING: 0.85
+    HIGH_VOLATILITY: 0.55
+    NEWS_DRIVEN: 0.45
+    ROLLOVER: 0.5
+    LOW_LIQUIDITY: 0.4
+    NEUTRAL: 1.0
+  emotional_sensitivity_by_regime:
+    TRENDING: 0.9
+    RANGING: 1.05
+    HIGH_VOLATILITY: 1.2
+    NEWS_DRIVEN: 1.35
+    ROLLOVER: 1.15
+    LOW_LIQUIDITY: 1.25
+    NEUTRAL: 1.0
+  cooldown_minutes_by_regime:
+    TRENDING: 20
+    RANGING: 25
+    HIGH_VOLATILITY: 45
+    NEWS_DRIVEN: 60
+    ROLLOVER: 50
+    LOW_LIQUIDITY: 55
+    NEUTRAL: 30
+  agent_route_by_regime:
+    TRENDING:
+    - swing
+    - scalper
+    - risk
+    RANGING:
+    - risk
+    - scalper
+    - swing
+    HIGH_VOLATILITY:
+    - risk
+    - scalper
+    NEWS_DRIVEN:
+    - risk
+    - scalper
+    ROLLOVER:
+    - risk
+    LOW_LIQUIDITY:
+    - risk
+    NEUTRAL:
+    - risk
+    - scalper
+    - swing
+monitoring:
+  enabled: true
+  db_path: state/metrics.db
+  flush_interval_s: 30
+  dashboard_url: ${LUMINA_DASHBOARD_URL}
+  alert_thresholds:
+    latency_ms: 500
+    daily_loss_usd: -800
+    websocket_heartbeat_stale_s: 60
+    model_confidence_drift: 0.25
+    consecutive_losses: 3
+  webhook:
+    enabled: false
+    platform: telegram
+    url: ${LUMINA_ALERT_WEBHOOK_URL}
+    telegram_bot_token: ${TELEGRAM_BOT_TOKEN}
+    telegram_chat_id: ''
+    timeout_s: 5
+headless:
+  default_duration_minutes: 15
+  sim_learning_duration_minutes: 60
+  sim_overnight_mode: false
+  default_mode: paper
+  default_broker: paper
+  summary_output_path: state/last_run_summary.json
+  summary_archive_enabled: true
+  summary_archive_dir: state/test_runs
+  ticks_per_minute: 200
+  simulation_seed: 51
+  historical_days_back: null
+  historical_limit: null
+  production:
+    heartbeat_interval_s: 15
+    slo_eval_interval_s: 30
+    reconciliation_interval_s: 10
+    max_in_process_recovery_attempts: 3
+    max_process_restarts_per_hour: 6
+    safe_restart_exit_code: 42
+    force_checkpoint_on_shutdown: true
+    checkpoint_status_enabled: true
+    stall_consecutive_ticks: 2
+    preflight:
+      require_birth_certificate: true
+      require_broker_connect: true
+      require_broker_connect_sim: false
+      require_reconciler_healthy: true
+      require_reconciler_healthy_sim: false
+    slo:
+      supervisor_tick_stale_s: 120
+      reconcile_pending_max: 0
+      websocket_heartbeat_max_s: 60
+      daily_loss_usd: -800
+      heartbeat_stale_s: 45
+      reconciler_status_stale_s: 120
+      deferred_restart_max_s: 3600
+      daemon_dead_max: 0
+      consecutive_losses_max: 5
+      startup_grace_s: 180
+    deferred_restart_alert_s: 300
+runtime_config:
+  hot_reload:
+    enabled: true
+    debounce_ms: 500
+hybrid_quarantine:
+  apply_strict_in_sim: false
+  require_true_backtest: true
+  require_trace_verdict: false
+  require_real_patch_apply: false
+  require_reset_authorization: false
+  handler_terminal_passthrough: true
+  manage_lifecycle: false

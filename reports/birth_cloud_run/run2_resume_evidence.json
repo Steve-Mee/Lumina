@@ -1,0 +1,11 @@
+{
+  "saw_checkpoint_before_kill": true,
+  "stage_before": "stage1_trend",
+  "stage_trades_before": 50,
+  "child_returncode": -15,
+  "stage_after": "stage2_range",
+  "stage_trades_after": 3,
+  "rewound_to_s1": false,
+  "stage_trades_preserved": true,
+  "resume_exit": 124
+}
