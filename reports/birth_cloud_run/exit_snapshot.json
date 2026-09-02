@@ -62,8 +62,8 @@
   },
   "engine_result": {
     "status": "history_unavailable",
-    "total_trades": 916,
-    "ppo_steps": 116000,
+    "total_trades": 800,
+    "ppo_steps": 104000,
     "training_mode": "certified"
   }
 }
