@@ -11,6 +11,7 @@ from lumina_core.birth.stage2_participation_envelope import (
     MODE_FORCE_OPEN,
     MODE_PASSTHROUGH,
     decide_stage2_participation,
+    force_open_stop_from_atr,
     occupancy_control_flat,
     occupancy_control_over,
     participation_telemetry,
@@ -480,6 +481,33 @@ def test_occupancy_control_over_is_max_of_rolling_and_cumulative() -> None:
     assert occupancy_control_over(cumulative_flat=0.50, rolling_flat=None) == pytest.approx(
         0.50
     )
+
+
+@pytest.mark.unit
+def test_force_open_stop_from_atr_dwell_scale_and_constitution_clip() -> None:
+    """Documented ATR floor: atr=0.002, min_dwell=8 → 0.002×√8, clipped to [0.0004, 0.01]."""
+    atr = 0.002
+    dwell = 8
+    floor = atr * (dwell ** 0.5)
+    stop = force_open_stop_from_atr(atr_pct=atr, min_dwell_bars=dwell)
+    assert stop == pytest.approx(floor)
+    assert 0.0004 <= stop <= 0.01
+    assert force_open_stop_from_atr(atr_pct=0.05, min_dwell_bars=dwell) == pytest.approx(0.01)
+    assert force_open_stop_from_atr(atr_pct=0.0, min_dwell_bars=dwell) == pytest.approx(0.0004)
+    # Envelope FORCE_OPEN still constitution-clips a caller-supplied macro stop.
+    d = decide_stage2_participation(
+        enabled=True,
+        range_flat_ratio=0.90,
+        range_total_signals=200,
+        position=0,
+        bars_in_position=0,
+        stop_pct=0.05,
+        target_pct=0.08,
+    )
+    assert d.mode == MODE_FORCE_OPEN
+    assert d.action_override is not None
+    assert d.action_override[2] == pytest.approx(0.01)
+    assert d.action_override[2] <= 0.01
 
 
 @pytest.mark.unit

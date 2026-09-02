@@ -96,6 +96,37 @@ def occupancy_control_over(
     return max(cum, float(rolling_flat))
 
 
+def force_open_stop_from_atr(
+    *,
+    atr_pct: float,
+    min_dwell_bars: int = 8,
+    min_stop_pct: float | None = None,
+    max_stop_pct: float | None = None,
+) -> float:
+    """Widen FORCE_OPEN stop so a plant entry can survive min_dwell in expectation.
+
+    Scale is tape ATR × sqrt(min_dwell) (random-walk bars). Still a live stop:
+    ``hit_stop`` stays on. Clipped to constitution [min_stop, 1%].
+    """
+    try:
+        from lumina_core.birth.birth_constitution_guard import (
+            BIRTH_MAX_RISK_STOP_PCT,
+            BIRTH_MIN_STOP_PCT,
+        )
+
+        stop_lo = float(BIRTH_MIN_STOP_PCT) if min_stop_pct is None else float(min_stop_pct)
+        stop_hi = float(BIRTH_MAX_RISK_STOP_PCT) if max_stop_pct is None else float(max_stop_pct)
+    except Exception:
+        stop_lo = 0.0004 if min_stop_pct is None else float(min_stop_pct)
+        stop_hi = 0.01 if max_stop_pct is None else float(max_stop_pct)
+    if stop_lo > stop_hi:
+        stop_lo, stop_hi = stop_hi, stop_lo
+    atr = max(0.0, float(atr_pct))
+    dwell = max(1, int(min_dwell_bars))
+    raw = atr * (float(dwell) ** 0.5) if atr > 0.0 else stop_lo
+    return max(stop_lo, min(stop_hi, raw))
+
+
 def decide_stage2_participation(
     *,
     enabled: bool,
@@ -318,6 +349,7 @@ __all__ = [
     "ParticipationDecision",
     "ParticipationMode",
     "decide_stage2_participation",
+    "force_open_stop_from_atr",
     "occupancy_control_flat",
     "occupancy_control_over",
     "participation_telemetry",
