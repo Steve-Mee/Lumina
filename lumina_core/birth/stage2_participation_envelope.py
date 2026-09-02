@@ -165,6 +165,9 @@ def decide_stage2_participation(
     # FORCE_OPEN / FORCE_FLAT owning the book. S2 keeps dual-IMU (False).
     # Does not change band_lo / band_hi.
     cumulative_in_band_passthrough: bool = False,
+    # After a FORCE_OPEN plant settles, block a second FORCE_OPEN until
+    # min-dwell bars elapse. Position==0 on the close bar is chatter.
+    force_open_refractory: bool = False,
 ) -> ParticipationDecision:
     """Return participation mode for one SIM step.
 
@@ -288,6 +291,12 @@ def decide_stage2_participation(
     # even when the rolling window already looks in-band.
     if over_flat > force_open_hi + 1e-12:
         if pos == 0:
+            if bool(force_open_refractory):
+                return ParticipationDecision(
+                    MODE_PASSTHROUGH,
+                    None,
+                    "over_flat_force_open_refractory",
+                )
             side = 1.0 if (int(force_open_step) % 2 == 0) else 2.0
             return ParticipationDecision(
                 MODE_FORCE_OPEN,

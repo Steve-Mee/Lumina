@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from lumina_core.birth.config import BirthCurriculumConfig
 from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass, ordered_stages
 from lumina_core.birth.foundation_metrics import MEDIAN_LOSS_R_MAX, mechanical_ev_r
@@ -368,13 +370,24 @@ def test_foundation_max_epochs_wired() -> None:
 
 
 def test_s5_dd_equity_is_ssot() -> None:
-    from lumina_core.birth.certificate_evaluator import max_drawdown_pct
-    from lumina_core.birth.foundation_metrics import S5_DD_EQUITY_USD
+    from lumina_core.birth.certificate_evaluator import (
+        _peak_to_end_drawdown_pct,
+        max_drawdown_pct,
+    )
+    from lumina_core.birth.foundation_metrics import S5_DD_EQUITY_USD, S5_DD_MAX_PCT
     from lumina_core.birth.runway import risk_metrics_from_pnl
 
     assert S5_DD_EQUITY_USD == 50_000.0
+    assert S5_DD_MAX_PCT == 25.0
     _, dd = risk_metrics_from_pnl([-1000.0, -1000.0])
     assert dd == max_drawdown_pct([-1000.0, -1000.0], equity=S5_DD_EQUITY_USD)
+    assert dd == pytest.approx(4.0)
+    v_shape = [-5000.0, -5000.0, 8000.0]
+    trough = max_drawdown_pct(v_shape, equity=S5_DD_EQUITY_USD)
+    peak_end = _peak_to_end_drawdown_pct(v_shape, equity=S5_DD_EQUITY_USD)
+    assert trough == pytest.approx(20.0)
+    assert peak_end == pytest.approx(4.0)
+    assert trough != pytest.approx(peak_end)
 
 
 def _v2_receipt(stage: str, **kwargs: object) -> StagePassReceipt:

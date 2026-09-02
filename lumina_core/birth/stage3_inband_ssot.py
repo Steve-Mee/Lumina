@@ -22,6 +22,10 @@ def s3_inband_progress_fields(host: Any) -> dict[str, Any]:
         "participation_inband_explore": int(
             getattr(host, "s3_inband_explore", 0) or 0
         ),
+        "oos_dd_yardstick_unit": "percent_of_50k",
+        "force_open_refractory_active": bool(
+            getattr(host, "force_open_refractory_active", False)
+        ),
     }
 
 
@@ -195,6 +199,9 @@ def apply_s3_inband_rollout_metrics(loop: Any, rollout: Any) -> None:
         getattr(loop, "s3_inband_hold_tax_steps", 0) or 0
     ) + int(getattr(rollout, "s3_inband_hold_tax_steps", 0) or 0)
     loop.s3_inband_idle_armed = bool(getattr(rollout, "s3_inband_idle_armed", False))
+    loop.force_open_refractory_active = bool(
+        getattr(rollout, "force_open_refractory_active", False)
+    )
     if int(getattr(loop, "stage_closes_stop_cum", 0) or 0) + int(
         getattr(loop, "stage_closes_target_cum", 0) or 0
     ) + int(getattr(loop, "stage_closes_flatten_cum", 0) or 0) + int(

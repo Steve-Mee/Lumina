@@ -13,15 +13,14 @@ from lumina_core.birth.plateau_escalator import (
 from lumina_core.birth.progress import merge_birth_progress_extra, write_birth_progress
 from lumina_core.birth.stall_remediation import HUMAN_GATE_REASON
 from lumina_core.birth.phoenix_loop import PHOENIX_CYCLE_REASON
+from lumina_core.birth.foundation_skill_clock import skill_clock_open_from_loop
 from lumina_core.birth.stage_loop_mixin_base import StageLoopMixinBase
 from lumina_core.logging_utils import get_logger
 
 logger = get_logger("lumina.birth.stage_loop_recovery_terminal")
 
-
 class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
     """Wall evaluation and fail-closed terminal stall finalization."""
-
     def _wall_eval_context(self, 
         *,
         elapsed_stage_sec: float,
@@ -56,6 +55,7 @@ class StageLoopRecoveryTerminalMixin(StageLoopMixinBase):
             "policy_wins": int(getattr(self, "stage_policy_wins", 0) or 0),
             "plant_trades": int(getattr(self, "stage_plant_trades", 0) or 0),
             "plant_wins": int(getattr(self, "stage_plant_wins", 0) or 0),
+            "skill_clock_open": skill_clock_open_from_loop(self),
         }
 
     def _evaluate_wall_trigger(self, 

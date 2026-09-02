@@ -54,9 +54,10 @@ def evaluate_certified_stall(
     policy_wins: int | None = None,
     plant_trades: int | None = None,
     plant_wins: int | None = None,
+    skill_clock_open: bool = False,
 ) -> WallTriggerResult:
     """Evaluate certified stage stall (stagnation + wall time)."""
-    if allow_provisional or stage_trades < required:
+    if allow_provisional or stage_trades < required or bool(skill_clock_open):
         return WallTriggerResult(triggered=False)
 
     blocked = constitution_blocks_adaptation(
@@ -266,6 +267,7 @@ def evaluate_wall_trigger(
     policy_wins: int | None = None,
     plant_trades: int | None = None,
     plant_wins: int | None = None,
+    skill_clock_open: bool = False,
 ) -> WallTriggerResult:
     """Unified entry: adaptation stuck (debounced) then certified stall."""
     trades_beyond = evaluate_trades_beyond_gate(
@@ -281,7 +283,7 @@ def evaluate_wall_trigger(
         rollouts_since_last_adaptation=int(rollouts_since_last_adaptation),
         min_rollouts_since_adaptation=max(1, min_rollouts),
     )
-    if stuck.triggered:
+    if stuck.triggered and not bool(skill_clock_open):
         return stuck
 
     return evaluate_certified_stall(
@@ -308,6 +310,7 @@ def evaluate_wall_trigger(
         policy_wins=policy_wins,
         plant_trades=plant_trades,
         plant_wins=plant_wins,
+        skill_clock_open=bool(skill_clock_open),
     )
 
 

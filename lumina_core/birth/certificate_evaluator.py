@@ -28,14 +28,34 @@ def _sharpe_from_pnl(pnl_series: list[float]) -> float:
     return float((mean / std) * math.sqrt(252.0))
 
 
-def _max_drawdown_pct(pnl_series: list[float], *, equity: float = S5_DD_EQUITY_USD) -> float:
-    curve = [equity]
+def _peak_to_end_drawdown_pct(
+    pnl_series: list[float], *, equity: float = S5_DD_EQUITY_USD
+) -> float:
+    """Diagnostic only. Peak-to-END giveback — not the exam yardstick."""
+    curve = [float(equity)]
     for pnl in pnl_series:
-        curve.append(curve[-1] + pnl)
+        curve.append(curve[-1] + float(pnl))
     peak = max(curve)
     if peak <= 0:
         return 100.0
     return max(0.0, (peak - curve[-1]) / peak * 100.0)
+
+
+def _max_drawdown_pct(pnl_series: list[float], *, equity: float = S5_DD_EQUITY_USD) -> float:
+    """Max peak-to-trough DD% on running equity. ``pnl`` increments must be USD."""
+    running = float(equity)
+    peak = running
+    dd_pct = 0.0
+    if peak <= 0:
+        return 100.0
+    for pnl in pnl_series:
+        running += float(pnl)
+        if running > peak:
+            peak = running
+        if peak <= 0:
+            return 100.0
+        dd_pct = max(dd_pct, (peak - running) / peak * 100.0)
+    return max(0.0, dd_pct)
 
 
 def build_oos_regime_breakdown(trajectories: list[dict[str, Any]]) -> dict[str, dict[str, float | int]]:

@@ -78,6 +78,7 @@ class WallAdaptationTriggerMixin:
             plant_wins=(
                 int(ctx["plant_wins"]) if ctx.get("plant_wins") is not None else None
             ),
+            skill_clock_open=bool(ctx.get("skill_clock_open", False)),
         )
         if not result.triggered:
             self._set_response(cid, "trigger", None)

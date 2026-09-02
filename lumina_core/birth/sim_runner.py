@@ -83,6 +83,7 @@ class SimRolloutResult:
     s3_inband_explore: int = 0
     s3_inband_hold_tax_steps: int = 0
     s3_inband_idle_armed: bool = False
+    force_open_refractory_active: bool = False
 
 
 def _predict_action(
@@ -184,7 +185,7 @@ def run_policy_rollout(
         occupancy_control_flat,
         participation_telemetry,
     )
-    from lumina_core.birth.force_open_plant import apply_force_open_side, apply_force_open_stop
+    from lumina_core.birth.force_open_plant import ForceOpenChatterBound, apply_force_open_side, apply_force_open_stop
     from lumina_core.birth.foundation_metrics import POLICY_EDGE_MIN_TRADES
     from lumina_core.birth.stage3_inband_idle import (
         S3_INBAND_DEFAULT_MIN_IDLE_HOLD_BARS,
@@ -365,6 +366,7 @@ def run_policy_rollout(
     plant_wins = 0
     closes_unknown = 0
     last_force_open_stop_pct = 0.0
+    chatter = ForceOpenChatterBound()
     from lumina_core.birth.foundation_occupancy_envelope import (
         foundation_cumulative_in_band_passthrough,
     )
@@ -555,6 +557,7 @@ def run_policy_rollout(
             rolling_flat_ratio=rolling_flat,
             # Mixed/S3: occupancy_all_ticks. Exam-in-band → policy PASSTHROUGH.
             cumulative_in_band_passthrough=bool(occupancy_all_ticks),
+            force_open_refractory=chatter.blocks(int(participation_min_dwell_bars)),
         )
         last_participation_mode = decision.mode
         participation_counts[decision.mode] = int(participation_counts.get(decision.mode, 0) or 0) + 1
@@ -653,7 +656,9 @@ def run_policy_rollout(
         pnl = float(info.get("rl_close_accounting_net_usd", 0.0) or 0.0)
         trade_closed = bool(info.get("trade_closed"))
         gross = float(info.get("model_close_gross_pnl_usd", 0.0) or 0.0)
-        if trade_closed or (abs(pnl) > 1e-9 and gross != 0.0):
+        settled = bool(trade_closed) or (abs(pnl) > 1e-9 and gross != 0.0)
+        closed_was_plant = False
+        if settled:
             trades += 1
             total_pnl += pnl
             pnl_series.append(pnl)
@@ -739,6 +744,7 @@ def run_policy_rollout(
                     "skill_grade": "plant" if closed_was_plant else "policy",
                 }
             )
+        chatter.on_bar(trade_closed=settled, closed_was_plant=closed_was_plant)
         prev_obs = obs
         if terminated:
             obs, _ = env.reset()
@@ -837,4 +843,5 @@ def run_policy_rollout(
         s3_inband_explore=int(s3_idle.explore_count),
         s3_inband_hold_tax_steps=int(getattr(env, "_s3_inband_hold_tax_steps", 0) or 0),
         s3_inband_idle_armed=bool(s3_idle.last_armed),
+        force_open_refractory_active=chatter.blocks(int(participation_min_dwell_bars)),
     )
