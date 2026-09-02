@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| branch / commit | `cursor/s2-occupancy-rerun-7a1c` @ `1eba46d95c4d2ef24984d0783287566f82952e54` (fast-forward of `origin/main`; IMU law already merged) |
+| branch / commit | `cursor/s2-occupancy-rerun-7a1c` @ this docs commit; IMU law from `origin/main` `1eba46d95c4d2ef24984d0783287566f82952e54` (already merged) |
 | occupancy_control_over present | yes — `lumina_core/birth/stage2_participation_envelope.py:82` (helper) and `:191` (`over_flat = occupancy_control_over(...)`) |
 | tape | **regenerated** (workspace tick cache gitignored / missing on this VM) with `CloudFixtureSpec()` defaults: `seed=20260902`, `calendar_days=90` (actual **88**), NQ SEP26, 213,120 ticks, holdout regimes `TREND_UP` / `TREND_DOWN` / `NEUTRAL`. Hashes **identical** to first run: `hash=7e86c2bb1c71d514` `raw_ticks_hash=2466d3f41d60657b`. `source=synthetic_cloud_fixture`, `real_data_pct=0.0`, `reused_manifest=true` after write. |
 | S1 receipt | **pass** — `foundation_v2`, 150 trades, WR 0.40, `median_loss_r=1.023` ≤ 1.5, constitution hard 0, `verify_stage_pass_receipt(..., training_mode="certified")` → **True** (`ok`) |
