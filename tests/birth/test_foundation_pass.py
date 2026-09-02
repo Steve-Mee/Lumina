@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass
 from lumina_core.birth.foundation_metrics import POLICY_EDGE_MIN_TRADES, S3_MIN_TRADES
-from tests.birth.honest_settlement import foundation_eval_kwargs, honest_closes
+from tests.birth.honest_settlement import honest_closes
 
 
 def test_s3_replica_still_policy_sample_not_volume_zero() -> None:
@@ -31,7 +31,6 @@ def test_s3_replica_still_policy_sample_not_volume_zero() -> None:
         plant_trades=729,
         plant_wins=200,
         **honest_closes(729),
-        **foundation_eval_kwargs(unique_calendar_days=88, occupancy=0.576),
     )
     assert result.passed is False
     assert "policy_sample" in result.message

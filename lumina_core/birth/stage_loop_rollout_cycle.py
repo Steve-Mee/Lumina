@@ -64,7 +64,7 @@ class StageLoopRolloutCycleMixin(
         chunk_target: int,
         pre: RolloutPreState,
     ) -> tuple[Any, float, float, float, float]:
-        from lumina_core.birth.stage3_inband_idle import apply_s3_inband_rollout_metrics, s3_inband_rollout_kwargs
+        from lumina_core.birth.stage3_inband_ssot import apply_s3_inband_rollout_metrics, s3_inband_rollout_kwargs
 
         rollout_started_at = time.time()
         _occ_win = getattr(self, "_occupancy_control_window", None)

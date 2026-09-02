@@ -221,7 +221,7 @@ class SessionPhasePrepareInitMixin:
         self.mean_entry_stop_pct = 0.0
         self.mean_entry_target_pct = 0.0
         self.expectancy_quality_step_source = ""
-        from lumina_core.birth.stage3_inband_idle import reset_skill_settlement_if_fresh_stage
+        from lumina_core.birth.stage3_inband_ssot import reset_skill_settlement_if_fresh_stage
 
         reset_skill_settlement_if_fresh_stage(self)
 

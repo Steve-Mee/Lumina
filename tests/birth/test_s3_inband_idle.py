@@ -11,7 +11,12 @@ from lumina_core.birth.birth_constitution_guard import (
     BIRTH_MAX_RISK_STOP_PCT,
     BIRTH_MIN_STOP_PCT,
 )
-from lumina_core.birth.birth_trade_geometry import BirthTradeGeometry
+from lumina_core.birth.birth_trade_geometry import (
+    BIRTH_FALLBACK_STOP_PCT,
+    BIRTH_FALLBACK_TARGET_PCT,
+    BirthTradeGeometry,
+    geometry_action,
+)
 from lumina_core.birth.config import BirthRewardConfig
 from lumina_core.birth.curriculum import CurriculumStage, evaluate_stage_pass
 from lumina_core.birth.foundation_metrics import (
@@ -34,12 +39,13 @@ from lumina_core.birth.stage3_inband_idle import (
     S3InbandIdleState,
     apply_passthrough_hold_mask,
     plant_tag_for_entry,
-    reset_skill_settlement_if_fresh_stage,
-    restore_skill_settlement_from_metrics,
     s3_inband_hold_mask,
     s3_inband_hold_tax,
     s3_inband_idle_armed,
-    simulate_passthrough_hold_mask_bars,
+)
+from lumina_core.birth.stage3_inband_ssot import (
+    reset_skill_settlement_if_fresh_stage,
+    restore_skill_settlement_from_metrics,
     snapshot_from_checkpoint_metrics,
 )
 from lumina_core.rl.reward_shaper import range_patience_step_reward
@@ -59,6 +65,53 @@ def _armed_kwargs(**overrides: object) -> dict[str, object]:
     }
     payload.update(overrides)
     return payload
+
+
+def simulate_passthrough_hold_mask_bars(
+    *,
+    n_bars: int,
+    min_idle_hold_bars: int = 32,
+    curriculum_regime: str = "mixed",
+    participation_mode: str = MODE_PASSTHROUGH,
+    position: int = 0,
+    cumulative_flat: float = 0.58,
+    band_lo: float = 0.25,
+    band_hi: float = 0.75,
+    policy_trades: int = 0,
+    policy_edge_min_trades: int = POLICY_EDGE_MIN_TRADES,
+    geometry: BirthTradeGeometry | None = None,
+) -> list[tuple[int, bool, str]]:
+    """Thin cloud-failure replica: consecutive HOLD policy actions under PASSTHROUGH."""
+    state = S3InbandIdleState()
+    geo = geometry or BirthTradeGeometry(
+        stop_pct=BIRTH_FALLBACK_STOP_PCT,
+        target_pct=BIRTH_FALLBACK_TARGET_PCT,
+        source="s3_replica",
+    )
+    out: list[tuple[int, bool, str]] = []
+    hold = geometry_action(0.0, 0.5, geo)
+    for _ in range(max(0, int(n_bars))):
+        action = apply_passthrough_hold_mask(
+            state=state,
+            action=hold.copy(),
+            participation_mode=participation_mode,
+            action_override=None,
+            curriculum_regime=curriculum_regime,
+            position=position,
+            cumulative_flat=cumulative_flat,
+            band_lo=band_lo,
+            band_hi=band_hi,
+            policy_trades=policy_trades,
+            min_idle_hold_bars=min_idle_hold_bars,
+            policy_edge_min_trades=policy_edge_min_trades,
+            geometry=geo,
+        )
+        side = int(np.clip(np.round(float(action[0])), 0, 2))
+        opened = side in {1, 2} and int(position) == 0
+        is_plant = plant_tag_for_entry(force_open_this_step=False) if opened else False
+        reason = S3_INBAND_HOLD_MASK_REASON if opened else "hold"
+        out.append((side, bool(is_plant), reason))
+    return out
 
 
 def test_a_predicate_mixed_passthrough_in_band_thin_policy_armed() -> None:
@@ -432,7 +485,6 @@ def test_g_zeroed_resume_skips_settlement_zero_blocker() -> None:
         closes_time_stop=0,
         closes_unknown=0,
         settlement_ssot_pending=True,
-        **foundation_eval_kwargs(unique_calendar_days=88, occupancy=0.58),
     )
     assert "settlement_share=0.00" not in result.message
     assert "policy_sample 0 < 150" in result.message

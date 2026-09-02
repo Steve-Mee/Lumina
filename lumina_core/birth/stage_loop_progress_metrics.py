@@ -402,7 +402,7 @@ class StageLoopProgressMetricsMixin:
         payload["closes_time_stop"] = int(getattr(self, "closes_time_stop", 0) or 0)
         payload["closes_unknown"] = int(getattr(self, "closes_unknown", 0) or 0)
         # Stage-wide exit forensics (all stages — not only Stage-2 peak blob).
-        from lumina_core.birth.stage3_inband_idle import persist_skill_settlement_fields
+        from lumina_core.birth.stage3_inband_ssot import persist_skill_settlement_fields
 
         payload.update(persist_skill_settlement_fields(self))
         payload["stage2_rolling_pass_streak"] = int(

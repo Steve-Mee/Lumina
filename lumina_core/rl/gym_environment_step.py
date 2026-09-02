@@ -406,7 +406,7 @@ class RLTradingEnvironmentStepMixin:
             )
 
         if self.config.range_patience_active and self.trade_mode == "birth":
-            from lumina_core.birth.stage3_inband_idle import apply_gym_birth_occupancy_reward
+            from lumina_core.birth.stage3_inband_gym import apply_gym_birth_occupancy_reward
 
             reward += apply_gym_birth_occupancy_reward(
                 self,

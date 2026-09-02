@@ -158,6 +158,8 @@ def test_m5_residual_split_modules_exist() -> None:
         "lumina_os/backend/monitoring_endpoints_ops.py",
         "lumina_core/birth/force_open_plant.py",
         "lumina_core/birth/synthetic_cloud_fixture_persist.py",
+        "lumina_core/birth/stage3_inband_ssot.py",
+        "lumina_core/birth/stage3_inband_gym.py",
     ]
     missing = [c for c in companions if not (ROOT / c).is_file()]
     assert not missing, f"missing M5 companion modules: {missing}"
