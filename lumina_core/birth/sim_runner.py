@@ -34,6 +34,32 @@ _PROGRESS_INTERVAL_STEPS = 5_000
 _PROGRESS_INTERVAL_SEC = 30.0
 
 
+def _tape_atr_pct_for_force_open(
+    row: dict[str, Any],
+    geometry: BirthTradeGeometry,
+) -> float:
+    """Tape ATR for FORCE_OPEN dwell survival.
+
+    Geometry stop is ``0.9 × ATR median`` (``_geometry_from_atr``). Tick
+    ``trend_atr_norm`` uses the same ≥0.05 ⇒ divide-by-price rule as
+    ``_collect_atr_samples``.
+    """
+    geo_stop = max(0.0, float(getattr(geometry, "stop_pct", 0.0) or 0.0))
+    geo_atr = geo_stop / 0.9 if geo_stop > 0.0 else 0.0
+    try:
+        atr = float(row.get("trend_atr_norm") or 0.0)
+    except (TypeError, ValueError):
+        atr = 0.0
+    try:
+        px = float(row.get("last") or row.get("close") or 0.0)
+    except (TypeError, ValueError):
+        px = 0.0
+    if atr >= 0.05 and px > 0.0:
+        atr = atr / px
+    atr = min(0.02, max(0.0, atr))
+    return max(geo_atr, atr, geo_stop)
+
+
 @dataclass(slots=True)
 class SimRolloutResult:
     trades: int
@@ -78,6 +104,7 @@ class SimRolloutResult:
     plant_wins: int = 0
     closes_unknown: int = 0
     occupancy_control_flat: float = 0.0
+    last_force_open_stop_pct: float = 0.0
     r_series: list[float] = field(default_factory=list)
 
 
@@ -173,6 +200,7 @@ def run_policy_rollout(
         MODE_FORCE_OPEN,
         MODE_PASSTHROUGH,
         decide_stage2_participation,
+        force_open_stop_from_atr,
         occupancy_control_flat,
         participation_telemetry,
     )
@@ -348,6 +376,7 @@ def run_policy_rollout(
     plant_trades = 0
     plant_wins = 0
     closes_unknown = 0
+    last_force_open_stop_pct = 0.0
     occupancy_all_ticks = str(curriculum_regime or "").lower() in {
         "mixed",
         "stage3_mixed",
@@ -534,11 +563,11 @@ def run_policy_rollout(
                 force_open_this_step = True
                 force_open_step += 1
                 exploration_active = True
+                idx_sel = min(int(getattr(env, "_idx", 0) or 0), len(enriched) - 1)
+                row_sel = enriched[idx_sel]
                 # Selective side (not fake edge): prefer MTF bias over blind L/S
                 # alternate. Settlement remains real path + costs; occupancy plant only.
                 try:
-                    idx_sel = min(int(getattr(env, "_idx", 0) or 0), len(enriched) - 1)
-                    row_sel = enriched[idx_sel]
                     mtf = float(row_sel.get("bible_mtf_bias", 0.0) or 0.0)
                     conf = float(row_sel.get("bible_confluence", 0.0) or 0.0)
                     if abs(mtf) >= 0.05 or conf >= 0.15:
@@ -549,6 +578,40 @@ def run_policy_rollout(
                         )
                 except Exception:
                     pass
+                # ATR × sqrt(min_dwell), constitution-clipped. Live stop — never
+                # suppress hit_stop. Tiny 0.12–0.21% plants die same-bar on NQ.
+                atr_pct = _tape_atr_pct_for_force_open(row_sel, geometry)
+                stop = force_open_stop_from_atr(
+                    atr_pct=atr_pct,
+                    min_dwell_bars=int(participation_min_dwell_bars),
+                )
+                try:
+                    px = float(row_sel.get("last") or row_sel.get("close") or 0.0)
+                except (TypeError, ValueError):
+                    px = 0.0
+                equity = float(getattr(env, "_equity", 0.0) or 0.0)
+                if px > 0.0 and equity > 0.0:
+                    # qty=1 micro-entry so dollar 1% can fit a dwell-viable stop.
+                    dollar_cap = (equity * 0.01) / (abs(px) * 5.0)
+                    if dollar_cap > 0.0:
+                        stop = min(stop, dollar_cap)
+                try:
+                    from lumina_core.birth.birth_constitution_guard import (
+                        BIRTH_MAX_RISK_STOP_PCT,
+                        BIRTH_MIN_STOP_PCT,
+                    )
+
+                    stop = max(float(BIRTH_MIN_STOP_PCT), min(float(BIRTH_MAX_RISK_STOP_PCT), float(stop)))
+                except Exception:
+                    stop = max(0.0004, min(0.01, float(stop)))
+                prev_stop = max(float(action[2]), 1e-12)
+                rr = max(1.25, float(action[3]) / prev_stop)
+                target = max(stop * 1.25, min(0.05, stop * rr))
+                action = np.array(
+                    [float(action[0]), 0.0, float(stop), float(target)],
+                    dtype=np.float32,
+                )
+                last_force_open_stop_pct = float(stop)
             elif decision.mode == MODE_FORCE_EXIT:
                 # Hold action + gym geometry time-stop (honest PnL; prefer stop/target).
                 action = np.array([0.0, 0.5, float(part_stop), float(part_target)], dtype=np.float32)
@@ -559,6 +622,8 @@ def run_policy_rollout(
         )
         env.config.force_flatten_this_step = bool(getattr(decision, "force_flatten", False))
         env.config.force_time_stop_this_step = bool(getattr(decision, "force_time_stop", False))
+        # Occupancy plant: do not let gym soft-prior shrink ATR×√dwell stops.
+        env.config.soft_prior_stops = False if force_open_this_step else bool(soft_prior_stops)
 
         idx = min(env._idx, len(enriched) - 1)
         tick_regime = str(enriched[idx].get("regime", "NEUTRAL")).upper()
@@ -579,6 +644,7 @@ def run_policy_rollout(
         # One-shot occupancy/time-stop flags (do not stick across steps).
         env.config.force_flatten_this_step = False
         env.config.force_time_stop_this_step = False
+        env.config.soft_prior_stops = bool(soft_prior_stops)
         rollout_steps += 1
         pos_after = int(getattr(env, "_position", 0) or 0)
         # Attribute entry: FORCE_OPEN that opens a flat→position is plant, not pilot.
@@ -778,4 +844,5 @@ def run_policy_rollout(
         plant_trades=int(plant_trades),
         plant_wins=int(plant_wins),
         occupancy_control_flat=float(control_flat),
+        last_force_open_stop_pct=float(last_force_open_stop_pct),
     )

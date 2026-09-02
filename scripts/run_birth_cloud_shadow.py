@@ -232,6 +232,13 @@ def run_birth(
             instrument=str(fixture.get("symbol") or "NQ SEP26"),
         )
         print("birth.cloud.engine_constructed class=BirthPhaseEngineV2", flush=True)
+        if force:
+            # Stall abort writes first_boot_pause_requested; --force is a clean plant.
+            pause_flag = workspace / "state" / "first_boot_pause_requested"
+            try:
+                pause_flag.unlink(missing_ok=True)
+            except OSError:
+                pass
         result = engine.run_birth_phase(
             target_trades=int(target_trades),
             max_real_days=90,

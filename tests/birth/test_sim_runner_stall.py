@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
+from lumina_core.birth.birth_trade_geometry import BirthTradeGeometry
 from lumina_core.birth.sim_runner import run_policy_rollout
+from lumina_core.birth.stage2_participation_envelope import force_open_stop_from_atr
 from lumina_core.birth.tick_enricher import enrich_ticks_for_sim
 
 
@@ -150,3 +152,35 @@ def test_stage2_envelope_force_hold_under_chronic_flat(tmp_path: Path) -> None:
     if result.range_total_signals > 50:
         rollout_flat = result.range_flat_bars / max(1, result.range_total_signals)
         assert rollout_flat < 0.95
+
+
+@pytest.mark.unit
+def test_force_open_stop_atr_scaled_and_constitution_clipped(tmp_path: Path) -> None:
+    """FORCE_OPEN stop ≥ ATR×√min_dwell on a known-ATR tape, and ≤ 1%."""
+    ticks = enrich_ticks_for_sim(_rising_historical_ticks(800))
+    atr = 0.002
+    for t in ticks:
+        t["regime"] = "NEUTRAL"
+        t["trend_atr_norm"] = atr
+    geo = BirthTradeGeometry(stop_pct=0.0012, target_pct=0.0020, source="test_atr_floor")
+    result = run_policy_rollout(
+        runtime=_runtime(),
+        data=ticks,
+        policy=_HoldOnlyPolicy(),
+        target_trades=5,
+        workspace_root=tmp_path,
+        rollout_step_budget=400,
+        exploration_steps=0,
+        range_patience_active=True,
+        participation_envelope_enabled=True,
+        participation_min_signals=50,
+        participation_min_dwell_bars=8,
+        stage_range_flat_bars=9_500,
+        stage_range_total_signals=10_000,
+        trade_geometry=geo,
+    )
+    floor = force_open_stop_from_atr(atr_pct=atr, min_dwell_bars=8)
+    assert result.participation_force_open > 0
+    assert result.last_force_open_stop_pct == pytest.approx(floor)
+    assert result.last_force_open_stop_pct <= 0.01
+    assert floor == pytest.approx(atr * (8 ** 0.5))
