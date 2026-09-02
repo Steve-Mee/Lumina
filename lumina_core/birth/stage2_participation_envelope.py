@@ -160,6 +160,11 @@ def decide_stage2_participation(
     force_exit_on_expectancy_gap: bool = False,
     # Rolling occupancy window (last N bars). None → cumulative-only (legacy tests).
     rolling_flat_ratio: float | None = None,
+    # S3 application flag: exam grades cumulative occupancy. Once cumulative is
+    # inside the controller band, PASSTHROUGH so rolling IMU cannot keep
+    # FORCE_OPEN / FORCE_FLAT owning the book. S2 keeps dual-IMU (False).
+    # Does not change band_lo / band_hi.
+    cumulative_in_band_passthrough: bool = False,
 ) -> ParticipationDecision:
     """Return participation mode for one SIM step.
 
@@ -195,6 +200,10 @@ def decide_stage2_participation(
     hi = float(band_hi)
     if lo >= hi:
         lo, hi = 0.30, 0.70
+    # S3: cumulative exam in-band owns PASSTHROUGH. Rolling 0.278 vs band_lo 0.28
+    # must not FORCE_FLAT while exam occupancy is 0.57. Bands unchanged.
+    if bool(cumulative_in_band_passthrough) and lo - 1e-12 <= cum_flat <= hi + 1e-12:
+        return ParticipationDecision(MODE_PASSTHROUGH, None, "exam_cumulative_in_band")
     hyst = max(0.0, min(0.08, float(hysteresis)))
     release_hyst = max(0.0, min(0.08, float(under_band_release_hysteresis)))
     # Over-flat enter only clearly above band (hysteresis).

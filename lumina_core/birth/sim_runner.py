@@ -553,6 +553,8 @@ def run_policy_rollout(
             force_exit_on_sticky_under=True,
             force_exit_on_expectancy_gap=bool(force_exit_on_expectancy_gap),
             rolling_flat_ratio=rolling_flat,
+            # Mixed/S3: occupancy_all_ticks. Exam-in-band → policy PASSTHROUGH.
+            cumulative_in_band_passthrough=bool(occupancy_all_ticks),
         )
         last_participation_mode = decision.mode
         participation_counts[decision.mode] = int(participation_counts.get(decision.mode, 0) or 0) + 1

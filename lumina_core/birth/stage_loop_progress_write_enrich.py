@@ -276,6 +276,9 @@ class StageLoopProgressWriteEnrichMixin(StageLoopMixinBase):
         scorecard["participation_force_exit"] = int(
             getattr(self, "participation_force_exit", 0) or 0
         )
+        scorecard["participation_passthrough"] = int(
+            getattr(self, "participation_passthrough", 0) or 0
+        )
         scorecard["participation_overrides_total"] = int(
             getattr(self, "participation_overrides_total", 0) or 0
         )

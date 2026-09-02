@@ -186,6 +186,9 @@ class StageLoopRolloutCycleMixin(
         self.participation_force_exit = int(
             getattr(self, "participation_force_exit", 0) or 0
         ) + int(getattr(rollout, "participation_force_exit", 0) or 0)
+        self.participation_passthrough = int(
+            getattr(self, "participation_passthrough", 0) or 0
+        ) + int(getattr(rollout, "participation_passthrough", 0) or 0)
         # Mirror cum onto peak state for operator SSOT (stage lifetime exits).
         try:
             peak_st = getattr(self, "stage2_peak_state", None)
