@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-09-02T15:10:56.111245+00:00",
+  "gate": "B2_pre_followup",
+  "curriculum_stage": "stage3_mixed",
+  "stage_trades": 524,
+  "stage_policy_trades": 0,
+  "stage_plant_trades": 524,
+  "occupancy": 0.5775341627574954,
+  "pass_reason": "foundation_fail:policy_sample 0 < 150",
+  "stage_blocker_metric": "policy_sample",
+  "stage_blocker_value": 0.0,
+  "edge_vs_first_touch": null,
+  "foundation_skill_wr": 0.0,
+  "first_touch_p_ft": 0.33948278702026025,
+  "participation_force_open": 1076,
+  "participation_force_hold": 3581,
+  "participation_force_flat": 20509,
+  "participation_force_exit": 149,
+  "participation_passthrough": null,
+  "participation_overrides_total": 25315,
+  "participation_last_mode": "FORCE_FLAT",
+  "occupancy_control_flat": 0.278,
+  "constitution_violations": 0,
+  "stages_passed": [
+    "stage1_trend",
+    "stage2_range"
+  ],
+  "elapsed_sec": 788.36
+}
