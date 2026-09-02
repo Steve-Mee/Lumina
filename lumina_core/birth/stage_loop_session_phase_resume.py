@@ -281,4 +281,7 @@ class SessionPhaseResumeMixin:
                     self.stage2_peak_state = st
                 except Exception:
                     pass
+            from lumina_core.birth.stage3_inband_ssot import restore_skill_settlement_from_metrics
+
+            restore_skill_settlement_from_metrics(self, self.stage_metrics)
         return None

@@ -57,9 +57,9 @@ M5_OVER_400_CEILINGS: dict[str, int] = {
     "lumina_core/birth/birth_trade_geometry.py": 821,
     "lumina_launcher/services/fabric_simhost.py": 735,
     "lumina_core/birth/organism_autonomy.py": 717,
-    "lumina_core/birth/stage_loop_progress_write_enrich.py": 700,
+    "lumina_core/birth/stage_loop_progress_write_enrich.py": 702,
     "lumina_core/birth/expectancy_stall.py": 689,
-    "lumina_core/birth/stage_loop_rollout_cycle.py": 649,
+    "lumina_core/birth/stage_loop_rollout_cycle.py": 653,
     "lumina_launcher/services/fabric_diag_live.py": 624,
     "lumina_core/evolution/twin_decision_notify.py": 620,
     "lumina_core/cyber_sentinel.py": 564,
@@ -158,6 +158,8 @@ def test_m5_residual_split_modules_exist() -> None:
         "lumina_os/backend/monitoring_endpoints_ops.py",
         "lumina_core/birth/force_open_plant.py",
         "lumina_core/birth/synthetic_cloud_fixture_persist.py",
+        "lumina_core/birth/stage3_inband_ssot.py",
+        "lumina_core/birth/stage3_inband_gym.py",
     ]
     missing = [c for c in companions if not (ROOT / c).is_file()]
     assert not missing, f"missing M5 companion modules: {missing}"

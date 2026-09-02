@@ -38,6 +38,12 @@ def build_reward_config(reward_raw: dict[str, Any]) -> BirthRewardConfig:
         range_quality_boost_coeff=max(
             0.0, min(1.0, _coerce_float(reward_raw.get("range_quality_boost_coeff"), 0.15))
         ),
+        s3_inband_hold_tax=max(
+            0.0, _coerce_float(reward_raw.get("s3_inband_hold_tax"), 0.01)
+        ),
+        s3_inband_min_idle_hold_bars=max(
+            1, _coerce_int(reward_raw.get("s3_inband_min_idle_hold_bars"), 32)
+        ),
     )
 
 

@@ -22,8 +22,14 @@ def _settlement_pass_leg(
     closes_time_stop: int,
     closes_flatten: int,
     closes_unknown: int,
+    ssot_pending: bool = False,
 ) -> tuple[bool, str, float]:
     from lumina_core.birth.starship_edgescore_core import evaluate_settlement_honesty
+
+    if bool(ssot_pending):
+        # Resume of a stage that already had closes, but close-reason SSOT was
+        # zeroed. Do not emit settlement_share=0.00; do not invent closes.
+        return True, "ssot_pending_resume", -1.0
 
     ok, share, reason = evaluate_settlement_honesty(
         closes_stop=int(closes_stop),
@@ -92,6 +98,7 @@ def evaluate_stage_pass(
     oos_sharpe: float | None = None,
     oos_dd_pct: float | None = None,
     r_series: list[float] | None = None,
+    settlement_ssot_pending: bool = False,
 ) -> StageResult:
     """Foundation pass law. Rolling WR / EdgeScore / WR floors are HUD-only."""
     hold_ratio = float(hold_signals) / float(max(1, total_signals))
@@ -137,6 +144,7 @@ def evaluate_stage_pass(
         closes_time_stop=closes_time_stop,
         closes_flatten=closes_flatten,
         closes_unknown=closes_unknown,
+        ssot_pending=bool(settlement_ssot_pending),
     )
     entropy_alive = True
     if cfg is not None:

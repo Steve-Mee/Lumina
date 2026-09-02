@@ -185,6 +185,9 @@ class StageLoopIterationPassMixin:
                 if self.stage == CurriculumStage.STAGE5_PROBE_HANDOFF
                 else None
             ),
+            settlement_ssot_pending=bool(
+                getattr(self, "_settlement_ssot_pending", False)
+            ),
         )
         if not stage_result.passed:
             now = time.time()

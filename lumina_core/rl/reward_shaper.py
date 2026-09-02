@@ -266,6 +266,14 @@ def range_patience_step_reward(
     expectancy_gap: float | None = None,
     trade_r_multiple: float | None = None,
     first_touch_training_pressure: float | None = None,
+    curriculum_regime: str = "",
+    participation_mode: str = "",
+    position: int = 0,
+    policy_trades: int = 0,
+    band_lo: float = 0.25,
+    band_hi: float = 0.75,
+    action_side: int = 0,
+    cumulative_flat: float | None = None,
 ) -> float:
     """Birth stage 2 shaping: keep flat band 30–70% — not pure flat or pure churn.
 
@@ -276,8 +284,26 @@ def range_patience_step_reward(
     shift from flat keep-alive to **quality** (R-multiple on close) so Stage-2 can
     graduate on the WR−0.50 expectancy gate without re-entering the 95% flat trap.
     """
+    from lumina_core.birth.stage3_inband_idle import s3_inband_hold_tax
+
+    tax_flat = (
+        float(cumulative_flat)
+        if cumulative_flat is not None
+        else float(stage_flat_ratio if stage_flat_ratio is not None else 0.5)
+    )
+    idle_tax = s3_inband_hold_tax(
+        curriculum_regime=str(curriculum_regime or ""),
+        participation_mode=str(participation_mode or ""),
+        position=int(position),
+        cumulative_flat=tax_flat,
+        band_lo=float(band_lo),
+        band_hi=float(band_hi),
+        policy_trades=int(policy_trades),
+        action_side=int(action_side),
+        tax=float(getattr(cfg, "s3_inband_hold_tax", 0.01) or 0.01),
+    )
     if not cfg.enabled or not _is_range_regime(regime):
-        return 0.0
+        return float(idle_tax)
     flat_bonus = float(cfg.range_flat_bonus_coeff)
     churn_pen = float(cfg.range_churn_penalty_coeff)
     ratio = float(stage_flat_ratio) if stage_flat_ratio is not None else 0.5
@@ -291,7 +317,7 @@ def range_patience_step_reward(
         # Mild churn cost only — do not fight participation recovery.
         if trade_closed:
             bonus -= churn_pen * 0.25
-        return bonus
+        return bonus + idle_tax
     gap = max(0.0, float(expectancy_gap) if expectancy_gap is not None else 0.0)
     ft_press = max(
         0.0,
@@ -322,7 +348,7 @@ def range_patience_step_reward(
                 bonus -= churn_pen * 0.35
                 if r_mult > 0.0 and gap > 1e-9:
                     bonus += quality_scale * min(2.0, r_mult) * 0.5
-        return bonus
+        return bonus + idle_tax
 
     # In band: quality-first when expectancy gap or first-touch pressure.
     quality_mode = gap > 1e-9 or ft_press > 1e-9
@@ -342,13 +368,13 @@ def range_patience_step_reward(
             else:
                 bonus -= churn_pen * (1.35 + min(2.5, abs(r_mult)))
                 bonus -= quality_scale * min(2.5, abs(r_mult)) * 1.15
-        return bonus
+        return bonus + idle_tax
 
     if position_flat:
         bonus += flat_bonus * 0.25
     if trade_closed:
         bonus -= churn_pen * 0.5
-    return bonus
+    return bonus + idle_tax
 
 
 def compute_legacy_reward(
