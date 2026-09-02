@@ -34,6 +34,9 @@ S2_OCCUPANCY_MIN = 0.30
 S2_OCCUPANCY_MAX = 0.70
 S3_OCCUPANCY_MIN = 0.25
 S3_OCCUPANCY_MAX = 0.75
+# S2 skill-min (config stage2_skill_min_trades=150) lifted to SSOT so S3/S4/S5
+# cannot grade edge on an empty pilot. Volume gates stay on total stage closes.
+POLICY_EDGE_MIN_TRADES = 150
 
 
 def stop_usd(
@@ -163,6 +166,8 @@ class FoundationSnapshot:
     entropy_alive: bool
     unique_calendar_days: int
     replay_ok: bool
+    skill_trades: int = 0
+    skill_wins: int = 0
     oos_sharpe: float | None = None
     oos_dd_pct: float | None = None
     schema: str = FOUNDATION_SCHEMA
@@ -178,6 +183,8 @@ class FoundationSnapshot:
             "e_mech": self.e_mech,
             "edge_vs_first_touch": self.edge,
             "foundation_skill_wr": self.skill_wr,
+            "foundation_skill_trades": int(self.skill_trades),
+            "foundation_skill_wins": int(self.skill_wins),
             "foundation_replay_ok": self.replay_ok,
             "foundation_unique_calendar_days": self.unique_calendar_days,
             "oos_sharpe": self.oos_sharpe,
@@ -209,10 +216,17 @@ def build_foundation_snapshot(
     oos_sharpe: float | None = None,
     oos_dd_pct: float | None = None,
     replay_cap: int = REPLAY_TRADES_PER_UNIQUE_DAY,
+    skill_trades: int | None = None,
+    skill_wins: int | None = None,
 ) -> FoundationSnapshot:
     n = max(0, int(trades))
     w = max(0, int(wins))
-    wr = skill_winrate(trades=n, wins=w)
+    if skill_trades is None:
+        sk_n, sk_w = n, w
+    else:
+        sk_n = max(0, int(skill_trades))
+        sk_w = max(0, int(skill_wins or 0))
+    wr = skill_winrate(trades=sk_n, wins=sk_w)
     occ = occupancy if occupancy is not None else occupancy_ratio(
         flat_bars=flat_bars, total_signals=total_signals
     )
@@ -236,7 +250,11 @@ def build_foundation_snapshot(
     rr = float(net_rr) if net_rr is not None else None
     p = float(p_ft) if p_ft is not None else None
     e_mech = mechanical_ev_r(p_ft=p, net_rr=rr) if p is not None and rr is not None else None
-    edge = skill_edge(skill_wr=wr, p_ft=p) if p is not None else None
+    edge = (
+        skill_edge(skill_wr=wr, p_ft=p)
+        if p is not None and sk_n >= POLICY_EDGE_MIN_TRADES
+        else None
+    )
     days = max(0, int(unique_calendar_days))
     return FoundationSnapshot(
         trades=n,
@@ -255,6 +273,8 @@ def build_foundation_snapshot(
         entropy_alive=bool(entropy_alive),
         unique_calendar_days=days,
         replay_ok=replay_cap_ok(trades=n, unique_calendar_days=days, cap=int(replay_cap)),
+        skill_trades=sk_n,
+        skill_wins=sk_w,
         oos_sharpe=float(oos_sharpe) if oos_sharpe is not None else None,
         oos_dd_pct=float(oos_dd_pct) if oos_dd_pct is not None else None,
     )
@@ -265,6 +285,7 @@ __all__ = [
     "FOUNDATION_STAGE_COUNT",
     "MEDIAN_LOSS_R_MAX",
     "NET_RR_MIN",
+    "POLICY_EDGE_MIN_TRADES",
     "REPLAY_TRADES_PER_UNIQUE_DAY",
     "S1_MIN_TRADES",
     "S2_MIN_TRADES",

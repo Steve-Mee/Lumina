@@ -120,7 +120,7 @@ def test_hold_cap_is_not_a_pass_gate() -> None:
     result = evaluate_stage_pass(
         CurriculumStage.STAGE4_VIABLE_PLANT,
         **_base(  # type: ignore[arg-type]
-            trades=120,
+            trades=150,
             wins=80,
             hold_signals=10,
             total_signals=200,
@@ -142,7 +142,7 @@ def test_stage4_fails_if_edge_negative_or_mean_r_below_emech() -> None:
     anti = evaluate_stage_pass(
         CurriculumStage.STAGE4_VIABLE_PLANT,
         **_base(  # type: ignore[arg-type]
-            trades=120,
+            trades=150,
             wins=20,
             first_touch_hit_rate=p_ft,
             geometry_net_rr=rr,
@@ -154,7 +154,7 @@ def test_stage4_fails_if_edge_negative_or_mean_r_below_emech() -> None:
     weak_r = evaluate_stage_pass(
         CurriculumStage.STAGE4_VIABLE_PLANT,
         **_base(  # type: ignore[arg-type]
-            trades=120,
+            trades=150,
             wins=50,
             first_touch_hit_rate=p_ft,
             geometry_net_rr=rr,
@@ -277,7 +277,7 @@ def test_stage4_passes_only_when_both_skill_legs_true() -> None:
     both = evaluate_stage_pass(
         CurriculumStage.STAGE4_VIABLE_PLANT,
         **_base(  # type: ignore[arg-type]
-            trades=120,
+            trades=150,
             wins=50,
             first_touch_hit_rate=p_ft,
             geometry_net_rr=rr,
@@ -290,7 +290,7 @@ def test_stage4_passes_only_when_both_skill_legs_true() -> None:
     edge_only = evaluate_stage_pass(
         CurriculumStage.STAGE4_VIABLE_PLANT,
         **_base(  # type: ignore[arg-type]
-            trades=120,
+            trades=150,
             wins=50,
             first_touch_hit_rate=p_ft,
             geometry_net_rr=rr,
@@ -308,8 +308,8 @@ def test_stage5_holdout_pass_and_fitness_checksum(tmp_path) -> None:  # type: ig
     result = evaluate_stage_pass(
         CurriculumStage.STAGE5_PROBE_HANDOFF,
         **_base(  # type: ignore[arg-type]
-            trades=60,
-            wins=20,
+            trades=150,
+            wins=50,
             occupancy=0.4,
             first_touch_hit_rate=0.28,
             oos_sharpe=-1.0,
@@ -384,8 +384,8 @@ def _v2_receipt(stage: str, **kwargs: object) -> StagePassReceipt:
         "stage1_trend": 160,
         "stage2_range": 250,
         "stage3_mixed": 400,
-        "stage4_viable_plant": 120,
-        "stage5_probe_handoff": 60,
+        "stage4_viable_plant": 150,
+        "stage5_probe_handoff": 150,
     }
     trades = int(kwargs.get("trades", floors.get(stage, 200)) or 200)
     wins = int(kwargs.get("wins", max(40, int(trades * 0.40))) or 40)

@@ -8,6 +8,7 @@ from lumina_core.birth.curriculum_types import CurriculumStage
 from lumina_core.birth.foundation_metrics import (
     MEDIAN_LOSS_R_MAX,
     NET_RR_MIN,
+    POLICY_EDGE_MIN_TRADES,
     S1_MIN_TRADES,
     S2_MIN_TRADES,
     S2_OCCUPANCY_MAX,
@@ -78,6 +79,22 @@ def _common_body(
     return blockers
 
 
+def _policy_edge_blockers(
+    snap: FoundationSnapshot,
+    *,
+    floor: float,
+    prefix: str,
+    suffix: str = "",
+) -> list[str]:
+    """Grade edge only when the pilot sample is large enough. Thin sample ≠ 0 − p_ft."""
+    skill_n = int(getattr(snap, "skill_trades", 0) or 0)
+    if skill_n < POLICY_EDGE_MIN_TRADES:
+        return [f"policy_sample {skill_n} < {POLICY_EDGE_MIN_TRADES}"]
+    if snap.edge is None or float(snap.edge) + 1e-12 < float(floor):
+        return [f"{prefix}{snap.edge} < {floor}{suffix}"]
+    return []
+
+
 def evaluate_foundation_pass(
     stage: CurriculumStage,
     snap: FoundationSnapshot,
@@ -120,8 +137,7 @@ def evaluate_foundation_pass(
             occ_hi=S3_OCCUPANCY_MAX,
             require_replay=True,
         )
-        if snap.edge is None or float(snap.edge) + 1e-12 < S3_EDGE_MIN:
-            blockers.append(f"edge={snap.edge} < {S3_EDGE_MIN}")
+        blockers.extend(_policy_edge_blockers(snap, floor=S3_EDGE_MIN, prefix="edge="))
     elif stage == CurriculumStage.STAGE4_VIABLE_PLANT:
         blockers = _common_body(
             snap,
@@ -131,8 +147,14 @@ def evaluate_foundation_pass(
             occ_hi=S3_OCCUPANCY_MAX,
             require_replay=True,
         )
-        if snap.edge is None or float(snap.edge) + 1e-12 < S4_EDGE_MIN:
-            blockers.append(f"edge={snap.edge} < {S4_EDGE_MIN} (must beat first-touch)")
+        blockers.extend(
+            _policy_edge_blockers(
+                snap,
+                floor=S4_EDGE_MIN,
+                prefix="edge=",
+                suffix=" (must beat first-touch)",
+            )
+        )
         if snap.mean_r is None or snap.e_mech is None:
             blockers.append("mean_r_or_e_mech_missing")
         elif float(snap.mean_r) + 1e-12 < float(snap.e_mech) - S4_MEAN_R_SLACK:
@@ -149,8 +171,9 @@ def evaluate_foundation_pass(
             occ_hi=S3_OCCUPANCY_MAX,
             require_replay=True,
         )
-        if snap.edge is None or float(snap.edge) + 1e-12 < S5_EDGE_MIN:
-            blockers.append(f"oos_edge={snap.edge} < {S5_EDGE_MIN}")
+        blockers.extend(
+            _policy_edge_blockers(snap, floor=S5_EDGE_MIN, prefix="oos_edge=")
+        )
         if int(snap.trades) >= S5_MIN_TRADES:
             if snap.oos_sharpe is None or float(snap.oos_sharpe) <= S5_SHARPE_FLOOR:
                 blockers.append(f"oos_sharpe={snap.oos_sharpe} <= {S5_SHARPE_FLOOR}")

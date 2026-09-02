@@ -94,6 +94,17 @@ def evaluate_stage_pass(
     r_series: list[float] | None = None,
 ) -> StageResult:
     """Foundation pass law. Rolling WR / EdgeScore / WR floors are HUD-only."""
+    hold_ratio = float(hold_signals) / float(max(1, total_signals))
+    range_hold_ratio = float(range_hold_signals) / float(max(1, range_total_signals))
+    range_flat_ratio = float(range_flat_bars) / float(max(1, range_total_signals))
+    volume = int(trades)
+    volume_wins = int(wins)
+    if policy_trades is not None:
+        skill_n = int(policy_trades)
+        skill_w = int(policy_wins) if policy_wins is not None else 0
+    else:
+        skill_n = volume
+        skill_w = volume_wins
     _ = (
         rolling_winrate,
         consecutive_rolling_pass_windows,
@@ -105,9 +116,6 @@ def evaluate_stage_pass(
         stage_total_pnl,
         target_trades,
     )
-    hold_ratio = float(hold_signals) / float(max(1, total_signals))
-    range_hold_ratio = float(range_hold_signals) / float(max(1, range_total_signals))
-    range_flat_ratio = float(range_flat_bars) / float(max(1, range_total_signals))
     occ = occupancy
     # S1 occupancy is plant-flat, not HOLD%. Do not invent 0.0 from trend signals.
     if occ is None and stage != CurriculumStage.STAGE1_TREND:
@@ -138,10 +146,6 @@ def evaluate_stage_pass(
             policy_entropy, cfg=cfg, ppo_steps=int(ppo_steps)
         )
 
-    skill_trades = int(policy_trades) if policy_trades is not None else int(trades)
-    skill_wins = int(policy_wins) if policy_wins is not None else int(wins)
-    volume = int(skill_trades if policy_trades is not None else trades)
-    volume_wins = int(skill_wins if policy_trades is not None else wins)
     days = unique_calendar_days
     from lumina_core.birth.foundation_metrics import build_foundation_snapshot
 
@@ -155,6 +159,8 @@ def evaluate_stage_pass(
     snap = build_foundation_snapshot(
         trades=volume,
         wins=volume_wins,
+        skill_trades=skill_n,
+        skill_wins=skill_w,
         pnl_series=list(pnl_series) if pnl_series else None,
         r_series=list(r_series) if r_series is not None else None,
         stop_pct=stop_pct,

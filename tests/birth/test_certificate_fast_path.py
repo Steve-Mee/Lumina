@@ -85,8 +85,8 @@ def _foundation_receipts(cfg: BirthCurriculumConfig) -> list[dict]:
         (CurriculumStage.STAGE1_TREND, 160, 50),
         (CurriculumStage.STAGE2_RANGE, 260, 90),
         (CurriculumStage.STAGE3_MIXED, 400, 130),
-        (CurriculumStage.STAGE4_VIABLE_PLANT, 120, 50),
-        (CurriculumStage.STAGE5_PROBE_HANDOFF, 60, 25),
+        (CurriculumStage.STAGE4_VIABLE_PLANT, 150, 50),
+        (CurriculumStage.STAGE5_PROBE_HANDOFF, 150, 50),
     ]
     receipts: list[dict] = []
     for stage, trades, wins in payloads:
