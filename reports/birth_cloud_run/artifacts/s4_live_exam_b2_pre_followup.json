@@ -1,0 +1,52 @@
+{
+  "captured_at": "2026-09-02T17:25:28.453263+00:00",
+  "gate": "B2",
+  "verdict": "S4_HOLD_COLLAPSE_UNDER_PASSTHROUGH",
+  "curriculum_stage": "stage4_viable_plant",
+  "stages_passed": [
+    "stage1_trend",
+    "stage2_range",
+    "stage3_mixed"
+  ],
+  "stage_metrics": {
+    "stage_trades": 0,
+    "stage_policy_trades": 0,
+    "stage_plant_trades": 0,
+    "stage_range_flat_ratio": 1.0,
+    "stage_range_flat_bars": 10386,
+    "stage_range_total_signals": 10386,
+    "stage_total_signals": 25000,
+    "s3_inband_idle_armed": false,
+    "s3_inband_explore": 0,
+    "s3_inband_hold_tax_steps": 0
+  },
+  "progress": {
+    "occupancy": 1.0,
+    "phase": "data_expansion_exhausted",
+    "pass_reason": null,
+    "stage_trades": 0,
+    "stage_policy_trades": 0
+  },
+  "engine_result": {
+    "status": "history_unavailable",
+    "total_trades": 800,
+    "ppo_steps": 104000,
+    "training_mode": "certified"
+  },
+  "hud_at_s4": {
+    "participation_passthrough": 5000,
+    "participation_force_open": 0,
+    "occupancy": 1.0,
+    "idle_armed": false,
+    "tax_steps": 0,
+    "explore": 0,
+    "blockers": "trades 0 < 100; occupancy=1.0 not_in_25%-75%; policy_sample 0 < 150; mean_r_or_e_mech_missing"
+  },
+  "tape": {
+    "source": "synthetic_cloud_fixture",
+    "seed": 20260902,
+    "hash": "7e86c2bb1c71d514",
+    "raw_ticks_hash": "2466d3f41d60657b",
+    "ticks": 213120
+  }
+}

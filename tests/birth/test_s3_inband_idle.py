@@ -27,6 +27,8 @@ from lumina_core.birth.foundation_metrics import (
     S3_MIN_TRADES,
     S3_OCCUPANCY_MAX,
     S3_OCCUPANCY_MIN,
+    S4_EDGE_MIN,
+    S4_MIN_TRADES,
 )
 from lumina_core.birth.stage2_participation_envelope import (
     MODE_FORCE_HOLD,
@@ -36,6 +38,8 @@ from lumina_core.birth.stage2_participation_envelope import (
 )
 from lumina_core.birth.stage3_inband_idle import (
     S3_INBAND_HOLD_MASK_REASON,
+    S3_INBAND_REGIMES,
+    S4_IDLE_REGIMES,
     S3InbandIdleState,
     apply_passthrough_hold_mask,
     plant_tag_for_entry,
@@ -140,6 +144,38 @@ def test_a_predicate_s2_range_disarmed() -> None:
     assert (
         s3_inband_idle_armed(**_armed_kwargs(curriculum_regime="stage2_range")) is False  # type: ignore[arg-type]
     )
+
+
+def test_a_s4_passthrough_over_flat_thin_policy_armed() -> None:
+    """Gate B2: S4 envelope is off; idle must arm at flat=1.0 under PASSTHROUGH."""
+    assert "stage4_viable_plant" not in S3_INBAND_REGIMES
+    assert "stage4_viable_plant" in S4_IDLE_REGIMES
+    assert (
+        s3_inband_idle_armed(
+            **_armed_kwargs(  # type: ignore[arg-type]
+                curriculum_regime="stage4_viable_plant",
+                cumulative_flat=1.0,
+            )
+        )
+        is True
+    )
+
+
+def test_a_s4_policy_150_disarmed() -> None:
+    assert (
+        s3_inband_idle_armed(
+            **_armed_kwargs(  # type: ignore[arg-type]
+                curriculum_regime="stage4_viable_plant",
+                cumulative_flat=1.0,
+                policy_trades=150,
+            )
+        )
+        is False
+    )
+
+
+def test_a_s3_over_band_still_disarmed_after_s4_generalize() -> None:
+    assert s3_inband_idle_armed(**_armed_kwargs(cumulative_flat=0.90)) is False  # type: ignore[arg-type]
 
 
 def test_b_idle_tax_armed_hold_negative() -> None:
@@ -281,6 +317,24 @@ def test_c_hold_mask_off_under_force_open() -> None:
     assert action is None
 
 
+def test_d_s4_over_flat_replica_mask_replaces_hold_by_bar_32() -> None:
+    rows = simulate_passthrough_hold_mask_bars(
+        n_bars=40,
+        min_idle_hold_bars=32,
+        curriculum_regime="stage4_viable_plant",
+        cumulative_flat=1.0,
+        policy_trades=0,
+        participation_mode=MODE_PASSTHROUGH,
+        position=0,
+    )
+    first_entry = next((i for i, (side, _plant, _r) in enumerate(rows) if side in {1, 2}), None)
+    assert first_entry == 31
+    side, is_plant, reason = rows[31]
+    assert side in {1, 2}
+    assert is_plant is False
+    assert reason == S3_INBAND_HOLD_MASK_REASON
+
+
 def test_d_cloud_failure_replica_mask_replaces_hold_by_bar_32() -> None:
     rows = simulate_passthrough_hold_mask_bars(
         n_bars=40,
@@ -371,6 +425,8 @@ def test_floors_unchanged() -> None:
     assert POLICY_EDGE_MIN_TRADES == 150
     assert S2_OCCUPANCY_MIN == pytest.approx(0.30)
     assert S2_OCCUPANCY_MAX == pytest.approx(0.70)
+    assert S4_MIN_TRADES == 100
+    assert S4_EDGE_MIN == pytest.approx(0.0)
 
 
 def _s3_eval(*, policy: int, plant: int, trades: int, closes: dict[str, int], **extra: object):
