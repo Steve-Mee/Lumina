@@ -28,6 +28,8 @@ def _min_trades(stage: CurriculumStage) -> int:
 def _metric_from_blocker(text: str) -> tuple[str, float]:
     raw = str(text or "")
     low = raw.lower()
+    if "policy_sample" in low:
+        return "policy_sample", 0.0
     if "occupancy" in low:
         return "occupancy", 0.0
     if "median_loss_r" in low:
@@ -80,6 +82,8 @@ def compute_foundation_hud_blocker(
     r_series: list[float] | None = None,
     stop_pct: float | None = None,
     ref_price: float | None = None,
+    skill_trades: int | None = None,
+    skill_wins: int | None = None,
 ) -> tuple[str | None, float | None, str | None] | None:
     """Process-R blocker for Foundation stages.
 
@@ -95,6 +99,8 @@ def compute_foundation_hud_blocker(
     snap = build_foundation_snapshot(
         trades=int(trades),
         wins=int(wins),
+        skill_trades=skill_trades,
+        skill_wins=skill_wins,
         pnl_series=list(pnl_series) if pnl_series else None,
         r_series=list(r_series) if r_series is not None else None,
         stop_pct=stop_pct,
@@ -139,6 +145,7 @@ def _blocker_value(snap: object, metric: str) -> float | None:
         "oos_dd": "oos_dd_pct",
         "net_rr": "net_rr",
         "trades": "trades",
+        "policy_sample": "skill_trades",
         "replay_cap": "unique_calendar_days",
         "round_trips": None,
         "entropy": None,

@@ -93,11 +93,7 @@ def compute_stage_blocker(
         wins=max(0, int(stage_wins)),
         required=int(required),
         constitution_violations=int(constitution_violations),
-        occupancy=(
-            float(range_flat_ratio)
-            if int(range_total_signals) >= 50
-            else None
-        ),
+        occupancy=(float(range_flat_ratio) if int(range_total_signals) >= 50 else None),
         median_loss_r=median_loss_r,
         mean_r=mean_r,
         first_touch_hit_rate=first_touch_hit_rate,
@@ -113,6 +109,8 @@ def compute_stage_blocker(
         settlement_ok=bool(settlement_ok),
         settlement_share=float(settlement_share),
         entropy_alive=bool(entropy_alive),
+        skill_trades=policy_trades,
+        skill_wins=policy_wins,
     )
     if foundation is not None:
         return foundation
