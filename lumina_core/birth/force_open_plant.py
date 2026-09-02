@@ -97,7 +97,29 @@ def apply_force_open_stop(
     return out, float(stop)
 
 
+class ForceOpenChatterBound:
+    """Min-dwell refractory after a FORCE_OPEN plant settles. Shared airframe."""
+
+    __slots__ = ("bars_since_settle",)
+
+    def __init__(self) -> None:
+        self.bars_since_settle: int | None = None
+
+    def on_bar(self, *, trade_closed: bool, closed_was_plant: bool) -> None:
+        if trade_closed and closed_was_plant:
+            self.bars_since_settle = 0
+            return
+        if self.bars_since_settle is not None:
+            self.bars_since_settle += 1
+
+    def blocks(self, min_dwell_bars: int) -> bool:
+        if self.bars_since_settle is None:
+            return False
+        return int(self.bars_since_settle) < max(1, int(min_dwell_bars))
+
+
 __all__ = [
+    "ForceOpenChatterBound",
     "apply_force_open_side",
     "apply_force_open_stop",
     "tape_atr_pct_for_force_open",

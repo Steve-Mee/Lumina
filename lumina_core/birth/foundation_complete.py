@@ -24,6 +24,36 @@ from lumina_core.logging_utils import get_logger
 logger = get_logger("lumina.birth.foundation_complete")
 
 
+def _s5_receipt_clears_exam(s5: Any) -> bool:
+    """Refuse a fitness vector from a failing S5 snapshot/receipt."""
+    from lumina_core.birth.foundation_metrics import build_foundation_snapshot
+    from lumina_core.birth.foundation_pass import evaluate_foundation_pass
+
+    policy_n = getattr(s5, "policy_trades", None)
+    policy_w = getattr(s5, "policy_wins", None)
+    snap = build_foundation_snapshot(
+        trades=int(getattr(s5, "trades", 0) or 0),
+        wins=int(getattr(s5, "wins", 0) or 0),
+        skill_trades=int(policy_n) if policy_n is not None else int(getattr(s5, "trades", 0) or 0),
+        skill_wins=int(policy_w) if policy_w is not None else int(getattr(s5, "wins", 0) or 0),
+        occupancy=getattr(s5, "occupancy", None),
+        median_loss_r_value=getattr(s5, "median_loss_r", None),
+        mean_r_value=getattr(s5, "mean_r", None),
+        p_ft=getattr(s5, "p_ft", None),
+        net_rr=getattr(s5, "geometry_net_rr", None),
+        settlement_ok=True,
+        settlement_share=1.0,
+        constitution_violations=0,
+        entropy_alive=True,
+        unique_calendar_days=int(getattr(s5, "unique_calendar_days", 0) or 0),
+        oos_sharpe=getattr(s5, "oos_sharpe", None),
+        oos_dd_pct=getattr(s5, "oos_dd_pct", None),
+    )
+    return bool(
+        evaluate_foundation_pass(CurriculumStage.STAGE5_PROBE_HANDOFF, snap).passed
+    )
+
+
 def _missing_foundation_receipts(host: Any) -> list[str]:
     receipts = list(getattr(host, "_stage_pass_receipts", []) or [])
     missing: list[str] = []
@@ -70,6 +100,13 @@ def complete_foundation_birth(
         return {
             "status": "foundation_incomplete",
             "failure_reason": "missing_stage5_oos_sharpe",
+            "total_trades": host.cumulative_trades,
+            "training_mode": training_mode,
+        }
+    if not _s5_receipt_clears_exam(s5):
+        return {
+            "status": "foundation_incomplete",
+            "failure_reason": "s5_exam_fail_no_fitness_vector",
             "total_trades": host.cumulative_trades,
             "training_mode": training_mode,
         }

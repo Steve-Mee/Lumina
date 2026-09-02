@@ -63,8 +63,8 @@
   "engine_result": {
     "status": "stage_stalled",
     "failure_reason": "stage_metrics",
-    "total_trades": 1484,
-    "ppo_steps": 105500,
+    "total_trades": 1901,
+    "ppo_steps": 104000,
     "training_mode": "certified"
   }
 }
