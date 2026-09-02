@@ -144,4 +144,10 @@ class SessionPhaseInitMixin:
             self.stage2_peak_state = None
         self._occupancy_control_window: list[int] = []
         self.occupancy_control_flat = 0.0
+        self.occupancy_in_band_seen = False
+        self.occupancy_seed_source = "n/a"
+        self.occupancy_seed_value = None
+        from lumina_core.birth.s5_occupancy_continuity import apply_s5_occupancy_seed
+
+        apply_s5_occupancy_seed(self)
         return None
