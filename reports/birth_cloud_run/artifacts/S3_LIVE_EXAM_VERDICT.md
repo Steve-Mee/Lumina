@@ -4,7 +4,7 @@
 
 | Field | Value |
 |---|---|
-| branch / commit | `cursor/s3-live-exam-363f` (envelope follow-up `9248990`; this verdict on PR #7) |
+| branch / commit | `cursor/s3-live-exam-363f` @ `84433ee` (envelope `9248990`) |
 | S3 IMU split present | **yes** — `POLICY_EDGE_MIN_TRADES=150` `lumina_core/birth/foundation_metrics.py:39`; volume=`int(trades)` `curriculum_pass.py:100` + `skill_trades=policy_trades` `:102–107` / `:162`; S3 `policy_sample` before edge `foundation_pass.py:91–92` then `:140` |
 | tape | **regenerated** (workspace cache missing) same generator/params: `source=synthetic_cloud_fixture` seed `20260902` hashes `7e86c2bb1c71d514` / `2466d3f41d60657b`, 213,120 ticks, 88 calendar days, 3 holdout regimes |
 | S1 receipt verified | **True** certified (`reports/birth_cloud_run/s1_receipt.json`, trades=150, schema=`foundation_v2`) |
