@@ -1,0 +1,47 @@
+birth.cloud.fixture ticks=213,120 days=88 source=synthetic_cloud_fixture holdout_regimes=['NEUTRAL', 'TREND_DOWN', 'TREND_UP']
+fabric_secret.read heal env→fabric_json env_len=0 json_len=10 mismatch=False
+2026-09-02 14:10:00,123,WARNING,[ConfigLoader] Missing env var (non-strict mode): XAI_API_KEY
+2026-09-02 14:10:00,123,WARNING,[ConfigLoader] Missing env var (non-strict mode): LUMINA_JWT_SECRET_KEY
+2026-09-02 14:10:00,123,WARNING,[ConfigLoader] Placeholder/default API key active in security.api_keys: '${LUMINA_ADMIN_API_KEY}'
+2026-09-02 14:10:00,123,WARNING,speech_recognition library not available; voice input disabled
+birth.cloud.engine_constructed class=BirthPhaseEngineV2
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 14:10:02,481,WARNING,milestone.send_failed id=birth_started
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 14:10:02,482,WARNING,milestone.send_failed id=maturation:birth_started
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 14:10:05,995,WARNING,milestone.send_failed id=history_loaded
+Telegram milestone alert skipped: credentials missing.
+2026-09-02 14:10:05,995,WARNING,milestone.send_failed id=regime_map_ready
+Traceback (most recent call last):
+  File "/workspace/scripts/run_birth_cloud_shadow.py", line 242, in run_birth
+    result = engine.run_birth_phase(
+        target_trades=int(target_trades),
+    ...<5 lines>...
+        reuse_data_manifest=True,
+    )
+  File "/workspace/lumina_core/birth/engine.py", line 169, in run_birth_phase
+    return _run_birth_phase(
+        self,
+    ...<9 lines>...
+        expand_data=expand_data,
+    )
+  File "/workspace/lumina_core/birth/birth_phase_orchestrator.py", line 61, in run_birth_phase
+    data = prepare_birth_data_and_policy(host, boot)
+  File "/workspace/lumina_core/birth/birth_phase_data_policy.py", line 137, in prepare_birth_data_and_policy
+    host.current_policy = host._create_birth_policy(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        allow_load_existing=allow_load and resume,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        policy_path=resume_policy_path or None,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/workspace/lumina_core/birth/engine_lifecycle_core.py", line 231, in _create_birth_policy
+    return create(
+        allow_load_existing=bool(allow_load_existing),
+        force_reinit=bool(force_reinit),
+    )
+  File "/workspace/lumina_core/rl/ppo_trainer_eval.py", line 198, in create_fresh_birth_policy
+    from stable_baselines3 import PPO
+ModuleNotFoundError: No module named 'stable_baselines3'
