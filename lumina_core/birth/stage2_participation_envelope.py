@@ -13,10 +13,16 @@ This module is curriculum law (like risk clip). Birth SIM only; stops stay ≤1%
 The envelope is **airframe** — never disable it under quality lock / PPO freeze.
 In-band PASSTHROUGH is the nominal law; under-band FORCE_FLAT stays on.
 
-Control vs exam (2026-08-13): pass-gate uses **cumulative** flat. Envelope
-steers on ``min(rolling, cumulative)`` for under-band so a 28k-bar average
-cannot hide a recent occupancy crash. FORCE_OPEN uses **rolling** (recent
-under-activity), not a stale high cumulative.
+Control vs exam: pass-gate uses **cumulative** plant-flat in [0.30, 0.70]
+for S2. Dual IMU (do not invert):
+
+- Under-band (flat too low / over-trading): ``min(rolling, cumulative)``.
+  A recent occupancy crash cannot hide behind a 28k-bar average.
+- Over-band (flat too high / too empty): ``max(rolling, cumulative)``.
+  A 500-bar in-band window cannot hide a 90% cumulative exam fail.
+  Rolling-only over-flat lets FORCE_OPEN stop while the exam stays ~90%.
+- In-band PASSTHROUGH when **both** IMUs are inside the band (after
+  hysteresis / settle-corridor). Under-band still wins when both fire.
 
 Live forensics 2026-08: hysteresis dead-zone left flat stuck at ~28% (pass needs
 ≥30%) while FORCE_FLAT only fired below 28%. Asymmetric law: **enter under-band
@@ -73,6 +79,23 @@ def occupancy_control_flat(
     return min(cum, float(rolling_flat))
 
 
+def occupancy_control_over(
+    *,
+    cumulative_flat: float,
+    rolling_flat: float | None = None,
+) -> float:
+    """Over-band IMU: max(rolling, cumulative). Cumulative-only when rolling unknown.
+
+    Exam grades cumulative plant-flat. FORCE_OPEN must keep firing while the
+    exam is still too empty, even if the short rolling window already looks
+    in-band. Rolling-only over-flat lets cumulative stall at ~90%.
+    """
+    cum = float(cumulative_flat)
+    if rolling_flat is None:
+        return cum
+    return max(cum, float(rolling_flat))
+
+
 def decide_stage2_participation(
     *,
     enabled: bool,
@@ -118,8 +141,9 @@ def decide_stage2_participation(
       if empty-suppress is still active until release (0.32). Policy manages the
       open trade; new entries stay blocked while empty.
 
-    Under-band uses min(rolling, cumulative). Over-flat FORCE_OPEN uses rolling
-    (recent under-activity). Under-band wins when both fire.
+    Under-band uses min(rolling, cumulative). Over-flat FORCE_OPEN uses
+    max(rolling, cumulative) so a short in-band window cannot hide a high
+    cumulative exam fail. Under-band wins when both fire.
     """
     if not enabled:
         return ParticipationDecision(MODE_PASSTHROUGH, None, "disabled")
@@ -133,7 +157,9 @@ def decide_stage2_participation(
     under_flat = occupancy_control_flat(
         cumulative_flat=cum_flat, rolling_flat=roll_flat
     )
-    over_flat = float(roll_flat) if roll_flat is not None else cum_flat
+    over_flat = occupancy_control_over(
+        cumulative_flat=cum_flat, rolling_flat=roll_flat
+    )
     lo = float(band_lo)
     hi = float(band_hi)
     if lo >= hi:
@@ -218,8 +244,8 @@ def decide_stage2_participation(
             suppress_flatten=False,
         )
 
-    # Over-flat: recent under-activity (rolling). Do not FORCE_OPEN on stale
-    # high cumulative while recent occupancy is already in band.
+    # Over-flat IMU is max(rolling, cumulative): exam-empty still FORCE_OPEN
+    # even when the rolling window already looks in-band.
     if over_flat > force_open_hi + 1e-12:
         if pos == 0:
             side = 1.0 if (int(force_open_step) % 2 == 0) else 2.0
@@ -243,7 +269,7 @@ def decide_stage2_participation(
             suppress_flatten=True,
         )
 
-    # Soft over-flat (hi < rolling <= force_open_hi): hold protect only.
+    # Soft over-flat (hi < over_flat IMU <= force_open_hi): hold protect only.
     if over_flat > hi + 1e-12 and pos != 0 and dwell < min_dwell:
         return ParticipationDecision(
             MODE_FORCE_HOLD,
@@ -293,5 +319,6 @@ __all__ = [
     "ParticipationMode",
     "decide_stage2_participation",
     "occupancy_control_flat",
+    "occupancy_control_over",
     "participation_telemetry",
 ]
