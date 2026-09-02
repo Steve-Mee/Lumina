@@ -1,0 +1,499 @@
+{
+  "timestamp": "2026-09-02T11:42:59.470403+00:00",
+  "stage": "stage_stalled",
+  "phase": "stage_stalled",
+  "message": "Stage stage2_range stalled: foundation_fail:median_loss_r=None missing_or_gt_1.5;occupancy=0.9034568021242375 not_in_30%-70%;replay_cap trades=7881 days=0",
+  "target_trades": 8000,
+  "trades_done": 8031,
+  "cumulative_trades": 8031,
+  "total_trades": 8031,
+  "ppo_steps": 0,
+  "progress_pct": 37.6,
+  "elapsed_sec": 840.77,
+  "birth_start_time": 1788348538.697825,
+  "stage_trades": 7881,
+  "stage_target_trades": 250,
+  "stage_training_budget_trades": 3000,
+  "stage_wins": 3198,
+  "stage_winrate": 0.4058,
+  "stage_hold_ratio": 0.0348,
+  "stage_hold_signals": 62279,
+  "stage_total_signals": 1790007,
+  "curriculum_index": 2,
+  "curriculum_total": 5,
+  "stage_pass_now": false,
+  "median_loss_r": 1.012261054007168,
+  "mean_r": 2.04715482346342,
+  "occupancy": 0.9034568021242375,
+  "edge_vs_first_touch": -0.08263904690225732,
+  "pass_criteria_id": "selectivity",
+  "pass_criteria_label": ">=250 pass gate (3000 budget) \u00b7 occupancy 30\u201370% \u00b7 median loss R \u2264 1.5 \u00b7 round-trips \u00b7 settlement",
+  "pass_metric_label": "Occupancy",
+  "pass_metric_target": null,
+  "pass_metric_min": 0.3,
+  "pass_metric_max": 0.7,
+  "stage_display_name": "Selectivity",
+  "sub_phase": "stall_remediation",
+  "sub_phase_label": "Stall Remediation",
+  "is_advancing": false,
+  "patterns_mined": 219023,
+  "learning_attempt": 1,
+  "exploration_active": false,
+  "oracle_wins": 219023,
+  "escalation_level": 2,
+  "gen0_provisional": false,
+  "data_days_loaded": 88,
+  "requested_days": 90,
+  "actual_calendar_days": 88,
+  "requested_instrument": null,
+  "resolved_instrument": null,
+  "rolled": null,
+  "stitched": false,
+  "instruments": [
+    "NQ SEP26"
+  ],
+  "stitched_from": [],
+  "expansion_step": 1,
+  "stage_range_hold_signals": 62279,
+  "stage_range_total_signals": 1790007,
+  "stage_range_flat_bars": 1617194,
+  "stage_range_round_trips": 7881,
+  "stage_range_flat_ratio": 0.9035,
+  "occupancy_control_flat": 0.49,
+  "stage_wall_remaining_sec": 14348,
+  "volume_gate_status": "PASSED",
+  "winrate_trend_slope": 0.000213,
+  "last_adaptation": {
+    "timestamp": 1788349327.2793667,
+    "reason": "metrics_not_improving_within_wall",
+    "chunk_target": 50,
+    "escalation": 2,
+    "tier": 3,
+    "winrate": 0.40328129134691715,
+    "failure_key": "metrics_not_improving_within_wall"
+  },
+  "retries_this_stage": 0,
+  "adaptation_tier": 3,
+  "max_adaptation_tiers": 4,
+  "max_stage_retries": 3,
+  "auto_recovery_active": true,
+  "adaptation_enabled": true,
+  "wall_behavior": "adaptive",
+  "learning_velocity_combined": 0.000213,
+  "strong_recovery_mode": true,
+  "velocity_stall_attempts": 356,
+  "strong_recovery_attempts": 0,
+  "provisional_pass_considered": false,
+  "meta_primary_strategy": "pattern_inject",
+  "meta_learning_health": "flat",
+  "meta_pattern_quality": 1.0,
+  "meta_reward_tweak_active": true,
+  "meta_reward_expectancy_coeff": 0.75,
+  "meta_review_trigger": "stall",
+  "meta_explore_multiplier": 0.5,
+  "meta_rollouts_since_review": 0,
+  "meta_last_rationale": "pass_vector_selective_quality_open",
+  "meta_strategy_history": [
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "adaptation_retry",
+      "secondary": [
+        "adaptation_retry",
+        "pattern_inject",
+        "data_expansion"
+      ],
+      "rationale": "adaptation_stage2_metric"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    },
+    {
+      "primary": "pattern_inject",
+      "secondary": [
+        "explore_reduce",
+        "reward_shaping_tweak"
+      ],
+      "rationale": "pass_vector_selective_quality_open"
+    }
+  ],
+  "birth_trade_stop_pct": 0.002075,
+  "birth_trade_target_pct": 0.003826,
+  "birth_trade_geometry_source": "move_distribution",
+  "geometry_time_ordered": true,
+  "geometry_p40_raw": 0.00244154,
+  "geometry_hold_bars": 120,
+  "geometry_pool_size": 124852,
+  "geometry_macro_rejected": false,
+  "geometry_floor_bound": false,
+  "geometry_net_rr": 1.7904484367298905,
+  "e_mech": -0.022832655844171934,
+  "first_touch_p_ft": 0.3501829065513801,
+  "foundation_schema": "foundation_v2",
+  "foundation_replay_ok": true,
+  "foundation_unique_calendar_days": 88,
+  "geometry_net_rr_after_cost": 1.7904,
+  "geometry_breakeven_wr_after_cost": 0.3584,
+  "geometry_cost_usd": 5.0,
+  "geometry_ref_price": 25211.25,
+  "first_touch_target_hit_rate": 0.3502,
+  "edge_vs_random": 0.069,
+  "geometry_econ_proxy_mismatch": false,
+  "pass_vector_flat": 0.9035,
+  "pass_vector_expectancy": -0.2325,
+  "pass_vector_exp_floor": -0.15,
+  "pass_vector_edge_vs_random": 0.069,
+  "pass_vector_occupancy_over_gap": 0.0,
+  "pass_vector_occupancy_under_gap": 0.2035,
+  "pass_vector_exp_gap": 0.0825,
+  "pass_vector_edge_gap": 0.0,
+  "pass_vector_dominant": "mixed_quality",
+  "pass_vector_action": "selective_quality_open",
+  "pass_vector_in_flat_band": false,
+  "pass_vector_beat_random": true,
+  "stage2_bootstrap_patterns": 10000,
+  "stage2_bootstrap_updates": 5000,
+  "stage2_action_head_reinit": true,
+  "participation_force_exit": 86,
+  "stage1_foundation_target_wr": 0.3,
+  "stage1_foundation_winrate": 0.38,
+  "stage1_foundation_learning_gap": 0.0,
+  "stage1_foundation_pressure": false,
+  "stage1_anti_thrash": false,
+  "stage1_survival_ok": true,
+  "stage1_edge_vs_random": -0.1236,
+  "stage1_transfer_handoff_ok": true,
+  "stage1_transfer_purge_mode": "full_clear",
+  "stage1_transfer_reinit_ok": true,
+  "stage_policy_trades": 3420,
+  "stage_policy_wins": 915,
+  "stage_plant_trades": 4461,
+  "stage_plant_wins": 2283,
+  "skill_metric_policy_only": true,
+  "skill_metric_eligible": true,
+  "skill_metric_trades": 3420,
+  "skill_metric_wins": 915,
+  "skill_metric_winrate": 0.2675,
+  "skill_metric_expectancy": -0.2325,
+  "total_metric_winrate": 0.4058,
+  "total_metric_expectancy": -0.0942,
+  "skill_pass_wr_floor": 0.35,
+  "economic_be_wr": 0.3584,
+  "skill_wr_vs_economic_be": -0.0908,
+  "economic_training_pressure": 0.0908,
+  "closes_stop": 35,
+  "closes_target": 15,
+  "closes_flatten": 0,
+  "closes_time_stop": 0,
+  "closes_unknown": 0,
+  "stage_closes_stop_cum": 4651,
+  "stage_closes_target_cum": 3145,
+  "stage_closes_flatten_cum": 0,
+  "stage_closes_time_stop_cum": 85,
+  "stage_closes_unknown_cum": 0,
+  "stage_settlement_share": 1.0,
+  "stage_stop_target_ratio": 1.479,
+  "mean_entry_stop_pct": 0.002075,
+  "mean_entry_target_pct": 0.003826,
+  "expectancy_quality_step": 0,
+  "expectancy_quality_step_source": "",
+  "expectancy_stall_detected": false,
+  "oracle_last_stop_pct": 0.002075,
+  "oracle_last_target_pct": 0.003826,
+  "birth_diag_contract": "quality_geom_v4",
+  "birth_code_fingerprint": "19e8339f02370839",
+  "birth_runtime_pid": 3578,
+  "birth_runtime_python": "/workspace/.venv/bin/python",
+  "birth_runtime_cwd": "/workspace/reports/birth_cloud_run/workspace",
+  "birth_code_has_quality_failclosed": true,
+  "birth_code_has_geom_enrich": true,
+  "birth_code_has_coerce": true,
+  "birth_code_has_geometry_time_guard": true,
+  "birth_code_collected_at": "2026-09-02T11:28:58",
+  "birth_code_identity_ok": true,
+  "birth_code_identity_defects": [],
+  "meta_self_eval_phase": "idle",
+  "meta_self_eval_current_strategy": "",
+  "meta_self_eval_committed_strategy": "",
+  "meta_self_eval_best_velocity_delta": 0.0,
+  "meta_self_eval_probes_completed": 0,
+  "evolution_step_label": "Plateau detected",
+  "evolution_actions_remaining": 4,
+  "evolution_actions_total": 4,
+  "evolution_actions_completed": 0,
+  "evolution_phantom_steps": 0,
+  "plateau_elapsed_sec": 415.9650857448578,
+  "trades_beyond_gate": 7631,
+  "plateau_forced_recoveries_count": 0,
+  "plateau_best_winrate": 0.422182,
+  "attention_reason_code": "plateau_evolution_exhausted",
+  "attention_summary": "Terminal recovery: plateau_evolution_exhausted \u2014 next_action=expand_data_or_wipe_genesis",
+  "attention_recommended_actions": [
+    "expand_data",
+    "wipe_and_retry",
+    "human_review"
+  ],
+  "attention_notified_at": "2026-09-02T11:29:17.403231+00:00",
+  "user_initiated_stop": false,
+  "prior_stage": "training_running",
+  "prior_phase": "stall_remediation",
+  "policy_entropy": 5.725113,
+  "entropy_alive": true,
+  "edgescore": 0.25,
+  "expectancy_proxy": -0.2325,
+  "starship_exploration_burst_active": false,
+  "swarm_tournament_lift_ok": true,
+  "swarm_tournament_at_start": 0.22022471910112362,
+  "swarm_edgescore_lift_ok": true,
+  "swarm_edgescore_at_start": 0.22022471910112362,
+  "swarm_rejected_no_lift": false,
+  "best_edgescore": null,
+  "best_edgescore_at_trade": 0,
+  "best_edgescore_policy_path": "",
+  "edgescore_champion_min_trades": 250,
+  "edgescore_champion_locked": false,
+  "rolling_winrate_500": 0.41914,
+  "rolling_winrate_source": "true_window",
+  "rolling_window_trades_covered": 150,
+  "hygiene_wr_floor": 0.35,
+  "hygiene_wr_lifetime": 0.405786,
+  "hygiene_wr_rolling": 0.41914,
+  "hygiene_wr_effective": 0.41914,
+  "hygiene_wr_source": "lifetime",
+  "rolling_wr_eligible": true,
+  "data_manifest": {
+    "train_hash": "7e86c2bb1c71d514",
+    "raw_ticks_hash": "2466d3f41d60657b",
+    "holdout_pct": 0.2,
+    "enrich_version": "trend_features_v1",
+    "requested_days": 90,
+    "actual_calendar_days": 88,
+    "days_loaded": 88,
+    "tick_count": 209790,
+    "train_tick_count": 166620,
+    "holdout_tick_count": 43170,
+    "instruments": [
+      "NQ SEP26"
+    ],
+    "stitched": false,
+    "stitched_from": [],
+    "real_data_pct": 0.0,
+    "preflight_ok": true,
+    "holdout_regimes": [
+      "NEUTRAL",
+      "TREND_DOWN",
+      "TREND_UP"
+    ],
+    "holdout_days": 15,
+    "ticks_cache_path": "",
+    "split_cache_path": "",
+    "reused_manifest": true
+  },
+  "trade_budget_cap": 8000,
+  "trade_budget_remaining": 0,
+  "trade_budget_source": "start_arg.target_trades",
+  "terminal_stall_reason": "plateau_evolution_exhausted",
+  "constitution_violations": 0,
+  "constitution_violations_session": 0,
+  "constitution_violations_cumulative": 0,
+  "constitution_soft_blocks": 1612703,
+  "constitution_soft_blocks_session": 1612703,
+  "soft_block_reasons_hist": {
+    "risk_exceeds_1pct": 1612703
+  },
+  "birth_risk_clips_applied": 0,
+  "phoenix_loop_active": false,
+  "phoenix_count": 0,
+  "phoenix_last_action": "",
+  "phoenix_last_cycle_at": 0.0,
+  "phoenix_history": [],
+  "death_spiral_repeat_count": 1,
+  "death_spiral_last_signature": "stage2_range|median_loss_r|0.00",
+  "death_spiral_circuit_breaker": false,
+  "death_spiral_novelty_budget": 3,
+  "death_spiral_history": [
+    {
+      "timestamp": 1788349379.458505,
+      "signature": "stage2_range|median_loss_r|0.00",
+      "repeat_count": 1
+    }
+  ],
+  "autonomous_recovery_count": 1,
+  "last_recommended_action": "",
+  "recommended_recovery_action": "resume_stalled_stage",
+  "autonomous_recovery_pending": true,
+  "autonomy_message": "Explore-pass CONTINUE (twin shadow conf=50.00%, mode=shadow)",
+  "curriculum_stage": "stage2_range",
+  "stages_passed": [
+    "stage1_trend"
+  ],
+  "stage_blocker_metric": "median_loss_r",
+  "stage_blocker_value": 0.0,
+  "pass_reason": "foundation_fail:median_loss_r=None missing_or_gt_1.5;occupancy=0.9034568021242375 not_in_30%-70%;replay_cap trades=7881 days=0",
+  "retryable": true,
+  "needs_attention": false,
+  "provisional_graduation": false,
+  "graduation_tier": "strict",
+  "oos_proxy_winrate": 0.0,
+  "terminal_freeze": {
+    "schema": "terminal_freeze_v1",
+    "reason": "plateau_evolution_exhausted",
+    "curriculum_stage": "stage2_range",
+    "stages_passed": [
+      "stage1_trend"
+    ],
+    "evolution_step": 0,
+    "stage_trades": 7881,
+    "stage_wins": 3198,
+    "swarm_rejected_no_lift": false,
+    "swarm_champion_accepted": false,
+    "next_action": "expand_data_or_wipe_genesis",
+    "best_edgescore_policy_path": "",
+    "best_policy_path": "/workspace/reports/birth_cloud_run/workspace/lumina_agents/ppo/birth_best_stage2_range.zip",
+    "frozen_at": "2026-09-02T11:42:59.470161+00:00",
+    "resolved": false,
+    "resolved_action": "",
+    "resolved_by": ""
+  },
+  "evolution_phase": "exhausted",
+  "evolution_step": 0
+}

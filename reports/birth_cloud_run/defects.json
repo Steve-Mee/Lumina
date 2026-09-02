@@ -1,0 +1,42 @@
+[
+  {
+    "id": "BIRTH-CLOUD-001",
+    "symptom": "Stage 2 occupancy stuck at ~90.3% (flat) after 7881 stage trades; Foundation pass requires 30–70%. Birth stalled stage2_metric / plateau_evolution_exhausted. No S2–S5 receipts.",
+    "engine_layer": "curriculum",
+    "file_line": "lumina_core/birth/foundation_pass.py + sim_runner occupancy_control_flat; progress occupancy=0.9034568021242375",
+    "first_principles_cause": "S2 pass law is occupancy (flat_bars/total_signals) in 30–70%, not WR. On this NEUTRAL-heavy tape the policy stayed ~90% flat. Adaptation reached tier 3 / plateau exhaust without moving occupancy into band. exploration_active stayed false while beyond_gate force_train_lap skipped recovery.",
+    "why_this_blocks_milestone": "yes",
+    "smallest_fix": "One experiment: make Stage-2 occupancy envelope actually pull flat ratio into 30–70% on this fixture (FORCE_OPEN / FORCE_HOLD vs occupancy_control_flat in sim_runner) without changing the 30–70% floor. Prove with a receipt, not a floor patch.",
+    "reproduced": "yes"
+  },
+  {
+    "id": "BIRTH-CLOUD-002",
+    "symptom": "Stall message claimed median_loss_r=None and replay_cap trades=7881 days=0 while live progress still had median_loss_r=1.012 and foundation_unique_calendar_days=88.",
+    "engine_layer": "graduation",
+    "file_line": "lumina_core/birth/foundation_metrics.py:128-136 replay_cap_ok days<=0 → False; session_unique_calendar_days / stall snapshot",
+    "first_principles_cause": "The stall snapshot dropped unique calendar days to 0, so replay_cap fail-closed even though the tape span is 88 days. median_loss_r also went missing on that snapshot. Occupancy was already out of band, so this is not the sole blocker.",
+    "why_this_blocks_milestone": "no",
+    "smallest_fix": "Pass the same unique_calendar_days SSOT used in progress (session_unique_calendar_days / manifest.actual_calendar_days) into the stall FoundationSnapshot. Never treat 0 days as a cached hit.",
+    "reproduced": "yes"
+  },
+  {
+    "id": "BIRTH-CLOUD-003",
+    "symptom": "Headless run spams Telegram milestone/attention send_failed because credentials are absent.",
+    "engine_layer": "infra",
+    "file_line": "run1.log (credential skip warnings)",
+    "first_principles_cause": "Notifier is wired on Birth start; missing tokens are warnings, not fail-closed. Noise only.",
+    "why_this_blocks_milestone": "no",
+    "smallest_fix": "Skip outbound Telegram when token/chat_id empty (already skipped; reduce log level).",
+    "reproduced": "yes"
+  },
+  {
+    "id": "BIRTH-CLOUD-004",
+    "symptom": "Fixture actual_calendar_days=88 vs requested_days=90. Still ≥86 Foundation ratio floor.",
+    "engine_layer": "data",
+    "file_line": "lumina_core/birth/synthetic_cloud_fixture.py start_et+calendar_days vs CME weekend truncation",
+    "first_principles_cause": "CME weekend/halt at the window edge shortens UTC span by two days. certified_tick_cache_present and resume SLA still pass (86+ / 0.95*90).",
+    "why_this_blocks_milestone": "no",
+    "smallest_fix": "Generate start_et such that timestamp span is ≥90 UTC days if operators want exact equality.",
+    "reproduced": "yes"
+  }
+]
