@@ -26,7 +26,6 @@ from lumina_core.birth.birth_certificate import BirthCertificateThresholds
 
 
 def _compact_spec() -> CloudFixtureSpec:
-    # Dense enough that holdout tick//80 ≥ min_holdout_trades (50) → ≥4000 holdout ticks.
     return CloudFixtureSpec(
         calendar_days=FOUNDATION_HISTORY_START_DAYS,
         rth_bar_seconds=60,
@@ -57,10 +56,10 @@ def test_fixture_ticks_are_sane_nq_microstructure() -> None:
     assert "RTH" in sessions and "ETH" in sessions
 
 
-@pytest.mark.unit
+@pytest.mark.slow
 def test_persist_writes_certified_cache_with_three_holdout_regimes(tmp_path: Path) -> None:
-    # Skip sliding-window enrich (15s+ on CI). Schema/regimes live on raw ticks.
-    result = persist_cloud_fixture(tmp_path, spec=_compact_spec(), enrich=False)
+    """Full enrich + certified cache. Slow: sliding ADX over 90d tape (>15s CI)."""
+    result = persist_cloud_fixture(tmp_path, spec=_compact_spec())
     assert certified_tick_cache_present(tmp_path)
     cached = load_ticks_cache(tmp_path)
     assert cached
