@@ -1,0 +1,104 @@
+"""FORCE_OPEN plant geometry: ATR × √dwell, constitution-clipped.
+
+Extracted from sim_runner so the rollout file stays under the M5 ceiling.
+Live stop remains on — never suppress hit_stop.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+
+from lumina_core.birth.birth_trade_geometry import BirthTradeGeometry
+from lumina_core.birth.stage2_participation_envelope import force_open_stop_from_atr
+
+
+def tape_atr_pct_for_force_open(
+    row: dict[str, Any],
+    geometry: BirthTradeGeometry,
+) -> float:
+    """Tape ATR for FORCE_OPEN dwell survival.
+
+    Geometry stop is ``0.9 × ATR median`` (``_geometry_from_atr``). Tick
+    ``trend_atr_norm`` uses the same ≥0.05 ⇒ divide-by-price rule as
+    ``_collect_atr_samples``.
+    """
+    geo_stop = max(0.0, float(getattr(geometry, "stop_pct", 0.0) or 0.0))
+    geo_atr = geo_stop / 0.9 if geo_stop > 0.0 else 0.0
+    try:
+        atr = float(row.get("trend_atr_norm") or 0.0)
+    except (TypeError, ValueError):
+        atr = 0.0
+    try:
+        px = float(row.get("last") or row.get("close") or 0.0)
+    except (TypeError, ValueError):
+        px = 0.0
+    if atr >= 0.05 and px > 0.0:
+        atr = atr / px
+    atr = min(0.02, max(0.0, atr))
+    return max(geo_atr, atr, geo_stop)
+
+
+def apply_force_open_side(action: np.ndarray, row: dict[str, Any]) -> np.ndarray:
+    """Prefer MTF bias over blind L/S alternate. Occupancy plant only."""
+    try:
+        mtf = float(row.get("bible_mtf_bias", 0.0) or 0.0)
+        conf = float(row.get("bible_confluence", 0.0) or 0.0)
+        if abs(mtf) >= 0.05 or conf >= 0.15:
+            side_sel = 1.0 if mtf >= 0.0 else 2.0
+            return np.array(
+                [side_sel, float(action[1]), float(action[2]), float(action[3])],
+                dtype=np.float32,
+            )
+    except Exception:
+        pass
+    return action
+
+
+def apply_force_open_stop(
+    action: np.ndarray,
+    row: dict[str, Any],
+    geometry: BirthTradeGeometry,
+    *,
+    min_dwell_bars: int,
+    equity: float,
+) -> tuple[np.ndarray, float]:
+    """Widen FORCE_OPEN stop to ATR×√dwell, clip to constitution + dollar 1%."""
+    atr_pct = tape_atr_pct_for_force_open(row, geometry)
+    stop = force_open_stop_from_atr(
+        atr_pct=atr_pct,
+        min_dwell_bars=int(min_dwell_bars),
+    )
+    try:
+        px = float(row.get("last") or row.get("close") or 0.0)
+    except (TypeError, ValueError):
+        px = 0.0
+    if px > 0.0 and equity > 0.0:
+        dollar_cap = (equity * 0.01) / (abs(px) * 5.0)
+        if dollar_cap > 0.0:
+            stop = min(stop, dollar_cap)
+    try:
+        from lumina_core.birth.birth_constitution_guard import (
+            BIRTH_MAX_RISK_STOP_PCT,
+            BIRTH_MIN_STOP_PCT,
+        )
+
+        stop = max(float(BIRTH_MIN_STOP_PCT), min(float(BIRTH_MAX_RISK_STOP_PCT), float(stop)))
+    except Exception:
+        stop = max(0.0004, min(0.01, float(stop)))
+    prev_stop = max(float(action[2]), 1e-12)
+    rr = max(1.25, float(action[3]) / prev_stop)
+    target = max(stop * 1.25, min(0.05, stop * rr))
+    out = np.array(
+        [float(action[0]), 0.0, float(stop), float(target)],
+        dtype=np.float32,
+    )
+    return out, float(stop)
+
+
+__all__ = [
+    "apply_force_open_side",
+    "apply_force_open_stop",
+    "tape_atr_pct_for_force_open",
+]

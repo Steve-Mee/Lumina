@@ -59,7 +59,8 @@ def test_fixture_ticks_are_sane_nq_microstructure() -> None:
 
 @pytest.mark.unit
 def test_persist_writes_certified_cache_with_three_holdout_regimes(tmp_path: Path) -> None:
-    result = persist_cloud_fixture(tmp_path, spec=_compact_spec())
+    # Skip sliding-window enrich (15s+ on CI). Schema/regimes live on raw ticks.
+    result = persist_cloud_fixture(tmp_path, spec=_compact_spec(), enrich=False)
     assert certified_tick_cache_present(tmp_path)
     cached = load_ticks_cache(tmp_path)
     assert cached
